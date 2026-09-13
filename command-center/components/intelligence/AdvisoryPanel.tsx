@@ -76,6 +76,7 @@ export function AdvisoryPanel({
   const sponsor = adv.sponsorship;
   const revenue = adv.revenue;
   const niche = adv.nicheRpm;
+  const quota = adv.quota;
 
   return (
     <div className="grid gap-5 md:grid-cols-2">
@@ -263,6 +264,25 @@ export function AdvisoryPanel({
               />
             ))}
             <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advNicheHint}</p>
+          </>
+        )}
+      </Card>
+
+      {/* Upload-quota allocation — roadmap #73 */}
+      <Card title={t.ops.advQuotaTitle} updated={quota?.ts ?? null}>
+        {!quota || quota.channels.length === 0 ? (
+          <Empty label={quota ? t.ops.advQuotaNone : t.ops.advNoData} />
+        ) : (
+          <>
+            <Row label={t.ops.advQuotaTotal} value={quota.totalSlots === null ? "N/A" : String(quota.totalSlots)} strong />
+            {quota.channels.slice(0, 4).map((c) => (
+              <Row
+                key={c.channelId}
+                label={c.name}
+                value={`${c.slots ?? 0} · ${c.share === null ? t.common.na : `${Math.round(c.share * 100)}%`}`}
+              />
+            ))}
+            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advQuotaHint}</p>
           </>
         )}
       </Card>

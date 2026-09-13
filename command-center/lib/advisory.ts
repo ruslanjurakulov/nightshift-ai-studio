@@ -11,6 +11,7 @@
  *   - `sponsorship.estimate`(modules/sponsorship.py)     — CPM-priced sponsor slot value
  *   - `revenue.tracked`     (modules/revenue_tracker.py) — real estimatedRevenue (USD) + RPM
  *   - `niche.rpm`           (modules/niche_rpm.py)       — cross-channel niche ranking
+ *   - `quota.allocated`     (modules/quota_allocator.py) — daily upload split by performance
  *
  * These functions read only what those rows actually contain and translate it
  * into typed summaries the Command Center renders. Nothing here invents a value:
@@ -30,6 +31,7 @@ export const EVENT_VIDIQ_RESEARCH = "vidiq.research";
 export const EVENT_SPONSORSHIP_ESTIMATE = "sponsorship.estimate";
 export const EVENT_REVENUE_TRACKED = "revenue.tracked";
 export const EVENT_NICHE_RPM = "niche.rpm";
+export const EVENT_QUOTA_ALLOCATED = "quota.allocated";
 
 // -- value coercion: unknown JSON in, typed-or-null out ---------------------
 
@@ -359,6 +361,51 @@ export function parseNicheRpm(e: SystemEventRow | null): NicheRpm | null {
   };
 }
 
+export interface QuotaChannel {
+  channelId: string;
+  name: string;
+  slots: number | null;
+  /** Measured weight (views/day), or null when unreadable. */
+  score: number | null;
+  /** Fraction of total measured performance, or null when nothing is measured. */
+  share: number | null;
+}
+
+export interface QuotaAllocation {
+  ts: string;
+  totalSlots: number | null;
+  channelCount: number | null;
+  /** Channels, best-allocated first. */
+  channels: QuotaChannel[];
+}
+
+export function parseQuotaAllocation(e: SystemEventRow | null): QuotaAllocation | null {
+  if (!e) return null;
+  const m = asRecord(e.metadata) ?? {};
+  const rawChannels = Array.isArray(m.channels) ? m.channels : [];
+  const channels: QuotaChannel[] = rawChannels
+    .map((row) => {
+      const r = asRecord(row);
+      if (!r) return null;
+      const channelId = strOrNull(r.channel_id);
+      if (!channelId) return null;
+      return {
+        channelId,
+        name: strOrNull(r.name) ?? channelId,
+        slots: numOrNull(r.slots),
+        score: numOrNull(r.score),
+        share: numOrNull(r.share),
+      };
+    })
+    .filter((c): c is QuotaChannel => c !== null);
+  return {
+    ts: e.ts,
+    totalSlots: numOrNull(m.total_slots),
+    channelCount: numOrNull(m.channel_count),
+    channels,
+  };
+}
+
 export interface AdvisoryIntelligence {
   spend: SpendForecast | null;
   timing: PublishTiming | null;
@@ -368,6 +415,7 @@ export interface AdvisoryIntelligence {
   sponsorship: Sponsorship | null;
   revenue: RevenueTracked | null;
   nicheRpm: NicheRpm | null;
+  quota: QuotaAllocation | null;
 }
 
 /**
@@ -385,5 +433,6 @@ export function deriveAdvisory(events: SystemEventRow[]): AdvisoryIntelligence {
     sponsorship: parseSponsorship(latestEvent(events, EVENT_SPONSORSHIP_ESTIMATE)),
     revenue: parseRevenueTracked(latestEvent(events, EVENT_REVENUE_TRACKED)),
     nicheRpm: parseNicheRpm(latestEvent(events, EVENT_NICHE_RPM)),
+    quota: parseQuotaAllocation(latestEvent(events, EVENT_QUOTA_ALLOCATED)),
   };
 }

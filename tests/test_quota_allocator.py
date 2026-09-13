@@ -109,5 +109,47 @@ class RecommendAllocationTestCase(unittest.TestCase):
         self.assertEqual(sum(out.values()), 4)  # even split, never raises
 
 
+class RecommendWithScoresAndSummaryTestCase(unittest.TestCase):
+    def _store(self):
+        vbc = {
+            "a": [{"video_id": "a1", "published_at": (NOW - timedelta(days=5)).isoformat(),
+                   "video_format": "long"}],
+            "b": [{"video_id": "b1", "published_at": (NOW - timedelta(days=5)).isoformat(),
+                   "video_format": "long"}],
+            "c": [],   # new channel, no videos → score 0, keeps its baseline
+        }
+        return _FakeStore(vbc, {"a1": {"views": 10000}, "b1": {"views": 2000}})
+
+    def test_scores_and_allocation_returned_together(self):
+        scores, allocation = qa.recommend_with_scores(self._store(), ["a", "b", "c"], 12, now=NOW)
+        self.assertEqual(sum(allocation.values()), 12)
+        self.assertGreater(scores["a"], scores["b"])
+        self.assertEqual(scores["c"], 0.0)          # unmeasured, not negative
+        self.assertGreaterEqual(allocation["c"], 1)  # baseline reserved
+
+    def test_summary_shape_and_shares(self):
+        scores, allocation = qa.recommend_with_scores(self._store(), ["a", "b", "c"], 12, now=NOW)
+        summary = qa.summarize(scores, allocation, total_slots=12,
+                               names={"a": "Alpha", "b": "Beta", "c": "Gamma"})
+        self.assertEqual(summary["total_slots"], 12)
+        self.assertEqual(summary["channel_count"], 3)
+        rows = {r["channel_id"]: r for r in summary["channels"]}
+        self.assertEqual(rows["a"]["name"], "Alpha")
+        self.assertGreater(rows["a"]["slots"], rows["b"]["slots"])
+        # share is a fraction of the total measured performance; channel c has
+        # no measured views so it accounts for 0% of it — yet still gets a
+        # reserved baseline slot (slots ≥ 1, share 0.0, not negative).
+        self.assertEqual(rows["c"]["share"], 0.0)
+        self.assertGreaterEqual(rows["c"]["slots"], 1)
+        self.assertAlmostEqual(sum(r["share"] for r in summary["channels"] if r["share"] is not None), 1.0, places=3)
+
+    def test_summary_all_unmeasured_shares_are_none(self):
+        scores = {"a": 0.0, "b": 0.0}
+        allocation = qa.allocate(scores, 4)
+        summary = qa.summarize(scores, allocation, total_slots=4)
+        self.assertTrue(all(r["share"] is None for r in summary["channels"]))
+        self.assertEqual(sum(r["slots"] for r in summary["channels"]), 4)
+
+
 if __name__ == "__main__":
     unittest.main()

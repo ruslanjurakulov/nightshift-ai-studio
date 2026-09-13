@@ -356,6 +356,51 @@ def rank_niches_across_channels() -> dict:
         return {}
 
 
+def allocate_upload_quota() -> dict:
+    """Recommend how the day's upload budget should split across channels by
+    measured performance, and emit one global `quota.allocated`.
+
+    The budget (`CHRONOS_DAILY_UPLOAD_SLOTS`) is the operator's; unset, it
+    defaults to one slot per channel so the pass still runs meaningfully. Every
+    channel keeps a reserved baseline, so a brand-new channel is never starved
+    of the chance to gather the data that would earn it more. Advisory only — it
+    recommends a split for the scheduler/human, it never schedules or publishes.
+    Never raises."""
+    from modules import quota_allocator
+
+    try:
+        channels = ChannelRegistry().list()
+    except Exception as e:
+        logger.warning("Channel registry unavailable (%s: %s) — skipping quota allocation",
+                       type(e).__name__, e)
+        return {}
+
+    channel_ids = [str(c.channel_id) for c in channels]
+    if not channel_ids:
+        logger.info("No channels known — upload quota allocation skipped")
+        return {}
+    names = {str(c.channel_id): (c.name or str(c.channel_id)) for c in channels}
+
+    raw = os.getenv("CHRONOS_DAILY_UPLOAD_SLOTS", "").strip()
+    try:
+        total_slots = int(raw) if raw else len(channel_ids)
+    except ValueError:
+        logger.warning("Ignoring CHRONOS_DAILY_UPLOAD_SLOTS=%r — not an integer; using channel count", raw)
+        total_slots = len(channel_ids)
+
+    try:
+        with StateStore() as store:
+            scores, allocation = quota_allocator.recommend_with_scores(store, channel_ids, total_slots)
+        summary = quota_allocator.summarize(scores, allocation, total_slots=total_slots, names=names)
+        events.emit(events.QUOTA_ALLOCATED, agent="quota_allocator", status=events.STATUS_COMPLETED,
+                    channel_id=None, metadata=summary)
+        logger.info("Upload quota: %d slot(s) across %d channel(s)", total_slots, len(channel_ids))
+        return summary
+    except Exception:
+        logger.exception("Quota allocation failed; allocating nothing")
+        return {}
+
+
 def mirror_to_supabase() -> dict:
     """Mirror the current local state into Supabase for the Command Center.
     No-op (returns {}) when SUPABASE_URL / SUPABASE_SERVICE_KEY aren't set, so
@@ -446,6 +491,10 @@ def main():
     # channel's metrics are in. Defensive on its own; a failure here never
     # affects the mirror below.
     rank_niches_across_channels()
+
+    # Cross-channel upload-quota allocation — another global pass, split the
+    # day's budget across channels by measured performance. Also defensive.
+    allocate_upload_quota()
 
     if not args.skip_mirror:
         mirror_to_supabase()
