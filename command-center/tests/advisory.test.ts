@@ -10,6 +10,7 @@ import {
   parseRevenueTracked,
   parseNicheRpm,
   parseQuotaAllocation,
+  parseSpendOverview,
 } from "@/lib/advisory";
 import type { SystemEventRow } from "@/lib/types";
 
@@ -173,6 +174,7 @@ describe("deriveAdvisory", () => {
     expect(a.sponsorship).toBeNull();
     expect(a.nicheRpm).toBeNull();
     expect(a.quota).toBeNull();
+    expect(a.spendOverview).toBeNull();
   });
 
   it("picks the genuinely latest of each kind regardless of list order", () => {
@@ -364,5 +366,41 @@ describe("parseQuotaAllocation", () => {
       ev("quota.allocated", "t", { total_slots: 1, channels: [{ channel_id: "solo", slots: 1 }] }),
     );
     expect(q?.channels[0].name).toBe("solo");
+  });
+});
+
+describe("parseSpendOverview", () => {
+  it("returns null with no event", () => {
+    expect(parseSpendOverview(null)).toBeNull();
+  });
+
+  it("reads totals and per-channel spend, keeping unknowns null", () => {
+    const s = parseSpendOverview(
+      ev("spend.overview", "t", {
+        total_spent_usd: 5,
+        total_projected_usd: 12,
+        channel_count: 2,
+        any_unpriced: true,
+        channels: [
+          { channel_id: "a", name: "Alpha", spent_usd: 3, videos_remaining: 8, avg_cost_usd: 1 },
+          { channel_id: "b", name: "Beta", spent_usd: null, videos_remaining: null },
+          { no_id: true },
+        ],
+      }),
+    );
+    expect(s?.totalSpentUsd).toBe(5);
+    expect(s?.totalProjectedUsd).toBe(12);
+    expect(s?.anyUnpriced).toBe(true);
+    expect(s?.channels.map((c) => c.channelId)).toEqual(["a", "b"]); // junk row dropped
+    expect(s?.channels[0].videosRemaining).toBe(8);
+    expect(s?.channels[1].spentUsd).toBeNull(); // unknown, never 0
+  });
+
+  it("treats an all-unpriced total as null, never $0", () => {
+    const s = parseSpendOverview(
+      ev("spend.overview", "t", { total_spent_usd: null, channel_count: 1, channels: [{ channel_id: "a" }] }),
+    );
+    expect(s?.totalSpentUsd).toBeNull();
+    expect(s?.channels[0].name).toBe("a");
   });
 });
