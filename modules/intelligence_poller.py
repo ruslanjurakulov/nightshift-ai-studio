@@ -473,6 +473,39 @@ class IntelligencePoller:
             logger.exception("Revenue-tracking pass failed; recording no revenue")
             return False
 
+    def research_vidiq(self) -> bool:
+        """Fetch vidIQ keyword opportunities for this channel's niche and emit
+        one `vidiq.research` event so the advisory card can show them. Research
+        and scoring ONLY — advisory, it never selects a topic or edits a title.
+
+        Off unless configured (config.VIDIQ_ENABLED / CHRONOS_ENABLE_VIDIQ +
+        a token): with no client the researcher is a no-op and this returns
+        False, leaving the card honestly empty. Never raises. Returns True when
+        a ranking was actually produced."""
+        try:
+            from modules import vidiq
+            from modules import vidiq_client
+
+            client = vidiq_client.make_client()
+            if client is None:
+                logger.debug("vidIQ disabled; skipping the research pass")
+                return False
+
+            seed = (getattr(self.channel, "niche", None) or "").strip()
+            if not seed:
+                logger.debug("vidIQ: no channel niche to seed research; skipping")
+                return False
+
+            researcher = vidiq.VidIQResearcher(client=client, channel_id=self.channel_id)
+            ranked = researcher.research(seed)
+            if ranked:
+                logger.info("[channel: %s] vidIQ research: %d keyword(s), best %r",
+                            self.channel_id, len(ranked), ranked[0][0].term)
+            return bool(ranked)
+        except Exception:
+            logger.exception("vidIQ research pass failed; recommending nothing")
+            return False
+
     @staticmethod
     def _revenue_start_date(published_at) -> str:
         """The revenue query's start date for a video: its publish date (so the
@@ -509,6 +542,7 @@ class IntelligencePoller:
         publish_timing_ready = self.suggest_publish_time()
         sponsorship_ready = self.estimate_sponsorship()
         revenue_tracked = self.track_revenue()
+        vidiq_researched = self.research_vidiq()
 
         return {
             "own_metrics_written": own_metrics_written,
@@ -521,4 +555,5 @@ class IntelligencePoller:
             "publish_timing_ready": publish_timing_ready,
             "sponsorship_ready": sponsorship_ready,
             "revenue_tracked": revenue_tracked,
+            "vidiq_researched": vidiq_researched,
         }
