@@ -101,3 +101,49 @@ class AnalyzeTestCase(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NextPublishSlotTestCase(unittest.TestCase):
+    """Turning the advisory hour/weekday into a concrete future 'publish at'."""
+
+    # 2026-09-14 is a Monday; use a fixed reference for determinism.
+    MON_10 = datetime(2026, 9, 14, 10, 0, tzinfo=timezone.utc)
+
+    def test_no_recommendation_returns_none(self):
+        self.assertIsNone(pt.next_publish_slot(pt.TimingReport(), now=self.MON_10))
+
+    def test_hour_only_today_when_still_ahead(self):
+        report = pt.TimingReport(best_hour_utc=14)
+        slot = pt.next_publish_slot(report, now=self.MON_10)
+        self.assertEqual((slot.year, slot.month, slot.day, slot.hour), (2026, 9, 14, 14))
+
+    def test_hour_only_rolls_to_tomorrow_when_passed(self):
+        report = pt.TimingReport(best_hour_utc=8)  # already 10:00 now
+        slot = pt.next_publish_slot(report, now=self.MON_10)
+        self.assertEqual((slot.month, slot.day, slot.hour), (9, 15, 8))
+
+    def test_weekday_and_hour_finds_that_weekday(self):
+        # best_weekday 5 = Saturday; from Monday the coming Saturday.
+        report = pt.TimingReport(best_hour_utc=9, best_weekday=5)
+        slot = pt.next_publish_slot(report, now=self.MON_10)
+        self.assertEqual(slot.weekday(), 5)
+        self.assertEqual((slot.day, slot.hour), (19, 9))  # Sat 2026-09-19
+
+    def test_same_weekday_past_hour_rolls_a_week(self):
+        # Monday recommended at 08:00, but it is already Monday 10:00 → next Monday.
+        report = pt.TimingReport(best_hour_utc=8, best_weekday=0)
+        slot = pt.next_publish_slot(report, now=self.MON_10)
+        self.assertEqual(slot.weekday(), 0)
+        self.assertEqual((slot.day, slot.hour), (21, 8))  # next Monday
+
+    def test_always_future_and_utc(self):
+        report = pt.TimingReport(best_hour_utc=10, best_weekday=0)  # exactly now
+        slot = pt.next_publish_slot(report, now=self.MON_10)
+        self.assertGreater(slot, self.MON_10)
+        self.assertEqual(slot.tzinfo, timezone.utc)
+
+    def test_naive_now_is_treated_as_utc(self):
+        naive = datetime(2026, 9, 14, 10, 0)
+        slot = pt.next_publish_slot(pt.TimingReport(best_hour_utc=14), now=naive)
+        self.assertEqual(slot.hour, 14)
+        self.assertIsNotNone(slot.tzinfo)

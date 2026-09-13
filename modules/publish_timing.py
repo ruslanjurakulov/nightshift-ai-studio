@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from statistics import mean
 from typing import Optional
 
@@ -141,6 +141,50 @@ def analyze(
         weekday_scores=weekday_scores,
         timezone="UTC",
     )
+
+
+def next_publish_slot(report: TimingReport, now: Optional[datetime] = None) -> Optional[datetime]:
+    """The next UTC datetime that matches the report's recommended slot, at or
+    after `now` — turning the advisory hour/weekday into a concrete "publish at".
+
+    This is what lets a scheduler act on "publish when the audience is online":
+    hand the returned datetime to YouTube's `status.publishAt` (scheduled
+    upload) instead of publishing immediately. It stays advisory in spirit —
+    the caller decides whether to schedule or publish now, and the pre-publish
+    gate still runs either way.
+
+    Returns None when there is no usable hour to target (no recommendation, or a
+    weekday-only report), so the caller cleanly falls back to publishing now.
+    Rules:
+      * hour known, no weekday → the next occurrence of that hour (today if it
+        is still ahead, else tomorrow);
+      * hour + weekday known → the next occurrence of that weekday at that hour;
+      * a slot exactly at or before `now` rolls forward, so the result is always
+        strictly in the future.
+    """
+    if report is None or report.best_hour_utc is None:
+        return None
+    hour = int(report.best_hour_utc)
+    if not (0 <= hour <= 23):
+        return None
+
+    now = now or datetime.now(timezone.utc)
+    now = now.replace(tzinfo=timezone.utc) if now.tzinfo is None else now.astimezone(timezone.utc)
+
+    weekday = report.best_weekday
+    if weekday is None:
+        candidate = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+        if candidate <= now:
+            candidate += timedelta(days=1)
+        return candidate
+
+    days_ahead = (int(weekday) - now.weekday()) % 7
+    candidate = (now + timedelta(days=days_ahead)).replace(
+        hour=hour, minute=0, second=0, microsecond=0
+    )
+    if candidate <= now:
+        candidate += timedelta(days=7)
+    return candidate
 
 
 def summarize(report: TimingReport) -> dict:
