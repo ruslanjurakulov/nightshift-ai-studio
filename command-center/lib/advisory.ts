@@ -34,6 +34,7 @@ export const EVENT_REVENUE_TRACKED = "revenue.tracked";
 export const EVENT_NICHE_RPM = "niche.rpm";
 export const EVENT_QUOTA_ALLOCATED = "quota.allocated";
 export const EVENT_SPEND_OVERVIEW = "spend.overview";
+export const EVENT_DIRECTOR_PLAN = "director.plan";
 export const EVENT_ELEMENTS_APPLIED = "elements.applied";
 
 // -- value coercion: unknown JSON in, typed-or-null out ---------------------
@@ -486,6 +487,41 @@ export function parseElementsApplied(e: SystemEventRow | null): ElementsApplied 
   };
 }
 
+export interface DirectorShot {
+  scene: number | null;
+  name: string;
+  shot: string;
+  camera: string;
+  mood: string;
+}
+
+export interface DirectorPlan {
+  ts: string;
+  scenes: number | null;
+  shots: DirectorShot[];
+}
+
+/** Director Mode's per-scene shot plan (modules/director.py). */
+export function parseDirectorPlan(e: SystemEventRow | null): DirectorPlan | null {
+  if (!e) return null;
+  const m = asRecord(e.metadata) ?? {};
+  const rawShots = Array.isArray(m.shots) ? m.shots : [];
+  const shots: DirectorShot[] = rawShots
+    .map((row): DirectorShot | null => {
+      const r = asRecord(row);
+      if (!r) return null;
+      return {
+        scene: numOrNull(r.scene),
+        name: strOrNull(r.name) ?? "",
+        shot: strOrNull(r.shot) ?? "",
+        camera: strOrNull(r.camera) ?? "",
+        mood: strOrNull(r.mood) ?? "",
+      };
+    })
+    .filter((s): s is DirectorShot => s !== null);
+  return { ts: e.ts, scenes: numOrNull(m.scenes), shots };
+}
+
 export interface AdvisoryIntelligence {
   spend: SpendForecast | null;
   timing: PublishTiming | null;
@@ -497,6 +533,7 @@ export interface AdvisoryIntelligence {
   nicheRpm: NicheRpm | null;
   quota: QuotaAllocation | null;
   spendOverview: SpendOverview | null;
+  director: DirectorPlan | null;
   elements: ElementsApplied | null;
 }
 
@@ -517,6 +554,7 @@ export function deriveAdvisory(events: SystemEventRow[]): AdvisoryIntelligence {
     nicheRpm: parseNicheRpm(latestEvent(events, EVENT_NICHE_RPM)),
     quota: parseQuotaAllocation(latestEvent(events, EVENT_QUOTA_ALLOCATED)),
     spendOverview: parseSpendOverview(latestEvent(events, EVENT_SPEND_OVERVIEW)),
+    director: parseDirectorPlan(latestEvent(events, EVENT_DIRECTOR_PLAN)),
     elements: parseElementsApplied(latestEvent(events, EVENT_ELEMENTS_APPLIED)),
   };
 }

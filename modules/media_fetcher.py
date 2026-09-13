@@ -134,8 +134,10 @@ class MediaFetcher:
         stock. Never raises.
 
         ``style_for`` (optional) is an ``index -> style string`` map: when given,
-        each generated clip's prompt carries that scene's style direction (e.g. a
-        Character-Bible consistency directive). None keeps the default look."""
+        each generated clip's prompt carries that scene's style direction. That
+        string may combine Director Mode's shot direction (camera/lens/lighting/
+        motion, modules/director.py) with a Character-Bible consistency directive
+        (modules/elements.py). None keeps the default look."""
         import config
         from modules import minimax_broll
 

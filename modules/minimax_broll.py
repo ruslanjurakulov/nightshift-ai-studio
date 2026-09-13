@@ -117,6 +117,9 @@ def select_specs(sections: list, topic: str, *, max_clips: int, style_for=None) 
 
     ``style_for`` (optional) is ``index -> style string``: when given, each
     clip's prompt carries that scene's style direction instead of the default.
+    That string may combine Director Mode's shot direction (camera/lens/
+    lighting/motion, modules/director.py) with a Character-Bible consistency
+    directive (modules/elements.py).
     None keeps the default look, so an unconfigured run is unchanged."""
     if max_clips <= 0:
         return []

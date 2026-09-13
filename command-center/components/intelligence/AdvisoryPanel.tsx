@@ -78,6 +78,7 @@ export function AdvisoryPanel({
   const niche = adv.nicheRpm;
   const quota = adv.quota;
   const spendOv = adv.spendOverview;
+  const director = adv.director;
   const elements = adv.elements;
 
   return (
@@ -313,6 +314,29 @@ export function AdvisoryPanel({
             <p className="mt-1 text-[13px] text-[var(--color-muted)]">
               {spendOv.anyUnpriced ? t.ops.advSpendOvUnpriced : t.ops.advSpendOvHint}
             </p>
+          </>
+        )}
+      </Card>
+
+      {/* Director Mode shot plan — Nightshift blueprint */}
+      <Card title={t.ops.advDirectorTitle} updated={director?.ts ?? null}>
+        {!director || director.shots.length === 0 ? (
+          <Empty label={director ? t.ops.advDirectorNone : t.ops.advNoData} />
+        ) : (
+          <>
+            <Row
+              label={t.ops.advDirectorScenes}
+              value={director.scenes === null ? "N/A" : String(director.scenes)}
+              strong
+            />
+            {director.shots.slice(0, 5).map((s, i) => (
+              <Row
+                key={s.scene ?? i}
+                label={`${s.scene ?? i + 1}. ${s.name}`}
+                value={`${s.shot} · ${s.camera}`}
+              />
+            ))}
+            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advDirectorHint}</p>
           </>
         )}
       </Card>
