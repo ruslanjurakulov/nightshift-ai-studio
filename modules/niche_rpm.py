@@ -205,6 +205,51 @@ def recommend_niche(signals: dict, *, min_videos: int = 3) -> Optional[str]:
     return ranked[0].niche if ranked else None
 
 
+def tier_of(signal: NicheSignal) -> int:
+    """The honest tier a niche ranks in: 2 = measured earnings (a real RPM),
+    1 = engagement only (views/CTR, no revenue), 0 = insufficient data. Mirrors
+    the tiering in `rank_niches` so the Command Center can label each niche the
+    same way the ranking sorts them."""
+    if signal.rpm_usd is not None:
+        return 2
+    if signal.score is not None:
+        return 1
+    return 0
+
+
+def evaluate_by_channel_niche(
+    videos: list,
+    metrics_by_video: dict,
+    channel_niche: dict,
+    revenue_by_video: Optional[dict] = None,
+) -> dict:
+    """Convenience wrapper over `evaluate_niches` for the cross-channel case,
+    where a video's niche is its channel's niche.
+
+    ``channel_niche`` maps channel_id -> niche. A video whose channel is not in
+    the map (or maps to an empty niche) is skipped, exactly as an unresolved
+    niche is skipped in `evaluate_niches`. This is the aggregation the roadmap's
+    niche-RPM decision needs: niches live at the channel level, so ranking them
+    means bucketing every channel's videos by the niche its channel runs."""
+    def niche_of(video: dict) -> Optional[str]:
+        return (channel_niche or {}).get(video.get("channel_id")) or None
+
+    return evaluate_niches(videos, metrics_by_video, niche_of, revenue_by_video=revenue_by_video)
+
+
+def summarize(signals: dict, *, top_n: int = 8) -> dict:
+    """Metadata for a single `niche.rpm` advisory event: the ranked niches
+    (best first, each tagged with its tier), the recommended niche, and honest
+    counts. Capped to `top_n` so the event stays small."""
+    ranked = rank_niches(signals)
+    return {
+        "niches": [{**s.to_dict(), "tier": tier_of(s)} for s in ranked[:top_n]],
+        "best_niche": recommend_niche(signals),
+        "measured_count": sum(1 for s in signals.values() if s.has_signal),
+        "niche_count": len(signals),
+    }
+
+
 def _num(value) -> Optional[float]:
     """Coerce to float, or None. Empty string / None / non-numeric → None, so an
     unmeasured field never becomes 0.0."""

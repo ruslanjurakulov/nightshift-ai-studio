@@ -8,6 +8,7 @@ import {
   parseVidiqResearch,
   parseSponsorship,
   parseRevenueTracked,
+  parseNicheRpm,
 } from "@/lib/advisory";
 import type { SystemEventRow } from "@/lib/types";
 
@@ -169,6 +170,7 @@ describe("deriveAdvisory", () => {
     expect(a.repackage).toBeNull();
     expect(a.durability).toBeNull();
     expect(a.sponsorship).toBeNull();
+    expect(a.nicheRpm).toBeNull();
   });
 
   it("picks the genuinely latest of each kind regardless of list order", () => {
@@ -294,5 +296,38 @@ describe("parseRevenueTracked", () => {
     expect(r?.totalUsd).toBeNull();
     expect(r?.hasRevenue).toBe(false);
     expect(r?.top).toEqual([]);
+  });
+});
+
+describe("parseNicheRpm", () => {
+  it("returns null with no event", () => {
+    expect(parseNicheRpm(null)).toBeNull();
+  });
+
+  it("reads the ranked niches with their tiers and best niche", () => {
+    const r = parseNicheRpm(
+      ev("niche.rpm", "t", {
+        best_niche: "finance",
+        measured_count: 2,
+        niche_count: 2,
+        niches: [
+          { niche: "finance", tier: 2, video_count: 3, avg_views: 5000, rpm_usd: 4.2, score: 0.9 },
+          { niche: "history", tier: 1, video_count: 3, avg_views: 1000, rpm_usd: null, score: 0.4 },
+          { not_a_niche: true },
+        ],
+      }),
+    );
+    expect(r?.bestNiche).toBe("finance");
+    expect(r?.nicheCount).toBe(2);
+    expect(r?.niches.map((n) => n.niche)).toEqual(["finance", "history"]); // junk row dropped
+    expect(r?.niches[0].tier).toBe(2);
+    expect(r?.niches[0].rpmUsd).toBe(4.2);
+    expect(r?.niches[1].rpmUsd).toBeNull(); // engagement-only niche, no fabricated 0
+  });
+
+  it("keeps 'no recommendation' honest", () => {
+    const r = parseNicheRpm(ev("niche.rpm", "t", { best_niche: null, niche_count: 1, niches: [] }));
+    expect(r?.bestNiche).toBeNull();
+    expect(r?.niches).toEqual([]);
   });
 });

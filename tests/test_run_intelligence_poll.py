@@ -204,5 +204,55 @@ class RunFeedbackAnalysisTestCase(unittest.TestCase):
         self.assertEqual(summary, {"videos_analyzed": 0, "signals_recorded": 0, "topics_scored": 0})
 
 
+class RankNichesAcrossChannelsTestCase(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self._tmpdir.name) / "test_chronos.db"
+        self.store = StateStore(self.db_path)
+
+    def tearDown(self):
+        self.store.close()
+        self._tmpdir.cleanup()
+
+    def _seed(self, prefix, channel_id, views, n=3):
+        for i in range(n):
+            vid = f"{prefix}{i}"
+            self.store.record_video(video_id=vid, channel_id=channel_id, published_at="2026-01-01T00:00:00")
+            self.store.record_metrics_snapshot(video_id=vid, snapshot_date="2026-01-02", views=views)
+
+    def test_ranks_niches_across_channels_and_emits(self):
+        self._seed("h", "ch1", views=1000)   # history
+        self._seed("f", "ch2", views=5000)   # finance — more reach
+
+        registry = MagicMock()
+        registry.list.return_value = [
+            MagicMock(channel_id="ch1", niche="history"),
+            MagicMock(channel_id="ch2", niche="finance"),
+        ]
+        store_cm = MagicMock()
+        store_cm.__enter__.return_value = self.store
+        store_cm.__exit__.return_value = False
+
+        with patch.object(mod, "ChannelRegistry", return_value=registry), \
+                patch.object(mod, "StateStore", return_value=store_cm), \
+                patch.object(mod.events, "emit") as emit:
+            summary = mod.rank_niches_across_channels()
+
+        emit.assert_called_once()
+        self.assertEqual(emit.call_args.args[0], mod.events.NICHE_RPM)
+        self.assertEqual(summary["niche_count"], 2)
+        # No revenue supplied, so ranking is by engagement; finance has the reach.
+        self.assertEqual(summary["best_niche"], "finance")
+
+    def test_no_channel_niches_is_a_clean_skip(self):
+        registry = MagicMock()
+        registry.list.return_value = []   # no channels → nothing to rank
+        with patch.object(mod, "ChannelRegistry", return_value=registry), \
+                patch.object(mod.events, "emit") as emit:
+            summary = mod.rank_niches_across_channels()
+        self.assertEqual(summary, {})
+        emit.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

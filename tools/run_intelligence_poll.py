@@ -304,6 +304,58 @@ def run_feedback_analysis() -> dict:
     return totals
 
 
+def rank_niches_across_channels() -> dict:
+    """Rank the niches the studio publishes in by how they have ACTUALLY
+    performed, across every channel, and emit one global `niche.rpm`.
+
+    This is the roadmap's highest-value decision — *what to make a video about* —
+    answered from measured results. A niche lives at the channel level (a video
+    row has no niche of its own), so this is the one pass that is cross-channel
+    by nature: it buckets every channel's videos by the niche its channel runs,
+    then ranks. Views and CTR always inform the ranking; real per-video revenue
+    (roadmap #71), once persisted, feeds `revenue_by_video` for a true RPM — a
+    deliberate follow-up, not wired here.
+
+    Advisory only: it emits a ranking for the planner/human to consult. It never
+    changes niche selection on its own. Never raises."""
+    from modules import niche_rpm
+
+    try:
+        channels = ChannelRegistry().list()
+    except Exception as e:
+        logger.warning("Channel registry unavailable (%s: %s) — skipping niche RPM ranking",
+                       type(e).__name__, e)
+        return {}
+
+    channel_niche = {str(c.channel_id): c.niche for c in channels if c.niche}
+    if not channel_niche:
+        logger.info("No channel niches known — niche RPM ranking skipped")
+        return {}
+
+    try:
+        with StateStore() as store:
+            videos = store.list_videos(limit=100000)
+            metrics_by_video: dict = {}
+            for v in videos:
+                vid = v.get("video_id")
+                if not vid:
+                    continue
+                m = store.latest_metrics(vid)
+                if m is not None:
+                    metrics_by_video[vid] = m
+
+        signals = niche_rpm.evaluate_by_channel_niche(videos, metrics_by_video, channel_niche)
+        summary = niche_rpm.summarize(signals)
+        events.emit(events.NICHE_RPM, agent="niche_rpm", status=events.STATUS_COMPLETED,
+                    channel_id=None, metadata=summary)
+        logger.info("Niche RPM ranking: %d niche(s), best: %s",
+                    summary.get("niche_count", 0), summary.get("best_niche") or "—")
+        return summary
+    except Exception:
+        logger.exception("Niche RPM ranking failed; ranking nothing")
+        return {}
+
+
 def mirror_to_supabase() -> dict:
     """Mirror the current local state into Supabase for the Command Center.
     No-op (returns {}) when SUPABASE_URL / SUPABASE_SERVICE_KEY aren't set, so
@@ -389,6 +441,11 @@ def main():
         run_feedback_analysis()
     else:
         logger.info("Feedback scoring skipped (--skip-feedback)")
+
+    # Cross-channel niche RPM ranking — a single global pass after every
+    # channel's metrics are in. Defensive on its own; a failure here never
+    # affects the mirror below.
+    rank_niches_across_channels()
 
     if not args.skip_mirror:
         mirror_to_supabase()

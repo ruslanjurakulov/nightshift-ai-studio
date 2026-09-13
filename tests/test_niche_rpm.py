@@ -6,9 +6,12 @@ import unittest
 
 from modules.niche_rpm import (
     NicheSignal,
+    evaluate_by_channel_niche,
     evaluate_niches,
     rank_niches,
     recommend_niche,
+    summarize,
+    tier_of,
 )
 
 
@@ -100,6 +103,58 @@ class RankAndRecommendTestCase(unittest.TestCase):
 
     def test_recommend_none_on_empty(self):
         self.assertIsNone(recommend_niche({}))
+
+
+class ByChannelNicheTestCase(unittest.TestCase):
+    def test_buckets_videos_by_their_channel_niche(self):
+        videos = [
+            {"video_id": "a", "channel_id": "ch1"},
+            {"video_id": "b", "channel_id": "ch1"},
+            {"video_id": "c", "channel_id": "ch2"},
+        ]
+        metrics = {"a": {"views": 1000}, "b": {"views": 3000}, "c": {"views": 500}}
+        channel_niche = {"ch1": "history", "ch2": "finance"}
+        signals = evaluate_by_channel_niche(videos, metrics, channel_niche)
+        self.assertEqual(signals["history"].video_count, 2)
+        self.assertEqual(signals["history"].avg_views, 2000.0)
+        self.assertEqual(signals["finance"].video_count, 1)
+
+    def test_unknown_channel_is_skipped(self):
+        videos = [{"video_id": "a", "channel_id": "ch1"}, {"video_id": "b", "channel_id": "ghost"}]
+        metrics = {"a": {"views": 10}, "b": {"views": 20}}
+        signals = evaluate_by_channel_niche(videos, metrics, {"ch1": "history"})
+        self.assertIn("history", signals)
+        self.assertEqual(len(signals), 1)   # ghost channel's video contributes nothing
+
+
+class SummarizeTestCase(unittest.TestCase):
+    def test_tiers_and_ranking_in_summary(self):
+        videos = [{"video_id": f"h{i}", "channel_id": "ch1"} for i in range(3)] + [
+            {"video_id": f"f{i}", "channel_id": "ch2"} for i in range(3)
+        ]
+        metrics = {v["video_id"]: {"views": 1000} for v in videos}
+        # Only finance has revenue → tier 2 (measured earnings) and best_niche.
+        revenue = {f"f{i}": 20.0 for i in range(3)}
+        signals = evaluate_by_channel_niche(
+            videos, metrics, {"ch1": "history", "ch2": "finance"}, revenue_by_video=revenue
+        )
+        summary = summarize(signals)
+        self.assertEqual(summary["niche_count"], 2)
+        self.assertEqual(summary["best_niche"], "finance")   # the one we KNOW earns
+        # ranked best-first, each tagged with its tier
+        self.assertEqual(summary["niches"][0]["niche"], "finance")
+        self.assertEqual(summary["niches"][0]["tier"], 2)
+
+    def test_tier_of_levels(self):
+        self.assertEqual(tier_of(NicheSignal(niche="a", video_count=1, rpm_usd=5.0, score=0.5)), 2)
+        self.assertEqual(tier_of(NicheSignal(niche="a", video_count=1, score=0.5)), 1)
+        self.assertEqual(tier_of(NicheSignal(niche="a", video_count=1)), 0)
+
+    def test_empty_summary(self):
+        s = summarize({})
+        self.assertEqual(s["niche_count"], 0)
+        self.assertEqual(s["niches"], [])
+        self.assertIsNone(s["best_niche"])
 
 
 if __name__ == "__main__":
