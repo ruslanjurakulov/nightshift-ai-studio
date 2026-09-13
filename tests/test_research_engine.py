@@ -167,6 +167,62 @@ class TestEmptyArrays(unittest.TestCase):
         self.assertEqual(brief.suggested_angle, "")
 
 
+class TestStructuredOutputPath(unittest.TestCase):
+    """Roadmap #50: with the flag on, the brief is built from response.parsed
+    and the request carries the JSON-mode config — no regex extraction runs."""
+
+    def test_structured_path_reads_parsed_and_passes_json_config(self):
+        payload = {
+            "key_facts": [
+                {"claim": "Y happened.", "confidence": "medium", "caveat": "approximate date"},
+            ],
+            "open_questions": ["Was it deliberate?"],
+            "suggested_angle": "A slow-burn reveal.",
+        }
+        response = MagicMock()
+        response.parsed = payload
+        response.text = "IRRELEVANT — must not be parsed when .parsed is present"
+        sentinel_config = object()
+
+        with patch("modules.research_engine.GEMINI_STRUCTURED_OUTPUT", True), patch(
+            "modules.research_engine.json_config", return_value=sentinel_config
+        ) as mock_cfg, patch(
+            "modules.research_engine.make_client", return_value=MagicMock()
+        ), patch(
+            "modules.research_engine.generate_with_retry", return_value=response
+        ) as mock_gen:
+            brief = research_topic("The Antikythera Mechanism", niche="ancient tech")
+
+        self.assertEqual(len(brief.key_facts), 1)
+        self.assertEqual(brief.key_facts[0].confidence, "medium")
+        self.assertEqual(brief.key_facts[0].caveat, "approximate date")
+        self.assertTrue(mock_cfg.called)
+        # The JSON-mode config, not the plain system config, reached the call.
+        self.assertIs(mock_gen.call_args.args[3], sentinel_config)
+
+    def test_falls_back_to_text_path_when_json_config_unavailable(self):
+        # json_config returning None (no genai types) must NOT strand the call
+        # in structured mode — it drops back to the system-instruction config
+        # and text extraction, so the brief is still built.
+        payload = {
+            "key_facts": [{"claim": "Z.", "confidence": "low", "caveat": None}],
+            "open_questions": [],
+            "suggested_angle": "angle",
+        }
+        with patch("modules.research_engine.GEMINI_STRUCTURED_OUTPUT", True), patch(
+            "modules.research_engine.json_config", return_value=None
+        ), patch(
+            "modules.research_engine.make_client", return_value=MagicMock()
+        ), patch(
+            "modules.research_engine.generate_with_retry",
+            return_value=_mock_response(json.dumps(payload)),
+        ):
+            brief = research_topic("Topic")
+
+        self.assertEqual(len(brief.key_facts), 1)
+        self.assertEqual(brief.key_facts[0].confidence, "low")
+
+
 class TestNoSourcesField(unittest.TestCase):
     def test_dataclasses_have_no_sources_field(self):
         fact_fields = ResearchFact.__dataclass_fields__.keys()
