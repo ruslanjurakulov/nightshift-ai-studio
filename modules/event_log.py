@@ -154,6 +154,11 @@ PUBLISH_TIMING = "publish.timing"
 # by measured performance for a human/scheduler to consult. It never changes
 # niche selection on its own — like publish.score, it informs, it does not gate.
 NICHE_RPM = "niche.rpm"
+# Sponsorship pricing (modules/sponsorship.py). Advisory: a suggested price for
+# one integrated sponsor slot, from the channel's measured average views × a
+# configured sponsorship CPM (USD). It informs a human's negotiation — it never
+# contacts a sponsor, sells a slot, or commits to a price.
+SPONSORSHIP_ESTIMATE = "sponsorship.estimate"
 # vidIQ research & scoring (modules/vidiq.py). Advisory: `vidiq.research` records
 # a ranking of keyword opportunities; `vidiq.scored` a ranking of candidate
 # titles by vidIQ's title score. Research and scoring ONLY — it never selects a

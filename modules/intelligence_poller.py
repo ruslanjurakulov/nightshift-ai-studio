@@ -398,6 +398,29 @@ class IntelligencePoller:
             logger.exception("Publish-time suggestion pass failed; recommending nothing")
             return False
 
+    def estimate_sponsorship(self) -> bool:
+        """Price one integrated sponsor slot from this channel's measured reach
+        (average long-form views × the configured sponsorship CPM), emitting one
+        `sponsorship.estimate`. Advisory only — it informs a human's negotiation,
+        it never contacts a sponsor or commits a price. Never raises. Returns
+        True when a real price could be offered (reach measured AND a CPM set)."""
+        try:
+            from modules import event_log as events
+            from modules import sponsorship
+
+            videos, metrics_by_id = self._videos_with_metrics()
+            est = sponsorship.estimate(videos, metrics_by_id)
+            events.emit(events.SPONSORSHIP_ESTIMATE, agent="sponsorship",
+                        status=events.STATUS_COMPLETED, channel_id=self.channel_id,
+                        metadata=sponsorship.summarize(est))
+            if est.has_price:
+                logger.info("[channel: %s] Sponsor slot ≈ $%.2f (%s avg views × $%s CPM)",
+                            self.channel_id, est.price_usd, est.average_views, est.cpm_usd)
+            return est.has_price
+        except Exception:
+            logger.exception("Sponsorship-estimate pass failed; pricing nothing")
+            return False
+
     # -- orchestration --------------------------------------------------
 
     def run_all(self, competitor_channel_ids: list | None = None) -> dict:
@@ -417,6 +440,7 @@ class IntelligencePoller:
         repackage_candidates = self.suggest_repackages()
         spend_forecast_ready = self.forecast_spend()
         publish_timing_ready = self.suggest_publish_time()
+        sponsorship_ready = self.estimate_sponsorship()
 
         return {
             "own_metrics_written": own_metrics_written,
@@ -427,4 +451,5 @@ class IntelligencePoller:
             "repackage_candidates": repackage_candidates,
             "spend_forecast_ready": spend_forecast_ready,
             "publish_timing_ready": publish_timing_ready,
+            "sponsorship_ready": sponsorship_ready,
         }
