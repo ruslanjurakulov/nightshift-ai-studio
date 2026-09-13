@@ -204,6 +204,50 @@ describe("variantPerformance", () => {
     ];
     expect(variantPerformance(videos, snapshots).a.meanCtr).toBeCloseTo(0.2);
   });
+
+  // Roadmap #58: the reader is N-arm. A/B always appear; C/D only when shipped.
+  function armN(variant: string, ctrs: (number | null)[]) {
+    const videos: VideoRow[] = [];
+    const snapshots: MetricsSnapshotRow[] = [];
+    ctrs.forEach((ctr, i) => {
+      const id = `${variant}${i}`;
+      videos.push(video({ video_id: id, thumbnail_variant: variant }));
+      snapshots.push(
+        snap({ video_id: id, snapshot_date: "2026-01-02", impression_ctr: ctr, impressions: 1000 }),
+      );
+    });
+    return { videos, snapshots };
+  }
+
+  it("keeps only A and B in arms when no wider variant shipped", () => {
+    const a = armN("A", Array(MIN_PER_VARIANT).fill(0.1));
+    const b = armN("B", Array(MIN_PER_VARIANT).fill(0.08));
+    const result = variantPerformance([...a.videos, ...b.videos], [...a.snapshots, ...b.snapshots]);
+    expect(result.arms.map((x) => x.variant).sort()).toEqual(["A", "B"]);
+  });
+
+  it("ranks a widened C arm as the winner when it clears the lift", () => {
+    const a = armN("A", Array(MIN_PER_VARIANT).fill(0.1));
+    const b = armN("B", Array(MIN_PER_VARIANT).fill(0.09));
+    const c = armN("C", Array(MIN_PER_VARIANT).fill(0.2));
+    const result = variantPerformance(
+      [...a.videos, ...b.videos, ...c.videos],
+      [...a.snapshots, ...b.snapshots, ...c.snapshots],
+    );
+    expect(result.winner).toBe("C");
+    expect(result.reason).toBe("decided");
+    // The winner leads the arms list, and C is present as a real arm.
+    expect(result.arms[0].variant).toBe("C");
+    expect(result.arms.map((x) => x.variant).sort()).toEqual(["A", "B", "C"]);
+  });
+
+  it("needs at least two measured arms, not just one strong one", () => {
+    const a = armN("A", Array(MIN_PER_VARIANT).fill(0.2));
+    const b = armN("B", [0.05]); // under the floor
+    const result = variantPerformance([...a.videos, ...b.videos], [...a.snapshots, ...b.snapshots]);
+    expect(result.winner).toBeNull();
+    expect(result.reason).toBe("needs_more_videos");
+  });
 });
 
 describe("hookPerformance", () => {

@@ -250,6 +250,9 @@ class IntelligencePollerTestCase(unittest.TestCase):
                 # Revenue tracking is off by default (monetary scope is opt-in),
                 # so the pass returns early without measuring anything.
                 "revenue_tracked": False,
+                # vidIQ research is off by default (no token / opt-in), so the
+                # pass returns early and recommends nothing.
+                "vidiq_researched": False,
             },
         )
 
@@ -349,6 +352,47 @@ class IntelligencePollerTestCase(unittest.TestCase):
 
         competitor_monitor.poll.assert_not_called()
         self.assertEqual(summary["competitor_channels_polled"], 0)
+
+    # -- research_vidiq (roadmap #75) -------------------------------------
+
+    def _poller_with_niche(self, niche):
+        channel = MagicMock()
+        channel.channel_id = "chan-1"
+        channel.niche = niche
+        return IntelligencePoller(
+            state_store=self.store,
+            analytics_client=MagicMock(),
+            competitor_monitor=MagicMock(),
+            trend_detector=MagicMock(),
+            channel=channel,
+        )
+
+    def test_research_vidiq_disabled_returns_false(self):
+        poller = self._poller_with_niche("history mysteries")
+        with patch("modules.vidiq_client.make_client", return_value=None):
+            self.assertFalse(poller.research_vidiq())
+
+    def test_research_vidiq_no_niche_skips(self):
+        poller = self._poller_with_niche("   ")
+        client = MagicMock()
+        with patch("modules.vidiq_client.make_client", return_value=client):
+            self.assertFalse(poller.research_vidiq())
+        client.keyword_research.assert_not_called()
+
+    def test_research_vidiq_emits_and_returns_true_when_configured(self):
+        poller = self._poller_with_niche("roman history")
+        client = MagicMock()
+        client.keyword_research.return_value = [
+            {"term": "roman roads", "search_volume": 80, "competition": 20},
+        ]
+        with patch("modules.vidiq_client.make_client", return_value=client), patch(
+            "modules.event_log.emit"
+        ) as emit:
+            result = poller.research_vidiq()
+        self.assertTrue(result)
+        client.keyword_research.assert_called_once_with("roman history")
+        emit.assert_called_once()
+        self.assertEqual(emit.call_args.kwargs["channel_id"], "chan-1")
 
 
 if __name__ == "__main__":
