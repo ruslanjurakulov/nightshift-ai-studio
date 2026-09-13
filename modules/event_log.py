@@ -67,6 +67,10 @@ MEDIA_COMPLETED = "media.completed"
 # actually produced; a generation failure is never a run failure — the section
 # falls back to Pexels stock and the video still renders.
 BROLL_GENERATED = "broll.generated"
+# Character Bible / Elements Library (modules/elements.py). Advisory: which
+# reusable characters/locations/props were applied to this run's scenes for
+# visual consistency. Never gates.
+ELEMENTS_APPLIED = "elements.applied"
 RENDER_STARTED = "render.started"
 RENDER_COMPLETED = "render.completed"
 RENDER_FAILED = "render.failed"

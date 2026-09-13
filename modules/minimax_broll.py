@@ -106,14 +106,18 @@ def _section_keywords(section) -> List[str]:
     return []
 
 
-def select_specs(sections: list, topic: str, *, max_clips: int) -> List[GenerationSpec]:
+def select_specs(sections: list, topic: str, *, max_clips: int, style_for=None) -> List[GenerationSpec]:
     """Choose which sections get a generated clip and build a spec for each.
 
     Only sections that carry at least one keyword are eligible (a section we
     can't describe, we don't try to generate). Among those, the hook (index 0,
     if eligible) is always kept, then the longest sections, up to ``max_clips``.
     Returns [] when the feature would generate nothing (no eligible sections, or
-    a non-positive budget) — the caller then falls back to stock entirely."""
+    a non-positive budget) — the caller then falls back to stock entirely.
+
+    ``style_for`` (optional) is ``index -> style string``: when given, each
+    clip's prompt carries that scene's style direction instead of the default.
+    None keeps the default look, so an unconfigured run is unchanged."""
     if max_clips <= 0:
         return []
 
@@ -140,8 +144,15 @@ def select_specs(sections: list, topic: str, *, max_clips: int) -> List[Generati
 
     specs: List[GenerationSpec] = []
     for i, section, kws in chosen:
+        style = None
+        if style_for is not None:
+            try:
+                style = style_for(i) or None
+            except Exception:
+                style = None
+        prompt = build_prompt(topic, kws, style=style) if style else build_prompt(topic, kws)
         specs.append(GenerationSpec(
-            prompt=build_prompt(topic, kws),
+            prompt=prompt,
             duration_seconds=clamp_duration(_section_len(section)),
             section_index=i,
             keyword=kws[0],

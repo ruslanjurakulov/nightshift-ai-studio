@@ -597,11 +597,31 @@ def run(
     # API searches, not bytes: the Pexels quota is spent per search.
     costs.add(PEXELS_REQUESTS, fetcher.searches_made, stage="media")
 
+    # Character Bible / Elements Library (modules/elements.py): the channel's
+    # reusable characters/locations/props. For each scene, detect which appear
+    # and fold their description into the b-roll prompt so a recurring element
+    # stays on-model across videos. Advisory — empty library changes nothing.
+    from modules import elements as elements_mod
+    channel_elements = elements_mod.load_elements(getattr(getattr(ctx, "agent", None), "elements", ()))
+    element_style: dict = {}
+    applied_by_scene: dict = {}
+    if channel_elements:
+        for i, section in enumerate(script.sections):
+            matched = elements_mod.detect(getattr(section, "narration", "") or "", channel_elements)
+            if matched:
+                element_style[i] = elements_mod.consistency_prompt(matched)
+                applied_by_scene[i] = [e.name for e in matched]
+        events.emit(events.ELEMENTS_APPLIED, agent="elements", status=events.STATUS_COMPLETED,
+                    channel_id=channel_id,
+                    metadata=elements_mod.summarize(channel_elements, applied_by_scene))
+
     # Optional: generate on-topic b-roll for a few sections with MiniMax H3,
     # supplementing the stock above. Off unless a key + flag are set, in which
     # case it makes no request and changes nothing. Generated clips join the
     # pool and are recorded in fetcher.video_terms, so broll_match places them.
-    broll = fetcher.generate_broll(script.sections, topic)
+    # Each clip carries its scene's Character-Bible consistency directive.
+    broll = fetcher.generate_broll(script.sections, topic,
+                                   style_for=(element_style.get if element_style else None))
     if broll.generated:
         videos.extend(Path(p) for p in broll.by_section.values())
         events.emit(events.BROLL_GENERATED, agent="minimax_broll", status=events.STATUS_COMPLETED,
