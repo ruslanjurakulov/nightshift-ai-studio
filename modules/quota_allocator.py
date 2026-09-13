@@ -126,15 +126,12 @@ def performance_scores(videos_by_channel: dict, metrics_by_id: dict, *,
     return scores
 
 
-def recommend_allocation(store, channel_ids: list, total_slots: int, *,
-                         min_per_channel: int = 1, now: Optional[datetime] = None) -> dict:
-    """Read each channel's history from `store` and return a slot allocation.
-
-    Advisory: it hands a scheduler/human the recommended split; it never
-    schedules or publishes. Never raises — a read failure scores that channel 0
-    (it still gets its reserved baseline)."""
-    videos_by_channel = {}
-    metrics_by_id = {}
+def _read_history(store, channel_ids: list) -> tuple[dict, dict]:
+    """(videos_by_channel, metrics_by_id) read from `store`. A per-channel read
+    failure yields no videos for that channel (it scores 0 and rides its
+    reserved baseline), never an exception."""
+    videos_by_channel: dict = {}
+    metrics_by_id: dict = {}
     for cid in channel_ids or []:
         try:
             videos = store.list_videos(limit=100000, channel_id=cid)
@@ -152,5 +149,52 @@ def recommend_allocation(store, channel_ids: list, total_slots: int, *,
                 m = None
             if m is not None:
                 metrics_by_id[vid] = m
+    return videos_by_channel, metrics_by_id
+
+
+def recommend_with_scores(store, channel_ids: list, total_slots: int, *,
+                          min_per_channel: int = 1, now: Optional[datetime] = None) -> tuple[dict, dict]:
+    """Like `recommend_allocation`, but returns (scores, allocation) so a caller
+    can *explain* the split — what each channel's measured weight was, not just
+    how many slots it got. Never raises."""
+    videos_by_channel, metrics_by_id = _read_history(store, channel_ids)
     scores = performance_scores(videos_by_channel, metrics_by_id, now=now)
-    return allocate(scores, total_slots, min_per_channel=min_per_channel)
+    allocation = allocate(scores, total_slots, min_per_channel=min_per_channel)
+    return scores, allocation
+
+
+def recommend_allocation(store, channel_ids: list, total_slots: int, *,
+                         min_per_channel: int = 1, now: Optional[datetime] = None) -> dict:
+    """Read each channel's history from `store` and return a slot allocation.
+
+    Advisory: it hands a scheduler/human the recommended split; it never
+    schedules or publishes. Never raises — a read failure scores that channel 0
+    (it still gets its reserved baseline)."""
+    _, allocation = recommend_with_scores(
+        store, channel_ids, total_slots, min_per_channel=min_per_channel, now=now)
+    return allocation
+
+
+def summarize(scores: dict, allocation: dict, *, total_slots: int, names: Optional[dict] = None) -> dict:
+    """Metadata for a single `quota.allocated` event: per-channel slots and the
+    measured weight behind each, best-allocated first. `share` is a channel's
+    fraction of the total measured performance, or None when nothing measured
+    (null ≠ 0 — an unmeasured channel's share is unknown, not zero)."""
+    names = names or {}
+    total_score = sum(max(0.0, float(s or 0)) for s in (scores or {}).values())
+    rows = []
+    for cid in allocation or {}:
+        score = _num(scores.get(cid)) or 0.0
+        rows.append({
+            "channel_id": cid,
+            "name": names.get(cid) or cid,
+            "slots": int(allocation.get(cid, 0)),
+            "score": round(score, 3),
+            "share": round(score / total_score, 4) if total_score > 0 else None,
+        })
+    rows.sort(key=lambda r: (r["slots"], r["score"]), reverse=True)
+    return {
+        "total_slots": total_slots,
+        "channel_count": len(allocation or {}),
+        "channels": rows,
+    }

@@ -9,6 +9,7 @@ import {
   parseSponsorship,
   parseRevenueTracked,
   parseNicheRpm,
+  parseQuotaAllocation,
 } from "@/lib/advisory";
 import type { SystemEventRow } from "@/lib/types";
 
@@ -171,6 +172,7 @@ describe("deriveAdvisory", () => {
     expect(a.durability).toBeNull();
     expect(a.sponsorship).toBeNull();
     expect(a.nicheRpm).toBeNull();
+    expect(a.quota).toBeNull();
   });
 
   it("picks the genuinely latest of each kind regardless of list order", () => {
@@ -329,5 +331,38 @@ describe("parseNicheRpm", () => {
     const r = parseNicheRpm(ev("niche.rpm", "t", { best_niche: null, niche_count: 1, niches: [] }));
     expect(r?.bestNiche).toBeNull();
     expect(r?.niches).toEqual([]);
+  });
+});
+
+describe("parseQuotaAllocation", () => {
+  it("returns null with no event", () => {
+    expect(parseQuotaAllocation(null)).toBeNull();
+  });
+
+  it("reads slots and shares, keeping an unmeasured share null", () => {
+    const q = parseQuotaAllocation(
+      ev("quota.allocated", "t", {
+        total_slots: 10,
+        channel_count: 3,
+        channels: [
+          { channel_id: "a", name: "Alpha", slots: 6, score: 100, share: 0.8 },
+          { channel_id: "b", name: "Beta", slots: 3, score: 25, share: 0.2 },
+          { channel_id: "c", name: "Gamma", slots: 1, score: 0, share: null },
+          { not_a_channel: true },
+        ],
+      }),
+    );
+    expect(q?.totalSlots).toBe(10);
+    expect(q?.channelCount).toBe(3);
+    expect(q?.channels.map((c) => c.channelId)).toEqual(["a", "b", "c"]); // junk row dropped
+    expect(q?.channels[0].name).toBe("Alpha");
+    expect(q?.channels[2].share).toBeNull(); // unknown, never a fabricated 0
+  });
+
+  it("falls back to the id when a channel has no name", () => {
+    const q = parseQuotaAllocation(
+      ev("quota.allocated", "t", { total_slots: 1, channels: [{ channel_id: "solo", slots: 1 }] }),
+    );
+    expect(q?.channels[0].name).toBe("solo");
   });
 });

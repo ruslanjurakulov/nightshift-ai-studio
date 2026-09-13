@@ -254,5 +254,56 @@ class RankNichesAcrossChannelsTestCase(unittest.TestCase):
         emit.assert_not_called()
 
 
+class AllocateUploadQuotaTestCase(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self._tmpdir.name) / "test_chronos.db"
+        self.store = StateStore(self.db_path)
+
+    def tearDown(self):
+        self.store.close()
+        self._tmpdir.cleanup()
+
+    def _channel(self, cid, name):
+        c = MagicMock(channel_id=cid)
+        c.name = name   # set explicitly; MagicMock(name=...) is reserved
+        return c
+
+    def test_allocates_by_performance_and_emits(self):
+        from datetime import datetime, timezone
+        recent = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        for cid, views in (("ch1", 10000), ("ch2", 1000)):
+            self.store.record_video(video_id=f"{cid}v", channel_id=cid, published_at=recent)
+            self.store.record_metrics_snapshot(video_id=f"{cid}v", snapshot_date="2026-01-02", views=views)
+
+        registry = MagicMock()
+        registry.list.return_value = [self._channel("ch1", "Alpha"), self._channel("ch2", "Beta")]
+        store_cm = MagicMock()
+        store_cm.__enter__.return_value = self.store
+        store_cm.__exit__.return_value = False
+
+        with patch.object(mod, "ChannelRegistry", return_value=registry), \
+                patch.object(mod, "StateStore", return_value=store_cm), \
+                patch.dict("os.environ", {"CHRONOS_DAILY_UPLOAD_SLOTS": "10"}), \
+                patch.object(mod.events, "emit") as emit:
+            summary = mod.allocate_upload_quota()
+
+        emit.assert_called_once()
+        self.assertEqual(emit.call_args.args[0], mod.events.QUOTA_ALLOCATED)
+        self.assertEqual(summary["total_slots"], 10)
+        self.assertEqual(sum(r["slots"] for r in summary["channels"]), 10)
+        rows = {r["channel_id"]: r for r in summary["channels"]}
+        self.assertGreater(rows["ch1"]["slots"], rows["ch2"]["slots"])
+
+    def test_no_channels_is_a_clean_skip(self):
+        registry = MagicMock()
+        registry.list.return_value = []
+        with patch.object(mod, "ChannelRegistry", return_value=registry), \
+                patch.object(mod.events, "emit") as emit:
+            summary = mod.allocate_upload_quota()
+        self.assertEqual(summary, {})
+        emit.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
