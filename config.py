@@ -42,6 +42,23 @@ MINIMAX_BROLL_ENABLED = (
 # How many sections of one video may get a generated clip (cost control); the
 # rest use Pexels stock. A generated clip is billable, so this is deliberately low.
 MINIMAX_BROLL_MAX_CLIPS = int(os.getenv("CHRONOS_MINIMAX_BROLL_MAX_CLIPS", "2") or 2)
+# vidIQ research & scoring (modules/vidiq.py + modules/vidiq_client.py).
+# Research and scoring ONLY — advisory keyword/title intelligence, never a
+# second content pipeline. Dormant unless a token is set: no token → no client
+# → the researcher is a safe no-op and the advisory card stays empty rather than
+# showing fabricated numbers. The endpoint paths and response field names are
+# env-overridable so the adapter tracks vidIQ's API without a code change.
+VIDIQ_ACCESS_TOKEN = os.getenv("VIDIQ_ACCESS_TOKEN", "")
+VIDIQ_BASE_URL = os.getenv("VIDIQ_BASE_URL", "https://api.vidiq.com").rstrip("/")
+VIDIQ_KEYWORDS_PATH = os.getenv("VIDIQ_KEYWORDS_PATH", "/keywords")
+VIDIQ_TITLE_SCORE_PATH = os.getenv("VIDIQ_TITLE_SCORE_PATH", "/title/score")
+VIDIQ_TIMEOUT = float(os.getenv("VIDIQ_TIMEOUT", "20"))
+# Opt-in like the other external integrations. Enabled only when a token exists
+# AND the flag is on, so an unconfigured deployment behaves exactly as before.
+VIDIQ_ENABLED = (
+    bool(VIDIQ_ACCESS_TOKEN)
+    and os.getenv("CHRONOS_ENABLE_VIDIQ", "").strip().lower() in ("1", "true", "yes", "on")
+)
 YOUTUBE_CLIENT_SECRET = os.getenv("YOUTUBE_CLIENT_SECRET_FILE", str(BASE_DIR / "client_secret.json"))
 
 # Paths
@@ -109,6 +126,21 @@ SUBTITLE_HIGHLIGHT_COLOR = os.getenv("SUBTITLE_HIGHLIGHT_COLOR", "#FFD700")  # s
 SUBTITLE_STROKE_COLOR = "black"
 SUBTITLE_STROKE_WIDTH = 3
 SUBTITLE_POSITION = ("center", 0.80)
+
+# Thumbnail A/B width (roadmap #58). How many thumbnail arms the experiment
+# runs (modules/ab_testing.py generalizes the same MIN_PER_VARIANT / MIN_LIFT
+# rules to N). Default 2 keeps today's A/B exactly; 3-4 widens to A/B/C(/D),
+# each with a distinct on-brand look (modules/thumbnail_generator.py). Clamped
+# to the 2..4 the generator has real styles for — a bad env value never crashes
+# a render or silently produces clone thumbnails.
+def _clamp_int(raw, default, lo, hi):
+    try:
+        v = int(raw)
+    except (TypeError, ValueError):
+        v = default
+    return max(lo, min(hi, v))
+
+THUMBNAIL_VARIANT_COUNT = _clamp_int(os.getenv("CHRONOS_THUMBNAIL_VARIANTS", "2"), 2, 2, 4)
 
 # Render backend (roadmap #49). "moviepy" (default) keeps the current
 # CompositeVideoClip renderer with its Ken Burns motion and word-level
