@@ -11,6 +11,7 @@ import {
   parseNicheRpm,
   parseQuotaAllocation,
   parseSpendOverview,
+  parseDirectorPlan,
 } from "@/lib/advisory";
 import type { SystemEventRow } from "@/lib/types";
 
@@ -175,6 +176,7 @@ describe("deriveAdvisory", () => {
     expect(a.nicheRpm).toBeNull();
     expect(a.quota).toBeNull();
     expect(a.spendOverview).toBeNull();
+    expect(a.director).toBeNull();
   });
 
   it("picks the genuinely latest of each kind regardless of list order", () => {
@@ -402,5 +404,34 @@ describe("parseSpendOverview", () => {
     );
     expect(s?.totalSpentUsd).toBeNull();
     expect(s?.channels[0].name).toBe("a");
+  });
+});
+
+describe("parseDirectorPlan", () => {
+  it("returns null for no event", () => {
+    expect(parseDirectorPlan(null)).toBeNull();
+  });
+
+  it("parses scene count and shot rows", () => {
+    const p = parseDirectorPlan(
+      ev("director.plan", "t", {
+        scenes: 3,
+        shots: [
+          { scene: 1, name: "hook", shot: "reveal opening", camera: "slow push-in", mood: "tense" },
+          { scene: 2, name: "body", shot: "establishing", camera: "gentle dolly", mood: "cinematic" },
+          "junk",
+        ],
+      }),
+    );
+    expect(p?.scenes).toBe(3);
+    expect(p?.shots).toHaveLength(2); // junk row dropped
+    expect(p?.shots[0].shot).toBe("reveal opening");
+    expect(p?.shots[0].camera).toBe("slow push-in");
+  });
+
+  it("keeps unknown scene count null, never 0", () => {
+    const p = parseDirectorPlan(ev("director.plan", "t", { shots: [] }));
+    expect(p?.scenes).toBeNull();
+    expect(p?.shots).toEqual([]);
   });
 });
