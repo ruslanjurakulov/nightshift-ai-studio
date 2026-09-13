@@ -62,5 +62,54 @@ class RenderSmokeTestCase(unittest.TestCase):
                 self.assertEqual(im.size[0] > 0 and im.size[1] > 0, True)
 
 
+class GenerateVariantsTestCase(unittest.TestCase):
+    """Roadmap #58: widen the A/B test past two arms. generate_variants renders
+    one thumbnail per variant, keyed by variant label, each a distinct file."""
+
+    def _gen(self, tmp):
+        from pathlib import Path
+        from modules.thumbnail_generator import ThumbnailGenerator
+
+        gen = ThumbnailGenerator("test-slug-ab")
+        gen.out_dir = Path(tmp)  # keep the render out of the repo's output/ dir
+        return gen
+
+    def test_renders_one_file_per_variant(self):
+        try:
+            from PIL import Image  # noqa: F401
+        except Exception:
+            self.skipTest("PIL not available")
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            gen = self._gen(d)
+            out = gen.generate_variants("The Fall of Rome", "SHOCKING", variants=("A", "B", "C"))
+            self.assertEqual(set(out.keys()), {"A", "B", "C"})
+            for path in out.values():
+                self.assertTrue(path.exists())
+            self.assertEqual(len({str(p) for p in out.values()}), 3)
+
+    def test_default_two_arms(self):
+        try:
+            from PIL import Image  # noqa: F401
+        except Exception:
+            self.skipTest("PIL not available")
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            gen = self._gen(d)
+            out = gen.generate_variants("Topic", "TEXT")
+            self.assertEqual(set(out.keys()), {"A", "B"})
+
+
+class ThumbnailVariantCountConfigTestCase(unittest.TestCase):
+    def test_clamps_into_supported_range(self):
+        from config import _clamp_int
+
+        self.assertEqual(_clamp_int("3", 2, 2, 4), 3)
+        self.assertEqual(_clamp_int("1", 2, 2, 4), 2)   # below floor
+        self.assertEqual(_clamp_int("9", 2, 2, 4), 4)   # above ceiling
+        self.assertEqual(_clamp_int("nonsense", 2, 2, 4), 2)  # unparseable -> default
+        self.assertEqual(_clamp_int(None, 2, 2, 4), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

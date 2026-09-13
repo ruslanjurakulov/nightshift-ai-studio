@@ -1050,6 +1050,7 @@ export const en = {
     abSubtitle: "Both variants were always generated; until Phase 6 only A ever shipped. Now they alternate per video, so click-through can actually be compared.",
     variantA: "Variant A",
     variantB: "Variant B",
+    variantN: "Variant {v}",
     abVideos: "measured videos",
     meanCtr: "mean CTR",
     impressionsLabel: "impressions",

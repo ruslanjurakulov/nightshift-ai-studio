@@ -1043,6 +1043,7 @@ export const uz: Dictionary = {
     abSubtitle: "Ikkala variant ham doim yaratilgan; 6-bosqichgacha faqat A chiqardi. Endi ular videolar bo'yicha navbatma-navbat chiqadi va bosilish darajasini haqiqatan solishtirsa bo'ladi.",
     variantA: "A varianti",
     variantB: "B varianti",
+    variantN: "{v} varianti",
     abVideos: "o'lchangan video",
     meanCtr: "o'rtacha CTR",
     impressionsLabel: "ko'rsatishlar",
