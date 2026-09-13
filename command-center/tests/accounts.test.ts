@@ -76,6 +76,7 @@ function video(channel_id: string, published_at: string | null): VideoRow {
     local_path: null,
     thumbnail_variant: null,
     title_variant: null,
+    hook_variant: null,
     video_format: "long",
     parent_video_id: null,
     preview_path: null,

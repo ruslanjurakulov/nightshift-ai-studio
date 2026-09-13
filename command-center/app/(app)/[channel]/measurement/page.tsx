@@ -10,6 +10,7 @@ import { fmt } from "@/lib/i18n";
 import {
   summariseCosts,
   variantPerformance,
+  hookPerformance,
   aggregateRetention,
   MIN_PER_VARIANT,
   MIN_LIFT,
@@ -84,6 +85,7 @@ export default async function MeasurePage() {
 
   const cost = summariseCosts(costs);
   const ab = variantPerformance(videos, snapshots);
+  const hook = hookPerformance(videos, snapshots);
 
   // Retention rows have no channel of their own — they belong to the video, so
   // the channel scope is applied by keeping only this selection's videos.
@@ -114,6 +116,25 @@ export default async function MeasurePage() {
                 variant: ab.winner ?? "",
                 lift: pct(ab.lift, 0),
                 n: String(ab.arms.reduce((sum, arm) => sum + arm.videos, 0)),
+              });
+
+  const hookReason =
+    hook.reason === "needs_more_videos"
+      ? fmt(t.measure.reasonNeedsMore, {
+          min: String(MIN_PER_VARIANT),
+          a: String(hook.a.videos),
+          b: String(hook.b.videos),
+        })
+      : hook.reason === "no_retention_measured"
+        ? t.measure.hookNoRetention
+        : hook.reason === "zero_retention"
+          ? t.measure.hookZeroRetention
+          : hook.reason === "under_lift_floor"
+            ? fmt(t.measure.reasonUnderFloor, { lift: pct(hook.lift, 0), floor: pct(MIN_LIFT, 0) })
+            : fmt(t.measure.reasonDecided, {
+                variant: hook.winner ?? "",
+                lift: pct(hook.lift, 0),
+                n: String(hook.a.videos + hook.b.videos),
               });
 
   return (
@@ -291,6 +312,58 @@ export default async function MeasurePage() {
                       }
                     />
                     <span className="text-xs text-[var(--color-muted)]">{abReason}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </Panel>
+
+          {/* --------------------------------------------- first-30s hook A/B */}
+          <Panel title={t.measure.hookTitle}>
+            <div className="flex flex-col gap-4 px-4 py-4">
+              <p className="text-xs leading-relaxed text-[var(--color-muted)]">
+                {t.measure.hookSubtitle}
+              </p>
+
+              {hook.a.videos === 0 && hook.b.videos === 0 ? (
+                <EmptyState>{t.measure.hookEmpty}</EmptyState>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {[hook.a, hook.b].map((arm) => {
+                      const isWinner = hook.winner === arm.variant;
+                      return (
+                        <div
+                          key={arm.variant}
+                          className="rounded-lg border p-4"
+                          style={{
+                            borderColor: isWinner ? "var(--color-ok)" : "var(--color-border)",
+                            background: "var(--color-panel-2)",
+                          }}
+                        >
+                          <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                            {arm.variant === "A" ? t.measure.hookA : t.measure.hookB}
+                          </div>
+                          <div
+                            className="mono mt-1 text-2xl font-semibold tabular-nums"
+                            style={{ color: isWinner ? "var(--color-ok)" : "var(--color-fg)" }}
+                          >
+                            {arm.meanRetention === null ? t.common.na : `${arm.meanRetention.toFixed(1)}s`}
+                          </div>
+                          <div className="mono mt-1 text-[11px] text-[var(--color-muted)]">
+                            {num(arm.videos)} {t.measure.abVideos}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <StatusPill
+                      tone={hook.winner ? "ok" : "idle"}
+                      label={hook.winner ? fmt(t.measure.winnerIs, { variant: hook.winner }) : t.measure.noVerdict}
+                    />
+                    <span className="text-xs text-[var(--color-muted)]">{hookReason}</span>
                   </div>
                 </>
               )}

@@ -30,6 +30,7 @@ from modules import event_log as events
 from modules import publish_gate
 from modules import publish_score
 from modules.ab_testing import choose_variant_n, variant_performance_n
+from modules.hook_ab import choose_hook, hook_performance
 from modules.avatar import (
     AvatarUnavailable, UnsafeAvatarRequest, maybe_generate_presenter, resolve_avatar_config,
 )
@@ -110,6 +111,27 @@ def _pick_variant(channel_id: str) -> str:
         return choose_variant_n(len(videos), arms, variant_performance_n(videos, snapshots, arms))
     except Exception as e:
         logger.warning("A/B variant selection failed (%s: %s) — shipping A", type(e).__name__, e)
+        return "A"
+
+
+def _pick_hook(channel_id: str) -> str:
+    """Which first-30-seconds opening this video ships on (roadmap #60).
+
+    Judged on retention, not click-through (modules/hook_ab.py). Any failure
+    falls back to "A" — the original opening — so a broken hook experiment never
+    stops a video, exactly like the thumbnail A/B fallback.
+    """
+    try:
+        with StateStore() as store:
+            videos = store.list_videos(limit=100000, channel_id=channel_id)
+            snapshots = [
+                m
+                for v in videos
+                if (m := store.latest_metrics(v.get("video_id", ""))) is not None
+            ]
+        return choose_hook(len(videos), hook_performance(videos, snapshots))
+    except Exception as e:
+        logger.warning("Hook A/B selection failed (%s: %s) — shipping A", type(e).__name__, e)
         return "A"
 
 
@@ -523,6 +545,24 @@ def run(
 
     pipeline.advance(run_record.run_id, PipelineStage.HUMAN_APPROVAL)
 
+    # First-30-seconds hook A/B (roadmap #60). Which opening this video ships is
+    # decided on retention (modules/hook_ab.py). The "B" arm swaps the first
+    # section's narration for the script's alternate opening BEFORE audio is
+    # synthesized, so the whole pipeline (voice, subtitles, render) carries the
+    # chosen hook. "A", or a "B" with no alternate available, keeps the original
+    # opening and records "A" — the readback is never credited to an experiment
+    # that did not actually happen.
+    hook_variant = _pick_hook(channel_id)
+    alt_opening = getattr(script, "hook_ab", "").strip()
+    if hook_variant == "B" and alt_opening and script.sections:
+        script.sections[0].narration = alt_opening
+        script.sections[0].sfx_cues = script.sections[0].extract_sfx()
+        script.sections[0].music_cues = script.sections[0].extract_music()
+        script.sections[0].pauses = script.sections[0].extract_pauses()
+        logger.info("[channel: %s] Hook A/B: shipping the alternate opening (B)", channel_id)
+    else:
+        hook_variant = "A"
+
     # Per-section Pexels keywords — already inside the script JSON, no API call.
     keyword_map = ScriptEngine.extract_visual_keywords(script)
 
@@ -812,6 +852,7 @@ def run(
                     channel_id=channel_id,
                     thumbnail_variant=variant,
                     title_variant=title_variant,
+                    hook_variant=hook_variant,
                 )
                 events.emit(events.UPLOAD_COMPLETED, video_id=video_id, agent="youtube_uploader",
                             status=events.STATUS_COMPLETED, channel_id=channel_id,

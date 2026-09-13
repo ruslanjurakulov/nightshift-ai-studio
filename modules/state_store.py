@@ -202,6 +202,9 @@ _COLUMN_MIGRATIONS = (
     # so the CTR read back later can be attributed to something.
     ("videos", "thumbnail_variant", "TEXT"),
     ("videos", "title_variant", "TEXT"),
+    # First-30-seconds (hook) A/B (roadmap #60): which opening this video
+    # shipped, so the retention read back later can be attributed to a hook.
+    ("videos", "hook_variant", "TEXT"),
     # CTR as YouTube reports it. Nullable and NOT defaulted to 0: an unpolled
     # video has *unknown* click-through, which is not the same as none.
     ("metrics_snapshots", "impressions", "INTEGER"),
@@ -290,6 +293,7 @@ class StateStore:
         channel_id: str = DEFAULT_CHANNEL_ID,
         thumbnail_variant: str = "",
         title_variant: str = "",
+        hook_variant: str = "",
         video_format: str = "long",
         parent_video_id: str = "",
     ):
@@ -304,8 +308,8 @@ class StateStore:
                 INSERT INTO videos
                     (video_id, topic, title, slug, published_at, privacy, category_id,
                      local_path, channel_id, thumbnail_variant, title_variant,
-                     video_format, parent_video_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     hook_variant, video_format, parent_video_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(video_id) DO UPDATE SET
                     topic=excluded.topic,
                     title=excluded.title,
@@ -317,12 +321,13 @@ class StateStore:
                     channel_id=excluded.channel_id,
                     thumbnail_variant=excluded.thumbnail_variant,
                     title_variant=excluded.title_variant,
+                    hook_variant=excluded.hook_variant,
                     video_format=excluded.video_format,
                     parent_video_id=excluded.parent_video_id
                 """,
                 (video_id, topic, title, slug, published_at, privacy, category_id,
                  local_path, channel_id, thumbnail_variant, title_variant,
-                 video_format or "long", parent_video_id),
+                 hook_variant, video_format or "long", parent_video_id),
             )
         logger.info("Recorded video: %s (%s)", video_id, title or topic)
 

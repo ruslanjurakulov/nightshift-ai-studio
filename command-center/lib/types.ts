@@ -22,6 +22,9 @@ export interface VideoRow {
    */
   thumbnail_variant: string | null;
   title_variant: string | null;
+  /** Which first-30s opening this video shipped (roadmap #60). Null when it
+   *  predates the hook experiment — excluded from the readback, never A. */
+  hook_variant: string | null;
   /**
    * "long" or "short". A Short is its own YouTube video with its own id and
    * its own metrics, so it is its own row; this is what keeps it from reading
