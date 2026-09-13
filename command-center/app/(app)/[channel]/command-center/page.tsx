@@ -10,6 +10,9 @@ import { DailyMission } from "@/components/DailyMission";
 import { Widget } from "@/components/dashboard/Widget";
 import { CustomizeButton } from "@/components/dashboard/CustomizeButton";
 import { PipelineStrip, type StageTone } from "@/components/dashboard/PipelineStrip";
+import { QuotaGauges } from "@/components/dashboard/QuotaGauges";
+import { deriveAdvisory } from "@/lib/advisory";
+import { quotaGaugeView } from "@/lib/quota-gauge";
 import { inferNextStage, dailyMission, PIPELINE_ORDER, type PipelineStageKey } from "@/lib/intelligence";
 import { getDictionary } from "@/lib/i18n/server";
 import { fetchTopicScores, getChannelSelection } from "@/lib/channels-server";
@@ -102,6 +105,10 @@ export default async function CommandCenter() {
   const mission = dailyMission(videos, snapshots, signals);
   const next = inferNextStage(events);
   const tones = stageTones(events);
+  // Roadmap #77: draw the day's upload-quota split (quota.allocated event) as
+  // per-channel gauges. Advisory read only — it shows what the allocator
+  // recommended, it never schedules.
+  const quotaView = quotaGaugeView(deriveAdvisory(events).quota);
 
   // The hero names the most recent real video; the lead says what the pipeline
   // is doing right now. Neither is filled in when there is nothing to say.
@@ -232,6 +239,19 @@ export default async function CommandCenter() {
                 ))}
               </ul>
             )}
+          </Widget>
+          <Widget id="quota" title={t.ops.advQuotaGaugeTitle}>
+            <QuotaGauges
+              view={quotaView}
+              labels={{
+                total: t.ops.advQuotaTotal,
+                none: t.ops.advQuotaNone,
+                noData: t.ops.advNoData,
+                slotsSuffix: t.ops.advQuotaSlots,
+                unmeasured: t.ops.advQuotaUnmeasured,
+                hint: t.ops.advQuotaGaugeHint,
+              }}
+            />
           </Widget>
         </aside>
       </div>
