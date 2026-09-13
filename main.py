@@ -597,11 +597,25 @@ def run(
     # API searches, not bytes: the Pexels quota is spent per search.
     costs.add(PEXELS_REQUESTS, fetcher.searches_made, stage="media")
 
+    # Director Mode (modules/director.py): a per-scene cinematic shot plan
+    # (camera/lens/lighting/mood/motion), from the script structure and this
+    # channel's visual style. Advisory — it never gates; it enriches the b-roll
+    # generation prompt so a generated clip carries its shot direction, and is
+    # emitted for the Command Center.
+    from modules import director
+    shot_plans = director.plan_video(script.sections, visual_style)
+    if shot_plans:
+        events.emit(events.DIRECTOR_PLAN, agent="director", status=events.STATUS_COMPLETED,
+                    channel_id=channel_id, metadata=director.summarize(shot_plans))
+    director_style = director.style_map(shot_plans)
+
     # Optional: generate on-topic b-roll for a few sections with MiniMax H3,
     # supplementing the stock above. Off unless a key + flag are set, in which
     # case it makes no request and changes nothing. Generated clips join the
     # pool and are recorded in fetcher.video_terms, so broll_match places them.
-    broll = fetcher.generate_broll(script.sections, topic)
+    # Each generated clip carries its scene's Director Mode shot direction.
+    broll = fetcher.generate_broll(script.sections, topic,
+                                   style_for=director_style.get)
     if broll.generated:
         videos.extend(Path(p) for p in broll.by_section.values())
         events.emit(events.BROLL_GENERATED, agent="minimax_broll", status=events.STATUS_COMPLETED,

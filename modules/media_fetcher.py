@@ -121,7 +121,7 @@ class MediaFetcher:
 
     # --------------------------------------------------------------- AI b-roll
 
-    def generate_broll(self, sections: list, topic: str, *, client=None):
+    def generate_broll(self, sections: list, topic: str, *, client=None, style_for=None):
         """Generate on-topic b-roll for a few sections with MiniMax H3, when the
         feature is enabled and configured. Returns a
         ``minimax_broll.GenerationResult``.
@@ -131,7 +131,12 @@ class MediaFetcher:
         Each generated clip is recorded in ``video_terms`` under its section
         keyword, so the compositor places it via broll_match like any other clip.
         A per-clip failure is swallowed — that section simply falls back to
-        stock. Never raises."""
+        stock. Never raises.
+
+        ``style_for`` (optional) is Director Mode's ``index -> shot style`` map
+        (modules/director.py): when given, each generated clip's prompt carries
+        that scene's camera/lens/lighting/motion direction. None keeps the
+        default look."""
         import config
         from modules import minimax_broll
 
@@ -140,7 +145,8 @@ class MediaFetcher:
             return result
 
         specs = minimax_broll.select_specs(
-            sections, topic, max_clips=getattr(config, "MINIMAX_BROLL_MAX_CLIPS", 2))
+            sections, topic, max_clips=getattr(config, "MINIMAX_BROLL_MAX_CLIPS", 2),
+            style_for=style_for)
         if not specs:
             return result
 
