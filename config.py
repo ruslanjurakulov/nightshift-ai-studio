@@ -42,6 +42,26 @@ MINIMAX_BROLL_ENABLED = (
 # How many sections of one video may get a generated clip (cost control); the
 # rest use Pexels stock. A generated clip is billable, so this is deliberately low.
 MINIMAX_BROLL_MAX_CLIPS = int(os.getenv("CHRONOS_MINIMAX_BROLL_MAX_CLIPS", "2") or 2)
+
+# ── AI b-roll: which video-generation provider (Track 4) ──────────────────────
+# Nightshift is provider-agnostic (modules/providers.py). This selects which
+# text-to-video provider renders AI b-roll. The default "minimax" keeps today's
+# behavior EXACTLY — the switch below only ever chooses a different client, it
+# never turns generation on by itself. Other providers are opt-in adapters that
+# stay dormant unless their key is set AND CHRONOS_ENABLE_VIDEO_GEN is on; a run
+# with none configured falls back to Pexels stock exactly as before. Endpoints
+# and model strings are read from env (documented defaults) so they can be
+# pinned to a provider's current docs without a code change, and no key is
+# ever logged. See modules/video_providers.py.
+VIDEO_PROVIDER = os.getenv("CHRONOS_VIDEO_PROVIDER", "minimax").strip().lower()
+VIDEO_GEN_OPT_IN = os.getenv("CHRONOS_ENABLE_VIDEO_GEN", "").strip().lower() in ("1", "true", "yes", "on")
+# Higgsfield (https://higgsfield.ai) — text-to-video, async submit → poll → fetch.
+HIGGSFIELD_API_KEY = os.getenv("HIGGSFIELD_API_KEY", "")
+HIGGSFIELD_BASE_URL = os.getenv("HIGGSFIELD_BASE_URL", "https://platform.higgsfield.ai").rstrip("/")
+HIGGSFIELD_MODEL = os.getenv("HIGGSFIELD_MODEL", "higgsfield-dop")
+HIGGSFIELD_SUBMIT_PATH = os.getenv("HIGGSFIELD_SUBMIT_PATH", "/v1/text2video")
+HIGGSFIELD_QUERY_PATH = os.getenv("HIGGSFIELD_QUERY_PATH", "/v1/jobs/{id}")
+
 # vidIQ research & scoring (modules/vidiq.py + modules/vidiq_client.py).
 # Research and scoring ONLY — advisory keyword/title intelligence, never a
 # second content pipeline. Dormant unless a token is set: no token → no client
