@@ -12,6 +12,7 @@
  *   - `revenue.tracked`     (modules/revenue_tracker.py) — real estimatedRevenue (USD) + RPM
  *   - `niche.rpm`           (modules/niche_rpm.py)       — cross-channel niche ranking
  *   - `quota.allocated`     (modules/quota_allocator.py) — daily upload split by performance
+ *   - `spend.overview`      (modules/spend_overview.py)  — All-Accounts cost + month-end forecast
  *
  * These functions read only what those rows actually contain and translate it
  * into typed summaries the Command Center renders. Nothing here invents a value:
@@ -32,6 +33,7 @@ export const EVENT_SPONSORSHIP_ESTIMATE = "sponsorship.estimate";
 export const EVENT_REVENUE_TRACKED = "revenue.tracked";
 export const EVENT_NICHE_RPM = "niche.rpm";
 export const EVENT_QUOTA_ALLOCATED = "quota.allocated";
+export const EVENT_SPEND_OVERVIEW = "spend.overview";
 
 // -- value coercion: unknown JSON in, typed-or-null out ---------------------
 
@@ -406,6 +408,61 @@ export function parseQuotaAllocation(e: SystemEventRow | null): QuotaAllocation 
   };
 }
 
+export interface SpendChannel {
+  channelId: string;
+  name: string;
+  /** Month-to-date priced spend, or null when nothing is priced (never 0). */
+  spentUsd: number | null;
+  projectedUsd: number | null;
+  ceilingUsd: number | null;
+  /** How many more videos the budget covers, or null when unknown. */
+  videosRemaining: number | null;
+  avgCostUsd: number | null;
+}
+
+export interface SpendOverview {
+  ts: string;
+  /** Sum over channels with a known spend, or null when nothing is priced. */
+  totalSpentUsd: number | null;
+  totalProjectedUsd: number | null;
+  channelCount: number | null;
+  /** True when some cost is quantities-only (a rate isn't set). */
+  anyUnpriced: boolean;
+  /** Channels, biggest spend first. */
+  channels: SpendChannel[];
+}
+
+export function parseSpendOverview(e: SystemEventRow | null): SpendOverview | null {
+  if (!e) return null;
+  const m = asRecord(e.metadata) ?? {};
+  const rawChannels = Array.isArray(m.channels) ? m.channels : [];
+  const channels: SpendChannel[] = rawChannels
+    .map((row) => {
+      const r = asRecord(row);
+      if (!r) return null;
+      const channelId = strOrNull(r.channel_id);
+      if (!channelId) return null;
+      return {
+        channelId,
+        name: strOrNull(r.name) ?? channelId,
+        spentUsd: numOrNull(r.spent_usd),
+        projectedUsd: numOrNull(r.projected_usd),
+        ceilingUsd: numOrNull(r.ceiling_usd),
+        videosRemaining: numOrNull(r.videos_remaining),
+        avgCostUsd: numOrNull(r.avg_cost_usd),
+      };
+    })
+    .filter((c): c is SpendChannel => c !== null);
+  return {
+    ts: e.ts,
+    totalSpentUsd: numOrNull(m.total_spent_usd),
+    totalProjectedUsd: numOrNull(m.total_projected_usd),
+    channelCount: numOrNull(m.channel_count),
+    anyUnpriced: m.any_unpriced === true,
+    channels,
+  };
+}
+
 export interface AdvisoryIntelligence {
   spend: SpendForecast | null;
   timing: PublishTiming | null;
@@ -416,6 +473,7 @@ export interface AdvisoryIntelligence {
   revenue: RevenueTracked | null;
   nicheRpm: NicheRpm | null;
   quota: QuotaAllocation | null;
+  spendOverview: SpendOverview | null;
 }
 
 /**
@@ -434,5 +492,6 @@ export function deriveAdvisory(events: SystemEventRow[]): AdvisoryIntelligence {
     revenue: parseRevenueTracked(latestEvent(events, EVENT_REVENUE_TRACKED)),
     nicheRpm: parseNicheRpm(latestEvent(events, EVENT_NICHE_RPM)),
     quota: parseQuotaAllocation(latestEvent(events, EVENT_QUOTA_ALLOCATED)),
+    spendOverview: parseSpendOverview(latestEvent(events, EVENT_SPEND_OVERVIEW)),
   };
 }

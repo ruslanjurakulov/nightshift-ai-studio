@@ -77,6 +77,7 @@ export function AdvisoryPanel({
   const revenue = adv.revenue;
   const niche = adv.nicheRpm;
   const quota = adv.quota;
+  const spendOv = adv.spendOverview;
 
   return (
     <div className="grid gap-5 md:grid-cols-2">
@@ -283,6 +284,34 @@ export function AdvisoryPanel({
               />
             ))}
             <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advQuotaHint}</p>
+          </>
+        )}
+      </Card>
+
+      {/* All-Accounts spend overview — roadmap #53 */}
+      <Card
+        title={t.ops.advSpendOvTitle}
+        updated={spendOv?.ts ?? null}
+        tone={spendOv?.anyUnpriced ? "warn" : undefined}
+      >
+        {!spendOv || spendOv.channels.length === 0 ? (
+          <Empty label={spendOv ? t.ops.advSpendOvNone : t.ops.advNoData} />
+        ) : (
+          <>
+            <Row label={t.ops.advSpendOvTotal} value={usd(spendOv.totalSpentUsd)} strong />
+            <Row label={t.ops.advSpendOvProjected} value={usd(spendOv.totalProjectedUsd)} />
+            {spendOv.channels.slice(0, 4).map((c) => (
+              <Row
+                key={c.channelId}
+                label={c.name}
+                value={`${usd(c.spentUsd)}${
+                  c.videosRemaining === null ? "" : ` · ~${c.videosRemaining} ${t.ops.advSpendOvVideos}`
+                }`}
+              />
+            ))}
+            <p className="mt-1 text-[13px] text-[var(--color-muted)]">
+              {spendOv.anyUnpriced ? t.ops.advSpendOvUnpriced : t.ops.advSpendOvHint}
+            </p>
           </>
         )}
       </Card>

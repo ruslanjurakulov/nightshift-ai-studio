@@ -134,6 +134,11 @@ BUDGET_EXCEEDED = "budget.exceeded"
 # the channel's month-end spend, flagging when the pace is on track to blow a
 # set ceiling. It forecasts for a human/Command Center — it never blocks a run.
 BUDGET_FORECAST = "budget.forecast"
+# All-Accounts spend overview (modules/spend_overview.py). Advisory: month-to-date
+# spend rolled up across every channel, per provider/unit, with a month-end
+# projection and — where a ceiling is set — how many more videos the budget
+# covers. USD only when priced (null ≠ 0); it reports, it never blocks.
+SPEND_OVERVIEW = "spend.overview"
 # Analytics / feedback loop
 ANALYTICS_UPDATED = "analytics.updated"
 FEEDBACK_GENERATED = "feedback.generated"

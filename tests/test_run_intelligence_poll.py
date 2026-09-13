@@ -305,6 +305,50 @@ class AllocateUploadQuotaTestCase(unittest.TestCase):
         emit.assert_not_called()
 
 
+class ReportSpendOverviewTestCase(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self._tmpdir.name) / "test_chronos.db"
+        self.store = StateStore(self.db_path)
+
+    def tearDown(self):
+        self.store.close()
+        self._tmpdir.cleanup()
+
+    def test_rolls_up_spend_and_emits(self):
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        self.store.record_video_cost(unit="gemini_input_tokens", quantity=1000, recorded_at=now_iso,
+                                     video_id="v1", channel_id="ch1", estimated_usd=1.5)
+
+        ch = MagicMock(channel_id="ch1", name="Alpha")
+        ch.agent = MagicMock(spend_ceiling_usd=None)
+        registry = MagicMock()
+        registry.list.return_value = [ch]
+        store_cm = MagicMock()
+        store_cm.__enter__.return_value = self.store
+        store_cm.__exit__.return_value = False
+
+        with patch.object(mod, "ChannelRegistry", return_value=registry), \
+                patch.object(mod, "StateStore", return_value=store_cm), \
+                patch.object(mod.events, "emit") as emit:
+            summary = mod.report_spend_overview()
+
+        emit.assert_called_once()
+        self.assertEqual(emit.call_args.args[0], mod.events.SPEND_OVERVIEW)
+        self.assertEqual(summary["total_spent_usd"], 1.5)
+        self.assertEqual(summary["channel_count"], 1)
+
+    def test_no_channels_is_a_clean_skip(self):
+        registry = MagicMock()
+        registry.list.return_value = []
+        with patch.object(mod, "ChannelRegistry", return_value=registry), \
+                patch.object(mod.events, "emit") as emit:
+            summary = mod.report_spend_overview()
+        self.assertEqual(summary, {})
+        emit.assert_not_called()
+
+
 class CheckDurabilityTestCase(unittest.TestCase):
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()

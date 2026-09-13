@@ -401,6 +401,44 @@ def allocate_upload_quota() -> dict:
         return {}
 
 
+def report_spend_overview() -> dict:
+    """Roll month-to-date spend up across every channel and emit one global
+    `spend.overview` (per-provider cost, month-end projection, and how many more
+    videos each channel's budget covers). Advisory — USD only when priced,
+    null ≠ 0; it reports, it never blocks. Never raises."""
+    try:
+        from modules import spend_overview
+
+        try:
+            channels = ChannelRegistry().list()
+        except Exception as e:
+            logger.warning("Channel registry unavailable (%s: %s) — skipping spend overview",
+                           type(e).__name__, e)
+            return {}
+        rows = []
+        for c in channels:
+            agent = getattr(c, "agent", None)
+            rows.append({
+                "channel_id": str(getattr(c, "channel_id", "")),
+                "name": getattr(c, "name", "") or "",
+                "spend_ceiling_usd": getattr(agent, "spend_ceiling_usd", None),
+            })
+        if not any(r["channel_id"] for r in rows):
+            logger.info("No channels — spend overview skipped")
+            return {}
+
+        with StateStore() as store:
+            overview = spend_overview.all_accounts_overview(store, rows)
+        events.emit(events.SPEND_OVERVIEW, agent="spend_overview", status=events.STATUS_COMPLETED,
+                    channel_id=None, metadata=spend_overview.summarize(overview))
+        logger.info("Spend overview: total=%s across %d channel(s)",
+                    overview.total_spent_usd, overview.channel_count)
+        return overview.to_dict()
+    except Exception:
+        logger.exception("Spend-overview pass failed; reporting nothing")
+        return {}
+
+
 def check_durability() -> dict:
     """Write a JSON snapshot of the local state and check whether history is
     mirrored off-box, emitting one `durability.check`. The whole history lives in
@@ -520,6 +558,10 @@ def main():
     # Cross-channel upload-quota allocation — another global pass, split the
     # day's budget across channels by measured performance. Also defensive.
     allocate_upload_quota()
+
+    # All-Accounts spend overview — month-to-date cost per channel + provider,
+    # with a month-end projection. Defensive; advisory only.
+    report_spend_overview()
 
     if not args.skip_mirror:
         mirror_to_supabase()
