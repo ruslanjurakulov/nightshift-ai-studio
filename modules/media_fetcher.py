@@ -119,6 +119,56 @@ class MediaFetcher:
         logger.info("Fetched %d videos", len(paths))
         return paths
 
+    # --------------------------------------------------------------- AI b-roll
+
+    def generate_broll(self, sections: list, topic: str, *, client=None):
+        """Generate on-topic b-roll for a few sections with MiniMax H3, when the
+        feature is enabled and configured. Returns a
+        ``minimax_broll.GenerationResult``.
+
+        Off by default: with no key / the flag unset this makes no request and
+        returns an empty result, so b-roll comes from Pexels exactly as before.
+        Each generated clip is recorded in ``video_terms`` under its section
+        keyword, so the compositor places it via broll_match like any other clip.
+        A per-clip failure is swallowed — that section simply falls back to
+        stock. Never raises."""
+        import config
+        from modules import minimax_broll
+
+        result = minimax_broll.GenerationResult(model=getattr(config, "MINIMAX_H3_MODEL", ""))
+        if not getattr(config, "MINIMAX_BROLL_ENABLED", False):
+            return result
+
+        specs = minimax_broll.select_specs(
+            sections, topic, max_clips=getattr(config, "MINIMAX_BROLL_MAX_CLIPS", 2))
+        if not specs:
+            return result
+
+        if client is None:
+            from modules.minimax_client import MiniMaxClient
+            client = MiniMaxClient()
+
+        by_section: dict = {}
+        generated = 0
+        for spec in specs:
+            dest = self.video_dir / f"gen_{spec.section_index}.mp4"
+            try:
+                path = client.generate(spec, dest)
+            except Exception as e:   # a broken clip must never sink the render
+                logger.warning("MiniMax generation error for section %d (%s: %s)",
+                               spec.section_index, type(e).__name__, e)
+                path = None
+            if path is not None:
+                self.video_terms[str(path)] = spec.keyword
+                by_section[spec.section_index] = str(path)
+                generated += 1
+
+        logger.info("MiniMax b-roll: %d/%d clip(s) generated", generated, len(specs))
+        return minimax_broll.GenerationResult(
+            attempted=len(specs), generated=generated,
+            model=result.model, by_section=by_section,
+        )
+
     # ------------------------------------------------------------------ Pexels Images
 
     def _pexels_photo_search(self, query: str, page: int = 1) -> list[dict]:

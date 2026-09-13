@@ -19,6 +19,29 @@ BASE_DIR = Path(__file__).parent
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+
+# MiniMax H3 — an omni-modal video model (4-15s, 768P/2K, text/image -> video
+# with native audio). Used here as an OPTIONAL b-roll source: when enabled, it
+# generates an on-topic clip for a section instead of pulling stock from Pexels.
+# OFF by default and gated behind a key, so the pipeline's default behaviour is
+# unchanged and no request is ever made without credentials.
+#
+# The endpoint/model/field names are exposed as env vars because MiniMax's API
+# reference could not be reached from this build's network to pin them, and the
+# platform revises them: set them from the current MiniMax docs before enabling.
+# Without MINIMAX_API_KEY (or with CHRONOS_ENABLE_MINIMAX_BROLL off) the feature
+# stays dormant and b-roll comes from Pexels exactly as before.
+MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
+MINIMAX_GROUP_ID = os.getenv("MINIMAX_GROUP_ID", "")   # some MiniMax routes scope by group
+MINIMAX_BASE_URL = os.getenv("MINIMAX_BASE_URL", "https://api.minimax.io").rstrip("/")
+MINIMAX_H3_MODEL = os.getenv("MINIMAX_H3_MODEL", "MiniMax-H3")
+MINIMAX_BROLL_ENABLED = (
+    bool(MINIMAX_API_KEY)
+    and os.getenv("CHRONOS_ENABLE_MINIMAX_BROLL", "").strip().lower() in ("1", "true", "yes", "on")
+)
+# How many sections of one video may get a generated clip (cost control); the
+# rest use Pexels stock. A generated clip is billable, so this is deliberately low.
+MINIMAX_BROLL_MAX_CLIPS = int(os.getenv("CHRONOS_MINIMAX_BROLL_MAX_CLIPS", "2") or 2)
 YOUTUBE_CLIENT_SECRET = os.getenv("YOUTUBE_CLIENT_SECRET_FILE", str(BASE_DIR / "client_secret.json"))
 
 # Paths
