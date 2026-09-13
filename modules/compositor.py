@@ -36,6 +36,7 @@ from config import (  # noqa: E402
     VIDEO_HEIGHT,
     VIDEO_WIDTH,
 )
+from modules import broll_match  # noqa: E402
 from modules.resource_monitor import mark_stage  # noqa: E402
 from modules.script_engine import Script  # noqa: E402
 
@@ -138,20 +139,53 @@ class Compositor:
             self._readers[path] = VideoFileClip(str(path), audio=False)
         return self._readers[path]
 
+    @staticmethod
+    def _ordered_pool(
+        video_paths: list[Path],
+        image_paths: list[Path],
+        section_keywords: list | None,
+        clip_terms: dict | None,
+    ) -> list:
+        """The source order a section's cuts are filled from.
+
+        When we know each clip's fetch keyword (`clip_terms`, path-str → keyword)
+        and the section's own keywords, the videos are ordered by relevance so
+        the footage under the narration actually matches what is being said —
+        the whole point of modules/broll_match.py. A clip with no recorded term
+        just scores zero and sinks; it is never dropped. Images follow the
+        videos. With neither signal available we fall back to the original
+        random shuffle, so behaviour is unchanged for callers that pass none.
+        """
+        videos = list(video_paths)
+        if section_keywords and clip_terms:
+            candidates = [
+                {"path": str(p), "keyword": clip_terms.get(str(p), "")} for p in videos
+            ]
+            ranked = broll_match.rank_clips(candidates, section_keywords)
+            videos = [Path(c["path"]) for c in ranked]
+        else:
+            random.shuffle(videos)
+        images = list(image_paths)
+        random.shuffle(images)
+        return videos + images
+
     def _build_clip_pool(
         self,
         video_paths: list[Path],
         image_paths: list[Path],
         cut_interval: float,
         total_duration: float,
+        section_keywords: list | None = None,
+        clip_terms: dict | None = None,
     ) -> list:
         """Build a sequence of video/image clips to fill `total_duration`."""
         clips = []
-        pool: list[Path | None] = list(video_paths) + list(image_paths)
+        pool: list[Path | None] = self._ordered_pool(
+            video_paths, image_paths, section_keywords, clip_terms
+        )
         if not pool:
             pool = [None] * 20  # solid-colour placeholders
 
-        random.shuffle(pool)
         elapsed = 0.0
         pool_idx = 0
 
@@ -316,6 +350,7 @@ class Compositor:
         word_timestamps: list[dict],
         section_timeline: list[dict],
         presenter_path: Path | None = None,
+        clip_terms: dict | None = None,
     ) -> Path:
         logger.info("Starting render for: %s", self.slug)
 
@@ -345,7 +380,8 @@ class Compositor:
                 images = image_paths if section.section_type == "story" else []
                 mark_stage(f"build clip pool, section {i + 1}/{sections}")
                 seg_clips = self._build_clip_pool(
-                    video_paths, images, section.cut_interval, sec_dur
+                    video_paths, images, section.cut_interval, sec_dur,
+                    section_keywords=section.keywords, clip_terms=clip_terms,
                 )
                 if seg_clips:
                     mark_stage(

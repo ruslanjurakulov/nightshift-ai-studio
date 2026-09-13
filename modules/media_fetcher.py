@@ -38,6 +38,12 @@ class MediaFetcher:
         #: ledger (modules/cost_ledger.py) — searches are what the API quota is
         #: spent on, so this is the number that matters, not bytes downloaded.
         self.searches_made = 0
+        #: Which search keyword fetched each downloaded video, keyed by str(path).
+        #: The compositor uses this to place footage under the section whose
+        #: keywords it actually matches (modules/broll_match.py), instead of at
+        #: random. Empty until fetch_videos runs; a clip with no recorded term
+        #: simply doesn't match, it is never dropped.
+        self.video_terms: dict[str, str] = {}
 
     # ------------------------------------------------------------------ Pexels Videos
 
@@ -104,6 +110,7 @@ class MediaFetcher:
                     if self._download(link, dest):
                         paths.append(dest)
                         used_ids.add(vid_id)
+                        self.video_terms[str(dest)] = keyword
                         logger.debug("Video: %s", dest.name)
                 time.sleep(0.3)
             except Exception as e:
