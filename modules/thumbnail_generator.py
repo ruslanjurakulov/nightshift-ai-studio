@@ -131,6 +131,29 @@ def _draw_text_with_stroke(
     draw.text((x, y), text, font=font, fill=fill)
 
 
+# Per-variant look, so widening the A/B test past two arms (modules/ab_testing.py)
+# gives each thumbnail a genuinely different treatment rather than a clone of B.
+# A and B keep exactly the styling they had; C+ are distinct. An unknown label
+# falls back deterministically to one of these by position, never crashing.
+_VARIANT_STYLE = {
+    "A": {"bg": (20, 10, 40), "accent": (255, 215, 0), "shock_size": 120, "shock_color": "#FFD700"},
+    "B": {"bg": (10, 30, 20), "accent": (255, 68, 68), "shock_size": 110, "shock_color": "#FF4444"},
+    "C": {"bg": (10, 20, 40), "accent": (56, 189, 248), "shock_size": 116, "shock_color": "#38BDF8"},
+    "D": {"bg": (35, 15, 15), "accent": (52, 211, 153), "shock_size": 114, "shock_color": "#34D399"},
+}
+_VARIANT_ORDER = ("A", "B", "C", "D")
+
+
+def _style_for(variant: str) -> dict:
+    key = (variant or "A").strip().upper()
+    if key in _VARIANT_STYLE:
+        return _VARIANT_STYLE[key]
+    # Deterministic fallback for any other label: map it onto one of the known
+    # styles by its first character, so it is stable and never a KeyError.
+    idx = (ord(key[0]) if key else 0) % len(_VARIANT_ORDER)
+    return _VARIANT_STYLE[_VARIANT_ORDER[idx]]
+
+
 def _make_thumbnail(
     background_path: Path | None,
     overlay_text: str,
@@ -142,23 +165,22 @@ def _make_thumbnail(
         img = Image.open(background_path).convert("RGB")
         img = img.resize((THUMBNAIL_W, THUMBNAIL_H), Image.LANCZOS)
     else:
-        color = (20, 10, 40) if variant == "A" else (10, 30, 20)
-        img = Image.new("RGB", (THUMBNAIL_W, THUMBNAIL_H), color)
+        img = Image.new("RGB", (THUMBNAIL_W, THUMBNAIL_H), _style_for(variant)["bg"])
 
     img = _darken_and_vignette(img)
     # A bottom gradient scrim so the topic caption always reads on any photo, and
     # a left accent bar for a designed, on-brand frame (raises the thumbnail above
     # plain text-over-stock). Both are cheap composites over the existing image.
     img = _apply_bottom_scrim(img)
-    accent = (255, 215, 0) if variant == "A" else (255, 68, 68)
-    img = _accent_bar(img, accent)
+    style = _style_for(variant)
+    img = _accent_bar(img, style["accent"])
     draw = ImageDraw.Draw(img)
 
     # Overlay shock text (top, large, yellow/red). Capped to 3 lines so a long
     # phrase can never spill off the canvas.
-    shock_font_size = 120 if variant == "A" else 110
+    shock_font_size = style["shock_size"]
     shock_font = _load_font(shock_font_size)
-    shock_color = "#FFD700" if variant == "A" else "#FF4444"
+    shock_color = style["shock_color"]
 
     shock_lines = wrap_capped(overlay_text.upper(), width=12, max_lines=3)
     shock_y = 40
