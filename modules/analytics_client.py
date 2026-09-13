@@ -50,11 +50,14 @@ UNKNOWN / UNVERIFIED — CONFIRM AGAINST CURRENT API DOCS BEFORE RELYING ON IT:
       test against a real channel before shipping any feature that depends on
       it. It is intentionally NOT included in the default metric sets below.
     - "estimatedRevenue" / "cpm" / other monetization metrics: These require
-      the additional `yt-analytics-monetary.readonly` scope (not requested
-      here) and are subject to YPP (YouTube Partner Program) eligibility and
-      revenue-sharing agreement acceptance. Not implemented in this module;
-      flagged here only so a future stage doesn't assume they "just work"
-      with the `yt-analytics.readonly` scope this module relies on.
+      the additional `yt-analytics-monetary.readonly` scope and are subject to
+      YPP (YouTube Partner Program) eligibility and revenue-sharing agreement
+      acceptance. `channel_revenue` / `video_revenue` below query them, but the
+      monetary scope is opt-in (config.REVENUE_TRACKING_ENABLED / the
+      CHRONOS_ENABLE_REVENUE env flag) precisely because it is not free to add:
+      a token consented under the narrower scopes cannot use it, so both
+      methods treat a rejected request as "revenue not measurable here" and
+      return `{}` rather than assuming the metric "just works".
     - Any metric/dimension combination not explicitly listed above (e.g.
       `insightTrafficSourceType`, `deviceType`, `country` breakdowns) is
       simply not covered by this thin client. Adding it should mean adding a
@@ -98,6 +101,17 @@ CTR_METRICS: list[str] = [
 #: Audience-retention metrics, paired with the elapsedVideoTimeRatio dimension.
 RETENTION_METRICS: list[str] = [
     "audienceWatchRatio",
+]
+
+#: Monetization metrics (roadmap #71). `estimatedRevenue` is USD. Paired with
+#: `views` so a real RPM (revenue / views × 1000) can be computed downstream.
+#: These need the monetary scope (config.REVENUE_TRACKING_ENABLED) and YPP;
+#: without them the request is refused and the callers below record no revenue.
+#: Kept to the two most broadly-documented monetary fields on purpose — one
+#: unsupported metric name would take the whole revenue query down with it.
+MONETARY_METRICS: list[str] = [
+    "views",
+    "estimatedRevenue",
 ]
 
 CORE_METRICS: list[str] = [
@@ -308,6 +322,72 @@ class AnalyticsClient:
             )
             return []
         return self._parse_report(response)
+
+    # -- revenue (roadmap #71) ---------------------------------------------
+    #
+    # estimatedRevenue is the real money figure, in USD. It needs the monetary
+    # Analytics scope (opt-in) and YPP. Like video_ctr/video_retention above,
+    # a rejected request is treated as "revenue not measurable here" and yields
+    # {} — an unmonetized channel, a missing scope, or a video outside YPP is a
+    # *gap*, never $0. The caller (modules/revenue_tracker.py) keeps that
+    # distinction: no revenue row means unknown earnings, not zero earnings.
+
+    def channel_revenue(
+        self,
+        start_date: str,
+        end_date: str,
+        channel_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Estimated revenue (USD) and views for a channel over
+        [start_date, end_date] (YYYY-MM-DD, inclusive), or {} when the API will
+        not report monetary data (scope not granted, channel not in YPP, …)."""
+        ids = f"channel=={channel_id}" if channel_id else _default_ids()
+        try:
+            response = (
+                self.service.reports()
+                .query(
+                    ids=ids,
+                    startDate=start_date,
+                    endDate=end_date,
+                    metrics=",".join(MONETARY_METRICS),
+                )
+                .execute()
+            )
+        except Exception as e:
+            logger.warning(
+                "Revenue report unavailable for channel (%s: %s) — recording no "
+                "revenue rather than a guessed $0. Confirm the monetary scope is "
+                "granted and the channel is in the YouTube Partner Program.",
+                type(e).__name__, e,
+            )
+            return {}
+        rows = self._parse_report(response)
+        return rows[0] if rows else {}
+
+    def video_revenue(self, video_id: str, start_date: str, end_date: str) -> dict[str, Any]:
+        """Estimated revenue (USD) and views for one video over
+        [start_date, end_date] (YYYY-MM-DD, inclusive), or {} when the API will
+        not report monetary data for it."""
+        try:
+            response = (
+                self.service.reports()
+                .query(
+                    ids=_default_ids(),
+                    startDate=start_date,
+                    endDate=end_date,
+                    metrics=",".join(MONETARY_METRICS),
+                    filters=f"video=={video_id}",
+                )
+                .execute()
+            )
+        except Exception as e:
+            logger.warning(
+                "Revenue report unavailable for %s (%s: %s) — no revenue recorded",
+                video_id, type(e).__name__, e,
+            )
+            return {}
+        rows = self._parse_report(response)
+        return rows[0] if rows else {}
 
     def daily_timeseries(
         self,
