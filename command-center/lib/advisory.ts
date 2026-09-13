@@ -8,6 +8,7 @@
  *   - `publish.timing`      (modules/publish_timing.py)  — best publish hour/weekday
  *   - `repackage.suggested` (modules/repackage.py)       — under-performers to re-title
  *   - `durability.check`    (modules/durability.py)      — is history mirrored off-box
+ *   - `sponsorship.estimate`(modules/sponsorship.py)     — CPM-priced sponsor slot value
  *   - `revenue.tracked`     (modules/revenue_tracker.py) — real estimatedRevenue (USD) + RPM
  *
  * These functions read only what those rows actually contain and translate it
@@ -25,6 +26,7 @@ export const EVENT_PUBLISH_TIMING = "publish.timing";
 export const EVENT_REPACKAGE_SUGGESTED = "repackage.suggested";
 export const EVENT_DURABILITY_CHECK = "durability.check";
 export const EVENT_VIDIQ_RESEARCH = "vidiq.research";
+export const EVENT_SPONSORSHIP_ESTIMATE = "sponsorship.estimate";
 export const EVENT_REVENUE_TRACKED = "revenue.tracked";
 
 // -- value coercion: unknown JSON in, typed-or-null out ---------------------
@@ -217,6 +219,37 @@ export function parseVidiqResearch(e: SystemEventRow | null): VidiqResearch | nu
   };
 }
 
+export interface Sponsorship {
+  ts: string;
+  /** Mean views over measured long-form videos, or null when none measured. */
+  averageViews: number | null;
+  measuredVideos: number | null;
+  /** The configured sponsorship CPM (USD), or null when the rate is unset. */
+  cpmUsd: number | null;
+  /** Suggested slot price (USD), or null when reach or rate is missing. */
+  priceUsd: number | null;
+  currency: string | null;
+  reason: string | null;
+  /** A price exists only when reach was measured AND a CPM is configured. */
+  hasPrice: boolean;
+}
+
+export function parseSponsorship(e: SystemEventRow | null): Sponsorship | null {
+  if (!e) return null;
+  const m = asRecord(e.metadata) ?? {};
+  const priceUsd = numOrNull(m.price_usd);
+  return {
+    ts: e.ts,
+    averageViews: numOrNull(m.average_views),
+    measuredVideos: numOrNull(m.measured_videos),
+    cpmUsd: numOrNull(m.cpm_usd),
+    priceUsd,
+    currency: strOrNull(m.currency),
+    reason: strOrNull(m.reason),
+    hasPrice: priceUsd !== null,
+  };
+}
+
 export interface RevenueEarner {
   videoId: string;
   /** Real estimatedRevenue in USD, or null when unknown (never a fabricated 0). */
@@ -279,6 +312,7 @@ export interface AdvisoryIntelligence {
   repackage: RepackageSummary | null;
   durability: DurabilitySummary | null;
   vidiq: VidiqResearch | null;
+  sponsorship: Sponsorship | null;
   revenue: RevenueTracked | null;
 }
 
@@ -294,6 +328,7 @@ export function deriveAdvisory(events: SystemEventRow[]): AdvisoryIntelligence {
     repackage: parseRepackage(latestEvent(events, EVENT_REPACKAGE_SUGGESTED)),
     durability: parseDurability(latestEvent(events, EVENT_DURABILITY_CHECK)),
     vidiq: parseVidiqResearch(latestEvent(events, EVENT_VIDIQ_RESEARCH)),
+    sponsorship: parseSponsorship(latestEvent(events, EVENT_SPONSORSHIP_ESTIMATE)),
     revenue: parseRevenueTracked(latestEvent(events, EVENT_REVENUE_TRACKED)),
   };
 }

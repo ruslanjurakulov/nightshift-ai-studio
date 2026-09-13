@@ -244,11 +244,48 @@ class IntelligencePollerTestCase(unittest.TestCase):
                 # Advisory publish-time pass runs too; one video clears no slot's
                 # sample threshold, so no recommendation.
                 "publish_timing_ready": False,
+                # Advisory sponsorship pass runs too; one measured video is under
+                # the reach threshold and no CPM is set, so no price.
+                "sponsorship_ready": False,
                 # Revenue tracking is off by default (monetary scope is opt-in),
                 # so the pass returns early without measuring anything.
                 "revenue_tracked": False,
             },
         )
+
+    # -- estimate_sponsorship (roadmap #72) -------------------------------
+
+    def test_estimate_sponsorship_prices_slot_when_reach_and_cpm(self):
+        for i in range(3):
+            self.store.record_video(video_id=f"v{i}", title=f"V{i}",
+                                    published_at="2026-01-01T00:00:00")
+            self.store.record_metrics_snapshot(video_id=f"v{i}", snapshot_date="2026-01-02", views=2000)
+
+        poller = self._make_poller()
+        with patch("modules.sponsorship.sponsorship_cpm", return_value=25.0), \
+                patch("modules.event_log.emit") as emit:
+            self.assertTrue(poller.estimate_sponsorship())
+
+        emit.assert_called_once()
+        self.assertEqual(emit.call_args.args[0], "sponsorship.estimate")
+        meta = emit.call_args.kwargs["metadata"]
+        self.assertEqual(meta["price_usd"], 50.0)   # 2000/1000 * 25
+        self.assertEqual(meta["cpm_usd"], 25.0)
+        self.assertEqual(meta["currency"], "USD")
+
+    def test_estimate_sponsorship_no_cpm_reports_reach_without_price(self):
+        for i in range(3):
+            self.store.record_video(video_id=f"v{i}", title=f"V{i}",
+                                    published_at="2026-01-01T00:00:00")
+            self.store.record_metrics_snapshot(video_id=f"v{i}", snapshot_date="2026-01-02", views=2000)
+
+        poller = self._make_poller()
+        with patch("modules.sponsorship.sponsorship_cpm", return_value=None), \
+                patch("modules.event_log.emit") as emit:
+            self.assertFalse(poller.estimate_sponsorship())
+
+        emit.assert_called_once()
+        self.assertIsNone(emit.call_args.kwargs["metadata"]["price_usd"])
 
     # -- track_revenue (roadmap #71) --------------------------------------
 

@@ -73,6 +73,7 @@ export function AdvisoryPanel({
   const repack = adv.repackage;
   const dur = adv.durability;
   const vidiq = adv.vidiq;
+  const sponsor = adv.sponsorship;
   const revenue = adv.revenue;
 
   return (
@@ -189,6 +190,31 @@ export function AdvisoryPanel({
               />
             ))}
             <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advVidiqHint}</p>
+          </>
+        )}
+      </Card>
+
+      {/* Sponsorship pricing — roadmap #72 */}
+      <Card title={t.ops.advSponsorTitle} updated={sponsor?.ts ?? null}>
+        {!sponsor ? (
+          <Empty label={t.ops.advNoData} />
+        ) : (
+          <>
+            <Row
+              label={t.ops.advSponsorPrice}
+              value={sponsor.hasPrice ? usd(sponsor.priceUsd) : t.ops.advSponsorUnpriced}
+              strong
+            />
+            <Row
+              label={t.ops.advSponsorReach}
+              value={sponsor.averageViews === null ? "N/A" : Math.round(sponsor.averageViews).toLocaleString()}
+            />
+            <Row label={t.ops.advSponsorCpm} value={usd(sponsor.cpmUsd)} />
+            <Row
+              label={t.ops.advSponsorVideos}
+              value={sponsor.measuredVideos === null ? "N/A" : String(sponsor.measuredVideos)}
+            />
+            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advSponsorHint}</p>
           </>
         )}
       </Card>

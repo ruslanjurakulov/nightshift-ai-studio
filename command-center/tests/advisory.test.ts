@@ -6,6 +6,7 @@ import {
   parseRepackage,
   parseSpendForecast,
   parseVidiqResearch,
+  parseSponsorship,
   parseRevenueTracked,
 } from "@/lib/advisory";
 import type { SystemEventRow } from "@/lib/types";
@@ -167,6 +168,7 @@ describe("deriveAdvisory", () => {
     expect(a.timing).toBeNull();
     expect(a.repackage).toBeNull();
     expect(a.durability).toBeNull();
+    expect(a.sponsorship).toBeNull();
   });
 
   it("picks the genuinely latest of each kind regardless of list order", () => {
@@ -214,6 +216,45 @@ describe("parseVidiqResearch", () => {
     // rows without a term are dropped; a null opportunity is kept as null
     expect(r?.top.map((k) => k.term)).toEqual(["roman empire", "roman roads", "bad"]);
     expect(r?.top[2].opportunity).toBeNull();
+  });
+});
+
+describe("parseSponsorship", () => {
+  it("returns null with no event", () => {
+    expect(parseSponsorship(null)).toBeNull();
+  });
+
+  it("reads a priced slot in USD", () => {
+    const s = parseSponsorship(
+      ev("sponsorship.estimate", "t", {
+        average_views: 2000,
+        measured_videos: 4,
+        cpm_usd: 25,
+        price_usd: 50,
+        currency: "USD",
+        reason: "…",
+      }),
+    );
+    expect(s?.priceUsd).toBe(50);
+    expect(s?.averageViews).toBe(2000);
+    expect(s?.cpmUsd).toBe(25);
+    expect(s?.currency).toBe("USD");
+    expect(s?.hasPrice).toBe(true);
+  });
+
+  it("keeps an unset rate as no price, never $0", () => {
+    const s = parseSponsorship(
+      ev("sponsorship.estimate", "t", {
+        average_views: 2000,
+        measured_videos: 4,
+        cpm_usd: null,
+        price_usd: null,
+        currency: "USD",
+      }),
+    );
+    expect(s?.priceUsd).toBeNull();
+    expect(s?.hasPrice).toBe(false);
+    expect(s?.averageViews).toBe(2000); // reach still reported
   });
 });
 
