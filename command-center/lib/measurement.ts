@@ -118,8 +118,13 @@ export const MIN_PER_VARIANT = 5;
 /** Mirrors modules/ab_testing.py — below this relative gap the arms are a tie. */
 export const MIN_LIFT = 0.1;
 
+/** The thumbnail arms the experiment can run across (roadmap #58). A/B are
+ *  always present; C/D appear when a channel widens the test. Mirrors the
+ *  labels in modules/thumbnail_generator.py and main.py. */
+export const VARIANT_LABELS = ["A", "B", "C", "D"] as const;
+
 export interface VariantStats {
-  variant: "A" | "B";
+  variant: string;
   videos: number;
   /** Mean impression CTR over MEASURED videos, or null when none were. */
   meanCtr: number | null;
@@ -127,10 +132,14 @@ export interface VariantStats {
 }
 
 export interface ABResult {
+  /** Arm A and arm B, always present (back-compat with the two-arm callers). */
   a: VariantStats;
   b: VariantStats;
-  /** "A", "B", or null. Null means "not enough evidence", never "they are equal". */
-  winner: "A" | "B" | null;
+  /** Every arm that has data (A, B, and any C/D a channel widened into),
+   *  best-measured first once decided. Two arms reproduce the old A/B. */
+  arms: VariantStats[];
+  /** Winning variant label, or null. Null means "not enough evidence", never "equal". */
+  winner: string | null;
   /** Machine-readable reason, so the UI can translate rather than print English. */
   reason:
     | "needs_more_videos"
@@ -138,17 +147,21 @@ export interface ABResult {
     | "zero_ctr"
     | "under_lift_floor"
     | "decided";
-  /** Relative lift of the leader over the trailer, when both are measured. */
+  /** Relative lift of the leader over the runner-up, when both are measured. */
   lift: number | null;
 }
 
 /**
- * Compare the two arms on real click-through.
+ * Rank the thumbnail arms on real click-through — two by default, more when a
+ * channel widened the test (roadmap #58). Mirrors
+ * modules/ab_testing.py:variant_performance_n.
  *
  * Only the newest snapshot per video counts, and a video whose CTR was never
  * measured is dropped rather than counted as 0 — an unpolled video has unknown
  * click-through, and averaging it in as zero would punish whichever arm
- * happened to ship most recently.
+ * happened to ship most recently. A winner is named only when at least two arms
+ * clear MIN_PER_VARIANT measured videos AND the best beats the runner-up by at
+ * least MIN_LIFT.
  */
 export function variantPerformance(
   videos: VideoRow[],
@@ -161,19 +174,21 @@ export function variantPerformance(
     if (!prev || (s.snapshot_date ?? "") >= (prev.snapshot_date ?? "")) latest.set(s.video_id, s);
   }
 
-  const buckets: Record<"A" | "B", { ctr: number; impressions: number }[]> = { A: [], B: [] };
+  const buckets = new Map<string, { ctr: number; impressions: number }[]>();
+  for (const label of VARIANT_LABELS) buckets.set(label, []);
   for (const v of videos ?? []) {
     const variant = (v.thumbnail_variant ?? "").toUpperCase();
-    if (variant !== "A" && variant !== "B") continue;
+    const bucket = buckets.get(variant);
+    if (!bucket) continue;
     const snap = latest.get(v.video_id);
     if (!snap) continue;
     const ctr = snap.impression_ctr;
     if (ctr === null || ctr === undefined) continue;
-    buckets[variant].push({ ctr, impressions: snap.impressions ?? 0 });
+    bucket.push({ ctr, impressions: snap.impressions ?? 0 });
   }
 
-  const stat = (variant: "A" | "B"): VariantStats => {
-    const rows = buckets[variant];
+  const stat = (variant: string): VariantStats => {
+    const rows = buckets.get(variant) ?? [];
     if (!rows.length) return { variant, videos: 0, meanCtr: null, impressions: 0 };
     return {
       variant,
@@ -182,21 +197,38 @@ export function variantPerformance(
       impressions: rows.reduce((sum, r) => sum + r.impressions, 0),
     };
   };
+
   const a = stat("A");
   const b = stat("B");
+  // Show A and B always; include C/D only when a channel actually shipped them.
+  const arms: VariantStats[] = [
+    a,
+    b,
+    ...VARIANT_LABELS.slice(2).map(stat).filter((s) => s.videos > 0),
+  ];
 
-  if (a.videos < MIN_PER_VARIANT || b.videos < MIN_PER_VARIANT) {
-    return { a, b, winner: null, reason: "needs_more_videos", lift: null };
+  const measured = arms.filter((s) => s.videos >= MIN_PER_VARIANT && s.meanCtr !== null);
+  if (measured.length < 2) {
+    return { a, b, arms, winner: null, reason: "needs_more_videos", lift: null };
   }
-  if (a.meanCtr === null || b.meanCtr === null) {
-    return { a, b, winner: null, reason: "no_ctr_measured", lift: null };
+  const ranked = [...measured].sort((x, y) => (y.meanCtr as number) - (x.meanCtr as number));
+  const best = ranked[0];
+  const runnerUp = ranked[1];
+  if ((runnerUp.meanCtr as number) <= 0) {
+    return { a, b, arms, winner: null, reason: "zero_ctr", lift: null };
   }
-  const high = Math.max(a.meanCtr, b.meanCtr);
-  const low = Math.min(a.meanCtr, b.meanCtr);
-  if (low <= 0) return { a, b, winner: null, reason: "zero_ctr", lift: null };
-  const lift = (high - low) / low;
-  if (lift < MIN_LIFT) return { a, b, winner: null, reason: "under_lift_floor", lift };
-  return { a, b, winner: a.meanCtr >= b.meanCtr ? "A" : "B", reason: "decided", lift };
+  const lift = ((best.meanCtr as number) - (runnerUp.meanCtr as number)) / (runnerUp.meanCtr as number);
+  if (lift < MIN_LIFT) {
+    return { a, b, arms, winner: null, reason: "under_lift_floor", lift };
+  }
+  return {
+    a,
+    b,
+    arms: [best, ...arms.filter((s) => s.variant !== best.variant)],
+    winner: best.variant,
+    reason: "decided",
+    lift,
+  };
 }
 
 /* -------------------------------------------------------------------------- */

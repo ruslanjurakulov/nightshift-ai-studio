@@ -110,6 +110,21 @@ SUBTITLE_STROKE_COLOR = "black"
 SUBTITLE_STROKE_WIDTH = 3
 SUBTITLE_POSITION = ("center", 0.80)
 
+# Thumbnail A/B width (roadmap #58). How many thumbnail arms the experiment
+# runs (modules/ab_testing.py generalizes the same MIN_PER_VARIANT / MIN_LIFT
+# rules to N). Default 2 keeps today's A/B exactly; 3-4 widens to A/B/C(/D),
+# each with a distinct on-brand look (modules/thumbnail_generator.py). Clamped
+# to the 2..4 the generator has real styles for — a bad env value never crashes
+# a render or silently produces clone thumbnails.
+def _clamp_int(raw, default, lo, hi):
+    try:
+        v = int(raw)
+    except (TypeError, ValueError):
+        v = default
+    return max(lo, min(hi, v))
+
+THUMBNAIL_VARIANT_COUNT = _clamp_int(os.getenv("CHRONOS_THUMBNAIL_VARIANTS", "2"), 2, 2, 4)
+
 # YouTube Upload
 YOUTUBE_CATEGORY_ID = "28"  # Science & Technology
 YOUTUBE_PRIVACY = os.getenv("YOUTUBE_PRIVACY", "private")  # private | unlisted | public

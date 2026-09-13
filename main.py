@@ -25,11 +25,11 @@ Path("logs").mkdir(exist_ok=True)
 Path("history").mkdir(exist_ok=True)
 Path("output").mkdir(exist_ok=True)
 
-from config import OUTPUT_DIR, VIDEO_HEIGHT, VIDEO_WIDTH, YOUTUBE_CATEGORY_ID, YOUTUBE_PRIVACY
+from config import OUTPUT_DIR, THUMBNAIL_VARIANT_COUNT, VIDEO_HEIGHT, VIDEO_WIDTH, YOUTUBE_CATEGORY_ID, YOUTUBE_PRIVACY
 from modules import event_log as events
 from modules import publish_gate
 from modules import publish_score
-from modules.ab_testing import choose_variant, variant_performance
+from modules.ab_testing import choose_variant_n, variant_performance_n
 from modules.avatar import (
     AvatarUnavailable, UnsafeAvatarRequest, maybe_generate_presenter, resolve_avatar_config,
 )
@@ -79,13 +79,26 @@ logging.basicConfig(
 logger = logging.getLogger("chronos")
 
 
-def _pick_variant(channel_id: str) -> str:
-    """Which A/B arm this video ships on.
+#: The thumbnail A/B arms, widened past two by config.THUMBNAIL_VARIANT_COUNT
+#: (roadmap #58). "A"/"B" keep their old look; C/D are distinct styles
+#: (modules/thumbnail_generator.py). Count 2 = today's A/B exactly.
+_VARIANT_LABELS = ("A", "B", "C", "D")
 
-    Reads the channel's own published count and current verdict. Any failure
-    falls back to "A", which is exactly what the pipeline did before this
-    existed — a broken experiment must not stop a video.
+
+def _variant_arms() -> tuple:
+    """The variant labels this run experiments across (2..4, config-driven)."""
+    n = max(2, min(len(_VARIANT_LABELS), int(THUMBNAIL_VARIANT_COUNT)))
+    return _VARIANT_LABELS[:n]
+
+
+def _pick_variant(channel_id: str) -> str:
+    """Which thumbnail arm this video ships on.
+
+    Reads the channel's own published count and current verdict across all
+    configured arms. Any failure falls back to "A", which is exactly what the
+    pipeline did before this existed — a broken experiment must not stop a video.
     """
+    arms = _variant_arms()
     try:
         with StateStore() as store:
             videos = store.list_videos(limit=100000, channel_id=channel_id)
@@ -94,7 +107,7 @@ def _pick_variant(channel_id: str) -> str:
                 for v in videos
                 if (m := store.latest_metrics(v.get("video_id", ""))) is not None
             ]
-        return choose_variant(len(videos), variant_performance(videos, snapshots))
+        return choose_variant_n(len(videos), arms, variant_performance_n(videos, snapshots, arms))
     except Exception as e:
         logger.warning("A/B variant selection failed (%s: %s) — shipping A", type(e).__name__, e)
         return "A"
@@ -579,23 +592,31 @@ def run(
     # Which arm this video ships on. Both thumbnails have always been rendered;
     # until now A was uploaded every time and B was thrown away, so the
     # experiment never ran. See modules/ab_testing.py.
+    arms = _variant_arms()
     variant = _pick_variant(channel_id)
-    logger.info("[channel: %s] A/B variant for this video: %s", channel_id, variant)
+    logger.info("[channel: %s] Thumbnail variant for this video: %s (of %s)",
+                channel_id, variant, "/".join(arms))
     events.emit(events.THUMBNAIL_STARTED, agent="thumbnail_generator", status=events.STATUS_RUNNING, channel_id=channel_id)
-    bg_a = images[0] if images else None
-    bg_b = images[1] if len(images) > 1 else None
+    # One background per arm where footage allows; arms past the available
+    # backgrounds fall back to the variant's own solid style (generate_variants).
+    backgrounds = [images[i] if i < len(images) else None for i in range(len(arms))]
     thumb_gen = ThumbnailGenerator(slug)
-    thumb_a, thumb_b = thumb_gen.generate(
+    thumbs = thumb_gen.generate_variants(
         topic=script.topic,
         overlay_text=script.thumbnail_overlay_text or "SHOCKING",
-        background_a=bg_a,
-        background_b=bg_b,
+        variants=arms,
+        backgrounds=backgrounds,
     )
-    chosen_thumb = thumb_b if variant == "B" else thumb_a
-    # The B title only exists when Gemini produced one; falling back to A is
-    # honest, and the recorded title_variant then says "A" so the readback is
-    # not attributed to an experiment that did not happen.
-    chosen_title = (script.title_ab or "").strip() if variant == "B" else ""
+    # The chosen arm's thumbnail; fall back to A if the label somehow isn't in
+    # the rendered set (never crash the render over a variant mismatch).
+    chosen_thumb = thumbs.get(variant) or thumbs.get("A") or next(iter(thumbs.values()))
+    thumb_a = thumbs.get("A", chosen_thumb)
+    thumb_b = thumbs.get("B", thumb_a)
+    # The B title only exists when Gemini produced one; any challenger arm (not
+    # "A") ships it. Falling back to A is honest, and the recorded title_variant
+    # then says "A" so the readback is not attributed to an experiment that did
+    # not happen.
+    chosen_title = (script.title_ab or "").strip() if variant != "A" else ""
     title_variant = "B" if chosen_title else "A"
     # The single source of truth for the title this video actually ships with:
     # the uploader publishes it (title_override falls back to script.title when

@@ -238,3 +238,28 @@ class ThumbnailGenerator:
         path_a = _make_thumbnail(background_a, overlay_text, topic, self.out_dir / "thumbnail_a.jpg", "A")
         path_b = _make_thumbnail(background_b, overlay_text, topic, self.out_dir / "thumbnail_b.jpg", "B")
         return path_a, path_b
+
+    def generate_variants(
+        self,
+        topic: str,
+        overlay_text: str,
+        variants: "list[str] | tuple[str, ...]" = ("A", "B"),
+        backgrounds: "list[Path | None] | None" = None,
+    ) -> dict:
+        """Render one thumbnail per variant and return {variant: path}.
+
+        Widening the A/B test past two arms (roadmap #58): each variant gets its
+        own distinct look via `_style_for`, and its own background when one is
+        supplied at that position (`backgrounds` is index-aligned to `variants`;
+        a missing/short entry falls back to the variant's solid style bg, exactly
+        as A/B did). Two arms with the default `("A", "B")` reproduces `generate`.
+        """
+        backgrounds = list(backgrounds or [])
+        out: dict = {}
+        for i, variant in enumerate(variants):
+            label = str(variant).strip().upper() or "A"
+            bg = backgrounds[i] if i < len(backgrounds) else None
+            out[label] = _make_thumbnail(
+                bg, overlay_text, topic, self.out_dir / f"thumbnail_{label.lower()}.jpg", label
+            )
+        return out

@@ -113,7 +113,7 @@ export default async function MeasurePage() {
             : fmt(t.measure.reasonDecided, {
                 variant: ab.winner ?? "",
                 lift: pct(ab.lift, 0),
-                n: String(ab.a.videos + ab.b.videos),
+                n: String(ab.arms.reduce((sum, arm) => sum + arm.videos, 0)),
               });
 
   return (
@@ -239,13 +239,19 @@ export default async function MeasurePage() {
                 {t.measure.abSubtitle}
               </p>
 
-              {ab.a.videos === 0 && ab.b.videos === 0 ? (
+              {ab.arms.every((arm) => arm.videos === 0) ? (
                 <EmptyState>{t.measure.abEmpty}</EmptyState>
               ) : (
                 <>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {[ab.a, ab.b].map((arm) => {
+                    {ab.arms.map((arm) => {
                       const isWinner = ab.winner === arm.variant;
+                      const label =
+                        arm.variant === "A"
+                          ? t.measure.variantA
+                          : arm.variant === "B"
+                            ? t.measure.variantB
+                            : fmt(t.measure.variantN, { v: arm.variant });
                       return (
                         <div
                           key={arm.variant}
@@ -258,7 +264,7 @@ export default async function MeasurePage() {
                           }}
                         >
                           <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
-                            {arm.variant === "A" ? t.measure.variantA : t.measure.variantB}
+                            {label}
                           </div>
                           <div
                             className="mono mt-1 text-2xl font-semibold tabular-nums"
