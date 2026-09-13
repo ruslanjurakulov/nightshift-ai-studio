@@ -543,7 +543,18 @@ def run(
     images = fetcher.fetch_images(all_keywords, count=8)
     # API searches, not bytes: the Pexels quota is spent per search.
     costs.add(PEXELS_REQUESTS, fetcher.searches_made, stage="media")
-    logger.info("Media: %d videos, %d images", len(videos), len(images))
+
+    # Optional: generate on-topic b-roll for a few sections with MiniMax H3,
+    # supplementing the stock above. Off unless a key + flag are set, in which
+    # case it makes no request and changes nothing. Generated clips join the
+    # pool and are recorded in fetcher.video_terms, so broll_match places them.
+    broll = fetcher.generate_broll(script.sections, topic)
+    if broll.generated:
+        videos.extend(Path(p) for p in broll.by_section.values())
+        events.emit(events.BROLL_GENERATED, agent="minimax_broll", status=events.STATUS_COMPLETED,
+                    channel_id=channel_id, metadata=broll.to_dict())
+    logger.info("Media: %d videos (%d AI-generated), %d images",
+                len(videos), broll.generated, len(images))
     # The baseline Whisper is about to be loaded on top of, and the number
     # release_model should return the process to.
     log_usage("before transcription")

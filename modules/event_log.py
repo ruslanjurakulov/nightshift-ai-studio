@@ -61,6 +61,12 @@ VOICE_STARTED = "voice.started"
 VOICE_COMPLETED = "voice.completed"
 MEDIA_STARTED = "media.started"
 MEDIA_COMPLETED = "media.completed"
+# AI-generated b-roll (modules/minimax_broll.py + minimax_client.py). Optional and
+# off by default: when enabled, MiniMax H3 generates an on-topic clip for a few
+# sections instead of pulling stock. `broll.generated` records how many clips were
+# actually produced; a generation failure is never a run failure — the section
+# falls back to Pexels stock and the video still renders.
+BROLL_GENERATED = "broll.generated"
 RENDER_STARTED = "render.started"
 RENDER_COMPLETED = "render.completed"
 RENDER_FAILED = "render.failed"
