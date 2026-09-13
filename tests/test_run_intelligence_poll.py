@@ -305,5 +305,39 @@ class AllocateUploadQuotaTestCase(unittest.TestCase):
         emit.assert_not_called()
 
 
+class CheckDurabilityTestCase(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self._tmpdir.name) / "test_chronos.db"
+        self.store = StateStore(self.db_path)
+
+    def tearDown(self):
+        self.store.close()
+        self._tmpdir.cleanup()
+
+    def test_writes_snapshot_and_emits_report(self):
+        self.store.record_video(video_id="v1", channel_id="default", published_at="2026-01-01T00:00:00")
+        store_cm = MagicMock()
+        store_cm.__enter__.return_value = self.store
+        store_cm.__exit__.return_value = False
+
+        # No Supabase configured → mirror disabled; the check still runs and
+        # reports honestly (mirrored is unknown/false, never a fabricated True).
+        sync = MagicMock()
+        sync.enabled = False
+
+        with tempfile.TemporaryDirectory() as d:
+            with patch.object(mod, "StateStore", return_value=store_cm), \
+                    patch.object(mod, "SupabaseSync", return_value=sync), \
+                    patch("config.HISTORY_DIR", Path(d)), \
+                    patch.object(mod.events, "emit") as emit:
+                summary = mod.check_durability()
+            self.assertEqual(summary.get("local_videos"), 1)
+            emit.assert_called_once()
+            self.assertEqual(emit.call_args.args[0], mod.events.DURABILITY_CHECK)
+            # a JSON snapshot was written into the (cached) history dir
+            self.assertTrue((Path(d) / "durability_snapshot.json").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

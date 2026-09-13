@@ -401,6 +401,31 @@ def allocate_upload_quota() -> dict:
         return {}
 
 
+def check_durability() -> dict:
+    """Write a JSON snapshot of the local state and check whether history is
+    mirrored off-box, emitting one `durability.check`. The whole history lives in
+    an ephemeral Actions cache, so this run's job is to hedge that: a JSON backup
+    on disk (kept in the cached `history/`) plus an honest report of how many
+    local videos are not yet in Supabase. Advisory — it reports and backs up, it
+    never deletes or overwrites history. Never raises."""
+    try:
+        from config import HISTORY_DIR
+        from modules import durability
+
+        sync = SupabaseSync()
+        snapshot_path = HISTORY_DIR / "durability_snapshot.json"
+        with StateStore() as store:
+            report = durability.run_durability_check(
+                store, sync if sync.enabled else None, snapshot_path=snapshot_path)
+        summary = report.to_dict()
+        logger.info("Durability: local=%s remote=%s mirrored=%s",
+                    summary.get("local_videos"), summary.get("remote_videos"), summary.get("mirrored"))
+        return summary
+    except Exception:
+        logger.exception("Durability check failed; reporting nothing")
+        return {}
+
+
 def mirror_to_supabase() -> dict:
     """Mirror the current local state into Supabase for the Command Center.
     No-op (returns {}) when SUPABASE_URL / SUPABASE_SERVICE_KEY aren't set, so
@@ -500,6 +525,11 @@ def main():
         mirror_to_supabase()
     else:
         logger.info("Supabase mirror skipped (--skip-mirror)")
+
+    # State durability — after the mirror, snapshot local state and report how
+    # much of it is safely off-box. The history lives in an ephemeral cache, so
+    # this is the run that hedges against losing it. Defensive; never raises.
+    check_durability()
 
     logger.info("=== Intelligence poll done ===")
 
