@@ -640,6 +640,11 @@ def run(
             word_timestamps=word_clips_specs,
             section_timeline=timeline,
             presenter_path=presenter_path,
+            # Which keyword fetched each clip, so the compositor places footage
+            # under the section it matches (modules/broll_match.py) rather than
+            # at random. Empty when the fetcher was mocked/skipped — the
+            # compositor then falls back to its original shuffle.
+            clip_terms=getattr(fetcher, "video_terms", None),
         )
     costs.slug = slug
     costs.add(RENDER_SECONDS, time.monotonic() - render_started, stage="render")
