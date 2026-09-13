@@ -12,6 +12,7 @@ import {
   parseQuotaAllocation,
   parseSpendOverview,
   parseDirectorPlan,
+  parseAgentPlan,
 } from "@/lib/advisory";
 import type { SystemEventRow } from "@/lib/types";
 
@@ -177,6 +178,7 @@ describe("deriveAdvisory", () => {
     expect(a.quota).toBeNull();
     expect(a.spendOverview).toBeNull();
     expect(a.director).toBeNull();
+    expect(a.agent).toBeNull();
   });
 
   it("picks the genuinely latest of each kind regardless of list order", () => {
@@ -433,5 +435,36 @@ describe("parseDirectorPlan", () => {
     const p = parseDirectorPlan(ev("director.plan", "t", { shots: [] }));
     expect(p?.scenes).toBeNull();
     expect(p?.shots).toEqual([]);
+  });
+});
+
+describe("parseAgentPlan", () => {
+  it("returns null for no event", () => {
+    expect(parseAgentPlan(null)).toBeNull();
+  });
+
+  it("reads the topic, rationale, providers and keywords", () => {
+    const p = parseAgentPlan(
+      ev("agent.plan", "t", {
+        topic: "The lost city of Petra",
+        rationale: "high velocity across 3 trackers",
+        source: "both",
+        score: 0.82,
+        keywords: ["petra", "city", 7],
+        video_provider: "higgsfield",
+        voice_provider: "elevenlabs",
+      }),
+    );
+    expect(p?.topic).toBe("The lost city of Petra");
+    expect(p?.source).toBe("both");
+    expect(p?.score).toBe(0.82);
+    expect(p?.videoProvider).toBe("higgsfield");
+    expect(p?.keywords).toEqual(["petra", "city"]); // non-string dropped
+  });
+
+  it("keeps an unknown score null, never 0", () => {
+    const p = parseAgentPlan(ev("agent.plan", "t", { topic: "X" }));
+    expect(p?.score).toBeNull();
+    expect(p?.keywords).toEqual([]);
   });
 });
