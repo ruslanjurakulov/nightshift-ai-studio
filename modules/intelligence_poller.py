@@ -398,6 +398,73 @@ class IntelligencePoller:
             logger.exception("Publish-time suggestion pass failed; recommending nothing")
             return False
 
+    def track_revenue(self) -> bool:
+        """Read back each video's real estimatedRevenue (USD) from YouTube
+        Analytics, build a channel revenue picture, and emit one
+        `revenue.tracked`. Advisory only — it reports earnings, it never gates a
+        publish or changes niche selection. Never raises.
+
+        Off unless revenue tracking is enabled (config.REVENUE_TRACKING_ENABLED
+        / CHRONOS_ENABLE_REVENUE): the monetary scope must be granted first, so
+        calling the API without it would only 403 once per video. When enabled
+        but the channel is not monetized, every `video_revenue` returns {} and
+        the report is honestly empty (no revenue), never a fabricated $0.
+        Returns True when any real revenue was measured."""
+        try:
+            import config
+            from modules import event_log as events
+            from modules import revenue_tracker
+
+            if not getattr(config, "REVENUE_TRACKING_ENABLED", False):
+                logger.debug("Revenue tracking disabled; skipping the revenue pass")
+                return False
+
+            videos, metrics_by_id = self._videos_with_metrics()
+            end_date = date.today().isoformat()
+            revenue_rows: dict = {}
+            for video in videos:
+                video_id = video.get("video_id")
+                if not video_id:
+                    continue
+                start_date = self._revenue_start_date(video.get("published_at"))
+                try:
+                    row = self.analytics_client.video_revenue(video_id, start_date, end_date)
+                except Exception:
+                    logger.warning(
+                        "Failed to poll revenue for video_id=%s; skipping", video_id, exc_info=True
+                    )
+                    continue
+                if row:
+                    revenue_rows[video_id] = row
+
+            report = revenue_tracker.build_report(revenue_rows, views_by_video=metrics_by_id)
+            events.emit(events.REVENUE_TRACKED, agent="revenue_tracker",
+                        status=events.STATUS_COMPLETED, channel_id=self.channel_id,
+                        metadata=revenue_tracker.summarize(report))
+            if report.has_revenue:
+                logger.info("[channel: %s] Revenue tracked: $%.2f over %d video(s), RPM $%s",
+                            self.channel_id, report.total_usd, report.measured_count,
+                            report.channel_rpm_usd)
+            return report.has_revenue
+        except Exception:
+            logger.exception("Revenue-tracking pass failed; recording no revenue")
+            return False
+
+    @staticmethod
+    def _revenue_start_date(published_at) -> str:
+        """The revenue query's start date for a video: its publish date (so the
+        figure is lifetime-to-date), or one year back when the publish date is
+        missing/unparseable — never a guessed 'today', which would report $0 for
+        a video that has in fact earned."""
+        default = (date.today() - timedelta(days=365)).isoformat()
+        if not published_at:
+            return default
+        try:
+            s = str(published_at).strip().replace("Z", "+00:00")
+            return datetime.fromisoformat(s).date().isoformat()
+        except (ValueError, TypeError):
+            return default
+
     # -- orchestration --------------------------------------------------
 
     def run_all(self, competitor_channel_ids: list | None = None) -> dict:
@@ -417,6 +484,7 @@ class IntelligencePoller:
         repackage_candidates = self.suggest_repackages()
         spend_forecast_ready = self.forecast_spend()
         publish_timing_ready = self.suggest_publish_time()
+        revenue_tracked = self.track_revenue()
 
         return {
             "own_metrics_written": own_metrics_written,
@@ -427,4 +495,5 @@ class IntelligencePoller:
             "repackage_candidates": repackage_candidates,
             "spend_forecast_ready": spend_forecast_ready,
             "publish_timing_ready": publish_timing_ready,
+            "revenue_tracked": revenue_tracked,
         }

@@ -94,6 +94,29 @@ YOUTUBE_SCOPES = [
     # missing and skips captions instead of failing an upload.
     "https://www.googleapis.com/auth/youtube.force-ssl",
 ]
+
+# Revenue tracking (roadmap #71) reads YouTube Analytics' estimatedRevenue,
+# which needs the *monetary* Analytics scope AND is gated behind YPP (YouTube
+# Partner Program) eligibility and an accepted revenue-share agreement.
+#
+# It is OFF by default and requested only when the operator opts in, because a
+# scope is not gained by being listed: an existing token authorized under the
+# narrower scopes above would fail the subset check in AnalyticsClient._auth
+# and force a fresh browser consent — and until that consent happens, the
+# ordinary analytics poll (views, CTR, retention) would be blocked too. Making
+# the monetary scope opt-in keeps default behavior unchanged; without it, the
+# revenue methods simply see the metric refused and record no revenue (never a
+# fabricated $0 — see modules/revenue_tracker.py).
+#
+# To enable: set CHRONOS_ENABLE_REVENUE=1 and reconnect the channel
+# (tools/connect_channel.py) so a token with the monetary scope is minted.
+YOUTUBE_MONETARY_SCOPE = "https://www.googleapis.com/auth/yt-analytics-monetary.readonly"
+REVENUE_TRACKING_ENABLED = os.getenv("CHRONOS_ENABLE_REVENUE", "").strip().lower() in (
+    "1", "true", "yes", "on",
+)
+if REVENUE_TRACKING_ENABLED:
+    YOUTUBE_SCOPES.append(YOUTUBE_MONETARY_SCOPE)
+
 # Separate token per channel so you can switch between two channels
 _channel_suffix = f"_{YOUTUBE_CHANNEL_ID}" if YOUTUBE_CHANNEL_ID else ""
 YOUTUBE_TOKEN_FILE = BASE_DIR / f"youtube_token{_channel_suffix}.json"

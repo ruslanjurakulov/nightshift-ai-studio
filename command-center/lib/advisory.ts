@@ -8,6 +8,7 @@
  *   - `publish.timing`      (modules/publish_timing.py)  — best publish hour/weekday
  *   - `repackage.suggested` (modules/repackage.py)       — under-performers to re-title
  *   - `durability.check`    (modules/durability.py)      — is history mirrored off-box
+ *   - `revenue.tracked`     (modules/revenue_tracker.py) — real estimatedRevenue (USD) + RPM
  *
  * These functions read only what those rows actually contain and translate it
  * into typed summaries the Command Center renders. Nothing here invents a value:
@@ -24,6 +25,7 @@ export const EVENT_PUBLISH_TIMING = "publish.timing";
 export const EVENT_REPACKAGE_SUGGESTED = "repackage.suggested";
 export const EVENT_DURABILITY_CHECK = "durability.check";
 export const EVENT_VIDIQ_RESEARCH = "vidiq.research";
+export const EVENT_REVENUE_TRACKED = "revenue.tracked";
 
 // -- value coercion: unknown JSON in, typed-or-null out ---------------------
 
@@ -215,12 +217,69 @@ export function parseVidiqResearch(e: SystemEventRow | null): VidiqResearch | nu
   };
 }
 
+export interface RevenueEarner {
+  videoId: string;
+  /** Real estimatedRevenue in USD, or null when unknown (never a fabricated 0). */
+  revenueUsd: number | null;
+  views: number | null;
+  /** revenue / views × 1000, or null when either is unknown. */
+  rpmUsd: number | null;
+}
+
+export interface RevenueTracked {
+  ts: string;
+  /** Summed USD across measured videos, or null when none were measured. */
+  totalUsd: number | null;
+  /** Channel RPM (USD) over measured views, or null. */
+  channelRpmUsd: number | null;
+  /** How many videos reported real revenue (never a fabricated count). */
+  measuredCount: number | null;
+  videoCount: number | null;
+  currency: string | null;
+  /** Top earners, best first. */
+  top: RevenueEarner[];
+  /** Revenue exists only when at least one video actually reported it. */
+  hasRevenue: boolean;
+}
+
+export function parseRevenueTracked(e: SystemEventRow | null): RevenueTracked | null {
+  if (!e) return null;
+  const m = asRecord(e.metadata) ?? {};
+  const rawTop = Array.isArray(m.top_earners) ? m.top_earners : [];
+  const top: RevenueEarner[] = rawTop
+    .map((row) => {
+      const r = asRecord(row);
+      if (!r) return null;
+      const videoId = strOrNull(r.video_id);
+      if (!videoId) return null;   // a row without a video id carries no earner
+      return {
+        videoId,
+        revenueUsd: numOrNull(r.revenue_usd),
+        views: numOrNull(r.views),
+        rpmUsd: numOrNull(r.rpm_usd),
+      };
+    })
+    .filter((k): k is RevenueEarner => k !== null);
+  const totalUsd = numOrNull(m.total_usd);
+  return {
+    ts: e.ts,
+    totalUsd,
+    channelRpmUsd: numOrNull(m.channel_rpm_usd),
+    measuredCount: numOrNull(m.measured_count),
+    videoCount: numOrNull(m.video_count),
+    currency: strOrNull(m.currency),
+    top,
+    hasRevenue: totalUsd !== null,
+  };
+}
+
 export interface AdvisoryIntelligence {
   spend: SpendForecast | null;
   timing: PublishTiming | null;
   repackage: RepackageSummary | null;
   durability: DurabilitySummary | null;
   vidiq: VidiqResearch | null;
+  revenue: RevenueTracked | null;
 }
 
 /**
@@ -235,5 +294,6 @@ export function deriveAdvisory(events: SystemEventRow[]): AdvisoryIntelligence {
     repackage: parseRepackage(latestEvent(events, EVENT_REPACKAGE_SUGGESTED)),
     durability: parseDurability(latestEvent(events, EVENT_DURABILITY_CHECK)),
     vidiq: parseVidiqResearch(latestEvent(events, EVENT_VIDIQ_RESEARCH)),
+    revenue: parseRevenueTracked(latestEvent(events, EVENT_REVENUE_TRACKED)),
   };
 }

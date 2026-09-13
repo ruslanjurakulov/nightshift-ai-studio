@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from modules.intelligence_poller import IntelligencePoller
 from modules.state_store import StateStore
@@ -244,8 +244,63 @@ class IntelligencePollerTestCase(unittest.TestCase):
                 # Advisory publish-time pass runs too; one video clears no slot's
                 # sample threshold, so no recommendation.
                 "publish_timing_ready": False,
+                # Revenue tracking is off by default (monetary scope is opt-in),
+                # so the pass returns early without measuring anything.
+                "revenue_tracked": False,
             },
         )
+
+    # -- track_revenue (roadmap #71) --------------------------------------
+
+    def test_track_revenue_off_by_default_makes_no_api_call(self):
+        # Monetary scope is opt-in; with it disabled the pass returns early and
+        # never hits the API (so an un-consented channel isn't spammed with 403s).
+        self.store.record_video(video_id="v1", title="First", published_at="2026-01-01T00:00:00")
+        analytics = MagicMock()
+        poller = self._make_poller(analytics_client=analytics)
+
+        with patch("config.REVENUE_TRACKING_ENABLED", False):
+            self.assertFalse(poller.track_revenue())
+        analytics.video_revenue.assert_not_called()
+
+    def test_track_revenue_measures_and_emits_when_enabled(self):
+        self.store.record_video(video_id="v1", title="First", published_at="2026-01-01T00:00:00")
+        self.store.record_video(video_id="v2", title="Second", published_at="2026-01-02T00:00:00")
+
+        analytics = MagicMock()
+        analytics.video_revenue.side_effect = lambda vid, s, e: {
+            "v1": {"estimatedRevenue": 12.0, "views": 1000},
+            "v2": {"estimatedRevenue": 3.0, "views": 3000},
+        }[vid]
+        poller = self._make_poller(analytics_client=analytics)
+
+        with patch("config.REVENUE_TRACKING_ENABLED", True), \
+                patch("modules.event_log.emit") as emit:
+            self.assertTrue(poller.track_revenue())
+
+        self.assertEqual(analytics.video_revenue.call_count, 2)
+        emit.assert_called_once()
+        event_name = emit.call_args.args[0]
+        meta = emit.call_args.kwargs["metadata"]
+        self.assertEqual(event_name, "revenue.tracked")
+        self.assertEqual(meta["total_usd"], 15.0)
+        self.assertEqual(meta["measured_count"], 2)
+        self.assertEqual(meta["currency"], "USD")
+
+    def test_track_revenue_unmonetized_channel_reports_no_revenue(self):
+        # Enabled, but the channel is not in YPP: every video_revenue returns {}.
+        # The pass still emits an honest empty report — never a fabricated $0.
+        self.store.record_video(video_id="v1", title="First", published_at="2026-01-01T00:00:00")
+        analytics = MagicMock()
+        analytics.video_revenue.return_value = {}
+        poller = self._make_poller(analytics_client=analytics)
+
+        with patch("config.REVENUE_TRACKING_ENABLED", True), \
+                patch("modules.event_log.emit") as emit:
+            self.assertFalse(poller.track_revenue())
+
+        emit.assert_called_once()
+        self.assertIsNone(emit.call_args.kwargs["metadata"]["total_usd"])
 
     def test_run_all_without_competitor_channel_ids_skips_competitor_poll(self):
         competitor_monitor = MagicMock()
