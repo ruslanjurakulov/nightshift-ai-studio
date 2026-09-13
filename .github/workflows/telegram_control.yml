@@ -1,0 +1,59 @@
+name: Telegram Control Panel
+
+# Polls Telegram for admin commands (/status, /channels, /pending, /publish,
+# /pause, /resume) and replies. A scheduled poll rather than an always-on
+# webhook: replies land within the interval below, which is fine for a control
+# panel and needs no hosted service. Harmless until the secrets are set — the
+# script exits 0 and does nothing without TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 minutes
+  workflow_dispatch:
+
+# One run at a time, and let an in-flight poll finish rather than cancelling it
+# (cancelling mid-batch could drop the offset write and reprocess messages).
+concurrency:
+  group: telegram-control
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore history state (holds the Telegram update offset + local db)
+        uses: actions/cache@v4
+        with:
+          path: history
+          key: chronos-history-${{ github.run_number }}
+          restore-keys: chronos-history-
+
+      - name: Poll Telegram control panel
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Optional — lets StoreDeps read channel/video state when mirrored.
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python tools/run_telegram_control.py
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-control-log
+          path: logs/
+          if-no-files-found: ignore

@@ -115,6 +115,12 @@ CHANNEL_PAUSED = "channel.paused"
 CHANNEL_ACTIVATED = "channel.activated"
 CHANNEL_OAUTH_CONNECTED = "channel.oauth.connected"
 CHANNEL_OAUTH_FAILED = "channel.oauth.failed"
+# Telegram control panel (modules/telegram_control.py + tools/run_telegram_control.py).
+# `telegram.command` records an admin command the transport routed — a read query
+# or an action INTENT. It records intents for observability and a driver to act
+# on; the transport itself never uploads or flips a channel's autonomy, and an
+# action still runs through the normal gated pipeline.
+TELEGRAM_COMMAND = "telegram.command"
 # Credential health preflight (modules/credential_health.py). Advisory: reports
 # which credentials a run needs and whether they are present, before it spends.
 CREDENTIAL_HEALTH = "credential.health"
