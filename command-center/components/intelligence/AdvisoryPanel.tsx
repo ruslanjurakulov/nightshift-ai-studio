@@ -75,6 +75,7 @@ export function AdvisoryPanel({
   const vidiq = adv.vidiq;
   const sponsor = adv.sponsorship;
   const revenue = adv.revenue;
+  const niche = adv.nicheRpm;
 
   return (
     <div className="grid gap-5 md:grid-cols-2">
@@ -237,6 +238,31 @@ export function AdvisoryPanel({
               <Row label={t.ops.advRevenueTop} value={usd(revenue.top[0].revenueUsd)} />
             )}
             <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advRevenueHint}</p>
+          </>
+        )}
+      </Card>
+
+      {/* Niche RPM ranking — roadmap #70 */}
+      <Card title={t.ops.advNicheTitle} updated={niche?.ts ?? null}>
+        {!niche || niche.niches.length === 0 ? (
+          <Empty label={niche ? t.ops.advNicheNone : t.ops.advNoData} />
+        ) : (
+          <>
+            <Row label={t.ops.advNicheBest} value={niche.bestNiche ?? t.common.na} strong />
+            {niche.niches.slice(0, 4).map((n) => (
+              <Row
+                key={n.niche}
+                label={n.niche}
+                value={
+                  n.tier === 2 && n.rpmUsd !== null
+                    ? `${usd(n.rpmUsd)} RPM`
+                    : n.avgViews !== null
+                      ? `${Math.round(n.avgViews).toLocaleString()} ${t.ops.advNicheViews}`
+                      : t.common.na
+                }
+              />
+            ))}
+            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advNicheHint}</p>
           </>
         )}
       </Card>

@@ -10,6 +10,7 @@
  *   - `durability.check`    (modules/durability.py)      — is history mirrored off-box
  *   - `sponsorship.estimate`(modules/sponsorship.py)     — CPM-priced sponsor slot value
  *   - `revenue.tracked`     (modules/revenue_tracker.py) — real estimatedRevenue (USD) + RPM
+ *   - `niche.rpm`           (modules/niche_rpm.py)       — cross-channel niche ranking
  *
  * These functions read only what those rows actually contain and translate it
  * into typed summaries the Command Center renders. Nothing here invents a value:
@@ -28,6 +29,7 @@ export const EVENT_DURABILITY_CHECK = "durability.check";
 export const EVENT_VIDIQ_RESEARCH = "vidiq.research";
 export const EVENT_SPONSORSHIP_ESTIMATE = "sponsorship.estimate";
 export const EVENT_REVENUE_TRACKED = "revenue.tracked";
+export const EVENT_NICHE_RPM = "niche.rpm";
 
 // -- value coercion: unknown JSON in, typed-or-null out ---------------------
 
@@ -306,6 +308,57 @@ export function parseRevenueTracked(e: SystemEventRow | null): RevenueTracked | 
   };
 }
 
+export interface NicheRow {
+  niche: string;
+  /** 2 = measured earnings (real RPM), 1 = engagement only, 0 = insufficient data. */
+  tier: number | null;
+  videoCount: number | null;
+  avgViews: number | null;
+  /** Real RPM (USD), only when revenue was supplied; else null (never a fabricated 0). */
+  rpmUsd: number | null;
+  /** 0..1 composite, or null when nothing measurable exists for the niche. */
+  score: number | null;
+}
+
+export interface NicheRpm {
+  ts: string;
+  /** Niches ranked best-first, each tagged with its honest tier. */
+  niches: NicheRow[];
+  /** The niche backed by enough measured videos to recommend, or null. */
+  bestNiche: string | null;
+  measuredCount: number | null;
+  nicheCount: number | null;
+}
+
+export function parseNicheRpm(e: SystemEventRow | null): NicheRpm | null {
+  if (!e) return null;
+  const m = asRecord(e.metadata) ?? {};
+  const rawNiches = Array.isArray(m.niches) ? m.niches : [];
+  const niches: NicheRow[] = rawNiches
+    .map((row) => {
+      const r = asRecord(row);
+      if (!r) return null;
+      const niche = strOrNull(r.niche);
+      if (!niche) return null;
+      return {
+        niche,
+        tier: numOrNull(r.tier),
+        videoCount: numOrNull(r.video_count),
+        avgViews: numOrNull(r.avg_views),
+        rpmUsd: numOrNull(r.rpm_usd),
+        score: numOrNull(r.score),
+      };
+    })
+    .filter((n): n is NicheRow => n !== null);
+  return {
+    ts: e.ts,
+    niches,
+    bestNiche: strOrNull(m.best_niche),
+    measuredCount: numOrNull(m.measured_count),
+    nicheCount: numOrNull(m.niche_count),
+  };
+}
+
 export interface AdvisoryIntelligence {
   spend: SpendForecast | null;
   timing: PublishTiming | null;
@@ -314,6 +367,7 @@ export interface AdvisoryIntelligence {
   vidiq: VidiqResearch | null;
   sponsorship: Sponsorship | null;
   revenue: RevenueTracked | null;
+  nicheRpm: NicheRpm | null;
 }
 
 /**
@@ -330,5 +384,6 @@ export function deriveAdvisory(events: SystemEventRow[]): AdvisoryIntelligence {
     vidiq: parseVidiqResearch(latestEvent(events, EVENT_VIDIQ_RESEARCH)),
     sponsorship: parseSponsorship(latestEvent(events, EVENT_SPONSORSHIP_ESTIMATE)),
     revenue: parseRevenueTracked(latestEvent(events, EVENT_REVENUE_TRACKED)),
+    nicheRpm: parseNicheRpm(latestEvent(events, EVENT_NICHE_RPM)),
   };
 }
