@@ -79,6 +79,7 @@ export function AdvisoryPanel({
   const quota = adv.quota;
   const spendOv = adv.spendOverview;
   const director = adv.director;
+  const elements = adv.elements;
 
   return (
     <div className="grid gap-5 md:grid-cols-2">
@@ -336,6 +337,26 @@ export function AdvisoryPanel({
               />
             ))}
             <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advDirectorHint}</p>
+          </>
+        )}
+      </Card>
+
+      {/* Character Bible — elements applied this run (Nightshift blueprint) */}
+      <Card title={t.ops.advElementsTitle} updated={elements?.ts ?? null}>
+        {!elements || elements.defined === 0 ? (
+          <Empty label={elements ? t.ops.advElementsNone : t.ops.advNoData} />
+        ) : (
+          <>
+            <Row label={t.ops.advElementsDefined} value={elements.defined === null ? "N/A" : String(elements.defined)} strong />
+            <Row
+              label={t.ops.advElementsScenes}
+              value={elements.scenesTouched === null ? "N/A" : String(elements.scenesTouched)}
+            />
+            <Row
+              label={t.ops.advElementsApplied}
+              value={elements.applied.length ? elements.applied.slice(0, 6).join(", ") : t.common.none}
+            />
+            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advElementsHint}</p>
           </>
         )}
       </Card>

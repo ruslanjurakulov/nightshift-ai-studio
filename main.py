@@ -609,13 +609,37 @@ def run(
                     channel_id=channel_id, metadata=director.summarize(shot_plans))
     director_style = director.style_map(shot_plans)
 
+    # Character Bible / Elements Library (modules/elements.py): the channel's
+    # reusable characters/locations/props. For each scene, detect which appear
+    # and fold their description into the b-roll prompt so a recurring element
+    # stays on-model across videos. Advisory — empty library changes nothing.
+    from modules import elements as elements_mod
+    channel_elements = elements_mod.load_elements(getattr(getattr(ctx, "agent", None), "elements", ()))
+    element_style: dict = {}
+    applied_by_scene: dict = {}
+    if channel_elements:
+        for i, section in enumerate(script.sections):
+            matched = elements_mod.detect(getattr(section, "narration", "") or "", channel_elements)
+            if matched:
+                element_style[i] = elements_mod.consistency_prompt(matched)
+                applied_by_scene[i] = [e.name for e in matched]
+        events.emit(events.ELEMENTS_APPLIED, agent="elements", status=events.STATUS_COMPLETED,
+                    channel_id=channel_id,
+                    metadata=elements_mod.summarize(channel_elements, applied_by_scene))
+
+    # A scene's b-roll prompt carries BOTH its Director shot direction and its
+    # Character-Bible consistency directive when each is present.
+    def _scene_style(i):
+        parts = [s for s in (director_style.get(i), element_style.get(i)) if s]
+        return "; ".join(parts) if parts else None
+
     # Optional: generate on-topic b-roll for a few sections with MiniMax H3,
     # supplementing the stock above. Off unless a key + flag are set, in which
     # case it makes no request and changes nothing. Generated clips join the
     # pool and are recorded in fetcher.video_terms, so broll_match places them.
-    # Each generated clip carries its scene's Director Mode shot direction.
-    broll = fetcher.generate_broll(script.sections, topic,
-                                   style_for=director_style.get)
+    # Each generated clip carries its scene's Director shot direction and its
+    # Character-Bible consistency directive (whichever are present).
+    broll = fetcher.generate_broll(script.sections, topic, style_for=_scene_style)
     if broll.generated:
         videos.extend(Path(p) for p in broll.by_section.values())
         events.emit(events.BROLL_GENERATED, agent="minimax_broll", status=events.STATUS_COMPLETED,

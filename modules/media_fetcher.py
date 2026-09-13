@@ -133,10 +133,11 @@ class MediaFetcher:
         A per-clip failure is swallowed — that section simply falls back to
         stock. Never raises.
 
-        ``style_for`` (optional) is Director Mode's ``index -> shot style`` map
-        (modules/director.py): when given, each generated clip's prompt carries
-        that scene's camera/lens/lighting/motion direction. None keeps the
-        default look."""
+        ``style_for`` (optional) is an ``index -> style string`` map: when given,
+        each generated clip's prompt carries that scene's style direction. That
+        string may combine Director Mode's shot direction (camera/lens/lighting/
+        motion, modules/director.py) with a Character-Bible consistency directive
+        (modules/elements.py). None keeps the default look."""
         import config
         from modules import minimax_broll
 
