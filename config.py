@@ -110,6 +110,15 @@ SUBTITLE_STROKE_COLOR = "black"
 SUBTITLE_STROKE_WIDTH = 3
 SUBTITLE_POSITION = ("center", 0.80)
 
+# Render backend (roadmap #49). "moviepy" (default) keeps the current
+# CompositeVideoClip renderer with its Ken Burns motion and word-level
+# captions. "ffmpeg" routes a declarative RenderSpec through
+# modules/render_backend.py, which streams the timeline segment by segment and
+# holds one ffmpeg process at a time — the durable fix Phase 1 prescribed for
+# MoviePy's decoder leak, for the concat case (no per-frame Ken Burns / word
+# highlighting). Opt-in so the default render is unchanged.
+RENDER_BACKEND = os.getenv("CHRONOS_RENDER_BACKEND", "moviepy").strip().lower()
+
 # YouTube Upload
 YOUTUBE_CATEGORY_ID = "28"  # Science & Technology
 YOUTUBE_PRIVACY = os.getenv("YOUTUBE_PRIVACY", "private")  # private | unlisted | public
