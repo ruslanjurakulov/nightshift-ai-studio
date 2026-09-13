@@ -28,13 +28,42 @@ import json
 import logging
 import re
 
-from config import GEMINI_MODEL
+from config import GEMINI_MODEL, GEMINI_STRUCTURED_OUTPUT
 from dataclasses import dataclass, field
 from modules.gemini_client import generate_with_retry, make_client
+from modules.structured_output import json_config, parse_structured
 
 logger = logging.getLogger(__name__)
 
 VALID_CONFIDENCE_LEVELS = {"high", "medium", "low"}
+
+# response_schema for the schema-constrained path (roadmap #50). Deliberately
+# has no "sources"/"citations" property — the model has none, and the prose
+# prompt's ban on inventing them is enforced here by simply not offering a
+# field for them. OpenAPI-subset dict; the google-genai SDK accepts it as-is.
+RESEARCH_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "key_facts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "claim": {"type": "string"},
+                    "confidence": {
+                        "type": "string",
+                        "enum": ["high", "medium", "low"],
+                    },
+                    "caveat": {"type": "string"},
+                },
+                "required": ["claim", "confidence"],
+            },
+        },
+        "open_questions": {"type": "array", "items": {"type": "string"}},
+        "suggested_angle": {"type": "string"},
+    },
+    "required": ["key_facts", "open_questions", "suggested_angle"],
+}
 
 RESEARCH_SYSTEM_PROMPT = (
     "You are a research assistant helping draft a history-mysteries YouTube "
@@ -185,13 +214,20 @@ def research_topic(topic: str, niche: str = "history mysteries") -> ResearchBrie
     client = make_client()
     prompt = _build_prompt(topic, niche)
 
-    response = generate_with_retry(
-        client, GEMINI_MODEL, prompt, _system_config(RESEARCH_SYSTEM_PROMPT)
-    )
-    text = response.text
+    # Roadmap #50 spike: when opted in, constrain the model to the schema and
+    # read response.parsed instead of regex-extracting JSON from prose. The
+    # config builder returns None if the genai types are unavailable, so we
+    # fall back to today's system-instruction config either way.
+    structured = GEMINI_STRUCTURED_OUTPUT
+    config = json_config(RESEARCH_SCHEMA, system_instruction=RESEARCH_SYSTEM_PROMPT) if structured else None
+    if config is None:
+        structured = False
+        config = _system_config(RESEARCH_SYSTEM_PROMPT)
+
+    response = generate_with_retry(client, GEMINI_MODEL, prompt, config)
 
     try:
-        data = _extract_json(text)
+        data = parse_structured(response) if structured else _extract_json(response.text)
         return _parse_brief(topic, data)
     except (json.JSONDecodeError, ValueError, AttributeError) as exc:
         logger.error(

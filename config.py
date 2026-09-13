@@ -63,6 +63,16 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 # Transient 503/429 retries. Daily-quota 429s are not retried — see gemini_client.
 GEMINI_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "5"))
 GEMINI_RETRY_MAX_DELAY = float(os.getenv("GEMINI_RETRY_MAX_DELAY", "60"))
+# Spike (roadmap #50): ask Gemini for schema-constrained JSON
+# (response_mime_type=application/json + response_schema) instead of parsing
+# JSON out of free-form text. Opt-in and default OFF — when off, every module
+# keeps today's prompt-and-extract path byte-for-byte. Turned on, a module that
+# supports it builds a JSON-mode config and reads response.parsed, falling back
+# to the same text extraction if the SDK returns no parsed object (never a
+# silent swallow — an unparseable response still raises, exactly as before).
+GEMINI_STRUCTURED_OUTPUT = os.getenv("CHRONOS_GEMINI_STRUCTURED_OUTPUT", "").strip().lower() in (
+    "1", "true", "yes", "on",
+)
 SCRIPT_LANGUAGE = os.getenv("SCRIPT_LANGUAGE", "English")
 VIDEO_DURATION_TARGET = int(os.getenv("VIDEO_DURATION_TARGET", "300"))  # seconds
 
