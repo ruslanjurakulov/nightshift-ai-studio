@@ -42,6 +42,17 @@ MINIMAX_BROLL_ENABLED = (
 # How many sections of one video may get a generated clip (cost control); the
 # rest use Pexels stock. A generated clip is billable, so this is deliberately low.
 MINIMAX_BROLL_MAX_CLIPS = int(os.getenv("CHRONOS_MINIMAX_BROLL_MAX_CLIPS", "2") or 2)
+
+# ── Agent / Autopilot (modules/agent_planner.py) ──────────────────────────────
+# When on, a run with no explicit topic asks the agent planner for the day's
+# strongest opportunity — chosen from this channel's own trend/competitor/demand
+# intelligence, with the ranked reason it is trending — and uses that topic
+# instead of the default topic manager. Advisory to the gate: it decides WHAT to
+# make, never whether it ships. OFF by default: unset, topic selection is
+# unchanged, and with no intelligence data the planner returns nothing and the
+# run falls back to the topic manager anyway.
+AGENT_AUTOPILOT = os.getenv("CHRONOS_AGENT_AUTOPILOT", "").strip().lower() in ("1", "true", "yes", "on")
+
 # vidIQ research & scoring (modules/vidiq.py + modules/vidiq_client.py).
 # Research and scoring ONLY — advisory keyword/title intelligence, never a
 # second content pipeline. Dormant unless a token is set: no token → no client
