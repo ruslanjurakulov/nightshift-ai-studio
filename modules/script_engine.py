@@ -46,6 +46,7 @@ Return a JSON object with this EXACT schema:
 {
   "title": "YouTube title — start with number or power word, max 80 chars",
   "title_ab": "Alternative A/B test title",
+  "hook_ab": "An ALTERNATE opening for the first section — a different first 15-30s hook (a different angle/emotion) that still pays off the same title. Full narration text with [PAUSE]/[SFX]/[MUSIC] cues, like a section's narration. Used to A/B-test the opening on retention.",
   "description": "YouTube description: 3 paragraphs + timestamps + hashtags",
   "tags": ["tag1", "tag2"],
   "hook_sentence": "The 3-second hook sentence (from the climax)",
@@ -204,6 +205,11 @@ class Script:
     thumbnail_prompt_b: str
     thumbnail_overlay_text: str
     open_loops: list[str]
+    #: An alternate opening for the first section, for the first-30-seconds hook
+    #: A/B (roadmap #60). Empty when the model didn't provide one — the hook
+    #: experiment then simply has no B arm for this video (never a fabricated
+    #: opening). See main.py, which swaps it in only for the "B" hook arm.
+    hook_ab: str = ""
 
     def full_narration(self) -> str:
         return "\n\n".join(s.clean_narration() for s in self.sections)
@@ -220,6 +226,7 @@ class Script:
             "topic": self.topic,
             "title": self.title,
             "title_ab": self.title_ab,
+            "hook_ab": self.hook_ab,
             "description": self.description,
             "tags": self.tags,
             "hook_sentence": self.hook_sentence,
@@ -560,4 +567,5 @@ class ScriptEngine:
             thumbnail_prompt_b=data.get("thumbnail_prompt_b", ""),
             thumbnail_overlay_text=data.get("thumbnail_overlay_text", ""),
             open_loops=data.get("open_loops", []),
+            hook_ab=str(data.get("hook_ab", "") or "").strip(),
         )

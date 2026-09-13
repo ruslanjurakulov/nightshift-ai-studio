@@ -3,6 +3,7 @@ import {
   aggregateRetention,
   summariseCosts,
   variantPerformance,
+  hookPerformance,
   MIN_PER_VARIANT,
 } from "@/lib/measurement";
 import type {
@@ -43,6 +44,7 @@ function video(over: Partial<VideoRow> & { video_id: string }): VideoRow {
     local_path: null,
     thumbnail_variant: over.thumbnail_variant ?? null,
     title_variant: over.title_variant ?? null,
+    hook_variant: over.hook_variant ?? null,
     video_format: over.video_format ?? "long",
     parent_video_id: over.parent_video_id ?? null,
     preview_path: null,
@@ -61,7 +63,7 @@ function snap(
     likes: null,
     comment_count: null,
     watch_time_minutes: null,
-    average_view_duration_seconds: null,
+    average_view_duration_seconds: over.average_view_duration_seconds ?? null,
     impressions: over.impressions ?? null,
     impression_ctr: over.impression_ctr ?? null,
   };
@@ -201,6 +203,54 @@ describe("variantPerformance", () => {
       snap({ video_id: "v", snapshot_date: "2026-01-05", impression_ctr: 0.2 }),
     ];
     expect(variantPerformance(videos, snapshots).a.meanCtr).toBeCloseTo(0.2);
+  });
+});
+
+describe("hookPerformance", () => {
+  function hookArm(variant: "A" | "B", retentions: (number | null)[]) {
+    const videos: VideoRow[] = [];
+    const snapshots: MetricsSnapshotRow[] = [];
+    retentions.forEach((r, i) => {
+      const id = `h${variant}${i}`;
+      videos.push(video({ video_id: id, hook_variant: variant }));
+      snapshots.push(
+        snap({ video_id: id, snapshot_date: "2026-01-02", average_view_duration_seconds: r }),
+      );
+    });
+    return { videos, snapshots };
+  }
+
+  it("calls a hook winner on retention once both arms clear the floor", () => {
+    const a = hookArm("A", Array(MIN_PER_VARIANT).fill(40));
+    const b = hookArm("B", Array(MIN_PER_VARIANT).fill(30));
+    const r = hookPerformance([...a.videos, ...b.videos], [...a.snapshots, ...b.snapshots]);
+    expect(r.winner).toBe("A");
+    expect(r.reason).toBe("decided");
+  });
+
+  it("excludes an unmeasured video instead of counting zero retention", () => {
+    const a = hookArm("A", [...Array(MIN_PER_VARIANT).fill(40), null]);
+    const b = hookArm("B", Array(MIN_PER_VARIANT).fill(30));
+    const r = hookPerformance([...a.videos, ...b.videos], [...a.snapshots, ...b.snapshots]);
+    expect(r.a.videos).toBe(MIN_PER_VARIANT);
+    expect(r.a.meanRetention).toBeCloseTo(40);
+  });
+
+  it("stays undecided below the per-arm evidence floor", () => {
+    const a = hookArm("A", [40, 40]);
+    const b = hookArm("B", [30, 30]);
+    const r = hookPerformance([...a.videos, ...b.videos], [...a.snapshots, ...b.snapshots]);
+    expect(r.winner).toBeNull();
+    expect(r.reason).toBe("needs_more_videos");
+  });
+
+  it("ignores videos that predate the hook experiment", () => {
+    const r = hookPerformance(
+      [video({ video_id: "old", hook_variant: null })],
+      [snap({ video_id: "old", snapshot_date: "2026-01-02", average_view_duration_seconds: 99 })],
+    );
+    expect(r.a.videos).toBe(0);
+    expect(r.b.videos).toBe(0);
   });
 });
 

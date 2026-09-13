@@ -42,6 +42,7 @@ function video(over: Partial<VideoRow> & { video_id: string }): VideoRow {
     local_path: null,
     thumbnail_variant: over.thumbnail_variant ?? null,
     title_variant: over.title_variant ?? null,
+    hook_variant: over.hook_variant ?? null,
     video_format: over.video_format ?? "long",
     parent_video_id: over.parent_video_id ?? null,
     preview_path: null,

@@ -200,6 +200,76 @@ export function variantPerformance(
 }
 
 /* -------------------------------------------------------------------------- */
+/* First-30-seconds hook A/B (roadmap #60)                                      */
+/* -------------------------------------------------------------------------- */
+
+export interface HookStats {
+  variant: "A" | "B";
+  videos: number;
+  /** Mean retention seconds over MEASURED videos, or null when none were. */
+  meanRetention: number | null;
+}
+
+export interface HookResult {
+  a: HookStats;
+  b: HookStats;
+  winner: "A" | "B" | null;
+  reason: "needs_more_videos" | "no_retention_measured" | "zero_retention" | "under_lift_floor" | "decided";
+  lift: number | null;
+}
+
+/**
+ * Compare the two openings on real retention (average view duration), mirroring
+ * modules/hook_ab.py. The hook is judged on whether a viewer STAYS, not whether
+ * they click — a different lever from the thumbnail A/B. Only the newest
+ * snapshot per video counts, and a video with no measured retention is dropped
+ * (unknown), never counted as zero.
+ */
+export function hookPerformance(
+  videos: VideoRow[],
+  snapshots: MetricsSnapshotRow[],
+): HookResult {
+  const latest = new Map<string, MetricsSnapshotRow>();
+  for (const s of snapshots ?? []) {
+    if (!s.video_id) continue;
+    const prev = latest.get(s.video_id);
+    if (!prev || (s.snapshot_date ?? "") >= (prev.snapshot_date ?? "")) latest.set(s.video_id, s);
+  }
+
+  const buckets: Record<"A" | "B", number[]> = { A: [], B: [] };
+  for (const v of videos ?? []) {
+    const variant = (v.hook_variant ?? "").toUpperCase();
+    if (variant !== "A" && variant !== "B") continue;
+    const snap = latest.get(v.video_id);
+    if (!snap) continue;
+    const retention = snap.average_view_duration_seconds;
+    if (retention === null || retention === undefined) continue;
+    buckets[variant].push(retention);
+  }
+
+  const stat = (variant: "A" | "B"): HookStats => {
+    const rows = buckets[variant];
+    if (!rows.length) return { variant, videos: 0, meanRetention: null };
+    return { variant, videos: rows.length, meanRetention: rows.reduce((a, b) => a + b, 0) / rows.length };
+  };
+  const a = stat("A");
+  const b = stat("B");
+
+  if (a.videos < MIN_PER_VARIANT || b.videos < MIN_PER_VARIANT) {
+    return { a, b, winner: null, reason: "needs_more_videos", lift: null };
+  }
+  if (a.meanRetention === null || b.meanRetention === null) {
+    return { a, b, winner: null, reason: "no_retention_measured", lift: null };
+  }
+  const high = Math.max(a.meanRetention, b.meanRetention);
+  const low = Math.min(a.meanRetention, b.meanRetention);
+  if (low <= 0) return { a, b, winner: null, reason: "zero_retention", lift: null };
+  const lift = (high - low) / low;
+  if (lift < MIN_LIFT) return { a, b, winner: null, reason: "under_lift_floor", lift };
+  return { a, b, winner: a.meanRetention >= b.meanRetention ? "A" : "B", reason: "decided", lift };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Retention                                                                   */
 /* -------------------------------------------------------------------------- */
 
