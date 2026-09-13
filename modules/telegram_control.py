@@ -59,12 +59,20 @@ class TelegramControl:
         if not self.enabled:
             logger.debug("Telegram not configured — skipping notification")
             return False
+        return self.send(self._chat_id, text)
+
+    def send(self, chat_id, text: str) -> bool:
+        """Send `text` to a specific chat (a command reply goes back to whoever
+        asked, not only the admin chat). Returns True on success. No token or no
+        chat_id → skipped; any error is swallowed. Never raises."""
+        if not self._token or not str(chat_id).strip():
+            return False
         try:
             import requests
 
             resp = requests.post(
                 f"{_API_BASE}/bot{self._token}/sendMessage",
-                json={"chat_id": self._chat_id, "text": text, "disable_web_page_preview": True},
+                json={"chat_id": str(chat_id), "text": text, "disable_web_page_preview": True},
                 timeout=10,
             )
             if resp.status_code != 200:
@@ -72,7 +80,7 @@ class TelegramControl:
                 return False
             return True
         except Exception as e:  # network, import, anything — swallow
-            logger.warning("Telegram notification failed (%s: %s)", type(e).__name__, e)
+            logger.warning("Telegram send failed (%s: %s)", type(e).__name__, e)
             return False
 
 
