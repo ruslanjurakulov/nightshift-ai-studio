@@ -72,6 +72,7 @@ export function AdvisoryPanel({
   const timing = adv.timing;
   const repack = adv.repackage;
   const dur = adv.durability;
+  const vidiq = adv.vidiq;
 
   return (
     <div className="grid gap-5 md:grid-cols-2">
@@ -168,6 +169,25 @@ export function AdvisoryPanel({
                     ? t.ops.advDurNotConfigured
                     : t.ops.advDurUnknown}
             </p>
+          </>
+        )}
+      </Card>
+
+      {/* vidIQ keyword research — roadmap #75/#77 */}
+      <Card title={t.ops.advVidiqTitle} updated={vidiq?.ts ?? null}>
+        {!vidiq || vidiq.top.length === 0 ? (
+          <Empty label={vidiq ? t.ops.advVidiqNone : t.ops.advNoData} />
+        ) : (
+          <>
+            <Row label={t.ops.advVidiqBest} value={vidiq.best ?? vidiq.top[0].term} strong />
+            {vidiq.top.slice(0, 3).map((kw) => (
+              <Row
+                key={kw.term}
+                label={kw.term}
+                value={kw.opportunity === null ? "N/A" : `${Math.round(kw.opportunity * 100)}`}
+              />
+            ))}
+            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advVidiqHint}</p>
           </>
         )}
       </Card>
