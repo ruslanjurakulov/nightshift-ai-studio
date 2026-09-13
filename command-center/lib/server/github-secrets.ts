@@ -1,4 +1,5 @@
 import "server-only";
+import { PROVIDER_SECRET_NAMES } from "../providers";
 
 /**
  * Writing GitHub Actions Repository Secrets — forward, never store.
@@ -36,6 +37,9 @@ const FIXED_NAMES = new Set([
   "YOUTUBE_CLIENT_SECRET_JSON",
   "YOUTUBE_TOKEN_JSON",
   "YOUTUBE_CHANNEL_ID",
+  // Every provider key an operator can type on the Providers board. The list
+  // lives in lib/providers.ts so the board and this allowlist cannot drift.
+  ...PROVIDER_SECRET_NAMES,
 ]);
 
 /** Per-channel publishing tokens: CHRONOS_YT_TOKEN_<REF>. */
@@ -88,6 +92,36 @@ export async function fetchPublicKey(): Promise<PublicKey> {
     );
   }
   return (await res.json()) as PublicKey;
+}
+
+/**
+ * List which provider secrets are present, by name only.
+ *
+ * GitHub's `GET /actions/secrets` returns each secret's name and timestamps —
+ * never its value, which GitHub does not expose to anyone. The result is
+ * filtered to the provider allowlist so the Command Center learns "this
+ * provider has a key set" without ever seeing the key and without leaking the
+ * names of unrelated infrastructural secrets. A partial/paged listing is
+ * enough here — a configured provider is only ever missed, never invented.
+ */
+export async function listConfiguredSecretNames(): Promise<string[]> {
+  if (!isGithubConfigured) return [];
+  const allow = new Set<string>(PROVIDER_SECRET_NAMES);
+  const res = await gh("/actions/secrets?per_page=100");
+  if (!res.ok) {
+    throw new Error(
+      res.status === 401 || res.status === 403
+        ? "github_unauthorized"
+        : res.status === 404
+          ? "github_repo_not_found"
+          : "github_unavailable",
+    );
+  }
+  const body = (await res.json()) as { secrets?: { name?: unknown }[] };
+  const names = (body.secrets ?? [])
+    .map((s) => (typeof s?.name === "string" ? s.name : null))
+    .filter((n): n is string => n !== null && allow.has(n));
+  return Array.from(new Set(names));
 }
 
 /**
