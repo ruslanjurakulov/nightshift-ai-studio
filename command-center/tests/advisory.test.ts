@@ -7,6 +7,7 @@ import {
   parseSpendForecast,
   parseVidiqResearch,
   parseSponsorship,
+  parseRevenueTracked,
 } from "@/lib/advisory";
 import type { SystemEventRow } from "@/lib/types";
 
@@ -182,6 +183,7 @@ describe("deriveAdvisory", () => {
     expect(a.timing?.bestHourUtc).toBe(9);
     expect(a.repackage).toBeNull();
     expect(a.durability).toBeNull();
+    expect(a.revenue).toBeNull();
   });
 
   it("tolerates a missing/!object metadata blob", () => {
@@ -253,5 +255,44 @@ describe("parseSponsorship", () => {
     expect(s?.priceUsd).toBeNull();
     expect(s?.hasPrice).toBe(false);
     expect(s?.averageViews).toBe(2000); // reach still reported
+  });
+});
+
+describe("parseRevenueTracked", () => {
+  it("returns null with no event", () => {
+    expect(parseRevenueTracked(null)).toBeNull();
+  });
+
+  it("reads USD totals and top earners, keeping hasRevenue honest", () => {
+    const r = parseRevenueTracked(
+      ev("revenue.tracked", "t", {
+        total_usd: 15,
+        channel_rpm_usd: 3.75,
+        measured_count: 2,
+        video_count: 3,
+        currency: "USD",
+        top_earners: [
+          { video_id: "a", revenue_usd: 12, views: 1000, rpm_usd: 12 },
+          { video_id: "b", revenue_usd: 3, views: 3000, rpm_usd: 1 },
+          { not_a_row: true },
+        ],
+      }),
+    );
+    expect(r?.totalUsd).toBe(15);
+    expect(r?.channelRpmUsd).toBe(3.75);
+    expect(r?.measuredCount).toBe(2);
+    expect(r?.videoCount).toBe(3);
+    expect(r?.currency).toBe("USD");
+    expect(r?.hasRevenue).toBe(true);
+    expect(r?.top.map((v) => v.videoId)).toEqual(["a", "b"]);
+  });
+
+  it("treats a null total as 'not measured', never $0", () => {
+    const r = parseRevenueTracked(
+      ev("revenue.tracked", "t", { total_usd: null, measured_count: 0, video_count: 5, currency: "USD" }),
+    );
+    expect(r?.totalUsd).toBeNull();
+    expect(r?.hasRevenue).toBe(false);
+    expect(r?.top).toEqual([]);
   });
 });

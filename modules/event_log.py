@@ -159,6 +159,11 @@ NICHE_RPM = "niche.rpm"
 # configured sponsorship CPM (USD). It informs a human's negotiation — it never
 # contacts a sponsor, sells a slot, or commits to a price.
 SPONSORSHIP_ESTIMATE = "sponsorship.estimate"
+# Revenue tracking (modules/revenue_tracker.py). Advisory: the channel's real
+# estimatedRevenue (USD) and RPM, read back from YouTube Analytics for a
+# human/Command Center. A video with no reported revenue is "unknown", never
+# $0. It never gates a publish or changes niche selection — it reports.
+REVENUE_TRACKED = "revenue.tracked"
 # vidIQ research & scoring (modules/vidiq.py). Advisory: `vidiq.research` records
 # a ranking of keyword opportunities; `vidiq.scored` a ranking of candidate
 # titles by vidIQ's title score. Research and scoring ONLY — it never selects a

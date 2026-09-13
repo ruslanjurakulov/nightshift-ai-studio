@@ -74,6 +74,7 @@ export function AdvisoryPanel({
   const dur = adv.durability;
   const vidiq = adv.vidiq;
   const sponsor = adv.sponsorship;
+  const revenue = adv.revenue;
 
   return (
     <div className="grid gap-5 md:grid-cols-2">
@@ -214,6 +215,28 @@ export function AdvisoryPanel({
               value={sponsor.measuredVideos === null ? "N/A" : String(sponsor.measuredVideos)}
             />
             <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advSponsorHint}</p>
+          </>
+        )}
+      </Card>
+
+      {/* Revenue tracking — roadmap #71 */}
+      <Card title={t.ops.advRevenueTitle} updated={revenue?.ts ?? null}>
+        {!revenue ? (
+          <Empty label={t.ops.advNoData} />
+        ) : !revenue.hasRevenue ? (
+          <Empty label={t.ops.advRevenueNone} />
+        ) : (
+          <>
+            <Row label={t.ops.advRevenueTotal} value={usd(revenue.totalUsd)} strong />
+            <Row label={t.ops.advRevenueRpm} value={usd(revenue.channelRpmUsd)} />
+            <Row
+              label={t.ops.advRevenueMeasured}
+              value={`${revenue.measuredCount ?? 0} / ${revenue.videoCount ?? 0}`}
+            />
+            {revenue.top[0] && (
+              <Row label={t.ops.advRevenueTop} value={usd(revenue.top[0].revenueUsd)} />
+            )}
+            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advRevenueHint}</p>
           </>
         )}
       </Card>
