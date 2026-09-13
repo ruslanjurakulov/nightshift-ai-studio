@@ -161,3 +161,132 @@ def _stats(variant: str, rows: list) -> VariantStats:
         mean_ctr=round(sum(ctr for ctr, _ in rows) / len(rows), 6),
         impressions=sum(impressions for _, impressions in rows),
     )
+
+
+# -- N-way (three or more arms) --------------------------------------------
+# The A/B functions above stay the two-arm default. These generalise the same
+# rules to any number of variants, so a channel can widen its thumbnail test
+# past A/B without changing how a winner is decided: still `MIN_PER_VARIANT`
+# measured videos before an arm is judged, still `MIN_LIFT` of the *best* over
+# the *runner-up* before a winner is named, and still an unmeasured video is
+# unknown, never zero.
+#
+# Note on YouTube's own "Test & Compare": it has no public Data API, so the
+# platform's native thumbnail test cannot be driven from here. This is the
+# API-reachable equivalent — ship one variant per upload, read impression CTR
+# back per arm, and let the winner emerge — widened to N arms.
+
+DEFAULT_VARIANTS = (VARIANT_A, VARIANT_B)
+
+
+@dataclass(frozen=True)
+class MultiABResult:
+    #: variant label → its VariantStats.
+    stats: dict
+    #: The winning variant label, or None for "not enough evidence" (never a tie
+    #: dressed up as a decision).
+    winner: Optional[str]
+    reason: str
+
+    @property
+    def decided(self) -> bool:
+        return self.winner is not None
+
+
+def _clean_variants(variants) -> list:
+    """Uppercased, de-duplicated, order-preserving variant labels."""
+    seen: dict = {}
+    for v in variants or ():
+        key = str(v).strip().upper()
+        if key and key not in seen:
+            seen[key] = None
+    return list(seen.keys())
+
+
+def choose_variant_n(published_count: int, variants=DEFAULT_VARIANTS,
+                     result: Optional[MultiABResult] = None) -> str:
+    """Which arm the next video ships on, across N variants.
+
+    With no verdict this is plain round-robin (`count % len`), so every arm
+    fills at the same rate. With a verdict it favours the winner but still keeps
+    one video in `EXPLORE_EVERY` on a rotating challenger, so a thumbnail style
+    that stops working is noticed instead of locked in. Falls back to "A" when
+    given no usable variants — a broken experiment never stops a video.
+    """
+    arms = _clean_variants(variants)
+    if not arms:
+        return VARIANT_A
+    try:
+        count = int(published_count)
+    except (TypeError, ValueError):
+        count = 0
+    if count < 0:
+        count = 0
+
+    if result is None or not result.decided:
+        return arms[count % len(arms)]
+
+    winner = str(result.winner)
+    if winner not in arms:
+        return arms[count % len(arms)]
+    if count % EXPLORE_EVERY == (EXPLORE_EVERY - 1):
+        challengers = [a for a in arms if a != winner]
+        if challengers:
+            return challengers[count % len(challengers)]
+    return winner
+
+
+def variant_performance_n(videos: list, snapshots: list,
+                          variants=DEFAULT_VARIANTS) -> MultiABResult:
+    """Rank N arms by real click-through, or say there isn't enough evidence.
+
+    Mirrors `variant_performance`: latest snapshot per video, a video with no
+    measured CTR excluded (unknown, not zero). A winner is named only when at
+    least two arms clear `MIN_PER_VARIANT` measured videos AND the best beats
+    the runner-up by at least `MIN_LIFT`.
+    """
+    arms = _clean_variants(variants)
+    latest: dict = {}
+    for snap in snapshots or []:
+        video_id = snap.get("video_id")
+        if not video_id:
+            continue
+        seen = latest.get(video_id)
+        if seen is None or str(snap.get("snapshot_date", "")) > str(seen.get("snapshot_date", "")):
+            latest[video_id] = snap
+
+    buckets: dict = {v: [] for v in arms}
+    for video in videos or []:
+        variant = (video.get("thumbnail_variant") or "").upper()
+        if variant not in buckets:
+            continue
+        snap = latest.get(video.get("video_id"))
+        if not snap:
+            continue
+        ctr = snap.get("impression_ctr")
+        if ctr is None:
+            continue
+        buckets[variant].append((float(ctr), int(snap.get("impressions") or 0)))
+
+    stats = {v: _stats(v, rows) for v, rows in buckets.items()}
+    measured = [s for s in stats.values() if s.videos >= MIN_PER_VARIANT and s.mean_ctr is not None]
+    if len(measured) < 2:
+        return MultiABResult(
+            stats=stats, winner=None,
+            reason=f"needs {MIN_PER_VARIANT} measured videos on at least two arms",
+        )
+
+    ranked = sorted(measured, key=lambda s: s.mean_ctr, reverse=True)
+    best, runner_up = ranked[0], ranked[1]
+    if runner_up.mean_ctr <= 0:
+        return MultiABResult(stats=stats, winner=None, reason="an arm measured zero click-through")
+    lift = (best.mean_ctr - runner_up.mean_ctr) / runner_up.mean_ctr
+    if lift < MIN_LIFT:
+        return MultiABResult(
+            stats=stats, winner=None,
+            reason=f"top two only {lift:.0%} apart; under the {MIN_LIFT:.0%} floor this is a tie",
+        )
+    return MultiABResult(
+        stats=stats, winner=best.variant,
+        reason=f"{best.variant} leads by {lift:.0%} over {len(measured)} measured arms",
+    )
