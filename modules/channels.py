@@ -130,6 +130,32 @@ def _clean_ids(value) -> tuple:
         return ()
 
 
+def _clean_elements(value) -> tuple:
+    """Normalise the channel's Character-Bible elements into a tuple of plain
+    dicts {kind, name, description, aliases}. A non-list, or an entry without a
+    name, is dropped rather than raising — a malformed config never breaks a
+    channel's construction. See modules/elements.py."""
+    if not isinstance(value, (list, tuple)):
+        return ()
+    out = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        kind = str(item.get("kind") or "character").strip().lower()
+        aliases = item.get("aliases")
+        aliases = [str(a).strip() for a in aliases if str(a).strip()] if isinstance(aliases, (list, tuple)) else []
+        out.append({
+            "kind": kind,
+            "name": name,
+            "description": str(item.get("description") or "").strip(),
+            "aliases": aliases,
+        })
+    return tuple(out)
+
+
 @dataclass(frozen=True)
 class AgentConfig:
     """Per-channel generator settings.
@@ -202,6 +228,13 @@ class AgentConfig:
     # weakens the publish gate: a remix is still a video and still faces the gate.
     # Stored in this blob — no migration.
     remix_enabled: bool = False
+    # Character Bible / Elements Library (Nightshift blueprint): reusable
+    # characters, locations and props this channel keeps consistent across
+    # videos. Each entry is {kind, name, description, aliases:[...]}. Empty (the
+    # default) means no elements — generation is exactly as before. Stored in
+    # this same agent_config blob, so it costs no migration. A tuple because
+    # AgentConfig is frozen; see modules/elements.py for how they are applied.
+    elements: tuple = field(default_factory=tuple)
 
     def to_dict(self) -> dict:
         return {
@@ -221,6 +254,7 @@ class AgentConfig:
             "pinned_comment": self.pinned_comment,
             "watch_next": self.watch_next,
             "remix_enabled": self.remix_enabled,
+            "elements": [dict(e) for e in self.elements],
         }
 
     @staticmethod
@@ -258,6 +292,7 @@ class AgentConfig:
             # Opposite default to the growth flags: Viral Remix is new and legally
             # sensitive, so absent → False and ONLY an explicit true opts a channel in.
             remix_enabled=(True if d.get("remix_enabled") is True else False),
+            elements=_clean_elements(d.get("elements")),
         )
 
 

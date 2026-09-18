@@ -13,6 +13,7 @@ import {
   parseSpendOverview,
   parseDirectorPlan,
   parseAgentPlan,
+  parseElementsApplied,
 } from "@/lib/advisory";
 import type { SystemEventRow } from "@/lib/types";
 
@@ -179,6 +180,7 @@ describe("deriveAdvisory", () => {
     expect(a.spendOverview).toBeNull();
     expect(a.director).toBeNull();
     expect(a.agent).toBeNull();
+    expect(a.elements).toBeNull();
   });
 
   it("picks the genuinely latest of each kind regardless of list order", () => {
@@ -435,6 +437,33 @@ describe("parseDirectorPlan", () => {
     const p = parseDirectorPlan(ev("director.plan", "t", { shots: [] }));
     expect(p?.scenes).toBeNull();
     expect(p?.shots).toEqual([]);
+  });
+});
+
+describe("parseElementsApplied", () => {
+  it("returns null for no event", () => {
+    expect(parseElementsApplied(null)).toBeNull();
+  });
+
+  it("reads defined count, applied names, and scenes touched", () => {
+    const e = parseElementsApplied(
+      ev("elements.applied", "t", {
+        defined: 3,
+        by_kind: { character: 2, location: 1 },
+        applied: ["Chronos", "Ancient Library", 5],
+        scenes_touched: 2,
+      }),
+    );
+    expect(e?.defined).toBe(3);
+    expect(e?.scenesTouched).toBe(2);
+    // non-string entries dropped
+    expect(e?.applied).toEqual(["Chronos", "Ancient Library"]);
+  });
+
+  it("keeps defined 0 as a real 'none defined'", () => {
+    const e = parseElementsApplied(ev("elements.applied", "t", { defined: 0, applied: [] }));
+    expect(e?.defined).toBe(0);
+    expect(e?.applied).toEqual([]);
   });
 });
 

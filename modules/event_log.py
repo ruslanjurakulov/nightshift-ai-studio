@@ -80,6 +80,10 @@ IMAGE_GENERATED = "image.generated"
 # Director Mode (modules/director.py). Advisory: the per-scene cinematic shot
 # plan (camera/lens/lighting/mood/motion) used for this run. Never gates.
 DIRECTOR_PLAN = "director.plan"
+# Character Bible / Elements Library (modules/elements.py). Advisory: which
+# reusable characters/locations/props were applied to this run's scenes for
+# visual consistency. Never gates.
+ELEMENTS_APPLIED = "elements.applied"
 RENDER_STARTED = "render.started"
 RENDER_COMPLETED = "render.completed"
 RENDER_FAILED = "render.failed"
