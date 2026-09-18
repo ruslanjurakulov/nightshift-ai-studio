@@ -61,6 +61,30 @@ HIGGSFIELD_BASE_URL = os.getenv("HIGGSFIELD_BASE_URL", "https://platform.higgsfi
 HIGGSFIELD_MODEL = os.getenv("HIGGSFIELD_MODEL", "higgsfield-dop")
 HIGGSFIELD_SUBMIT_PATH = os.getenv("HIGGSFIELD_SUBMIT_PATH", "/v1/text2video")
 HIGGSFIELD_QUERY_PATH = os.getenv("HIGGSFIELD_QUERY_PATH", "/v1/jobs/{id}")
+# Kling (Kuaishou) — Bearer auth, async task + query by id.
+KLING_API_KEY = os.getenv("KLING_API_KEY", "")
+KLING_BASE_URL = os.getenv("KLING_BASE_URL", "https://api.klingai.com").rstrip("/")
+KLING_MODEL = os.getenv("KLING_MODEL", "kling-v1")
+KLING_SUBMIT_PATH = os.getenv("KLING_SUBMIT_PATH", "/v1/videos/text2video")
+KLING_QUERY_PATH = os.getenv("KLING_QUERY_PATH", "/v1/videos/text2video/{id}")
+# Seedance (ByteDance / Volcengine Ark) — Bearer auth.
+SEEDANCE_API_KEY = os.getenv("SEEDANCE_API_KEY", "")
+SEEDANCE_BASE_URL = os.getenv("SEEDANCE_BASE_URL", "https://ark.cn-beijing.volces.com").rstrip("/")
+SEEDANCE_MODEL = os.getenv("SEEDANCE_MODEL", "seedance-1-0-pro")
+SEEDANCE_SUBMIT_PATH = os.getenv("SEEDANCE_SUBMIT_PATH", "/api/v3/contents/generations/tasks")
+SEEDANCE_QUERY_PATH = os.getenv("SEEDANCE_QUERY_PATH", "/api/v3/contents/generations/tasks/{id}")
+# Wan (Alibaba Tongyi Wanxiang / DashScope) — Bearer auth.
+WAN_API_KEY = os.getenv("WAN_API_KEY", "")
+WAN_BASE_URL = os.getenv("WAN_BASE_URL", "https://dashscope-intl.aliyuncs.com").rstrip("/")
+WAN_MODEL = os.getenv("WAN_MODEL", "wan2.1-t2v-turbo")
+WAN_SUBMIT_PATH = os.getenv("WAN_SUBMIT_PATH", "/api/v1/services/aigc/video-generation/video-synthesis")
+WAN_QUERY_PATH = os.getenv("WAN_QUERY_PATH", "/api/v1/tasks/{id}")
+# Google Veo (Gemini API) — key in the x-goog-api-key header (no Bearer prefix).
+VEO_API_KEY = os.getenv("VEO_API_KEY", "")
+VEO_BASE_URL = os.getenv("VEO_BASE_URL", "https://generativelanguage.googleapis.com").rstrip("/")
+VEO_MODEL = os.getenv("VEO_MODEL", "veo-3.0-generate-preview")
+VEO_SUBMIT_PATH = os.getenv("VEO_SUBMIT_PATH", "/v1beta/models/veo-3.0-generate-preview:predictLongRunning")
+VEO_QUERY_PATH = os.getenv("VEO_QUERY_PATH", "/v1beta/{id}")
 
 # ── Agent / Autopilot (modules/agent_planner.py) ──────────────────────────────
 # When on, a run with no explicit topic asks the agent planner for the day's

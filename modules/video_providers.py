@@ -87,6 +87,12 @@ class VideoProviderConfig:
     task_id_keys: Sequence[str] = ("id", "task_id", "taskId", "job_id", "jobId")
     status_keys: Sequence[str] = ("status", "state", "task_status")
     url_keys: Sequence[str] = ("url", "video_url", "videoUrl", "download_url", "downloadUrl", "output_url")
+    #: How the key is presented. Most providers take a Bearer token; some (e.g.
+    #: Google Veo) put the key in a bespoke header with no prefix. Only the
+    #: header NAME and PREFIX are configurable — the value is always the key, so
+    #: it is set once here and never logged.
+    auth_header: str = "Authorization"
+    auth_prefix: str = "Bearer "
 
 
 class GenericAsyncVideoClient:
@@ -103,7 +109,7 @@ class GenericAsyncVideoClient:
         self.session = requests.Session()
         if cfg.api_key:
             self.session.headers.update({
-                "Authorization": f"Bearer {cfg.api_key}",
+                cfg.auth_header: f"{cfg.auth_prefix}{cfg.api_key}",
                 "Content-Type": "application/json",
             })
 
@@ -198,10 +204,66 @@ def _higgsfield_config() -> VideoProviderConfig:
     )
 
 
+def _kling_config() -> VideoProviderConfig:
+    # Kling (Kuaishou) — Bearer auth, async task then query by task id.
+    return VideoProviderConfig(
+        name="Kling",
+        api_key=getattr(config, "KLING_API_KEY", ""),
+        base_url=getattr(config, "KLING_BASE_URL", "https://api.klingai.com").rstrip("/"),
+        model=getattr(config, "KLING_MODEL", "kling-v1"),
+        submit_path=getattr(config, "KLING_SUBMIT_PATH", "/v1/videos/text2video"),
+        query_path=getattr(config, "KLING_QUERY_PATH", "/v1/videos/text2video/{id}"),
+    )
+
+
+def _seedance_config() -> VideoProviderConfig:
+    # Seedance (ByteDance / Volcengine Ark) — Bearer auth.
+    return VideoProviderConfig(
+        name="Seedance",
+        api_key=getattr(config, "SEEDANCE_API_KEY", ""),
+        base_url=getattr(config, "SEEDANCE_BASE_URL", "https://ark.cn-beijing.volces.com").rstrip("/"),
+        model=getattr(config, "SEEDANCE_MODEL", "seedance-1-0-pro"),
+        submit_path=getattr(config, "SEEDANCE_SUBMIT_PATH", "/api/v3/contents/generations/tasks"),
+        query_path=getattr(config, "SEEDANCE_QUERY_PATH", "/api/v3/contents/generations/tasks/{id}"),
+    )
+
+
+def _wan_config() -> VideoProviderConfig:
+    # Wan (Alibaba Tongyi Wanxiang / DashScope) — Bearer auth.
+    return VideoProviderConfig(
+        name="Wan",
+        api_key=getattr(config, "WAN_API_KEY", ""),
+        base_url=getattr(config, "WAN_BASE_URL", "https://dashscope-intl.aliyuncs.com").rstrip("/"),
+        model=getattr(config, "WAN_MODEL", "wan2.1-t2v-turbo"),
+        submit_path=getattr(config, "WAN_SUBMIT_PATH", "/api/v1/services/aigc/video-generation/video-synthesis"),
+        query_path=getattr(config, "WAN_QUERY_PATH", "/api/v1/tasks/{id}"),
+    )
+
+
+def _veo_config() -> VideoProviderConfig:
+    # Google Veo (Gemini API) — the key rides the x-goog-api-key header, no
+    # Bearer prefix. Endpoints/model are env-overridable; pin them to the
+    # current Gemini video docs before enabling.
+    return VideoProviderConfig(
+        name="Veo",
+        api_key=getattr(config, "VEO_API_KEY", ""),
+        base_url=getattr(config, "VEO_BASE_URL", "https://generativelanguage.googleapis.com").rstrip("/"),
+        model=getattr(config, "VEO_MODEL", "veo-3.0-generate-preview"),
+        submit_path=getattr(config, "VEO_SUBMIT_PATH", "/v1beta/models/veo-3.0-generate-preview:predictLongRunning"),
+        query_path=getattr(config, "VEO_QUERY_PATH", "/v1beta/{id}"),
+        auth_header="x-goog-api-key",
+        auth_prefix="",
+    )
+
+
 #: Providers this router knows how to build a generic client for. MiniMax is
 #: handled specially (its own client) and so is not listed here.
 _GENERIC_BUILDERS = {
     "higgsfield": _higgsfield_config,
+    "kling": _kling_config,
+    "seedance": _seedance_config,
+    "wan": _wan_config,
+    "veo": _veo_config,
 }
 
 
