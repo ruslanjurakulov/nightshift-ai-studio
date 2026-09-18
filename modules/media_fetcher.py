@@ -122,26 +122,28 @@ class MediaFetcher:
     # --------------------------------------------------------------- AI b-roll
 
     def generate_broll(self, sections: list, topic: str, *, client=None, style_for=None):
-        """Generate on-topic b-roll for a few sections with MiniMax H3, when the
-        feature is enabled and configured. Returns a
+        """Generate on-topic b-roll for a few sections with the selected video
+        provider, when generation is enabled and configured. Returns a
         ``minimax_broll.GenerationResult``.
 
-        Off by default: with no key / the flag unset this makes no request and
-        returns an empty result, so b-roll comes from Pexels exactly as before.
-        Each generated clip is recorded in ``video_terms`` under its section
-        keyword, so the compositor places it via broll_match like any other clip.
-        A per-clip failure is swallowed — that section simply falls back to
-        stock. Never raises.
+        The provider is chosen by ``config.VIDEO_PROVIDER`` via
+        modules/video_providers.py; the default (``minimax``) behaves exactly as
+        before. Off by default: with no key / the flag unset this makes no
+        request and returns an empty result, so b-roll comes from Pexels exactly
+        as before. Each generated clip is recorded in ``video_terms`` under its
+        section keyword, so the compositor places it via broll_match like any
+        other clip. A per-clip failure is swallowed — that section simply falls
+        back to stock. Never raises.
 
-        ``style_for`` (optional) is Director Mode's ``index -> shot style`` map
-        (modules/director.py): when given, each generated clip's prompt carries
-        that scene's camera/lens/lighting/motion direction. None keeps the
-        default look."""
+        ``style_for`` (optional) is an ``index -> style string`` map: when given,
+        each generated clip's prompt carries that scene's style direction (a
+        Director shot direction and/or a Character-Bible consistency directive).
+        None keeps the default look."""
         import config
-        from modules import minimax_broll
+        from modules import minimax_broll, video_providers
 
-        result = minimax_broll.GenerationResult(model=getattr(config, "MINIMAX_H3_MODEL", ""))
-        if not getattr(config, "MINIMAX_BROLL_ENABLED", False):
+        result = minimax_broll.GenerationResult(model=video_providers.active_model())
+        if not video_providers.is_enabled():
             return result
 
         specs = minimax_broll.select_specs(
@@ -151,9 +153,11 @@ class MediaFetcher:
             return result
 
         if client is None:
-            from modules.minimax_client import MiniMaxClient
-            client = MiniMaxClient()
+            client = video_providers.get_client()
+            if client is None:   # selected provider unconfigured — stay on stock
+                return result
 
+        provider_name = video_providers.active_provider()
         by_section: dict = {}
         generated = 0
         for spec in specs:
@@ -161,15 +165,15 @@ class MediaFetcher:
             try:
                 path = client.generate(spec, dest)
             except Exception as e:   # a broken clip must never sink the render
-                logger.warning("MiniMax generation error for section %d (%s: %s)",
-                               spec.section_index, type(e).__name__, e)
+                logger.warning("%s generation error for section %d (%s: %s)",
+                               provider_name, spec.section_index, type(e).__name__, e)
                 path = None
             if path is not None:
                 self.video_terms[str(path)] = spec.keyword
                 by_section[spec.section_index] = str(path)
                 generated += 1
 
-        logger.info("MiniMax b-roll: %d/%d clip(s) generated", generated, len(specs))
+        logger.info("%s b-roll: %d/%d clip(s) generated", provider_name, generated, len(specs))
         return minimax_broll.GenerationResult(
             attempted=len(specs), generated=generated,
             model=result.model, by_section=by_section,
