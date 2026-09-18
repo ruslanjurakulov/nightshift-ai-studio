@@ -218,7 +218,13 @@ jobs:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
           YOUTUBE_PRIVACY: ${{ github.event.inputs.privacy || 'private' }}
-          TTS_PROVIDER: edge
+          # Narration provider. Leave it to config's own default (config.py):
+          # ElevenLabs whenever ELEVENLABS_API_KEY is set — a natural voice is a
+          # real retention lever — and edge only when no key exists. An explicit
+          # repo VARIABLE TTS_PROVIDER still overrides (set it to "edge" to force
+          # the robotic voice on purpose). Note: an empty override string is
+          # honored by config, so this passes the var only when it is non-empty.
+          TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
           SCRIPT_LANGUAGE: English
           # Dispatch inputs and the matrix channel are passed through the
           # environment, never interpolated into the shell below. GitHub
@@ -245,6 +251,39 @@ jobs:
           HIGGSFIELD_API_KEY_ID: ${{ secrets.HIGGSFIELD_API_KEY_ID }}
           HIGGSFIELD_API_KEY_SECRET: ${{ secrets.HIGGSFIELD_API_KEY_SECRET }}
           HIGGSFIELD_AVATAR_ENDPOINT: ${{ vars.HIGGSFIELD_AVATAR_ENDPOINT }}
+          # --- Opt-in providers & agent (keys from the Command Center's -------
+          # Providers board, forwarded here as Actions secrets). Every one is
+          # OFF unless configured: an unset secret expands to "" (feature off),
+          # and the toggle VARIABLES below default to empty (off) too, so a
+          # deployment that sets none of these behaves exactly as before.
+          #
+          # AI b-roll video provider (modules/video_providers.py). Default
+          # "minimax". To use another, set the CHRONOS_VIDEO_PROVIDER variable
+          # (higgsfield|kling|veo|seedance|wan) AND CHRONOS_ENABLE_VIDEO_GEN=true
+          # AND that provider's key secret.
+          CHRONOS_VIDEO_PROVIDER: ${{ vars.CHRONOS_VIDEO_PROVIDER }}
+          CHRONOS_ENABLE_VIDEO_GEN: ${{ vars.CHRONOS_ENABLE_VIDEO_GEN }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          CHRONOS_ENABLE_MINIMAX_BROLL: ${{ vars.CHRONOS_ENABLE_MINIMAX_BROLL }}
+          HIGGSFIELD_API_KEY: ${{ secrets.HIGGSFIELD_API_KEY }}
+          KLING_API_KEY: ${{ secrets.KLING_API_KEY }}
+          VEO_API_KEY: ${{ secrets.VEO_API_KEY }}
+          SEEDANCE_API_KEY: ${{ secrets.SEEDANCE_API_KEY }}
+          WAN_API_KEY: ${{ secrets.WAN_API_KEY }}
+          # AI image provider (modules/image_providers.py). Default "pexels"
+          # stock; set CHRONOS_IMAGE_PROVIDER=leonardo + CHRONOS_ENABLE_IMAGE_GEN
+          # + LEONARDO_API_KEY to generate bespoke stills.
+          CHRONOS_IMAGE_PROVIDER: ${{ vars.CHRONOS_IMAGE_PROVIDER }}
+          CHRONOS_ENABLE_IMAGE_GEN: ${{ vars.CHRONOS_ENABLE_IMAGE_GEN }}
+          LEONARDO_API_KEY: ${{ secrets.LEONARDO_API_KEY }}
+          # Extra LLM keys (opt-in; Gemini above remains the default scripter).
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # vidIQ research & scoring (advisory only).
+          VIDIQ_ACCESS_TOKEN: ${{ secrets.VIDIQ_ACCESS_TOKEN }}
+          CHRONOS_ENABLE_VIDIQ: ${{ vars.CHRONOS_ENABLE_VIDIQ }}
+          # Autopilot: pick the day's topic from this channel's trend signals.
+          CHRONOS_AGENT_AUTOPILOT: ${{ vars.CHRONOS_AGENT_AUTOPILOT }}
           # --- Per-channel publishing tokens -------------------------------
           # GitHub Actions secrets cannot be enumerated at runtime, so each
           # channel's token secret is listed here explicitly — one line per
