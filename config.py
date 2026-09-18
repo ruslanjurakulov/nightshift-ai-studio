@@ -53,7 +53,7 @@ MINIMAX_BROLL_MAX_CLIPS = int(os.getenv("CHRONOS_MINIMAX_BROLL_MAX_CLIPS", "2") 
 # and model strings are read from env (documented defaults) so they can be
 # pinned to a provider's current docs without a code change, and no key is
 # ever logged. See modules/video_providers.py.
-VIDEO_PROVIDER = os.getenv("CHRONOS_VIDEO_PROVIDER", "minimax").strip().lower()
+VIDEO_PROVIDER = os.getenv("CHRONOS_VIDEO_PROVIDER", "").strip().lower() or "minimax"
 VIDEO_GEN_OPT_IN = os.getenv("CHRONOS_ENABLE_VIDEO_GEN", "").strip().lower() in ("1", "true", "yes", "on")
 # Higgsfield (https://higgsfield.ai) — text-to-video, async submit → poll → fetch.
 HIGGSFIELD_API_KEY = os.getenv("HIGGSFIELD_API_KEY", "")
@@ -102,7 +102,7 @@ AGENT_AUTOPILOT = os.getenv("CHRONOS_AGENT_AUTOPILOT", "").strip().lower() in ("
 # keeps today's behavior exactly; Leonardo runs only when selected AND its key is
 # set AND CHRONOS_ENABLE_IMAGE_GEN is on. A failed generation falls back to
 # stock; a key is never logged. See modules/image_providers.py.
-IMAGE_PROVIDER = os.getenv("CHRONOS_IMAGE_PROVIDER", "pexels").strip().lower()
+IMAGE_PROVIDER = os.getenv("CHRONOS_IMAGE_PROVIDER", "").strip().lower() or "pexels"
 IMAGE_GEN_OPT_IN = os.getenv("CHRONOS_ENABLE_IMAGE_GEN", "").strip().lower() in ("1", "true", "yes", "on")
 # Leonardo.Ai (https://leonardo.ai) — text-to-image, async submit → poll → fetch.
 LEONARDO_API_KEY = os.getenv("LEONARDO_API_KEY", "")
@@ -169,8 +169,11 @@ VIDEO_DURATION_TARGET = int(os.getenv("VIDEO_DURATION_TARGET", "300"))  # second
 # no key is set: elevenlabs without credentials would fail verify_voice (which,
 # by design, never falls back to edge — a wrong voice is worse than no video),
 # so the default is edge until a key exists. An explicit TTS_PROVIDER always
-# wins, so a channel can still choose edge on purpose.
-TTS_PROVIDER = os.getenv("TTS_PROVIDER", "elevenlabs" if ELEVENLABS_API_KEY else "edge")
+# wins, so a channel can still choose edge on purpose. An EMPTY override string
+# (e.g. an unset GitHub Actions repo variable, which expands to "") is treated
+# as "unset" so it falls through to this smart default rather than an empty,
+# broken provider name.
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "").strip() or ("elevenlabs" if ELEVENLABS_API_KEY else "edge")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "pNInz6obpgDQGcFmaJgB")
 EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", "en-US-ChristopherNeural")
 
