@@ -665,8 +665,18 @@ def run(
         videos.extend(Path(p) for p in broll.by_section.values())
         events.emit(events.BROLL_GENERATED, agent="minimax_broll", status=events.STATUS_COMPLETED,
                     channel_id=channel_id, metadata=broll.to_dict())
-    logger.info("Media: %d videos (%d AI-generated), %d images",
-                len(videos), broll.generated, len(images))
+    # Optional: generate on-topic stills with the selected image provider
+    # (Leonardo), supplementing the Pexels images above. Off unless a key + flag
+    # are set; a failure falls back to stock and never breaks the render.
+    gen_images = fetcher.generate_images(script.sections, topic)
+    if gen_images:
+        from modules import image_providers as _img
+        images = list(gen_images) + list(images)
+        events.emit(events.IMAGE_GENERATED, agent="image_providers", status=events.STATUS_COMPLETED,
+                    channel_id=channel_id,
+                    metadata={"generated": len(gen_images), "provider": _img.active_provider()})
+    logger.info("Media: %d videos (%d AI-generated), %d images (%d AI-generated)",
+                len(videos), broll.generated, len(images), len(gen_images))
     # The baseline Whisper is about to be loaded on top of, and the number
     # release_model should return the process to.
     log_usage("before transcription")
