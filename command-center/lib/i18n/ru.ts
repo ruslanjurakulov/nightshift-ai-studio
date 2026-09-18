@@ -32,6 +32,7 @@ export const ru: Dictionary = {
     channels: "Каналы",
     accounts: "Все аккаунты",
     providers: "Провайдеры",
+    studio: "Студия",
     series: "Серии",
   },
   common: {
@@ -427,6 +428,17 @@ export const ru: Dictionary = {
     saved: "Сохранено в GitHub — ключ удалён из браузера",
     saveFailed: "Не удалось сохранить — проверьте ключ и повторите",
     unauthorized: "GitHub отклонил запись — у токена переброса нет доступа",
+  },
+  studio: {
+    title: "Студия",
+    subtitle: "Визуальная идентичность канала в одном месте — выберите стиль, и весь конвейер последует ему.",
+    presetsTitle: "Пресеты стиля",
+    presetsHint: "Задайте визуальный стиль канала как id пресета — Режиссёр и поиск b-roll примут его. Свободный стиль работает как прежде.",
+    moodLabel: "Настроение",
+    applyHint: "Применить, задав визуальный стиль как",
+    autopilotTitle: "Автопилот",
+    autopilotOnTopic: "Автоматически выбранная тема дня",
+    autopilotNone: "Плана автопилота пока нет — включите CHRONOS_AGENT_AUTOPILOT, и агент выберет тему дня по трендовым сигналам канала.",
   },
   ops: {
     coreTitle: "Ядро Nightshift",

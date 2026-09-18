@@ -32,6 +32,7 @@ export const uz: Dictionary = {
     channels: "Kanallar",
     accounts: "Barcha akkauntlar",
     providers: "Provayderlar",
+    studio: "Studiya",
     series: "Seriyalar",
   },
   common: {
@@ -427,6 +428,17 @@ export const uz: Dictionary = {
     saved: "GitHub'ga saqlandi — kalit brauzerdan o'chirildi",
     saveFailed: "Saqlash muvaffaqiyatsiz — kalitni tekshirib qayta urining",
     unauthorized: "GitHub yozishni rad etdi — uzatish tokenida ruxsat yo'q",
+  },
+  studio: {
+    title: "Studiya",
+    subtitle: "Kanalning vizual o'ziga xosligi bir joyda — uslubni tanlang, butun quvur unga ergashadi.",
+    presetsTitle: "Uslub presetlari",
+    presetsHint: "Kanal vizual uslubini preset id sifatida belgilang — Rejissyor va b-roll qidiruvi uni qabul qiladi. Erkin uslub avvalgidek ishlaydi.",
+    moodLabel: "Kayfiyat",
+    applyHint: "Vizual uslubni shunga qo'yib qo'llang",
+    autopilotTitle: "Avtopilot",
+    autopilotOnTopic: "Bugun avtomatik tanlangan mavzu",
+    autopilotNone: "Hali avtopilot rejasi yo'q — CHRONOS_AGENT_AUTOPILOT ni yoqing, agent kunlik mavzuni kanalning trend signallaridan tanlaydi.",
   },
   ops: {
     coreTitle: "Nightshift yadrosi",
