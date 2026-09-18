@@ -27,6 +27,8 @@ const PRIMARY: { href: string; key: NavKey }[] = [
 const SECONDARY: { href: string; key: NavKey }[] = [
   { href: "/channels", key: "channels" },
   { href: "/accounts", key: "accounts" },
+  { href: "/providers", key: "providers" },
+  { href: "/studio", key: "studio" },
   { href: "/series", key: "series" },
   { href: "/intelligence-map", key: "intelligence" },
   { href: "/intelligence", key: "advisory" },

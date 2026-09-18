@@ -25,6 +25,7 @@ Path("logs").mkdir(exist_ok=True)
 Path("history").mkdir(exist_ok=True)
 Path("output").mkdir(exist_ok=True)
 
+import config
 from config import OUTPUT_DIR, THUMBNAIL_VARIANT_COUNT, VIDEO_HEIGHT, VIDEO_WIDTH, YOUTUBE_CATEGORY_ID, YOUTUBE_PRIVACY
 from modules import event_log as events
 from modules import publish_gate
@@ -154,6 +155,42 @@ def _title_seeds(channel_id: str, topic: str) -> tuple:
         logger.warning("Title-formula seeding failed (%s: %s) — planning without seeds",
                        type(e).__name__, e)
         return ()
+
+
+def _active_video_provider() -> str:
+    """The selected video-gen provider for the agent's plan record. Defaults to
+    'minimax' and reads config defensively so it works whether or not the
+    provider-router change is present."""
+    return (getattr(config, "VIDEO_PROVIDER", "minimax") or "minimax").strip().lower()
+
+
+def _agent_pick_topic(channel_id, *, video_provider: str = "minimax"):
+    """Autopilot: pick the day's topic from this channel's own trend / competitor
+    / demand intelligence and emit an ``agent.plan`` event with the ranked reason
+    it is trending. Returns the topic string, or ``None`` to fall back to the
+    normal topic manager (the common case until intelligence data exists). Never
+    raises — a planning failure must never stop a run."""
+    try:
+        from modules import agent_planner
+        from modules.topic_recommender import TopicRecommender
+        with StateStore() as store:
+            recommender = TopicRecommender(state_store=store, channel_id=channel_id)
+            plan = agent_planner.build_plan(
+                recommender,
+                channel_id=channel_id,
+                video_provider=video_provider,
+                voice_provider=getattr(config, "TTS_PROVIDER", ""),
+            )
+        if plan is None:
+            return None
+        events.emit(events.AGENT_PLAN, agent="agent", status=events.STATUS_COMPLETED,
+                    channel_id=channel_id, metadata=agent_planner.summarize(plan))
+        logger.info("Autopilot topic: %s (%s)", plan.topic, plan.source or "ranked")
+        return plan.topic
+    except Exception as e:
+        logger.warning("Autopilot planning failed (%s: %s) — using topic manager",
+                       type(e).__name__, e)
+        return None
 
 
 def _channel_strategy_note(channel_id: str) -> str:
@@ -312,6 +349,12 @@ def run(
     # cadence. All empty when there is no series — the run then behaves exactly
     # as before.
     visual_style = effective_visual_style(None, series_obj)
+    # A channel/series may name a style preset (e.g. "cinematic-noir") instead of
+    # writing a full visual-style directive; expand it to the preset's directive
+    # so Director Mode and b-roll search get the rich look. A free-form style — or
+    # none — is returned unchanged, so this never alters an existing channel.
+    from modules import style_presets
+    visual_style = style_presets.expand(visual_style)
     voice_style = effective_voice_style(None, series_obj)
     cadence = effective_cadence(series_obj)
     logger.info("=== Nightshift YouTube Bot starting [channel: %s] ===", channel_id)
@@ -434,6 +477,8 @@ def run(
         topic = script.topic
         logger.info("Script loaded from %s — no API calls", script_file)
     else:
+        if topic is None and getattr(config, "AGENT_AUTOPILOT", False):
+            topic = _agent_pick_topic(channel_id, video_provider=_active_video_provider())
         if topic is None:
             topic = topic_mgr.pick_topic(niche)
         logger.info("Topic: %s", topic)
@@ -644,8 +689,18 @@ def run(
         videos.extend(Path(p) for p in broll.by_section.values())
         events.emit(events.BROLL_GENERATED, agent="minimax_broll", status=events.STATUS_COMPLETED,
                     channel_id=channel_id, metadata=broll.to_dict())
-    logger.info("Media: %d videos (%d AI-generated), %d images",
-                len(videos), broll.generated, len(images))
+    # Optional: generate on-topic stills with the selected image provider
+    # (Leonardo), supplementing the Pexels images above. Off unless a key + flag
+    # are set; a failure falls back to stock and never breaks the render.
+    gen_images = fetcher.generate_images(script.sections, topic)
+    if gen_images:
+        from modules import image_providers as _img
+        images = list(gen_images) + list(images)
+        events.emit(events.IMAGE_GENERATED, agent="image_providers", status=events.STATUS_COMPLETED,
+                    channel_id=channel_id,
+                    metadata={"generated": len(gen_images), "provider": _img.active_provider()})
+    logger.info("Media: %d videos (%d AI-generated), %d images (%d AI-generated)",
+                len(videos), broll.generated, len(images), len(gen_images))
     # The baseline Whisper is about to be loaded on top of, and the number
     # release_model should return the process to.
     log_usage("before transcription")

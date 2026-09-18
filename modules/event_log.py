@@ -43,6 +43,11 @@ SYSTEM_HEARTBEAT = "system.heartbeat"
 AGENT_STARTED = "agent.started"
 AGENT_COMPLETED = "agent.completed"
 AGENT_FAILED = "agent.failed"
+# Autopilot agent (modules/agent_planner.py). Advisory: the day's chosen topic,
+# the ranked reason it is trending, and the generation prompts — the plan that
+# drove this run's content. Off by default; it decides WHAT to make, the
+# pre-publish gate still decides whether it ships.
+AGENT_PLAN = "agent.plan"
 # Jobs (a unit of scheduled work)
 JOB_CREATED = "job.created"
 JOB_STARTED = "job.started"
@@ -67,6 +72,11 @@ MEDIA_COMPLETED = "media.completed"
 # actually produced; a generation failure is never a run failure — the section
 # falls back to Pexels stock and the video still renders.
 BROLL_GENERATED = "broll.generated"
+# AI-generated stills (modules/image_providers.py + Leonardo). Optional and off
+# by default: when enabled, a bespoke on-topic image is generated for a few
+# sections instead of Pexels stock. `image.generated` records how many were
+# produced; a failure is never a run failure — the section falls back to stock.
+IMAGE_GENERATED = "image.generated"
 # Director Mode (modules/director.py). Advisory: the per-scene cinematic shot
 # plan (camera/lens/lighting/mood/motion) used for this run. Never gates.
 DIRECTOR_PLAN = "director.plan"

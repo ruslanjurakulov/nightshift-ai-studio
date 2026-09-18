@@ -42,6 +42,76 @@ MINIMAX_BROLL_ENABLED = (
 # How many sections of one video may get a generated clip (cost control); the
 # rest use Pexels stock. A generated clip is billable, so this is deliberately low.
 MINIMAX_BROLL_MAX_CLIPS = int(os.getenv("CHRONOS_MINIMAX_BROLL_MAX_CLIPS", "2") or 2)
+
+# ── AI b-roll: which video-generation provider (Track 4) ──────────────────────
+# Nightshift is provider-agnostic (modules/providers.py). This selects which
+# text-to-video provider renders AI b-roll. The default "minimax" keeps today's
+# behavior EXACTLY — the switch below only ever chooses a different client, it
+# never turns generation on by itself. Other providers are opt-in adapters that
+# stay dormant unless their key is set AND CHRONOS_ENABLE_VIDEO_GEN is on; a run
+# with none configured falls back to Pexels stock exactly as before. Endpoints
+# and model strings are read from env (documented defaults) so they can be
+# pinned to a provider's current docs without a code change, and no key is
+# ever logged. See modules/video_providers.py.
+VIDEO_PROVIDER = os.getenv("CHRONOS_VIDEO_PROVIDER", "minimax").strip().lower()
+VIDEO_GEN_OPT_IN = os.getenv("CHRONOS_ENABLE_VIDEO_GEN", "").strip().lower() in ("1", "true", "yes", "on")
+# Higgsfield (https://higgsfield.ai) — text-to-video, async submit → poll → fetch.
+HIGGSFIELD_API_KEY = os.getenv("HIGGSFIELD_API_KEY", "")
+HIGGSFIELD_BASE_URL = os.getenv("HIGGSFIELD_BASE_URL", "https://platform.higgsfield.ai").rstrip("/")
+HIGGSFIELD_MODEL = os.getenv("HIGGSFIELD_MODEL", "higgsfield-dop")
+HIGGSFIELD_SUBMIT_PATH = os.getenv("HIGGSFIELD_SUBMIT_PATH", "/v1/text2video")
+HIGGSFIELD_QUERY_PATH = os.getenv("HIGGSFIELD_QUERY_PATH", "/v1/jobs/{id}")
+# Kling (Kuaishou) — Bearer auth, async task + query by id.
+KLING_API_KEY = os.getenv("KLING_API_KEY", "")
+KLING_BASE_URL = os.getenv("KLING_BASE_URL", "https://api.klingai.com").rstrip("/")
+KLING_MODEL = os.getenv("KLING_MODEL", "kling-v1")
+KLING_SUBMIT_PATH = os.getenv("KLING_SUBMIT_PATH", "/v1/videos/text2video")
+KLING_QUERY_PATH = os.getenv("KLING_QUERY_PATH", "/v1/videos/text2video/{id}")
+# Seedance (ByteDance / Volcengine Ark) — Bearer auth.
+SEEDANCE_API_KEY = os.getenv("SEEDANCE_API_KEY", "")
+SEEDANCE_BASE_URL = os.getenv("SEEDANCE_BASE_URL", "https://ark.cn-beijing.volces.com").rstrip("/")
+SEEDANCE_MODEL = os.getenv("SEEDANCE_MODEL", "seedance-1-0-pro")
+SEEDANCE_SUBMIT_PATH = os.getenv("SEEDANCE_SUBMIT_PATH", "/api/v3/contents/generations/tasks")
+SEEDANCE_QUERY_PATH = os.getenv("SEEDANCE_QUERY_PATH", "/api/v3/contents/generations/tasks/{id}")
+# Wan (Alibaba Tongyi Wanxiang / DashScope) — Bearer auth.
+WAN_API_KEY = os.getenv("WAN_API_KEY", "")
+WAN_BASE_URL = os.getenv("WAN_BASE_URL", "https://dashscope-intl.aliyuncs.com").rstrip("/")
+WAN_MODEL = os.getenv("WAN_MODEL", "wan2.1-t2v-turbo")
+WAN_SUBMIT_PATH = os.getenv("WAN_SUBMIT_PATH", "/api/v1/services/aigc/video-generation/video-synthesis")
+WAN_QUERY_PATH = os.getenv("WAN_QUERY_PATH", "/api/v1/tasks/{id}")
+# Google Veo (Gemini API) — key in the x-goog-api-key header (no Bearer prefix).
+VEO_API_KEY = os.getenv("VEO_API_KEY", "")
+VEO_BASE_URL = os.getenv("VEO_BASE_URL", "https://generativelanguage.googleapis.com").rstrip("/")
+VEO_MODEL = os.getenv("VEO_MODEL", "veo-3.0-generate-preview")
+VEO_SUBMIT_PATH = os.getenv("VEO_SUBMIT_PATH", "/v1beta/models/veo-3.0-generate-preview:predictLongRunning")
+VEO_QUERY_PATH = os.getenv("VEO_QUERY_PATH", "/v1beta/{id}")
+
+# ── Agent / Autopilot (modules/agent_planner.py) ──────────────────────────────
+# When on, a run with no explicit topic asks the agent planner for the day's
+# strongest opportunity — chosen from this channel's own trend/competitor/demand
+# intelligence, with the ranked reason it is trending — and uses that topic
+# instead of the default topic manager. Advisory to the gate: it decides WHAT to
+# make, never whether it ships. OFF by default: unset, topic selection is
+# unchanged, and with no intelligence data the planner returns nothing and the
+# run falls back to the topic manager anyway.
+AGENT_AUTOPILOT = os.getenv("CHRONOS_AGENT_AUTOPILOT", "").strip().lower() in ("1", "true", "yes", "on")
+
+# ── AI images: which image-generation provider (Track 4) ──────────────────────
+# Backgrounds come from Pexels stock by default. This optionally generates a few
+# bespoke on-topic stills instead — mirrors the video router. Default "pexels"
+# keeps today's behavior exactly; Leonardo runs only when selected AND its key is
+# set AND CHRONOS_ENABLE_IMAGE_GEN is on. A failed generation falls back to
+# stock; a key is never logged. See modules/image_providers.py.
+IMAGE_PROVIDER = os.getenv("CHRONOS_IMAGE_PROVIDER", "pexels").strip().lower()
+IMAGE_GEN_OPT_IN = os.getenv("CHRONOS_ENABLE_IMAGE_GEN", "").strip().lower() in ("1", "true", "yes", "on")
+# Leonardo.Ai (https://leonardo.ai) — text-to-image, async submit → poll → fetch.
+LEONARDO_API_KEY = os.getenv("LEONARDO_API_KEY", "")
+LEONARDO_BASE_URL = os.getenv("LEONARDO_BASE_URL", "https://cloud.leonardo.ai/api/rest/v1").rstrip("/")
+# Default model id is Leonardo's "Leonardo Kino XL" (cinematic). Override per docs.
+LEONARDO_MODEL_ID = os.getenv("LEONARDO_MODEL_ID", "aa77f04e-3eec-4034-9c07-d0f619684628")
+# How many sections of one video may get a generated still (cost control).
+LEONARDO_MAX_IMAGES = int(os.getenv("CHRONOS_LEONARDO_MAX_IMAGES", "2") or 2)
+
 # vidIQ research & scoring (modules/vidiq.py + modules/vidiq_client.py).
 # Research and scoring ONLY — advisory keyword/title intelligence, never a
 # second content pipeline. Dormant unless a token is set: no token → no client

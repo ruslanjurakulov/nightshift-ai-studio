@@ -35,6 +35,7 @@ export const EVENT_NICHE_RPM = "niche.rpm";
 export const EVENT_QUOTA_ALLOCATED = "quota.allocated";
 export const EVENT_SPEND_OVERVIEW = "spend.overview";
 export const EVENT_DIRECTOR_PLAN = "director.plan";
+export const EVENT_AGENT_PLAN = "agent.plan";
 export const EVENT_ELEMENTS_APPLIED = "elements.applied";
 
 // -- value coercion: unknown JSON in, typed-or-null out ---------------------
@@ -522,6 +523,36 @@ export function parseDirectorPlan(e: SystemEventRow | null): DirectorPlan | null
   return { ts: e.ts, scenes: numOrNull(m.scenes), shots };
 }
 
+export interface AgentPlanView {
+  ts: string;
+  topic: string;
+  rationale: string;
+  source: string;
+  score: number | null;
+  keywords: string[];
+  videoProvider: string;
+  voiceProvider: string;
+}
+
+/** The autopilot agent's daily plan (modules/agent_planner.py). */
+export function parseAgentPlan(e: SystemEventRow | null): AgentPlanView | null {
+  if (!e) return null;
+  const m = asRecord(e.metadata) ?? {};
+  const keywords = Array.isArray(m.keywords)
+    ? m.keywords.map((x) => strOrNull(x)).filter((x): x is string => x !== null)
+    : [];
+  return {
+    ts: e.ts,
+    topic: strOrNull(m.topic) ?? "",
+    rationale: strOrNull(m.rationale) ?? "",
+    source: strOrNull(m.source) ?? "",
+    score: numOrNull(m.score),
+    keywords,
+    videoProvider: strOrNull(m.video_provider) ?? "",
+    voiceProvider: strOrNull(m.voice_provider) ?? "",
+  };
+}
+
 export interface AdvisoryIntelligence {
   spend: SpendForecast | null;
   timing: PublishTiming | null;
@@ -534,6 +565,7 @@ export interface AdvisoryIntelligence {
   quota: QuotaAllocation | null;
   spendOverview: SpendOverview | null;
   director: DirectorPlan | null;
+  agent: AgentPlanView | null;
   elements: ElementsApplied | null;
 }
 
@@ -555,6 +587,7 @@ export function deriveAdvisory(events: SystemEventRow[]): AdvisoryIntelligence {
     quota: parseQuotaAllocation(latestEvent(events, EVENT_QUOTA_ALLOCATED)),
     spendOverview: parseSpendOverview(latestEvent(events, EVENT_SPEND_OVERVIEW)),
     director: parseDirectorPlan(latestEvent(events, EVENT_DIRECTOR_PLAN)),
+    agent: parseAgentPlan(latestEvent(events, EVENT_AGENT_PLAN)),
     elements: parseElementsApplied(latestEvent(events, EVENT_ELEMENTS_APPLIED)),
   };
 }
