@@ -79,6 +79,7 @@ export function AdvisoryPanel({
   const quota = adv.quota;
   const spendOv = adv.spendOverview;
   const director = adv.director;
+  const agent = adv.agent;
 
   return (
     <div className="grid gap-5 md:grid-cols-2">
@@ -336,6 +337,29 @@ export function AdvisoryPanel({
               />
             ))}
             <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advDirectorHint}</p>
+          </>
+        )}
+      </Card>
+
+      {/* Autopilot agent — the day's chosen topic + why (Nightshift blueprint) */}
+      <Card title={t.ops.advAgentTitle} updated={agent?.ts ?? null}>
+        {!agent || !agent.topic ? (
+          <Empty label={agent ? t.ops.advAgentNone : t.ops.advNoData} />
+        ) : (
+          <>
+            <Row label={t.ops.advAgentTopic} value={agent.topic} strong />
+            <Row
+              label={t.ops.advAgentSource}
+              value={agent.source || t.common.dash}
+            />
+            <Row
+              label={t.ops.advAgentProviders}
+              value={`${agent.videoProvider || t.common.dash} · ${agent.voiceProvider || t.common.dash}`}
+            />
+            {agent.rationale && (
+              <p className="mt-1 text-[13px] text-[var(--color-fg)]">{agent.rationale}</p>
+            )}
+            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advAgentHint}</p>
           </>
         )}
       </Card>

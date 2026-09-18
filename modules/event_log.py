@@ -43,6 +43,11 @@ SYSTEM_HEARTBEAT = "system.heartbeat"
 AGENT_STARTED = "agent.started"
 AGENT_COMPLETED = "agent.completed"
 AGENT_FAILED = "agent.failed"
+# Autopilot agent (modules/agent_planner.py). Advisory: the day's chosen topic,
+# the ranked reason it is trending, and the generation prompts — the plan that
+# drove this run's content. Off by default; it decides WHAT to make, the
+# pre-publish gate still decides whether it ships.
+AGENT_PLAN = "agent.plan"
 # Jobs (a unit of scheduled work)
 JOB_CREATED = "job.created"
 JOB_STARTED = "job.started"

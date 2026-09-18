@@ -62,6 +62,16 @@ HIGGSFIELD_MODEL = os.getenv("HIGGSFIELD_MODEL", "higgsfield-dop")
 HIGGSFIELD_SUBMIT_PATH = os.getenv("HIGGSFIELD_SUBMIT_PATH", "/v1/text2video")
 HIGGSFIELD_QUERY_PATH = os.getenv("HIGGSFIELD_QUERY_PATH", "/v1/jobs/{id}")
 
+# ── Agent / Autopilot (modules/agent_planner.py) ──────────────────────────────
+# When on, a run with no explicit topic asks the agent planner for the day's
+# strongest opportunity — chosen from this channel's own trend/competitor/demand
+# intelligence, with the ranked reason it is trending — and uses that topic
+# instead of the default topic manager. Advisory to the gate: it decides WHAT to
+# make, never whether it ships. OFF by default: unset, topic selection is
+# unchanged, and with no intelligence data the planner returns nothing and the
+# run falls back to the topic manager anyway.
+AGENT_AUTOPILOT = os.getenv("CHRONOS_AGENT_AUTOPILOT", "").strip().lower() in ("1", "true", "yes", "on")
+
 # vidIQ research & scoring (modules/vidiq.py + modules/vidiq_client.py).
 # Research and scoring ONLY — advisory keyword/title intelligence, never a
 # second content pipeline. Dormant unless a token is set: no token → no client
