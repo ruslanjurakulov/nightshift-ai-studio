@@ -79,6 +79,55 @@ class HiggsfieldEnablementTestCase(unittest.TestCase):
             self.assertEqual(vp.active_model(), "higgsfield-dop")
 
 
+class AllProvidersTestCase(unittest.TestCase):
+    # provider id -> the config key holding its API key
+    PROVIDERS = {
+        "higgsfield": "HIGGSFIELD_API_KEY",
+        "kling": "KLING_API_KEY",
+        "seedance": "SEEDANCE_API_KEY",
+        "wan": "WAN_API_KEY",
+        "veo": "VEO_API_KEY",
+    }
+
+    def test_each_provider_opts_in_behind_key_and_flag(self):
+        for provider, key_attr in self.PROVIDERS.items():
+            with self.subTest(provider=provider):
+                with mock.patch.object(config, "VIDEO_PROVIDER", provider), \
+                     mock.patch.object(config, key_attr, ""), \
+                     mock.patch.object(config, "VIDEO_GEN_OPT_IN", True):
+                    self.assertFalse(vp.is_enabled())      # no key → off
+                    self.assertIsNone(vp.get_client())
+                with mock.patch.object(config, "VIDEO_PROVIDER", provider), \
+                     mock.patch.object(config, key_attr, "k"), \
+                     mock.patch.object(config, "VIDEO_GEN_OPT_IN", False):
+                    self.assertFalse(vp.is_enabled())      # not opted in → off
+                with mock.patch.object(config, "VIDEO_PROVIDER", provider), \
+                     mock.patch.object(config, key_attr, "k"), \
+                     mock.patch.object(config, "VIDEO_GEN_OPT_IN", True):
+                    self.assertTrue(vp.is_enabled())
+                    self.assertIsInstance(vp.get_client(), vp.GenericAsyncVideoClient)
+
+    def test_veo_uses_google_header_not_bearer(self):
+        cfg = vp._veo_config()
+        self.assertEqual(cfg.auth_header, "x-goog-api-key")
+        self.assertEqual(cfg.auth_prefix, "")
+
+    def test_bearer_providers_use_authorization_header(self):
+        for builder in (vp._kling_config, vp._seedance_config, vp._wan_config, vp._higgsfield_config):
+            cfg = builder()
+            self.assertEqual(cfg.auth_header, "Authorization")
+            self.assertEqual(cfg.auth_prefix, "Bearer ")
+
+    def test_client_sets_configured_auth_header(self):
+        cfg = vp.VideoProviderConfig(
+            name="Veo", api_key="secret", base_url="https://api.test", model="m",
+            submit_path="/s", query_path="/q/{id}", auth_header="x-goog-api-key", auth_prefix="",
+        )
+        client = vp.GenericAsyncVideoClient(cfg)
+        self.assertEqual(client.session.headers.get("x-goog-api-key"), "secret")
+        self.assertIsNone(client.session.headers.get("Authorization"))
+
+
 class GenericClientTestCase(unittest.TestCase):
     def _client(self):
         cfg = vp.VideoProviderConfig(
