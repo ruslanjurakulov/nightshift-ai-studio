@@ -38,6 +38,7 @@ export const en = {
     channels: "Channels",
     accounts: "All Accounts",
     providers: "Providers",
+    studio: "Studio",
     series: "Series",
   },
   common: {
@@ -433,6 +434,17 @@ export const en = {
     saved: "Saved to GitHub — key dropped from the browser",
     saveFailed: "Save failed — check the key and try again",
     unauthorized: "GitHub rejected the write — the forwarding token lacks access",
+  },
+  studio: {
+    title: "Studio Canvas",
+    subtitle: "Your channel's visual identity in one place — pick a look and the whole pipeline follows it.",
+    presetsTitle: "Style presets",
+    presetsHint: "Set a channel's visual style to a preset id and Director Mode and b-roll search adopt it. A free-form style still works exactly as before.",
+    moodLabel: "Mood",
+    applyHint: "Use by setting visual style to",
+    autopilotTitle: "Autopilot",
+    autopilotOnTopic: "Today's auto-picked topic",
+    autopilotNone: "No autopilot plan yet — enable CHRONOS_AGENT_AUTOPILOT and the agent picks the day's topic from this channel's own trend signals.",
   },
   ops: {
     coreTitle: "Nightshift Core",

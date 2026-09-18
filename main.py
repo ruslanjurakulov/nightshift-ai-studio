@@ -349,6 +349,12 @@ def run(
     # cadence. All empty when there is no series — the run then behaves exactly
     # as before.
     visual_style = effective_visual_style(None, series_obj)
+    # A channel/series may name a style preset (e.g. "cinematic-noir") instead of
+    # writing a full visual-style directive; expand it to the preset's directive
+    # so Director Mode and b-roll search get the rich look. A free-form style — or
+    # none — is returned unchanged, so this never alters an existing channel.
+    from modules import style_presets
+    visual_style = style_presets.expand(visual_style)
     voice_style = effective_voice_style(None, series_obj)
     cadence = effective_cadence(series_obj)
     logger.info("=== Nightshift YouTube Bot starting [channel: %s] ===", channel_id)
