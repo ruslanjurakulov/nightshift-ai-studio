@@ -179,6 +179,60 @@ class MediaFetcher:
             model=result.model, by_section=by_section,
         )
 
+    # --------------------------------------------------------------- AI images
+
+    def generate_images(self, sections: list, topic: str, *, client=None, max_images=None) -> list[Path]:
+        """Optionally generate a few on-topic stills with the selected image
+        provider (modules/image_providers.py), supplementing the Pexels stock
+        above. Off by default: with no key / the flag unset this makes no request
+        and returns ``[]``, so backgrounds come from stock exactly as before. A
+        per-image failure is swallowed — that section simply falls back to stock.
+        Never raises."""
+        import config
+        from modules import image_providers
+
+        if not image_providers.is_enabled():
+            return []
+        if client is None:
+            client = image_providers.get_client()
+            if client is None:
+                return []
+
+        cap = max_images if max_images is not None else getattr(config, "LEONARDO_MAX_IMAGES", 2)
+        if cap <= 0:
+            return []
+
+        # The sections worth a bespoke still: hook first, then any with keywords.
+        eligible: list[tuple[int, list[str]]] = []
+        for i, section in enumerate(sections or []):
+            if section is None:
+                continue
+            kws = section.get("keywords") if isinstance(section, dict) else getattr(section, "keywords", None)
+            if isinstance(kws, str):
+                kws = [kws] if kws.strip() else []
+            if isinstance(kws, (list, tuple)) and kws:
+                eligible.append((i, [str(k) for k in kws]))
+        if not eligible:
+            return []
+        eligible.sort(key=lambda it: (0 if it[0] == 0 else 1, it[0]))
+
+        paths: list[Path] = []
+        for i, kws in eligible[:cap]:
+            subject = ", ".join(dict.fromkeys(k.strip() for k in kws if k.strip())) or (topic or "").strip()
+            prompt = f"{subject} — {topic}. Cinematic, high-detail, dramatic lighting.".strip(" —")
+            dest = self.image_dir / f"gen_img_{i}.jpg"
+            try:
+                path = client.generate(prompt, dest, width=1024, height=576)
+            except Exception as e:   # a broken image must never sink the render
+                logger.warning("Image generation error for section %d (%s: %s)",
+                               i, type(e).__name__, e)
+                path = None
+            if path is not None:
+                paths.append(path)
+
+        logger.info("%s images: %d/%d generated", image_providers.active_provider(), len(paths), min(cap, len(eligible)))
+        return paths
+
     # ------------------------------------------------------------------ Pexels Images
 
     def _pexels_photo_search(self, query: str, page: int = 1) -> list[dict]:

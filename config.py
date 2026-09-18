@@ -72,6 +72,22 @@ HIGGSFIELD_QUERY_PATH = os.getenv("HIGGSFIELD_QUERY_PATH", "/v1/jobs/{id}")
 # run falls back to the topic manager anyway.
 AGENT_AUTOPILOT = os.getenv("CHRONOS_AGENT_AUTOPILOT", "").strip().lower() in ("1", "true", "yes", "on")
 
+# ── AI images: which image-generation provider (Track 4) ──────────────────────
+# Backgrounds come from Pexels stock by default. This optionally generates a few
+# bespoke on-topic stills instead — mirrors the video router. Default "pexels"
+# keeps today's behavior exactly; Leonardo runs only when selected AND its key is
+# set AND CHRONOS_ENABLE_IMAGE_GEN is on. A failed generation falls back to
+# stock; a key is never logged. See modules/image_providers.py.
+IMAGE_PROVIDER = os.getenv("CHRONOS_IMAGE_PROVIDER", "pexels").strip().lower()
+IMAGE_GEN_OPT_IN = os.getenv("CHRONOS_ENABLE_IMAGE_GEN", "").strip().lower() in ("1", "true", "yes", "on")
+# Leonardo.Ai (https://leonardo.ai) — text-to-image, async submit → poll → fetch.
+LEONARDO_API_KEY = os.getenv("LEONARDO_API_KEY", "")
+LEONARDO_BASE_URL = os.getenv("LEONARDO_BASE_URL", "https://cloud.leonardo.ai/api/rest/v1").rstrip("/")
+# Default model id is Leonardo's "Leonardo Kino XL" (cinematic). Override per docs.
+LEONARDO_MODEL_ID = os.getenv("LEONARDO_MODEL_ID", "aa77f04e-3eec-4034-9c07-d0f619684628")
+# How many sections of one video may get a generated still (cost control).
+LEONARDO_MAX_IMAGES = int(os.getenv("CHRONOS_LEONARDO_MAX_IMAGES", "2") or 2)
+
 # vidIQ research & scoring (modules/vidiq.py + modules/vidiq_client.py).
 # Research and scoring ONLY — advisory keyword/title intelligence, never a
 # second content pipeline. Dormant unless a token is set: no token → no client
