@@ -4,6 +4,7 @@ import { NotConfigured } from "@/components/NotConfigured";
 import { StatCard, Panel, EmptyState } from "@/components/ui";
 import { num, decimal } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import { getChannelSelection } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import { fmt } from "@/lib/i18n";
@@ -190,10 +191,7 @@ export default async function AnalyticsPage() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div>
-        <h1 className="t-hero">{t.analytics.title}</h1>
-        <p className="t-lead mt-4">{t.analytics.subtitle}</p>
-      </div>
+      <PageHeader icon="analytics" title={t.analytics.title} subtitle={t.analytics.subtitle} />
 
       {!dbHealthy ? (
         <Panel title={t.analytics.performance}>

@@ -9,6 +9,7 @@ import { ChannelComparison } from "@/components/channels/ChannelComparison";
 import { getChannelContext } from "@/lib/channels-server";
 import { channelHealth, channelSlug, channelStats } from "@/lib/channels";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import type {
   ContentQueueRow,
   MetricsSnapshotRow,
@@ -56,20 +57,18 @@ export default async function ChannelsPage() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="t-hero">{t.channels.title}</h1>
-          <p className="t-lead mt-4">{t.channels.subtitle}</p>
-        </div>
-        {!notMigrated && (
-          <Link
-            href={path("/channels/new")}
-            className="btn-sky pill px-5 py-2.5 text-[13px]"
-          >
-            + {t.channels.add}
-          </Link>
-        )}
-      </div>
+      <PageHeader
+        icon="channels"
+        title={t.channels.title}
+        subtitle={t.channels.subtitle}
+        actions={
+          !notMigrated ? (
+            <Link href={path("/channels/new")} className="btn-sky pill px-5 py-2.5 text-[13px]">
+              + {t.channels.add}
+            </Link>
+          ) : undefined
+        }
+      />
 
       {notMigrated ? (
         <Panel title={t.channels.title}>

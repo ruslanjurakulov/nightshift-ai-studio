@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { AdvisoryPanel } from "@/components/intelligence/AdvisoryPanel";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import { getChannelSelection } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import type { SystemEventRow } from "@/lib/types";
@@ -29,10 +30,7 @@ export default async function AdvisoryIntelligencePage() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div>
-        <h1 className="t-hero">{t.ops.advTitle}</h1>
-        <p className="t-lead mt-4">{t.ops.advSubtitle}</p>
-      </div>
+      <PageHeader icon="advisory" title={t.ops.advTitle} subtitle={t.ops.advSubtitle} />
 
       <AdvisoryPanel initial={events} selection={selection} />
     </div>

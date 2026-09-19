@@ -4,6 +4,7 @@ import { NotConfigured } from "@/components/NotConfigured";
 import { StatCard, Panel, EmptyState } from "@/components/ui";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import { getChannelSelection } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import { fmt } from "@/lib/i18n";
@@ -53,12 +54,7 @@ export default async function ErrorCenter() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="t-hero">{t.errors.title}</h1>
-          <p className="t-lead mt-4">{t.errors.subtitle}</p>
-        </div>
-      </div>
+      <PageHeader icon="errors" title={t.errors.title} subtitle={t.errors.subtitle} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard

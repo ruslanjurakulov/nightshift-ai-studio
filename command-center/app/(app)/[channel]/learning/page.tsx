@@ -5,6 +5,7 @@ import { LearningView } from "@/components/intel/LearningView";
 import { toDecisionSignal, type DecisionSignal } from "@/lib/decisions";
 import { deriveTopicIntel } from "@/lib/memory";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import { fetchTopicScores, getChannelSelection } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import type { FeedbackSignalRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
@@ -42,10 +43,7 @@ export default async function LearningPage() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div>
-        <h1 className="t-hero">{t.intel.learningTitle}</h1>
-        <p className="t-lead mt-4">{t.intel.learningSubtitle}</p>
-      </div>
+      <PageHeader icon="learning" title={t.intel.learningTitle} subtitle={t.intel.learningSubtitle} />
       <LearningView signals={decisionSignals} topics={topics} />
     </div>
   );

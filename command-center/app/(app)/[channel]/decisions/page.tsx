@@ -5,6 +5,7 @@ import { Panel, EmptyState } from "@/components/ui";
 import { DecisionList } from "@/components/intel/DecisionList";
 import { deriveDecisions, scoreLineage, type LineageRow } from "@/lib/decisions";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import { fetchTopicScores, getChannelSelection } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import type { FeedbackSignalRow, SystemEventRow, TopicPerformanceRow } from "@/lib/types";
@@ -50,10 +51,7 @@ export default async function DecisionsPage() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div>
-        <h1 className="t-hero">{t.intel.decisionsTitle}</h1>
-        <p className="t-lead mt-4">{t.intel.decisionsSubtitle}</p>
-      </div>
+      <PageHeader icon="decisions" title={t.intel.decisionsTitle} subtitle={t.intel.decisionsSubtitle} />
 
       <Panel title={t.intel.decisionsTitle}>
         {decisions.length === 0 ? (

@@ -5,6 +5,7 @@ import { Panel, EmptyState, StatCard } from "@/components/ui";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { statusTone } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import { getChannelContext } from "@/lib/channels-server";
 import { isScoped, scopeQuery } from "@/lib/channels";
 import { isGithubConfigured } from "@/lib/server/github-secrets";
@@ -95,12 +96,7 @@ export default async function AgentsPage() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="t-hero">{t.agents.title}</h1>
-          <p className="t-lead mt-4">{t.agents.subtitle}</p>
-        </div>
-      </div>
+      <PageHeader icon="agents" title={t.agents.title} subtitle={t.agents.subtitle} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label={t.agents.seen} value={<AnimatedNumber value={agents.length} />} sub={t.agents.seenSub} />
