@@ -2,7 +2,7 @@ import {
   Film, Workflow, BarChart3, Palette, ListVideo, Users, UserCircle, KeyRound,
   Bot, ListChecks, Hash, Ruler, GitBranch, GraduationCap, Database, Gauge,
   RefreshCw, Lightbulb, Brain, History, Plug, TriangleAlert, ScrollText,
-  Sparkles, ShieldCheck, UserCheck, BellRing, ClipboardList, type LucideIcon,
+  Sparkles, ShieldCheck, PieChart, UserCheck, BellRing, ClipboardList, type LucideIcon,
 } from "lucide-react";
 
 /**
@@ -16,7 +16,7 @@ import {
  */
 export type PageIcon =
   | "videos" | "pipeline" | "analytics" | "studio" | "series" | "channels"
-  | "accounts" | "providers" | "agents" | "jobs" | "topics" | "measurement"
+  | "accounts" | "portfolio" | "providers" | "agents" | "jobs" | "topics" | "measurement"
   | "decisions" | "learning" | "memory" | "autonomy" | "feedback"
   | "advisory" | "intelligence" | "timeMachine" | "integrations" | "errors" | "logs"
   | "members" | "approvals" | "alerts" | "audit";
@@ -29,6 +29,7 @@ const ICONS: Record<PageIcon, LucideIcon> = {
   series: ListVideo,
   channels: Users,
   accounts: UserCircle,
+  portfolio: PieChart,
   providers: KeyRound,
   agents: Bot,
   jobs: ListChecks,
