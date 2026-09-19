@@ -5,10 +5,11 @@ import { Panel, EmptyState, StatCard } from "@/components/ui";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { statusTone } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
-import { getChannelSelection } from "@/lib/channels-server";
-import { scopeQuery } from "@/lib/channels";
+import { getChannelContext } from "@/lib/channels-server";
+import { isScoped, scopeQuery } from "@/lib/channels";
 import type { SystemEventRow } from "@/lib/types";
 import { AgentCard, type AgentSummary } from "@/components/agents/AgentCard";
+import { ScheduleEditor } from "@/components/agents/ScheduleEditor";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -63,7 +64,12 @@ export default async function AgentsPage() {
   const { t } = await getDictionary();
   // Scope channel-owned queries to the selected channel (view control;
   // RLS still decides what may be read at all).
-  const selection = await getChannelSelection();
+  const { selection, channels } = await getChannelContext();
+  // The schedule editor writes to one channel; "All channels" has no single
+  // target, so it renders disabled with a hint rather than guessing.
+  const scopedChannel = isScoped(selection)
+    ? channels.find((c) => c.channel_id === selection)
+    : undefined;
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
@@ -99,6 +105,11 @@ export default async function AgentsPage() {
         <StatCard label={t.agents.failed} value={<AnimatedNumber value={failed} />} tone={failed ? "fail" : "ok"} sub={failed ? t.agents.latestFailed : t.agents.noneFailing} />
         <StatCard label={t.agents.scanned} value={<AnimatedNumber value={events.length} />} sub={t.agents.scannedSub} />
       </div>
+
+      <ScheduleEditor
+        channelId={scopedChannel?.channel_id ?? null}
+        schedule={scopedChannel?.schedule_config ?? null}
+      />
 
       <Panel title={t.agents.roster}>
         {dbError ? (
