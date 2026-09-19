@@ -7,9 +7,11 @@ import { statusTone } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { getChannelContext } from "@/lib/channels-server";
 import { isScoped, scopeQuery } from "@/lib/channels";
+import { isGithubConfigured } from "@/lib/server/github-secrets";
 import type { SystemEventRow } from "@/lib/types";
 import { AgentCard, type AgentSummary } from "@/components/agents/AgentCard";
 import { ScheduleEditor } from "@/components/agents/ScheduleEditor";
+import { RunNowButton } from "@/components/agents/RunNowButton";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -65,8 +67,9 @@ export default async function AgentsPage() {
   // Scope channel-owned queries to the selected channel (view control;
   // RLS still decides what may be read at all).
   const { selection, channels } = await getChannelContext();
-  // The schedule editor writes to one channel; "All channels" has no single
-  // target, so it renders disabled with a hint rather than guessing.
+  // The schedule editor and "Run now" both act on one channel; "All channels"
+  // has no single target, so they render disabled with a hint rather than
+  // guessing or fanning out on one click.
   const scopedChannel = isScoped(selection)
     ? channels.find((c) => c.channel_id === selection)
     : undefined;
@@ -109,6 +112,11 @@ export default async function AgentsPage() {
       <ScheduleEditor
         channelId={scopedChannel?.channel_id ?? null}
         schedule={scopedChannel?.schedule_config ?? null}
+      />
+
+      <RunNowButton
+        channelId={scopedChannel?.channel_id ?? null}
+        githubConfigured={isGithubConfigured}
       />
 
       <Panel title={t.agents.roster}>
