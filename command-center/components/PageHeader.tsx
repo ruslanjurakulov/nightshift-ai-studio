@@ -2,7 +2,7 @@ import {
   Film, Workflow, BarChart3, Palette, ListVideo, Users, UserCircle, KeyRound,
   Bot, ListChecks, Hash, Ruler, GitBranch, GraduationCap, Database, Gauge,
   RefreshCw, Lightbulb, Brain, History, Plug, TriangleAlert, ScrollText,
-  Sparkles, ShieldCheck, type LucideIcon,
+  Sparkles, ShieldCheck, Lock, type LucideIcon,
 } from "lucide-react";
 
 /**
@@ -19,7 +19,7 @@ export type PageIcon =
   | "accounts" | "providers" | "agents" | "jobs" | "topics" | "measurement"
   | "decisions" | "learning" | "memory" | "autonomy" | "feedback"
   | "advisory" | "intelligence" | "timeMachine" | "integrations" | "errors" | "logs"
-  | "members";
+  | "members" | "security";
 
 const ICONS: Record<PageIcon, LucideIcon> = {
   videos: Film,
@@ -46,6 +46,7 @@ const ICONS: Record<PageIcon, LucideIcon> = {
   errors: TriangleAlert,
   logs: ScrollText,
   members: ShieldCheck,
+  security: Lock,
 };
 
 export function PageHeader({
