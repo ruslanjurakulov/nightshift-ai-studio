@@ -59,13 +59,9 @@ export function ProvidersBoard({
 
   return (
     <div className="rhythm stagger-enter">
-      <div>
-        <h1 className="t-hero">{t.providers.title}</h1>
-        <p className="t-lead mt-4">{t.providers.subtitle}</p>
-        <p className="mt-2 mono text-[12px] text-[var(--color-muted)]">
-          {configuredCount} / {total} · {t.providers.storedNote}
-        </p>
-      </div>
+      <p className="mono text-[12px] text-[var(--color-muted)]">
+        {configuredCount} / {total} · {t.providers.storedNote}
+      </p>
 
       {!githubConfigured && (
         <div className="panel border-[var(--color-warn,#e2a03f)] p-4" role="status">
