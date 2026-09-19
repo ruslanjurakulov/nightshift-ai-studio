@@ -39,6 +39,7 @@ export const uz: Dictionary = {
     studio: "Studiya",
     series: "Seriyalar",
     members: "Jamoa",
+    audit: "Audit jurnali",
   },
   common: {
     na: "Yo'q",
@@ -417,6 +418,17 @@ export const uz: Dictionary = {
     lvError: "XATO",
     lines: "{n} ta qator",
     noMatch: "Mos log qatorlari yo'q.",
+  },
+  audit: {
+    title: "Audit jurnali",
+    subtitle: "Imtiyozli amallarning o'zgarmas yozuvi — kim, nima va qachon qilgani. Tafsilotda faqat nomlar va sonlar bo'ladi, hech qachon maxfiy qiymatlar emas.",
+    colTime: "Vaqt",
+    colActor: "Foydalanuvchi",
+    colAction: "Amal",
+    colTarget: "Ob'ekt",
+    colChannel: "Kanal",
+    empty: "Hali audit qilingan amallar yo'q. Imtiyozli amallar — maxfiy yozuvlar, talab bo'yicha ishga tushirishlar, seriya o'zgarishlari — shu yerda paydo bo'ladi.",
+    notConfigured: "Audit jurnali uchun Supabase kerak. Sozlangandan va 0008 migratsiyasi qo'llanilgandan so'ng yozuvlar shu yerda paydo bo'ladi.",
   },
   integrations: {
     title: "Integratsiyalar holati",
