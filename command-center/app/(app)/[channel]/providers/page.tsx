@@ -1,6 +1,8 @@
 import { ProvidersBoard } from "@/components/providers/ProvidersBoard";
+import { PipelineRouting } from "@/components/providers/PipelineRouting";
 import { providersByCategory } from "@/lib/providers";
 import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/github-secrets";
+import { readVariables } from "@/lib/server/github-variables";
 import { isGoogleOAuthConfigured } from "@/lib/server/google-oauth";
 import { getDictionary } from "@/lib/i18n/server";
 
@@ -25,11 +27,17 @@ export default async function ProvidersPage({
   const groups = providersByCategory();
 
   let configured: string[] = [];
+  let routingVars: Record<string, string> = {};
   if (isGithubConfigured) {
     try {
       configured = await listConfiguredSecretNames();
     } catch {
       configured = [];
+    }
+    try {
+      routingVars = await readVariables();
+    } catch {
+      routingVars = {};
     }
   }
 
@@ -79,6 +87,13 @@ export default async function ProvidersPage({
       </div>
 
       <ProvidersBoard groups={groups} configured={configured} githubConfigured={isGithubConfigured} />
+
+      {/* Which generator the pipeline actually uses — writes GH Actions vars. */}
+      <PipelineRouting
+        initial={routingVars}
+        configured={configured}
+        githubConfigured={isGithubConfigured}
+      />
     </div>
   );
 }
