@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/roles";
+import { logAudit } from "@/lib/server/audit";
 import { dispatchDailyVideo, isGithubConfigured } from "@/lib/server/github-secrets";
 
 export const runtime = "nodejs";
@@ -47,6 +48,8 @@ export async function POST(request: Request) {
 
   try {
     await dispatchDailyVideo(channelId);
+    // Audit the on-demand run against its channel (best-effort, never throws).
+    await logAudit({ action: "agent.run", channelId });
     return NextResponse.json({ ok: true });
   } catch (e) {
     const reason = e instanceof Error ? e.message : "github_dispatch_failed";

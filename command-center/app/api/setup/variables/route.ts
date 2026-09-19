@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/roles";
+import { logAudit } from "@/lib/server/audit";
 import { isGithubConfigured } from "@/lib/server/github-secrets";
 import { isWritableVariable, putVariable, readVariables } from "@/lib/server/github-variables";
 
@@ -65,6 +66,8 @@ export async function POST(request: Request) {
     for (const [name, value] of entries) {
       await putVariable(name, value as string);
     }
+    // Audit the write — variable names only (best-effort, never throws).
+    await logAudit({ action: "variable.write", detail: { names: entries.map(([n]) => n) } });
     return NextResponse.json({ ok: true });
   } catch (e) {
     const reason = e instanceof Error ? e.message : "github_write_failed";
