@@ -96,6 +96,7 @@ export const uz: Dictionary = {
     leadIdle: "Konveyer hali ishlamadi. Ishlagach, tayyorlanayotgan video shu yerda chiqadi.",
     leadNext: "Keyingi bosqich: {s}. Konveyer ish jarayonida.",
     leadDone: "Jarayonda hech narsa yo'q. Oxirgi ishga tushish yakunlandi.",
+    produce: "Video chiqarish",
     openPipeline: "Konveyerni ochish",
     openVideos: "Barcha videolar",
     stripIdle: "bosqich hodisalari hali yo'q",
