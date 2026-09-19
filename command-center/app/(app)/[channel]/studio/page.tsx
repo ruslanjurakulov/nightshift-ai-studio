@@ -3,10 +3,10 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { Panel } from "@/components/ui";
 import { getDictionary } from "@/lib/i18n/server";
-import { getChannelSelection } from "@/lib/channels-server";
-import { scopeQuery } from "@/lib/channels";
+import { getChannelContext } from "@/lib/channels-server";
+import { isScoped, scopeQuery } from "@/lib/channels";
 import { deriveAdvisory } from "@/lib/advisory";
-import { STYLE_PRESETS, presetGradient } from "@/lib/stylePresets";
+import { PresetGallery } from "@/components/studio/PresetGallery";
 import type { SystemEventRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -15,13 +15,14 @@ export const revalidate = 0;
 /**
  * Studio Canvas — the channel's visual identity in one place: a gallery of
  * style presets (the same catalog the bot expands, modules/style_presets.py)
- * and the autopilot's latest auto-picked topic. Read-only: an operator sets a
- * channel's visual style to a preset id, and the whole visual pipeline follows.
+ * and the autopilot's latest auto-picked topic. Applying a preset writes it to
+ * the scoped channel; the pipeline reads that as the channel's base visual style
+ * (main.py, effective_visual_style channel default), so the whole look follows.
  */
 export default async function StudioPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t } = await getDictionary();
-  const selection = await getChannelSelection();
+  const { selection, channels } = await getChannelContext();
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
@@ -36,6 +37,16 @@ export default async function StudioPage() {
     events = (data as SystemEventRow[]) ?? [];
   }
   const agent = deriveAdvisory(events).agent;
+
+  // Applying a preset needs exactly one channel to write to. When a single
+  // channel is in view, find its row; "All channels" leaves this null and the
+  // gallery disables its buttons rather than writing to a channel it can't name.
+  const scopedChannel = isScoped(selection)
+    ? channels.find((c) => c.channel_id === selection)
+    : undefined;
+  const agentConfig = (scopedChannel?.agent_config ?? {}) as Record<string, unknown>;
+  const currentStyle =
+    typeof agentConfig.visual_style_prompt === "string" ? agentConfig.visual_style_prompt : "";
 
   return (
     <div className="rhythm stagger-enter">
@@ -64,37 +75,12 @@ export default async function StudioPage() {
         </div>
       </Panel>
 
-      {/* Style presets — the Studio Canvas gallery */}
-      <div>
-        <h2 className="t-section">{t.studio.presetsTitle}</h2>
-        <p className="t-lead mt-2 mb-4 text-[13px]">{t.studio.presetsHint}</p>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {STYLE_PRESETS.map((p) => (
-            <div
-              key={p.id}
-              className="panel overflow-hidden p-0 transition-transform duration-200 hover:-translate-y-0.5 hover:border-[var(--color-primary-dim)]"
-            >
-              <div
-                className="h-24 w-full"
-                style={{ background: presetGradient(p) }}
-                aria-hidden
-              />
-              <div className="space-y-2 p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-[var(--color-fg)]">{p.name}</span>
-                  <span className="pill border border-[var(--color-border)] px-2 py-0.5 mono text-[10px] text-[var(--color-muted)]">
-                    {t.studio.moodLabel}: {p.mood}
-                  </span>
-                </div>
-                <p className="text-[13px] leading-relaxed text-[var(--color-muted)]">{p.directive}</p>
-                <p className="mono text-[11px] text-[var(--color-muted)]">
-                  {t.studio.applyHint} <span className="text-[var(--color-primary)]">{p.id}</span>
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Style presets — the Studio Canvas gallery, applied to the scoped channel */}
+      <PresetGallery
+        channelId={scopedChannel?.channel_id ?? null}
+        currentStyle={currentStyle}
+        agentConfig={agentConfig}
+      />
     </div>
   );
 }
