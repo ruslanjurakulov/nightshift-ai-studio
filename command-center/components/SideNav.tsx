@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo,
   Users, UserCircle, KeyRound, Bot, ListChecks,
   Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
-  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Menu, X,
+  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Rocket, Menu, X,
   type LucideIcon,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
@@ -69,6 +69,7 @@ const GROUPS: Group[] = [
   {
     label: "gSystem",
     items: [
+      { href: "/getting-started", key: "onboarding", Icon: Rocket },
       { href: "/members", key: "members", Icon: ShieldCheck },
       { href: "/time-machine", key: "timeMachine", Icon: History },
       { href: "/integrations", key: "integrations", Icon: Plug },
