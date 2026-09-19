@@ -9,16 +9,15 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { SignOutButton } from "@/components/SignOutButton";
 import { NotificationsCenter } from "@/components/NotificationsCenter";
 import { UtcClock } from "@/components/UtcClock";
-import { TopNav } from "@/components/TopNav";
 import { ChannelSwitcher } from "@/components/ChannelSwitcher";
 import { ALL_CHANNELS, type ChannelSelection } from "@/lib/channels";
 import type { ChannelRow } from "@/lib/types";
 
 /**
- * One bar, as the approved direction has it: the wordmark and the navigation on
- * the left, the account pill and the operator controls on the right. There is
- * no sidebar any more — nineteen routes in a rail was what made every screen
- * read as an admin console rather than the product.
+ * The top bar: the wordmark on the left, the account pill and operator controls
+ * on the right. Route navigation lives in the left rail (SideNav) — grouped and
+ * icon-led, with only the daily-loop destinations surfaced at the top so the
+ * shell reads as a product, not a wall of admin links.
  */
 export function Header({
   channels = [],
@@ -44,7 +43,6 @@ export function Header({
         >
           {t.brand.name}
         </Link>
-        <TopNav />
       </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:gap-3">

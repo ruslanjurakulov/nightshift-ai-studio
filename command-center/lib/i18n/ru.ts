@@ -10,6 +10,10 @@ export const ru: Dictionary = {
   },
   nav: {
     more: "Ещё",
+    gManage: "Управление",
+    gIntel: "Интеллект",
+    gSystem: "Система",
+    menu: "Меню",
     command: "Центр управления",
     videos: "Видео",
     pipeline: "Конвейер",

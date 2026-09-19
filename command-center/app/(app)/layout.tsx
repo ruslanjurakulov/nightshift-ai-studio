@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { NarrowNav } from "@/components/TopNav";
+import { SideNav } from "@/components/SideNav";
 import { NightSky } from "@/components/NightSky";
 import { Header } from "@/components/Header";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -31,8 +31,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <NightSky />
       <div className="relative z-10 flex min-h-dvh flex-col">
         <Header channels={channels} selection={selection} />
-        <NarrowNav />
-        <main className="pad-page min-w-0 flex-1">{children}</main>
+        <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+          <SideNav />
+          <main className="pad-page min-w-0 flex-1">{children}</main>
+        </div>
       </div>
       <CommandPalette />
     </div>

@@ -412,6 +412,39 @@ h1, h2, h3, .font-display {
 .nav-link[data-active="true"] { color: var(--color-fg); font-weight: 400; }
 .nav-link[data-active="true"]::before { transform: translateY(0); }
 
+/* Left-rail navigation item — icon + label, full width, calm. */
+.side-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  border-radius: 12px;
+  padding: 0.55rem 0.75rem;
+  font-size: 14px;
+  font-weight: 350;
+  line-height: 1.1;
+  color: var(--color-muted);
+  border: 1px solid transparent;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+.side-link:hover { color: var(--color-fg); background: var(--color-panel-2); }
+.side-link[data-active="true"] {
+  color: var(--color-fg);
+  font-weight: 500;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+.side-link[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: -3px;
+  top: 50%;
+  height: 55%;
+  width: 3px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: var(--color-primary);
+}
+
 /* ── Nightshift interactions ────────────────────────────────────────────────
    Two rules carry the reference's feel. Buttons fill with the accent from the
    bottom rather than just changing colour, so a press has a direction. And the
