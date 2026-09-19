@@ -152,6 +152,12 @@ h1, h2, h3, .font-display {
   box-shadow: var(--shadow-panel);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.4s ease;
 }
+/* A card feels a touch alive on hover: a brighter hairline, no lift — so
+   nothing shifts and a large static panel never jumps. The transition above
+   fades it, and prefers-reduced-motion drops that transition at file end. */
+.panel:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 34%, var(--color-border));
+}
 
 .mono {
   font-family: var(--font-mono);
