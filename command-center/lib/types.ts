@@ -307,3 +307,15 @@ export interface RetentionPointRow {
   watch_ratio: number | null;
   measured_date: string;
 }
+
+/** One row of the operator alert feed (migration 0010). */
+export interface AlertEventRow {
+  id: string;
+  at: string;
+  kind: string;
+  severity: "info" | "warn" | "critical";
+  channel_id: string | null;
+  title: string;
+  body: string | null;
+  delivered: boolean;
+}

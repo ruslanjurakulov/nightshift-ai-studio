@@ -37,6 +37,12 @@ const FIXED_NAMES = new Set([
   "YOUTUBE_CLIENT_SECRET_JSON",
   "YOUTUBE_TOKEN_JSON",
   "YOUTUBE_CHANNEL_ID",
+  // Alert channel credentials (see lib/server/alerts.ts). The Slack incoming
+  // webhook URL and the Resend API key are sealed here and read at runtime by
+  // whatever sends the notification (the Actions pipeline, or the web "Send
+  // test" route when the webhook happens to be present in the web runtime).
+  "SLACK_WEBHOOK_URL",
+  "RESEND_API_KEY",
   // Every provider key an operator can type on the Providers board. The list
   // lives in lib/providers.ts so the board and this allowlist cannot drift.
   ...PROVIDER_SECRET_NAMES,
@@ -104,9 +110,11 @@ export async function fetchPublicKey(): Promise<PublicKey> {
  * names of unrelated infrastructural secrets. A partial/paged listing is
  * enough here — a configured provider is only ever missed, never invented.
  */
-export async function listConfiguredSecretNames(): Promise<string[]> {
+export async function listConfiguredSecretNames(
+  allowNames: Iterable<string> = PROVIDER_SECRET_NAMES,
+): Promise<string[]> {
   if (!isGithubConfigured) return [];
-  const allow = new Set<string>(PROVIDER_SECRET_NAMES);
+  const allow = new Set<string>(allowNames);
   const res = await gh("/actions/secrets?per_page=100");
   if (!res.ok) {
     throw new Error(
