@@ -58,7 +58,7 @@ export const PROVIDERS: ProviderDef[] = [
   { id: "higgsfield", name: "Higgsfield", category: "video", secretName: "HIGGSFIELD_API_KEY", consoleUrl: "https://higgsfield.ai", live: false },
   { id: "minimax", name: "MiniMax", category: "video", secretName: "MINIMAX_API_KEY", consoleUrl: "https://www.minimax.io", live: true },
   { id: "kling", name: "Kling", category: "video", secretName: "KLING_API_KEY", consoleUrl: "https://klingai.com", live: false },
-  { id: "veo", name: "Google Veo", category: "video", secretName: "VEO_API_KEY", consoleUrl: "https://deepmind.google/technologies/veo/", live: false },
+  { id: "veo", name: "Google Veo", category: "video", secretName: "VEO_API_KEY", consoleUrl: "https://aistudio.google.com/apikey", live: false },
   { id: "seedance", name: "Seedance", category: "video", secretName: "SEEDANCE_API_KEY", consoleUrl: "https://www.volcengine.com/product/seedance", live: false },
   { id: "wan", name: "Wan", category: "video", secretName: "WAN_API_KEY", consoleUrl: "https://tongyi.aliyun.com/wanxiang", live: false },
   // Images / stock
