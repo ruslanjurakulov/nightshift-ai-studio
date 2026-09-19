@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Inbox, type LucideIcon } from "lucide-react";
 
 const TONE: Record<string, { fg: string; label: string }> = {
   ok: { fg: "var(--color-ok)", label: "OK" },
@@ -67,10 +68,30 @@ export function Panel({ title, children, right }: { title: string; children: Rea
   );
 }
 
-export function EmptyState({ children }: { children: ReactNode }) {
+/**
+ * The one empty state used across the app. A calm icon in a soft disc over a
+ * short line of text, centered — a product's "nothing here yet", not a blank
+ * gap. Pass `icon` to match the surface (a film reel for videos, a chart for
+ * analytics); it defaults to a neutral inbox so every caller reads the same.
+ */
+export function EmptyState({
+  children,
+  icon: Icon = Inbox,
+}: {
+  children: ReactNode;
+  icon?: LucideIcon;
+}) {
   return (
-    <div className="flex items-center justify-center px-4 py-14 text-center text-[15px] font-light text-[var(--color-muted)]">
-      {children}
+    <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+      <span
+        aria-hidden
+        className="grid size-14 place-items-center rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
+      >
+        <Icon className="size-6" strokeWidth={1.5} />
+      </span>
+      <p className="m-0 max-w-[46ch] text-[14px] font-light leading-relaxed text-[var(--color-muted)]">
+        {children}
+      </p>
     </div>
   );
 }
