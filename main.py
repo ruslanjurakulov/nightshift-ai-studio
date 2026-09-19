@@ -348,7 +348,13 @@ def run(
     # avatar on, the presenter), its narration style (a recorded hint), and its
     # cadence. All empty when there is no series — the run then behaves exactly
     # as before.
-    visual_style = effective_visual_style(None, series_obj)
+    #
+    # The channel's own visual style is the base look, below any series override:
+    # what the Studio Canvas writes when an operator applies a preset (or the
+    # free-form style typed when the channel was created). Passing it as the
+    # channel default means that choice actually reaches the pipeline; an empty
+    # channel style keeps the previous behaviour exactly.
+    visual_style = effective_visual_style(None, series_obj, ctx.agent.visual_style_prompt)
     # A channel/series may name a style preset (e.g. "cinematic-noir") instead of
     # writing a full visual-style directive; expand it to the preset's directive
     # so Director Mode and b-roll search get the rich look. A free-form style — or
