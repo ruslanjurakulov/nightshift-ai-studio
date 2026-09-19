@@ -1,5 +1,6 @@
 import { ProvidersBoard } from "@/components/providers/ProvidersBoard";
 import { PipelineRouting } from "@/components/providers/PipelineRouting";
+import { PageHeader } from "@/components/PageHeader";
 import { providersByCategory } from "@/lib/providers";
 import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/github-secrets";
 import { readVariables } from "@/lib/server/github-variables";
@@ -60,6 +61,8 @@ export default async function ProvidersPage({
 
   return (
     <div className="rhythm">
+      <PageHeader icon="providers" title={t.providers.title} subtitle={t.providers.subtitle} />
+
       {/* YouTube connection — the one credential the site can mint itself */}
       <div className="panel p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">

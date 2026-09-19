@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import { SeriesBoard } from "@/components/series/SeriesBoard";
 import type { SeriesRow } from "@/lib/series";
 
@@ -41,12 +42,7 @@ export default async function SeriesPage() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-xl font-semibold">{t.series.title}</h1>
-          <p className="text-sm opacity-70">{t.series.subtitle}</p>
-        </div>
-      </div>
+      <PageHeader icon="series" title={t.series.title} subtitle={t.series.subtitle} />
       <SeriesBoard
         series={series}
         channels={channels}
