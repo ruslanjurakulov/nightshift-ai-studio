@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { Panel, EmptyState, StatusPill } from "@/components/ui";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import { getChannelSelection } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import { fmt, type Dictionary } from "@/lib/i18n";
@@ -166,15 +167,12 @@ export default async function PipelinePage() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="t-hero">{t.pipeline.title}</h1>
-          <p className="t-lead mt-4">
-            {fmt(t.pipeline.subtitle, { n: STAGES.length })}
-          </p>
-        </div>
-        <StageLegend />
-      </div>
+      <PageHeader
+        icon="pipeline"
+        title={t.pipeline.title}
+        subtitle={fmt(t.pipeline.subtitle, { n: STAGES.length })}
+        actions={<StageLegend />}
+      />
 
       <Panel title={t.pipeline.videoPipelines}>
         {dbError ? (

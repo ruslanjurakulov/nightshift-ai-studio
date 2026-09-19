@@ -5,6 +5,7 @@ import { StatCard, Panel, EmptyState } from "@/components/ui";
 import { VideoTable } from "@/components/videos/VideoTable";
 import { isToday, num } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import { getChannelSelection } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import type { MetricsSnapshotRow, VideoRow } from "@/lib/types";
@@ -68,12 +69,7 @@ export default async function VideoLibrary() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="t-hero">{t.videos.title}</h1>
-          <p className="t-lead mt-4">{t.videos.subtitle}</p>
-        </div>
-      </div>
+      <PageHeader icon="videos" title={t.videos.title} subtitle={t.videos.subtitle} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatCard label={t.videos.videosShown} value={num(rows.length)} sub={t.videos.latest100} />

@@ -4,6 +4,7 @@ import { NotConfigured } from "@/components/NotConfigured";
 import { MemoryView } from "@/components/intel/MemoryView";
 import { deriveMemories, deriveOpportunities } from "@/lib/memory";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import { fetchTopicScores, getChannelSelection } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import type { DemandSignalRow, FeedbackSignalRow, TopicPerformanceRow } from "@/lib/types";
@@ -39,10 +40,7 @@ export default async function MemoryPage() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div>
-        <h1 className="t-hero">{t.intel.memoryTitle}</h1>
-        <p className="t-lead mt-4">{t.intel.memorySubtitle}</p>
-      </div>
+      <PageHeader icon="memory" title={t.intel.memoryTitle} subtitle={t.intel.memorySubtitle} />
       <MemoryView memories={memories} opportunities={opportunities} />
     </div>
   );

@@ -6,6 +6,7 @@ import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { ExplainScore } from "@/components/topics/ExplainScore";
 import { num, decimal, relativeTime } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import { fetchTopicScores, getChannelContext, getChannelSelection } from "@/lib/channels-server";
 import { ALL_CHANNELS, scopeQuery } from "@/lib/channels";
 import { fmt } from "@/lib/i18n";
@@ -61,12 +62,7 @@ export default async function TopicManager() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="t-hero">{t.topics.title}</h1>
-          <p className="t-lead mt-4">{t.topics.subtitle}</p>
-        </div>
-      </div>
+      <PageHeader icon="topics" title={t.topics.title} subtitle={t.topics.subtitle} />
 
       {showSharedNote && (
         <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">{t.channels.sharedScoresNote}</p>

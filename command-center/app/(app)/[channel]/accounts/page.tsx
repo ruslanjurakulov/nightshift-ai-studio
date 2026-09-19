@@ -6,6 +6,7 @@ import { AccountsBoard } from "@/components/accounts/AccountsBoard";
 import { getChannelContext } from "@/lib/channels-server";
 import { ACCOUNT_WINDOW_DAYS, isScoped, rollupAccounts } from "@/lib/channels";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import type { ContentQueueRow, SystemEventRow, VideoRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -83,10 +84,7 @@ export default async function AccountsPage() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div>
-        <h1 className="t-hero">{t.accounts.title}</h1>
-        <p className="t-lead mt-4">{t.accounts.subtitle}</p>
-      </div>
+      <PageHeader icon="accounts" title={t.accounts.title} subtitle={t.accounts.subtitle} />
 
       {notMigrated ? (
         <Panel title={t.accounts.title}>

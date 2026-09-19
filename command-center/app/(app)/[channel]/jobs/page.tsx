@@ -4,6 +4,7 @@ import { NotConfigured } from "@/components/NotConfigured";
 import { Panel, EmptyState, StatCard } from "@/components/ui";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import { getChannelSelection } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import { fmt } from "@/lib/i18n";
@@ -137,12 +138,7 @@ export default async function JobsPage() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="t-hero">{t.jobs.title}</h1>
-          <p className="t-lead mt-4">{t.jobs.subtitle}</p>
-        </div>
-      </div>
+      <PageHeader icon="jobs" title={t.jobs.title} subtitle={t.jobs.subtitle} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label={t.jobs.jobs} value={<AnimatedNumber value={jobs.length} />} sub={t.jobs.jobsSub} />

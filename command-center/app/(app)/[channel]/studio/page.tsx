@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { Panel } from "@/components/ui";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import { getChannelContext } from "@/lib/channels-server";
 import { isScoped, scopeQuery } from "@/lib/channels";
 import { deriveAdvisory } from "@/lib/advisory";
@@ -50,10 +51,7 @@ export default async function StudioPage() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div>
-        <h1 className="t-hero">{t.studio.title}</h1>
-        <p className="t-lead mt-4">{t.studio.subtitle}</p>
-      </div>
+      <PageHeader icon="studio" title={t.studio.title} subtitle={t.studio.subtitle} />
 
       {/* Autopilot — the day's auto-picked topic (Track 3 Autopilot Lite) */}
       <Panel title={t.studio.autopilotTitle}>

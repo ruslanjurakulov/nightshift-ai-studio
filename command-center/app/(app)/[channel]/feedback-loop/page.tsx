@@ -5,6 +5,7 @@ import { Panel, EmptyState, StatCard } from "@/components/ui";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { relativeTime } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
+import { PageHeader } from "@/components/PageHeader";
 import { fetchTopicScores, getChannelSelection } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import { fmt } from "@/lib/i18n";
@@ -53,10 +54,7 @@ export default async function FeedbackPage() {
 
   return (
     <div className="rhythm stagger-enter">
-      <div>
-        <h1 className="t-hero">{t.feedback.title}</h1>
-        <p className="t-lead mt-4">{t.feedback.subtitle}</p>
-      </div>
+      <PageHeader icon="feedback" title={t.feedback.title} subtitle={t.feedback.subtitle} />
 
       {/* The loop, drawn from the real stages the backend runs */}
       <div className="panel overflow-x-auto p-4">
