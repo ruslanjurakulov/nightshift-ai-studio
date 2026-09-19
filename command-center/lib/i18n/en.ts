@@ -102,6 +102,7 @@ export const en = {
     leadIdle: "The pipeline has not run. Once it does, the video it is working on appears here.",
     leadNext: "Next stage: {s}. The pipeline is mid-run.",
     leadDone: "Nothing in flight. The last run finished.",
+    produce: "Produce a video",
     openPipeline: "Open pipeline",
     openVideos: "All videos",
     stripIdle: "no stage events yet",

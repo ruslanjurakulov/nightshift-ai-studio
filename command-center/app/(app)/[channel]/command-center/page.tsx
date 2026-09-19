@@ -15,8 +15,10 @@ import { deriveAdvisory } from "@/lib/advisory";
 import { quotaGaugeView } from "@/lib/quota-gauge";
 import { inferNextStage, dailyMission, PIPELINE_ORDER, type PipelineStageKey } from "@/lib/intelligence";
 import { getDictionary } from "@/lib/i18n/server";
-import { fetchTopicScores, getChannelSelection } from "@/lib/channels-server";
-import { scopeQuery } from "@/lib/channels";
+import { fetchTopicScores, getChannelContext } from "@/lib/channels-server";
+import { isScoped, scopeQuery } from "@/lib/channels";
+import { isGithubConfigured } from "@/lib/server/github-secrets";
+import { RunNowButton } from "@/components/agents/RunNowButton";
 import { fmt } from "@/lib/i18n";
 import type { FeedbackSignalRow, MetricsSnapshotRow, SystemEventRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
 import { isToday, num, relativeTime, statusTone, storedMs } from "@/lib/format";
@@ -66,7 +68,14 @@ export default async function CommandCenter() {
   const path = await getChannelPath();
   // Scope every channel-owned query to the selected channel (view control;
   // RLS still decides what may be read at all).
-  const selection = await getChannelSelection();
+  const { selection, channels } = await getChannelContext();
+  // The primary "Produce a video" action needs one verified channel and the
+  // GitHub dispatch wiring; when either is missing the hero keeps its
+  // navigation buttons only, rather than showing a dead control.
+  const scopedChannel = isScoped(selection)
+    ? channels.find((c) => c.channel_id === selection)
+    : undefined;
+  const canProduce = Boolean(scopedChannel) && isGithubConfigured;
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
@@ -165,7 +174,18 @@ export default async function CommandCenter() {
           </div>
 
           <div className="flex flex-wrap items-center gap-4">
-            <Link href={path("/pipeline")} className="btn-sky is-solid pill px-[30px] py-3.5 text-[14px]">
+            {canProduce && scopedChannel && (
+              <RunNowButton
+                variant="inline"
+                channelId={scopedChannel.channel_id}
+                githubConfigured={isGithubConfigured}
+                label={t.dashboard.produce}
+              />
+            )}
+            <Link
+              href={path("/pipeline")}
+              className={`btn-sky pill px-[30px] py-3.5 text-[14px]${canProduce ? "" : " is-solid"}`}
+            >
               {t.dashboard.openPipeline}
               <span className="btn-arrow" aria-hidden>
                 →
