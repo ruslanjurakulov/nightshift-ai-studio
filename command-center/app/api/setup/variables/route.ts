@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/roles";
 import { isGithubConfigured } from "@/lib/server/github-secrets";
 import { isWritableVariable, putVariable, readVariables } from "@/lib/server/github-variables";
 
@@ -35,6 +36,8 @@ export async function GET() {
 export async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Changing which generator the pipeline uses is an owner/admin action.
+  if (!(await requireRole("admin"))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   if (!isGithubConfigured)
     return NextResponse.json({ error: "github_not_configured" }, { status: 503 });
 
