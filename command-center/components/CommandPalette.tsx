@@ -32,6 +32,7 @@ const NAV: { href: string; key: NavKey; hotkey?: string }[] = [
   { href: "/integrations", key: "integrations" },
   { href: "/getting-started", key: "onboarding" },
   { href: "/members", key: "members" },
+  { href: "/audit", key: "audit" },
 ];
 
 interface Item {
