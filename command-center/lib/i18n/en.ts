@@ -16,6 +16,10 @@ export const en = {
   },
   nav: {
     more: "More",
+    gManage: "Manage",
+    gIntel: "Intelligence",
+    gSystem: "System",
+    menu: "Menu",
     command: "Command Center",
     videos: "Videos",
     pipeline: "Pipeline",

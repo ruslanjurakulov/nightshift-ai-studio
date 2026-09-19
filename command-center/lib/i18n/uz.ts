@@ -10,6 +10,10 @@ export const uz: Dictionary = {
   },
   nav: {
     more: "Yana",
+    gManage: "Boshqaruv",
+    gIntel: "Aql",
+    gSystem: "Tizim",
+    menu: "Menyu",
     command: "Boshqaruv markazi",
     videos: "Videolar",
     pipeline: "Konveyer",
