@@ -25,6 +25,11 @@ export const WRITABLE_VARIABLES = [
   "CHRONOS_ENABLE_MINIMAX_BROLL",
   "CHRONOS_ENABLE_IMAGE_GEN",
   "CHRONOS_AGENT_AUTOPILOT",
+  // Alert email routing (see lib/server/alerts.ts). Non-secret addresses: the
+  // recipient and sender for Resend email alerts. Plain variables so the feed
+  // page can show whether email is configured and the pipeline can read them.
+  "ALERT_EMAIL_TO",
+  "ALERT_EMAIL_FROM",
 ] as const;
 
 export type WritableVariable = (typeof WRITABLE_VARIABLES)[number];
