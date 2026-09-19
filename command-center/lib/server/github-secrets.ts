@@ -125,6 +125,38 @@ export async function listConfiguredSecretNames(): Promise<string[]> {
 }
 
 /**
+ * Trigger the daily-video workflow on demand for one channel.
+ *
+ * A "Run now" from the site is exactly a `workflow_dispatch` of the same
+ * pipeline the hourly cron fires — GitHub Actions runs it, not this server, so
+ * nothing heavy happens in the request. The workflow's own inputs decide the
+ * rest: `channel` targets this channel whatever the hour, and `privacy` is
+ * pinned to `private` so an on-demand run never surprises anyone with a public
+ * upload — the channel's auto-publish and the publish gate still decide what
+ * actually goes out, exactly as on a scheduled run.
+ *
+ * `ref` is the branch the workflow file is read from — the default branch,
+ * overridable with GITHUB_SECRETS_REF for a fork or a non-main default. Requires
+ * the forwarding token to carry `actions:write`; a 403 says it does not.
+ */
+export async function dispatchDailyVideo(channelId: string): Promise<void> {
+  if (!isGithubConfigured) throw new Error("github_not_configured");
+  const ref = process.env.GITHUB_SECRETS_REF?.trim() || "main";
+  const res = await gh("/actions/workflows/daily_video.yml/dispatches", {
+    method: "POST",
+    body: JSON.stringify({ ref, inputs: { channel: channelId, privacy: "private" } }),
+  });
+  if (res.status === 204) return;
+  throw new Error(
+    res.status === 401 || res.status === 403
+      ? "github_unauthorized"
+      : res.status === 404
+        ? "github_workflow_not_found"
+        : "github_dispatch_failed",
+  );
+}
+
+/**
  * Seal `value` to the repository key and PUT it as `name`.
  *
  * Returns "created" or "updated" — GitHub answers 201 for a secret that did not
