@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/roles";
+import { logAudit } from "@/lib/server/audit";
 import { AUTOMATION_LEVELS, PLATFORM_OPTIONS } from "@/lib/series";
 
 export const runtime = "nodejs";
@@ -92,6 +93,8 @@ export async function POST(request: Request) {
       { status: missing ? 503 : 500 },
     );
   }
+  // Audit the creation against its channel (best-effort, never throws).
+  await logAudit({ action: "series.create", target: seriesId, channelId });
   return NextResponse.json({ ok: true, series_id: seriesId });
 }
 
@@ -125,5 +128,7 @@ export async function PATCH(request: Request) {
     .update({ status, updated_at: new Date().toISOString() })
     .eq("series_id", seriesId);
   if (error) return NextResponse.json({ error: "update_failed", detail: error.message }, { status: 500 });
+  // Audit the status change — target series + new status (best-effort, never throws).
+  await logAudit({ action: "series.update", target: seriesId, detail: { status } });
   return NextResponse.json({ ok: true });
 }

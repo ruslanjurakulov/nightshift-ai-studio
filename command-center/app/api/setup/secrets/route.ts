@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/roles";
+import { logAudit } from "@/lib/server/audit";
 import {
   GITHUB_REPO,
   fetchPublicKey,
@@ -63,6 +64,8 @@ export async function POST(request: Request) {
     for (const [name, value] of entries) {
       written.push({ name, result: await putSecret(name, value.trim(), key) });
     }
+    // Audit the write — names only, never a value (best-effort, never throws).
+    await logAudit({ action: "secret.write", detail: { names: written.map((w) => w.name) } });
     return NextResponse.json({ ok: true, repo: GITHUB_REPO, written });
   } catch (e) {
     const reason = e instanceof Error ? e.message : "github_write_failed";
