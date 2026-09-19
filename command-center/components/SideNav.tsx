@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo,
   Users, UserCircle, KeyRound, Bot, ListChecks,
   Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
-  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Lock, BellRing, ClipboardList, Menu, X,
+  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Lock, UserCheck, BellRing, ClipboardList, Menu, X,
   type LucideIcon,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
@@ -71,6 +71,7 @@ const GROUPS: Group[] = [
     items: [
       { href: "/members", key: "members", Icon: ShieldCheck },
       { href: "/security", key: "security", Icon: Lock },
+      { href: "/approvals", key: "approvals", Icon: UserCheck },
       { href: "/alerts", key: "alerts", Icon: BellRing },
       { href: "/audit", key: "audit", Icon: ClipboardList },
       { href: "/time-machine", key: "timeMachine", Icon: History },
