@@ -200,6 +200,12 @@ export interface ChannelAgentConfig {
    * default channel's legacy behaviour); an explicit [] means "watch nobody".
    */
   competitor_channel_ids?: string[];
+  /**
+   * When true, an auto-publish on this channel must be approved by a SECOND
+   * admin (never the requester) before the video goes public — see migration
+   * 0009 and the Approvals page. Absent/false keeps today's behaviour.
+   */
+  require_two_person_publish?: boolean;
 }
 
 export interface ChannelScheduleConfig {
