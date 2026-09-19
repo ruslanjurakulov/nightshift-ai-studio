@@ -46,6 +46,7 @@ export const en = {
     series: "Series",
     members: "Team",
     alerts: "Alerts",
+    audit: "Audit Trail",
   },
   common: {
     na: "N/A",
@@ -424,6 +425,17 @@ export const en = {
     lvError: "ERROR",
     lines: "{n} lines",
     noMatch: "No matching log lines.",
+  },
+  audit: {
+    title: "Audit Trail",
+    subtitle: "An append-only record of privileged actions — who did what, when. Detail carries names and counts only, never secret values.",
+    colTime: "Time",
+    colActor: "Actor",
+    colAction: "Action",
+    colTarget: "Target",
+    colChannel: "Channel",
+    empty: "No audited actions yet. Privileged actions — secret writes, on-demand runs, series changes — will appear here.",
+    notConfigured: "The audit trail needs Supabase. Once configured and migration 0008 is applied, entries appear here.",
   },
   integrations: {
     title: "Integration Health",
