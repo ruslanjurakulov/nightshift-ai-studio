@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/roles";
 import { AUTOMATION_LEVELS, PLATFORM_OPTIONS } from "@/lib/series";
 
 export const runtime = "nodejs";
@@ -33,6 +34,8 @@ function cleanPlatforms(value: unknown): string[] {
 export async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Creating a content series is an editorial action (editor and up).
+  if (!(await requireRole("editor"))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const supabase = await createClient();
   if (!supabase) return NextResponse.json({ error: "supabase_not_configured" }, { status: 503 });
@@ -95,6 +98,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await requireRole("editor"))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const supabase = await createClient();
   if (!supabase) return NextResponse.json({ error: "supabase_not_configured" }, { status: 503 });
