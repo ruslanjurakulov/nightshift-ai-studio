@@ -39,16 +39,43 @@ export function RunNowButton({
   const [phase, setPhase] = useState<Phase>("idle");
   const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
 
+  // Optional per-run topic + data-backed suggestions (panel variant only).
+  type Idea = { label: string; source: "demand" | "proven" };
+  type IdeasPhase = "idle" | "loading" | "loaded" | "error";
+  const [topic, setTopic] = useState("");
+  const [ideas, setIdeas] = useState<Idea[]>([]);
+  const [ideasPhase, setIdeasPhase] = useState<IdeasPhase>("idle");
+
   const blocked = !channelId || !githubConfigured;
+
+  async function loadIdeas() {
+    setIdeasPhase("loading");
+    try {
+      const res = await fetch("/api/agent/ideas");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setIdeasPhase("error");
+        return;
+      }
+      setIdeas(Array.isArray(data.ideas) ? (data.ideas as Idea[]) : []);
+      setIdeasPhase("loaded");
+    } catch {
+      setIdeasPhase("error");
+    }
+  }
 
   async function run() {
     if (!channelId) return;
     setPhase("starting");
+    const trimmed = topic.trim();
     try {
       const res = await fetch("/api/agent/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel_id: channelId }),
+        body: JSON.stringify({
+          channel_id: channelId,
+          ...(trimmed ? { topic: trimmed } : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -108,6 +135,67 @@ export function RunNowButton({
 
   if (variant === "inline") return actions;
 
+  // Optional topic + "Ideas" suggestions. Only shown when a run is actually
+  // possible, since the topic only reaches a real dispatch through `run()`.
+  const topicBlock = (
+    <div className="flex flex-col gap-2">
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+          {t.agents.runTopicLabel}
+        </span>
+        <input
+          type="text"
+          value={topic}
+          onChange={(e) => setTopic(e.target.value)}
+          placeholder={t.agents.runTopicPlaceholder}
+          maxLength={300}
+          className="pill border border-[var(--color-border)] bg-transparent px-4 py-2 text-[13px] outline-none transition-colors focus:border-[var(--color-primary)]"
+        />
+      </label>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={loadIdeas}
+          disabled={ideasPhase === "loading"}
+          className="btn-sky is-quiet pill px-3 py-1.5 text-[12px] disabled:opacity-40"
+        >
+          {ideasPhase === "loading" ? t.agents.runIdeasLoading : t.agents.runIdeas}
+        </button>
+        {ideasPhase === "error" && (
+          <span className="mono text-[11px] text-[var(--color-fail)]">{t.agents.runIdeasFailed}</span>
+        )}
+        {ideasPhase === "loaded" && ideas.length === 0 && (
+          <span className="mono text-[11px] text-[var(--color-muted)]">{t.agents.runIdeasEmpty}</span>
+        )}
+      </div>
+
+      {ideas.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {ideas.map((idea) => (
+            <button
+              key={`${idea.source}:${idea.label}`}
+              type="button"
+              onClick={() => setTopic(idea.label)}
+              title={idea.source === "demand" ? t.agents.runIdeaDemand : t.agents.runIdeaProven}
+              className="pill inline-flex items-center gap-1.5 border border-[var(--color-border)] px-3 py-1 text-[12px] text-[var(--color-muted)] transition-colors hover:border-[var(--color-primary)] hover:text-[var(--color-fg)]"
+            >
+              <span
+                aria-hidden
+                className="inline-block h-1.5 w-1.5 rounded-full"
+                style={{
+                  background:
+                    idea.source === "demand" ? "var(--color-primary)" : "var(--color-ok)",
+                }}
+              />
+              {idea.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="panel flex flex-col gap-3 p-4">
       <div>
@@ -123,6 +211,7 @@ export function RunNowButton({
         <p className="text-[13px] text-[var(--color-warn)]">{t.agents.runPickChannel}</p>
       ) : null}
 
+      {!blocked && topicBlock}
       {actions}
     </div>
   );

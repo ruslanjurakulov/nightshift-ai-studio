@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   if (!isGithubConfigured)
     return NextResponse.json({ error: "github_not_configured" }, { status: 503 });
 
-  let body: { channel_id?: unknown };
+  let body: { channel_id?: unknown; topic?: unknown; niche?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -46,10 +46,14 @@ export async function POST(request: Request) {
   const channelId = typeof body.channel_id === "string" ? body.channel_id.trim() : "";
   if (!channelId) return NextResponse.json({ error: "channel_required" }, { status: 400 });
 
+  // Optional per-run overrides. Empty/absent means "the AI picks", as before.
+  const topic = typeof body.topic === "string" ? body.topic.trim().slice(0, 300) : "";
+  const niche = typeof body.niche === "string" ? body.niche.trim().slice(0, 120) : "";
+
   try {
-    await dispatchDailyVideo(channelId);
+    await dispatchDailyVideo(channelId, { topic, niche });
     // Audit the on-demand run against its channel (best-effort, never throws).
-    await logAudit({ action: "agent.run", channelId });
+    await logAudit({ action: "agent.run", channelId, detail: topic ? { topic } : undefined });
     return NextResponse.json({ ok: true });
   } catch (e) {
     const reason = e instanceof Error ? e.message : "github_dispatch_failed";
