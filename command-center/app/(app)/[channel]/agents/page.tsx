@@ -12,6 +12,7 @@ import { isGithubConfigured } from "@/lib/server/github-secrets";
 import type { SystemEventRow } from "@/lib/types";
 import { AgentCard, type AgentSummary } from "@/components/agents/AgentCard";
 import { ScheduleEditor } from "@/components/agents/ScheduleEditor";
+import { CastEditor } from "@/components/agents/CastEditor";
 import { RunNowButton } from "@/components/agents/RunNowButton";
 
 export const dynamic = "force-dynamic";
@@ -108,6 +109,11 @@ export default async function AgentsPage() {
       <ScheduleEditor
         channelId={scopedChannel?.channel_id ?? null}
         schedule={scopedChannel?.schedule_config ?? null}
+      />
+
+      <CastEditor
+        channelId={scopedChannel?.channel_id ?? null}
+        agentConfig={scopedChannel?.agent_config ?? null}
       />
 
       <RunNowButton
