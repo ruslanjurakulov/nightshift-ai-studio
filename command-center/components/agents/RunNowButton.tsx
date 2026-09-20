@@ -46,6 +46,12 @@ export function RunNowButton({
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [ideasPhase, setIdeasPhase] = useState<IdeasPhase>("idle");
 
+  // Optional per-run controls. Empty = the channel's own setting, so a plain
+  // run behaves exactly as before. Duration is seconds ("" = channel target).
+  const [duration, setDuration] = useState("");
+  const [language, setLanguage] = useState("");
+  const [styleOverride, setStyleOverride] = useState("");
+
   const blocked = !channelId || !githubConfigured;
 
   async function loadIdeas() {
@@ -68,6 +74,8 @@ export function RunNowButton({
     if (!channelId) return;
     setPhase("starting");
     const trimmed = topic.trim();
+    const dur = Number(duration);
+    const style = styleOverride.trim();
     try {
       const res = await fetch("/api/agent/run", {
         method: "POST",
@@ -75,6 +83,9 @@ export function RunNowButton({
         body: JSON.stringify({
           channel_id: channelId,
           ...(trimmed ? { topic: trimmed } : {}),
+          ...(duration && Number.isFinite(dur) && dur > 0 ? { duration: dur } : {}),
+          ...(language ? { language } : {}),
+          ...(style ? { visual_style: style } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -196,6 +207,57 @@ export function RunNowButton({
     </div>
   );
 
+  // Per-run controls: length, language and look. Each defaults to "the
+  // channel's own", so leaving them untouched runs exactly as before.
+  const selectClass =
+    "pill border border-[var(--color-border)] bg-transparent px-4 py-2 text-[13px] outline-none transition-colors focus:border-[var(--color-primary)]";
+  const controlsBlock = (
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+            {t.agents.runDurationLabel}
+          </span>
+          <select value={duration} onChange={(e) => setDuration(e.target.value)} className={selectClass}>
+            <option value="">{t.agents.runOptChannel}</option>
+            <option value="180">{t.agents.runDur3m}</option>
+            <option value="300">{t.agents.runDur5m}</option>
+            <option value="600">{t.agents.runDur10m}</option>
+            <option value="1200">{t.agents.runDur20m}</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+            {t.agents.runLangLabel}
+          </span>
+          <select value={language} onChange={(e) => setLanguage(e.target.value)} className={selectClass}>
+            <option value="">{t.agents.runOptChannel}</option>
+            <option value="English">English</option>
+            <option value="Arabic">العربية</option>
+            <option value="Russian">Русский</option>
+            <option value="Spanish">Español</option>
+            <option value="Chinese">中文</option>
+            <option value="Korean">한국어</option>
+            <option value="Indonesian">Indonesia</option>
+          </select>
+        </label>
+      </div>
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+          {t.agents.runStyleLabel}
+        </span>
+        <input
+          type="text"
+          value={styleOverride}
+          onChange={(e) => setStyleOverride(e.target.value)}
+          placeholder={t.agents.runStylePlaceholder}
+          maxLength={300}
+          className="pill border border-[var(--color-border)] bg-transparent px-4 py-2 text-[13px] outline-none transition-colors focus:border-[var(--color-primary)]"
+        />
+      </label>
+    </div>
+  );
+
   return (
     <div className="panel flex flex-col gap-3 p-4">
       <div>
@@ -212,6 +274,7 @@ export function RunNowButton({
       ) : null}
 
       {!blocked && topicBlock}
+      {!blocked && controlsBlock}
       {actions}
     </div>
   );

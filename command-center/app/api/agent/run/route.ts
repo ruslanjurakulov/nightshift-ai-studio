@@ -36,7 +36,14 @@ export async function POST(request: Request) {
   if (!isGithubConfigured)
     return NextResponse.json({ error: "github_not_configured" }, { status: 503 });
 
-  let body: { channel_id?: unknown; topic?: unknown; niche?: unknown };
+  let body: {
+    channel_id?: unknown;
+    topic?: unknown;
+    niche?: unknown;
+    duration?: unknown;
+    language?: unknown;
+    visual_style?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -46,14 +53,41 @@ export async function POST(request: Request) {
   const channelId = typeof body.channel_id === "string" ? body.channel_id.trim() : "";
   if (!channelId) return NextResponse.json({ error: "channel_required" }, { status: 400 });
 
-  // Optional per-run overrides. Empty/absent means "the AI picks", as before.
+  // Optional per-run overrides. Empty/absent means "the AI picks / the channel's
+  // own setting applies", exactly as before.
   const topic = typeof body.topic === "string" ? body.topic.trim().slice(0, 300) : "";
   const niche = typeof body.niche === "string" ? body.niche.trim().slice(0, 120) : "";
+  const language = typeof body.language === "string" ? body.language.trim().slice(0, 40) : "";
+  const visualStyle =
+    typeof body.visual_style === "string" ? body.visual_style.trim().slice(0, 300) : "";
+  // Duration in seconds. Accept a number or a numeric string; clamp to a sane
+  // range (30s … 60min) so a stray value never asks the pipeline for an absurd
+  // length. 0/NaN/absent means "use the channel's own target".
+  const durationRaw =
+    typeof body.duration === "number"
+      ? body.duration
+      : typeof body.duration === "string"
+        ? Number(body.duration)
+        : NaN;
+  const duration =
+    Number.isFinite(durationRaw) && durationRaw > 0
+      ? Math.min(3600, Math.max(30, Math.round(durationRaw)))
+      : undefined;
 
   try {
-    await dispatchDailyVideo(channelId, { topic, niche });
+    await dispatchDailyVideo(channelId, { topic, niche, duration, language, visualStyle });
     // Audit the on-demand run against its channel (best-effort, never throws).
-    await logAudit({ action: "agent.run", channelId, detail: topic ? { topic } : undefined });
+    // Record only the non-default controls the operator actually set.
+    const detail: Record<string, unknown> = {};
+    if (topic) detail.topic = topic;
+    if (duration) detail.duration = duration;
+    if (language) detail.language = language;
+    if (visualStyle) detail.visual_style = visualStyle;
+    await logAudit({
+      action: "agent.run",
+      channelId,
+      detail: Object.keys(detail).length ? detail : undefined,
+    });
     return NextResponse.json({ ok: true });
   } catch (e) {
     const reason = e instanceof Error ? e.message : "github_dispatch_failed";
