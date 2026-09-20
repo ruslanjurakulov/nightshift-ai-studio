@@ -36,6 +36,7 @@ from modules.avatar import (
     AvatarUnavailable, UnsafeAvatarRequest, maybe_generate_presenter, resolve_avatar_config,
 )
 from modules.audio_mixer import AudioMixer, VoiceUnavailable, verify_voice
+from dataclasses import replace as _dc_replace
 from modules.channels import ChannelContext, resolve_channel
 from modules.credential_health import check_run_credentials
 from modules.cost_ledger import (
@@ -323,6 +324,9 @@ def run(
     channel: ChannelContext | str | None = None,
     series: str | None = None,
     resume: bool = False,
+    duration: int | None = None,
+    language: str | None = None,
+    visual_style: str | None = None,
 ):
     """Run the pipeline once, for one channel.
 
@@ -334,9 +338,29 @@ def run(
 
     `niche` overrides the channel's own niche for this run; None uses the
     channel's.
+
+    `duration`, `language` and `visual_style` are optional per-run controls (the
+    site's "Run now" and the workflow_dispatch inputs). Each overrides just this
+    one run — the channel's stored configuration is untouched — and each is None
+    when the operator left it blank, which keeps the channel's own value exactly
+    as before. `duration` is a target length in seconds; `language` is the script
+    language; `visual_style` is a look directive (or a style-preset name) that
+    wins over the series' and the channel's own style for this run only.
     """
     Path("logs").mkdir(exist_ok=True)
     ctx = channel if isinstance(channel, ChannelContext) else resolve_channel(channel)
+    # Per-run overrides for the generator settings. AgentConfig and
+    # ChannelContext are frozen, so this builds an overridden COPY for this run
+    # rather than mutating shared state — two channels (or two tests) in one
+    # process never see each other's overrides, and the stored channel is
+    # unchanged. A blank/None value leaves the channel's own setting in place.
+    agent_overrides: dict = {}
+    if language and language.strip():
+        agent_overrides["language"] = language.strip()
+    if duration and duration > 0:
+        agent_overrides["target_duration_seconds"] = int(duration)
+    if agent_overrides:
+        ctx = _dc_replace(ctx, agent=_dc_replace(ctx.agent, **agent_overrides))
     channel_id = str(ctx.channel_id)
     # A series is an optional recurring content line within the channel. When
     # given, its niche seeds this run (unless --niche was passed explicitly) and
@@ -354,7 +378,11 @@ def run(
     # free-form style typed when the channel was created). Passing it as the
     # channel default means that choice actually reaches the pipeline; an empty
     # channel style keeps the previous behaviour exactly.
-    visual_style = effective_visual_style(None, series_obj, ctx.agent.visual_style_prompt)
+    # A per-run visual-style override (from "Run now") is the most specific
+    # opinion there is, so it leads the precedence — above the series' style and
+    # the channel's own. None/blank keeps the previous behaviour exactly.
+    _style_override = visual_style.strip() if visual_style and visual_style.strip() else None
+    visual_style = effective_visual_style(_style_override, series_obj, ctx.agent.visual_style_prompt)
     # A channel/series may name a style preset (e.g. "cinematic-noir") instead of
     # writing a full visual-style directive; expand it to the preset's directive
     # so Director Mode and b-roll search get the rich look. A free-form style — or
@@ -1132,6 +1160,17 @@ if __name__ == "__main__":
                         help="Resume a crashed run: reuse its saved script (skipping the "
                              "paid Gemini generation) from the run checkpoint. With --topic, "
                              "resumes that run; alone, resumes the most recent unfinished run.")
+    # Per-run controls (the site's "Run now" forwards these; blank = the
+    # channel's own setting, exactly as before).
+    parser.add_argument("--duration", type=int, default=None,
+                        help="Target video length in seconds for THIS run only "
+                             "(default: the channel's target_duration_seconds)")
+    parser.add_argument("--language", default=None,
+                        help="Script language for THIS run only, e.g. 'English', "
+                             "'Arabic' (default: the channel's language)")
+    parser.add_argument("--visual-style", dest="visual_style", default=None,
+                        help="Visual-style directive or style-preset name for THIS "
+                             "run only (default: the channel's / series' style)")
     args = parser.parse_args()
 
     if args.list_channels:
@@ -1146,4 +1185,7 @@ if __name__ == "__main__":
             channel=args.channel,
             series=args.series,
             resume=args.resume,
+            duration=args.duration,
+            language=args.language,
+            visual_style=args.visual_style,
         )

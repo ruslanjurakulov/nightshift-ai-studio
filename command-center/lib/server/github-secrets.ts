@@ -149,18 +149,34 @@ export async function listConfiguredSecretNames(
  */
 export async function dispatchDailyVideo(
   channelId: string,
-  opts: { topic?: string; niche?: string } = {},
+  opts: {
+    topic?: string;
+    niche?: string;
+    duration?: number;
+    language?: string;
+    visualStyle?: string;
+  } = {},
 ): Promise<void> {
   if (!isGithubConfigured) throw new Error("github_not_configured");
   const ref = process.env.GITHUB_SECRETS_REF?.trim() || "main";
-  // The workflow already exposes `topic` and `niche` inputs (see
-  // .github/workflows/daily_video.yml); forward them only when set so a plain
-  // run still behaves exactly as before (the AI picks the topic).
+  // The workflow exposes `topic`, `niche`, `duration`, `language` and
+  // `visual_style` inputs (see .github/workflows/daily_video.yml); forward each
+  // only when set so a plain run still behaves exactly as before (the AI picks
+  // the topic and the channel's own settings apply).
   const inputs: Record<string, string> = { channel: channelId, privacy: "private" };
   const topic = opts.topic?.trim();
   const niche = opts.niche?.trim();
+  const language = opts.language?.trim();
+  const visualStyle = opts.visualStyle?.trim();
   if (topic) inputs.topic = topic.slice(0, 300);
   if (niche) inputs.niche = niche.slice(0, 120);
+  // Duration is a positive integer number of seconds; a workflow_dispatch input
+  // is always a string, so it is stringified here and re-parsed by main.py.
+  if (typeof opts.duration === "number" && Number.isFinite(opts.duration) && opts.duration > 0) {
+    inputs.duration = String(Math.round(opts.duration));
+  }
+  if (language) inputs.language = language.slice(0, 40);
+  if (visualStyle) inputs.visual_style = visualStyle.slice(0, 300);
   const res = await gh("/actions/workflows/daily_video.yml/dispatches", {
     method: "POST",
     body: JSON.stringify({ ref, inputs }),

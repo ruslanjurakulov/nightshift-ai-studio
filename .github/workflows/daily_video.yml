@@ -31,6 +31,18 @@ on:
         default: "private"
         type: choice
         options: [private, unlisted, public]
+      duration:
+        description: "Target length in seconds (empty = the channel's own)"
+        required: false
+        default: ""
+      language:
+        description: "Script language, e.g. English/Arabic (empty = the channel's own)"
+        required: false
+        default: ""
+      visual_style:
+        description: "Visual style directive or preset name (empty = the channel's own)"
+        required: false
+        default: ""
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -234,6 +246,12 @@ jobs:
           CHANNEL_ID: ${{ matrix.channel_id }}
           INPUT_TOPIC: ${{ github.event.inputs.topic }}
           INPUT_NICHE: ${{ github.event.inputs.niche }}
+          # Per-run controls (empty on a scheduled run, so the channel's own
+          # settings apply exactly as before). Passed through the environment,
+          # never interpolated into the shell — same injection guard as topic.
+          INPUT_DURATION: ${{ github.event.inputs.duration }}
+          INPUT_LANGUAGE: ${{ github.event.inputs.language }}
+          INPUT_VISUAL_STYLE: ${{ github.event.inputs.visual_style }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           # --- AITuber presenter (optional, off unless enabled) -------------
@@ -305,6 +323,15 @@ jobs:
           fi
           if [ -n "$INPUT_NICHE" ]; then
             args+=(--niche "$INPUT_NICHE")
+          fi
+          if [ -n "${INPUT_DURATION:-}" ]; then
+            args+=(--duration "$INPUT_DURATION")
+          fi
+          if [ -n "${INPUT_LANGUAGE:-}" ]; then
+            args+=(--language "$INPUT_LANGUAGE")
+          fi
+          if [ -n "${INPUT_VISUAL_STYLE:-}" ]; then
+            args+=(--visual-style "$INPUT_VISUAL_STYLE")
           fi
           python main.py "${args[@]}"
 
