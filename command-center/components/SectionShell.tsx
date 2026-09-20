@@ -32,7 +32,16 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isHome) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") router.push(home);
+      if (e.key !== "Escape") return;
+      // Don't hijack Escape from a control that handles it itself — closing a
+      // <select> dropdown, clearing an <input>, dismissing an open menu. On the
+      // form-heavy panels (approvals, members, alerts) pressing Escape there
+      // means "close this control", not "eject me to the dashboard".
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || el?.isContentEditable) return;
+      if (e.defaultPrevented) return;
+      router.push(home);
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
