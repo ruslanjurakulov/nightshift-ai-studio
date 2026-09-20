@@ -497,6 +497,8 @@ export const ru: Dictionary = {
     consoleLink: "Открыть консоль ↗",
     keyPlaceholder: "Вставьте API-ключ",
     updateHint: "Задан — вставьте новый ключ для замены",
+    keySaved: "Ключ сохранён",
+    replace: "Заменить",
     save: "Сохранить",
     saving: "Сохранение…",
     saved: "Сохранено в GitHub — ключ удалён из браузера",

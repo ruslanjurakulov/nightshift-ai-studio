@@ -503,6 +503,8 @@ export const en = {
     consoleLink: "Open console ↗",
     keyPlaceholder: "Paste API key",
     updateHint: "Set — paste a new key to replace",
+    keySaved: "Key saved",
+    replace: "Replace",
     save: "Save",
     saving: "Saving…",
     saved: "Saved to GitHub — key dropped from the browser",

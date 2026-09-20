@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Check } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { StatusPill } from "@/components/ui";
 import {
@@ -167,30 +168,42 @@ function ProviderCard({
       </a>
 
       <div className="flex gap-2">
-        <input
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          disabled={!canSave || state === "saving"}
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            if (state !== "idle") setState("idle");
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") save();
-          }}
-          placeholder={configured ? t.providers.updateHint : t.providers.keyPlaceholder}
-          aria-label={`${provider.name} API key`}
-          className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 mono text-[12px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
-        />
+        <div className="relative min-w-0 flex-1">
+          {/* A key is on file: a green check stands in for the hidden value, so
+              the field reads as "set" rather than "empty, paste here". */}
+          {configured && !value && (
+            <Check
+              aria-hidden
+              strokeWidth={2.5}
+              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2"
+              style={{ color: "var(--color-ok)" }}
+            />
+          )}
+          <input
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            disabled={!canSave || state === "saving"}
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value);
+              if (state !== "idle") setState("idle");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") save();
+            }}
+            placeholder={configured ? t.providers.keySaved : t.providers.keyPlaceholder}
+            aria-label={`${provider.name} API key`}
+            className={`w-full rounded-lg border bg-[var(--color-bg)] py-1.5 mono text-[12px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] ${configured && !value ? "pl-8 pr-3" : "px-3"} ${configured && state !== "error" ? "border-[var(--color-ok)]" : "border-[var(--color-border)]"}`}
+          />
+        </div>
         <button
           type="button"
           onClick={save}
           disabled={!canSave || !value.trim() || state === "saving"}
-          className="btn-sky pill px-3 py-1.5 text-[12px] disabled:opacity-40"
+          className="btn-sky pill shrink-0 px-3 py-1.5 text-[12px] disabled:opacity-40"
         >
-          {state === "saving" ? t.providers.saving : t.providers.save}
+          {state === "saving" ? t.providers.saving : configured ? t.providers.replace : t.providers.save}
         </button>
       </div>
 
