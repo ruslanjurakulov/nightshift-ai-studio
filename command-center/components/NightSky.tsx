@@ -65,25 +65,44 @@ export function NightSky() {
     const nebulae: Nebula[] = [];
     const shooting: Shoot[] = [];
 
-    // Two accent tints — the sky blue the palette is built on, and a cooler
-    // step of it — so the glow has depth rather than one flat wash.
-    const NEB_HUES = ["161,208,252", "124,182,238"];
+    // The accent sky-blue the palette is built on, plus a cooler step and two
+    // restrained neighbours — a teal and a soft violet — so the void has real
+    // colour and depth rather than one flat wash. Still all low-saturation and
+    // low-alpha, blended additively, so nothing shouts over the data.
+    const NEB_HUES = ["161,208,252", "124,182,238", "120,214,226", "150,150,246"];
 
     function seedNebulae() {
       nebulae.length = 0;
       const homes = [
-        [0.16, 0.12], [0.84, 0.08], [0.5, 0.62], [0.22, 0.86], [0.9, 0.7],
+        [0.14, 0.10], [0.86, 0.06], [0.5, 0.64], [0.20, 0.88], [0.92, 0.74], [0.62, 0.24],
       ];
       homes.forEach(([fx, fy], i) => {
         nebulae.push({
           hx: fx * w, hy: fy * h,
-          rad: Math.max(w, h) * (0.22 + Math.random() * 0.16),
-          r: 0, a: 0.05 + Math.random() * 0.04,
+          rad: Math.max(w, h) * (0.26 + Math.random() * 0.2),
+          r: 0, a: 0.08 + Math.random() * 0.055,
           hue: NEB_HUES[i % NEB_HUES.length],
           ph: Math.random() * Math.PI * 2,
-          sp: 0.0009 + Math.random() * 0.0011,
+          sp: 0.0009 + Math.random() * 0.0012,
         });
       });
+    }
+
+    // A wide aurora band that drifts slowly across the upper third — the single
+    // brightest sweep, so the frame has a light source the nebulae orbit.
+    function drawAurora() {
+      const cyA = h * (0.22 + Math.sin(t * 0.0006) * 0.05);
+      const band = h * 0.5;
+      const g = ctx!.createLinearGradient(0, cyA - band, 0, cyA + band);
+      g.addColorStop(0, "rgba(161,208,252,0)");
+      g.addColorStop(0.5, `rgba(161,208,252,${0.05 + Math.sin(t * 0.0009) * 0.015})`);
+      g.addColorStop(1, "rgba(124,182,238,0)");
+      ctx!.fillStyle = g;
+      const skew = Math.sin(t * 0.0007) * w * 0.12;
+      ctx!.save();
+      ctx!.translate(skew, 0);
+      ctx!.fillRect(-w * 0.3, cyA - band, w * 1.6, band * 2);
+      ctx!.restore();
     }
 
     const respawn = (st: Star, fresh: boolean) => {
@@ -120,6 +139,7 @@ export function NightSky() {
     // instead of banding. It drifts on a slow sine so the field is never static.
     function drawNebulae() {
       ctx!.globalCompositeOperation = "lighter";
+      drawAurora();
       for (const n of nebulae) {
         const dx = Math.cos(n.ph + t * n.sp) * w * 0.05;
         const dy = Math.sin(n.ph * 1.3 + t * n.sp) * h * 0.05;

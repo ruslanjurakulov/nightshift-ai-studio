@@ -7,6 +7,7 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { useI18n } from "@/lib/i18n/context";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
+import { NightSky } from "@/components/NightSky";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,14 +38,26 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="atmos relative flex min-h-dvh items-center justify-center p-6">
-      <div className="absolute right-4 top-4 flex items-center gap-2">
+    <main className="atmos relative flex min-h-dvh items-center justify-center overflow-hidden p-6">
+      <NightSky />
+      {/* A soft accent bloom behind the card, so it reads as lit rather than
+          dropped onto black — the dramatic entry, purely decorative. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute z-0 h-[520px] w-[520px] rounded-full blur-[120px]"
+        style={{ background: "radial-gradient(circle, var(--glow-primary), transparent 70%)" }}
+      />
+
+      <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
         <LanguageSelector />
         <ThemeToggle />
       </div>
 
-      <div className="sheet-enter stagger-enter w-full max-w-sm rounded-[22px] border border-[var(--color-border)] bg-[var(--color-panel)] p-8 shadow-[var(--shadow-elevated)]">
-        <div className="font-display text-2xl font-semibold tracking-[-0.02em] text-[var(--color-primary)]">
+      <div className="glass-card sheet-enter stagger-enter relative z-10 w-full max-w-sm rounded-[22px] border border-[var(--color-border)] p-8">
+        <div
+          className="font-display text-2xl font-semibold tracking-[-0.02em] text-[var(--color-primary)]"
+          style={{ textShadow: "0 0 28px var(--glow-primary)" }}
+        >
           {t.brand.name}
         </div>
         <div className="mt-1 text-[11px] font-light tracking-[0.14em] text-[var(--color-muted)]">
