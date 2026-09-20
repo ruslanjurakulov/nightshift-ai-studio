@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e7e9ee"/></linearGradient>
+    <linearGradient id="glyph" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#181a20"/><stop offset="100%" stop-color="#05060a"/></linearGradient>
+    <clipPath id="nclip"><path d="M329.2 292.8 L345.4 294.6 L367.8 305.4 L599.6 501.2 L602.3 494.0 L601.4 312.6 L604.1 305.4 L614.9 298.2 L630.1 300.0 L732.5 362.9 L747.8 381.7 L755.0 406.9 L755.0 638.7 L741.5 671.0 L691.2 715.9 L674.1 722.2 L649.9 718.6 L634.6 708.7 L427.1 522.8 L423.5 527.3 L423.5 719.5 L420.8 725.8 L412.7 731.2 L399.3 730.3 L294.2 662.9 L274.4 636.0 L269.0 609.9 L269.0 351.2 L274.4 330.5 L295.1 305.4 L312.1 296.4 L328.3 293.7 Z"/></clipPath>
+  </defs>
+  <rect x="40" y="40" width="944" height="944" rx="216" fill="url(#tile)"/>
+  <rect x="41.5" y="41.5" width="941" height="941" rx="214.5" fill="none" stroke="#d5d9df" stroke-width="3"/>
+  <!-- glyph with rounded corners via same-color round-joined stroke -->
+  <path d="M329.2 292.8 L345.4 294.6 L367.8 305.4 L599.6 501.2 L602.3 494.0 L601.4 312.6 L604.1 305.4 L614.9 298.2 L630.1 300.0 L732.5 362.9 L747.8 381.7 L755.0 406.9 L755.0 638.7 L741.5 671.0 L691.2 715.9 L674.1 722.2 L649.9 718.6 L634.6 708.7 L427.1 522.8 L423.5 527.3 L423.5 719.5 L420.8 725.8 L412.7 731.2 L399.3 730.3 L294.2 662.9 L274.4 636.0 L269.0 609.9 L269.0 351.2 L274.4 330.5 L295.1 305.4 L312.1 296.4 L328.3 293.7 Z" fill="url(#glyph)" stroke="url(#glyph)" stroke-width="30" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- diagonal sheen, clipped to the N -->
+  <g clip-path="url(#nclip)">
+    <line x1="414.8" y1="319.1" x2="648.1" y2="713.7" stroke="#ffffff" stroke-opacity="0.22" stroke-width="9"/>
+  </g>
+</svg>
