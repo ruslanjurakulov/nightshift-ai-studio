@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo,
+  LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, Sparkles,
   Users, UserCircle, KeyRound, Bot, ListChecks,
   Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
   History, Plug, TriangleAlert, ScrollText, ShieldCheck, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Menu, X,
@@ -35,6 +35,7 @@ const GROUPS: Group[] = [
   {
     items: [
       { href: "/command-center", key: "command", Icon: LayoutDashboard },
+      { href: "/create", key: "create", Icon: Sparkles },
       { href: "/videos", key: "videos", Icon: Film },
       { href: "/studio", key: "studio", Icon: Palette },
       { href: "/pipeline", key: "pipeline", Icon: Workflow },
