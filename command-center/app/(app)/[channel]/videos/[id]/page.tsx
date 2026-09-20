@@ -7,6 +7,7 @@ import { NotConfigured } from "@/components/NotConfigured";
 import { Panel, StatCard, EmptyState, StatusPill } from "@/components/ui";
 import { ViewsSparkline } from "@/components/videos/ViewsSparkline";
 import { VideoLifecycle } from "@/components/videos/VideoLifecycle";
+import { Storyboard } from "@/components/videos/Storyboard";
 import { IntelligenceTrace } from "@/components/intel/IntelligenceTrace";
 import { QualityGate } from "@/components/autonomy/QualityGate";
 import { buildTrace } from "@/lib/decisions";
@@ -186,6 +187,19 @@ export default async function VideoDetail({
             value={<span className="mono text-[13px]">{video.video_id}</span>}
           />
         </div>
+      </Panel>
+
+      <Panel title={t.videoDetail.storyboard}>
+        <Storyboard
+          scriptText={video.script_text}
+          labels={{
+            empty: t.videoDetail.storyboardEmpty,
+            scene: t.videoDetail.storyboardScene,
+            scenes: t.videoDetail.storyboardScenes,
+            runtime: t.videoDetail.storyboardRuntime,
+            approx: t.videoDetail.storyboardApprox,
+          }}
+        />
       </Panel>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

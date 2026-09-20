@@ -232,6 +232,12 @@ export const en = {
     latestT: "latest {t}",
     viewsOverTime: "Views over time",
     unknown: "unknown",
+    storyboard: "Storyboard",
+    storyboardEmpty: "No narration stored for this video yet — the storyboard appears once its script is on record.",
+    storyboardScene: "Scene",
+    storyboardScenes: "scenes",
+    storyboardRuntime: "est. runtime",
+    storyboardApprox: "≈",
   },
   pipeline: {
     title: "Pipeline",

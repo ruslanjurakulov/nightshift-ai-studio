@@ -226,6 +226,12 @@ export const uz: Dictionary = {
     latestT: "oxirgisi {t}",
     viewsOverTime: "Vaqt bo'yicha ko'rishlar",
     unknown: "noma'lum",
+    storyboard: "Storibord",
+    storyboardEmpty: "Bu video uchun hali matn saqlanmagan — stsenariy yozib olingach, storibord paydo bo'ladi.",
+    storyboardScene: "Sahna",
+    storyboardScenes: "sahna",
+    storyboardRuntime: "taxm. davomiylik",
+    storyboardApprox: "≈",
   },
   pipeline: {
     title: "Konveyer",

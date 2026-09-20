@@ -226,6 +226,12 @@ export const ru: Dictionary = {
     latestT: "последний {t}",
     viewsOverTime: "Просмотры со временем",
     unknown: "неизвестно",
+    storyboard: "Раскадровка",
+    storyboardEmpty: "Для этого видео пока нет сохранённой озвучки — раскадровка появится, когда его сценарий будет записан.",
+    storyboardScene: "Сцена",
+    storyboardScenes: "сцен",
+    storyboardRuntime: "прибл. длительность",
+    storyboardApprox: "≈",
   },
   pipeline: {
     title: "Конвейер",
