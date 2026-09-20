@@ -232,6 +232,7 @@ export const uz: Dictionary = {
     storyboardScenes: "sahna",
     storyboardRuntime: "taxm. davomiylik",
     storyboardApprox: "≈",
+    storyboardKeywords: "B-roll",
   },
   pipeline: {
     title: "Konveyer",

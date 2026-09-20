@@ -1054,6 +1054,11 @@ def run(
                     video_path=video_path,
                     script_text=script.full_narration(),
                     auto_publish=review.fetch_auto_publish(channel_id),
+                    # The structured scene plan behind this video (migration 0011)
+                    # — the Storyboard renders it directly instead of guessing
+                    # scenes from paragraph breaks. Best-effort: a build failure
+                    # here is swallowed with the preview, never failing the run.
+                    scenes=script.scene_plan(),
                 )
             except Exception as e:
                 logger.warning("Could not record the review preview (%s: %s)",

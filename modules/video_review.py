@@ -281,12 +281,18 @@ class VideoReview:
         video_path: Path,
         script_text: str,
         auto_publish: bool,
+        scenes: list | None = None,
     ) -> None:
         """Upload the preview and attach the script to the row.
 
         `review_state` is left alone when the channel publishes automatically —
         there is nobody waiting on it — and set to "pending" when it does not,
         which is the honest statement that a human has not looked yet.
+
+        `scenes` is the structured scene plan the video was built from (see
+        migration 0011); it rides the same PATCH as the narration. None/empty
+        leaves the column untouched, so an older schema (no `scenes` column) or a
+        run that could not build the list behaves exactly as before.
         """
         if not self.enabled:
             return
@@ -295,6 +301,8 @@ class VideoReview:
         if preview_path:
             patch["preview_path"] = preview_path
         patch["review_state"] = "approved" if auto_publish else "pending"
+        if scenes:
+            patch["scenes"] = scenes
         self._patch_video(video_id, patch)
         if preview_path:
             self.prune(channel_id)

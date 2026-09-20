@@ -232,6 +232,7 @@ export const ru: Dictionary = {
     storyboardScenes: "сцен",
     storyboardRuntime: "прибл. длительность",
     storyboardApprox: "≈",
+    storyboardKeywords: "B-roll",
   },
   pipeline: {
     title: "Конвейер",
