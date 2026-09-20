@@ -238,6 +238,7 @@ export const en = {
     storyboardScenes: "scenes",
     storyboardRuntime: "est. runtime",
     storyboardApprox: "≈",
+    storyboardKeywords: "B-roll",
   },
   pipeline: {
     title: "Pipeline",

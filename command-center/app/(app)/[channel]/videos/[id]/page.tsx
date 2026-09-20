@@ -191,6 +191,7 @@ export default async function VideoDetail({
 
       <Panel title={t.videoDetail.storyboard}>
         <Storyboard
+          scenes={video.scenes ?? null}
           scriptText={video.script_text}
           labels={{
             empty: t.videoDetail.storyboardEmpty,
@@ -198,6 +199,7 @@ export default async function VideoDetail({
             scenes: t.videoDetail.storyboardScenes,
             runtime: t.videoDetail.storyboardRuntime,
             approx: t.videoDetail.storyboardApprox,
+            keywords: t.videoDetail.storyboardKeywords,
           }}
         />
       </Panel>

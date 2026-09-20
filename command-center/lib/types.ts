@@ -4,6 +4,8 @@
  * with that schema.
  */
 
+import type { VideoScene } from "@/lib/storyboard";
+
 export interface VideoRow {
   video_id: string;
   /** Which Nightshift channel published it. Backfilled to "default" by migration 0001. */
@@ -42,6 +44,14 @@ export interface VideoRow {
   preview_path: string | null;
   /** The narration this video was built from. What a reviewer approves. */
   script_text: string | null;
+  /**
+   * The structured scene plan the video was built from (migration 0011): an
+   * ordered list of {name, type, narration, duration_hint, keywords}. Null for
+   * videos published before that migration — the Storyboard then falls back to
+   * splitting `script_text` on blank lines. Optional: a row selected before the
+   * column existed, or a test fixture, simply omits it.
+   */
+  scenes?: VideoScene[] | null;
   /** pending | approved | rejected. "pending" means nobody has looked yet. */
   review_state: string;
 }

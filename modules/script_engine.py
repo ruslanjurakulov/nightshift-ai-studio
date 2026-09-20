@@ -220,6 +220,24 @@ class Script:
     def all_music_cues(self) -> list[dict]:
         return [cue for s in self.sections for cue in s.extract_music()]
 
+    def scene_plan(self) -> list[dict]:
+        """The structured scene plan for the Command Center's Storyboard
+        (migration 0011): one entry per section with its type, its CUE-STRIPPED
+        narration and the b-roll keywords that drove its footage. Distinct from
+        ``to_dict``: the narration is the clean, readable text (no ``[SFX]`` /
+        ``[MUSIC]`` markers), and only the fields the Storyboard shows are kept.
+        """
+        return [
+            {
+                "name": s.name,
+                "type": s.section_type,
+                "narration": s.clean_narration(),
+                "duration_hint": s.duration_hint,
+                "keywords": list(s.keywords),
+            }
+            for s in self.sections
+        ]
+
     def to_dict(self) -> dict:
         """Serialize back to the same JSON shape ScriptEngine._parse consumes."""
         return {
