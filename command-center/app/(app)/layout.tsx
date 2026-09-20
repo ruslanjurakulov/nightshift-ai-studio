@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { SideNav } from "@/components/SideNav";
-import { NightSky } from "@/components/NightSky";
+import { NeuralBackdrop } from "@/components/NeuralBackdrop";
 import { Header } from "@/components/Header";
 import { CommandPalette } from "@/components/CommandPalette";
 import { getChannelContext } from "@/lib/channels-server";
@@ -28,7 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="atmos relative flex min-h-dvh flex-col">
-      <NightSky />
+      <NeuralBackdrop dim />
       <div className="relative z-10 flex min-h-dvh flex-col">
         <Header channels={channels} selection={selection} />
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
