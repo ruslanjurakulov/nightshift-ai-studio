@@ -7,7 +7,6 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { useI18n } from "@/lib/i18n/context";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
-import { NightSky } from "@/components/NightSky";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -38,15 +37,23 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="atmos relative flex min-h-dvh items-center justify-center overflow-hidden p-6">
-      <NightSky />
-      {/* A soft accent bloom behind the card, so it reads as lit rather than
-          dropped onto black — the dramatic entry, purely decorative. */}
-      <div
+    <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[#03060c] p-6">
+      {/* The MotionSites "Neural Pathway" hero: a silent looping light-painting
+          behind the sign-in, with the veil that keeps the type legible over it.
+          Purely decorative; muted + playsInline keep autoplay legal on mobile. */}
+      <video
+        className="pointer-events-none fixed inset-0 z-0 h-full w-full object-cover"
+        style={{ background: "#03060c" }}
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="auto"
         aria-hidden
-        className="pointer-events-none absolute z-0 h-[520px] w-[520px] rounded-full blur-[120px]"
-        style={{ background: "radial-gradient(circle, var(--glow-primary), transparent 70%)" }}
+        poster="https://d2ol7oe51mr4n9.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/130837c4-0244-4f37-9c61-8d801d93fd29.jpg"
+        src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260912_104303_0c6d60b2-9353-408e-9449-585108a22fb5.mp4"
       />
+      <div className="veil-neural" aria-hidden />
 
       <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
         <LanguageSelector />
@@ -99,7 +106,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={busy}
-            className="btn-sky is-solid pill mt-2 justify-center px-6 py-3 text-sm disabled:opacity-50"
+            className="cta-glass pill mt-2 inline-flex items-center justify-center px-6 py-3 text-sm font-semibold disabled:opacity-50"
           >
             {busy ? t.auth.signingIn : t.auth.signIn}
           </button>
