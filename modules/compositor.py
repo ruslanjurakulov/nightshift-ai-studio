@@ -1,6 +1,8 @@
 """Stage 6: MoviePy Compositor — assembles video clips + Ken Burns images + subtitles."""
 
+import gc
 import logging
+import os
 import random
 from pathlib import Path
 
@@ -41,6 +43,24 @@ from modules.resource_monitor import mark_stage  # noqa: E402
 from modules.script_engine import Script  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
+def _render_threads() -> int:
+    """How many x264 threads the final encode uses.
+
+    Each thread keeps its own 1080p frame buffers, and on GitHub Actions the
+    render has been killed at `exit 143` with ffmpeg children eating the ~7.9 GB
+    machine (see README). Fewer threads means a lower peak — a little slower, the
+    same file. Env-tunable so a memory-starved runner can drop to 1 without a
+    code change; default 2 (today's value), clamped to 1..8. An unset or
+    malformed value keeps the default, so nothing changes unless it is set."""
+    raw = os.getenv("NIGHTSHIFT_RENDER_THREADS", "").strip()
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return 2
+    return max(1, min(8, n))
+
 
 KEN_BURNS_ZOOM = 0.12   # fraction zoomed over a clip's life
 KEN_BURNS_PAN = 0.30    # fraction of image width traversed on a pan
@@ -362,10 +382,16 @@ class Compositor:
         audio = AudioFileClip(str(audio_path))
         total_duration = audio.duration
 
+        # Pre-initialised so `finally` can release them even if a phase below
+        # raises before they exist. These composites own the open ffmpeg readers;
+        # closing them and collecting frees that memory before the Short renders
+        # in this SAME process, so the long video's readers never stack under it.
+        all_clips: list = []
+        bg = None
+        final = None
         try:
             # Sections are laid end to end, in the same order and with the same
             # durations as the audio timeline they were measured from.
-            all_clips = []
             sections = len(script.sections)
             for i, section in enumerate(script.sections):
                 if i >= len(section_timeline):
@@ -427,8 +453,19 @@ class Compositor:
 
             out_path = self.out_dir / "final_video.mp4"
             # Where the frames are actually pulled: every reader, every Ken
-            # Burns resize and both x264 threads are live at the same time from
+            # Burns resize and every x264 thread are live at the same time from
             # here until the file is written.
+            threads = _render_threads()
+            # The render's memory drivers, named in the log BEFORE the encode
+            # that has been OOM-killed at exit 143 — so the next Actions run
+            # says which of them was large enough to matter, rather than the
+            # spike arriving unexplained. See README "Status" and
+            # modules/resource_monitor.py.
+            logger.info(
+                "Encoding %s: %d open source reader(s), %d subtitle clip(s), "
+                "%d section(s), %d x264 thread(s)",
+                out_path.name, len(self._readers), len(subtitle_clips), sections, threads,
+            )
             mark_stage("encode")
             final.write_videofile(
                 str(out_path),
@@ -438,8 +475,10 @@ class Compositor:
                 preset="fast",
                 # Each x264 thread keeps its own frame buffers at 1080p. Four
                 # of them is a lot to hold while a dozen decoders are also
-                # resident; two encodes the same file, a little slower.
-                threads=2,
+                # resident; two (the default) encodes the same file, a little
+                # slower. NIGHTSHIFT_RENDER_THREADS can drop it to 1 on a
+                # memory-starved runner without a code change.
+                threads=threads,
                 verbose=False,
                 logger=None,
             )
@@ -462,6 +501,19 @@ class Compositor:
                 audio.close()
             except Exception:
                 pass
+            # Release the composites too — they hold the concatenated readers.
+            # Closing them and forcing a collection here (not at some later GC)
+            # is what lets the Short render, which runs next in this same
+            # process, start from a clean floor instead of stacking on the long
+            # video's ffmpeg buffers. Guarded: any of these may be None if a
+            # phase above raised before it was built.
+            for composite in (final, bg, *all_clips):
+                if composite is not None:
+                    try:
+                        composite.close()
+                    except Exception:
+                        pass
+            gc.collect()
 
         logger.info("Video rendered: %s", out_path)
         return out_path

@@ -238,6 +238,12 @@ jobs:
           # honored by config, so this passes the var only when it is non-empty.
           TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
           SCRIPT_LANGUAGE: English
+          # x264 encoder threads for the final render. The render has been
+          # OOM-killed at exit 143 with ffmpeg eating the 7.9 GB runner; set
+          # this repo VARIABLE to 1 to halve the encoder's peak frame buffers
+          # (a little slower, the same file). Empty = the code default (2), so
+          # nothing changes unless it is set. See modules/compositor.py.
+          NIGHTSHIFT_RENDER_THREADS: ${{ vars.NIGHTSHIFT_RENDER_THREADS }}
           # Dispatch inputs and the matrix channel are passed through the
           # environment, never interpolated into the shell below. GitHub
           # expands ${{ ... }} as raw text before the shell runs, so a topic
