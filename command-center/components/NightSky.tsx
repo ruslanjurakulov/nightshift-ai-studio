@@ -30,6 +30,13 @@ const BASE_SPEED = 0.55;
 
 type Star = { x: number; y: number; z: number; s: number };
 
+// A slow-drifting volumetric glow — the deep-space colour the stars fly through.
+// Each blob orbits a home point on its own phase, so the field breathes without
+// ever repeating. Drawn additively under the stars, in the one accent hue.
+type Nebula = { hx: number; hy: number; r: number; a: number; hue: string; ph: number; sp: number; rad: number };
+// A rare streak that crosses the frame and fades — life runs 1 → 0.
+type Shoot = { x: number; y: number; vx: number; vy: number; len: number; life: number };
+
 export function NightSky() {
   const ref = useRef<HTMLCanvasElement>(null);
   const pathname = usePathname();
@@ -53,7 +60,31 @@ export function NightSky() {
     let cy = 0;
     let raf = 0;
     let running = true;
+    let t = 0; // frame clock, drives the nebula drift
     const stars: Star[] = [];
+    const nebulae: Nebula[] = [];
+    const shooting: Shoot[] = [];
+
+    // Two accent tints — the sky blue the palette is built on, and a cooler
+    // step of it — so the glow has depth rather than one flat wash.
+    const NEB_HUES = ["161,208,252", "124,182,238"];
+
+    function seedNebulae() {
+      nebulae.length = 0;
+      const homes = [
+        [0.16, 0.12], [0.84, 0.08], [0.5, 0.62], [0.22, 0.86], [0.9, 0.7],
+      ];
+      homes.forEach(([fx, fy], i) => {
+        nebulae.push({
+          hx: fx * w, hy: fy * h,
+          rad: Math.max(w, h) * (0.22 + Math.random() * 0.16),
+          r: 0, a: 0.05 + Math.random() * 0.04,
+          hue: NEB_HUES[i % NEB_HUES.length],
+          ph: Math.random() * Math.PI * 2,
+          sp: 0.0009 + Math.random() * 0.0011,
+        });
+      });
+    }
 
     const respawn = (st: Star, fresh: boolean) => {
       // Seeded across a wide box so the field still fills the frame at the edges.
@@ -82,10 +113,66 @@ export function NightSky() {
       canvas!.height = Math.floor(h * dpr);
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
       build();
+      seedNebulae();
+    }
+
+    // The volumetric glow, drawn first and blended additively so overlaps bloom
+    // instead of banding. It drifts on a slow sine so the field is never static.
+    function drawNebulae() {
+      ctx!.globalCompositeOperation = "lighter";
+      for (const n of nebulae) {
+        const dx = Math.cos(n.ph + t * n.sp) * w * 0.05;
+        const dy = Math.sin(n.ph * 1.3 + t * n.sp) * h * 0.05;
+        const cxN = n.hx + dx;
+        const cyN = n.hy + dy;
+        const g = ctx!.createRadialGradient(cxN, cyN, 0, cxN, cyN, n.rad);
+        g.addColorStop(0, `rgba(${n.hue},${n.a})`);
+        g.addColorStop(0.5, `rgba(${n.hue},${n.a * 0.35})`);
+        g.addColorStop(1, `rgba(${n.hue},0)`);
+        ctx!.fillStyle = g;
+        ctx!.fillRect(cxN - n.rad, cyN - n.rad, n.rad * 2, n.rad * 2);
+      }
+      ctx!.globalCompositeOperation = "source-over";
+    }
+
+    // A rare streak. Spawns from a random top edge point, crosses down and out,
+    // and fades. At most a couple alive at once; low spawn odds keep it a treat.
+    function spawnShoot() {
+      shooting.push({
+        x: Math.random() * w * 0.9,
+        y: Math.random() * h * 0.3,
+        vx: 5 + Math.random() * 4,
+        vy: 2.4 + Math.random() * 2.2,
+        len: 90 + Math.random() * 70,
+        life: 1,
+      });
+    }
+    function drawShooting() {
+      if (!reduced && shooting.length < 2 && Math.random() < 0.004) spawnShoot();
+      for (let i = shooting.length - 1; i >= 0; i--) {
+        const s = shooting[i];
+        if (!reduced) { s.x += s.vx; s.y += s.vy; s.life -= 0.012; }
+        if (s.life <= 0 || s.x > w + 120 || s.y > h + 120) { shooting.splice(i, 1); continue; }
+        const tailX = s.x - s.vx * (s.len / 7);
+        const tailY = s.y - s.vy * (s.len / 7);
+        const g = ctx!.createLinearGradient(s.x, s.y, tailX, tailY);
+        g.addColorStop(0, `rgba(220,238,255,${0.9 * s.life})`);
+        g.addColorStop(1, "rgba(161,208,252,0)");
+        ctx!.strokeStyle = g;
+        ctx!.lineWidth = 2;
+        ctx!.lineCap = "round";
+        ctx!.beginPath();
+        ctx!.moveTo(s.x, s.y);
+        ctx!.lineTo(tailX, tailY);
+        ctx!.stroke();
+      }
     }
 
     function draw() {
       ctx!.clearRect(0, 0, w, h);
+      t += 1;
+
+      drawNebulae();
 
       const speed = BASE_SPEED * (1 + surge.current * 9);
       for (const st of stars) {
@@ -110,6 +197,8 @@ export function NightSky() {
         ctx!.fill();
       }
       ctx!.globalAlpha = 1;
+
+      drawShooting();
 
       if (surge.current > 0) surge.current = Math.max(0, surge.current - 0.014);
     }

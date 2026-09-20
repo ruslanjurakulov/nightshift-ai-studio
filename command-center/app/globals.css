@@ -638,6 +638,35 @@ h1, h2, h3, .font-display {
 }
 .flow-line { stroke-dasharray: 3 6; animation: flow-dash 1.2s linear infinite; }
 
+/* ── Glass & glow enrichment ─────────────────────────────────────────────────
+   Purely presentational, layered on top of the existing skin — no class changes
+   behaviour, so nothing that renders can regress. Surfaces gain a hairline top
+   sheen so they read as lit glass rather than flat fills, and pointing at one
+   lifts a soft accent glow beneath it instead of moving it (the no-lift rule
+   above still holds: dense panels never jump). White at low alpha is invisible
+   on the light theme's white panels and a faint edge-light on the dark ones, so
+   one rule serves both. */
+.panel {
+  box-shadow: var(--shadow-panel),
+    inset 0 1px 0 0 color-mix(in srgb, #ffffff 6%, transparent);
+}
+.panel:hover {
+  box-shadow: var(--shadow-panel),
+    inset 0 1px 0 0 color-mix(in srgb, #ffffff 9%, transparent),
+    0 8px 28px color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+.section-card {
+  box-shadow: var(--shadow-elevated),
+    inset 0 1px 0 0 color-mix(in srgb, #ffffff 7%, transparent);
+}
+
+/* The primary solid button carries a warm accent halo on hover — the same cue
+   the reference's glass CTA uses, kept subtle so a bar of controls stays calm. */
+.btn-sky.is-solid:hover {
+  box-shadow: 0 0 0 6px var(--atmos-1),
+    0 10px 32px color-mix(in srgb, var(--color-primary) 34%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
