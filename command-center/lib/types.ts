@@ -206,6 +206,24 @@ export interface ChannelAgentConfig {
    * 0009 and the Approvals page. Absent/false keeps today's behaviour.
    */
   require_two_person_publish?: boolean;
+  /**
+   * The channel's Character Bible / Elements Library: reusable characters,
+   * locations and props kept consistent across videos (modules/elements.py).
+   * The pipeline detects which appear in a scene and injects each one's
+   * description so it stays on-model. Absent/empty means no cast — generation
+   * is exactly as before. Stored in this same agent_config blob (no migration).
+   */
+  elements?: ChannelElement[];
+}
+
+/** One reusable element of a channel's Character Bible (a character, a location
+ * or a prop). `aliases` are extra surface forms the pipeline also matches on
+ * (e.g. a character's nickname) besides the name. Mirrors modules/elements.py. */
+export interface ChannelElement {
+  kind?: "character" | "location" | "prop";
+  name?: string;
+  description?: string;
+  aliases?: string[];
 }
 
 export interface ChannelScheduleConfig {
