@@ -497,6 +497,8 @@ export const uz: Dictionary = {
     consoleLink: "Konsolni ochish ↗",
     keyPlaceholder: "API kalitini kiriting",
     updateHint: "Belgilangan — almashtirish uchun yangi kalit kiriting",
+    keySaved: "Kalit saqlangan",
+    replace: "Almashtirish",
     save: "Saqlash",
     saving: "Saqlanmoqda…",
     saved: "GitHub'ga saqlandi — kalit brauzerdan o'chirildi",
