@@ -228,6 +228,14 @@ class AgentConfig:
     # weakens the publish gate: a remix is still a video and still faces the gate.
     # Stored in this blob — no migration.
     remix_enabled: bool = False
+    # Two-person publish approval (migration 0009). When true, the pipeline must
+    # not put a video PUBLIC on its own — a second admin has to sign off first
+    # (see modules/publish_approval.py). Uploads are private by default, so this
+    # only ever gates a run that would actually go public. OFF unless explicitly
+    # turned on (only an explicit true), so existing channels are unaffected.
+    # Stored in this same agent_config blob — no migration; the Command Center
+    # (Approvals page) writes the same key.
+    require_two_person_publish: bool = False
     # Character Bible / Elements Library (Nightshift blueprint): reusable
     # characters, locations and props this channel keeps consistent across
     # videos. Each entry is {kind, name, description, aliases:[...]}. Empty (the
@@ -254,6 +262,7 @@ class AgentConfig:
             "pinned_comment": self.pinned_comment,
             "watch_next": self.watch_next,
             "remix_enabled": self.remix_enabled,
+            "require_two_person_publish": self.require_two_person_publish,
             "elements": [dict(e) for e in self.elements],
         }
 
@@ -292,6 +301,9 @@ class AgentConfig:
             # Opposite default to the growth flags: Viral Remix is new and legally
             # sensitive, so absent → False and ONLY an explicit true opts a channel in.
             remix_enabled=(True if d.get("remix_enabled") is True else False),
+            # Same opt-in convention: two-person publish is a stricter policy, so
+            # absent → False and ONLY an explicit true turns it on.
+            require_two_person_publish=(True if d.get("require_two_person_publish") is True else False),
             elements=_clean_elements(d.get("elements")),
         )
 

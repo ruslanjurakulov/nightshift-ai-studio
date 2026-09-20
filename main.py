@@ -915,8 +915,29 @@ def run(
     # an ALLOWED video uploads now or waits on disk for a human. Defaults on, so
     # existing channels are unaffected.
     auto_publish = ctx.auto_publish
+    # Two-person publish approval (migration 0009). When the channel requires it,
+    # the pipeline must not put a video PUBLIC on its own — a SECOND admin has to
+    # sign off first. Uploads are private by default (config.YOUTUBE_PRIVACY, the
+    # schedule and the dispatch all pin private), so this only ever bites a run
+    # that would actually go public; then an approved publish_approvals row (the
+    # DB guarantees decided_by != requested_by) whose video_ref names this run
+    # must authorise it, or the video is held for review exactly like
+    # auto-publish off. Fail-safe: any doubt (disabled/unreachable Supabase, no
+    # row) holds rather than publishes. See modules/publish_approval.py.
+    awaiting_two_person = False
+    if (
+        not skip_upload
+        and gate.allowed
+        and auto_publish
+        and str(privacy).lower() == "public"
+        and bool(getattr(ctx.agent, "require_two_person_publish", False))
+    ):
+        from modules import publish_approval
+        if not publish_approval.has_approved(channel_id, slug=slug, topic=topic):
+            awaiting_two_person = True
+
     video_id, video_url = None, None
-    if not skip_upload and gate.allowed and auto_publish:
+    if not skip_upload and gate.allowed and auto_publish and not awaiting_two_person:
         events.emit(events.UPLOAD_STARTED, agent="youtube_uploader", status=events.STATUS_RUNNING,
                     channel_id=channel_id, metadata={"topic": topic})
         try:
@@ -1093,6 +1114,21 @@ def run(
             )
     elif not gate.allowed:
         pass  # already reported above
+    elif awaiting_two_person:
+        # The gate PASSED and auto-publish is on, but this channel requires a
+        # second admin's sign-off and no approval names this run yet. A policy
+        # hold, not a gate failure: the video waits (private/on disk) until an
+        # approved publish_approvals row exists — publish.allowed already fired
+        # for this same video.
+        logger.warning(
+            "[channel: %s] Two-person approval required and none found — holding %s "
+            "(a second admin must approve on the Approvals page before it goes public)",
+            channel_id, video_path,
+        )
+        print(f"\n⏸ Awaiting two-person approval: video held for review: {video_path}")
+        events.emit(events.PUBLISH_HELD, agent="publish_gate", status=events.STATUS_COMPLETED,
+                    channel_id=channel_id,
+                    metadata={"reason": "awaiting_two_person_approval", "video_path": str(video_path)})
     elif not skip_upload and not auto_publish:
         # The gate PASSED but this channel's auto-publish is off: the video is
         # finished and waits on disk for a human to publish. A policy hold, not a
