@@ -13,6 +13,7 @@ import type { SystemEventRow } from "@/lib/types";
 import { AgentCard, type AgentSummary } from "@/components/agents/AgentCard";
 import { ScheduleEditor } from "@/components/agents/ScheduleEditor";
 import { CastEditor } from "@/components/agents/CastEditor";
+import { VoiceEditor } from "@/components/agents/VoiceEditor";
 import { RunNowButton } from "@/components/agents/RunNowButton";
 
 export const dynamic = "force-dynamic";
@@ -109,6 +110,11 @@ export default async function AgentsPage() {
       <ScheduleEditor
         channelId={scopedChannel?.channel_id ?? null}
         schedule={scopedChannel?.schedule_config ?? null}
+      />
+
+      <VoiceEditor
+        channelId={scopedChannel?.channel_id ?? null}
+        agentConfig={scopedChannel?.agent_config ?? null}
       />
 
       <CastEditor
