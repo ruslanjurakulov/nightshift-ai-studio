@@ -646,18 +646,40 @@ h1, h2, h3, .font-display {
    above still holds: dense panels never jump). White at low alpha is invisible
    on the light theme's white panels and a faint edge-light on the dark ones, so
    one rule serves both. */
+/* Frosted glass: surfaces go translucent so the drifting nebula shows through
+   them, with a backdrop blur that keeps the text crisp on top. Where a browser
+   lacks backdrop-filter the panel falls back to its solid fill, so nothing ever
+   turns unreadable. */
 .panel {
+  background: color-mix(in srgb, var(--color-panel) 82%, transparent);
   box-shadow: var(--shadow-panel),
-    inset 0 1px 0 0 color-mix(in srgb, #ffffff 6%, transparent);
+    inset 0 1px 0 0 color-mix(in srgb, #ffffff 7%, transparent);
 }
 .panel:hover {
+  background: color-mix(in srgb, var(--color-panel) 88%, transparent);
   box-shadow: var(--shadow-panel),
-    inset 0 1px 0 0 color-mix(in srgb, #ffffff 9%, transparent),
-    0 8px 28px color-mix(in srgb, var(--color-primary) 12%, transparent);
+    inset 0 1px 0 0 color-mix(in srgb, #ffffff 10%, transparent),
+    0 10px 30px color-mix(in srgb, var(--color-primary) 14%, transparent);
 }
 .section-card {
+  background: color-mix(in srgb, var(--color-panel) 74%, transparent);
   box-shadow: var(--shadow-elevated),
-    inset 0 1px 0 0 color-mix(in srgb, #ffffff 7%, transparent);
+    inset 0 1px 0 0 color-mix(in srgb, #ffffff 8%, transparent);
+}
+/* A standalone frosted card (login, dialogs) — the same glass at full drama. */
+.glass-card {
+  background: color-mix(in srgb, var(--color-panel) 70%, transparent);
+  box-shadow: var(--shadow-elevated),
+    inset 0 1px 0 0 color-mix(in srgb, #ffffff 9%, transparent);
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .panel { -webkit-backdrop-filter: blur(12px) saturate(1.15); backdrop-filter: blur(12px) saturate(1.15); }
+  .section-card { -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2); }
+  .glass-card { -webkit-backdrop-filter: blur(22px) saturate(1.2); backdrop-filter: blur(22px) saturate(1.2); }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .panel { background: var(--color-panel); }
+  .glass-card { background: var(--color-panel); }
 }
 
 /* The primary solid button carries a warm accent halo on hover — the same cue
