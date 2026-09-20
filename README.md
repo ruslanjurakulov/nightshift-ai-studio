@@ -56,8 +56,15 @@ has killed the compositor at `exit 143` more than once: Python's own RSS
 stayed under 1.4 GB while ffmpeg children ate the machine. Measurement is in
 `modules/resource_monitor.py`. This copy adds an Actions profile
 (`WHISPER_MODEL=tiny`, fewer stock clips) and restores `history/` from
-Supabase when the 7-day Actions cache is empty. It does **not** claim the
-OOM is gone — that still needs a run that lives long enough to say so.
+Supabase when the 7-day Actions cache is empty. The compositor now releases its
+composites and forces a collection right after each write, so the Short render
+that runs next in the same process starts from a clean floor instead of stacking
+on the long video's ffmpeg buffers; the encoder's x264 thread count is tunable
+with `NIGHTSHIFT_RENDER_THREADS` (default 2, set it to 1 on a memory-starved
+runner); and the render logs its memory drivers (open readers, subtitle clips,
+sections, threads) right before the encode. It still does **not** claim the OOM
+is gone — that needs a run that lives long enough to say so, and the pre-encode
+line is there to name the driver when it does.
 
 ## Non-negotiables
 

@@ -18,6 +18,7 @@ thread count, which is the other place 1080p frame buffers accumulate.
 """
 
 import inspect
+import os
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -57,10 +58,19 @@ class ReaderCost(unittest.TestCase):
 
     def test_encoder_thread_count_is_capped(self):
         """Each x264 thread holds its own 1080p buffers; four was too many to
-        hold beside a dozen decoders on a 7.9 GB runner."""
+        hold beside a dozen decoders on a 7.9 GB runner. The count now comes from
+        _render_threads() (env-tunable, default 2), so the render must use that
+        helper and never hardcode four."""
+        from modules.compositor import _render_threads
+
         source = inspect.getsource(Compositor.render)
-        self.assertIn("threads=2", source)
+        self.assertIn("_render_threads()", source)
+        self.assertIn("threads=threads", source)
         self.assertNotIn("threads=4", source)
+        # The default, with nothing set, is still 2 — today's value.
+        env = {k: v for k, v in os.environ.items() if k != "NIGHTSHIFT_RENDER_THREADS"}
+        with patch.dict("os.environ", env, clear=True):
+            self.assertEqual(_render_threads(), 2)
 
 
 if __name__ == "__main__":
