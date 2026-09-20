@@ -147,8 +147,10 @@ export function SideNav() {
 
   return (
     <>
-      {/* Desktop rail */}
-      <aside className="sticky top-[72px] hidden h-[calc(100dvh-72px)] w-[236px] shrink-0 overflow-y-auto border-r border-[var(--color-border)] px-3 py-5 lg:block">
+      {/* Desktop rail. z-30 keeps it above a section panel's scrim (z-0) so the
+          nav stays bright and clickable while a panel is open — clicking a
+          section jumps straight there instead of the scrim closing to home. */}
+      <aside className="sticky top-[72px] z-30 hidden h-[calc(100dvh-72px)] w-[236px] shrink-0 overflow-y-auto border-r border-[var(--color-border)] px-3 py-5 lg:block">
         <NavList />
       </aside>
 
