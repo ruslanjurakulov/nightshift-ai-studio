@@ -147,12 +147,23 @@ export async function listConfiguredSecretNames(
  * overridable with GITHUB_SECRETS_REF for a fork or a non-main default. Requires
  * the forwarding token to carry `actions:write`; a 403 says it does not.
  */
-export async function dispatchDailyVideo(channelId: string): Promise<void> {
+export async function dispatchDailyVideo(
+  channelId: string,
+  opts: { topic?: string; niche?: string } = {},
+): Promise<void> {
   if (!isGithubConfigured) throw new Error("github_not_configured");
   const ref = process.env.GITHUB_SECRETS_REF?.trim() || "main";
+  // The workflow already exposes `topic` and `niche` inputs (see
+  // .github/workflows/daily_video.yml); forward them only when set so a plain
+  // run still behaves exactly as before (the AI picks the topic).
+  const inputs: Record<string, string> = { channel: channelId, privacy: "private" };
+  const topic = opts.topic?.trim();
+  const niche = opts.niche?.trim();
+  if (topic) inputs.topic = topic.slice(0, 300);
+  if (niche) inputs.niche = niche.slice(0, 120);
   const res = await gh("/actions/workflows/daily_video.yml/dispatches", {
     method: "POST",
-    body: JSON.stringify({ ref, inputs: { channel: channelId, privacy: "private" } }),
+    body: JSON.stringify({ ref, inputs }),
   });
   if (res.status === 204) return;
   throw new Error(
