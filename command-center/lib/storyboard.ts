@@ -35,6 +35,26 @@ export interface StoryboardScene {
   /** True when the scene's length is the pipeline's own duration, not an
    *  estimate from word count. */
   durationExact?: boolean;
+  /** The Video IR scene id ("s000"), structured scenes only. */
+  sceneId?: string;
+  /** The factual claims this scene makes, with their ADVISORY fact-check
+   *  status (structured scenes only; absent for rows written before claim
+   *  linkage existed). */
+  claims?: StoryboardClaim[];
+}
+
+/** The fact-check statuses the pipeline records (modules/fact_checker.py),
+ *  plus "not_checked" — the checker never saw this sentence. */
+export type ClaimStatus = "likely_accurate" | "likely_inaccurate" | "unverifiable" | "not_checked";
+
+export interface StoryboardClaim {
+  id: string;
+  text: string;
+  status: ClaimStatus;
+  /** True unless the checker was confident the claim is accurate. Advisory
+   *  only — a human approves every video regardless. */
+  needsReview: boolean;
+  reasoning?: string;
 }
 
 export interface Storyboard {
@@ -49,11 +69,69 @@ export interface Storyboard {
 /** One structured scene as the pipeline persists it (migration 0011). Every
  *  field is optional — an older row or a partial record must never throw. */
 export interface VideoScene {
+  id?: string;
   name?: string;
   type?: string;
   narration?: string;
   duration_hint?: number;
   keywords?: string[];
+  claim_ids?: string[];
+  claims?: VideoSceneClaim[];
+}
+
+/** One claim as the pipeline stores it inside a scene (modules/claim_scenes.py). */
+export interface VideoSceneClaim {
+  id?: string;
+  text?: string;
+  status?: string | null;
+  reasoning?: string;
+  requires_human_review?: boolean;
+}
+
+const KNOWN_VERDICTS: ReadonlySet<string> = new Set([
+  "likely_accurate",
+  "likely_inaccurate",
+  "unverifiable",
+]);
+
+/**
+ * Normalize one stored claim. Mirrors the pipeline's own rules so a malformed
+ * row can never read as "accurate": a missing status is "not_checked", an
+ * unknown verdict string is clamped to "unverifiable" (as fact_checker does),
+ * and a claim needs review unless its status is "likely_accurate" AND the row
+ * did not itself ask for review. Returns null when there is no claim text.
+ */
+export function normalizeClaim(c: VideoSceneClaim | null | undefined): StoryboardClaim | null {
+  const text = (c?.text ?? "").trim();
+  if (!text) return null;
+  const raw = typeof c?.status === "string" ? c.status.trim() : "";
+  const status: ClaimStatus = !raw || raw === "not_checked"
+    ? "not_checked"
+    : KNOWN_VERDICTS.has(raw)
+      ? (raw as ClaimStatus)
+      : "unverifiable";
+  const needsReview = status !== "likely_accurate" || c?.requires_human_review === true;
+  const reasoning = (c?.reasoning ?? "").trim();
+  return {
+    id: (c?.id ?? "").trim(),
+    text,
+    status,
+    needsReview,
+    reasoning: reasoning || undefined,
+  };
+}
+
+/** How many claims a storyboard shows, and how many of them want a human. */
+export function claimCounts(scenes: StoryboardScene[]): { total: number; needsReview: number } {
+  let total = 0;
+  let needsReview = 0;
+  for (const s of scenes) {
+    for (const c of s.claims ?? []) {
+      total += 1;
+      if (c.needsReview) needsReview += 1;
+    }
+  }
+  return { total, needsReview };
 }
 
 /** Words per second of spoken narration. ~150 wpm is a normal documentary pace,
@@ -128,10 +206,10 @@ export function scenesToStoryboard(scenes: VideoScene[] | null | undefined): Sto
   const out: StoryboardScene[] = [];
   let cumulative = 0;
   let totalWords = 0;
-  for (const s of list) {
+  list.forEach((s, position) => {
     const text = (s?.narration ?? "").trim();
     const name = (s?.name ?? "").trim();
-    if (!text && !name) continue; // nothing to show for this entry
+    if (!text && !name) return; // nothing to show for this entry
     const words = countWords(text);
     const hint = typeof s?.duration_hint === "number" ? Math.round(s.duration_hint) : 0;
     const durationExact = hint > 0;
@@ -141,6 +219,12 @@ export function scenesToStoryboard(scenes: VideoScene[] | null | undefined): Sto
     const keywords = Array.isArray(s?.keywords)
       ? s!.keywords!.map((k) => String(k).trim()).filter(Boolean)
       : [];
+    // The scene id is the section's position in the stored plan — the same
+    // index the pipeline used — not the display number, which skips blanks.
+    const sceneId = (typeof s?.id === "string" && s.id.trim()) || `s${String(position).padStart(3, "0")}`;
+    const claims = Array.isArray(s?.claims)
+      ? s!.claims!.map(normalizeClaim).filter((c): c is StoryboardClaim => c !== null)
+      : undefined;
     out.push({
       index: out.length + 1,
       text,
@@ -152,8 +236,10 @@ export function scenesToStoryboard(scenes: VideoScene[] | null | undefined): Sto
       sceneType: (s?.type ?? "").trim() || undefined,
       keywords: keywords.length ? keywords : undefined,
       durationExact,
+      sceneId,
+      claims,
     });
-  }
+  });
   return { scenes: out, totalWords, totalSeconds: cumulative, source: "structured" };
 }
 

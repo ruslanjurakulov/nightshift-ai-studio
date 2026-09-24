@@ -235,6 +235,13 @@ export const uz: Dictionary = {
     storyboardRuntime: "taxm. davomiylik",
     storyboardApprox: "≈",
     storyboardKeywords: "B-roll",
+    storyboardClaims: "Da'volar",
+    storyboardClaimsNeedReview: "da'vo tekshiruv talab qiladi",
+    storyboardClaimsAdvisory: "Da'volar holati avtomatik fakt-tekshiruvdan olingan. Ular faqat maslahat xarakterida — inson tasdig'ining o'rnini hech qachon bosmaydi.",
+    storyboardClaimAccurate: "Ehtimol to'g'ri",
+    storyboardClaimInaccurate: "Ehtimol noto'g'ri",
+    storyboardClaimUnverifiable: "Tekshirib bo'lmaydi",
+    storyboardClaimNotChecked: "Tekshirilmagan",
   },
   pipeline: {
     title: "Konveyer",

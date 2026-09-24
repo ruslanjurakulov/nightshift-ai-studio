@@ -200,6 +200,15 @@ export default async function VideoDetail({
             runtime: t.videoDetail.storyboardRuntime,
             approx: t.videoDetail.storyboardApprox,
             keywords: t.videoDetail.storyboardKeywords,
+            claims: t.videoDetail.storyboardClaims,
+            claimsNeedReview: t.videoDetail.storyboardClaimsNeedReview,
+            claimsAdvisory: t.videoDetail.storyboardClaimsAdvisory,
+            claimStatus: {
+              likely_accurate: t.videoDetail.storyboardClaimAccurate,
+              likely_inaccurate: t.videoDetail.storyboardClaimInaccurate,
+              unverifiable: t.videoDetail.storyboardClaimUnverifiable,
+              not_checked: t.videoDetail.storyboardClaimNotChecked,
+            },
           }}
         />
       </Panel>

@@ -1,4 +1,10 @@
-import { buildStoryboard, formatClock, type VideoScene } from "@/lib/storyboard";
+import {
+  buildStoryboard,
+  claimCounts,
+  formatClock,
+  type ClaimStatus,
+  type VideoScene,
+} from "@/lib/storyboard";
 import { EmptyState } from "@/components/ui";
 
 /**
@@ -26,9 +32,14 @@ export function Storyboard({
     runtime: string;
     approx: string;
     keywords: string;
+    claims: string;
+    claimsNeedReview: string;
+    claimsAdvisory: string;
+    claimStatus: Record<ClaimStatus, string>;
   };
 }) {
   const { scenes, totalSeconds } = buildStoryboard(sceneRows, scriptText);
+  const counts = claimCounts(scenes);
 
   if (scenes.length === 0) {
     return <EmptyState>{labels.empty}</EmptyState>;
@@ -50,7 +61,24 @@ export function Storyboard({
             {labels.runtime}
           </span>
         </div>
+        {counts.total > 0 && (
+          <div className="flex items-baseline gap-2">
+            <span
+              className={`mono text-lg ${
+                counts.needsReview > 0 ? "text-[var(--color-warn)]" : "text-[var(--color-fg)]"
+              }`}
+            >
+              {counts.needsReview}/{counts.total}
+            </span>
+            <span className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+              {labels.claimsNeedReview}
+            </span>
+          </div>
+        )}
       </div>
+      {counts.total > 0 && (
+        <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">{labels.claimsAdvisory}</p>
+      )}
 
       {/* The scenes, in narration order, as a vertical timeline. */}
       <ol className="flex flex-col gap-3">
@@ -105,6 +133,32 @@ export function Storyboard({
                   ))}
                 </div>
               )}
+              {s.claims && s.claims.length > 0 && (
+                <div className="mt-2 flex flex-col gap-1.5">
+                  <span className="text-[9px] uppercase tracking-[0.2em] text-[var(--color-muted)]">
+                    {labels.claims}
+                  </span>
+                  <ul className="flex flex-col gap-1.5">
+                    {s.claims.map((c, i) => (
+                      <li key={c.id || i} className="flex items-start gap-2 text-[12px] leading-snug">
+                        <span
+                          className={`pill shrink-0 border border-[var(--color-border)] px-2 py-0.5 text-[9px] uppercase tracking-[0.12em] ${STATUS_TONE[c.status]}`}
+                        >
+                          {labels.claimStatus[c.status]}
+                        </span>
+                        <span className="min-w-0 text-[var(--color-fg)]">
+                          {c.text}
+                          {c.reasoning && (
+                            <span className="mt-0.5 block text-[11px] text-[var(--color-muted)]">
+                              {c.reasoning}
+                            </span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </li>
         ))}
@@ -112,3 +166,12 @@ export function Storyboard({
     </div>
   );
 }
+
+/** Status colour. "not_checked" is neutral, never green: an unchecked claim is
+ *  not an accurate one. */
+const STATUS_TONE: Record<ClaimStatus, string> = {
+  likely_accurate: "text-[var(--color-ok)]",
+  likely_inaccurate: "text-[var(--color-fail)]",
+  unverifiable: "text-[var(--color-warn)]",
+  not_checked: "text-[var(--color-idle)]",
+};

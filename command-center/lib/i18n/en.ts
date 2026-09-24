@@ -241,6 +241,13 @@ export const en = {
     storyboardRuntime: "est. runtime",
     storyboardApprox: "≈",
     storyboardKeywords: "B-roll",
+    storyboardClaims: "Claims",
+    storyboardClaimsNeedReview: "claims need review",
+    storyboardClaimsAdvisory: "Claim statuses come from the automated fact-check. They are advisory only — they never replace human approval.",
+    storyboardClaimAccurate: "Likely accurate",
+    storyboardClaimInaccurate: "Likely inaccurate",
+    storyboardClaimUnverifiable: "Unverifiable",
+    storyboardClaimNotChecked: "Not checked",
   },
   pipeline: {
     title: "Pipeline",
