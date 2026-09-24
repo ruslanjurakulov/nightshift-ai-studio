@@ -12,6 +12,11 @@
 # lockfile for reproducible `npm ci` builds.
 !command-center/tsconfig.json
 !command-center/package-lock.json
+# Remotion video engine: TS config, lockfile (for `npm ci`) and the props
+# fixtures used by its smoke render — none carries a credential.
+!video-engine/tsconfig.json
+!video-engine/package-lock.json
+!video-engine/fixtures/*.json
 # The bot's runtime directories, anchored to the repository root.
 #
 # Unanchored ("logs/") these match at ANY depth, and that silently swallowed
