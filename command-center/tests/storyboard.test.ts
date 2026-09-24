@@ -56,6 +56,28 @@ describe("parseStoryboard", () => {
   });
 });
 
+describe("scenesToStoryboard — measured audio timing (migration 0013)", () => {
+  it("prefers real start_s/end_s over duration_hint", () => {
+    const sb = scenesToStoryboard([
+      { id: "s000", name: "Hook", narration: "a b c", duration_hint: 15, start_s: 0, end_s: 12.4 },
+      { id: "s001", name: "Story", narration: "d e f", duration_hint: 45, start_s: 12.4, end_s: 60.2 },
+    ]);
+    expect(sb.scenes[0].measured).toBe(true);
+    expect(sb.scenes[0].estSeconds).toBe(12);
+    expect(sb.scenes[0].startSeconds).toBe(0);
+    expect(sb.scenes[1].estSeconds).toBe(48);
+    expect(sb.scenes[1].cumulativeSeconds).toBeCloseTo(60.2);
+    expect(sb.totalSeconds).toBeCloseTo(60.2);
+  });
+
+  it("falls back to the hint when times are null (never treats null as 0)", () => {
+    const sb = scenesToStoryboard([{ name: "Hook", narration: "a", duration_hint: 15, start_s: null, end_s: null }]);
+    expect(sb.scenes[0].measured).toBeUndefined();
+    expect(sb.scenes[0].estSeconds).toBe(15);
+    expect(sb.scenes[0].durationExact).toBe(true);
+  });
+});
+
 describe("scenesToStoryboard", () => {
   it("returns an empty structured storyboard for null/empty/non-array input", () => {
     for (const v of [null, undefined, [] as never[]]) {

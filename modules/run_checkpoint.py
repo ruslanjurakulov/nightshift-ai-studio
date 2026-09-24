@@ -54,6 +54,8 @@ STAGE_MEDIA = "media"
 STAGE_SUBTITLES = "subtitles"
 STAGE_THUMBNAILS = "thumbnails"
 STAGE_RENDER = "render"
+# The Video IR (modules/video_ir.py): output/<slug>/project.json.
+STAGE_PROJECT = "project"
 STAGE_UPLOAD = "upload"
 
 

@@ -59,6 +59,7 @@ from modules import watch_next
 from modules.pipeline_stages import PipelineStage, PipelineStateMachine
 from modules.research_engine import research_topic
 from modules import run_checkpoint, upload_idempotency
+from modules import video_ir
 from modules.script_engine import ScriptEngine
 from modules.series import (
     effective_cadence, effective_niche, effective_visual_style, effective_voice_style,
@@ -762,6 +763,17 @@ def run(
     sub_gen.release_model()
     run_checkpoint.record_stage(slug, run_checkpoint.STAGE_SUBTITLES, artifacts={"srt": str(srt_path)})
 
+    # Video IR (modules/video_ir.py): one project.json from the pieces above —
+    # scene times from the REAL audio timeline, shots, elements, asset
+    # placement. Best-effort: returns None on any failure, never raises.
+    ir_project = video_ir.write_for_run(
+        slug=slug, script=script, timeline=timeline, channel_id=channel_id,
+        audio_path=audio_path, subtitles_path=srt_path, shot_plans=shot_plans,
+        elements=channel_elements, video_paths=videos, image_paths=images,
+        clip_terms=getattr(fetcher, "video_terms", None), broll=broll,
+        generated_images=gen_images, width=VIDEO_WIDTH, height=VIDEO_HEIGHT, fps=config.VIDEO_FPS,
+    )
+
     # ── Stage 6: Thumbnails
     # Which arm this video ships on. Both thumbnails have always been rendered;
     # until now A was uploaded every time and B was thrown away, so the
@@ -1098,6 +1110,9 @@ def run(
                     # scenes from paragraph breaks. Best-effort: a build failure
                     # here is swallowed with the preview, never failing the run.
                     scenes=script.scene_plan(),
+                    # The Video IR (migration 0013); also adds real start/end
+                    # times to the scenes above. None leaves both as before.
+                    manifest=ir_project.to_dict() if ir_project is not None else None,
                 )
             except Exception as e:
                 logger.warning("Could not record the review preview (%s: %s)",
