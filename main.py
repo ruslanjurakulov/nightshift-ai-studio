@@ -30,6 +30,8 @@ from config import OUTPUT_DIR, THUMBNAIL_VARIANT_COUNT, VIDEO_HEIGHT, VIDEO_WIDT
 from modules import event_log as events
 from modules import publish_gate
 from modules import publish_score
+from modules import video_critic
+from modules import video_qc
 from modules.ab_testing import choose_variant_n, variant_performance_n
 from modules.hook_ab import choose_hook, hook_performance
 from modules.avatar import (
@@ -57,7 +59,7 @@ from modules import playlist
 from modules import watch_next
 from modules.pipeline_stages import PipelineStage, PipelineStateMachine
 from modules.research_engine import research_topic
-from modules import run_checkpoint
+from modules import run_checkpoint, upload_idempotency
 from modules.script_engine import ScriptEngine
 from modules.series import (
     effective_cadence, effective_niche, effective_visual_style, effective_voice_style,
@@ -724,7 +726,8 @@ def run(
     if broll.generated:
         videos.extend(Path(p) for p in broll.by_section.values())
         from modules import video_providers as _vp
-        costs.add(VIDEO_GEN_CLIPS, broll.generated, stage=f"broll:{_vp.active_provider()}")
+        # Clips reused from an earlier attempt's ledger cost nothing new this run.
+        costs.add(VIDEO_GEN_CLIPS, broll.newly_generated, stage=f"broll:{_vp.active_provider()}")
         events.emit(events.BROLL_GENERATED, agent="minimax_broll", status=events.STATUS_COMPLETED,
                     channel_id=channel_id, metadata=broll.to_dict())
     # Optional: generate on-topic stills with the selected image provider
@@ -873,6 +876,9 @@ def run(
     # below succeeds, so a blocked or failed-upload run leaves an honest
     # "rendered", never a false "published".
     topic_mgr.mark_queue_entry_rendered()
+    # Advisory AI critic on rendered frames (modules/video_critic.py). Off unless
+    # CHRONOS_AI_CRITIC is set; never blocks, never raises, skips at a met ceiling.
+    video_critic.run(video_path, script=script, timeline=timeline, channel=ctx, costs=costs)
 
     # ── Stage 8: Upload
     # The video is already on disk by this point, so no upload failure may cost
@@ -882,12 +888,17 @@ def run(
     # It only ever blocks; it never causes an upload that would not otherwise
     # happen, and it never publishes anything itself. A blocked video stays on
     # disk for a human. See modules/publish_gate.py.
+    # Measure the file first (modules/video_qc.py): streams, duration vs the
+    # narration, truncation, black and silent runs. Never raises; the report
+    # lands in qc_report.json and in the gate event's metadata.
+    qc_report = video_qc.run(video_path, audio_path=audio_path, timeline=timeline)
     gate = publish_gate.evaluate(
         script=script,
         video_path=video_path,
         topic=topic,
         fact_results=fact_results,
         channel=ctx,
+        qc_report=qc_report,
     )
 
     # Advisory pre-publish intelligence — a quality/prediction score for a human
@@ -993,6 +1004,9 @@ def run(
                 captions_path=srt_path,
                 section_timeline=timeline,
                 description_suffix=watch_next_suffix,
+                # Run marker + attempt ledger: an ambiguous failure is looked up
+                # on the channel before any retry, never re-uploaded blindly.
+                attempt=upload_idempotency.begin(slug, channel_id),
             )
             video_id, video_url = uploaded["id"], uploaded["url"]
             # Recorded only on a successful upload — a failed attempt may have

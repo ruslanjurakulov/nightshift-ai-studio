@@ -384,13 +384,124 @@ class YouTubeUploader:
         logger.info("%sKanal tasdiqlandi: %s (%s)", self._label, ch["name"], ch["id"])
 
     def _trim_tags(self, tags: list[str]) -> list[str]:
+        """Keep tags, in order, while they fit YouTube's 500-character budget.
+
+        YouTube counts the separating commas and wraps a tag that contains a
+        space in quotes, which also count — so a multi-word tag costs two more
+        than its length. Counting that keeps an upload from being rejected
+        with invalidTags when the list sits right at the limit."""
         result, total = [], 0
         for tag in tags:
-            if total + len(tag) + 1 > MAX_TAGS:
+            cost = len(tag) + (2 if " " in tag else 0) + 1
+            if total + cost > MAX_TAGS:
                 break
             result.append(tag)
-            total += len(tag) + 1
+            total += cost
         return result
+
+    def _insert_once(self, body: dict, video_path: Path, title: str, privacy: str) -> str:
+        """One videos.insert, chunked and resumable. Returns the new video id;
+        raises whatever the client raised."""
+        media = MediaFileUpload(
+            str(video_path),
+            mimetype="video/mp4",
+            resumable=True,
+            chunksize=10 * 1024 * 1024,
+        )
+
+        logger.info("%sYuklanmoqda: '%s' [%s]...", self._label, title, privacy)
+        request = self.service.videos().insert(
+            part="snippet,status",
+            body=body,
+            media_body=media,
+        )
+
+        response = None
+        while response is None:
+            status, response = request.next_chunk()
+            if status:
+                pct = int(status.progress() * 100)
+                logger.info("Yuklash: %d%%", pct)
+        return response["id"]
+
+    def _insert_idempotent(self, body: dict, video_path: Path, title: str,
+                           privacy: str, attempt) -> str:
+        """videos.insert that never puts the same run on the channel twice.
+
+        See modules/upload_idempotency.py. In short: a video id an earlier
+        attempt of this run already got back is reused; an earlier insert that
+        never reported back is looked up by the run marker first; an ambiguous
+        failure now is reconciled by marker before at most one retry; a
+        definitive failure is raised as-is and never retried; and when the
+        lookup itself fails, nothing is retried at all."""
+        from modules import upload_idempotency as ui
+
+        target = self.target_channel_id or ""
+        if attempt.video_id:
+            exists = ui.video_exists(self.service, attempt.video_id)
+            if exists:
+                logger.info("%sThis run already uploaded %s — reusing it, not uploading again",
+                            self._label, attempt.video_id)
+                return attempt.video_id
+            if exists is None:
+                raise ui.UploadAmbiguousError(
+                    f"{self._label}this run already uploaded {attempt.video_id}, but YouTube "
+                    "could not be asked whether it still exists — not uploading a second copy")
+            logger.warning("%sVideo %s from an earlier attempt is gone from YouTube — uploading anew",
+                           self._label, attempt.video_id)
+            attempt.forget_video()
+        elif attempt.needs_lookup:
+            found = ui.reconcile(self.service, attempt.marker, channel_id=target, delays=(0.0,))
+            if found.video_id:
+                logger.info("%sAn earlier attempt's upload landed as %s (marker %s) — reusing it",
+                            self._label, found.video_id, attempt.marker)
+                attempt.mark_uploaded(found.video_id)
+                return found.video_id
+            if not found.ok:
+                raise ui.UploadAmbiguousError(
+                    f"{self._label}an earlier upload attempt of this run never reported back and "
+                    "the channel could not be checked for it — not uploading a possible duplicate")
+
+        retries = 0
+        had_ambiguous = False
+        while True:
+            attempt.mark_started()
+            try:
+                video_id = self._insert_once(body, video_path, title, privacy)
+            except Exception as e:
+                if not ui.is_ambiguous(e):
+                    # Definitive: the video was not created. Raised as before,
+                    # never retried. After an earlier ambiguous try in this
+                    # process the record stays "started" so a later attempt
+                    # still checks whether that one landed.
+                    if not had_ambiguous:
+                        attempt.mark_failed()
+                    raise
+                had_ambiguous = True
+                logger.warning("%sUpload outcome unknown (%s: %s) — checking the channel for "
+                               "marker %s before anything else", self._label,
+                               type(e).__name__, e, attempt.marker)
+                found = ui.reconcile(self.service, attempt.marker, channel_id=target)
+                if found.video_id:
+                    logger.info("%sThe upload did land as %s — reusing it, not uploading again",
+                                self._label, found.video_id)
+                    attempt.mark_uploaded(found.video_id)
+                    return found.video_id
+                if not found.ok:
+                    raise ui.UploadAmbiguousError(
+                        f"{self._label}upload outcome unknown and the channel could not be "
+                        "checked — not retrying, to avoid a duplicate") from e
+                if retries >= ui.MAX_AMBIGUOUS_RETRIES:
+                    raise ui.UploadAmbiguousError(
+                        f"{self._label}upload outcome unknown after {retries + 1} attempt(s) and "
+                        "no video carries this run's marker yet — stopping; the next attempt "
+                        "checks again before uploading") from e
+                retries += 1
+                logger.warning("%sNo video carries marker %s — retrying the upload once",
+                               self._label, attempt.marker)
+                continue
+            attempt.mark_uploaded(video_id)
+            return video_id
 
     def upload(
         self,
@@ -403,6 +514,7 @@ class YouTubeUploader:
         captions_path: Path | None = None,
         section_timeline: list[dict] | None = None,
         description_suffix: str | None = None,
+        attempt=None,
     ) -> dict:
         """Upload one video.
 
@@ -425,11 +537,21 @@ class YouTubeUploader:
         which it cannot set. Appended only if it fits under YouTube's limit and
         isn't already present; None keeps the description exactly as before.
 
+        `attempt` (an ``upload_idempotency.UploadAttempt``) makes the upload
+        idempotent for one run: its marker is added as the first tag, and an
+        ambiguous failure is reconciled against the channel before any retry
+        (see modules/upload_idempotency.py). None keeps the old single-shot
+        upload exactly.
+
         Quota: videos.insert is ~1600 units of the 10,000/day; a caption track
-        adds ~400. Chapters are description text and cost nothing.
+        adds ~400. Chapters are description text and cost nothing. A marker
+        lookup is ~3 units.
         """
         privacy = privacy or YOUTUBE_PRIVACY
-        tags = self._trim_tags(script.tags)
+        marker = getattr(attempt, "marker", "") or ""
+        # The run marker goes first so trimming can never drop it.
+        tags = self._trim_tags(([marker] if marker else [])
+                               + [t for t in (script.tags or []) if t != marker])
         title = (title_override or script.title or "").strip() or script.title
         description = description_override if description_override is not None else script.description
         if section_timeline is not None:
@@ -458,43 +580,34 @@ class YouTubeUploader:
         if self.target_channel_id:
             body["snippet"]["channelId"] = self.target_channel_id
 
-        media = MediaFileUpload(
-            str(video_path),
-            mimetype="video/mp4",
-            resumable=True,
-            chunksize=10 * 1024 * 1024,
-        )
-
-        logger.info("%sYuklanmoqda: '%s' [%s]...", self._label, title, privacy)
-        request = self.service.videos().insert(
-            part="snippet,status",
-            body=body,
-            media_body=media,
-        )
-
-        response = None
-        while response is None:
-            status, response = request.next_chunk()
-            if status:
-                pct = int(status.progress() * 100)
-                logger.info("Yuklash: %d%%", pct)
-
-        video_id = response["id"]
+        if attempt is None:
+            video_id = self._insert_once(body, video_path, title, privacy)
+        else:
+            video_id = self._insert_idempotent(body, video_path, title, privacy, attempt)
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         logger.info("%sYuklandi: %s", self._label, video_url)
 
-        if thumbnail_path and thumbnail_path.exists():
+        # With an attempt record, a step an earlier attempt of this run already
+        # finished for this same video is not repeated (a second caption track
+        # would be a duplicate; the thumbnail is idempotent but costs quota).
+        from modules.upload_idempotency import STEP_CAPTIONS, STEP_THUMBNAIL
+
+        if (thumbnail_path and thumbnail_path.exists()
+                and not (attempt is not None and attempt.step_done(STEP_THUMBNAIL))):
             try:
                 self.service.thumbnails().set(
                     videoId=video_id,
                     media_body=MediaFileUpload(str(thumbnail_path), mimetype="image/jpeg"),
                 ).execute()
                 logger.info("Thumbnail qo'yildi.")
+                if attempt is not None:
+                    attempt.mark_step(STEP_THUMBNAIL)
             except Exception as e:
                 logger.warning("Thumbnail xatosi: %s", e)
 
-        if captions_path is not None:
-            self.upload_captions(video_id, captions_path)
+        if captions_path is not None and not (attempt is not None and attempt.step_done(STEP_CAPTIONS)):
+            if self.upload_captions(video_id, captions_path) and attempt is not None:
+                attempt.mark_step(STEP_CAPTIONS)
 
         return {"id": video_id, "url": video_url}
 

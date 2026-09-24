@@ -241,3 +241,74 @@ export function elevenLabsRunway(
   const minVideos = perVideoChars && perVideoChars > 0 ? Math.floor(remaining / (perVideoChars * cpc)) : null;
   return { remainingCredits: remaining, minMinutes, minVideos, perVideoChars };
 }
+
+export interface TopupPlanInput {
+  id: string;
+  /** USD burned per day, or null when used but unpriced. */
+  usdPerDay: number | null;
+  /** Current balance in USD, or null when unknown (treated as empty — the plan errs toward enough). */
+  balanceUsd: number | null;
+}
+
+export interface TopupPlanLine {
+  id: string;
+  /** USD needed to cover `days` at the current burn, or null when unpriced. */
+  need: number | null;
+  /** USD to pay now, or null when unpriced (excluded from the total). */
+  amount: number | null;
+  /** The balance was unknown, so the need assumes an empty account. */
+  balanceUnknown: boolean;
+}
+
+export interface TopupPlan {
+  lines: TopupPlanLine[];
+  /** Exactly the sum of the line amounts — what the operator will be charged in total. */
+  total: number;
+  /** The cap was lower than the need, so amounts were split proportionally. */
+  scaled: boolean;
+}
+
+const cents = (v: number) => Math.round(v * 100);
+
+/**
+ * Split `totalCents` across `weights` proportionally, in whole cents, so the
+ * parts add up to exactly the total (largest-remainder rounding).
+ */
+export function splitCents(totalCents: number, weights: number[]): number[] {
+  const sum = weights.reduce((s, w) => s + Math.max(0, w), 0);
+  const ws = sum > 0 ? weights.map((w) => Math.max(0, w)) : weights.map(() => 1);
+  const wsum = ws.reduce((s, w) => s + w, 0);
+  if (wsum === 0 || totalCents <= 0) return weights.map(() => 0);
+  const raw = ws.map((w) => (totalCents * w) / wsum);
+  const floors = raw.map(Math.floor);
+  let rest = totalCents - floors.reduce((s, v) => s + v, 0);
+  const order = raw.map((r, i) => [r - Math.floor(r), i] as const).sort((a, b) => b[0] - a[0]);
+  for (let k = 0; rest > 0 && k < order.length; k++, rest--) floors[order[k][1]] += 1;
+  return floors;
+}
+
+/**
+ * Plan a prepayment across the selected providers.
+ *
+ * need_i = max(0, burn_i × days − balance_i). With no cap every provider gets
+ * its need (rounded up to the cent). With a cap below the total need, the cap
+ * is split in proportion to each provider's need, to the cent, summing to the
+ * cap exactly. Unpriced providers get no amount — the page asks for a price.
+ */
+export function planTopups(inputs: TopupPlanInput[], days: number, cap: number | null = null): TopupPlan {
+  const lines: TopupPlanLine[] = inputs.map((p) => {
+    if (p.usdPerDay === null) return { id: p.id, need: null, amount: null, balanceUnknown: p.balanceUsd === null };
+    const need = Math.max(0, p.usdPerDay * Math.max(0, days) - (p.balanceUsd ?? 0));
+    return { id: p.id, need, amount: Math.max(0, Math.ceil(need * 100 - 1e-9)) / 100, balanceUnknown: p.balanceUsd === null };
+  });
+  const priced = lines.filter((l) => l.need !== null);
+  const needCents = priced.reduce((s, l) => s + (l.amount ?? 0) * 100, 0);
+  let scaled = false;
+  if (cap !== null && Number.isFinite(cap) && cap >= 0 && priced.length > 0 && cents(cap) < Math.round(needCents)) {
+    scaled = true;
+    const parts = splitCents(cents(cap), priced.map((l) => l.need ?? 0));
+    priced.forEach((l, i) => (l.amount = parts[i] / 100));
+  }
+  const total = Math.round(priced.reduce((s, l) => s + (l.amount ?? 0) * 100, 0)) / 100;
+  return { lines, total, scaled };
+}

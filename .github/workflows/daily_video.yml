@@ -322,6 +322,9 @@ jobs:
           CHRONOS_ENABLE_VIDIQ: ${{ vars.CHRONOS_ENABLE_VIDIQ }}
           # Autopilot: pick the day's topic from this channel's trend signals.
           CHRONOS_AGENT_AUTOPILOT: ${{ vars.CHRONOS_AGENT_AUTOPILOT }}
+          # Advisory AI critic on rendered frames (Gemini vision; one or two
+          # paid calls per video). Off unless this variable is set to 1.
+          CHRONOS_AI_CRITIC: ${{ vars.CHRONOS_AI_CRITIC }}
           # --- Per-channel publishing tokens -------------------------------
           # GitHub Actions secrets cannot be enumerated at runtime, so each
           # channel's token secret is listed here explicitly — one line per

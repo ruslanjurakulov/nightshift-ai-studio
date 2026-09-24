@@ -140,7 +140,7 @@ class MediaFetcher:
         Director shot direction and/or a Character-Bible consistency directive).
         None keeps the default look."""
         import config
-        from modules import minimax_broll, video_providers
+        from modules import minimax_broll, provider_tasks, video_providers
 
         result = minimax_broll.GenerationResult(model=video_providers.active_model())
         if not video_providers.is_enabled():
@@ -158,12 +158,27 @@ class MediaFetcher:
                 return result
 
         provider_name = video_providers.active_provider()
+        # Crash-safe task tracking (modules/provider_tasks.py): a client that
+        # splits submit/resume has every paid task id persisted before polling,
+        # so a retry of this run polls it instead of paying again.
+        ledger = None
+        if provider_tasks.supports_resume(client):
+            ledger = provider_tasks.TaskLedger.open(getattr(self, "slug", None))
         by_section: dict = {}
+        task_ids: dict = {}
         generated = 0
+        reused = 0
         for spec in specs:
             dest = self.video_dir / f"gen_{spec.section_index}.mp4"
+            was_reused = False
             try:
-                path = client.generate(spec, dest)
+                if ledger is not None:
+                    path, task_id, was_reused = self._generate_tracked(
+                        client, spec, dest, provider_name, result.model, ledger)
+                    if task_id:
+                        task_ids[spec.section_index] = task_id
+                else:
+                    path = client.generate(spec, dest)
             except Exception as e:   # a broken clip must never sink the render
                 logger.warning("%s generation error for section %d (%s: %s)",
                                provider_name, spec.section_index, type(e).__name__, e)
@@ -172,12 +187,61 @@ class MediaFetcher:
                 self.video_terms[str(path)] = spec.keyword
                 by_section[spec.section_index] = str(path)
                 generated += 1
+                reused += 1 if was_reused else 0
 
-        logger.info("%s b-roll: %d/%d clip(s) generated", provider_name, generated, len(specs))
+        logger.info("%s b-roll: %d/%d clip(s) generated (%d reused from an earlier attempt)",
+                    provider_name, generated, len(specs), reused)
         return minimax_broll.GenerationResult(
             attempted=len(specs), generated=generated,
             model=result.model, by_section=by_section,
+            reused=reused, task_ids=task_ids,
         )
+
+    @staticmethod
+    def _generate_tracked(client, spec, dest: Path, provider_name: str, model: str, ledger):
+        """One clip through the provider task ledger. Returns
+        ``(path_or_None, task_id_or_None, reused_without_request)``.
+
+        * a task for this scene + prompt that already succeeded and whose clip
+          is still on disk → reused, no request at all;
+        * a task that was submitted but never settled (the run died while
+          polling, or the poll timed out) → **polled**, never re-submitted;
+        * otherwise (no task, or the provider reported it failed) → a fresh
+          submit, recorded in the ledger *before* polling starts.
+        """
+        from modules import provider_tasks as pt
+
+        phash = pt.prompt_hash(provider_name, model, spec)
+        sid = pt.scene_id(spec.section_index)
+        task = ledger.find(provider_name, sid, phash)
+
+        if task is not None:
+            on_disk = task.clip_on_disk()
+            if on_disk is not None:
+                logger.info("%s scene %s: reusing clip from task %s (no new request)",
+                            provider_name, sid, task.task_id)
+                return on_disk, task.task_id, True
+            if task.status == pt.STATUS_FAILED:
+                task = None   # the provider said no — a new attempt is a new job
+            else:
+                logger.info("%s scene %s: polling existing task %s instead of re-submitting",
+                            provider_name, sid, task.task_id)
+
+        if task is None:
+            task_id = client.submit(spec)
+            if not task_id:
+                return None, None, False
+            task = ledger.record_submitted(provider=provider_name, model=model,
+                                           task_id=task_id,
+                                           section_index=spec.section_index, phash=phash)
+
+        outcome = client.resume(task.task_id, dest)
+        if not isinstance(outcome, pt.TaskOutcome):   # a client that broke the contract
+            outcome = pt.TaskOutcome(pt.OUTCOME_PENDING)
+        ledger.record_outcome(task, outcome)
+        if outcome.path is not None:
+            logger.info("%s b-roll generated for scene %s (%s)", provider_name, sid, spec.keyword)
+        return outcome.path, task.task_id, False
 
     # --------------------------------------------------------------- AI images
 
