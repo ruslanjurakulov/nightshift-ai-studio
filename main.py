@@ -50,6 +50,7 @@ from modules import shorts
 from modules.claim_extractor import extract_section_claims
 from modules import claim_scenes
 from modules.compositor import Compositor
+from modules import render_dispatch
 from modules.resource_monitor import MemorySampler, log_usage
 from modules.video_review import VideoReview
 from modules.fact_checker import fact_check_claims
@@ -843,26 +844,38 @@ def run(
     comp = Compositor(slug)
     # Two runs have died in here without leaving a reason. If a third does,
     # the sampler's last line is the state just before the kill.
+    # config.RENDER_BACKEND picks the renderer (modules/render_dispatch.py):
+    # "moviepy" (default) is the call below, unchanged; "ffmpeg" renders a
+    # RenderSpec from the same inputs and falls back to this call on any failure.
     with MemorySampler("render"):
-        video_path = comp.render(
-            script=script,
-            audio_path=audio_path,
-            video_paths=videos,
-            image_paths=images,
-            word_timestamps=word_clips_specs,
-            section_timeline=timeline,
-            presenter_path=presenter_path,
-            # Which keyword fetched each clip, so the compositor places footage
-            # under the section it matches (modules/broll_match.py) rather than
-            # at random. Empty when the fetcher was mocked/skipped — the
-            # compositor then falls back to its original shuffle.
+        render_result = render_dispatch.render_video(
+            moviepy_render=lambda: comp.render(
+                script=script,
+                audio_path=audio_path,
+                video_paths=videos,
+                image_paths=images,
+                word_timestamps=word_clips_specs,
+                section_timeline=timeline,
+                presenter_path=presenter_path,
+                # Which keyword fetched each clip, so the compositor places footage
+                # under the section it matches (modules/broll_match.py) rather than
+                # at random. Empty when the fetcher was mocked/skipped — the
+                # compositor then falls back to its original shuffle.
+                clip_terms=getattr(fetcher, "video_terms", None),
+            ),
+            output_path=OUTPUT_DIR / slug / "final_video.mp4",
+            script=script, audio_path=audio_path, video_paths=videos, image_paths=images,
+            section_timeline=timeline, subtitle_path=srt_path, presenter_path=presenter_path,
             clip_terms=getattr(fetcher, "video_terms", None),
+            width=VIDEO_WIDTH, height=VIDEO_HEIGHT, fps=config.VIDEO_FPS,
         )
+    video_path = render_result.video_path
     costs.slug = slug
     costs.add(RENDER_SECONDS, time.monotonic() - render_started, stage="render")
-    logger.info("Video: %s", video_path)
+    logger.info("Video: %s (render backend: %s)", video_path, render_result.backend)
     events.emit(events.RENDER_COMPLETED, agent="compositor", status=events.STATUS_COMPLETED,
-                channel_id=channel_id, metadata={"video_path": str(video_path)})
+                channel_id=channel_id,
+                metadata={"video_path": str(video_path), **render_result.to_metadata()})
     run_checkpoint.record_stage(slug, run_checkpoint.STAGE_RENDER, artifacts={"video": str(video_path)})
     # The video exists on disk now. If this topic came off the content-planner
     # queue, record that it reached "rendered" — true whether or not the upload

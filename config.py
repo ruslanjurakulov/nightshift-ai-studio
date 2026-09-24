@@ -221,7 +221,8 @@ THUMBNAIL_VARIANT_COUNT = _clamp_int(os.getenv("CHRONOS_THUMBNAIL_VARIANTS", "2"
 # modules/render_backend.py, which streams the timeline segment by segment and
 # holds one ffmpeg process at a time — the durable fix Phase 1 prescribed for
 # MoviePy's decoder leak, for the concat case (no per-frame Ken Burns / word
-# highlighting). Opt-in so the default render is unchanged.
+# highlighting). Opt-in so the default render is unchanged; any ffmpeg failure
+# falls back to the MoviePy compositor (modules/render_dispatch.py).
 RENDER_BACKEND = os.getenv("CHRONOS_RENDER_BACKEND", "moviepy").strip().lower()
 
 # YouTube Upload
