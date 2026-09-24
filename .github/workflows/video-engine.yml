@@ -1,0 +1,65 @@
+name: Video engine
+
+# The Remotion scene renderer in video-engine/ (roadmap PR 3.2). Typechecks
+# the project and renders one tiny fixture scene so a broken composition is
+# caught before it reaches the pipeline. Scoped to video-engine/** so no other
+# change pays for npm install or a Chromium download.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "video-engine/**"
+      - ".github/workflows/video-engine.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "video-engine/**"
+      - ".github/workflows/video-engine.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: video-engine-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: video-engine
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: video-engine/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # Smoke render: a 2 s, 640x360 title card (60 frames, one worker).
+      # `browser ensure` fetches Remotion's headless Chromium once.
+      - name: Smoke render
+        if: ${{ !cancelled() }}
+        run: |
+          npx remotion browser ensure
+          npx remotion render src/index.ts Scene out/smoke.mp4 \
+            --props=fixtures/title-card.json --concurrency=1 --log=error
+          FFPROBE=$(ls node_modules/@remotion/compositor-linux-x64-*/ffprobe | head -1)
+          frames=$("$FFPROBE" -v error -select_streams v:0 -count_packets \
+            -show_entries stream=nb_read_packets -of default=nw=1:nk=1 out/smoke.mp4 | head -1)
+          echo "frames=$frames"
+          test "$frames" = "60"
