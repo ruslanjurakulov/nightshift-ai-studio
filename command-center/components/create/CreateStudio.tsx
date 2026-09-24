@@ -39,6 +39,8 @@ export function CreateStudio({
   const [duration, setDuration] = useState("");
   const [language, setLanguage] = useState("");
   const [style, setStyle] = useState("");
+  const [videoProvider, setVideoProvider] = useState("");
+  const [imageProvider, setImageProvider] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
   const [events, setEvents] = useState<Ev[]>([]);
@@ -81,6 +83,8 @@ export function CreateStudio({
           ...(duration && Number.isFinite(dur) && dur > 0 ? { duration: dur } : {}),
           ...(language ? { language } : {}),
           ...(style.trim() ? { visual_style: style.trim() } : {}),
+          ...(videoProvider ? { video_provider: videoProvider } : {}),
+          ...(imageProvider ? { image_provider: imageProvider } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -160,6 +164,31 @@ export function CreateStudio({
           <label className="flex flex-col gap-1">
             <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.agents.runStyleLabel}</span>
             <input value={style} onChange={(e) => setStyle(e.target.value)} placeholder={t.agents.runStylePlaceholder} maxLength={300} className={selectClass} />
+          </label>
+        </div>
+
+        {/* Per-run model routing: which model turns stills into b-roll, and which
+            supplies the imagery. Empty = the repo's configured default. */}
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.create.videoModel}</span>
+            <select value={videoProvider} onChange={(e) => setVideoProvider(e.target.value)} className={selectClass}>
+              <option value="">{t.create.optDefault}</option>
+              <option value="seedance">Seedance</option>
+              <option value="kling">Kling</option>
+              <option value="veo">Veo</option>
+              <option value="higgsfield">Higgsfield</option>
+              <option value="wan">Wan</option>
+              <option value="minimax">MiniMax</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.create.imageModel}</span>
+            <select value={imageProvider} onChange={(e) => setImageProvider(e.target.value)} className={selectClass}>
+              <option value="">{t.create.optDefault}</option>
+              <option value="pexels">Pexels (stock)</option>
+              <option value="leonardo">Leonardo</option>
+            </select>
           </label>
         </div>
 
