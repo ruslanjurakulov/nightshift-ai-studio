@@ -40,7 +40,8 @@ from dataclasses import replace as _dc_replace
 from modules.channels import ChannelContext, resolve_channel
 from modules.credential_health import check_run_credentials
 from modules.cost_ledger import (
-    CostLedger, PEXELS_REQUESTS, RENDER_SECONDS, TTS_CHARACTERS, UPLOAD_BYTES,
+    CostLedger, IMAGE_GENERATIONS, PEXELS_REQUESTS, RENDER_SECONDS, TTS_CHARACTERS,
+    UPLOAD_BYTES, VIDEO_GEN_CLIPS,
 )
 from modules import budget
 from modules import shorts
@@ -721,6 +722,8 @@ def run(
     broll = fetcher.generate_broll(script.sections, topic, style_for=_scene_style)
     if broll.generated:
         videos.extend(Path(p) for p in broll.by_section.values())
+        from modules import video_providers as _vp
+        costs.add(VIDEO_GEN_CLIPS, broll.generated, stage=f"broll:{_vp.active_provider()}")
         events.emit(events.BROLL_GENERATED, agent="minimax_broll", status=events.STATUS_COMPLETED,
                     channel_id=channel_id, metadata=broll.to_dict())
     # Optional: generate on-topic stills with the selected image provider
@@ -730,6 +733,7 @@ def run(
     if gen_images:
         from modules import image_providers as _img
         images = list(gen_images) + list(images)
+        costs.add(IMAGE_GENERATIONS, len(gen_images), stage=f"image:{_img.active_provider()}")
         events.emit(events.IMAGE_GENERATED, agent="image_providers", status=events.STATUS_COMPLETED,
                     channel_id=channel_id,
                     metadata={"generated": len(gen_images), "provider": _img.active_provider()})
@@ -1157,6 +1161,14 @@ def run(
                        type(e).__name__, e)
 
     topic_mgr.register_topic(topic, video_path, video_id=video_id, video_url=video_url)
+
+    # Snapshot what is left on the paid provider accounts (ElevenLabs credits,
+    # Leonardo tokens) for the Billing page. Best-effort; never affects the run.
+    try:
+        from modules import provider_balance
+        provider_balance.record()
+    except Exception as e:
+        logger.warning("Provider balance snapshot skipped (%s)", type(e).__name__)
 
     logger.info("=== Done [channel: %s] ===", channel_id)
     return video_path

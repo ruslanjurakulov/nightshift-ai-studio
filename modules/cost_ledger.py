@@ -42,6 +42,10 @@ TTS_CHARACTERS = "tts_characters"
 RENDER_SECONDS = "render_seconds"
 PEXELS_REQUESTS = "pexels_requests"
 UPLOAD_BYTES = "upload_bytes"
+#: Generated media, counted per item. `stage` names the provider that billed it
+#: ("broll:<provider>" / "image:<provider>") so spend can be split per account.
+VIDEO_GEN_CLIPS = "video_gen_clips"
+IMAGE_GENERATIONS = "image_generations"
 
 #: Env var per unit, e.g. CHRONOS_PRICE_GEMINI_INPUT_TOKENS=0.000000075
 #: The value is USD *per single unit* — per token, per character, per second.

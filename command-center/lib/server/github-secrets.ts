@@ -187,7 +187,24 @@ export async function dispatchDailyVideo(
   const imageProvider = opts.imageProvider?.trim().toLowerCase();
   if (videoProvider && VIDEO_PROVIDERS.includes(videoProvider)) inputs.video_provider = videoProvider;
   if (imageProvider && IMAGE_PROVIDERS.includes(imageProvider)) inputs.image_provider = imageProvider;
-  const res = await gh("/actions/workflows/daily_video.yml/dispatches", {
+  await dispatchWorkflow("daily_video.yml", inputs, ref);
+}
+
+/**
+ * Dispatch one of the bot repo's workflows by file name. Only the workflows
+ * listed here may be dispatched from the site — anything else is refused before
+ * GitHub is called.
+ */
+const DISPATCHABLE_WORKFLOWS = ["daily_video.yml", "provider_balances.yml"];
+
+export async function dispatchWorkflow(
+  file: string,
+  inputs: Record<string, string> = {},
+  ref: string = process.env.GITHUB_SECRETS_REF?.trim() || "main",
+): Promise<void> {
+  if (!isGithubConfigured) throw new Error("github_not_configured");
+  if (!DISPATCHABLE_WORKFLOWS.includes(file)) throw new Error("github_workflow_not_allowed");
+  const res = await gh(`/actions/workflows/${encodeURIComponent(file)}/dispatches`, {
     method: "POST",
     body: JSON.stringify({ ref, inputs }),
   });
