@@ -359,6 +359,16 @@ h1, h2, h3, .font-display {
 /* Controls are pills, as on the reference. */
 .pill { border-radius: 999px; }
 
+/* Native <select> dropdowns render their popup from the UA's own palette. The
+   transparent-background pill selects leave that popup light, so on the dark
+   theme the option list flashes white. Pin the control and its options to the
+   theme tokens so the open dropdown matches in both light and dark. */
+select { color: var(--color-fg); }
+option {
+  background-color: var(--color-panel);
+  color: var(--color-fg);
+}
+
 /* The ✕ that closes an opened panel, sitting where the direction puts it: top
    right, quiet until you reach for it. Kept off the accent so it never competes
    with the panel's real action. */
