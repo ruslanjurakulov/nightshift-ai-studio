@@ -385,6 +385,28 @@ class ScriptEngine:
             )
             return ""
 
+    def _learning_context(self) -> str:
+        """Learnings a human APPROVED for this channel (modules/learning_memory.py).
+
+        The analyzers above feed the writer automatically; this block is the
+        opposite kind of signal — only what an operator signed off on. Pending
+        and rejected proposals never reach it, and with nothing approved it is
+        "", so the prompt is exactly what it was before learning memory existed.
+        """
+        try:
+            from modules import learning_memory
+
+            channel_id = str(self.channel.channel_id) if self.channel is not None else "default"
+            return learning_memory.approved_learnings_as_prompt_text(
+                channel_id, learning_memory.SCRIPT_PROMPT_KINDS
+            )
+        except Exception as e:
+            logger.warning(
+                "Approved learnings unavailable (%s: %s) — writing the script without them",
+                type(e).__name__, e,
+            )
+            return ""
+
     def _performance_context(self) -> str:
         """Real past-performance numbers for this channel's own videos,
         rendered as optional context to append to the script prompt.
@@ -453,6 +475,9 @@ class ScriptEngine:
         retention_context = self._retention_context()
         if retention_context:
             prompt += f"\n\n{retention_context}"
+        learning_context = self._learning_context()
+        if learning_context:
+            prompt += f"\n\n{learning_context}"
         logger.info("Generating script for: %s", topic)
         text = self._gen(prompt, system=SCRIPT_SYSTEM_PROMPT)
         raw = self._extract_json(text)
