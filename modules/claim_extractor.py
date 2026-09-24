@@ -46,6 +46,7 @@ way `fact_checker._build_prompt` does) would be a reasonable follow-up.
 """
 
 import re
+from dataclasses import dataclass
 
 # --- Sentence splitting -----------------------------------------------------
 
@@ -226,3 +227,80 @@ def extract_claims(script) -> list[str]:
 
     sentences = _split_sentences(text)
     return [s for s in sentences if _looks_like_claim(s)]
+
+
+# --- Section-linked claims (claim <-> scene) ----------------------------------
+
+@dataclass(frozen=True)
+class Claim:
+    """One candidate claim, tied to the script section it came from.
+
+    ``claim_id`` is ``c{section:03d}-{n}`` (``n`` 1-based within the section),
+    stable for the same section text, and ``scene_id`` is the Video IR scene id
+    ``s{section:03d}`` — so a claim joins its scene without any lookup table.
+    """
+
+    claim_id: str
+    section_index: int
+    text: str
+
+    @property
+    def scene_id(self) -> str:
+        return scene_id(self.section_index)
+
+
+def scene_id(section_index: int) -> str:
+    """The Video IR scene id for a script section index."""
+    return f"s{int(section_index):03d}"
+
+
+def claim_id(section_index: int, n: int) -> str:
+    """The stable id of the ``n``-th (1-based) claim of a section."""
+    return f"c{int(section_index):03d}-{int(n)}"
+
+
+def _section_texts(script) -> list[str]:
+    """Each section's cue-stripped narration, in order. A plain string, or an
+    object with no ``sections``, is one section (index 0)."""
+    if isinstance(script, str):
+        return [script]
+    sections = getattr(script, "sections", None)
+    if sections is None:
+        return [_narration_text(script)]
+    texts = []
+    for section in sections:
+        clean = getattr(section, "clean_narration", None)
+        if callable(clean):
+            texts.append(clean() or "")
+        else:
+            raw = getattr(section, "narration", None)
+            if raw is None and isinstance(section, dict):
+                raw = section.get("narration")
+            texts.append(_strip_cue_tags(raw) if isinstance(raw, str) else "")
+    return texts
+
+
+def section_claims(text: str, section_index: int) -> list[Claim]:
+    """The claims of one section's narration, with their stable ids."""
+    if not text or not text.strip():
+        return []
+    sentences = [s for s in _split_sentences(text) if _looks_like_claim(s)]
+    return [Claim(claim_id(section_index, n), section_index, s)
+            for n, s in enumerate(sentences, start=1)]
+
+
+def extract_section_claims(script) -> list[Claim]:
+    """Like ``extract_claims``, but each claim knows its section.
+
+    Extraction runs per section rather than over the joined narration, so a
+    sentence can never straddle two scenes. Same heuristic, same caveats (see
+    the module docstring). Never raises on an odd input — returns ``[]``.
+    """
+    try:
+        texts = _section_texts(script)
+    except Exception:
+        return []
+    out: list[Claim] = []
+    for i, text in enumerate(texts):
+        out.extend(section_claims(text, i))
+    return out
