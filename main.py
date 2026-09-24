@@ -57,7 +57,7 @@ from modules import playlist
 from modules import watch_next
 from modules.pipeline_stages import PipelineStage, PipelineStateMachine
 from modules.research_engine import research_topic
-from modules import run_checkpoint
+from modules import run_checkpoint, upload_idempotency
 from modules.script_engine import ScriptEngine
 from modules.series import (
     effective_cadence, effective_niche, effective_visual_style, effective_voice_style,
@@ -724,7 +724,8 @@ def run(
     if broll.generated:
         videos.extend(Path(p) for p in broll.by_section.values())
         from modules import video_providers as _vp
-        costs.add(VIDEO_GEN_CLIPS, broll.generated, stage=f"broll:{_vp.active_provider()}")
+        # Clips reused from an earlier attempt's ledger cost nothing new this run.
+        costs.add(VIDEO_GEN_CLIPS, broll.newly_generated, stage=f"broll:{_vp.active_provider()}")
         events.emit(events.BROLL_GENERATED, agent="minimax_broll", status=events.STATUS_COMPLETED,
                     channel_id=channel_id, metadata=broll.to_dict())
     # Optional: generate on-topic stills with the selected image provider
@@ -986,6 +987,9 @@ def run(
                 captions_path=srt_path,
                 section_timeline=timeline,
                 description_suffix=watch_next_suffix,
+                # Run marker + attempt ledger: an ambiguous failure is looked up
+                # on the channel before any retry, never re-uploaded blindly.
+                attempt=upload_idempotency.begin(slug, channel_id),
             )
             video_id, video_url = uploaded["id"], uploaded["url"]
             # Recorded only on a successful upload — a failed attempt may have
