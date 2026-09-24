@@ -30,6 +30,7 @@ from config import OUTPUT_DIR, THUMBNAIL_VARIANT_COUNT, VIDEO_HEIGHT, VIDEO_WIDT
 from modules import event_log as events
 from modules import publish_gate
 from modules import publish_score
+from modules import video_qc
 from modules.ab_testing import choose_variant_n, variant_performance_n
 from modules.hook_ab import choose_hook, hook_performance
 from modules.avatar import (
@@ -869,12 +870,17 @@ def run(
     # It only ever blocks; it never causes an upload that would not otherwise
     # happen, and it never publishes anything itself. A blocked video stays on
     # disk for a human. See modules/publish_gate.py.
+    # Measure the file first (modules/video_qc.py): streams, duration vs the
+    # narration, truncation, black and silent runs. Never raises; the report
+    # lands in qc_report.json and in the gate event's metadata.
+    qc_report = video_qc.run(video_path, audio_path=audio_path, timeline=timeline)
     gate = publish_gate.evaluate(
         script=script,
         video_path=video_path,
         topic=topic,
         fact_results=fact_results,
         channel=ctx,
+        qc_report=qc_report,
     )
 
     # Advisory pre-publish intelligence — a quality/prediction score for a human

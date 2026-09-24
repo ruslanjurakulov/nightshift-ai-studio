@@ -28,6 +28,10 @@ Per channel, via ``agent_config.publish_gate``:
     "publish_gate": {"enabled": false}                 # off entirely
     "publish_gate": {"block_on_fact_check": false}     # keep the rest
 
+The measured-file checks (modules/video_qc.py: streams, duration vs narration,
+truncation, black/silent runs) are part of sanity and follow
+``block_on_sanity``.
+
 Defaults are ON, because the failure this exists to prevent is unrecoverable
 and the failure it can cause — a video that waits for a human — is not.
 """
@@ -63,6 +67,10 @@ class GateDecision:
     blocks: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
     checks_run: list = field(default_factory=list)
+    #: The deterministic video QC report's metadata (modules/video_qc.py), when
+    #: one was passed in — so the gate event carries the measurements behind
+    #: any `video_qc_*` reason, not just the reason code.
+    video_qc: Optional[dict] = None
 
     @property
     def allowed(self) -> bool:
@@ -71,12 +79,15 @@ class GateDecision:
     def to_metadata(self) -> dict:
         """Event metadata. Reasons are our own strings — no script text, no
         claim text, nothing that could carry a credential."""
-        return {
+        meta = {
             "allowed": self.allowed,
             "blocks": list(self.blocks),
             "warnings": list(self.warnings),
             "checks_run": list(self.checks_run),
         }
+        if self.video_qc is not None:
+            meta["video_qc"] = self.video_qc
+        return meta
 
 
 @dataclass(frozen=True)
@@ -120,6 +131,7 @@ def evaluate(
     fact_results: Optional[list] = None,
     channel=None,
     originality=None,
+    qc_report=None,
 ) -> GateDecision:
     """Decide whether this video may be uploaded.
 
@@ -135,6 +147,7 @@ def evaluate(
         return decision
 
     _check_sanity(decision, config, script, video_path)
+    _check_video_qc(decision, config, video_path, qc_report)
     _check_fact_results(decision, config, fact_results)
     _check_originality(decision, config, topic or getattr(script, "topic", ""), originality)
     return decision
@@ -172,6 +185,32 @@ def _check_sanity(decision: GateDecision, config: GateConfig, script, video_path
     except Exception as e:
         # A broken check is a warning, never a block — see the docstring above.
         decision.warnings.append(f"sanity_check_errored:{type(e).__name__}")
+
+
+def _check_video_qc(decision: GateDecision, config: GateConfig, video_path, qc_report) -> None:
+    """The measured file: streams, duration vs narration, black and silence.
+
+    Part of sanity — a video with no audio track or a ten-second black hole is
+    as unpublishable as an empty title — so its severe findings follow
+    `block_on_sanity`. What the QC module could not measure arrives in its
+    `warnings` and stays a warning here: a broken checker never blocks.
+    """
+    if qc_report is None:
+        if video_path is not None:
+            # Unmeasured is not passed: say so, without holding the video.
+            decision.warnings.append("video_qc_not_run")
+        return
+    decision.checks_run.append("video_qc")
+    try:
+        severe = [str(r) for r in (getattr(qc_report, "blocks", None) or [])]
+        advisory = [str(r) for r in (getattr(qc_report, "warnings", None) or [])]
+        (decision.blocks if config.block_on_sanity else decision.warnings).extend(severe)
+        decision.warnings.extend(advisory)
+        to_metadata = getattr(qc_report, "to_metadata", None)
+        if callable(to_metadata):
+            decision.video_qc = to_metadata()
+    except Exception as e:
+        decision.warnings.append(f"video_qc_errored:{type(e).__name__}")
 
 
 def _check_fact_results(decision: GateDecision, config: GateConfig, fact_results) -> None:
