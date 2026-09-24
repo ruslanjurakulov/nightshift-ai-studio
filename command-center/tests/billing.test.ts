@@ -6,7 +6,9 @@ import {
   latestBalance,
   ledgerBalanceUsd,
   percentile,
+  planTopups,
   providerBurn,
+  splitCents,
   type CostRowLite,
 } from "@/lib/billing";
 
@@ -110,5 +112,57 @@ describe("elevenLabsRunway", () => {
   });
   it("flash models cost half a credit per character", () => {
     expect(elevenLabsRunway(10_000, [], { creditsPerChar: 0.5 }).minMinutes).toBe(20);
+  });
+});
+
+
+describe("splitCents", () => {
+  it("sums to exactly the total, proportionally", () => {
+    const parts = splitCents(1000, [1, 1, 1]);
+    expect(parts.reduce((s, v) => s + v, 0)).toBe(1000);
+    expect(parts.sort()).toEqual([333, 333, 334]);
+    expect(splitCents(1000, [3, 1])).toEqual([750, 250]);
+  });
+  it("splits equally when every weight is zero", () => {
+    expect(splitCents(100, [0, 0])).toEqual([50, 50]);
+  });
+});
+
+describe("planTopups", () => {
+  const inputs = [
+    { id: "elevenlabs", usdPerDay: 1, balanceUsd: 10 }, // need 20 over 30 days
+    { id: "kling", usdPerDay: 2, balanceUsd: null }, // need 60, balance unknown
+    { id: "gemini", usdPerDay: null, balanceUsd: 5 }, // unpriced
+    { id: "wan", usdPerDay: 0, balanceUsd: 3 }, // idle
+  ];
+
+  it("pays each need without a cap; unpriced excluded", () => {
+    const plan = planTopups(inputs, 30);
+    const by = Object.fromEntries(plan.lines.map((l) => [l.id, l]));
+    expect(by.elevenlabs.amount).toBe(20);
+    expect(by.kling.amount).toBe(60);
+    expect(by.kling.balanceUnknown).toBe(true);
+    expect(by.gemini.amount).toBeNull();
+    expect(by.wan.amount).toBe(0);
+    expect(plan.total).toBe(80);
+    expect(plan.scaled).toBe(false);
+  });
+
+  it("splits a lower cap in proportion to need, summing to the cap exactly", () => {
+    const plan = planTopups(inputs, 30, 40);
+    const by = Object.fromEntries(plan.lines.map((l) => [l.id, l]));
+    expect(plan.scaled).toBe(true);
+    expect(by.elevenlabs.amount).toBe(10);
+    expect(by.kling.amount).toBe(30);
+    expect(plan.total).toBe(40);
+  });
+
+  it("a cap above the need changes nothing", () => {
+    expect(planTopups(inputs, 30, 500).total).toBe(80);
+  });
+
+  it("rounds needs up to the cent", () => {
+    const plan = planTopups([{ id: "a", usdPerDay: 0.0333, balanceUsd: 0 }], 7);
+    expect(plan.lines[0].amount).toBe(0.24);
   });
 });
