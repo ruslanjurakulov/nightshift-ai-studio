@@ -99,6 +99,13 @@ export default async function BillingPage() {
         ? { remaining: snap.remaining, total: snap.total, unit: snap.unit, tier: snap.tier, resetsAt: snap.resets_at, checkedAt: snap.checked_at }
         : null,
       ledgerUsd,
+      // USD balance for the top-up planner: the ledger when there is one, else
+      // ElevenLabs credits priced at the operator's rate. Unknown otherwise.
+      balanceUsd:
+        ledgerUsd ??
+        (p.id === "elevenlabs" && snap?.remaining != null && price !== null
+          ? (snap.remaining / p.unitSize) * price
+          : null),
       daysLeft: left,
       lowBalanceDays: st?.low_balance_days ?? 3,
       includeInBulk: st?.include_in_bulk ?? true,
