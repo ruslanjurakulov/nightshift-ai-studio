@@ -45,7 +45,8 @@ from modules.cost_ledger import (
 )
 from modules import budget
 from modules import shorts
-from modules.claim_extractor import extract_claims
+from modules.claim_extractor import extract_section_claims
+from modules import claim_scenes
 from modules.compositor import Compositor
 from modules.resource_monitor import MemorySampler, log_usage
 from modules.video_review import VideoReview
@@ -606,8 +607,12 @@ def run(
     # the check did not run — which is a warning, not a silent pass.
     pipeline.advance(run_record.run_id, PipelineStage.FACT_CHECK)
     fact_results = None
+    section_claims = None
     try:
-        claims = extract_claims(script)
+        # Each claim carries its section (claim_id c000-1, scene s000), so the
+        # Storyboard can show which scene says what (modules/claim_scenes.py).
+        section_claims = extract_section_claims(script)
+        claims = [c.text for c in section_claims]
         fact_results = fact_check_claims(claims) if claims else []
         flagged = [r for r in fact_results if r.requires_human_review]
         if flagged:
@@ -617,7 +622,8 @@ def run(
         if fact_results:
             fc_path = OUTPUT_DIR / slug / "fact_check.json"
             fc_path.parent.mkdir(parents=True, exist_ok=True)
-            fc_path.write_text(json.dumps([r.__dict__ for r in fact_results], indent=2, ensure_ascii=False))
+            fc_path.write_text(json.dumps(claim_scenes.fact_check_records(section_claims, fact_results),
+                                          indent=2, ensure_ascii=False))
             logger.info("Fact-check results saved: %s", fc_path)
     except Exception as e:
         logger.warning("Fact-checker failed (%s: %s) — proceeding without fact-check results",
@@ -1083,7 +1089,9 @@ def run(
                     # — the Storyboard renders it directly instead of guessing
                     # scenes from paragraph breaks. Best-effort: a build failure
                     # here is swallowed with the preview, never failing the run.
-                    scenes=script.scene_plan(),
+                    # Each scene also carries its claim ids and their advisory
+                    # fact-check status (modules/claim_scenes.py).
+                    scenes=claim_scenes.annotate_scenes(script, section_claims, fact_results),
                 )
             except Exception as e:
                 logger.warning("Could not record the review preview (%s: %s)",

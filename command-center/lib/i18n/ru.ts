@@ -235,6 +235,13 @@ export const ru: Dictionary = {
     storyboardRuntime: "прибл. длительность",
     storyboardApprox: "≈",
     storyboardKeywords: "B-roll",
+    storyboardClaims: "Утверждения",
+    storyboardClaimsNeedReview: "утверждений требуют проверки",
+    storyboardClaimsAdvisory: "Статусы утверждений получены автоматической проверкой фактов. Они носят рекомендательный характер и никогда не заменяют одобрение человеком.",
+    storyboardClaimAccurate: "Вероятно верно",
+    storyboardClaimInaccurate: "Вероятно неверно",
+    storyboardClaimUnverifiable: "Не проверяемо",
+    storyboardClaimNotChecked: "Не проверено",
   },
   pipeline: {
     title: "Конвейер",
