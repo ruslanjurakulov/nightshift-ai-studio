@@ -13,12 +13,22 @@ It is pure and fully unit-tested. It never gates a run and never edits the
 script; an empty/blank section list yields an empty plan. The channel's own
 visual style flows in, so two channels get different looks from the same
 structure.
+
+Each shot also carries a ``recipe`` — an id from the closed catalogue in
+``modules/shot_recipes.py`` (the edit treatment a render backend executes; it
+is what the Video IR stores as ``scene.shot.recipe``) — and the ``transition``
+into the scene. Both are chosen deterministically; consecutive shots never
+share a recipe. The free-text fields (camera, lens, …) are unchanged: they
+direct the *generation* prompt, the recipe directs the *edit*.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import List, Optional
+
+from modules import shot_recipes
+from modules import style_presets
 
 # Words in a section's narration/name that mark the emotional beat, so the plan
 # escalates on a reveal and resolves at the close rather than being uniform.
@@ -39,6 +49,10 @@ class ShotPlan:
     lighting: str
     mood: str
     motion: str
+    # Added for the Video IR (PR 3.1); defaulted so positional construction
+    # and every existing reader keep working.
+    recipe: str = shot_recipes.DEFAULT_RECIPE
+    transition: str = "hard_cut"
 
 
 def _text(section) -> str:
@@ -74,9 +88,21 @@ def _style_terms(visual_style: str) -> tuple:
     return (f"{s} lighting", s)
 
 
-def plan_shot(section, index: int, total: int, visual_style: str = "") -> ShotPlan:
-    """The shot plan for one section, from its beat and the channel style."""
+def plan_shot(section, index: int, total: int, visual_style: str = "",
+              previous_recipe: Optional[str] = None) -> ShotPlan:
+    """The shot plan for one section, from its beat and the channel style.
+    ``previous_recipe`` is the recipe of the shot before, so it is not reused."""
     beat = _beat(section, index, total)
+    shot = _plan_direction(section, index, beat, visual_style)
+    bible = style_presets.style_bible(visual_style)
+    recipe = shot_recipes.choose_recipe(
+        section, index=index, total=total, previous=previous_recipe, style=bible, beat=beat)
+    transition = shot_recipes.choose_transition(index, bible)
+    return replace(shot, recipe=recipe, transition=transition)
+
+
+def _plan_direction(section, index: int, beat: str, visual_style: str) -> ShotPlan:
+    """The free-text cinematic direction for one section (camera, lens, …)."""
     style_light, style_mood = _style_terms(visual_style)
     name = (section.get("name") if isinstance(section, dict) else getattr(section, "name", "")) or f"scene {index + 1}"
 
@@ -104,7 +130,19 @@ def plan_video(sections: list, visual_style: str = "") -> List[ShotPlan]:
     """A shot plan for each section, in order. [] for no sections."""
     items = [s for s in (sections or []) if s is not None]
     total = len(items)
-    return [plan_shot(s, i, total, visual_style) for i, s in enumerate(items)]
+    plans: List[ShotPlan] = []
+    previous: Optional[str] = None
+    for i, s in enumerate(items):
+        plan = plan_shot(s, i, total, visual_style, previous_recipe=previous)
+        plans.append(plan)
+        previous = plan.recipe
+    return plans
+
+
+def recipe_map(plans: List[ShotPlan]) -> dict:
+    """{section_index: recipe id} — what the Video IR builder stores as each
+    scene's ``shot.recipe``."""
+    return {p.section_index: p.recipe for p in plans}
 
 
 def cinematic_style(plan: ShotPlan) -> str:
@@ -125,7 +163,7 @@ def summarize(plans: List[ShotPlan], limit: int = 8) -> dict:
         "scenes": len(plans),
         "shots": [
             {"scene": p.section_index + 1, "name": p.name, "shot": p.shot_type,
-             "camera": p.camera_move, "mood": p.mood}
+             "camera": p.camera_move, "mood": p.mood, "recipe": p.recipe}
             for p in plans[:limit]
         ],
     }
