@@ -1446,6 +1446,7 @@ export const uz: Dictionary = {
     expProgress: "Arm bo'yicha o'lchangan",
     expEffect: "Ta'sir",
     expEffectNone: "da'vo qilinmaydi",
+    expLearningNote: "Hal qilingan tajriba Learning sahifasida kutilayotgan xulosa sifatida taklif qilinadi; u faqat admin tasdiqlasa promptlarga tushadi.",
     retentionTitle: "Auditoriya ushlanishi",
     retentionSubtitle: "Tomoshabinlar aslida qayerda ketadi — buni ssenariy bilan tuzatsa bo'ladi.",
     hookRetention: "Hukdan keyin qolganlar",

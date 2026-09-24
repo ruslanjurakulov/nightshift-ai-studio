@@ -264,88 +264,66 @@ def retention_proposals(insights: list, observed_on: str = "") -> list:
     return out
 
 
-def experiment_proposals(thumbnail_result=None, hook_result=None, observed_on: str = "") -> list:
-    """A/B winners, only when the experiment's own rules named one.
+#: Experiment kind (modules/experiments.py) -> the short name in a dedup key.
+#: The key shape predates the Experiment view and must not change, or every
+#: already-decided A/B learning would be proposed again under a new key.
+_EXPERIMENT_KEY = {"thumbnail_title": "thumbnail", "hook": "hook"}
 
-    `thumbnail_result` is an `ab_testing.MultiABResult`, `hook_result` a
-    `hook_ab.HookResult`. An undecided result (below MIN_PER_VARIANT or under
-    MIN_LIFT) proposes nothing — "no winner yet" is never turned into a lesson.
+
+def experiment_proposals(experiments, observed_on: str = "") -> list:
+    """A decided experiment (modules/experiments.py) becomes a pending learning.
+
+    Only `status == "decided"` counts: a running or inconclusive experiment —
+    below MIN_PER_VARIANT, or under MIN_LIFT — proposes nothing, so "no winner
+    yet" is never turned into a lesson. The verdict is the experiment's own,
+    which is the one the pipeline already acts on.
     """
-    from modules.ab_testing import MIN_LIFT, MIN_PER_VARIANT
-
     out = []
-    rules = {"min_per_variant": MIN_PER_VARIANT, "min_lift": MIN_LIFT}
-
-    if thumbnail_result is not None and getattr(thumbnail_result, "decided", False):
-        winner = str(thumbnail_result.winner)
-        arms = [
-            {"variant": s.variant, "videos": s.videos, "mean_ctr": s.mean_ctr, "impressions": s.impressions}
-            for s in (thumbnail_result.stats or {}).values()
-        ]
-        out.append(Proposal(
-            kind=KIND_EXPERIMENT,
-            dedup_key=f"experiment:thumbnail:{winner.lower()}",
-            observation=(
-                f"Thumbnail/title arm {winner} wins on click-through: {thumbnail_result.reason}."
-            ),
-            evidence={
-                "source": "ab_testing",
-                "metric": "impression_ctr",
-                "winner": winner,
-                "reason": thumbnail_result.reason,
-                "arms": arms,
-                "rules": rules,
-                "observed_on": observed_on or None,
-            },
-            # Weighed on the arms the verdict was actually drawn from; an arm
-            # still filling up (below MIN_PER_VARIANT) took no part in it.
-            confidence=sample_confidence(min(
-                (a["videos"] for a in arms if a["videos"] >= MIN_PER_VARIANT), default=0,
-            )),
-        ))
-
-    if hook_result is not None and getattr(hook_result, "decided", False):
-        winner = str(hook_result.winner)
-        arms = [
-            {"variant": s.variant, "videos": s.videos, "mean_retention_seconds": s.mean_retention_seconds}
-            for s in (hook_result.a, hook_result.b)
-        ]
-        which = (
-            "The alternate opening (hook B) holds viewers longer than the primary opening"
-            if winner == "B"
-            else "The primary opening (hook A) holds viewers longer than the alternate opening"
-        )
-        out.append(Proposal(
-            kind=KIND_EXPERIMENT,
-            dedup_key=f"experiment:hook:{winner.lower()}",
-            observation=f"{which}: {hook_result.reason}.",
-            evidence={
-                "source": "hook_ab",
-                "metric": "average_view_duration_seconds",
-                "winner": winner,
-                "reason": hook_result.reason,
-                "arms": arms,
-                "rules": rules,
-                "observed_on": observed_on or None,
-            },
-            confidence=sample_confidence(min(a["videos"] for a in arms)),
-        ))
+    for exp in experiments or []:
+        try:
+            if not getattr(exp, "decided", False):
+                continue
+            short = _EXPERIMENT_KEY.get(exp.kind)
+            if short is None:
+                continue
+            winner = str(exp.winner)
+            if exp.kind == "hook":
+                lead = (
+                    "The alternate opening (hook B) holds viewers longer than the primary opening"
+                    if winner == "B"
+                    else "The primary opening (hook A) holds viewers longer than the alternate opening"
+                )
+            else:
+                lead = f"Thumbnail/title arm {winner} wins on click-through"
+            reason = str(exp.evidence.get("reason") or "").strip()
+            data = exp.to_dict()
+            out.append(Proposal(
+                kind=KIND_EXPERIMENT,
+                dedup_key=f"experiment:{short}:{winner.lower()}",
+                observation=f"{lead}: {reason}." if reason else f"{lead}.",
+                evidence={
+                    "source": "experiments",
+                    "experiment_id": data["id"],
+                    "metric": data["metric"],
+                    "winner": winner,
+                    "effect": data["effect"],
+                    "reason": reason or None,
+                    "variants": data["variants"],
+                    "rules": data["evidence"].get("rules"),
+                    "observed_on": observed_on or None,
+                },
+                # Weighed on the arms the verdict was actually drawn from; an arm
+                # still filling up (below min_sample) took no part in it.
+                confidence=sample_confidence(min(
+                    (v.samples for v in exp.variants if v.samples >= exp.min_sample), default=0,
+                )),
+            ))
+        except Exception:
+            logger.warning("learning_memory: skipping a malformed experiment", exc_info=True)
     return out
 
 
 # -- gathering from the local state store ------------------------------------
-
-
-def _thumbnail_arms() -> tuple:
-    """The same arms main.py experiments across (config.THUMBNAIL_VARIANT_COUNT)."""
-    labels = ("A", "B", "C", "D")
-    try:
-        import config
-
-        n = int(getattr(config, "THUMBNAIL_VARIANT_COUNT", 2))
-    except Exception:
-        n = 2
-    return labels[: max(2, min(len(labels), n))]
 
 
 def gather_proposals(store, channel_id: str, observed_on: str = "") -> list:
@@ -369,20 +347,11 @@ def gather_proposals(store, channel_id: str, observed_on: str = "") -> list:
         logger.warning("learning_memory: retention insights unavailable for %s", channel_id, exc_info=True)
 
     try:
-        from modules.ab_testing import variant_performance_n
-        from modules.hook_ab import hook_performance
+        from modules.experiments import experiments_for_channel
 
-        videos = store.list_videos(limit=100000, channel_id=channel_id)
-        snapshots = [
-            m for v in videos if (m := store.latest_metrics(v.get("video_id", ""))) is not None
-        ]
-        proposals.extend(experiment_proposals(
-            variant_performance_n(videos, snapshots, _thumbnail_arms()),
-            hook_performance(videos, snapshots),
-            observed_on,
-        ))
+        proposals.extend(experiment_proposals(experiments_for_channel(channel_id, store=store), observed_on))
     except Exception:
-        logger.warning("learning_memory: A/B results unavailable for %s", channel_id, exc_info=True)
+        logger.warning("learning_memory: experiments unavailable for %s", channel_id, exc_info=True)
 
     return proposals
 

@@ -48,6 +48,9 @@ export function ExperimentStatus({ exp, reason, t }: { exp: Experiment; reason: 
       <p className="m-0 mono text-[10px] text-[var(--color-muted)]">
         {fmt(t.measure.expRules, { n: exp.minSample, lift: pct(exp.minLift) ?? "" })}
       </p>
+      {exp.status === "decided" && (
+        <p className="m-0 text-[11px] text-[var(--color-muted)]">{t.measure.expLearningNote}</p>
+      )}
     </div>
   );
 }

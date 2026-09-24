@@ -1453,6 +1453,7 @@ export const en = {
     expProgress: "Measured per arm",
     expEffect: "Effect",
     expEffectNone: "not claimed",
+    expLearningNote: "A decided experiment is proposed as a pending learning on the Learning page; it reaches the prompts only if an admin approves it.",
     retentionTitle: "Audience retention",
     retentionSubtitle: "Where viewers actually leave — the part a script can fix.",
     hookRetention: "Still watching after the hook",
