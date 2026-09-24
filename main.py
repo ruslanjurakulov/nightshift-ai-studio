@@ -778,6 +778,7 @@ def run(
         audio_path=audio_path, subtitles_path=srt_path, shot_plans=shot_plans,
         elements=channel_elements, video_paths=videos, image_paths=images,
         clip_terms=getattr(fetcher, "video_terms", None), broll=broll,
+        provenance=getattr(fetcher, "provenance", None),
         generated_images=gen_images, width=VIDEO_WIDTH, height=VIDEO_HEIGHT, fps=config.VIDEO_FPS,
         scene_plan=claim_scenes.annotate_scenes(script, section_claims, fact_results),
     )
