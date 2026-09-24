@@ -229,6 +229,26 @@ class RenderSceneTestCase(unittest.TestCase):
         self.assertFalse(Path(props_arg.split("=", 1)[1]).exists())
 
 
+class CatalogueCoverageTestCase(unittest.TestCase):
+    """Every scene recipe the catalogue says Remotion can execute has a branch
+    in the engine (read from the TS source; no Node needed)."""
+
+    def test_engine_handles_every_remotion_recipe(self):
+        import re
+        from modules import shot_recipes as sr
+        src = rr.ENGINE_DIR / "src"
+        text = (src / "SceneComposition.tsx").read_text() + (src / "components" / "ImageScene.tsx").read_text()
+        handled = set(re.findall(r'"([a-z_]+)"', text))
+        for r in sr.RECIPES:
+            if r.kind == sr.KIND_TRANSITION or sr.BACKEND_REMOTION not in r.backends:
+                continue
+            self.assertIn(r.id, handled, f"video-engine has no branch for recipe {r.id}")
+        transition = (src / "components" / "Transition.tsx").read_text()
+        for tid in sr.ids(sr.KIND_TRANSITION):
+            if tid != "hard_cut":  # hard_cut is the untouched default branch
+                self.assertIn(f'"{tid}"', transition)
+
+
 class EngineNotInstalledTestCase(unittest.TestCase):
     def test_missing_node_modules_skips(self):
         with _Env(CHRONOS_REMOTION="1"), \
