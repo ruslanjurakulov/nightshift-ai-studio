@@ -36,3 +36,4 @@ __pycache__/
 # so a committed .mp3 always overrides the generated fallback.
 assets/sfx/*.wav
 assets/music/*.wav
+!schemas/*.json

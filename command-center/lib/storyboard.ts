@@ -35,6 +35,12 @@ export interface StoryboardScene {
   /** True when the scene's length is the pipeline's own duration, not an
    *  estimate from word count. */
   durationExact?: boolean;
+  /** True when the length was MEASURED on the real narration audio (the Video
+   *  IR's start_s/end_s, migration 0013) rather than the script's hint. */
+  measured?: boolean;
+  /** Where the scene starts on the real audio timeline, in seconds (measured
+   *  scenes only). */
+  startSeconds?: number;
   /** The Video IR scene id ("s000"), structured scenes only. */
   sceneId?: string;
   /** The factual claims this scene makes, with their ADVISORY fact-check
@@ -75,6 +81,10 @@ export interface VideoScene {
   narration?: string;
   duration_hint?: number;
   keywords?: string[];
+  /** Real start/end on the narration audio, in seconds (migration 0013). Null
+   *  or absent when unmeasured — never 0 as a stand-in. */
+  start_s?: number | null;
+  end_s?: number | null;
   claim_ids?: string[];
   claims?: VideoSceneClaim[];
 }
@@ -211,10 +221,19 @@ export function scenesToStoryboard(scenes: VideoScene[] | null | undefined): Sto
     const name = (s?.name ?? "").trim();
     if (!text && !name) return; // nothing to show for this entry
     const words = countWords(text);
+    // Real audio timing (Video IR, migration 0013) wins over the script's hint;
+    // the hint wins over a word-count estimate.
+    const start = typeof s?.start_s === "number" && Number.isFinite(s.start_s) ? s.start_s : null;
+    const end = typeof s?.end_s === "number" && Number.isFinite(s.end_s) ? s.end_s : null;
+    const measured = start !== null && end !== null && end > start;
     const hint = typeof s?.duration_hint === "number" ? Math.round(s.duration_hint) : 0;
-    const durationExact = hint > 0;
-    const estSeconds = durationExact ? hint : Math.max(1, Math.round(words / WORDS_PER_SECOND));
-    cumulative += estSeconds;
+    const durationExact = measured || hint > 0;
+    const estSeconds = measured
+      ? Math.max(1, Math.round(end! - start!))
+      : hint > 0
+        ? hint
+        : Math.max(1, Math.round(words / WORDS_PER_SECOND));
+    cumulative = measured ? Math.max(cumulative, end!) : cumulative + estSeconds;
     totalWords += words;
     const keywords = Array.isArray(s?.keywords)
       ? s!.keywords!.map((k) => String(k).trim()).filter(Boolean)
@@ -236,11 +255,13 @@ export function scenesToStoryboard(scenes: VideoScene[] | null | undefined): Sto
       sceneType: (s?.type ?? "").trim() || undefined,
       keywords: keywords.length ? keywords : undefined,
       durationExact,
+      measured: measured || undefined,
+      startSeconds: measured ? start! : undefined,
       sceneId,
       claims,
     });
   });
-  return { scenes: out, totalWords, totalSeconds: cumulative, source: "structured" };
+  return { scenes: out, totalWords, totalSeconds: Math.round(cumulative * 1000) / 1000, source: "structured" };
 }
 
 /**

@@ -46,7 +46,8 @@ export interface VideoRow {
   script_text: string | null;
   /**
    * The structured scene plan the video was built from (migration 0011): an
-   * ordered list of {name, type, narration, duration_hint, keywords}. Null for
+   * ordered list of {name, type, narration, duration_hint, keywords} — plus, from
+   * migration 0013, the Video IR scene id and real start_s/end_s. Null for
    * videos published before that migration — the Storyboard then falls back to
    * splitting `script_text` on blank lines. Optional: a row selected before the
    * column existed, or a test fixture, simply omits it.

@@ -282,6 +282,7 @@ class VideoReview:
         script_text: str,
         auto_publish: bool,
         scenes: list | None = None,
+        manifest: dict | None = None,
     ) -> None:
         """Upload the preview and attach the script to the row.
 
@@ -293,6 +294,12 @@ class VideoReview:
         migration 0011); it rides the same PATCH as the narration. None/empty
         leaves the column untouched, so an older schema (no `scenes` column) or a
         run that could not build the list behaves exactly as before.
+
+        `manifest` is the run's Video IR (modules/video_ir.py, migration 0013),
+        written to `videos.manifest`. When present, each `scenes` entry also
+        gains its IR `id` and its REAL `start_s`/`end_s` from the audio timeline,
+        so the Storyboard shows measured times instead of `duration_hint`.
+        None leaves both exactly as before.
         """
         if not self.enabled:
             return
@@ -301,8 +308,18 @@ class VideoReview:
         if preview_path:
             patch["preview_path"] = preview_path
         patch["review_state"] = "approved" if auto_publish else "pending"
+        if manifest:
+            from modules import video_ir
+
+            scenes = video_ir.annotate_scenes(scenes, manifest)
+            patch["manifest"] = manifest
         if scenes:
             patch["scenes"] = scenes
-        self._patch_video(video_id, patch)
+        ok = self._patch_video(video_id, patch)
+        if not ok and "manifest" in patch:
+            # An un-migrated database (no `manifest` column) rejects the whole
+            # PATCH; retry without the new column so the preview/script still land.
+            patch.pop("manifest", None)
+            self._patch_video(video_id, patch)
         if preview_path:
             self.prune(channel_id)
