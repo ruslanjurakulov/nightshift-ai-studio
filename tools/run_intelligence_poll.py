@@ -304,6 +304,32 @@ def run_feedback_analysis() -> dict:
     return totals
 
 
+def propose_learnings(channels) -> dict:
+    """Turn this poll's fresh signals into PENDING learnings, one channel at a
+    time (modules/learning_memory.py). Runs after the feedback pass so the topic
+    scores it reads are the ones just written.
+
+    Proposals only: nothing here reaches a prompt until an admin approves it on
+    the Learning page. Never raises — one channel's failure is logged and the
+    next channel still runs.
+    """
+    from modules import learning_memory
+
+    totals = {"candidates": 0, "proposed": 0, "refreshed": 0}
+    for channel in channels:
+        channel_id = str(channel.channel_id) if channel is not None else DEFAULT_CHANNEL_ID
+        try:
+            summary = learning_memory.propose(channel_id)
+        except Exception as e:  # propose() is defensive; this is belt and braces
+            logger.warning("[channel: %s] learning proposals failed (%s: %s)",
+                           channel_id, type(e).__name__, e)
+            continue
+        for key in totals:
+            totals[key] += summary.get(key, 0)
+    logger.info("Learning proposals: %s", totals)
+    return totals
+
+
 def rank_niches_across_channels() -> dict:
     """Rank the niches the studio publishes in by how they have ACTUALLY
     performed, across every channel, and emit one global `niche.rpm`.
@@ -547,6 +573,7 @@ def main():
 
     if not args.skip_feedback:
         run_feedback_analysis()
+        propose_learnings(channels)
     else:
         logger.info("Feedback scoring skipped (--skip-feedback)")
 

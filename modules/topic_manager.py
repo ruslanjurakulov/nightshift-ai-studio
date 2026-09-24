@@ -112,6 +112,21 @@ class TopicManager:
             )
             return None
 
+    def _approved_learnings_text(self) -> str:
+        """Approved topic learnings for this channel, or "" — never raises."""
+        try:
+            from modules import learning_memory
+
+            return learning_memory.approved_learnings_as_prompt_text(
+                self.channel_id or "default", learning_memory.TOPIC_PROMPT_KINDS
+            )
+        except Exception as e:
+            logger.warning(
+                "Approved learnings unavailable (%s: %s) — choosing the topic without them",
+                type(e).__name__, e,
+            )
+            return ""
+
     def _load(self) -> dict:
         if TOPIC_HISTORY_FILE.exists():
             return json.loads(TOPIC_HISTORY_FILE.read_text())
@@ -183,6 +198,11 @@ class TopicManager:
             learned_scores = self.feedback_engine.topic_scores_as_prompt_text()
             if learned_scores:
                 prompt += f"\n\n{learned_scores}"
+        # Human-approved learnings (modules/learning_memory.py): only rows an
+        # operator approved on the Learning page; "" when there are none.
+        approved = self._approved_learnings_text()
+        if approved:
+            prompt += f"\n\n{approved}"
         response = generate_with_retry(self.client, GEMINI_MODEL, prompt)
         return response.text.strip().strip('"').strip("'")
 
