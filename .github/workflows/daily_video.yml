@@ -43,6 +43,18 @@ on:
         description: "Visual style directive or preset name (empty = the channel's own)"
         required: false
         default: ""
+      video_provider:
+        description: "Image→video model for this run (empty = repo default)"
+        required: false
+        default: ""
+        type: choice
+        options: ["", minimax, higgsfield, kling, veo, seedance, wan]
+      image_provider:
+        description: "Image model for this run (empty = repo default)"
+        required: false
+        default: ""
+        type: choice
+        options: ["", pexels, leonardo]
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -285,8 +297,10 @@ jobs:
           # "minimax". To use another, set the CHRONOS_VIDEO_PROVIDER variable
           # (higgsfield|kling|veo|seedance|wan) AND CHRONOS_ENABLE_VIDEO_GEN=true
           # AND that provider's key secret.
-          CHRONOS_VIDEO_PROVIDER: ${{ vars.CHRONOS_VIDEO_PROVIDER }}
-          CHRONOS_ENABLE_VIDEO_GEN: ${{ vars.CHRONOS_ENABLE_VIDEO_GEN }}
+          # A per-run dispatch input overrides the repo default; choosing one
+          # also turns generation on for that run (empty input = repo behaviour).
+          CHRONOS_VIDEO_PROVIDER: ${{ github.event.inputs.video_provider || vars.CHRONOS_VIDEO_PROVIDER }}
+          CHRONOS_ENABLE_VIDEO_GEN: ${{ github.event.inputs.video_provider != '' && 'true' || vars.CHRONOS_ENABLE_VIDEO_GEN }}
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
           CHRONOS_ENABLE_MINIMAX_BROLL: ${{ vars.CHRONOS_ENABLE_MINIMAX_BROLL }}
           HIGGSFIELD_API_KEY: ${{ secrets.HIGGSFIELD_API_KEY }}
@@ -297,8 +311,8 @@ jobs:
           # AI image provider (modules/image_providers.py). Default "pexels"
           # stock; set CHRONOS_IMAGE_PROVIDER=leonardo + CHRONOS_ENABLE_IMAGE_GEN
           # + LEONARDO_API_KEY to generate bespoke stills.
-          CHRONOS_IMAGE_PROVIDER: ${{ vars.CHRONOS_IMAGE_PROVIDER }}
-          CHRONOS_ENABLE_IMAGE_GEN: ${{ vars.CHRONOS_ENABLE_IMAGE_GEN }}
+          CHRONOS_IMAGE_PROVIDER: ${{ github.event.inputs.image_provider || vars.CHRONOS_IMAGE_PROVIDER }}
+          CHRONOS_ENABLE_IMAGE_GEN: ${{ github.event.inputs.image_provider != '' && github.event.inputs.image_provider != 'pexels' && 'true' || vars.CHRONOS_ENABLE_IMAGE_GEN }}
           LEONARDO_API_KEY: ${{ secrets.LEONARDO_API_KEY }}
           # Extra LLM keys (opt-in; Gemini above remains the default scripter).
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

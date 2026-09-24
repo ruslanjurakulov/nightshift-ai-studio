@@ -43,6 +43,8 @@ export async function POST(request: Request) {
     duration?: unknown;
     language?: unknown;
     visual_style?: unknown;
+    video_provider?: unknown;
+    image_provider?: unknown;
   };
   try {
     body = await request.json();
@@ -73,9 +75,21 @@ export async function POST(request: Request) {
     Number.isFinite(durationRaw) && durationRaw > 0
       ? Math.min(3600, Math.max(30, Math.round(durationRaw)))
       : undefined;
+  // Per-run model routing (validated again in dispatchDailyVideo against the
+  // workflow's choice lists; a bad value is simply dropped).
+  const videoProvider = typeof body.video_provider === "string" ? body.video_provider.trim() : "";
+  const imageProvider = typeof body.image_provider === "string" ? body.image_provider.trim() : "";
 
   try {
-    await dispatchDailyVideo(channelId, { topic, niche, duration, language, visualStyle });
+    await dispatchDailyVideo(channelId, {
+      topic,
+      niche,
+      duration,
+      language,
+      visualStyle,
+      videoProvider,
+      imageProvider,
+    });
     // Audit the on-demand run against its channel (best-effort, never throws).
     // Record only the non-default controls the operator actually set.
     const detail: Record<string, unknown> = {};
@@ -83,6 +97,8 @@ export async function POST(request: Request) {
     if (duration) detail.duration = duration;
     if (language) detail.language = language;
     if (visualStyle) detail.visual_style = visualStyle;
+    if (videoProvider) detail.video_provider = videoProvider;
+    if (imageProvider) detail.image_provider = imageProvider;
     await logAudit({
       action: "agent.run",
       channelId,

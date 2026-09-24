@@ -155,6 +155,8 @@ export async function dispatchDailyVideo(
     duration?: number;
     language?: string;
     visualStyle?: string;
+    videoProvider?: string;
+    imageProvider?: string;
   } = {},
 ): Promise<void> {
   if (!isGithubConfigured) throw new Error("github_not_configured");
@@ -177,6 +179,14 @@ export async function dispatchDailyVideo(
   }
   if (language) inputs.language = language.slice(0, 40);
   if (visualStyle) inputs.visual_style = visualStyle.slice(0, 300);
+  // Per-run model routing — validated against the workflow's own choice lists
+  // (see daily_video.yml), so only a real provider name is ever forwarded.
+  const VIDEO_PROVIDERS = ["minimax", "higgsfield", "kling", "veo", "seedance", "wan"];
+  const IMAGE_PROVIDERS = ["pexels", "leonardo"];
+  const videoProvider = opts.videoProvider?.trim().toLowerCase();
+  const imageProvider = opts.imageProvider?.trim().toLowerCase();
+  if (videoProvider && VIDEO_PROVIDERS.includes(videoProvider)) inputs.video_provider = videoProvider;
+  if (imageProvider && IMAGE_PROVIDERS.includes(imageProvider)) inputs.image_provider = imageProvider;
   const res = await gh("/actions/workflows/daily_video.yml/dispatches", {
     method: "POST",
     body: JSON.stringify({ ref, inputs }),
