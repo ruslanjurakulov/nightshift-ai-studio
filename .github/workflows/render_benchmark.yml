@@ -1,0 +1,155 @@
+name: Render benchmark
+
+# Measures one pipeline render — wall time, peak memory, exit code, output size
+# and duration — for a chosen render backend (config.RENDER_BACKEND), on the
+# same ubuntu-latest runner the daily video job uses. Manual only.
+#
+# It can never publish: the pipeline runs with --no-upload, and no YouTube
+# token, client secret or Supabase key is given to this job, so nothing is
+# uploaded, recorded or announced anywhere. The script is the committed
+# samples/demo_script.json (no Gemini call); narration is the free Edge TTS
+# voice. Stock footage is fetched from Pexels only when the PEXELS_API_KEY
+# secret exists (free API; without it every cut is a colour placeholder, which
+# the summary makes visible through the output size).
+#
+# Duration: the demo script narrates for ~3-4 minutes. `repeat` tells the story
+# N times (tools/render_benchmark.py) for longer renders — real narration,
+# real TTS, real render — but the b-roll pool does not grow with it. The table
+# reports the MEASURED output duration, not a nominal one.
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend:
+        description: "Render backend to benchmark"
+        required: true
+        default: moviepy
+        type: choice
+        options: [moviepy, ffmpeg]
+      repeat:
+        description: "Repeat the demo script N times (1 ≈ 3-4 min, 3 ≈ 10+ min, 4-5 ≈ 15+ min)"
+        required: true
+        default: "1"
+        type: choice
+        options: ["1", "2", "3", "4", "5"]
+      render_threads:
+        description: "NIGHTSHIFT_RENDER_THREADS for the moviepy encode (empty = code default)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-benchmark-${{ github.ref }}-${{ inputs.backend }}-${{ inputs.repeat }}
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    name: benchmark (${{ inputs.backend }}, x${{ inputs.repeat }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg imagemagick fonts-dejavu time
+          # Same ImageMagick policy fix as daily_video.yml: MoviePy's
+          # TextClip(method="caption") reads its text from an @-file.
+          for p in /etc/ImageMagick-6/policy.xml /etc/ImageMagick-7/policy.xml; do
+            if [ -f "$p" ]; then
+              sudo sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' "$p"
+            fi
+          done
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate audio assets
+        run: python tools/generate_assets.py
+
+      - name: Build benchmark script
+        env:
+          INPUT_REPEAT: ${{ inputs.repeat }}
+        run: python tools/render_benchmark.py script --repeat "$INPUT_REPEAT" --out bench/script.json
+
+      - name: Run pipeline (no upload)
+        id: run
+        env:
+          CHRONOS_RENDER_BACKEND: ${{ inputs.backend }}
+          NIGHTSHIFT_RENDER_THREADS: ${{ inputs.render_threads }}
+          TTS_PROVIDER: edge
+          SCRIPT_LANGUAGE: English
+          YOUTUBE_PRIVACY: private
+          # Free stock footage when the secret exists; empty otherwise.
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          # TopicManager builds a Gemini client at start-up even when the script
+          # comes from a file, and refuses an empty key. A placeholder (not a
+          # secret, not a key) satisfies the constructor; the only Gemini call a
+          # --script-file run makes (the advisory fact-check) then fails and is
+          # skipped, as it is designed to. No Gemini money is spent.
+          GEMINI_API_KEY: benchmark-placeholder-not-a-key
+          GEMINI_MAX_RETRIES: "1"
+          GEMINI_RETRY_MAX_DELAY: "1"
+          # Deliberately NOT passed: the real GEMINI key, ELEVENLABS, YOUTUBE,
+          # SUPABASE and every paid provider key. Nothing here can spend money
+          # or publish.
+        run: |
+          mkdir -p bench logs
+          # MemAvailable every 2 s — the runner-wide number an OOM kill is about.
+          ( while true; do awk '/MemAvailable/ {print $2}' /proc/meminfo; sleep 2; done ) > bench/mem.log &
+          SAMPLER=$!
+          set +e
+          /usr/bin/time -v -o bench/time.txt \
+            python main.py --script-file bench/script.json --no-upload --privacy private
+          CODE=$?
+          set -e
+          kill "$SAMPLER" 2>/dev/null || true
+          echo "exit_code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "pipeline exit code: $CODE"
+
+      - name: Summarise
+        if: always()
+        env:
+          EXIT_CODE: ${{ steps.run.outputs.exit_code }}
+          INPUT_BACKEND: ${{ inputs.backend }}
+          INPUT_REPEAT: ${{ inputs.repeat }}
+        run: |
+          python tools/render_benchmark.py report \
+            --time-file bench/time.txt --mem-file bench/mem.log --log logs/run.log \
+            --exit-code "${EXIT_CODE:--1}" --backend "$INPUT_BACKEND" --repeat "$INPUT_REPEAT" \
+            --out-md bench/summary.md --out-json bench/result.json
+          cat bench/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-benchmark-${{ inputs.backend }}-x${{ inputs.repeat }}-${{ github.run_number }}
+          path: |
+            bench/summary.md
+            bench/result.json
+            bench/time.txt
+            bench/mem.log
+            logs/run.log
+            output/*/final_video.mp4
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Fail if the pipeline failed
+        if: always()
+        env:
+          EXIT_CODE: ${{ steps.run.outputs.exit_code }}
+        run: |
+          if [ "${EXIT_CODE:-1}" != "0" ]; then
+            echo "Pipeline exited with ${EXIT_CODE:-unknown} — see the summary table."
+            exit 1
+          fi
