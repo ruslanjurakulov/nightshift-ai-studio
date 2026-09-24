@@ -47,8 +47,10 @@ from modules.cost_ledger import (
 )
 from modules import budget
 from modules import shorts
-from modules.claim_extractor import extract_claims
+from modules.claim_extractor import extract_section_claims
+from modules import claim_scenes
 from modules.compositor import Compositor
+from modules import render_dispatch
 from modules.resource_monitor import MemorySampler, log_usage
 from modules.video_review import VideoReview
 from modules.fact_checker import fact_check_claims
@@ -609,8 +611,12 @@ def run(
     # the check did not run — which is a warning, not a silent pass.
     pipeline.advance(run_record.run_id, PipelineStage.FACT_CHECK)
     fact_results = None
+    section_claims = None
     try:
-        claims = extract_claims(script)
+        # Each claim carries its section (claim_id c000-1, scene s000), so the
+        # Storyboard can show which scene says what (modules/claim_scenes.py).
+        section_claims = extract_section_claims(script)
+        claims = [c.text for c in section_claims]
         fact_results = fact_check_claims(claims) if claims else []
         flagged = [r for r in fact_results if r.requires_human_review]
         if flagged:
@@ -620,7 +626,8 @@ def run(
         if fact_results:
             fc_path = OUTPUT_DIR / slug / "fact_check.json"
             fc_path.parent.mkdir(parents=True, exist_ok=True)
-            fc_path.write_text(json.dumps([r.__dict__ for r in fact_results], indent=2, ensure_ascii=False))
+            fc_path.write_text(json.dumps(claim_scenes.fact_check_records(section_claims, fact_results),
+                                          indent=2, ensure_ascii=False))
             logger.info("Fact-check results saved: %s", fc_path)
     except Exception as e:
         logger.warning("Fact-checker failed (%s: %s) — proceeding without fact-check results",
@@ -772,6 +779,7 @@ def run(
         elements=channel_elements, video_paths=videos, image_paths=images,
         clip_terms=getattr(fetcher, "video_terms", None), broll=broll,
         generated_images=gen_images, width=VIDEO_WIDTH, height=VIDEO_HEIGHT, fps=config.VIDEO_FPS,
+        scene_plan=claim_scenes.annotate_scenes(script, section_claims, fact_results),
     )
 
     # ── Stage 6: Thumbnails
@@ -849,26 +857,38 @@ def run(
     comp = Compositor(slug)
     # Two runs have died in here without leaving a reason. If a third does,
     # the sampler's last line is the state just before the kill.
+    # config.RENDER_BACKEND picks the renderer (modules/render_dispatch.py):
+    # "moviepy" (default) is the call below, unchanged; "ffmpeg" renders a
+    # RenderSpec from the same inputs and falls back to this call on any failure.
     with MemorySampler("render"):
-        video_path = comp.render(
-            script=script,
-            audio_path=audio_path,
-            video_paths=videos,
-            image_paths=images,
-            word_timestamps=word_clips_specs,
-            section_timeline=timeline,
-            presenter_path=presenter_path,
-            # Which keyword fetched each clip, so the compositor places footage
-            # under the section it matches (modules/broll_match.py) rather than
-            # at random. Empty when the fetcher was mocked/skipped — the
-            # compositor then falls back to its original shuffle.
+        render_result = render_dispatch.render_video(
+            moviepy_render=lambda: comp.render(
+                script=script,
+                audio_path=audio_path,
+                video_paths=videos,
+                image_paths=images,
+                word_timestamps=word_clips_specs,
+                section_timeline=timeline,
+                presenter_path=presenter_path,
+                # Which keyword fetched each clip, so the compositor places footage
+                # under the section it matches (modules/broll_match.py) rather than
+                # at random. Empty when the fetcher was mocked/skipped — the
+                # compositor then falls back to its original shuffle.
+                clip_terms=getattr(fetcher, "video_terms", None),
+            ),
+            output_path=OUTPUT_DIR / slug / "final_video.mp4",
+            script=script, audio_path=audio_path, video_paths=videos, image_paths=images,
+            section_timeline=timeline, subtitle_path=srt_path, presenter_path=presenter_path,
             clip_terms=getattr(fetcher, "video_terms", None),
+            width=VIDEO_WIDTH, height=VIDEO_HEIGHT, fps=config.VIDEO_FPS,
         )
+    video_path = render_result.video_path
     costs.slug = slug
     costs.add(RENDER_SECONDS, time.monotonic() - render_started, stage="render")
-    logger.info("Video: %s", video_path)
+    logger.info("Video: %s (render backend: %s)", video_path, render_result.backend)
     events.emit(events.RENDER_COMPLETED, agent="compositor", status=events.STATUS_COMPLETED,
-                channel_id=channel_id, metadata={"video_path": str(video_path)})
+                channel_id=channel_id,
+                metadata={"video_path": str(video_path), **render_result.to_metadata()})
     run_checkpoint.record_stage(slug, run_checkpoint.STAGE_RENDER, artifacts={"video": str(video_path)})
     # The video exists on disk now. If this topic came off the content-planner
     # queue, record that it reached "rendered" — true whether or not the upload
@@ -1109,7 +1129,9 @@ def run(
                     # — the Storyboard renders it directly instead of guessing
                     # scenes from paragraph breaks. Best-effort: a build failure
                     # here is swallowed with the preview, never failing the run.
-                    scenes=script.scene_plan(),
+                    # Each scene also carries its claim ids and their advisory
+                    # fact-check status (modules/claim_scenes.py).
+                    scenes=claim_scenes.annotate_scenes(script, section_claims, fact_results),
                     # The Video IR (migration 0013); also adds real start/end
                     # times to the scenes above. None leaves both as before.
                     manifest=ir_project.to_dict() if ir_project is not None else None,

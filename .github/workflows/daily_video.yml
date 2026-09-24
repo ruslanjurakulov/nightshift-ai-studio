@@ -113,7 +113,13 @@ jobs:
   make-video:
     needs: resolve
     if: needs.resolve.outputs.count > 0
-    runs-on: ubuntu-latest
+    # Where the render runs. Unset repo VARIABLE RENDER_RUNNER = GitHub's
+    # ubuntu-latest, exactly as before. Set it to the label of a self-hosted
+    # runner (e.g. your own PC) to render there instead — see
+    # docs/SELF_HOSTED_RUNNER.md for what that machine must provide and the
+    # security rules (private repo only). The cheap `resolve` job above always
+    # stays on GitHub.
+    runs-on: ${{ vars.RENDER_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 60
     name: make-video (${{ matrix.channel_id }})
     strategy:
@@ -130,7 +136,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      # GitHub-hosted only: a fresh VM with passwordless sudo. A self-hosted
+      # runner is somebody's own machine — the workflow never runs sudo/apt
+      # there; the next step checks the same tools are already installed.
       - name: Install system dependencies
+        if: runner.environment == 'github-hosted'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg imagemagick fonts-dejavu
@@ -147,6 +157,29 @@ jobs:
               sudo sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' "$p"
             fi
           done
+
+      # Self-hosted only: verify, never install. Fails in seconds with the exact
+      # fix instead of an hour into a render. See docs/SELF_HOSTED_RUNNER.md.
+      - name: Check system dependencies (self-hosted runner)
+        if: runner.environment != 'github-hosted'
+        run: |
+          set -euo pipefail
+          missing=()
+          command -v ffmpeg  >/dev/null 2>&1 || missing+=(ffmpeg)
+          command -v ffprobe >/dev/null 2>&1 || missing+=(ffprobe)
+          command -v convert >/dev/null 2>&1 || command -v magick >/dev/null 2>&1 || missing+=(imagemagick)
+          [ -f /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf ] || missing+=(fonts-dejavu)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::This self-hosted runner is missing: ${missing[*]}. Install once with: sudo apt-get install -y ffmpeg imagemagick fonts-dejavu (see docs/SELF_HOSTED_RUNNER.md)."
+            exit 1
+          fi
+          for p in /etc/ImageMagick-6/policy.xml /etc/ImageMagick-7/policy.xml; do
+            if [ -f "$p" ] && grep -q 'rights="none" pattern="@\*"' "$p"; then
+              echo "::error::$p denies '@' path reads, which breaks subtitle rendering. Apply the one-time policy fix in docs/SELF_HOSTED_RUNNER.md."
+              exit 1
+            fi
+          done
+          echo "Self-hosted runner: ffmpeg, ffprobe, ImageMagick and DejaVu fonts present."
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
@@ -375,3 +408,13 @@ jobs:
         with:
           path: history
           key: chronos-history-${{ github.run_number }}-${{ matrix.channel_id }}
+
+      # Self-hosted only: this machine keeps its workspace between jobs, so do
+      # not leave the YouTube OAuth token / client secret files the steps above
+      # wrote lying on its disk. (checkout's clean would remove them at the
+      # NEXT run; this removes them now.) GitHub-hosted VMs are discarded anyway.
+      - name: Remove credential files (self-hosted runner)
+        if: always() && runner.environment != 'github-hosted'
+        run: |
+          rm -f -- "$GITHUB_WORKSPACE"/youtube_token*.json "$GITHUB_WORKSPACE"/client_secret.json
+          echo "Removed YouTube token and client-secret files from the workspace."

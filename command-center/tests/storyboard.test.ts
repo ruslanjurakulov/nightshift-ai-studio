@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { parseStoryboard, scenesToStoryboard, buildStoryboard, formatClock } from "@/lib/storyboard";
+import {
+  parseStoryboard,
+  scenesToStoryboard,
+  buildStoryboard,
+  formatClock,
+  claimCounts,
+  normalizeClaim,
+} from "@/lib/storyboard";
 
 /**
  * The storyboard is parsed from a video's stored narration, whose scene breaks
@@ -157,5 +164,66 @@ describe("formatClock", () => {
     expect(formatClock(9)).toBe("0:09");
     expect(formatClock(95)).toBe("1:35");
     expect(formatClock(600)).toBe("10:00");
+  });
+});
+
+/**
+ * Claim <-> scene linkage (modules/claim_scenes.py). The statuses are advisory,
+ * so the one property that matters most is that nothing malformed can read as
+ * "accurate" — a missing status is "not_checked", an unknown one is clamped.
+ */
+describe("scene claims", () => {
+  it("carries each scene's id and normalized claims", () => {
+    const sb = scenesToStoryboard([
+      {
+        id: "s000",
+        name: "Hook",
+        narration: "The ship sank in 1912.",
+        claims: [
+          { id: "c000-1", text: "The ship sank in 1912.", status: "likely_accurate", requires_human_review: false },
+        ],
+      },
+      {
+        name: "Story",
+        narration: "Over 1500 died. It had 20 lifeboats.",
+        claims: [
+          { id: "c001-1", text: "Over 1500 died.", status: "likely_inaccurate", requires_human_review: true, reasoning: "Closer to 1,500." },
+          { id: "c001-2u", text: "It had 20 lifeboats.", status: "not_checked", requires_human_review: true },
+        ],
+      },
+    ]);
+    expect(sb.scenes.map((s) => s.sceneId)).toEqual(["s000", "s001"]);
+    expect(sb.scenes[0].claims?.[0]).toMatchObject({ id: "c000-1", status: "likely_accurate", needsReview: false });
+    expect(sb.scenes[1].claims?.map((c) => c.status)).toEqual(["likely_inaccurate", "not_checked"]);
+    expect(sb.scenes[1].claims?.[0].reasoning).toBe("Closer to 1,500.");
+    expect(claimCounts(sb.scenes)).toEqual({ total: 3, needsReview: 2 });
+  });
+
+  it("derives the scene id from the stored position, not the display number", () => {
+    const sb = scenesToStoryboard([{ narration: "" }, { narration: "Second scene text here." }]);
+    expect(sb.scenes).toHaveLength(1);
+    expect(sb.scenes[0].index).toBe(1);
+    expect(sb.scenes[0].sceneId).toBe("s001");
+  });
+
+  it("never reads a malformed claim as accurate", () => {
+    expect(normalizeClaim({ text: "A claim here.", status: null })).toMatchObject({
+      status: "not_checked",
+      needsReview: true,
+    });
+    expect(normalizeClaim({ text: "A claim here.", status: "totally_true" })).toMatchObject({
+      status: "unverifiable",
+      needsReview: true,
+    });
+    // Accurate but the row itself asked for review — review wins.
+    expect(normalizeClaim({ text: "A claim.", status: "likely_accurate", requires_human_review: true })?.needsReview).toBe(true);
+    expect(normalizeClaim({ text: "   " })).toBeNull();
+    expect(normalizeClaim(null)).toBeNull();
+  });
+
+  it("leaves claims undefined for rows written before linkage existed", () => {
+    const sb = scenesToStoryboard([{ name: "Hook", narration: "Old row." }]);
+    expect(sb.scenes[0].claims).toBeUndefined();
+    expect(claimCounts(sb.scenes)).toEqual({ total: 0, needsReview: 0 });
   });
 });

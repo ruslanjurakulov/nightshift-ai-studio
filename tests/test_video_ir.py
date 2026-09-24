@@ -137,8 +137,14 @@ class FakeScriptTestCase(unittest.TestCase):
         self.assertFalse(still_ids & set(hook.asset_ids))
         self.assertEqual(self.project.scenes[2].asset_ids[0], video_ir.asset_id("/m/videos/2.mp4"))
 
-    def test_claims_are_not_linked_yet(self):
+    def test_claims_are_empty_when_unknown(self):
         self.assertTrue(all(s.claim_ids == () for s in self.project.scenes))
+
+    def test_claim_ids_come_from_the_claim_scene_linkage(self):
+        project = video_ir.build_project(slug="x", script=self.script, timeline=self.timeline,
+                                         claim_ids={1: ["c001-01", "c001-01u"]})
+        self.assertEqual(project.scenes[1].claim_ids, ("c001-01", "c001-01u"))
+        self.assertEqual(project.scenes[0].claim_ids, ())
 
     def test_built_project_validates(self):
         self.assertEqual(self.project.validate(), [])
@@ -274,6 +280,7 @@ class WriteForRunTestCase(unittest.TestCase):
                 audio_path=root / "a.mp3", subtitles_path=root / "s.srt",
                 shot_plans=[], elements=[], video_paths=[root / "gen_0.mp4"], image_paths=[],
                 clip_terms={}, broll=broll, generated_images=[], root=root,
+                scene_plan=[{"name": "a", "claim_ids": []}, {"name": "b", "claim_ids": ["c1"]}],
             )
             self.assertIsNotNone(project)
             path = root / "slug-x" / "project.json"
@@ -282,6 +289,7 @@ class WriteForRunTestCase(unittest.TestCase):
             self.assertEqual(loaded, project)
             self.assertEqual(loaded.validate(), [])
             self.assertEqual(loaded.assets[0].task_id, "t-1")
+            self.assertEqual([sc.claim_ids for sc in loaded.scenes], [(), ("c1",)])
             cp = run_checkpoint.load("slug-x", root)
             self.assertEqual(cp.artifact(run_checkpoint.STAGE_PROJECT, "project_json"), str(path))
 

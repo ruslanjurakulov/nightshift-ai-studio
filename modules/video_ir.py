@@ -513,6 +513,7 @@ def build_project(
     image_provider: Optional[str] = None,
     image_model: Optional[str] = None,
     stock_provider: Optional[str] = "pexels",
+    claim_ids: Optional[Mapping] = None,
 ) -> VideoProject:
     """Assemble a VideoProject from what the pipeline already has. Pure.
 
@@ -528,6 +529,9 @@ def build_project(
       ``generated_task_ids`` ``{section_index: task_id}``; ``generated_images``
       the AI stills. Everything else in the pool is stock (``stock_provider``:
       MediaFetcher only searches Pexels).
+    * ``claim_ids`` — ``{section_index: [claim id, ...]}`` from
+      ``claim_scenes.annotate_scenes`` (the claims the SHIPPED narration makes);
+      a scene without an entry has no known claims (empty list).
     """
     sections = list(getattr(script, "sections", None) or [])
     timeline = list(timeline or [])
@@ -620,8 +624,7 @@ def build_project(
             start_s=start, end_s=end, shot=shot,
             element_ids=el_ids,
             asset_ids=tuple(asset_id(str(p)) for p in placed),
-            # Claim ↔ scene linking is PR 4.1; unknown stays empty.
-            claim_ids=(),
+            claim_ids=_str_tuple((claim_ids or {}).get(i)),
         ))
 
     return VideoProject(
@@ -682,6 +685,7 @@ def write_for_run(
     clip_terms=None,
     broll=None,
     generated_images=None,
+    scene_plan=None,
     width: int = 1920,
     height: int = 1080,
     fps: int = 30,
@@ -689,6 +693,9 @@ def write_for_run(
 ) -> Optional[VideoProject]:
     """The pipeline hook: build the project from this run's pieces, write
     ``output/<slug>/project.json`` and record it on the run checkpoint.
+
+    ``scene_plan`` is ``claim_scenes.annotate_scenes(...)`` (the Storyboard's
+    scene list with per-scene ``claim_ids``); only its claim ids are read.
 
     Best-effort — returns the project, or None if anything failed; the failure
     is logged and the run continues exactly as before. Validation problems are
@@ -710,6 +717,11 @@ def write_for_run(
             image_provider = _safe(image_providers.active_provider)
             image_model = _safe(image_providers.active_model)
 
+        claims_by_index = {}
+        for i, entry in enumerate(scene_plan or []):
+            if isinstance(entry, Mapping) and entry.get("claim_ids"):
+                claims_by_index[i] = list(entry["claim_ids"])
+
         project = build_project(
             slug=slug, script=script, timeline=timeline, channel_id=channel_id,
             width=width, height=height, fps=fps,
@@ -719,7 +731,7 @@ def write_for_run(
             generated_videos=by_section, generated_task_ids=task_ids,
             video_provider=video_provider, video_model=video_model,
             generated_images=generated_images, image_provider=image_provider,
-            image_model=image_model,
+            image_model=image_model, claim_ids=claims_by_index,
         )
         problems = project.validate()
         if problems:

@@ -19,6 +19,8 @@ import {
   HOOK_RATIO,
 } from "@/lib/measurement";
 import { RetentionCurveChart } from "@/components/measure/RetentionCurveChart";
+import { ExperimentStatus } from "@/components/measure/ExperimentStatus";
+import { hookExperiment, thumbnailExperiment } from "@/lib/experiments";
 import type {
   MetricsSnapshotRow,
   RetentionPointRow,
@@ -87,6 +89,8 @@ export default async function MeasurePage() {
   const cost = summariseCosts(costs);
   const ab = variantPerformance(videos, snapshots);
   const hook = hookPerformance(videos, snapshots);
+  const abExp = thumbnailExperiment(ab);
+  const hookExp = hookExperiment(hook);
 
   // Retention rows have no channel of their own — they belong to the video, so
   // the channel scope is applied by keeping only this selection's videos.
@@ -300,17 +304,7 @@ export default async function MeasurePage() {
                     })}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-3">
-                    <StatusPill
-                      tone={ab.winner ? "ok" : "idle"}
-                      label={
-                        ab.winner
-                          ? fmt(t.measure.winnerIs, { variant: ab.winner })
-                          : t.measure.noVerdict
-                      }
-                    />
-                    <span className="text-xs text-[var(--color-muted)]">{abReason}</span>
-                  </div>
+                  <ExperimentStatus exp={abExp} reason={abReason} t={t} />
                 </>
               )}
             </div>
@@ -356,13 +350,7 @@ export default async function MeasurePage() {
                     })}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-3">
-                    <StatusPill
-                      tone={hook.winner ? "ok" : "idle"}
-                      label={hook.winner ? fmt(t.measure.winnerIs, { variant: hook.winner }) : t.measure.noVerdict}
-                    />
-                    <span className="text-xs text-[var(--color-muted)]">{hookReason}</span>
-                  </div>
+                  <ExperimentStatus exp={hookExp} reason={hookReason} t={t} />
                 </>
               )}
             </div>

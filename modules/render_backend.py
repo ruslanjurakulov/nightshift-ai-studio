@@ -97,7 +97,10 @@ def _normalize_segment(
         cmd = [ffmpeg, "-y", "-loop", "1", "-i", seg.path, "-t", dur,
                "-vf", _scale_pad(width, height, fps), *common, str(out_path)]
     else:  # KIND_VIDEO
-        cmd = [ffmpeg, "-y", "-i", seg.path, "-t", dur, "-an",
+        # -stream_loop -1: a source shorter than its slot is looped (as the
+        # MoviePy compositor does with vc.loop) instead of yielding a short
+        # clip that would drift every later cut off the audio timeline.
+        cmd = [ffmpeg, "-y", "-stream_loop", "-1", "-i", seg.path, "-t", dur, "-an",
                "-vf", _scale_pad(width, height, fps), *common, str(out_path)]
     _run(cmd)
 

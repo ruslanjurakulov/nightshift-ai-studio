@@ -15,8 +15,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from modules import learning_memory as lm
-from modules.ab_testing import MultiABResult, VariantStats
-from modules.hook_ab import HookResult, HookStats
+from modules import experiments as ex
 from modules.retention_analyzer import RetentionInsight
 
 
@@ -127,32 +126,55 @@ class RetentionProposalTests(unittest.TestCase):
 
 
 class ExperimentProposalTests(unittest.TestCase):
-    def _thumb(self, winner):
-        stats = {
-            "A": VariantStats("A", 6, 0.05, 1000),
-            "B": VariantStats("B", 7, 0.06, 1200),
-            "C": VariantStats("C", 1, 0.02, 90),
-        }
-        return MultiABResult(stats=stats, winner=winner, reason="B leads by 20% over 2 measured arms")
+    """Decided experiments (modules/experiments.py) become pending learnings."""
 
-    def _hook(self, winner):
-        return HookResult(a=HookStats("A", 5, 100.0), b=HookStats("B", 6, 130.0), winner=winner,
-                          reason="hook B holds viewers 30% longer over 11 measured videos")
+    def _thumb_rows(self, ctr_a, ctr_b, extra_c=0):
+        videos, snaps = [], []
+        for arm, ctr, n in (("A", ctr_a, 6), ("B", ctr_b, 7), ("C", 0.02, extra_c)):
+            for i in range(n):
+                vid = f"{arm}{i}"
+                videos.append({"video_id": vid, "thumbnail_variant": arm})
+                snaps.append({"video_id": vid, "snapshot_date": "2026-09-01",
+                              "impression_ctr": ctr, "impressions": 100})
+        return videos, snaps
 
-    def test_undecided_experiments_propose_nothing(self):
-        self.assertEqual(lm.experiment_proposals(self._thumb(None), self._hook(None)), [])
+    def _hook_rows(self, sec_a, sec_b):
+        videos, snaps = [], []
+        for arm, sec, n in (("A", sec_a, 5), ("B", sec_b, 6)):
+            for i in range(n):
+                vid = f"h{arm}{i}"
+                videos.append({"video_id": vid, "hook_variant": arm})
+                snaps.append({"video_id": vid, "snapshot_date": "2026-09-01",
+                              "average_view_duration_seconds": sec})
+        return videos, snaps
 
-    def test_decided_experiments_are_proposed_with_their_arms(self):
-        props = lm.experiment_proposals(self._thumb("B"), self._hook("B"))
-        keys = {p.dedup_key for p in props}
-        self.assertEqual(keys, {"experiment:thumbnail:b", "experiment:hook:b"})
+    def test_running_and_inconclusive_experiments_propose_nothing(self):
+        tv, ts = self._thumb_rows(0.050, 0.051)            # under the lift floor
+        hv, hs = self._hook_rows(100.0, 150.0)
+        hv = hv[:3]                                        # hook still running
+        exps = [ex.thumbnail_experiment(tv, ts), ex.hook_experiment(hv, hs)]
+        self.assertEqual([e.status for e in exps], [ex.STATUS_INCONCLUSIVE, ex.STATUS_RUNNING])
+        self.assertEqual(lm.experiment_proposals(exps), [])
+
+    def test_decided_experiments_are_proposed_under_the_existing_keys(self):
+        tv, ts = self._thumb_rows(0.05, 0.06, extra_c=1)
+        hv, hs = self._hook_rows(100.0, 130.0)
+        props = lm.experiment_proposals([
+            ex.thumbnail_experiment(tv, ts, ("A", "B", "C")),
+            ex.hook_experiment(hv, hs),
+        ])
+        # Same key shape as before the Experiment view existed, so a learning
+        # already decided on is not proposed again.
+        self.assertEqual({p.dedup_key for p in props}, {"experiment:thumbnail:b", "experiment:hook:b"})
         thumb = next(p for p in props if "thumbnail" in p.dedup_key)
         # Confidence is weighed on the arms the verdict used — C (1 video)
         # took no part in it and must not drag it down.
         self.assertEqual(thumb.confidence, lm.sample_confidence(6))
-        self.assertEqual(len(thumb.evidence["arms"]), 3)
+        self.assertEqual(len(thumb.evidence["variants"]), 3)
+        self.assertEqual(thumb.evidence["metric"], "impression_ctr")
         hook = next(p for p in props if "hook" in p.dedup_key)
         self.assertIn("alternate opening", hook.observation)
+        self.assertAlmostEqual(hook.evidence["effect"], 0.3, places=4)
 
 
 class SaveProposalTests(unittest.TestCase):
