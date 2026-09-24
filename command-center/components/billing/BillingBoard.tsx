@@ -7,7 +7,8 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { StatCard, StatusPill } from "@/components/ui";
 import { relativeTime } from "@/lib/format";
-import type { ElevenLabsRunway } from "@/lib/billing";
+import { planTopups, type ElevenLabsRunway } from "@/lib/billing";
+import { BulkPay, PayPanel } from "@/components/billing/TopupControls";
 
 /** One paid provider, already derived on the server (see billing/page.tsx). */
 export interface ProviderView {
@@ -28,6 +29,7 @@ export interface ProviderView {
     checkedAt: string;
   } | null;
   ledgerUsd: number | null;
+  balanceUsd: number | null;
   daysLeft: number | "never" | null;
   lowBalanceDays: number;
   includeInBulk: boolean;
@@ -121,6 +123,8 @@ export function BillingBoard({
           ))}
         </div>
       </section>
+
+      <BulkPay providers={providers} onDone={() => router.refresh()} />
     </div>
   );
 }
@@ -171,6 +175,9 @@ function ProviderCard({ p, onSaved }: { p: ProviderView; onSaved: () => void }) 
   const { t } = useI18n();
   const [price, setPrice] = useState(p.price === null ? "" : String(p.price));
   const [state, setState] = useState<"idle" | "busy" | "ok" | "fail">("idle");
+  const [paying, setPaying] = useState(false);
+  // Suggested top-up: what covers the next 30 days at the current burn.
+  const suggested = planTopups([{ id: p.id, usdPerDay: p.usdPerDay, balanceUsd: p.balanceUsd }], 30).lines[0].amount;
 
   async function save() {
     setState("busy");
@@ -249,15 +256,26 @@ function ProviderCard({ p, onSaved }: { p: ProviderView; onSaved: () => void }) 
         </div>
         {state === "fail" && <span className="text-[11px] text-[var(--color-fail)]">{t.billing.saveFailed}</span>}
       </label>
-      <a
-        href={p.billingUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 text-[12px] text-[var(--color-primary)] hover:underline"
-      >
-        {t.billing.openBilling}
-        <ExternalLink className="size-3" aria-hidden />
-      </a>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setPaying((v) => !v)}
+          aria-expanded={paying}
+          className="cta-glass pill px-4 py-1.5 text-[12px] font-semibold"
+        >
+          {t.billing.pay}
+        </button>
+        <a
+          href={p.billingUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-[12px] text-[var(--color-primary)] hover:underline"
+        >
+          {t.billing.openBilling}
+          <ExternalLink className="size-3" aria-hidden />
+        </a>
+      </div>
+      {paying && <PayPanel p={p} suggested={suggested} onDone={onSaved} />}
     </div>
   );
 }
