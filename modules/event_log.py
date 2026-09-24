@@ -114,6 +114,10 @@ PUBLISH_HELD = "publish.held"
 # quality/prediction score for a human to read; it never gates, blocks, or
 # permits anything — the gate above is the only thing that decides publishing.
 PUBLISH_SCORE = "publish.score"
+# AI critic on rendered frames (modules/video_critic.py). Advisory and off by
+# default (CHRONOS_AI_CRITIC): per-scene issues a vision model saw on a contact
+# sheet of the render. Like publish.score it never blocks or permits anything.
+VIDEO_CRITIC = "video.critic"
 # Shorts. A short only ever exists downstream of a long video that published,
 # so `short.failed` never means the run failed — the video is already out.
 SHORT_STARTED = "short.started"

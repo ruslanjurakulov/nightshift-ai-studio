@@ -46,6 +46,10 @@ UPLOAD_BYTES = "upload_bytes"
 #: ("broll:<provider>" / "image:<provider>") so spend can be split per account.
 VIDEO_GEN_CLIPS = "video_gen_clips"
 IMAGE_GENERATIONS = "image_generations"
+#: Vision calls (a contact sheet of rendered frames sent to a multimodal model,
+#: modules/video_critic.py). Counted per call; the tokens Gemini reports are
+#: recorded alongside under the same stage.
+VISION_CALLS = "vision_calls"
 
 #: Env var per unit, e.g. CHRONOS_PRICE_GEMINI_INPUT_TOKENS=0.000000075
 #: The value is USD *per single unit* — per token, per character, per second.

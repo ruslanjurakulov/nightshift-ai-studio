@@ -197,6 +197,19 @@ def record_stage(
         return None
 
 
+def run_epoch(slug: str, root: Optional[Path] = None) -> str:
+    """A stable identity for the current run of ``slug``: the checkpoint's
+    ``created_at``, or "" when there is no readable checkpoint.
+
+    It survives crashes and ``--resume`` (the checkpoint is kept for any run that
+    did not publish) and changes once a run publishes (``clear`` drops the
+    checkpoint, so the next run gets a new one). Per-run ledgers — provider
+    tasks, upload attempts — key on it so a later run of the same topic never
+    inherits an earlier run's state. Never raises."""
+    cp = load(slug, root)
+    return (cp.created_at or "") if cp is not None else ""
+
+
 def mark_complete(slug: str, root: Optional[Path] = None) -> None:
     """Flag the run as finished (published or intentionally held). A completed
     checkpoint is skipped by `latest_incomplete`, so it never lures a bare

@@ -36,6 +36,12 @@ import requests
 
 import config
 from modules.minimax_broll import GenerationSpec
+from modules.provider_tasks import (
+    OUTCOME_FAILED,
+    OUTCOME_PENDING,
+    OUTCOME_SUCCEEDED,
+    TaskOutcome,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +118,12 @@ class MiniMaxClient:
         task_id = _first(data, _TASK_ID_KEYS)
         return str(task_id) if task_id is not None else None
 
-    def _poll(self, task_id: str, *, max_attempts: int = 60, interval: float = 5.0) -> Optional[str]:
+    def _await(self, task_id: str, *, max_attempts: int = 60,
+               interval: float = 5.0) -> tuple[str, Optional[str]]:
+        """Poll until the task settles. Returns ``(state, file_id)`` where state
+        is ``succeeded`` (with a file id), ``failed`` (the provider said so) or
+        ``pending`` (still running, or we could not tell — a network blip is not
+        evidence the paid job failed, so the task is kept for a later poll)."""
         params = {"task_id": task_id}
         if self.group_id:
             params["GroupId"] = self.group_id
@@ -124,17 +135,21 @@ class MiniMaxClient:
                 data = _unwrap(resp.json())
             except Exception as e:
                 logger.warning("MiniMax poll failed (%s: %s)", type(e).__name__, e)
-                return None
+                return OUTCOME_PENDING, None
             status = str(_first(data, _STATUS_KEYS) or "").strip().lower()
             file_id = _first(data, _FILE_ID_KEYS)
             if file_id is not None and (not status or status in _SUCCESS):
-                return str(file_id)
+                return OUTCOME_SUCCEEDED, str(file_id)
             if status in _FAILURE:
                 logger.warning("MiniMax task %s reported status %r", task_id, status)
-                return None
+                return OUTCOME_FAILED, None
             time.sleep(max(0.0, interval))
         logger.warning("MiniMax task %s did not finish in time", task_id)
-        return None
+        return OUTCOME_PENDING, None
+
+    def _poll(self, task_id: str, *, max_attempts: int = 60, interval: float = 5.0) -> Optional[str]:
+        state, file_id = self._await(task_id, max_attempts=max_attempts, interval=interval)
+        return file_id if state == OUTCOME_SUCCEEDED else None
 
     def _download_url(self, file_id: str) -> Optional[str]:
         params = {"file_id": file_id}
@@ -169,22 +184,43 @@ class MiniMaxClient:
 
     # -- public --------------------------------------------------------------
 
+    #: Opts this client into the provider task ledger (modules/provider_tasks.py):
+    #: media_fetcher persists the task id between ``submit`` and ``resume`` so a
+    #: crashed run polls the paid job instead of paying for it again.
+    supports_task_resume = True
+
+    def submit(self, spec: GenerationSpec) -> Optional[str]:
+        """Start one (billable) generation task; its id, or None. Never raises."""
+        if not self.api_key:
+            return None
+        return self._submit(spec)
+
+    def resume(self, task_id: str, out_path) -> TaskOutcome:
+        """Poll an already-submitted task and download its clip to ``out_path``.
+        Makes no new submit, so it costs nothing extra. Never raises."""
+        if not self.api_key or not task_id:
+            return TaskOutcome(OUTCOME_PENDING)
+        state, file_id = self._await(str(task_id))
+        if state != OUTCOME_SUCCEEDED or not file_id:
+            return TaskOutcome(state)
+        url = self._download_url(file_id)
+        if not url:
+            return TaskOutcome(OUTCOME_PENDING)   # finished, but not fetched yet
+        path = self._download(url, Path(out_path))
+        if path is None:
+            return TaskOutcome(OUTCOME_PENDING)
+        return TaskOutcome(OUTCOME_SUCCEEDED, path)
+
     def generate(self, spec: GenerationSpec, out_path: Path) -> Optional[Path]:
         """Generate one clip for `spec` and save it to `out_path`, or return
         ``None`` when generation is disabled or anything goes wrong. Never
         raises."""
         if not self.api_key:
             return None
-        task_id = self._submit(spec)
+        task_id = self.submit(spec)
         if not task_id:
             return None
-        file_id = self._poll(task_id)
-        if not file_id:
-            return None
-        url = self._download_url(file_id)
-        if not url:
-            return None
-        path = self._download(url, Path(out_path))
+        path = self.resume(task_id, out_path).path
         if path is not None:
             logger.info("MiniMax b-roll generated for section %d (%s)", spec.section_index, spec.keyword)
         return path

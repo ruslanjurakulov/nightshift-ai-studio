@@ -173,14 +173,33 @@ class GenerationResult:
     generated: int = 0
     model: str = ""
     by_section: dict = field(default_factory=dict)   # section_index -> path
+    #: Clips taken from this run's earlier attempt (already downloaded, found
+    #: in the provider task ledger) — produced with no new request, so no new
+    #: charge. Always <= generated.
+    reused: int = 0
+    #: section_index -> provider task id, for clips that came from a tracked
+    #: task (modules/provider_tasks.py). Lets the Video IR tie an asset back to
+    #: the paid job that made it.
+    task_ids: dict = field(default_factory=dict)
+
+    @property
+    def newly_generated(self) -> int:
+        """Clips this attempt actually paid a provider for (generated minus
+        reused) — the honest number for the cost ledger."""
+        return max(0, self.generated - self.reused)
 
     def to_dict(self) -> dict:
-        return {
+        out = {
             "attempted": self.attempted,
             "generated": self.generated,
             "model": self.model,
             "sections": sorted(self.by_section.keys()),
         }
+        if self.reused:
+            out["reused"] = self.reused
+        if self.task_ids:
+            out["task_ids"] = {f"s{int(i):03d}": t for i, t in sorted(self.task_ids.items())}
+        return out
 
 
 def summarize(result: GenerationResult) -> dict:
