@@ -59,6 +59,33 @@ class SupabaseSyncEnabledTestCase(unittest.TestCase):
             self.assertEqual(self.sync.upsert("videos", [], on_conflict="video_id"), 0)
         post.assert_not_called()
 
+    def test_upsert_can_ignore_duplicates_instead_of_merging(self):
+        # learnings: an existing (possibly human-decided) row must be left alone.
+        with patch("modules.supabase_sync.requests.post", return_value=self._ok_response()) as post:
+            self.sync.upsert("learnings", [{"dedup_key": "k"}], on_conflict="channel_id,dedup_key",
+                             ignore_duplicates=True)
+        _, kwargs = post.call_args
+        self.assertIn("ignore-duplicates", kwargs["headers"]["Prefer"])
+        self.assertNotIn("merge-duplicates", kwargs["headers"]["Prefer"])
+
+    def test_update_patches_with_filters(self):
+        ok = self._ok_response()
+        ok.status_code = 204
+        with patch("modules.supabase_sync.requests.patch", return_value=ok) as patch_:
+            self.assertTrue(self.sync.update("learnings", {"status": "eq.pending"}, {"confidence": 0.5}))
+        _, kwargs = patch_.call_args
+        self.assertEqual(kwargs["params"], {"status": "eq.pending"})
+        self.assertEqual(kwargs["json"], {"confidence": 0.5})
+
+    def test_update_refuses_an_unfiltered_patch(self):
+        with patch("modules.supabase_sync.requests.patch") as patch_:
+            self.assertFalse(self.sync.update("learnings", {}, {"confidence": 0.5}))
+        patch_.assert_not_called()
+
+    def test_update_failure_returns_false_without_raising(self):
+        with patch("modules.supabase_sync.requests.patch", side_effect=ConnectionError("down")):
+            self.assertFalse(self.sync.update("learnings", {"id": "eq.1"}, {"confidence": 0.5}))
+
     def test_upsert_http_error_returns_zero(self):
         bad = MagicMock()
         bad.status_code = 400

@@ -204,6 +204,25 @@ class RunFeedbackAnalysisTestCase(unittest.TestCase):
         self.assertEqual(summary, {"videos_analyzed": 0, "signals_recorded": 0, "topics_scored": 0})
 
 
+class ProposeLearningsTestCase(unittest.TestCase):
+    def test_each_channel_is_proposed_under_its_own_id(self):
+        channel = MagicMock()
+        channel.channel_id = "history"
+        with patch("modules.learning_memory.propose",
+                   return_value={"candidates": 2, "proposed": 1, "refreshed": 1}) as propose:
+            totals = mod.propose_learnings([channel, None])
+        self.assertEqual([c.args[0] for c in propose.call_args_list], ["history", "default"])
+        self.assertEqual(totals, {"candidates": 4, "proposed": 2, "refreshed": 2})
+
+    def test_one_channel_failing_does_not_stop_the_next(self):
+        a, b = MagicMock(), MagicMock()
+        a.channel_id, b.channel_id = "a", "b"
+        with patch("modules.learning_memory.propose",
+                   side_effect=[RuntimeError("boom"), {"candidates": 1, "proposed": 1, "refreshed": 0}]):
+            totals = mod.propose_learnings([a, b])
+        self.assertEqual(totals["proposed"], 1)
+
+
 class RankNichesAcrossChannelsTestCase(unittest.TestCase):
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()

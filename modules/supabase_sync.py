@@ -84,13 +84,24 @@ class SupabaseSync:
             headers.update(extra)
         return headers
 
-    def upsert(self, table: str, rows: list[dict], on_conflict: str | None = None) -> int:
+    def upsert(
+        self,
+        table: str,
+        rows: list[dict],
+        on_conflict: str | None = None,
+        ignore_duplicates: bool = False,
+    ) -> int:
         """Upsert `rows` into `table` via PostgREST. Returns the number sent (0
-        when disabled, empty, or on any failure). Never raises."""
+        when disabled, empty, or on any failure). Never raises.
+
+        `ignore_duplicates=True` inserts only rows whose conflict key is new and
+        leaves an existing row exactly as it is — for tables where a human's
+        decision on a row must never be overwritten by the bot (learnings)."""
         if not self.enabled or not rows:
             return 0
         params = {}
-        prefer = "resolution=merge-duplicates,return=minimal"
+        resolution = "ignore-duplicates" if ignore_duplicates else "merge-duplicates"
+        prefer = f"resolution={resolution},return=minimal"
         if on_conflict:
             params["on_conflict"] = on_conflict
         try:
@@ -108,6 +119,30 @@ class SupabaseSync:
         except Exception as e:
             logger.warning("Supabase upsert into %s errored (%s: %s)", table, type(e).__name__, e)
             return 0
+
+    def update(self, table: str, filters: dict, values: dict) -> bool:
+        """PATCH the rows of `table` matching PostgREST `filters` (e.g.
+        {"status": "eq.pending"}) with `values`. Returns True on success, False
+        when disabled, unfiltered, or on any failure. Never raises.
+
+        Refuses an empty filter: an unfiltered PATCH would rewrite every row."""
+        if not self.enabled or not filters or not values:
+            return False
+        try:
+            resp = requests.patch(
+                f"{self.url}/rest/v1/{table}",
+                params=filters,
+                json=values,
+                headers=self._headers({"Prefer": "return=minimal"}),
+                timeout=_TIMEOUT,
+            )
+            if resp.status_code >= 300:
+                logger.warning("Supabase update of %s failed: HTTP %s %s", table, resp.status_code, resp.text[:300])
+                return False
+            return True
+        except Exception as e:
+            logger.warning("Supabase update of %s errored (%s: %s)", table, type(e).__name__, e)
+            return False
 
     def select(self, table: str, params: dict | None = None) -> list[dict]:
         """Read rows from `table` via PostgREST. Returns [] when disabled or on
