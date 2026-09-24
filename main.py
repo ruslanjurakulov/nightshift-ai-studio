@@ -30,6 +30,7 @@ from config import OUTPUT_DIR, THUMBNAIL_VARIANT_COUNT, VIDEO_HEIGHT, VIDEO_WIDT
 from modules import event_log as events
 from modules import publish_gate
 from modules import publish_score
+from modules import video_critic
 from modules.ab_testing import choose_variant_n, variant_performance_n
 from modules.hook_ab import choose_hook, hook_performance
 from modules.avatar import (
@@ -860,6 +861,9 @@ def run(
     # below succeeds, so a blocked or failed-upload run leaves an honest
     # "rendered", never a false "published".
     topic_mgr.mark_queue_entry_rendered()
+    # Advisory AI critic on rendered frames (modules/video_critic.py). Off unless
+    # CHRONOS_AI_CRITIC is set; never blocks, never raises, skips at a met ceiling.
+    video_critic.run(video_path, script=script, timeline=timeline, channel=ctx, costs=costs)
 
     # ── Stage 8: Upload
     # The video is already on disk by this point, so no upload failure may cost
