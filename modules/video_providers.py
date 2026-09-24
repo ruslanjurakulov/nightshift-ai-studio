@@ -40,6 +40,12 @@ import requests
 
 import config
 from modules.minimax_broll import GenerationSpec
+from modules.provider_tasks import (
+    OUTCOME_FAILED,
+    OUTCOME_PENDING,
+    OUTCOME_SUCCEEDED,
+    TaskOutcome,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +144,11 @@ class GenericAsyncVideoClient:
             return f"{self.cfg.base_url}{self.cfg.query_path.format(id=task_id)}", {}
         return f"{self.cfg.base_url}{self.cfg.query_path}", {self.cfg.query_id_param: task_id}
 
-    def _poll(self, task_id: str, *, max_attempts: int = 60, interval: float = 5.0) -> Optional[str]:
+    def _await(self, task_id: str, *, max_attempts: int = 60,
+               interval: float = 5.0) -> tuple[str, Optional[str]]:
+        """Poll until the job settles: ``(succeeded, url)``, ``(failed, None)``
+        when the provider says so, or ``(pending, None)`` when it is still
+        running or we could not tell (kept for a later poll, never re-paid)."""
         url, params = self._query_url(task_id)
         for _ in range(max(1, max_attempts)):
             try:
@@ -147,17 +157,21 @@ class GenericAsyncVideoClient:
                 data = _unwrap(resp.json())
             except Exception as e:
                 logger.warning("%s poll failed (%s: %s)", self.cfg.name, type(e).__name__, e)
-                return None
+                return OUTCOME_PENDING, None
             status = str(_first(data, self.cfg.status_keys) or "").strip().lower()
             file_url = _first(data, self.cfg.url_keys)
             if file_url is not None and (not status or status in _SUCCESS):
-                return str(file_url)
+                return OUTCOME_SUCCEEDED, str(file_url)
             if status in _FAILURE:
                 logger.warning("%s job %s reported status %r", self.cfg.name, task_id, status)
-                return None
+                return OUTCOME_FAILED, None
             time.sleep(max(0.0, interval))
         logger.warning("%s job %s did not finish in time", self.cfg.name, task_id)
-        return None
+        return OUTCOME_PENDING, None
+
+    def _poll(self, task_id: str, *, max_attempts: int = 60, interval: float = 5.0) -> Optional[str]:
+        state, file_url = self._await(task_id, max_attempts=max_attempts, interval=interval)
+        return file_url if state == OUTCOME_SUCCEEDED else None
 
     def _download(self, url: str, dest: Path) -> Optional[Path]:
         try:
@@ -173,18 +187,39 @@ class GenericAsyncVideoClient:
             return None
         return dest if dest.exists() and dest.stat().st_size > 0 else None
 
+    #: Opts into the provider task ledger (modules/provider_tasks.py): every
+    #: provider built on this client shares the submit → poll shape, so all of
+    #: them get crash-safe task persistence for free.
+    supports_task_resume = True
+
+    def submit(self, spec: GenerationSpec) -> Optional[str]:
+        """Start one (billable) job; its id, or None. Never raises."""
+        if not self.cfg.api_key:
+            return None
+        return self._submit(spec)
+
+    def resume(self, task_id: str, out_path) -> TaskOutcome:
+        """Poll an already-submitted job and download its clip. No new submit,
+        so no new charge. Never raises."""
+        if not self.cfg.api_key or not task_id:
+            return TaskOutcome(OUTCOME_PENDING)
+        state, url = self._await(str(task_id))
+        if state != OUTCOME_SUCCEEDED or not url:
+            return TaskOutcome(state)
+        path = self._download(url, Path(out_path))
+        if path is None:
+            return TaskOutcome(OUTCOME_PENDING)
+        return TaskOutcome(OUTCOME_SUCCEEDED, path)
+
     def generate(self, spec: GenerationSpec, out_path) -> Optional[Path]:
         """Generate one clip for ``spec`` into ``out_path``; ``None`` when the
         provider is unconfigured or anything goes wrong. Never raises."""
         if not self.cfg.api_key:
             return None
-        task_id = self._submit(spec)
+        task_id = self.submit(spec)
         if not task_id:
             return None
-        url = self._poll(task_id)
-        if not url:
-            return None
-        path = self._download(url, Path(out_path))
+        path = self.resume(task_id, out_path).path
         if path is not None:
             logger.info("%s b-roll generated for section %d (%s)",
                         self.cfg.name, spec.section_index, spec.keyword)
