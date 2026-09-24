@@ -1,0 +1,26 @@
+{
+  "scene": {
+    "id": "s000",
+    "index": 0,
+    "name": "the_flannan_isles",
+    "type": "title",
+    "narration": "Three men walked into this lighthouse.",
+    "start_s": 0,
+    "end_s": 2,
+    "shot": { "recipe": "title_card", "camera": null, "lighting": null, "mood": null },
+    "element_ids": [],
+    "asset_ids": [],
+    "claim_ids": []
+  },
+  "width": 640,
+  "height": 360,
+  "fps": 30,
+  "assetsBaseDir": "",
+  "style": null,
+  "words": [
+    { "text": "Three", "start_s": 0.2, "end_s": 0.5 },
+    { "text": "men", "start_s": 0.5, "end_s": 0.8 },
+    { "text": "walked", "start_s": 0.8, "end_s": 1.2 }
+  ],
+  "transition": "dip_to_black"
+}
