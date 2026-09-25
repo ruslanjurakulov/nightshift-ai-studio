@@ -153,7 +153,26 @@ oshirish mumkin (standart 2).
   o'chirib GitHub'ga qayting.
 - `timeout-minutes: 60` va `max-parallel: 1` o'zgarmagan.
 - `actions/checkout` har run boshida workspace'ni tozalaydi, shuning uchun
-  `output/` run'lar orasida saqlanmaydi. Tarix (`history/`) avvalgidek
-  `actions/cache` orqali tiklanadi, video artefakt sifatida yuklanadi.
+  `output/` (video, audio, rasmlar) run'lar orasida saqlanmaydi. Tarix
+  (`history/`) avvalgidek `actions/cache` orqali tiklanadi, video artefakt
+  sifatida yuklanadi.
+- **Resume holati esa saqlanadi** (GitHub runner'da ham, self-hosted'da ham):
+  tugallanmagan run'ning kichik JSON fayllari — `checkpoint.json` (run epoch),
+  `provider_tasks.json` (pullik video task'lar), `upload_attempt.json` (upload
+  ledger + marker) va `script.json` — har kanal uchun alohida `actions/cache`
+  kaliti bilan (`chronos-runstate-v1.<kanal>.…`) `.run_state/` orqali keyingi
+  run'ga o'tkaziladi (`tools/run_state_cache.py`). Shu sababli run
+  generatsiya yoki upload o'rtasida o'lsa, keyingi run task'ni qayta to'lamasdan
+  poll qiladi va upload'ni marker bo'yicha tekshiradi (dublikat yo'q).
+  Chegaralar: faqat oxirgi 7 kun ichidagi, tugallanmagan, ko'pi bilan 10 ta run;
+  har fayl ≤ 1 MB (amalda jami bir necha o'n KB). Publish bo'lgan run'ning
+  checkpoint'i o'chadi — u keshga tushmaydi; qaytib kelgan eski ledger ham
+  run-epoch kaliti tufayli e'tiborsiz qoladi. Media, `project.json` va
+  **hech qanday token/secret fayl** (`youtube_token*.json`,
+  `client_secret.json`) keshlanmaydi.
+- Oxirgi tugallanmagan run'ni davom ettirish uchun: Actions → Daily YouTube
+  Video → Run workflow → kanalni tanlang va **resume** belgisini qo'ying
+  (saqlangan skript qayta ishlatiladi, Gemini'ga qayta pul to'lanmaydi).
+  Jadval bo'yicha run'lar avvalgidek yangi video boshlaydi.
 - `pip install` setup-python'ning tool cache'idagi Python'ga o'rnatiladi va
   mashinada qoladi — keyingi run'lar tezroq bo'ladi.

@@ -55,6 +55,11 @@ on:
         default: ""
         type: choice
         options: ["", pexels, leonardo]
+      resume:
+        description: "Resume this channel's last unfinished run (reuse its saved script, poll its paid provider tasks, reconcile its upload) instead of starting a new video"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -191,6 +196,32 @@ jobs:
           key: chronos-history-${{ github.run_number }}
           restore-keys: chronos-history-
 
+      # Per-run resume state, per channel: the run checkpoint (its created_at is
+      # the run epoch every ledger keys on), the paid provider-task ledger, the
+      # upload-attempt ledger and the saved script — the small JSON files
+      # output/<slug>/ holds so a run that died mid-generation or mid-upload is
+      # polled/reconciled next time instead of paid for or uploaded again. A
+      # clean checkout would otherwise lose them. Only unfinished runs updated
+      # in the last 7 days, at most 10 of them, each file <= 1 MB (in practice a
+      # few dozen KB in total) — see tools/run_state_cache.py. Never media, and
+      # never a credential: youtube_token*.json / client_secret.json live at the
+      # repo root and are not copied (the tool also refuses them by name). A
+      # published run clears its checkpoint, so it is not carried over; a stale
+      # ledger that did survive is ignored by the run-epoch keying anyway.
+      # The "." separators matter: channel ids are [a-z0-9-], so the prefix of
+      # channel "news" can never match channel "news-2".
+      - name: Restore run state (resume ledgers, this channel)
+        id: runstate_restore
+        uses: actions/cache/restore@v4
+        with:
+          path: .run_state
+          key: chronos-runstate-v1.${{ matrix.channel_id }}.${{ github.run_number }}-${{ github.run_attempt }}
+          restore-keys: chronos-runstate-v1.${{ matrix.channel_id }}.
+
+      - name: Load run state into output/
+        continue-on-error: true
+        run: python tools/run_state_cache.py import
+
       # The legacy default channel's token, and only its own. Every other
       # channel gets its own in the step below; before that step existed, EVERY
       # channel in the matrix ran with this one, so a video made for a new
@@ -303,6 +334,9 @@ jobs:
           INPUT_DURATION: ${{ github.event.inputs.duration }}
           INPUT_LANGUAGE: ${{ github.event.inputs.language }}
           INPUT_VISUAL_STYLE: ${{ github.event.inputs.visual_style }}
+          # "true" only on a manual run with the resume box ticked; empty on a
+          # schedule, so scheduled runs start a new video exactly as before.
+          INPUT_RESUME: ${{ github.event.inputs.resume }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           # --- AITuber presenter (optional, off unless enabled) -------------
@@ -389,6 +423,9 @@ jobs:
           if [ -n "${INPUT_VISUAL_STYLE:-}" ]; then
             args+=(--visual-style "$INPUT_VISUAL_STYLE")
           fi
+          if [ "${INPUT_RESUME:-}" = "true" ]; then
+            args+=(--resume)
+          fi
           python main.py "${args[@]}"
 
       - name: Upload video artifact
@@ -408,6 +445,23 @@ jobs:
         with:
           path: history
           key: chronos-history-${{ github.run_number }}-${{ matrix.channel_id }}
+
+      # Saved even when the run failed — that is the run worth resuming. Only
+      # when the restore step above ran, so a job that died before it cannot
+      # overwrite this channel's state with an empty one. .run_state holds only
+      # the allowlisted JSON files (see the restore step); no token or client
+      # secret file is ever written there.
+      - name: Collect run state (unfinished runs only)
+        if: always() && steps.runstate_restore.outcome == 'success'
+        continue-on-error: true
+        run: python tools/run_state_cache.py export
+
+      - name: Save run state (this channel)
+        if: always() && steps.runstate_restore.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: .run_state
+          key: chronos-runstate-v1.${{ matrix.channel_id }}.${{ github.run_number }}-${{ github.run_attempt }}
 
       # Self-hosted only: this machine keeps its workspace between jobs, so do
       # not leave the YouTube OAuth token / client secret files the steps above
