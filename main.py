@@ -882,6 +882,10 @@ def run(
             script=script, audio_path=audio_path, video_paths=videos, image_paths=images,
             section_timeline=timeline, subtitle_path=srt_path, presenter_path=presenter_path,
             clip_terms=getattr(fetcher, "video_terms", None),
+            # The compositor's own per-word caption specs: the ffmpeg paths burn
+            # them as the same word-highlighted lines (an .ass beside the .srt;
+            # the .srt itself is unchanged and still goes to YouTube).
+            word_captions=word_clips_specs,
             width=VIDEO_WIDTH, height=VIDEO_HEIGHT, fps=config.VIDEO_FPS,
             # CHRONOS_SCENE_RENDER=1: render per IR scene with a cache (modules/scene_render.py).
             ir_project=ir_project,

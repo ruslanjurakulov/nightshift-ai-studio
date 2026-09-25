@@ -139,6 +139,14 @@ class CacheKeyTestCase(unittest.TestCase):
             with self.subTest(changed=name):
                 self.assertNotEqual(scene_render.cache_key(**{**self.base, name: value}), k0)
 
+    def test_moving_stills_invalidate_scenes_cached_as_static_holds(self):
+        # Version 1 entries were rendered with stills held still; the Ken Burns
+        # look must not be served from them.
+        self.assertGreaterEqual(scene_render.CACHE_VERSION, 2)
+        k = scene_render.cache_key(**self.base)
+        with mock.patch.object(scene_render, "CACHE_VERSION", 1):
+            self.assertNotEqual(scene_render.cache_key(**self.base), k)
+
     def test_without_sha256_the_file_itself_decides(self):
         f = self.root / "clip.jpg"
         f.write_bytes(b"one")
@@ -219,6 +227,67 @@ class CacheBehaviourTestCase(unittest.TestCase):
             self.run_once(p, CountingRenderer())
 
 
+class StillMotionTestCase(unittest.TestCase):
+    """Scene stills get render_backend's Ken Burns move, frame-exact."""
+
+    def test_still_command_moves_and_is_frame_exact(self):
+        from modules.render_spec import KIND_IMAGE, Segment
+
+        seg = Segment(duration=round(37 / 30, 6), path="/img.png", kind=KIND_IMAGE)
+        cmd = scene_render._normalize_cmd("ffmpeg", seg, Path("/o.mp4"), 320, 180, 30,
+                                          ken_burns="pan_right")
+        self.assertEqual(cmd[cmd.index("-frames:v") + 1], "37")
+        vf = cmd[cmd.index("-vf") + 1]
+        self.assertIn("min(1,n/37.000000)", vf)       # progress spans exactly the cut
+        self.assertNotIn("-loop", cmd)                 # decoded once, looped in the graph
+        static = scene_render._normalize_cmd("ffmpeg", seg, Path("/o.mp4"), 320, 180, 30)
+        self.assertIn("-loop", static)
+
+    def test_a_failed_move_holds_the_still(self):
+        from modules import render_backend
+        from modules.render_spec import KIND_IMAGE, Segment
+
+        job = scene_render.SceneJob(
+            scene_id="s000", index=0, start_frame=0, end_frame=30, fps=30,
+            segments=(Segment(duration=1.0, path="/img.png", kind=KIND_IMAGE),),
+            backend="ffmpeg", key="k", path=Path("/unused.mp4"))
+        project = mock.Mock(width=320, height=180, fps=30)
+        calls = []
+
+        def fake_run(cmd):
+            calls.append(cmd)
+            if "-loop" not in cmd:
+                raise render_backend.RenderBackendError("no zoompan")
+            Path(cmd[-1]).write_bytes(b"clip")
+
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(render_backend, "_run", side_effect=fake_run):
+            out = Path(d) / "scene.mp4"
+            with self.assertLogs("modules.scene_render", "WARNING"):
+                scene_render.render_scene_ffmpeg(job, project, out, ffmpeg="ffmpeg")
+            self.assertTrue(out.is_file())
+        self.assertEqual(len(calls), 2)
+        self.assertIn("-loop", calls[1])
+
+    def test_subtitles_override_reaches_the_assembly(self):
+        seen = {}
+
+        def assemble(project, jobs, output_path, *, subtitles_path=None):
+            seen["subs"] = subtitles_path
+            return fake_assemble(project, jobs, output_path)
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            project = _project(root, subs=str(root / "subtitles.srt"))
+            out = root / "out" / "final_video.mp4"
+            scene_render.render_project(project, out, renderers={"ffmpeg": CountingRenderer()},
+                                        assemble_fn=assemble, subtitles_path="/w.ass")
+            self.assertEqual(seen["subs"], "/w.ass")
+            scene_render.render_project(project, out, renderers={"ffmpeg": CountingRenderer()},
+                                        assemble_fn=assemble)
+            self.assertEqual(seen["subs"], str(root / "subtitles.srt"))
+
+
 class BackendChoiceTestCase(unittest.TestCase):
     def test_everything_renders_with_ffmpeg_today(self):
         for recipe in ("slow_push", "broll_cut", "quote_card", "stat_counter", None, "bogus"):
@@ -296,6 +365,34 @@ class DispatchTestCase(unittest.TestCase):
         self.assertEqual(meta["scene_render"]["cache_hits"], 1)
         self.assertEqual(meta["scene_render"]["rendered_scene_ids"], ["s001", "s002"])
         self.assertNotIn("render_fallback_reason", meta)
+
+    def test_word_captions_go_to_the_scene_assembly(self):
+        from modules import ass_captions
+
+        got = {}
+
+        def scenes(project, output_path, **kw):
+            got.update(kw)
+            return self.fake_scenes(project, output_path, **kw)
+
+        ass = self.root / "word_captions.ass"
+        choice = ass_captions.CaptionChoice(ass, ass_captions.MODE_WORDS)
+        with mock.patch.object(ass_captions, "prepare", return_value=choice):
+            res = self.dispatch(scene_render_enabled=True, scene_renderer=scenes,
+                                subtitle_path=self.root / "s.srt",
+                                word_captions=[{"word": "a", "start": 0, "end": 1}])
+        self.assertEqual(got["subtitles_path"], str(ass))
+        self.assertEqual(res.to_metadata()["captions"], "word_highlight")
+
+    def test_without_word_captions_the_scene_renderer_call_is_unchanged(self):
+        got = {}
+
+        def scenes(project, output_path, **kw):
+            got.update(kw)
+            return self.fake_scenes(project, output_path, **kw)
+
+        self.dispatch(scene_render_enabled=True, scene_renderer=scenes)
+        self.assertEqual(set(got), {"cut_intervals"})
 
     def test_any_failure_falls_back_to_the_configured_backend(self):
         def broken(*a, **kw):
@@ -391,6 +488,22 @@ class RealRenderTestCase(unittest.TestCase):
         scene_frames = sorted((f.name[:4], _probe(f)[0])
                               for f in (self.out.parent / "scenes").iterdir())
         self.assertEqual(scene_frames, [("s000", 73), ("s001", 80), ("s002", 66)])
+
+    def test_a_still_scene_moves_and_stays_frame_exact(self):
+        project = _project(self.root, narrations=("one",), times=((0.0, 1.5),), audio_s=1.5,
+                           assets=self.assets, scene_assets={0: ("a_still",)})
+        # A still with some structure, so a move is visible.
+        _ffmpeg("-f", "lavfi", "-i", "testsrc=s=200x100", "-frames:v", "1",
+                str(self.root / "still.png"))
+        job = scene_render.plan_jobs(project, self.root / "scenes")[0]
+        out = self.root / "one.mp4"
+        scene_render.render_scene_ffmpeg(job, project, out)
+        self.assertEqual(_probe(out)[0], 45)
+        raw = subprocess.run([FFMPEG, "-loglevel", "error", "-i", str(out), "-f", "rawvideo",
+                              "-pix_fmt", "rgb24", "-"], capture_output=True).stdout
+        size = 320 * 180 * 3
+        self.assertEqual(len(raw), 45 * size)
+        self.assertNotEqual(raw[:size], raw[-size:])
 
     def test_real_rerender_touches_only_the_changed_scene(self):
         scene_render.render_project(self.project(), self.out)

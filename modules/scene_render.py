@@ -84,7 +84,8 @@ from modules.render_spec import KIND_COLOR, KIND_IMAGE, KIND_VIDEO, RenderSpec, 
 logger = logging.getLogger(__name__)
 
 #: Bump when the way a scene is rendered changes, so old cache entries miss.
-CACHE_VERSION = 1
+#: 2: stills get the compositor's Ken Burns motion instead of a static hold.
+CACHE_VERSION = 2
 SCENES_DIRNAME = "scenes"
 FLAG_ENV = "CHRONOS_SCENE_RENDER"
 _TRUTHY = ("1", "true", "yes", "on")
@@ -358,10 +359,11 @@ def _concat_lines(paths: List) -> List[str]:
 
 
 def _normalize_cmd(ffmpeg: str, seg: Segment, out: Path, width: int, height: int,
-                   fps: int) -> List[str]:
+                   fps: int, *, ken_burns: Optional[str] = None) -> List[str]:
     """One segment → a uniform silent H.264 clip of EXACTLY its frame count
     (``-frames:v``), fitted to width×height at fps — render_backend's
-    normalisation, frame-exact."""
+    normalisation, frame-exact. A still moves with the Ken Burns ``ken_burns``
+    style (render_backend.ken_burns_filter) when one is given, else is held."""
     from modules import render_backend
 
     n = segment_frames(seg, fps)
@@ -372,6 +374,9 @@ def _normalize_cmd(ffmpeg: str, seg: Segment, out: Path, width: int, height: int
         return [ffmpeg, "-y", "-f", "lavfi", "-i", f"color=c=black:s={width}x{height}:r={fps}:d={dur}",
                 *common, str(out)]
     if seg.kind == KIND_IMAGE:
+        if ken_burns:
+            kb = render_backend.ken_burns_filter(ken_burns, width, height, fps, n)
+            return [ffmpeg, "-y", "-i", seg.path, "-vf", kb, *common, str(out)]
         return [ffmpeg, "-y", "-loop", "1", "-t", dur, "-i", seg.path, "-vf", vf, *common, str(out)]
     # A source shorter than its slot is looped, as the one-pass renderers do.
     return [ffmpeg, "-y", "-stream_loop", "-1", "-i", seg.path, "-vf", vf, *common, str(out)]
@@ -379,7 +384,10 @@ def _normalize_cmd(ffmpeg: str, seg: Segment, out: Path, width: int, height: int
 
 def render_scene_ffmpeg(job: SceneJob, project, out_path: Path, *, ffmpeg: Optional[str] = None) -> Path:
     """Render one scene's segments to a silent H.264 clip of exactly the
-    scene's frame count, one ffmpeg process at a time. Raises on failure."""
+    scene's frame count, one ffmpeg process at a time. Raises on failure.
+    Stills get a Ken Burns move chosen from the scene id and cut index (so a
+    re-render of the same scene moves the same way); if that ffmpeg run fails
+    the still is held static, as before."""
     from modules import render_backend
 
     ffmpeg = ffmpeg or render_backend.resolve_ffmpeg()
@@ -389,7 +397,17 @@ def render_scene_ffmpeg(job: SceneJob, project, out_path: Path, *, ffmpeg: Optio
         parts = []
         for i, seg in enumerate(job.segments):
             part = Path(tmp) / f"seg_{i:04d}.mp4"
-            render_backend._run(_normalize_cmd(ffmpeg, seg, part, w, h, fps))
+            style = None
+            if seg.kind == KIND_IMAGE and seg.path:
+                style = render_backend.ken_burns_style(f"{job.scene_id}:{i}")
+            try:
+                render_backend._run(_normalize_cmd(ffmpeg, seg, part, w, h, fps, ken_burns=style))
+            except render_backend.RenderBackendError as e:
+                if style is None:
+                    raise
+                logger.warning("Scene %s: Ken Burns (%s) failed for cut %d — holding the still: %s",
+                               job.scene_id, style, i, e)
+                render_backend._run(_normalize_cmd(ffmpeg, seg, part, w, h, fps))
             parts.append(part)
         if len(parts) == 1:
             shutil.move(str(parts[0]), str(out_path))   # tmp may be another filesystem
@@ -536,12 +554,16 @@ def render_project(project, output_path, *, scenes_dir=None,
                    cut_intervals: Optional[Mapping] = None, style: Optional[str] = None,
                    renderers: Optional[Mapping[str, Callable]] = None,
                    assemble_fn: Optional[Callable] = None,
-                   graphics: Optional[Mapping] = None) -> SceneRenderResult:
+                   graphics: Optional[Mapping] = None,
+                   subtitles_path: Optional[str] = None) -> SceneRenderResult:
     """Render ``project`` scene by scene (reusing cached scenes) and assemble
     ``output_path``. ``scenes_dir`` defaults to ``<output dir>/scenes``
     (``output/<slug>/scenes`` for the pipeline's ``final_video.mp4``).
-    ``renderers``/``assemble_fn`` are injectable for tests. Raises on failure —
-    the caller (render_dispatch) owns the fallback."""
+    ``renderers``/``assemble_fn`` are injectable for tests. ``subtitles_path``
+    replaces the IR's ``.srt`` for the burn-in (render_dispatch passes the
+    word-highlighted ``.ass`` from ``modules/ass_captions.py``); captions are
+    burnt at assembly, so they are not part of any scene's cache key. Raises
+    on failure — the caller (render_dispatch) owns the fallback."""
     output_path = Path(output_path)
     scenes_dir = Path(scenes_dir) if scenes_dir else output_path.parent / SCENES_DIRNAME
     problems = project.validate()
@@ -584,7 +606,8 @@ def render_project(project, output_path, *, scenes_dir=None,
     jobs = used
     logger.info("Scene render: %d scene(s), %d cache hit(s), %d rendered %s",
                 len(jobs), len(result.cache_hits), len(result.cache_misses), result.cache_misses)
-    (assemble_fn or assemble)(project, jobs, output_path, subtitles_path=project.subtitles_path)
+    (assemble_fn or assemble)(project, jobs, output_path,
+                              subtitles_path=subtitles_path or project.subtitles_path)
     if not _valid_file(output_path):
         raise SceneRenderError(f"no assembled video at {output_path}")
     from modules import scene_cache_gc  # best effort: stale keys/temp files; never raises

@@ -220,9 +220,11 @@ THUMBNAIL_VARIANT_COUNT = _clamp_int(os.getenv("CHRONOS_THUMBNAIL_VARIANTS", "2"
 # captions. "ffmpeg" routes a declarative RenderSpec through
 # modules/render_backend.py, which streams the timeline segment by segment and
 # holds one ffmpeg process at a time — the durable fix Phase 1 prescribed for
-# MoviePy's decoder leak, for the concat case (no per-frame Ken Burns / word
-# highlighting). Opt-in so the default render is unchanged; any ffmpeg failure
-# falls back to the MoviePy compositor (modules/render_dispatch.py).
+# MoviePy's decoder leak. It reproduces the compositor's Ken Burns moves on
+# stills (zoompan/crop) and its word-highlighted captions (an .ass burnt by
+# libass; the .srt when there are no word timestamps or no libass). Opt-in so
+# the default render is unchanged; any ffmpeg failure falls back to the MoviePy
+# compositor (modules/render_dispatch.py).
 RENDER_BACKEND = os.getenv("CHRONOS_RENDER_BACKEND", "moviepy").strip().lower()
 # Scene-level render + render cache (roadmap PR 1.3, modules/scene_render.py):
 # CHRONOS_SCENE_RENDER=1 renders each Video IR scene to output/<slug>/scenes/
