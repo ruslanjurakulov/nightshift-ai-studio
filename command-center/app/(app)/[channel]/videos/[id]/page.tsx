@@ -11,11 +11,12 @@ import { Storyboard } from "@/components/videos/Storyboard";
 import { IntelligenceTrace } from "@/components/intel/IntelligenceTrace";
 import { QualityGate } from "@/components/autonomy/QualityGate";
 import { buildTrace } from "@/lib/decisions";
+import { summarizeSceneRetention } from "@/lib/sceneRetention";
 import { num, decimal, relativeTime, timeOfDay, statusTone } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { fetchChannelTopicScores } from "@/lib/channels-server";
 import { fmt } from "@/lib/i18n";
-import type { ChannelRow, FeedbackSignalRow, MetricsSnapshotRow, ReviewIntentRow, SystemEventRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
+import type { ChannelRow, FeedbackSignalRow, MetricsSnapshotRow, RetentionPointRow, ReviewIntentRow, SystemEventRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -56,9 +57,10 @@ export default async function VideoDetail({
   let topicPerf: TopicPerformanceRow[] = [];
   let autoPublish = false;
   let pendingIntent: ReviewIntentRow | null = null;
+  let retentionPoints: RetentionPointRow[] = [];
 
   if (supabase) {
-    const [vid, snap, ev, fs] = await Promise.all([
+    const [vid, snap, ev, fs, ret] = await Promise.all([
       supabase.from("videos").select("*").eq("video_id", id).maybeSingle(),
       supabase
         .from("metrics_snapshots")
@@ -71,11 +73,20 @@ export default async function VideoDetail({
         .eq("video_id", id)
         .order("ts", { ascending: true }),
       supabase.from("feedback_signals").select("*").eq("video_id", id).limit(50),
+      // Every snapshot of this video's curve; lib/sceneRetention keeps the
+      // newest measured_date. An error (0002 not applied) reads as "no curve".
+      supabase
+        .from("retention_points")
+        .select("elapsed_ratio,watch_ratio,measured_date")
+        .eq("video_id", id)
+        .order("measured_date", { ascending: false })
+        .limit(1000),
     ]);
     video = (vid.data as VideoRow | null) ?? null;
     snapshots = (snap.data as MetricsSnapshotRow[]) ?? [];
     events = (ev.data as SystemEventRow[]) ?? [];
     learningSignals = (fs.data as FeedbackSignalRow[]) ?? [];
+    retentionPoints = ret.error ? [] : ((ret.data as RetentionPointRow[]) ?? []);
     // Scored against its OWN channel, not the switcher: a link to a video is
     // valid whatever channel is selected, and the score that explains this
     // video is the one its channel learned.
@@ -119,6 +130,14 @@ export default async function VideoDetail({
   }
 
   const latest = snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
+
+  // `manifest` (migration 0013) is read untyped: the mapping only needs its
+  // measured audio duration and parses it defensively.
+  const sceneRetention = summarizeSceneRetention(
+    video.scenes ?? null,
+    (video as { manifest?: unknown }).manifest ?? null,
+    retentionPoints,
+  );
 
   // The gate's own words, read back from the event it emitted. A video with no
   // gate event has an unknown verdict — which the panel says, rather than
@@ -193,6 +212,7 @@ export default async function VideoDetail({
         <Storyboard
           scenes={video.scenes ?? null}
           scriptText={video.script_text}
+          retention={sceneRetention}
           labels={{
             empty: t.videoDetail.storyboardEmpty,
             scene: t.videoDetail.storyboardScene,
@@ -208,6 +228,16 @@ export default async function VideoDetail({
               likely_inaccurate: t.videoDetail.storyboardClaimInaccurate,
               unverifiable: t.videoDetail.storyboardClaimUnverifiable,
               not_checked: t.videoDetail.storyboardClaimNotChecked,
+            },
+            retention: {
+              title: t.videoDetail.storyboardRetention,
+              note: t.videoDetail.storyboardRetentionNote,
+              noCurve: t.videoDetail.storyboardRetentionNoCurve,
+              noTiming: t.videoDetail.storyboardRetentionNoTiming,
+              unknown: t.videoDetail.storyboardRetentionUnknown,
+              points: t.videoDetail.storyboardRetentionPoints,
+              perMin: t.videoDetail.storyboardRetentionPerMin,
+              worst: t.videoDetail.storyboardRetentionWorst,
             },
           }}
         />

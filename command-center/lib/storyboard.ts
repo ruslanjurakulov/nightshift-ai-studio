@@ -201,6 +201,16 @@ export function parseStoryboard(scriptText: string | null | undefined): Storyboa
 }
 
 /**
+ * A stored scene's Video IR id: its own `id` when present, else the section's
+ * position in the stored plan — the same index the pipeline used — not the
+ * display number, which skips blanks. Shared with lib/sceneRetention so a
+ * scene's retention row lands on the same Storyboard card.
+ */
+export function sceneIdFor(s: VideoScene | null | undefined, position: number): string {
+  return (typeof s?.id === "string" && s.id.trim()) || `s${String(position).padStart(3, "0")}`;
+}
+
+/**
  * Build a storyboard from the video's STRUCTURED scene plan (migration 0011),
  * when the pipeline stored one. Richer than the narration split: each scene
  * carries its own name, type and b-roll keywords, and its length is the
@@ -238,9 +248,7 @@ export function scenesToStoryboard(scenes: VideoScene[] | null | undefined): Sto
     const keywords = Array.isArray(s?.keywords)
       ? s!.keywords!.map((k) => String(k).trim()).filter(Boolean)
       : [];
-    // The scene id is the section's position in the stored plan — the same
-    // index the pipeline used — not the display number, which skips blanks.
-    const sceneId = (typeof s?.id === "string" && s.id.trim()) || `s${String(position).padStart(3, "0")}`;
+    const sceneId = sceneIdFor(s, position);
     const claims = Array.isArray(s?.claims)
       ? s!.claims!.map(normalizeClaim).filter((c): c is StoryboardClaim => c !== null)
       : undefined;

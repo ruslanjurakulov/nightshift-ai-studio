@@ -1,0 +1,170 @@
+{
+  "_comment": "Shared cases for scene-level retention. modules/scene_retention.py (tests/test_scene_retention.py) and command-center/lib/sceneRetention.ts (command-center/tests/sceneRetention.test.ts) must both reproduce every expected value. null means unknown, never 0.",
+  "mapping": [
+    {
+      "name": "scene windows on measured points, ranked by loss per minute",
+      "duration_s": 100,
+      "points": [
+        {"elapsed_ratio": 0.0, "watch_ratio": 1.0, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.25, "watch_ratio": 0.9, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.5, "watch_ratio": 0.8, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.75, "watch_ratio": 0.5, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 1.0, "watch_ratio": 0.4, "measured_date": "2026-09-01"}
+      ],
+      "scenes": [
+        {"id": "s000", "start_s": 0, "end_s": 25},
+        {"id": "s001", "start_s": 25, "end_s": 50},
+        {"id": "s002", "start_s": 50, "end_s": 75},
+        {"id": "s003", "start_s": 75, "end_s": 100}
+      ],
+      "expected": [
+        {"scene_id": "s000", "retention_start": 1.0, "retention_end": 0.9, "drop": 0.1, "drop_per_min": 0.24, "rank": 2},
+        {"scene_id": "s001", "retention_start": 0.9, "retention_end": 0.8, "drop": 0.1, "drop_per_min": 0.24, "rank": 3},
+        {"scene_id": "s002", "retention_start": 0.8, "retention_end": 0.5, "drop": 0.3, "drop_per_min": 0.72, "rank": 1},
+        {"scene_id": "s003", "retention_start": 0.5, "retention_end": 0.4, "drop": 0.1, "drop_per_min": 0.24, "rank": 4}
+      ]
+    },
+    {
+      "name": "interpolates linearly inside a segment",
+      "duration_s": 100,
+      "points": [
+        {"elapsed_ratio": 0.0, "watch_ratio": 1.0, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.25, "watch_ratio": 0.9, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.5, "watch_ratio": 0.8, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.75, "watch_ratio": 0.5, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 1.0, "watch_ratio": 0.4, "measured_date": "2026-09-01"}
+      ],
+      "scenes": [
+        {"id": "s000", "start_s": 10, "end_s": 40},
+        {"id": "s001", "start_s": 40, "end_s": 70}
+      ],
+      "expected": [
+        {"scene_id": "s000", "retention_start": 0.96, "retention_end": 0.84, "drop": 0.12, "drop_per_min": 0.24, "rank": 2},
+        {"scene_id": "s001", "retention_start": 0.84, "retention_end": 0.56, "drop": 0.28, "drop_per_min": 0.56, "rank": 1}
+      ]
+    },
+    {
+      "name": "never extrapolates before the first measured point (YouTube starts at 1%)",
+      "duration_s": 200,
+      "points": [
+        {"elapsed_ratio": 0.01, "watch_ratio": 0.95, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.2, "watch_ratio": 0.7, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.4, "watch_ratio": 0.6, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.6, "watch_ratio": 0.5, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.8, "watch_ratio": 0.45, "measured_date": "2026-09-01"}
+      ],
+      "scenes": [
+        {"id": "s000", "start_s": 0, "end_s": 40},
+        {"id": "s001", "start_s": 40, "end_s": 120},
+        {"id": "s002", "start_s": 120, "end_s": 200}
+      ],
+      "expected": [
+        {"scene_id": "s000", "retention_start": null, "retention_end": 0.7, "drop": null, "drop_per_min": null, "rank": null},
+        {"scene_id": "s001", "retention_start": 0.7, "retention_end": 0.5, "drop": 0.2, "drop_per_min": 0.15, "rank": 1},
+        {"scene_id": "s002", "retention_start": 0.5, "retention_end": null, "drop": null, "drop_per_min": null, "rank": null}
+      ]
+    },
+    {
+      "name": "a scene without real times stays unknown; its neighbours are still measured",
+      "duration_s": 100,
+      "points": [
+        {"elapsed_ratio": 0.0, "watch_ratio": 1.0, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.25, "watch_ratio": 0.9, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.5, "watch_ratio": 0.8, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.75, "watch_ratio": 0.5, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 1.0, "watch_ratio": 0.4, "measured_date": "2026-09-01"}
+      ],
+      "scenes": [
+        {"id": "s000", "start_s": 0, "end_s": 50},
+        {"id": "s001", "start_s": null, "end_s": null},
+        {"id": "s002", "start_s": 80, "end_s": 70}
+      ],
+      "expected": [
+        {"scene_id": "s000", "retention_start": 1.0, "retention_end": 0.8, "drop": 0.2, "drop_per_min": 0.24, "rank": 1},
+        {"scene_id": "s001", "retention_start": null, "retention_end": null, "drop": null, "drop_per_min": null, "rank": null},
+        {"scene_id": "s002", "retention_start": null, "retention_end": null, "drop": null, "drop_per_min": null, "rank": null}
+      ]
+    },
+    {
+      "name": "too few measured points: a null watch ratio is not a zero, so 4 usable points is not a curve",
+      "duration_s": 100,
+      "points": [
+        {"elapsed_ratio": 0.0, "watch_ratio": 1.0, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.25, "watch_ratio": null, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.5, "watch_ratio": 0.8, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.75, "watch_ratio": 0.5, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 1.0, "watch_ratio": 0.4, "measured_date": "2026-09-01"}
+      ],
+      "scenes": [
+        {"id": "s000", "start_s": 0, "end_s": 50}
+      ],
+      "expected": [
+        {"scene_id": "s000", "retention_start": null, "retention_end": null, "drop": null, "drop_per_min": null, "rank": null}
+      ]
+    },
+    {
+      "name": "unknown video duration leaves every scene unknown",
+      "duration_s": null,
+      "points": [
+        {"elapsed_ratio": 0.0, "watch_ratio": 1.0, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.25, "watch_ratio": 0.9, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.5, "watch_ratio": 0.8, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.75, "watch_ratio": 0.5, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 1.0, "watch_ratio": 0.4, "measured_date": "2026-09-01"}
+      ],
+      "scenes": [
+        {"id": "s000", "start_s": 0, "end_s": 50}
+      ],
+      "expected": [
+        {"scene_id": "s000", "retention_start": null, "retention_end": null, "drop": null, "drop_per_min": null, "rank": null}
+      ]
+    },
+    {
+      "name": "only the newest measured_date is used",
+      "duration_s": 100,
+      "points": [
+        {"elapsed_ratio": 0.0, "watch_ratio": 1.0, "measured_date": "2026-08-01"},
+        {"elapsed_ratio": 0.25, "watch_ratio": 0.5, "measured_date": "2026-08-01"},
+        {"elapsed_ratio": 0.5, "watch_ratio": 0.4, "measured_date": "2026-08-01"},
+        {"elapsed_ratio": 0.75, "watch_ratio": 0.3, "measured_date": "2026-08-01"},
+        {"elapsed_ratio": 1.0, "watch_ratio": 0.2, "measured_date": "2026-08-01"},
+        {"elapsed_ratio": 0.0, "watch_ratio": 1.0, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.25, "watch_ratio": 0.9, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.5, "watch_ratio": 0.8, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.75, "watch_ratio": 0.5, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 1.0, "watch_ratio": 0.4, "measured_date": "2026-09-01"}
+      ],
+      "scenes": [
+        {"id": "s000", "start_s": 0, "end_s": 25}
+      ],
+      "expected": [
+        {"scene_id": "s000", "retention_start": 1.0, "retention_end": 0.9, "drop": 0.1, "drop_per_min": 0.24, "rank": 1}
+      ]
+    },
+    {
+      "name": "a rising curve is a negative drop, ranked last, never clamped to 0",
+      "duration_s": 60,
+      "points": [
+        {"elapsed_ratio": 0.0, "watch_ratio": 1.0, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.25, "watch_ratio": 0.8, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.5, "watch_ratio": 0.9, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 0.75, "watch_ratio": 0.7, "measured_date": "2026-09-01"},
+        {"elapsed_ratio": 1.0, "watch_ratio": 0.6, "measured_date": "2026-09-01"}
+      ],
+      "scenes": [
+        {"id": "s000", "start_s": 15, "end_s": 30},
+        {"id": "s001", "start_s": 30, "end_s": 60}
+      ],
+      "expected": [
+        {"scene_id": "s000", "retention_start": 0.8, "retention_end": 0.9, "drop": -0.1, "drop_per_min": -0.4, "rank": 2},
+        {"scene_id": "s001", "retention_start": 0.9, "retention_end": 0.6, "drop": 0.3, "drop_per_min": 0.6, "rank": 1}
+      ]
+    }
+  ],
+  "duration": [
+    {"name": "measured audio duration wins", "manifest": {"audio": {"duration_s": 312.5}}, "scenes": [{"end_s": 300}], "expected": 312.5},
+    {"name": "falls back to the last real scene end", "manifest": {"audio": {"duration_s": null}}, "scenes": [{"end_s": 120}, {"end_s": 298.2}, {"end_s": null}], "expected": 298.2},
+    {"name": "no audio duration and no real scene end is unknown, not 0", "manifest": {"audio": {"duration_s": 0}}, "scenes": [{"end_s": null}], "expected": null},
+    {"name": "no manifest and no scenes is unknown", "manifest": null, "scenes": null, "expected": null}
+  ]
+}

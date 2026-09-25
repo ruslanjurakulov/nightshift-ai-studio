@@ -92,6 +92,32 @@ Below `MIN_CURVES = 3` usable curves (each needing `MIN_POINTS = 5` points) it
 returns `""`, so appending it to a prompt is always safe and one video's story is
 never mistaken for a pattern.
 
+### Per scene
+
+`modules/scene_retention.py` · twin `command-center/lib/sceneRetention.ts` ·
+shared cases `samples/scene_retention_cases.json`
+
+The newest curve is placed on the Video IR's real scene windows
+(`videos.manifest`, migration 0013): a point at `elapsed_ratio` sits at
+`elapsed_ratio × audio duration` seconds, and the rendered video is exactly the
+audio's length. Each scene gets retention at its start and end (linear
+interpolation between measured points), the drop, the drop per minute, and a
+rank on that rate — a long scene loses more simply by being long. It is computed
+on read; nothing new is stored.
+
+Unknown stays unknown: no real scene times, no known duration, or fewer than
+`MIN_POINTS` measured points give `null`, never 0. The curve is never
+extrapolated, and YouTube reports it from 1% of the video onwards, so the first
+scene's start retention (and therefore its drop) is unknown.
+
+The video page's Storyboard shows each scene's numbers and highlights the three
+fastest-losing scenes; without data it shows one neutral note saying why. The
+learning memory proposes a **pending** retention learning when a scene type or
+shot recipe loses viewers at ≥ 1.4x (or ≤ 0.6x) the channel's median scene rate,
+only with at least `MIN_CURVES` videos of scene data on the channel and
+`MIN_CURVES` distinct videos in that group. Nothing reaches a prompt until an
+admin approves it.
+
 ## 4. The pre-publish gate — **this changes publish behaviour**
 
 `modules/publish_gate.py` · events `publish.blocked`, `publish.allowed`
