@@ -264,6 +264,118 @@ class RenderSceneTestCase(unittest.TestCase):
         self.assertFalse(Path(props_arg.split("=", 1)[1]).exists())
 
 
+class BundleTestCase(unittest.TestCase):
+    """``remotion bundle`` once, then ``remotion render <bundle-dir>``."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.public = self.root / "public"
+        self.public.mkdir()
+        self.out = self.root / "out" / "s002.mp4"
+        p1 = mock.patch.object(rr.shutil, "which", return_value="/usr/bin/npx")
+        p2 = mock.patch.object(rr, "_engine_installed", return_value=True)
+        self.which = p1.start()
+        p2.start()
+        self.addCleanup(mock.patch.stopall)
+
+    def _fake_bundle(self, returncode=0, index=True, captured=None):
+        def run(cmd, **kw):
+            if captured is not None:
+                captured.update(cmd=cmd, kw=kw)
+            out_dir = Path(next(a for a in cmd if a.startswith("--out-dir=")).split("=", 1)[1])
+            if index:
+                out_dir.mkdir(parents=True, exist_ok=True)
+                (out_dir / "index.html").write_text("<html></html>")
+            return subprocess.CompletedProcess(cmd, returncode, stdout="", stderr="boom" if returncode else "")
+        return run
+
+    def test_build_bundle_command(self):
+        cmd = rr.build_bundle_command("npx", Path("/b/bundle"), public_dir=Path("/b/public"))
+        self.assertEqual(cmd[:5], ["npx", "--no-install", "remotion", "bundle", "src/index.ts"])
+        self.assertIn("--out-dir=/b/bundle", cmd)
+        self.assertIn("--public-dir=/b/public", cmd)
+        bare = rr.build_bundle_command("npx", Path("/b/bundle"))
+        self.assertFalse(any(a.startswith("--public-dir") for a in bare))
+
+    def test_render_command_from_a_bundle_names_the_directory(self):
+        cmd = rr.build_command("npx", Path("/t/p.json"), Path("/o/s.mp4"), entry_point="/b/bundle")
+        self.assertEqual(cmd[3:7], ["render", "/b/bundle", "Scene", "/o/s.mp4"])
+
+    def test_bundle_success_returns_the_directory(self):
+        seen = {}
+        with _Env(CHRONOS_REMOTION="1", CHRONOS_REMOTION_TIMEOUT="42"), \
+                mock.patch.object(rr.subprocess, "run", side_effect=self._fake_bundle(captured=seen)):
+            got = rr.bundle(self.root / "bundle", public_dir=self.public)
+        self.assertEqual(got, (self.root / "bundle").resolve())
+        self.assertTrue(rr.is_bundle(got))
+        self.assertEqual(seen["cmd"][3], "bundle")
+        self.assertIn(f"--public-dir={self.public.resolve()}", seen["cmd"])
+        self.assertEqual(seen["kw"]["timeout"], 42.0)
+        self.assertEqual(seen["kw"]["cwd"], str(rr.ENGINE_DIR))
+
+    def test_bundle_failures_return_none(self):
+        cases = [
+            dict(side_effect=self._fake_bundle(returncode=1)),
+            dict(side_effect=self._fake_bundle(index=False)),
+            dict(side_effect=subprocess.TimeoutExpired(cmd=["npx"], timeout=1)),
+            dict(side_effect=OSError("no exec")),
+            dict(side_effect=RuntimeError("weird")),
+        ]
+        for i, kw in enumerate(cases):
+            with _Env(CHRONOS_REMOTION="1"), mock.patch.object(rr.subprocess, "run", **kw):
+                self.assertIsNone(rr.bundle(self.root / f"b{i}", public_dir=self.public), i)
+
+    def test_bundle_declines_without_running(self):
+        full = self.root / "full"
+        full.mkdir()
+        (full / "keep.txt").write_text("user data")
+        with mock.patch.object(rr.subprocess, "run") as run:
+            with _Env():
+                self.assertIsNone(rr.bundle(self.root / "b", public_dir=self.public))
+            with _Env(CHRONOS_REMOTION="1"):
+                self.assertIsNone(rr.bundle(full, public_dir=self.public))
+                self.assertIsNone(rr.bundle(self.root / "b", public_dir=self.root / "nope"))
+                self.which.return_value = None
+                self.assertIsNone(rr.bundle(self.root / "b", public_dir=self.public))
+            run.assert_not_called()
+        self.assertTrue((full / "keep.txt").is_file())
+
+    def test_render_from_a_bundle_uses_it_and_drops_public_dir(self):
+        bundle = self.root / "bundle"
+        bundle.mkdir()
+        (bundle / "index.html").write_text("")
+        seen = {}
+
+        def run(cmd, **kw):
+            seen["cmd"] = cmd
+            self.out.write_bytes(b"\x00" * 16)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        ctx = {"assets_base_dir": str(self.public), "serve_url": str(bundle),
+               "assets": [{"id": "a1", "kind": "image", "path": "scene000/asset00.png"}]}
+        with _Env(CHRONOS_REMOTION="1"), mock.patch.object(rr.subprocess, "run", side_effect=run):
+            self.assertIsNotNone(rr.render_scene(_scene(), ctx, self.out))
+        self.assertEqual(seen["cmd"][4], str(bundle.resolve()))
+        self.assertFalse(any(a.startswith("--public-dir") for a in seen["cmd"]))
+
+    def test_serve_url_that_is_not_a_bundle_renders_from_source(self):
+        seen = {}
+
+        def run(cmd, **kw):
+            seen["cmd"] = cmd
+            self.out.write_bytes(b"\x00" * 16)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        ctx = {"assets_base_dir": str(self.public), "serve_url": str(self.root / "gone")}
+        with _Env(CHRONOS_REMOTION="1"), mock.patch.object(rr.subprocess, "run", side_effect=run):
+            with self.assertLogs(rr.logger, level="WARNING"):
+                self.assertIsNotNone(rr.render_scene(_scene(), ctx, self.out))
+        self.assertEqual(seen["cmd"][4], rr.ENTRY_POINT)
+        self.assertIn(f"--public-dir={self.public}", seen["cmd"])
+
+
 class CatalogueCoverageTestCase(unittest.TestCase):
     """Every scene recipe the catalogue says Remotion can execute has a branch
     in the engine (read from the TS source; no Node needed)."""

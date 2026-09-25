@@ -29,6 +29,20 @@ Availability
 Node/npx are on PATH and ``video-engine`` has its dependencies installed. It
 never installs anything.
 
+One bundle per run
+------------------
+``remotion render src/index.ts`` re-bundles the whole project (webpack + a copy
+of the public dir) for every scene. :func:`prepare_bundle` stages the assets of
+every Remotion scene about to be rendered into ONE public dir
+(``<public>/sceneNNN/assetNN.ext``), runs ``remotion bundle`` once (the public
+dir is baked into the bundle, so it must be complete first) and returns a
+:class:`RemotionBundle`; :func:`render_scene` with ``bundle=`` then renders
+from that directory. scene_render does this once per ``render_project`` run and
+removes the bundle afterwards (:meth:`RemotionBundle.close`). When bundling
+fails, :func:`prepare_bundle` returns None and every scene takes the
+per-scene path above — nothing else changes (and a failed scene still falls
+back to ffmpeg).
+
 Failures
 --------
 :func:`render_scene` raises :class:`SceneRemotionError` on any failure — it is
@@ -45,8 +59,9 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Dict, Iterable, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -100,31 +115,113 @@ def scene_dict_for_window(scene, start_frame: int, end_frame: int, fps: int) -> 
     return d
 
 
-def _stage_assets(assets: List, public_dir: Path) -> List[dict]:
+def _stage_assets(assets: List, public_dir: Path, subdir: str = "") -> List[dict]:
     """Expose the scene's asset files inside ``public_dir`` (Remotion's
     --public-dir, which it copies into its bundle — so never a whole output
-    tree). Hard link when possible, else copy. Returns ``[{id,kind,path}]``
-    with paths relative to ``public_dir``."""
+    tree), under ``subdir`` when given. Hard link when possible, else copy.
+    Returns ``[{id,kind,path}]`` with paths relative to ``public_dir``."""
+    target = public_dir / subdir if subdir else public_dir
+    target.mkdir(parents=True, exist_ok=True)
     out = []
     for i, a in enumerate(assets):
         src = Path(a.path)
         name = f"asset{i:02d}{src.suffix.lower()}"
-        dst = public_dir / name
+        dst = target / name
         try:
             os.link(src, dst)
         except OSError:
             shutil.copy2(src, dst)
-        out.append({"id": a.id, "kind": a.kind, "path": name})
+        out.append({"id": a.id, "kind": a.kind, "path": f"{subdir}/{name}" if subdir else name})
     return out
 
 
+class RemotionBundle:
+    """One prebuilt Remotion bundle shared by the scenes of a run: the bundle
+    directory, the public dir baked into it and each scene's staged assets.
+    :meth:`close` removes all of it (idempotent, never raises)."""
+
+    def __init__(self, root: Path, serve_dir: Path, public_dir: Path, assets: Dict[str, List[dict]]):
+        self.root = Path(root)
+        self.serve_dir = Path(serve_dir)
+        self.public_dir = Path(public_dir)
+        self.assets = dict(assets)
+
+    def covers(self, scene_id: str) -> bool:
+        """True when ``scene_id``'s assets were staged before bundling (only
+        those scenes can render from this bundle)."""
+        return scene_id in self.assets
+
+    def close(self) -> None:
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def __enter__(self) -> "RemotionBundle":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+
+def prepare_bundle(jobs: Iterable, project, *,
+                   bundler: Optional[Callable] = None) -> Optional[RemotionBundle]:
+    """Stage the assets of every job in ``jobs`` (the Remotion scenes about to
+    be rendered) into one public dir and bundle the engine once. Returns a
+    :class:`RemotionBundle` (the caller closes it), or None when there is
+    nothing to bundle or bundling failed — then scenes render per scene as
+    before. Never raises. ``bundler(out_dir, public_dir=...) -> Optional[Path]``
+    is injectable for tests (default ``remotion_renderer.bundle``)."""
+    root = None
+    try:
+        from modules import remotion_renderer, scene_render
+
+        jobs = [j for j in jobs if project.scene(j.scene_id) is not None]
+        if not jobs:
+            return None
+        root = Path(tempfile.mkdtemp(prefix="remotion-bundle-"))
+        public = root / "public"
+        public.mkdir()
+        staged: Dict[str, List[dict]] = {}
+        for i, job in enumerate(jobs):
+            if job.scene_id in staged:
+                continue
+            scene = project.scene(job.scene_id)
+            try:
+                staged[job.scene_id] = _stage_assets(scene_render._usable_assets(project, scene),
+                                                     public, f"scene{i:03d}")
+            except OSError as exc:
+                # This scene takes the per-scene path (and its own error there).
+                logger.warning("remotion: could not stage assets of scene %s for the bundle (%s)",
+                               job.scene_id, type(exc).__name__)
+        if not staged:
+            shutil.rmtree(root, ignore_errors=True)
+            return None
+        t0 = time.monotonic()
+        serve = (bundler or remotion_renderer.bundle)(root / "bundle", public_dir=public)
+        if serve is None or not remotion_renderer.is_bundle(serve):
+            logger.warning("remotion: could not bundle the engine once; rendering %d scene(s) "
+                           "one by one", len(staged))
+            shutil.rmtree(root, ignore_errors=True)
+            return None
+        logger.info("remotion: bundled once in %.1fs for %d scene(s)",
+                    time.monotonic() - t0, len(staged))
+        return RemotionBundle(root, Path(serve), public, staged)
+    except Exception as exc:  # noqa: BLE001 — no bundle just means per-scene renders
+        logger.warning("remotion: bundle preparation failed (%s); rendering scenes one by one",
+                       type(exc).__name__)
+        if root is not None:
+            shutil.rmtree(root, ignore_errors=True)
+        return None
+
+
 def render_scene(job, project, out_path, *, ffmpeg: Optional[str] = None,
-                 remotion_render: Optional[Callable] = None) -> Path:
+                 remotion_render: Optional[Callable] = None,
+                 bundle: Optional[RemotionBundle] = None) -> Path:
     """Render ``job`` (a ``scene_render.SceneJob``) with Remotion to
     ``out_path``: a silent H.264 clip of exactly the job's frame count at the
     project's width/height/fps. Raises SceneRemotionError on any failure.
-    ``remotion_render`` is injectable for tests (default
-    ``remotion_renderer.render_scene``)."""
+    With a ``bundle`` that covers this scene, it renders from that prebuilt
+    bundle (its assets are already inside); otherwise it stages the assets
+    and lets Remotion bundle for this scene alone. ``remotion_render`` is
+    injectable for tests (default ``remotion_renderer.render_scene``)."""
     from modules import remotion_renderer, render_backend, scene_render
 
     scene = project.scene(job.scene_id)
@@ -140,15 +237,21 @@ def render_scene(job, project, out_path, *, ffmpeg: Optional[str] = None,
     out_path = Path(out_path)
 
     with tempfile.TemporaryDirectory(prefix="scene-remotion-") as tmp:
-        public = Path(tmp) / "public"
-        public.mkdir()
-        try:
-            assets = _stage_assets(scene_render._usable_assets(project, scene), public)
-        except OSError as exc:
-            raise SceneRemotionError(f"scene {job.scene_id}: could not stage assets "
-                                     f"({type(exc).__name__})") from None
-        context = {"width": w, "height": h, "fps": fps,
-                   "assets_base_dir": str(public), "assets": assets}
+        if bundle is not None and bundle.covers(job.scene_id):
+            context = {"width": w, "height": h, "fps": fps,
+                       "assets_base_dir": str(bundle.public_dir),
+                       "assets": [dict(a) for a in bundle.assets[job.scene_id]],
+                       "serve_url": str(bundle.serve_dir)}
+        else:
+            public = Path(tmp) / "public"
+            public.mkdir()
+            try:
+                assets = _stage_assets(scene_render._usable_assets(project, scene), public)
+            except OSError as exc:
+                raise SceneRemotionError(f"scene {job.scene_id}: could not stage assets "
+                                         f"({type(exc).__name__})") from None
+            context = {"width": w, "height": h, "fps": fps,
+                       "assets_base_dir": str(public), "assets": assets}
         # claims / map / lower_third from scene_graphics.json (graphic_recipes).
         context.update(getattr(job, "graphics", None) or {})
         raw = Path(tmp) / "remotion.mp4"

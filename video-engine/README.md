@@ -121,6 +121,15 @@ python -c "from modules.remotion_renderer import render_scene; ..."
 `None` so the caller can fall back to another backend. It never runs
 `npm install`; `video-engine/node_modules` must already exist.
 
+The scene-level path (`modules/scene_render.py` → `modules/scene_remotion.py`)
+bundles once per run: it stages every Remotion scene's assets into one public
+dir (`sceneNNN/assetNN.ext`), runs `remotion bundle` once
+(`remotion_renderer.bundle`) and renders each scene from that bundle
+(`serve_url` in the context → `remotion render <bundle-dir> Scene …`). The
+public dir is baked into the bundle, so `--public-dir` is not passed when
+rendering from it. If bundling fails, each scene renders from `src/index.ts`
+as above; the bundle is removed when the run ends.
+
 ## License — read before commercial scale-up
 
 Remotion is **not** MIT/Apache. Its license (see
