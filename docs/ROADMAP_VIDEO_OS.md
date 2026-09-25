@@ -168,6 +168,7 @@ Uchta qoida:
 **PR 4.3 — Provider task persistence + upload idempotency** · Q3, Y10
 - Video provider `task_id` checkpoint'ga yoziladi; resume vaqtida yangi so'rov yubormasdan poll qilinadi.
 - Upload noaniq tugasa — qayta yuklashdan oldin kanaldagi so'nggi upload'lar ichidan run-hash (description'dagi yashirin marker) bo'yicha qidiriladi.
+- Bu ledger'lar (`checkpoint.json`, `provider_tasks.json`, `upload_attempt.json`, `script.json`) GitHub Actions run'lari orasida har kanal uchun `actions/cache` orqali saqlanadi — `tools/run_state_cache.py`; qo'lda davom ettirish: workflow'ning `resume` inputi.
 
 ### Faza 5 — O'rganish halqasi
 

@@ -33,7 +33,10 @@ Run identity
 Entries belong to one *run*, identified by the run checkpoint's ``created_at``
 (``run_checkpoint.run_epoch``). A fully published run clears its checkpoint, so
 the next run of the same topic gets a new epoch and starts with an empty ledger
-— it never inherits another run's tasks.
+— it never inherits another run's tasks. With no checkpoint at all (no epoch)
+a ledger on disk is never adopted. The daily workflow carries this file across
+GitHub Actions runs (``tools/run_state_cache.py``); these two rules are what
+make a restored ledger from an older run harmless.
 
 Guarantees, matching the rest of the pipeline
 ---------------------------------------------
@@ -183,7 +186,11 @@ class TaskLedger:
                 logger.warning("Could not read the run epoch for %r (%s: %s)",
                                slug, type(e).__name__, e)
         ledger = cls(slug=slug, root=root, run_epoch=epoch)
-        if not slug:
+        if not slug or not epoch:
+            # No checkpoint means no run identity to match against: never adopt
+            # a ledger on disk (it may be one restored from an older run by the
+            # workflow's run-state cache). Same rule as upload_idempotency.begin.
+            # New tasks are still recorded.
             return ledger
         path = ledger_path(slug, root)
         try:

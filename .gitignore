@@ -26,6 +26,9 @@
 /output/
 /logs/
 /history/
+# Resume ledgers carried between Actions runs (tools/run_state_cache.py).
+/.run_state/
+/.run_state.staging/
 __pycache__/
 *.pyc
 *.pyo
