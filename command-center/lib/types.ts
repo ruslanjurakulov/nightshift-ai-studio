@@ -62,7 +62,9 @@ export interface ReviewIntentRow {
   id: number;
   channel_id: string;
   video_id: string | null;
-  action: "approve" | "regenerate" | "regenerate_script";
+  action: "approve" | "regenerate" | "regenerate_script" | "regenerate_scene";
+  /** For "regenerate_scene" only (migration 0015): the Video IR scene id. */
+  scene_id?: string | null;
   note: string | null;
   created_at: string;
   consumed_at: string | null;

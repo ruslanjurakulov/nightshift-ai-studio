@@ -121,10 +121,16 @@ class MediaFetcher:
             dest.unlink(missing_ok=True)
             return False
 
-    def fetch_videos(self, keywords: list[str], count: int = 10) -> list[Path]:
-        """Fetch `count` unique HD videos for the given keywords."""
+    def fetch_videos(self, keywords: list[str], count: int = 10,
+                     exclude_ids=None) -> list[Path]:
+        """Fetch `count` unique HD videos for the given keywords.
+
+        `exclude_ids` (Pexels ids, as strings) are never fetched — a targeted
+        scene repair (modules/scene_repair.py) passes every clip the run
+        already uses, so the replacement footage is actually new."""
         paths: list[Path] = []
         used_ids: set[int] = set()
+        excluded = {str(i) for i in (exclude_ids or ())}
 
         for keyword in keywords:
             if len(paths) >= count:
@@ -136,7 +142,7 @@ class MediaFetcher:
                     if len(paths) >= count:
                         break
                     vid_id = v["id"]
-                    if vid_id in used_ids:
+                    if vid_id in used_ids or str(vid_id) in excluded:
                         continue
                     link = self._best_video_file(v)
                     if not link:
@@ -369,10 +375,13 @@ class MediaFetcher:
         resp.raise_for_status()
         return resp.json().get("photos", [])
 
-    def fetch_images(self, keywords: list[str], count: int = 8) -> list[Path]:
-        """Fetch high-res images; they'll get Ken Burns treatment in compositor."""
+    def fetch_images(self, keywords: list[str], count: int = 8,
+                     exclude_ids=None) -> list[Path]:
+        """Fetch high-res images; they'll get Ken Burns treatment in compositor.
+        `exclude_ids` as in :meth:`fetch_videos`."""
         paths: list[Path] = []
         used_ids: set[int] = set()
+        excluded = {str(i) for i in (exclude_ids or ())}
 
         for keyword in keywords:
             if len(paths) >= count:
@@ -383,7 +392,7 @@ class MediaFetcher:
                     if len(paths) >= count:
                         break
                     pid = p["id"]
-                    if pid in used_ids:
+                    if pid in used_ids or str(pid) in excluded:
                         continue
                     url = p.get("src", {}).get("original") or p.get("src", {}).get("large2x")
                     if not url:

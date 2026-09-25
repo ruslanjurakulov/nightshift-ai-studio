@@ -13,6 +13,7 @@ import {
   type SceneRetentionSummary,
 } from "@/lib/sceneRetention";
 import { EmptyState } from "@/components/ui";
+import { RegenerateSceneButton } from "@/components/videos/RegenerateSceneButton";
 import { fmt } from "@/lib/i18n";
 
 /**
@@ -28,12 +29,16 @@ import { fmt } from "@/lib/i18n";
  * fastest-losing scenes highlighted. Otherwise one neutral note says why not —
  * an unmeasured scene is never drawn as a zero.
  *
- * Server component: pure text in, no state, no client JS.
+ * Each scene with a Video IR id can also file a "Regenerate scene" request
+ * (RegenerateSceneButton — a review_intents row, nothing more).
+ *
+ * Server component; the only client JS is the per-scene request button.
  */
 export function Storyboard({
   scenes: sceneRows,
   scriptText,
   retention = null,
+  repair = null,
   labels,
 }: {
   /** The video's structured scene plan (migration 0011), when stored. */
@@ -42,6 +47,18 @@ export function Storyboard({
   scriptText: string | null;
   /** Scene-level retention (lib/sceneRetention), when the page computed it. */
   retention?: SceneRetentionSummary | null;
+  /**
+   * Per-scene "Regenerate scene" requests (lib/sceneRepair). Only given for a
+   * video with a channel and id; each button only files a review_intents row.
+   * Scenes without a Video IR id (narration-split fallback) get no button.
+   */
+  repair?: {
+    channelId: string;
+    videoId: string;
+    /** Scene ids with a request still waiting. */
+    pending: ReadonlySet<string>;
+    labels: { action: string; filing: string; filed: string; hint: string };
+  } | null;
   labels: {
     empty: string;
     scene: string;
@@ -110,6 +127,9 @@ export function Storyboard({
       </div>
       {counts.total > 0 && (
         <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">{labels.claimsAdvisory}</p>
+      )}
+      {repair && scenes.some((s) => s.sceneId) && (
+        <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">{repair.labels.hint}</p>
       )}
       {retention && rl && (
         <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">
@@ -204,6 +224,15 @@ export function Storyboard({
                     </div>
                   )}
                 </div>
+              )}
+              {repair && s.sceneId && (
+                <RegenerateSceneButton
+                  channelId={repair.channelId}
+                  videoId={repair.videoId}
+                  sceneId={s.sceneId}
+                  pending={repair.pending.has(s.sceneId)}
+                  labels={repair.labels}
+                />
               )}
               {s.keywords && s.keywords.length > 0 && (
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">

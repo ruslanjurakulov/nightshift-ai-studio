@@ -983,8 +983,11 @@ def run(
         and str(privacy).lower() == "public"
         and bool(getattr(ctx.agent, "require_two_person_publish", False))
     ):
-        from modules import publish_approval
-        if not publish_approval.has_approved(channel_id, slug=slug, topic=topic):
+        from modules import publish_approval, scene_repair
+        # A targeted scene repair of this run voids any approval decided
+        # before it (modules/scene_repair.py): the approved cut is gone.
+        if not publish_approval.has_approved(channel_id, slug=slug, topic=topic,
+                                             not_before=scene_repair.repaired_at(slug)):
             awaiting_two_person = True
 
     video_id, video_url = None, None
@@ -1279,10 +1282,21 @@ if __name__ == "__main__":
     parser.add_argument("--visual-style", dest="visual_style", default=None,
                         help="Visual-style directive or style-preset name for THIS "
                              "run only (default: the channel's / series' style)")
+    # Targeted repair (modules/scene_repair.py): re-fetch and re-render only
+    # these scenes of the channel's unfinished run, then hold the new cut for
+    # review. It never uploads. Validated strictly; the run must already exist.
+    parser.add_argument("--repair-scenes", dest="repair_scenes", default=None,
+                        help="Repair only these scenes of the channel's last unfinished run "
+                             "(e.g. '3,17' or 's003,s017'), then hold the new cut for review. "
+                             "With --topic, repairs that topic's run.")
     args = parser.parse_args()
 
     if args.list_channels:
         list_channels()
+    elif args.repair_scenes is not None:
+        from modules import scene_repair
+        sys.exit(scene_repair.cli(channel=args.channel, raw_scenes=args.repair_scenes,
+                                  topic=args.topic))
     else:
         run(
             niche=args.niche,

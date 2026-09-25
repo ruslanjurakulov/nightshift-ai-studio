@@ -60,6 +60,10 @@ on:
         required: false
         default: false
         type: boolean
+      repair_scenes:
+        description: "Repair only these scenes of the channel's last unfinished run, e.g. 3,17 or s003,s017 (at most 5; needs 'channel'). Re-fetches their footage, re-renders them, holds the new cut for review — never uploads."
+        required: false
+        default: ""
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -84,6 +88,18 @@ jobs:
 
       - name: Install resolver dependencies
         run: pip install requests python-dotenv
+
+      # A repair targets one channel's existing run. Checked here, before the
+      # render job installs anything, so a malformed request costs seconds and
+      # names the fix. The value is read from the environment by Python, never
+      # spliced into the shell (see the injection note in the run step below).
+      - name: Validate repair request
+        if: github.event.inputs.repair_scenes != ''
+        env:
+          REPAIR_SCENES: ${{ github.event.inputs.repair_scenes }}
+          REPAIR_CHANNEL: ${{ github.event.inputs.channel }}
+          REPAIR_RESUME: ${{ github.event.inputs.resume }}
+        run: python -m modules.scene_repair validate
 
       - name: Pick due channels
         id: pick
@@ -222,6 +238,25 @@ jobs:
         continue-on-error: true
         run: python tools/run_state_cache.py import
 
+      # Repair runs only: the media of the channel's newest unfinished run
+      # (narration, subtitles, each scene's footage), kept by an earlier run
+      # when the repo VARIABLE CHRONOS_REPAIR_KIT is true — see
+      # tools/repair_kit_cache.py. Without it the repair stops at its preflight,
+      # having spent nothing, and says so. Imported after the run state above:
+      # a kit only ever fills in a run whose checkpoint is already restored.
+      - name: Restore repair kit (repair runs only)
+        if: github.event.inputs.repair_scenes != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: .repair_kit
+          key: chronos-repairkit-v1.${{ matrix.channel_id }}.${{ github.run_number }}-${{ github.run_attempt }}
+          restore-keys: chronos-repairkit-v1.${{ matrix.channel_id }}.
+
+      - name: Load repair kit into output/
+        if: github.event.inputs.repair_scenes != ''
+        continue-on-error: true
+        run: python tools/repair_kit_cache.py import
+
       # The legacy default channel's token, and only its own. Every other
       # channel gets its own in the step below; before that step existed, EVERY
       # channel in the matrix ran with this one, so a video made for a new
@@ -337,6 +372,9 @@ jobs:
           # "true" only on a manual run with the resume box ticked; empty on a
           # schedule, so scheduled runs start a new video exactly as before.
           INPUT_RESUME: ${{ github.event.inputs.resume }}
+          # Non-empty only on a manual repair dispatch (validated in `resolve`,
+          # and again strictly by main.py before anything is read or spent).
+          INPUT_REPAIR_SCENES: ${{ github.event.inputs.repair_scenes }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           # --- AITuber presenter (optional, off unless enabled) -------------
@@ -426,6 +464,9 @@ jobs:
           if [ "${INPUT_RESUME:-}" = "true" ]; then
             args+=(--resume)
           fi
+          if [ -n "${INPUT_REPAIR_SCENES:-}" ]; then
+            args+=(--repair-scenes "$INPUT_REPAIR_SCENES")
+          fi
           python main.py "${args[@]}"
 
       - name: Upload video artifact
@@ -462,6 +503,24 @@ jobs:
         with:
           path: .run_state
           key: chronos-runstate-v1.${{ matrix.channel_id }}.${{ github.run_number }}-${{ github.run_attempt }}
+
+      # Opt-in (repo VARIABLE CHRONOS_REPAIR_KIT=true): keep the newest
+      # unfinished run's media so a later `repair_scenes` dispatch can repair
+      # it. Bounded to one run and 1.5 GB (tools/repair_kit_cache.py); only the
+      # files its Video IR references inside output/<slug>/ — never a token or
+      # client-secret file. Nothing is saved when no run qualifies.
+      - name: Collect repair kit (opt-in)
+        if: always() && (vars.CHRONOS_REPAIR_KIT == 'true' || vars.CHRONOS_REPAIR_KIT == '1') && steps.runstate_restore.outcome == 'success'
+        continue-on-error: true
+        run: python tools/repair_kit_cache.py export
+
+      - name: Save repair kit (opt-in)
+        if: always() && (vars.CHRONOS_REPAIR_KIT == 'true' || vars.CHRONOS_REPAIR_KIT == '1') && steps.runstate_restore.outcome == 'success' && hashFiles('.repair_kit/manifest.json') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: .repair_kit
+          key: chronos-repairkit-v1.${{ matrix.channel_id }}.${{ github.run_number }}-${{ github.run_attempt }}
 
       # Self-hosted only: this machine keeps its workspace between jobs, so do
       # not leave the YouTube OAuth token / client secret files the steps above
