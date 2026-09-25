@@ -24,12 +24,22 @@ and in the `render.completed` event.
 A presenter overlay is MoviePy-only today; a run with a presenter therefore
 renders with MoviePy even when ffmpeg was requested, rather than silently
 dropping the presenter.
+
+Scene-level render (roadmap PR 1.3, ``modules/scene_render.py``) sits in front
+of both, behind its own flag ``CHRONOS_SCENE_RENDER=1`` (default off — with the
+flag unset nothing below changes). When on and the run has a Video IR project,
+each scene is rendered (or reused from the render cache) and the final video is
+assembled from the scene files; ``render_backend`` is then ``"scenes"``. Any
+failure — no IR, a scene without measured times, a presenter, an ffmpeg error —
+is logged and the configured backend renders exactly as it would have, with
+``render_backend_requested="scenes"`` and the reason in
+``render_fallback_reason``.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -40,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 BACKEND_MOVIEPY = "moviepy"
 BACKEND_FFMPEG = "ffmpeg"
+BACKEND_SCENES = "scenes"
 
 _VIDEO_SUFFIXES = (".mp4", ".mov", ".avi", ".webm", ".mkv")
 _MIN_SEGMENT_S = 0.1  # the compositor drops slivers shorter than this too
@@ -53,11 +64,16 @@ class RenderResult:
     backend: str
     requested: str
     fallback_reason: Optional[str] = None
+    #: Scene-render counts (``SceneRenderResult.to_metadata``) when the scene
+    #: path produced the video — scene ids and numbers only, no paths.
+    scene_render: Optional[dict] = None
 
     def to_metadata(self) -> dict:
         meta = {"render_backend": self.backend, "render_backend_requested": self.requested}
         if self.fallback_reason:
             meta["render_fallback_reason"] = self.fallback_reason
+        if self.scene_render is not None:
+            meta["scene_render"] = self.scene_render
         return meta
 
 
@@ -179,6 +195,30 @@ def _render_ffmpeg(spec: RenderSpec) -> Path:
     return out
 
 
+def _render_scenes(*, ir_project, output_path: Path, script, presenter_path,
+                   scene_renderer: Optional[Callable]) -> RenderResult:
+    """The scene-level path. Raises on anything that stops it; the caller falls back."""
+    from modules import scene_render
+
+    if presenter_path is not None:
+        raise RuntimeError("presenter overlay is only supported by the moviepy backend")
+    if ir_project is None:
+        raise RuntimeError("no Video IR project for this run")
+    cut_intervals = {}
+    for i, section in enumerate(getattr(script, "sections", None) or []):
+        try:
+            cut_intervals[i] = float(getattr(section, "cut_interval", None) or 0) or None
+        except (TypeError, ValueError):
+            cut_intervals[i] = None
+    result = (scene_renderer or scene_render.render_project)(
+        ir_project, output_path, cut_intervals=cut_intervals)
+    out = Path(result.video_path)
+    if not out.exists() or out.stat().st_size <= 0:
+        raise RuntimeError(f"no output file at {out}")
+    logger.info("Render backend used: scenes (%s)", out)
+    return RenderResult(out, BACKEND_SCENES, BACKEND_SCENES, scene_render=result.to_metadata())
+
+
 def render_video(
     *,
     moviepy_render: Callable[[], Path],
@@ -196,8 +236,16 @@ def render_video(
     height: int = 1080,
     fps: int = 30,
     ffmpeg_render: Optional[Callable[[RenderSpec], Path]] = None,
+    ir_project=None,
+    scene_render_enabled: Optional[bool] = None,
+    scene_renderer: Optional[Callable] = None,
 ) -> RenderResult:
     """Render the video with the configured backend, falling back to MoviePy.
+
+    With ``CHRONOS_SCENE_RENDER=1`` (or ``scene_render_enabled=True``) and an
+    ``ir_project``, the scene-level renderer is tried first; on any failure the
+    configured backend below renders instead. ``scene_renderer`` is injectable
+    for tests (default ``scene_render.render_project``).
 
     `moviepy_render` is the existing compositor call, deferred; it runs when
     MoviePy was requested, when the ffmpeg path cannot be used, and when it
@@ -205,6 +253,54 @@ def render_video(
     renderer the pipeline has always had, and its errors mean what they always
     meant. `ffmpeg_render` is injectable for tests.
     """
+    if scene_render_enabled is None:
+        from modules import scene_render
+
+        scene_render_enabled = scene_render.is_enabled()
+    if scene_render_enabled:
+        try:
+            return _render_scenes(ir_project=ir_project, output_path=output_path, script=script,
+                                  presenter_path=presenter_path, scene_renderer=scene_renderer)
+        except Exception as e:
+            scene_reason = f"scenes: {type(e).__name__}: {e}"[:500]
+            logger.warning("Scene-level render not used (%s) — rendering with the configured "
+                           "backend instead", scene_reason)
+        result = _render_configured(
+            moviepy_render=moviepy_render, output_path=output_path, script=script,
+            audio_path=audio_path, video_paths=video_paths, image_paths=image_paths,
+            section_timeline=section_timeline, subtitle_path=subtitle_path,
+            clip_terms=clip_terms, presenter_path=presenter_path, backend=backend,
+            width=width, height=height, fps=fps, ffmpeg_render=ffmpeg_render)
+        reason = "; ".join(r for r in (scene_reason, result.fallback_reason) if r)
+        return replace(result, requested=BACKEND_SCENES, fallback_reason=reason[:1000])
+
+    return _render_configured(
+        moviepy_render=moviepy_render, output_path=output_path, script=script,
+        audio_path=audio_path, video_paths=video_paths, image_paths=image_paths,
+        section_timeline=section_timeline, subtitle_path=subtitle_path,
+        clip_terms=clip_terms, presenter_path=presenter_path, backend=backend,
+        width=width, height=height, fps=fps, ffmpeg_render=ffmpeg_render)
+
+
+def _render_configured(
+    *,
+    moviepy_render: Callable[[], Path],
+    output_path: Path,
+    script,
+    audio_path: Path,
+    video_paths: list,
+    image_paths: list,
+    section_timeline: list,
+    subtitle_path: Optional[Path],
+    clip_terms: Optional[dict],
+    presenter_path: Optional[Path],
+    backend: Optional[str],
+    width: int,
+    height: int,
+    fps: int,
+    ffmpeg_render: Optional[Callable[[RenderSpec], Path]],
+) -> RenderResult:
+    """The configured one-pass backend (moviepy or ffmpeg), exactly as before."""
     requested = requested_backend(backend)
     if requested != BACKEND_FFMPEG:
         # Returned as the compositor gave it — this path is byte-for-byte

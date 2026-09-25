@@ -224,6 +224,11 @@ THUMBNAIL_VARIANT_COUNT = _clamp_int(os.getenv("CHRONOS_THUMBNAIL_VARIANTS", "2"
 # highlighting). Opt-in so the default render is unchanged; any ffmpeg failure
 # falls back to the MoviePy compositor (modules/render_dispatch.py).
 RENDER_BACKEND = os.getenv("CHRONOS_RENDER_BACKEND", "moviepy").strip().lower()
+# Scene-level render + render cache (roadmap PR 1.3, modules/scene_render.py):
+# CHRONOS_SCENE_RENDER=1 renders each Video IR scene to output/<slug>/scenes/
+# (reused when its content key is unchanged) and assembles the final video from
+# them. Default off; read at render time by render_dispatch, and any failure
+# falls back to RENDER_BACKEND above.
 
 # YouTube Upload
 YOUTUBE_CATEGORY_ID = "28"  # Science & Technology
