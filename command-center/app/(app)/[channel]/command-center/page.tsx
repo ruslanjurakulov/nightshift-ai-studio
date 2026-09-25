@@ -22,6 +22,7 @@ import { RunNowButton } from "@/components/agents/RunNowButton";
 import { fmt } from "@/lib/i18n";
 import type { FeedbackSignalRow, MetricsSnapshotRow, SystemEventRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
 import { isToday, num, relativeTime, statusTone, storedMs } from "@/lib/format";
+import { uploadedOnly } from "@/lib/heldVideos";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -88,7 +89,7 @@ export default async function CommandCenter() {
   if (supabase) {
     const [ev, vid, tp, snap, sg] = await Promise.all([
       scopeQuery(supabase.from("system_events").select("*"), selection, { nullIsGlobal: true }).order("ts", { ascending: false }).limit(200),
-      scopeQuery(supabase.from("videos").select("*"), selection).order("published_at", { ascending: false }).limit(50),
+      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), selection)).order("published_at", { ascending: false }).limit(50),
       fetchTopicScores(supabase, selection, 6),
       supabase.from("metrics_snapshots").select("*").order("snapshot_date", { ascending: false }).limit(200),
       scopeQuery(supabase.from("feedback_signals").select("*"), selection).order("analyzed_date", { ascending: false }).limit(200),

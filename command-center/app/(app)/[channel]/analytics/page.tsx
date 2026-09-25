@@ -9,6 +9,7 @@ import { getChannelSelection } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import { fmt } from "@/lib/i18n";
 import type { MetricsSnapshotRow, VideoRow } from "@/lib/types";
+import { uploadedOnly } from "@/lib/heldVideos";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -119,7 +120,7 @@ export default async function AnalyticsPage() {
 
   if (supabase) {
     const [vid, snap] = await Promise.all([
-      scopeQuery(supabase.from("videos").select("*"), selection).order("published_at", { ascending: false }).limit(500),
+      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), selection)).order("published_at", { ascending: false }).limit(500),
       supabase.from("metrics_snapshots").select("*").limit(5000),
     ]);
     if (vid.error || snap.error) dbHealthy = false;

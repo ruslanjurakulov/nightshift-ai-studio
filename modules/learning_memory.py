@@ -382,6 +382,9 @@ def scene_retention_inputs(store, channel_id: str, sync) -> list:
     rows = sync.select("videos", {
         "channel_id": f"eq.{channel_id}",
         "manifest": "not.is.null",
+        # A held run (modules/held_video.py) has a manifest but was never
+        # watched; it must not take one of the limited slots.
+        "published_at": "not.is.null",
         "select": "video_id,manifest,video_format",
         "order": "published_at.desc.nullslast",
         "limit": str(SCENE_VIDEO_LIMIT),

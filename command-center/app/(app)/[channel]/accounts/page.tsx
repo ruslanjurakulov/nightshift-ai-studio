@@ -8,6 +8,7 @@ import { ACCOUNT_WINDOW_DAYS, isScoped, rollupAccounts } from "@/lib/channels";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
 import type { ContentQueueRow, SystemEventRow, VideoRow } from "@/lib/types";
+import { uploadedOnly } from "@/lib/heldVideos";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -52,7 +53,7 @@ export default async function AccountsPage() {
       supabase.from("system_events").select("*").gte("ts", since).order("ts", { ascending: false }).limit(5000),
       // nullsFirst:false keeps unpublished rows from filling the limit ahead of
       // the published ones — Postgres sorts NULLs first on a DESC order.
-      supabase.from("videos").select("*").order("published_at", { ascending: false, nullsFirst: false }).limit(2000),
+      uploadedOnly(supabase.from("videos").select("*")).order("published_at", { ascending: false, nullsFirst: false }).limit(2000),
       supabase.from("content_queue").select("*").limit(2000),
       // One tiny query per channel for its newest event over ALL time. The
       // windowed fetch above cannot answer this: a channel that ran once six

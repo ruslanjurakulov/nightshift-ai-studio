@@ -127,7 +127,10 @@ def check_mirrored(store, sync=None, *, channel_id: Optional[str] = None) -> Dur
     remote = None
     if configured:
         try:
-            rows = sync.select("videos", {"select": "video_id"})
+            # Uploaded rows only: a held run's row (modules/held_video.py) has
+            # no local counterpart by design, and counting it would hide a
+            # real unmirrored gap.
+            rows = sync.select("videos", {"select": "video_id", "published_at": "not.is.null"})
             remote = len(rows or [])
         except Exception as e:
             logger.warning("Durability check could not read remote videos (%s: %s)",

@@ -55,6 +55,18 @@ export interface VideoRow {
   scenes?: VideoScene[] | null;
   /** pending | approved | rejected. "pending" means nobody has looked yet. */
   review_state: string;
+  /**
+   * Migration 0016: blocked | awaiting_approval | held |
+   * repaired_awaiting_review for a run that did NOT upload (lib/heldVideos),
+   * "uploaded" once that same row was re-keyed to its YouTube id. Null for a
+   * row written before 0016 — then published_at/privacy tell held from
+   * uploaded. Optional: absent before the migration.
+   */
+  publish_state?: string | null;
+  /** When the run was last held without uploading (0016). */
+  held_at?: string | null;
+  /** Why it is held: the reason and the gate's own verdict (0016). Free-form jsonb. */
+  hold_detail?: unknown;
 }
 
 /** A reviewer's request, waiting for the next run to pick it up. */

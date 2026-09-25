@@ -79,6 +79,9 @@ function present(v: unknown): boolean {
  * clears that checkpoint as soon as the upload succeeds — so a request on an
  * uploaded video is filed and then never consumed.
  *
+ * A held run's own `videos` row (modules/held_video.py, lib/heldVideos) has
+ * all three absent, so it is exactly the row this returns repairable for.
+ *
  * Derived only from what the video page already loads:
  *  - `published_at` — set by StateStore.record_video, which runs only after a
  *    successful YouTube upload (the long video's and a Short's alike);
@@ -90,13 +93,15 @@ function present(v: unknown): boolean {
  * Pure: it reads nothing, writes nothing and changes no permission or gate.
  */
 export function sceneRepairEligibility(
-  video: { published_at?: string | null; privacy?: string | null } | null | undefined,
+  video: { published_at?: string | null; privacy?: string | null; publish_state?: string | null } | null | undefined,
   events?: ReadonlyArray<{ event?: string | null }> | null,
 ): SceneRepairEligibility {
   if (!video) return { repairable: false, reason: "unknown" };
   const uploaded =
     present(video.published_at) ||
     present(video.privacy) ||
+    // Migration 0016: a held row re-keyed to its YouTube id on upload.
+    video.publish_state === "uploaded" ||
     (events ?? []).some((e) => typeof e?.event === "string" && UPLOADED_EVENTS.has(e.event));
   return uploaded ? { repairable: false, reason: "uploaded" } : { repairable: true };
 }
