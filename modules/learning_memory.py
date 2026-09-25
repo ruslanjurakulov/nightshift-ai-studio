@@ -30,8 +30,8 @@ Honesty rules (CLAUDE.md #5)
 ----------------------------
 Every proposal is derived from a real stored measurement and carries it as
 evidence. Below each source's own evidence floor (the feedback engine's scores,
-`retention_analyzer.MIN_CURVES`, the A/B `MIN_PER_VARIANT`/`MIN_LIFT`) nothing
-is proposed. `confidence` is a sample-size weight (n / (n + 3)), stated as such
+`retention_analyzer.MIN_CURVES` — also for scene-level retention, counted in
+distinct videos — the A/B `MIN_PER_VARIANT`/`MIN_LIFT`) nothing is proposed. `confidence` is a sample-size weight (n / (n + 3)), stated as such
 — not a statistical significance — and it is None, never 0, when there is no
 sample to weigh.
 
@@ -264,6 +264,144 @@ def retention_proposals(insights: list, observed_on: str = "") -> list:
     return out
 
 
+#: A scene group (one scene type or one shot recipe) whose median loss per
+#: minute is at least this multiple of the channel's median scene is proposed
+#: as losing viewers faster; at most SCENE_BETTER_RATIO, as holding them
+#: better. The same 1.4x / 0.6x band the topic proposals use.
+SCENE_WORSE_RATIO = 1.4
+SCENE_BETTER_RATIO = 0.6
+#: How many per-scene rows a scene proposal's evidence lists at most.
+_SCENE_EVIDENCE_ROWS = 30
+#: How many of the channel's most recent videos the scene-retention source reads.
+SCENE_VIDEO_LIMIT = 50
+
+
+def scene_retention_proposals(videos, observed_on: str = "") -> list:
+    """Scene types / shot recipes that lose viewers faster (or slower) than the
+    channel's median scene, from scene-level retention (modules/scene_retention).
+
+    ``videos`` is ``[(video_id, [SceneRetention, ...]), ...]``. Evidence floor,
+    the same discipline as retention_proposals: at least
+    ``retention_analyzer.MIN_CURVES`` videos with measured scenes on the
+    channel, and a group is judged only when its measured scenes come from at
+    least that many DIFFERENT videos — one video's weak scene is that video's
+    story. Compared on loss per minute, so a group is not "worse" merely for
+    being longer. A group that is every measured scene is not compared with
+    itself, and nothing is proposed when the channel median is not a positive
+    loss (a ratio against zero or a rising curve means nothing).
+    """
+    from modules.retention_analyzer import MIN_CURVES
+    from modules.scene_retention import median
+
+    measured = []  # (video_id, SceneRetention) with a known rate
+    for entry in videos or []:
+        try:
+            video_id, rows = entry
+            for r in rows or []:
+                if getattr(r, "drop_per_min", None) is not None:
+                    measured.append((str(video_id), r))
+        except Exception:
+            logger.warning("learning_memory: skipping a malformed scene-retention entry", exc_info=True)
+    if len({v for v, _ in measured}) < MIN_CURVES:
+        return []
+    channel_median = median([r.drop_per_min for _, r in measured])
+    if channel_median is None or channel_median <= 0:
+        return []
+
+    groups: dict = {}
+    for video_id, r in measured:
+        if r.type:
+            groups.setdefault(("type", r.type), []).append((video_id, r))
+        if r.recipe:
+            groups.setdefault(("recipe", r.recipe), []).append((video_id, r))
+
+    out = []
+    for (dimension, value), members in sorted(groups.items()):
+        try:
+            video_ids = {v for v, _ in members}
+            if len(video_ids) < MIN_CURVES or len(members) >= len(measured):
+                continue
+            group_median = median([r.drop_per_min for _, r in members])
+            if group_median is None:
+                continue
+            ratio = group_median / channel_median
+            if ratio >= SCENE_WORSE_RATIO:
+                direction, verdict = "worse", f"lose viewers {ratio:.1f}x faster than"
+            elif ratio <= SCENE_BETTER_RATIO:
+                direction, verdict = "better", f"hold viewers better than ({ratio:.1f}x the loss rate of)"
+            else:
+                continue
+            subject = (
+                f'Scenes of type "{value}"' if dimension == "type"
+                else f'Scenes shot with the "{value}" recipe'
+            )
+            out.append(Proposal(
+                kind=KIND_RETENTION,
+                dedup_key=f"retention:scene_{dimension}:{direction}:{_norm(value)}",
+                observation=(
+                    f"{subject} {verdict} this channel's median scene "
+                    f"({group_median * 100:.1f} vs {channel_median * 100:.1f} audience points lost "
+                    f"per minute; {len(members)} measured scenes across {len(video_ids)} videos)."
+                ),
+                evidence={
+                    "source": "retention_points+videos.manifest",
+                    "dimension": dimension,
+                    "value": value,
+                    "group_median_drop_per_min": round(group_median, 4),
+                    "channel_median_drop_per_min": round(channel_median, 4),
+                    "ratio": round(ratio, 3),
+                    "scenes": len(members),
+                    "channel_scenes": len(measured),
+                    "videos": [
+                        {"video_id": v, "scene_id": r.scene_id, "drop_per_min": r.drop_per_min}
+                        for v, r in members[:_SCENE_EVIDENCE_ROWS]
+                    ],
+                    "thresholds": {"worse": SCENE_WORSE_RATIO, "better": SCENE_BETTER_RATIO,
+                                   "min_videos": MIN_CURVES},
+                    "observed_on": observed_on or None,
+                },
+                confidence=sample_confidence(len(video_ids)),
+            ))
+        except Exception:
+            logger.warning("learning_memory: skipping a malformed scene group", exc_info=True)
+    return out
+
+
+def scene_retention_inputs(store, channel_id: str, sync) -> list:
+    """``[(video_id, [SceneRetention])]`` for this channel's recent long videos
+    that have a stored Video IR (Supabase ``videos.manifest``, migration 0013)
+    and a local retention curve with at least one measured scene.
+
+    The IR lives only in Supabase (the runner's project.json is gone after the
+    run), which is why this source needs ``sync``; without it, or before 0013
+    is applied (the select then fails and returns []), it is simply empty."""
+    from modules import scene_retention
+
+    if sync is None or not getattr(sync, "enabled", False):
+        return []
+    rows = sync.select("videos", {
+        "channel_id": f"eq.{channel_id}",
+        "manifest": "not.is.null",
+        "select": "video_id,manifest,video_format",
+        "order": "published_at.desc.nullslast",
+        "limit": str(SCENE_VIDEO_LIMIT),
+    })
+    out = []
+    for row in rows or []:
+        try:
+            if not isinstance(row, dict) or row.get("video_format") == "short":
+                continue
+            video_id, manifest = row.get("video_id"), row.get("manifest")
+            if not video_id or not isinstance(manifest, dict):
+                continue
+            mapped = scene_retention.for_video(manifest, store.retention_curve(video_id))
+            if scene_retention.has_data(mapped):
+                out.append((str(video_id), mapped))
+        except Exception:
+            logger.warning("learning_memory: scene retention unavailable for one video", exc_info=True)
+    return out
+
+
 #: Experiment kind (modules/experiments.py) -> the short name in a dedup key.
 #: The key shape predates the Experiment view and must not change, or every
 #: already-decided A/B learning would be proposed again under a new key.
@@ -326,9 +464,12 @@ def experiment_proposals(experiments, observed_on: str = "") -> list:
 # -- gathering from the local state store ------------------------------------
 
 
-def gather_proposals(store, channel_id: str, observed_on: str = "") -> list:
+def gather_proposals(store, channel_id: str, observed_on: str = "", sync=None) -> list:
     """Every proposal the stored signals support for one channel. Each source is
-    guarded on its own, so one broken read costs only its own proposals."""
+    guarded on its own, so one broken read costs only its own proposals.
+
+    ``sync`` is needed only by the scene-retention source (the Video IR is read
+    back from Supabase); without it that one source is skipped."""
     observed_on = observed_on or date.today().isoformat()
     proposals: list = []
 
@@ -345,6 +486,13 @@ def gather_proposals(store, channel_id: str, observed_on: str = "") -> list:
         proposals.extend(retention_proposals(insights, observed_on))
     except Exception:
         logger.warning("learning_memory: retention insights unavailable for %s", channel_id, exc_info=True)
+
+    try:
+        proposals.extend(scene_retention_proposals(
+            scene_retention_inputs(store, channel_id, sync), observed_on,
+        ))
+    except Exception:
+        logger.warning("learning_memory: scene retention unavailable for %s", channel_id, exc_info=True)
 
     try:
         from modules.experiments import experiments_for_channel
@@ -420,9 +568,9 @@ def propose(channel_id: str, *, store=None, sync=None) -> dict:
             from modules.state_store import StateStore
 
             with StateStore() as own:
-                proposals = gather_proposals(own, channel_id)
+                proposals = gather_proposals(own, channel_id, sync=sync)
         else:
-            proposals = gather_proposals(store, channel_id)
+            proposals = gather_proposals(store, channel_id, sync=sync)
         summary["candidates"] = len(proposals)
         summary.update(save_proposals(channel_id, proposals, sync=sync))
     except Exception:
