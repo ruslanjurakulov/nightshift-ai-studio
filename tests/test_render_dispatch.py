@@ -237,6 +237,66 @@ class BuildSpecTestCase(unittest.TestCase):
         self.assertEqual(spec.subtitle_path, "/s.srt")
 
 
+class WordCaptionsDispatchTestCase(_Base):
+    """The ffmpeg path burns the word-highlighted .ass when there are word
+    timestamps, the .srt otherwise; MoviePy never touches either."""
+
+    SPECS = [{"word": "hi", "start": 0.0, "end": 0.5, "chunk_words": ["hi"],
+              "word_index_in_line": 0}]
+
+    def setUp(self):
+        super().setUp()
+        self.srt = self.dir / "subtitles.srt"
+        self.srt.write_text("1\n00:00:00,000 --> 00:00:00,500\nhi\n\n", encoding="utf-8")
+        self.specs = []
+
+    def fake_ffmpeg(self, spec):
+        self.specs.append(spec)
+        Path(spec.output_path).write_bytes(b"ffmpeg")
+        return spec.output_path
+
+    def test_word_timestamps_burn_the_ass(self):
+        from modules import ass_captions
+
+        ass = self.dir / "word_captions.ass"
+        choice = ass_captions.CaptionChoice(ass, ass_captions.MODE_WORDS)
+        with mock.patch.object(ass_captions, "prepare", return_value=choice) as prep:
+            res = self.dispatch(backend="ffmpeg", ffmpeg_render=self.fake_ffmpeg,
+                                subtitle_path=self.srt, word_captions=self.SPECS)
+        prep.assert_called_once()
+        self.assertEqual(self.specs[0].subtitle_path, str(ass))
+        self.assertEqual(res.to_metadata()["captions"], "word_highlight")
+        self.assertNotIn("captions_fallback_reason", res.to_metadata())
+
+    def test_no_libass_burns_the_srt_and_says_why(self):
+        from modules import ass_captions
+
+        with mock.patch.object(ass_captions, "has_libass", return_value=False):
+            res = self.dispatch(backend="ffmpeg", ffmpeg_render=self.fake_ffmpeg,
+                                subtitle_path=self.srt, word_captions=self.SPECS)
+        self.assertEqual(self.specs[0].subtitle_path, str(self.srt))
+        meta = res.to_metadata()
+        self.assertEqual(meta["captions"], "srt_lines")
+        self.assertIn("libass", meta["captions_fallback_reason"])
+
+    def test_without_word_timestamps_the_srt_is_burnt_as_before(self):
+        res = self.dispatch(backend="ffmpeg", ffmpeg_render=self.fake_ffmpeg,
+                            subtitle_path=self.srt)
+        self.assertEqual(self.specs[0].subtitle_path, str(self.srt))
+        self.assertEqual(res.to_metadata()["captions"], "srt_lines")
+        self.assertNotIn("captions_fallback_reason", res.to_metadata())
+
+    def test_moviepy_never_prepares_captions(self):
+        from modules import ass_captions
+
+        with mock.patch.object(ass_captions, "prepare") as prep:
+            res = self.dispatch(backend="moviepy", subtitle_path=self.srt,
+                                word_captions=self.SPECS)
+        prep.assert_not_called()
+        self.assertEqual(res.to_metadata(),
+                         {"render_backend": "moviepy", "render_backend_requested": "moviepy"})
+
+
 def _ffmpeg_available() -> bool:
     exe = render_backend.resolve_ffmpeg()
     return bool(exe) and bool(exe == "ffmpeg" and shutil.which("ffmpeg") or Path(exe).exists())
@@ -280,6 +340,54 @@ class RealFfmpegDispatchTestCase(_Base):
         self.assertEqual(self.moviepy_calls, 0)
         self.assertTrue(res.video_path.exists())
         self.assertAlmostEqual(_probe_duration(ff, res.video_path), 4.0, delta=0.5)
+
+
+    def test_word_captions_are_burnt_with_the_spoken_word_highlighted(self):
+        from modules import ass_captions
+
+        ff = render_backend.resolve_ffmpeg()
+        if not ass_captions.has_libass(ff):
+            self.skipTest("this ffmpeg has no libass")
+        d = self.dir
+        audio = d / "final_audio.wav"
+        subprocess.run([ff, "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
+                        str(audio)], check=True, capture_output=True)
+        srt = d / "subs" / "subtitles.srt"
+        srt.parent.mkdir()
+        srt_text = "1\n00:00:00,200 --> 00:00:01,800\nBIG WORDS\n\n"
+        srt.write_text(srt_text, encoding="utf-8")
+        specs = [
+            {"word": "BIG", "start": 0.2, "end": 0.9, "chunk_words": ["BIG", "WORDS"],
+             "word_index_in_line": 0},
+            {"word": "WORDS", "start": 1.0, "end": 1.8, "chunk_words": ["BIG", "WORDS"],
+             "word_index_in_line": 1},
+        ]
+        res = self.dispatch(backend="ffmpeg", audio_path=audio, video_paths=[], image_paths=[],
+                            script=_script(_section("story")), section_timeline=_timeline(3000),
+                            subtitle_path=srt, word_captions=specs, width=640, height=360, fps=10)
+        self.assertEqual(res.backend, "ffmpeg", res.fallback_reason)
+        self.assertEqual(res.captions, "word_highlight", res.captions_fallback_reason)
+        self.assertEqual(srt.read_text(encoding="utf-8"), srt_text)   # the YouTube track
+
+        def frame_at(t):
+            raw = subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-ss", str(t),
+                                  "-i", str(res.video_path), "-frames:v", "1", "-f", "rawvideo",
+                                  "-pix_fmt", "rgb24", "-"], capture_output=True).stdout
+            px = [raw[i:i + 3] for i in range(0, len(raw), 3)]
+            gold_x = [i % 640 for i, (r, g, b) in enumerate(px)
+                      if r > 200 and 150 < g < 235 and b < 90]
+            white = sum(1 for r, g, b in px if r > 220 and g > 220 and b > 220)
+            centre = sum(gold_x) / len(gold_x) if gold_x else None
+            return len(gold_x), white, centre
+
+        g1, w1, x1 = frame_at(0.5)    # "BIG" spoken: the left word is lit
+        g2, w2, x2 = frame_at(1.4)    # "WORDS" spoken: the right word is lit
+        g3, w3, _ = frame_at(2.5)     # nobody speaking: no caption at all
+        self.assertGreater(g1, 50)
+        self.assertGreater(w1, 50)    # the rest of the line in white
+        self.assertGreater(g2, 50)
+        self.assertLess(x1 + 100, x2)
+        self.assertEqual((g3, w3), (0, 0))
 
 
 if __name__ == "__main__":

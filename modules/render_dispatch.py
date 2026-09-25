@@ -10,9 +10,12 @@ never did. This module is the one place that reads it.
 * ``"ffmpeg"`` — build a `RenderSpec` from the SAME inputs the MoviePy path
   gets (the audio timeline's real section durations, each section's cut
   interval, the b-roll pool ordered by `broll_match`, the narration mix and the
-  Whisper `.srt`) and render it with `render_backend.render`. The spec model has
-  no Ken Burns motion and no word-level highlighted captions — stills are held,
-  and the `.srt` is burnt in line by line — so it is opt-in.
+  Whisper `.srt`) and render it with `render_backend.render`. Stills get the
+  compositor's Ken Burns moves, and with the Whisper word timestamps
+  (``word_captions``, the compositor's own per-word specs) the captions are the
+  compositor's word-highlighted lines, burnt from an ``.ass`` file
+  (``modules/ass_captions.py``). Without word timestamps, or on an ffmpeg with
+  no libass, the ``.srt`` is burnt line by line as before. Opt-in.
 
 Whatever goes wrong on the ffmpeg path — an exception, an invalid spec, a
 missing ffmpeg, a missing or empty output file — is logged as a warning and the
@@ -67,6 +70,12 @@ class RenderResult:
     #: Scene-render counts (``SceneRenderResult.to_metadata``) when the scene
     #: path produced the video — scene ids and numbers only, no paths.
     scene_render: Optional[dict] = None
+    #: How an ffmpeg-rendered video's captions were burnt: "word_highlight"
+    #: (the .ass) or "srt_lines" (the .srt); None when MoviePy rendered it or
+    #: there were no subtitles. When word captions were wanted but not used,
+    #: ``captions_fallback_reason`` says why.
+    captions: Optional[str] = None
+    captions_fallback_reason: Optional[str] = None
 
     def to_metadata(self) -> dict:
         meta = {"render_backend": self.backend, "render_backend_requested": self.requested}
@@ -74,6 +83,10 @@ class RenderResult:
             meta["render_fallback_reason"] = self.fallback_reason
         if self.scene_render is not None:
             meta["scene_render"] = self.scene_render
+        if self.captions:
+            meta["captions"] = self.captions
+        if self.captions_fallback_reason:
+            meta["captions_fallback_reason"] = self.captions_fallback_reason
         return meta
 
 
@@ -185,6 +198,25 @@ def build_spec(
     )
 
 
+def _caption_choice(subtitle_path, word_captions, width: int, height: int):
+    """The subtitle file the ffmpeg paths burn in (``ass_captions.prepare``).
+    Never raises: anything unexpected keeps the ``.srt``, as before."""
+    from modules import ass_captions
+
+    try:
+        choice = ass_captions.prepare(subtitle_path, word_captions, width=width, height=height)
+    except Exception as e:  # prepare() already never raises; belt and braces
+        choice = ass_captions.CaptionChoice(
+            Path(subtitle_path) if subtitle_path else None,
+            ass_captions.MODE_SRT if subtitle_path else None, f"{type(e).__name__}: {e}"[:300])
+    if choice.mode == ass_captions.MODE_WORDS:
+        logger.info("Captions: word-highlighted (%s)", Path(choice.path).name)
+    elif word_captions:
+        logger.warning("Captions: word highlight not used (%s) — burning the .srt line by line",
+                       choice.reason)
+    return choice
+
+
 def _render_ffmpeg(spec: RenderSpec) -> Path:
     """Run the ffmpeg backend and insist on a real file at the end."""
     from modules import render_backend
@@ -196,7 +228,8 @@ def _render_ffmpeg(spec: RenderSpec) -> Path:
 
 
 def _render_scenes(*, ir_project, output_path: Path, script, presenter_path,
-                   scene_renderer: Optional[Callable]) -> RenderResult:
+                   scene_renderer: Optional[Callable],
+                   captions: Optional[Callable] = None) -> RenderResult:
     """The scene-level path. Raises on anything that stops it; the caller falls back."""
     from modules import scene_render
 
@@ -210,13 +243,26 @@ def _render_scenes(*, ir_project, output_path: Path, script, presenter_path,
             cut_intervals[i] = float(getattr(section, "cut_interval", None) or 0) or None
         except (TypeError, ValueError):
             cut_intervals[i] = None
-    result = (scene_renderer or scene_render.render_project)(
-        ir_project, output_path, cut_intervals=cut_intervals)
+    from modules import ass_captions
+
+    choice = captions() if captions else None
+    kwargs = {"cut_intervals": cut_intervals}
+    if choice is not None and choice.mode == ass_captions.MODE_WORDS:
+        # Only passed when there is an .ass: the assembly otherwise burns the
+        # IR's .srt exactly as before.
+        kwargs["subtitles_path"] = str(choice.path)
+    result = (scene_renderer or scene_render.render_project)(ir_project, output_path, **kwargs)
     out = Path(result.video_path)
     if not out.exists() or out.stat().st_size <= 0:
         raise RuntimeError(f"no output file at {out}")
     logger.info("Render backend used: scenes (%s)", out)
-    return RenderResult(out, BACKEND_SCENES, BACKEND_SCENES, scene_render=result.to_metadata())
+    if "subtitles_path" in kwargs:
+        mode, why = ass_captions.MODE_WORDS, None
+    else:
+        mode = ass_captions.MODE_SRT if getattr(ir_project, "subtitles_path", None) else None
+        why = choice.reason if choice is not None and choice.reason != "no word timestamps" else None
+    return RenderResult(out, BACKEND_SCENES, BACKEND_SCENES, scene_render=result.to_metadata(),
+                        captions=mode, captions_fallback_reason=why)
 
 
 def render_video(
@@ -239,8 +285,14 @@ def render_video(
     ir_project=None,
     scene_render_enabled: Optional[bool] = None,
     scene_renderer: Optional[Callable] = None,
+    word_captions: Optional[list] = None,
 ) -> RenderResult:
     """Render the video with the configured backend, falling back to MoviePy.
+
+    ``word_captions`` is the compositor's per-word caption specs
+    (``SubtitleGenerator.word_clips``); the ffmpeg paths burn them as
+    word-highlighted captions, and burn ``subtitle_path`` (the ``.srt``, never
+    modified) when they are absent or cannot be used.
 
     With ``CHRONOS_SCENE_RENDER=1`` (or ``scene_render_enabled=True``) and an
     ``ir_project``, the scene-level renderer is tried first; on any failure the
@@ -257,10 +309,21 @@ def render_video(
         from modules import scene_render
 
         scene_render_enabled = scene_render.is_enabled()
+
+    # Written at most once per run, and only when an ffmpeg path asks for it —
+    # a MoviePy render touches no caption file.
+    memo: dict = {}
+
+    def captions():
+        if "choice" not in memo:
+            memo["choice"] = _caption_choice(subtitle_path, word_captions, width, height)
+        return memo["choice"]
+
     if scene_render_enabled:
         try:
             return _render_scenes(ir_project=ir_project, output_path=output_path, script=script,
-                                  presenter_path=presenter_path, scene_renderer=scene_renderer)
+                                  presenter_path=presenter_path, scene_renderer=scene_renderer,
+                                  captions=captions)
         except Exception as e:
             scene_reason = f"scenes: {type(e).__name__}: {e}"[:500]
             logger.warning("Scene-level render not used (%s) — rendering with the configured "
@@ -270,7 +333,8 @@ def render_video(
             audio_path=audio_path, video_paths=video_paths, image_paths=image_paths,
             section_timeline=section_timeline, subtitle_path=subtitle_path,
             clip_terms=clip_terms, presenter_path=presenter_path, backend=backend,
-            width=width, height=height, fps=fps, ffmpeg_render=ffmpeg_render)
+            width=width, height=height, fps=fps, ffmpeg_render=ffmpeg_render,
+            captions=captions)
         reason = "; ".join(r for r in (scene_reason, result.fallback_reason) if r)
         return replace(result, requested=BACKEND_SCENES, fallback_reason=reason[:1000])
 
@@ -279,7 +343,8 @@ def render_video(
         audio_path=audio_path, video_paths=video_paths, image_paths=image_paths,
         section_timeline=section_timeline, subtitle_path=subtitle_path,
         clip_terms=clip_terms, presenter_path=presenter_path, backend=backend,
-        width=width, height=height, fps=fps, ffmpeg_render=ffmpeg_render)
+        width=width, height=height, fps=fps, ffmpeg_render=ffmpeg_render,
+        captions=captions)
 
 
 def _render_configured(
@@ -299,8 +364,11 @@ def _render_configured(
     height: int,
     fps: int,
     ffmpeg_render: Optional[Callable[[RenderSpec], Path]],
+    captions: Optional[Callable] = None,
 ) -> RenderResult:
-    """The configured one-pass backend (moviepy or ffmpeg), exactly as before."""
+    """The configured one-pass backend (moviepy or ffmpeg), exactly as before,
+    except that the ffmpeg path burns the word-highlighted ``.ass`` when
+    ``captions()`` chose one."""
     requested = requested_backend(backend)
     if requested != BACKEND_FFMPEG:
         # Returned as the compositor gave it — this path is byte-for-byte
@@ -314,10 +382,12 @@ def _render_configured(
         reason = "presenter overlay is only supported by the moviepy backend"
     else:
         try:
+            choice = captions() if captions else None
+            burn = choice.path if choice is not None else subtitle_path
             spec = build_spec(
                 output_path=output_path, script=script, audio_path=audio_path,
                 video_paths=video_paths, image_paths=image_paths,
-                section_timeline=section_timeline, subtitle_path=subtitle_path,
+                section_timeline=section_timeline, subtitle_path=burn,
                 clip_terms=clip_terms, width=width, height=height, fps=fps,
             )
             logger.info("Rendering with the ffmpeg backend: %d segment(s), %.1fs",
@@ -326,7 +396,14 @@ def _render_configured(
             if not out.exists() or out.stat().st_size <= 0:
                 raise RuntimeError(f"no output file at {out}")
             logger.info("Render backend used: ffmpeg (%s)", out)
-            return RenderResult(out, BACKEND_FFMPEG, requested)
+            from modules import ass_captions
+
+            mode = choice.mode if choice is not None else (
+                ass_captions.MODE_SRT if subtitle_path else None)
+            why = choice.reason if (choice is not None and mode != ass_captions.MODE_WORDS
+                                    and choice.reason != "no word timestamps") else None
+            return RenderResult(out, BACKEND_FFMPEG, requested, captions=mode,
+                                captions_fallback_reason=why)
         except Exception as e:
             reason = f"{type(e).__name__}: {e}"[:500]
 
