@@ -95,7 +95,8 @@ class PropsTestCase(unittest.TestCase):
             props = rr.build_props(_scene(), ctx)
         json.dumps(props)
         self.assertEqual(set(props), {"scene", "width", "height", "fps", "assetsBaseDir",
-                                      "style", "words", "assets", "transition"})
+                                      "style", "words", "assets", "transition",
+                                      "claims", "map", "lowerThird"})
         self.assertEqual((props["width"], props["height"], props["fps"]), (1280, 720, 25.0))
         self.assertEqual([w["text"] for w in props["words"]], ["Revenue"])
         self.assertEqual([a["id"] for a in props["assets"]], ["a1", "a3"])
@@ -116,6 +117,40 @@ class PropsTestCase(unittest.TestCase):
         self.assertEqual((props["width"], props["height"], props["fps"]), (1920, 1080, 30))
         self.assertEqual(props["assetsBaseDir"], "")
         self.assertEqual(props["assets"], [])
+
+    def test_claims_limited_to_the_scene_and_status_never_invented(self):
+        scene = _scene(claim_ids=["c1", "c3"])
+        claims = [
+            {"id": "c1", "text": "Lit in 1899.", "status": "likely_accurate", "reasoning": "r"},
+            {"id": "c2", "text": "Another scene's claim.", "status": "likely_inaccurate"},
+            {"id": "c3", "text": "Never found."},                     # no status given
+            {"id": "c4", "text": "   "},                               # no text
+        ]
+        props = rr.build_props(scene, {"claims": claims})
+        self.assertEqual(props["claims"], [
+            {"id": "c1", "text": "Lit in 1899.", "status": "likely_accurate"},
+            {"id": "c3", "text": "Never found.", "status": None},
+        ])
+
+    def test_claims_absent_is_none_and_scene_claims_are_read(self):
+        self.assertIsNone(rr.build_props(_scene(), {})["claims"])
+        annotated = _scene(claim_ids=["c1"], claims=[{"id": "c1", "text": "T", "status": "not_checked"}])
+        self.assertEqual(rr.build_props(annotated, {})["claims"],
+                         [{"id": "c1", "text": "T", "status": "not_checked"}])
+
+    def test_map_focus_needs_two_real_numbers(self):
+        ok = rr.build_props(_scene(), {"map": {"focus": {"x": 0.4, "y": 0.6}, "label": " Eilean Mor "}})
+        self.assertEqual(ok["map"], {"focus": {"x": 0.4, "y": 0.6}, "label": "Eilean Mor"})
+        for focus in ({"x": 0.4}, {"x": None, "y": 0.5}, {"x": float("nan"), "y": 0.5}, "centre", None):
+            props = rr.build_props(_scene(), {"map": {"focus": focus}})
+            self.assertIsNone(props["map"]["focus"], focus)  # no pin at a guessed point
+        self.assertIsNone(rr.build_props(_scene(), {})["map"])
+
+    def test_lower_third_needs_a_name(self):
+        self.assertEqual(rr.build_props(_scene(), {"lower_third": {"name": " Joseph Moore ", "label": "Keeper"}})["lowerThird"],
+                         {"name": "Joseph Moore", "label": "Keeper"})
+        for spec in ({"name": ""}, {"label": "x"}, "Joseph", None):
+            self.assertIsNone(rr.build_props(_scene(), {"lower_third": spec})["lowerThird"])
 
     def test_build_command(self):
         cmd = rr.build_command("npx", Path("/t/p.json"), Path("/o/s.mp4"),
@@ -243,6 +278,21 @@ class CatalogueCoverageTestCase(unittest.TestCase):
             if r.kind == sr.KIND_TRANSITION or sr.BACKEND_REMOTION not in r.backends:
                 continue
             self.assertIn(r.id, handled, f"video-engine has no branch for recipe {r.id}")
+        # Each graphic recipe (and map_zoom) has its own purpose-built
+        # component, not a shared generic card.
+        composition = (src / "SceneComposition.tsx").read_text()
+        dedicated = {
+            "title_card": "TitleCard", "chapter_card": "TitleCard", "quote_card": "QuoteCard",
+            "stat_counter": "StatCard", "timeline": "Timeline", "evidence_card": "EvidenceCard",
+            "map_zoom": "MapScene",
+        }
+        for r in sr.RECIPES:
+            if r.kind == sr.KIND_GRAPHIC:
+                self.assertIn(r.id, dedicated, f"graphic recipe {r.id} has no dedicated component")
+        for rid, component in dedicated.items():
+            self.assertTrue(sr.is_valid(rid), rid)
+            self.assertTrue((src / "components" / f"{component}.tsx").is_file(), component)
+            self.assertIn(f'component: "{component}"', composition, rid)
         transition = (src / "components" / "Transition.tsx").read_text()
         for tid in sr.ids(sr.KIND_TRANSITION):
             if tid != "hard_cut":  # hard_cut is the untouched default branch

@@ -55,6 +55,22 @@ class CatalogTestCase(unittest.TestCase):
                 self.assertIsNotNone(cur)
                 self.assertNotEqual(cur.kind, sr.KIND_TRANSITION)
 
+    def test_explicit_only_recipes_are_valid_but_never_chosen(self):
+        for rid in ("timeline", "evidence_card"):
+            r = sr.get(rid)
+            self.assertIsNotNone(r, rid)
+            self.assertFalse(r.auto_select)
+            self.assertEqual(sr.resolve_for_backends(rid, ["remotion"]), rid)
+            self.assertEqual(sr.resolve_for_backends(rid, ["ffmpeg"]), "slow_push")
+            self.assertEqual(sr.catalog()[sr.ids().index(rid)]["auto_select"], False)
+        # A scene full of dates and claims still gets a chooser recipe, never
+        # one of these — adding them did not re-rank existing scenes.
+        s = _ir_scene(3, "years", "Built in 1899, dark in 1900, automated in 1971.", start=0, end=8)
+        s["claim_ids"] = ["c1"]
+        for i in range(6):
+            self.assertNotIn(sr.choose_recipe(s, index=i, total=8), ("timeline", "evidence_card"))
+        self.assertTrue(all(r.auto_select for r in sr.RECIPES if r.id not in ("timeline", "evidence_card")))
+
     def test_default_recipe_is_universal(self):
         self.assertEqual(set(sr.get(sr.DEFAULT_RECIPE).backends), set(sr.BACKENDS))
 

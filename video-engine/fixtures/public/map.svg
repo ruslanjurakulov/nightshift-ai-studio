@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <!-- A made-up archipelago for the map_zoom smoke render: a static, local map
+       image (no tiles, no network). Not a real place. -->
+  <defs>
+    <radialGradient id="sea" cx="55%" cy="45%" r="75%">
+      <stop offset="0" stop-color="#27465a"/>
+      <stop offset="1" stop-color="#132330"/>
+    </radialGradient>
+    <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
+      <path d="M80 0H0V80" fill="none" stroke="#6f8fa3" stroke-width="1" stroke-opacity="0.25"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="720" fill="url(#sea)"/>
+  <rect width="1280" height="720" fill="url(#grid)"/>
+  <!-- mainland coast on the right -->
+  <path d="M1280 0H1060c-30 60 10 110-20 170s-70 70-50 140 60 90 30 160-80 90-60 150 40 80 30 100h350z"
+        fill="#c9b98f" stroke="#8a7a55" stroke-width="3"/>
+  <!-- the islands -->
+  <path d="M520 300c30-30 90-40 120-10s20 70-20 90-90 20-110-10-20-50 10-70z"
+        fill="#d8c89c" stroke="#8a7a55" stroke-width="3"/>
+  <path d="M430 380c15-12 40-10 48 6s-4 34-22 38-36-4-38-20 0-16 12-24z"
+        fill="#d8c89c" stroke="#8a7a55" stroke-width="3"/>
+  <path d="M690 250c12-10 32-8 38 4s-2 26-18 28-28-4-30-16 0-10 10-16z"
+        fill="#d8c89c" stroke="#8a7a55" stroke-width="3"/>
+  <path d="M600 440c10-8 26-6 30 4s-2 20-14 22-22-4-24-12 0-8 8-14z"
+        fill="#d8c89c" stroke="#8a7a55" stroke-width="3"/>
+  <!-- depth contours -->
+  <g fill="none" stroke="#9fc0d3" stroke-opacity="0.35" stroke-width="2" stroke-dasharray="6 8">
+    <ellipse cx="575" cy="330" rx="200" ry="150"/>
+    <ellipse cx="575" cy="330" rx="300" ry="230"/>
+  </g>
+  <!-- compass -->
+  <g transform="translate(140 600)" fill="#e9e6df" fill-opacity="0.8">
+    <path d="M0-50L10 0 0 50-10 0z"/>
+    <text x="0" y="-60" font-family="Georgia, serif" font-size="22" text-anchor="middle">N</text>
+  </g>
+</svg>

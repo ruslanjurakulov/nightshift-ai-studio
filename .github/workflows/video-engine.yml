@@ -50,16 +50,27 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
-      # Smoke render: a 2 s, 640x360 title card (60 frames, one worker).
-      # `browser ensure` fetches Remotion's headless Chromium once.
+      # Smoke render. Bundle once (webpack is the slow part), then render
+      # 2 s, 640x360 clips (60 frames, one worker) of the title card, the map
+      # zoom (a local SVG map, no tiles) and the timeline, and a single still
+      # of the quote card, evidence card and lower third. `browser ensure`
+      # fetches Remotion's headless Chromium once.
       - name: Smoke render
         if: ${{ !cancelled() }}
         run: |
           npx remotion browser ensure
-          npx remotion render src/index.ts Scene out/smoke.mp4 \
-            --props=fixtures/title-card.json --concurrency=1 --log=error
+          npx remotion bundle src/index.ts --out-dir=out/bundle --public-dir=fixtures/public --log=error
           FFPROBE=$(ls node_modules/@remotion/compositor-linux-x64-*/ffprobe | head -1)
-          frames=$("$FFPROBE" -v error -select_streams v:0 -count_packets \
-            -show_entries stream=nb_read_packets -of default=nw=1:nk=1 out/smoke.mp4 | head -1)
-          echo "frames=$frames"
-          test "$frames" = "60"
+          for f in title-card map-zoom timeline; do
+            npx remotion render out/bundle Scene "out/$f.mp4" \
+              --props="fixtures/$f.json" --concurrency=1 --log=error
+            frames=$("$FFPROBE" -v error -select_streams v:0 -count_packets \
+              -show_entries stream=nb_read_packets -of default=nw=1:nk=1 "out/$f.mp4" | head -1)
+            echo "$f frames=$frames"
+            test "$frames" = "60"
+          done
+          for f in quote-card evidence-card lower-third; do
+            npx remotion still out/bundle Scene "out/$f.png" \
+              --props="fixtures/$f.json" --frame=45 --log=error
+            test -s "out/$f.png"
+          done

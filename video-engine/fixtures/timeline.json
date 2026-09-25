@@ -1,0 +1,27 @@
+{
+  "scene": {
+    "id": "s005",
+    "index": 5,
+    "name": "the_lighthouse_years",
+    "type": "story",
+    "narration": "The lighthouse was built in 1899, and the three keepers vanished in December 1900. By 1971 the light was automated.",
+    "start_s": 0,
+    "end_s": 2,
+    "shot": {
+      "recipe": "timeline",
+      "camera": null,
+      "lighting": null,
+      "mood": null
+    },
+    "element_ids": [],
+    "asset_ids": [],
+    "claim_ids": []
+  },
+  "width": 640,
+  "height": 360,
+  "fps": 30,
+  "assetsBaseDir": "",
+  "style": null,
+  "words": [],
+  "transition": "hard_cut"
+}

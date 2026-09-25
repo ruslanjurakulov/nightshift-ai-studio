@@ -2,11 +2,11 @@ import React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import type { StyleBible } from "../types";
 
-export type TitleVariant = "title" | "chapter" | "quote";
+export type TitleVariant = "title" | "chapter";
 
 type Props = {
   variant: TitleVariant;
-  /** Main line: the title, chapter name or quotation. */
+  /** Main line: the title or chapter name. */
   heading: string;
   /** Small line above the heading (e.g. "Chapter 3"); optional. */
   kicker?: string | null;
@@ -14,8 +14,8 @@ type Props = {
 };
 
 /**
- * Title / chapter / quote card (recipes `title_card`, `chapter_card`,
- * `quote_card`). Fades and rises in over 0.6 s, fades out over the last 0.4 s.
+ * Title / chapter card (recipes `title_card`, `chapter_card`; `quote_card` has
+ * its own QuoteCard). Fades and rises in over 0.6 s, fades out over the last 0.4 s.
  */
 export const TitleCard: React.FC<Props> = ({ variant, heading, kicker, style }) => {
   const frame = useCurrentFrame();
@@ -32,8 +32,7 @@ export const TitleCard: React.FC<Props> = ({ variant, heading, kicker, style }) 
       : 1;
   const rise = interpolate(frame, [0, inEnd], [24, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const { palette } = style;
-  const quote = variant === "quote";
-  const size = quote ? width * 0.042 : variant === "chapter" ? width * 0.05 : width * 0.062;
+  const size = variant === "chapter" ? width * 0.05 : width * 0.062;
 
   return (
     <AbsoluteFill
@@ -72,10 +71,9 @@ export const TitleCard: React.FC<Props> = ({ variant, heading, kicker, style }) 
             color: palette.primary,
             fontSize: size,
             lineHeight: 1.15,
-            fontStyle: quote ? "italic" : "normal",
           }}
         >
-          {quote ? `“${heading}”` : heading}
+          {heading}
         </div>
         <div
           style={{

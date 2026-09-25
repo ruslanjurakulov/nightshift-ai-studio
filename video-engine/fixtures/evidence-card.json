@@ -1,0 +1,44 @@
+{
+  "scene": {
+    "id": "s007",
+    "index": 7,
+    "name": "what_we_know",
+    "type": "story",
+    "narration": "The lighthouse was first lit in 1899. The three keepers were never found.",
+    "start_s": 0,
+    "end_s": 2,
+    "shot": {
+      "recipe": "evidence_card",
+      "camera": null,
+      "lighting": null,
+      "mood": null
+    },
+    "element_ids": [],
+    "asset_ids": [],
+    "claim_ids": [
+      "c007a",
+      "c007b"
+    ]
+  },
+  "width": 640,
+  "height": 360,
+  "fps": 30,
+  "assetsBaseDir": "",
+  "style": null,
+  "words": [],
+  "transition": "hard_cut",
+  "claims": [
+    {
+      "id": "c007a",
+      "text": "The lighthouse was first lit in 1899.",
+      "status": "likely_accurate",
+      "requires_human_review": false
+    },
+    {
+      "id": "c007b",
+      "text": "The three keepers were never found.",
+      "status": "unverifiable",
+      "requires_human_review": true
+    }
+  ]
+}

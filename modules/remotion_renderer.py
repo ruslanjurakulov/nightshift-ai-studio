@@ -17,7 +17,10 @@ Contract
   made relative to it), and optionally ``style`` (a
   ``style_presets.StyleBible`` or its dict), ``words`` (``[{text,start_s,end_s}]``
   on the project clock — trimmed to the scene here), ``assets``
-  (``[{id,kind,path}]``) and ``transition``.
+  (``[{id,kind,path}]``), ``transition``, ``claims`` (``[{id,text,status}]``
+  — ``claim_scenes.annotate_scenes`` rows, for ``evidence_card``; filtered to
+  the scene's ``claim_ids``), ``map`` (``{focus:{x,y}, label}`` for
+  ``map_zoom``) and ``lower_third`` (``{name, label}``).
 
 Safety
 ------
@@ -39,6 +42,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import shutil
 import subprocess
@@ -164,6 +168,62 @@ def _scene_assets(assets: Any, base: Optional[Path]) -> List[dict]:
     return out
 
 
+def _scene_claims(claims: Any, scene: Mapping) -> Optional[List[dict]]:
+    """The scene's claims for ``evidence_card``: the context's ``claims`` (else
+    the scene's own ``claims``), limited to ``scene.claim_ids`` when it lists
+    any. The status is passed through as given — a missing one stays missing
+    (the card shows it as unknown), never defaulted to a verdict. None when
+    no claims were supplied at all."""
+    source = claims if claims is not None else scene.get("claims")
+    if not isinstance(source, (list, tuple)):
+        return None
+    ids = {str(i) for i in (scene.get("claim_ids") or ()) if i is not None}
+    out: List[dict] = []
+    for c in source:
+        if not isinstance(c, Mapping):
+            continue
+        text = c.get("text")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        cid = c.get("id")
+        if ids and (cid is None or str(cid) not in ids):
+            continue
+        status = c.get("status")
+        out.append({
+            "id": str(cid) if cid is not None else None,
+            "text": text.strip(),
+            "status": status if isinstance(status, str) else None,
+        })
+    return out
+
+
+def _map_spec(spec: Any) -> Optional[dict]:
+    """``{focus:{x,y}|None, label|None}``; a focus needs two finite numbers
+    (a pin is never placed at a guessed point)."""
+    if not isinstance(spec, Mapping):
+        return None
+    focus = spec.get("focus")
+    fx = fy = None
+    if isinstance(focus, Mapping):
+        fx, fy = _num(focus.get("x")), _num(focus.get("y"))
+    ok = fx is not None and fy is not None and math.isfinite(fx) and math.isfinite(fy)
+    label = spec.get("label")
+    return {
+        "focus": {"x": fx, "y": fy} if ok else None,
+        "label": label.strip() if isinstance(label, str) and label.strip() else None,
+    }
+
+
+def _lower_third(spec: Any) -> Optional[dict]:
+    if not isinstance(spec, Mapping):
+        return None
+    name = spec.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return None
+    label = spec.get("label")
+    return {"name": name.strip(), "label": label.strip() if isinstance(label, str) and label.strip() else None}
+
+
 def build_props(scene: Mapping, context: Mapping) -> dict:
     """The ``--props`` payload for the ``Scene`` composition (see
     ``video-engine/src/types.ts``). Pure."""
@@ -182,6 +242,9 @@ def build_props(scene: Mapping, context: Mapping) -> dict:
         "words": _scene_words(ctx.get("words"), start, end) if start is not None and end is not None else [],
         "assets": _scene_assets(ctx.get("assets"), base),
         "transition": ctx.get("transition") if isinstance(ctx.get("transition"), str) else None,
+        "claims": _scene_claims(ctx.get("claims"), scene),
+        "map": _map_spec(ctx.get("map")),
+        "lowerThird": _lower_third(ctx.get("lower_third")),
     }
     return props
 

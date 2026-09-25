@@ -1,0 +1,27 @@
+{
+  "scene": {
+    "id": "s006",
+    "index": 6,
+    "name": "the_last_entry",
+    "type": "story",
+    "narration": "Moore wrote: \"the lamp was not lit, the clock had stopped and the table was set\" in his report.",
+    "start_s": 0,
+    "end_s": 2,
+    "shot": {
+      "recipe": "quote_card",
+      "camera": null,
+      "lighting": null,
+      "mood": null
+    },
+    "element_ids": [],
+    "asset_ids": [],
+    "claim_ids": []
+  },
+  "width": 640,
+  "height": 360,
+  "fps": 30,
+  "assetsBaseDir": "",
+  "style": null,
+  "words": [],
+  "transition": "hard_cut"
+}

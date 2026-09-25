@@ -38,7 +38,9 @@ Choosing
   * +1 for the footage recipe when the scene's asset is known to be video;
   * the recipe used on the previous scene is excluded, so consecutive scenes
     never repeat a recipe;
-  * ties break by catalogue order — deterministic.
+  * ties break by catalogue order — deterministic;
+  * recipes marked ``auto_select=False`` (``timeline``, ``evidence_card``) are
+    never picked here — they are valid ids that are set explicitly.
 """
 
 from __future__ import annotations
@@ -90,6 +92,9 @@ class ShotRecipe:
     ``scene_types`` IR scene types it is limited to; empty = any type.
     ``backends`` render backends designed to execute it, preferred first.
     ``fallback`` recipe to degrade to when none of ``backends`` is available.
+    ``auto_select`` False = a valid, executable id that :func:`choose_recipe`
+                never picks on its own; it is set explicitly (an operator
+                override, or a later director/IR step that has the signal).
     """
 
     id: str
@@ -104,6 +109,7 @@ class ShotRecipe:
     media: tuple = field(default_factory=tuple)
     scene_types: tuple = field(default_factory=tuple)
     fallback: Optional[str] = None
+    auto_select: bool = True
 
     @property
     def backend(self) -> str:
@@ -130,6 +136,7 @@ class ShotRecipe:
             "media": list(self.media),
             "scene_types": list(self.scene_types),
             "fallback": self.fallback,
+            "auto_select": self.auto_select,
         }
 
 
@@ -210,6 +217,24 @@ RECIPES: tuple = (
         2.0, 10.0, (BACKEND_REMOTION,),
         beats=(BEAT_HOOK, BEAT_BODY), contexts=(CTX_TITLE,), requires_context=True,
         fallback="slow_push",
+    ),
+    # Explicit-only graphics (auto_select=False). Added after the chooser's
+    # recipes so catalogue order — the tie-break — is unchanged for them.
+    # timeline: a scene naming years also reads as archival, so letting the
+    # chooser pick it would silently re-rank every dated scene; evidence_card
+    # needs the scene's claims + fact-check status, which the chooser does not
+    # see (and a card on every claim would be noise). Both are set explicitly.
+    ShotRecipe(
+        "timeline", KIND_GRAPHIC,
+        "Dated events from the narration (years) on a line that draws in, oldest first.",
+        3.0, 20.0, (BACKEND_REMOTION,),
+        beats=(BEAT_BODY, BEAT_REVEAL), fallback="slow_push", auto_select=False,
+    ),
+    ShotRecipe(
+        "evidence_card", KIND_GRAPHIC,
+        "The scene's claim(s) with the advisory fact-check status; neutral when none is known.",
+        3.0, 15.0, (BACKEND_REMOTION,),
+        beats=(BEAT_BODY, BEAT_REVEAL), fallback="slow_push", auto_select=False,
     ),
     # --- transition: how a scene enters (chosen by choose_transition) -----
     ShotRecipe(
@@ -449,7 +474,7 @@ def choose_recipe(
 
         best_id, best_score = None, None
         for r in RECIPES:
-            if r.kind == KIND_TRANSITION or r.id == prev:
+            if r.kind == KIND_TRANSITION or r.id == prev or not r.auto_select:
                 continue
             if r.scene_types and stype not in r.scene_types:
                 continue

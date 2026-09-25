@@ -9,7 +9,6 @@ export const IMAGE_RECIPES = [
   "lateral_pan",
   "parallax",
   "archival_reveal",
-  "map_zoom",
 ] as const;
 
 type Props = {
@@ -43,9 +42,6 @@ export const ImageScene: React.FC<Props> = ({ src, recipe, style }) => {
     case "lateral_pan":
       scale = 1.15;
       x = interpolate(p, [0, 1], [-0.05, 0.05]) * width;
-      break;
-    case "map_zoom":
-      scale = interpolate(p, [0, 1], [1, 1.6]);
       break;
     case "parallax":
       scale = 1.08;
