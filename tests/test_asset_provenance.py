@@ -260,5 +260,48 @@ class BuilderProvenanceTestCase(unittest.TestCase):
         self.assertEqual((asset["author"], asset["rights"]["status"]), ("Jane Doe", "ok"))
 
 
+class RightsGateIntegrationTestCase(unittest.TestCase):
+    """The rights values provenance sets are the ones publish_gate reads."""
+
+    def _gate(self, provenance, block_on_unknown=False):
+        from types import SimpleNamespace
+
+        from modules import publish_gate
+
+        with tempfile.TemporaryDirectory() as d:
+            clip = Path(d) / "1.mp4"
+            clip.write_bytes(b"clip")
+            video = Path(d) / "final_video.mp4"
+            video.write_bytes(b"0" * 200_000)
+            project = video_ir.build_project(
+                slug="p", script=_script("a"), timeline=[{"start_ms": 0, "end_ms": 5000}],
+                video_paths=[clip], provenance={str(clip): provenance} if provenance else None)
+            self.assertTrue(project.scenes[0].asset_ids)   # the clip is USED
+            gate = {"block_on_unknown_rights": True} if block_on_unknown else {}
+            return publish_gate.evaluate(
+                script=SimpleNamespace(topic="A Real Topic", title="An Ordinary Title",
+                                       description="d",
+                                       sections=[SimpleNamespace(narration="x y z.")]),
+                video_path=video, fact_results=[],
+                channel=SimpleNamespace(agent=SimpleNamespace(publish_gate=gate)),
+                originality=SimpleNamespace(check=lambda t: SimpleNamespace(
+                    is_duplicate=False, needs_review=False)),
+                qc_report=SimpleNamespace(blocks=[], warnings=[]),
+                ir_project=project,
+            )
+
+    def test_pexels_asset_passes_even_when_unknown_blocks(self):
+        d = self._gate({"provider": "pexels", "license": PEXELS_LICENSE, "rights": "ok"},
+                       block_on_unknown=True)
+        self.assertEqual(d.rights["ok"], 1)
+        self.assertFalse([r for r in d.blocks + d.warnings if r.startswith("rights")])
+
+    def test_generated_or_unrecorded_asset_is_unknown(self):
+        for record in ({"provider": "minimax", "prompt": "p", "rights": "unknown"}, None):
+            d = self._gate(record)
+            self.assertEqual(d.rights["unknown"], 1)
+            self.assertTrue([w for w in d.warnings if w.startswith("rights_unknown")])
+
+
 if __name__ == "__main__":
     unittest.main()

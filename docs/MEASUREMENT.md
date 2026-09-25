@@ -105,6 +105,7 @@ stop it:
 | sanity | no title, title over 100 characters, video file missing or under 100 KB, fewer than 2 script sections |
 | fact-check | the fact-checker returned failing claims |
 | originality | the topic duplicates an already-published video |
+| rights | an asset a scene actually uses has `rights.status == "blocked"` in the Video IR (`unknown` only warns — see below) |
 
 Three deliberate properties:
 
@@ -130,6 +131,14 @@ disables one. A missing key, a null, a typo, or `"false"` as a string all leave
 the check on — a misconfiguration must fail
 towards checking, not towards publishing. `{"enabled": false}` turns the whole
 gate off for that channel, which restores exactly the pre-Phase-6 behaviour.
+
+`block_on_rights` (same rule, default on) governs used assets whose rights are
+`blocked`. One key works the other way round: `block_on_unknown_rights` is
+**off** unless it is an explicit `true`. Until provenance is recorded almost
+every asset is `unknown`, so by default unknown rights produce a
+`rights_unknown:<count>:<scene ids>` warning, not a block. No Video IR for the
+run is a `rights_check_not_run` warning; the counts ride in the event's
+`rights` metadata (asset and scene ids only, no paths).
 
 Every decision is emitted as an event carrying the gate's **own reason strings**
 — never script text, claim text, or anything that could carry a credential.

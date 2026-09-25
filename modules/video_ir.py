@@ -814,8 +814,8 @@ def write_for_run(
                     path, len(project.scenes), len(project.assets))
         rights = rights_summary(project)
         if rights.get(RIGHTS_UNKNOWN) or rights.get(RIGHTS_BLOCKED):
-            logger.warning("Video IR asset rights: %s — assets without an established "
-                           "licence are advisory for now (the rights gate is PR 4.2)", rights)
+            logger.warning("Video IR asset rights: %s — the publish gate warns on used "
+                           "'unknown' assets and blocks on 'blocked' ones", rights)
         try:
             from modules import run_checkpoint
 
