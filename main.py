@@ -1189,6 +1189,14 @@ def run(
                     # The Video IR (migration 0013); also adds real start/end
                     # times to the scenes above. None leaves both as before.
                     manifest=ir_project.to_dict() if ir_project is not None else None,
+                    # The upload's own facts, so the row the review write may
+                    # CREATE (the mirror usually has not run yet) reads as an
+                    # uploaded video, not a held one. Same values the mirror
+                    # upserts later; never privacy.
+                    published_at=_published_at,
+                    title=published_title,
+                    topic=topic,
+                    slug=slug,
                 )
             except Exception as e:
                 logger.warning("Could not record the review preview (%s: %s)",

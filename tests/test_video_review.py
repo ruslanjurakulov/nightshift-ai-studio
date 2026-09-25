@@ -122,26 +122,27 @@ class ReviewStateFollowsTheChannel(unittest.TestCase):
         self.r = VideoReview(url="https://x.supabase.co", service_key="k")
         self.r.upload_preview = MagicMock(return_value=None)
         self.r.prune = MagicMock()
-        self.r._patch_video = MagicMock(return_value=True)
+        self.r._upsert_video = MagicMock(return_value=True)
 
     def test_manual_channel_leaves_the_video_pending(self):
         self.r.record(video_id="v", channel_id="c", video_path=Path("/x.mp4"),
                       script_text="the narration", auto_publish=False)
-        patch_arg = self.r._patch_video.call_args[0][1]
+        patch_arg = self.r._upsert_video.call_args[0][0]
         self.assertEqual(patch_arg["review_state"], "pending")
         self.assertEqual(patch_arg["script_text"], "the narration")
 
     def test_auto_channel_has_nothing_waiting(self):
         self.r.record(video_id="v", channel_id="c", video_path=Path("/x.mp4"),
                       script_text="x", auto_publish=True)
-        self.assertEqual(self.r._patch_video.call_args[0][1]["review_state"], "approved")
+        self.assertEqual(self.r._upsert_video.call_args[0][0]["review_state"], "approved")
 
-    def test_it_only_ever_writes_those_three_fields(self):
-        """No privacy, no status, no publish. The mirror does not act."""
+    def test_it_only_ever_writes_the_review_fields_and_the_row_key(self):
+        """No privacy, no status, no publish. The mirror does not act. The key
+        and channel are there because the write may create the row."""
         self.r.record(video_id="v", channel_id="c", video_path=Path("/x.mp4"),
                       script_text="x", auto_publish=False)
-        keys = set(self.r._patch_video.call_args[0][1])
-        self.assertEqual(keys, {"script_text", "review_state"})
+        keys = set(self.r._upsert_video.call_args[0][0])
+        self.assertEqual(keys, {"video_id", "channel_id", "script_text", "review_state"})
 
 
 if __name__ == "__main__":
