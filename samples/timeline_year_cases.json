@@ -1,0 +1,241 @@
+{
+  "_about": "Shared cases for the timeline year reader. video-engine/src/text.ts extractTimeline (what the Timeline component draws) and its Python twin modules/graphic_recipes.timeline_dates must agree on every case: dates = the markers in order (max 5), years = their distinct years, timeline = the director may pick the timeline recipe (>= min_years distinct years). Checked by tests/test_graphic_recipes.py and video-engine/tests/text-cases.test.mts.",
+  "min_years": 2,
+  "cases": [
+    {
+      "name": "two plain years",
+      "text": "The lighthouse was built in 1899 and automated in 1971.",
+      "dates": [
+        "1899",
+        "1971"
+      ],
+      "years": [
+        1899,
+        1971
+      ],
+      "timeline": true
+    },
+    {
+      "name": "one year only",
+      "text": "In 1900 the three keepers vanished.",
+      "dates": [
+        "1900"
+      ],
+      "years": [
+        1900
+      ],
+      "timeline": false
+    },
+    {
+      "name": "no year",
+      "text": "The keepers vanished without a trace.",
+      "dates": [],
+      "years": [],
+      "timeline": false
+    },
+    {
+      "name": "same year twice",
+      "text": "In 1900 they left. By the end of 1900 nobody knew why.",
+      "dates": [
+        "1900"
+      ],
+      "years": [
+        1900
+      ],
+      "timeline": false
+    },
+    {
+      "name": "month and day are one date",
+      "text": "On December 26, 1900 the relief boat arrived; in 1900 the log went quiet.",
+      "dates": [
+        "1900",
+        "Dec 1900"
+      ],
+      "years": [
+        1900
+      ],
+      "timeline": false
+    },
+    {
+      "name": "decades",
+      "text": "Through the 1950s and the 1960s the station was modernised.",
+      "dates": [
+        "1950s",
+        "1960s"
+      ],
+      "years": [
+        1950,
+        1960
+      ],
+      "timeline": true
+    },
+    {
+      "name": "thousands separator is not a year",
+      "text": "The storm moved 1,900 tons of rock in 1899.",
+      "dates": [
+        "1899"
+      ],
+      "years": [
+        1899
+      ],
+      "timeline": false
+    },
+    {
+      "name": "money is not a year",
+      "text": "It cost $1900 to repair in 1901.",
+      "dates": [
+        "1901"
+      ],
+      "years": [
+        1901
+      ],
+      "timeline": false
+    },
+    {
+      "name": "quantities are not years",
+      "text": "They walked 1500 miles with 1200 soldiers in 1812.",
+      "dates": [
+        "1812"
+      ],
+      "years": [
+        1812
+      ],
+      "timeline": false
+    },
+    {
+      "name": "years ago is not a year",
+      "text": "Some 1900 years ago Romans came; in 1066 the Normans did.",
+      "dates": [
+        "1066"
+      ],
+      "years": [
+        1066
+      ],
+      "timeline": false
+    },
+    {
+      "name": "decimal is not a year",
+      "text": "The reading was 1900.5 in 1850 and 1851.",
+      "dates": [
+        "1850",
+        "1851"
+      ],
+      "years": [
+        1850,
+        1851
+      ],
+      "timeline": true
+    },
+    {
+      "name": "long numbers are not years",
+      "text": "Serial 19000 and 12345 were logged in 1899.",
+      "dates": [
+        "1899"
+      ],
+      "years": [
+        1899
+      ],
+      "timeline": false
+    },
+    {
+      "name": "out of range",
+      "text": "From 0999 to 2100 nothing counts, but 2024 and 1000 do.",
+      "dates": [
+        "1000",
+        "2024"
+      ],
+      "years": [
+        1000,
+        2024
+      ],
+      "timeline": true
+    },
+    {
+      "name": "cue tags are stripped",
+      "text": "[MUSIC:story_low] In 1899 it was lit. [PAUSE:1.0] By 1900 it was dark. [SFX:boom]",
+      "dates": [
+        "1899",
+        "1900"
+      ],
+      "years": [
+        1899,
+        1900
+      ],
+      "timeline": true
+    },
+    {
+      "name": "sentence end",
+      "text": "It ended in 1850. 1851 began quietly.",
+      "dates": [
+        "1850",
+        "1851"
+      ],
+      "years": [
+        1850,
+        1851
+      ],
+      "timeline": true
+    },
+    {
+      "name": "cap of five markers",
+      "text": "Jan 1900 aside: January 1900, February 1900, March 1900, April 1900, May 1900 and June 1900 came before 1901.",
+      "dates": [
+        "1900",
+        "Jan 1900",
+        "Feb 1900",
+        "Mar 1900",
+        "Apr 1900"
+      ],
+      "years": [
+        1900
+      ],
+      "timeline": false
+    },
+    {
+      "name": "month names are case-insensitive",
+      "text": "In MARCH 1912 and in april 1913 the ships sailed.",
+      "dates": [
+        "Mar 1912",
+        "Apr 1913"
+      ],
+      "years": [
+        1912,
+        1913
+      ],
+      "timeline": true
+    },
+    {
+      "name": "percent is not a year",
+      "text": "Unemployment hit 1920 percent \u2014 no, in 1920 it hit 20 percent, and in 1921 more.",
+      "dates": [
+        "1920",
+        "1921"
+      ],
+      "years": [
+        1920,
+        1921
+      ],
+      "timeline": true
+    },
+    {
+      "name": "non-breaking space counts as whitespace",
+      "text": "On December\u00a026, 1900 it went dark; 1901\u00a0miles away nothing moved, and 1902 passed.",
+      "dates": [
+        "Dec 1900",
+        "1902"
+      ],
+      "years": [
+        1900,
+        1902
+      ],
+      "timeline": true
+    },
+    {
+      "name": "empty",
+      "text": "",
+      "dates": [],
+      "years": [],
+      "timeline": false
+    }
+  ]
+}
