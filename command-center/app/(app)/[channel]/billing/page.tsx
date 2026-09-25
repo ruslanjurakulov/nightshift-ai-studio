@@ -6,6 +6,10 @@ import { getDictionary } from "@/lib/i18n/server";
 import { PROVIDERS } from "@/lib/providers";
 import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/github-secrets";
 import { BillingBoard, type ProviderView, type RunwayView } from "@/components/billing/BillingBoard";
+import { UnitEconomicsCard } from "@/components/billing/UnitEconomicsCard";
+import { getChannelContext } from "@/lib/channels-server";
+import { channelName, inSelection, isScoped } from "@/lib/channels";
+import { unitEconomics, type DurationRow, type LedgerRow } from "@/lib/unitEconomics";
 import {
   BILLED_PROVIDERS,
   daysLeft,
@@ -15,7 +19,6 @@ import {
   providerBurn,
   type BalanceRow,
   type BillingSettingsRow,
-  type CostRowLite,
   type TopupRow,
 } from "@/lib/billing";
 
@@ -35,8 +38,9 @@ export default async function BillingPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t } = await getDictionary();
   const supabase = await createClient();
+  const { channels, selection } = await getChannelContext();
 
-  let costs: CostRowLite[] = [];
+  let costs: LedgerRow[] = [];
   let balances: BalanceRow[] = [];
   let settings: BillingSettingsRow[] = [];
   let topups: TopupRow[] = [];
@@ -47,19 +51,42 @@ export default async function BillingPage() {
     const [c, b, s, tp] = await Promise.all([
       supabase
         .from("video_costs")
-        .select("unit,quantity,stage,recorded_at,video_id,slug")
+        .select("unit,quantity,stage,recorded_at,video_id,slug,channel_id,estimated_usd")
         .gte("recorded_at", since)
         .limit(10000),
       supabase.from("provider_balances").select("*").order("checked_at", { ascending: false }).limit(200),
       supabase.from("provider_billing_settings").select("*"),
       supabase.from("provider_topups").select("provider,amount_usd,paid_at").order("paid_at", { ascending: false }).limit(1000),
     ]);
-    costs = (c.data ?? []) as CostRowLite[];
+    costs = (c.data ?? []) as LedgerRow[];
     balances = (b.data ?? []) as BalanceRow[];
     settings = (s.data ?? []) as BillingSettingsRow[];
     topups = (tp.data ?? []) as TopupRow[];
     migrationMissing = [b.error, s.error, tp.error].some((e) => e?.code === "42P01");
   }
+
+  // Unit economics is per channel (a price per video is a property of what the
+  // channel makes), unlike the provider accounts above, which are shared.
+  const channelCosts = costs.filter((r) => inSelection(r.channel_id, selection));
+  let ue = unitEconomics(channelCosts);
+  if (supabase && ue.sampleSize > 0) {
+    // Length of each sampled video from its Video IR (narration is the master
+    // clock). Missing migration 0013 or a pre-IR video just leaves the length
+    // unknown, and that video out of the per-minute figures.
+    const slugs = [...new Set(ue.videos.flatMap((v) => (v.slug ? [v.slug] : [])))];
+    const ids = [...new Set(ue.videos.flatMap((v) => (v.videoId ? [v.videoId] : [])))];
+    const cols = "video_id,slug,channel_id,duration_s:manifest->audio->duration_s";
+    const [bySlug, byId] = await Promise.all([
+      slugs.length ? supabase.from("videos").select(cols).in("slug", slugs) : null,
+      ids.length ? supabase.from("videos").select(cols).in("video_id", ids) : null,
+    ]);
+    const durations = [
+      ...((bySlug?.data ?? []) as unknown as DurationRow[]),
+      ...((byId?.data ?? []) as unknown as DurationRow[]),
+    ];
+    if (durations.length) ue = unitEconomics(channelCosts, { durations });
+  }
+  const ueScope = isScoped(selection) ? channelName(channels, selection) : t.channels.allChannels;
 
   let configured = new Set<string>();
   if (isGithubConfigured) {
@@ -134,6 +161,7 @@ export default async function BillingPage() {
           <p className="text-[13px] text-[var(--color-warn)]">{t.billing.migrationMissing}</p>
         </div>
       )}
+      <UnitEconomicsCard ue={ue} scope={ueScope} />
       <BillingBoard providers={views} runway={runway} githubConfigured={isGithubConfigured} />
     </div>
   );
