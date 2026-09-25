@@ -44,6 +44,12 @@ installed (:func:`available_backends`); then the recipes that prefer it
 everything else stays on ffmpeg. Its clips are frame-exact to the scene window
 and re-encoded like ffmpeg's, so the assembly is unchanged.
 
+Remotion bundles its project once per run: before the scene loop,
+:func:`render_project` stages the assets of every Remotion scene it is about
+to render and runs ``remotion bundle`` once; each of those scenes then renders
+from that bundle, which is removed when the loop ends. If bundling fails the
+scenes render one by one as before (each bundling for itself).
+
 Per-scene fallback: when Remotion fails for a scene, that scene is rendered
 with ffmpeg as the recipe's ``fallback`` (its own cache entry, keyed with
 backend ``ffmpeg``) and the run goes on; which backend rendered each scene,
@@ -62,6 +68,7 @@ scene that a later run would mistake for a cache hit.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import logging
@@ -395,12 +402,13 @@ def render_scene_ffmpeg(job: SceneJob, project, out_path: Path, *, ffmpeg: Optio
     return out_path
 
 
-def render_scene_remotion(job: SceneJob, project, out_path: Path) -> Path:
+def render_scene_remotion(job: SceneJob, project, out_path: Path, *, bundle=None) -> Path:
     """Render one scene with Remotion (``modules/scene_remotion.py``); raises
-    on failure — render_project then renders the scene with ffmpeg."""
+    on failure — render_project then renders the scene with ffmpeg.
+    ``bundle`` is the run's prebuilt Remotion bundle, when there is one."""
     from modules import scene_remotion
 
-    return scene_remotion.render_scene(job, project, out_path)
+    return scene_remotion.render_scene(job, project, out_path, bundle=bundle)
 
 
 #: backend name → ``fn(job, project, out_path) -> Path``. See choose_backend;
@@ -503,6 +511,27 @@ def _hit_or_render(job: SceneJob, project, renderers: Mapping[str, Callable],
     result.cache_misses.append(job.scene_id)
 
 
+def _remotion_bundle(jobs: List[SceneJob], project, renderers: Dict[str, Callable],
+                     available: Iterable[str]):
+    """Bundle the Remotion engine once for this run when the real Remotion
+    renderer will render at least one scene (a cache miss), and point
+    ``renderers`` at that bundle. Returns the bundle (the caller closes it) or
+    None — no Remotion work, an injected renderer, or bundling failed (then
+    every Remotion scene bundles for itself, as before). Never raises."""
+    if renderers.get(BACKEND_REMOTION) is not render_scene_remotion \
+            or BACKEND_REMOTION not in tuple(available):
+        return None
+    pending = [j for j in jobs if j.backend == BACKEND_REMOTION and not _valid_file(j.path)]
+    if not pending:
+        return None
+    from modules import scene_remotion
+
+    bundle = scene_remotion.prepare_bundle(pending, project)
+    if bundle is not None:
+        renderers[BACKEND_REMOTION] = functools.partial(render_scene_remotion, bundle=bundle)
+    return bundle
+
+
 def render_project(project, output_path, *, scenes_dir=None,
                    cut_intervals: Optional[Mapping] = None, style: Optional[str] = None,
                    renderers: Optional[Mapping[str, Callable]] = None,
@@ -531,22 +560,27 @@ def render_project(project, output_path, *, scenes_dir=None,
                      available=available, graphics=graphics)
     result = SceneRenderResult(video_path=output_path, scenes=len(jobs))
     used = []
-    for job in jobs:
-        try:
-            _hit_or_render(job, project, renderers, result)
-        except Exception as e:
-            if job.fallback is None:
-                raise
-            # One scene's Remotion failure never stops the run: this scene
-            # renders with ffmpeg (the recipe's fallback), under its own key.
-            logger.warning("Scene %s: %s failed (%s) — rendering it with %s instead",
-                           job.scene_id, job.backend, f"{type(e).__name__}: {e}"[:300],
-                           job.fallback.backend)
-            result.fallbacks[job.scene_id] = job.backend
-            job = job.fallback
-            _hit_or_render(job, project, renderers, result)
-        result.backends[job.scene_id] = job.backend
-        used.append(job)
+    bundle = _remotion_bundle(jobs, project, renderers, available)
+    try:
+        for job in jobs:
+            try:
+                _hit_or_render(job, project, renderers, result)
+            except Exception as e:
+                if job.fallback is None:
+                    raise
+                # One scene's Remotion failure never stops the run: this scene
+                # renders with ffmpeg (the recipe's fallback), under its own key.
+                logger.warning("Scene %s: %s failed (%s) — rendering it with %s instead",
+                               job.scene_id, job.backend, f"{type(e).__name__}: {e}"[:300],
+                               job.fallback.backend)
+                result.fallbacks[job.scene_id] = job.backend
+                job = job.fallback
+                _hit_or_render(job, project, renderers, result)
+            result.backends[job.scene_id] = job.backend
+            used.append(job)
+    finally:
+        if bundle is not None:
+            bundle.close()
     jobs = used
     logger.info("Scene render: %d scene(s), %d cache hit(s), %d rendered %s",
                 len(jobs), len(result.cache_hits), len(result.cache_misses), result.cache_misses)

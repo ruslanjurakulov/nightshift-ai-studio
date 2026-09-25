@@ -335,6 +335,153 @@ class AdapterTestCase(_Tmp):
         self.assertIsNone(scene_remotion.count_frames(FFMPEG, bogus))
 
 
+@unittest.skipIf(FFMPEG is None, "no ffmpeg binary")
+class BundleOnceTestCase(_Tmp):
+    """render_project bundles the engine once for all its Remotion scenes and
+    renders each from that bundle (Remotion itself faked, real ffmpeg)."""
+
+    def setUp(self):
+        super().setUp()
+        _ffmpeg("-f", "lavfi", "-i", "color=c=red:s=200x100", "-frames:v", "1",
+                str(self.root / "still.png"))
+        assets = [AssetRef(id="a_still", kind="image", path=str(self.root / "still.png"))]
+        # Three graphic scenes (Remotion) around one footage scene (ffmpeg).
+        self.project = _project(self.root, assets=assets,
+                                recipes={0: "title_card", 1: "quote_card", 3: "chapter_card"},
+                                times=((0, 1), (1, 2), (2, 3), (3, 4)), audio_s=4.0,
+                                scene_assets={0: ("a_still",), 2: ("a_still",), 3: ("a_still",)})
+        self.bundles, self.renders = [], []
+
+    def fake_bundle(self, fail=False):
+        def bundle(out_dir, *, public_dir=None):
+            out_dir = Path(out_dir)
+            self.bundles.append({"out_dir": out_dir, "public": sorted(
+                p.relative_to(public_dir).as_posix() for p in Path(public_dir).rglob("*") if p.is_file())})
+            if fail:
+                return None
+            out_dir.mkdir()
+            (out_dir / "index.html").write_text("")
+            return out_dir
+        return bundle
+
+    def fake_render(self, fail_ids=()):
+        def render(scene, context, out_path):
+            self.renders.append({"id": scene["id"], "context": dict(context),
+                                 "bundle_alive": bool(context.get("serve_url"))
+                                 and Path(context["serve_url"], "index.html").is_file()})
+            if scene["id"] in fail_ids:
+                return None
+            n = round((scene["end_s"] - scene["start_s"]) * 30)
+            _ffmpeg("-f", "lavfi", "-i", f"testsrc=s={context['width']}x{context['height']}:r=30",
+                    "-frames:v", str(n), "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out_path))
+            return Path(out_path)
+        return render
+
+    def run_project(self, bundle, render, renderers=None):
+        self.ffmpeg = Renderer("ffmpeg")
+        renderers = renderers or {"ffmpeg": self.ffmpeg, "remotion": scene_render.render_scene_remotion}
+        with mock.patch.object(remotion_renderer, "bundle", side_effect=bundle), \
+                mock.patch.object(remotion_renderer, "render_scene", side_effect=render):
+            return scene_render.render_project(self.project, self.out, renderers=renderers,
+                                               assemble_fn=fake_assemble)
+
+    def test_one_bundle_serves_every_remotion_scene(self):
+        r = self.run_project(self.fake_bundle(), self.fake_render())
+        self.assertEqual(len(self.bundles), 1)
+        self.assertEqual(self.bundles[0]["public"],
+                         ["scene000/asset00.png", "scene002/asset00.png"])
+        self.assertEqual([x["id"] for x in self.renders], ["s000", "s001", "s003"])
+        bundle_dir = self.bundles[0]["out_dir"]
+        for x in self.renders:
+            self.assertEqual(x["context"]["serve_url"], str(bundle_dir))
+            self.assertTrue(x["bundle_alive"])
+        self.assertEqual(self.renders[0]["context"]["assets"],
+                         [{"id": "a_still", "kind": "image", "path": "scene000/asset00.png"}])
+        self.assertEqual(self.renders[1]["context"]["assets"], [])
+        self.assertEqual(self.renders[2]["context"]["assets"],
+                         [{"id": "a_still", "kind": "image", "path": "scene002/asset00.png"}])
+        meta = r.to_metadata()
+        self.assertEqual(meta["backend_by_scene"],
+                         {"s000": "remotion", "s001": "remotion", "s002": "ffmpeg", "s003": "remotion"})
+        self.assertEqual(meta["fallback_scene_ids"], [])
+        # Frame-exact clips, as without the bundle.
+        for job in scene_render.plan_jobs(self.project, self.out.parent / "scenes", available=BOTH):
+            if job.backend == "remotion":
+                self.assertEqual(scene_remotion.count_frames(FFMPEG, job.path), 30)
+        # The bundle (and its staged public dir) is gone after the run.
+        self.assertFalse(bundle_dir.parent.exists())
+
+    def test_bundle_failure_renders_each_scene_on_its_own(self):
+        r = self.run_project(self.fake_bundle(fail=True), self.fake_render())
+        self.assertEqual(len(self.bundles), 1)
+        self.assertFalse(self.bundles[0]["out_dir"].parent.exists())
+        self.assertEqual([x["id"] for x in self.renders], ["s000", "s001", "s003"])
+        for x in self.renders:
+            self.assertNotIn("serve_url", x["context"])
+        # Per-scene staging, exactly as before.
+        self.assertEqual(self.renders[0]["context"]["assets"],
+                         [{"id": "a_still", "kind": "image", "path": "asset00.png"}])
+        self.assertEqual(set(r.backends.values()), {"remotion", "ffmpeg"})
+        self.assertEqual(r.fallbacks, {})
+
+    def test_bundle_that_raises_is_contained(self):
+        def explode(out_dir, *, public_dir=None):
+            raise RuntimeError("bundler exploded")
+
+        r = self.run_project(explode, self.fake_render())
+        self.assertEqual([x["id"] for x in self.renders], ["s000", "s001", "s003"])
+        self.assertEqual(r.fallbacks, {})
+
+    def test_failed_scene_falls_back_to_ffmpeg_and_the_bundle_is_still_removed(self):
+        r = self.run_project(self.fake_bundle(), self.fake_render(fail_ids=("s001",)))
+        self.assertEqual(len(self.bundles), 1)
+        self.assertEqual(r.fallbacks, {"s001": "remotion"})
+        self.assertEqual(self.ffmpeg.calls, ["s001", "s002"])
+        self.assertFalse(self.bundles[0]["out_dir"].parent.exists())
+
+    def test_ffmpeg_error_still_raises_and_the_bundle_is_removed(self):
+        class Broken(Renderer):
+            def __call__(self, job, project, out_path):
+                raise RuntimeError("ffmpeg broke")
+
+        with self.assertRaises(RuntimeError):
+            self.run_project(self.fake_bundle(), self.fake_render(),
+                             renderers={"ffmpeg": Broken("ffmpeg"),
+                                        "remotion": scene_render.render_scene_remotion})
+        self.assertEqual(len(self.bundles), 1)
+        self.assertFalse(self.bundles[0]["out_dir"].parent.exists())
+
+    def test_no_bundle_when_every_remotion_scene_is_cached(self):
+        self.run_project(self.fake_bundle(), self.fake_render())
+        self.bundles.clear(), self.renders.clear()
+        r = self.run_project(self.fake_bundle(), self.fake_render())
+        self.assertEqual(self.bundles, [])
+        self.assertEqual(self.renders, [])
+        self.assertEqual(len(r.cache_hits), 4)
+
+    def test_only_uncached_remotion_scenes_are_bundled(self):
+        self.run_project(self.fake_bundle(), self.fake_render())
+        job = scene_render.plan_jobs(self.project, self.out.parent / "scenes", available=BOTH)[3]
+        job.path.unlink()
+        self.bundles.clear(), self.renders.clear()
+        self.run_project(self.fake_bundle(), self.fake_render())
+        self.assertEqual(len(self.bundles), 1)
+        self.assertEqual(self.bundles[0]["public"], ["scene000/asset00.png"])
+        self.assertEqual([x["id"] for x in self.renders], ["s003"])
+
+    def test_injected_remotion_renderer_is_never_bundled_for(self):
+        fake = Renderer("remotion")
+        self.run_project(self.fake_bundle(), self.fake_render(),
+                         renderers={"ffmpeg": Renderer("ffmpeg"), "remotion": fake})
+        self.assertEqual(self.bundles, [])
+        self.assertEqual(fake.calls, ["s000", "s001", "s003"])
+
+    def test_no_bundle_without_remotion_available(self):
+        self.run_project(self.fake_bundle(), self.fake_render(),
+                         renderers={"ffmpeg": Renderer("ffmpeg")})
+        self.assertEqual(self.bundles, [])
+
+
 def _real_engine_ready() -> bool:
     import shutil
 
@@ -361,9 +508,14 @@ class RealRemotionTestCase(_Tmp):
         project = replace(project, scenes=tuple(
             replace(s, narration='"Nothing on this island is ever lost," the keeper wrote.') if s.index == 1 else s
             for s in project.scenes))
-        with mock.patch.dict(os.environ, {"CHRONOS_REMOTION": "1"}):
+        with mock.patch.dict(os.environ, {"CHRONOS_REMOTION": "1"}), \
+                mock.patch.object(remotion_renderer, "bundle", wraps=remotion_renderer.bundle) as spy:
             self.assertIn("remotion", scene_render.available_backends())
             r = scene_render.render_project(project, self.out)
+        # Bundled once for the run, rendered from that bundle, then removed.
+        self.assertEqual(spy.call_count, 1)
+        bundle_dir = Path(spy.call_args.args[0])
+        self.assertFalse(bundle_dir.parent.exists())
         meta = r.to_metadata()
         self.assertEqual(meta["fallback_scene_ids"], [])
         self.assertEqual(meta["backend_by_scene"],

@@ -20,7 +20,8 @@ Contract
   (``[{id,kind,path}]``), ``transition``, ``claims`` (``[{id,text,status}]``
   — ``claim_scenes.annotate_scenes`` rows, for ``evidence_card``; filtered to
   the scene's ``claim_ids``), ``map`` (``{focus:{x,y}, label}`` for
-  ``map_zoom``) and ``lower_third`` (``{name, label}``).
+  ``map_zoom``), ``lower_third`` (``{name, label}``) and ``serve_url`` (a
+  prebuilt bundle directory from :func:`bundle`; see below).
 
 Safety
 ------
@@ -34,6 +35,17 @@ Safety
   (``npm ci`` in the workflow); this module never runs npm install.
 * **Browser.** ``CHRONOS_REMOTION_BROWSER`` may point at a local
   Chrome/Chromium (headless shell) binary; otherwise Remotion uses its own.
+
+Prebuilt bundle
+---------------
+``remotion render src/index.ts`` bundles the project (webpack + a copy of the
+public dir) on every call. :func:`bundle` runs ``remotion bundle`` once into a
+directory; a context with ``serve_url`` pointing at that directory renders
+from it (``remotion render <bundle-dir> Scene …``) and skips the bundling. A
+bundle carries its public dir inside (``<bundle>/public``, copied at bundle
+time — ``--public-dir`` is ignored when rendering a bundle), so every asset a
+bundled render uses must be staged before :func:`bundle` runs. A ``serve_url``
+that is not a bundle directory falls back to rendering from source.
 
 Used by the scene-level render path (``modules/scene_render.py`` via
 ``modules/scene_remotion.py``) when ``CHRONOS_SCENE_RENDER=1`` and
@@ -258,10 +270,15 @@ def build_command(
     *,
     public_dir: Optional[Path] = None,
     browser: Optional[str] = None,
+    entry_point: Optional[str] = None,
 ) -> List[str]:
-    """The ``npx remotion render`` argument list (runs nothing)."""
+    """The ``npx remotion render`` argument list (runs nothing).
+    ``entry_point`` is the source entry (default) or a bundle directory from
+    :func:`bundle`; with a bundle, ``public_dir`` must be None (the bundle
+    already holds its public dir)."""
     cmd = [
-        npx, "--no-install", "remotion", "render", ENTRY_POINT, COMPOSITION_ID, str(out_path),
+        npx, "--no-install", "remotion", "render", entry_point or ENTRY_POINT, COMPOSITION_ID,
+        str(out_path),
         f"--props={props_path}",
         "--concurrency=1",
         "--overwrite",
@@ -272,6 +289,74 @@ def build_command(
     if browser:
         cmd.append(f"--browser-executable={browser}")
     return cmd
+
+
+def build_bundle_command(npx: str, out_dir: Path, *, public_dir: Optional[Path] = None) -> List[str]:
+    """The ``npx remotion bundle`` argument list (runs nothing): bundle the
+    entry point into ``out_dir``, copying ``public_dir`` into it."""
+    cmd = [npx, "--no-install", "remotion", "bundle", ENTRY_POINT, f"--out-dir={out_dir}", "--log=error"]
+    if public_dir is not None:
+        cmd.append(f"--public-dir={public_dir}")
+    return cmd
+
+
+def is_bundle(path) -> bool:
+    """True when ``path`` is a directory made by ``remotion bundle`` (it has an
+    ``index.html`` — the same test Remotion's CLI uses)."""
+    try:
+        p = Path(path)
+        return p.is_dir() and (p / "index.html").is_file()
+    except (TypeError, OSError):
+        return False
+
+
+def bundle(out_dir, *, public_dir=None) -> Optional[Path]:
+    """Bundle the engine once into ``out_dir`` (must not exist yet, or be
+    empty) with ``public_dir`` copied inside. Returns the bundle directory, or
+    None on any failure or when disabled. Never raises."""
+    try:
+        return _bundle(Path(out_dir), Path(public_dir) if public_dir is not None else None)
+    except Exception as exc:  # noqa: BLE001 — a failed bundle only means no reuse
+        logger.warning("remotion: bundle failed unexpectedly (%s)", type(exc).__name__)
+        return None
+
+
+def _bundle(out_dir: Path, public_dir: Optional[Path]) -> Optional[Path]:
+    if not enabled():
+        return None
+    npx = shutil.which("npx")
+    if not npx:
+        logger.warning("remotion: npx not found on PATH; not bundling")
+        return None
+    if not _engine_installed():
+        logger.warning("remotion: video-engine dependencies not installed; not bundling")
+        return None
+    if public_dir is not None and not public_dir.is_dir():
+        logger.warning("remotion: bundle public dir does not exist; not bundling")
+        return None
+    out_dir = out_dir.resolve()
+    if out_dir.exists() and (not out_dir.is_dir() or any(out_dir.iterdir())):
+        logger.warning("remotion: bundle directory is not empty; not bundling")
+        return None
+    cmd = build_bundle_command(npx, out_dir, public_dir=public_dir.resolve() if public_dir else None)
+    timeout = _timeout_s()
+    try:
+        proc = subprocess.run(cmd, cwd=str(ENGINE_DIR), capture_output=True, text=True,
+                              timeout=timeout)
+    except subprocess.TimeoutExpired:
+        logger.warning("remotion: bundle timed out after %.0fs", timeout)
+        return None
+    except OSError as exc:
+        logger.warning("remotion: could not start the bundler (%s)", type(exc).__name__)
+        return None
+    if proc.returncode != 0:
+        tail = (proc.stderr or proc.stdout or "")[-_STDERR_TAIL:].strip()
+        logger.warning("remotion: bundle exited %s: %s", proc.returncode, tail)
+        return None
+    if not is_bundle(out_dir):
+        logger.warning("remotion: bundle produced no index.html")
+        return None
+    return out_dir
 
 
 def render_scene(scene_dict: Mapping, context: Mapping, out_path) -> Optional[Path]:
@@ -305,6 +390,14 @@ def _render_scene(scene: Mapping, context: Mapping, out_path: Path) -> Optional[
 
     props = build_props(scene, context or {})
     public_dir = Path(props["assetsBaseDir"]) if props["assetsBaseDir"] else None
+    serve_url = (context or {}).get("serve_url")
+    entry_point = None
+    if serve_url:
+        if is_bundle(serve_url):
+            # The bundle already holds its public dir; --public-dir is ignored.
+            entry_point, public_dir = str(Path(serve_url).resolve()), None
+        else:
+            logger.warning("remotion: serve_url is not a bundle directory; rendering scene %s from source", sid)
     if public_dir is not None and not public_dir.is_dir():
         logger.warning("remotion: assets_base_dir does not exist; skipped scene %s", sid)
         return None
@@ -314,7 +407,8 @@ def _render_scene(scene: Mapping, context: Mapping, out_path: Path) -> Optional[
     with tempfile.TemporaryDirectory(prefix="remotion-props-") as tmp:
         props_path = Path(tmp) / f"{sid}.json"
         props_path.write_text(json.dumps(props), encoding="utf-8")
-        cmd = build_command(npx, props_path, out_path, public_dir=public_dir, browser=_browser_executable())
+        cmd = build_command(npx, props_path, out_path, public_dir=public_dir,
+                            browser=_browser_executable(), entry_point=entry_point)
         timeout = _timeout_s()
         try:
             proc = subprocess.run(
