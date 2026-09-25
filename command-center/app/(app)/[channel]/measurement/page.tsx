@@ -28,6 +28,7 @@ import type {
   VideoCostRow,
   VideoRow,
 } from "@/lib/types";
+import { uploadedOnly } from "@/lib/heldVideos";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -61,7 +62,7 @@ export default async function MeasurePage() {
       scopeQuery(supabase.from("video_costs").select("*"), selection)
         .order("recorded_at", { ascending: false })
         .limit(2000),
-      scopeQuery(supabase.from("videos").select("*"), selection)
+      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), selection))
         .order("published_at", { ascending: false })
         .limit(500),
       // Snapshots carry no channel_id — they are scoped by the videos they join to.

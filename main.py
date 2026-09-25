@@ -53,6 +53,7 @@ from modules.compositor import Compositor
 from modules import render_dispatch
 from modules.resource_monitor import MemorySampler, log_usage
 from modules.video_review import VideoReview
+from modules import held_video
 from modules.fact_checker import fact_check_claims
 from modules.media_fetcher import MediaFetcher
 from modules import pinned_comment
@@ -990,6 +991,34 @@ def run(
                                              not_before=scene_repair.repaired_at(slug)):
             awaiting_two_person = True
 
+    def _record_held_run(state: str, *, gate_meta=None) -> None:
+        """A run that ends without uploading gets a `videos` row of its own
+        (modules/held_video.py): its detail page, and the Storyboard's scene
+        repair, need one. Keyed by channel + slug, so a later hold or upload of
+        this same run updates this row instead of adding another. Published
+        time, privacy and YouTube id stay NULL — it was not published. Records
+        only; never uploads, never changes what the gate decided, never raises."""
+        try:
+            try:
+                held_scenes = claim_scenes.annotate_scenes(script, section_claims, fact_results)
+            except Exception:
+                held_scenes = None
+            held_video.record_held(
+                channel_id=channel_id,
+                slug=slug,
+                state=state,
+                topic=topic,
+                title=published_title,
+                script_text=script.full_narration(),
+                scenes=held_scenes,
+                manifest=ir_project.to_dict() if ir_project is not None else None,
+                local_path=str(video_path),
+                detail=held_video.gate_detail(state, gate_meta),
+            )
+        except Exception as e:
+            logger.warning("Could not record the held run (%s: %s) — the run is unaffected",
+                           type(e).__name__, e)
+
     video_id, video_url = None, None
     if not skip_upload and gate.allowed and auto_publish and not awaiting_two_person:
         events.emit(events.UPLOAD_STARTED, agent="youtube_uploader", status=events.STATUS_RUNNING,
@@ -1044,13 +1073,14 @@ def run(
                 logger.debug("Could not stat %s for the cost ledger", video_path, exc_info=True)
             logger.info("YouTube URL: %s", video_url)
             print(f"\n✓ Published: {video_url}")
+            _published_at = datetime.utcnow().isoformat()
             with StateStore() as store:
                 store.record_video(
                     video_id=video_id,
                     topic=topic,
                     title=published_title,
                     slug=slug,
-                    published_at=datetime.utcnow().isoformat(),
+                    published_at=_published_at,
                     privacy=privacy,
                     category_id=YOUTUBE_CATEGORY_ID,
                     local_path=str(video_path),
@@ -1058,6 +1088,23 @@ def run(
                     thumbnail_variant=variant,
                     title_variant=title_variant,
                     hook_variant=hook_variant,
+                )
+                # If this run was held before (blocked, awaiting approval,
+                # auto-publish off, repaired), its held row becomes THIS video's
+                # row — re-keyed to the YouTube id, so there is never a second
+                # row for one run. No held row: a no-op, exactly as before.
+                held_video.promote(
+                    channel_id=channel_id,
+                    slug=slug,
+                    youtube_id=video_id,
+                    published_at=_published_at,
+                    privacy=privacy,
+                    title=published_title,
+                    topic=topic,
+                    category_id=YOUTUBE_CATEGORY_ID,
+                    local_path=str(video_path),
+                    thumbnail_variant=variant,
+                    title_variant=title_variant,
                 )
                 events.emit(events.UPLOAD_COMPLETED, video_id=video_id, agent="youtube_uploader",
                             status=events.STATUS_COMPLETED, channel_id=channel_id,
@@ -1180,7 +1227,11 @@ def run(
                 costs=costs,
             )
     elif not gate.allowed:
-        pass  # already reported above
+        # Already reported above. The run is not uploaded, so it gets a held
+        # row of its own — its detail page is where a human sees why it
+        # stopped and can ask for a scene to be repaired.
+        if not skip_upload:
+            _record_held_run(held_video.STATE_BLOCKED, gate_meta=gate.to_metadata())
     elif awaiting_two_person:
         # The gate PASSED and auto-publish is on, but this channel requires a
         # second admin's sign-off and no approval names this run yet. A policy
@@ -1196,6 +1247,7 @@ def run(
         events.emit(events.PUBLISH_HELD, agent="publish_gate", status=events.STATUS_COMPLETED,
                     channel_id=channel_id,
                     metadata={"reason": "awaiting_two_person_approval", "video_path": str(video_path)})
+        _record_held_run(held_video.STATE_AWAITING_APPROVAL, gate_meta=gate.to_metadata())
     elif not skip_upload and not auto_publish:
         # The gate PASSED but this channel's auto-publish is off: the video is
         # finished and waits on disk for a human to publish. A policy hold, not a
@@ -1206,6 +1258,7 @@ def run(
         events.emit(events.PUBLISH_HELD, agent="publish_gate", status=events.STATUS_COMPLETED,
                     channel_id=channel_id,
                     metadata={"reason": "auto_publish_off", "video_path": str(video_path)})
+        _record_held_run(held_video.STATE_HELD, gate_meta=gate.to_metadata())
     else:
         print(f"\n✓ Video saved (upload skipped): {video_path}")
 

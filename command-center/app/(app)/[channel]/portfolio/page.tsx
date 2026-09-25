@@ -11,6 +11,7 @@ import { summariseCosts } from "@/lib/measurement";
 import { parseRevenueTracked } from "@/lib/advisory";
 import { portfolioTotals, type ChannelEconomicsInput } from "@/lib/portfolio";
 import type { SystemEventRow, VideoCostRow, VideoRow } from "@/lib/types";
+import { uploadedOnly } from "@/lib/heldVideos";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -56,7 +57,7 @@ export default async function PortfolioPage() {
   if (supabase && channels.length > 0) {
     const [cost, vid, rev] = await Promise.all([
       supabase.from("video_costs").select("*").limit(5000),
-      supabase.from("videos").select("*").limit(5000),
+      uploadedOnly(supabase.from("videos").select("*")).limit(5000),
       supabase
         .from("system_events")
         .select("*")

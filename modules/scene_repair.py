@@ -749,6 +749,7 @@ def cli(*, channel: Optional[str], raw_scenes: Optional[str], topic: Optional[st
                 channel_id=channel_id,
                 metadata={"reason": "repaired_awaiting_review", "slug": plan.slug,
                           "scene_ids": list(plan.scene_ids)})
+    _record_repaired_row(plan, result)
     qc_blocks = (result.qc or {}).get("blocks") if isinstance(result.qc, dict) else None
     logger.info("Repair done: %s re-rendered, %d kept scene(s) from cache; QC blocks: %s. "
                 "Held for review — nothing was uploaded.",
@@ -756,6 +757,46 @@ def cli(*, channel: Optional[str], raw_scenes: Optional[str], topic: Optional[st
     print(f"\n⏸ Repaired {', '.join(plan.scene_ids)} — the new cut is held for review "
           f"(previous approval invalidated, nothing uploaded): {result.video_path}")
     return EXIT_OK
+
+
+def _record_repaired_row(plan: RepairPlan, result: RepairResult) -> None:
+    """The repaired cut is held for review, so the run's ``videos`` row says so
+    (modules/held_video.py): state ``repaired_awaiting_review`` and the
+    repaired Video IR. Nothing is uploaded and published_at / privacy stay
+    NULL. The first hold's title and claim-annotated scenes are kept; they are
+    filled from the saved script only when this run has no row yet (a run held
+    before held rows existed). Never raises — the repair has already happened."""
+    try:
+        from modules import held_video
+
+        manifest = None
+        project = video_ir.load(plan.run_dir / video_ir.PROJECT_FILENAME)
+        if project is not None:
+            manifest = project.to_dict()
+        fill: dict = {}
+        try:
+            from modules.script_engine import ScriptEngine
+
+            # The script the preflight already read (plan.script), rebuilt the
+            # way Script.load does — no API call.
+            script = ScriptEngine._parse(plan.topic or plan.script.get("topic", "untitled"), plan.script)
+            fill = {"title": script.title, "script_text": script.full_narration(),
+                    "scenes": script.scene_plan()}
+        except Exception as e:
+            logger.info("Repair: saved script not reloaded for the held row (%s)", type(e).__name__)
+        held_video.record_held(
+            channel_id=plan.channel_id,
+            slug=plan.slug,
+            state=held_video.STATE_REPAIRED,
+            topic=plan.topic or None,
+            manifest=manifest,
+            local_path=str(result.video_path),
+            detail={"reason": held_video.STATE_REPAIRED, "scene_ids": list(plan.scene_ids),
+                    "repaired_at": result.repaired_at},
+            fill_if_new=fill,
+        )
+    except Exception as e:
+        logger.warning("Repair: could not record the held row (%s: %s)", type(e).__name__, e)
 
 
 def _validate_main(argv: Sequence[str]) -> int:

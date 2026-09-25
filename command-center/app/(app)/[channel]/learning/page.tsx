@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { fetchTopicScores, getChannelSelection } from "@/lib/channels-server";
 import { isScoped, scopeQuery } from "@/lib/channels";
 import type { FeedbackSignalRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
+import { uploadedOnly } from "@/lib/heldVideos";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -34,7 +35,7 @@ export default async function LearningPage() {
     const [fs, tp, vid, lr] = await Promise.all([
       scopeQuery(supabase.from("feedback_signals").select("*"), selection).order("analyzed_date", { ascending: false }).limit(300),
       fetchTopicScores(supabase, selection),
-      scopeQuery(supabase.from("videos").select("*"), selection).order("published_at", { ascending: false }).limit(200),
+      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), selection)).order("published_at", { ascending: false }).limit(200),
       // Proposed/approved learnings (migration 0014). A missing table degrades
       // to a notice, not a broken page.
       scopeQuery(supabase.from("learnings").select("*"), selection).order("created_at", { ascending: false }).limit(300),

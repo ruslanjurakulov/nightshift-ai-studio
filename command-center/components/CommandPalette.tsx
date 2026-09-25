@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n/context";
 import type { Dictionary } from "@/lib/i18n";
 import { relativeTime } from "@/lib/format";
 import { useChannelPath } from "@/lib/channels-client";
+import { uploadedOnly } from "@/lib/heldVideos";
 
 type NavKey = keyof Dictionary["nav"];
 const NAV: { href: string; key: NavKey; hotkey?: string }[] = [
@@ -79,7 +80,7 @@ export function CommandPalette() {
     const supabase = createClient();
     if (!supabase) return;
     const [vid, ev] = await Promise.all([
-      supabase.from("videos").select("video_id,title,topic").order("published_at", { ascending: false }).limit(50),
+      uploadedOnly(supabase.from("videos").select("video_id,title,topic")).order("published_at", { ascending: false }).limit(50),
       supabase.from("system_events").select("event_key,event,agent,ts,video_id").order("ts", { ascending: false }).limit(100),
     ]);
     setVideos(

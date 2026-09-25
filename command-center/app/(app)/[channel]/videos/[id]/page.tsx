@@ -13,6 +13,7 @@ import { QualityGate } from "@/components/autonomy/QualityGate";
 import { buildTrace } from "@/lib/decisions";
 import { summarizeSceneRetention } from "@/lib/sceneRetention";
 import { pendingSceneRequests, sceneRepairEligibility } from "@/lib/sceneRepair";
+import { heldGate, heldState, heldStateLabel, isHeldVideo } from "@/lib/heldVideos";
 import { num, decimal, relativeTime, timeOfDay, statusTone } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { fetchChannelTopicScores } from "@/lib/channels-server";
@@ -172,13 +173,21 @@ export default async function VideoDetail({
     | null;
   const factEvent = [...events].reverse().find((e) => e.event.startsWith("fact_check"));
   const flaggedRaw = (factEvent?.metadata as { flagged?: unknown } | null)?.flagged;
+  // A held run (lib/heldVideos) has no YouTube id, publish time, privacy or
+  // metrics. Its gate events were emitted before the row existed, so they do
+  // not name it; the verdict the gate recorded on the row stands in — the
+  // gate's own words, never a guessed pass.
+  const held = isHeldVideo(video);
+  const heldVerdict = held ? heldGate(video) : null;
   const gate = gateMeta
     ? {
         allowed: Boolean(gateMeta.allowed),
         reasons: [...(gateMeta.blocks ?? []), ...(gateMeta.warnings ?? [])],
         flagged: typeof flaggedRaw === "number" ? flaggedRaw : null,
       }
-    : null;
+    : heldVerdict
+      ? { allowed: heldVerdict.allowed, reasons: [...heldVerdict.blocks, ...heldVerdict.warnings], flagged: null }
+      : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -198,26 +207,62 @@ export default async function VideoDetail({
           </Link>
           <h1 className="t-hero mt-2 truncate">{video.title ?? video.video_id}</h1>
           <p className="t-lead mt-4">
-            {video.topic ?? t.videoDetail.noTopic} · {fmt(t.videoDetail.published, { t: relativeTime(video.published_at) })}
+            {video.topic ?? t.videoDetail.noTopic} ·{" "}
+            {held
+              ? video.held_at
+                ? fmt(t.held.heldAt, { t: relativeTime(video.held_at) })
+                : t.held.notUploaded
+              : fmt(t.videoDetail.published, { t: relativeTime(video.published_at) })}
           </p>
         </div>
-        <StatusPill
-          tone={video.privacy === "public" ? "ok" : "idle"}
-          label={(video.privacy ?? t.videoDetail.unknown).toUpperCase()}
-        />
+        {held ? (
+          <StatusPill tone="warn" label={t.held.badge.toUpperCase()} />
+        ) : (
+          <StatusPill
+            tone={video.privacy === "public" ? "ok" : "idle"}
+            label={(video.privacy ?? t.videoDetail.unknown).toUpperCase()}
+          />
+        )}
       </div>
+
+      {held && (
+        <Panel title={t.held.detailTitle}>
+          <div className="flex flex-col gap-3 p-4">
+            <div className="text-sm font-semibold text-[var(--color-warn)]">
+              {heldStateLabel(heldState(video), t.held)}
+            </div>
+            <p className="m-0 text-[12px] leading-relaxed text-[var(--color-muted)]">{t.held.detailNote}</p>
+            {heldVerdict ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field
+                  label={t.held.gateBlocks}
+                  value={heldVerdict.blocks.length ? <span className="mono text-[12px]">{heldVerdict.blocks.join(", ")}</span> : t.common.dash}
+                />
+                <Field
+                  label={t.held.gateWarnings}
+                  value={heldVerdict.warnings.length ? <span className="mono text-[12px]">{heldVerdict.warnings.join(", ")}</span> : t.common.dash}
+                />
+              </div>
+            ) : (
+              <p className="m-0 text-[12px] text-[var(--color-muted)]">{t.held.noGateDetail}</p>
+            )}
+          </div>
+        </Panel>
+      )}
 
       <Panel title={t.videoDetail.content}>
         <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label={t.videoDetail.fTitle} value={video.title ?? t.common.na} />
           <Field label={t.videoDetail.fTopic} value={video.topic ?? t.common.na} />
           <Field label={t.videoDetail.fSlug} value={video.slug ?? t.common.na} />
-          <Field label={t.videoDetail.fPrivacy} value={video.privacy ?? t.common.na} />
+          <Field label={t.videoDetail.fPrivacy} value={video.privacy ?? (held ? t.held.notUploaded : t.common.na)} />
           <Field
             label={t.videoDetail.fPublished}
             value={
               video.published_at ? (
                 <span className="mono text-[13px]">{video.published_at}</span>
+              ) : held ? (
+                t.held.notUploaded
               ) : (
                 t.common.na
               )

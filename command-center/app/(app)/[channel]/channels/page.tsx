@@ -16,6 +16,7 @@ import type {
   SystemEventRow,
   VideoRow,
 } from "@/lib/types";
+import { uploadedOnly } from "@/lib/heldVideos";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -43,7 +44,7 @@ export default async function ChannelsPage() {
   if (supabase) {
     const [ev, vid, snap, q] = await Promise.all([
       supabase.from("system_events").select("*").order("ts", { ascending: false }).limit(500),
-      supabase.from("videos").select("*").order("published_at", { ascending: false }).limit(500),
+      uploadedOnly(supabase.from("videos").select("*")).order("published_at", { ascending: false }).limit(500),
       supabase.from("metrics_snapshots").select("*").order("snapshot_date", { ascending: false }).limit(500),
       supabase.from("content_queue").select("*").limit(500),
     ]);
