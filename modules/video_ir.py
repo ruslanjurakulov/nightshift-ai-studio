@@ -824,8 +824,11 @@ def write_for_run(
         path = save(project, project_path(slug, root))
         logger.info("Video IR written: %s (%d scene(s), %d asset(s))",
                     path, len(project.scenes), len(project.assets))
+        sidecar = path.parent / graphic_recipes.SIDECAR_FILENAME
         if graphics:
-            graphic_recipes.write_sidecar(graphics, path.parent / graphic_recipes.SIDECAR_FILENAME)
+            graphic_recipes.write_sidecar(graphics, sidecar)
+        else:
+            graphic_recipes.remove_sidecar(sidecar)
         rights = rights_summary(project)
         if rights.get(RIGHTS_UNKNOWN) or rights.get(RIGHTS_BLOCKED):
             logger.warning("Video IR asset rights: %s — the publish gate warns on used "

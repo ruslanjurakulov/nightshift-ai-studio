@@ -353,6 +353,18 @@ class ApplyAndPipelineTestCase(unittest.TestCase):
             self.assertEqual(project, expected)
             self.assertFalse((Path(d) / "slug" / gr.SIDECAR_FILENAME).exists())
 
+    def test_run_without_graphics_removes_a_stale_sidecar(self):
+        """A sidecar left by an earlier flag-on run must not feed stale props
+        to this run's Remotion scenes."""
+        script = self._short_script()
+        timeline = _timeline(*([9_000] * 8))
+        with tempfile.TemporaryDirectory() as d:
+            self._write(Path(d), script, timeline, flag=True)
+            side = Path(d) / "slug" / gr.SIDECAR_FILENAME
+            self.assertTrue(side.exists())
+            self._write(Path(d), script, timeline, flag=False)
+            self.assertFalse(side.exists())
+
     def test_demo_script_recipes_are_pinned_with_the_flag_on(self):
         """The committed demo script (25–50 s sections, as real runs have) has
         no scene that meets a rule: the flag changes nothing in project.json."""
