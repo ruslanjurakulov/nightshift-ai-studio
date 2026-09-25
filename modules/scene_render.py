@@ -456,4 +456,6 @@ def render_project(project, output_path, *, scenes_dir=None,
     (assemble_fn or assemble)(project, jobs, output_path, subtitles_path=project.subtitles_path)
     if not _valid_file(output_path):
         raise SceneRenderError(f"no assembled video at {output_path}")
+    from modules import scene_cache_gc  # best effort: stale keys/temp files; never raises
+    scene_cache_gc.cleanup(scenes_dir, jobs)
     return result
