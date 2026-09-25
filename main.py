@@ -881,6 +881,8 @@ def run(
             section_timeline=timeline, subtitle_path=srt_path, presenter_path=presenter_path,
             clip_terms=getattr(fetcher, "video_terms", None),
             width=VIDEO_WIDTH, height=VIDEO_HEIGHT, fps=config.VIDEO_FPS,
+            # CHRONOS_SCENE_RENDER=1: render per IR scene with a cache (modules/scene_render.py).
+            ir_project=ir_project,
         )
     video_path = render_result.video_path
     costs.slug = slug
