@@ -254,6 +254,7 @@ export const uz: Dictionary = {
     storyboardRegenerateFiling: "Yuborilmoqda…",
     storyboardRegenerateFiled: "So'raldi — tuzatish ishga tushishini kutmoqda",
     storyboardRegenerateHint: "Faqat so'rov yuboradi — bu sahifadan hech narsa render qilinmaydi, pul sarflanmaydi va e'lon qilinmaydi. Tuzatish ishga tushirilganda (Actions → Daily YouTube Video → repair_scenes = sahna id'si, masalan s003) faqat shu sahna yangi footaj bilan qayta quriladi; yangi versiya yana ko'rib chiqishga qaytadi va avvalgi tasdiq endi hisobga olinmaydi.",
+    storyboardRegenerateUnavailable: "Sahnani qayta yaratib bo'lmaydi: bu video allaqachon yuklangan, uning ishga tushirilishi yopilgan va tuzatadigan narsa qolmagan. Sahnalarni faqat yuklashdan oldin (bloklangan, to'xtatilgan yoki ko'rib chiqishni kutayotgan) qayta yaratish mumkin.",
   },
   pipeline: {
     title: "Konveyer",

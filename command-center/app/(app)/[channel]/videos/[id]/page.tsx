@@ -12,7 +12,7 @@ import { IntelligenceTrace } from "@/components/intel/IntelligenceTrace";
 import { QualityGate } from "@/components/autonomy/QualityGate";
 import { buildTrace } from "@/lib/decisions";
 import { summarizeSceneRetention } from "@/lib/sceneRetention";
-import { pendingSceneRequests } from "@/lib/sceneRepair";
+import { pendingSceneRequests, sceneRepairEligibility } from "@/lib/sceneRepair";
 import { num, decimal, relativeTime, timeOfDay, statusTone } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { fetchChannelTopicScores } from "@/lib/channels-server";
@@ -148,6 +148,11 @@ export default async function VideoDetail({
 
   const latest = snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
 
+  // "Regenerate scene" only where a repair run could carry it out: an uploaded
+  // video's run checkpoint is gone (lib/sceneRepair). Display only — who may
+  // file stays the database's decision.
+  const repairable = sceneRepairEligibility(video, events).repairable;
+
   // `manifest` (migration 0013) is read untyped: the mapping only needs its
   // measured audio duration and parses it defensively.
   const sceneRetention = summarizeSceneRetention(
@@ -230,7 +235,7 @@ export default async function VideoDetail({
           scenes={video.scenes ?? null}
           scriptText={video.script_text}
           retention={sceneRetention}
-          repair={{
+          repair={repairable ? {
             channelId: video.channel_id,
             videoId: video.video_id,
             pending: pendingScenes,
@@ -240,7 +245,8 @@ export default async function VideoDetail({
               filed: t.videoDetail.storyboardRegenerateFiled,
               hint: t.videoDetail.storyboardRegenerateHint,
             },
-          }}
+          } : null}
+          repairUnavailable={repairable ? null : t.videoDetail.storyboardRegenerateUnavailable}
           labels={{
             empty: t.videoDetail.storyboardEmpty,
             scene: t.videoDetail.storyboardScene,

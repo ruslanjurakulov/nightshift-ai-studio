@@ -9,6 +9,10 @@
  * matching rows when it has rebuilt the scene. Who may file is the database's
  * decision (the review_intents insert policy: editor and above).
  *
+ * The button is only offered where a repair can happen at all
+ * (sceneRepairEligibility): scene_repair.find_run repairs an UNFINISHED run
+ * through its checkpoint, and a run that uploaded cleared that checkpoint.
+ *
  * Pure, so it is unit-tested directly.
  */
 
@@ -49,4 +53,50 @@ export function pendingSceneRequests(
     if (r?.action === "regenerate_scene" && !r.consumed_at && isSceneId(r.scene_id)) out.add(r.scene_id);
   }
   return out;
+}
+
+/**
+ * Pipeline events that mean the video reached YouTube (modules/event_log.py:
+ * UPLOAD_COMPLETED, VIDEO_PUBLISHED, SHORT_COMPLETED). main.py clears the run
+ * checkpoint right after the upload these follow.
+ */
+const UPLOADED_EVENTS: ReadonlySet<string> = new Set(["upload.completed", "video.published", "short.completed"]);
+
+export type SceneRepairEligibility =
+  | { repairable: true }
+  /** "uploaded": the video reached YouTube; "unknown": no video row to judge. */
+  | { repairable: false; reason: "uploaded" | "unknown" };
+
+function present(v: unknown): boolean {
+  return typeof v === "string" && v.trim() !== "";
+}
+
+/**
+ * Can a "Regenerate scene" request on this video ever be carried out?
+ *
+ * Only for a run that has NOT uploaded: modules/scene_repair.find_run repairs
+ * a blocked / held / awaiting-review run through its checkpoint, and main.py
+ * clears that checkpoint as soon as the upload succeeds — so a request on an
+ * uploaded video is filed and then never consumed.
+ *
+ * Derived only from what the video page already loads:
+ *  - `published_at` — set by StateStore.record_video, which runs only after a
+ *    successful YouTube upload (the long video's and a Short's alike);
+ *  - `privacy` — written by that same call with the upload's privacy status;
+ *  - the video's own pipeline events — an upload/publish event names it.
+ * Any one of them present means uploaded, so not repairable. The rule leans to
+ * hiding: offering a request that can never run is the bug this guards.
+ *
+ * Pure: it reads nothing, writes nothing and changes no permission or gate.
+ */
+export function sceneRepairEligibility(
+  video: { published_at?: string | null; privacy?: string | null } | null | undefined,
+  events?: ReadonlyArray<{ event?: string | null }> | null,
+): SceneRepairEligibility {
+  if (!video) return { repairable: false, reason: "unknown" };
+  const uploaded =
+    present(video.published_at) ||
+    present(video.privacy) ||
+    (events ?? []).some((e) => typeof e?.event === "string" && UPLOADED_EVENTS.has(e.event));
+  return uploaded ? { repairable: false, reason: "uploaded" } : { repairable: true };
 }
