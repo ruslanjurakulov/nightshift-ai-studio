@@ -122,23 +122,31 @@ def validate(spec: RenderSpec) -> List[str]:
 def concat_list_lines(spec: RenderSpec) -> List[str]:
     """The lines of an ffmpeg concat-demuxer list file for this spec's segments.
 
-    Each file-backed segment becomes a `file '<path>'` + `duration <d>` pair.
-    Colour placeholders carry no file, so they are skipped here — the backend
-    generates them as `color=` inputs separately; a spec of only placeholders
-    yields no lines (the caller then knows to build a colour-only clip instead).
-    The last file is repeated per the concat demuxer's documented quirk (the
-    final `duration` is otherwise ignored)."""
+    Each file-backed segment becomes a `file '<path>'` + `duration <d>` pair,
+    and every file is listed **exactly once**. Colour placeholders carry no
+    file, so they are skipped here — the backend generates them as `color=`
+    inputs separately; a spec of only placeholders yields no lines (the caller
+    then knows to build a colour-only clip instead).
+
+    The files must be pre-normalised video clips already cut to their
+    segment's length (render_backend does this). For such clips the demuxer
+    plays each file in full and `duration` only pins where the next file's
+    timestamps start, so the output is exactly the sum of the segments.
+
+    This list used to repeat the last file, after the concat demuxer's
+    image-slideshow quirk (a lone still's final `duration` is ignored). That
+    workaround does not apply to video clips: it played the last clip twice,
+    so a silent 2.3 s render came out ~3.6 s (with narration `-shortest` only
+    hid it when the audio was the shorter stream). It was not even exact for
+    stills — measured with ffmpeg 7, the repeat stretched a 3.0 s two-image
+    list to 3.9 s — which is why stills are normalised to video first."""
     lines: List[str] = []
-    last_path: Optional[str] = None
     for seg in spec.segments:
         if seg.kind == KIND_COLOR or not seg.path:
             continue
         safe = seg.path.replace("'", r"'\''")
         lines.append(f"file '{safe}'")
         lines.append(f"duration {max(0.0, seg.duration):.3f}")
-        last_path = safe
-    if last_path is not None:
-        lines.append(f"file '{last_path}'")
     return lines
 
 

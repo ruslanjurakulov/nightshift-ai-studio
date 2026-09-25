@@ -766,7 +766,9 @@ def write_for_run(
     ``output/<slug>/project.json`` and record it on the run checkpoint.
 
     ``scene_plan`` is ``claim_scenes.annotate_scenes(...)`` (the Storyboard's
-    scene list with per-scene ``claim_ids``); only its claim ids are read.
+    scene list with per-scene ``claim_ids``); its claim ids are read, and — only
+    with ``CHRONOS_GRAPHIC_RECIPES`` on — its claims' fact-check statuses (for
+    ``evidence_card``, see ``modules/graphic_recipes.py``).
     ``provenance`` is ``MediaFetcher.provenance`` (see :func:`build_project`).
 
     Best-effort — returns the project, or None if anything failed; the failure
@@ -806,12 +808,24 @@ def write_for_run(
             image_model=image_model, claim_ids=claims_by_index,
             provenance=provenance if isinstance(provenance, Mapping) else None,
         )
+        # CHRONOS_GRAPHIC_RECIPES=1 (default off): upgrade a scene to timeline /
+        # evidence_card / map_zoom only when its real data supports it, and
+        # collect the props sources (modules/graphic_recipes.py). Off: the
+        # project is exactly as built above and no sidecar is written.
+        from modules import graphic_recipes
+
+        graphics = None
+        if graphic_recipes.is_enabled():
+            project, graphics = graphic_recipes.apply(project, scene_plan=scene_plan,
+                                                      elements=elements)
         problems = project.validate()
         if problems:
             logger.warning("Video IR has %d problem(s): %s", len(problems), "; ".join(problems[:5]))
         path = save(project, project_path(slug, root))
         logger.info("Video IR written: %s (%d scene(s), %d asset(s))",
                     path, len(project.scenes), len(project.assets))
+        if graphics:
+            graphic_recipes.write_sidecar(graphics, path.parent / graphic_recipes.SIDECAR_FILENAME)
         rights = rights_summary(project)
         if rights.get(RIGHTS_UNKNOWN) or rights.get(RIGHTS_BLOCKED):
             logger.warning("Video IR asset rights: %s — the publish gate warns on used "

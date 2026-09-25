@@ -27,19 +27,29 @@ times (``null``) cannot be placed: the whole scene render is refused
 What decides a scene's key
 --------------------------
 ``narration`` · each asset's id **and** content identity (``sha256`` when the IR
-has it, else path + size + mtime) · ``shot.recipe`` · the frame-snapped duration
-· ``width``/``height``/``fps`` · the cut interval · ``style`` · the backend that
-renders it · :data:`CACHE_VERSION` (bumped when the rendering itself changes).
+has it, else path + size + mtime) · ``shot.recipe`` (as the backend executes it)
+· the frame-snapped duration · ``width``/``height``/``fps`` · the cut interval ·
+``style`` · the backend that renders it · :data:`CACHE_VERSION` (bumped when
+the rendering itself changes).
 Change any of these and the scene is a miss; change none and it is a hit.
 
 Backends per scene
 ------------------
 :func:`choose_backend` decides who renders a scene; :data:`SCENE_RENDERERS`
-maps a backend name to its renderer. Today only ffmpeg is registered, so every
-scene renders with ffmpeg. This is the extension point for PR 3.2: graphic
-recipes (``shot_recipes`` kind ``graphic`` — quote/stat/chapter/title cards)
-will go to ``remotion_renderer.render_scene`` once it is registered here and
-listed in ``available``; it is deliberately NOT wired in this PR.
+maps a backend name to its renderer: ffmpeg, and Remotion
+(``modules/scene_remotion.py`` around ``remotion_renderer.render_scene``).
+Remotion is only *available* when ``CHRONOS_REMOTION=1`` and the engine is
+installed (:func:`available_backends`); then the recipes that prefer it
+(graphic cards, ``map_zoom``, ``parallax``, ``archival_reveal``) go to it and
+everything else stays on ffmpeg. Its clips are frame-exact to the scene window
+and re-encoded like ffmpeg's, so the assembly is unchanged.
+
+Per-scene fallback: when Remotion fails for a scene, that scene is rendered
+with ffmpeg as the recipe's ``fallback`` (its own cache entry, keyed with
+backend ``ffmpeg``) and the run goes on; which backend rendered each scene,
+and which scenes fell back, is in the render metadata. The key a scene is
+cached under always names the backend and the recipe that actually rendered
+it, so a clip from one backend is never reused for the other.
 
 Safety
 ------
@@ -99,14 +109,10 @@ def choose_backend(scene, available: Iterable[str] = (BACKEND_FFMPEG,)) -> str:
     The recipe's catalogue entry (``modules/shot_recipes.py``) names the
     backends designed to execute it, preferred first; the first one that is
     ``available`` AND has a renderer in :data:`SCENE_RENDERERS` wins, else
-    ffmpeg. With today's defaults (only ffmpeg available/registered) every
-    scene — including graphic recipes like ``quote_card`` — renders with
-    ffmpeg.
-
-    PR 3.2 hook: register ``SCENE_RENDERERS[BACKEND_REMOTION]`` (an adapter
-    around ``remotion_renderer.render_scene``) and pass
-    ``available=(BACKEND_REMOTION, BACKEND_FFMPEG)`` when ``CHRONOS_REMOTION``
-    is on; graphic recipes then route to Remotion with no other change here.
+    ffmpeg. With the defaults (only ffmpeg available) every scene — including
+    graphic recipes like ``quote_card`` — renders with ffmpeg; when
+    :func:`available_backends` includes Remotion (``CHRONOS_REMOTION=1`` and
+    an installed engine) the recipes that prefer it route to it.
     """
     have = {str(b).strip().lower() for b in (available or ())}
     try:
@@ -137,6 +143,9 @@ class SceneJob:
     backend: str
     key: str
     path: Path
+    #: For a non-ffmpeg job: the same scene on ffmpeg with the recipe's
+    #: fallback (its own key/path) — rendered when this job's backend fails.
+    fallback: Optional["SceneJob"] = None
 
     @property
     def duration_s(self) -> float:
@@ -255,6 +264,20 @@ def cache_key(*, narration: str, assets: List, recipe: Optional[str], duration_s
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
+def _executed_recipe(recipe: Optional[str], backend: str) -> Optional[str]:
+    """The recipe ``backend`` actually executes for ``recipe``: itself when the
+    backend is designed for it (or it is unknown), else its fallback chain."""
+    try:
+        from modules import shot_recipes
+
+        r = shot_recipes.get(recipe)
+        if r is None or backend in r.backends:
+            return recipe
+        return shot_recipes.resolve_for_backends(recipe, (backend,))
+    except Exception:
+        return recipe
+
+
 def plan_jobs(project, scenes_dir: Path, *, cut_intervals: Optional[Mapping] = None,
               style: Optional[str] = None,
               available: Iterable[str] = (BACKEND_FFMPEG,)) -> List[SceneJob]:
@@ -272,15 +295,19 @@ def plan_jobs(project, scenes_dir: Path, *, cut_intervals: Optional[Mapping] = N
             cut = DEFAULT_CUT_S
         assets = _usable_assets(project, scene)
         backend = choose_backend(scene, available)
-        key = cache_key(narration=scene.narration, assets=assets, recipe=scene.shot.recipe,
-                        duration_s=dur, width=project.width, height=project.height, fps=fps,
-                        cut_s=cut, style=style, backend=backend)
-        jobs.append(SceneJob(
-            scene_id=scene.id, index=scene.index, start_frame=start, end_frame=end, fps=fps,
-            segments=tuple(scene_segments(assets, end - start, fps, cut)), backend=backend,
-            key=key,
-            path=Path(scenes_dir) / f"{scene.id}-{key}.mp4",
-        ))
+        segments = tuple(scene_segments(assets, end - start, fps, cut))
+
+        def job_for(b: str, fallback=None) -> SceneJob:
+            key = cache_key(narration=scene.narration, assets=assets,
+                            recipe=_executed_recipe(scene.shot.recipe, b),
+                            duration_s=dur, width=project.width, height=project.height, fps=fps,
+                            cut_s=cut, style=style, backend=b)
+            return SceneJob(scene_id=scene.id, index=scene.index, start_frame=start,
+                            end_frame=end, fps=fps, segments=segments, backend=b, key=key,
+                            path=Path(scenes_dir) / f"{scene.id}-{key}.mp4", fallback=fallback)
+
+        fallback = job_for(BACKEND_FFMPEG) if backend != BACKEND_FFMPEG else None
+        jobs.append(job_for(backend, fallback))
     return jobs
 
 
@@ -351,8 +378,28 @@ def render_scene_ffmpeg(job: SceneJob, project, out_path: Path, *, ffmpeg: Optio
     return out_path
 
 
-#: backend name → ``fn(job, project, out_path) -> Path``. See choose_backend.
-SCENE_RENDERERS: Dict[str, Callable] = {BACKEND_FFMPEG: render_scene_ffmpeg}
+def render_scene_remotion(job: SceneJob, project, out_path: Path) -> Path:
+    """Render one scene with Remotion (``modules/scene_remotion.py``); raises
+    on failure — render_project then renders the scene with ffmpeg."""
+    from modules import scene_remotion
+
+    return scene_remotion.render_scene(job, project, out_path)
+
+
+#: backend name → ``fn(job, project, out_path) -> Path``. See choose_backend;
+#: a registered backend is only used when it is also available.
+SCENE_RENDERERS: Dict[str, Callable] = {BACKEND_FFMPEG: render_scene_ffmpeg,
+                                        BACKEND_REMOTION: render_scene_remotion}
+
+
+def available_backends() -> tuple:
+    """The backends that can render right now: ffmpeg always; Remotion only
+    with ``CHRONOS_REMOTION=1`` and an installed engine (default: ffmpeg only)."""
+    from modules import scene_remotion
+
+    if scene_remotion.available():
+        return (BACKEND_REMOTION, BACKEND_FFMPEG)
+    return (BACKEND_FFMPEG,)
 
 
 def _render_job(job: SceneJob, project, renderers: Mapping[str, Callable]) -> None:
@@ -414,13 +461,29 @@ class SceneRenderResult:
     cache_hits: List[str] = field(default_factory=list)
     cache_misses: List[str] = field(default_factory=list)
     backends: Dict[str, str] = field(default_factory=dict)
+    #: scene id → the backend that failed for it (the scene then used ffmpeg).
+    fallbacks: Dict[str, str] = field(default_factory=dict)
 
     def to_metadata(self) -> dict:
-        """Scene ids and counts only — no paths."""
+        """Scene ids, backend names and counts only — no paths."""
         return {"scenes": self.scenes, "cache_hits": len(self.cache_hits),
                 "cache_misses": len(self.cache_misses),
                 "rendered_scene_ids": list(self.cache_misses),
-                "scene_backends": sorted(set(self.backends.values()))}
+                "scene_backends": sorted(set(self.backends.values())),
+                "backend_by_scene": dict(self.backends),
+                "fallback_scene_ids": sorted(self.fallbacks)}
+
+
+def _hit_or_render(job: SceneJob, project, renderers: Mapping[str, Callable],
+                   result: SceneRenderResult) -> None:
+    if _valid_file(job.path):
+        result.cache_hits.append(job.scene_id)
+        logger.info("Scene %s: cache hit (%s, %s)", job.scene_id, job.key, job.backend)
+        return
+    logger.info("Scene %s: cache miss (%s) — rendering %.2fs with %s",
+                job.scene_id, job.key, job.duration_s, job.backend)
+    _render_job(job, project, renderers)
+    result.cache_misses.append(job.scene_id)
 
 
 def render_project(project, output_path, *, scenes_dir=None,
@@ -437,23 +500,37 @@ def render_project(project, output_path, *, scenes_dir=None,
     problems = project.validate()
     if problems:
         raise SceneRenderError("invalid Video IR: " + "; ".join(problems[:3]))
-    renderers = dict(renderers or SCENE_RENDERERS)
+    if renderers is None:
+        renderers, available = dict(SCENE_RENDERERS), available_backends()
+    else:
+        renderers = dict(renderers)
+        available = tuple(renderers)
     jobs = plan_jobs(project, scenes_dir, cut_intervals=cut_intervals, style=style,
-                     available=tuple(renderers))
+                     available=available)
     result = SceneRenderResult(video_path=output_path, scenes=len(jobs))
+    used = []
     for job in jobs:
+        try:
+            _hit_or_render(job, project, renderers, result)
+        except Exception as e:
+            if job.fallback is None:
+                raise
+            # One scene's Remotion failure never stops the run: this scene
+            # renders with ffmpeg (the recipe's fallback), under its own key.
+            logger.warning("Scene %s: %s failed (%s) — rendering it with %s instead",
+                           job.scene_id, job.backend, f"{type(e).__name__}: {e}"[:300],
+                           job.fallback.backend)
+            result.fallbacks[job.scene_id] = job.backend
+            job = job.fallback
+            _hit_or_render(job, project, renderers, result)
         result.backends[job.scene_id] = job.backend
-        if _valid_file(job.path):
-            result.cache_hits.append(job.scene_id)
-            logger.info("Scene %s: cache hit (%s)", job.scene_id, job.key)
-            continue
-        logger.info("Scene %s: cache miss (%s) — rendering %.2fs with %s",
-                    job.scene_id, job.key, job.duration_s, job.backend)
-        _render_job(job, project, renderers)
-        result.cache_misses.append(job.scene_id)
+        used.append(job)
+    jobs = used
     logger.info("Scene render: %d scene(s), %d cache hit(s), %d rendered %s",
                 len(jobs), len(result.cache_hits), len(result.cache_misses), result.cache_misses)
     (assemble_fn or assemble)(project, jobs, output_path, subtitles_path=project.subtitles_path)
     if not _valid_file(output_path):
         raise SceneRenderError(f"no assembled video at {output_path}")
+    from modules import scene_cache_gc  # best effort: stale keys/temp files; never raises
+    scene_cache_gc.cleanup(scenes_dir, jobs)
     return result

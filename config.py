@@ -229,6 +229,10 @@ RENDER_BACKEND = os.getenv("CHRONOS_RENDER_BACKEND", "moviepy").strip().lower()
 # (reused when its content key is unchanged) and assembles the final video from
 # them. Default off; read at render time by render_dispatch, and any failure
 # falls back to RENDER_BACKEND above.
+# With CHRONOS_REMOTION=1 too (and `npm ci` done in video-engine/), scenes whose
+# recipe prefers Remotion (quote/stat/title/chapter cards, timeline, evidence
+# card, map_zoom, ...) render with it (modules/scene_remotion.py); a scene
+# Remotion fails on renders with ffmpeg instead. Also default off.
 
 # YouTube Upload
 YOUTUBE_CATEGORY_ID = "28"  # Science & Technology
