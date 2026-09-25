@@ -334,32 +334,32 @@ class VideoReviewManifestTestCase(unittest.TestCase):
         self.r = VideoReview(url="https://x.supabase.co", service_key="k")
         self.r.upload_preview = MagicMock(return_value=None)
         self.r.prune = MagicMock()
-        self.r._patch_video = MagicMock(return_value=True)
+        self.r._upsert_video = MagicMock(return_value=True)
         self.manifest = {"version": 1, "scenes": [{"id": "s000", "start_s": 0.0, "end_s": 9.5}]}
 
     def test_manifest_and_timed_scenes_ride_the_patch(self):
         self.r.record(video_id="v", channel_id="c", video_path=Path("/x.mp4"), script_text="x",
                       auto_publish=False, scenes=[{"name": "hook", "duration_hint": 15}],
                       manifest=self.manifest)
-        patch = self.r._patch_video.call_args[0][1]
+        patch = self.r._upsert_video.call_args[0][0]
         self.assertEqual(patch["manifest"], self.manifest)
         self.assertEqual(patch["scenes"][0]["start_s"], 0.0)
         self.assertEqual(patch["scenes"][0]["end_s"], 9.5)
         self.assertEqual(patch["scenes"][0]["id"], "s000")
 
     def test_unmigrated_database_retries_without_manifest(self):
-        self.r._patch_video = MagicMock(side_effect=[False, True])
+        self.r._upsert_video = MagicMock(side_effect=[False, True])
         self.r.record(video_id="v", channel_id="c", video_path=Path("/x.mp4"), script_text="x",
                       auto_publish=False, scenes=[{"name": "hook"}], manifest=self.manifest)
-        self.assertEqual(self.r._patch_video.call_count, 2)
-        second = self.r._patch_video.call_args_list[1][0][1]
+        self.assertEqual(self.r._upsert_video.call_count, 2)
+        second = self.r._upsert_video.call_args_list[1][0][0]
         self.assertNotIn("manifest", second)
         self.assertEqual(second["scenes"][0]["end_s"], 9.5)
 
     def test_no_manifest_is_exactly_as_before(self):
         self.r.record(video_id="v", channel_id="c", video_path=Path("/x.mp4"), script_text="x",
                       auto_publish=False, scenes=[{"name": "hook"}])
-        patch = self.r._patch_video.call_args[0][1]
+        patch = self.r._upsert_video.call_args[0][0]
         self.assertNotIn("manifest", patch)
         self.assertEqual(patch["scenes"], [{"name": "hook"}])
 

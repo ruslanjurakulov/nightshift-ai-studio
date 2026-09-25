@@ -14,7 +14,9 @@ What it deliberately does NOT do
 --------------------------------
 It does not publish, un-publish, or change any video's privacy, and it is not
 part of the publish gate. It runs *after* the pipeline has finished with a
-video and only ever writes: an object into a bucket, and two columns on a row.
+video and only ever writes: an object into a bucket, and the review columns
+of that video's row (creating the row if it is not there yet — see
+``record``).
 
 Like ``event_log`` and ``supabase_sync``, nothing here raises into the
 pipeline. A missing bucket, a slow network or an oversized file is logged and
@@ -273,6 +275,34 @@ class VideoReview:
             logger.warning("Could not update video %s (%s: %s)", video_id, type(e).__name__, e)
             return False
 
+    def _upsert_video(self, row: dict) -> bool:
+        """Insert-or-merge one ``videos`` row on its primary key.
+
+        PostgREST's ``merge-duplicates`` updates only the columns present in
+        ``row``; every other column of an existing row is left exactly as it
+        was, and on insert the absent columns take their defaults. The key is
+        sent only as a header and never logged."""
+        try:
+            resp = requests.post(
+                f"{self.url}/rest/v1/videos",
+                params={"on_conflict": "video_id"},
+                json=row,
+                headers=self._headers({
+                    "Content-Type": "application/json",
+                    "Prefer": "resolution=merge-duplicates,return=minimal",
+                }),
+                timeout=30,
+            )
+            if resp.status_code >= 300:
+                logger.warning("Could not record review columns for %s (HTTP %s)",
+                               row.get("video_id"), resp.status_code)
+                return False
+            return True
+        except Exception as e:
+            logger.warning("Could not record review columns for %s (%s)",
+                           row.get("video_id"), type(e).__name__)
+            return False
+
     def record(
         self,
         *,
@@ -283,6 +313,10 @@ class VideoReview:
         auto_publish: bool,
         scenes: list | None = None,
         manifest: dict | None = None,
+        published_at: str | None = None,
+        title: str | None = None,
+        topic: str | None = None,
+        slug: str | None = None,
     ) -> None:
         """Upload the preview and attach the script to the row.
 
@@ -300,26 +334,58 @@ class VideoReview:
         gains its IR `id` and its REAL `start_s`/`end_s` from the audio timeline,
         so the Storyboard shows measured times instead of `duration_hint`.
         None leaves both exactly as before.
+
+        The write is an UPSERT on ``video_id``, not a PATCH. On a first-pass
+        upload the ``videos`` row usually does not exist yet — the Supabase
+        mirror (``supabase_sync.mirror_from_store``) creates it later, in the
+        intelligence-poll job — and a PATCH on a missing row matches nothing,
+        so the preview, script, scenes and manifest were silently lost. The
+        upsert creates the row when it is missing and, when it exists (the
+        mirror got there first, or ``held_video.promote`` re-keyed this run's
+        held row), merges only the columns sent here into it.
+
+        Besides the review columns it sends ``channel_id`` (NOT NULL, and its
+        default would put the row on the wrong channel) and, when given, the
+        upload's own ``published_at`` / ``title`` / ``topic`` / ``slug`` — the
+        same values ``StateStore.record_video`` stored and the mirror will
+        later upsert, so the two writers agree. ``published_at`` matters: a
+        row without it (and without ``privacy``) reads as a *held* run in the
+        Command Center. Nothing is ever sent as NULL except ``script_text``
+        when there is no narration (as before), and ``privacy`` is never sent.
+
+        Idempotent (same key, same values), and never raises.
         """
         if not self.enabled:
             return
-        preview_path = self.upload_preview(video_path, channel_id, video_id)
-        patch: dict = {"script_text": script_text or None}
-        if preview_path:
-            patch["preview_path"] = preview_path
-        patch["review_state"] = "approved" if auto_publish else "pending"
-        if manifest:
-            from modules import video_ir
+        try:
+            preview_path = self.upload_preview(video_path, channel_id, video_id)
+            row: dict = {
+                "video_id": video_id,
+                "channel_id": channel_id,
+                "script_text": script_text or None,
+            }
+            for key, value in (("published_at", published_at), ("title", title),
+                               ("topic", topic), ("slug", slug)):
+                if value:
+                    row[key] = value
+            if preview_path:
+                row["preview_path"] = preview_path
+            row["review_state"] = "approved" if auto_publish else "pending"
+            if manifest:
+                from modules import video_ir
 
-            scenes = video_ir.annotate_scenes(scenes, manifest)
-            patch["manifest"] = manifest
-        if scenes:
-            patch["scenes"] = scenes
-        ok = self._patch_video(video_id, patch)
-        if not ok and "manifest" in patch:
-            # An un-migrated database (no `manifest` column) rejects the whole
-            # PATCH; retry without the new column so the preview/script still land.
-            patch.pop("manifest", None)
-            self._patch_video(video_id, patch)
-        if preview_path:
-            self.prune(channel_id)
+                scenes = video_ir.annotate_scenes(scenes, manifest)
+                row["manifest"] = manifest
+            if scenes:
+                row["scenes"] = scenes
+            ok = self._upsert_video(row)
+            if not ok and "manifest" in row:
+                # An un-migrated database (no `manifest` column) rejects the whole
+                # write; retry without the new column so the preview/script still land.
+                row.pop("manifest", None)
+                self._upsert_video(row)
+            if preview_path:
+                self.prune(channel_id)
+        except Exception as e:
+            logger.warning("Could not record the review row for %s (%s: %s) — the run is unaffected",
+                           video_id, type(e).__name__, e)
