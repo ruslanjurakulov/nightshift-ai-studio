@@ -28,7 +28,13 @@ Rules this module keeps:
   ``null`` times, not a guess.
 * **null ≠ 0, and nothing is invented.** Unknown provenance (URL, licence,
   author, prompt, cost, hash) stays ``null``; ``rights.status`` is
-  ``"unknown"`` until something actually establishes it (PR 1.2 / 4.2).
+  ``"unknown"`` until something actually establishes it. Provenance (PR 1.2)
+  comes from what the fetcher recorded at fetch/generation time
+  (``MediaFetcher.provenance``): Pexels' page URL, author and licence (rights
+  ``ok``); a generated asset's provider, model, the prompt actually sent, its
+  task id and a price only when one is configured (rights stay ``unknown`` —
+  no provider terms are assumed). ``sha256`` is the hash of the file when it
+  exists on disk.
 * **Never raises into the pipeline.** :func:`write_for_run` is best-effort: any
   failure is logged and returns ``None``; the run is unaffected.
 
@@ -44,7 +50,7 @@ import json
 import logging
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Iterable, List, Mapping, Optional, Sequence
 
@@ -68,6 +74,9 @@ SOURCE_STOCK = "stock"
 SOURCE_GENERATED = "generated"
 
 _VIDEO_SUFFIXES = (".mp4", ".mov", ".avi", ".webm", ".mkv")
+#: Provenance fields a fetcher record may fill in. ``id``/``kind``/``path``/
+#: ``source`` are the builder's own and never overridden by a record.
+_PROVENANCE_STR_FIELDS = ("provider", "url", "license", "author", "model", "prompt", "task_id")
 _SCENE_ID_RE = re.compile(r"^s\d{3,}$")
 
 
@@ -79,6 +88,22 @@ def scene_id(section_index: int) -> str:
 def asset_id(path) -> str:
     """A stable asset id for a file path."""
     return "a_" + hashlib.sha1(str(path).encode("utf-8")).hexdigest()[:12]
+
+
+def file_sha256(path) -> Optional[str]:
+    """Hex sha256 of the file at ``path``, or None when it is missing or
+    unreadable. Never raises."""
+    try:
+        p = Path(path)
+        if not p.is_file():
+            return None
+        h = hashlib.sha256()
+        with open(p, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        return None
 
 
 def element_id(kind: str, name: str) -> str:
@@ -487,6 +512,28 @@ def _planned_placement(section, sec_dur: Optional[float], videos: List[Path],
     return list(dict.fromkeys(pool[: min(cuts, len(pool))]))
 
 
+def _with_provenance(ref: AssetRef, record: Optional[Mapping]) -> AssetRef:
+    """``ref`` with the known values of a fetcher provenance record applied.
+    Only non-empty, well-typed values count; a bad or missing record leaves the
+    asset as it was (nulls, rights unknown)."""
+    if not isinstance(record, Mapping):
+        return ref
+    changes = {}
+    for f in _PROVENANCE_STR_FIELDS:
+        v = _opt_str(record.get(f))
+        if v is not None:
+            changes[f] = v
+    cost = _opt_num(record.get("cost_usd"))
+    if cost is not None and cost >= 0:
+        changes["cost_usd"] = cost
+    rights = record.get("rights")
+    if isinstance(rights, Mapping):
+        rights = rights.get("status")
+    if rights in RIGHTS_STATUSES:
+        changes["rights"] = Rights(status=rights)
+    return replace(ref, **changes) if changes else ref
+
+
 def build_project(
     *,
     slug: str,
@@ -514,8 +561,11 @@ def build_project(
     image_model: Optional[str] = None,
     stock_provider: Optional[str] = "pexels",
     claim_ids: Optional[Mapping] = None,
+    provenance: Optional[Mapping] = None,
+    hash_files: bool = True,
 ) -> VideoProject:
-    """Assemble a VideoProject from what the pipeline already has. Pure.
+    """Assemble a VideoProject from what the pipeline already has. Pure apart
+    from reading asset files to hash them (``hash_files``).
 
     * ``timeline`` — ``AudioMixer.build``'s section timeline (one entry per
       section, in order, with ``start_ms``/``end_ms``): the master clock.
@@ -532,6 +582,12 @@ def build_project(
     * ``claim_ids`` — ``{section_index: [claim id, ...]}`` from
       ``claim_scenes.annotate_scenes`` (the claims the SHIPPED narration makes);
       a scene without an entry has no known claims (empty list).
+    * ``provenance`` — ``MediaFetcher.provenance`` (``{str(path): {field:
+      value}}``): what the fetch/generation actually returned. Its known values
+      (provider, url, license, author, model, prompt, task_id, cost_usd,
+      rights) fill the asset; an asset without a record keeps nulls and rights
+      ``unknown``.
+    * ``hash_files`` — fill ``sha256`` for every asset whose file exists.
     """
     sections = list(getattr(script, "sections", None) or [])
     timeline = list(timeline or [])
@@ -580,6 +636,11 @@ def build_project(
         else:
             ref = AssetRef(id=asset_id(key), kind=kind, path=key, source=SOURCE_STOCK,
                            provider=_opt_str(stock_provider))
+        ref = _with_provenance(ref, (provenance or {}).get(key))
+        if hash_files:
+            digest = file_sha256(key)
+            if digest is not None:
+                ref = replace(ref, sha256=digest)
         assets[key] = ref
 
     for p in list(gen_videos.values()) + videos + images:
@@ -637,6 +698,15 @@ def build_project(
     )
 
 
+def rights_summary(project: VideoProject) -> dict:
+    """``{"ok": n, "unknown": n, "blocked": n}`` over the project's assets."""
+    out = {status: 0 for status in RIGHTS_STATUSES}
+    for a in project.assets:
+        status = a.rights.status if a.rights.status in out else RIGHTS_UNKNOWN
+        out[status] += 1
+    return out
+
+
 # ── persistence ─────────────────────────────────────────────────────────────
 
 def project_path(slug: str, root: Optional[Path] = None) -> Path:
@@ -686,6 +756,7 @@ def write_for_run(
     broll=None,
     generated_images=None,
     scene_plan=None,
+    provenance=None,
     width: int = 1920,
     height: int = 1080,
     fps: int = 30,
@@ -696,6 +767,7 @@ def write_for_run(
 
     ``scene_plan`` is ``claim_scenes.annotate_scenes(...)`` (the Storyboard's
     scene list with per-scene ``claim_ids``); only its claim ids are read.
+    ``provenance`` is ``MediaFetcher.provenance`` (see :func:`build_project`).
 
     Best-effort — returns the project, or None if anything failed; the failure
     is logged and the run continues exactly as before. Validation problems are
@@ -732,6 +804,7 @@ def write_for_run(
             video_provider=video_provider, video_model=video_model,
             generated_images=generated_images, image_provider=image_provider,
             image_model=image_model, claim_ids=claims_by_index,
+            provenance=provenance if isinstance(provenance, Mapping) else None,
         )
         problems = project.validate()
         if problems:
@@ -739,6 +812,10 @@ def write_for_run(
         path = save(project, project_path(slug, root))
         logger.info("Video IR written: %s (%d scene(s), %d asset(s))",
                     path, len(project.scenes), len(project.assets))
+        rights = rights_summary(project)
+        if rights.get(RIGHTS_UNKNOWN) or rights.get(RIGHTS_BLOCKED):
+            logger.warning("Video IR asset rights: %s — the publish gate warns on used "
+                           "'unknown' assets and blocks on 'blocked' ones", rights)
         try:
             from modules import run_checkpoint
 

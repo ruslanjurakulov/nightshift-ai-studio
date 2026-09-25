@@ -24,6 +24,26 @@ PIXABAY_VIDEO_API = "https://pixabay.com/api/videos/"
 # Pexels quality priority order
 QUALITY_PRIORITY = ["uhd", "hd", "sd"]
 
+#: The licence every Pexels photo/video is published under
+#: (https://www.pexels.com/license/): free to use and modify, attribution not
+#: required. Recorded on each stock asset's provenance.
+PEXELS_LICENSE = "Pexels License"
+
+
+def _safe_call(fn):
+    try:
+        return fn()
+    except Exception:
+        return None
+
+
+def _unit_price(unit: str):
+    """USD per unit from the cost ledger's configured rates, or None when unset
+    (or unreadable). Never 0 by default — null ≠ 0."""
+    from modules import cost_ledger
+
+    return _safe_call(lambda: cost_ledger.unit_price(unit))
+
 
 class MediaFetcher:
     def __init__(self, topic_slug: str):
@@ -44,6 +64,22 @@ class MediaFetcher:
         #: random. Empty until fetch_videos runs; a clip with no recorded term
         #: simply doesn't match, it is never dropped.
         self.video_terms: dict[str, str] = {}
+        #: Provenance of every asset this fetcher produced, keyed by str(path),
+        #: in Video IR asset field names (``provider``, ``url``, ``author``,
+        #: ``license``, ``model``, ``prompt``, ``task_id``, ``cost_usd``,
+        #: ``rights``). Only facts the API/provider actually returned are
+        #: recorded; anything unknown is simply absent (the IR keeps it null).
+        #: Read by modules/video_ir.py.
+        self.provenance: dict[str, dict] = {}
+
+    def _note_provenance(self, path, **fields) -> None:
+        """Remember where the asset at ``path`` came from. Drops empty values
+        (unknown stays unknown, never ""), never raises."""
+        try:
+            store = self.__dict__.setdefault("provenance", {})
+            store[str(path)] = {k: v for k, v in fields.items() if v is not None and v != ""}
+        except Exception as e:   # provenance is advisory — never sink the fetch
+            logger.debug("Could not record provenance for %s: %s", path, e)
 
     # ------------------------------------------------------------------ Pexels Videos
 
@@ -111,6 +147,13 @@ class MediaFetcher:
                         paths.append(dest)
                         used_ids.add(vid_id)
                         self.video_terms[str(dest)] = keyword
+                        self._note_provenance(
+                            dest, provider="pexels",
+                            # The clip's Pexels page; the file link if the API gave no page.
+                            url=v.get("url") or link,
+                            author=(v.get("user") or {}).get("name"),
+                            license=PEXELS_LICENSE, rights="ok",
+                        )
                         logger.debug("Video: %s", dest.name)
                 time.sleep(0.3)
             except Exception as e:
@@ -140,7 +183,7 @@ class MediaFetcher:
         Director shot direction and/or a Character-Bible consistency directive).
         None keeps the default look."""
         import config
-        from modules import minimax_broll, provider_tasks, video_providers
+        from modules import cost_ledger, minimax_broll, provider_tasks, video_providers
 
         result = minimax_broll.GenerationResult(model=video_providers.active_model())
         if not video_providers.is_enabled():
@@ -158,6 +201,8 @@ class MediaFetcher:
                 return result
 
         provider_name = video_providers.active_provider()
+        # USD per clip only when the operator configured one — None is "unpriced", never 0.
+        clip_price = _unit_price(cost_ledger.VIDEO_GEN_CLIPS)
         # Crash-safe task tracking (modules/provider_tasks.py): a client that
         # splits submit/resume has every paid task id persisted before polling,
         # so a retry of this run polls it instead of paying again.
@@ -186,6 +231,13 @@ class MediaFetcher:
             if path is not None:
                 self.video_terms[str(path)] = spec.keyword
                 by_section[spec.section_index] = str(path)
+                # Rights stay "unknown": nothing in this repo documents the
+                # provider's terms for generated output, so none is claimed.
+                self._note_provenance(
+                    path, provider=provider_name, model=result.model,
+                    prompt=spec.prompt, task_id=task_ids.get(spec.section_index),
+                    cost_usd=clip_price, rights="unknown",
+                )
                 generated += 1
                 reused += 1 if was_reused else 0
 
@@ -253,7 +305,7 @@ class MediaFetcher:
         per-image failure is swallowed — that section simply falls back to stock.
         Never raises."""
         import config
-        from modules import image_providers
+        from modules import cost_ledger, image_providers
 
         if not image_providers.is_enabled():
             return []
@@ -280,6 +332,9 @@ class MediaFetcher:
             return []
         eligible.sort(key=lambda it: (0 if it[0] == 0 else 1, it[0]))
 
+        provider_name = _safe_call(image_providers.active_provider)
+        model = _safe_call(image_providers.active_model)
+        image_price = _unit_price(cost_ledger.IMAGE_GENERATIONS)
         paths: list[Path] = []
         for i, kws in eligible[:cap]:
             subject = ", ".join(dict.fromkeys(k.strip() for k in kws if k.strip())) or (topic or "").strip()
@@ -293,6 +348,11 @@ class MediaFetcher:
                 path = None
             if path is not None:
                 paths.append(path)
+                # The provider receives the prompt stripped (image_providers).
+                self._note_provenance(
+                    path, provider=provider_name, model=model, prompt=prompt.strip(),
+                    cost_usd=image_price, rights="unknown",
+                )
 
         logger.info("%s images: %d/%d generated", image_providers.active_provider(), len(paths), min(cap, len(eligible)))
         return paths
@@ -332,6 +392,11 @@ class MediaFetcher:
                     if self._download(url, dest):
                         paths.append(dest)
                         used_ids.add(pid)
+                        self._note_provenance(
+                            dest, provider="pexels", url=p.get("url") or url,
+                            author=p.get("photographer"),
+                            license=PEXELS_LICENSE, rights="ok",
+                        )
                 time.sleep(0.3)
             except Exception as e:
                 logger.warning("Pexels photo error for '%s': %s", keyword, e)

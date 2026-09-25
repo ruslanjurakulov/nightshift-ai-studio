@@ -143,7 +143,12 @@ class GenerateBrollTrackedTestCase(unittest.TestCase):
 
     def test_fresh_run_submits_and_records_each_task(self):
         client = FakeResumableClient()
-        result = self._fetcher().generate_broll(self.sections, "History", client=client)
+        fetcher = self._fetcher()
+        result = fetcher.generate_broll(self.sections, "History", client=client)
+        # Provenance (PR 1.2): each clip is tied to the paid task that made it.
+        self.assertEqual(
+            {fetcher.provenance[p]["task_id"] for p in result.by_section.values()},
+            {"task-1", "task-2"})
         self.assertEqual(len(client.submits), 2)
         self.assertEqual(result.generated, 2)
         self.assertEqual(result.reused, 0)
