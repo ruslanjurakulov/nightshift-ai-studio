@@ -52,7 +52,12 @@ Honesty rules the components keep:
 
 `timeline` and `evidence_card` are `auto_select=False` in
 `modules/shot_recipes.py`: valid, executable ids that the chooser never picks
-on its own; they are set explicitly.
+on its own; they are set explicitly — by `modules/graphic_recipes.py` in the
+IR compiler when `CHRONOS_GRAPHIC_RECIPES=1` (default off), only for scenes
+whose data supports them (>= 2 distinct years; a fact-checked claim; a map
+image plus a named place for `map_zoom`). Its year reader is the Python twin of
+`extractTimeline`; both are checked against `samples/timeline_year_cases.json`
+(`node --experimental-strip-types --no-warnings --test tests/text-cases.test.mts`).
 
 ## Props
 

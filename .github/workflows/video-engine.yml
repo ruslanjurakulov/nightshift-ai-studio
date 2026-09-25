@@ -10,11 +10,13 @@ on:
     branches: [main]
     paths:
       - "video-engine/**"
+      - "samples/timeline_year_cases.json"
       - ".github/workflows/video-engine.yml"
   pull_request:
     branches: [main]
     paths:
       - "video-engine/**"
+      - "samples/timeline_year_cases.json"
       - ".github/workflows/video-engine.yml"
   workflow_dispatch:
 
@@ -49,6 +51,11 @@ jobs:
 
       - name: Typecheck
         run: npx tsc --noEmit
+
+      # The timeline year reader and its Python twin
+      # (modules/graphic_recipes.timeline_dates) read the same cases.
+      - name: Shared text cases
+        run: node --experimental-strip-types --no-warnings --test tests/text-cases.test.mts
 
       # Smoke render. Bundle once (webpack is the slow part), then render
       # 2 s, 640x360 clips (60 frames, one worker) of the title card, the map

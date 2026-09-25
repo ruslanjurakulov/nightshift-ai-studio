@@ -40,7 +40,9 @@ Choosing
     never repeat a recipe;
   * ties break by catalogue order — deterministic;
   * recipes marked ``auto_select=False`` (``timeline``, ``evidence_card``) are
-    never picked here — they are valid ids that are set explicitly.
+    never picked here — they are valid ids that are set explicitly
+    (``modules/graphic_recipes.py`` does it in the IR compiler, behind
+    ``CHRONOS_GRAPHIC_RECIPES``, once the scene's years/claims/map are known).
 """
 
 from __future__ import annotations
@@ -223,7 +225,8 @@ RECIPES: tuple = (
     # timeline: a scene naming years also reads as archival, so letting the
     # chooser pick it would silently re-rank every dated scene; evidence_card
     # needs the scene's claims + fact-check status, which the chooser does not
-    # see (and a card on every claim would be noise). Both are set explicitly.
+    # see (and a card on every claim would be noise). Both are set explicitly —
+    # by modules/graphic_recipes.py in the IR compiler (CHRONOS_GRAPHIC_RECIPES).
     ShotRecipe(
         "timeline", KIND_GRAPHIC,
         "Dated events from the narration (years) on a line that draws in, oldest first.",
