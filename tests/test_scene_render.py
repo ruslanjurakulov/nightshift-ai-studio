@@ -8,7 +8,7 @@ What is pinned here:
   * a re-run reuses every cached scene, and after ONE scene changes only that
     scene is rendered again (proved by counting renderer calls);
   * a failed scene render never leaves a file a later run would reuse;
-  * graphic recipes still go to ffmpeg until a Remotion renderer is registered;
+  * graphic recipes still go to ffmpeg unless Remotion is available;
   * render_dispatch: flag off → untouched; flag on → scenes backend; any
     failure → the configured backend renders, with the reason recorded;
   * with a real ffmpeg (imageio-ffmpeg): the assembled video is as long as the
@@ -224,7 +224,9 @@ class BackendChoiceTestCase(unittest.TestCase):
         for recipe in ("slow_push", "broll_cut", "quote_card", "stat_counter", None, "bogus"):
             scene = Scene(id="s000", index=0, shot=Shot(recipe=recipe))
             self.assertEqual(scene_render.choose_backend(scene), "ffmpeg")
-        self.assertEqual(set(scene_render.SCENE_RENDERERS), {"ffmpeg"})
+        # Remotion is registered but not available unless CHRONOS_REMOTION=1.
+        with mock.patch.dict(os.environ, {"CHRONOS_REMOTION": ""}):
+            self.assertEqual(scene_render.available_backends(), ("ffmpeg",))
 
     def test_hook_routes_graphic_recipes_once_remotion_is_registered(self):
         with mock.patch.dict(scene_render.SCENE_RENDERERS, {"remotion": lambda *a: None}):
