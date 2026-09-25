@@ -32,6 +32,13 @@ The measured-file checks (modules/video_qc.py: streams, duration vs narration,
 truncation, black/silent runs) are part of sanity and follow
 ``block_on_sanity``.
 
+The rights check (roadmap PR 4.2) reads the run's Video IR project: a USED
+asset whose ``rights.status`` is ``"blocked"`` blocks (``block_on_rights``,
+default on). ``"unknown"`` only warns — almost every asset is unknown until
+provenance is recorded — unless the channel opts in with
+``"block_on_unknown_rights": true`` (default OFF; only an explicit ``true``
+turns it on).
+
 Defaults are ON, because the failure this exists to prevent is unrecoverable
 and the failure it can cause — a video that waits for a human — is not.
 """
@@ -71,6 +78,9 @@ class GateDecision:
     #: one was passed in — so the gate event carries the measurements behind
     #: any `video_qc_*` reason, not just the reason code.
     video_qc: Optional[dict] = None
+    #: Rights counts from the Video IR (see `_check_rights`), when the check
+    #: ran. Asset and scene ids only — never a path, URL or prompt.
+    rights: Optional[dict] = None
 
     @property
     def allowed(self) -> bool:
@@ -87,6 +97,8 @@ class GateDecision:
         }
         if self.video_qc is not None:
             meta["video_qc"] = self.video_qc
+        if self.rights is not None:
+            meta["rights"] = self.rights
         return meta
 
 
@@ -98,6 +110,12 @@ class GateConfig:
     block_on_duplicate: bool = True
     block_on_fact_check: bool = True
     block_on_sanity: bool = True
+    #: A used IR asset with rights.status "blocked" blocks the upload.
+    block_on_rights: bool = True
+    #: Opt-in: a used asset whose rights are "unknown" also blocks. Default
+    #: OFF — today nearly every asset is unknown, so defaulting to block would
+    #: stop every video. Unknown always warns either way.
+    block_on_unknown_rights: bool = False
 
     @staticmethod
     def from_channel(channel) -> "GateConfig":
@@ -115,11 +133,19 @@ class GateConfig:
             # Only an explicit boolean false turns a check off.
             return not (value is False)
 
+        def opt_in(key: str) -> bool:
+            # The opposite default, for checks that are OFF unless asked for:
+            # only an explicit boolean true turns one on. Either way a typo
+            # leaves the gate at least as strict as it was.
+            return raw.get(key) is True
+
         return GateConfig(
             enabled=flag("enabled"),
             block_on_duplicate=flag("block_on_duplicate"),
             block_on_fact_check=flag("block_on_fact_check"),
             block_on_sanity=flag("block_on_sanity"),
+            block_on_rights=flag("block_on_rights"),
+            block_on_unknown_rights=opt_in("block_on_unknown_rights"),
         )
 
 
@@ -132,6 +158,7 @@ def evaluate(
     channel=None,
     originality=None,
     qc_report=None,
+    ir_project=None,
 ) -> GateDecision:
     """Decide whether this video may be uploaded.
 
@@ -150,6 +177,7 @@ def evaluate(
     _check_video_qc(decision, config, video_path, qc_report)
     _check_fact_results(decision, config, fact_results)
     _check_originality(decision, config, topic or getattr(script, "topic", ""), originality)
+    _check_rights(decision, config, ir_project)
     return decision
 
 
@@ -286,3 +314,116 @@ def _check_originality(decision: GateDecision, config: GateConfig, topic: str, o
         )
     elif getattr(result, "needs_review", False):
         decision.warnings.append("near_duplicate_topic")
+
+
+#: At most this many scene ids are spelled out in a rights reason string; the
+#: full lists are in the event metadata.
+MAX_REASON_SCENE_IDS = 12
+
+_RIGHTS_OK = "ok"
+_RIGHTS_BLOCKED = "blocked"
+
+
+def _field(obj, name):
+    """Read `name` from a VideoProject/Scene/AssetRef or its dict form."""
+    if isinstance(obj, dict):
+        return obj.get(name)
+    return getattr(obj, name, None)
+
+
+def _rights_reason(kind: str, count: int, scene_ids: list) -> str:
+    """``rights_<kind>:<asset count>:<scene ids>`` — e.g. ``rights_unknown:3:s000,s002``."""
+    reason = f"rights_{kind}:{count}"
+    if scene_ids:
+        shown = scene_ids[:MAX_REASON_SCENE_IDS]
+        more = len(scene_ids) - len(shown)
+        reason += ":" + ",".join(shown) + (f",+{more}" if more > 0 else "")
+    return reason
+
+
+def _check_rights(decision: GateDecision, config: GateConfig, ir_project) -> None:
+    """Whether the footage this video actually uses may be published.
+
+    Reads the run's Video IR (modules/video_ir.py). Only assets referenced by
+    some scene's ``asset_ids`` count — an asset that was fetched but never
+    placed is not in the video. Per used asset:
+
+    * ``"blocked"`` → block (``block_on_rights``, default on).
+    * ``"ok"`` → passes.
+    * anything else — ``"unknown"``, a missing status, a scene referencing an
+      asset the IR has no record of — is unknown: a warning, and a block only
+      when the channel opted into ``block_on_unknown_rights``. Unknown is never
+      read as ok.
+
+    No project → ``rights_check_not_run`` warning: unmeasured is not passed,
+    but the IR is best-effort, so its absence does not hold the video. A check
+    that crashes warns and never blocks, like every other checker here.
+    """
+    if ir_project is None:
+        decision.warnings.append("rights_check_not_run")
+        return
+    decision.checks_run.append("rights")
+    try:
+        status_by_asset = {}
+        for asset in _field(ir_project, "assets") or ():
+            aid = _field(asset, "id")
+            if not aid:
+                continue
+            status = _field(_field(asset, "rights") or {}, "status")
+            status_by_asset[str(aid)] = str(status) if status else None
+
+        used = []  # unique asset ids, first-use order
+        scenes_by_asset = {}
+        for scene in _field(ir_project, "scenes") or ():
+            sid = str(_field(scene, "id") or "")
+            for aid in _field(scene, "asset_ids") or ():
+                aid = str(aid)
+                if aid not in scenes_by_asset:
+                    scenes_by_asset[aid] = []
+                    used.append(aid)
+                if sid and sid not in scenes_by_asset[aid]:
+                    scenes_by_asset[aid].append(sid)
+
+        ok, unknown, blocked = [], [], []
+        for aid in used:
+            status = status_by_asset.get(aid)
+            if status == _RIGHTS_BLOCKED:
+                blocked.append(aid)
+            elif status == _RIGHTS_OK:
+                ok.append(aid)
+            else:
+                unknown.append(aid)
+
+        def scenes_of(aids: list) -> list:
+            out = []
+            for aid in aids:
+                for sid in scenes_by_asset.get(aid, ()):
+                    if sid not in out:
+                        out.append(sid)
+            return sorted(out)
+
+        blocked_scenes = scenes_of(blocked)
+        unknown_scenes = scenes_of(unknown)
+        rights_meta = {
+            "assets_used": len(used),
+            "ok": len(ok),
+            "unknown": len(unknown),
+            "blocked": len(blocked),
+            "blocked_scene_ids": blocked_scenes,
+            "unknown_scene_ids": unknown_scenes,
+            "blocked_asset_ids": list(blocked),
+            "block_on_unknown": config.block_on_unknown_rights,
+        }
+    except Exception as e:
+        decision.warnings.append(f"rights_check_errored:{type(e).__name__}")
+        return
+
+    decision.rights = rights_meta
+    if blocked:
+        (decision.blocks if config.block_on_rights else decision.warnings).append(
+            _rights_reason("blocked", len(blocked), blocked_scenes)
+        )
+    if unknown:
+        (decision.blocks if config.block_on_unknown_rights else decision.warnings).append(
+            _rights_reason("unknown", len(unknown), unknown_scenes)
+        )

@@ -918,6 +918,7 @@ def run(
         fact_results=fact_results,
         channel=ctx,
         qc_report=qc_report,
+        ir_project=ir_project,
     )
 
     # Advisory pre-publish intelligence — a quality/prediction score for a human
