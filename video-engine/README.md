@@ -1,9 +1,10 @@
 # video-engine — Remotion scene renderer
 
 One **Video IR scene** in, one `.mp4` out. This is the motion-graphics render
-backend from the Video OS roadmap (PR 3.2): title/chapter/quote cards, stat
-counters, Ken Burns / parallax / archival stills, word-level captions. B-roll
-footage stays on the ffmpeg backend.
+backend from the Video OS roadmap (PR 3.2, 3.3): title/chapter/quote cards,
+stat counters, timelines, evidence cards, map zooms, Ken Burns / parallax /
+archival stills, lower thirds and word-level captions. B-roll footage stays on
+the ffmpeg backend.
 
 It is **off by default** in the pipeline and not wired into `main.py` yet —
 `modules/remotion_renderer.py` only runs it when `CHRONOS_REMOTION=1`.
@@ -15,19 +16,43 @@ It is **off by default** in the pipeline and not wired into `main.py` yet —
 | `src/index.ts` | Entry point (`registerRoot`) |
 | `src/Root.tsx` | Registers the `Scene` composition; `calculateMetadata` sets duration from `scene.end_s - scene.start_s`, plus `width`/`height`/`fps` from props |
 | `src/SceneComposition.tsx` | Picks the component from `scene.shot.recipe` (a `modules/shot_recipes.py` id), then scene type, then assets |
-| `src/components/ImageScene.tsx` | `slow_push`, `slow_pull`, `lateral_pan`, `parallax`, `archival_reveal`, `map_zoom` |
+| `src/components/ImageScene.tsx` | `slow_push`, `slow_pull`, `lateral_pan`, `parallax`, `archival_reveal` |
+| `src/components/MapScene.tsx` | `map_zoom`: slow zoom on a static map **image** toward `map.focus`, pin + label |
 | `src/components/VideoScene.tsx` | `broll_cut` / any scene whose asset is a video |
-| `src/components/TitleCard.tsx` | `title_card`, `chapter_card`, `quote_card` |
+| `src/components/TitleCard.tsx` | `title_card`, `chapter_card` |
+| `src/components/QuoteCard.tsx` | `quote_card`: the quotation revealed word by word, attribution when the narration names the speaker |
 | `src/components/StatCard.tsx` | `stat_counter` |
+| `src/components/Timeline.tsx` | `timeline`: years (1000–2099, "Dec 1900", "1950s") from the narration, oldest first, max 5 |
+| `src/components/EvidenceCard.tsx` | `evidence_card`: up to 3 claims with their advisory fact-check status |
+| `src/components/LowerThird.tsx` | Name/label strip from the optional `lowerThird` prop, over image/video/map scenes only |
 | `src/components/Captions.tsx` | Word-level captions from the optional `words` prop |
 | `src/components/Transition.tsx` | Transition into the scene (`crossfade`, `dip_to_black`, `hard_cut`) |
 | `src/types.ts` | The props contract |
-| `fixtures/title-card.json` | A 2 s, 640×360 title card used by the CI smoke render |
+| `fixtures/*.json` | 2 s, 640×360 props for the CI smoke render: title card, map zoom, timeline (clips); quote card, evidence card, lower third (stills) |
+| `fixtures/public/map.svg` | A made-up archipelago: the local map image the map fixtures use (`--public-dir=fixtures/public`) |
 
 Every component is a pure function of the frame (`useCurrentFrame` +
-`interpolate`): no network, no randomness, no `Date`. A graphic recipe whose
-content cannot be derived (no number for `stat_counter`, no quotation for
-`quote_card`) falls back to `slow_push`, the same as the recipe catalogue.
+`interpolate`): no network, no randomness, no `Date`. A recipe whose content
+cannot be derived (no number for `stat_counter`, no quotation for
+`quote_card`, no year for `timeline`, no image asset for `map_zoom`) falls back
+to `slow_push` (footage, when the scene has a video asset), the same as the
+recipe catalogue.
+
+Honesty rules the components keep:
+
+* `map_zoom` draws a pin only at a supplied `map.focus`. Without one it zooms
+  on the centre and shows the label (if any) as a tag, not pointing anywhere.
+* `evidence_card` shows the status it was given. No status, or one it does not
+  know, reads "Status unknown" — never a verdict and never "Not checked". With
+  no claims at all it shows the narration's first sentence as a neutral card.
+* `quote_card` names a speaker only when the narration does, next to the
+  quotation; a pronoun ("He wrote …") is not a speaker.
+* `timeline` markers are evenly spaced: the order is real, the spacing is not
+  to scale.
+
+`timeline` and `evidence_card` are `auto_select=False` in
+`modules/shot_recipes.py`: valid, executable ids that the chooser never picks
+on its own; they are set explicitly.
 
 ## Props
 
@@ -42,7 +67,10 @@ content cannot be derived (no number for `stat_counter`, no quotation for
   "style": { /* modules/style_presets.StyleBible.to_dict() */ },   // optional
   "words": [{ "text": "Revenue", "start_s": 42.1, "end_s": 42.5 }], // optional, project clock
   "assets": [{ "id": "a1", "kind": "image", "path": "images/a1.jpg" }], // optional, relative to assetsBaseDir
-  "transition": "crossfade"                              // optional
+  "transition": "crossfade",                             // optional
+  "claims": [{ "id": "c1", "text": "...", "status": "likely_accurate" }], // optional, evidence_card
+  "map": { "focus": { "x": 0.45, "y": 0.46 }, "label": "Eilean Mòr" },   // optional, map_zoom; focus = fraction of the wide frame
+  "lowerThird": { "name": "Joseph Moore", "label": "Relief keeper" }    // optional
 }
 ```
 
@@ -60,6 +88,11 @@ npx tsc --noEmit                          # typecheck
 # Render one scene
 npx remotion render src/index.ts Scene out/scene.mp4 \
   --props=fixtures/title-card.json --concurrency=1
+
+# Several renders: bundle once, render from the bundle (what CI does)
+npx remotion bundle src/index.ts --out-dir=out/bundle --public-dir=fixtures/public
+npx remotion render out/bundle Scene out/map.mp4 --props=fixtures/map-zoom.json --concurrency=1
+npx remotion still out/bundle Scene out/quote.png --props=fixtures/quote-card.json --frame=45
 
 # With local assets and a local Chromium (headless shell)
 npx remotion render src/index.ts Scene out/scene.mp4 \

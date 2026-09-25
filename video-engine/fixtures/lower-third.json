@@ -1,0 +1,40 @@
+{
+  "scene": {
+    "id": "s008",
+    "index": 8,
+    "name": "the_relief_boat",
+    "type": "story",
+    "narration": "The relief vessel arrived on the twenty-sixth.",
+    "start_s": 0,
+    "end_s": 2,
+    "shot": {
+      "recipe": "slow_push",
+      "camera": null,
+      "lighting": null,
+      "mood": null
+    },
+    "element_ids": [],
+    "asset_ids": [
+      "a_map"
+    ],
+    "claim_ids": []
+  },
+  "width": 640,
+  "height": 360,
+  "fps": 30,
+  "assetsBaseDir": "",
+  "style": null,
+  "words": [],
+  "transition": "hard_cut",
+  "assets": [
+    {
+      "id": "a_map",
+      "kind": "image",
+      "path": "map.svg"
+    }
+  ],
+  "lowerThird": {
+    "name": "Joseph Moore",
+    "label": "Relief keeper"
+  }
+}

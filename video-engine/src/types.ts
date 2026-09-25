@@ -26,6 +26,35 @@ export type IRScene = {
   element_ids?: string[];
   asset_ids?: string[];
   claim_ids?: string[];
+  /** Optional: the scene's claims as `modules/claim_scenes.annotate_scenes`
+   * stores them. The top-level `claims` prop wins when both are given. */
+  claims?: SceneClaim[] | null;
+};
+
+/** One claim and the advisory fact-checker's status for it
+ * (`likely_accurate` | `likely_inaccurate` | `unverifiable` | `not_checked`).
+ * A missing or unknown status is shown as unknown — never as a verdict. */
+export type SceneClaim = {
+  id?: string | null;
+  text: string;
+  status?: string | null;
+  requires_human_review?: boolean | null;
+};
+
+/** A point on the map image, as a fraction (0..1) of the opening wide frame. */
+export type MapFocus = { x: number; y: number };
+
+/** `map_zoom` options. Without `focus` the zoom is centred and NO pin is drawn:
+ * a pin at a guessed spot would claim a location nobody supplied. */
+export type MapSpec = {
+  focus?: MapFocus | null;
+  label?: string | null;
+};
+
+/** A name/label strip over image, video and map scenes. */
+export type LowerThirdSpec = {
+  name: string;
+  label?: string | null;
 };
 
 /** One resolved asset for this scene. `path` is relative to the public dir
@@ -73,4 +102,10 @@ export type SceneProps = {
   assets?: SceneAsset[] | null;
   /** Optional: transition into this scene ("crossfade" | "dip_to_black" | "hard_cut"). */
   transition?: string | null;
+  /** Optional: claims for `evidence_card` (filtered to `scene.claim_ids`). */
+  claims?: SceneClaim[] | null;
+  /** Optional: focus point / place label for `map_zoom`. */
+  map?: MapSpec | null;
+  /** Optional: a lower-third name strip (image/video/map scenes only). */
+  lowerThird?: LowerThirdSpec | null;
 };
