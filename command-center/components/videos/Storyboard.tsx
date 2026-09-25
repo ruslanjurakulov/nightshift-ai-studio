@@ -39,6 +39,7 @@ export function Storyboard({
   scriptText,
   retention = null,
   repair = null,
+  repairUnavailable = null,
   labels,
 }: {
   /** The video's structured scene plan (migration 0011), when stored. */
@@ -59,6 +60,12 @@ export function Storyboard({
     pending: ReadonlySet<string>;
     labels: { action: string; filing: string; filed: string; hint: string };
   } | null;
+  /**
+   * Shown instead of the buttons when this video cannot be repaired
+   * (lib/sceneRepair.sceneRepairEligibility — e.g. it already uploaded, so its
+   * run checkpoint is gone). Plain text: nothing to click.
+   */
+  repairUnavailable?: string | null;
   labels: {
     empty: string;
     scene: string;
@@ -130,6 +137,9 @@ export function Storyboard({
       )}
       {repair && scenes.some((s) => s.sceneId) && (
         <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">{repair.labels.hint}</p>
+      )}
+      {!repair && repairUnavailable && scenes.some((s) => s.sceneId) && (
+        <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">{repairUnavailable}</p>
       )}
       {retention && rl && (
         <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">
