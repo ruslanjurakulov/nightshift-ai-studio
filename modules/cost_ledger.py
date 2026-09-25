@@ -56,13 +56,23 @@ VISION_CALLS = "vision_calls"
 _PRICE_ENV_PREFIX = "CHRONOS_PRICE_"
 
 
+def price_env_var(unit: str) -> str:
+    """The env var that prices `unit` — the exact name an operator must set.
+
+    Public so reports that list unpriced units (tools/unit_economics.py, the
+    Command Center's Billing card) name the same variable this module reads,
+    rather than each re-deriving the convention and drifting from it.
+    """
+    return _PRICE_ENV_PREFIX + unit.upper()
+
+
 def unit_price(unit: str) -> Optional[float]:
     """USD per one unit, or None when the operator has not configured a rate.
 
     None is a meaningful answer, not a failure: it means "we know the quantity,
     we do not claim to know the price". Callers must not substitute 0.
     """
-    raw = os.getenv(_PRICE_ENV_PREFIX + unit.upper(), "").strip()
+    raw = os.getenv(price_env_var(unit), "").strip()
     if not raw:
         return None
     try:
