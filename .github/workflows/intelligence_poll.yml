@@ -24,10 +24,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -35,7 +35,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Restore history state (chronos.db, topic_vectors.npz, topics.json, pipeline_runs.json)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: history
           key: chronos-history-${{ github.run_number }}
@@ -97,7 +97,7 @@ jobs:
 
       - name: Upload poll log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: intelligence-poll-${{ github.run_number }}
           path: logs/*.log
@@ -106,7 +106,7 @@ jobs:
 
       - name: Save history state
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: history
           key: chronos-history-${{ github.run_number }}

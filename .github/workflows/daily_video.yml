@@ -79,10 +79,10 @@ jobs:
       count: ${{ steps.pick.outputs.count }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -150,10 +150,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -206,7 +206,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Restore history state (chronos.db, topic_vectors.npz, topics.json, pipeline_runs.json)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: history
           key: chronos-history-${{ github.run_number }}
@@ -228,7 +228,7 @@ jobs:
       # channel "news" can never match channel "news-2".
       - name: Restore run state (resume ledgers, this channel)
         id: runstate_restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .run_state
           key: chronos-runstate-v1.${{ matrix.channel_id }}.${{ github.run_number }}-${{ github.run_attempt }}
@@ -246,7 +246,7 @@ jobs:
       # a kit only ever fills in a run whose checkpoint is already restored.
       - name: Restore repair kit (repair runs only)
         if: github.event.inputs.repair_scenes != ''
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .repair_kit
           key: chronos-repairkit-v1.${{ matrix.channel_id }}.${{ github.run_number }}-${{ github.run_attempt }}
@@ -471,7 +471,7 @@ jobs:
 
       - name: Upload video artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: video-${{ matrix.channel_id }}-${{ github.run_number }}
           path: |
@@ -482,7 +482,7 @@ jobs:
 
       - name: Save history state
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: history
           key: chronos-history-${{ github.run_number }}-${{ matrix.channel_id }}
@@ -499,7 +499,7 @@ jobs:
 
       - name: Save run state (this channel)
         if: always() && steps.runstate_restore.outcome == 'success'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .run_state
           key: chronos-runstate-v1.${{ matrix.channel_id }}.${{ github.run_number }}-${{ github.run_attempt }}
@@ -517,7 +517,7 @@ jobs:
       - name: Save repair kit (opt-in)
         if: always() && (vars.CHRONOS_REPAIR_KIT == 'true' || vars.CHRONOS_REPAIR_KIT == '1') && steps.runstate_restore.outcome == 'success' && hashFiles('.repair_kit/manifest.json') != ''
         continue-on-error: true
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .repair_kit
           key: chronos-repairkit-v1.${{ matrix.channel_id }}.${{ github.run_number }}-${{ github.run_attempt }}
