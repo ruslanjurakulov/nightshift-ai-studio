@@ -162,6 +162,22 @@ class CleanupNeverRaisesTestCase(unittest.TestCase):
             self.assertEqual((report.deleted, report.errors), ([], 1))
 
 
+class KeepPathsTestCase(unittest.TestCase):
+    def test_a_jobs_fallback_file_is_kept(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            fallback = SimpleNamespace(path=d / f"s001-{K2}.mp4", fallback=None)
+            primary = SimpleNamespace(path=d / f"s001-{K1}.mp4", fallback=fallback)
+            self.assertEqual(gc.keep_paths([primary]), [primary.path, fallback.path])
+            # A Remotion scene with its ffmpeg fallback cached: only the stale key goes.
+            fallback.path.write_bytes(b"x")
+            (d / f"s001-{K3}.mp4").write_bytes(b"x")
+            report = gc.cleanup(d, [primary])
+            self.assertEqual(report.deleted, [f"s001-{K3}.mp4"])
+            self.assertTrue(fallback.path.exists())
+
+
 class RenderProjectIntegrationTestCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

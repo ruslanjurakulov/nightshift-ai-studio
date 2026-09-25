@@ -191,13 +191,25 @@ def collect(scenes_dir, keep: Iterable, *, max_bytes: Optional[int] = None,
     return report
 
 
+def keep_paths(jobs) -> List[Path]:
+    """Every cache path the plan still uses: each job's own path plus its
+    ``fallback`` job's path (a Remotion scene's ffmpeg fallback is kept so a
+    later Remotion failure reuses it instead of re-rendering)."""
+    paths = []
+    for job in jobs:
+        while job is not None:
+            paths.append(job.path)
+            job = getattr(job, "fallback", None)
+    return paths
+
+
 def cleanup(scenes_dir, jobs, **overrides) -> Optional[GcReport]:
     """Best-effort cleanup after a successful scene render + assembly. Caps come
     from the environment unless passed. Never raises; returns None on failure."""
     try:
         caps = caps_from_env()
         caps.update(overrides)
-        report = collect(scenes_dir, [j.path for j in jobs], **caps)
+        report = collect(scenes_dir, keep_paths(jobs), **caps)
         if report.deleted or report.errors:
             logger.info("Scene cache GC: deleted %d file(s), freed %.1f MB, %d error(s)",
                         len(report.deleted), report.freed_bytes / (1024 * 1024), report.errors)
