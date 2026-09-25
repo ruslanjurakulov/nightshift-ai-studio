@@ -466,6 +466,33 @@ def write_sidecar(entries: Sequence[Mapping], path) -> Optional[Path]:
         return None
 
 
+def load_sidecar(path) -> dict:
+    """``{scene_id: entry}`` from a ``scene_graphics.json``; ``{}`` when it is
+    missing, unreadable, another version or malformed. Never raises."""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 — missing/corrupt sidecar means no props
+        return {}
+    if not isinstance(data, Mapping) or data.get("version") != SIDECAR_VERSION:
+        return {}
+    out = {}
+    for entry in data.get("scenes") or ():
+        if isinstance(entry, Mapping) and isinstance(entry.get("scene_id"), str):
+            out[entry["scene_id"]] = dict(entry)
+    return out
+
+
+def remove_sidecar(path) -> None:
+    """Delete a sidecar left by an earlier run, so a run that selected no
+    graphics never renders with stale props. Best-effort."""
+    try:
+        Path(path).unlink()
+    except FileNotFoundError:
+        pass
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Could not remove stale %s (%s)", SIDECAR_FILENAME, type(e).__name__)
+
+
 def render_context(entry: Optional[Mapping]) -> dict:
     """The ``remotion_renderer.build_props`` context keys for one scene from
     its sidecar entry: ``claims``, ``map``, ``lower_third`` (each None when
@@ -473,3 +500,9 @@ def render_context(entry: Optional[Mapping]) -> dict:
     entry = entry if isinstance(entry, Mapping) else {}
     return {"claims": entry.get("claims"), "map": entry.get("map"),
             "lower_third": entry.get("lower_third")}
+
+
+def has_props(context: Optional[Mapping]) -> bool:
+    """True when a :func:`render_context` carries any real props data."""
+    return isinstance(context, Mapping) and any(
+        context.get(k) for k in ("claims", "map", "lower_third"))

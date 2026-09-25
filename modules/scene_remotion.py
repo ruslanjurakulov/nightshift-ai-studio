@@ -149,6 +149,8 @@ def render_scene(job, project, out_path, *, ffmpeg: Optional[str] = None,
                                      f"({type(exc).__name__})") from None
         context = {"width": w, "height": h, "fps": fps,
                    "assets_base_dir": str(public), "assets": assets}
+        # claims / map / lower_third from scene_graphics.json (graphic_recipes).
+        context.update(getattr(job, "graphics", None) or {})
         raw = Path(tmp) / "remotion.mp4"
         got = render(scene_dict_for_window(scene, job.start_frame, job.end_frame, fps), context, raw)
         if got is None or not Path(got).is_file() or Path(got).stat().st_size == 0:

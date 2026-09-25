@@ -146,6 +146,9 @@ class SceneJob:
     #: For a non-ffmpeg job: the same scene on ffmpeg with the recipe's
     #: fallback (its own key/path) — rendered when this job's backend fails.
     fallback: Optional["SceneJob"] = None
+    #: Remotion props sources for this scene (``claims``/``map``/``lower_third``
+    #: from graphic_recipes' ``scene_graphics.json``); None for ffmpeg jobs.
+    graphics: Optional[dict] = None
 
     @property
     def duration_s(self) -> float:
@@ -246,8 +249,10 @@ def _content_id(asset) -> str:
 
 def cache_key(*, narration: str, assets: List, recipe: Optional[str], duration_s: float,
               width: int, height: int, fps: int, cut_s: float, style: Optional[str],
-              backend: str) -> str:
-    """A short, stable hash of everything that decides a scene's pixels."""
+              backend: str, graphics: Optional[Mapping] = None) -> str:
+    """A short, stable hash of everything that decides a scene's pixels.
+    ``graphics`` (Remotion props data) joins the key only when present, so
+    keys without it are unchanged."""
     payload = {
         "v": CACHE_VERSION,
         "narration": narration or "",
@@ -260,7 +265,9 @@ def cache_key(*, narration: str, assets: List, recipe: Optional[str], duration_s
         "style": style,
         "backend": backend,
     }
-    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    if graphics:
+        payload["graphics"] = graphics
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
@@ -280,10 +287,15 @@ def _executed_recipe(recipe: Optional[str], backend: str) -> Optional[str]:
 
 def plan_jobs(project, scenes_dir: Path, *, cut_intervals: Optional[Mapping] = None,
               style: Optional[str] = None,
-              available: Iterable[str] = (BACKEND_FFMPEG,)) -> List[SceneJob]:
+              available: Iterable[str] = (BACKEND_FFMPEG,),
+              graphics: Optional[Mapping] = None) -> List[SceneJob]:
     """Resolve every scene into a :class:`SceneJob`. Pure apart from stat-ing
     asset files. ``cut_intervals`` is ``{scene index: seconds}`` (the script
-    section's ``cut_interval``); missing → 5 s."""
+    section's ``cut_interval``); missing → 5 s. ``graphics`` is
+    ``{scene_id: scene_graphics.json entry}`` — Remotion jobs carry (and are
+    keyed by) their scene's props data; ffmpeg jobs ignore it."""
+    from modules import graphic_recipes
+
     fps = int(project.fps)
     jobs = []
     for scene, start, end in scene_windows(project):
@@ -297,14 +309,19 @@ def plan_jobs(project, scenes_dir: Path, *, cut_intervals: Optional[Mapping] = N
         backend = choose_backend(scene, available)
         segments = tuple(scene_segments(assets, end - start, fps, cut))
 
+        props = graphic_recipes.render_context((graphics or {}).get(scene.id))
+        props = props if graphic_recipes.has_props(props) else None
+
         def job_for(b: str, fallback=None) -> SceneJob:
+            data = props if b != BACKEND_FFMPEG else None
             key = cache_key(narration=scene.narration, assets=assets,
                             recipe=_executed_recipe(scene.shot.recipe, b),
                             duration_s=dur, width=project.width, height=project.height, fps=fps,
-                            cut_s=cut, style=style, backend=b)
+                            cut_s=cut, style=style, backend=b, graphics=data)
             return SceneJob(scene_id=scene.id, index=scene.index, start_frame=start,
                             end_frame=end, fps=fps, segments=segments, backend=b, key=key,
-                            path=Path(scenes_dir) / f"{scene.id}-{key}.mp4", fallback=fallback)
+                            path=Path(scenes_dir) / f"{scene.id}-{key}.mp4", fallback=fallback,
+                            graphics=data)
 
         fallback = job_for(BACKEND_FFMPEG) if backend != BACKEND_FFMPEG else None
         jobs.append(job_for(backend, fallback))
@@ -489,7 +506,8 @@ def _hit_or_render(job: SceneJob, project, renderers: Mapping[str, Callable],
 def render_project(project, output_path, *, scenes_dir=None,
                    cut_intervals: Optional[Mapping] = None, style: Optional[str] = None,
                    renderers: Optional[Mapping[str, Callable]] = None,
-                   assemble_fn: Optional[Callable] = None) -> SceneRenderResult:
+                   assemble_fn: Optional[Callable] = None,
+                   graphics: Optional[Mapping] = None) -> SceneRenderResult:
     """Render ``project`` scene by scene (reusing cached scenes) and assemble
     ``output_path``. ``scenes_dir`` defaults to ``<output dir>/scenes``
     (``output/<slug>/scenes`` for the pipeline's ``final_video.mp4``).
@@ -505,8 +523,12 @@ def render_project(project, output_path, *, scenes_dir=None,
     else:
         renderers = dict(renderers)
         available = tuple(renderers)
+    if graphics is None:
+        # graphic_recipes' props sources, next to project.json (output/<slug>/).
+        from modules import graphic_recipes
+        graphics = graphic_recipes.load_sidecar(scenes_dir.parent / graphic_recipes.SIDECAR_FILENAME)
     jobs = plan_jobs(project, scenes_dir, cut_intervals=cut_intervals, style=style,
-                     available=available)
+                     available=available, graphics=graphics)
     result = SceneRenderResult(video_path=output_path, scenes=len(jobs))
     used = []
     for job in jobs:
