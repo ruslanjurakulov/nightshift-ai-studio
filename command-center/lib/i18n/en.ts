@@ -256,6 +256,10 @@ export const en = {
     storyboardRetentionPoints: "{v} pts",
     storyboardRetentionPerMin: "{v} pts/min",
     storyboardRetentionWorst: "Worst #{n}",
+    storyboardRegenerate: "Regenerate scene",
+    storyboardRegenerateFiling: "Filing…",
+    storyboardRegenerateFiled: "Requested — waiting for a repair run",
+    storyboardRegenerateHint: "Files a request only — nothing renders, spends or publishes from this page. A repair run (Actions → Daily YouTube Video → repair_scenes = the scene's id, e.g. s003) rebuilds just this scene from new footage; the new cut goes back to review and any earlier approval no longer counts.",
   },
   pipeline: {
     title: "Pipeline",

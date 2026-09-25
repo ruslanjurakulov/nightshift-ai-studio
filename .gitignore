@@ -29,6 +29,9 @@
 # Resume ledgers carried between Actions runs (tools/run_state_cache.py).
 /.run_state/
 /.run_state.staging/
+# Opt-in media of the newest unfinished run, for scene repair (tools/repair_kit_cache.py).
+/.repair_kit/
+/.repair_kit.staging/
 __pycache__/
 *.pyc
 *.pyo

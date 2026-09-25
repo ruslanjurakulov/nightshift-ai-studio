@@ -250,6 +250,10 @@ export const uz: Dictionary = {
     storyboardRetentionPoints: "{v} p.p.",
     storyboardRetentionPerMin: "{v} p.p./daq",
     storyboardRetentionWorst: "Eng yomon #{n}",
+    storyboardRegenerate: "Sahnani qayta yaratish",
+    storyboardRegenerateFiling: "Yuborilmoqda…",
+    storyboardRegenerateFiled: "So'raldi — tuzatish ishga tushishini kutmoqda",
+    storyboardRegenerateHint: "Faqat so'rov yuboradi — bu sahifadan hech narsa render qilinmaydi, pul sarflanmaydi va e'lon qilinmaydi. Tuzatish ishga tushirilganda (Actions → Daily YouTube Video → repair_scenes = sahna id'si, masalan s003) faqat shu sahna yangi footaj bilan qayta quriladi; yangi versiya yana ko'rib chiqishga qaytadi va avvalgi tasdiq endi hisobga olinmaydi.",
   },
   pipeline: {
     title: "Konveyer",

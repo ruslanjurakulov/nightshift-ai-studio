@@ -250,6 +250,10 @@ export const ru: Dictionary = {
     storyboardRetentionPoints: "{v} п.п.",
     storyboardRetentionPerMin: "{v} п.п./мин",
     storyboardRetentionWorst: "Худшая #{n}",
+    storyboardRegenerate: "Пересоздать сцену",
+    storyboardRegenerateFiling: "Отправка…",
+    storyboardRegenerateFiled: "Запрошено — ждёт запуска исправления",
+    storyboardRegenerateHint: "Только создаёт запрос — с этой страницы ничего не рендерится, не тратится и не публикуется. Запуск исправления (Actions → Daily YouTube Video → repair_scenes = id сцены, например s003) пересобирает только эту сцену из нового футажа; новая версия снова идёт на проверку, а прежнее одобрение больше не действует.",
   },
   pipeline: {
     title: "Конвейер",

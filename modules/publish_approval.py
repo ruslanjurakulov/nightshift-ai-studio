@@ -21,6 +21,7 @@ video go public because a *check* failed. Nothing here raises.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Iterable, Optional
 
 logger = logging.getLogger(__name__)
@@ -42,12 +43,21 @@ def _matches(video_ref, refs_lower: set[str]) -> bool:
     return bool(vr) and vr in refs_lower
 
 
+def _parse_ts(value) -> Optional[datetime]:
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 def has_approved(
     channel_id: str,
     *,
     slug: Optional[str] = None,
     topic: Optional[str] = None,
     sync=None,
+    not_before: Optional[str] = None,
 ) -> bool:
     """True when an approved ``publish_approvals`` row authorises this run to go
     public. False on any doubt (disabled sync, no row, network/parse failure).
@@ -56,7 +66,18 @@ def has_approved(
     ``video_ref`` matches either (case-insensitive). ``sync`` is an optional
     injected SupabaseSync (for tests); the default builds one from the
     environment.
+
+    ``not_before`` (ISO time): when this run's cut last changed after review —
+    a targeted scene repair (``scene_repair.repaired_at``). An approval decided
+    before it approved a cut that no longer exists and does not count; one with
+    no ``decided_at`` cannot be shown to be newer and does not count either. An
+    unparseable ``not_before`` means nothing counts (fail-safe).
     """
+    cutoff = None
+    if not_before:
+        cutoff = _parse_ts(not_before)
+        if cutoff is None:
+            return False
     refs_lower = {str(r).strip().lower() for r in (slug, topic) if r and str(r).strip()}
     if not refs_lower:
         # Nothing to match an approval against — treat as unapproved rather than
@@ -75,7 +96,7 @@ def has_approved(
             {
                 "channel_id": f"eq.{channel_id}",
                 "status": "eq.approved",
-                "select": "video_ref,decided_by,requested_by",
+                "select": "video_ref,decided_by,requested_by,decided_at",
             },
         )
         for row in rows or []:
@@ -88,6 +109,10 @@ def has_approved(
             # decider who exists and is not the requester.
             if not decided or decided == requested:
                 continue
+            if cutoff is not None:
+                decided_at = _parse_ts(row.get("decided_at")) if row.get("decided_at") else None
+                if decided_at is None or decided_at < cutoff:
+                    continue
             if _matches(row.get("video_ref"), refs_lower):
                 return True
         return False

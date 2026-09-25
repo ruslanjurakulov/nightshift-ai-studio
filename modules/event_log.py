@@ -128,6 +128,13 @@ SHORT_FAILED = "short.failed"
 # the paid Gemini generation). Advisory bookkeeping — it never changes what is
 # produced, only what gets re-paid-for.
 RUN_RESUMED = "run.resumed"
+# Targeted scene repair (modules/scene_repair.py). A repair re-fetches footage
+# for the named scenes only, re-renders them through the scene cache and holds
+# the new cut for review — it never uploads; `repair.completed` carries scene
+# ids, counts and the QC verdict, never paths or script text.
+REPAIR_STARTED = "repair.started"
+REPAIR_COMPLETED = "repair.completed"
+REPAIR_FAILED = "repair.failed"
 # Channels (Phase 5). Lifecycle only — the per-stage events above already
 # carry a channel_id, so there is no channel.job.* duplicate of job.*.
 CHANNEL_CREATED = "channel.created"

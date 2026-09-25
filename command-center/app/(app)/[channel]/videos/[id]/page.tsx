@@ -12,6 +12,7 @@ import { IntelligenceTrace } from "@/components/intel/IntelligenceTrace";
 import { QualityGate } from "@/components/autonomy/QualityGate";
 import { buildTrace } from "@/lib/decisions";
 import { summarizeSceneRetention } from "@/lib/sceneRetention";
+import { pendingSceneRequests } from "@/lib/sceneRepair";
 import { num, decimal, relativeTime, timeOfDay, statusTone } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { fetchChannelTopicScores } from "@/lib/channels-server";
@@ -58,6 +59,7 @@ export default async function VideoDetail({
   let autoPublish = false;
   let pendingIntent: ReviewIntentRow | null = null;
   let retentionPoints: RetentionPointRow[] = [];
+  let pendingScenes = new Set<string>();
 
   if (supabase) {
     const [vid, snap, ev, fs, ret] = await Promise.all([
@@ -94,19 +96,34 @@ export default async function VideoDetail({
       topicPerf = await fetchChannelTopicScores(supabase, video.channel_id);
       // The review panel needs two more facts: whether this channel publishes
       // on its own, and whether a request is already waiting on this video.
-      const [ch, intent] = await Promise.all([
+      const [ch, intent, sceneIntents] = await Promise.all([
         supabase.from("channels").select("auto_publish").eq("channel_id", video.channel_id).maybeSingle(),
+        // The panel's own decisions only: a per-scene request (below) must not
+        // read as the video's approve/regenerate decision.
         supabase
           .from("review_intents")
           .select("*")
           .eq("video_id", id)
+          .in("action", ["approve", "regenerate", "regenerate_script"])
           .is("consumed_at", null)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
+        // Waiting "Regenerate scene" requests. An error (0015 not applied)
+        // reads as none waiting.
+        supabase
+          .from("review_intents")
+          .select("action,scene_id,consumed_at")
+          .eq("video_id", id)
+          .eq("action", "regenerate_scene")
+          .is("consumed_at", null)
+          .limit(200),
       ]);
       autoPublish = Boolean((ch.data as Pick<ChannelRow, "auto_publish"> | null)?.auto_publish);
       pendingIntent = (intent.data as ReviewIntentRow | null) ?? null;
+      pendingScenes = sceneIntents.error
+        ? new Set<string>()
+        : pendingSceneRequests((sceneIntents.data as ReviewIntentRow[] | null) ?? []);
     }
   }
 
@@ -213,6 +230,17 @@ export default async function VideoDetail({
           scenes={video.scenes ?? null}
           scriptText={video.script_text}
           retention={sceneRetention}
+          repair={{
+            channelId: video.channel_id,
+            videoId: video.video_id,
+            pending: pendingScenes,
+            labels: {
+              action: t.videoDetail.storyboardRegenerate,
+              filing: t.videoDetail.storyboardRegenerateFiling,
+              filed: t.videoDetail.storyboardRegenerateFiled,
+              hint: t.videoDetail.storyboardRegenerateHint,
+            },
+          }}
           labels={{
             empty: t.videoDetail.storyboardEmpty,
             scene: t.videoDetail.storyboardScene,
