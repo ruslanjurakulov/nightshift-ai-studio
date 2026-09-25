@@ -35,7 +35,9 @@ Safety
 * **Browser.** ``CHRONOS_REMOTION_BROWSER`` may point at a local
   Chrome/Chromium (headless shell) binary; otherwise Remotion uses its own.
 
-Not wired into ``main.py`` yet: that lands with the IR scene-render path.
+Used by the scene-level render path (``modules/scene_render.py`` via
+``modules/scene_remotion.py``) when ``CHRONOS_SCENE_RENDER=1`` and
+``CHRONOS_REMOTION=1``.
 """
 
 from __future__ import annotations
