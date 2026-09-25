@@ -19,10 +19,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -30,7 +30,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Restore history state (chronos.db, topic_vectors.npz, topics.json, pipeline_runs.json)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: history
           key: chronos-history-${{ github.run_number }}
