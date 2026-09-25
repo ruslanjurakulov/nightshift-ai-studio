@@ -1,8 +1,8 @@
 """Declarative render spec + ffmpeg command builder (roadmap #49).
 
 Pure and offline: the spec round-trips through a dict, validation names real
-problems, the concat-demuxer list is well-formed (last file repeated, colour
-placeholders skipped, quotes escaped), and the ffmpeg argument list carries the
+problems, the concat-demuxer list is well-formed (each file listed once,
+colour placeholders skipped, quotes escaped), and the ffmpeg argument list carries the
 expected inputs/flags. Executing ffmpeg is the backend's job, not tested here."""
 
 import unittest
@@ -60,13 +60,13 @@ class ValidateTestCase(unittest.TestCase):
 
 
 class ConcatListTestCase(unittest.TestCase):
-    def test_pairs_and_repeats_last_file(self):
+    def test_pairs_each_file_with_its_duration_exactly_once(self):
         lines = rs.concat_list_lines(_spec())
-        self.assertEqual(lines[0], "file '/m/a.mp4'")
-        self.assertEqual(lines[1], "duration 2.000")
-        # last file repeated (concat demuxer ignores the final duration otherwise)
-        self.assertEqual(lines[-1], "file '/m/b.mp4'")
-        self.assertEqual(lines.count("file '/m/b.mp4'"), 2)
+        self.assertEqual(lines, ["file '/m/a.mp4'", "duration 2.000",
+                                 "file '/m/b.mp4'", "duration 3.000"])
+        # Never repeat the last file: that played the final clip twice and
+        # lengthened silent renders (a 2.3 s render came out ~3.6 s).
+        self.assertEqual(lines.count("file '/m/b.mp4'"), 1)
 
     def test_skips_colour_placeholders(self):
         spec = rs.RenderSpec(
