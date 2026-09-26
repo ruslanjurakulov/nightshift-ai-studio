@@ -81,7 +81,12 @@ type ChannelInfo = {
   views: string | null;
 };
 
-export function AddChannelWizard() {
+/**
+ * `orgId` is the organization the new channel belongs to — the current one,
+ * resolved on the server. Null before migration 0018, when the column does not
+ * exist and must not be sent.
+ */
+export function AddChannelWizard({ orgId = null }: { orgId?: string | null } = {}) {
   const { t } = useI18n();
   const router = useRouter();
   const path = useChannelPath();
@@ -342,6 +347,8 @@ export function AddChannelWizard() {
     const now = new Date().toISOString();
     const { error: err } = await supabase.from("channels").insert({
       channel_id: effectiveId,
+      // The org it is created in; RLS requires editor there (migration 0018).
+      ...(orgId ? { org_id: orgId } : {}),
       name: name.trim(),
       niche: niche.trim(),
       // Not negotiable: a new channel does not publish until a human says so.

@@ -331,9 +331,15 @@ class SupabaseSync:
         try:
             if not self.select("channels", {"select": "channel_id", "limit": "1"}):
                 rows = [self._channel_row(c) for c in channels]
-                counts["channels"] = self.upsert(
-                    "channels", rows, on_conflict=_UPSERT_TABLES["channels"]
-                )
+                sent = self.upsert("channels", rows, on_conflict=_UPSERT_TABLES["channels"])
+                if not sent and rows:
+                    # A database without migration 0018 has no org_id column and
+                    # PostgREST rejects the whole batch for it. Retry without the
+                    # column: the rows then land exactly as they did before, and
+                    # 0018's backfill puts them in the default org when applied.
+                    legacy = [{k: v for k, v in r.items() if k != "org_id"} for r in rows]
+                    sent = self.upsert("channels", legacy, on_conflict=_UPSERT_TABLES["channels"])
+                counts["channels"] = sent
         except Exception as e:
             logger.warning("Failed bootstrapping channels (%s: %s)", type(e).__name__, e)
 
@@ -354,10 +360,17 @@ class SupabaseSync:
     @staticmethod
     def _channel_row(channel) -> dict:
         """One ChannelContext as a `channels` row. `credential_ref` is the
-        non-secret reference object — see modules/channels.CredentialRef."""
+        non-secret reference object — see modules/channels.CredentialRef.
+
+        `org_id` is the default organization (migration 0018): the bot only
+        bootstraps the operator's own registry, never a tenant's channels, so
+        naming it explicitly is the truth rather than a guess."""
+        from modules.channels import DEFAULT_ORG_ID
+
         d = channel.to_dict()
         return {
             "channel_id": d["channel_id"],
+            "org_id": DEFAULT_ORG_ID,
             "name": d["name"],
             "niche": d["niche"],
             "status": d["status"],

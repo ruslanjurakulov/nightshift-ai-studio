@@ -1,5 +1,6 @@
 import { cookies, headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { getOrgContext } from "@/lib/orgs-server";
 import {
   ALL_CHANNELS,
   ALL_CHANNELS_SLUG,
@@ -17,6 +18,8 @@ import type {
   ChannelTopicPerformanceRow,
   TopicPerformanceRow,
 } from "@/lib/types";
+
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 /**
  * Server-side channel context: the channels this user can see, and which one
@@ -67,8 +70,19 @@ export async function getChannelContext(): Promise<ChannelContextData> {
     };
   }
 
+  // Channels belong to an organization (migration 0018), and the switcher,
+  // the URL and every "all channels" count are about the CURRENT one. RLS
+  // already hides other tenants' channels; this narrows the operator — who
+  // may read every org — to the org they are looking at. Before 0018 there is
+  // no org and nothing is narrowed.
+  const org = await getOrgContext();
+  let channelQuery = supabase.from("channels").select("*").order("channel_id", { ascending: true });
+  // No current org means the caller belongs to none yet: the nil uuid matches
+  // no channel, which is the truth, and keeps the query well-formed.
+  if (org.supported) channelQuery = channelQuery.eq("org_id", org.current?.id ?? NIL_UUID);
+
   const [ch, cr] = await Promise.all([
-    supabase.from("channels").select("*").order("channel_id", { ascending: true }),
+    channelQuery,
     supabase.from("channel_credentials").select("*"),
   ]);
 
@@ -77,7 +91,10 @@ export async function getChannelContext(): Promise<ChannelContextData> {
   // otherwise behave like the single-channel app.
   const notMigrated = Boolean(ch.error && /does not exist|PGRST205/i.test(ch.error.message));
   const channels = (ch.data as ChannelRow[]) ?? [];
-  const credentials = (cr.data as ChannelCredentialRow[]) ?? [];
+  const inOrg = new Set(channels.map((c) => c.channel_id));
+  const credentials = ((cr.data as ChannelCredentialRow[]) ?? []).filter(
+    (c) => !org.supported || inOrg.has(c.channel_id),
+  );
 
   const selection = resolveSelection(raw, channels);
   return {
