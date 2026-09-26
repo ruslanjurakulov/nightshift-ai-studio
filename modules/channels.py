@@ -59,6 +59,11 @@ ChannelId = NewType("ChannelId", str)
 
 DEFAULT_CHANNEL_ID: ChannelId = ChannelId("default")
 
+#: The organization every pre-SaaS channel belongs to (migration 0018 creates
+#: it with this fixed id). The pipeline only ever creates channel rows for the
+#: operator's own registry, so this is the org they go into.
+DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001"
+
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,38}$")
 
 # Statuses. Deliberately only two, per the brief — a channel either runs on its

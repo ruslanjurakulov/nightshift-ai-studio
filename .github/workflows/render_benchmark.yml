@@ -36,6 +36,10 @@ on:
         description: "NIGHTSHIFT_RENDER_THREADS for the moviepy encode (empty = code default)"
         required: false
         default: ""
+      render_jobs:
+        description: "NIGHTSHIFT_RENDER_JOBS: ffmpeg segments normalised at once (empty = CPU count, memory-capped; 1 = serial)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -86,6 +90,7 @@ jobs:
         env:
           CHRONOS_RENDER_BACKEND: ${{ inputs.backend }}
           NIGHTSHIFT_RENDER_THREADS: ${{ inputs.render_threads }}
+          NIGHTSHIFT_RENDER_JOBS: ${{ inputs.render_jobs }}
           TTS_PROVIDER: edge
           SCRIPT_LANGUAGE: English
           YOUTUBE_PRIVACY: private

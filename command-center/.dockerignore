@@ -1,0 +1,23 @@
+# Keep the build context to source only. node_modules is reinstalled from the
+# lockfile inside the image; a host copy (or a symlink to one) would be the
+# wrong platform and would bypass `npm ci`.
+node_modules
+.next
+out
+build
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+.DS_Store
+
+# Env files carry server-only secrets. None of them may reach an image layer:
+# public values come in as build args, server-only ones at runtime.
+.env
+.env.*
+
+# Not needed to build or run the server.
+Dockerfile
+.dockerignore
+README.md
+tests
+vitest.config.ts

@@ -82,8 +82,8 @@ export function missingLegalFields(config: LegalConfig): LegalField[] {
 }
 
 // Each variable is read by its literal name: Next.js inlines NEXT_PUBLIC_* into
-// the client bundle only for a direct `process.env.NAME` reference, so passing
-// `process.env` itself would leave the footer blank in the browser.
+// the client bundle only for a direct, literally named env reference, so passing
+// the whole env object would leave the footer blank in the browser.
 export const LEGAL: LegalConfig = readLegalConfig({
   NEXT_PUBLIC_LEGAL_NAME: process.env.NEXT_PUBLIC_LEGAL_NAME,
   NEXT_PUBLIC_CONTACT_EMAIL: process.env.NEXT_PUBLIC_CONTACT_EMAIL,

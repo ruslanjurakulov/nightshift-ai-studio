@@ -8,7 +8,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
 import { getChannelContext } from "@/lib/channels-server";
 import { isScoped, scopeQuery } from "@/lib/channels";
-import { isGithubConfigured } from "@/lib/server/github-secrets";
+import { isRunNowConfigured } from "@/lib/server/run-backend";
 import type { SystemEventRow } from "@/lib/types";
 import { AgentCard, type AgentSummary } from "@/components/agents/AgentCard";
 import { ScheduleEditor } from "@/components/agents/ScheduleEditor";
@@ -124,7 +124,7 @@ export default async function AgentsPage() {
 
       <RunNowButton
         channelId={scopedChannel?.channel_id ?? null}
-        githubConfigured={isGithubConfigured}
+        githubConfigured={isRunNowConfigured}
       />
 
       <Panel title={t.agents.roster}>

@@ -73,6 +73,7 @@ export const SECTIONS = [
   "feedback-loop",
   "getting-started",
   "members",
+  "organization",
   "security",
   "approvals",
   "alerts",

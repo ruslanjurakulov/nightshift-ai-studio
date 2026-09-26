@@ -10,6 +10,8 @@ import { SignOutButton } from "@/components/SignOutButton";
 import { NotificationsCenter } from "@/components/NotificationsCenter";
 import { UtcClock } from "@/components/UtcClock";
 import { ChannelSwitcher } from "@/components/ChannelSwitcher";
+import { OrgSwitcher } from "@/components/org/OrgSwitcher";
+import type { OrgSummary } from "@/lib/orgs";
 import { ALL_CHANNELS, type ChannelSelection } from "@/lib/channels";
 import type { ChannelRow } from "@/lib/types";
 
@@ -22,9 +24,13 @@ import type { ChannelRow } from "@/lib/types";
 export function Header({
   channels = [],
   selection = ALL_CHANNELS,
+  orgs = [],
+  currentOrgId = null,
 }: {
   channels?: ChannelRow[];
   selection?: ChannelSelection;
+  orgs?: OrgSummary[];
+  currentOrgId?: string | null;
 }) {
   const { t } = useI18n();
   const path = useChannelPath();
@@ -46,6 +52,7 @@ export function Header({
       </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:gap-3">
+        <OrgSwitcher orgs={orgs} currentId={currentOrgId} />
         <ChannelSwitcher channels={channels} selection={selection} />
         <button
           type="button"
