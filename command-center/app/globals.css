@@ -798,6 +798,87 @@ option {
 }
 .cta-glass:active { transform: scale(0.985); }
 
+/* ── Public landing page ─────────────────────────────────────────────────────
+   Classes prefixed lp- belong to components/landing. The rule for every moving
+   part here: the static style IS the finished, fully legible state, and motion
+   is only layered on under prefers-reduced-motion: no-preference — so a reader
+   who asked for less motion sees the complete picture, not frame zero. */
+
+html:has(.lp-root) { scroll-behavior: smooth; }
+
+/* The section eyebrow: a small hour mark, a hairline, the label. The hours run
+   22:00 → 06:00 down the page — the night shift, told once, quietly. */
+.lp-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.lp-eyebrow::before {
+  content: "";
+  order: 1;
+  width: 1.75rem;
+  height: 1px;
+  background: color-mix(in srgb, var(--color-primary) 55%, transparent);
+}
+.lp-eyebrow > .lp-hour { order: 0; }
+.lp-eyebrow > .lp-eyebrow-text { order: 2; }
+
+/* Live run: each status cell is a 3-slot strip (queued · running · done) seen
+   through a one-slot window; a run advances by sliding the strip. */
+.lp-window { overflow: hidden; }
+.lp-strip { display: flex; flex-direction: column; transform: translateY(-66.6667%); }
+.lp-strip > * { flex: none; }
+.lp-step:last-child .lp-strip { transform: translateY(-33.3333%); }
+.lp-rail-fill { transform-origin: top; transform: scaleY(1); }
+.lp-dawn-dot { left: 100%; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .lp-step:nth-child(1) .lp-strip { animation: lp-row-0 16s step-end infinite; }
+  .lp-step:nth-child(2) .lp-strip { animation: lp-row-1 16s step-end infinite; }
+  .lp-step:nth-child(3) .lp-strip { animation: lp-row-2 16s step-end infinite; }
+  .lp-step:nth-child(4) .lp-strip { animation: lp-row-3 16s step-end infinite; }
+  .lp-step:nth-child(5) .lp-strip { animation: lp-row-4 16s step-end infinite; }
+  .lp-step:nth-child(6) .lp-strip { animation: lp-row-5 16s step-end infinite; }
+  .lp-step:nth-child(7) .lp-strip { animation: lp-row-6 16s step-end infinite; }
+  .lp-rail-fill { animation: lp-rail 16s linear infinite; }
+  .lp-dawn-dot { animation: lp-dawn 16s linear infinite; }
+}
+/* Seven stages of 2s each; the last one waits on a human, then the cycle rests. */
+@keyframes lp-row-0 { 0% { transform: translateY(-33.3333%); } 12.5% { transform: translateY(-66.6667%); } 97%, 100% { transform: translateY(0); } }
+@keyframes lp-row-1 { 0% { transform: translateY(0); } 12.5% { transform: translateY(-33.3333%); } 25% { transform: translateY(-66.6667%); } 97%, 100% { transform: translateY(0); } }
+@keyframes lp-row-2 { 0% { transform: translateY(0); } 25% { transform: translateY(-33.3333%); } 37.5% { transform: translateY(-66.6667%); } 97%, 100% { transform: translateY(0); } }
+@keyframes lp-row-3 { 0% { transform: translateY(0); } 37.5% { transform: translateY(-33.3333%); } 50% { transform: translateY(-66.6667%); } 97%, 100% { transform: translateY(0); } }
+@keyframes lp-row-4 { 0% { transform: translateY(0); } 50% { transform: translateY(-33.3333%); } 62.5% { transform: translateY(-66.6667%); } 97%, 100% { transform: translateY(0); } }
+@keyframes lp-row-5 { 0% { transform: translateY(0); } 62.5% { transform: translateY(-33.3333%); } 75% { transform: translateY(-66.6667%); } 97%, 100% { transform: translateY(0); } }
+@keyframes lp-row-6 { 0% { transform: translateY(0); } 75% { transform: translateY(-33.3333%); } 97%, 100% { transform: translateY(0); } }
+@keyframes lp-rail {
+  0% { transform: scaleY(0); }
+  75%, 96% { transform: scaleY(1); }
+  100% { transform: scaleY(0); }
+}
+@keyframes lp-dawn {
+  0% { left: 0%; }
+  75%, 96% { left: 100%; }
+  100% { left: 0%; }
+}
+
+/* FAQ disclosure: the plus turns to a cross when an answer is open. */
+.lp-faq summary { list-style: none; }
+.lp-faq summary::-webkit-details-marker { display: none; }
+.lp-faq .lp-faq-icon { transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.25, 1); }
+.lp-faq[open] .lp-faq-icon { transform: rotate(45deg); }
+
+/* The horizon behind the closing call: one line of first light, no gradient
+   wash — the sky accent at low strength in both themes. */
+.lp-horizon {
+  background:
+    radial-gradient(60% 120% at 50% 100%, var(--atmos-1), transparent 70%);
+}
+.lp-horizon-line {
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-primary) 70%, transparent), transparent);
+  box-shadow: 0 0 24px 2px var(--glow-primary);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
