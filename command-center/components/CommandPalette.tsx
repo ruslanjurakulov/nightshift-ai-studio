@@ -10,6 +10,7 @@ import { relativeTime } from "@/lib/format";
 import { useChannelPath } from "@/lib/channels-client";
 import { uploadedOnly } from "@/lib/heldVideos";
 import { useNavigation } from "@/components/navigation/NavigationProvider";
+import { sectionAllowed } from "@/lib/navigation";
 
 /** The palette's one command that is not a place: it has no href of its own. */
 const BACK_ID = "a:back";
@@ -66,7 +67,9 @@ function isTyping(el: EventTarget | null): boolean {
  * panel. Searches real videos and recent events (fetched lazily on open via the
  * authenticated browser client, so RLS applies). Mounted once in the app shell.
  */
-export function CommandPalette({ scope }: { scope: ChannelScope }) {
+export function CommandPalette({ scope, operator = false }: { scope: ChannelScope; operator?: boolean }) {
+  // Only the places this viewer's rail offers; the layout would bounce the rest.
+  const nav = useMemo(() => NAV.filter((n) => sectionAllowed(n.href.slice(1), operator)), [operator]);
   const router = useRouter();
   const { t } = useI18n();
   // Every href below is a section path. The channel comes from the URL you are
@@ -117,10 +120,10 @@ export function CommandPalette({ scope }: { scope: ChannelScope }) {
         section: "events" as const,
         label: e.event,
         sub: `${e.agent ?? "system"} · ${relativeTime(e.ts)}`,
-        href: e.video_id ? `/videos/${e.video_id}` : "/logs",
+        href: e.video_id ? `/videos/${e.video_id}` : operator ? "/logs" : "/command-center",
       })),
     );
-  }, [scopeKey]);
+  }, [scopeKey, operator]);
 
   const openPalette = useCallback(() => {
     setOpen(true);
@@ -150,7 +153,7 @@ export function CommandPalette({ scope }: { scope: ChannelScope }) {
         return;
       }
       if (pendingG) {
-        const target = NAV.find((n) => n.hotkey === e.key.toLowerCase());
+        const target = nav.find((n) => n.hotkey === e.key.toLowerCase());
         pendingG = false;
         if (gTimer) clearTimeout(gTimer);
         if (target) {
@@ -174,15 +177,15 @@ export function CommandPalette({ scope }: { scope: ChannelScope }) {
       window.removeEventListener("chronos:palette-open", onOpenEvent);
       if (gTimer) clearTimeout(gTimer);
     };
-  }, [loadData, openPalette, path, router]);
+  }, [loadData, nav, openPalette, path, router]);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
 
   const navItems: Item[] = useMemo(
-    () => NAV.map((n) => ({ id: `n:${n.href}`, section: "nav" as const, label: t.nav[n.key], href: n.href })),
-    [t],
+    () => nav.map((n) => ({ id: `n:${n.href}`, section: "nav" as const, label: t.nav[n.key], href: n.href })),
+    [nav, t],
   );
 
   // Read on every render rather than memoised: whether there is anywhere to go

@@ -89,6 +89,65 @@ export const NAV_GROUPS: NavGroup[] = [
 
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
+/**
+ * The sections a customer's workspace is made of — everything a person who
+ * signed up with an email needs to make and publish videos, buy credits and
+ * run their organization. The rest of NAV_GROUPS is the platform operator's
+ * console (providers, agents, the intelligence stack, logs, the platform team)
+ * and is shown only to a platform owner/admin.
+ *
+ * Presentation and routing only: RLS decides what anyone may read, and every
+ * API route re-checks its own role. Hiding a section is not what protects it.
+ */
+export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
+  "command",
+  "create",
+  "videos",
+  "studio",
+  "channels",
+  "credits",
+  "series",
+  "approvals",
+  "onboarding",
+  "organization",
+];
+
+/**
+ * Never in the rail, for anyone: the cross-tenant "All Accounts" roll-up and
+ * the platform team list. Both stay routable (a platform admin can still open
+ * them by URL, and the breadcrumbs still name them), they just no longer sit
+ * in a customer-shaped app's navigation.
+ */
+export const RAIL_HIDDEN_KEYS: readonly NavKey[] = ["accounts", "members"];
+
+/** The rail for a viewer: the lean customer list, or the operator's console. */
+export function navGroupsFor(operator: boolean): NavGroup[] {
+  const keep = (item: NavItem) =>
+    !RAIL_HIDDEN_KEYS.includes(item.key) && (operator || CUSTOMER_NAV_KEYS.includes(item.key));
+  return NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter(keep) })).filter((g) => g.items.length > 0);
+}
+
+/** Section paths (no leading slash) a customer may open. */
+export const CUSTOMER_SECTIONS: readonly string[] = NAV_ITEMS.filter((i) => CUSTOMER_NAV_KEYS.includes(i.key)).map(
+  (i) => i.href.slice(1),
+);
+
+/**
+ * Is `section` (the URL segment after the channel) a screen only the platform
+ * operator opens? Unknown segments are not: they 404 on their own, and an
+ * empty one is the channel's index, which lands on the Command Center.
+ */
+export function isOperatorOnlySection(section: string): boolean {
+  if (!section) return false;
+  const known = NAV_ITEMS.some((i) => i.href === "/" + section);
+  return known && !CUSTOMER_SECTIONS.includes(section);
+}
+
+/** Should a request for `section` bounce a viewer who is not the operator? */
+export function sectionAllowed(section: string, operator: boolean): boolean {
+  return operator || !isOperatorOnlySection(section);
+}
+
 /** `/chronos/videos/abc?x=1` → slug "chronos", segments ["videos", "abc"]. */
 export function splitPath(pathname: string): { slug: string; segments: string[] } {
   const clean = pathname.split(/[?#]/)[0] ?? "";

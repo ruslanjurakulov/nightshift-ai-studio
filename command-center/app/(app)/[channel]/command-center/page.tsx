@@ -19,7 +19,7 @@ import { fetchScopedVideoIds, fetchTopicScores, getChannelContext } from "@/lib/
 import { isScoped, scopeQuery } from "@/lib/channels";
 import { isRunNowConfigured } from "@/lib/server/run-backend";
 import { RunNowButton } from "@/components/agents/RunNowButton";
-import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
+import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { atLeast } from "@/lib/auth/roles";
 import { fmt } from "@/lib/i18n";
 import type { FeedbackSignalRow, MetricsSnapshotRow, SystemEventRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
@@ -88,6 +88,9 @@ export default async function CommandCenter() {
   // back to the first-run checklist rather than leaving a page of zeros. The
   // operator's own organization never sees it.
   const org = await getOrgContext();
+  // The Pipeline screen is the operator's console; nobody else is shown a link
+  // the layout would bounce.
+  const operator = await isOperator();
   const needsSetup = Boolean(org.supported && org.current && !org.current.is_default && channels.length === 0);
 
   const supabase = await createClient();
@@ -211,6 +214,7 @@ export default async function CommandCenter() {
                 label={t.dashboard.produce}
               />
             )}
+            {operator && (
             <Link
               href={path("/pipeline")}
               className={`btn-sky pill px-[30px] py-3.5 text-[14px]${canProduce ? "" : " is-solid"}`}
@@ -220,6 +224,7 @@ export default async function CommandCenter() {
                 →
               </span>
             </Link>
+            )}
             <Link href={path("/videos")} className="btn-sky pill px-[30px] py-3.5 text-[14px]">
               {t.dashboard.openVideos}
             </Link>

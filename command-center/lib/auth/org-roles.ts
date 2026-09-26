@@ -1,4 +1,6 @@
 import "server-only";
+import { cache } from "react";
+import { isSupabaseConfigured } from "@/lib/config";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { isChannelInCurrentOrg } from "@/lib/channels-server";
@@ -118,3 +120,22 @@ export async function isPlatformAdmin(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Does the caller see the platform operator's console — the full rail, and
+ * the operator-only sections by URL? Presentation and routing only; RLS and
+ * each route's own role check are what protect the data.
+ *
+ * - Supabase not configured (local dev): yes, as before — there is no one
+ *   else to hide anything from.
+ * - Before 0018 there are no customer organizations: every signed-in member
+ *   is the operator's team, as before.
+ * - With organizations: platform owner/admin only (is_platform_admin). An
+ *   organization lookup that failed reads as no — fail closed.
+ */
+export const isOperator = cache(async (): Promise<boolean> => {
+  if (!isSupabaseConfigured) return true;
+  const org = await getOrgContext();
+  if (!org.supported) return !org.unavailable;
+  return isPlatformAdmin();
+});

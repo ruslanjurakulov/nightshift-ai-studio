@@ -6,6 +6,7 @@ import {
   CHANNEL_COOKIE,
   CHANNEL_HEADER,
   PATH_HEADER,
+  SEARCH_HEADER,
   isSection,
 } from "@/lib/channels";
 import { gateDecision } from "@/lib/public-paths";
@@ -37,7 +38,15 @@ function channelRedirect(request: NextRequest): URL | null {
   const slug = remembered && !isSection(remembered) ? remembered : ALL_CHANNELS_SLUG;
 
   const url = request.nextUrl.clone();
-  url.pathname = path === "/" ? `/${slug}/command-center` : `/${slug}${path}`;
+  // With no channel remembered, "/" goes to the bare every-channel segment:
+  // its index page lands on the first channel (app/(app)/[channel]/page.tsx),
+  // so nobody starts on a roll-up they did not ask for.
+  url.pathname =
+    path === "/"
+      ? slug === ALL_CHANNELS_SLUG
+        ? `/${slug}`
+        : `/${slug}/command-center`
+      : `/${slug}${path}`;
   return url;
 }
 
@@ -97,6 +106,8 @@ export async function middleware(request: NextRequest) {
   // The layout needs the whole path to correct a URL naming a channel that does
   // not exist, and a layout cannot read the pathname any other way.
   headers.set(PATH_HEADER, request.nextUrl.pathname);
+  // …and the query string, so that redirect keeps it.
+  headers.set(SEARCH_HEADER, request.nextUrl.search);
   const withChannel = NextResponse.next({ request: { headers } });
   // Carry over any refreshed auth cookies the Supabase client just set.
   response.cookies.getAll().forEach((c) => withChannel.cookies.set(c));

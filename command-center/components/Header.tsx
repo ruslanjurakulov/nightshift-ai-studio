@@ -6,7 +6,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
-import { SignOutButton } from "@/components/SignOutButton";
+import { AccountMenu } from "@/components/account/AccountMenu";
 import { NotificationsCenter } from "@/components/NotificationsCenter";
 import { UtcClock } from "@/components/UtcClock";
 import { ChannelSwitcher } from "@/components/ChannelSwitcher";
@@ -18,8 +18,8 @@ import { ALL_CHANNELS, unscopedScope, type ChannelScope, type ChannelSelection }
 import type { ChannelRow } from "@/lib/types";
 
 /**
- * The top bar: the wordmark on the left, the account pill and operator controls
- * on the right. Route navigation lives in the left rail (SideNav) — grouped and
+ * The top bar: the wordmark on the left, the controls and — last, so it sits at
+ * the right edge on every width — the account button on the right. Route navigation lives in the left rail (SideNav) — grouped and
  * icon-led, with only the daily-loop destinations surfaced at the top so the
  * shell reads as a product, not a wall of admin links.
  */
@@ -30,6 +30,7 @@ export function Header({
   currentOrgId = null,
   credits = null,
   scope = unscopedScope(),
+  email = null,
 }: {
   channels?: ChannelRow[];
   selection?: ChannelSelection;
@@ -39,6 +40,9 @@ export function Header({
   currentOrgId?: string | null;
   /** The current org's credits; null for the exempt default org or before 0020. */
   credits?: CreditAccount | null;
+  /** The signed-in email, for the account button's initial; the panel reads
+   *  the rest itself when it opens. */
+  email?: string | null;
 }) {
   const { t } = useI18n();
   const path = useChannelPath();
@@ -79,7 +83,7 @@ export function Header({
         <NotificationsCenter scope={scope} />
         <LanguageSelector />
         <ThemeToggle />
-        <SignOutButton />
+        <AccountMenu email={email} />
       </div>
       </div>
     </header>
