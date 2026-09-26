@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/roles";
 import { fetchPublicKey, putSecret } from "@/lib/server/github-secrets";
 import {
   buildTokenJson,
@@ -38,6 +39,11 @@ export async function GET(request: Request) {
 
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Writing a channel's upload token into the operator's repository secrets is
+  // a platform owner/admin action (as /api/setup/secrets). Without this, any
+  // signed-in account — a customer organization's viewer included — could
+  // replace the token another channel uploads with.
+  if (!(await requireRole("admin"))) return back(origin, "", "forbidden");
   if (!isGoogleOAuthConfigured) return back(origin, "", "not_configured");
 
   // Google reports a declined consent as ?error=access_denied.

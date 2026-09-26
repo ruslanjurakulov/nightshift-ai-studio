@@ -7,6 +7,8 @@ import { SeriesBoard } from "@/components/series/SeriesBoard";
 import type { SeriesRow } from "@/lib/series";
 import { getChannelContext } from "@/lib/channels-server";
 import { orgWide, scopeQuery } from "@/lib/channels";
+import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
+import { atLeast } from "@/lib/auth/roles";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -49,6 +51,9 @@ export default async function SeriesPage() {
     channels = [{ channel_id: "default", name: "Default" }];
   }
 
+  // Writing a series is an editor+ action in the organization being viewed.
+  const canEdit = atLeast(await resolveCurrentOrgRole(), "editor");
+
   return (
     <div className="rhythm stagger-enter">
       <PageHeader icon="series" title={t.series.title} subtitle={t.series.subtitle} />
@@ -57,6 +62,7 @@ export default async function SeriesPage() {
         channels={channels}
         tableMissing={tableMissing}
         strings={t.series}
+        canEdit={canEdit}
       />
     </div>
   );

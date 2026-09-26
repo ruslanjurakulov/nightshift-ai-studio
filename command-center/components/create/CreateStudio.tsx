@@ -31,12 +31,16 @@ export function CreateStudio({
   githubConfigured,
   backend = "actions",
   agentConfig,
+  canRun = true,
 }: {
   channelId: string | null;
   githubConfigured: boolean;
   /** Where Run now sends the run (server env NIGHTSHIFT_RUN_BACKEND). */
   backend?: RunBackend;
   agentConfig: ChannelAgentConfig | null;
+  /** Owner/admin of the channel's organization — what /api/agent/run
+   *  requires. Presentation only; the route re-checks. */
+  canRun?: boolean;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
@@ -58,7 +62,7 @@ export function CreateStudio({
   const [jobs, setJobs] = useState<QueueJob[] | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const blocked = !channelId || !githubConfigured;
+  const blocked = !channelId || !githubConfigured || !canRun;
 
   async function loadEvents() {
     try {
@@ -135,7 +139,7 @@ export function CreateStudio({
     <div className="flex flex-col gap-4">
       {blocked && (
         <p className="text-[13px] text-[var(--color-warn)]">
-          {!channelId ? t.create.pickChannel : t.create.notConfigured}
+          {!channelId ? t.create.pickChannel : !githubConfigured ? t.create.notConfigured : t.create.needsAdmin}
         </p>
       )}
 

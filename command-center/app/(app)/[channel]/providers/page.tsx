@@ -54,7 +54,9 @@ export default async function ProvidersPage({
           ? t.providers.ytNoRefresh
           : ytStatus === "not_configured"
             ? t.providers.ytNotConfigured
-            : t.providers.ytFailed
+            : ytStatus === "forbidden"
+              ? t.providers.ytForbidden
+              : t.providers.ytFailed
     : "";
 
   const startHref = `/api/oauth/youtube/start?ref=${encodeURIComponent(channel)}`;

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
+import { requireOrgRole } from "@/lib/auth/org-roles";
 import { isCreditExempt, runDurationS } from "@/lib/credits";
 import { creditsEnforced, estimateForChannel, readCreditAccount, readCreditPrices } from "@/lib/server/credits";
 
@@ -10,7 +11,10 @@ export const dynamic = "force-dynamic";
  * What a Run now of this channel is estimated to cost, before anyone presses
  * it — the same estimate the run route reserves (lib/server/credits.ts), plus
  * the organization's available balance. Read-only, as the signed-in user: a
- * channel they cannot see is simply not found.
+ * channel they cannot see is simply not found — and so is a channel of any
+ * organization other than the one being viewed (lib/auth/org-roles.ts), which
+ * RLS alone would let a platform admin read. Any role in that organization
+ * may read its balance, as 0020's RLS already allows.
  *
  * `estimate` is null when there is no honest basis, with the gap that names
  * the fix; `supported` is false when migration 0020 is not applied.
@@ -25,6 +29,11 @@ export async function GET(request: Request) {
   const channelId = (url.searchParams.get("channel") ?? "").trim();
   if (!channelId) return NextResponse.json({ error: "channel_required" }, { status: 400 });
   const dur = Number(url.searchParams.get("duration") ?? "");
+  const access = await requireOrgRole({ channelId }, "viewer");
+  if (!access.ok) {
+    const error = access.error === "not_found" ? "channel_not_found" : access.error;
+    return NextResponse.json({ error }, { status: access.status });
+  }
 
   const { data: ch, error } = await supabase
     .from("channels")

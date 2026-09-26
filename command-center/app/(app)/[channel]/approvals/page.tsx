@@ -1,6 +1,6 @@
 import { PageHeader } from "@/components/PageHeader";
 import { ApprovalsBoard } from "@/components/approvals/ApprovalsBoard";
-import { resolveRole } from "@/lib/auth/roles";
+import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getChannelSelection } from "@/lib/channels-server";
 import { isScoped } from "@/lib/channels";
@@ -13,8 +13,8 @@ export const revalidate = 0;
 /**
  * Two-person publish approvals for the selected channel.
  *
- * A request log readable by any signed-in user (RLS grants select to all
- * authenticated); an editor+ may open a request, and a SECOND admin — never the
+ * A request log readable by any member of the channel's organization; an
+ * editor+ there may open a request, and a SECOND admin there — never the
  * requester — may approve or reject. The database (migration 0009) enforces the
  * two-person rule regardless of what the UI shows. The per-channel requirement
  * toggle writes `channels.agent_config.require_two_person_publish`.
@@ -24,7 +24,15 @@ export const revalidate = 0;
  */
 export default async function ApprovalsPage() {
   const { t } = await getDictionary();
-  const [role, user, selection] = await Promise.all([resolveRole(), getUser(), getChannelSelection()]);
+  // The role in the selected channel's organization (the switcher only offers
+  // that organization's channels) — the one 0018's publish_approvals policies
+  // check. The two-person rule itself is unchanged: an editor+ requests, a
+  // different admin decides, and the database refuses anything else.
+  const [role, user, selection] = await Promise.all([
+    resolveCurrentOrgRole(),
+    getUser(),
+    getChannelSelection(),
+  ]);
 
   if (!user) {
     return (

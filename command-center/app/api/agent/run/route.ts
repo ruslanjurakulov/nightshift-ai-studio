@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { requireRole } from "@/lib/auth/roles";
+import { isPlatformAdmin, requireOrgRole } from "@/lib/auth/org-roles";
 import { logAudit } from "@/lib/server/audit";
 import { dispatchDailyVideo, isGithubConfigured } from "@/lib/server/github-secrets";
 import { isSupabaseConfigured } from "@/lib/config";
 import { buildRenderJobInsert, isRunConfigured, resolveRunBackend } from "@/lib/runBackend";
 import { creditsEnforced, reserveRunCredits } from "@/lib/server/credits";
-import { isChannelInCurrentOrg } from "@/lib/channels-server";
+import { isCreditExempt } from "@/lib/credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +43,14 @@ export const dynamic = "force-dynamic";
  * tools/credits_settle.py). If the dispatch or insert fails after the hold was
  * taken, the browser cannot release it (release is service-only); it expires
  * back to the balance within three hours, and the response says so.
+ *
+ * Who may run (lib/auth/org-roles.ts): an owner/admin of the ORGANIZATION that
+ * owns the channel — the same rule reserve_credits() applies — so a customer
+ * organization's admin can run their own channel. The platform's owner/admin
+ * keep that role in every organization, as RLS already gives them. With
+ * credits NOT enforced, a run outside the operator's own organization would
+ * spend the operator's providers for free, so there it stays a platform-admin
+ * action until the deployment switches credits on.
  */
 
 export async function GET() {
@@ -58,11 +66,6 @@ export async function GET() {
 export async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  // Spending money to produce a video is an owner/admin action.
-  if (!(await requireRole("admin"))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
-  if (backend === "actions" && !isGithubConfigured)
-    return NextResponse.json({ error: "github_not_configured" }, { status: 503 });
 
   let body: {
     channel_id?: unknown;
@@ -82,11 +85,24 @@ export async function POST(request: Request) {
 
   const channelId = typeof body.channel_id === "string" ? body.channel_id.trim() : "";
   if (!channelId) return NextResponse.json({ error: "channel_required" }, { status: 400 });
-  // Only a channel of the organization being viewed. The Actions dispatch has
-  // no database check of its own, and a platform admin's RLS reaches every
-  // tenant: running another organization's channel takes switching to it.
-  if (!(await isChannelInCurrentOrg(channelId)))
-    return NextResponse.json({ error: "channel_not_found" }, { status: 404 });
+  // Spending money to produce a video is an owner/admin action — in the
+  // channel's organization. Only a channel of the organization being viewed:
+  // the Actions dispatch has no database check of its own, and a platform
+  // admin's RLS reaches every tenant, so running another organization's
+  // channel takes switching to it (404, not 403, so ids do not leak).
+  const access = await requireOrgRole({ channelId }, "admin");
+  if (!access.ok) {
+    const error = access.error === "not_found" ? "channel_not_found" : access.error;
+    return NextResponse.json({ error }, { status: access.status });
+  }
+  // A customer organization's run is paid for with its credits. Without
+  // enforcement nothing would pay, so only the operator may start one.
+  if (!creditsEnforced && access.source === "org" && !isCreditExempt(access.orgId) && !(await isPlatformAdmin()))
+    return NextResponse.json({ error: "credits_not_enforced" }, { status: 403 });
+
+  const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
+  if (backend === "actions" && !isGithubConfigured)
+    return NextResponse.json({ error: "github_not_configured" }, { status: 503 });
 
   // Optional per-run overrides. Empty/absent means "the AI picks / the channel's
   // own setting applies", exactly as before.

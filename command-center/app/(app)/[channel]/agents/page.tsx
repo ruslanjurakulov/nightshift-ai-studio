@@ -15,6 +15,8 @@ import { ScheduleEditor } from "@/components/agents/ScheduleEditor";
 import { CastEditor } from "@/components/agents/CastEditor";
 import { VoiceEditor } from "@/components/agents/VoiceEditor";
 import { RunNowButton } from "@/components/agents/RunNowButton";
+import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
+import { atLeast } from "@/lib/auth/roles";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -92,6 +94,8 @@ export default async function AgentsPage() {
     events = (ev.data as SystemEventRow[]) ?? [];
   }
 
+  // Run now is an owner/admin action in the channel's organization.
+  const canRun = atLeast(await resolveCurrentOrgRole(), "admin");
   const agents = deriveAgents(events);
   const running = agents.filter((a) => a.status === "RUNNING").length;
   const failed = agents.filter((a) => a.status === "FAILED").length;
@@ -125,6 +129,7 @@ export default async function AgentsPage() {
       <RunNowButton
         channelId={scopedChannel?.channel_id ?? null}
         githubConfigured={isRunNowConfigured}
+        canRun={canRun}
       />
 
       <Panel title={t.agents.roster}>

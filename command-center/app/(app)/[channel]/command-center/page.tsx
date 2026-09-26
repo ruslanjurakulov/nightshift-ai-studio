@@ -19,6 +19,8 @@ import { fetchScopedVideoIds, fetchTopicScores, getChannelContext } from "@/lib/
 import { isScoped, scopeQuery } from "@/lib/channels";
 import { isRunNowConfigured } from "@/lib/server/run-backend";
 import { RunNowButton } from "@/components/agents/RunNowButton";
+import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
+import { atLeast } from "@/lib/auth/roles";
 import { fmt } from "@/lib/i18n";
 import type { FeedbackSignalRow, MetricsSnapshotRow, SystemEventRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
 import { isToday, num, relativeTime, statusTone, storedMs } from "@/lib/format";
@@ -76,7 +78,10 @@ export default async function CommandCenter() {
   const scopedChannel = isScoped(selection)
     ? channels.find((c) => c.channel_id === selection)
     : undefined;
-  const canProduce = Boolean(scopedChannel) && isRunNowConfigured;
+  // The hero's Run now shows only when a run is possible AND the caller is an
+  // owner/admin of the channel's organization — what the route requires.
+  const canProduce =
+    Boolean(scopedChannel) && isRunNowConfigured && atLeast(await resolveCurrentOrgRole(), "admin");
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
