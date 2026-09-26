@@ -75,11 +75,12 @@ import logging
 import os
 import shutil
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Mapping, Optional
 
-from modules.render_spec import KIND_COLOR, KIND_IMAGE, KIND_VIDEO, RenderSpec, Segment
+from modules.render_spec import FINAL_X264, KIND_COLOR, KIND_IMAGE, KIND_VIDEO, RenderSpec, Segment
 
 logger = logging.getLogger(__name__)
 
@@ -384,7 +385,8 @@ def _normalize_cmd(ffmpeg: str, seg: Segment, out: Path, width: int, height: int
 
 def render_scene_ffmpeg(job: SceneJob, project, out_path: Path, *, ffmpeg: Optional[str] = None) -> Path:
     """Render one scene's segments to a silent H.264 clip of exactly the
-    scene's frame count, one ffmpeg process at a time. Raises on failure.
+    scene's frame count; its segments render a few at a time
+    (render_backend.run_pool), one at a time if that fails. Raises on failure.
     Stills get a Ken Burns move chosen from the scene id and cut index (so a
     re-render of the same scene moves the same way); if that ffmpeg run fails
     the still is held static, as before."""
@@ -394,21 +396,43 @@ def render_scene_ffmpeg(job: SceneJob, project, out_path: Path, *, ffmpeg: Optio
     out_path = Path(out_path)
     w, h, fps = int(project.width), int(project.height), int(project.fps)
     with tempfile.TemporaryDirectory() as tmp:
-        parts = []
-        for i, seg in enumerate(job.segments):
-            part = Path(tmp) / f"seg_{i:04d}.mp4"
+        parts = [Path(tmp) / f"seg_{i:04d}.mp4" for i in range(len(job.segments))]
+
+        def task(i: int) -> Callable[[], None]:
+            seg, part = job.segments[i], parts[i]
             style = None
             if seg.kind == KIND_IMAGE and seg.path:
                 style = render_backend.ken_burns_style(f"{job.scene_id}:{i}")
+
+            def run() -> None:
+                try:
+                    render_backend._run(_normalize_cmd(ffmpeg, seg, part, w, h, fps, ken_burns=style))
+                except render_backend.RenderBackendError as e:
+                    if style is None:
+                        raise
+                    logger.warning("Scene %s: Ken Burns (%s) failed for cut %d — holding the still: %s",
+                                   job.scene_id, style, i, e)
+                    render_backend._run(_normalize_cmd(ffmpeg, seg, part, w, h, fps))
+            return run
+
+        tasks = [task(i) for i in range(len(parts))]
+        # The same commands, several at once (render_backend.run_pool): a
+        # cached scene is the same file either way, so no cache key changes.
+        # Scene files keep x264's default settings — they are kept across runs,
+        # and a fast intermediate would be several times larger on disk.
+        jobs = render_backend.render_jobs(len(tasks))
+        done = False
+        if jobs > 1:
             try:
-                render_backend._run(_normalize_cmd(ffmpeg, seg, part, w, h, fps, ken_burns=style))
-            except render_backend.RenderBackendError as e:
-                if style is None:
-                    raise
-                logger.warning("Scene %s: Ken Burns (%s) failed for cut %d — holding the still: %s",
-                               job.scene_id, style, i, e)
-                render_backend._run(_normalize_cmd(ffmpeg, seg, part, w, h, fps))
-            parts.append(part)
+                render_backend.run_pool(tasks, jobs)
+                done = True
+            except Exception as e:
+                logger.warning("Scene %s: parallel segment render failed (%s) — rendering its "
+                               "segments one at a time", job.scene_id,
+                               f"{type(e).__name__}: {e}"[:300])
+        if not done:
+            for run in tasks:
+                run()
         if len(parts) == 1:
             shutil.move(str(parts[0]), str(out_path))   # tmp may be another filesystem
         else:
@@ -483,9 +507,12 @@ def assemble(project, jobs: List[SceneJob], output_path: Path, *,
                    "-map", "0:v:0", "-map", "1:a:0"]
             if subs:
                 cmd += ["-vf", "subtitles='" + subs.replace("'", r"'\''") + "'"]
-            cmd += ["-r", str(project.fps), "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            cmd += ["-r", str(project.fps), "-c:v", "libx264", *FINAL_X264, "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-shortest", str(tmp_out)]
+            t0 = time.monotonic()
             render_backend._run(cmd)
+            logger.info("ffmpeg scene timing: scenes=%d assemble_s=%.2f", len(jobs),
+                        time.monotonic() - t0)
         if not _valid_file(tmp_out):
             raise SceneRenderError("assembly produced no output")
         os.replace(tmp_out, output_path)

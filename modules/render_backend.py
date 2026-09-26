@@ -9,9 +9,12 @@ that was deferred: the backend that actually runs it.
 
 `render()` normalises each segment to one uniform codec/size/fps clip (so the
 concat demuxer accepts them), concatenates them, muxes the audio, optionally
-burns subtitles, and encodes H.264/AAC — holding **one** ffmpeg process at a
-time, never twelve decoders. ffmpeg is resolved from the imageio-ffmpeg binary
-MoviePy already depends on, so no system install is required.
+burns subtitles, and encodes H.264/AAC. Each ffmpeg process holds one source
+decoder, never twelve; a bounded pool (``render_jobs``: CPU count, capped by
+MemAvailable, ``NIGHTSHIFT_RENDER_JOBS``) runs a few segment processes at
+once, each a fast near-lossless intermediate, and the one quality encode is
+the final pass. ffmpeg is resolved from the imageio-ffmpeg binary MoviePy
+already depends on, so no system install is required.
 
 It is a real, runnable renderer for the concat model (stock/AI b-roll + still
 images + colour fills + one narration track + a subtitle file). Stills get the
@@ -24,13 +27,16 @@ subtitle file may be the word-highlighted `.ass` from `modules/ass_captions.py`
 
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
 import logging
+import os
 import subprocess
 import tempfile
-from dataclasses import replace
+import time
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional, Sequence
 
 from modules.render_spec import (
     KIND_COLOR,
@@ -154,15 +160,18 @@ def _static_image_cmd(ffmpeg: str, path: str, dur: str, width: int, height: int,
 
 def _normalize_segment(
     ffmpeg: str, seg: Segment, out_path: Path, width: int, height: int, fps: int,
-    *, seed: Optional[str] = None,
+    *, seed: Optional[str] = None, x264: Sequence[str] = (),
 ) -> None:
     """Render one timeline segment to a uniform silent H.264 clip of its
     duration. A colour placeholder is generated; an image gets the Ken Burns
     move ``ken_burns_style(seed)`` (held static if that ffmpeg run fails); a
     video is trimmed and fitted. Audio is dropped here — the spec muxes one
-    narration track over the whole concatenation."""
+    narration track over the whole concatenation.
+
+    ``x264`` is the encoder settings (``INTERMEDIATE_X264`` from ``render``);
+    empty means libx264's defaults — the command this backend always ran."""
     dur = f"{max(0.001, seg.duration):.3f}"
-    common = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", str(fps)]
+    common = ["-c:v", "libx264", *x264, "-pix_fmt", "yuv420p", "-r", str(fps)]
 
     if seg.kind == KIND_COLOR or not seg.path:
         cmd = [ffmpeg, "-y", "-f", "lavfi", "-i",
@@ -188,12 +197,256 @@ def _normalize_segment(
     _run(cmd)
 
 
-def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[str] = None) -> str:
+# ── segment normalisation: one fast intermediate, a bounded worker pool ─────
+#
+# Measured on a 60 s 1080p30 sample (12 cuts: 4K + HD clips, Ken Burns stills,
+# word-highlighted .ass, narration) with the bundled ffmpeg on 4 cores: the
+# render took 74 s, 41 s of it normalising segments and 33 s in the final
+# pass. Decoding, scaling and the Ken Burns filters were cheap (0.4-1.8 s per
+# 5 s cut to a null sink); a medium-preset x264 encode was most of every
+# segment — and the final pass then decoded that and encoded every frame
+# AGAIN at the same settings. So the segments are now a near-lossless,
+# ultrafast intermediate and the quality encode happens once, in the final
+# pass (render_spec.FINAL_X264, unchanged). With cheap encodes the segments
+# are short, mostly single-threaded ffmpeg runs, so several run at once.
+
+#: Segment encode: ultrafast is ~4x cheaper than medium here, and at crf 12 it
+#: is visually lossless, so the final pass starts from better pixels than the
+#: medium/crf 23 segments it used to re-encode (one lossy generation, not two).
+#: The price is disk: measured 372 MB for the 60 s sample (13.7 MB with the
+#: old settings), all of it in the render's temp dir. crf 17 / 20 were tried
+#: and are worse on every axis — their artefacts cost the final encode more
+#: than the smaller files save (final pass 37.8 s / 68.7 s vs 36.7 s, and a
+#: lower SSIM) — so the guard below, not a higher crf, is what bounds disk.
+INTERMEDIATE_X264: tuple = ("-preset", "ultrafast", "-crf", "12")
+#: Disk guard: bytes per second of 1080p video the intermediate may need
+#: (6.2 MB/s measured on grainy footage, with headroom) and scaled by pixel
+#: count for other sizes. Less free space than that → the old compact settings.
+INTERMEDIATE_MB_PER_S_1080P = 8.0
+#: The segment encode the backend ran before (libx264 defaults). The
+#: sequential fallback uses it, so a fallback is exactly the old path.
+LEGACY_X264: tuple = ()
+
+JOBS_ENV = "NIGHTSHIFT_RENDER_JOBS"
+#: Memory guard. A 1080p normalise holding a 4K decoder and an ultrafast x264
+#: measured well under 400 MB; 700 MB per job leaves headroom for a larger
+#: source. The reserve is what the rest of the pipeline (and the runner) keeps.
+MEM_PER_JOB_MB = 700
+MEM_RESERVE_MB = 1536
+
+
+def _available_mb() -> Optional[float]:
+    try:
+        from modules import resource_monitor
+
+        return resource_monitor.system_memory_mb()[1]
+    except Exception:
+        return None
+
+
+def render_jobs(n_tasks: int, *, env: Optional[str] = None, cpu_count: Optional[int] = None,
+                available_mb: Optional[Callable[[], Optional[float]]] = None) -> int:
+    """How many segments to normalise at once.
+
+    ``NIGHTSHIFT_RENDER_JOBS`` when it is a positive integer (1 = the old
+    one-at-a-time path), else the CPU count — never more than there are
+    segments, and never more than fit in MemAvailable above the reserve
+    (unknown memory → no memory cap). Always at least 1. Never raises."""
+    n = max(1, int(n_tasks or 1))
+    raw = os.environ.get(JOBS_ENV, "") if env is None else env
+    jobs = None
+    if str(raw or "").strip():
+        try:
+            jobs = int(str(raw).strip())
+        except ValueError:
+            jobs = None
+        if jobs is None or jobs < 1:
+            logger.warning("%s=%r is not a positive integer — using the default", JOBS_ENV, raw)
+            jobs = None
+    if jobs is None:
+        jobs = cpu_count if cpu_count is not None else (os.cpu_count() or 1)
+    jobs = max(1, min(int(jobs), n))
+    avail = (available_mb or _available_mb)()
+    if avail is not None:
+        fit = int((avail - MEM_RESERVE_MB) // MEM_PER_JOB_MB)
+        jobs = max(1, min(jobs, fit))
+    return jobs
+
+
+def run_pool(tasks: Sequence[Callable[[], None]], jobs: int, *,
+             available_mb: Optional[Callable[[], Optional[float]]] = None) -> List[float]:
+    """Run ``tasks`` with at most ``jobs`` in flight and return each task's wall
+    seconds, in TASK order (completion order never matters: every task writes
+    its own file). A new task is not started while MemAvailable is below the
+    reserve and another one is still running.
+
+    On the first failure no new task starts, the ones in flight are waited for
+    (their ffmpeg children exit and are reaped — nothing orphaned), and the
+    exception is raised."""
+    probe = available_mb or _available_mb
+    times: List[Optional[float]] = [None] * len(tasks)
+
+    def timed(i: int) -> None:
+        t0 = time.monotonic()
+        tasks[i]()
+        times[i] = round(time.monotonic() - t0, 3)
+
+    jobs = max(1, int(jobs))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs,
+                                               thread_name_prefix="ffmpeg-seg") as pool:
+        running: set = set()
+        error: Optional[BaseException] = None
+        for i in range(len(tasks)):
+            while running and (len(running) >= jobs or _memory_low(probe)):
+                done, running = concurrent.futures.wait(
+                    running, return_when=concurrent.futures.FIRST_COMPLETED)
+                error = error or _first_error(done)
+                if error:
+                    break
+            if error:
+                break
+            running.add(pool.submit(timed, i))
+        if running:
+            done, _ = concurrent.futures.wait(running)
+            error = error or _first_error(done)
+        if error:
+            raise error
+    return [t if t is not None else 0.0 for t in times]
+
+
+def _memory_low(probe) -> bool:
+    try:
+        avail = probe()
+    except Exception:
+        return False
+    return avail is not None and avail < MEM_RESERVE_MB + MEM_PER_JOB_MB
+
+
+def _first_error(done) -> Optional[BaseException]:
+    for f in done:
+        e = f.exception()
+        if e is not None:
+            return e
+    return None
+
+
+# ── timings ─────────────────────────────────────────────────────────────────
+
+TIMING_PREFIX = "ffmpeg render timing:"
+
+
+@dataclass
+class RenderTimings:
+    """Where one render's wall time went. None = not measured (e.g. concat,
+    which runs inside the final pass), never 0."""
+    segments: int = 0
+    jobs: Optional[int] = None
+    mode: Optional[str] = None           # parallel | sequential | fallback
+    normalize_s: Optional[float] = None  # wall time of the whole normalise stage
+    segment_s: List[float] = field(default_factory=list)  # each segment's own wall time
+    concat_s: Optional[float] = None
+    final_s: Optional[float] = None      # concat + captions + audio mux + the quality encode
+    total_s: Optional[float] = None
+
+    @property
+    def normalize_avg_s(self) -> Optional[float]:
+        return round(sum(self.segment_s) / len(self.segment_s), 3) if self.segment_s else None
+
+    def log_line(self) -> str:
+        """One stable ``key=value`` line; tools/render_benchmark.py parses it."""
+        def v(x):
+            if x is None:
+                return "na"
+            return f"{x:.2f}" if isinstance(x, float) else str(x)
+        return (f"{TIMING_PREFIX} segments={self.segments} jobs={v(self.jobs)} "
+                f"mode={v(self.mode)} normalize_s={v(self.normalize_s)} "
+                f"normalize_avg_s={v(self.normalize_avg_s)} concat_s={v(self.concat_s)} "
+                f"final_s={v(self.final_s)} total_s={v(self.total_s)}")
+
+
+def intermediate_x264(spec: RenderSpec, tmpdir: Path, *,
+                      free_mb: Optional[Callable[[Path], Optional[float]]] = None) -> tuple:
+    """The segment encode for this render: the fast intermediate when the temp
+    dir has room for it, else the old compact settings (slower, never a
+    full-disk failure halfway through a long render). Never raises."""
+    try:
+        need = (spec.total_duration * INTERMEDIATE_MB_PER_S_1080P
+                * (spec.width * spec.height) / (1920 * 1080))
+        free = (free_mb or _free_mb)(Path(tmpdir))
+    except Exception:
+        return INTERMEDIATE_X264
+    if free is not None and free < need:
+        logger.warning("Only %.0f MB free for ffmpeg intermediates (up to %.0f MB needed) — "
+                       "encoding segments with the compact settings instead", free, need)
+        return LEGACY_X264
+    return INTERMEDIATE_X264
+
+
+def _free_mb(path: Path) -> Optional[float]:
+    try:
+        st = os.statvfs(str(path))
+        return st.f_bavail * st.f_frsize / 1048576.0
+    except (OSError, AttributeError):
+        return None
+
+
+def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
+                   timings: RenderTimings) -> List[Segment]:
+    """Every segment → ``seg_NNNN.mp4``, in parallel when ``jobs`` > 1.
+
+    Any failure of the parallel path — a segment, the pool itself — is logged
+    and the whole stage is redone one segment at a time with the old encode
+    settings: exactly the path this backend always ran. Only a failure there
+    raises (and render_dispatch then falls back to MoviePy, as before)."""
+    outs = [tmpdir / f"seg_{i:04d}.mp4" for i in range(len(spec.segments))]
+
+    def task(i: int, x264: Sequence[str]) -> Callable[[], None]:
+        seg = spec.segments[i]
+        return lambda: _normalize_segment(ffmpeg, seg, outs[i], spec.width, spec.height,
+                                          spec.fps, seed=f"{i}:{seg.path}", x264=x264)
+
+    t0 = time.monotonic()
+    try:
+        x264 = intermediate_x264(spec, tmpdir)
+        tasks = [task(i, x264) for i in range(len(outs))]
+        if jobs > 1:
+            timings.segment_s = run_pool(tasks, jobs)
+        else:
+            timings.segment_s = _run_sequential(tasks)
+        timings.mode, timings.jobs = ("parallel" if jobs > 1 else "sequential"), jobs
+    except Exception as e:
+        logger.warning("ffmpeg segment normalisation (%d job(s)) failed (%s) — redoing it "
+                       "one segment at a time", jobs, f"{type(e).__name__}: {e}"[:300])
+        for p in outs:
+            try:
+                p.unlink()
+            except OSError:
+                pass
+        timings.segment_s = _run_sequential([task(i, LEGACY_X264) for i in range(len(outs))])
+        timings.mode, timings.jobs = "fallback", 1
+    timings.normalize_s = round(time.monotonic() - t0, 3)
+    return [Segment(duration=seg.duration, path=str(outs[i]), kind=KIND_VIDEO)
+            for i, seg in enumerate(spec.segments)]
+
+
+def _run_sequential(tasks: Sequence[Callable[[], None]]) -> List[float]:
+    times = []
+    for t in tasks:
+        t0 = time.monotonic()
+        t()
+        times.append(round(time.monotonic() - t0, 3))
+    return times
+
+
+def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[str] = None,
+           jobs: Optional[int] = None, timings: Optional[RenderTimings] = None) -> str:
     """Render `spec` to `spec.output_path` via ffmpeg and return that path.
 
-    Normalises every segment, concatenates them, muxes `audio_path`, and burns
-    `subtitle_path` when set. Raises RenderBackendError on an invalid spec or an
-    ffmpeg failure — never a silent empty file.
+    Normalises every segment (``jobs`` at once; default ``render_jobs``),
+    concatenates them, muxes `audio_path`, and burns `subtitle_path` when set.
+    Raises RenderBackendError on an invalid spec or an ffmpeg failure — never a
+    silent empty file. ``timings`` (optional) is filled in; the same numbers are
+    logged as one ``ffmpeg render timing:`` line.
     """
     problems = validate(spec)
     if problems:
@@ -201,16 +454,15 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
 
     ffmpeg = ffmpeg or resolve_ffmpeg()
     Path(spec.output_path).parent.mkdir(parents=True, exist_ok=True)
+    timings = timings if timings is not None else RenderTimings()
+    timings.segments = len(spec.segments)
+    jobs = render_jobs(len(spec.segments)) if jobs is None else max(1, int(jobs))
+    t_start = time.monotonic()
 
     tmp_ctx = tempfile.TemporaryDirectory(dir=workdir) if workdir else tempfile.TemporaryDirectory()
     with tmp_ctx as tmp:
         tmpdir = Path(tmp)
-        normalized: List[Segment] = []
-        for i, seg in enumerate(spec.segments):
-            out = tmpdir / f"seg_{i:04d}.mp4"
-            _normalize_segment(ffmpeg, seg, out, spec.width, spec.height, spec.fps,
-                               seed=f"{i}:{seg.path}")
-            normalized.append(Segment(duration=seg.duration, path=str(out), kind=KIND_VIDEO))
+        normalized = _normalize_all(ffmpeg, spec, tmpdir, jobs, timings)
 
         norm_spec = replace(spec, segments=normalized)
         concat_path = tmpdir / "concat.txt"
@@ -218,10 +470,14 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
 
         cmd = build_ffmpeg_command(norm_spec, str(concat_path))
         cmd[0] = ffmpeg  # the builder emits a literal "ffmpeg"; use the resolved binary
+        t0 = time.monotonic()
         _run(cmd)
+        timings.final_s = round(time.monotonic() - t0, 3)
+    timings.total_s = round(time.monotonic() - t_start, 3)
 
     logger.info("ffmpeg backend rendered %s (%d segments, %.1fs)",
                 spec.output_path, len(spec.segments), spec.total_duration)
+    logger.info(timings.log_line())
     return spec.output_path
 
 
