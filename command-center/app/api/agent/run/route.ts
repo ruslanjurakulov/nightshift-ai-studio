@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
-import { getUser } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/roles";
 import { logAudit } from "@/lib/server/audit";
 import { dispatchDailyVideo, isGithubConfigured } from "@/lib/server/github-secrets";
+import { isSupabaseConfigured } from "@/lib/config";
+import { buildRenderJobInsert, isRunConfigured, resolveRunBackend } from "@/lib/runBackend";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,12 +22,25 @@ export const dynamic = "force-dynamic";
  * id is required. It does not publish by itself: the dispatch pins privacy to
  * private and the channel's own auto-publish + publish gate still decide the
  * rest, exactly as on a scheduled run.
+ *
+ * Backend (server env NIGHTSHIFT_RUN_BACKEND, lib/runBackend.ts): "actions"
+ * (default) dispatches the workflow as above; "queue" instead inserts one
+ * `render_jobs` row (migration 0017) that the VPS worker picks up and runs with
+ * the same command the workflow would (docs/WORKER_VPS.md). The insert goes
+ * through the signed-in user's RLS-checked client — this app never holds the
+ * service key — and 0017's insert policy accepts only what this route sends:
+ * a 'daily' job, no privacy (so private), no resume or repair, filed as the
+ * caller. Neither backend asks for more than the other.
  */
 
 export async function GET() {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  return NextResponse.json({ configured: isGithubConfigured });
+  const backend = resolveRunBackend(process.env);
+  return NextResponse.json({
+    configured: isRunConfigured(backend, { github: isGithubConfigured, supabase: isSupabaseConfigured }),
+    backend,
+  });
 }
 
 export async function POST(request: Request) {
@@ -33,7 +48,8 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   // Spending money to produce a video is an owner/admin action.
   if (!(await requireRole("admin"))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  if (!isGithubConfigured)
+  const backend = resolveRunBackend(process.env);
+  if (backend === "actions" && !isGithubConfigured)
     return NextResponse.json({ error: "github_not_configured" }, { status: 503 });
 
   let body: {
@@ -80,19 +96,34 @@ export async function POST(request: Request) {
   const videoProvider = typeof body.video_provider === "string" ? body.video_provider.trim() : "";
   const imageProvider = typeof body.image_provider === "string" ? body.image_provider.trim() : "";
 
-  try {
-    await dispatchDailyVideo(channelId, {
-      topic,
-      niche,
-      duration,
-      language,
-      visualStyle,
-      videoProvider,
-      imageProvider,
+  const opts = { topic, niche, duration, language, visualStyle, videoProvider, imageProvider };
+
+  if (backend === "queue") {
+    const supabase = await createClient();
+    if (!supabase) return NextResponse.json({ error: "queue_unavailable" }, { status: 503 });
+    const row = buildRenderJobInsert(channelId, opts, user.id);
+    const { data, error } = await supabase.from("render_jobs").insert(row).select("id").single();
+    if (error || !data) {
+      // A missing table is "0017 not applied yet" — say so, never claim it queued.
+      const missing = error?.code === "42P01" || /PGRST205|does not exist/i.test(error?.message ?? "");
+      return NextResponse.json(
+        { error: missing ? "queue_unavailable" : "queue_insert_failed" },
+        { status: missing ? 503 : 502 },
+      );
+    }
+    await logAudit({
+      action: "agent.run",
+      channelId,
+      detail: { backend: "queue", job_id: data.id, ...row.params },
     });
+    return NextResponse.json({ ok: true, backend: "queue", job_id: data.id });
+  }
+
+  try {
+    await dispatchDailyVideo(channelId, opts);
     // Audit the on-demand run against its channel (best-effort, never throws).
     // Record only the non-default controls the operator actually set.
-    const detail: Record<string, unknown> = {};
+    const detail: Record<string, unknown> = { backend: "actions" };
     if (topic) detail.topic = topic;
     if (duration) detail.duration = duration;
     if (language) detail.language = language;
@@ -102,9 +133,9 @@ export async function POST(request: Request) {
     await logAudit({
       action: "agent.run",
       channelId,
-      detail: Object.keys(detail).length ? detail : undefined,
+      detail,
     });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, backend: "actions" });
   } catch (e) {
     const reason = e instanceof Error ? e.message : "github_dispatch_failed";
     const status =

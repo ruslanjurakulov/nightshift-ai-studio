@@ -4,7 +4,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
 import { getChannelContext } from "@/lib/channels-server";
 import { isScoped } from "@/lib/channels";
-import { isGithubConfigured } from "@/lib/server/github-secrets";
+import { isRunNowConfigured, runBackend } from "@/lib/server/run-backend";
 import { CreateStudio } from "@/components/create/CreateStudio";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,8 @@ export default async function CreatePage() {
       <PageHeader icon="studio" title={t.create.title} subtitle={t.create.subtitle} />
       <CreateStudio
         channelId={scopedChannel?.channel_id ?? null}
-        githubConfigured={isGithubConfigured}
+        githubConfigured={isRunNowConfigured}
+        backend={runBackend}
         agentConfig={scopedChannel?.agent_config ?? null}
       />
     </div>
