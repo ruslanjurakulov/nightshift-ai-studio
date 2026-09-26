@@ -55,6 +55,12 @@ on:
         default: ""
         type: choice
         options: ["", pexels, leonardo, gpt-image, nano-banana, flux, ideogram, fal]
+      tts_model:
+        description: "ElevenLabs voice model for this run (empty = repo default)"
+        required: false
+        default: ""
+        type: choice
+        options: ["", eleven_v3, eleven_multilingual_v2, eleven_flash_v2_5, eleven_turbo_v2_5]
       resume:
         description: "Resume this channel's last unfinished run (reuse its saved script, poll its paid provider tasks, reconcile its upload) instead of starting a new video"
         required: false
@@ -394,6 +400,9 @@ jobs:
           # the robotic voice on purpose). Note: an empty override string is
           # honored by config, so this passes the var only when it is non-empty.
           TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
+          # ElevenLabs model (config.ELEVENLABS_MODELS): this run's choice, else
+          # the repo VARIABLE, else config's default (eleven_multilingual_v2).
+          ELEVENLABS_MODEL_ID: ${{ github.event.inputs.tts_model || vars.ELEVENLABS_MODEL_ID }}
           SCRIPT_LANGUAGE: English
           # x264 encoder threads for the final render. The render has been
           # OOM-killed at exit 143 with ffmpeg eating the 7.9 GB runner; set

@@ -380,6 +380,7 @@ export const ru: Dictionary = {
     models: "Модели",
     videoModel: "Модель видео (изображение→видео)",
     imageModel: "Модель изображений",
+    voiceModel: "Модель голоса (ElevenLabs)",
     optDefault: "По умолчанию (репо)",
     voice: "Голос",
     editVoice: "Изменить голос",

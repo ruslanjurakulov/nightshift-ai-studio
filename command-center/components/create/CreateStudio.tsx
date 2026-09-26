@@ -9,6 +9,7 @@ import type { QueueJob, RunBackend } from "@/lib/runBackend";
 import { creditRunError } from "@/lib/credits";
 import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
 import { IMAGE_GENERATORS } from "@/lib/imageProviders";
+import { TTS_MODELS, TTS_MODEL_LABELS } from "@/lib/ttsModels";
 
 /**
  * The Create studio — one page to type a topic, set the run's controls, press
@@ -52,6 +53,7 @@ export function CreateStudio({
   const [style, setStyle] = useState("");
   const [videoProvider, setVideoProvider] = useState("");
   const [imageProvider, setImageProvider] = useState("");
+  const [ttsModel, setTtsModel] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
   // A refusal about credits (not enough, no estimate, not set up) — said
@@ -104,6 +106,7 @@ export function CreateStudio({
           ...(style.trim() ? { visual_style: style.trim() } : {}),
           ...(videoProvider ? { video_provider: videoProvider } : {}),
           ...(imageProvider ? { image_provider: imageProvider } : {}),
+          ...(ttsModel ? { tts_model: ttsModel } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -189,7 +192,7 @@ export function CreateStudio({
 
         {/* Per-run model routing: which model turns stills into b-roll, and which
             supplies the imagery. Empty = the repo's configured default. */}
-        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label className="flex flex-col gap-1">
             <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.create.videoModel}</span>
             <select value={videoProvider} onChange={(e) => setVideoProvider(e.target.value)} className={selectClass}>
@@ -210,6 +213,17 @@ export function CreateStudio({
               {IMAGE_GENERATORS.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.create.voiceModel}</span>
+            <select value={ttsModel} onChange={(e) => setTtsModel(e.target.value)} className={selectClass}>
+              <option value="">{t.create.optDefault}</option>
+              {TTS_MODELS.map((m) => (
+                <option key={m} value={m}>
+                  {TTS_MODEL_LABELS[m]}
                 </option>
               ))}
             </select>

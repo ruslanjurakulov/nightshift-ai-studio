@@ -35,12 +35,13 @@ from typing import Dict, List, Mapping, Optional, Tuple
 #: Every workflow_dispatch input except ``channel`` (a column on the job).
 ALLOWED_PARAMS = (
     "topic", "niche", "privacy", "duration", "language", "visual_style",
-    "video_provider", "image_provider", "resume", "repair_scenes",
+    "video_provider", "image_provider", "tts_model", "resume", "repair_scenes",
 )
 #: The workflow's choice lists (daily_video.yml `options:`).
 PRIVACY_CHOICES = ("private", "unlisted", "public")
 VIDEO_PROVIDERS = ("minimax", "higgsfield", "kling", "veo", "seedance", "wan")
 IMAGE_PROVIDERS = ("pexels", "leonardo", "gpt-image", "nano-banana", "flux", "ideogram", "fal")
+TTS_MODELS = ("eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5")
 KINDS = ("daily", "repair")
 
 _MAX_LEN = {"topic": 300, "niche": 120, "language": 40, "visual_style": 300, "repair_scenes": 120}
@@ -88,7 +89,7 @@ def validate(channel_id: str, kind: str, params: Optional[Mapping]) -> Dict:
         out["duration"] = int(d)
 
     for key, choices in (("privacy", PRIVACY_CHOICES), ("video_provider", VIDEO_PROVIDERS),
-                         ("image_provider", IMAGE_PROVIDERS)):
+                         ("image_provider", IMAGE_PROVIDERS), ("tts_model", TTS_MODELS)):
         value = params.get(key)
         if value is None or value == "":
             continue
@@ -152,6 +153,9 @@ def build_run_env(params: Mapping, base_env: Mapping[str, str]) -> Dict[str, str
         env["CHRONOS_IMAGE_PROVIDER"] = image
         if image != "pexels":
             env["CHRONOS_ENABLE_IMAGE_GEN"] = "true"
+    tts_model = params.get("tts_model") or ""
+    if tts_model:
+        env["ELEVENLABS_MODEL_ID"] = tts_model
     return env
 
 

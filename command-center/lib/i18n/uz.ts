@@ -380,6 +380,7 @@ export const uz: Dictionary = {
     models: "Modellar",
     videoModel: "Video modeli (rasm→video)",
     imageModel: "Rasm modeli",
+    voiceModel: "Ovoz modeli (ElevenLabs)",
     optDefault: "Repo standarti",
     voice: "Ovoz",
     editVoice: "Ovozni tahrirlash",

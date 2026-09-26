@@ -76,6 +76,7 @@ export async function POST(request: Request) {
     visual_style?: unknown;
     video_provider?: unknown;
     image_provider?: unknown;
+    tts_model?: unknown;
   };
   try {
     body = await request.json();
@@ -128,8 +129,9 @@ export async function POST(request: Request) {
   // workflow's choice lists; a bad value is simply dropped).
   const videoProvider = typeof body.video_provider === "string" ? body.video_provider.trim() : "";
   const imageProvider = typeof body.image_provider === "string" ? body.image_provider.trim() : "";
+  const ttsModel = typeof body.tts_model === "string" ? body.tts_model.trim() : "";
 
-  const opts = { topic, niche, duration, language, visualStyle, videoProvider, imageProvider };
+  const opts = { topic, niche, duration, language, visualStyle, videoProvider, imageProvider, ttsModel };
 
   // Pay first (enforced deployments only), then run. The hold's id travels
   // with the run so its runner can settle exactly this hold.
@@ -182,6 +184,7 @@ export async function POST(request: Request) {
     if (visualStyle) detail.visual_style = visualStyle;
     if (videoProvider) detail.video_provider = videoProvider;
     if (imageProvider) detail.image_provider = imageProvider;
+    if (ttsModel) detail.tts_model = ttsModel;
     if (creditRef) {
       detail.credit_ref = creditRef;
       detail.credits_reserved = creditsHeld;

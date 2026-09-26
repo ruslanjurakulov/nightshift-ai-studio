@@ -164,7 +164,9 @@ class WorkflowParity(unittest.TestCase):
                          "!= 'pexels' && 'true' || vars.CHRONOS_ENABLE_IMAGE_GEN }}")
 
     def test_migration_whitelist_matches(self):
-        sql = (ROOT / "supabase" / "migrations" / "0017_render_jobs.sql").read_text()
+        # The latest migration that (re)defines render_job_params_valid wins.
+        migrations = sorted((ROOT / "supabase" / "migrations").glob("*.sql"))
+        sql = [m for m in migrations if "function public.render_job_params_valid" in m.read_text()][-1].read_text()
         m = re.search(r"allowed text\[\] := array\[(.*?)\];", sql, re.S)
         self.assertIsNotNone(m)
         self.assertEqual(set(re.findall(r"'([a-z_]+)'", m.group(1))), set(run_request.ALLOWED_PARAMS))

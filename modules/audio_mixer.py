@@ -14,6 +14,7 @@ from pydub.effects import normalize
 from config import (
     EDGE_TTS_VOICE,
     ELEVENLABS_API_KEY,
+    ELEVENLABS_MODEL_ID,
     ELEVENLABS_VOICE_ID,
     MUSIC_DIR,
     NARRATOR_VOLUME,
@@ -147,6 +148,7 @@ class AudioMixer:
         self.tts_provider = agent.tts_provider if agent else TTS_PROVIDER
         self.main_elevenlabs_voice = agent.elevenlabs_voice_id if agent else ELEVENLABS_VOICE_ID
         self.main_edge_voice = agent.edge_tts_voice if agent else EDGE_TTS_VOICE
+        self.elevenlabs_model = ELEVENLABS_MODEL_ID
         self.work_dir = OUTPUT_DIR / topic_slug / "audio"
         self.work_dir.mkdir(parents=True, exist_ok=True)
         # Characters actually sent to the TTS vendor this run. Cache hits are
@@ -164,11 +166,14 @@ class AudioMixer:
         from elevenlabs import ElevenLabs, VoiceSettings  # lazy import
 
         client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+        # eleven_v3 accepts only the stability presets 0.0 / 0.5 / 1.0
+        # (creative / natural / robust); the others take any value.
+        stability = 0.5 if self.elevenlabs_model == "eleven_v3" else 0.45
         audio = client.text_to_speech.convert(
             voice_id=voice_id,
             text=text,
-            model_id="eleven_multilingual_v2",
-            voice_settings=VoiceSettings(stability=0.45, similarity_boost=0.82),
+            model_id=self.elevenlabs_model,
+            voice_settings=VoiceSettings(stability=stability, similarity_boost=0.82),
         )
         with open(out_path, "wb") as f:
             for chunk in audio:
@@ -184,7 +189,11 @@ class AudioMixer:
         """
         # The voice is part of the cache key: two channels narrating the same
         # sentence must not share one rendered segment.
+        # So is the ElevenLabs model: switching models must re-render, not
+        # reuse the old model's audio.
         voice_key = f"{self.tts_provider}:{self.main_elevenlabs_voice}:{self.main_edge_voice}"
+        if self.tts_provider == "elevenlabs" and self.elevenlabs_model != "eleven_multilingual_v2":
+            voice_key += f":{self.elevenlabs_model}"
         digest = hashlib.sha1(f"{voice_key}:{voice_role}:{text}".encode("utf-8")).hexdigest()[:12]
         out = self.work_dir / f"seg_{digest}_{voice_role}.mp3"
         if out.exists():
