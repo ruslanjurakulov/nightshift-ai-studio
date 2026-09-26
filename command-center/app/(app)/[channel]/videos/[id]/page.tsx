@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { ReviewPanel } from "@/components/review/ReviewPanel";
+import { CopyButton } from "@/components/feedback/CopyButton";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { Panel, StatCard, EmptyState, StatusPill } from "@/components/ui";
@@ -279,7 +280,12 @@ export default async function VideoDetail({
           />
           <Field
             label={t.videoDetail.fVideoId}
-            value={<span className="mono text-[13px]">{video.video_id}</span>}
+            value={
+              <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+                <span className="mono min-w-0 truncate text-[13px]">{video.video_id}</span>
+                <CopyButton value={video.video_id} label={t.videoDetail.fVideoId} />
+              </span>
+            }
           />
         </div>
       </Panel>

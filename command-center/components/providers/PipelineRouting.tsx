@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
+import { useToast } from "@/components/feedback/ToastProvider";
 import { PROVIDERS } from "@/lib/providers";
 import { IMAGE_GENERATORS, imageGeneratorById } from "@/lib/imageProviders";
 
@@ -71,6 +72,7 @@ export function PipelineRouting({
   const [autopilot, setAutopilot] = useState(truthy(initial.CHRONOS_AGENT_AUTOPILOT));
   const [state, setState] = useState<SaveState>("idle");
   const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
+  const toast = useToast();
 
   async function save(variables: Vars) {
     if (!githubConfigured) return;
@@ -84,14 +86,20 @@ export function PipelineRouting({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setErrorKey(data.error === "github_unauthorized" ? "unauthorized" : "failed");
+        const unauthorized = data.error === "github_unauthorized";
+        setErrorKey(unauthorized ? "unauthorized" : "failed");
         setState("error");
+        toast.error(unauthorized ? t.providers.routingUnauthorized : t.providers.routingFailed, {
+          title: t.providers.routingTitle,
+        });
         return false;
       }
       setState("saved");
+      toast.success(t.providers.routingSaved, { title: t.providers.routingTitle });
       return true;
     } catch {
       setState("error");
+      toast.error(t.providers.routingFailed, { title: t.providers.routingTitle });
       return false;
     }
   }

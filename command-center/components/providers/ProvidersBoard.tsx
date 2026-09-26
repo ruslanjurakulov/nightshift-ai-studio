@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Check } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
+import { useToast } from "@/components/feedback/ToastProvider";
 import { StatusPill } from "@/components/ui";
 import {
   PROVIDER_CATEGORIES,
@@ -111,6 +112,7 @@ function ProviderCard({
   const [value, setValue] = useState("");
   const [state, setState] = useState<SaveState>("idle");
   const [errorKey, setErrorKey] = useState<"unauthorized" | "failed" | null>(null);
+  const toast = useToast();
 
   async function save() {
     const key = value.trim();
@@ -125,17 +127,21 @@ function ProviderCard({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        const unauthorized = data.error === "github_unauthorized";
         setState("error");
-        setErrorKey(data.error === "github_unauthorized" ? "unauthorized" : "failed");
+        setErrorKey(unauthorized ? "unauthorized" : "failed");
+        toast.error(unauthorized ? t.providers.unauthorized : t.providers.saveFailed, { title: provider.name });
         return;
       }
       // Accepted by GitHub — drop the value from the browser at once.
       setValue("");
       setState("saved");
+      toast.success(t.providers.saved, { title: provider.name });
       onSaved();
     } catch {
       setState("error");
       setErrorKey("failed");
+      toast.error(t.providers.saveFailed, { title: provider.name });
     }
   }
 

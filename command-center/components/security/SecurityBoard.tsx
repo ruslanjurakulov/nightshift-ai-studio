@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { StatusPill } from "@/components/ui";
+import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { needsStepUp, normalizeAal, type AalLevel } from "@/lib/security/aal";
 
 /**
@@ -34,6 +35,7 @@ type Enrollment = {
 
 export function SecurityBoard() {
   const { t } = useI18n();
+  const { confirm, dialog } = useConfirm();
   const [configured, setConfigured] = useState(true);
   const [factors, setFactors] = useState<Factor[] | null>(null);
   const [aal, setAal] = useState<AalLevel | null>(null);
@@ -122,7 +124,7 @@ export function SecurityBoard() {
   async function remove(factor: Factor) {
     const supabase = createClient();
     if (!supabase || removingId) return;
-    if (!window.confirm(t.security.removeConfirm)) return;
+    if (!(await confirm({ title: t.security.remove, message: t.security.removeConfirm, confirmLabel: t.security.remove }))) return;
     setRemovingId(factor.id);
     setError(null);
     const { error: e } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
@@ -146,6 +148,7 @@ export function SecurityBoard() {
 
   return (
     <div className="rhythm">
+      {dialog}
       {/* Current assurance level */}
       <div className="panel flex flex-wrap items-center justify-between gap-2 p-4">
         <span className="text-[13px] text-[var(--color-muted)]">{t.security.currentLevel}</span>

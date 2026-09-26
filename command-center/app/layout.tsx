@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { getLocale } from "@/lib/i18n/server";
 import { I18nProvider } from "@/lib/i18n/context";
+import { ToastProvider } from "@/components/feedback/ToastProvider";
 import { NO_FLASH_SCRIPT } from "@/lib/theme";
 
 export const metadata: Metadata = {
@@ -29,7 +30,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
       </head>
       <body>
-        <I18nProvider locale={locale}>{children}</I18nProvider>
+        <I18nProvider locale={locale}>
+          <ToastProvider>{children}</ToastProvider>
+        </I18nProvider>
       </body>
     </html>
   );

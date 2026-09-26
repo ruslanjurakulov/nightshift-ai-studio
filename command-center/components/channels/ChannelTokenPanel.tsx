@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { StatusPill } from "@/components/ui";
+import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { relativeTime } from "@/lib/format";
 import { atLeast, type Role } from "@/lib/auth/roles-shared";
 import {
@@ -49,6 +50,7 @@ export function ChannelTokenPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [justDisconnected, setJustDisconnected] = useState(false);
+  const { confirm, dialog } = useConfirm();
 
   const connected = Boolean(status?.connected);
   const actions = tokenPanelActions({ role, oauthConfigured, available, connected });
@@ -56,7 +58,7 @@ export function ChannelTokenPanel({
   const startHref = `/api/oauth/youtube/start?ref=${encodeURIComponent(channelId)}`;
 
   async function disconnect() {
-    if (!window.confirm(tt.confirmDisconnect)) return;
+    if (!(await confirm({ title: tt.disconnect, message: tt.confirmDisconnect, confirmLabel: tt.disconnect }))) return;
     setBusy(true);
     setError(null);
     try {
@@ -180,6 +182,7 @@ export function ChannelTokenPanel({
           </div>
         </>
       )}
+      {dialog}
     </div>
   );
 }

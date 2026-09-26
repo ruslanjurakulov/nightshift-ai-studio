@@ -10,6 +10,7 @@ import { scopeQuery } from "@/lib/channels";
 import { fmt } from "@/lib/i18n";
 import type { SystemEventRow } from "@/lib/types";
 import { JobStatusPill, type JobStatus } from "@/components/jobs/JobStatusPill";
+import { CopyButton } from "@/components/feedback/CopyButton";
 import { relativeTime, statusTone, storedMs } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -171,7 +172,10 @@ export default async function JobsPage() {
                   {jobs.map((j) => (
                     <tr key={`${j.keyedBy}-${j.id}`} className="border-b border-[var(--color-border)]/50 align-top transition-colors hover:bg-[var(--color-panel-2)]">
                       <td className="px-4 py-2">
-                        <div className="mono truncate text-[12px] text-[var(--color-fg)]">{j.id}</div>
+                        <div className="flex min-w-0 items-center gap-1">
+                          <span className="mono min-w-0 truncate text-[12px] text-[var(--color-fg)]">{j.id}</span>
+                          <CopyButton value={j.id} label={j.id} />
+                        </div>
                         <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
                           {j.keyedBy === "job_id" ? t.jobs.byJobId : t.jobs.byVideo}
                         </div>
