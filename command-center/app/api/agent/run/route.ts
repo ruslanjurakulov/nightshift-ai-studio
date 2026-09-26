@@ -77,6 +77,7 @@ export async function POST(request: Request) {
     video_provider?: unknown;
     image_provider?: unknown;
     tts_model?: unknown;
+    voice_id?: unknown;
   };
   try {
     body = await request.json();
@@ -130,8 +131,9 @@ export async function POST(request: Request) {
   const videoProvider = typeof body.video_provider === "string" ? body.video_provider.trim() : "";
   const imageProvider = typeof body.image_provider === "string" ? body.image_provider.trim() : "";
   const ttsModel = typeof body.tts_model === "string" ? body.tts_model.trim() : "";
+  const voiceId = typeof body.voice_id === "string" ? body.voice_id.trim() : "";
 
-  const opts = { topic, niche, duration, language, visualStyle, videoProvider, imageProvider, ttsModel };
+  const opts = { topic, niche, duration, language, visualStyle, videoProvider, imageProvider, ttsModel, voiceId };
 
   // Pay first (enforced deployments only), then run. The hold's id travels
   // with the run so its runner can settle exactly this hold.
@@ -185,6 +187,7 @@ export async function POST(request: Request) {
     if (videoProvider) detail.video_provider = videoProvider;
     if (imageProvider) detail.image_provider = imageProvider;
     if (ttsModel) detail.tts_model = ttsModel;
+    if (voiceId) detail.voice_id = voiceId;
     if (creditRef) {
       detail.credit_ref = creditRef;
       detail.credits_reserved = creditsHeld;

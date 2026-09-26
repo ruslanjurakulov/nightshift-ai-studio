@@ -1,12 +1,13 @@
--- 0024: choose the ElevenLabs model for a "Run now" on the queue.
+-- 0024: choose the ElevenLabs model and voice for a "Run now" on the queue.
 --
 -- The pipeline takes a per-run `tts_model` (config.ELEVENLABS_MODELS,
 -- daily_video.yml's tts_model choice list): eleven_v3, eleven_multilingual_v2,
--- eleven_flash_v2_5, eleven_turbo_v2_5. render_job_params_valid whitelists
+-- eleven_flash_v2_5, eleven_turbo_v2_5 — and a per-run `voice_id` (an
+-- ElevenLabs voice id: 20 letters and digits). render_job_params_valid whitelists
 -- every params key, so without this a queued run naming a model is refused by
 -- the insert policy.
 --
--- The function below is 0023's with the one new key and its choice list.
+-- The function below is 0023's with the two new keys and their checks.
 -- Safe to run again.
 
 create or replace function public.render_job_params_valid(p jsonb, p_kind text)
@@ -15,7 +16,7 @@ create or replace function public.render_job_params_valid(p jsonb, p_kind text)
 declare
   k text;
   allowed text[] := array['topic','niche','privacy','duration','language','visual_style',
-                          'video_provider','image_provider','tts_model','resume','repair_scenes'];
+                          'video_provider','image_provider','tts_model','voice_id','resume','repair_scenes'];
   has_repair boolean;
 begin
   if p is null or jsonb_typeof(p) <> 'object' then
@@ -66,6 +67,10 @@ begin
   if p ? 'tts_model' and (jsonb_typeof(p -> 'tts_model') <> 'string'
       or p ->> 'tts_model' not in ('eleven_v3','eleven_multilingual_v2',
                                    'eleven_flash_v2_5','eleven_turbo_v2_5')) then
+    return false;
+  end if;
+  if p ? 'voice_id' and (jsonb_typeof(p -> 'voice_id') <> 'string'
+      or p ->> 'voice_id' !~ '^[A-Za-z0-9]{20}$') then
     return false;
   end if;
   if p ? 'resume' and jsonb_typeof(p -> 'resume') <> 'boolean' then

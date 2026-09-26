@@ -61,6 +61,10 @@ on:
         default: ""
         type: choice
         options: ["", eleven_v3, eleven_multilingual_v2, eleven_flash_v2_5, eleven_turbo_v2_5]
+      voice_id:
+        description: "ElevenLabs voice id for this run (empty = the channel's voice)"
+        required: false
+        default: ""
       resume:
         description: "Resume this channel's last unfinished run (reuse its saved script, poll its paid provider tasks, reconcile its upload) instead of starting a new video"
         required: false
@@ -403,6 +407,10 @@ jobs:
           # ElevenLabs model (config.ELEVENLABS_MODELS): this run's choice, else
           # the repo VARIABLE, else config's default (eleven_multilingual_v2).
           ELEVENLABS_MODEL_ID: ${{ github.event.inputs.tts_model || vars.ELEVENLABS_MODEL_ID }}
+          # Voice: this run's choice beats the channel's (config validates the
+          # id); the repo VARIABLE sets the default voice for channels without one.
+          ELEVENLABS_RUN_VOICE_ID: ${{ github.event.inputs.voice_id }}
+          ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
           SCRIPT_LANGUAGE: English
           # x264 encoder threads for the final render. The render has been
           # OOM-killed at exit 143 with ffmpeg eating the 7.9 GB runner; set

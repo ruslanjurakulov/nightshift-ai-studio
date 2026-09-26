@@ -28,3 +28,18 @@ describe("ElevenLabs models", () => {
     expect(buildRenderJobInsert("c", { ttsModel: "bogus" }, "u").params.tts_model).toBeUndefined();
   });
 });
+
+describe("ElevenLabs voices", () => {
+  it("lists only well-formed, unique voice ids", async () => {
+    const { VOICES, isVoiceId } = await import("../lib/ttsModels");
+    expect(VOICES.length).toBeGreaterThan(5);
+    for (const v of VOICES) expect(isVoiceId(v.id), v.name).toBe(true);
+    expect(new Set(VOICES.map((v) => v.id)).size).toBe(VOICES.length);
+    expect(isVoiceId("not-a-voice")).toBe(false);
+  });
+
+  it("forwards only a well-formed voice id on the queue", () => {
+    expect(buildRenderJobInsert("c", { voiceId: "pNInz6obpgDQGcFmaJgB" }, "u").params.voice_id).toBe("pNInz6obpgDQGcFmaJgB");
+    expect(buildRenderJobInsert("c", { voiceId: "../../x" }, "u").params.voice_id).toBeUndefined();
+  });
+});

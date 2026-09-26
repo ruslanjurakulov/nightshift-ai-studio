@@ -9,7 +9,9 @@ import type { QueueJob, RunBackend } from "@/lib/runBackend";
 import { creditRunError } from "@/lib/credits";
 import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
 import { IMAGE_GENERATORS } from "@/lib/imageProviders";
-import { TTS_MODELS, TTS_MODEL_LABELS } from "@/lib/ttsModels";
+import { TTS_MODELS, TTS_MODEL_LABELS, VOICES, isVoiceId } from "@/lib/ttsModels";
+
+const CUSTOM_VOICE = "__custom__";
 
 /**
  * The Create studio — one page to type a topic, set the run's controls, press
@@ -54,6 +56,9 @@ export function CreateStudio({
   const [videoProvider, setVideoProvider] = useState("");
   const [imageProvider, setImageProvider] = useState("");
   const [ttsModel, setTtsModel] = useState("");
+  // "" = the channel's voice, a voice id, or CUSTOM_VOICE to type one in.
+  const [voice, setVoice] = useState("");
+  const [customVoice, setCustomVoice] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
   // A refusal about credits (not enough, no estimate, not set up) — said
@@ -107,6 +112,7 @@ export function CreateStudio({
           ...(videoProvider ? { video_provider: videoProvider } : {}),
           ...(imageProvider ? { image_provider: imageProvider } : {}),
           ...(ttsModel ? { tts_model: ttsModel } : {}),
+          ...(voiceId && isVoiceId(voiceId) ? { voice_id: voiceId } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -130,6 +136,9 @@ export function CreateStudio({
       setPhase("confirm");
     }
   }
+
+  const voiceId = voice === CUSTOM_VOICE ? customVoice.trim() : voice;
+  const customVoiceInvalid = voice === CUSTOM_VOICE && customVoice.trim() !== "" && !isVoiceId(customVoice.trim());
 
   const selectClass =
     "pill border border-[var(--color-border)] bg-transparent px-4 py-2 text-[13px] outline-none transition-colors focus:border-[var(--color-primary)]";
@@ -228,6 +237,39 @@ export function CreateStudio({
               ))}
             </select>
           </label>
+        </div>
+
+        {/* The narrator for this run only: the channel keeps its own voice. */}
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.create.voicePick}</span>
+            <select value={voice} onChange={(e) => setVoice(e.target.value)} className={selectClass}>
+              <option value="">{t.create.voiceChannel}</option>
+              {VOICES.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name} — {v.style}
+                </option>
+              ))}
+              <option value={CUSTOM_VOICE}>{t.create.voiceCustom}</option>
+            </select>
+          </label>
+          {voice === CUSTOM_VOICE && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.create.voiceCustomId}</span>
+              <input
+                value={customVoice}
+                onChange={(e) => setCustomVoice(e.target.value)}
+                placeholder="pNInz6obpgDQGcFmaJgB"
+                maxLength={40}
+                spellCheck={false}
+                aria-invalid={customVoiceInvalid}
+                className={selectClass + " mono"}
+              />
+              {customVoiceInvalid && (
+                <span className="text-[11px] text-[var(--color-warn)]">{t.create.voiceCustomInvalid}</span>
+              )}
+            </label>
+          )}
         </div>
 
         {/* Models governed elsewhere — shown here, edited there. */}
