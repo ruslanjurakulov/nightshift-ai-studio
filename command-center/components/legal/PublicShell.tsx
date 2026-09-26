@@ -6,7 +6,7 @@ import { LegalFooter } from "@/components/legal/LegalFooter";
 
 /**
  * The frame shared by the pages a signed-out visitor can open — landing,
- * Privacy, Terms. It deliberately uses none of the app shell (side nav,
+ * Pricing, Privacy, Terms. It deliberately uses none of the app shell (side nav,
  * channel switcher), which reads Supabase and would have nothing to show.
  *
  * The backdrop is the token-driven `atmos` wash and grid rather than the login
@@ -24,7 +24,13 @@ export function PublicShell({ t, children }: { t: Dictionary; children: React.Re
         >
           {t.brand.name}
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <Link
+            href="/pricing"
+            className="px-1.5 py-2 text-sm font-medium text-[var(--color-muted)] transition-colors hover:text-[var(--color-primary)]"
+          >
+            {t.legal.pricing}
+          </Link>
           <LanguageSelector />
           <ThemeToggle />
           <Link href="/login" className="btn-sky is-solid pill px-4 py-2 text-sm">

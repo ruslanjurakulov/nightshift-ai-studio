@@ -44,7 +44,7 @@ function channelRedirect(request: NextRequest): URL | null {
 /**
  * Refreshes the Supabase auth session on every request and gates the app: an
  * unauthenticated visitor is sent to /login, except on the public landing,
- * Privacy and Terms pages. When Supabase isn't configured we let requests
+ * Privacy, Terms and Pricing pages. When Supabase isn't configured we let requests
  * through so the pages can render the NOT CONFIGURED state.
  */
 export async function middleware(request: NextRequest) {
@@ -71,7 +71,7 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Only /login and the public pages (landing, Privacy, Terms) are reachable
+  // Only /login and the public pages (landing, Privacy, Terms, Pricing) are reachable
   // signed out; see lib/public-paths.ts for why the match is exact.
   const decision = gateDecision(request.nextUrl.pathname, Boolean(user));
   if (decision === "to-login" || decision === "to-home") {

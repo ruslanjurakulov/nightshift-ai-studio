@@ -52,6 +52,17 @@ each is set, the pages show a visible **NOT CONFIGURED** marker in its place.
 They are read in `lib/legal.ts`. The owner's checklist for Google's OAuth
 verification is in `docs/GOOGLE_OAUTH_VERIFICATION.md`.
 
+The public Pricing page (`/pricing`) shows the three credit packs. When Paddle
+is configured (`NEXT_PUBLIC_PADDLE_*`, see `docs/PADDLE_SETUP.md`) it asks
+Paddle for each pack's localized price; otherwise, or as the fallback, it
+prints these public variables as written. With neither, the page says pricing
+is coming soon — no price is ever defaulted (`lib/pricing.ts`).
+
+| Variable | What it is |
+| :-- | :-- |
+| `NEXT_PUBLIC_PRICE_DISPLAY_STARTER` / `_CREATOR` / `_STUDIO` | Display price per pack, e.g. `$10` |
+| `NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS` | Months until unused credits expire; empty = they do not expire (what the system does) |
+
 ## Local development
 
 ```bash

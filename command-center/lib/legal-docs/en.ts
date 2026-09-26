@@ -125,10 +125,12 @@ export const en: LegalTexts = {
                 ["vidIQ (optional)", "Keyword and title research", "Topic keywords and draft titles"],
                 ["Telegram, Slack (optional)", "Notifications to the operator", "Run status, video titles and links"],
                 ["Google Fonts, Amazon CloudFront", "Fonts and background media on these web pages", "Your IP address and browser details, as with any web request"],
+                ["Paddle (Paddle.com)", "Our online reseller and Merchant of Record for credit purchases: checkout, payment processing, tax, receipts and refunds", "The payment and billing details you enter in Paddle’s checkout, which Paddle handles itself; from us, your account email address (to fill in the checkout) and the ids of your organisation and user account"],
               ],
             },
           },
           "Only Supabase, GitHub, Google and the notification services in this list receive Google user data, and only for the purposes above. We do not sell personal information to anyone.",
+          "Payments. Credits are sold through Paddle, our online reseller and Merchant of Record: when you buy credits, you enter your payment and billing details in Paddle’s own checkout, and Paddle processes them as the seller under the [Paddle Privacy Notice](https://www.paddle.com/legal/privacy). We never receive or store your card details or billing address. Paddle sends us only what we need to credit a purchase and to reverse it on a refund: the transaction and refund ids, the amount and currency paid, the credits bought, and the organisation (and, where known, the user) the purchase is for. We keep these records with your organisation’s credit history for as long as its account exists, or longer where tax or accounting law requires it.",
         ],
       },
       {
@@ -206,7 +208,7 @@ export const en: LegalTexts = {
   terms: {
     title: "Terms of Service",
     summary:
-      "The rules for using Nightshift: your responsibilities for your channel and content, what is not allowed, and the limits of our liability.",
+      "The rules for using Nightshift: your responsibilities for your channel and content, what is not allowed, how prepaid credits, payments and refunds work, and the limits of our liability.",
     sections: [
       {
         id: "agreement",
@@ -279,22 +281,32 @@ export const en: LegalTexts = {
       },
       {
         id: "credits",
-        heading: "8. Prepaid credits",
+        heading: "8. Prepaid credits, payments and refunds",
         body: [
           {
-            note: "TEMPLATE — NOT IN EFFECT. This section is a draft for a future paid plan. It must be reviewed with a qualified lawyer, and the bracketed values filled in, before any credits are sold.",
+            note: "This section describes how prepaid credits work in the Service today. It is awaiting review by a qualified lawyer; any change will be published on this page with a new effective date.",
           },
+          "8.1. What you buy. Some use of the Service is paid for with prepaid credits. Credits are sold in packs, at the prices shown on our [Pricing](/pricing) page and, finally, in the checkout before you pay. Each purchase is a one-time payment: there is no subscription and nothing renews automatically. Credits are added to the balance of the organisation you buy them for, and can be used only for the Service, by that organisation.",
+          "8.2. Who you buy from. Our order process is conducted by our online reseller Paddle.com (“Paddle”). Paddle is the Merchant of Record for all our orders: you buy credits from Paddle, under [Paddle’s Buyer Terms](https://www.paddle.com/legal/checkout-buyer-terms). Paddle processes the payment, calculates and collects any applicable sales tax or VAT, issues your receipt or invoice, and handles payment questions and refund requests. Paddle handles your payment details under the [Paddle Privacy Notice](https://www.paddle.com/legal/privacy); we never receive or store your card details.",
+          "8.3. How credits are used. Credits are used when the Service produces a video for one of your organisation’s channels:",
           {
             list: [
-              "Credits are purchased in advance and consumed as the Service produces videos, at the rates shown in the Service before you start a run.",
-              "An estimate is shown before a run starts; the credits actually consumed reflect the resources used, [up to / not exceeding] the estimate by [X]%.",
-              "Credits have no cash value, cannot be transferred, and expire [N months] after purchase.",
-              "Credits consumed by a run that fails because of a fault in the Service are returned to your balance.",
-              "Unused credits are refundable [within N days of purchase / only where required by law].",
-              "Payments are processed by [payment provider], which acts as the merchant of record; we never receive or store your card details.",
-              "We may change credit prices; a change never affects credits already purchased.",
+              "Before a run starts, an estimated number of credits is put on hold. The estimate is the length of video requested multiplied by the per-minute rate in effect or, where no per-minute rate applies, is based on the cost of your channel’s recent runs; it is never less than the minimum per run. The estimate is shown in the Service before you start a run, and a run does not start if your available credits (your balance minus credits already on hold) do not cover it.",
+              "When the run completes, the credits for the resources it actually used are charged, at the rates in effect, and never more than the hold. The unused part of the hold is returned to your available credits at the same time. If the resources a run used cannot all be measured and priced, the hold is charged in full.",
+              "If a run fails or does not complete, the whole hold is returned and nothing is charged. A hold for a run that never starts, or never reports back, is returned automatically.",
+              "Every hold, charge and return is recorded in your organisation’s credit history in the Service.",
             ],
           },
+          "8.4. Nature of credits. Credits are a prepaid right to use the Service, not money or a deposit: they have no cash value, earn no interest, and cannot be exchanged for cash (except by a refund under section 8.6), transferred to another organisation or resold.",
+          {
+            creditExpiry: {
+              never: "8.5. Expiry. Credits do not expire.",
+              after: "8.5. Expiry. Unused credits expire {months} months after the date they were purchased.",
+            },
+          },
+          "8.6. Refunds. Because Paddle is the seller, refunds are handled by Paddle under [Paddle’s Buyer Terms](https://www.paddle.com/legal/checkout-buyer-terms) and applicable law, including any right you have as a consumer where you live to withdraw from a purchase. To ask for a refund, use the link in your Paddle receipt, or write to us at {contactEmail} and we will help.",
+          "8.7. Refunds and chargebacks remove credits. When a purchase is refunded or charged back, the credits it added are removed from your organisation’s balance — all of them for a full refund, and in proportion to the amount refunded for a partial one. Only available credits can be removed: credits already used, or on hold for a run in progress, cannot. Where a chargeback leaves credits used but unpaid, we may suspend the organisation’s access to paid features.",
+          "8.8. Price changes. We may change the prices of credit packs and the rates at which credits are used. A change never reduces the credits already in your balance, and a run is never charged more than the hold taken when it started.",
         ],
       },
       {

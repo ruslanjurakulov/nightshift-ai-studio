@@ -57,6 +57,33 @@ paket narxini shu bilan moslang. Misol uchun `usd = 100` (1 dollar xarajat = 100
 kredit) bo'lsa, 1 000 kredit ≈ 10 dollarlik xarajat; paket narxi bundan yuqori
 bo'lishi kerak (marja). Price id bo'sh qoldirilgan paket sahifada ko'rsatilmaydi.
 
+### Ochiq narxlar sahifasi — `/pricing`
+
+Kirishsiz ochiladi (landing header va footer'dan havola bor). Narx **kodda yo'q** —
+faqat ikki manbadan:
+
+1. Paddle sozlangan bo'lsa (4-bo'lim) — brauzerda Paddle'ning o'zidan
+   (`Paddle.PricePreview`): mijozning mamlakati, valyutasi va soliqiga mos, to'lov
+   oynasi so'raydigan aynan o'sha summa. Sahifa aynan Paddle sotayotgan paketlarni
+   ko'rsatadi.
+2. Zaxira (preview yuklanguncha yoki ishlamasa) va Paddle hali ulanmagan bo'lsa —
+   public env'dagi ko'rinadigan narx, yozilganidek:
+
+   ```dotenv
+   NEXT_PUBLIC_PRICE_DISPLAY_STARTER=$10
+   NEXT_PUBLIC_PRICE_DISPLAY_CREATOR=$45
+   NEXT_PUBLIC_PRICE_DISPLAY_STUDIO=$160
+   ```
+
+   (Bu faqat misol — o'zingiz Paddle'da qo'ygan narxni yozing; ikkalasi bir xil bo'lsin.)
+
+Ikkalasi ham bo'lmasa sahifa **"Narxlar tez orada"** deydi — hech qachon o'ylab
+topilgan raqam chiqmaydi. Tizimga kirgan foydalanuvchi qo'shimcha ravishda joriy
+stavkalarni ko'radi (`credit_prices`: `video_minute` × (1+marja) va `job_minimum`);
+kirmagan mehmonga ular ko'rsatilmaydi (0020 RLS), buning o'rniga "kirgach ko'rinadi"
+deyiladi. `NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS` bo'sh — "kreditlar muddati tugamaydi"
+(tizim ham shunday).
+
 ---
 
 ## 1. Bazani tayyorlash — 0021 migratsiyasi (bir marta)
@@ -281,21 +308,36 @@ tekshiradi. Odatda so'raladi:
 - **Ishlab turgan sayt** (`https://nightshift-ai.studio`): mahsulot nima qilishi
   aniq yozilgan, **narxlar ochiq ko'rinadi** (kirishsiz), aloqa uchun email.
 - **Terms of Service**, **Privacy Policy** va **Refund Policy** — shu domenda,
-  kirishsiz ochiladi. #224 bilan `/terms` va `/privacy` jonli.
+  kirishsiz ochiladi. `/terms`, `/privacy` va `/pricing` jonli; refund siyosati —
+  `/terms#credits` (8.6–8.7).
 - Mahsulot Paddle'ning Acceptable Use Policy'siga mos bo'lishi.
 
-**Hozirgi holat — production'dan oldin tugatilishi kerak (alohida PR, huquqiy
-matn — yurist ko'rib chiqsin):**
+**Kod tomonidan tayyor (bu PR):**
 
-- `/terms` dagi **"8. Prepaid credits"** bo'limi hali *"TEMPLATE — NOT IN EFFECT"*
-  va qavs ichidagi joylar to'ldirilmagan: to'lov provayderi (**Paddle**), qaytarish
-  muddati, kreditlarning amal qilish muddati. Paddle refund siyosatini aniq
-  ko'rishni xohlaydi, va u Paddle'ning xaridorlar uchun shartlariga (Buyer Terms)
-  zid bo'lmasligi kerak.
-- `/privacy` dagi provayderlar jadvaliga **Paddle** (to'lov, Merchant of Record;
-  oladi: email, mamlakat, to'lov ma'lumoti — biz emas) qo'shilishi kerak.
-- Kirishsiz ko'rinadigan **narxlar** (landing sahifada paketlar va narxlari) —
-  hozir yo'q.
+- [x] **`/pricing`** — kirishsiz, uchta paket, kredit soni va narxi (Paddle preview yoki
+      `NEXT_PUBLIC_PRICE_DISPLAY_*`), kredit nimaga yetishi, Paddle — Merchant of Record,
+      soliq to'lov oynasida ko'rsatilishi, Terms va Paddle Buyer Terms havolalari.
+- [x] **`/terms` 8-bo'lim** endi *"TEMPLATE — NOT IN EFFECT"* emas: oldindan to'langan
+      kreditlar nima, band (reservation) → haqiqiy sarf yechiladi (banddan ko'p emas) →
+      muvaffaqiyatsiz run'da band to'liq qaytadi, kreditlar muddati (env; bo'sh =
+      tugamaydi), Paddle — Merchant of Record va reseller, buyurtma Paddle bilan
+      ([Buyer Terms](https://www.paddle.com/legal/checkout-buyer-terms)), qaytarish
+      Paddle siyosati va qonun bo'yicha, refund/chargeback ishlatilmagan kreditni olib
+      qo'yadi (0021). Tepada "yurist ko'rib chiqishini kutmoqda" degan ochiq izoh.
+- [x] **`/privacy`** provayderlar jadvalida **Paddle** va "Payments" paragrafi: karta va
+      hisob-kitob ma'lumoti Paddle'da; bizga faqat tranzaksiya/refund id'lari, summa va
+      valyuta, kredit soni, tashkilot (va foydalanuvchi) id'si keladi.
+
+**Egasi qiladigan ishlar (live'dan oldin):**
+
+- [ ] `/pricing` da narx ko'rinsin: live Paddle sozlamalari (4-bo'lim) yoki kamida
+      `NEXT_PUBLIC_PRICE_DISPLAY_*` → qayta build. "Narxlar tez orada" qolmasin.
+- [ ] `NEXT_PUBLIC_LEGAL_*` (nom, email, mamlakat, sana) — `/terms` va `/privacy` da
+      **NOT CONFIGURED** belgisi qolmasin (`docs/GOOGLE_OAUTH_VERIFICATION.md`, 1-bo'lim).
+- [ ] Shartlar (ayniqsa 8-bo'lim) va Maxfiylik siyosatini yurist ko'rib chiqsin; o'zgarsa
+      `NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE` ni yangilang.
+- [ ] Paddle arizasida: Pricing URL `https://nightshift-ai.studio/pricing`, Terms
+      `…/terms`, Privacy `…/privacy`, Refund policy `…/terms#credits`.
 
 Sandbox uchun bularning hech biri shart emas.
 

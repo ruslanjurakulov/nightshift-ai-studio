@@ -7,14 +7,8 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { formatCredits } from "@/lib/credits";
 import { resolvedTheme } from "@/lib/theme";
-import {
-  PADDLE_JS_URL,
-  checkoutCustomData,
-  paddleLocale,
-  purchaseArrived,
-  type PaddleConfig,
-  type SellablePack,
-} from "@/lib/paddle";
+import { checkoutCustomData, paddleLocale, purchaseArrived, type PaddleConfig, type SellablePack } from "@/lib/paddle";
+import { ensurePaddle, previewPrices, type PaddleEventData } from "@/lib/paddle-client";
 
 /**
  * Buy credits for the current organization with Paddle's overlay checkout.
@@ -28,61 +22,6 @@ import {
  * The page renders this only for an owner/admin of an organization that pays,
  * and only when this deployment has Paddle configured (lib/paddle.ts).
  */
-
-interface PaddleEventData {
-  name?: string;
-}
-
-interface PaddleJs {
-  Environment: { set(env: "sandbox" | "production"): void };
-  Initialize(opts: { token: string; eventCallback?: (e: PaddleEventData) => void }): void;
-  Update(opts: { eventCallback?: (e: PaddleEventData) => void }): void;
-  Checkout: {
-    open(opts: {
-      items: { priceId: string; quantity: number }[];
-      customData?: Record<string, string>;
-      customer?: { email: string };
-      settings?: {
-        displayMode?: "overlay";
-        theme?: "light" | "dark";
-        locale?: string;
-        allowLogout?: boolean;
-        variant?: "one-page" | "multi-page";
-      };
-    }): void;
-  };
-  PricePreview?(req: { items: { priceId: string; quantity: number }[] }): Promise<{
-    data?: { details?: { lineItems?: { price?: { id?: string }; formattedTotals?: { total?: string } }[] } };
-  }>;
-}
-
-declare global {
-  interface Window {
-    Paddle?: PaddleJs;
-  }
-}
-
-// Paddle.Initialize may run once per page load; later mounts (client-side
-// navigation back to Credits) re-point the event callback instead.
-let initialized = false;
-let scriptPromise: Promise<PaddleJs> | null = null;
-
-function loadPaddle(): Promise<PaddleJs> {
-  if (window.Paddle) return Promise.resolve(window.Paddle);
-  if (scriptPromise) return scriptPromise;
-  scriptPromise = new Promise<PaddleJs>((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = PADDLE_JS_URL;
-    s.async = true;
-    s.onload = () => (window.Paddle ? resolve(window.Paddle) : reject(new Error("Paddle.js did not load")));
-    s.onerror = () => {
-      scriptPromise = null;
-      reject(new Error("Paddle.js did not load"));
-    };
-    document.head.appendChild(s);
-  });
-  return scriptPromise;
-}
 
 type Phase = "idle" | "opening" | "paid" | "arrived" | "slow" | "cancelled" | "error" | "load_failed";
 
@@ -149,27 +88,10 @@ export function BuyCredits({
   const priceKey = config.packs.map((p) => p.priceId).join(",");
   useEffect(() => {
     let alive = true;
-    loadPaddle()
-      .then((paddle) => {
-        if (!alive) return;
-        if (!initialized) {
-          if (environment === "sandbox") paddle.Environment.set("sandbox");
-          paddle.Initialize({ token: clientToken, eventCallback: onEvent });
-          initialized = true;
-        } else {
-          paddle.Update({ eventCallback: onEvent });
-        }
-        return paddle.PricePreview?.({ items: priceKey.split(",").map((priceId) => ({ priceId, quantity: 1 })) });
-      })
-      .then((preview) => {
-        if (!alive || !preview) return;
-        const out: Record<string, string> = {};
-        for (const line of preview.data?.details?.lineItems ?? []) {
-          const id = line.price?.id;
-          const total = line.formattedTotals?.total;
-          if (id && total) out[id] = total;
-        }
-        setPrices(out);
+    ensurePaddle({ environment, clientToken }, onEvent)
+      .then((paddle) => previewPrices(paddle, priceKey.split(",")))
+      .then((out) => {
+        if (alive) setPrices(out);
       })
       .catch(() => {
         // Not fatal here: the prices read "at checkout", and a click retries
@@ -213,12 +135,7 @@ export function BuyCredits({
       if (phaseRef.current === "opening") go("idle");
     }, 15_000);
     try {
-      const paddle = await loadPaddle();
-      if (!initialized) {
-        if (environment === "sandbox") paddle.Environment.set("sandbox");
-        paddle.Initialize({ token: clientToken, eventCallback: onEvent });
-        initialized = true;
-      }
+      const paddle = await ensurePaddle({ environment, clientToken }, onEvent);
       paddle.Checkout.open({
         items: [{ priceId: pack.priceId, quantity: 1 }],
         customData: checkoutCustomData(orgId, userId),
