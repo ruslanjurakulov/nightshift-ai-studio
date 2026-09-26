@@ -9,7 +9,7 @@
 #
 # The env file is read twice, for two different things:
 #   * --env-file  -> interpolation of ${...} below. Only DOMAIN, ACME_EMAIL and
-#     the two NEXT_PUBLIC_* values are referenced, so only those reach Caddy's
+#     the NEXT_PUBLIC_* values are referenced, so only those reach Caddy's
 #     environment or the image build.
 #   * env_file:   -> the web container's runtime environment (server-only
 #     values such as GITHUB_SECRETS_TOKEN). Never a build arg, never Caddy's.
@@ -33,6 +33,11 @@ services:
         # Changing either needs `up -d --build`, not just a restart.
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?set NEXT_PUBLIC_SUPABASE_URL in the env file}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?set NEXT_PUBLIC_SUPABASE_ANON_KEY in the env file}
+        # Operator details for /privacy and /terms; empty shows NOT CONFIGURED there.
+        NEXT_PUBLIC_LEGAL_NAME: ${NEXT_PUBLIC_LEGAL_NAME:-}
+        NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
+        NEXT_PUBLIC_LEGAL_COUNTRY: ${NEXT_PUBLIC_LEGAL_COUNTRY:-}
+        NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE: ${NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE:-}
     image: nightshift-web:latest
     restart: unless-stopped
     env_file:
