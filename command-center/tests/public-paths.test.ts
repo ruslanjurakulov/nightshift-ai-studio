@@ -87,8 +87,42 @@ describe("signed-in users keep today's behaviour", () => {
     expect(new URL(res.headers.get("location")!).pathname).toBe("/chronos/command-center");
   });
 
-  it("are sent from / to every channel when no channel is remembered", async () => {
-    expect((await visit("/", true)).redirect).toBe("/all-channels/command-center");
+  // The bare segment's index page then opens the first channel — nobody starts
+  // on the every-channel roll-up (app/(app)/[channel]/page.tsx).
+  it("are sent from / to the landing segment when no channel is remembered", async () => {
+    expect((await visit("/", true)).redirect).toBe("/all-channels");
+  });
+
+  it("treat a remembered every-channel view like no memory at all", async () => {
+    auth.user = { id: "u1" };
+    const req = new NextRequest("https://nightshift.test/");
+    req.cookies.set("chronos_channel", "all-channels");
+    const res = await middleware(req);
+    expect(new URL(res.headers.get("location")!).pathname).toBe("/all-channels");
+  });
+
+  it("send an old channelless link to the same screen, keeping its query", async () => {
+    auth.user = { id: "u1" };
+    const req = new NextRequest("https://nightshift.test/channels?yt=connected");
+    req.cookies.set("chronos_channel", "chronos");
+    const url = new URL((await middleware(req)).headers.get("location")!);
+    expect(url.pathname + url.search).toBe("/chronos/channels?yt=connected");
+  });
+
+  it("hand the query string inward, so a layout redirect can keep it", async () => {
+    auth.user = { id: "u1" };
+    const res = await middleware(new NextRequest("https://nightshift.test/chronos/channels?yt=connected"));
+    expect(res.headers.get("x-middleware-request-x-nightshift-search")).toBe("?yt=connected");
+  });
+
+  it("route bare /create and /credits onto a channel", async () => {
+    for (const section of ["create", "credits", "billing"]) {
+      auth.user = { id: "u1" };
+      const req = new NextRequest(`https://nightshift.test/${section}`);
+      req.cookies.set("chronos_channel", "chronos");
+      const res = await middleware(req);
+      expect(new URL(res.headers.get("location")!).pathname, section).toBe(`/chronos/${section}`);
+    }
   });
 
   it("are sent away from /login", async () => {

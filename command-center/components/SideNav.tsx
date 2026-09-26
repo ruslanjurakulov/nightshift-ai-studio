@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { NAV_GROUPS, type NavKey } from "@/lib/navigation";
+import { navGroupsFor, type NavKey } from "@/lib/navigation";
 
 /**
  * The app's primary navigation, as a left rail — icon + label, grouped.
@@ -74,13 +74,13 @@ function useIsActive() {
   return (href: string) => section === href || section.startsWith(href + "/");
 }
 
-function NavList({ onNavigate }: { onNavigate?: () => void }) {
+function NavList({ operator, onNavigate }: { operator: boolean; onNavigate?: () => void }) {
   const { t } = useI18n();
   const isActive = useIsActive();
   const path = useChannelPath();
   return (
     <nav className="flex flex-col gap-5">
-      {NAV_GROUPS.map((group, gi) => (
+      {navGroupsFor(operator).map((group, gi) => (
         <div key={group.label ?? `g${gi}`} className="flex flex-col gap-0.5">
           {group.label && (
             <div className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
@@ -110,7 +110,13 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-export function SideNav() {
+/**
+ * `operator` is the platform owner/admin (lib/auth/org-roles.ts isOperator):
+ * they get the full console. Everyone else gets the customer's lean rail
+ * (lib/navigation.ts CUSTOMER_NAV_KEYS). Presentation only — the layout
+ * redirects operator-only URLs, and RLS and each route guard the data.
+ */
+export function SideNav({ operator = false }: { operator?: boolean }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
@@ -136,7 +142,7 @@ export function SideNav() {
           nav stays bright and clickable while a panel is open — clicking a
           section jumps straight there instead of the scrim closing to home. */}
       <aside className="sticky top-[72px] z-30 hidden h-[calc(100dvh-72px)] w-[236px] shrink-0 overflow-y-auto border-r border-[var(--color-border)] px-3 py-5 lg:block">
-        <NavList />
+        <NavList operator={operator} />
       </aside>
 
       {/* Mobile trigger — a slim bar under the header */}
@@ -174,7 +180,7 @@ export function SideNav() {
                 <X aria-hidden className="size-4" />
               </button>
             </div>
-            <NavList onNavigate={() => setOpen(false)} />
+            <NavList operator={operator} onNavigate={() => setOpen(false)} />
           </div>
         </div>
       )}

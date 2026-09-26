@@ -8,10 +8,19 @@ import { getChannelContext } from "@/lib/channels-server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { WELCOME_PATH } from "@/lib/public-paths";
-import { ALL_CHANNELS, ALL_CHANNELS_SLUG, PATH_HEADER, channelSlug, unscopedScope } from "@/lib/channels";
+import {
+  ALL_CHANNELS,
+  ALL_CHANNELS_SLUG,
+  PATH_HEADER,
+  SEARCH_HEADER,
+  appRedirect,
+  channelSlug,
+  unscopedScope,
+} from "@/lib/channels";
 import { NavigationProvider } from "@/components/navigation/NavigationProvider";
 import { ScrollToTop } from "@/components/navigation/ScrollToTop";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
+import { isOperator } from "@/lib/auth/org-roles";
 import { readCreditAccount } from "@/lib/server/credits";
 import type { CreditAccount } from "@/lib/credits";
 
@@ -38,11 +47,25 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // resolves to every channel of the current organization, and says so. A URL naming the channel by its
   // internal id — /default/pipeline — resolves fine, and is rewritten to the
   // name the operator actually knows it by: /chronos/pipeline.
-  const path = (await headers()).get(PATH_HEADER);
+  //
+  // And the app is one workspace for everyone but the platform operator: no
+  // every-channel roll-up (their first channel instead), and no operator-only
+  // section (their Command Center instead). See appRedirect in lib/channels.
+  const operator = await isOperator();
+  const headerStore = await headers();
+  const path = headerStore.get(PATH_HEADER);
   if (path) {
-    const [, slug, ...rest] = path.split("/");
-    if (slug && slug !== honest) redirect(["", honest, ...rest].join("/"));
+    const to = appRedirect({
+      path,
+      search: headerStore.get(SEARCH_HEADER) ?? "",
+      honestSlug: honest,
+      selection,
+      channels,
+      operator,
+    });
+    if (to) redirect(to);
   }
+  const email = isSupabaseConfigured ? ((await getUser())?.email ?? null) : null;
 
   // Credits in the header, for an organization that pays. The operator's own
   // (default) organization is exempt and shows none; so does a database
@@ -74,13 +97,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             currentOrgId={org.current?.id ?? null}
             credits={credits}
             scope={scope}
+            email={email}
           />
           <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-            <SideNav />
+            <SideNav operator={operator} />
             <main className="pad-page min-w-0 flex-1">{children}</main>
           </div>
         </div>
-        <CommandPalette scope={scope} />
+        <CommandPalette scope={scope} operator={operator} />
         <ScrollToTop />
       </div>
     </NavigationProvider>

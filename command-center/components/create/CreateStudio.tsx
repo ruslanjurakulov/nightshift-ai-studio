@@ -37,6 +37,7 @@ export function CreateStudio({
   backend = "actions",
   agentConfig,
   canRun = true,
+  operator = false,
 }: {
   channelId: string | null;
   githubConfigured: boolean;
@@ -46,6 +47,10 @@ export function CreateStudio({
   /** Owner/admin of the channel's organization — what /api/agent/run
    *  requires. Presentation only; the route re-checks. */
   canRun?: boolean;
+  /** Platform owner/admin: links into the operator's console (agents,
+   *  providers, jobs) are shown only to them — anyone else would be sent back
+   *  to the Command Center by the layout. */
+  operator?: boolean;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
@@ -283,12 +288,16 @@ export function CreateStudio({
           <span className="pill border border-[var(--color-border)] px-2.5 py-1 text-[var(--color-muted)]">
             {t.create.voice}: {voiceChip}
           </span>
-          <Link href={path("/agents")} className="text-[var(--color-primary)] hover:underline">
-            {t.create.editVoice}
-          </Link>
-          <Link href={path("/providers")} className="text-[var(--color-primary)] hover:underline">
-            {t.create.editProviders}
-          </Link>
+          {operator && (
+            <>
+              <Link href={path("/agents")} className="text-[var(--color-primary)] hover:underline">
+                {t.create.editVoice}
+              </Link>
+              <Link href={path("/providers")} className="text-[var(--color-primary)] hover:underline">
+                {t.create.editProviders}
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Create — asks once, because it spends money and can produce a video. */}
@@ -407,9 +416,11 @@ export function CreateStudio({
               ))}
             </ol>
           )}
-          <Link href={path("/jobs")} className="mt-1 text-[12px] text-[var(--color-primary)] hover:underline">
-            {t.create.openJobs}
-          </Link>
+          {operator && (
+            <Link href={path("/jobs")} className="mt-1 text-[12px] text-[var(--color-primary)] hover:underline">
+              {t.create.openJobs}
+            </Link>
+          )}
         </div>
       )}
     </div>

@@ -25,6 +25,7 @@ import type {
 } from "@/lib/types";
 import { storedMs } from "@/lib/format";
 import { RESERVED_ROOT_SEGMENTS } from "@/lib/public-paths";
+import { sectionAllowed } from "@/lib/navigation";
 
 /** Remembers the last channel viewed, so "/" knows where to send you. It is a
  *  memory, not the selection — the URL is the selection. */
@@ -35,6 +36,10 @@ export const CHANNEL_HEADER = "x-nightshift-channel";
 
 /** Request header carrying the full pathname, which a layout cannot otherwise see. */
 export const PATH_HEADER = "x-nightshift-path";
+
+/** Request header carrying the query string, so a layout redirect keeps it
+ *  (the YouTube connect flow reports its result as `?yt=`). */
+export const SEARCH_HEADER = "x-nightshift-search";
 
 /** The sentinel for "don't filter". Not a channel id — no channel may be named this. */
 export const ALL_CHANNELS = "__all__";
@@ -51,6 +56,7 @@ export const ALL_CHANNELS_SLUG = "all-channels";
  */
 export const SECTIONS = [
   "command-center",
+  "create",
   "videos",
   "studio",
   "pipeline",
@@ -59,6 +65,8 @@ export const SECTIONS = [
   "accounts",
   "portfolio",
   "providers",
+  "billing",
+  "credits",
   "series",
   "intelligence-map",
   "intelligence",
@@ -163,6 +171,40 @@ export function selectionSlug(
   if (!isScoped(selection)) return ALL_CHANNELS_SLUG;
   const channel = channels.find((c) => c.channel_id === selection);
   return channel ? channelSlug(channel, channels) : selection;
+}
+
+/**
+ * Where a signed-in app URL should really be, or null when it already is.
+ *
+ * - A URL naming a channel by its id, or one that does not exist, is moved to
+ *   the honest slug (the layout has always done this).
+ * - Someone who is not the platform operator has one workspace, not a
+ *   roll-up: the every-channel view (`/all-channels/…`) is moved to their
+ *   first channel. With no channel yet it stays — it is the only view there
+ *   is, and first-run onboarding links into it.
+ * - An operator-only section (lib/navigation.ts) opened by anyone else lands
+ *   on that channel's Command Center instead.
+ *
+ * The query string is kept whenever the screen is kept.
+ */
+export function appRedirect(opts: {
+  path: string;
+  search?: string;
+  honestSlug: string;
+  selection: ChannelSelection;
+  channels: ChannelRow[];
+  operator: boolean;
+}): string | null {
+  const [, slug = "", ...rest] = opts.path.split("/");
+  if (!slug) return null;
+  let target = opts.honestSlug;
+  if (!opts.operator && !isScoped(opts.selection) && opts.channels.length > 0) {
+    target = channelSlug(opts.channels[0], opts.channels);
+  }
+  const allowed = sectionAllowed(rest[0] ?? "", opts.operator);
+  if (target === slug && allowed) return null;
+  const tail = allowed ? rest : ["command-center"];
+  return ["", target, ...tail].join("/") + (allowed ? (opts.search ?? "") : "");
 }
 
 /** True when the view is scoped to exactly one channel. */

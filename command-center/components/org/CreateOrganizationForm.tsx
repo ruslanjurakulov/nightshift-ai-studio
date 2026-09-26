@@ -46,7 +46,8 @@ export function CreateOrganizationForm({ variant }: { variant: "first" | "anothe
         return;
       }
       document.cookie = `${CHANNEL_COOKIE}=${ALL_CHANNELS_SLUG}; path=/; max-age=31536000; samesite=lax`;
-      router.push(`/${ALL_CHANNELS_SLUG}/command-center`);
+      // The bare segment lands on the first channel (app/(app)/[channel]/page.tsx).
+      router.push(`/${ALL_CHANNELS_SLUG}`);
       router.refresh();
     } catch {
       setError(t.org.createFailed);

@@ -58,7 +58,8 @@ export function OrgSwitcher({ orgs, currentId }: { orgs: OrgSummary[]; currentId
       if (!res.ok) throw new Error(String(res.status));
       // The remembered channel belongs to the org being left.
       document.cookie = `${CHANNEL_COOKIE}=${ALL_CHANNELS_SLUG}; path=/; max-age=31536000; samesite=lax`;
-      router.push(`/${ALL_CHANNELS_SLUG}/command-center`);
+      // The bare segment lands on the first channel (app/(app)/[channel]/page.tsx).
+      router.push(`/${ALL_CHANNELS_SLUG}`);
       router.refresh();
     } catch {
       setError(true);

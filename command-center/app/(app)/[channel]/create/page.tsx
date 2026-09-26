@@ -6,7 +6,7 @@ import { getChannelContext } from "@/lib/channels-server";
 import { isScoped } from "@/lib/channels";
 import { isRunNowConfigured, runBackend } from "@/lib/server/run-backend";
 import { CreateStudio } from "@/components/create/CreateStudio";
-import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
+import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { atLeast } from "@/lib/auth/roles";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +31,7 @@ export default async function CreatePage() {
         backend={runBackend}
         agentConfig={scopedChannel?.agent_config ?? null}
         canRun={canRun}
+        operator={await isOperator()}
       />
     </div>
   );
