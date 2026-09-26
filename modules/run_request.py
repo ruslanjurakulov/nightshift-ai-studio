@@ -35,7 +35,7 @@ from typing import Dict, List, Mapping, Optional, Tuple
 #: Every workflow_dispatch input except ``channel`` (a column on the job).
 ALLOWED_PARAMS = (
     "topic", "niche", "privacy", "duration", "language", "visual_style",
-    "video_provider", "image_provider", "tts_model", "resume", "repair_scenes",
+    "video_provider", "image_provider", "tts_model", "voice_id", "resume", "repair_scenes",
 )
 #: The workflow's choice lists (daily_video.yml `options:`).
 PRIVACY_CHOICES = ("private", "unlisted", "public")
@@ -45,6 +45,7 @@ TTS_MODELS = ("eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5", "eleve
 KINDS = ("daily", "repair")
 
 _MAX_LEN = {"topic": 300, "niche": 120, "language": 40, "visual_style": 300, "repair_scenes": 120}
+_VOICE_RE = re.compile(r"[A-Za-z0-9]{20}")
 _CHANNEL_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
 
@@ -96,6 +97,12 @@ def validate(channel_id: str, kind: str, params: Optional[Mapping]) -> Dict:
         if not isinstance(value, str) or value not in choices:
             raise InvalidRunRequest(f"{key} must be one of {', '.join(choices)}")
         out[key] = value
+
+    voice = params.get("voice_id")
+    if voice not in (None, ""):
+        if not isinstance(voice, str) or not _VOICE_RE.fullmatch(voice):
+            raise InvalidRunRequest("voice_id must be an ElevenLabs voice id (20 letters and digits)")
+        out["voice_id"] = voice
 
     if params.get("resume") is not None:
         if not isinstance(params["resume"], bool):
@@ -156,6 +163,9 @@ def build_run_env(params: Mapping, base_env: Mapping[str, str]) -> Dict[str, str
     tts_model = params.get("tts_model") or ""
     if tts_model:
         env["ELEVENLABS_MODEL_ID"] = tts_model
+    voice_id = params.get("voice_id") or ""
+    if voice_id:
+        env["ELEVENLABS_RUN_VOICE_ID"] = voice_id
     return env
 
 

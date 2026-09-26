@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -189,7 +190,13 @@ VIDEO_DURATION_TARGET = int(os.getenv("VIDEO_DURATION_TARGET", "300"))  # second
 # as "unset" so it falls through to this smart default rather than an empty,
 # broken provider name.
 TTS_PROVIDER = os.getenv("TTS_PROVIDER", "").strip() or ("elevenlabs" if ELEVENLABS_API_KEY else "edge")
-ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "pNInz6obpgDQGcFmaJgB")
+# An empty variable (an unset GitHub repo variable expands to "") means "unset".
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "").strip() or "pNInz6obpgDQGcFmaJgB"
+# One run's voice, chosen on the Create page. It beats the channel's own voice
+# for that run only. ElevenLabs voice ids are 20 letters and digits; anything
+# else is ignored rather than sent.
+_run_voice = os.getenv("ELEVENLABS_RUN_VOICE_ID", "").strip()
+ELEVENLABS_RUN_VOICE_ID = _run_voice if re.fullmatch(r"[A-Za-z0-9]{20}", _run_voice) else ""
 # ElevenLabs model. eleven_multilingual_v2 stays the default (polished,
 # consistent narration); eleven_v3 is the most expressive, eleven_flash_v2_5 /
 # eleven_turbo_v2_5 are cheaper and faster. A value outside the list falls back
