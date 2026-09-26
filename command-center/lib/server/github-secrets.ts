@@ -207,7 +207,7 @@ export async function dispatchDailyVideo(
  * listed here may be dispatched from the site — anything else is refused before
  * GitHub is called.
  */
-const DISPATCHABLE_WORKFLOWS = ["daily_video.yml", "provider_balances.yml"];
+const DISPATCHABLE_WORKFLOWS = ["daily_video.yml", "provider_balances.yml", "voice_previews.yml"];
 
 export async function dispatchWorkflow(
   file: string,
