@@ -56,6 +56,12 @@ export const en = {
     alerts: "Alerts",
     audit: "Audit Trail",
   },
+  navigation: {
+    back: "Go back",
+    breadcrumb: "Breadcrumb",
+    details: "Details",
+    scrollTop: "Back to top",
+  },
   onboarding: {
     title: "Getting Started",
     subtitle: "A live checklist of what's wired and what remains before your first automated video goes out.",

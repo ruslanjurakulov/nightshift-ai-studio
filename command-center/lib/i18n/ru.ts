@@ -50,6 +50,12 @@ export const ru: Dictionary = {
     alerts: "Оповещения",
     audit: "Журнал аудита",
   },
+  navigation: {
+    back: "Назад",
+    breadcrumb: "Навигационная цепочка",
+    details: "Подробности",
+    scrollTop: "Наверх",
+  },
   onboarding: {
     title: "С чего начать",
     subtitle: "Живой чек-лист: что уже настроено и что осталось сделать до выхода первого автоматического видео.",

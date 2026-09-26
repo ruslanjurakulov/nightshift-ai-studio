@@ -50,6 +50,12 @@ export const uz: Dictionary = {
     alerts: "Ogohlantirishlar",
     audit: "Audit jurnali",
   },
+  navigation: {
+    back: "Orqaga",
+    breadcrumb: "Navigatsiya yo'li",
+    details: "Tafsilotlar",
+    scrollTop: "Yuqoriga",
+  },
   onboarding: {
     title: "Ishni boshlash",
     subtitle: "Nima sozlangani va birinchi avtomatik video chiqishidan oldin nima qolganini ko'rsatuvchi jonli ro'yxat.",

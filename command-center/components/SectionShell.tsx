@@ -4,10 +4,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
+import { HOME } from "@/lib/navigation";
+import { PageNav } from "@/components/navigation/PageNav";
 
-/** The ground floor. Named, like every other section — `/` only redirects here. */
-export const HOME = "/command-center";
-
+export { HOME };
 
 /**
  * How a screen presents itself, following the direction's own two screens.
@@ -17,8 +17,9 @@ export const HOME = "/command-center";
  *
  * Every other section opened FROM it is presented the way the direction
  * presents its panel — a narrower surface centred over a dimmed ground, rising
- * into place, with the ✕ in its corner. Escape closes it too, because a panel
- * that only closes by mouse is half a panel.
+ * into place, with the ✕ in its corner and a back arrow with breadcrumbs
+ * opposite it. Escape closes it too, because a panel that only closes by mouse
+ * is half a panel.
  */
 export function SectionShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -66,14 +67,21 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
       />
       <div className="page-rise relative z-10 mx-auto w-full max-w-[1100px]">
         <div className="section-card relative">
-          <button
-            type="button"
-            onClick={() => router.push(home)}
-            aria-label={t.ops.shortcutsClose}
-            className="sheet-close absolute right-4 top-4 z-10 sm:right-6 sm:top-6"
-          >
-            ✕
-          </button>
+          {/* The panel's own bar: where you are and the way back on the left,
+              the ✕ on the right. In flow rather than pinned to the corners, so
+              neither can sit on top of the page's title or its actions. */}
+          <div className="-mt-1 mb-5 flex items-center justify-between gap-3 sm:-mt-2">
+            <PageNav />
+            <button
+              type="button"
+              onClick={() => router.push(home)}
+              aria-label={t.ops.shortcutsClose}
+              title={t.ops.shortcutsClose}
+              className="sheet-close shrink-0"
+            >
+              ✕
+            </button>
+          </div>
           {children}
         </div>
       </div>

@@ -392,6 +392,50 @@ option {
   background: var(--color-panel-2);
 }
 
+/* The back arrow in an opened panel's top-left: the ✕'s quiet shape, with a
+   hairline always drawn so it reads as a control before it is hovered — it is
+   the first thing a lost reader looks for. */
+.nav-back {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  color: var(--color-muted);
+  cursor: pointer;
+  background: none;
+  transition: color 0.22s ease, border-color 0.22s ease, background-color 0.22s ease;
+}
+.nav-back:hover {
+  color: var(--color-fg);
+  border-color: var(--color-primary);
+  background: var(--color-panel-2);
+}
+
+/* Back to top, bottom-right, only once a page is long enough to need it. It
+   fades rather than jumps; reduced motion drops the fade at file end. */
+.scroll-top {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 40;
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-panel) 92%, transparent);
+  color: var(--color-fg);
+  box-shadow: var(--shadow-elevated);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  transition: opacity 0.22s ease, transform 0.22s ease, border-color 0.22s ease;
+}
+.scroll-top:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.scroll-top[data-hidden="true"] { opacity: 0; transform: translateY(8px); pointer-events: none; }
+
 /* A bar nav link carries the same sweep as every other control: the fill rises
    from the bottom edge on hover and the press scales in. The page you are on
    keeps that fill parked, so the current section reads without a second device. */
