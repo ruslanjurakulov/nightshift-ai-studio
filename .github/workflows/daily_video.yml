@@ -54,7 +54,7 @@ on:
         required: false
         default: ""
         type: choice
-        options: ["", pexels, leonardo]
+        options: ["", pexels, leonardo, gpt-image, nano-banana, flux, ideogram, fal]
       resume:
         description: "Resume this channel's last unfinished run (reuse its saved script, poll its paid provider tasks, reconcile its upload) instead of starting a new video"
         required: false
@@ -460,11 +460,18 @@ jobs:
           SEEDANCE_API_KEY: ${{ secrets.SEEDANCE_API_KEY }}
           WAN_API_KEY: ${{ secrets.WAN_API_KEY }}
           # AI image provider (modules/image_providers.py). Default "pexels"
-          # stock; set CHRONOS_IMAGE_PROVIDER=leonardo + CHRONOS_ENABLE_IMAGE_GEN
-          # + LEONARDO_API_KEY to generate bespoke stills.
+          # stock; set CHRONOS_IMAGE_PROVIDER=<leonardo|gpt-image|nano-banana|
+          # flux|ideogram|fal> + CHRONOS_ENABLE_IMAGE_GEN + that provider's key
+          # to generate bespoke stills. gpt-image reuses OPENAI_API_KEY and
+          # nano-banana GEMINI_API_KEY (both mapped in this step already).
+          # CHRONOS_IMAGE_MODEL overrides the provider's default model.
           CHRONOS_IMAGE_PROVIDER: ${{ github.event.inputs.image_provider || vars.CHRONOS_IMAGE_PROVIDER }}
           CHRONOS_ENABLE_IMAGE_GEN: ${{ github.event.inputs.image_provider != '' && github.event.inputs.image_provider != 'pexels' && 'true' || vars.CHRONOS_ENABLE_IMAGE_GEN }}
           LEONARDO_API_KEY: ${{ secrets.LEONARDO_API_KEY }}
+          BFL_API_KEY: ${{ secrets.BFL_API_KEY }}
+          IDEOGRAM_API_KEY: ${{ secrets.IDEOGRAM_API_KEY }}
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+          CHRONOS_IMAGE_MODEL: ${{ vars.CHRONOS_IMAGE_MODEL }}
           # Extra LLM keys (opt-in; Gemini above remains the default scripter).
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

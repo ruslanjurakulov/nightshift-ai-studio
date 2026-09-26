@@ -63,6 +63,9 @@ export const PROVIDERS: ProviderDef[] = [
   { id: "wan", name: "Wan", category: "video", secretName: "WAN_API_KEY", consoleUrl: "https://tongyi.aliyun.com/wanxiang", live: false },
   // Images / stock
   { id: "leonardo", name: "Leonardo.Ai", category: "image", secretName: "LEONARDO_API_KEY", consoleUrl: "https://app.leonardo.ai/api-access", live: false },
+  { id: "flux", name: "Black Forest Labs (FLUX)", category: "image", secretName: "BFL_API_KEY", consoleUrl: "https://dashboard.bfl.ai", live: false },
+  { id: "ideogram", name: "Ideogram", category: "image", secretName: "IDEOGRAM_API_KEY", consoleUrl: "https://ideogram.ai/manage-api", live: false },
+  { id: "fal", name: "fal.ai", category: "image", secretName: "FAL_KEY", consoleUrl: "https://fal.ai/dashboard/keys", live: false },
   { id: "pexels", name: "Pexels", category: "image", secretName: "PEXELS_API_KEY", consoleUrl: "https://www.pexels.com/api", live: true },
 ];
 

@@ -128,7 +128,7 @@ export const en: LegalTexts = {
                 ["Google — Gemini API", "Research, script writing, fact-checking, and analysis of comments and performance figures", "Topics, scripts, comment text and performance figures of your videos"],
                 ["ElevenLabs; Microsoft Edge text-to-speech", "Narration (voice), whichever the channel is set to", "Script text"],
                 ["Pexels, Pixabay", "Stock footage and photos", "Search terms derived from the script"],
-                ["Optional media generators, only if the operator enables them: Google Veo, Leonardo.Ai, Higgsfield, Kling, MiniMax, Seedance (ByteDance), Wan (Alibaba Cloud)", "Generated images and video clips", "Prompts derived from the script"],
+                ["Optional media generators, only if the operator enables them: Google Veo, Google Gemini image, OpenAI (GPT Image), Black Forest Labs (FLUX), Ideogram, fal.ai, Leonardo.Ai, Higgsfield, Kling, MiniMax, Seedance (ByteDance), Wan (Alibaba Cloud)", "Generated images and video clips", "Prompts derived from the script"],
                 ["vidIQ (optional)", "Keyword and title research", "Topic keywords and draft titles"],
                 ["Telegram, Slack (optional)", "Notifications to the operator", "Run status, video titles and links"],
                 ["Google Fonts, Amazon CloudFront", "Fonts and background media on these web pages", "Your IP address and browser details, as with any web request"],

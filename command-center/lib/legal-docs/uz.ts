@@ -121,7 +121,7 @@ export const uz: LegalTexts = {
                 ["Google — Gemini API", "Tadqiqot, ssenariy yozish, faktlarni tekshirish, izohlar va ko'rsatkichlarni tahlil qilish", "Mavzular, ssenariylar, izohlar matni va videolaringiz ko'rsatkichlari"],
                 ["ElevenLabs; Microsoft Edge nutq sintezi", "Ovozlashtirish — kanal sozlamasiga qarab", "Ssenariy matni"],
                 ["Pexels, Pixabay", "Stok video va rasmlar", "Ssenariydan olingan qidiruv so'zlari"],
-                ["Ixtiyoriy media generatorlari, faqat operator yoqqan bo'lsa: Google Veo, Leonardo.Ai, Higgsfield, Kling, MiniMax, Seedance (ByteDance), Wan (Alibaba Cloud)", "Rasm va video kliplar generatsiyasi", "Ssenariydan olingan promptlar"],
+                ["Ixtiyoriy media generatorlari, faqat operator yoqqan bo'lsa: Google Veo, Google Gemini (rasm), OpenAI (GPT Image), Black Forest Labs (FLUX), Ideogram, fal.ai, Leonardo.Ai, Higgsfield, Kling, MiniMax, Seedance (ByteDance), Wan (Alibaba Cloud)", "Rasm va video kliplar generatsiyasi", "Ssenariydan olingan promptlar"],
                 ["vidIQ (ixtiyoriy)", "Kalit so'z va sarlavha tadqiqoti", "Mavzu kalit so'zlari va sarlavha qoralamalari"],
                 ["Telegram, Slack (ixtiyoriy)", "Operatorga bildirishnomalar", "Ishga tushirish holati, video nomlari va havolalari"],
                 ["Google Fonts, Amazon CloudFront", "Ushbu sahifalardagi shriftlar va fon mediasi", "Har qanday veb-so'rovdagi kabi IP manzilingiz va brauzer ma'lumotlari"],
