@@ -20,11 +20,15 @@ export function SeriesBoard({
   channels,
   tableMissing,
   strings: s,
+  canEdit = true,
 }: {
   series: SeriesRow[];
   channels: ChannelOption[];
   tableMissing: boolean;
   strings: Dictionary["series"];
+  /** Editor+ in the organization being viewed — what /api/series requires.
+   *  Presentation only; the route and RLS re-check. */
+  canEdit?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -183,14 +187,18 @@ export function SeriesBoard({
             </label>
           </div>
           {error && <p className="text-xs text-rose-300">{error}</p>}
-          <button
-            type="button"
-            onClick={submit}
-            disabled={busy || !form.name.trim()}
-            className="mt-1 rounded-md border border-sky-400/50 bg-sky-400/15 px-3 py-1.5 text-sm font-medium disabled:opacity-40"
-          >
-            {busy ? s.creating : s.submit}
-          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={submit}
+              disabled={busy || !form.name.trim()}
+              className="mt-1 rounded-md border border-sky-400/50 bg-sky-400/15 px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+            >
+              {busy ? s.creating : s.submit}
+            </button>
+          ) : (
+            <p className="mt-1 text-xs opacity-70">{s.readOnly}</p>
+          )}
           <p className="text-[11px] opacity-50">{s.pausedNote}</p>
         </div>
       </Panel>
@@ -236,23 +244,25 @@ export function SeriesBoard({
                         </div>
                       )}
                     </div>
-                    <div className="flex gap-1.5">
-                      {status !== "ACTIVE" && (
-                        <button type="button" onClick={() => setStatus(row.series_id, "ACTIVE")} disabled={busy} className="rounded-md border border-emerald-400/40 bg-emerald-400/10 px-2 py-1 text-xs disabled:opacity-40">
-                          {s.activate}
-                        </button>
-                      )}
-                      {status !== "PAUSED" && (
-                        <button type="button" onClick={() => setStatus(row.series_id, "PAUSED")} disabled={busy} className="rounded-md border border-amber-400/40 bg-amber-400/10 px-2 py-1 text-xs disabled:opacity-40">
-                          {s.pause}
-                        </button>
-                      )}
-                      {status !== "ARCHIVED" && (
-                        <button type="button" onClick={() => setStatus(row.series_id, "ARCHIVED")} disabled={busy} className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs opacity-70 disabled:opacity-40">
-                          {s.archive}
-                        </button>
-                      )}
-                    </div>
+                    {canEdit && (
+                      <div className="flex gap-1.5">
+                        {status !== "ACTIVE" && (
+                          <button type="button" onClick={() => setStatus(row.series_id, "ACTIVE")} disabled={busy} className="rounded-md border border-emerald-400/40 bg-emerald-400/10 px-2 py-1 text-xs disabled:opacity-40">
+                            {s.activate}
+                          </button>
+                        )}
+                        {status !== "PAUSED" && (
+                          <button type="button" onClick={() => setStatus(row.series_id, "PAUSED")} disabled={busy} className="rounded-md border border-amber-400/40 bg-amber-400/10 px-2 py-1 text-xs disabled:opacity-40">
+                            {s.pause}
+                          </button>
+                        )}
+                        {status !== "ARCHIVED" && (
+                          <button type="button" onClick={() => setStatus(row.series_id, "ARCHIVED")} disabled={busy} className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs opacity-70 disabled:opacity-40">
+                            {s.archive}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );

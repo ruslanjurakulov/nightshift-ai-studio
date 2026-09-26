@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { requireRole } from "@/lib/auth/roles";
-import { getChannelScope, isChannelInCurrentOrg } from "@/lib/channels-server";
+import { requireOrgRole } from "@/lib/auth/org-roles";
+import { getChannelScope } from "@/lib/channels-server";
 import { orgWide, scopeQuery } from "@/lib/channels";
 import { logAudit } from "@/lib/server/audit";
 import { AUTOMATION_LEVELS, PLATFORM_OPTIONS } from "@/lib/series";
@@ -17,6 +17,10 @@ export const dynamic = "force-dynamic";
  * publishes, renders, or spends anything — a series is configuration. A new
  * series is created PAUSED, matching the table default and the channels
  * posture: a human activates it.
+ *
+ * Writing a series is an editorial action: editor and up IN THE CHANNEL'S
+ * ORGANIZATION (lib/auth/org-roles.ts) — the same rule content_series' RLS
+ * applies — so a customer organization's editors manage their own series.
  */
 
 function slugify(text: string): string {
@@ -37,8 +41,6 @@ function cleanPlatforms(value: unknown): string[] {
 export async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  // Creating a content series is an editorial action (editor and up).
-  if (!(await requireRole("editor"))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const supabase = await createClient();
   if (!supabase) return NextResponse.json({ error: "supabase_not_configured" }, { status: 503 });
@@ -55,8 +57,11 @@ export async function POST(request: Request) {
   if (!name) return NextResponse.json({ error: "name_required" }, { status: 400 });
   // A series goes on a channel of the organization being viewed, never on
   // another tenant's — even for a platform admin, whose RLS would allow it.
-  if (!(await isChannelInCurrentOrg(channelId)))
-    return NextResponse.json({ error: "channel_not_found" }, { status: 404 });
+  const access = await requireOrgRole({ channelId }, "editor");
+  if (!access.ok) {
+    const error = access.error === "not_found" ? "channel_not_found" : access.error;
+    return NextResponse.json({ error }, { status: access.status });
+  }
 
   const automation = AUTOMATION_LEVELS.includes(body.automation_level as never)
     ? (body.automation_level as string)
@@ -107,7 +112,6 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (!(await requireRole("editor"))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const supabase = await createClient();
   if (!supabase) return NextResponse.json({ error: "supabase_not_configured" }, { status: 503 });
@@ -129,17 +133,31 @@ export async function PATCH(request: Request) {
   if (!["ACTIVE", "PAUSED", "ARCHIVED"].includes(status))
     return NextResponse.json({ error: "bad_status" }, { status: 400 });
 
-  // Narrowed to the organization being viewed: a platform admin's RLS would
-  // let a series id from another tenant through.
+  // The role is the one held in the series' own channel's organization, so
+  // read the channel first — narrowed to the organization being viewed: a
+  // platform admin's RLS would let a series id from another tenant through,
+  // and that series reads as not found.
+  const scope = orgWide(await getChannelScope());
+  const { data: found, error: readError } = await scopeQuery(
+    supabase.from("content_series").select("channel_id").eq("series_id", seriesId),
+    scope,
+  ).maybeSingle();
+  if (readError) return NextResponse.json({ error: "update_failed", detail: readError.message }, { status: 500 });
+  const channelId = (found as { channel_id?: string } | null)?.channel_id;
+  if (!channelId) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const access = await requireOrgRole({ channelId }, "editor");
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
+
   const { error } = await scopeQuery(
     supabase
       .from("content_series")
       .update({ status, updated_at: new Date().toISOString() })
-      .eq("series_id", seriesId),
-    orgWide(await getChannelScope()),
+      .eq("series_id", seriesId)
+      .eq("channel_id", channelId),
+    scope,
   );
   if (error) return NextResponse.json({ error: "update_failed", detail: error.message }, { status: 500 });
   // Audit the status change — target series + new status (best-effort, never throws).
-  await logAudit({ action: "series.update", target: seriesId, detail: { status } });
+  await logAudit({ action: "series.update", target: seriesId, channelId, detail: { status } });
   return NextResponse.json({ ok: true });
 }

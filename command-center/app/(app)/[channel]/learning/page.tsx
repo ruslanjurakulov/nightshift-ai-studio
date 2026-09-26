@@ -3,7 +3,8 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { LearningView } from "@/components/intel/LearningView";
 import { LearningsPanel } from "@/components/intel/LearningsPanel";
-import { resolveRole, atLeast } from "@/lib/auth/roles";
+import { atLeast } from "@/lib/auth/roles";
+import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { isMissingTable, type LearningRow } from "@/lib/learnings";
 import { toDecisionSignal, type DecisionSignal } from "@/lib/decisions";
 import { deriveTopicIntel } from "@/lib/memory";
@@ -48,8 +49,9 @@ export default async function LearningPage() {
     learningsMissing = isMissingTable(lr.error);
   }
   // Presentation only — /api/learnings/decide re-checks the role, and RLS
-  // checks it again.
-  const canDecide = atLeast(await resolveRole(), "admin");
+  // checks it again. Every learning shown is of the organization being
+  // viewed, so its role is the one that decides.
+  const canDecide = atLeast(await resolveCurrentOrgRole(), "admin");
 
   const decisionSignals = signals
     .map(toDecisionSignal)

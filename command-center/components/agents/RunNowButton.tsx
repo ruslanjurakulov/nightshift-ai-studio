@@ -27,6 +27,7 @@ export function RunNowButton({
   githubConfigured,
   variant = "panel",
   label,
+  canRun = true,
 }: {
   /** The scoped channel's id, or null when "All channels" is selected. */
   channelId: string | null;
@@ -36,6 +37,9 @@ export function RunNowButton({
   variant?: "panel" | "inline";
   /** Override the button label (e.g. "Produce a video" on the dashboard). */
   label?: string;
+  /** Whether the caller is an owner/admin of the channel's organization — the
+   *  role /api/agent/run requires. Presentation only; the route re-checks. */
+  canRun?: boolean;
 }) {
   const { t, locale } = useI18n();
   const [phase, setPhase] = useState<Phase>("idle");
@@ -55,7 +59,7 @@ export function RunNowButton({
   const [language, setLanguage] = useState("");
   const [styleOverride, setStyleOverride] = useState("");
 
-  const blocked = !channelId || !githubConfigured;
+  const blocked = !channelId || !githubConfigured || !canRun;
 
   async function loadIdeas() {
     setIdeasPhase("loading");
@@ -282,6 +286,8 @@ export function RunNowButton({
         <p className="text-[13px] text-[var(--color-warn)]">{t.agents.runNotConfigured}</p>
       ) : !channelId ? (
         <p className="text-[13px] text-[var(--color-warn)]">{t.agents.runPickChannel}</p>
+      ) : !canRun ? (
+        <p className="text-[13px] text-[var(--color-muted)]">{t.agents.runNeedsAdmin}</p>
       ) : null}
 
       {!blocked && topicBlock}

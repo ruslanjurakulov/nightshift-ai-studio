@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { requireRole } from "@/lib/auth/roles";
-import { isChannelInCurrentOrg } from "@/lib/channels-server";
+import { requireOrgRole } from "@/lib/auth/org-roles";
 import { logAudit } from "@/lib/server/audit";
 import { isMissingTable, nextStatus, parseDecision, type LearningStatus } from "@/lib/learnings";
 
@@ -9,8 +8,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Approve or reject one proposed learning (migration 0014). Admin only; RLS
- * enforces the same and lets the dashboard write the decision columns only.
+ * Approve or reject one proposed learning (migration 0014). Admin of the
+ * learning's channel's organization only (lib/auth/org-roles.ts); RLS enforces
+ * the same (0018's learnings_decide) and lets the dashboard write the decision
+ * columns only.
  *
  * An approved learning is appended to this channel's topic/script prompts on
  * the next run, so the move is guarded twice: `nextStatus` allows only
@@ -21,7 +22,6 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (!(await requireRole("admin"))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   let body: unknown;
   try {
@@ -45,9 +45,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: missing ? "migration_missing" : "read_failed" }, { status: missing ? 503 : 500 });
   }
   // Another organization's learning reads as missing: deciding it takes
-  // switching to that organization first.
-  if (!row || !(await isChannelInCurrentOrg(row.channel_id as string | null)))
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  // switching to that organization first. The role is the one held in the
+  // learning's own channel's organization.
+  if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const access = await requireOrgRole({ channelId: row.channel_id as string | null }, "admin");
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 
   const from = row.status as LearningStatus;
   const to = nextStatus(from, parsed.decision);

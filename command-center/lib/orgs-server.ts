@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { ORG_COOKIE, coerceOrgs, resolveCurrentOrg, type OrgSummary } from "@/lib/orgs";
+import { ORG_COOKIE, coerceOrgs, isMissingFunction, resolveCurrentOrg, type OrgSummary } from "@/lib/orgs";
 
 /**
  * The organization this request is about, resolved on the server.
@@ -16,7 +16,11 @@ import { ORG_COOKIE, coerceOrgs, resolveCurrentOrg, type OrgSummary } from "@/li
  * exist, nothing is filtered by org, and the app renders exactly as before.
  * Any other failure also degrades to "not supported" rather than to "you
  * belong to nothing" — telling the operator to create an organization because
- * a network call failed would be the wrong remedy.
+ * a network call failed would be the wrong remedy. Such a failure is marked
+ * `unavailable`, so an org-role check (lib/auth/org-roles.ts) can tell "0018
+ * is not here" (use the platform role, as before) from "0018 is here and the
+ * lookup failed" (refuse — the platform-role fallback would be the wrong
+ * answer for a customer's admin).
  *
  * Wrapped in React's cache() so the layout and the page share one resolution
  * per request.
@@ -25,9 +29,12 @@ export interface OrgContext {
   supported: boolean;
   orgs: OrgSummary[];
   current: OrgSummary | null;
+  /** True when 0018 looks applied but the membership lookup failed. */
+  unavailable?: boolean;
 }
 
 const UNSUPPORTED: OrgContext = { supported: false, orgs: [], current: null };
+const UNAVAILABLE: OrgContext = { supported: false, orgs: [], current: null, unavailable: true };
 
 export const getOrgContext = cache(async (): Promise<OrgContext> => {
   const supabase = await createClient();
@@ -42,12 +49,12 @@ export const getOrgContext = cache(async (): Promise<OrgContext> => {
     // just invited to shows up on their very first page load.
     await supabase.rpc("bind_org_memberships");
     const { data, error } = await supabase.rpc("my_organizations");
-    if (error) return UNSUPPORTED;
+    if (error) return isMissingFunction(error) ? UNSUPPORTED : UNAVAILABLE;
     const orgs = coerceOrgs(data);
     const remembered = (await cookies()).get(ORG_COOKIE)?.value;
     return { supported: true, orgs, current: resolveCurrentOrg(remembered, orgs) };
   } catch {
-    return UNSUPPORTED;
+    return UNAVAILABLE;
   }
 });
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getUser } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/roles";
 import {
   buildAuthUrl,
   encodeState,
@@ -21,6 +22,10 @@ const NONCE_COOKIE = "yt_oauth_nonce";
 export async function GET(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // The callback writes an Actions secret in the operator's repository — the
+  // same platform owner/admin action as /api/setup/secrets. Refused before the
+  // consent screen, so nobody grants Google access for nothing.
+  if (!(await requireRole("admin"))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   if (!isGoogleOAuthConfigured)
     return NextResponse.json({ error: "google_oauth_not_configured" }, { status: 503 });
 
