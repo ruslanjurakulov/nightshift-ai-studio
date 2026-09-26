@@ -5,11 +5,13 @@ import { StatCard } from "@/components/ui";
 import { CreditLedger } from "@/components/credits/CreditLedger";
 import { GrantCreditsForm } from "@/components/credits/GrantCreditsForm";
 import { CreditPricesEditor } from "@/components/credits/CreditPricesEditor";
+import { BuyCredits, BuyCreditsAdminOnly } from "@/components/credits/BuyCredits";
 import { getOrgContext } from "@/lib/orgs-server";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { coerceTransactions, formatCredits, isCreditExempt } from "@/lib/credits";
 import { creditsEnforced, readCreditAccount, readCreditPrices } from "@/lib/server/credits";
+import { buyAccess, paddleConfig } from "@/lib/paddle";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,6 +26,11 @@ export const revalidate = 0;
  * platform owner/admin, and credit_prices accepts writes only from them — the
  * forms are offered to the same people, so nobody sees a control that would
  * be refused.
+ *
+ * Buying credits (Paddle's overlay checkout) is offered to an owner/admin of
+ * an organization that pays, when this deployment has Paddle configured. The
+ * page never credits anything itself: the Paddle webhook does, with the
+ * service role, outside this app (supabase/functions/paddle-webhook).
  */
 export default async function CreditsPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
@@ -41,7 +48,7 @@ export default async function CreditsPage() {
   if (!org.current) return note(t.credits.noOrg);
   const orgId = org.current.id;
 
-  const [acct, priceRes, txns, admin] = await Promise.all([
+  const [acct, priceRes, txns, admin, userRes] = await Promise.all([
     readCreditAccount(supabase, orgId),
     readCreditPrices(supabase),
     supabase
@@ -52,12 +59,15 @@ export default async function CreditsPage() {
       .order("id", { ascending: false })
       .limit(200),
     supabase.rpc("is_platform_admin"),
+    supabase.auth.getUser(),
   ]);
   if (!acct.supported || !priceRes.supported) return note(t.credits.notMigrated);
 
   const exempt = isCreditExempt(orgId);
   const platformAdmin = admin.data === true;
   const account = acct.account;
+  const user = userRes.data.user;
+  const buy = buyAccess(orgId, org.current.role, paddleConfig);
 
   return (
     <div className="rhythm">
@@ -84,6 +94,21 @@ export default async function CreditsPage() {
           {creditsEnforced ? t.credits.enforcedOn : t.credits.enforcedOff}
         </p>
       </div>
+
+      {buy === "allowed" && paddleConfig && (
+        <BuyCredits
+          config={paddleConfig}
+          orgId={orgId}
+          orgName={org.current.name}
+          userId={user?.id ?? null}
+          email={user?.email ?? null}
+          balance={account?.balance ?? 0}
+        />
+      )}
+      {buy === "admin_only" && <BuyCreditsAdminOnly />}
+      {!paddleConfig && platformAdmin && !exempt && (
+        <p className="mono text-[11px] text-[var(--color-muted)]">{t.credits.buy.notConfigured}</p>
+      )}
 
       {platformAdmin && <GrantCreditsForm orgId={orgId} orgName={org.current.name} />}
 

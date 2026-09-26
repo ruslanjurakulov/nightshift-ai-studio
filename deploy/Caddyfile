@@ -29,7 +29,10 @@
 		# the buttons that write review intents.
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		# payment= is opened to Paddle's checkout frame only (the Buy credits
+		# overlay, docs/PADDLE_SETUP.md): with payment=() the browser hides
+		# Apple Pay / Google Pay inside it. Our own page still gets nothing.
+		Permissions-Policy `camera=(), microphone=(), geolocation=(), payment=("https://buy.paddle.com" "https://sandbox-buy.paddle.com"), usb=()`
 		# What server and framework answered is nobody's business.
 		-Server
 		-X-Powered-By
