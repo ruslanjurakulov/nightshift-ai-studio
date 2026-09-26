@@ -190,6 +190,14 @@ VIDEO_DURATION_TARGET = int(os.getenv("VIDEO_DURATION_TARGET", "300"))  # second
 # broken provider name.
 TTS_PROVIDER = os.getenv("TTS_PROVIDER", "").strip() or ("elevenlabs" if ELEVENLABS_API_KEY else "edge")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "pNInz6obpgDQGcFmaJgB")
+# ElevenLabs model. eleven_multilingual_v2 stays the default (polished,
+# consistent narration); eleven_v3 is the most expressive, eleven_flash_v2_5 /
+# eleven_turbo_v2_5 are cheaper and faster. A value outside the list falls back
+# to the default rather than failing a paid run on a typo.
+ELEVENLABS_MODELS = ("eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5")
+ELEVENLABS_MODEL_ID = (os.getenv("ELEVENLABS_MODEL_ID", "").strip() or "eleven_multilingual_v2")
+if ELEVENLABS_MODEL_ID not in ELEVENLABS_MODELS:
+    ELEVENLABS_MODEL_ID = "eleven_multilingual_v2"
 EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", "en-US-ChristopherNeural")
 
 # Audio

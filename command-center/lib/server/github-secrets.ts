@@ -1,6 +1,7 @@
 import "server-only";
 import { PROVIDER_SECRET_NAMES } from "../providers";
 import { IMAGE_PROVIDERS } from "@/lib/imageProviders";
+import { isTtsModel } from "@/lib/ttsModels";
 
 /**
  * Writing GitHub Actions Repository Secrets — forward, never store.
@@ -158,6 +159,7 @@ export async function dispatchDailyVideo(
     visualStyle?: string;
     videoProvider?: string;
     imageProvider?: string;
+    ttsModel?: string;
     /** The credit hold paying for this run (migration 0020); the workflow
      *  claims it before the run and settles it after. */
     creditRef?: string;
@@ -190,6 +192,8 @@ export async function dispatchDailyVideo(
   const imageProvider = opts.imageProvider?.trim().toLowerCase();
   if (videoProvider && VIDEO_PROVIDERS.includes(videoProvider)) inputs.video_provider = videoProvider;
   if (imageProvider && (IMAGE_PROVIDERS as readonly string[]).includes(imageProvider)) inputs.image_provider = imageProvider;
+  const ttsModel = opts.ttsModel?.trim();
+  if (ttsModel && isTtsModel(ttsModel)) inputs.tts_model = ttsModel;
   // Same shape 0020 accepts for a reservation id; anything else is not sent.
   if (opts.creditRef && /^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$/.test(opts.creditRef)) inputs.credit_ref = opts.creditRef;
   await dispatchWorkflow("daily_video.yml", inputs, ref);

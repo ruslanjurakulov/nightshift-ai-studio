@@ -386,6 +386,7 @@ export const en = {
     models: "Models",
     videoModel: "Video model (image→video)",
     imageModel: "Image model",
+    voiceModel: "Voice model (ElevenLabs)",
     optDefault: "Repo default",
     voice: "Voice",
     editVoice: "Edit voice",
