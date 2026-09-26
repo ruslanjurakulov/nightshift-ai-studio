@@ -1,0 +1,62 @@
+name: Voice Previews
+
+# Prepares the short clips the Create page plays before a narrator voice is
+# chosen (tools/voice_previews.py). Premade voices use ElevenLabs' own preview
+# (no characters spent); a custom voice id gets one ~100-character sample.
+# Clips go to the private Storage bucket `voice-previews` (migration 0026).
+#
+# Runs when the voice list changes, and on dispatch — the Create page's
+# "Listen" button dispatches it with one voice id when that voice has no clip.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "command-center/lib/voices.json"
+      - "tools/voice_previews.py"
+      - ".github/workflows/voice_previews.yml"
+  workflow_dispatch:
+    inputs:
+      voice_id:
+        description: "One ElevenLabs voice id (empty = every voice in command-center/lib/voices.json)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: voice-previews-${{ github.event.inputs.voice_id || 'all' }}
+  cancel-in-progress: false
+
+jobs:
+  previews:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install requests
+        run: pip install requests
+
+      # The voice id arrives through env, never pasted into the script, and
+      # the tool refuses anything that is not 20 letters and digits.
+      - name: Prepare voice previews
+        env:
+          VOICE_ID: ${{ github.event.inputs.voice_id }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          if [ -n "$VOICE_ID" ]; then
+            python tools/voice_previews.py --voice-id "$VOICE_ID"
+          else
+            python tools/voice_previews.py
+          fi

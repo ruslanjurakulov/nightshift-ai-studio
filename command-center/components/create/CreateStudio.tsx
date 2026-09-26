@@ -10,6 +10,7 @@ import { creditRunError } from "@/lib/credits";
 import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
 import { IMAGE_GENERATORS } from "@/lib/imageProviders";
 import { TTS_MODELS, TTS_MODEL_LABELS, VOICES, isVoiceId } from "@/lib/ttsModels";
+import { VoicePreviewButton } from "@/components/create/VoicePreviewButton";
 
 const CUSTOM_VOICE = "__custom__";
 
@@ -239,8 +240,9 @@ export function CreateStudio({
           </label>
         </div>
 
-        {/* The narrator for this run only: the channel keeps its own voice. */}
-        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {/* The narrator for this run only: the channel keeps its own voice.
+            "Listen" plays the chosen voice (or the channel's) before running. */}
+        <div className="mt-2 grid grid-cols-1 items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
           <label className="flex flex-col gap-1">
             <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.create.voicePick}</span>
             <select value={voice} onChange={(e) => setVoice(e.target.value)} className={selectClass}>
@@ -270,6 +272,9 @@ export function CreateStudio({
               )}
             </label>
           )}
+          <div className={voice === CUSTOM_VOICE ? "" : "sm:col-start-3"}>
+            <VoicePreviewButton voiceId={voiceId || agentConfig?.elevenlabs_voice_id || ""} channelId={channelId} />
+          </div>
         </div>
 
         {/* Models governed elsewhere — shown here, edited there. */}
