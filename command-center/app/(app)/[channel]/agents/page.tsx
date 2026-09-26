@@ -69,7 +69,7 @@ export default async function AgentsPage() {
   const { t } = await getDictionary();
   // Scope channel-owned queries to the selected channel (view control;
   // RLS still decides what may be read at all).
-  const { selection, channels } = await getChannelContext();
+  const { selection, channels, scope } = await getChannelContext();
   // The schedule editor and "Run now" both act on one channel; "All channels"
   // has no single target, so they render disabled with a hint rather than
   // guessing or fanning out on one click.
@@ -84,7 +84,7 @@ export default async function AgentsPage() {
   if (supabase) {
     const ev = await scopeQuery(
         supabase.from("system_events").select("*"),
-        selection, { nullIsGlobal: true },
+        scope, { nullIsGlobal: true },
       )
       .order("ts", { ascending: false })
       .limit(500);

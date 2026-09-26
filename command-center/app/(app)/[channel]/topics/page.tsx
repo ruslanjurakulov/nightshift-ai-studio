@@ -7,7 +7,7 @@ import { ExplainScore } from "@/components/topics/ExplainScore";
 import { num, decimal, relativeTime } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
-import { fetchTopicScores, getChannelContext, getChannelSelection } from "@/lib/channels-server";
+import { fetchTopicScores, getChannelContext, getChannelScope } from "@/lib/channels-server";
 import { ALL_CHANNELS, scopeQuery } from "@/lib/channels";
 import { fmt } from "@/lib/i18n";
 import type { DemandSignalRow, FeedbackSignalRow, TopicPerformanceRow } from "@/lib/types";
@@ -20,7 +20,8 @@ export default async function TopicManager() {
   const { t } = await getDictionary();
   // Scope every channel-owned query to the selected channel (view control;
   // RLS still decides what may be read at all).
-  const selection = await getChannelSelection();
+  const scope = await getChannelScope();
+  const { selection } = scope;
 
   const supabase = await createClient();
   let topics: TopicPerformanceRow[] = [];
@@ -30,11 +31,11 @@ export default async function TopicManager() {
 
   if (supabase) {
     const [tp, ds, fs] = await Promise.all([
-      fetchTopicScores(supabase, selection),
-      scopeQuery(supabase.from("demand_signals").select("*"), selection)
+      fetchTopicScores(supabase, scope),
+      scopeQuery(supabase.from("demand_signals").select("*"), scope)
         .order("polled_date", { ascending: false })
         .limit(50),
-      scopeQuery(supabase.from("feedback_signals").select("*"), selection).order("analyzed_date", { ascending: false }).limit(300),
+      scopeQuery(supabase.from("feedback_signals").select("*"), scope).order("analyzed_date", { ascending: false }).limit(300),
     ]);
     if (ds.error) dbError = true;
     topics = tp;

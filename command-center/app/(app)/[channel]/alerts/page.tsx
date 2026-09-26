@@ -3,6 +3,8 @@ import { StatusPill, EmptyState } from "@/components/ui";
 import { NotConfigured } from "@/components/NotConfigured";
 import { SendTestAlert } from "@/components/alerts/SendTestAlert";
 import { createClient } from "@/lib/supabase/server";
+import { getChannelScope } from "@/lib/channels-server";
+import { orgWide, scopeQuery } from "@/lib/channels";
 import { isSupabaseConfigured } from "@/lib/config";
 import { resolveRole, atLeast } from "@/lib/auth/roles";
 import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/github-secrets";
@@ -62,9 +64,10 @@ export default async function AlertsPage() {
   let events: AlertEventRow[] = [];
   let feedFailed = false;
   if (supabase) {
-    const { data, error } = await supabase
-      .from("alert_events")
-      .select("*")
+    // The current organization's alerts, whichever channel is selected; alerts
+    // with no channel are the operator's and show in the default org only.
+    const scope = orgWide(await getChannelScope());
+    const { data, error } = await scopeQuery(supabase.from("alert_events").select("*"), scope, { nullIsGlobal: true })
       .order("at", { ascending: false })
       .limit(FEED_LIMIT);
     if (error) feedFailed = true;

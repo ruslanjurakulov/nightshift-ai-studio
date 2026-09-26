@@ -13,7 +13,7 @@ import {
 } from "@/lib/autonomy";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
-import { getChannelSelection } from "@/lib/channels-server";
+import { getChannelScope } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import type {
   ContentQueueRow,
@@ -32,7 +32,7 @@ export default async function AutonomyPage() {
   const { t } = await getDictionary();
   // Scope every channel-owned query to the selected channel (view control;
   // RLS still decides what may be read at all).
-  const selection = await getChannelSelection();
+  const scope = await getChannelScope();
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
@@ -46,11 +46,11 @@ export default async function AutonomyPage() {
 
   if (supabase) {
     const [ev, vid, snap, q, r] = await Promise.all([
-      scopeQuery(supabase.from("system_events").select("*"), selection, { nullIsGlobal: true }).order("ts", { ascending: false }).limit(500),
-      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), selection)).order("published_at", { ascending: false }).limit(500),
+      scopeQuery(supabase.from("system_events").select("*"), scope, { nullIsGlobal: true }).order("ts", { ascending: false }).limit(500),
+      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), scope)).order("published_at", { ascending: false }).limit(500),
       supabase.from("metrics_snapshots").select("*").order("snapshot_date", { ascending: false }).limit(2000),
-      scopeQuery(supabase.from("content_queue").select("*"), selection).order("added_at", { ascending: false }).limit(200),
-      scopeQuery(supabase.from("pipeline_runs").select("*"), selection).order("updated_at", { ascending: false }).limit(200),
+      scopeQuery(supabase.from("content_queue").select("*"), scope).order("added_at", { ascending: false }).limit(200),
+      scopeQuery(supabase.from("pipeline_runs").select("*"), scope).order("updated_at", { ascending: false }).limit(200),
     ]);
     events = (ev.data as SystemEventRow[]) ?? [];
     videos = (vid.data as VideoRow[]) ?? [];

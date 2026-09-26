@@ -5,6 +5,8 @@ import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
 import { SeriesBoard } from "@/components/series/SeriesBoard";
 import type { SeriesRow } from "@/lib/series";
+import { getChannelContext } from "@/lib/channels-server";
+import { orgWide, scopeQuery } from "@/lib/channels";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -29,16 +31,23 @@ export default async function SeriesPage() {
   let channels: ChannelOption[] = [];
   let tableMissing = false;
 
+  // Every series of the CURRENT organization, whichever channel is selected;
+  // the channel options are the same org-filtered list the switcher shows.
+  const ctx = await getChannelContext();
   if (supabase) {
-    const [s, c] = await Promise.all([
-      supabase.from("content_series").select("*").order("created_at", { ascending: false }).limit(500),
-      supabase.from("channels").select("channel_id,name").order("channel_id"),
-    ]);
+    const s = await scopeQuery(supabase.from("content_series").select("*"), orgWide(ctx.scope))
+      .order("created_at", { ascending: false })
+      .limit(500);
     if (s.error && /content_series/.test(s.error.message)) tableMissing = true;
     series = (s.data as SeriesRow[]) ?? [];
-    channels = (c.data as ChannelOption[]) ?? [];
+    channels = ctx.channels.map((c) => ({ channel_id: c.channel_id, name: c.name }));
   }
-  if (channels.length === 0) channels = [{ channel_id: "default", name: "Default" }];
+  // The pre-multi-channel fallback. Inside an organization an empty list is
+  // the truth: offering the operator's "default" channel to a tenant would
+  // name a channel the tenant cannot write to.
+  if (channels.length === 0 && ctx.scope.orgChannelIds === null) {
+    channels = [{ channel_id: "default", name: "Default" }];
+  }
 
   return (
     <div className="rhythm stagger-enter">

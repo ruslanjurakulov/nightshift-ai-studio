@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/roles";
+import { getChannelScope, isChannelInCurrentOrg } from "@/lib/channels-server";
+import { orgWide, scopeQuery } from "@/lib/channels";
 import { logAudit } from "@/lib/server/audit";
 import { AUTOMATION_LEVELS, PLATFORM_OPTIONS } from "@/lib/series";
 
@@ -51,6 +53,10 @@ export async function POST(request: Request) {
   const name = String(body.name ?? "").trim();
   const channelId = String(body.channel_id ?? "").trim() || "default";
   if (!name) return NextResponse.json({ error: "name_required" }, { status: 400 });
+  // A series goes on a channel of the organization being viewed, never on
+  // another tenant's — even for a platform admin, whose RLS would allow it.
+  if (!(await isChannelInCurrentOrg(channelId)))
+    return NextResponse.json({ error: "channel_not_found" }, { status: 404 });
 
   const automation = AUTOMATION_LEVELS.includes(body.automation_level as never)
     ? (body.automation_level as string)
@@ -123,10 +129,15 @@ export async function PATCH(request: Request) {
   if (!["ACTIVE", "PAUSED", "ARCHIVED"].includes(status))
     return NextResponse.json({ error: "bad_status" }, { status: 400 });
 
-  const { error } = await supabase
-    .from("content_series")
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq("series_id", seriesId);
+  // Narrowed to the organization being viewed: a platform admin's RLS would
+  // let a series id from another tenant through.
+  const { error } = await scopeQuery(
+    supabase
+      .from("content_series")
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq("series_id", seriesId),
+    orgWide(await getChannelScope()),
+  );
   if (error) return NextResponse.json({ error: "update_failed", detail: error.message }, { status: 500 });
   // Audit the status change — target series + new status (best-effort, never throws).
   await logAudit({ action: "series.update", target: seriesId, detail: { status } });

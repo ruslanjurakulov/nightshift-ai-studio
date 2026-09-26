@@ -6,7 +6,7 @@ import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { relativeTime } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
-import { fetchTopicScores, getChannelSelection } from "@/lib/channels-server";
+import { fetchTopicScores, getChannelScope } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import { fmt } from "@/lib/i18n";
 import type { FeedbackSignalRow, TopicPerformanceRow } from "@/lib/types";
@@ -25,7 +25,7 @@ export default async function FeedbackPage() {
   const { t } = await getDictionary();
   // Scope every channel-owned query to the selected channel (view control;
   // RLS still decides what may be read at all).
-  const selection = await getChannelSelection();
+  const scope = await getChannelScope();
 
   const LOOP = [
     t.feedback.loop1,
@@ -43,8 +43,8 @@ export default async function FeedbackPage() {
 
   if (supabase) {
     const [sg, tp] = await Promise.all([
-      scopeQuery(supabase.from("feedback_signals").select("*"), selection).order("analyzed_date", { ascending: false }).limit(200),
-      fetchTopicScores(supabase, selection, 50),
+      scopeQuery(supabase.from("feedback_signals").select("*"), scope).order("analyzed_date", { ascending: false }).limit(200),
+      fetchTopicScores(supabase, scope, 50),
     ]);
     signals = (sg.data as FeedbackSignalRow[]) ?? [];
     topics = tp;

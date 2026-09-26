@@ -164,8 +164,11 @@ class ComposeConfigTests(unittest.TestCase):
         self.assertIn("/data", targets)
 
     def test_missing_domain_fails_loudly_instead_of_serving_a_blank_site(self):
-        env = {k: v for k, v in os.environ.items() if k not in {"DOMAIN", "ACME_EMAIL"}}
+        # Only DOMAIN is missing: compose reports the first unset required
+        # variable it meets, in no fixed order, so every other one is set.
+        env = {k: v for k, v in os.environ.items() if k != "DOMAIN"}
         env.update(
+            ACME_EMAIL="admin@example.com",
             NEXT_PUBLIC_SUPABASE_URL="https://placeholder.supabase.co",
             NEXT_PUBLIC_SUPABASE_ANON_KEY="placeholder",
             WEB_ENV_FILE=str(ENV_EXAMPLE),

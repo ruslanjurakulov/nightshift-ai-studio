@@ -668,6 +668,7 @@ export const en = {
     openBilling: "Provider billing page",
     checked: "checked {when}",
     migrationMissing: "Apply migration 0012_billing.sql in Supabase to enable balances, prices and top-ups.",
+    providersOperatorOnly: "Provider accounts and their balances belong to the platform operator, so they are not shown inside this organization. Unit economics above covers this organization's channels only.",
     pay: "Pay",
     payTitle: "Top up {name}",
     payAmount: "Amount, USD",

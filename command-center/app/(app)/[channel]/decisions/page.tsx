@@ -6,7 +6,7 @@ import { DecisionList } from "@/components/intel/DecisionList";
 import { deriveDecisions, scoreLineage, type LineageRow } from "@/lib/decisions";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
-import { fetchTopicScores, getChannelSelection } from "@/lib/channels-server";
+import { fetchTopicScores, getChannelScope } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import type { FeedbackSignalRow, SystemEventRow, TopicPerformanceRow } from "@/lib/types";
 
@@ -18,7 +18,7 @@ export default async function DecisionsPage() {
   const { t } = await getDictionary();
   // Scope every channel-owned query to the selected channel (view control;
   // RLS still decides what may be read at all).
-  const selection = await getChannelSelection();
+  const scope = await getChannelScope();
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
@@ -27,9 +27,9 @@ export default async function DecisionsPage() {
 
   if (supabase) {
     const [ev, tp, fs] = await Promise.all([
-      scopeQuery(supabase.from("system_events").select("*"), selection, { nullIsGlobal: true }).order("ts", { ascending: false }).limit(500),
-      fetchTopicScores(supabase, selection),
-      scopeQuery(supabase.from("feedback_signals").select("*"), selection).order("analyzed_date", { ascending: false }).limit(300),
+      scopeQuery(supabase.from("system_events").select("*"), scope, { nullIsGlobal: true }).order("ts", { ascending: false }).limit(500),
+      fetchTopicScores(supabase, scope),
+      scopeQuery(supabase.from("feedback_signals").select("*"), scope).order("analyzed_date", { ascending: false }).limit(300),
     ]);
     events = (ev.data as SystemEventRow[]) ?? [];
     topicPerf = tp;

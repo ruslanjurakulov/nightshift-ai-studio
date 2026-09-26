@@ -5,6 +5,7 @@ import { logAudit } from "@/lib/server/audit";
 import { dispatchDailyVideo, isGithubConfigured } from "@/lib/server/github-secrets";
 import { isSupabaseConfigured } from "@/lib/config";
 import { buildRenderJobInsert, isRunConfigured, resolveRunBackend } from "@/lib/runBackend";
+import { isChannelInCurrentOrg } from "@/lib/channels-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,6 +71,11 @@ export async function POST(request: Request) {
 
   const channelId = typeof body.channel_id === "string" ? body.channel_id.trim() : "";
   if (!channelId) return NextResponse.json({ error: "channel_required" }, { status: 400 });
+  // Only a channel of the organization being viewed. The Actions dispatch has
+  // no database check of its own, and a platform admin's RLS reaches every
+  // tenant: running another organization's channel takes switching to it.
+  if (!(await isChannelInCurrentOrg(channelId)))
+    return NextResponse.json({ error: "channel_not_found" }, { status: 404 });
 
   // Optional per-run overrides. Empty/absent means "the AI picks / the channel's
   // own setting applies", exactly as before.

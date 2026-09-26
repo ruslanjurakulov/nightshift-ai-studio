@@ -171,40 +171,155 @@ export function isScoped(selection: ChannelSelection): boolean {
 }
 
 /**
- * Apply the selection to a Supabase query builder.
+ * What a page may show: the selected channel, and — since organizations
+ * (migration 0018) — which channels "every channel" means.
  *
- * `nullIsGlobal` is for system_events, where a null channel_id means the event
- * belongs to no channel (a heartbeat, an infrastructure failure). Those stay
- * visible while scoped to one channel — an operator watching Finance still
- * needs to know the database is down — so the filter is "mine OR global".
+ * RLS alone is not enough for the aggregate views. It answers "what may this
+ * user read at all", and for a platform owner/admin that is every tenant's
+ * rows. The all-channels dashboard, portfolio, billing and event lists must
+ * show the organization the operator is LOOKING AT, so the scope carries that
+ * organization's channel ids — the same list the channel switcher shows — and
+ * every aggregate query is filtered by it.
+ */
+export interface ChannelScope {
+  selection: ChannelSelection;
+  /**
+   * The current organization's channel ids, or null when organizations are
+   * not in play (0018 not applied, Supabase not configured): then nothing is
+   * narrowed and the app behaves exactly as it did before 0018.
+   */
+  orgChannelIds: string[] | null;
+  /**
+   * Whether rows that name no channel (heartbeats, infrastructure failures,
+   * the platform's own provider accounts) belong in this view. 0018 gives
+   * them to the default organization — they are the operator's, not a
+   * tenant's — and before 0018 they belong to everyone signed in.
+   */
+  includeGlobal: boolean;
+}
+
+/** A value no channel id can take (ids start with [a-z0-9]), so a filter on
+ *  it matches nothing. Keeps "an org with no channels" a well-formed query. */
+export const NO_CHANNEL = "__none__";
+
+/** The pre-organizations scope: the selection alone, nothing narrowed. */
+export function unscopedScope(selection: ChannelSelection = ALL_CHANNELS): ChannelScope {
+  return { selection, orgChannelIds: null, includeGlobal: true };
+}
+
+/**
+ * The whole organization, whatever channel is selected. For screens that are
+ * deliberately cross-channel (series, the channel list, the portfolio): they
+ * ignore the switcher, but they still must not cross the tenant boundary.
+ */
+export function orgWide(scope: ChannelScope): ChannelScope {
+  return { ...scope, selection: ALL_CHANNELS };
+}
+
+/**
+ * The scope for a request, from the org-filtered channel list and the org
+ * context (lib/orgs-server.ts). Pure, so the rule is unit-tested.
+ *
+ * `supported` false means 0018 is not applied: unscoped, as before. `current`
+ * null with 0018 applied means the caller belongs to no organization — an
+ * empty id list, which matches nothing, which is the truth.
+ */
+export function buildChannelScope(
+  selection: ChannelSelection,
+  orgChannels: Pick<ChannelRow, "channel_id">[],
+  org: { supported: boolean; current: { is_default: boolean } | null },
+): ChannelScope {
+  if (!org.supported) return unscopedScope(selection);
+  return {
+    selection,
+    orgChannelIds: orgChannels.map((c) => c.channel_id),
+    includeGlobal: org.current?.is_default === true,
+  };
+}
+
+/**
+ * May the current view open this channel? The guard for pages and routes that
+ * take a channel id from somewhere other than the switcher — a video's own
+ * channel, a request body. A channel of another organization is refused even
+ * for a platform admin, whose RLS would let the row through: looking at it
+ * takes switching to that organization first.
+ */
+export function channelInScope(channelId: string | null | undefined, scope: ChannelScope): boolean {
+  if (scope.orgChannelIds === null) return true;
+  return Boolean(channelId) && scope.orgChannelIds.includes(channelId as string);
+}
+
+/** A PostgREST `in.(…)` list, each value quoted so no id can break the filter. */
+function postgrestList(values: string[]): string {
+  const list = values.length ? values : [NO_CHANNEL];
+  return `(${list.map((v) => `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`).join(",")})`;
+}
+
+/**
+ * Apply the scope to a Supabase query builder.
+ *
+ * `nullIsGlobal` is for streams like system_events, where a null channel_id
+ * means the row belongs to no channel (a heartbeat, an infrastructure
+ * failure). Those stay visible while scoped to one channel — an operator
+ * watching Finance still needs to know the database is down — so the filter is
+ * "mine OR global". Inside an organization other than the default one, global
+ * rows are the operator's, not the tenant's, and are left out.
+ *
+ * With organizations in play the all-channels view is "every channel of THIS
+ * organization", never "every row RLS lets through".
  */
 export function scopeQuery<Q extends object>(
   query: Q,
-  selection: ChannelSelection,
+  scope: ChannelScope,
   { nullIsGlobal = false, column = "channel_id" }: { nullIsGlobal?: boolean; column?: string } = {},
 ): Q {
-  if (!isScoped(selection)) return query;
   // Structurally typed rather than constrained to the Supabase builder: naming
   // that type in the constraint makes TypeScript walk its (very deep) generic
   // parameters at every call site and bail with TS2589.
   const filterable = query as unknown as {
     eq: (column: string, value: string) => Q;
+    in: (column: string, values: string[]) => Q;
     or: (filter: string) => Q;
   };
-  return nullIsGlobal
-    ? filterable.or(`${column}.eq.${selection},${column}.is.null`)
-    : filterable.eq(column, selection);
+  const { selection, orgChannelIds, includeGlobal } = scope;
+
+  if (orgChannelIds === null) {
+    if (!isScoped(selection)) return query;
+    return nullIsGlobal
+      ? filterable.or(`${column}.eq.${selection},${column}.is.null`)
+      : filterable.eq(column, selection);
+  }
+
+  // A selected channel outside the organization cannot come from the switcher
+  // (the selection resolves against the org's own list). If one ever arrives
+  // it matches nothing rather than widening the view.
+  const ids = isScoped(selection)
+    ? orgChannelIds.includes(selection)
+      ? [selection]
+      : []
+    : orgChannelIds;
+  if (nullIsGlobal && includeGlobal) {
+    return filterable.or(`${column}.in.${postgrestList(ids)},${column}.is.null`);
+  }
+  if (ids.length === 1) return filterable.eq(column, ids[0]);
+  return filterable.in(column, ids.length ? ids : [NO_CHANNEL]);
 }
 
 /** Does this row belong to the current view? Mirrors scopeQuery, for arrays. */
 export function inSelection(
   rowChannelId: string | null | undefined,
-  selection: ChannelSelection,
+  scope: ChannelScope,
   { nullIsGlobal = false }: { nullIsGlobal?: boolean } = {},
 ): boolean {
-  if (!isScoped(selection)) return true;
-  if (rowChannelId == null) return nullIsGlobal;
-  return rowChannelId === selection;
+  const { selection, orgChannelIds, includeGlobal } = scope;
+  if (orgChannelIds === null) {
+    if (!isScoped(selection)) return true;
+    if (rowChannelId == null) return nullIsGlobal;
+    return rowChannelId === selection;
+  }
+  if (rowChannelId == null) return nullIsGlobal && includeGlobal;
+  if (isScoped(selection)) return rowChannelId === selection && orgChannelIds.includes(selection);
+  return orgChannelIds.includes(rowChannelId);
 }
 
 export function channelName(channels: ChannelRow[], id: string | null | undefined): string {

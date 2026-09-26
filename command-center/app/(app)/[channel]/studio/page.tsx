@@ -23,14 +23,14 @@ export const revalidate = 0;
 export default async function StudioPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t } = await getDictionary();
-  const { selection, channels } = await getChannelContext();
+  const { selection, channels, scope } = await getChannelContext();
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
   if (supabase) {
     const { data } = await scopeQuery(
       supabase.from("system_events").select("*"),
-      selection,
+      scope,
       { nullIsGlobal: true },
     )
       .order("ts", { ascending: false })

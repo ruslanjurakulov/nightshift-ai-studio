@@ -5,7 +5,7 @@ import { StatCard, Panel, EmptyState } from "@/components/ui";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
-import { getChannelSelection } from "@/lib/channels-server";
+import { getChannelScope } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import { fmt } from "@/lib/i18n";
 import type { SystemEventRow } from "@/lib/types";
@@ -29,7 +29,7 @@ export default async function ErrorCenter() {
   const { t } = await getDictionary();
   // Scope channel-owned queries to the selected channel (view control;
   // RLS still decides what may be read at all).
-  const selection = await getChannelSelection();
+  const scope = await getChannelScope();
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
@@ -38,7 +38,7 @@ export default async function ErrorCenter() {
   if (supabase) {
     const { data, error } = await scopeQuery(
         supabase.from("system_events").select("*"),
-        selection, { nullIsGlobal: true },
+        scope, { nullIsGlobal: true },
       )
       .order("ts", { ascending: false })
       .limit(FETCH_LIMIT);

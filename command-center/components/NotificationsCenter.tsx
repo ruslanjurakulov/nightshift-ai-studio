@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { inSelection, orgWide, scopeQuery, type ChannelScope } from "@/lib/channels";
 import { buildNotifications, type Notification, type NotificationKind } from "@/lib/intelligence";
 import { useI18n } from "@/lib/i18n/context";
 import type { Dictionary } from "@/lib/i18n";
@@ -30,7 +31,7 @@ const KIND_COLOR: Record<NotificationKind, string> = {
  * tracked against a per-device "last seen" timestamp, and Clear hides
  * everything up to now (also per-device). Nothing is fabricated.
  */
-export function NotificationsCenter() {
+export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
   const { t } = useI18n();
   const [events, setEvents] = useState<SystemEventRow[]>([]);
   const [signals, setSignals] = useState<FeedbackSignalRow[]>([]);
@@ -39,8 +40,13 @@ export function NotificationsCenter() {
   const [cleared, setCleared] = useState<number>(0);
   const ref = useRef<HTMLDivElement>(null);
   const knownKeys = useRef<Set<string>>(new Set());
+  // The whole current organization, whichever channel is selected. Realtime
+  // delivers whatever RLS allows — for a platform admin, every tenant — so
+  // live rows are filtered by the same scope as the initial read.
+  const scopeKey = JSON.stringify(orgWide(scope));
 
   useEffect(() => {
+    const current = JSON.parse(scopeKey) as ChannelScope;
     try {
       setSeen(Number(localStorage.getItem(SEEN_KEY) ?? 0));
       setCleared(Number(localStorage.getItem(CLEARED_KEY) ?? 0));
@@ -53,8 +59,8 @@ export function NotificationsCenter() {
 
     (async () => {
       const [ev, sg] = await Promise.all([
-        supabase.from("system_events").select("*").order("ts", { ascending: false }).limit(100),
-        supabase.from("feedback_signals").select("*").order("analyzed_date", { ascending: false }).limit(100),
+        scopeQuery(supabase.from("system_events").select("*"), current, { nullIsGlobal: true }).order("ts", { ascending: false }).limit(100),
+        scopeQuery(supabase.from("feedback_signals").select("*"), current).order("analyzed_date", { ascending: false }).limit(100),
       ]);
       const rows = (ev.data as SystemEventRow[]) ?? [];
       rows.forEach((r) => knownKeys.current.add(r.event_key));
@@ -65,6 +71,7 @@ export function NotificationsCenter() {
         .channel("chronos_notifications")
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "system_events" }, (payload) => {
           const row = payload.new as SystemEventRow;
+          if (!inSelection(row.channel_id, current, { nullIsGlobal: true })) return;
           if (knownKeys.current.has(row.event_key)) return;
           knownKeys.current.add(row.event_key);
           setEvents((prev) => [row, ...prev].slice(0, 200));
@@ -75,7 +82,7 @@ export function NotificationsCenter() {
     return () => {
       if (channel) supabase.removeChannel(channel);
     };
-  }, []);
+  }, [scopeKey]);
 
   useEffect(() => {
     if (!open) return;

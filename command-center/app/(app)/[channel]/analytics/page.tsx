@@ -5,7 +5,7 @@ import { StatCard, Panel, EmptyState } from "@/components/ui";
 import { num, decimal } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
-import { getChannelSelection } from "@/lib/channels-server";
+import { getChannelScope } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import { fmt } from "@/lib/i18n";
 import type { MetricsSnapshotRow, VideoRow } from "@/lib/types";
@@ -111,7 +111,7 @@ export default async function AnalyticsPage() {
   const { t } = await getDictionary();
   // Scope every channel-owned query to the selected channel (view control;
   // RLS still decides what may be read at all).
-  const selection = await getChannelSelection();
+  const scope = await getChannelScope();
 
   const supabase = await createClient();
   let videos: VideoRow[] = [];
@@ -120,7 +120,7 @@ export default async function AnalyticsPage() {
 
   if (supabase) {
     const [vid, snap] = await Promise.all([
-      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), selection)).order("published_at", { ascending: false }).limit(500),
+      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), scope)).order("published_at", { ascending: false }).limit(500),
       supabase.from("metrics_snapshots").select("*").limit(5000),
     ]);
     if (vid.error || snap.error) dbHealthy = false;

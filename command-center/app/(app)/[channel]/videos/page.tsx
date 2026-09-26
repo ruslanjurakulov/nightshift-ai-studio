@@ -6,7 +6,7 @@ import { VideoTable } from "@/components/videos/VideoTable";
 import { isToday, num, relativeTime } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
-import { getChannelSelection } from "@/lib/channels-server";
+import { getChannelScope } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { heldOnly, heldState, heldStateLabel, uploadedOnly } from "@/lib/heldVideos";
@@ -25,7 +25,7 @@ export default async function VideoLibrary() {
   const { t } = await getDictionary();
   // Scope channel-owned queries to the selected channel (view control;
   // RLS still decides what may be read at all).
-  const selection = await getChannelSelection();
+  const scope = await getChannelScope();
   const path = await getChannelPath();
 
   const supabase = await createClient();
@@ -39,10 +39,10 @@ export default async function VideoLibrary() {
     // publish time, would sort FIRST in this descending order, and has no
     // metrics — it is listed on its own, below, never as a published video.
     const [vid, heldFirst] = await Promise.all([
-      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), selection))
+      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), scope))
         .order("published_at", { ascending: false })
         .limit(100),
-      heldOnly(scopeQuery(supabase.from("videos").select("*"), selection))
+      heldOnly(scopeQuery(supabase.from("videos").select("*"), scope))
         .order("held_at", { ascending: false, nullsFirst: false })
         .limit(50),
     ]);
@@ -51,7 +51,7 @@ export default async function VideoLibrary() {
     // Without migration 0016 there is no held_at to order by; read the held
     // rows unordered rather than not at all.
     const heldRes = heldFirst.error
-      ? await heldOnly(scopeQuery(supabase.from("videos").select("*"), selection)).limit(50)
+      ? await heldOnly(scopeQuery(supabase.from("videos").select("*"), scope)).limit(50)
       : heldFirst;
     held = heldRes.error ? [] : ((heldRes.data as VideoRow[]) ?? []);
 
