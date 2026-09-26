@@ -25,6 +25,8 @@ import { fmt } from "@/lib/i18n";
 import type { FeedbackSignalRow, MetricsSnapshotRow, SystemEventRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
 import { isToday, num, relativeTime, statusTone, storedMs } from "@/lib/format";
 import { uploadedOnly } from "@/lib/heldVideos";
+import { getOrgContext } from "@/lib/orgs-server";
+import { WELCOME_PATH } from "@/lib/public-paths";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -82,6 +84,11 @@ export default async function CommandCenter() {
   // owner/admin of the channel's organization — what the route requires.
   const canProduce =
     Boolean(scopedChannel) && isRunNowConfigured && atLeast(await resolveCurrentOrgRole(), "admin");
+  // A customer workspace with no channel yet has nothing to show here; point
+  // back to the first-run checklist rather than leaving a page of zeros. The
+  // operator's own organization never sees it.
+  const org = await getOrgContext();
+  const needsSetup = Boolean(org.supported && org.current && !org.current.is_default && channels.length === 0);
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
@@ -152,6 +159,17 @@ export default async function CommandCenter() {
 
   return (
     <div className="rhythm stagger-enter">
+      {needsSetup && (
+        <div className="panel flex flex-wrap items-center justify-between gap-4 p-5">
+          <div className="min-w-0">
+            <h2 className="t-section">{t.signup.finishSetup}</h2>
+            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.signup.finishSetupBody}</p>
+          </div>
+          <Link href={WELCOME_PATH} className="btn-sky is-solid pill px-5 py-2.5 text-[13px]">
+            {t.signup.finishSetup} →
+          </Link>
+        </div>
+      )}
       {/* ── The run, and the instruments beside it ─────────────────────────── */}
       <div className="flex flex-col gap-14 lg:flex-row lg:gap-20">
         <div className="flex min-w-0 flex-1 flex-col gap-10">
