@@ -58,10 +58,10 @@ export async function generateMetadata(): Promise<Metadata> {
  * names neither a channel nor a screen, so it stands for nothing and sends you
  * on — in practice the middleware has already redirected to the channel you
  * last viewed before routing gets here; this is the fallback for when it did
- * not run, and lands on every channel's Command Center.
+ * not run, and lands on the first channel (see app/(app)/[channel]/page.tsx).
  */
 export default async function Home() {
-  if (await getUser()) redirect(`/${ALL_CHANNELS_SLUG}/command-center`);
+  if (await getUser()) redirect(`/${ALL_CHANNELS_SLUG}`);
 
   const { t, locale } = await getDictionary();
   // The same pricing source /pricing reads; the teaser only ever shows what it holds.

@@ -57,7 +57,8 @@ export function WelcomeFlow({
   const [niche, setNiche] = useState("");
   const [language, setLanguage] = useState("");
 
-  const home = channelPath(ALL_CHANNELS_SLUG, "/command-center");
+  // The bare segment lands on the first channel (app/(app)/[channel]/page.tsx).
+  const home = `/${ALL_CHANNELS_SLUG}`;
   const at = (section: string) => channelPath(ALL_CHANNELS_SLUG, section);
 
   async function createWorkspace(e: React.FormEvent) {

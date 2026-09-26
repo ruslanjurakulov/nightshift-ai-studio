@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import {
-  ALL_CHANNELS,
   CHANNEL_COOKIE,
   selectionSlug,
   type ChannelSelection,
@@ -26,6 +25,11 @@ import type { ChannelRow } from "@/lib/types";
  *
  * Filtering here is a view control, not a security boundary — RLS is what
  * decides what may be read at all.
+ *
+ * There is no "All channels" entry: the app is one workspace, one channel at
+ * a time. The every-channel roll-up is still reachable by URL for the platform
+ * operator (a non-operator is redirected off it by the layout), and while you
+ * are on it the button says so.
  *
  * Renders nothing when there is one channel or none: a switcher with a single
  * option is noise, and this is what a single-channel deployment sees.
@@ -106,15 +110,6 @@ export function ChannelSwitcher({
           role="listbox"
           className="drawer-enter absolute right-0 z-50 mt-3 w-64 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-2 shadow-[var(--shadow-elevated)]"
         >
-          <li>
-            <Option
-              label={t.channels.allChannels}
-              sub={t.channels.allChannelsHint}
-              active={selection === ALL_CHANNELS}
-              onSelect={() => choose(ALL_CHANNELS)}
-            />
-          </li>
-          <li aria-hidden className="my-1 h-px bg-[var(--color-border)]" />
           {channels.map((c) => (
             <li key={c.channel_id}>
               <Option
