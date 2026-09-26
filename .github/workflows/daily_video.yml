@@ -64,6 +64,10 @@ on:
         description: "Repair only these scenes of the channel's last unfinished run, e.g. 3,17 or s003,s017 (at most 5; needs 'channel'). Re-fetches their footage, re-renders them, holds the new cut for review — never uploads."
         required: false
         default: ""
+      credit_ref:
+        description: "Credit reservation paying for this run (set by the Command Center when credits are enforced; leave empty)"
+        required: false
+        default: ""
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -334,7 +338,27 @@ jobs:
       - name: Generate audio assets
         run: python tools/generate_assets.py
 
+      # Paid runs only (SaaS credits, migration 0020): a run the Command Center
+      # dispatched for a customer organization carries the id of the credit
+      # hold that pays for it. Claimed here, before main.py spends anything;
+      # if the hold is not open, is another organization's, or is too small,
+      # this step fails and the run step below is skipped. Scheduled runs and
+      # plain manual dispatches have no credit_ref and skip both credit steps.
+      # Inputs go through the environment, never into the shell.
+      - name: Claim credit reservation (paid runs only)
+        id: credits_start
+        if: github.event.inputs.credit_ref != ''
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CREDIT_REF: ${{ github.event.inputs.credit_ref }}
+          CHANNEL_ID: ${{ matrix.channel_id }}
+          REQUESTED_CHANNEL: ${{ github.event.inputs.channel }}
+          INPUT_DURATION: ${{ github.event.inputs.duration }}
+        run: python tools/credits_settle.py start
+
       - name: Run Chronos bot
+        id: run
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
@@ -468,6 +492,20 @@ jobs:
             args+=(--repair-scenes "$INPUT_REPAIR_SCENES")
           fi
           python main.py "${args[@]}"
+
+      # Settle the hold claimed above: on success, charge what the run's cost
+      # ledger says it consumed — never more than the hold, and the whole hold
+      # when any entry was unpriced — and release the rest; on failure or
+      # cancellation, release it all. Never fails the job.
+      - name: Settle credit reservation (paid runs only)
+        if: always() && github.event.inputs.credit_ref != '' && steps.credits_start.outcome == 'success'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          CREDIT_REF: ${{ github.event.inputs.credit_ref }}
+          CHANNEL_ID: ${{ matrix.channel_id }}
+          RUN_OUTCOME: ${{ steps.run.outcome }}
+        run: python tools/credits_settle.py settle
 
       - name: Upload video artifact
         if: always()

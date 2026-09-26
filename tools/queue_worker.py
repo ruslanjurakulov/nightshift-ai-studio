@@ -39,6 +39,16 @@ Durability:
 * SIGTERM (``docker stop``) stops claiming and lets the running job finish for
   up to ``WORKER_STOP_GRACE_SECONDS``; after that, or on a second signal, the
   run is terminated and the job released back to the queue.
+
+Credits (migration 0020, ``modules/credits.py``): a job whose channel belongs
+to an organization other than the operator's own is paid for by the hold its
+``credit_ref`` names. The worker claims that hold before the run spends
+anything and settles it when the run ends — the metered cost from this
+machine's cost ledger on success (never above the hold, and the whole hold when
+anything was unpriced), a full release on failure. With
+``NIGHTSHIFT_CREDITS_ENFORCE`` on, such a job without an open hold is failed
+without running: rows can be inserted from a browser, so the button is not the
+only way in.
 """
 
 from __future__ import annotations
@@ -62,6 +72,7 @@ from typing import Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 REPO_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_DIR))
 
+from modules import credits as credit_rules  # noqa: E402
 from modules import run_request  # noqa: E402
 
 logger = logging.getLogger("queue_worker")
@@ -403,6 +414,8 @@ class Worker:
         stale_minutes: int = DEFAULT_STALE_MINUTES,
         kill_after_seconds: float = KILL_AFTER_SECONDS,
         out=None,
+        credits=None,
+        ledger_reader: Optional[Callable[[str, str], list]] = None,
     ):
         self.client = client
         self.worker_id = worker_id
@@ -424,6 +437,12 @@ class Worker:
         self.force_stop = threading.Event()
         self._stop_at: Optional[float] = None
         self._secrets = secret_values(self.env)
+        # The service-key credits client (None = credits not wired, e.g. tests
+        # of the plain queue) and where a finished run's ledger is read from.
+        self.credits = credits
+        self.ledger_reader = ledger_reader or credit_rules.local_run_entries
+        self.credits_enforced = credit_rules.enforcement_enabled(self.env)
+        self._last_sweep: Optional[float] = None
 
     # -- signals ----------------------------------------------------------
 
@@ -451,6 +470,7 @@ class Worker:
 
     def run_forever(self, *, once: bool = False) -> int:
         while not self.stop_requested.is_set():
+            self._sweep_credit_holds()
             job = self.client.claim(self.worker_id, self.stale_minutes)
             if job is None:
                 if once:
@@ -494,6 +514,54 @@ class Worker:
             argv = run_request.build_main_args(channel_id, clean)
             logger.info("job %s: re-queued run — resuming its unfinished run from output/", job_id)
 
+        # The run's credits, claimed before anything is spent. The ledger is
+        # read back from this machine's clock, so the window starts on it too.
+        run_started = _now()
+        try:
+            hold = self._open_credit_hold(job, channel_id, clean)
+        except credit_rules.CreditRefused as e:
+            return self._finish(job, "failed", f"credits: {e} (nothing was run)")
+
+        outcome = self._execute(job, argv, run_env, channel_row)
+        if hold is not None and outcome in ("succeeded", "failed"):
+            note = credit_rules.settle_hold(self.credits, hold, succeeded=outcome == "succeeded",
+                                            channel_id=channel_id, since=run_started,
+                                            ledger=self.ledger_reader)
+            if note:
+                logger.info("job %s: %s", job_id, note)
+        # "released" (re-queued) keeps its hold for the next attempt; "lost"
+        # belongs to whoever took the job. A job failed on its last attempt by
+        # the stale sweep is released by expire_credit_reservations.
+        return outcome
+
+    def _open_credit_hold(self, job: Mapping, channel_id: str, clean: Mapping):
+        if self.credits is None:
+            if self.credits_enforced:
+                raise credit_rules.CreditRefused("credits are enforced but this worker has no "
+                                                 "credits client")
+            return None
+        return credit_rules.open_hold(self.credits, job_ref=job.get("credit_ref"),
+                                      channel_id=channel_id, duration_s=clean.get("duration"),
+                                      enforce=self.credits_enforced)
+
+    def _sweep_credit_holds(self, every_seconds: float = 600.0) -> None:
+        """Return holds that can no longer settle (expire_credit_reservations).
+        Best-effort, at most every ten minutes."""
+        if self.credits is None:
+            return
+        if self._last_sweep is not None and time.monotonic() - self._last_sweep < every_seconds:
+            return
+        self._last_sweep = time.monotonic()
+        try:
+            n = self.credits.expire()
+            if n:
+                logger.info("credits: released %d stale reservation(s)", int(n))
+        except credit_rules.CreditsUnavailable as e:
+            logger.info("credits: expiry sweep skipped (%s)", e)
+
+    def _execute(self, job: Mapping, argv: List[str], run_env: Mapping[str, str],
+                 channel_row: Mapping) -> str:
+        job_id = job["id"]
         lost = threading.Event()
         done = threading.Event()
         hb = threading.Thread(target=self._heartbeat_loop, args=(job_id, lost, done), daemon=True)
@@ -667,10 +735,12 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     worker = Worker(QueueClient(url, key), worker_id=args.worker_id,
                     poll_seconds=args.poll_seconds, stale_minutes=args.stale_minutes,
-                    grace_seconds=args.grace_seconds)
+                    grace_seconds=args.grace_seconds,
+                    credits=credit_rules.CreditsRest(url, key))
     worker.install_signal_handlers()
-    logger.info("worker %s started (poll %ss, stale after %s min, stop grace %ss)",
-                args.worker_id, args.poll_seconds, args.stale_minutes, int(args.grace_seconds))
+    logger.info("worker %s started (poll %ss, stale after %s min, stop grace %ss, credits %s)",
+                args.worker_id, args.poll_seconds, args.stale_minutes, int(args.grace_seconds),
+                "enforced" if worker.credits_enforced else "not enforced")
     return worker.run_forever(once=args.once)
 
 

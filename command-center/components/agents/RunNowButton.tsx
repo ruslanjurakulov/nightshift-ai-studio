@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
+import { creditRunError } from "@/lib/credits";
+import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
 
 /**
  * "Run now" — trigger this channel's pipeline on demand.
@@ -35,9 +37,10 @@ export function RunNowButton({
   /** Override the button label (e.g. "Produce a video" on the dashboard). */
   label?: string;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [phase, setPhase] = useState<Phase>("idle");
   const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
+  const [creditError, setCreditError] = useState<string | null>(null);
 
   // Optional per-run topic + data-backed suggestions (panel variant only).
   type Idea = { label: string; source: "demand" | "proven" };
@@ -73,6 +76,7 @@ export function RunNowButton({
   async function run() {
     if (!channelId) return;
     setPhase("starting");
+    setCreditError(null);
     const trimmed = topic.trim();
     const dur = Number(duration);
     const style = styleOverride.trim();
@@ -91,6 +95,7 @@ export function RunNowButton({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setErrorKey(data.error === "github_unauthorized" ? "unauthorized" : "failed");
+        setCreditError(creditRunError(data, t, locale));
         setPhase("error");
         return;
       }
@@ -137,10 +142,16 @@ export function RunNowButton({
           <span className="text-[var(--color-ok)]">{t.agents.runQueued}</span>
         ) : phase === "error" ? (
           <span className="text-[var(--color-fail)]">
-            {errorKey === "unauthorized" ? t.agents.runUnauthorized : t.agents.runFailed}
+            {creditError ?? (errorKey === "unauthorized" ? t.agents.runUnauthorized : t.agents.runFailed)}
           </span>
         ) : null}
       </span>
+      {/* The estimate before the run is confirmed (nothing before 0020). */}
+      {phase === "confirm" && (
+        <div className="basis-full">
+          <CreditEstimateLine channelId={channelId} durationS={Number(duration) > 0 ? Number(duration) : null} />
+        </div>
+      )}
     </div>
   );
 

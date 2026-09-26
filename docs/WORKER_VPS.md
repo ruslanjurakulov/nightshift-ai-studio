@@ -184,6 +184,17 @@ bilan, RLS orqali qo'shiladi. 0017 dagi insert policy faqat admin'ga, faqat
 ya'ni `private`, resume/repair'siz) ruxsat beradi. Vazifani o'zgartirish,
 o'chirish yoki `claim` qilish faqat worker'ning service key'i bilan mumkin.
 
+## 5b. Kreditlar (ixtiyoriy, 0020 migratsiyasi)
+
+`render_jobs.credit_ref` to'ldirilgan vazifa uchun worker ishga tushirishdan oldin
+kredit bandini (`start_credit_reservation`) oladi va oxirida hisob-kitob qiladi:
+muvaffaqiyatda — shu mashinadagi xarajatlar jurnali (`history/chronos.db`) bo'yicha
+`capture_credits` (band miqdoridan oshmaydi; birorta yozuv narxlanmagan bo'lsa —
+butun band), xatoda — `release_credits`. Worker env faylida
+`NIGHTSHIFT_CREDITS_ENFORCE=1` qo'yilsa, standart bo'lmagan tashkilot kanalining
+bandsiz (yoki juda kichik bandli) vazifasi hech narsa ishga tushirilmasdan `failed`
+bo'ladi. Command Center'da ham xuddi shu o'zgaruvchini yoqing.
+
 ## 6. Orqaga qaytish (GitHub Actions)
 
 Vercel'da `NIGHTSHIFT_RUN_BACKEND` ni o'chiring (yoki `actions` qiling) va qayta
