@@ -8,10 +8,10 @@ Reads, from its own environment:
 
 * ``WORKERENV_<KEY>`` for every key in deploy/.env.worker.example — the
   workflow maps each one from the repository secret or variable of the same
-  name, the ones daily_video.yml already uses;
-* ``ALL_SECRETS`` — ``toJSON(secrets)``, only to collect the per-channel
-  ``CHRONOS_YT_TOKEN_<REF>`` tokens, whose names are not known in advance.
-  Nothing else is taken from it.
+  name, the ones daily_video.yml already uses. Nothing else: the workflow
+  never hands this script ``toJSON(secrets)`` (GitHub holds such a run for
+  manual approval). Channels other than the default publish from the worker
+  through their Supabase Vault connection, not a CHRONOS_YT_TOKEN_<REF> secret.
 
 Appends a ``NIGHTSHIFT_WORKER_ENV=on`` marker line and then one ``KEY=value``
 line per key; deploy/remote-deploy.sh splits the payload there and writes the
@@ -76,17 +76,6 @@ def build(env: Mapping[str, str], example_text: str) -> Tuple[List[str], List[st
             continue
         values[key] = env[PREFIX + key]
 
-    try:
-        secrets = json.loads(env.get("ALL_SECRETS") or "{}")
-    except ValueError:
-        secrets = None
-    if not isinstance(secrets, dict):
-        errors.append("ALL_SECRETS is not the toJSON(secrets) object")
-        secrets = {}
-    for name in sorted(secrets):
-        if TOKEN_NAME.match(name) and name not in values:
-            values[name] = str(secrets[name] or "")
-
     for key, raw in values.items():
         value, problems = clean(key, raw)
         errors.extend(problems)
@@ -111,8 +100,7 @@ def main(argv: List[str]) -> int:
         fh.write(MARKER + "\n")
         for line in lines:
             fh.write(line + "\n")
-    tokens = sum(1 for l in lines if TOKEN_NAME.match(l.split("=", 1)[0]))
-    print(f"Worker env built: {len(lines)} keys ({tokens} channel token(s)).")
+    print(f"Worker env built: {len(lines)} keys.")
     return 0
 
 

@@ -675,7 +675,12 @@ class WorkerWorkflowTests(unittest.TestCase):
         self.assertIn("vars.NIGHTSHIFT_WORKER == 'on'", self.step["if"])
         self.assertIn("steps.payload.outputs.run == 'true'", self.step["if"])
         self.assertEqual(self.step["run"].strip(), 'python3 deploy/build-worker-env.py "$PAYLOAD"')
-        self.assertEqual(self.step["env"]["ALL_SECRETS"], "${{ toJSON(secrets) }}")
+        self.assertNotIn("ALL_SECRETS", self.step["env"])
+
+    def test_never_dumps_every_secret(self):
+        # GitHub flags toJSON(secrets) as possibly malicious and holds every
+        # push-triggered run for manual approval: the deploy stops being automatic.
+        self.assertNotRegex(WORKFLOW.read_text(), r"toJSON\(\s*secrets\s*\)")
 
     def test_runs_after_the_web_env_and_before_ssh(self):
         names = [s.get("name") for s in steps()]
@@ -705,20 +710,16 @@ class BuildWorkerEnvTests(unittest.TestCase):
     def build(self, **kw):
         return self.mod.build(self.env(**kw), self.example)
 
-    def test_one_line_per_key_and_the_channel_tokens_only(self):
-        token = '{\n  "token": "t",\n  "refresh_token": "r"\n}'
+    def test_one_line_per_key_and_nothing_from_other_secrets(self):
+        # Even if a secrets dump were in the environment, only mapped keys go out.
         lines, errors = self.build(secrets={
-            "CHRONOS_YT_TOKEN_FINANCE": token,
+            "CHRONOS_YT_TOKEN_FINANCE": '{"token": "t"}',
             "DEPLOY_SSH_KEY": "-----BEGIN-----",
             "GH_SECRETS_TOKEN": "ghp_x",
-            "github_token": "ghs_x",
         })
         self.assertEqual(errors, [])
         keys = [l.split("=", 1)[0] for l in lines]
-        self.assertEqual(keys[: len(worker_example_keys())], worker_example_keys())
-        self.assertIn('CHRONOS_YT_TOKEN_FINANCE={"token":"t","refresh_token":"r"}', lines)
-        for other in ("DEPLOY_SSH_KEY", "GH_SECRETS_TOKEN", "github_token"):
-            self.assertNotIn(other, keys)
+        self.assertEqual(keys, worker_example_keys())
 
     def test_json_secrets_are_compacted_to_one_line(self):
         lines, errors = self.build(YOUTUBE_CLIENT_SECRET_JSON='{\r\n "installed": {"client_id": "c"}\r\n}\n')

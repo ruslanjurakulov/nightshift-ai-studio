@@ -193,15 +193,17 @@ jobs:
       # /opt/nightshift/.env.worker (600) — a file the web container never
       # reads. One WORKERENV_<KEY> per key in deploy/.env.worker.example, from
       # the repository secret or variable daily_video.yml already uses under
-      # the same name, so nothing is stored twice. ALL_SECRETS is read for one
-      # thing only: the CHRONOS_YT_TOKEN_<REF> channel tokens, whose names are
-      # not known here. GitHub masks every secret in this public log, and the
-      # script prints key names and counts, never a value.
+      # the same name, so nothing is stored twice. Only named secrets are
+      # read, never the whole secrets context: GitHub flags a workflow that dumps every
+      # secret as possibly malicious and holds each push-triggered run for
+      # manual approval, which defeats the automatic deploy. Channels other
+      # than the default publish from the worker through their Supabase Vault
+      # connection (connect them on the Channels page). GitHub masks every
+      # secret in this public log; the script prints key names, never values.
       - name: Build the worker env
         if: steps.payload.outputs.run == 'true' && vars.NIGHTSHIFT_WORKER == 'on'
         env:
           PAYLOAD: ${{ steps.payload.outputs.file }}
-          ALL_SECRETS: ${{ toJSON(secrets) }}
           WORKERENV_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           WORKERENV_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           WORKERENV_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
