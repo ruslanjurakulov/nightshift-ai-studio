@@ -173,6 +173,7 @@ class ParallelRenderTestCase(unittest.TestCase):
             seen.append(tuple(x264))
 
         with mock.patch.object(render_backend, "_normalize_segment", side_effect=fake_norm), \
+                mock.patch.object(render_backend, "_free_mb", return_value=50000.0), \
                 mock.patch.object(render_backend, "_run", side_effect=self.fake_run):
             render_backend.render(self.spec, ffmpeg="ffmpeg", jobs=2)
         self.assertEqual(set(seen), {render_backend.INTERMEDIATE_X264})
@@ -233,6 +234,38 @@ class ParallelRenderTestCase(unittest.TestCase):
             render_backend.render(self.spec, ffmpeg="ffmpeg", jobs=1, timings=timings)
         pool.assert_not_called()
         self.assertEqual(timings.mode, "sequential")
+
+
+class DiskGuardTestCase(unittest.TestCase):
+    def spec(self, seconds, w=1920, h=1080):
+        return render_backend.simple_spec("/o.mp4", [("/a.mp4", seconds)], width=w, height=h)
+
+    def test_enough_room_uses_the_fast_intermediate(self):
+        got = render_backend.intermediate_x264(self.spec(195), Path("/tmp"),
+                                               free_mb=lambda p: 20000.0)
+        self.assertEqual(got, render_backend.INTERMEDIATE_X264)
+
+    def test_a_full_disk_keeps_the_compact_old_settings(self):
+        with self.assertLogs("modules.render_backend", "WARNING"):
+            got = render_backend.intermediate_x264(self.spec(900), Path("/tmp"),
+                                                   free_mb=lambda p: 3000.0)
+        self.assertEqual(got, render_backend.LEGACY_X264)
+
+    def test_the_need_scales_with_the_frame_size(self):
+        # 900 s at 480x270 needs 1/16 of the 1080p estimate: 450 MB < 3000 MB.
+        got = render_backend.intermediate_x264(self.spec(900, 480, 270), Path("/tmp"),
+                                               free_mb=lambda p: 3000.0)
+        self.assertEqual(got, render_backend.INTERMEDIATE_X264)
+
+    def test_unknown_free_space_or_an_error_never_raises(self):
+        spec = self.spec(60)
+        self.assertEqual(render_backend.intermediate_x264(spec, Path("/tmp"), free_mb=lambda p: None),
+                         render_backend.INTERMEDIATE_X264)
+
+        def boom(p):
+            raise OSError("statvfs")
+        self.assertEqual(render_backend.intermediate_x264(spec, Path("/tmp"), free_mb=boom),
+                         render_backend.INTERMEDIATE_X264)
 
 
 class TimingLineTestCase(unittest.TestCase):

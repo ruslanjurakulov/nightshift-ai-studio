@@ -213,8 +213,16 @@ def _normalize_segment(
 #: Segment encode: ultrafast is ~4x cheaper than medium here, and at crf 12 it
 #: is visually lossless, so the final pass starts from better pixels than the
 #: medium/crf 23 segments it used to re-encode (one lossy generation, not two).
-#: The files are larger (~2-5x) but live only in the render's temp dir.
+#: The price is disk: measured 372 MB for the 60 s sample (13.7 MB with the
+#: old settings), all of it in the render's temp dir. crf 17 / 20 were tried
+#: and are worse on every axis — their artefacts cost the final encode more
+#: than the smaller files save (final pass 37.8 s / 68.7 s vs 36.7 s, and a
+#: lower SSIM) — so the guard below, not a higher crf, is what bounds disk.
 INTERMEDIATE_X264: tuple = ("-preset", "ultrafast", "-crf", "12")
+#: Disk guard: bytes per second of 1080p video the intermediate may need
+#: (6.2 MB/s measured on grainy footage, with headroom) and scaled by pixel
+#: count for other sizes. Less free space than that → the old compact settings.
+INTERMEDIATE_MB_PER_S_1080P = 8.0
 #: The segment encode the backend ran before (libx264 defaults). The
 #: sequential fallback uses it, so a fallback is exactly the old path.
 LEGACY_X264: tuple = ()
@@ -356,6 +364,32 @@ class RenderTimings:
                 f"final_s={v(self.final_s)} total_s={v(self.total_s)}")
 
 
+def intermediate_x264(spec: RenderSpec, tmpdir: Path, *,
+                      free_mb: Optional[Callable[[Path], Optional[float]]] = None) -> tuple:
+    """The segment encode for this render: the fast intermediate when the temp
+    dir has room for it, else the old compact settings (slower, never a
+    full-disk failure halfway through a long render). Never raises."""
+    try:
+        need = (spec.total_duration * INTERMEDIATE_MB_PER_S_1080P
+                * (spec.width * spec.height) / (1920 * 1080))
+        free = (free_mb or _free_mb)(Path(tmpdir))
+    except Exception:
+        return INTERMEDIATE_X264
+    if free is not None and free < need:
+        logger.warning("Only %.0f MB free for ffmpeg intermediates (up to %.0f MB needed) — "
+                       "encoding segments with the compact settings instead", free, need)
+        return LEGACY_X264
+    return INTERMEDIATE_X264
+
+
+def _free_mb(path: Path) -> Optional[float]:
+    try:
+        st = os.statvfs(str(path))
+        return st.f_bavail * st.f_frsize / 1048576.0
+    except (OSError, AttributeError):
+        return None
+
+
 def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
                    timings: RenderTimings) -> List[Segment]:
     """Every segment → ``seg_NNNN.mp4``, in parallel when ``jobs`` > 1.
@@ -373,7 +407,8 @@ def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
 
     t0 = time.monotonic()
     try:
-        tasks = [task(i, INTERMEDIATE_X264) for i in range(len(outs))]
+        x264 = intermediate_x264(spec, tmpdir)
+        tasks = [task(i, x264) for i in range(len(outs))]
         if jobs > 1:
             timings.segment_s = run_pool(tasks, jobs)
         else:
