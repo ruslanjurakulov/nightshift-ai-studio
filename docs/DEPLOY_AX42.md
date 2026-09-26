@@ -45,7 +45,8 @@ shu. Barcha qiymatlar **bir marta** GitHub'ga kiritiladi; serverdagi
 workflow uni GitHub'dagi qiymatlardan qayta yozadi (6-bo'lim bu yo'lda kerak emas).
 
 ```
-main'ga push (command-center/, deploy/)   ──>  "Deploy web" workflow
+main'ga push (command-center/, deploy/,  ──>  "Deploy web" workflow
+  pipeline kodi — g-bo'lim)
 yoki Actions → Deploy web → Run workflow         │  GitHub Environment "production"
                                                  │  (variables + secrets) dan .env.web
                                                  ▼
@@ -214,6 +215,49 @@ qaytaring (a-bosqichdagi skrinshotdagi Vercel yozuvlari bo'yicha), GitHub'da
 `DOMAIN` ni `new.nightshift-ai.studio` ga qaytarib **Run workflow** — server
 yana `new.` da ishlab turadi, asosiy domen Vercel'da. Vercel loyihasini o'chirmang
 (11-bo'lim).
+
+### g) Worker: videolarni shu serverda ishlab chiqarish
+
+"Run now" bosilganda video GitHub Actions o'rniga **shu serverda** tayyorlanadi:
+6 soatlik limit yo'q, `output/` (checkpoint'lar) o'chib ketmaydi, render
+tezroq. Soatlik jadval (cron) hozircha Actions'da qoladi.
+
+Kalitlarni **hech qayerga qo'lda yozmaysiz**: deploy workflow ularni
+repozitoriyning Actions secret/variable'laridan (bot allaqachon ishlatayotgan
+o'sha nomlar) oladi va serverda alohida `/opt/nightshift/.env.worker` (chmod 600)
+fayliga yozadi. Bu fayl dashboard konteyneriga hech qachon berilmaydi.
+
+**Oldin:** Supabase'da `0017_render_jobs.sql` qo'llangan bo'lsin
+(`docs/WORKER_VPS.md`, 1-bo'lim).
+
+1. Bu o'zgarish `main` ga tushgach, **Deploy web** bir marta o'zi ishlaydi
+   (worker hali o'chiq — faqat serverdagi deploy skripti yangilanadi). Yashil
+   bo'lishini kuting.
+2. GitHub → Settings → Environments → `production` → **Add environment variable**:
+   `NIGHTSHIFT_WORKER` = `on`.
+3. Actions → **Deploy web** → **Run workflow**. Birinchi marta worker image
+   yig'iladi (ffmpeg, Python kutubxonalari) — 10–15 daqiqa.
+   Xato bo'lsa, logda faqat **kalit nomi** chiqadi (masalan
+   `SUPABASE_SERVICE_KEY is required`) — repozitoriy secret'ini to'ldirib qayta
+   ishga tushiring.
+4. Serverda tekshirish: `dc ps` → `worker` **Up**; `dc logs --tail 50 worker`
+   → `worker nightshift-01 started ...` qatori (qiymatlar logga chiqmaydi).
+5. Shu `production` environment'ga: `NIGHTSHIFT_RUN_BACKEND` = `queue` →
+   **Run workflow**. Endi Command Center'dagi "Run now" vazifani navbatga
+   qo'yadi, worker uni oladi.
+6. Sinov: Create → bitta qisqa video. Progress: `navbatda` → `ishlamoqda` →
+   `muvaffaqiyatli`. Video `private` bo'lib yuklanadi (publish gate va
+   tasdiqlar o'zgarmagan).
+
+**Yangilanish:** `main` ga pipeline kodi (`modules/`, `tools/`, `main.py`,
+`requirements.txt`, `Dockerfile.worker`) tushsa, deploy o'zi ishlaydi va
+worker'ni yangilaydi. Worker video ustida ishlayotgan bo'lsa, unga tugatish
+uchun 15 daqiqa beriladi; ulgurmasa video navbatga qaytadi va checkpoint'dan
+davom etadi (pullik bosqichlar qayta to'lanmaydi).
+
+**O'chirish:** `NIGHTSHIFT_WORKER` ni o'chiring (yoki `off` qiling) va
+`NIGHTSHIFT_RUN_BACKEND` ni o'chiring → **Run workflow**. Worker konteyneri va
+`.env.worker` fayli serverdan o'chiriladi; "Run now" yana Actions'da ishlaydi.
 
 ---
 

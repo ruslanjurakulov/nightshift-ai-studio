@@ -51,6 +51,10 @@ select
 
 Kutilgan natija: `render_jobs | true | false | 2`.
 
+> **Hetzner AX42 (nightshift-01):** 2–4-bo'limlarni qo'lda bajarmang — worker
+> o'sha serverga avtomatik deploy qilinadi, kalitlar GitHub'dan olinadi:
+> [`DEPLOY_AX42.md`](DEPLOY_AX42.md), **g) Worker**. Quyidagisi boshqa VPS uchun.
+
 ## 2. Server
 
 **O'lcham:** 8 vCPU / 16–32 GB RAM, 80+ GB SSD. Render vaqtining ~80% i CPU

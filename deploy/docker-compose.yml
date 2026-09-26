@@ -74,8 +74,8 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    # Headroom for the future worker: the dashboard must never be what starves
-    # a render of memory.
+    # Headroom for the worker: the dashboard must never be what starves a
+    # render of memory.
     mem_limit: 2g
     logging: *default-logging
 
@@ -100,24 +100,54 @@ services:
       - caddy_config:/config
     logging: *default-logging
 
-  # ── Pipeline worker (placeholder, NOT active) ───────────────────────────────
-  # The worker gets its own image and runbook (Dockerfile.worker,
-  # docs/WORKER_VPS.md), added separately. When it lands, it joins this file
-  # roughly as below. It publishes no port and holds the bot's server-side
-  # secrets in its OWN env file — never .env.web, which the dashboard reads.
+  # ── Pipeline worker (docs/DEPLOY_AX42.md, "Worker"; docs/WORKER_VPS.md) ────
+  # tools/queue_worker.py: claims render_jobs rows ("Run now" with
+  # NIGHTSHIFT_RUN_BACKEND=queue) and runs them. Behind the `worker` profile:
+  # deploy/remote-deploy.sh starts it only while the GitHub variable
+  # NIGHTSHIFT_WORKER is `on`, and removes it otherwise.
   #
-  # worker:
-  #   build:
-  #     context: ..
-  #     dockerfile: Dockerfile.worker
-  #   restart: unless-stopped
-  #   env_file:
-  #     - /opt/nightshift/.env.worker
-  #   volumes:
-  #     - worker_output:/app/output
-  #   logging: *default-logging
+  # Its env file is its own. It holds the bot's keys and the Supabase service
+  # key, and is written from GitHub on every deploy; .env.web, which the
+  # dashboard reads, never carries any of them. No port: it only calls out.
+  worker:
+    profiles: ["worker"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    image: nightshift-worker:latest
+    restart: unless-stopped
+    env_file:
+      # required: false — with the worker off the file does not exist, and
+      # compose still parses this service because the profile is named.
+      - path: ${WORKER_ENV_FILE:-/opt/nightshift/.env.worker}
+        required: false
+    environment:
+      NIGHTSHIFT_WORKER_ID: nightshift-01
+      # On `docker stop` (a deploy, a reboot) the running video gets this long
+      # to finish; after that it is stopped, re-queued, and resumed from its
+      # checkpoint, so nothing already paid for is bought again. Kept under
+      # stop_grace_period so the worker releases the job itself.
+      WORKER_STOP_GRACE_SECONDS: "840"
+    stop_grace_period: 15m
+    volumes:
+      # Run checkpoints, resume ledgers and renders; topic memory; logs.
+      - worker_output:/app/output
+      - worker_history:/app/history
+      - worker_logs:/app/logs
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # A render uses every core it is given; half the default weight means the
+    # dashboard still answers while one runs.
+    cpu_shares: 512
+    mem_limit: 48g
+    logging: *default-logging
 
 volumes:
   caddy_data:
   caddy_config:
-  # worker_output:
+  worker_output:
+  worker_history:
+  worker_logs:

@@ -16,6 +16,11 @@ name: Deploy web
 #
 # Never on pull_request: a PR run would hand the deploy key to code that has
 # not been reviewed.
+#
+# While the variable NIGHTSHIFT_WORKER is `on`, the same run also deploys the
+# pipeline worker next to it, with its own env file built from the repository's
+# Actions secrets (step "Build the worker env"; docs/DEPLOY_AX42.md, g).
+
 
 on:
   push:
@@ -24,6 +29,16 @@ on:
       - "command-center/**"
       - "deploy/**"
       - ".github/workflows/deploy_web.yml"
+      # What the worker image is built from (Dockerfile.worker, .dockerignore).
+      # With the worker off these redeploy an unchanged web image: cached, quick.
+      - "Dockerfile.worker"
+      - ".dockerignore"
+      - "requirements.txt"
+      - "main.py"
+      - "config.py"
+      - "modules/**"
+      - "tools/**"
+      - "schemas/**"
   workflow_dispatch:
 
 # One deploy at a time, and never cancelled halfway: an interrupted
@@ -38,7 +53,8 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # A worker mid-render gets up to 15 minutes to finish (docker-compose.yml).
+    timeout-minutes: 45
     # Required reviewers or a branch rule can be added to this environment in
     # Settings -> Environments without touching this file.
     environment:
@@ -65,7 +81,8 @@ jobs:
       # Defaults exist only for facts about this deployment; the legal fields
       # have none on purpose: an invented operator name or country on /terms is
       # worse than the page saying NOT CONFIGURED.
-      # SUPABASE_SERVICE_KEY is a repository secret too, and is never read here.
+      # SUPABASE_SERVICE_KEY is a repository secret too, and is never read here:
+      # only the worker step below takes it, into the worker's own file.
       - name: Build the server env
         id: payload
         env:
@@ -169,6 +186,60 @@ jobs:
             echo "url=https://$WEBENV_DOMAIN"
           } >>"$GITHUB_OUTPUT"
           echo "Server env built: ${#keys[@]} keys for $WEBENV_DOMAIN at $GITHUB_SHA."
+
+      # The pipeline worker (docs/DEPLOY_AX42.md, "Worker"), only while the
+      # repository variable NIGHTSHIFT_WORKER is `on`: its env goes to the
+      # server after a marker line, and remote-deploy.sh writes it to
+      # /opt/nightshift/.env.worker (600) — a file the web container never
+      # reads. One WORKERENV_<KEY> per key in deploy/.env.worker.example, from
+      # the repository secret or variable daily_video.yml already uses under
+      # the same name, so nothing is stored twice. ALL_SECRETS is read for one
+      # thing only: the CHRONOS_YT_TOKEN_<REF> channel tokens, whose names are
+      # not known here. GitHub masks every secret in this public log, and the
+      # script prints key names and counts, never a value.
+      - name: Build the worker env
+        if: steps.payload.outputs.run == 'true' && vars.NIGHTSHIFT_WORKER == 'on'
+        env:
+          PAYLOAD: ${{ steps.payload.outputs.file }}
+          ALL_SECRETS: ${{ toJSON(secrets) }}
+          WORKERENV_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          WORKERENV_SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          WORKERENV_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          WORKERENV_PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          WORKERENV_ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          WORKERENV_YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+          WORKERENV_YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
+          WORKERENV_YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+          WORKERENV_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          WORKERENV_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          WORKERENV_MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          WORKERENV_HIGGSFIELD_API_KEY: ${{ secrets.HIGGSFIELD_API_KEY }}
+          WORKERENV_HIGGSFIELD_API_KEY_ID: ${{ secrets.HIGGSFIELD_API_KEY_ID }}
+          WORKERENV_HIGGSFIELD_API_KEY_SECRET: ${{ secrets.HIGGSFIELD_API_KEY_SECRET }}
+          WORKERENV_KLING_API_KEY: ${{ secrets.KLING_API_KEY }}
+          WORKERENV_VEO_API_KEY: ${{ secrets.VEO_API_KEY }}
+          WORKERENV_SEEDANCE_API_KEY: ${{ secrets.SEEDANCE_API_KEY }}
+          WORKERENV_WAN_API_KEY: ${{ secrets.WAN_API_KEY }}
+          WORKERENV_LEONARDO_API_KEY: ${{ secrets.LEONARDO_API_KEY }}
+          WORKERENV_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          WORKERENV_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          WORKERENV_VIDIQ_ACCESS_TOKEN: ${{ secrets.VIDIQ_ACCESS_TOKEN }}
+          WORKERENV_TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
+          WORKERENV_CHRONOS_RENDER_BACKEND: ${{ vars.CHRONOS_RENDER_BACKEND }}
+          WORKERENV_NIGHTSHIFT_RENDER_THREADS: ${{ vars.NIGHTSHIFT_RENDER_THREADS }}
+          WORKERENV_NIGHTSHIFT_RENDER_JOBS: ${{ vars.NIGHTSHIFT_RENDER_JOBS }}
+          WORKERENV_CHRONOS_VIDEO_PROVIDER: ${{ vars.CHRONOS_VIDEO_PROVIDER }}
+          WORKERENV_CHRONOS_ENABLE_VIDEO_GEN: ${{ vars.CHRONOS_ENABLE_VIDEO_GEN }}
+          WORKERENV_CHRONOS_ENABLE_MINIMAX_BROLL: ${{ vars.CHRONOS_ENABLE_MINIMAX_BROLL }}
+          WORKERENV_CHRONOS_IMAGE_PROVIDER: ${{ vars.CHRONOS_IMAGE_PROVIDER }}
+          WORKERENV_CHRONOS_ENABLE_IMAGE_GEN: ${{ vars.CHRONOS_ENABLE_IMAGE_GEN }}
+          WORKERENV_CHRONOS_ENABLE_VIDIQ: ${{ vars.CHRONOS_ENABLE_VIDIQ }}
+          WORKERENV_CHRONOS_AGENT_AUTOPILOT: ${{ vars.CHRONOS_AGENT_AUTOPILOT }}
+          WORKERENV_CHRONOS_AI_CRITIC: ${{ vars.CHRONOS_AI_CRITIC }}
+          WORKERENV_NIGHTSHIFT_AVATAR_ENABLED: ${{ vars.NIGHTSHIFT_AVATAR_ENABLED }}
+          WORKERENV_HIGGSFIELD_AVATAR_ENDPOINT: ${{ vars.HIGGSFIELD_AVATAR_ENDPOINT }}
+          WORKERENV_NIGHTSHIFT_CREDITS_ENFORCE: ${{ vars.NIGHTSHIFT_CREDITS_ENFORCE }}
+        run: python3 deploy/build-worker-env.py "$PAYLOAD"
 
       - name: Deploy over SSH
         if: steps.payload.outputs.run == 'true'
