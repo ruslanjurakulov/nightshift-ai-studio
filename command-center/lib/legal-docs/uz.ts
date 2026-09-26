@@ -118,10 +118,12 @@ export const uz: LegalTexts = {
                 ["vidIQ (ixtiyoriy)", "Kalit so'z va sarlavha tadqiqoti", "Mavzu kalit so'zlari va sarlavha qoralamalari"],
                 ["Telegram, Slack (ixtiyoriy)", "Operatorga bildirishnomalar", "Ishga tushirish holati, video nomlari va havolalari"],
                 ["Google Fonts, Amazon CloudFront", "Ushbu sahifalardagi shriftlar va fon mediasi", "Har qanday veb-so'rovdagi kabi IP manzilingiz va brauzer ma'lumotlari"],
+                ["Paddle (Paddle.com)", "Kredit xaridlari bo'yicha onlayn qayta sotuvchimiz va sotuvchi (Merchant of Record): to'lov oynasi, to'lovni qayta ishlash, soliq, cheklar va qaytarish", "Paddle to'lov oynasiga kiritadigan to'lov va hisob-kitob ma'lumotlaringiz — ularni Paddle o'zi qayta ishlaydi; bizdan — to'lov oynasini to'ldirish uchun akkauntingiz emaili hamda tashkilotingiz va akkauntingiz identifikatorlari"],
               ],
             },
           },
           "Google foydalanuvchi ma'lumotlarini faqat ushbu ro'yxatdagi Supabase, GitHub, Google va bildirishnoma xizmatlari oladi va faqat yuqoridagi maqsadlarda. Biz shaxsiy ma'lumotlarni hech kimga sotmaymiz.",
+          "To'lovlar. Kreditlar onlayn qayta sotuvchimiz va sotuvchi (Merchant of Record) bo'lgan Paddle orqali sotiladi: kredit sotib olayotganda to'lov va hisob-kitob ma'lumotlaringizni Paddle'ning o'z to'lov oynasiga kiritasiz va Paddle ularni sotuvchi sifatida [Paddle maxfiylik bildirishnomasi](https://www.paddle.com/legal/privacy) asosida qayta ishlaydi. Biz karta ma'lumotlaringizni yoki hisob-kitob manzilingizni hech qachon olmaymiz va saqlamaymiz. Paddle bizga faqat xaridni hisobga qo'shish va qaytarishda uni bekor qilish uchun kerakli narsani yuboradi: tranzaksiya va qaytarish identifikatorlari, to'langan summa va valyuta, sotib olingan kreditlar hamda xarid qaysi tashkilot (va ma'lum bo'lsa, qaysi foydalanuvchi) uchun qilingani. Bu yozuvlarni tashkilotingizning kredit tarixi bilan birga uning akkaunti mavjud ekan saqlaymiz yoki soliq yoxud buxgalteriya qonunchiligi talab qilsa, undan uzoqroq.",
         ],
       },
       {
@@ -199,7 +201,7 @@ export const uz: LegalTexts = {
   terms: {
     title: "Foydalanish shartlari",
     summary:
-      "Nightshift'dan foydalanish qoidalari: kanal va kontent uchun javobgarligingiz, nimalar taqiqlangan va javobgarligimiz chegaralari.",
+      "Nightshift'dan foydalanish qoidalari: kanal va kontent uchun javobgarligingiz, nimalar taqiqlangan, oldindan to'langan kreditlar, to'lov va qaytarish qanday ishlashi hamda javobgarligimiz chegaralari.",
     sections: [
       {
         id: "agreement",
@@ -272,22 +274,32 @@ export const uz: LegalTexts = {
       },
       {
         id: "credits",
-        heading: "8. Oldindan to'langan kreditlar",
+        heading: "8. Oldindan to'langan kreditlar, to'lov va qaytarish",
         body: [
           {
-            note: "SHABLON — KUCHDA EMAS. Bu bo'lim kelajakdagi pullik tarif uchun qoralama. Kreditlar sotilishidan oldin uni malakali yurist bilan ko'rib chiqish va kvadrat qavsdagi qiymatlarni to'ldirish shart.",
+            note: "Bu bo'lim oldindan to'langan kreditlar Xizmatda hozir qanday ishlashini tavsiflaydi. U malakali yurist ko'rib chiqishini kutmoqda; har qanday o'zgarish shu sahifada yangi kuchga kirish sanasi bilan e'lon qilinadi.",
           },
+          "8.1. Nima sotib olasiz. Xizmatdan foydalanishning bir qismi oldindan to'langan kreditlar bilan to'lanadi. Kreditlar paketlarda [Narxlar](/pricing) sahifasida ko'rsatilgan narxlarda, yakuniy ko'rinishda esa to'lashdan oldin to'lov oynasida ko'rsatilgan narxda sotiladi. Har bir xarid — bir martalik to'lov: obuna yo'q va hech narsa avtomatik yangilanmaydi. Kreditlar siz ular uchun sotib olgan tashkilot balansiga qo'shiladi va faqat Xizmatda, faqat shu tashkilot tomonidan ishlatilishi mumkin.",
+          "8.2. Kimdan sotib olasiz. Buyurtma jarayonini bizning onlayn qayta sotuvchimiz (reseller) Paddle.com («Paddle») amalga oshiradi. Paddle barcha buyurtmalarimiz bo'yicha sotuvchi (Merchant of Record) hisoblanadi: kreditlarni siz Paddle'dan [Paddle xaridorlar shartlari](https://www.paddle.com/legal/checkout-buyer-terms) asosida sotib olasiz. Paddle to'lovni qayta ishlaydi, amaldagi soliqlarni (QQS yoki savdo solig'i) hisoblaydi va undiradi, chek yoki hisob-faktura beradi hamda to'lov bo'yicha savollar va qaytarish so'rovlarini ko'rib chiqadi. To'lov ma'lumotlaringizni Paddle [Paddle maxfiylik bildirishnomasi](https://www.paddle.com/legal/privacy) asosida qayta ishlaydi; biz karta ma'lumotlaringizni hech qachon olmaymiz va saqlamaymiz.",
+          "8.3. Kreditlar qanday sarflanadi. Kreditlar Xizmat tashkilotingiz kanallaridan biri uchun video tayyorlaganda sarflanadi:",
           {
             list: [
-              "Kreditlar oldindan sotib olinadi va Xizmat video tayyorlagani sari, ishga tushirishdan oldin Xizmatda ko'rsatilgan tariflar bo'yicha sarflanadi.",
-              "Ishga tushirishdan oldin taxminiy narx ko'rsatiladi; aslida yechilgan kreditlar ishlatilgan resurslarni aks ettiradi va taxmindan [oshmaydi / ko'pi bilan [X]% oshadi].",
-              "Kreditlarning pul qiymati yo'q, ular boshqaga o'tkazilmaydi va sotib olingandan [N oy] o'tgach muddati tugaydi.",
-              "Xizmat aybi bilan muvaffaqiyatsiz tugagan ishga sarflangan kreditlar balansingizga qaytariladi.",
-              "Ishlatilmagan kreditlar [sotib olingandan keyin N kun ichida / faqat qonun talab qilgan hollarda] qaytariladi.",
-              "To'lovlarni sotuvchi (merchant of record) sifatida ishlaydigan [to'lov provayderi] qayta ishlaydi; biz karta ma'lumotlaringizni hech qachon olmaymiz va saqlamaymiz.",
-              "Kredit narxini o'zgartirishimiz mumkin; o'zgarish allaqachon sotib olingan kreditlarga hech qachon ta'sir qilmaydi.",
+              "Ishga tushirishdan oldin taxminiy miqdordagi kredit band qilinadi. Taxmin — so'ralgan video uzunligining amaldagi daqiqalik stavkaga ko'paytmasi, daqiqalik stavka qo'llanilmasa — kanalingizning so'nggi ishga tushirishlari narxiga asoslangan hisob; u hech qachon bitta ishga tushirish uchun belgilangan minimumdan kam bo'lmaydi. Taxmin ishga tushirishdan oldin Xizmatda ko'rsatiladi va mavjud kreditlaringiz (balans minus allaqachon band qilinganlar) uni qoplamasa, ishga tushirish boshlanmaydi.",
+              "Ishga tushirish tugagach, u haqiqatda ishlatgan resurslar uchun kreditlar amaldagi stavkalar bo'yicha yechiladi — lekin hech qachon banddan ko'p emas. Bandning ishlatilmagan qismi shu zahoti mavjud kreditlaringizga qaytariladi. Ishga tushirish ishlatgan resurslarning hammasini o'lchab va narxlab bo'lmasa, band to'liq yechiladi.",
+              "Ishga tushirish muvaffaqiyatsiz tugasa yoki oxiriga yetmasa, band to'liq qaytariladi va hech narsa yechilmaydi. Hech qachon boshlanmagan yoki natijasini xabar qilmagan ishga tushirishning bandi avtomatik qaytariladi.",
+              "Har bir band, yechish va qaytarish Xizmatdagi tashkilotingizning kredit tarixiga yoziladi.",
             ],
           },
+          "8.4. Kreditlarning tabiati. Kreditlar — Xizmatdan foydalanish uchun oldindan to'langan huquq, pul yoki depozit emas: ularning pul qiymati yo'q, ularga foiz hisoblanmaydi, ularni pulga almashtirib (8.6-bo'limdagi qaytarishdan tashqari), boshqa tashkilotga o'tkazib yoki qayta sotib bo'lmaydi.",
+          {
+            creditExpiry: {
+              never: "8.5. Amal qilish muddati. Kreditlarning muddati tugamaydi.",
+              after: "8.5. Amal qilish muddati. Ishlatilmagan kreditlarning muddati sotib olingan kundan boshlab {months} oy o'tgach tugaydi.",
+            },
+          },
+          "8.6. Qaytarish. Sotuvchi Paddle bo'lgani uchun qaytarishni Paddle [Paddle xaridorlar shartlari](https://www.paddle.com/legal/checkout-buyer-terms) va amaldagi qonunchilik asosida amalga oshiradi, jumladan yashash joyingizda iste'molchi sifatida xariddan voz kechish huquqingiz bo'lsa, shu huquq asosida ham. Qaytarishni so'rash uchun Paddle chekidagi havoladan foydalaning yoki {contactEmail} manziliga yozing — yordam beramiz.",
+          "8.7. Qaytarish va chargeback kreditlarni olib qo'yadi. Xarid qaytarilsa yoki bank orqali e'tiroz qilinsa (chargeback), u qo'shgan kreditlar tashkilot balansidan olinadi: to'liq qaytarishda — hammasi, qisman qaytarishda — qaytarilgan summaga mutanosib qismi. Faqat mavjud kreditlarni olish mumkin: allaqachon sarflangan yoki ishlab turgan ishga tushirish uchun band qilinganlarini olib bo'lmaydi. Chargeback'dan keyin sarflangan, lekin to'lanmagan kreditlar qolsa, tashkilotning pullik funksiyalardan foydalanishini to'xtatib turishimiz mumkin.",
+          "8.8. Narxlarning o'zgarishi. Kredit paketlari narxlarini va kreditlar sarflanish stavkalarini o'zgartirishimiz mumkin. O'zgarish balansingizdagi kreditlarni hech qachon kamaytirmaydi va ishga tushirish uchun u boshlanganda qo'yilgan banddan ko'p hech qachon yechilmaydi.",
         ],
       },
       {

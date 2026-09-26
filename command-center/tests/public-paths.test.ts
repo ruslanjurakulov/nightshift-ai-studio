@@ -33,7 +33,7 @@ beforeEach(() => {
 });
 
 describe("signed-out visitors (what Google's reviewer sees)", () => {
-  it.each(["/", "/privacy", "/terms"])("can open %s without being sent to /login", async (path) => {
+  it.each(["/", "/privacy", "/terms", "/pricing"])("can open %s without being sent to /login", async (path) => {
     expect((await visit(path, false)).redirect).toBeNull();
   });
 
@@ -54,7 +54,7 @@ describe("signed-out visitors (what Google's reviewer sees)", () => {
 
   // Prefix matching would have published a channel's screens: the router reads
   // /privacy/videos as the Videos page of a channel whose segment is "privacy".
-  it.each(["/privacy/videos", "/terms/command-center", "/privacy-policy", "/termsx"])(
+  it.each(["/privacy/videos", "/terms/command-center", "/privacy-policy", "/termsx", "/pricing/credits", "/pricing-old"])(
     "do not get %s just because it starts like a public page",
     async (path) => {
       expect((await visit(path, false)).redirect).toBe("/login");
@@ -93,23 +93,32 @@ describe("signed-in users keep today's behaviour", () => {
     expect((await visit("/privacy", true)).redirect).toBeNull();
     expect((await visit("/terms", true)).redirect).toBeNull();
   });
+
+  // Pricing is a page of its own for everyone: a signed-in user must not be
+  // rewritten onto a channel called "pricing" or handed a channel header.
+  it("can read the pricing page as it is", async () => {
+    const { redirect, res } = await visit("/pricing", true);
+    expect(redirect).toBeNull();
+    expect(res.headers.get("x-middleware-request-x-nightshift-channel")).toBeNull();
+  });
 });
 
 describe("gateDecision", () => {
   it("treats a trailing slash like the router does", () => {
     expect(isPublicPath("/terms/")).toBe(true);
     expect(gateDecision("/privacy/", false)).toBe("pass");
+    expect(gateDecision("/pricing/", true)).toBe("pass");
   });
 
   it("never lets a signed-out visitor into an app route", () => {
-    for (const path of ["/x", "/all-channels", "/api/agent/run", "/chronos/privacy"]) {
+    for (const path of ["/x", "/all-channels", "/api/agent/run", "/chronos/privacy", "/chronos/pricing"]) {
       expect(gateDecision(path, false)).toBe("to-login");
     }
   });
 });
 
 describe("channel ids", () => {
-  it.each(["privacy", "terms", "login", "api"])(
+  it.each(["privacy", "terms", "pricing", "login", "api"])(
     "cannot be %s, which would be shadowed by a page at the root",
     (id) => {
       expect(isValidChannelId(id)).toBe(false);

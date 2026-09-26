@@ -90,3 +90,24 @@ export const LEGAL: LegalConfig = readLegalConfig({
   NEXT_PUBLIC_LEGAL_COUNTRY: process.env.NEXT_PUBLIC_LEGAL_COUNTRY,
   NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE: process.env.NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE,
 });
+
+/**
+ * How long purchased credits stay usable, for the Terms and the Pricing page.
+ *
+ *   NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS  whole months, 1–120; empty = credits do not expire
+ *
+ * Unlike the operator details above, empty is a real answer here, not a gap:
+ * nothing in the Service expires credits (0020 expires only the hold on a run
+ * that never reported back), so the texts say credits do not expire until the
+ * operator decides otherwise and sets a term. A value that is not a whole
+ * number in range is treated as unset, so the texts keep describing what the
+ * system actually does rather than a typo.
+ */
+export function creditExpiryMonths(raw: string | undefined): number | null {
+  const v = (raw ?? "").trim();
+  if (!/^\d{1,3}$/.test(v)) return null;
+  const n = Number(v);
+  return n >= 1 && n <= 120 ? n : null;
+}
+
+export const CREDIT_EXPIRY_MONTHS: number | null = creditExpiryMonths(process.env.NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS);

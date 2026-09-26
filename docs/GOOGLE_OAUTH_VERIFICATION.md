@@ -12,9 +12,13 @@ Kod tomonidan tayyor bo'lgan narsalar (shu PR):
 | Bosh sahifa (landing) | `https://<domen>/` | Ochiq (tizimga kirmagan uchun) |
 | Maxfiylik siyosati | `https://<domen>/privacy` | Ochiq |
 | Foydalanish shartlari | `https://<domen>/terms` | Ochiq |
+| Narxlar (kredit paketlari) | `https://<domen>/pricing` | Ochiq (kirgan va kirmagan uchun) |
 | OAuth callback | `https://<domen>/api/oauth/youtube/callback` | Faqat tizimga kirgan |
 
 Qolgan hamma sahifa va API avvalgidek login ortida (`command-center/lib/public-paths.ts`).
+`/pricing` Google uchun shart emas — uni Paddle'ning seller verification'i talab qiladi
+(`docs/PADDLE_SETUP.md`), lekin landing header/footer'idan havola bor va siyosat/shartlar
+unga tayanadi.
 
 ## 1. Operator ma'lumotlarini kiritish (Vercel)
 
@@ -37,9 +41,18 @@ Egasi tasdiqlashi kerak bo'lgan matnlar:
       kod emas, sizning majburiyatingiz. Bajara olmasangiz, muddatni o'zgartiring.
 - [ ] Supabase loyihasi qaysi mintaqada ekanini tekshiring (siyosatda "EU, AQSh va boshqa
       mamlakatlar" deyilgan; Vercel `fra1`).
-- [ ] Shartlardagi **8-bo'lim (kreditlar) — SHABLON**, kuchda emas. Pullik tarifdan oldin
-      yurist bilan ko'rib chiqing va `[...]` qiymatlarni to'ldiring. Butun Shartlar matnini
-      ham yurist ko'rgani ma'qul.
+- [ ] Shartlardagi **8-bo'lim (kreditlar, to'lov, qaytarish)** endi haqiqiy matn: nima
+      sotiladi (oldindan to'langan kreditlar), band → haqiqiy sarf yechiladi (banddan ko'p
+      emas) → muvaffaqiyatsiz run'da band to'liq qaytadi, Paddle — Merchant of Record va
+      reseller (Buyer Terms havolasi), qaytarish/chargeback ishlatilmagan kreditni olib
+      qo'yadi. Bo'lim tepasida "yurist ko'rib chiqishini kutmoqda" degan ochiq izoh bor —
+      kredit sotuvidan oldin yurist bilan ko'rib chiqing; butun Shartlar matnini ham.
+- [ ] Kreditlar muddati: `NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS` bo'sh bo'lsa matn "muddati
+      tugamaydi" deydi — tizim ham shunday ishlaydi. Muddat qo'ymoqchi bo'lsangiz, avval
+      yurist bilan kelishing (kod kreditlarni avtomatik o'chirmaydi).
+- [ ] Maxfiylik siyosatidagi provayderlar jadvalida **Paddle** (to'lov, Merchant of Record)
+      va "Payments" paragrafi bor — Paddle'dan faqat tranzaksiya id'lari, summa/valyuta,
+      kredit soni va tashkilot id'si keladi; karta va hisob-kitob manzili Paddle'da qoladi.
 - [ ] Kontakt pochtasi haqiqatan ishlaydi va javob beriladi (Google unga yozadi).
 
 ## 2. Domen
@@ -127,7 +140,7 @@ Google YouTube'ga yuklangan (unlisted) video havolasini so'raydi. Talablar:
 - [ ] Brauzer manzil satri ko'rinib tursin — domen va consent screen URL'idagi
       `client_id` ko'rinishi kerak (u Cloud'dagi client ID bilan bir xil bo'lishi shart).
 - [ ] Ketma-ketlik:
-  1. `https://<domen>/` landing → pastdagi Privacy/Terms havolalari.
+  1. `https://<domen>/` landing → pastdagi Pricing/Privacy/Terms havolalari.
   2. Sign in → Providers sahifasi → **Connect YouTube**.
   3. Google consent screen: app nomi, tanlangan akkaunt va **har bir scope** ko'rinsin.
   4. Ruxsat berilgach, "connected" holati.

@@ -6,6 +6,7 @@ function strings(block: LegalBlock): string[] {
   if (typeof block === "string") return [block];
   if ("list" in block) return block.list;
   if ("note" in block) return [block.note];
+  if ("creditExpiry" in block) return [block.creditExpiry.never, block.creditExpiry.after];
   return [...block.table.head, ...block.table.rows.flat()];
 }
 
@@ -73,12 +74,54 @@ describe("legal texts", () => {
     for (const scope of requested) expect(named).toContain(scope);
   });
 
-  it("the prepaid-credits section is marked as an unreviewed template in every language", () => {
-    for (const texts of Object.values(LEGAL_TEXTS)) {
+  // Paddle's seller verification reads the Terms for what is sold, who sells
+  // it and how refunds work, and the Privacy Policy for who processes payments.
+  const PADDLE_BUYER_TERMS = "https://www.paddle.com/legal/checkout-buyer-terms";
+  const PADDLE_PRIVACY = "https://www.paddle.com/legal/privacy";
+
+  for (const [locale, texts] of Object.entries(LEGAL_TEXTS)) {
+    describe(`${locale}: prepaid credits and Paddle`, () => {
       const credits = texts.terms.sections.find((s) => s.id === "credits");
-      expect(credits?.body[0]).toHaveProperty("note");
-    }
-  });
+      const creditsText = credits ? credits.body.flatMap(strings).join(" ") : "";
+
+      it("the credits section is in effect: a lawyer-review note on top, no template marker, no [blanks]", () => {
+        expect(credits?.body[0]).toHaveProperty("note");
+        expect(creditsText).not.toMatch(/TEMPLATE|NOT IN EFFECT|ШАБЛОН|НЕ ДЕЙСТВУЕТ|SHABLON|KUCHDA EMAS/);
+        // A bracketed gap like "[N months]" would be an unfinished promise;
+        // markdown links are the only brackets allowed.
+        expect(creditsText.replace(/\[[^\]]+\]\([^)]+\)/g, "")).not.toMatch(/\[|\]/);
+      });
+
+      it("names Paddle as Merchant of Record and links its buyer terms, privacy notice and our pricing page", () => {
+        expect(creditsText).toContain("Paddle");
+        expect(creditsText).toContain("Merchant of Record");
+        const links = hrefs(texts.terms);
+        expect(links).toContain(PADDLE_BUYER_TERMS);
+        expect(links).toContain(PADDLE_PRIVACY);
+        expect(links).toContain("/pricing");
+      });
+
+      // Unset expiry means "credits do not expire" — what the system does —
+      // so both wordings must exist, and only the configured one fills {months}.
+      it("says what happens with and without an expiry term", () => {
+        const expiry = credits?.body.find((b) => typeof b === "object" && "creditExpiry" in b);
+        expect(expiry).toBeDefined();
+        const { never, after } = (expiry as { creditExpiry: { never: string; after: string } }).creditExpiry;
+        expect(never).not.toContain("{months}");
+        expect(after).toContain("{months}");
+      });
+
+      it("lists Paddle among the Privacy Policy's processors, with its privacy notice", () => {
+        const processors = texts.privacy.sections.find((s) => s.id === "processors");
+        const table = processors?.body.find((b) => typeof b === "object" && "table" in b) as
+          | { table: { rows: string[][] } }
+          | undefined;
+        expect(table?.table.rows.some((r) => r[0].startsWith("Paddle"))).toBe(true);
+        expect(processors?.body.flatMap(strings).join(" ")).toContain("Merchant of Record");
+        expect(hrefs(texts.privacy)).toContain(PADDLE_PRIVACY);
+      });
+    });
+  }
 
   for (const [locale, texts] of Object.entries(LEGAL_TEXTS)) {
     if (locale === "en") continue;

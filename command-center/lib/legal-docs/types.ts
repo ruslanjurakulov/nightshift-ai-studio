@@ -19,8 +19,14 @@ export type LegalBlock =
   | string
   | { list: string[] }
   | { table: { head: string[]; rows: string[][] } }
-  /** A boxed notice — used to mark a section as an unreviewed template. */
-  | { note: string };
+  /** A boxed notice — e.g. that a section still awaits a lawyer's review. */
+  | { note: string }
+  /**
+   * The one sentence that depends on NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS
+   * (lib/legal.ts): `never` while no term is set — nothing in the Service
+   * expires credits — and `after`, with `{months}` filled in, once one is.
+   */
+  | { creditExpiry: { never: string; after: string } };
 
 export interface LegalSection {
   /** Stable anchor, identical across languages so a deep link survives a switch. */

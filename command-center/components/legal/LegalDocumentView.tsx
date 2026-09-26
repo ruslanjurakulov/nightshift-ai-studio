@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Dictionary, Locale } from "@/lib/i18n";
 import type { LegalBlock, LegalDocument } from "@/lib/legal-docs";
 import { tokenizeInline, type LegalVar } from "@/lib/legal-docs/inline";
-import { LEGAL, LEGAL_ENV_VARS, type LegalConfig } from "@/lib/legal";
+import { CREDIT_EXPIRY_MONTHS, LEGAL, LEGAL_ENV_VARS, type LegalConfig } from "@/lib/legal";
 
 /** An operator detail, or the marker saying which env var would supply it. */
 function Var({ name, t }: { name: LegalVar; t: Dictionary }) {
@@ -81,6 +81,17 @@ function Block({ block, t }: { block: LegalBlock; t: Dictionary }) {
           </li>
         ))}
       </ul>
+    );
+  }
+  if ("creditExpiry" in block) {
+    const text =
+      CREDIT_EXPIRY_MONTHS === null
+        ? block.creditExpiry.never
+        : block.creditExpiry.after.replace("{months}", String(CREDIT_EXPIRY_MONTHS));
+    return (
+      <p>
+        <Inline text={text} t={t} />
+      </p>
     );
   }
   if ("note" in block) {

@@ -136,3 +136,23 @@ export function paddleLocale(locale: Locale): "en" | "ru" {
 export function purchaseArrived(before: number, now: number): boolean {
   return Number.isFinite(before) && Number.isFinite(now) && now > before;
 }
+
+/** What Paddle.PricePreview answers — only the fields read here. */
+export interface PricePreviewResponse {
+  data?: { details?: { lineItems?: { price?: { id?: string }; formattedTotals?: { total?: string } }[] } };
+}
+
+/**
+ * Paddle's localized total per price id, from a PricePreview answer. A line
+ * without both an id and a formatted total is left out, so the caller shows
+ * its fallback ("price shown at checkout") rather than a number we made up.
+ */
+export function previewTotals(preview: PricePreviewResponse | null | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of preview?.data?.details?.lineItems ?? []) {
+    const id = line?.price?.id;
+    const total = line?.formattedTotals?.total;
+    if (typeof id === "string" && id && typeof total === "string" && total.trim()) out[id] = total.trim();
+  }
+  return out;
+}

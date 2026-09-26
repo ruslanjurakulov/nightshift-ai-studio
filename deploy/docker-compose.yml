@@ -44,6 +44,12 @@ services:
         NEXT_PUBLIC_PADDLE_PRICE_STARTER: ${NEXT_PUBLIC_PADDLE_PRICE_STARTER:-}
         NEXT_PUBLIC_PADDLE_PRICE_CREATOR: ${NEXT_PUBLIC_PADDLE_PRICE_CREATOR:-}
         NEXT_PUBLIC_PADDLE_PRICE_STUDIO: ${NEXT_PUBLIC_PADDLE_PRICE_STUDIO:-}
+        # /pricing display prices (used until/unless Paddle's own preview answers)
+        # and the credit expiry term the Terms print; empty = not shown / never.
+        NEXT_PUBLIC_PRICE_DISPLAY_STARTER: ${NEXT_PUBLIC_PRICE_DISPLAY_STARTER:-}
+        NEXT_PUBLIC_PRICE_DISPLAY_CREATOR: ${NEXT_PUBLIC_PRICE_DISPLAY_CREATOR:-}
+        NEXT_PUBLIC_PRICE_DISPLAY_STUDIO: ${NEXT_PUBLIC_PRICE_DISPLAY_STUDIO:-}
+        NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS: ${NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS:-}
     image: nightshift-web:latest
     restart: unless-stopped
     env_file:
