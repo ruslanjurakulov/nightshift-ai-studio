@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
+import { useToast } from "@/components/feedback/ToastProvider";
 import { creditRunError } from "@/lib/credits";
 import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
 
@@ -45,6 +46,7 @@ export function RunNowButton({
   const [phase, setPhase] = useState<Phase>("idle");
   const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
   const [creditError, setCreditError] = useState<string | null>(null);
+  const toast = useToast();
 
   // Optional per-run topic + data-backed suggestions (panel variant only).
   type Idea = { label: string; source: "demand" | "proven" };
@@ -98,15 +100,20 @@ export function RunNowButton({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setErrorKey(data.error === "github_unauthorized" ? "unauthorized" : "failed");
-        setCreditError(creditRunError(data, t, locale));
+        const unauthorized = data.error === "github_unauthorized";
+        const credit = creditRunError(data, t, locale);
+        setErrorKey(unauthorized ? "unauthorized" : "failed");
+        setCreditError(credit);
         setPhase("error");
+        toast.error(credit ?? (unauthorized ? t.agents.runUnauthorized : t.agents.runFailed));
         return;
       }
       setPhase("queued");
+      toast.success(t.agents.runQueued);
     } catch {
       setErrorKey("failed");
       setPhase("error");
+      toast.error(t.agents.runFailed);
     }
   }
 
