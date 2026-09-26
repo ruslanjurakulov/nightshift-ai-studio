@@ -5,12 +5,19 @@ import { NotConfigured } from "@/components/NotConfigured";
 import { AddChannelWizard } from "@/components/channels/AddChannelWizard";
 import { getDictionary } from "@/lib/i18n/server";
 import { getOrgContext } from "@/lib/orgs-server";
+import { readChannelPrefill } from "@/lib/welcome";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function NewChannelPage() {
+export default async function NewChannelPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   if (!isSupabaseConfigured) return <NotConfigured />;
+  // What the person answered on /welcome, if they came from there.
+  const prefill = readChannelPrefill(await searchParams);
   const { t } = await getDictionary();
   const path = await getChannelPath();
   const org = await getOrgContext();
@@ -27,7 +34,11 @@ export default async function NewChannelPage() {
         <h1 className="t-hero mt-2">{t.channels.newTitle}</h1>
         <p className="t-lead mt-4">{t.channels.newSubtitle}</p>
       </div>
-      <AddChannelWizard orgId={org.supported ? (org.current?.id ?? null) : null} />
+      <AddChannelWizard
+        orgId={org.supported ? (org.current?.id ?? null) : null}
+        initialNiche={prefill.niche}
+        initialLanguage={prefill.language}
+      />
     </div>
   );
 }

@@ -41,6 +41,22 @@ describe("signed-out visitors (what Google's reviewer sees)", () => {
     expect((await visit("/login", false)).redirect).toBeNull();
   });
 
+  it.each(["/signup", "/signup/", "/auth/callback", "/auth/callback?code=abc&next=/welcome"])(
+    "can open the sign-up flow at %s",
+    async (path) => {
+      expect((await visit(path, false)).redirect).toBeNull();
+    },
+  );
+
+  // Exact matching, as for the legal pages: /signup/x would be the "x" screen
+  // of a channel called "signup", and /auth/anything else is not the callback.
+  it.each(["/signup/x", "/signup/videos", "/signupx", "/auth", "/auth/callback/x", "/auth/other", "/welcome"])(
+    "are sent to /login from %s",
+    async (path) => {
+      expect((await visit(path, false)).redirect).toBe("/login");
+    },
+  );
+
   it.each([
     "/all-channels/command-center",
     "/chronos/videos",
@@ -79,6 +95,25 @@ describe("signed-in users keep today's behaviour", () => {
     expect((await visit("/login", true)).redirect).toBe("/");
   });
 
+  it("are sent away from /signup to their app", async () => {
+    expect((await visit("/signup", true)).redirect).toBe("/");
+  });
+
+  // A confirmation link opened in a browser that still holds another session
+  // must reach the callback, which replaces it.
+  it("still reach the auth callback", async () => {
+    const { redirect, res } = await visit("/auth/callback?code=abc", true);
+    expect(redirect).toBeNull();
+    expect(res.headers.get("x-middleware-request-x-nightshift-channel")).toBeNull();
+  });
+
+  // /welcome is its own page, not a channel called "welcome".
+  it("open /welcome as it is, without a channel header", async () => {
+    const { redirect, res } = await visit("/welcome", true);
+    expect(redirect).toBeNull();
+    expect(res.headers.get("x-middleware-request-x-nightshift-channel")).toBeNull();
+  });
+
   it("still get old section links rewritten onto a channel", async () => {
     expect((await visit("/videos", true)).redirect).toBe("/all-channels/videos");
   });
@@ -110,6 +145,22 @@ describe("gateDecision", () => {
     expect(gateDecision("/pricing/", true)).toBe("pass");
   });
 
+  it("puts the sign-up flow on the public surface, exactly", () => {
+    expect(isPublicPath("/signup")).toBe(true);
+    expect(isPublicPath("/auth/callback")).toBe(true);
+    expect(isPublicPath("/signup/x")).toBe(false);
+    expect(isPublicPath("/auth/callback/x")).toBe(false);
+    expect(isPublicPath("/welcome")).toBe(false);
+    expect(gateDecision("/signup", false)).toBe("pass");
+    expect(gateDecision("/signup", true)).toBe("to-home");
+    expect(gateDecision("/auth/callback", false)).toBe("pass");
+    expect(gateDecision("/auth/callback", true)).toBe("pass");
+    expect(gateDecision("/welcome", false)).toBe("to-login");
+    expect(gateDecision("/welcome", true)).toBe("pass");
+    expect(gateDecision("/signup/x", false)).toBe("to-login");
+    expect(gateDecision("/signup/x", true)).toBe("app");
+  });
+
   it("never lets a signed-out visitor into an app route", () => {
     for (const path of ["/x", "/all-channels", "/api/agent/run", "/chronos/privacy", "/chronos/pricing"]) {
       expect(gateDecision(path, false)).toBe("to-login");
@@ -118,7 +169,7 @@ describe("gateDecision", () => {
 });
 
 describe("channel ids", () => {
-  it.each(["privacy", "terms", "pricing", "login", "api"])(
+  it.each(["privacy", "terms", "pricing", "login", "api", "signup", "auth", "welcome"])(
     "cannot be %s, which would be shadowed by a page at the root",
     (id) => {
       expect(isValidChannelId(id)).toBe(false);
