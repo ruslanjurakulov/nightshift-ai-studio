@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import type { ChannelAgentConfig } from "@/lib/types";
+import type { QueueJob, RunBackend } from "@/lib/runBackend";
 
 /**
  * The Create studio — one page to type a topic, set the run's controls, press
@@ -26,10 +27,13 @@ type Phase = "idle" | "confirm" | "starting" | "queued" | "error";
 export function CreateStudio({
   channelId,
   githubConfigured,
+  backend = "actions",
   agentConfig,
 }: {
   channelId: string | null;
   githubConfigured: boolean;
+  /** Where Run now sends the run (server env NIGHTSHIFT_RUN_BACKEND). */
+  backend?: RunBackend;
   agentConfig: ChannelAgentConfig | null;
 }) {
   const { t } = useI18n();
@@ -44,6 +48,9 @@ export function CreateStudio({
   const [phase, setPhase] = useState<Phase>("idle");
   const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
   const [events, setEvents] = useState<Ev[]>([]);
+  // Queue mode only: this channel's latest render_jobs, so a job still waiting
+  // for the worker is visible as waiting, not as a run that never started.
+  const [jobs, setJobs] = useState<QueueJob[] | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const blocked = !channelId || !githubConfigured;
@@ -53,6 +60,7 @@ export function CreateStudio({
       const res = await fetch("/api/agent/events", { cache: "no-store" });
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.events)) setEvents(data.events as Ev[]);
+      if (res.ok) setJobs(Array.isArray(data.jobs) ? (data.jobs as QueueJob[]) : null);
     } catch {
       /* a dropped poll is not an error worth showing */
     }
@@ -249,7 +257,45 @@ export function CreateStudio({
       {phase === "queued" && (
         <div className="panel flex flex-col gap-2 p-4">
           <h2 className="t-section">{t.create.progressTitle}</h2>
-          <p className="text-[12px] text-[var(--color-muted)]">{t.create.progressHint}</p>
+          <p className="text-[12px] text-[var(--color-muted)]">
+            {backend === "queue" ? t.create.progressHintQueue : t.create.progressHint}
+          </p>
+          {backend === "queue" && jobs && jobs.length > 0 && (
+            <ol className="flex flex-col gap-1.5" aria-label={t.create.queueTitle}>
+              {jobs.slice(0, 3).map((j) => (
+                <li key={j.id} className="flex flex-wrap items-center gap-3 text-[12px]">
+                  <span className="mono shrink-0 text-[11px] text-[var(--color-muted)]">
+                    {t.create.queueJob} #{j.id}
+                  </span>
+                  <span
+                    className="shrink-0 text-[9px] uppercase tracking-[0.18em]"
+                    style={{
+                      color:
+                        j.status === "succeeded"
+                          ? "var(--color-ok)"
+                          : j.status === "failed"
+                            ? "var(--color-fail)"
+                            : j.status === "running"
+                              ? "var(--color-primary)"
+                              : "var(--color-muted)",
+                    }}
+                  >
+                    {t.create.queueStatus[j.status]}
+                  </span>
+                  {j.attempts > 1 && (
+                    <span className="mono text-[10px] text-[var(--color-muted)]">
+                      {t.create.queueAttempt} {j.attempts}
+                    </span>
+                  )}
+                  {j.error && (
+                    <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--color-fail)]" title={j.error}>
+                      {j.error.split("\n")[0]}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
           {events.length === 0 ? (
             <p className="mono text-[12px] text-[var(--color-muted)]">{t.create.progressWaiting}</p>
           ) : (

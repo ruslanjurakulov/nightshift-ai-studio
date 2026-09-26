@@ -17,7 +17,7 @@ import { inferNextStage, dailyMission, PIPELINE_ORDER, type PipelineStageKey } f
 import { getDictionary } from "@/lib/i18n/server";
 import { fetchTopicScores, getChannelContext } from "@/lib/channels-server";
 import { isScoped, scopeQuery } from "@/lib/channels";
-import { isGithubConfigured } from "@/lib/server/github-secrets";
+import { isRunNowConfigured } from "@/lib/server/run-backend";
 import { RunNowButton } from "@/components/agents/RunNowButton";
 import { fmt } from "@/lib/i18n";
 import type { FeedbackSignalRow, MetricsSnapshotRow, SystemEventRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
@@ -71,12 +71,12 @@ export default async function CommandCenter() {
   // RLS still decides what may be read at all).
   const { selection, channels } = await getChannelContext();
   // The primary "Produce a video" action needs one verified channel and the
-  // GitHub dispatch wiring; when either is missing the hero keeps its
+  // run backend's wiring (GitHub dispatch, or the render_jobs queue); when either is missing the hero keeps its
   // navigation buttons only, rather than showing a dead control.
   const scopedChannel = isScoped(selection)
     ? channels.find((c) => c.channel_id === selection)
     : undefined;
-  const canProduce = Boolean(scopedChannel) && isGithubConfigured;
+  const canProduce = Boolean(scopedChannel) && isRunNowConfigured;
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
@@ -179,7 +179,7 @@ export default async function CommandCenter() {
               <RunNowButton
                 variant="inline"
                 channelId={scopedChannel.channel_id}
-                githubConfigured={isGithubConfigured}
+                githubConfigured={isRunNowConfigured}
                 label={t.dashboard.produce}
               />
             )}
