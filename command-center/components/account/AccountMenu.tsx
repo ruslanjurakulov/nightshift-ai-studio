@@ -226,6 +226,10 @@ export function AccountMenu({ email }: { email: string | null }) {
                   <PlaceholderRow
                     key={`p:${row.platform}`}
                     platform={row.platform}
+                    connectable={
+                      row.platform === "youtube" ||
+                      (state === "ready" && Boolean(data?.connectable[row.platform]))
+                    }
                     status={state === "ready" ? "ready" : state === "failed" ? "failed" : "loading"}
                     onNavigate={() => close(false)}
                   />
@@ -348,10 +352,13 @@ function AccountRow({ account }: { account: ConnectedAccount }) {
 
 function PlaceholderRow({
   platform,
+  connectable,
   status,
   onNavigate,
 }: {
   platform: Platform;
+  /** Instagram / TikTok: the deployment has the platform's app keys (0028). */
+  connectable: boolean;
   /** Before the data arrives, or when it failed, nothing is claimed about YouTube. */
   status: "loading" | "failed" | "ready";
   onNavigate: () => void;
@@ -366,7 +373,9 @@ function PlaceholderRow({
         <p className="truncate text-[13px] text-[var(--color-fg)]">{PLATFORM_NAME[platform]}</p>
         <p className="text-[10px] text-[var(--color-muted)]">
           {!youtube
-            ? t.account.comingSoon
+            ? connectable
+              ? t.account.notConnected
+              : t.account.comingSoon
             : status === "ready"
               ? t.account.noYoutube
               : status === "loading"
@@ -374,7 +383,7 @@ function PlaceholderRow({
                 : t.common.dash}
         </p>
       </div>
-      {youtube ? (
+      {youtube || connectable ? (
         status === "ready" && (
           <Link href={path("/channels")} onClick={onNavigate} className="btn-sky is-quiet pill shrink-0 px-3 py-1 text-[11px]">
             {t.account.connect}

@@ -2,6 +2,7 @@ import "server-only";
 import { getChannelContext } from "@/lib/channels-server";
 import { fetchTokenStatuses } from "@/lib/server/channel-tokens";
 import type { ChannelTokenStatus } from "@/lib/channel-tokens";
+import { listConnectedSocialAccounts } from "@/lib/server/social-accounts";
 import type { ChannelCredentialRow, ChannelRow } from "@/lib/types";
 
 /**
@@ -12,15 +13,16 @@ import type { ChannelCredentialRow, ChannelRow } from "@/lib/types";
  * organization — channel_token_status() (migration 0022), which returns
  * connection metadata only, never a token.
  *
- * Only YouTube exists today. Instagram and TikTok rows are added here by the
- * social-publish work; until then the panel shows them as "coming soon".
+ * Instagram and TikTok rows are the organization's social_accounts (migration
+ * 0028, RLS: org members) — metadata only; their tokens are in Vault.
  */
 
 export type Platform = "youtube" | "instagram" | "tiktok";
 
 export interface ConnectedAccount {
   platform: Platform;
-  /** Stable key for the row: the channel id for YouTube. */
+  /** Stable key for the row: the channel id for YouTube, the social_accounts
+   *  id for Instagram / TikTok. */
   id: string;
   name: string;
   /** Public avatar URL read back from the platform, or null. */
@@ -77,6 +79,11 @@ export function youtubeAccounts(
 
 /** Every connected (or connectable) account of the workspace being viewed. */
 export async function readConnectedAccounts(): Promise<ConnectedAccount[]> {
+  const [youtube, social] = await Promise.all([readYoutubeAccounts(), listConnectedSocialAccounts().catch(() => [])]);
+  return [...youtube, ...social];
+}
+
+async function readYoutubeAccounts(): Promise<ConnectedAccount[]> {
   const { channels, credentials } = await getChannelContext();
   if (channels.length === 0) return [];
   const tokens = await fetchTokenStatuses();
