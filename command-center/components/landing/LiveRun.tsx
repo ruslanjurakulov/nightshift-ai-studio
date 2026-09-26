@@ -22,18 +22,19 @@ export function LiveRun({ t }: { t: Dictionary }) {
       aria-label={r.label}
       className="glass-card relative w-full min-w-0 rounded-[22px] border border-[var(--color-border)] p-5 sm:p-6"
     >
-      <figcaption className="flex items-center justify-between gap-3">
+      <figcaption className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <span className="flex items-center gap-2.5">
           <span className="glow-dot pulse size-2 rounded-full bg-[var(--color-primary)] text-[var(--color-primary)]" aria-hidden />
-          <span className="t-label">{r.example}</span>
+          <span className="t-label whitespace-nowrap">{r.example}</span>
         </span>
-        <span className="mono pill border border-[var(--color-border)] px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-[var(--color-muted)]">
+        <span className="mono pill whitespace-nowrap border border-[var(--color-border)] px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-[var(--color-muted)]">
           {r.mode}
         </span>
       </figcaption>
 
       <ol className="relative mt-5">
-        {/* The rail: a hairline behind the status cells, filled as the run advances. */}
+        {/* The rail: a hairline behind the status cells, filled as the run
+            advances. A span, so the rows' :nth-of-type timing skips it. */}
         <span
           className="absolute bottom-[26px] left-[15px] top-[26px] w-px bg-[var(--color-border)]"
           aria-hidden

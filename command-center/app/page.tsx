@@ -19,10 +19,7 @@ import { Landing } from "@/components/landing/Landing";
 /** Read by literal name at request time — a self-hosted deploy sets APP_ORIGIN
  *  in the container, not at build. */
 function origin(): string | null {
-  return siteOrigin({
-    APP_ORIGIN: process.env.APP_ORIGIN,
-    VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
-  });
+  return siteOrigin({ APP_ORIGIN: process.env.APP_ORIGIN });
 }
 
 /** Served by app/og.png/route.tsx; see there for why it is not opengraph-image.tsx. */

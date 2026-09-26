@@ -833,13 +833,13 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .lp-dawn-dot { left: 100%; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .lp-step:nth-child(1) .lp-strip { animation: lp-row-0 16s step-end infinite; }
-  .lp-step:nth-child(2) .lp-strip { animation: lp-row-1 16s step-end infinite; }
-  .lp-step:nth-child(3) .lp-strip { animation: lp-row-2 16s step-end infinite; }
-  .lp-step:nth-child(4) .lp-strip { animation: lp-row-3 16s step-end infinite; }
-  .lp-step:nth-child(5) .lp-strip { animation: lp-row-4 16s step-end infinite; }
-  .lp-step:nth-child(6) .lp-strip { animation: lp-row-5 16s step-end infinite; }
-  .lp-step:nth-child(7) .lp-strip { animation: lp-row-6 16s step-end infinite; }
+  .lp-step:nth-of-type(1) .lp-strip { animation: lp-row-0 16s step-end infinite; }
+  .lp-step:nth-of-type(2) .lp-strip { animation: lp-row-1 16s step-end infinite; }
+  .lp-step:nth-of-type(3) .lp-strip { animation: lp-row-2 16s step-end infinite; }
+  .lp-step:nth-of-type(4) .lp-strip { animation: lp-row-3 16s step-end infinite; }
+  .lp-step:nth-of-type(5) .lp-strip { animation: lp-row-4 16s step-end infinite; }
+  .lp-step:nth-of-type(6) .lp-strip { animation: lp-row-5 16s step-end infinite; }
+  .lp-step:nth-of-type(7) .lp-strip { animation: lp-row-6 16s step-end infinite; }
   .lp-rail-fill { animation: lp-rail 16s linear infinite; }
   .lp-dawn-dot { animation: lp-dawn 16s linear infinite; }
 }

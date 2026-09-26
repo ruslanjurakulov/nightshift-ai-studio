@@ -55,18 +55,13 @@ describe("pricing teaser", () => {
 });
 
 describe("site origin", () => {
-  it("prefers APP_ORIGIN and reduces it to an origin", () => {
-    expect(siteOrigin({ APP_ORIGIN: "https://app.example.com/x/", VERCEL_PROJECT_PRODUCTION_URL: "v.example.com" })).toBe(
-      "https://app.example.com",
-    );
-  });
-
-  it("falls back to Vercel's bare production host", () => {
-    expect(siteOrigin({ VERCEL_PROJECT_PRODUCTION_URL: "nightshift.example.com" })).toBe("https://nightshift.example.com");
+  it("reduces APP_ORIGIN to an origin", () => {
+    expect(siteOrigin({ APP_ORIGIN: "https://app.example.com/x/" })).toBe("https://app.example.com");
   });
 
   it("returns null rather than a guessed origin (no canonical is better than localhost)", () => {
     expect(siteOrigin({})).toBeNull();
+    expect(siteOrigin({ APP_ORIGIN: "not a url" })).toBeNull();
     expect(siteOrigin({ APP_ORIGIN: "javascript:alert(1)" })).toBeNull();
   });
 });

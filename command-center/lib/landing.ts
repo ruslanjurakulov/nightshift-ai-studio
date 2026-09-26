@@ -73,30 +73,25 @@ export function pricingTeaser(pricing: Pricing): PricingTeaser {
 
 export interface SiteEnv {
   APP_ORIGIN?: string;
-  VERCEL_PROJECT_PRODUCTION_URL?: string;
-}
-
-function asOrigin(raw: string | undefined, assumeHttps: boolean): string | null {
-  const v = (raw ?? "").trim();
-  if (!v) return null;
-  try {
-    const url = new URL(assumeHttps && !/^https?:\/\//i.test(v) ? `https://${v}` : v);
-    return url.protocol === "https:" || url.protocol === "http:" ? url.origin : null;
-  } catch {
-    return null;
-  }
 }
 
 /**
  * The site's public origin for canonical and OpenGraph URLs, or null.
  *
- * A self-hosted deploy states it in APP_ORIGIN (the same variable the OAuth
- * redirect trusts — lib/server/public-origin.ts); on Vercel the production
- * domain is VERCEL_PROJECT_PRODUCTION_URL, a bare host. Request headers are not
- * consulted: a canonical URL a client can steer is worse than none.
+ * A deploy states it once in APP_ORIGIN — the same variable the OAuth redirect
+ * trusts (lib/server/public-origin.ts), already set by the self-hosted compose
+ * file. Request headers are not consulted: a canonical URL a client can steer
+ * is worse than none. Unset, the page leaves canonical and og:url out.
  */
 export function siteOrigin(env: SiteEnv): string | null {
-  return asOrigin(env.APP_ORIGIN, false) ?? asOrigin(env.VERCEL_PROJECT_PRODUCTION_URL, true);
+  const v = (env.APP_ORIGIN ?? "").trim();
+  if (!v) return null;
+  try {
+    const url = new URL(v);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.origin : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
