@@ -15,11 +15,13 @@ production, or in a public log:
 * deploy/setup-gha-deploy.sh pins that key to the forced command, once.
 """
 
+import json
 import os
 import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -31,6 +33,8 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / ".github" / "workflows" / "deploy_web.yml"
 ENV_EXAMPLE = ROOT / "deploy" / ".env.web.example"
 REMOTE = ROOT / "deploy" / "remote-deploy.sh"
+WORKER_EXAMPLE = ROOT / "deploy" / ".env.worker.example"
+BUILD_WORKER = ROOT / "deploy" / "build-worker-env.py"
 SETUP = ROOT / "deploy" / "setup-gha-deploy.sh"
 
 REQUIRED = ("DOMAIN", "ACME_EMAIL", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY")
@@ -126,8 +130,12 @@ class WorkflowMappingTests(unittest.TestCase):
                 self.assertEqual(name, "GH_" + key[len("GITHUB_"):])
 
     def test_the_supabase_service_key_is_never_part_of_the_web_deploy(self):
-        # It is a repository secret for the bot, so it is one typo away.
-        self.assertNotRegex(WORKFLOW.read_text(), r"(secrets|vars)\.\w*SERVICE")
+        # It is a repository secret for the bot, so it is one typo away. Only
+        # the worker step may name it, and that goes to the worker's own file.
+        for s in steps():
+            if s.get("name") == "Build the worker env":
+                continue
+            self.assertNotRegex(yaml.safe_dump(s), r"(secrets|vars)\.\w*SERVICE", s.get("name"))
 
     def test_never_runs_for_a_pull_request(self):
         on = workflow()[True]  # YAML 1.1 reads the bare key `on` as True
@@ -266,6 +274,7 @@ FAKE_DOCKER = textwrap.dedent(
     # Records every call; answers the few questions remote-deploy.sh asks.
     printf '%s\\n' "$*" >>"$FAKE_DOCKER_LOG"
     case "$*" in
+      *" up "*worker) exit "${FAKE_WORKER_UP_RC:-0}" ;;
       *" up "*) exit "${FAKE_UP_RC:-0}" ;;
       *" ps -q web") echo cid123 ;;
       inspect*) echo "${FAKE_HEALTH:-healthy}" ;;
@@ -283,8 +292,7 @@ def _rev(cwd, ref="HEAD"):
     return subprocess.run(["git", "rev-parse", ref], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
 
 
-@unittest.skipUnless(shutil.which("bash") and shutil.which("git") and shutil.which("flock"), "bash, git, flock needed")
-class RemoteDeployTests(unittest.TestCase):
+class _RemoteDeployFixture(unittest.TestCase):
     """remote-deploy.sh against a real git remote and a fake docker."""
 
     SECRET = "s3cr3t-never-printed"
@@ -306,6 +314,7 @@ class RemoteDeployTests(unittest.TestCase):
         ).stdout.strip()
         self.git(up, "init", "-q", "-b", "main")
         shutil.copy(ENV_EXAMPLE, up / "deploy" / ".env.web.example")
+        shutil.copy(WORKER_EXAMPLE, up / "deploy" / ".env.worker.example")
         (up / "deploy" / "docker-compose.yml").write_text("services: {}\n")
         self.git(up, "add", "-A")
         self.git(up, "commit", "-q", "-m", "A")
@@ -331,6 +340,7 @@ class RemoteDeployTests(unittest.TestCase):
         docker.chmod(0o755)
         self.docker_log = self.tmp / "docker.log"
         self.env_file = self.tmp / ".env.web"
+        self.worker_env_file = self.tmp / ".env.worker"
 
     def payload(self, sha=None, drop=(), **values):
         vals = {k: "" for k in example_keys()}
@@ -352,6 +362,7 @@ class RemoteDeployTests(unittest.TestCase):
             self.gitenv,
             NIGHTSHIFT_APP_DIR=str(self.app),
             NIGHTSHIFT_ENV_FILE=str(self.env_file),
+            NIGHTSHIFT_WORKER_ENV_FILE=str(self.worker_env_file),
             NIGHTSHIFT_LOCK_FILE=str(self.tmp / ".deploy.lock"),
             NIGHTSHIFT_DOCKER=str(self.tmp / "docker"),
             NIGHTSHIFT_HEALTH_TIMEOUT="10",
@@ -371,6 +382,10 @@ class RemoteDeployTests(unittest.TestCase):
         self.assertFalse(self.env_file.exists(), "env file written despite refusal")
         self.assertEqual(self.docker_calls(), [], "docker ran despite refusal")
 
+
+
+@unittest.skipUnless(shutil.which("bash") and shutil.which("git") and shutil.which("flock"), "bash, git, flock needed")
+class RemoteDeployTests(_RemoteDeployFixture):
     def test_deploys_exactly_the_requested_commit_and_writes_the_env_600(self):
         proc = self.deploy(self.payload())
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -383,8 +398,12 @@ class RemoteDeployTests(unittest.TestCase):
         up = [c for c in self.docker_calls() if " up " in f" {c} "]
         self.assertEqual(len(up), 1)
         self.assertIn(f"--env-file {self.env_file}", up[0])
-        self.assertTrue(up[0].endswith("up -d --build --remove-orphans"), up[0])
+        self.assertTrue(up[0].endswith("up -d --build --remove-orphans web caddy"), up[0])
         self.assertIn("web is healthy", proc.stdout)
+        # No worker section: the worker is removed and no keys file is left.
+        self.assertTrue(any(c.endswith("rm --stop --force worker") for c in self.docker_calls()))
+        self.assertFalse(self.worker_env_file.exists())
+        self.assertIn("worker is off", proc.stdout)
 
     def test_running_again_converges_and_keeps_the_previous_env_600(self):
         self.assertEqual(self.deploy(self.payload()).returncode, 0)
@@ -611,6 +630,206 @@ class ShellScriptTests(unittest.TestCase):
     def test_shellcheck_is_clean(self):
         proc = subprocess.run(["shellcheck", *map(str, self.SCRIPTS)], capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, proc.stdout)
+
+
+# ── The pipeline worker ─────────────────────────────────────────────────────
+
+
+def worker_example_keys():
+    return [m.group(1) for m in re.finditer(r"^([A-Z][A-Z0-9_]*)=", WORKER_EXAMPLE.read_text(), re.M)]
+
+
+def _worker_secret_keys():
+    """Keys above the "Behaviour" heading are repository secrets; below, variables."""
+    head = WORKER_EXAMPLE.read_text().split("# ─── Behaviour")[0]
+    return set(re.findall(r"^([A-Z][A-Z0-9_]*)=", head, re.M))
+
+
+def _load_builder():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("build_worker_env", BUILD_WORKER)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class WorkerWorkflowTests(unittest.TestCase):
+    def setUp(self):
+        self.step = step(name="Build the worker env")
+        self.mapped = {k[len("WORKERENV_"):]: v for k, v in self.step["env"].items() if k.startswith("WORKERENV_")}
+
+    def test_every_worker_key_is_mapped_by_its_own_name(self):
+        self.assertEqual(sorted(self.mapped), sorted(worker_example_keys()))
+        secret = _worker_secret_keys()
+        for key, expr in self.mapped.items():
+            kind = "secrets" if key in secret else "vars"
+            self.assertEqual(expr, f"${{{{ {kind}.{key} }}}}", key)
+
+    def test_credentials_are_secrets(self):
+        for key in self.mapped:
+            if CREDENTIAL.search(key) or key.endswith("_JSON"):
+                self.assertIn(key, _worker_secret_keys(), key)
+
+    def test_runs_only_while_the_worker_is_switched_on(self):
+        self.assertIn("vars.NIGHTSHIFT_WORKER == 'on'", self.step["if"])
+        self.assertIn("steps.payload.outputs.run == 'true'", self.step["if"])
+        self.assertEqual(self.step["run"].strip(), 'python3 deploy/build-worker-env.py "$PAYLOAD"')
+        self.assertEqual(self.step["env"]["ALL_SECRETS"], "${{ toJSON(secrets) }}")
+
+    def test_runs_after_the_web_env_and_before_ssh(self):
+        names = [s.get("name") for s in steps()]
+        self.assertLess(names.index("Build the server env"), names.index("Build the worker env"))
+        self.assertLess(names.index("Build the worker env"), names.index("Deploy over SSH"))
+
+    def test_the_worker_image_inputs_trigger_a_deploy(self):
+        paths = workflow()[True]["push"]["paths"]
+        for path in ("Dockerfile.worker", "requirements.txt", "main.py", "modules/**", "tools/**"):
+            self.assertIn(path, paths)
+
+
+class BuildWorkerEnvTests(unittest.TestCase):
+    SECRET = "worker-secret-never-printed"
+
+    def setUp(self):
+        self.mod = _load_builder()
+        self.example = WORKER_EXAMPLE.read_text()
+
+    def env(self, secrets=None, **values):
+        env = {f"WORKERENV_{k}": "" for k in worker_example_keys()}
+        env.update(WORKERENV_SUPABASE_URL="https://abc.supabase.co", WORKERENV_SUPABASE_SERVICE_KEY=self.SECRET)
+        env.update({f"WORKERENV_{k}": v for k, v in values.items()})
+        env["ALL_SECRETS"] = json.dumps(secrets if secrets is not None else {})
+        return {k: v for k, v in env.items() if v is not None}
+
+    def build(self, **kw):
+        return self.mod.build(self.env(**kw), self.example)
+
+    def test_one_line_per_key_and_the_channel_tokens_only(self):
+        token = '{\n  "token": "t",\n  "refresh_token": "r"\n}'
+        lines, errors = self.build(secrets={
+            "CHRONOS_YT_TOKEN_FINANCE": token,
+            "DEPLOY_SSH_KEY": "-----BEGIN-----",
+            "GH_SECRETS_TOKEN": "ghp_x",
+            "github_token": "ghs_x",
+        })
+        self.assertEqual(errors, [])
+        keys = [l.split("=", 1)[0] for l in lines]
+        self.assertEqual(keys[: len(worker_example_keys())], worker_example_keys())
+        self.assertIn('CHRONOS_YT_TOKEN_FINANCE={"token":"t","refresh_token":"r"}', lines)
+        for other in ("DEPLOY_SSH_KEY", "GH_SECRETS_TOKEN", "github_token"):
+            self.assertNotIn(other, keys)
+
+    def test_json_secrets_are_compacted_to_one_line(self):
+        lines, errors = self.build(YOUTUBE_CLIENT_SECRET_JSON='{\r\n "installed": {"client_id": "c"}\r\n}\n')
+        self.assertEqual(errors, [])
+        self.assertIn('YOUTUBE_CLIENT_SECRET_JSON={"installed":{"client_id":"c"}}', lines)
+
+    def test_problems_are_named_by_key_never_by_value(self):
+        lines, errors = self.build(
+            GEMINI_API_KEY="ab$" + self.SECRET,
+            YOUTUBE_TOKEN_JSON="not json " + self.SECRET,
+            PEXELS_API_KEY="two\nlines" + self.SECRET,
+        )
+        text = "\n".join(errors)
+        self.assertIn("GEMINI_API_KEY contains", text)
+        self.assertIn("YOUTUBE_TOKEN_JSON is not valid JSON", text)
+        self.assertIn("PEXELS_API_KEY contains a line break", text)
+        self.assertNotIn(self.SECRET, text)
+
+    def test_the_queue_keys_are_required(self):
+        _, errors = self.build(SUPABASE_SERVICE_KEY="")
+        self.assertIn("SUPABASE_SERVICE_KEY is required", "\n".join(errors))
+
+    def test_a_key_the_workflow_forgot_fails(self):
+        _, errors = self.build(OPENAI_API_KEY=None)
+        self.assertIn("OPENAI_API_KEY is in deploy/.env.worker.example but not mapped", "\n".join(errors))
+
+    def test_main_appends_the_marker_and_prints_no_value(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        payload = tmp / "payload"
+        payload.write_text("NIGHTSHIFT_DEPLOY_SHA=" + "a" * 40 + "\nDOMAIN=x\n")
+        env = dict(self.env(), PATH=os.environ["PATH"])
+        proc = subprocess.run(
+            [sys.executable, str(BUILD_WORKER), str(payload)], env=env, capture_output=True, text=True, timeout=30
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        lines = payload.read_text().splitlines()
+        self.assertEqual(lines[2], "NIGHTSHIFT_WORKER_ENV=on")
+        self.assertIn(f"SUPABASE_SERVICE_KEY={self.SECRET}", lines)
+        self.assertNotIn(self.SECRET, proc.stdout + proc.stderr)
+        # A refused env leaves the payload as it was.
+        before = payload.read_text()
+        env["WORKERENV_SUPABASE_SERVICE_KEY"] = ""
+        proc = subprocess.run(
+            [sys.executable, str(BUILD_WORKER), str(payload)], env=env, capture_output=True, text=True, timeout=30
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertEqual(payload.read_text(), before)
+
+
+@unittest.skipUnless(shutil.which("bash") and shutil.which("git") and shutil.which("flock"), "bash, git, flock needed")
+class RemoteDeployWorkerTests(_RemoteDeployFixture):
+    """The worker section of the payload, on the same fixture."""
+
+    def worker_payload(self, drop=(), **values):
+        vals = {k: "" for k in worker_example_keys()}
+        vals.update(SUPABASE_URL="https://abc.supabase.co", SUPABASE_SERVICE_KEY=self.SECRET)
+        vals.update(values)
+        lines = ["NIGHTSHIFT_WORKER_ENV=on"] + [f"{k}={v}" for k, v in vals.items() if k not in drop]
+        return self.payload() + "\n".join(lines) + "\n"
+
+    def test_the_worker_env_is_written_600_and_the_worker_started_after_web(self):
+        proc = self.deploy(self.worker_payload(CHRONOS_YT_TOKEN_FINANCE='{"token":"t"}'))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(stat.S_IMODE(self.worker_env_file.stat().st_mode), 0o600)
+        text = self.worker_env_file.read_text()
+        self.assertIn(f"SUPABASE_SERVICE_KEY={self.SECRET}\n", text)
+        self.assertIn('CHRONOS_YT_TOKEN_FINANCE={"token":"t"}\n', text)
+        # The dashboard's file never gets a worker key.
+        web = self.env_file.read_text()
+        self.assertNotIn("SUPABASE_SERVICE_KEY", web)
+        self.assertNotIn("NIGHTSHIFT_WORKER_ENV", web)
+        calls = self.docker_calls()
+        web_up = [i for i, c in enumerate(calls) if c.endswith("up -d --build --remove-orphans web caddy")]
+        worker_up = [i for i, c in enumerate(calls) if c.endswith("up -d --build --no-deps worker")]
+        self.assertEqual(len(web_up), 1)
+        self.assertEqual(len(worker_up), 1)
+        self.assertLess(web_up[0], worker_up[0])
+        self.assertTrue(all("--profile worker" in c for c in calls if " up " in f" {c} "))
+        self.assertIn("worker on", proc.stdout)
+
+    def test_switching_the_worker_off_removes_it_and_its_keys(self):
+        self.assertEqual(self.deploy(self.worker_payload()).returncode, 0)
+        self.assertTrue(self.worker_env_file.exists())
+        proc = self.deploy(self.payload())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertFalse(self.worker_env_file.exists())
+        self.assertFalse(Path(str(self.worker_env_file) + ".prev").exists())
+        self.assertTrue(any(c.endswith("rm --stop --force worker") for c in self.docker_calls()))
+
+    def test_a_key_the_worker_does_not_read_is_refused(self):
+        proc = self.deploy(self.worker_payload(DEPLOY_SSH_KEY=self.SECRET))
+        self.assertRefused(proc, "DEPLOY_SSH_KEY is not a key in deploy/.env.worker.example")
+        self.assertFalse(self.worker_env_file.exists())
+
+    def test_a_web_key_is_not_accepted_in_the_worker_section_nor_the_reverse(self):
+        self.assertRefused(self.deploy(self.worker_payload(DOMAIN="x")), "DOMAIN is not a key in deploy/.env.worker.example")
+        self.assertRefused(
+            self.deploy(self.payload(CHRONOS_YT_TOKEN_FINANCE="{}")),
+            "CHRONOS_YT_TOKEN_FINANCE is not a key in deploy/.env.web.example",
+        )
+
+    def test_worker_values_are_checked_like_web_ones(self):
+        self.assertRefused(self.deploy(self.worker_payload(SUPABASE_SERVICE_KEY="")), "SUPABASE_SERVICE_KEY is required")
+        self.assertRefused(self.deploy(self.worker_payload(GEMINI_API_KEY="a$b")), "GEMINI_API_KEY contains")
+        self.assertRefused(self.deploy(self.worker_payload(drop=("OPENAI_API_KEY",))), "OPENAI_API_KEY is missing")
+
+    def test_a_worker_that_fails_to_start_fails_the_deploy_after_web(self):
+        proc = self.deploy(self.worker_payload(), FAKE_WORKER_UP_RC="1")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("the worker did not start", proc.stderr)
 
 
 if __name__ == "__main__":
