@@ -12,11 +12,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import type { Dictionary } from "@/lib/i18n";
-
-type NavKey = Exclude<keyof Dictionary["nav"], "more" | "gManage" | "gIntel" | "gSystem" | "menu">;
-type Item = { href: string; key: NavKey; Icon: LucideIcon };
-type Group = { label?: keyof Pick<Dictionary["nav"], "gManage" | "gIntel" | "gSystem">; items: Item[] };
+import { NAV_GROUPS, type NavKey } from "@/lib/navigation";
 
 /**
  * The app's primary navigation, as a left rail — icon + label, grouped.
@@ -30,63 +26,47 @@ type Group = { label?: keyof Pick<Dictionary["nav"], "gManage" | "gIntel" | "gSy
  *
  * On wide screens it is a sticky rail; below `lg` it collapses to a button that
  * opens the same list as a left drawer.
+ *
+ * The routes and their order live in lib/navigation (the breadcrumbs and tab
+ * titles read them too); only the icons are the rail's own.
  */
-const GROUPS: Group[] = [
-  {
-    items: [
-      { href: "/command-center", key: "command", Icon: LayoutDashboard },
-      { href: "/create", key: "create", Icon: Sparkles },
-      { href: "/videos", key: "videos", Icon: Film },
-      { href: "/studio", key: "studio", Icon: Palette },
-      { href: "/pipeline", key: "pipeline", Icon: Workflow },
-      { href: "/analytics", key: "analytics", Icon: BarChart3 },
-    ],
-  },
-  {
-    label: "gManage",
-    items: [
-      { href: "/channels", key: "channels", Icon: Users },
-      { href: "/accounts", key: "accounts", Icon: UserCircle },
-      { href: "/portfolio", key: "portfolio", Icon: PieChart },
-      { href: "/providers", key: "providers", Icon: KeyRound },
-      { href: "/billing", key: "billing", Icon: Wallet },
-      { href: "/credits", key: "credits", Icon: Coins },
-      { href: "/series", key: "series", Icon: ListVideo },
-      { href: "/agents", key: "agents", Icon: Bot },
-      { href: "/jobs", key: "jobs", Icon: ListChecks },
-    ],
-  },
-  {
-    label: "gIntel",
-    items: [
-      { href: "/intelligence", key: "advisory", Icon: Lightbulb },
-      { href: "/intelligence-map", key: "intelligence", Icon: Brain },
-      { href: "/decisions", key: "decisions", Icon: GitBranch },
-      { href: "/learning", key: "learning", Icon: GraduationCap },
-      { href: "/memory", key: "memory", Icon: Database },
-      { href: "/topics", key: "topics", Icon: Hash },
-      { href: "/measurement", key: "measure", Icon: Ruler },
-      { href: "/feedback-loop", key: "feedback", Icon: RefreshCw },
-      { href: "/autonomy", key: "autonomy", Icon: Gauge },
-    ],
-  },
-  {
-    label: "gSystem",
-    items: [
-      { href: "/getting-started", key: "onboarding", Icon: Rocket },
-      { href: "/organization", key: "organization", Icon: Building2 },
-      { href: "/members", key: "members", Icon: ShieldCheck },
-      { href: "/security", key: "security", Icon: Lock },
-      { href: "/approvals", key: "approvals", Icon: UserCheck },
-      { href: "/alerts", key: "alerts", Icon: BellRing },
-      { href: "/audit", key: "audit", Icon: ClipboardList },
-      { href: "/time-machine", key: "timeMachine", Icon: History },
-      { href: "/integrations", key: "integrations", Icon: Plug },
-      { href: "/errors", key: "errors", Icon: TriangleAlert },
-      { href: "/logs", key: "logs", Icon: ScrollText },
-    ],
-  },
-];
+const ICONS: Record<NavKey, LucideIcon> = {
+  command: LayoutDashboard,
+  create: Sparkles,
+  videos: Film,
+  studio: Palette,
+  pipeline: Workflow,
+  analytics: BarChart3,
+  channels: Users,
+  accounts: UserCircle,
+  portfolio: PieChart,
+  providers: KeyRound,
+  billing: Wallet,
+  credits: Coins,
+  series: ListVideo,
+  agents: Bot,
+  jobs: ListChecks,
+  advisory: Lightbulb,
+  intelligence: Brain,
+  decisions: GitBranch,
+  learning: GraduationCap,
+  memory: Database,
+  topics: Hash,
+  measure: Ruler,
+  feedback: RefreshCw,
+  autonomy: Gauge,
+  onboarding: Rocket,
+  organization: Building2,
+  members: ShieldCheck,
+  security: Lock,
+  approvals: UserCheck,
+  alerts: BellRing,
+  audit: ClipboardList,
+  timeMachine: History,
+  integrations: Plug,
+  errors: TriangleAlert,
+  logs: ScrollText,
+};
 
 function useIsActive() {
   const pathname = usePathname();
@@ -100,15 +80,16 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const path = useChannelPath();
   return (
     <nav className="flex flex-col gap-5">
-      {GROUPS.map((group, gi) => (
+      {NAV_GROUPS.map((group, gi) => (
         <div key={group.label ?? `g${gi}`} className="flex flex-col gap-0.5">
           {group.label && (
             <div className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
               {t.nav[group.label]}
             </div>
           )}
-          {group.items.map(({ href, key, Icon }) => {
+          {group.items.map(({ href, key }) => {
             const active = isActive(href);
+            const Icon = ICONS[key];
             return (
               <Link
                 key={href}

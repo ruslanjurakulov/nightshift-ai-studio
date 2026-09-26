@@ -9,7 +9,9 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { CreateOrganizationForm } from "@/components/org/CreateOrganizationForm";
 import { SignOutButton } from "@/components/SignOutButton";
 import { isSupabaseConfigured } from "@/lib/config";
-import { ALL_CHANNELS, ALL_CHANNELS_SLUG, PATH_HEADER, unscopedScope } from "@/lib/channels";
+import { ALL_CHANNELS, ALL_CHANNELS_SLUG, PATH_HEADER, channelSlug, unscopedScope } from "@/lib/channels";
+import { NavigationProvider } from "@/components/navigation/NavigationProvider";
+import { ScrollToTop } from "@/components/navigation/ScrollToTop";
 import { createClient } from "@/lib/supabase/server";
 import { readCreditAccount } from "@/lib/server/credits";
 import type { CreditAccount } from "@/lib/credits";
@@ -67,24 +69,33 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     }
   }
 
+  // The breadcrumb names a channel the way the switcher does, by its name — the
+  // URL carries a slug, which is not always the name the operator gave it.
+  const channelNames = Object.fromEntries(
+    channels.map((c) => [channelSlug(c, channels), c.name || c.channel_id]),
+  );
+
   return (
-    <div className="atmos relative flex min-h-dvh flex-col">
-      <NeuralBackdrop dim />
-      <div className="relative z-10 flex min-h-dvh flex-col">
-        <Header
-          channels={channels}
-          selection={selection}
-          orgs={org.orgs}
-          currentOrgId={org.current?.id ?? null}
-          credits={credits}
-          scope={scope}
-        />
-        <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-          <SideNav />
-          <main className="pad-page min-w-0 flex-1">{children}</main>
+    <NavigationProvider channelNames={channelNames}>
+      <div className="atmos relative flex min-h-dvh flex-col">
+        <NeuralBackdrop dim />
+        <div className="relative z-10 flex min-h-dvh flex-col">
+          <Header
+            channels={channels}
+            selection={selection}
+            orgs={org.orgs}
+            currentOrgId={org.current?.id ?? null}
+            credits={credits}
+            scope={scope}
+          />
+          <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+            <SideNav />
+            <main className="pad-page min-w-0 flex-1">{children}</main>
+          </div>
         </div>
+        <CommandPalette scope={scope} />
+        <ScrollToTop />
       </div>
-      <CommandPalette scope={scope} />
-    </div>
+    </NavigationProvider>
   );
 }

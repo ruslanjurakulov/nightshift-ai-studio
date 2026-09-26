@@ -9,6 +9,10 @@ import type { Dictionary } from "@/lib/i18n";
 import { relativeTime } from "@/lib/format";
 import { useChannelPath } from "@/lib/channels-client";
 import { uploadedOnly } from "@/lib/heldVideos";
+import { useNavigation } from "@/components/navigation/NavigationProvider";
+
+/** The palette's one command that is not a place: it has no href of its own. */
+const BACK_ID = "a:back";
 
 type NavKey = keyof Dictionary["nav"];
 const NAV: { href: string; key: NavKey; hotkey?: string }[] = [
@@ -68,6 +72,7 @@ export function CommandPalette({ scope }: { scope: ChannelScope }) {
   // Every href below is a section path. The channel comes from the URL you are
   // already on, so a jump never quietly changes which channel you are viewing.
   const path = useChannelPath();
+  const { canGoBack, goBack } = useNavigation();
   const [open, setOpen] = useState(false);
   const [help, setHelp] = useState(false);
   const [query, setQuery] = useState("");
@@ -180,16 +185,22 @@ export function CommandPalette({ scope }: { scope: ChannelScope }) {
     [t],
   );
 
+  // Read on every render rather than memoised: whether there is anywhere to go
+  // back to changes with each navigation, and nothing else would say so.
+  const canBack = open && canGoBack();
+
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const all = [...navItems, ...videos, ...events];
-    if (!q) return navItems;
+    const back: Item[] = canBack ? [{ id: BACK_ID, section: "nav", label: t.navigation.back, href: "" }] : [];
+    const all = [...back, ...navItems, ...videos, ...events];
+    if (!q) return [...back, ...navItems];
     return all.filter((i) => i.label.toLowerCase().includes(q) || (i.sub ?? "").toLowerCase().includes(q)).slice(0, 40);
-  }, [query, navItems, videos, events]);
+  }, [query, navItems, videos, events, canBack, t]);
 
   function choose(item: Item) {
     setOpen(false);
-    router.push(path(item.href));
+    if (item.id === BACK_ID) goBack();
+    else router.push(path(item.href));
   }
 
   function onListKey(e: React.KeyboardEvent) {
