@@ -36,7 +36,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const backend = resolveRunBackend(process.env);
+  const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
   return NextResponse.json({
     configured: isRunConfigured(backend, { github: isGithubConfigured, supabase: isSupabaseConfigured }),
     backend,
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   // Spending money to produce a video is an owner/admin action.
   if (!(await requireRole("admin"))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  const backend = resolveRunBackend(process.env);
+  const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
   if (backend === "actions" && !isGithubConfigured)
     return NextResponse.json({ error: "github_not_configured" }, { status: 503 });
 

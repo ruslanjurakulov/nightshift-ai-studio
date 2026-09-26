@@ -1,0 +1,47 @@
+# Caddy in front of the Command Center (see docs/DEPLOY_AX42.md).
+#
+# {$DOMAIN} and {$ACME_EMAIL} come from the caddy service's environment in
+# docker-compose.yml, which interpolates them from /opt/nightshift/.env.web
+# (production: DOMAIN=nightshift-ai.studio).
+#
+# Cloudflare: the A record is Proxied (orange cloud) and SSL/TLS mode is
+# "Full (strict)". Caddy holds a real Let's Encrypt certificate for {$DOMAIN},
+# which is what "strict" verifies. "Flexible" would make Cloudflare talk plain
+# HTTP to this server, and Caddy's HTTP->HTTPS redirect would then loop.
+# Keep Cloudflare's "Always Use HTTPS" off: Caddy redirects to HTTPS itself and
+# leaves /.well-known/acme-challenge/ reachable over HTTP, which is how the
+# certificate is issued and renewed through the proxy.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		# One year of HTTPS-only. includeSubDomains is deliberately absent: it
+		# would bind every other name under the domain too, including ones that
+		# are not served by this box.
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		# The dashboard is never meant to be framed; this closes clickjacking on
+		# the buttons that write review intents.
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		# What server and framework answered is nobody's business.
+		-Server
+		-X-Powered-By
+	}
+
+	# `web` is reachable only on the compose network; it publishes no port of
+	# its own, so this is the only way in. Caddy passes the original Host and
+	# sets X-Forwarded-Proto/For itself.
+	reverse_proxy web:3000
+
+	log {
+		output stdout
+		format json
+	}
+}

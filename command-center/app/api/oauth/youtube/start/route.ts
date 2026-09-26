@@ -6,6 +6,7 @@ import {
   encodeState,
   isGoogleOAuthConfigured,
 } from "@/lib/server/google-oauth";
+import { publicOrigin } from "@/lib/server/public-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ export async function GET(request: Request) {
   const nonce = randomUUID();
   const state = encodeState({ ref, nonce });
 
-  const res = NextResponse.redirect(buildAuthUrl({ origin: url.origin, state }));
+  const res = NextResponse.redirect(buildAuthUrl({ origin: publicOrigin(request), state }));
   res.cookies.set(NONCE_COOKIE, nonce, {
     httpOnly: true,
     secure: true,

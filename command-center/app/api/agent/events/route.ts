@@ -41,7 +41,7 @@ export async function GET() {
 
   const rows = (res.data as Pick<SystemEventRow, "ts" | "agent" | "event" | "status" | "video_id">[] | null) ?? [];
 
-  const backend = resolveRunBackend(process.env);
+  const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
   let jobs: QueueJob[] | null = null;
   if (backend === "queue" && isScoped(selection)) {
     const jr = await supabase
