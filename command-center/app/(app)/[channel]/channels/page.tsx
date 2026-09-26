@@ -22,6 +22,10 @@ import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { fetchTokenStatuses } from "@/lib/server/channel-tokens";
 import { YOUTUBE_OAUTH_SCOPES, isGoogleOAuthConfigured } from "@/lib/server/google-oauth";
 import { parseVaultResult } from "@/lib/channel-tokens";
+import { fetchSocialAccounts } from "@/lib/server/social-accounts";
+import { isSocialConfigured } from "@/lib/server/social-oauth";
+import { isSocialPlatform, parseSocialResult } from "@/lib/social-accounts";
+import { SocialAccountsPanel } from "@/components/social/SocialAccountsPanel";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -36,11 +40,15 @@ export const revalidate = 0;
 export default async function ChannelsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ yt?: string }>;
+  searchParams: Promise<{ yt?: string; social?: string; platform?: string }>;
 }) {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t } = await getDictionary();
-  const ytResult = parseVaultResult((await searchParams).yt);
+  const sp = await searchParams;
+  const ytResult = parseVaultResult(sp.yt);
+  const socialWord = parseSocialResult(sp.social);
+  const socialResult =
+    socialWord && isSocialPlatform(sp.platform) ? { platform: sp.platform, word: socialWord } : null;
   const path = await getChannelPath();
 
   const { channels, credentials, notMigrated, scope: viewScope } = await getChannelContext();
@@ -77,6 +85,11 @@ export default async function ChannelsPage({
     ? await Promise.all([fetchTokenStatuses(), resolveCurrentOrgRole()])
     : [null, null];
 
+  // Instagram / TikTok belong to the organization, not to one channel
+  // (migration 0028) — every organization, the operator's included.
+  const orgId = org.supported && org.current ? org.current.id : null;
+  const [social, orgRole] = await Promise.all([fetchSocialAccounts(orgId), role ?? resolveCurrentOrgRole()]);
+
   return (
     <div className="rhythm stagger-enter">
       <PageHeader
@@ -90,6 +103,15 @@ export default async function ChannelsPage({
             </Link>
           ) : undefined
         }
+      />
+
+      <SocialAccountsPanel
+        accounts={social.rows}
+        available={social.available}
+        hasOrg={Boolean(orgId)}
+        role={orgRole}
+        configured={{ instagram: isSocialConfigured("instagram"), tiktok: isSocialConfigured("tiktok") }}
+        result={socialResult}
       />
 
       {notMigrated ? (
