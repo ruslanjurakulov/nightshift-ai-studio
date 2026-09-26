@@ -15,6 +15,7 @@ from config import (
     EDGE_TTS_VOICE,
     ELEVENLABS_API_KEY,
     ELEVENLABS_MODEL_ID,
+    ELEVENLABS_RUN_VOICE_ID,
     ELEVENLABS_VOICE_ID,
     MUSIC_DIR,
     NARRATOR_VOLUME,
@@ -78,7 +79,7 @@ def verify_voice(channel=None) -> None:
     if provider != "elevenlabs":
         return
 
-    voice_id = (agent.elevenlabs_voice_id if agent else ELEVENLABS_VOICE_ID) or ""
+    voice_id = narrator_voice(agent)
     if not ELEVENLABS_API_KEY:
         raise VoiceUnavailable(
             "This channel narrates with ElevenLabs, but ELEVENLABS_API_KEY is empty. "
@@ -131,6 +132,16 @@ def verify_voice(channel=None) -> None:
     )
 
 
+def narrator_voice(agent) -> str:
+    """The ElevenLabs voice this run narrates with: the run's own choice
+    (ELEVENLABS_RUN_VOICE_ID, set from the Create page) when there is one, else
+    the channel's voice, else the repo default. verify_voice checks this same
+    id, so the voice that is verified is the voice that speaks."""
+    if ELEVENLABS_RUN_VOICE_ID:
+        return ELEVENLABS_RUN_VOICE_ID
+    return (agent.elevenlabs_voice_id if agent else ELEVENLABS_VOICE_ID) or ""
+
+
 class AudioMixer:
     """Builds one video's audio.
 
@@ -146,7 +157,7 @@ class AudioMixer:
         self.channel = channel
         agent = channel.agent if channel is not None else None
         self.tts_provider = agent.tts_provider if agent else TTS_PROVIDER
-        self.main_elevenlabs_voice = agent.elevenlabs_voice_id if agent else ELEVENLABS_VOICE_ID
+        self.main_elevenlabs_voice = narrator_voice(agent)
         self.main_edge_voice = agent.edge_tts_voice if agent else EDGE_TTS_VOICE
         self.elevenlabs_model = ELEVENLABS_MODEL_ID
         self.work_dir = OUTPUT_DIR / topic_slug / "audio"

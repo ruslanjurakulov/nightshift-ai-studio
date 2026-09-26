@@ -36,12 +36,13 @@ export type RunOptions = {
   videoProvider?: string;
   imageProvider?: string;
   ttsModel?: string;
+  voiceId?: string;
 };
 
 /** The workflow's choice lists (daily_video.yml); migration 0017 checks the same. */
 export const VIDEO_PROVIDERS = ["minimax", "higgsfield", "kling", "veo", "seedance", "wan"] as const;
 import { IMAGE_PROVIDERS } from "./imageProviders";
-import { isTtsModel } from "./ttsModels";
+import { isTtsModel, isVoiceId } from "./ttsModels";
 
 export { IMAGE_PROVIDERS };
 
@@ -86,6 +87,8 @@ export function buildRenderJobInsert(
     params.image_provider = imageProvider;
   const ttsModel = opts.ttsModel?.trim();
   if (ttsModel && isTtsModel(ttsModel)) params.tts_model = ttsModel;
+  const voiceId = opts.voiceId?.trim();
+  if (voiceId && isVoiceId(voiceId)) params.voice_id = voiceId;
   // The credit hold that pays for this job (migration 0020) — a column, not a
   // param: the pipeline never sees it, the worker settles it. Only sent when a
   // hold exists, so a database without 0020 gets exactly the old insert.

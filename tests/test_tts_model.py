@@ -27,6 +27,29 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(self.reload_with("eleven_v9"), "eleven_multilingual_v2")
 
 
+class VoiceConfigTests(unittest.TestCase):
+    def tearDown(self):
+        importlib.reload(config)
+
+    def test_run_voice_must_look_like_an_id_and_empty_default_is_unset(self):
+        env = {"ELEVENLABS_RUN_VOICE_ID": "nPczCjzI2devNBz1zQrb", "ELEVENLABS_VOICE_ID": ""}
+        with mock.patch.dict(os.environ, env):
+            c = importlib.reload(config)
+            self.assertEqual(c.ELEVENLABS_RUN_VOICE_ID, "nPczCjzI2devNBz1zQrb")
+            self.assertEqual(c.ELEVENLABS_VOICE_ID, "pNInz6obpgDQGcFmaJgB")
+        with mock.patch.dict(os.environ, {"ELEVENLABS_RUN_VOICE_ID": "../etc/passwd"}):
+            self.assertEqual(importlib.reload(config).ELEVENLABS_RUN_VOICE_ID, "")
+
+    def test_the_run_voice_beats_the_channel_voice(self):
+        from modules import audio_mixer
+        agent = mock.Mock(elevenlabs_voice_id="channelvoice00000000")
+        with mock.patch.object(audio_mixer, "ELEVENLABS_RUN_VOICE_ID", ""):
+            self.assertEqual(audio_mixer.narrator_voice(agent), "channelvoice00000000")
+        with mock.patch.object(audio_mixer, "ELEVENLABS_RUN_VOICE_ID", "nPczCjzI2devNBz1zQrb"):
+            self.assertEqual(audio_mixer.narrator_voice(agent), "nPczCjzI2devNBz1zQrb")
+            self.assertEqual(audio_mixer.narrator_voice(None), "nPczCjzI2devNBz1zQrb")
+
+
 class RunRequestTests(unittest.TestCase):
     def test_tts_model_is_validated_and_reaches_the_env(self):
         _, env, params = run_request.plan_run("news", "daily", {"tts_model": "eleven_flash_v2_5"}, {})
@@ -36,6 +59,13 @@ class RunRequestTests(unittest.TestCase):
             run_request.validate("news", "daily", {"tts_model": "eleven_v9"})
         _, env, _ = run_request.plan_run("news", "daily", {}, {"ELEVENLABS_MODEL_ID": "eleven_v3"})
         self.assertEqual(env["ELEVENLABS_MODEL_ID"], "eleven_v3")
+
+    def test_voice_id_is_validated_and_reaches_the_env(self):
+        _, env, params = run_request.plan_run("news", "daily", {"voice_id": "nPczCjzI2devNBz1zQrb"}, {})
+        self.assertEqual(env["ELEVENLABS_RUN_VOICE_ID"], "nPczCjzI2devNBz1zQrb")
+        for bad in ("short", "x" * 21, "has space 0123456789", 42):
+            with self.subTest(bad=bad), self.assertRaises(run_request.InvalidRunRequest):
+                run_request.validate("news", "daily", {"voice_id": bad})
 
     def test_lists_agree(self):
         self.assertEqual(run_request.TTS_MODELS, config.ELEVENLABS_MODELS)
