@@ -296,6 +296,9 @@ export interface ChannelRow {
    * only after the publish gate passes. The gate is in front of both paths.
    */
   auto_publish: boolean;
+  /** The organization that owns this channel (migration 0018). Absent before
+   *  that migration is applied. */
+  org_id?: string | null;
   created_at: string | null;
   updated_at: string | null;
 }

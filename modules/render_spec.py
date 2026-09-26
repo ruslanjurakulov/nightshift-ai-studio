@@ -30,6 +30,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+#: The ONE quality encode of a render (the final pass). These are libx264's own
+#: defaults — what this backend always encoded with implicitly — spelled out so
+#: that the quality of the output is a decision in the code, not an accident of
+#: the encoder's build. Segment normalisation writes a fast intermediate
+#: instead (render_backend.INTERMEDIATE_X264), so this is not paid twice.
+FINAL_X264: tuple = ("-preset", "medium", "-crf", "23")
+
 KIND_VIDEO = "video"
 KIND_IMAGE = "image"
 KIND_COLOR = "color"   # a solid-colour placeholder segment (no source file)
@@ -165,7 +172,7 @@ def build_ffmpeg_command(spec: RenderSpec, concat_list_path: str) -> List[str]:
     if spec.subtitle_path:
         subs = spec.subtitle_path.replace("'", r"'\''")
         cmd += ["-vf", f"subtitles='{subs}'"]
-    cmd += ["-r", str(spec.fps), "-c:v", "libx264", "-pix_fmt", "yuv420p"]
+    cmd += ["-r", str(spec.fps), "-c:v", "libx264", *FINAL_X264, "-pix_fmt", "yuv420p"]
     if spec.audio_path:
         cmd += ["-c:a", "aac", "-shortest"]
     cmd.append(spec.output_path)

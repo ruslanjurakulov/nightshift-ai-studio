@@ -25,8 +25,8 @@ DOCKERFILE = APP / "Dockerfile"
 SOURCE_SUFFIXES = {".ts", ".tsx", ".js", ".mjs", ".cjs"}
 SKIP_DIRS = {"node_modules", ".next", "tests", "out", "build"}
 
-# Set by the Dockerfile for the build itself; not something an operator sets.
-BUILD_ONLY = {"NEXT_OUTPUT"}
+# Set by the Dockerfile itself (build or runtime); not something an operator sets.
+BUILD_ONLY = {"NEXT_OUTPUT", "NODE_ENV"}
 
 DOT_ACCESS = re.compile(r"process\.env\.([A-Z][A-Z0-9_]*)")
 BRACKET_ACCESS = re.compile(r"""process\.env\[\s*["']([A-Z][A-Z0-9_]*)["']\s*\]""")

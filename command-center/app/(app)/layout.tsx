@@ -5,10 +5,35 @@ import { NeuralBackdrop } from "@/components/NeuralBackdrop";
 import { Header } from "@/components/Header";
 import { CommandPalette } from "@/components/CommandPalette";
 import { getChannelContext } from "@/lib/channels-server";
+import { getOrgContext } from "@/lib/orgs-server";
+import { CreateOrganizationForm } from "@/components/org/CreateOrganizationForm";
+import { SignOutButton } from "@/components/SignOutButton";
 import { isSupabaseConfigured } from "@/lib/config";
 import { ALL_CHANNELS, ALL_CHANNELS_SLUG, PATH_HEADER } from "@/lib/channels";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const org = isSupabaseConfigured
+    ? await getOrgContext()
+    : { supported: false, orgs: [], current: null };
+
+  // Signed in, organizations exist (0018 applied), and this account belongs to
+  // none: a new sign-up. Nothing in the app would show them anything — RLS
+  // returns no rows — so the whole screen is the one thing they can do: start
+  // their own organization.
+  if (org.supported && org.orgs.length === 0) {
+    return (
+      <div className="atmos relative flex min-h-dvh flex-col">
+        <NeuralBackdrop dim />
+        <div className="relative z-10 mx-auto flex w-full max-w-xl flex-1 flex-col justify-center gap-4 p-4">
+          <div className="flex justify-end">
+            <SignOutButton />
+          </div>
+          <CreateOrganizationForm variant="first" />
+        </div>
+      </div>
+    );
+  }
+
   // Channels for the switcher. Empty before the Phase 5 migration is applied,
   // in which case the switcher renders nothing and the app looks as it did.
   const { channels, selection, slug: honest } = isSupabaseConfigured
@@ -30,7 +55,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="atmos relative flex min-h-dvh flex-col">
       <NeuralBackdrop dim />
       <div className="relative z-10 flex min-h-dvh flex-col">
-        <Header channels={channels} selection={selection} />
+        <Header
+          channels={channels}
+          selection={selection}
+          orgs={org.orgs}
+          currentOrgId={org.current?.id ?? null}
+        />
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
           <SideNav />
           <main className="pad-page min-w-0 flex-1">{children}</main>

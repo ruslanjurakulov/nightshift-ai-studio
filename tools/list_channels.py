@@ -82,6 +82,28 @@ def _row(c) -> dict:
     }
 
 
+def resolve_only(channel_id: str, registry=None) -> dict:
+    """The matrix row for one explicitly named channel, or an error.
+
+    An operator naming a channel outranks its schedule — but not its existence:
+    an unknown id raises (KeyError) rather than resolving to whichever channel
+    happens to be first. Nor its verification: naming a channel by hand must not
+    be the way around the check, or the check is decoration — the dispatch
+    dropdown lists every channel, drafts included (ValueError).
+
+    Shared by the workflow's ``--only`` and the queue worker
+    (tools/queue_worker.py), so both refuse the same channels for the same
+    reason and both read the token from the same secret name.
+    """
+    c = (registry or ChannelRegistry()).get(channel_id)
+    if not c.is_verified:
+        raise ValueError(
+            f"channel {channel_id!r} has never been confirmed against YouTube. "
+            "Open it in the Command Center and confirm the channel before running it."
+        )
+    return _row(c)
+
+
 def _warn_about_shared_voices() -> None:
     """Say so when two channels narrate in the same ElevenLabs voice.
 
@@ -111,25 +133,12 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.only:
-        # An operator naming a channel outranks its schedule — but not its
-        # existence: an unknown id fails loudly rather than resolving to
-        # whichever channel happens to be first.
         try:
-            c = ChannelRegistry().get(args.only)
+            row = resolve_only(args.only)
         except (KeyError, ValueError) as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
-        # ...nor its verification. Naming a channel by hand must not be the way
-        # around the check, or the check is decoration: the dispatch dropdown
-        # lists every channel, drafts included.
-        if not c.is_verified:
-            print(
-                f"error: channel {args.only!r} has never been confirmed against YouTube. "
-                "Open it in the Command Center and confirm the channel before running it.",
-                file=sys.stderr,
-            )
-            return 2
-        print(json.dumps({"include": [_row(c)]}))
+        print(json.dumps({"include": [row]}))
         return 0
 
     if args.all:

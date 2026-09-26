@@ -19,7 +19,9 @@ Two subcommands, both local and side-effect free apart from the files they write
         --out-md bench/summary.md --out-json bench/result.json
         Turn `/usr/bin/time -v` output, a MemAvailable sample log and the run
         log into a markdown table + a JSON record. A number that could not be
-        measured is reported as null / "n/a", never as 0.
+        measured is reported as null / "n/a", never as 0. An ffmpeg-backend run
+        also gets its per-stage split (segment normalisation, final pass) from
+        the backend's `ffmpeg render timing:` log line.
 """
 
 from __future__ import annotations
@@ -116,6 +118,43 @@ def _ts(line: str) -> Optional[datetime]:
     return datetime.strptime(f"{m.group(1)}.{m.group(2)}", "%Y-%m-%d %H:%M:%S.%f")
 
 
+#: modules/render_backend.RenderTimings.log_line — one line per ffmpeg render.
+_TIMING = re.compile(r"ffmpeg render timing: (.*)$")
+_TIMING_FLOATS = ("normalize_s", "normalize_avg_s", "concat_s", "final_s", "total_s")
+_TIMING_KEYS = {"normalize_s": "normalize_s", "normalize_avg_s": "normalize_avg_s",
+                "concat_s": "concat_s", "final_s": "final_s", "total_s": "ffmpeg_total_s",
+                "segments": "segments", "jobs": "render_jobs", "mode": "render_mode"}
+
+
+def parse_render_timing(text: str) -> dict:
+    """The ffmpeg backend's per-stage timing from the run log (its last
+    ``ffmpeg render timing:`` line). ``na``, a missing key, an unparseable
+    value or no line at all is None — never 0."""
+    out: dict = {v: None for v in _TIMING_KEYS.values()}
+    line = None
+    for raw in (text or "").splitlines():
+        m = _TIMING.search(raw)
+        if m:
+            line = m.group(1)
+    if line is None:
+        return out
+    for tok in line.split():
+        key, _, val = tok.partition("=")
+        if key not in _TIMING_KEYS or not val or val == "na":
+            continue
+        try:
+            if key in _TIMING_FLOATS:
+                parsed = round(float(val), 2)
+            elif key in ("segments", "jobs"):
+                parsed = int(val)
+            else:
+                parsed = val
+        except ValueError:
+            continue
+        out[_TIMING_KEYS[key]] = parsed
+    return out
+
+
 def parse_run_log(text: str) -> dict:
     """Which backend rendered, why a fallback happened, and how long the render
     stage took (first render line → the pipeline's "Video:" line)."""
@@ -135,6 +174,7 @@ def parse_run_log(text: str) -> dict:
             end = _ts(line)
     if start and end and end >= start:
         out["render_s"] = round((end - start).total_seconds(), 1)
+    out.update(parse_render_timing(text))
     return out
 
 
@@ -163,6 +203,19 @@ def _fmt(v, unit: str = "") -> str:
     return "n/a" if v is None else f"{v}{unit}"
 
 
+def _workers(r: dict) -> str:
+    vals = (r.get("segments"), r.get("render_jobs"), r.get("render_mode"))
+    return "n/a" if all(v is None for v in vals) else " / ".join(_fmt(v) for v in vals)
+
+
+def _concat(r: dict) -> str:
+    if r.get("concat_s") is not None:
+        return f"{r['concat_s']} s"
+    # The backend concatenates inside the final pass (concat demuxer), so there
+    # is no separate number to report — say where the time is instead.
+    return "n/a (inside final pass)" if r.get("final_s") is not None else "n/a"
+
+
 def render_markdown(r: dict) -> str:
     rows = [
         ("Backend requested", r.get("backend_requested")),
@@ -173,6 +226,11 @@ def render_markdown(r: dict) -> str:
         ("Killed by signal", _fmt(r.get("signal"))),
         ("Wall time (whole run)", _fmt(r.get("wall_s"), " s")),
         ("Render stage time", _fmt(r.get("render_s"), " s")),
+        ("ffmpeg: segments / workers / mode", _workers(r)),
+        ("ffmpeg: normalize segments (total)", _fmt(r.get("normalize_s"), " s")),
+        ("ffmpeg: normalize per segment (avg)", _fmt(r.get("normalize_avg_s"), " s")),
+        ("ffmpeg: concat", _concat(r)),
+        ("ffmpeg: final pass (concat + captions + audio + encode)", _fmt(r.get("final_s"), " s")),
         ("Peak RSS (largest single process)", _fmt(r.get("max_rss_mb"), " MB")),
         ("Peak system memory in use", _fmt(r.get("peak_system_used_mb"), " MB")),
         ("System memory in use at start", _fmt(r.get("baseline_system_used_mb"), " MB")),
