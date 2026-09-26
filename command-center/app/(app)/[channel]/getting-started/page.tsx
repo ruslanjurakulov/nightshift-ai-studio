@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { CheckCircle2, Circle, Rocket, ArrowRight } from "lucide-react";
 import { isSupabaseConfigured } from "@/lib/config";
+import { getChannelScope } from "@/lib/channels-server";
+import { orgWide, scopeQuery, type ChannelScope } from "@/lib/channels";
 import { createClient, getUser } from "@/lib/supabase/server";
 import {
   isGithubConfigured,
@@ -25,10 +27,10 @@ const truthy = (v: string | undefined) => !!v && TRUTHY.has(v.trim().toLowerCase
 async function tableCount(
   supabase: NonNullable<Awaited<ReturnType<typeof createClient>>>,
   table: string,
+  scope?: ChannelScope,
 ): Promise<number> {
-  const { count, error } = await supabase
-    .from(table)
-    .select("*", { count: "exact", head: true });
+  const query = supabase.from(table).select("*", { count: "exact", head: true });
+  const { count, error } = await (scope ? scopeQuery(query, scope) : query);
   return error ? 0 : (count ?? 0);
 }
 
@@ -80,11 +82,14 @@ export default async function GettingStartedPage() {
   let credentialConnected = false;
   const supabase = await createClient();
   if (supabase) {
+    // The checklist is about the organization being set up, not every tenant
+    // a platform admin can read.
+    const scope = orgWide(await getChannelScope());
     const [channels, members, series, creds] = await Promise.all([
-      tableCount(supabase, "channels"),
+      tableCount(supabase, "channels", scope),
       tableCount(supabase, "app_members"),
-      tableCount(supabase, "content_series"),
-      supabase.from("channel_credentials").select("status"),
+      tableCount(supabase, "content_series", scope),
+      scopeQuery(supabase.from("channel_credentials").select("status"), scope),
     ]);
     hasChannel = channels > 0;
     hasMember = members > 0;

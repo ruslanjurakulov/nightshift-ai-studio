@@ -8,7 +8,7 @@ import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/gith
 import { BillingBoard, type ProviderView, type RunwayView } from "@/components/billing/BillingBoard";
 import { UnitEconomicsCard } from "@/components/billing/UnitEconomicsCard";
 import { getChannelContext } from "@/lib/channels-server";
-import { channelName, inSelection, isScoped } from "@/lib/channels";
+import { channelInScope, channelName, inSelection, isScoped, orgWide, scopeQuery } from "@/lib/channels";
 import { unitEconomics, type DurationRow, type LedgerRow } from "@/lib/unitEconomics";
 import {
   BILLED_PROVIDERS,
@@ -38,7 +38,7 @@ export default async function BillingPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t } = await getDictionary();
   const supabase = await createClient();
-  const { channels, selection } = await getChannelContext();
+  const { channels, selection, scope } = await getChannelContext();
 
   let costs: LedgerRow[] = [];
   let balances: BalanceRow[] = [];
@@ -46,28 +46,41 @@ export default async function BillingPage() {
   let topups: TopupRow[] = [];
   let migrationMissing = false;
 
+  // Provider accounts are the platform operator's (0018 gives them to the
+  // default organization). Inside any other organization — including when a
+  // platform admin has switched into a tenant — they are not this org's
+  // business, and neither is the platform-wide spend behind their burn rate.
+  const operatorView = scope.includeGlobal;
+
   if (supabase) {
     const since = new Date(Date.now() - 90 * 86_400_000).toISOString();
+    const ledger = supabase
+      .from("video_costs")
+      .select("unit,quantity,stage,recorded_at,video_id,slug,channel_id,estimated_usd");
     const [c, b, s, tp] = await Promise.all([
-      supabase
-        .from("video_costs")
-        .select("unit,quantity,stage,recorded_at,video_id,slug,channel_id,estimated_usd")
-        .gte("recorded_at", since)
-        .limit(10000),
-      supabase.from("provider_balances").select("*").order("checked_at", { ascending: false }).limit(200),
-      supabase.from("provider_billing_settings").select("*"),
-      supabase.from("provider_topups").select("provider,amount_usd,paid_at").order("paid_at", { ascending: false }).limit(1000),
+      // In the operator's view the ledger stays whole: the provider keys are
+      // shared by every channel, so their burn and runway are only true when
+      // measured over everything they paid for. Unit economics is narrowed to
+      // the view below. In a tenant's view only its own channels are read.
+      (operatorView ? ledger : scopeQuery(ledger, orgWide(scope))).gte("recorded_at", since).limit(10000),
+      operatorView
+        ? supabase.from("provider_balances").select("*").order("checked_at", { ascending: false }).limit(200)
+        : null,
+      operatorView ? supabase.from("provider_billing_settings").select("*") : null,
+      operatorView
+        ? supabase.from("provider_topups").select("provider,amount_usd,paid_at").order("paid_at", { ascending: false }).limit(1000)
+        : null,
     ]);
     costs = (c.data ?? []) as LedgerRow[];
-    balances = (b.data ?? []) as BalanceRow[];
-    settings = (s.data ?? []) as BillingSettingsRow[];
-    topups = (tp.data ?? []) as TopupRow[];
-    migrationMissing = [b.error, s.error, tp.error].some((e) => e?.code === "42P01");
+    balances = (b?.data ?? []) as BalanceRow[];
+    settings = (s?.data ?? []) as BillingSettingsRow[];
+    topups = (tp?.data ?? []) as TopupRow[];
+    migrationMissing = [b?.error, s?.error, tp?.error].some((e) => e?.code === "42P01");
   }
 
   // Unit economics is per channel (a price per video is a property of what the
   // channel makes), unlike the provider accounts above, which are shared.
-  const channelCosts = costs.filter((r) => inSelection(r.channel_id, selection));
+  const channelCosts = costs.filter((r) => inSelection(r.channel_id, scope));
   let ue = unitEconomics(channelCosts);
   if (supabase && ue.sampleSize > 0) {
     // Length of each sampled video from its Video IR (narration is the master
@@ -80,16 +93,18 @@ export default async function BillingPage() {
       slugs.length ? supabase.from("videos").select(cols).in("slug", slugs) : null,
       ids.length ? supabase.from("videos").select(cols).in("video_id", ids) : null,
     ]);
+    // A slug is not unique across organizations; only this view's videos
+    // may lend a length to its figures.
     const durations = [
       ...((bySlug?.data ?? []) as unknown as DurationRow[]),
       ...((byId?.data ?? []) as unknown as DurationRow[]),
-    ];
+    ].filter((d) => channelInScope(d.channel_id, scope));
     if (durations.length) ue = unitEconomics(channelCosts, { durations });
   }
   const ueScope = isScoped(selection) ? channelName(channels, selection) : t.channels.allChannels;
 
   let configured = new Set<string>();
-  if (isGithubConfigured) {
+  if (isGithubConfigured && operatorView) {
     try {
       configured = new Set(await listConfiguredSecretNames());
     } catch {
@@ -162,7 +177,13 @@ export default async function BillingPage() {
         </div>
       )}
       <UnitEconomicsCard ue={ue} scope={ueScope} />
-      <BillingBoard providers={views} runway={runway} githubConfigured={isGithubConfigured} />
+      {operatorView ? (
+        <BillingBoard providers={views} runway={runway} githubConfigured={isGithubConfigured} />
+      ) : (
+        <div className="panel p-4" role="status">
+          <p className="text-[13px] text-[var(--color-muted)]">{t.billing.providersOperatorOnly}</p>
+        </div>
+      )}
     </div>
   );
 }

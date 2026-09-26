@@ -16,7 +16,8 @@ import { pendingSceneRequests, sceneRepairEligibility } from "@/lib/sceneRepair"
 import { heldGate, heldState, heldStateLabel, isHeldVideo } from "@/lib/heldVideos";
 import { num, decimal, relativeTime, timeOfDay, statusTone } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
-import { fetchChannelTopicScores } from "@/lib/channels-server";
+import { fetchChannelTopicScores, getChannelScope } from "@/lib/channels-server";
+import { channelInScope } from "@/lib/channels";
 import { fmt } from "@/lib/i18n";
 import type { ChannelRow, FeedbackSignalRow, MetricsSnapshotRow, RetentionPointRow, ReviewIntentRow, SystemEventRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
 
@@ -86,10 +87,18 @@ export default async function VideoDetail({
         .limit(1000),
     ]);
     video = (vid.data as VideoRow | null) ?? null;
-    snapshots = (snap.data as MetricsSnapshotRow[]) ?? [];
-    events = (ev.data as SystemEventRow[]) ?? [];
-    learningSignals = (fs.data as FeedbackSignalRow[]) ?? [];
-    retentionPoints = ret.error ? [] : ((ret.data as RetentionPointRow[]) ?? []);
+    // A video id is valid whatever channel is selected — but not across
+    // organizations. RLS lets a platform admin read every tenant's video; the
+    // page answers exactly as it does for a video that does not exist, and
+    // renders none of what was fetched alongside it. Seeing it takes switching
+    // to its organization.
+    if (video && !channelInScope(video.channel_id, await getChannelScope())) video = null;
+    if (video) {
+      snapshots = (snap.data as MetricsSnapshotRow[]) ?? [];
+      events = (ev.data as SystemEventRow[]) ?? [];
+      learningSignals = (fs.data as FeedbackSignalRow[]) ?? [];
+      retentionPoints = ret.error ? [] : ((ret.data as RetentionPointRow[]) ?? []);
+    }
     // Scored against its OWN channel, not the switcher: a link to a video is
     // valid whatever channel is selected, and the score that explains this
     // video is the one its channel learned.

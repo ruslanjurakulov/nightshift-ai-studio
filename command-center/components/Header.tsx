@@ -12,7 +12,7 @@ import { UtcClock } from "@/components/UtcClock";
 import { ChannelSwitcher } from "@/components/ChannelSwitcher";
 import { OrgSwitcher } from "@/components/org/OrgSwitcher";
 import type { OrgSummary } from "@/lib/orgs";
-import { ALL_CHANNELS, type ChannelSelection } from "@/lib/channels";
+import { ALL_CHANNELS, unscopedScope, type ChannelScope, type ChannelSelection } from "@/lib/channels";
 import type { ChannelRow } from "@/lib/types";
 
 /**
@@ -26,9 +26,12 @@ export function Header({
   selection = ALL_CHANNELS,
   orgs = [],
   currentOrgId = null,
+  scope = unscopedScope(),
 }: {
   channels?: ChannelRow[];
   selection?: ChannelSelection;
+  /** What the notifications may show — the current organization's channels. */
+  scope?: ChannelScope;
   orgs?: OrgSummary[];
   currentOrgId?: string | null;
 }) {
@@ -67,7 +70,7 @@ export function Header({
           <span className="mono pill border border-[var(--color-border)] px-1.5 text-[9px] tracking-wider">⌘K</span>
         </button>
         <UtcClock />
-        <NotificationsCenter />
+        <NotificationsCenter scope={scope} />
         <LanguageSelector />
         <ThemeToggle />
         <SignOutButton />

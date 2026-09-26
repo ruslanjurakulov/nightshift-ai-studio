@@ -5,7 +5,7 @@ import { StatCard, Panel, EmptyState, StatusPill } from "@/components/ui";
 import { num, relativeTime } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
-import { getChannelSelection } from "@/lib/channels-server";
+import { getChannelScope } from "@/lib/channels-server";
 import { scopeQuery, inSelection } from "@/lib/channels";
 import { fmt } from "@/lib/i18n";
 import {
@@ -47,7 +47,7 @@ function pct(value: number | null, digits = 1): string {
 export default async function MeasurePage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t } = await getDictionary();
-  const selection = await getChannelSelection();
+  const scope = await getChannelScope();
 
   const supabase = await createClient();
   let costs: VideoCostRow[] = [];
@@ -59,10 +59,10 @@ export default async function MeasurePage() {
 
   if (supabase) {
     const [cost, vid, snap, ret, ev] = await Promise.all([
-      scopeQuery(supabase.from("video_costs").select("*"), selection)
+      scopeQuery(supabase.from("video_costs").select("*"), scope)
         .order("recorded_at", { ascending: false })
         .limit(2000),
-      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), selection))
+      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), scope))
         .order("published_at", { ascending: false })
         .limit(500),
       // Snapshots carry no channel_id — they are scoped by the videos they join to.
@@ -72,7 +72,7 @@ export default async function MeasurePage() {
         .select("*")
         .order("measured_date", { ascending: true })
         .limit(5000),
-      scopeQuery(supabase.from("system_events").select("*"), selection, { nullIsGlobal: true })
+      scopeQuery(supabase.from("system_events").select("*"), scope, { nullIsGlobal: true })
         .in("event", GATE_EVENTS)
         .order("ts", { ascending: false })
         .limit(25),
@@ -96,7 +96,7 @@ export default async function MeasurePage() {
   // Retention rows have no channel of their own — they belong to the video, so
   // the channel scope is applied by keeping only this selection's videos.
   const scopedIds = new Set(
-    videos.filter((v) => inSelection(v.channel_id, selection)).map((v) => v.video_id),
+    videos.filter((v) => inSelection(v.channel_id, scope)).map((v) => v.video_id),
   );
   const curve = aggregateRetention(retention.filter((p) => scopedIds.has(p.video_id)));
 

@@ -6,7 +6,7 @@ import { num } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
 import { getChannelContext } from "@/lib/channels-server";
-import { isScoped } from "@/lib/channels";
+import { isScoped, orgWide, scopeQuery } from "@/lib/channels";
 import { summariseCosts } from "@/lib/measurement";
 import { parseRevenueTracked } from "@/lib/advisory";
 import { portfolioTotals, type ChannelEconomicsInput } from "@/lib/portfolio";
@@ -47,7 +47,11 @@ export default async function PortfolioPage() {
   const { t } = await getDictionary();
   const dash = t.common.dash;
 
-  const { channels, selection, notMigrated } = await getChannelContext();
+  const { channels, selection, notMigrated, scope: viewScope } = await getChannelContext();
+  // The current organization's channels only. Per-channel figures are keyed
+  // off that list already; scoping the reads keeps another tenant's rows from
+  // filling the limits (RLS lets a platform admin read every tenant).
+  const scope = orgWide(viewScope);
   const supabase = await createClient();
 
   let costs: VideoCostRow[] = [];
@@ -56,11 +60,9 @@ export default async function PortfolioPage() {
 
   if (supabase && channels.length > 0) {
     const [cost, vid, rev] = await Promise.all([
-      supabase.from("video_costs").select("*").limit(5000),
-      uploadedOnly(supabase.from("videos").select("*")).limit(5000),
-      supabase
-        .from("system_events")
-        .select("*")
+      scopeQuery(supabase.from("video_costs").select("*"), scope).limit(5000),
+      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), scope)).limit(5000),
+      scopeQuery(supabase.from("system_events").select("*"), scope)
         .eq("event", EVENT_REVENUE_TRACKED)
         .order("ts", { ascending: false })
         .limit(2000),

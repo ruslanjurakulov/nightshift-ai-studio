@@ -15,7 +15,7 @@ import { deriveAdvisory } from "@/lib/advisory";
 import { quotaGaugeView } from "@/lib/quota-gauge";
 import { inferNextStage, dailyMission, PIPELINE_ORDER, type PipelineStageKey } from "@/lib/intelligence";
 import { getDictionary } from "@/lib/i18n/server";
-import { fetchTopicScores, getChannelContext } from "@/lib/channels-server";
+import { fetchScopedVideoIds, fetchTopicScores, getChannelContext } from "@/lib/channels-server";
 import { isScoped, scopeQuery } from "@/lib/channels";
 import { isRunNowConfigured } from "@/lib/server/run-backend";
 import { RunNowButton } from "@/components/agents/RunNowButton";
@@ -69,7 +69,7 @@ export default async function CommandCenter() {
   const path = await getChannelPath();
   // Scope every channel-owned query to the selected channel (view control;
   // RLS still decides what may be read at all).
-  const { selection, channels } = await getChannelContext();
+  const { selection, channels, scope } = await getChannelContext();
   // The primary "Produce a video" action needs one verified channel and the
   // run backend's wiring (GitHub dispatch, or the render_jobs queue); when either is missing the hero keeps its
   // navigation buttons only, rather than showing a dead control.
@@ -87,18 +87,23 @@ export default async function CommandCenter() {
   let dbHealthy = true;
 
   if (supabase) {
-    const [ev, vid, tp, snap, sg] = await Promise.all([
-      scopeQuery(supabase.from("system_events").select("*"), selection, { nullIsGlobal: true }).order("ts", { ascending: false }).limit(200),
-      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), selection)).order("published_at", { ascending: false }).limit(50),
-      fetchTopicScores(supabase, selection, 6),
+    const [ev, vid, tp, snap, sg, videoIds] = await Promise.all([
+      scopeQuery(supabase.from("system_events").select("*"), scope, { nullIsGlobal: true }).order("ts", { ascending: false }).limit(200),
+      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), scope)).order("published_at", { ascending: false }).limit(50),
+      fetchTopicScores(supabase, scope, 6),
       supabase.from("metrics_snapshots").select("*").order("snapshot_date", { ascending: false }).limit(200),
-      scopeQuery(supabase.from("feedback_signals").select("*"), selection).order("analyzed_date", { ascending: false }).limit(200),
+      scopeQuery(supabase.from("feedback_signals").select("*"), scope).order("analyzed_date", { ascending: false }).limit(200),
+      fetchScopedVideoIds(supabase, scope),
     ]);
     if (ev.error || vid.error) dbHealthy = false;
     events = (ev.data as SystemEventRow[]) ?? [];
     videos = (vid.data as VideoRow[]) ?? [];
     topics = tp;
-    snapshots = (snap.data as MetricsSnapshotRow[]) ?? [];
+    // Snapshots carry no channel: "analysed today" counts only the scope's
+    // own videos, not every tenant's the database would hand a platform admin.
+    snapshots = ((snap.data as MetricsSnapshotRow[]) ?? []).filter(
+      (s) => !videoIds || videoIds.has(s.video_id),
+    );
     signals = (sg.data as FeedbackSignalRow[]) ?? [];
   }
 
@@ -227,7 +232,7 @@ export default async function CommandCenter() {
 
         <aside className="flex w-full shrink-0 flex-col gap-12 lg:w-[360px]">
           <Widget id="status" title={t.ops.statusTitle}>
-            <SystemStatus initial={events} dbOk={dbHealthy} selection={selection} />
+            <SystemStatus initial={events} dbOk={dbHealthy} scope={scope} />
           </Widget>
           <Widget id="mission" title={t.ops.missionTitle}>
             <DailyMission
@@ -279,7 +284,7 @@ export default async function CommandCenter() {
 
       <Widget id="feed" title={t.ops.streamTitle}>
         <div className="h-[420px]">
-          <ActivityFeed initial={events} selection={selection} />
+          <ActivityFeed initial={events} scope={scope} />
         </div>
       </Widget>
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/supabase/server";
 import { createClient } from "@/lib/supabase/server";
-import { getChannelSelection, fetchTopicScores } from "@/lib/channels-server";
+import { fetchTopicScores, getChannelScope } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import type { DemandSignalRow } from "@/lib/types";
 
@@ -24,11 +24,11 @@ export async function GET() {
   const supabase = await createClient();
   if (!supabase) return NextResponse.json({ ideas: [] });
 
-  const selection = await getChannelSelection();
+  const scope = await getChannelScope();
 
   const [proven, demandRes] = await Promise.all([
-    fetchTopicScores(supabase, selection).catch(() => []),
-    scopeQuery(supabase.from("demand_signals").select("*"), selection)
+    fetchTopicScores(supabase, scope).catch(() => []),
+    scopeQuery(supabase.from("demand_signals").select("*"), scope)
       .order("polled_date", { ascending: false })
       .limit(40),
   ]);

@@ -662,6 +662,7 @@ export const uz: Dictionary = {
     openBilling: "Provayderning to'lov sahifasi",
     checked: "{when} tekshirildi",
     migrationMissing: "Balans, narx va to'lovlarni yoqish uchun Supabase'da 0012_billing.sql migratsiyasini qo'llang.",
+    providersOperatorOnly: "Provayder akkauntlari va ularning balansi platforma operatoriga tegishli, shuning uchun bu tashkilotda ko'rsatilmaydi. Yuqoridagi unit-iqtisodiyot faqat shu tashkilot kanallarini hisoblaydi.",
     pay: "To'lash",
     payTitle: "{name} ni to'ldirish",
     payAmount: "Summa, USD",

@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useRealtimeEvents } from "@/lib/useRealtimeEvents";
-import { ALL_CHANNELS, type ChannelSelection } from "@/lib/channels";
+import type { ChannelScope } from "@/lib/channels";
 import { subsystemHealth, overallStatus, type SubsystemKey, type Subsystem } from "@/lib/intelligence";
 import { relativeTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
@@ -41,14 +41,15 @@ const TONE_COLOR: Record<string, string> = {
 export function SystemStatus({
   initial,
   dbOk,
-  selection = ALL_CHANNELS,
+  scope,
 }: {
   initial: SystemEventRow[];
   dbOk: boolean;
-  selection?: ChannelSelection;
+  /** The page's channel scope — live events outside it are dropped. */
+  scope: ChannelScope;
 }) {
   const { t } = useI18n();
-  const { events, connected } = useRealtimeEvents(initial, "chronos_status", selection);
+  const { events, connected } = useRealtimeEvents(initial, "chronos_status", scope);
   const subs = useMemo(() => subsystemHealth(events, dbOk, connected ?? true), [events, dbOk, connected]);
   const overall = overallStatus(subs);
 

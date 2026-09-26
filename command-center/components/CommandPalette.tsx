@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { orgWide, scopeQuery, type ChannelScope } from "@/lib/channels";
 import { useI18n } from "@/lib/i18n/context";
 import type { Dictionary } from "@/lib/i18n";
 import { relativeTime } from "@/lib/format";
@@ -60,7 +61,7 @@ function isTyping(el: EventTarget | null): boolean {
  * panel. Searches real videos and recent events (fetched lazily on open via the
  * authenticated browser client, so RLS applies). Mounted once in the app shell.
  */
-export function CommandPalette() {
+export function CommandPalette({ scope }: { scope: ChannelScope }) {
   const router = useRouter();
   const { t } = useI18n();
   // Every href below is a section path. The channel comes from the URL you are
@@ -75,14 +76,25 @@ export function CommandPalette() {
   const loaded = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Search the whole current organization, whichever channel is selected —
+  // never every tenant a platform admin's RLS can read. A switch of
+  // organization changes the key, and the next open fetches afresh.
+  const scopeKey = JSON.stringify(orgWide(scope));
+  useEffect(() => {
+    loaded.current = false;
+    setVideos([]);
+    setEvents([]);
+  }, [scopeKey]);
+
   const loadData = useCallback(async () => {
     if (loaded.current) return;
     loaded.current = true;
     const supabase = createClient();
     if (!supabase) return;
+    const current = JSON.parse(scopeKey) as ChannelScope;
     const [vid, ev] = await Promise.all([
-      uploadedOnly(supabase.from("videos").select("video_id,title,topic")).order("published_at", { ascending: false }).limit(50),
-      supabase.from("system_events").select("event_key,event,agent,ts,video_id").order("ts", { ascending: false }).limit(100),
+      uploadedOnly(scopeQuery(supabase.from("videos").select("video_id,title,topic"), current)).order("published_at", { ascending: false }).limit(50),
+      scopeQuery(supabase.from("system_events").select("event_key,event,agent,ts,video_id"), current, { nullIsGlobal: true }).order("ts", { ascending: false }).limit(100),
     ]);
     setVideos(
       (vid.data ?? []).map((v: { video_id: string; title: string | null; topic: string | null }) => ({
@@ -102,7 +114,7 @@ export function CommandPalette() {
         href: e.video_id ? `/videos/${e.video_id}` : "/logs",
       })),
     );
-  }, []);
+  }, [scopeKey]);
 
   const openPalette = useCallback(() => {
     setOpen(true);

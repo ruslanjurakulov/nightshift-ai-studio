@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/roles";
+import { isChannelInCurrentOrg } from "@/lib/channels-server";
 import { logAudit } from "@/lib/server/audit";
 import { isMissingTable, nextStatus, parseDecision, type LearningStatus } from "@/lib/learnings";
 
@@ -43,7 +44,10 @@ export async function POST(request: Request) {
     const missing = isMissingTable(readError);
     return NextResponse.json({ error: missing ? "migration_missing" : "read_failed" }, { status: missing ? 503 : 500 });
   }
-  if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  // Another organization's learning reads as missing: deciding it takes
+  // switching to that organization first.
+  if (!row || !(await isChannelInCurrentOrg(row.channel_id as string | null)))
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   const from = row.status as LearningStatus;
   const to = nextStatus(from, parsed.decision);

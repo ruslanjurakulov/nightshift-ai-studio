@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { getChannelScope } from "@/lib/channels-server";
+import { orgWide, scopeQuery } from "@/lib/channels";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { Panel, EmptyState } from "@/components/ui";
@@ -27,9 +29,12 @@ export default async function AuditPage() {
   const supabase = await createClient();
   let rows: AuditRow[] = [];
   if (supabase) {
-    const { data } = await supabase
-      .from("app_audit_log")
-      .select("*")
+    // The whole current organization, whichever channel is selected. Rows
+    // with no channel are platform-level and belong to the operator's
+    // organization only — the rule 0018's policy draws, applied to the view
+    // so a platform admin inside a tenant sees that tenant's log alone.
+    const scope = orgWide(await getChannelScope());
+    const { data } = await scopeQuery(supabase.from("app_audit_log").select("*"), scope, { nullIsGlobal: true })
       .order("at", { ascending: false })
       .limit(LIMIT);
     rows = (data as AuditRow[]) ?? [];
