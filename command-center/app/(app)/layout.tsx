@@ -6,9 +6,8 @@ import { Header } from "@/components/Header";
 import { CommandPalette } from "@/components/CommandPalette";
 import { getChannelContext } from "@/lib/channels-server";
 import { getOrgContext } from "@/lib/orgs-server";
-import { CreateOrganizationForm } from "@/components/org/CreateOrganizationForm";
-import { SignOutButton } from "@/components/SignOutButton";
 import { isSupabaseConfigured } from "@/lib/config";
+import { WELCOME_PATH } from "@/lib/public-paths";
 import { ALL_CHANNELS, ALL_CHANNELS_SLUG, PATH_HEADER, channelSlug, unscopedScope } from "@/lib/channels";
 import { NavigationProvider } from "@/components/navigation/NavigationProvider";
 import { ScrollToTop } from "@/components/navigation/ScrollToTop";
@@ -23,21 +22,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   // Signed in, organizations exist (0018 applied), and this account belongs to
   // none: a new sign-up. Nothing in the app would show them anything — RLS
-  // returns no rows — so the whole screen is the one thing they can do: start
-  // their own organization.
-  if (org.supported && org.orgs.length === 0) {
-    return (
-      <div className="atmos relative flex min-h-dvh flex-col">
-        <NeuralBackdrop dim />
-        <div className="relative z-10 mx-auto flex w-full max-w-xl flex-1 flex-col justify-center gap-4 p-4">
-          <div className="flex justify-end">
-            <SignOutButton />
-          </div>
-          <CreateOrganizationForm variant="first" />
-        </div>
-      </div>
-    );
-  }
+  // returns no rows — so they are sent to first-run onboarding, which starts
+  // with creating their organization.
+  if (org.supported && org.orgs.length === 0) redirect(WELCOME_PATH);
 
   // Channels for the switcher. Empty before the Phase 5 migration is applied,
   // in which case the switcher renders nothing and the app looks as it did.

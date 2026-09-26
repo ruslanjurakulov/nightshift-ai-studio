@@ -84,9 +84,14 @@ type ChannelInfo = {
 /**
  * `orgId` is the organization the new channel belongs to — the current one,
  * resolved on the server. Null before migration 0018, when the column does not
- * exist and must not be sent.
+ * exist and must not be sent. `initialNiche` / `initialLanguage` are what the
+ * person answered on /welcome: a starting value for the form, nothing more.
  */
-export function AddChannelWizard({ orgId = null }: { orgId?: string | null } = {}) {
+export function AddChannelWizard({
+  orgId = null,
+  initialNiche = null,
+  initialLanguage = null,
+}: { orgId?: string | null; initialNiche?: string | null; initialLanguage?: string | null } = {}) {
   const { t } = useI18n();
   const router = useRouter();
   const path = useChannelPath();
@@ -95,10 +100,10 @@ export function AddChannelWizard({ orgId = null }: { orgId?: string | null } = {
   const [name, setName] = useState("");
   const [channelId, setChannelId] = useState("");
   const [idTouched, setIdTouched] = useState(false);
-  const [niche, setNiche] = useState("");
+  const [niche, setNiche] = useState(initialNiche ?? "");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [nicheRules, setNicheRules] = useState("");
-  const [language, setLanguage] = useState("English");
+  const [language, setLanguage] = useState(initialLanguage ?? "English");
   const [duration, setDuration] = useState(300);
   const [ttsProvider, setTtsProvider] = useState("edge");
   const [edgeVoice, setEdgeVoice] = useState("en-US-ChristopherNeural");
