@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { PROVIDERS } from "@/lib/providers";
+import { IMAGE_GENERATORS, imageGeneratorById } from "@/lib/imageProviders";
 
 /**
  * Pipeline routing — choose which generator the pipeline actually uses.
@@ -29,8 +30,9 @@ const TRUTHY = new Set(["1", "true", "yes", "on"]);
 const truthy = (v: string | undefined) => !!v && TRUTHY.has(v.trim().toLowerCase());
 
 const VIDEO_PROVIDERS = PROVIDERS.filter((p) => p.category === "video");
-// Pexels is the stock fallback ("off"), not a generator option.
-const IMAGE_PROVIDERS = PROVIDERS.filter((p) => p.category === "image" && p.id !== "pexels");
+// Pexels is the stock fallback ("off"), not a generator option. Two generators
+// reuse an LLM key (OpenAI, Gemini), so they come from their own list.
+const IMAGE_PROVIDERS = IMAGE_GENERATORS;
 
 function secretFor(id: string): string | undefined {
   return PROVIDERS.find((p) => p.id === id)?.secretName;
@@ -135,7 +137,7 @@ export function PipelineRouting({
     return s ? !configuredSet.has(s) : false;
   })();
   const imageKeyMissing = image !== "off" && (() => {
-    const s = secretFor(image);
+    const s = imageGeneratorById(image)?.secretName;
     return s ? !configuredSet.has(s) : false;
   })();
 

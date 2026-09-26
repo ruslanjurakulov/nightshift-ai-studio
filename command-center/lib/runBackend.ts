@@ -39,7 +39,9 @@ export type RunOptions = {
 
 /** The workflow's choice lists (daily_video.yml); migration 0017 checks the same. */
 export const VIDEO_PROVIDERS = ["minimax", "higgsfield", "kling", "veo", "seedance", "wan"] as const;
-export const IMAGE_PROVIDERS = ["pexels", "leonardo"] as const;
+import { IMAGE_PROVIDERS } from "./imageProviders";
+
+export { IMAGE_PROVIDERS };
 
 /**
  * The render_jobs row for a "Run now" in queue mode: exactly the inputs the

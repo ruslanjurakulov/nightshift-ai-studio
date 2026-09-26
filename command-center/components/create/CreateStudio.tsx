@@ -8,6 +8,7 @@ import type { ChannelAgentConfig } from "@/lib/types";
 import type { QueueJob, RunBackend } from "@/lib/runBackend";
 import { creditRunError } from "@/lib/credits";
 import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
+import { IMAGE_GENERATORS } from "@/lib/imageProviders";
 
 /**
  * The Create studio — one page to type a topic, set the run's controls, press
@@ -206,7 +207,11 @@ export function CreateStudio({
             <select value={imageProvider} onChange={(e) => setImageProvider(e.target.value)} className={selectClass}>
               <option value="">{t.create.optDefault}</option>
               <option value="pexels">Pexels (stock)</option>
-              <option value="leonardo">Leonardo</option>
+              {IMAGE_GENERATORS.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
             </select>
           </label>
         </div>

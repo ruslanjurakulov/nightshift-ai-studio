@@ -99,8 +99,8 @@ AGENT_AUTOPILOT = os.getenv("CHRONOS_AGENT_AUTOPILOT", "").strip().lower() in ("
 # ── AI images: which image-generation provider (Track 4) ──────────────────────
 # Backgrounds come from Pexels stock by default. This optionally generates a few
 # bespoke on-topic stills instead — mirrors the video router. Default "pexels"
-# keeps today's behavior exactly; Leonardo runs only when selected AND its key is
-# set AND CHRONOS_ENABLE_IMAGE_GEN is on. A failed generation falls back to
+# keeps today's behavior exactly; a generator runs only when selected AND its key
+# is set AND CHRONOS_ENABLE_IMAGE_GEN is on. A failed generation falls back to
 # stock; a key is never logged. See modules/image_providers.py.
 IMAGE_PROVIDER = os.getenv("CHRONOS_IMAGE_PROVIDER", "").strip().lower() or "pexels"
 IMAGE_GEN_OPT_IN = os.getenv("CHRONOS_ENABLE_IMAGE_GEN", "").strip().lower() in ("1", "true", "yes", "on")
@@ -110,7 +110,22 @@ LEONARDO_BASE_URL = os.getenv("LEONARDO_BASE_URL", "https://cloud.leonardo.ai/ap
 # Default model id is Leonardo's "Leonardo Kino XL" (cinematic). Override per docs.
 LEONARDO_MODEL_ID = os.getenv("LEONARDO_MODEL_ID", "aa77f04e-3eec-4034-9c07-d0f619684628")
 # How many sections of one video may get a generated still (cost control).
+# Applies to every image provider below, despite the name.
 LEONARDO_MAX_IMAGES = int(os.getenv("CHRONOS_LEONARDO_MAX_IMAGES", "2") or 2)
+# The other generators (modules/image_providers.py). Each runs only when it is
+# the selected CHRONOS_IMAGE_PROVIDER, its key is set, and the opt-in flag is on.
+#   gpt-image    OpenAI GPT Image (reuses OPENAI_API_KEY)
+#   nano-banana  Google Gemini image / "Nano Banana" (reuses GEMINI_API_KEY)
+#   flux         Black Forest Labs FLUX.2
+#   ideogram     Ideogram 3 (strong at text inside the image)
+#   fal          fal.ai — any of its text-to-image models, by model id
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+BFL_API_KEY = os.getenv("BFL_API_KEY", "")
+IDEOGRAM_API_KEY = os.getenv("IDEOGRAM_API_KEY", "")
+FAL_KEY = os.getenv("FAL_KEY", "")
+# Model for the selected image provider; empty = that provider's default
+# (image_providers.DEFAULT_MODELS). Lets a newer model be used without a code change.
+IMAGE_MODEL = os.getenv("CHRONOS_IMAGE_MODEL", "").strip()
 
 # vidIQ research & scoring (modules/vidiq.py + modules/vidiq_client.py).
 # Research and scoring ONLY — advisory keyword/title intelligence, never a

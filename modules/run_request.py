@@ -40,7 +40,7 @@ ALLOWED_PARAMS = (
 #: The workflow's choice lists (daily_video.yml `options:`).
 PRIVACY_CHOICES = ("private", "unlisted", "public")
 VIDEO_PROVIDERS = ("minimax", "higgsfield", "kling", "veo", "seedance", "wan")
-IMAGE_PROVIDERS = ("pexels", "leonardo")
+IMAGE_PROVIDERS = ("pexels", "leonardo", "gpt-image", "nano-banana", "flux", "ideogram", "fal")
 KINDS = ("daily", "repair")
 
 _MAX_LEN = {"topic": 300, "niche": 120, "language": 40, "visual_style": 300, "repair_scenes": 120}

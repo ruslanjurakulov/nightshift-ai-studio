@@ -1,5 +1,6 @@
 import "server-only";
 import { PROVIDER_SECRET_NAMES } from "../providers";
+import { IMAGE_PROVIDERS } from "@/lib/imageProviders";
 
 /**
  * Writing GitHub Actions Repository Secrets — forward, never store.
@@ -185,11 +186,10 @@ export async function dispatchDailyVideo(
   // Per-run model routing — validated against the workflow's own choice lists
   // (see daily_video.yml), so only a real provider name is ever forwarded.
   const VIDEO_PROVIDERS = ["minimax", "higgsfield", "kling", "veo", "seedance", "wan"];
-  const IMAGE_PROVIDERS = ["pexels", "leonardo"];
   const videoProvider = opts.videoProvider?.trim().toLowerCase();
   const imageProvider = opts.imageProvider?.trim().toLowerCase();
   if (videoProvider && VIDEO_PROVIDERS.includes(videoProvider)) inputs.video_provider = videoProvider;
-  if (imageProvider && IMAGE_PROVIDERS.includes(imageProvider)) inputs.image_provider = imageProvider;
+  if (imageProvider && (IMAGE_PROVIDERS as readonly string[]).includes(imageProvider)) inputs.image_provider = imageProvider;
   // Same shape 0020 accepts for a reservation id; anything else is not sent.
   if (opts.creditRef && /^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$/.test(opts.creditRef)) inputs.credit_ref = opts.creditRef;
   await dispatchWorkflow("daily_video.yml", inputs, ref);
