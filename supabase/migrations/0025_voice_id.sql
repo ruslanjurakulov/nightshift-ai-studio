@@ -5,8 +5,9 @@
 -- whitelists every params key, so without this a queued run naming a voice is
 -- refused by the insert policy.
 --
--- The function below is 0024's with the one new key and its check. Safe to
--- run again; run 0024 first if it has not been applied.
+-- The function below is 0024's with the one new key and its check; the end of
+-- the file adds the private bucket for voice preview clips. Safe to run again,
+-- and it contains everything 0024 does, so 0024 need not be run separately.
 
 create or replace function public.render_job_params_valid(p jsonb, p_kind text)
   returns boolean
@@ -82,3 +83,16 @@ begin
   return not has_repair;
 end
 $$;
+
+-- ── Voice preview clips (tools/voice_previews.py) ───────────────────────────
+-- The Create page lets people listen to a voice before choosing it. The clips
+-- are written by the voice_previews workflow with the service key (which
+-- bypasses RLS) and read by signed-in users through short-lived signed URLs.
+-- Private: a cloned voice's sample is nobody else's business.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('voice-previews', 'voice-previews', false, 5242880, array['audio/mpeg'])
+on conflict (id) do nothing;
+
+drop policy if exists voice_previews_read on storage.objects;
+create policy voice_previews_read on storage.objects
+  for select to authenticated using (bucket_id = 'voice-previews');
