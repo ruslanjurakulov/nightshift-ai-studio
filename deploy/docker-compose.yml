@@ -1,0 +1,106 @@
+# Nightshift on one server: the Command Center behind Caddy.
+# Step by step (Uzbek): docs/DEPLOY_AX42.md
+#
+# Run from the repository checkout, pointing compose at the env file that lives
+# OUTSIDE the checkout (so `git pull` can never overwrite or commit it):
+#
+#   docker compose --env-file /opt/nightshift/.env.web \
+#     -f deploy/docker-compose.yml up -d --build
+#
+# The env file is read twice, for two different things:
+#   * --env-file  -> interpolation of ${...} below. Only DOMAIN, ACME_EMAIL and
+#     the two NEXT_PUBLIC_* values are referenced, so only those reach Caddy's
+#     environment or the image build.
+#   * env_file:   -> the web container's runtime environment (server-only
+#     values such as GITHUB_SECRETS_TOKEN). Never a build arg, never Caddy's.
+
+name: nightshift
+
+x-logging: &default-logging
+  # Rotated, so a chatty container cannot fill the disk.
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  web:
+    build:
+      context: ../command-center
+      dockerfile: Dockerfile
+      args:
+        # Public by design: inlined into the browser bundle at build time.
+        # Changing either needs `up -d --build`, not just a restart.
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?set NEXT_PUBLIC_SUPABASE_URL in the env file}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?set NEXT_PUBLIC_SUPABASE_ANON_KEY in the env file}
+    image: nightshift-web:latest
+    restart: unless-stopped
+    env_file:
+      - ${WEB_ENV_FILE:-/opt/nightshift/.env.web}
+    environment:
+      # The origin the browser uses. Behind a proxy the standalone server cannot
+      # see it (it reports its bind address), and the YouTube OAuth redirect_uri
+      # is built from it — see command-center/lib/server/public-origin.ts.
+      APP_ORIGIN: https://${DOMAIN:?set DOMAIN in the env file}
+    # No `ports:` on purpose. Docker publishes ports around ufw, so a published
+    # 3000 would be open to the internet whatever the firewall says. Caddy
+    # reaches the app over the compose network instead.
+    expose:
+      - "3000"
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+      # Next's runtime cache; uid 1000 is the image's `node` user.
+      - /app/.next/cache:uid=1000,gid=1000
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Headroom for the future worker: the dashboard must never be what starves
+    # a render of memory.
+    mem_limit: 2g
+    logging: *default-logging
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in the env file}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in the env file}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and ACME account. Losing this means re-issuing, and
+      # re-issuing too often hits Let's Encrypt rate limits — back it up.
+      - caddy_data:/data
+      - caddy_config:/config
+    logging: *default-logging
+
+  # ── Pipeline worker (placeholder, NOT active) ───────────────────────────────
+  # The worker gets its own image and runbook (Dockerfile.worker,
+  # docs/WORKER_VPS.md), added separately. When it lands, it joins this file
+  # roughly as below. It publishes no port and holds the bot's server-side
+  # secrets in its OWN env file — never .env.web, which the dashboard reads.
+  #
+  # worker:
+  #   build:
+  #     context: ..
+  #     dockerfile: Dockerfile.worker
+  #   restart: unless-stopped
+  #   env_file:
+  #     - /opt/nightshift/.env.worker
+  #   volumes:
+  #     - worker_output:/app/output
+  #   logging: *default-logging
+
+volumes:
+  caddy_data:
+  caddy_config:
+  # worker_output:

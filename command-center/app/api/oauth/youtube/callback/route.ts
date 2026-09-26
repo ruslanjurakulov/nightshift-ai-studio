@@ -8,6 +8,7 @@ import {
   isGoogleOAuthConfigured,
   tokenSecretName,
 } from "@/lib/server/google-oauth";
+import { publicOrigin } from "@/lib/server/public-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +32,9 @@ function back(origin: string, ref: string, status: string) {
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const origin = url.origin;
+  // Must be the same origin the start route sent Google, or the token exchange
+  // is rejected as a redirect_uri mismatch.
+  const origin = publicOrigin(request);
 
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });

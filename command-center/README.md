@@ -50,6 +50,13 @@ npm run dev                  # http://localhost:3000
 `npm run typecheck` and `npm run lint` check types and style; `npm run build`
 produces the production build.
 
+## Self-hosting (Docker + Caddy)
+
+The production target is our own server: `command-center/Dockerfile` builds a
+standalone image, `deploy/` runs it behind Caddy. Step by step (Uzbek):
+`../docs/DEPLOY_AX42.md`. The Vercel path below still works unchanged and is
+the rollback.
+
 ## Deploy to Vercel (its own project + subdomain)
 
 1. In Vercel, **New Project** → import the `chronos_youtube_bot` repo.
