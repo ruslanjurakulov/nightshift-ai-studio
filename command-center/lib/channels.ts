@@ -24,6 +24,7 @@ import type {
   VideoRow,
 } from "@/lib/types";
 import { storedMs } from "@/lib/format";
+import { RESERVED_ROOT_SEGMENTS } from "@/lib/public-paths";
 
 /** Remembers the last channel viewed, so "/" knows where to send you. It is a
  *  memory, not the selection — the URL is the selection. */
@@ -389,7 +390,9 @@ export function isValidChannelId(value: string): boolean {
   // A channel id is also a URL segment, so it may not collide with the words
   // that segment already means — otherwise /videos would be ambiguous between
   // "the Videos section" and "a channel called videos".
+  // The same goes for the pages that live beside the channels at the root.
   if (value === ALL_CHANNELS_SLUG || isSection(value)) return false;
+  if ((RESERVED_ROOT_SEGMENTS as readonly string[]).includes(value)) return false;
   return /^[a-z0-9][a-z0-9-]{1,38}$/.test(value);
 }
 
