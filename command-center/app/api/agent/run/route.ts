@@ -6,6 +6,7 @@ import { dispatchDailyVideo, isGithubConfigured } from "@/lib/server/github-secr
 import { isSupabaseConfigured } from "@/lib/config";
 import { buildRenderJobInsert, isRunConfigured, resolveRunBackend } from "@/lib/runBackend";
 import { creditsEnforced, reserveRunCredits } from "@/lib/server/credits";
+import { isChannelInCurrentOrg } from "@/lib/channels-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,7 +48,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const backend = resolveRunBackend(process.env);
+  const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
   return NextResponse.json({
     configured: isRunConfigured(backend, { github: isGithubConfigured, supabase: isSupabaseConfigured }),
     backend,
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   // Spending money to produce a video is an owner/admin action.
   if (!(await requireRole("admin"))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  const backend = resolveRunBackend(process.env);
+  const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
   if (backend === "actions" && !isGithubConfigured)
     return NextResponse.json({ error: "github_not_configured" }, { status: 503 });
 
@@ -81,6 +82,11 @@ export async function POST(request: Request) {
 
   const channelId = typeof body.channel_id === "string" ? body.channel_id.trim() : "";
   if (!channelId) return NextResponse.json({ error: "channel_required" }, { status: 400 });
+  // Only a channel of the organization being viewed. The Actions dispatch has
+  // no database check of its own, and a platform admin's RLS reaches every
+  // tenant: running another organization's channel takes switching to it.
+  if (!(await isChannelInCurrentOrg(channelId)))
+    return NextResponse.json({ error: "channel_not_found" }, { status: 404 });
 
   // Optional per-run overrides. Empty/absent means "the AI picks / the channel's
   // own setting applies", exactly as before.

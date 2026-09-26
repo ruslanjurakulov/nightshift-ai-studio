@@ -5,7 +5,7 @@ import { MemoryView } from "@/components/intel/MemoryView";
 import { deriveMemories, deriveOpportunities } from "@/lib/memory";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
-import { fetchTopicScores, getChannelSelection } from "@/lib/channels-server";
+import { fetchTopicScores, getChannelScope } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import type { DemandSignalRow, FeedbackSignalRow, TopicPerformanceRow } from "@/lib/types";
 
@@ -17,7 +17,7 @@ export default async function MemoryPage() {
   const { t } = await getDictionary();
   // Scope every channel-owned query to the selected channel (view control;
   // RLS still decides what may be read at all).
-  const selection = await getChannelSelection();
+  const scope = await getChannelScope();
 
   const supabase = await createClient();
   let topicPerf: TopicPerformanceRow[] = [];
@@ -26,9 +26,9 @@ export default async function MemoryPage() {
 
   if (supabase) {
     const [tp, fs, ds] = await Promise.all([
-      fetchTopicScores(supabase, selection),
-      scopeQuery(supabase.from("feedback_signals").select("*"), selection).order("analyzed_date", { ascending: false }).limit(300),
-      scopeQuery(supabase.from("demand_signals").select("*"), selection).order("polled_date", { ascending: false }).limit(100),
+      fetchTopicScores(supabase, scope),
+      scopeQuery(supabase.from("feedback_signals").select("*"), scope).order("analyzed_date", { ascending: false }).limit(300),
+      scopeQuery(supabase.from("demand_signals").select("*"), scope).order("polled_date", { ascending: false }).limit(100),
     ]);
     topicPerf = tp;
     signals = (fs.data as FeedbackSignalRow[]) ?? [];

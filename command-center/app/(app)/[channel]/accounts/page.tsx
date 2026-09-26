@@ -4,7 +4,7 @@ import { NotConfigured } from "@/components/NotConfigured";
 import { Panel, EmptyState } from "@/components/ui";
 import { AccountsBoard } from "@/components/accounts/AccountsBoard";
 import { getChannelContext } from "@/lib/channels-server";
-import { ACCOUNT_WINDOW_DAYS, isScoped, rollupAccounts } from "@/lib/channels";
+import { ACCOUNT_WINDOW_DAYS, isScoped, orgWide, rollupAccounts, scopeQuery } from "@/lib/channels";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
 import type { ContentQueueRow, SystemEventRow, VideoRow } from "@/lib/types";
@@ -30,7 +30,10 @@ export default async function AccountsPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t } = await getDictionary();
 
-  const { channels, credentials, selection, notMigrated } = await getChannelContext();
+  const { channels, credentials, selection, notMigrated, scope: viewScope } = await getChannelContext();
+  // Every channel of the current organization; another tenant's rows must not
+  // fill the limits below (RLS lets a platform admin read them all).
+  const scope = orgWide(viewScope);
   const supabase = await createClient();
 
   let events: SystemEventRow[] = [];
@@ -50,11 +53,11 @@ export default async function AccountsPage() {
       .replace(/Z$/, "");
 
     const [ev, vid, q, ...latest] = await Promise.all([
-      supabase.from("system_events").select("*").gte("ts", since).order("ts", { ascending: false }).limit(5000),
+      scopeQuery(supabase.from("system_events").select("*"), scope).gte("ts", since).order("ts", { ascending: false }).limit(5000),
       // nullsFirst:false keeps unpublished rows from filling the limit ahead of
       // the published ones — Postgres sorts NULLs first on a DESC order.
-      uploadedOnly(supabase.from("videos").select("*")).order("published_at", { ascending: false, nullsFirst: false }).limit(2000),
-      supabase.from("content_queue").select("*").limit(2000),
+      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), scope)).order("published_at", { ascending: false, nullsFirst: false }).limit(2000),
+      scopeQuery(supabase.from("content_queue").select("*"), scope).limit(2000),
       // One tiny query per channel for its newest event over ALL time. The
       // windowed fetch above cannot answer this: a channel that ran once six
       // months ago and stopped has nothing inside the window, and is exactly

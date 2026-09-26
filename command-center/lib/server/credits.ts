@@ -23,7 +23,9 @@ import {
  */
 
 /** This deployment's switch (server env NIGHTSHIFT_CREDITS_ENFORCE). */
-export const creditsEnforced: boolean = resolveCreditsEnforce(process.env);
+export const creditsEnforced: boolean = resolveCreditsEnforce({
+  NIGHTSHIFT_CREDITS_ENFORCE: process.env.NIGHTSHIFT_CREDITS_ENFORCE,
+});
 
 /** A missing table/function means 0020 is not applied — say so, never "0 credits". */
 export function isCreditsMissing(error: { code?: string; message?: string } | null | undefined): boolean {

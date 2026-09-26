@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useRealtimeEvents } from "@/lib/useRealtimeEvents";
-import { ALL_CHANNELS, type ChannelSelection } from "@/lib/channels";
+import type { ChannelScope } from "@/lib/channels";
 import { useI18n } from "@/lib/i18n/context";
 import type { Dictionary } from "@/lib/i18n";
 import type { SystemEventRow } from "@/lib/types";
@@ -90,13 +90,14 @@ function matches(node: NodeKey, ev: string): boolean {
  *  activity anywhere means the map is honestly quiet, not faked into motion. */
 export function IntelligenceMap({
   initial,
-  selection = ALL_CHANNELS,
+  scope,
 }: {
   initial: SystemEventRow[];
-  selection?: ChannelSelection;
+  /** The page's channel scope — live events outside it are dropped. */
+  scope: ChannelScope;
 }) {
   const { t } = useI18n();
-  const { events } = useRealtimeEvents(initial, "chronos_intel", selection);
+  const { events } = useRealtimeEvents(initial, "chronos_intel", scope);
 
   const active = useMemo(() => {
     const recent = events.filter((e) => Date.now() - (storedMs(e.ts) ?? 0) < DAY_MS);

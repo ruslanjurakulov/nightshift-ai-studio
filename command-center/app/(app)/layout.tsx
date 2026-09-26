@@ -9,7 +9,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { CreateOrganizationForm } from "@/components/org/CreateOrganizationForm";
 import { SignOutButton } from "@/components/SignOutButton";
 import { isSupabaseConfigured } from "@/lib/config";
-import { ALL_CHANNELS, ALL_CHANNELS_SLUG, PATH_HEADER } from "@/lib/channels";
+import { ALL_CHANNELS, ALL_CHANNELS_SLUG, PATH_HEADER, unscopedScope } from "@/lib/channels";
 import { createClient } from "@/lib/supabase/server";
 import { readCreditAccount } from "@/lib/server/credits";
 import type { CreditAccount } from "@/lib/credits";
@@ -39,13 +39,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   // Channels for the switcher. Empty before the Phase 5 migration is applied,
   // in which case the switcher renders nothing and the app looks as it did.
-  const { channels, selection, slug: honest } = isSupabaseConfigured
+  const { channels, selection, slug: honest, scope } = isSupabaseConfigured
     ? await getChannelContext()
-    : { channels: [], selection: ALL_CHANNELS, slug: ALL_CHANNELS_SLUG };
+    : { channels: [], selection: ALL_CHANNELS, slug: ALL_CHANNELS_SLUG, scope: unscopedScope() };
 
   // Keep the address bar honest, in both directions. A URL naming a channel
-  // that does not exist (deleted, mistyped, or not visible to this user)
-  // resolves to every channel, and says so. A URL naming the channel by its
+  // that does not exist (deleted, mistyped, or not visible to this user) — or
+  // that belongs to another organization, even one a platform admin can read —
+  // resolves to every channel of the current organization, and says so. A URL naming the channel by its
   // internal id — /default/pipeline — resolves fine, and is rewritten to the
   // name the operator actually knows it by: /chronos/pipeline.
   const path = (await headers()).get(PATH_HEADER);
@@ -76,13 +77,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           orgs={org.orgs}
           currentOrgId={org.current?.id ?? null}
           credits={credits}
+          scope={scope}
         />
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
           <SideNav />
           <main className="pad-page min-w-0 flex-1">{children}</main>
         </div>
       </div>
-      <CommandPalette />
+      <CommandPalette scope={scope} />
     </div>
   );
 }

@@ -9,7 +9,7 @@ import { toDecisionSignal, type DecisionSignal } from "@/lib/decisions";
 import { deriveTopicIntel } from "@/lib/memory";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
-import { fetchTopicScores, getChannelSelection } from "@/lib/channels-server";
+import { fetchTopicScores, getChannelScope } from "@/lib/channels-server";
 import { isScoped, scopeQuery } from "@/lib/channels";
 import type { FeedbackSignalRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
 import { uploadedOnly } from "@/lib/heldVideos";
@@ -22,7 +22,8 @@ export default async function LearningPage() {
   const { t } = await getDictionary();
   // Scope every channel-owned query to the selected channel (view control;
   // RLS still decides what may be read at all).
-  const selection = await getChannelSelection();
+  const scope = await getChannelScope();
+  const { selection } = scope;
 
   const supabase = await createClient();
   let signals: FeedbackSignalRow[] = [];
@@ -33,12 +34,12 @@ export default async function LearningPage() {
 
   if (supabase) {
     const [fs, tp, vid, lr] = await Promise.all([
-      scopeQuery(supabase.from("feedback_signals").select("*"), selection).order("analyzed_date", { ascending: false }).limit(300),
-      fetchTopicScores(supabase, selection),
-      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), selection)).order("published_at", { ascending: false }).limit(200),
+      scopeQuery(supabase.from("feedback_signals").select("*"), scope).order("analyzed_date", { ascending: false }).limit(300),
+      fetchTopicScores(supabase, scope),
+      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), scope)).order("published_at", { ascending: false }).limit(200),
       // Proposed/approved learnings (migration 0014). A missing table degrades
       // to a notice, not a broken page.
-      scopeQuery(supabase.from("learnings").select("*"), selection).order("created_at", { ascending: false }).limit(300),
+      scopeQuery(supabase.from("learnings").select("*"), scope).order("created_at", { ascending: false }).limit(300),
     ]);
     signals = (fs.data as FeedbackSignalRow[]) ?? [];
     topicPerf = tp;

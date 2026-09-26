@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/supabase/server";
 import { createClient } from "@/lib/supabase/server";
-import { getChannelSelection } from "@/lib/channels-server";
+import { getChannelScope } from "@/lib/channels-server";
 import { isScoped, scopeQuery } from "@/lib/channels";
 import type { SystemEventRow } from "@/lib/types";
 import { resolveRunBackend, toQueueJob, type QueueJob } from "@/lib/runBackend";
@@ -30,10 +30,11 @@ export async function GET() {
   const supabase = await createClient();
   if (!supabase) return NextResponse.json({ events: [] });
 
-  const selection = await getChannelSelection();
+  const scope = await getChannelScope();
+  const { selection } = scope;
   const res = await scopeQuery(
     supabase.from("system_events").select("ts,agent,event,status,video_id"),
-    selection,
+    scope,
     { nullIsGlobal: true },
   )
     .order("ts", { ascending: false })
@@ -41,7 +42,7 @@ export async function GET() {
 
   const rows = (res.data as Pick<SystemEventRow, "ts" | "agent" | "event" | "status" | "video_id">[] | null) ?? [];
 
-  const backend = resolveRunBackend(process.env);
+  const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
   let jobs: QueueJob[] | null = null;
   if (backend === "queue" && isScoped(selection)) {
     const jr = await supabase

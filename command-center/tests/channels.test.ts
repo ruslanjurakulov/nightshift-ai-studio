@@ -7,17 +7,22 @@ import {
   channelPath,
   channelSlug,
   channelStats,
+  NO_CHANNEL,
+  buildChannelScope,
+  channelInScope,
   inSelection,
   isScoped,
   isSection,
   isChannelVerified,
   isValidChannelId,
   resolveSelection,
+  orgWide,
   scopeQuery,
   selectionSlug,
   selectionToSlug,
   slugToSelection,
   slugifyChannelId,
+  unscopedScope,
   voiceOwners,
 } from "@/lib/channels";
 import type {
@@ -135,13 +140,17 @@ describe("resolveSelection", () => {
 
 // -- query scoping ---------------------------------------------------------
 
-describe("scopeQuery", () => {
+describe("scopeQuery (before organizations)", () => {
   function fakeQuery() {
     const calls: string[] = [];
     const q = {
       calls,
       eq(column: string, value: string) {
         calls.push(`eq:${column}=${value}`);
+        return q;
+      },
+      in(column: string, values: string[]) {
+        calls.push(`in:${column}=${values.join("|")}`);
         return q;
       },
       or(filter: string) {
@@ -154,19 +163,19 @@ describe("scopeQuery", () => {
 
   it("does not filter in the all-channels view", () => {
     const q = fakeQuery();
-    expect(scopeQuery(q, ALL_CHANNELS)).toBe(q);
+    expect(scopeQuery(q, unscopedScope(ALL_CHANNELS))).toBe(q);
     expect(q.calls).toEqual([]);
   });
 
   it("filters to one channel", () => {
     const q = fakeQuery();
-    scopeQuery(q, "finance");
+    scopeQuery(q, unscopedScope("finance"));
     expect(q.calls).toEqual(["eq:channel_id=finance"]);
   });
 
   it("keeps global rows when null means global", () => {
     const q = fakeQuery();
-    scopeQuery(q, "finance", { nullIsGlobal: true });
+    scopeQuery(q, unscopedScope("finance"), { nullIsGlobal: true });
     expect(q.calls).toEqual(["or:channel_id.eq.finance,channel_id.is.null"]);
   });
 
@@ -174,24 +183,169 @@ describe("scopeQuery", () => {
     // competitor_snapshots.channel_id is the competitor's channel; ours is
     // chronos_channel_id.
     const q = fakeQuery();
-    scopeQuery(q, "finance", { column: "chronos_channel_id" });
+    scopeQuery(q, unscopedScope("finance"), { column: "chronos_channel_id" });
     expect(q.calls).toEqual(["eq:chronos_channel_id=finance"]);
   });
 });
 
+// -- organization scoping (migration 0018) -------------------------------------
+
+describe("scopeQuery (inside an organization)", () => {
+  function fakeQuery() {
+    const calls: string[] = [];
+    const q = {
+      calls,
+      eq(column: string, value: string) {
+        calls.push(`eq:${column}=${value}`);
+        return q;
+      },
+      in(column: string, values: string[]) {
+        calls.push(`in:${column}=${values.join("|")}`);
+        return q;
+      },
+      or(filter: string) {
+        calls.push(`or:${filter}`);
+        return q;
+      },
+    };
+    return q;
+  }
+  const operatorOrg = { supported: true, current: { is_default: true } };
+  const tenantOrg = { supported: true, current: { is_default: false } };
+  const mine = [{ channel_id: "finance" }, { channel_id: "history" }];
+
+  it("narrows the all-channels view to the org's channels — a platform admin's RLS would return every tenant", () => {
+    const q = fakeQuery();
+    scopeQuery(q, buildChannelScope(ALL_CHANNELS, mine, tenantOrg));
+    expect(q.calls).toEqual(["in:channel_id=finance|history"]);
+  });
+
+  it("keeps the operator's global rows in the default org's all-channels view", () => {
+    const q = fakeQuery();
+    scopeQuery(q, buildChannelScope(ALL_CHANNELS, mine, operatorOrg), { nullIsGlobal: true });
+    expect(q.calls).toEqual(['or:channel_id.in.("finance","history"),channel_id.is.null']);
+  });
+
+  it("leaves the operator's global rows out of a tenant org, even with nullIsGlobal", () => {
+    const q = fakeQuery();
+    scopeQuery(q, buildChannelScope(ALL_CHANNELS, mine, tenantOrg), { nullIsGlobal: true });
+    expect(q.calls).toEqual(["in:channel_id=finance|history"]);
+    const one = fakeQuery();
+    scopeQuery(one, buildChannelScope("finance", mine, tenantOrg), { nullIsGlobal: true });
+    expect(one.calls).toEqual(["eq:channel_id=finance"]);
+  });
+
+  it("an org with no channels matches nothing rather than everything", () => {
+    const q = fakeQuery();
+    scopeQuery(q, buildChannelScope(ALL_CHANNELS, [], tenantOrg));
+    expect(q.calls).toEqual([`in:channel_id=${NO_CHANNEL}`]);
+    const g = fakeQuery();
+    scopeQuery(g, buildChannelScope(ALL_CHANNELS, [], operatorOrg), { nullIsGlobal: true });
+    expect(g.calls).toEqual([`or:channel_id.in.("${NO_CHANNEL}"),channel_id.is.null`]);
+  });
+
+  it("a caller in no organization sees nothing", () => {
+    const q = fakeQuery();
+    scopeQuery(q, buildChannelScope(ALL_CHANNELS, [], { supported: true, current: null }), {
+      nullIsGlobal: true,
+    });
+    expect(q.calls).toEqual([`in:channel_id=${NO_CHANNEL}`]);
+  });
+
+  it("a selected channel outside the org matches nothing instead of widening the view", () => {
+    const q = fakeQuery();
+    scopeQuery(q, buildChannelScope("someone-elses", mine, tenantOrg));
+    expect(q.calls).toEqual([`in:channel_id=${NO_CHANNEL}`]);
+  });
+
+  it("quotes ids inside an or-filter so no id can splice in another condition", () => {
+    const q = fakeQuery();
+    const scope = buildChannelScope(ALL_CHANNELS, [{ channel_id: 'a"),id.gt.(0' }], operatorOrg);
+    scopeQuery(q, scope, { nullIsGlobal: true });
+    expect(q.calls).toEqual(['or:channel_id.in.("a\\"),id.gt.(0"),channel_id.is.null']);
+  });
+
+  it("orgWide ignores the selected channel but keeps the org boundary", () => {
+    const q = fakeQuery();
+    scopeQuery(q, orgWide(buildChannelScope("finance", mine, tenantOrg)));
+    expect(q.calls).toEqual(["in:channel_id=finance|history"]);
+  });
+
+  it("behaves exactly as before when 0018 is not applied", () => {
+    const scope = buildChannelScope(ALL_CHANNELS, mine, { supported: false, current: null });
+    expect(scope).toEqual(unscopedScope(ALL_CHANNELS));
+    const q = fakeQuery();
+    expect(scopeQuery(q, scope, { nullIsGlobal: true })).toBe(q);
+    expect(q.calls).toEqual([]);
+  });
+});
+
 describe("inSelection", () => {
-  it("admits everything in the all-channels view", () => {
-    expect(inSelection("finance", ALL_CHANNELS)).toBe(true);
-    expect(inSelection(null, ALL_CHANNELS)).toBe(true);
+  it("admits everything in the all-channels view before organizations", () => {
+    expect(inSelection("finance", unscopedScope(ALL_CHANNELS))).toBe(true);
+    expect(inSelection(null, unscopedScope(ALL_CHANNELS))).toBe(true);
   });
 
   it("rejects another channel's row while scoped", () => {
-    expect(inSelection("history", "finance")).toBe(false);
+    expect(inSelection("history", unscopedScope("finance"))).toBe(false);
   });
 
   it("treats null as global only when asked", () => {
-    expect(inSelection(null, "finance")).toBe(false);
-    expect(inSelection(null, "finance", { nullIsGlobal: true })).toBe(true);
+    expect(inSelection(null, unscopedScope("finance"))).toBe(false);
+    expect(inSelection(null, unscopedScope("finance"), { nullIsGlobal: true })).toBe(true);
+  });
+
+  it("drops a live row of another organization's channel from the all-channels view", () => {
+    const scope = buildChannelScope(ALL_CHANNELS, [{ channel_id: "finance" }], {
+      supported: true,
+      current: { is_default: true },
+    });
+    expect(inSelection("finance", scope)).toBe(true);
+    expect(inSelection("tenant-b", scope)).toBe(false);
+    expect(inSelection(null, scope, { nullIsGlobal: true })).toBe(true);
+    expect(inSelection(null, scope)).toBe(false);
+  });
+
+  it("keeps the operator's global rows out of a tenant's live stream", () => {
+    const scope = buildChannelScope(ALL_CHANNELS, [{ channel_id: "shop" }], {
+      supported: true,
+      current: { is_default: false },
+    });
+    expect(inSelection(null, scope, { nullIsGlobal: true })).toBe(false);
+    expect(inSelection("shop", scope, { nullIsGlobal: true })).toBe(true);
+  });
+});
+
+describe("channelInScope — the channel-in-org guard", () => {
+  const tenant = buildChannelScope(ALL_CHANNELS, [{ channel_id: "shop" }], {
+    supported: true,
+    current: { is_default: false },
+  });
+
+  it("refuses another organization's channel, whoever is asking", () => {
+    // The scope is built from the current org's channel list, not from what
+    // RLS lets the caller read — a platform admin gets the same answer.
+    expect(channelInScope("default", tenant)).toBe(false);
+    expect(channelInScope("shop", tenant)).toBe(true);
+  });
+
+  it("refuses a missing channel id inside an organization", () => {
+    expect(channelInScope(null, tenant)).toBe(false);
+    expect(channelInScope("", tenant)).toBe(false);
+  });
+
+  it("admits every channel before 0018, as before", () => {
+    expect(channelInScope("anything", unscopedScope())).toBe(true);
+    expect(channelInScope(null, unscopedScope())).toBe(true);
+  });
+});
+
+describe("resolveSelection against the org's own channel list", () => {
+  it("resolves a URL naming another organization's channel to all channels (the layout then redirects)", () => {
+    const orgChannels = [{ channel_id: "shop", name: "Shop" }] as ChannelRow[];
+    expect(resolveSelection("default", orgChannels)).toBe(ALL_CHANNELS);
+    expect(resolveSelection("chronos", orgChannels)).toBe(ALL_CHANNELS);
+    expect(resolveSelection("shop", orgChannels)).toBe("shop");
   });
 });
 

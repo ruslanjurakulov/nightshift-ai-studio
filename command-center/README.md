@@ -38,6 +38,20 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 
 Only the **anon** key — never the service key — belongs in this app.
 
+The public Privacy Policy and Terms of Service (`/privacy`, `/terms`) print the
+operator's details from four more public variables. None has a default: until
+each is set, the pages show a visible **NOT CONFIGURED** marker in its place.
+
+| Variable | What it is |
+| :-- | :-- |
+| `NEXT_PUBLIC_LEGAL_NAME` | Legal name of the operator (person or company) |
+| `NEXT_PUBLIC_CONTACT_EMAIL` | Privacy / support contact address |
+| `NEXT_PUBLIC_LEGAL_COUNTRY` | Country whose law governs the Terms |
+| `NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE` | `YYYY-MM-DD` the current texts took effect |
+
+They are read in `lib/legal.ts`. The owner's checklist for Google's OAuth
+verification is in `docs/GOOGLE_OAUTH_VERIFICATION.md`.
+
 ## Local development
 
 ```bash
@@ -49,6 +63,13 @@ npm run dev                  # http://localhost:3000
 
 `npm run typecheck` and `npm run lint` check types and style; `npm run build`
 produces the production build.
+
+## Self-hosting (Docker + Caddy)
+
+The production target is our own server: `command-center/Dockerfile` builds a
+standalone image, `deploy/` runs it behind Caddy. Step by step (Uzbek):
+`../docs/DEPLOY_AX42.md`. The Vercel path below still works unchanged and is
+the rollback.
 
 ## Deploy to Vercel (its own project + subdomain)
 
@@ -65,7 +86,9 @@ produces the production build.
 ## Security
 
 - Login required (Supabase Auth). Middleware redirects unauthenticated visitors
-  to `/login`.
+  to `/login` — except on the three public pages Google's OAuth verification
+  requires: the landing page `/`, `/privacy` and `/terms` (exact paths only;
+  see `lib/public-paths.ts`).
 - Row Level Security is enabled on every table with no public policy, so the
   anon key alone reads nothing — a signed-in user is required.
 - The service-role key never appears in this app; only the bot (server-side, in

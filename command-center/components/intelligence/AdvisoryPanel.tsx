@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useRealtimeEvents } from "@/lib/useRealtimeEvents";
-import { ALL_CHANNELS, type ChannelSelection } from "@/lib/channels";
+import type { ChannelScope } from "@/lib/channels";
 import { useI18n } from "@/lib/i18n/context";
 import { deriveAdvisory } from "@/lib/advisory";
 import { relativeTime } from "@/lib/format";
@@ -59,13 +59,14 @@ function Empty({ label }: { label: string }) {
 
 export function AdvisoryPanel({
   initial,
-  selection = ALL_CHANNELS,
+  scope,
 }: {
   initial: SystemEventRow[];
-  selection?: ChannelSelection;
+  /** The page's channel scope — live events outside it are dropped. */
+  scope: ChannelScope;
 }) {
   const { t } = useI18n();
-  const { events } = useRealtimeEvents(initial, "advisory-intelligence", selection);
+  const { events } = useRealtimeEvents(initial, "advisory-intelligence", scope);
   const adv = useMemo(() => deriveAdvisory(events), [events]);
 
   const spend = adv.spend;

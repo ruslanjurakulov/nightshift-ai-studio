@@ -8,6 +8,7 @@ import {
   PATH_HEADER,
   isSection,
 } from "@/lib/channels";
+import { gateDecision } from "@/lib/public-paths";
 
 /**
  * Which channel a URL is about, and where a URL that does not say lands.
@@ -42,8 +43,9 @@ function channelRedirect(request: NextRequest): URL | null {
 
 /**
  * Refreshes the Supabase auth session on every request and gates the app: an
- * unauthenticated visitor is sent to /login. When Supabase isn't configured we
- * let requests through so the pages can render the NOT CONFIGURED state.
+ * unauthenticated visitor is sent to /login, except on the public landing,
+ * Privacy and Terms pages. When Supabase isn't configured we let requests
+ * through so the pages can render the NOT CONFIGURED state.
  */
 export async function middleware(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.next();
@@ -69,18 +71,17 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isLogin = request.nextUrl.pathname.startsWith("/login");
-  if (!user && !isLogin) {
+  // Only /login and the public pages (landing, Privacy, Terms) are reachable
+  // signed out; see lib/public-paths.ts for why the match is exact.
+  const decision = gateDecision(request.nextUrl.pathname, Boolean(user));
+  if (decision === "to-login" || decision === "to-home") {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = decision === "to-login" ? "/login" : "/";
     return NextResponse.redirect(url);
   }
-  if (user && isLogin) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    return NextResponse.redirect(url);
-  }
-  if (isLogin) return response;
+  // Served as-is, with any refreshed auth cookies. The public pages sit outside
+  // the channel layout, so they get no channel header.
+  if (decision === "pass") return response;
 
   // A channelless URL is sent to one that names its channel.
   const redirectTo = channelRedirect(request);

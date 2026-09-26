@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRealtimeEvents } from "@/lib/useRealtimeEvents";
-import { ALL_CHANNELS, type ChannelSelection } from "@/lib/channels";
+import type { ChannelScope } from "@/lib/channels";
 import { statusTone, timeOfDay } from "@/lib/format";
 import { categorize, type EventCategory } from "@/lib/intelligence";
 import type { SystemEventRow } from "@/lib/types";
@@ -34,13 +34,14 @@ const FILTERS: { key: Filter; label: keyof Dictionary["ops"] }[] = [
  */
 export function ActivityFeed({
   initial,
-  selection = ALL_CHANNELS,
+  scope,
 }: {
   initial: SystemEventRow[];
-  selection?: ChannelSelection;
+  /** The page's channel scope — live events outside it are dropped. */
+  scope: ChannelScope;
 }) {
   const { t } = useI18n();
-  const { events, connected, freshKey } = useRealtimeEvents(initial, "system_events_feed", selection);
+  const { events, connected, freshKey } = useRealtimeEvents(initial, "system_events_feed", scope);
   const [filter, setFilter] = useState<Filter>("all");
   const live = connected === true;
 

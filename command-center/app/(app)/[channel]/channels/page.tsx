@@ -7,7 +7,7 @@ import { Panel, EmptyState } from "@/components/ui";
 import { ChannelCard } from "@/components/channels/ChannelCard";
 import { ChannelComparison } from "@/components/channels/ChannelComparison";
 import { getChannelContext } from "@/lib/channels-server";
-import { channelHealth, channelSlug, channelStats } from "@/lib/channels";
+import { channelHealth, channelSlug, channelStats, orgWide, scopeQuery } from "@/lib/channels";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
 import type {
@@ -33,7 +33,10 @@ export default async function ChannelsPage() {
   const { t } = await getDictionary();
   const path = await getChannelPath();
 
-  const { channels, credentials, notMigrated } = await getChannelContext();
+  const { channels, credentials, notMigrated, scope: viewScope } = await getChannelContext();
+  // Every channel of the current organization — not every row RLS would hand
+  // a platform admin, whose other tenants would otherwise fill these limits.
+  const scope = orgWide(viewScope);
   const supabase = await createClient();
 
   let events: SystemEventRow[] = [];
@@ -43,10 +46,10 @@ export default async function ChannelsPage() {
 
   if (supabase) {
     const [ev, vid, snap, q] = await Promise.all([
-      supabase.from("system_events").select("*").order("ts", { ascending: false }).limit(500),
-      uploadedOnly(supabase.from("videos").select("*")).order("published_at", { ascending: false }).limit(500),
+      scopeQuery(supabase.from("system_events").select("*"), scope).order("ts", { ascending: false }).limit(500),
+      uploadedOnly(scopeQuery(supabase.from("videos").select("*"), scope)).order("published_at", { ascending: false }).limit(500),
       supabase.from("metrics_snapshots").select("*").order("snapshot_date", { ascending: false }).limit(500),
-      supabase.from("content_queue").select("*").limit(500),
+      scopeQuery(supabase.from("content_queue").select("*"), scope).limit(500),
     ]);
     events = (ev.data as SystemEventRow[]) ?? [];
     videos = (vid.data as VideoRow[]) ?? [];
