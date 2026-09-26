@@ -12,6 +12,9 @@
 # lockfile for reproducible `npm ci` builds.
 !command-center/tsconfig.json
 !command-center/package-lock.json
+# The premade ElevenLabs voice list (ids, names, styles — public data), read by
+# the Create page and tools/voice_previews.py.
+!command-center/lib/voices.json
 # Remotion video engine: TS config, lockfile (for `npm ci`) and the props
 # fixtures used by its smoke render — none carries a credential.
 !video-engine/tsconfig.json
