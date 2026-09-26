@@ -1,0 +1,218 @@
+name: Deploy web
+
+# Deploys the self-hosted Command Center (deploy/, docs/DEPLOY_AX42.md) to the
+# server whenever main changes what the server runs. Configuration lives ONLY
+# in the GitHub Environment `production`: this job turns it into the server's
+# /opt/nightshift/.env.web on every run, so nobody edits that file by hand and
+# the two can never drift.
+#
+#   GitHub Environment `production`      runner                  server (forced command)
+#   vars.* + secrets.*  ──env──>  build KEY=value lines  ──ssh stdin──>  deploy/remote-deploy.sh
+#
+# Secrets travel in step `env:` and over ssh's stdin only: never interpolated
+# into a script, never on a command line, never echoed. This repository is
+# public and so are its Actions logs; GitHub masks `secrets.*` in them, and the
+# server side prints key names and container status, never values.
+#
+# Never on pull_request: a PR run would hand the deploy key to code that has
+# not been reviewed.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "command-center/**"
+      - "deploy/**"
+      - ".github/workflows/deploy_web.yml"
+  workflow_dispatch:
+
+# One deploy at a time, and never cancelled halfway: an interrupted
+# `compose up` leaves the server between two versions. A newer push waits.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Required reviewers or a branch rule can be added to this environment in
+    # Settings -> Environments without touching this file.
+    environment:
+      name: production
+      url: ${{ steps.payload.outputs.url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # One entry per key in deploy/.env.web.example, as WEBENV_<KEY>. The
+      # step below walks the example's keys, so a key added there without a
+      # line here fails the deploy (and tests/test_deploy_gha.py, before that).
+      #   vars.*    public or non-sensitive (NEXT_PUBLIC_* are in the browser
+      #             bundle by design)
+      #   secrets.* everything that grants access. Repository-level secrets
+      #             the bot already uses (GOOGLE_OAUTH_*, SLACK_WEBHOOK_URL,
+      #             SUPABASE_URL) are read by the same name: an environment job
+      #             sees them too, so nothing is stored twice.
+      # GitHub reserves the GITHUB_ prefix for its own secret and variable
+      # names, so GITHUB_SECRETS_* are stored as GH_SECRETS_*.
+      # Defaults exist only for facts about this deployment; the legal fields
+      # have none on purpose: an invented operator name or country on /terms is
+      # worse than the page saying NOT CONFIGURED.
+      # SUPABASE_SERVICE_KEY is a repository secret too, and is never read here.
+      - name: Build the server env
+        id: payload
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '168.119.142.178' }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'nightshift' }}
+          HAS_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY != '' }}
+          HAS_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS != '' }}
+          WEBENV_DOMAIN: ${{ vars.DOMAIN || 'new.nightshift-ai.studio' }}
+          WEBENV_ACME_EMAIL: ${{ vars.ACME_EMAIL }}
+          # The project URL is public; the bot's SUPABASE_URL secret holds the same one.
+          WEBENV_NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.SUPABASE_URL }}
+          WEBENV_NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          WEBENV_NEXT_PUBLIC_LEGAL_NAME: ${{ vars.NEXT_PUBLIC_LEGAL_NAME }}
+          WEBENV_NEXT_PUBLIC_CONTACT_EMAIL: ${{ vars.NEXT_PUBLIC_CONTACT_EMAIL }}
+          WEBENV_NEXT_PUBLIC_LEGAL_COUNTRY: ${{ vars.NEXT_PUBLIC_LEGAL_COUNTRY }}
+          WEBENV_NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE: ${{ vars.NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE }}
+          WEBENV_NEXT_PUBLIC_PADDLE_ENV: ${{ vars.NEXT_PUBLIC_PADDLE_ENV }}
+          WEBENV_NEXT_PUBLIC_PADDLE_CLIENT_TOKEN: ${{ vars.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN }}
+          WEBENV_NEXT_PUBLIC_PADDLE_PRICE_STARTER: ${{ vars.NEXT_PUBLIC_PADDLE_PRICE_STARTER }}
+          WEBENV_NEXT_PUBLIC_PADDLE_PRICE_CREATOR: ${{ vars.NEXT_PUBLIC_PADDLE_PRICE_CREATOR }}
+          WEBENV_NEXT_PUBLIC_PADDLE_PRICE_STUDIO: ${{ vars.NEXT_PUBLIC_PADDLE_PRICE_STUDIO }}
+          WEBENV_NEXT_PUBLIC_PRICE_DISPLAY_STARTER: ${{ vars.NEXT_PUBLIC_PRICE_DISPLAY_STARTER }}
+          WEBENV_NEXT_PUBLIC_PRICE_DISPLAY_CREATOR: ${{ vars.NEXT_PUBLIC_PRICE_DISPLAY_CREATOR }}
+          WEBENV_NEXT_PUBLIC_PRICE_DISPLAY_STUDIO: ${{ vars.NEXT_PUBLIC_PRICE_DISPLAY_STUDIO }}
+          WEBENV_NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS: ${{ vars.NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS }}
+          WEBENV_GITHUB_SECRETS_TOKEN: ${{ secrets.GH_SECRETS_TOKEN }}
+          # The bot runs from this repository; the variable is for a split later.
+          WEBENV_GITHUB_SECRETS_REPO: ${{ vars.GH_SECRETS_REPO || github.repository }}
+          WEBENV_GITHUB_SECRETS_REF: ${{ vars.GH_SECRETS_REF }}
+          WEBENV_NIGHTSHIFT_RUN_BACKEND: ${{ vars.NIGHTSHIFT_RUN_BACKEND }}
+          WEBENV_NIGHTSHIFT_CREDITS_ENFORCE: ${{ vars.NIGHTSHIFT_CREDITS_ENFORCE }}
+          WEBENV_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          WEBENV_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          WEBENV_SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+
+          # Before the owner has set the environment up, a push to main should
+          # not paint main red. A manual run always means "deploy", so there a
+          # missing setting is an error.
+          if [[ "$HAS_SSH_KEY" != true && "$HAS_KNOWN_HOSTS" != true ]]; then
+            if [[ "$EVENT_NAME" == push ]]; then
+              echo "::warning::Deploy web is not set up (Environment production has no DEPLOY_SSH_KEY / DEPLOY_KNOWN_HOSTS): NOT deployed. See docs/DEPLOY_AX42.md, Avtomatik deploy."
+              echo "run=false" >>"$GITHUB_OUTPUT"
+              echo "Deploy web: **not deployed** — Environment \`production\` has no DEPLOY_SSH_KEY / DEPLOY_KNOWN_HOSTS yet." >>"$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
+
+          errors=()
+          [[ "$GITHUB_REF" == refs/heads/main ]] || errors+=("run this from main (got $GITHUB_REF); the server only accepts commits on main")
+          [[ -n "$DEPLOY_HOST" ]] || errors+=("variable DEPLOY_HOST is empty (the server IP)")
+          [[ -n "$DEPLOY_USER" ]] || errors+=("variable DEPLOY_USER is empty (nightshift)")
+          [[ "$HAS_SSH_KEY" == true ]] || errors+=("secret DEPLOY_SSH_KEY is empty (deploy/setup-gha-deploy.sh prints it)")
+          [[ "$HAS_KNOWN_HOSTS" == true ]] || errors+=("secret DEPLOY_KNOWN_HOSTS is empty (deploy/setup-gha-deploy.sh prints it)")
+
+          umask 077
+          work="$RUNNER_TEMP/deploy"
+          mkdir -p "$work"
+          payload="$work/payload"
+          printf 'NIGHTSHIFT_DEPLOY_SHA=%s\n' "$GITHUB_SHA" >"$payload"
+
+          # printf is a shell builtin: values go straight into the file, never
+          # into an argv that `ps` or a log could show. Errors name the key and
+          # the fix, never the value.
+          mapfile -t keys < <(grep -oE '^[A-Z][A-Z0-9_]*=' deploy/.env.web.example | tr -d '=')
+          (( ${#keys[@]} > 0 )) || errors+=("no keys found in deploy/.env.web.example")
+          for key in "${keys[@]}"; do
+            var="WEBENV_$key"
+            if [[ -z "${!var+set}" ]]; then
+              errors+=("$key is in deploy/.env.web.example but not mapped in deploy_web.yml")
+              continue
+            fi
+            value="${!var}"
+            if [[ "$value" == *'$'* ]]; then
+              errors+=("$key contains \"\$\", which compose would interpolate; change the value")
+            elif [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+              errors+=("$key contains a line break; re-paste it without the trailing newline")
+            fi
+            printf '%s=%s\n' "$key" "$value" >>"$payload"
+          done
+
+          for key in DOMAIN ACME_EMAIL NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY; do
+            var="WEBENV_$key"
+            [[ -n "${!var:-}" ]] || errors+=("variable $key is required and empty")
+          done
+          if [[ -n "$WEBENV_DOMAIN" && ! "$WEBENV_DOMAIN" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]]; then
+            errors+=("variable DOMAIN must be a bare host name like new.nightshift-ai.studio (no https://, no slash)")
+          fi
+
+          if (( ${#errors[@]} > 0 )); then
+            for e in "${errors[@]}"; do echo "::error::$e"; done
+            echo "Fix these in GitHub -> Settings -> Environments -> production, then re-run."
+            exit 1
+          fi
+
+          {
+            echo "run=true"
+            echo "file=$payload"
+            echo "url=https://$WEBENV_DOMAIN"
+          } >>"$GITHUB_OUTPUT"
+          echo "Server env built: ${#keys[@]} keys for $WEBENV_DOMAIN at $GITHUB_SHA."
+
+      - name: Deploy over SSH
+        if: steps.payload.outputs.run == 'true'
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '168.119.142.178' }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'nightshift' }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          PAYLOAD: ${{ steps.payload.outputs.file }}
+        run: |
+          set -euo pipefail
+          umask 077
+          work="$RUNNER_TEMP/deploy"
+          # A key pasted from Windows carries \r, which OpenSSH rejects as an
+          # invalid format; the trailing newline it requires is added here.
+          printf '%s\n' "${DEPLOY_SSH_KEY//$'\r'/}" >"$work/key"
+          printf '%s\n' "${DEPLOY_KNOWN_HOSTS//$'\r'/}" >"$work/known_hosts"
+
+          # The host key is pinned: an unknown or changed server key fails the
+          # connection instead of being trusted on first use. The server runs
+          # its forced command whatever we ask for, so none is sent; the env
+          # and the commit go over stdin.
+          ssh -T \
+            -i "$work/key" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$work/known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null \
+            -o ConnectTimeout=20 \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=6 \
+            "$DEPLOY_USER@$DEPLOY_HOST" <"$PAYLOAD"
+
+      - name: Summary
+        if: always() && steps.payload.outputs.run == 'true'
+        env:
+          URL: ${{ steps.payload.outputs.url }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          echo "Deploy web: **$OUTCOME** — \`$GITHUB_SHA\` → $URL" >>"$GITHUB_STEP_SUMMARY"
+
+      # GitHub-hosted runners are discarded after the job, but the key and the
+      # env should not outlive the step that needed them on any runner.
+      - name: Remove key and env from the runner
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/deploy"

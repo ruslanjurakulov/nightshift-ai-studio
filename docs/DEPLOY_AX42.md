@@ -24,12 +24,202 @@ Fayllar:
 | `deploy/Caddyfile` | Avtomatik HTTPS, reverse proxy, xavfsizlik headerlari, gzip/zstd |
 | `deploy/bootstrap.sh` | Yangi serverni bir marta sozlash va himoyalash |
 | `deploy/.env.web.example` | Muhit o'zgaruvchilari shabloni (faqat nomlar, haqiqiy qiymat yo'q) |
+| `.github/workflows/deploy_web.yml` | Avtomatik deploy: GitHub'dagi qiymatlardan `.env.web` yasab, SSH orqali serverga yuboradi |
+| `deploy/remote-deploy.sh` | Serverda deploy'ni bajaradi (SSH kalit faqat shuni ishga tushira oladi) |
+| `deploy/setup-gha-deploy.sh` | Deploy kalitini bir marta sozlaydi |
 
 > **Qoida:** hech qanday kalit, token yoki parolni git'ga, chatga, issue'ga
 > yoki skrinshotga qo'ymang. Haqiqiy qiymatlar faqat serverdagi
 > `/opt/nightshift/.env.web` faylida (`chmod 600`) va parol menejeringizda turadi.
 > Command Center faqat Supabase **anon** kalitini ishlatadi — **service key hech
 > qachon** bu yerga yozilmaydi.
+
+---
+
+## Avtomatik deploy (GitHub Actions)
+
+Server allaqachon tayyor bo'lsa (0–4-bo'limlar bajarilgan: `nightshift`
+foydalanuvchisi, Docker, `/opt/nightshift/app` da repozitoriy), eng oson yo'l —
+shu. Barcha qiymatlar **bir marta** GitHub'ga kiritiladi; serverdagi
+`/opt/nightshift/.env.web` faylini **qo'lda yozmaysiz** — har bir deployda
+workflow uni GitHub'dagi qiymatlardan qayta yozadi (6-bo'lim bu yo'lda kerak emas).
+
+```
+main'ga push (command-center/, deploy/)   ──>  "Deploy web" workflow
+yoki Actions → Deploy web → Run workflow         │  GitHub Environment "production"
+                                                 │  (variables + secrets) dan .env.web
+                                                 ▼
+                         SSH (faqat bitta buyruqqa ruxsat berilgan kalit)
+                                                 ▼
+                     serverda deploy/remote-deploy.sh:
+                     .env.web (chmod 600) → git checkout <commit> → dc up -d --build
+```
+
+Xavfsizlik:
+
+- Deploy kaliti serverda **faqat** `deploy/remote-deploy.sh` ni ishga tushira
+  oladi — shell, port forwarding, pty yo'q.
+- Server faqat `main` da **allaqachon bor** commit'ni deploy qiladi; begona
+  commit'ni rad etadi.
+- Qiymatlar hech qachon logga chiqmaydi (repozitoriy public — Actions logi ham
+  hammaga ko'rinadi). Xatoda faqat **nomi** aytiladi, qiymati emas.
+- Pull request'da workflow **ishlamaydi**.
+- Supabase **service key** bu yerga hech qachon kirmaydi (u faqat bot uchun).
+
+### a) Porkbun DNS: `new` subdomen
+
+1. <https://porkbun.com> → **Account → Domain Management** →
+   `nightshift-ai.studio` → **DNS**.
+2. **Add record** (yangi yozuv qo'shish):
+   - **Type:** `A`
+   - **Host:** `new`
+   - **Answer / IP:** `168.119.142.178`
+   - **TTL:** `600`
+3. **Mavjud yozuvlarga tegmang** — `@` (Vercel, `216.198.79.1`) va `www`
+   yozuvlari hozircha Vercel'da qoladi. Ularni **skrinshot qilib saqlang**
+   (f-bosqichda orqaga qaytish uchun kerak).
+4. Tekshirish (kompyuteringizda, 1–10 daqiqadan so'ng):
+   `nslookup new.nightshift-ai.studio` → `168.119.142.178` chiqishi kerak.
+
+Porkbun'da proxy yo'q — Caddy Let's Encrypt sertifikatini to'g'ridan-to'g'ri
+oladi (80 va 443 portlar `bootstrap.sh` da ochilgan).
+
+### b) Serverda: deploy kalitini yaratish (bir marta)
+
+Bu PR `main` ga merge qilingandan keyin, kompyuteringizdan:
+
+```bash
+ssh nightshift@168.119.142.178
+git -C /opt/nightshift/app pull --ff-only
+bash /opt/nightshift/app/deploy/setup-gha-deploy.sh 168.119.142.178
+```
+
+Skript:
+
+1. faqat deploy uchun alohida kalit yaratadi (`~/.ssh/gha_deploy`);
+2. uni `~/.ssh/authorized_keys` ga **faqat `remote-deploy.sh` ni ishga
+   tushirish** sharti bilan qo'shadi (qayta ishga tushirsangiz, takrorlamaydi);
+3. GitHub'ga nima kiritishni chiqaradi:
+   - `DEPLOY_KNOWN_HOSTS` uchun **bitta qator** (`168.119.142.178 ssh-ed25519 AAAA...`);
+   - `DEPLOY_SSH_KEY` uchun **maxfiy kalit** (`-----BEGIN OPENSSH PRIVATE KEY-----`
+     dan `-----END OPENSSH PRIVATE KEY-----` gacha, shu qatorlar bilan birga).
+
+> **Maxfiy kalitni faqat GitHub secret `DEPLOY_SSH_KEY` ga joylashtiring** —
+> chatga, eslatmaga, skrinshotga emas. GitHub'ga saqlagandan keyin serverdan
+> o'chiring:
+> ```bash
+> bash /opt/nightshift/app/deploy/setup-gha-deploy.sh --delete-private-key
+> ```
+> Kalit yo'qolsa yoki oshkor bo'lsa — yangisini yarating (eskisi darhol ishlamay qoladi):
+> `bash /opt/nightshift/app/deploy/setup-gha-deploy.sh --rotate 168.119.142.178`
+
+### c) GitHub: Environment `production` ga qiymatlarni kiritish
+
+GitHub → repozitoriy → **Settings → Environments → New environment** → nomi:
+`production` → **Configure environment**. Pastda ikki bo'lim bor:
+
+- **Environment secrets → Add environment secret** — maxfiy qiymatlar
+  (logda yashiriladi);
+- **Environment variables → Add environment variable** — ochiq qiymatlar.
+
+**A) Allaqachon GitHub'da bor — hech narsa qilmang.** Bular repozitoriyning
+Actions secret'lari (bot ishlatadi) va `production` dagi job ularni o'zi ko'radi:
+
+| Server'dagi nomi | GitHub'dagi manba |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | repo secret `SUPABASE_URL` (xohlasangiz variable `NEXT_PUBLIC_SUPABASE_URL` bilan almashtirish mumkin) |
+| `GOOGLE_OAUTH_CLIENT_ID` | repo secret `GOOGLE_OAUTH_CLIENT_ID` |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | repo secret `GOOGLE_OAUTH_CLIENT_SECRET` |
+| `SLACK_WEBHOOK_URL` | repo secret `SLACK_WEBHOOK_URL` |
+
+Standart qiymatlari bor (kiritish shart emas, boshqacha bo'lsagina variable qo'shing):
+
+| Nomi | Standart qiymat |
+|---|---|
+| `DOMAIN` | `new.nightshift-ai.studio` |
+| `DEPLOY_HOST` | `168.119.142.178` |
+| `DEPLOY_USER` | `nightshift` |
+| `GH_SECRETS_REPO` | shu repozitoriy (`ruslanjurakulov/nightshift-ai-studio`) |
+
+**B) Qo'shish SHART:**
+
+| Nomi | Turi | Qiymat qayerdan olinadi |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | variable | Supabase → Project → **Settings → API** → **Project API keys** → `anon` `public`. **`service_role` EMAS!** (Vercel'dagi qiymat bilan bir xil) |
+| `ACME_EMAIL` | variable | Sizning email'ingiz — Let's Encrypt sertifikat muddati haqida xat yuboradi |
+| `GH_SECRETS_TOKEN` | **secret** | Vercel → Project → Settings → Environment Variables → `GITHUB_SECRETS_TOKEN` qiymati (o'sha token). GitHub `GITHUB_` bilan boshlanadigan nomni **ruxsat bermaydi** — shuning uchun nomi `GH_SECRETS_TOKEN`; serverga baribir `GITHUB_SECRETS_TOKEN` bo'lib yoziladi |
+| `DEPLOY_SSH_KEY` | **secret** | b-bosqichda `setup-gha-deploy.sh` chiqargan maxfiy kalit (BEGIN/END qatorlari bilan) |
+| `DEPLOY_KNOWN_HOSTS` | **secret** | b-bosqichda chiqqan `168.119.142.178 ssh-ed25519 AAAA...` qatori |
+
+**C) Ixtiyoriy (variable).** Bo'sh qolsa, sayt ishlaydi, faqat tegishli qism
+"NOT CONFIGURED" / yashirin bo'ladi. Qiymatlarni Vercel → Environment
+Variables'dan oling:
+
+| Nomi | Nima uchun |
+|---|---|
+| `NEXT_PUBLIC_LEGAL_NAME`, `NEXT_PUBLIC_CONTACT_EMAIL`, `NEXT_PUBLIC_LEGAL_COUNTRY`, `NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE` | `/privacy` va `/terms` sahifalari (Google OAuth tekshiruvi uchun kerak). **O'ylab topmang** — faqat haqiqiy ma'lumot; bo'sh bo'lsa sahifa "NOT CONFIGURED" deydi |
+| `NEXT_PUBLIC_PADDLE_ENV`, `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN`, `NEXT_PUBLIC_PADDLE_PRICE_STARTER` / `_CREATOR` / `_STUDIO` | Paddle orqali kredit sotib olish (`docs/PADDLE_SETUP.md`) |
+| `NEXT_PUBLIC_PRICE_DISPLAY_STARTER` / `_CREATOR` / `_STUDIO`, `NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS` | `/pricing` sahifasi va shartlar |
+| `GH_SECRETS_REF` | "Run now" ishga tushiradigan branch (bo'sh = `main`) |
+| `NIGHTSHIFT_RUN_BACKEND`, `NIGHTSHIFT_CREDITS_ENFORCE` | `deploy/.env.web.example` dagi izohga qarang |
+
+Qoidalar: qiymatda `$` belgisi va qator uzilishi (Enter) bo'lmasin — workflow
+bunday qiymatni nomini aytib rad etadi. `DOMAIN` — faqat nom
+(`new.nightshift-ai.studio`), `https://` va `/` siz.
+
+### d) Birinchi deploy
+
+GitHub → **Actions** → chapda **Deploy web** → **Run workflow** → branch: `main`
+→ **Run workflow**. Birinchi build 3–5 daqiqa oladi. Yashil belgi = `web`
+konteyneri "healthy". Qizil bo'lsa — logda xato **nomi** va nima qilish kerakligi
+yoziladi (masalan, `variable ACME_EMAIL is required and empty`).
+
+Bundan keyin `main` ga `command-center/` yoki `deploy/` o'zgarishi tushganda
+deploy **o'zi** ishlaydi. Qiymatni o'zgartirsangiz (masalan, yangi token) —
+GitHub'da o'zgartirib, **Run workflow** ni bosing.
+
+> Serverda avval qo'lda yozilgan `.env.web` bo'lsa, birinchi deploy uni
+> almashtiradi; eski nusxa `/opt/nightshift/.env.web.prev` da (chmod 600)
+> saqlanadi. Serverdagi faylni qo'lda tahrirlamang — keyingi deploy uni
+> qayta yozadi.
+
+### e) Tekshirish
+
+1. Brauzerda <https://new.nightshift-ai.studio> → login sahifasi chiqishi kerak.
+2. Supabase → Authentication → **URL Configuration** → **Redirect URLs** ga
+   `https://new.nightshift-ai.studio/**` ni **qo'shing** (Vercel'nikini o'chirmang).
+3. Google Cloud → Credentials → OAuth client → **Authorized redirect URIs** ga
+   `https://new.nightshift-ai.studio/api/oauth/youtube/callback` ni **qo'shing**.
+4. Serverda holat: `dc ps` (web: healthy, caddy: Up); muammo bo'lsa
+   `dc logs --tail 100 web` va `dc logs caddy` (loglar faqat serverda ko'rinadi).
+
+### f) Keyinroq: asosiy domen `nightshift-ai.studio` ga o'tish
+
+`new.` da hammasi ishlagach, sokin vaqtda:
+
+1. Porkbun → DNS → `@` yozuvi (hozir `A 216.198.79.1`, Vercel) → **Edit** →
+   Answer: `168.119.142.178`. `www` ga hozircha tegmang (Caddy faqat `DOMAIN`
+   ni xizmat qiladi).
+2. `nslookup nightshift-ai.studio` → `168.119.142.178` chiqquncha kuting.
+3. GitHub → Environments → `production` → variable **`DOMAIN`** =
+   `nightshift-ai.studio` (yangi variable yoki mavjudini Edit) → Actions →
+   **Deploy web → Run workflow**. Caddy yangi nomga sertifikat oladi.
+   (DNS o'zgarishi bilan deploy orasida sayt bir necha daqiqa sertifikat xatosi
+   ko'rsatishi mumkin — shuning uchun sokin vaqtda.)
+4. Supabase **Site URL** va Google redirect URI'da `https://nightshift-ai.studio/...`
+   borligini tekshiring (Vercel davridan qolgan bo'lishi kerak; 9-bo'lim).
+
+**Orqaga qaytish (Vercel'ga):** Porkbun'da `@` yozuvini yana `216.198.79.1` ga
+qaytaring (a-bosqichdagi skrinshotdagi Vercel yozuvlari bo'yicha), GitHub'da
+`DOMAIN` ni `new.nightshift-ai.studio` ga qaytarib **Run workflow** — server
+yana `new.` da ishlab turadi, asosiy domen Vercel'da. Vercel loyihasini o'chirmang
+(11-bo'lim).
+
+---
+
+Quyidagi 0–13-bo'limlar — serverni noldan tayyorlash va **qo'lda** deploy
+(zaxira yo'l). Avtomatik deploy ishlatilsa, 6-bo'lim (`.env.web` ni qo'lda
+yozish) va 7/10-bo'limlardagi `dc up -d --build` shart emas.
 
 ---
 
@@ -226,6 +416,10 @@ uchun kerak.
 ---
 
 ## 6. `/opt/nightshift/.env.web` faylini yaratish
+
+> **Avtomatik deploy** (yuqoridagi bo'lim) ishlatilsa, bu bo'limni o'tkazib
+> yuboring: fayl har deployda GitHub'dagi qiymatlardan qayta yoziladi va qo'lda
+> kiritilgan o'zgarish yo'qoladi.
 
 ```bash
 install -m 600 /opt/nightshift/app/deploy/.env.web.example /opt/nightshift/.env.web
