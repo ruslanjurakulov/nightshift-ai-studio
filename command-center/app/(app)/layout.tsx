@@ -10,6 +10,9 @@ import { CreateOrganizationForm } from "@/components/org/CreateOrganizationForm"
 import { SignOutButton } from "@/components/SignOutButton";
 import { isSupabaseConfigured } from "@/lib/config";
 import { ALL_CHANNELS, ALL_CHANNELS_SLUG, PATH_HEADER } from "@/lib/channels";
+import { createClient } from "@/lib/supabase/server";
+import { readCreditAccount } from "@/lib/server/credits";
+import type { CreditAccount } from "@/lib/credits";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const org = isSupabaseConfigured
@@ -51,6 +54,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     if (slug && slug !== honest) redirect(["", honest, ...rest].join("/"));
   }
 
+  // Credits in the header, for an organization that pays. The operator's own
+  // (default) organization is exempt and shows none; so does a database
+  // without migration 0020 — never a made-up zero.
+  let credits: CreditAccount | null = null;
+  if (org.supported && org.current && !org.current.is_default) {
+    const supabase = await createClient();
+    if (supabase) {
+      const res = await readCreditAccount(supabase, org.current.id).catch(() => null);
+      credits = res?.account ?? null;
+    }
+  }
+
   return (
     <div className="atmos relative flex min-h-dvh flex-col">
       <NeuralBackdrop dim />
@@ -60,6 +75,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           selection={selection}
           orgs={org.orgs}
           currentOrgId={org.current?.id ?? null}
+          credits={credits}
         />
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
           <SideNav />

@@ -157,6 +157,9 @@ export async function dispatchDailyVideo(
     visualStyle?: string;
     videoProvider?: string;
     imageProvider?: string;
+    /** The credit hold paying for this run (migration 0020); the workflow
+     *  claims it before the run and settles it after. */
+    creditRef?: string;
   } = {},
 ): Promise<void> {
   if (!isGithubConfigured) throw new Error("github_not_configured");
@@ -187,6 +190,8 @@ export async function dispatchDailyVideo(
   const imageProvider = opts.imageProvider?.trim().toLowerCase();
   if (videoProvider && VIDEO_PROVIDERS.includes(videoProvider)) inputs.video_provider = videoProvider;
   if (imageProvider && IMAGE_PROVIDERS.includes(imageProvider)) inputs.image_provider = imageProvider;
+  // Same shape 0020 accepts for a reservation id; anything else is not sent.
+  if (opts.creditRef && /^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$/.test(opts.creditRef)) inputs.credit_ref = opts.creditRef;
   await dispatchWorkflow("daily_video.yml", inputs, ref);
 }
 

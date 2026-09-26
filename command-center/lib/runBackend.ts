@@ -54,11 +54,13 @@ export function buildRenderJobInsert(
   channelId: string,
   opts: RunOptions,
   requestedBy: string,
+  creditRef?: string | null,
 ): {
   channel_id: string;
   kind: "daily";
   params: Record<string, string | number>;
   requested_by: string;
+  credit_ref?: string;
 } {
   const params: Record<string, string | number> = {};
   const topic = opts.topic?.trim();
@@ -78,7 +80,11 @@ export function buildRenderJobInsert(
     params.video_provider = videoProvider;
   if (imageProvider && (IMAGE_PROVIDERS as readonly string[]).includes(imageProvider))
     params.image_provider = imageProvider;
-  return { channel_id: channelId, kind: "daily", params, requested_by: requestedBy };
+  // The credit hold that pays for this job (migration 0020) — a column, not a
+  // param: the pipeline never sees it, the worker settles it. Only sent when a
+  // hold exists, so a database without 0020 gets exactly the old insert.
+  const row = { channel_id: channelId, kind: "daily" as const, params, requested_by: requestedBy };
+  return creditRef ? { ...row, credit_ref: creditRef } : row;
 }
 
 export type QueueJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";

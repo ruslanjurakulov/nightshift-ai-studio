@@ -120,7 +120,9 @@ class WorkflowParity(unittest.TestCase):
         cls.run_step = next(s for s in steps if s.get("name") == "Run Chronos bot")
 
     def test_whitelist_is_the_workflow_inputs(self):
-        self.assertEqual(set(self.inputs) - {"channel"}, set(run_request.ALLOWED_PARAMS))
+        # credit_ref is who pays, not what runs: on the queue it is a column of
+        # render_jobs (0020), never a params key the pipeline sees.
+        self.assertEqual(set(self.inputs) - {"channel", "credit_ref"}, set(run_request.ALLOWED_PARAMS))
 
     def test_choice_lists_match(self):
         self.assertEqual(tuple(self.inputs["privacy"]["options"]), run_request.PRIVACY_CHOICES)

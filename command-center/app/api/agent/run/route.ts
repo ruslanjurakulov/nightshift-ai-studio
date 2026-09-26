@@ -5,6 +5,7 @@ import { logAudit } from "@/lib/server/audit";
 import { dispatchDailyVideo, isGithubConfigured } from "@/lib/server/github-secrets";
 import { isSupabaseConfigured } from "@/lib/config";
 import { buildRenderJobInsert, isRunConfigured, resolveRunBackend } from "@/lib/runBackend";
+import { creditsEnforced, reserveRunCredits } from "@/lib/server/credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,16 @@ export const dynamic = "force-dynamic";
  * service key — and 0017's insert policy accepts only what this route sends:
  * a 'daily' job, no privacy (so private), no resume or repair, filed as the
  * caller. Neither backend asks for more than the other.
+ *
+ * Credits (server env NIGHTSHIFT_CREDITS_ENFORCE, migration 0020): when on, a
+ * run for a channel outside the operator's own organization first reserves its
+ * estimated cost through reserve_credits() — as the signed-in user, never the
+ * service key — and only then dispatches or queues, carrying the hold's id
+ * (`credit_ref`). Not enough credits is a 402 that says how many are needed.
+ * The runner settles the hold when the run ends (tools/queue_worker.py,
+ * tools/credits_settle.py). If the dispatch or insert fails after the hold was
+ * taken, the browser cannot release it (release is service-only); it expires
+ * back to the balance within three hours, and the response says so.
  */
 
 export async function GET() {
@@ -98,29 +109,48 @@ export async function POST(request: Request) {
 
   const opts = { topic, niche, duration, language, visualStyle, videoProvider, imageProvider };
 
+  // Pay first (enforced deployments only), then run. The hold's id travels
+  // with the run so its runner can settle exactly this hold.
+  let creditRef: string | null = null;
+  let creditsHeld: number | null = null;
+  if (creditsEnforced) {
+    const supabase = await createClient();
+    if (!supabase) return NextResponse.json({ error: "credits_unavailable" }, { status: 503 });
+    const credit = await reserveRunCredits(supabase, channelId, duration, backend === "queue" ? "rj" : "gh");
+    if (!credit.ok) return NextResponse.json(credit.body, { status: credit.status });
+    creditRef = credit.creditRef;
+    creditsHeld = creditRef ? credit.estimate?.credits ?? null : null;
+  }
+  const heldNote = creditRef ? { credits_held: creditsHeld } : {};
+
   if (backend === "queue") {
     const supabase = await createClient();
-    if (!supabase) return NextResponse.json({ error: "queue_unavailable" }, { status: 503 });
-    const row = buildRenderJobInsert(channelId, opts, user.id);
+    if (!supabase) return NextResponse.json({ error: "queue_unavailable", ...heldNote }, { status: 503 });
+    const row = buildRenderJobInsert(channelId, opts, user.id, creditRef);
     const { data, error } = await supabase.from("render_jobs").insert(row).select("id").single();
     if (error || !data) {
       // A missing table is "0017 not applied yet" — say so, never claim it queued.
       const missing = error?.code === "42P01" || /PGRST205|does not exist/i.test(error?.message ?? "");
       return NextResponse.json(
-        { error: missing ? "queue_unavailable" : "queue_insert_failed" },
+        { error: missing ? "queue_unavailable" : "queue_insert_failed", ...heldNote },
         { status: missing ? 503 : 502 },
       );
     }
     await logAudit({
       action: "agent.run",
       channelId,
-      detail: { backend: "queue", job_id: data.id, ...row.params },
+      detail: {
+        backend: "queue",
+        job_id: data.id,
+        ...row.params,
+        ...(creditRef ? { credit_ref: creditRef, credits_reserved: creditsHeld } : {}),
+      },
     });
-    return NextResponse.json({ ok: true, backend: "queue", job_id: data.id });
+    return NextResponse.json({ ok: true, backend: "queue", job_id: data.id, credits_reserved: creditsHeld });
   }
 
   try {
-    await dispatchDailyVideo(channelId, opts);
+    await dispatchDailyVideo(channelId, { ...opts, creditRef: creditRef ?? undefined });
     // Audit the on-demand run against its channel (best-effort, never throws).
     // Record only the non-default controls the operator actually set.
     const detail: Record<string, unknown> = { backend: "actions" };
@@ -130,12 +160,16 @@ export async function POST(request: Request) {
     if (visualStyle) detail.visual_style = visualStyle;
     if (videoProvider) detail.video_provider = videoProvider;
     if (imageProvider) detail.image_provider = imageProvider;
+    if (creditRef) {
+      detail.credit_ref = creditRef;
+      detail.credits_reserved = creditsHeld;
+    }
     await logAudit({
       action: "agent.run",
       channelId,
       detail,
     });
-    return NextResponse.json({ ok: true, backend: "actions" });
+    return NextResponse.json({ ok: true, backend: "actions", credits_reserved: creditsHeld });
   } catch (e) {
     const reason = e instanceof Error ? e.message : "github_dispatch_failed";
     const status =
@@ -146,6 +180,6 @@ export async function POST(request: Request) {
           : reason === "github_not_configured"
             ? 503
             : 502;
-    return NextResponse.json({ error: reason }, { status });
+    return NextResponse.json({ error: reason, ...heldNote }, { status });
   }
 }

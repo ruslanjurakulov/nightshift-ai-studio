@@ -6,6 +6,8 @@ import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import type { ChannelAgentConfig } from "@/lib/types";
 import type { QueueJob, RunBackend } from "@/lib/runBackend";
+import { creditRunError } from "@/lib/credits";
+import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
 
 /**
  * The Create studio — one page to type a topic, set the run's controls, press
@@ -36,7 +38,7 @@ export function CreateStudio({
   backend?: RunBackend;
   agentConfig: ChannelAgentConfig | null;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const path = useChannelPath();
 
   const [brief, setBrief] = useState("");
@@ -47,6 +49,9 @@ export function CreateStudio({
   const [imageProvider, setImageProvider] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
+  // A refusal about credits (not enough, no estimate, not set up) — said
+  // plainly, instead of the generic "couldn't start".
+  const [creditError, setCreditError] = useState<string | null>(null);
   const [events, setEvents] = useState<Ev[]>([]);
   // Queue mode only: this channel's latest render_jobs, so a job still waiting
   // for the worker is visible as waiting, not as a run that never started.
@@ -79,6 +84,7 @@ export function CreateStudio({
   async function create() {
     if (!channelId) return;
     setPhase("starting");
+    setCreditError(null);
     const topic = brief.trim().slice(0, 300);
     const dur = Number(duration);
     try {
@@ -98,6 +104,7 @@ export function CreateStudio({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setErrorKey(data.error === "github_unauthorized" ? "unauthorized" : "failed");
+        setCreditError(creditRunError(data, t, locale));
         setPhase("error");
         return;
       }
@@ -244,12 +251,16 @@ export function CreateStudio({
               <span className="text-[var(--color-ok)]">{t.create.queued}</span>
             ) : phase === "error" ? (
               <span className="text-[var(--color-fail)]">
-                {errorKey === "unauthorized" ? t.agents.runUnauthorized : t.agents.runFailed}
+                {creditError ?? (errorKey === "unauthorized" ? t.agents.runUnauthorized : t.agents.runFailed)}
               </span>
             ) : (
               <span className="text-[var(--color-muted)]">{t.create.enterHint}</span>
             )}
           </span>
+        </div>
+        {/* What this run should cost, before it is confirmed. */}
+        <div className="mt-2">
+          <CreditEstimateLine channelId={channelId} durationS={Number(duration) > 0 ? Number(duration) : null} />
         </div>
       </div>
 

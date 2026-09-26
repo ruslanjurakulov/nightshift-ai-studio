@@ -11,6 +11,8 @@ import { NotificationsCenter } from "@/components/NotificationsCenter";
 import { UtcClock } from "@/components/UtcClock";
 import { ChannelSwitcher } from "@/components/ChannelSwitcher";
 import { OrgSwitcher } from "@/components/org/OrgSwitcher";
+import { CreditBalanceChip } from "@/components/credits/CreditBalanceChip";
+import type { CreditAccount } from "@/lib/credits";
 import type { OrgSummary } from "@/lib/orgs";
 import { ALL_CHANNELS, type ChannelSelection } from "@/lib/channels";
 import type { ChannelRow } from "@/lib/types";
@@ -26,11 +28,14 @@ export function Header({
   selection = ALL_CHANNELS,
   orgs = [],
   currentOrgId = null,
+  credits = null,
 }: {
   channels?: ChannelRow[];
   selection?: ChannelSelection;
   orgs?: OrgSummary[];
   currentOrgId?: string | null;
+  /** The current org's credits; null for the exempt default org or before 0020. */
+  credits?: CreditAccount | null;
 }) {
   const { t } = useI18n();
   const path = useChannelPath();
@@ -53,6 +58,7 @@ export function Header({
 
         <div className="flex flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:gap-3">
         <OrgSwitcher orgs={orgs} currentId={currentOrgId} />
+        <CreditBalanceChip account={credits} />
         <ChannelSwitcher channels={channels} selection={selection} />
         <button
           type="button"
