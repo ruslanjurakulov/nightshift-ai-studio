@@ -94,7 +94,14 @@ export const uz: LegalTexts = {
         id: "tokens",
         heading: "6. Google'ga kirish huquqingiz qanday saqlanadi",
         body: [
-          "Siz rozilik berganingizdan so'ng Google serverimizga kirish tokeni va yangilash tokenini qaytaradi. Ular darhol shifrlanadi (konveyer repozitoriysining ochiq kaliti bilan muhrlanadi) va faqat konveyer ishga tushganda o'qiy oladigan shifrlangan GitHub Actions siri sifatida saqlanadi. Tokenlar hech qachon ma'lumotlar bazamizda saqlanmaydi, brauzeringizga yuborilmaydi va jurnalga yozilmaydi. OAuth mijozimizning hisob ma'lumotlari faqat server konfiguratsiyasida saqlanadi.",
+          "Siz rozilik berganingizdan so'ng Google serverimizga kirish tokeni va yangilash tokenini qaytaradi. Ular qayerda saqlanishi kanal kimniki ekaniga bog'liq:",
+          {
+            list: [
+              "Biz boshqaradigan kanallar (o'z tashkilotimiz): token darhol shifrlanadi (konveyer repozitoriysining ochiq kaliti bilan muhrlanadi) va faqat konveyer ishga tushganda o'qiy oladigan shifrlangan GitHub Actions siri sifatida saqlanadi.",
+              "Tashkilotingiz ulagan kanallar: faqat yangilash tokeni saqlanadi, Supabase Vault'da shifrlangan holda. Boshqaruv paneli uni saqlashi yoki o'chirishi mumkin, lekin hech qachon qayta o'qiy olmaydi — na siz uchun, na tashkilotingizdagi boshqa birov uchun; uni faqat bizning konveyerimiz, faqat serverdagi kalit bilan, shu kanal uchun ishga tushirish davomida o'qiydi va xotirada yoki faqat konveyer o'qiy oladigan, ishga tushirish tugashi bilan o'chiriladigan faylda saqlaydi. Kanalni uzganingizda saqlangan token yo'q qilinadi.",
+            ],
+          },
+          "Har ikki holatda ham tokenlar hech qachon brauzeringizga yuborilmaydi va jurnalga yozilmaydi. Panel faqat maxfiy bo'lmagan ulanish ma'lumotlarini ko'rsatadi: qaysi YouTube kanali ulangan, qachon va kim tomonidan, qanday ruxsatlar berilgan. OAuth mijozimizning hisob ma'lumotlari faqat server konfiguratsiyasida saqlanadi.",
           "Ulanish vaqtida qisqa muddatli http-only cookie (10 daqiqa) jarayonni saytlararo so'rovni qalbakilashtirishdan himoya qiladi.",
         ],
       },
@@ -107,7 +114,7 @@ export const uz: LegalTexts = {
             table: {
               head: ["Provayder", "Maqsad", "Qanday ma'lumot oladi"],
               rows: [
-                ["Supabase", "Ma'lumotlar bazasi, kirish va fayl saqlash", "Akkaunt ma'lumotlari, sozlamalar, video yozuvlari (YouTube video ID, nom, maxfiylik), ko'rsatkichlar, tekshiruv uchun video nusxalari"],
+                ["Supabase", "Ma'lumotlar bazasi, kirish va fayl saqlash", "Akkaunt ma'lumotlari, sozlamalar, video yozuvlari (YouTube video ID, nom, maxfiylik), ko'rsatkichlar, tekshiruv uchun video nusxalari; tashkilotingiz ulagan kanallar uchun shifrlangan Google yangilash tokeni (Supabase Vault)"],
                 ["Vercel", "Ushbu saytni hosting qilish (Yevropa Ittifoqi mintaqasi)", "Veb-so'rovlar va so'rov jurnallari"],
                 ["GitHub (Actions)", "Video konveyerini ishga tushirish; shifrlangan sirlar ombori", "Shifrlangan Google tokenlari va API kalitlari; konveyer jurnallari va natija fayllari"],
                 ["Google — YouTube Data va Analytics API", "3-bo'limda tavsiflangan kanalingiz bilan amallar", "Videolaringiz, subtitrlar, muqovalar va yuqorida tavsiflangan so'rovlar"],

@@ -106,6 +106,12 @@ YOUTUBE_TOKEN_JSON={"token":...,"refresh_token":...}
 # Qolgan kanallar: har biriga o'z tokeni, CHRONOS_YT_TOKEN_<REF>
 CHRONOS_YT_TOKEN_FINANCE={"token":...,"refresh_token":...}
 
+# Mijoz kanallari (migration 0022): token Supabase Vault'da. Worker uni
+# service key bilan ishga tushish paytida o'qiydi; yangilash uchun Command
+# Center'dagi OAuth client kerak (Vercel'dagi qiymatlar bilan bir xil).
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
+
 # Ixtiyoriy — Actions VARIABLE'lari bilan bir xil ma'noda
 # TTS_PROVIDER=
 # NIGHTSHIFT_RENDER_THREADS=
@@ -125,7 +131,11 @@ CHRONOS_YT_TOKEN_FINANCE={"token":...,"refresh_token":...}
 Worker kanallarni bir-biridan ajratadi: har bir vazifa faqat **o'z kanalining**
 tokenini ko'radi (boshqa `CHRONOS_YT_TOKEN_*` lar `main.py` muhitidan olib
 tashlanadi), token fayllari vazifa uchun yoziladi va vazifa tugashi bilan
-o'chiriladi. Worker loglarida qiymatlar emas, faqat "bor/yo'q" chiqadi;
+o'chiriladi. Command Center'dan ulangan mijoz kanalining tokeni Vault'dan
+o'qiladi (faol ulanish bo'lsa u ustun, bo'lmasa `CHRONOS_YT_TOKEN_<REF>`),
+faqat xotirada o'sha kanal nomi ostida `main.py` ga beriladi va scrubber'ga
+qo'shiladi; Vault o'qib bo'lmasa va zaxira secret bo'lmasa, vazifa hech narsa
+sarflamasdan to'xtaydi. Worker loglarida qiymatlar emas, faqat "bor/yo'q" chiqadi;
 `main.py` chiqishidagi kalitlar ham `[redacted]` bilan almashtiriladi.
 
 ## 4. Ishga tushirish
