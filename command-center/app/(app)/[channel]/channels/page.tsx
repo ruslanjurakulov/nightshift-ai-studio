@@ -17,6 +17,11 @@ import type {
   VideoRow,
 } from "@/lib/types";
 import { uploadedOnly } from "@/lib/heldVideos";
+import { getOrgContext } from "@/lib/orgs-server";
+import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
+import { fetchTokenStatuses } from "@/lib/server/channel-tokens";
+import { YOUTUBE_OAUTH_SCOPES, isGoogleOAuthConfigured } from "@/lib/server/google-oauth";
+import { parseVaultResult } from "@/lib/channel-tokens";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -28,9 +33,14 @@ export const revalidate = 0;
  * Deliberately NOT scoped by the header switcher: this is the page where you
  * look at all of them side by side.
  */
-export default async function ChannelsPage() {
+export default async function ChannelsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ yt?: string }>;
+}) {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t } = await getDictionary();
+  const ytResult = parseVaultResult((await searchParams).yt);
   const path = await getChannelPath();
 
   const { channels, credentials, notMigrated, scope: viewScope } = await getChannelContext();
@@ -58,6 +68,14 @@ export default async function ChannelsPage() {
   }
 
   const stats = channelStats(channels, videos, snapshots);
+
+  // A customer organization connects its own channels here (migration 0022);
+  // the operator's organization keeps the GitHub-secret path and sees no panel.
+  const org = await getOrgContext();
+  const customerOrg = Boolean(org.supported && org.current && !org.current.is_default);
+  const [tokens, role] = customerOrg
+    ? await Promise.all([fetchTokenStatuses(), resolveCurrentOrgRole()])
+    : [null, null];
 
   return (
     <div className="rhythm stagger-enter">
@@ -92,6 +110,16 @@ export default async function ChannelsPage() {
             {t.channels.isolationNote}
           </p>
 
+          {ytResult && (
+            <p
+              className="text-[13px]"
+              style={{ color: ytResult === "connected" ? "var(--color-primary)" : "var(--color-warn, #e2a03f)" }}
+              role="status"
+            >
+              {t.channelTokens.results[ytResult]}
+            </p>
+          )}
+
           <div className="grid gap-3 lg:grid-cols-2">
             {channels.map((channel) => (
               <ChannelCard
@@ -110,6 +138,17 @@ export default async function ChannelsPage() {
                   queue.filter((q) => q.channel_id === channel.channel_id && q.status === "queued").length
                 }
                 videos={videos.filter((v) => v.channel_id === channel.channel_id).length}
+                vault={
+                  tokens && role
+                    ? {
+                        status: tokens.rows.find((r) => r.channel_id === channel.channel_id) ?? null,
+                        available: tokens.available,
+                        role,
+                        oauthConfigured: isGoogleOAuthConfigured,
+                        requiredScopes: YOUTUBE_OAUTH_SCOPES,
+                      }
+                    : undefined
+                }
               />
             ))}
           </div>

@@ -320,6 +320,28 @@ jobs:
             echo "Command Center's channel wizard, which forwards it under this name."
           fi
 
+      # A customer organization's channel, connected from the Command Center,
+      # keeps its refresh token in Supabase Vault (migration 0022), not in a
+      # GitHub secret. With an ACTIVE Vault connection this writes the token
+      # file (0600) that channel's uploader reads, masking every secret string
+      # in it first; with none it does nothing and the step above applies,
+      # exactly as before. A failed lookup with no secret to fall back to stops
+      # the job here, before anything is spent. The file is removed by the
+      # self-hosted cleanup step below; it is never cached. See
+      # tools/restore_channel_token.py and modules/channel_tokens.py.
+      - name: Restore YouTube token from Vault (customer channel)
+        if: ${{ !matrix.is_default }}
+        env:
+          CHANNEL_ID: ${{ matrix.channel_id }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # The Command Center's OAuth client: a refresh token only works with
+          # the client that minted it.
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
+        run: python tools/restore_channel_token.py
+
       - name: Restore YouTube client secret
         env:
           YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}

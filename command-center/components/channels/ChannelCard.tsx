@@ -11,6 +11,7 @@ import { StatusPill } from "@/components/ui";
 import { relativeTime } from "@/lib/format";
 import type { ChannelHealth, HealthTone } from "@/lib/channels";
 import type { ChannelCredentialRow, ChannelRow } from "@/lib/types";
+import { ChannelTokenPanel, type ChannelTokenPanelProps } from "@/components/channels/ChannelTokenPanel";
 
 /**
  * One channel: identity, configuration, credential status and health.
@@ -21,8 +22,10 @@ import type { ChannelCredentialRow, ChannelRow } from "@/lib/types";
  * update on `channels` only — never delete, and never on any data table.
  *
  * Nothing here can show a credential. The row this renders (channel_credentials)
- * has no column that could hold one; connecting a channel happens on a trusted
- * machine via tools/connect_channel.py.
+ * has no column that could hold one; the operator's channels are connected on a
+ * trusted machine via tools/connect_channel.py (or the Providers board). A
+ * customer organization's channel is connected here instead (`vault`, migration
+ * 0022): its token goes to Supabase Vault and only its status comes back.
  */
 export function ChannelCard({
   channel,
@@ -31,6 +34,7 @@ export function ChannelCard({
   health,
   queued,
   videos,
+  vault,
 }: {
   channel: ChannelRow;
   /** The channel's URL segment — its name, not its internal id. */
@@ -39,6 +43,8 @@ export function ChannelCard({
   health: ChannelHealth;
   queued: number;
   videos: number;
+  /** Set for a customer organization's channel: its Vault connection panel. */
+  vault?: Omit<ChannelTokenPanelProps, "channelId">;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -263,7 +269,9 @@ export function ChannelCard({
         {credential?.detail && (
           <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">{credential.detail}</p>
         )}
-        {credential?.status !== "connected" && (
+        {/* The GitHub-secret hint is the operator's path; a customer channel
+            connects in the panel below instead. */}
+        {credential?.status !== "connected" && !vault && (
           <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">
             {fmt(t.channels.connectHint, {
               id: channel.channel_id,
@@ -271,6 +279,7 @@ export function ChannelCard({
             })}
           </p>
         )}
+        {vault && <ChannelTokenPanel channelId={channel.channel_id} {...vault} />}
       </div>
 
       {/* -- configuration ----------------------------------------------- */}

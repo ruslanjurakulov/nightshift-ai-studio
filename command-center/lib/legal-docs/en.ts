@@ -101,7 +101,14 @@ export const en: LegalTexts = {
         id: "tokens",
         heading: "6. How your Google access is stored",
         body: [
-          "After you consent, Google returns an access token and a refresh token to our server. They are immediately encrypted (sealed to our pipeline repository’s public key) and stored as an encrypted GitHub Actions secret, which only the pipeline can read when it runs. Tokens are never stored in our database, never sent to your browser, and never written to a log. Our OAuth client credentials are kept in server-only configuration.",
+          "After you consent, Google returns an access token and a refresh token to our server. Where they are kept depends on whose channel it is:",
+          {
+            list: [
+              "Channels operated by us (our own organization): the token is immediately encrypted (sealed to our pipeline repository’s public key) and stored as an encrypted GitHub Actions secret, which only the pipeline can read when it runs.",
+              "Channels that your organization connects: only the refresh token is kept, encrypted at rest in Supabase Vault. The dashboard can store or delete it but can never read it back — not for you, and not for anyone in your organization; only our pipeline reads it, with a server-only key, while a run for that channel is in progress, and it is held in memory or in a file readable only by the pipeline that is deleted when the run ends. When you disconnect the channel, the stored token is destroyed.",
+            ],
+          },
+          "In both cases tokens are never sent to your browser and never written to a log. What the dashboard shows is only non-secret connection information: which YouTube channel is connected, when and by whom, and which permissions were granted. Our OAuth client credentials are kept in server-only configuration.",
           "During the connection a short-lived, http-only cookie (10 minutes) protects the flow against cross-site request forgery.",
         ],
       },
@@ -114,7 +121,7 @@ export const en: LegalTexts = {
             table: {
               head: ["Provider", "Purpose", "Data it receives"],
               rows: [
-                ["Supabase", "Database, sign-in and file storage", "Account data, configuration, video records (YouTube video id, title, privacy), performance figures, review copies of videos"],
+                ["Supabase", "Database, sign-in and file storage", "Account data, configuration, video records (YouTube video id, title, privacy), performance figures, review copies of videos; for channels your organization connects, the encrypted Google refresh token (Supabase Vault)"],
                 ["Vercel", "Hosting of this website (EU region)", "Web requests and request logs"],
                 ["GitHub (Actions)", "Runs the video pipeline; encrypted secret store", "Encrypted Google tokens and API keys; pipeline logs and output files"],
                 ["Google — YouTube Data and Analytics APIs", "Acting on your channel as described in section 3", "Your videos, captions, thumbnails and the requests described above"],

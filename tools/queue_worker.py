@@ -22,7 +22,10 @@ What it runs is the workflow's run step, not a variant of it:
   own ``CHRONOS_YT_TOKEN_<REF>`` env var — every other channel's token is
   removed from the child's environment, so a run cannot upload to an account
   it was not started for — and ``client_secret.json`` only when set. The files
-  are deleted after every job, as on a self-hosted runner.
+  are deleted after every job, as on a self-hosted runner. A customer channel
+  connected from the Command Center (migration 0022) has its token read from
+  Supabase Vault at run time (``modules/channel_tokens.py``) and handed over
+  under that same name, in memory; it is added to the scrubber for the run.
 
 Secrets are never printed. The worker's own log lines name facts ("token set"),
 never values or lengths; the pipeline's output is streamed through the same
@@ -72,6 +75,7 @@ from typing import Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 REPO_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_DIR))
 
+from modules import channel_tokens  # noqa: E402
 from modules import credits as credit_rules  # noqa: E402
 from modules import run_request  # noqa: E402
 
@@ -332,8 +336,11 @@ def resume_target(job: Mapping, params: Mapping, output_dir: Path) -> Optional[s
 
 TOKEN_PREFIX = "CHRONOS_YT_TOKEN_"
 #: Consumed by the worker itself and never passed to the run: the workflow
-#: writes these to files in a separate step and does not export them.
-_WORKER_ONLY = ("YOUTUBE_TOKEN_JSON", "YOUTUBE_CLIENT_SECRET_JSON")
+#: writes these to files in a separate step and does not export them. The
+#: Command Center's OAuth client pair is only needed to build a Vault token's
+#: document (modules/channel_tokens.py), which carries it to the run.
+_WORKER_ONLY = ("YOUTUBE_TOKEN_JSON", "YOUTUBE_CLIENT_SECRET_JSON",
+                channel_tokens.CLIENT_ID_ENV, channel_tokens.CLIENT_SECRET_ENV)
 
 
 def _write_private(path: Path, text: str) -> None:
@@ -342,11 +349,21 @@ def _write_private(path: Path, text: str) -> None:
         fh.write(text)
 
 
-def prepare_credentials(channel_row: Mapping, env: Mapping[str, str], repo_dir: Path) -> Dict[str, str]:
+def prepare_credentials(channel_row: Mapping, env: Mapping[str, str], repo_dir: Path,
+                        token_client: Optional["channel_tokens.VaultTokenClient"] = None) -> Dict[str, str]:
     """The run's env with exactly this channel's credentials, and the credential
     files written where main.py looks for them. Mirrors the workflow's
-    "Restore YouTube token (default channel / this channel)" and "Restore
-    YouTube client secret" steps. Logs facts only, never a value or a size."""
+    "Restore YouTube token (default channel / this channel / from Vault)" and
+    "Restore YouTube client secret" steps. Logs facts only, never a value or a
+    size.
+
+    A non-default channel's token comes from modules/channel_tokens: its
+    ACTIVE Vault connection (migration 0022) when it has one, else its own
+    CHRONOS_YT_TOKEN_<REF> secret, as before. Either way it reaches the run in
+    memory, under that channel's own env var name only — the run writes it to
+    a 0600 file that remove_credential_files deletes after the job. Raises
+    ChannelTokenError when the Vault lookup failed and there is nothing to fall
+    back to, so the job fails before the run spends anything."""
     child = {k: v for k, v in env.items()
              if not k.startswith(TOKEN_PREFIX) and k not in _WORKER_ONLY}
     cid = channel_row.get("channel_id")
@@ -360,14 +377,24 @@ def prepare_credentials(channel_row: Mapping, env: Mapping[str, str], repo_dir: 
                         "will be skipped", cid)
     else:
         name = str(channel_row.get("token_secret") or "")
-        if name.startswith(TOKEN_PREFIX) and env.get(name, "").strip():
-            child[name] = env[name]
-            logger.info("channel %s: %s is set — this channel publishes to its own account", cid, name)
+        if not name.startswith(TOKEN_PREFIX):
+            name = ""
+        resolved = channel_tokens.resolve_channel_token(
+            str(cid or ""), name, env, client=token_client,
+            expected_youtube_channel_id=str(channel_row.get("youtube_channel_id") or ""))
+        if resolved.found and name:
+            child[name] = resolved.token_json
+            if resolved.source == channel_tokens.SOURCE_VAULT:
+                logger.info("channel %s: its Vault connection is active — this channel publishes "
+                            "to its own account", cid)
+            else:
+                logger.info("channel %s: %s is set — this channel publishes to its own account",
+                            cid, name)
         else:
             # Deliberately no fallback to the default channel's token: that
             # would upload this channel's video to somebody else's account.
-            logger.info("channel %s: %s is not set — publishing and analytics will be skipped",
-                        cid, name or "its token")
+            logger.info("channel %s: %s is not set and no Vault connection is active — "
+                        "publishing and analytics will be skipped", cid, name or "its token")
     secret = env.get("YOUTUBE_CLIENT_SECRET_JSON", "")
     if secret.strip():
         _write_private(Path(repo_dir) / "client_secret.json", secret)
@@ -416,6 +443,7 @@ class Worker:
         out=None,
         credits=None,
         ledger_reader: Optional[Callable[[str, str], list]] = None,
+        token_client=None,
     ):
         self.client = client
         self.worker_id = worker_id
@@ -436,7 +464,11 @@ class Worker:
         self.stop_requested = threading.Event()
         self.force_stop = threading.Event()
         self._stop_at: Optional[float] = None
-        self._secrets = secret_values(self.env)
+        self._base_secrets = secret_values(self.env)
+        self._secrets = self._base_secrets
+        # Reads a customer channel's Vault token (migration 0022) with the
+        # service key; None = only the env/GitHub-secret path, as before.
+        self.token_client = token_client
         # The service-key credits client (None = credits not wired, e.g. tests
         # of the plain queue) and where a finished run's ledger is read from.
         self.credits = credits
@@ -567,7 +599,15 @@ class Worker:
         hb = threading.Thread(target=self._heartbeat_loop, args=(job_id, lost, done), daemon=True)
         hb.start()
         try:
-            child_env = prepare_credentials(channel_row, run_env, self.repo_dir)
+            try:
+                child_env = prepare_credentials(channel_row, run_env, self.repo_dir,
+                                                token_client=self.token_client)
+            except channel_tokens.ChannelTokenError as e:
+                return self._finish(job, "failed", f"channel token unavailable (nothing was run): {e}")
+            # A Vault token was never in this worker's env, so the scrubber
+            # built at start-up does not know it: add this run's credentials.
+            self._secrets = sorted(set(self._base_secrets) | set(secret_values(child_env)),
+                                   key=len, reverse=True)
             for cmd in self.prelude:
                 rc, tail, how = self._run(cmd, child_env, lost)
                 if how != "exited":
@@ -587,6 +627,7 @@ class Worker:
             done.set()
             hb.join(timeout=5)
             remove_credential_files(self.repo_dir)
+            self._secrets = self._base_secrets
 
     # -- pieces -----------------------------------------------------------
 
@@ -736,7 +777,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     worker = Worker(QueueClient(url, key), worker_id=args.worker_id,
                     poll_seconds=args.poll_seconds, stale_minutes=args.stale_minutes,
                     grace_seconds=args.grace_seconds,
-                    credits=credit_rules.CreditsRest(url, key))
+                    credits=credit_rules.CreditsRest(url, key),
+                    token_client=channel_tokens.VaultTokenClient(url, key))
     worker.install_signal_handlers()
     logger.info("worker %s started (poll %ss, stale after %s min, stop grace %ss, credits %s)",
                 args.worker_id, args.poll_seconds, args.stale_minutes, int(args.grace_seconds),
