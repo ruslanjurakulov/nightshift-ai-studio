@@ -186,3 +186,48 @@ tugmasi chiqadi.
 Xatolar sahifada qisqa so'z bilan ko'rsatiladi (masalan "Barcha ruxsatlar
 berilmadi", "Bu Instagram akkaunti shaxsiy"). Hech qanday token yoki kalit
 xabarlarda ko'rinmaydi.
+
+---
+
+## 5. Tayyor videoni platformalarga joylash (migratsiya 0029)
+
+1. Supabase → SQL Editor → `supabase/migrations/0029_publish_targets.sql` ni
+   ishga tushiring (0022 va 0028 dan keyin).
+2. **Create** sahifasining tepasida ixtiyoriy **"Qaysi akkaunt uchun"** tanlovi
+   bor — bu faqat eslatma (hint), hech narsani joylamaydi.
+3. Video sahifasida **"Yuklab olish va joylash"** bo'limi:
+   - **Yuklab olish** — saqlangan 480p tekshiruv nusxasi (10 daqiqalik havola).
+   - **Platformalarga joylash** — ulangan Instagram/TikTok akkauntlarini
+     belgilang va **Yuborish** ni bosing. Brauzer hech narsa yuklamaydi:
+     so'rov navbatga yoziladi, VPS'dagi **worker** uni bajaradi.
+4. Qoidalar (o'zgarmaydi):
+   - Faqat joylash tekshiruvidan (publish gate) o'tgan, **tasdiqlangan** va
+     YouTube'ga yuklangan video joylanadi. Ikki kishilik tasdiq yoqilgan
+     kanalda ikkinchi adminning tasdig'i ham kerak. Aks holda so'rov
+     "RAD ETILDI" holatida sababi bilan ko'rinadi.
+   - YouTube'da video o'z kanalida allaqachon bor; uning maxfiyligi kanal
+     qoidalariga ko'ra qoladi (standart — private). Bu yerdan o'zgarmaydi —
+     ro'yxatda "allaqachon shu kanalda" deb ko'rinadi va belgilab bo'lmaydi.
+   - Tashkilotning **boshqa YouTube kanallari** ham ro'yxatda (logo, nom,
+     ulanganlik belgisi). Belgilansa, worker master faylni o'sha kanalga
+     **yangi, har doim PRIVATE** video sifatida yuklaydi (sarlavha ≤ 100
+     belgi, tavsif ≤ 5000 bayt, teglar ≤ 500 belgi — videoning o'z
+     metama'lumotidan). Kanal ACTIVE va ulangan bo'lishi kerak; token render
+     paytidagidek olinadi (Vault ulanishi yoki `CHRONOS_YT_TOKEN_<REF>`,
+     standart kanal uchun `YOUTUBE_TOKEN_JSON`). YouTube API kvotasi
+     tugasa — `quota_exceeded` (har yuklash ~1600 birlik, kuniga 10 000).
+   - TikTok'ga har doim **SELF_ONLY (shaxsiy)** joylanadi.
+   - Kredit yechilmaydi (platformalarga yuklash bepul).
+5. Cheklovlar:
+   - Worker to'liq sifatli (master) faylni o'z diskida (`output/`) topishi
+     kerak — ya'ni video **queue worker**da render qilingan bo'lishi kerak.
+     Faqat 480p nusxa bo'lsa, sifatni jim pasaytirmaslik uchun so'rov rad
+     etiladi (`master_not_available`).
+   - Instagram Reels: 3 soniya – 15 daqiqa, ≤ 300 MB. TikTok: akkaunt
+     ruxsat bergan maksimal davomiylik (odatda 10 daqiqagacha). Uzun video
+     uchun uning **Short** (vertikal) versiyasini joylash taklif qilinadi.
+   - Instagram videoni ochiq havoladan oladi: worker faylni vaqtincha
+     yopiq `publish-staging` bucket'iga qo'yadi va 1 soatlik imzolangan havola
+     beradi, keyin o'chiradi. Supabase'ning bepul tarifida bitta fayl 50 MB
+     bilan cheklangan — kattaroq videolar uchun Supabase → Storage →
+     Settings'da **upload size limit** ni oshiring (Pro tarif).

@@ -2,6 +2,10 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { ReviewPanel } from "@/components/review/ReviewPanel";
+import { PublishPanel } from "@/components/videos/PublishPanel";
+import { loadPublishPanel } from "@/lib/server/publish";
+import { getOrgContext } from "@/lib/orgs-server";
+import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { CopyButton } from "@/components/feedback/CopyButton";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
@@ -63,6 +67,7 @@ export default async function VideoDetail({
   let pendingIntent: ReviewIntentRow | null = null;
   let retentionPoints: RetentionPointRow[] = [];
   let pendingScenes = new Set<string>();
+  let channelName = "";
 
   if (supabase) {
     const [vid, snap, ev, fs, ret] = await Promise.all([
@@ -108,7 +113,7 @@ export default async function VideoDetail({
       // The review panel needs two more facts: whether this channel publishes
       // on its own, and whether a request is already waiting on this video.
       const [ch, intent, sceneIntents] = await Promise.all([
-        supabase.from("channels").select("auto_publish").eq("channel_id", video.channel_id).maybeSingle(),
+        supabase.from("channels").select("auto_publish, name").eq("channel_id", video.channel_id).maybeSingle(),
         // The panel's own decisions only: a per-scene request (below) must not
         // read as the video's approve/regenerate decision.
         supabase
@@ -131,6 +136,7 @@ export default async function VideoDetail({
           .limit(200),
       ]);
       autoPublish = Boolean((ch.data as Pick<ChannelRow, "auto_publish"> | null)?.auto_publish);
+      channelName = (ch.data as { name?: string } | null)?.name || video.channel_id;
       pendingIntent = (intent.data as ReviewIntentRow | null) ?? null;
       pendingScenes = sceneIntents.error
         ? new Set<string>()
@@ -199,6 +205,15 @@ export default async function VideoDetail({
       ? { allowed: heldVerdict.allowed, reasons: [...heldVerdict.blocks, ...heldVerdict.warnings], flagged: null }
       : null;
 
+  // "Publish to platforms": the organization's Instagram / TikTok accounts,
+  // its YouTube channels and this video's requests (migrations 0028/0029),
+  // read through RLS.
+  const org = await getOrgContext();
+  const [publishData, orgRole] = await Promise.all([
+    loadPublishPanel(video.video_id, video.channel_id, org.supported && org.current ? org.current.id : null),
+    resolveCurrentOrgRole(),
+  ]);
+
   return (
     <div className="flex flex-col gap-4">
       <ReviewPanel
@@ -206,6 +221,15 @@ export default async function VideoDetail({
         autoPublish={autoPublish}
         gate={gate}
         pendingIntent={pendingIntent}
+      />
+      <PublishPanel
+        video={video}
+        channelName={channelName || video.channel_id}
+        accounts={publishData.accounts}
+        youtube={publishData.youtube}
+        requests={publishData.requests}
+        available={publishData.available}
+        role={orgRole}
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">

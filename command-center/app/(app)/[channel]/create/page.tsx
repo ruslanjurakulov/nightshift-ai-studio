@@ -8,6 +8,7 @@ import { isRunNowConfigured, runBackend } from "@/lib/server/run-backend";
 import { CreateStudio } from "@/components/create/CreateStudio";
 import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { atLeast } from "@/lib/auth/roles";
+import { readConnectedAccounts } from "@/lib/connectedAccounts";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -21,6 +22,13 @@ export default async function CreatePage() {
     : undefined;
   // Run now is an owner/admin action in the channel's organization.
   const canRun = atLeast(await resolveCurrentOrgRole(), "admin");
+  // "Making this for:" — the organization's connected accounts (RLS, metadata only).
+  const targets = (await readConnectedAccounts().catch(() => [])).map(({ platform, id, name, connected }) => ({
+    platform,
+    id,
+    name,
+    connected,
+  }));
 
   return (
     <div className="rhythm stagger-enter">
@@ -32,6 +40,7 @@ export default async function CreatePage() {
         agentConfig={scopedChannel?.agent_config ?? null}
         canRun={canRun}
         operator={await isOperator()}
+        targets={targets}
       />
     </div>
   );

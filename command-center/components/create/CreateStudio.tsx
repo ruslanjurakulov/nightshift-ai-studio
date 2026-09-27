@@ -14,6 +14,20 @@ import { VoicePreviewButton } from "@/components/create/VoicePreviewButton";
 
 const CUSTOM_VOICE = "__custom__";
 
+/** A connected account the video can be made for (lib/connectedAccounts.ts). */
+export interface CreateTarget {
+  platform: "youtube" | "instagram" | "tiktok";
+  id: string;
+  name: string;
+  connected: boolean;
+}
+
+const PLATFORM_LABEL: Record<CreateTarget["platform"], string> = {
+  youtube: "YouTube",
+  instagram: "Instagram",
+  tiktok: "TikTok",
+};
+
 /**
  * The Create studio — one page to type a topic, set the run's controls, press
  * Create, and watch the pipeline work.
@@ -38,6 +52,7 @@ export function CreateStudio({
   agentConfig,
   canRun = true,
   operator = false,
+  targets = [],
 }: {
   channelId: string | null;
   githubConfigured: boolean;
@@ -51,6 +66,8 @@ export function CreateStudio({
    *  providers, jobs) are shown only to them — anyone else would be sent back
    *  to the Command Center by the layout. */
   operator?: boolean;
+  /** "Making this for:" — the organization's connected accounts. Optional to pick. */
+  targets?: CreateTarget[];
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
@@ -65,6 +82,8 @@ export function CreateStudio({
   // "" = the channel's voice, a voice id, or CUSTOM_VOICE to type one in.
   const [voice, setVoice] = useState("");
   const [customVoice, setCustomVoice] = useState("");
+  // "platform:id" of the account this video is for, or "" (none chosen).
+  const [target, setTarget] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
   // A refusal about credits (not enough, no estimate, not set up) — said
@@ -119,6 +138,7 @@ export function CreateStudio({
           ...(imageProvider ? { image_provider: imageProvider } : {}),
           ...(ttsModel ? { tts_model: ttsModel } : {}),
           ...(voiceId && isVoiceId(voiceId) ? { voice_id: voiceId } : {}),
+          ...(target ? { publish_hint: target } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -154,8 +174,36 @@ export function CreateStudio({
       ? `Edge · ${agentConfig?.edge_tts_voice || "—"}`
       : `ElevenLabs · ${agentConfig?.elevenlabs_voice_id ? agentConfig.elevenlabs_voice_id.slice(0, 8) + "…" : "—"}`;
 
+  const connectedTargets = targets.filter((a) => a.connected);
+
   return (
     <div className="flex flex-col gap-4">
+      {connectedTargets.length > 0 && (
+        <div className="flex justify-center">
+          <label className="flex flex-wrap items-center justify-center gap-2">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+              {t.publish.makingFor}
+            </span>
+            <select
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              className={selectClass}
+              aria-describedby="making-for-hint"
+            >
+              <option value="">{t.publish.makingForNone}</option>
+              {connectedTargets.map((a) => (
+                <option key={`${a.platform}:${a.id}`} value={`${a.platform}:${a.id}`}>
+                  {PLATFORM_LABEL[a.platform]} · {a.name}
+                </option>
+              ))}
+            </select>
+            <span id="making-for-hint" className="text-[11px] text-[var(--color-muted)]">
+              {t.publish.makingForHint}
+            </span>
+          </label>
+        </div>
+      )}
+
       {blocked && (
         <p className="text-[13px] text-[var(--color-warn)]">
           {!channelId ? t.create.pickChannel : !githubConfigured ? t.create.notConfigured : t.create.needsAdmin}

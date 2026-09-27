@@ -169,7 +169,10 @@ class WorkflowParity(unittest.TestCase):
         sql = [m for m in migrations if "function public.render_job_params_valid" in m.read_text()][-1].read_text()
         m = re.search(r"allowed text\[\] := array\[(.*?)\];", sql, re.S)
         self.assertIsNotNone(m)
-        self.assertEqual(set(re.findall(r"'([a-z_]+)'", m.group(1))), set(run_request.ALLOWED_PARAMS))
+        # The whitelist is the pipeline's inputs plus the hints the Command
+        # Center may record on a job (never passed to the pipeline).
+        self.assertEqual(set(re.findall(r"'([a-z_]+)'", m.group(1))),
+                         set(run_request.ALLOWED_PARAMS) | set(run_request.HINT_PARAMS))
 
 
 # ── scrubbing ──────────────────────────────────────────────────────────────
@@ -554,6 +557,54 @@ class MissingConfig(unittest.TestCase):
             for k, v in saved.items():
                 if v is not None:
                     os.environ[k] = v
+
+
+class YoutubePublishCredentials(unittest.TestCase):
+    """"Publish to platforms" → a YouTube channel: the token is resolved exactly
+    as a render run of that channel resolves it, in memory, never another's."""
+
+    def _registry(self, verified=True):
+        from types import SimpleNamespace
+
+        def ctx(cid, ref=""):
+            return SimpleNamespace(channel_id=cid, name=cid, niche="n", is_verified=verified,
+                                   credential=SimpleNamespace(ref=ref, youtube_channel_id="UC" + cid))
+
+        chans = {"news": ctx("news"), "default": ctx("default")}
+
+        class Reg:
+            def get(self, cid):
+                if cid not in chans:
+                    raise KeyError(cid)
+                return chans[cid]
+
+        return Reg()
+
+    def test_own_env_secret_only_and_nothing_written(self):
+        env = {"CHRONOS_YT_TOKEN_NEWS": '{"refresh_token": "news-rt"}',
+               "CHRONOS_YT_TOKEN_FINANCE": '{"refresh_token": "finance-rt"}',
+               "YOUTUBE_TOKEN_JSON": '{"refresh_token": "default-rt"}'}
+        with tempfile.TemporaryDirectory() as d:
+            cwd = os.getcwd()
+            os.chdir(d)
+            try:
+                tok, ctx = qw.youtube_publish_credentials("news", env, None, registry=self._registry())
+            finally:
+                os.chdir(cwd)
+            self.assertEqual(os.listdir(d), [])
+        self.assertIn("news-rt", tok)
+        self.assertEqual(ctx.channel_id, "news")
+
+    def test_no_token_is_empty_not_another_channels(self):
+        env = {"YOUTUBE_TOKEN_JSON": '{"refresh_token": "default-rt"}'}
+        tok, _ = qw.youtube_publish_credentials("news", env, None, registry=self._registry())
+        self.assertEqual(tok, "")
+
+    def test_unverified_or_unknown_channel_raises(self):
+        with self.assertRaises(ValueError):
+            qw.youtube_publish_credentials("news", {}, None, registry=self._registry(verified=False))
+        with self.assertRaises(KeyError):
+            qw.youtube_publish_credentials("nope", {}, None, registry=self._registry())
 
 
 if __name__ == "__main__":

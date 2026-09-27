@@ -7,6 +7,8 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { buildRenderJobInsert, isRunConfigured, resolveRunBackend } from "@/lib/runBackend";
 import { creditsEnforced, reserveRunCredits } from "@/lib/server/credits";
 import { isCreditExempt } from "@/lib/credits";
+import { readConnectedAccounts } from "@/lib/connectedAccounts";
+import { acceptedHint } from "@/lib/publish";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,6 +80,7 @@ export async function POST(request: Request) {
     image_provider?: unknown;
     tts_model?: unknown;
     voice_id?: unknown;
+    publish_hint?: unknown;
   };
   try {
     body = await request.json();
@@ -133,7 +136,27 @@ export async function POST(request: Request) {
   const ttsModel = typeof body.tts_model === "string" ? body.tts_model.trim() : "";
   const voiceId = typeof body.voice_id === "string" ? body.voice_id.trim() : "";
 
-  const opts = { topic, niche, duration, language, visualStyle, videoProvider, imageProvider, ttsModel, voiceId };
+  // "Making this for:" — optional, and kept only when it names one of this
+  // organization's own connected accounts (read with the caller's RLS).
+  const publishHint =
+    body.publish_hint == null || body.publish_hint === ""
+      ? null
+      : acceptedHint(body.publish_hint, await readConnectedAccounts().catch(() => []));
+  if (body.publish_hint != null && body.publish_hint !== "" && !publishHint)
+    return NextResponse.json({ error: "publish_hint_unknown" }, { status: 400 });
+
+  const opts = {
+    topic,
+    niche,
+    duration,
+    language,
+    visualStyle,
+    videoProvider,
+    imageProvider,
+    ttsModel,
+    voiceId,
+    ...(publishHint ? { publishHint } : {}),
+  };
 
   // Pay first (enforced deployments only), then run. The hold's id travels
   // with the run so its runner can settle exactly this hold.
@@ -188,6 +211,7 @@ export async function POST(request: Request) {
     if (imageProvider) detail.image_provider = imageProvider;
     if (ttsModel) detail.tts_model = ttsModel;
     if (voiceId) detail.voice_id = voiceId;
+    if (publishHint) detail.publish_hint = publishHint;
     if (creditRef) {
       detail.credit_ref = creditRef;
       detail.credits_reserved = creditsHeld;

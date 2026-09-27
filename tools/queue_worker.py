@@ -43,6 +43,15 @@ Durability:
   up to ``WORKER_STOP_GRACE_SECONDS``; after that, or on a second signal, the
   run is terminated and the job released back to the queue.
 
+Cross-posting (migration 0029, ``modules/social_publish.py``): between render
+jobs the worker claims at most one ``publish_requests`` row — a finished video
+someone asked to post to a connected Instagram / TikTok account or to another
+of the organization's YouTube channels (uploaded PRIVATE) — and carries it out
+after checking the publish gate and approvals again. Nothing is charged for
+it. Instagram / TikTok tokens come from Supabase Vault (0028); a YouTube
+channel's token is resolved exactly as for a render run of that channel
+(``channel_token``), in memory. None is ever printed.
+
 Credits (migration 0020, ``modules/credits.py``): a job whose channel belongs
 to an organization other than the operator's own is paid for by the hold its
 ``credit_ref`` names. The worker claims that hold before the run spends
@@ -78,6 +87,7 @@ sys.path.insert(0, str(REPO_DIR))
 from modules import channel_tokens  # noqa: E402
 from modules import credits as credit_rules  # noqa: E402
 from modules import run_request  # noqa: E402
+from modules import social_publish  # noqa: E402
 
 logger = logging.getLogger("queue_worker")
 
@@ -349,6 +359,50 @@ def _write_private(path: Path, text: str) -> None:
         fh.write(text)
 
 
+def channel_token(channel_row: Mapping, env: Mapping[str, str],
+                  token_client: Optional["channel_tokens.VaultTokenClient"] = None,
+                  *, expected_youtube_channel_id: str = "") -> "channel_tokens.ResolvedToken":
+    """This channel's YouTube token, in memory — the one rule a render run
+    (prepare_credentials) and a "Publish to platforms" YouTube upload
+    (youtube_publish_credentials) share. The default channel: YOUTUBE_TOKEN_JSON.
+    Any other: its ACTIVE Vault connection, else its own CHRONOS_YT_TOKEN_<REF>
+    (modules/channel_tokens.py). Never another channel's token. Raises
+    ChannelTokenError when the Vault lookup failed with nothing to fall back to."""
+    if channel_row.get("is_default"):
+        raw = env.get("YOUTUBE_TOKEN_JSON", "")
+        return (channel_tokens.ResolvedToken(channel_tokens.SOURCE_ENV, raw) if raw.strip()
+                else channel_tokens.ResolvedToken(channel_tokens.SOURCE_NONE))
+    name = str(channel_row.get("token_secret") or "")
+    if not name.startswith(TOKEN_PREFIX):
+        name = ""
+    return channel_tokens.resolve_channel_token(
+        str(channel_row.get("channel_id") or ""), name, env, client=token_client,
+        expected_youtube_channel_id=(expected_youtube_channel_id
+                                     or str(channel_row.get("youtube_channel_id") or "")))
+
+
+def youtube_publish_credentials(channel_id: str, env: Mapping[str, str],
+                                token_client: Optional["channel_tokens.VaultTokenClient"] = None,
+                                registry=None) -> tuple:
+    """(token_json, ChannelContext) for uploading a finished video to
+    ``channel_id`` from "Publish to platforms" (modules/social_publish.py).
+
+    Resolved exactly as a render run of that channel resolves it: the channel
+    must exist and be confirmed against YouTube (``resolve_only`` — KeyError /
+    ValueError otherwise), and its token comes from :func:`channel_token`.
+    token_json is "" when the channel has no token on this worker. Nothing is
+    written to disk and nothing is logged but facts."""
+    from modules.channels import ChannelRegistry  # noqa: PLC0415
+    from tools.list_channels import resolve_only  # noqa: PLC0415
+
+    reg = registry or ChannelRegistry()
+    row = resolve_only(channel_id, registry=reg)
+    ctx = reg.get(channel_id)
+    resolved = channel_token(row, env, token_client,
+                             expected_youtube_channel_id=ctx.credential.youtube_channel_id)
+    return resolved.token_json, ctx
+
+
 def prepare_credentials(channel_row: Mapping, env: Mapping[str, str], repo_dir: Path,
                         token_client: Optional["channel_tokens.VaultTokenClient"] = None) -> Dict[str, str]:
     """The run's env with exactly this channel's credentials, and the credential
@@ -367,10 +421,10 @@ def prepare_credentials(channel_row: Mapping, env: Mapping[str, str], repo_dir: 
     child = {k: v for k, v in env.items()
              if not k.startswith(TOKEN_PREFIX) and k not in _WORKER_ONLY}
     cid = channel_row.get("channel_id")
+    resolved = channel_token(channel_row, env, token_client)
     if channel_row.get("is_default"):
-        raw = env.get("YOUTUBE_TOKEN_JSON", "")
-        if raw.strip():
-            _write_private(Path(repo_dir) / "youtube_token.json", raw)
+        if resolved.found:
+            _write_private(Path(repo_dir) / "youtube_token.json", resolved.token_json)
             logger.info("channel %s: YOUTUBE_TOKEN_JSON is set — wrote youtube_token.json", cid)
         else:
             logger.info("channel %s: YOUTUBE_TOKEN_JSON is not set — publishing and analytics "
@@ -379,9 +433,6 @@ def prepare_credentials(channel_row: Mapping, env: Mapping[str, str], repo_dir: 
         name = str(channel_row.get("token_secret") or "")
         if not name.startswith(TOKEN_PREFIX):
             name = ""
-        resolved = channel_tokens.resolve_channel_token(
-            str(cid or ""), name, env, client=token_client,
-            expected_youtube_channel_id=str(channel_row.get("youtube_channel_id") or ""))
         if resolved.found and name:
             child[name] = resolved.token_json
             if resolved.source == channel_tokens.SOURCE_VAULT:
@@ -444,6 +495,7 @@ class Worker:
         credits=None,
         ledger_reader: Optional[Callable[[str, str], list]] = None,
         token_client=None,
+        publisher=None,
     ):
         self.client = client
         self.worker_id = worker_id
@@ -469,6 +521,9 @@ class Worker:
         # Reads a customer channel's Vault token (migration 0022) with the
         # service key; None = only the env/GitHub-secret path, as before.
         self.token_client = token_client
+        # Cross-posting to Instagram / TikTok (migration 0029,
+        # modules/social_publish.py): handled between render jobs. None = off.
+        self.publisher = publisher
         # The service-key credits client (None = credits not wired, e.g. tests
         # of the plain queue) and where a finished run's ledger is read from.
         self.credits = credits
@@ -503,18 +558,30 @@ class Worker:
     def run_forever(self, *, once: bool = False) -> int:
         while not self.stop_requested.is_set():
             self._sweep_credit_holds()
+            published = self._publish_one()
             job = self.client.claim(self.worker_id, self.stale_minutes)
             if job is None:
                 if once:
                     logger.info("no queued job")
                     return 0
-                self.stop_requested.wait(self.poll_seconds)
+                if not published:
+                    self.stop_requested.wait(self.poll_seconds)
                 continue
             self.process(job)
             if once:
                 return 0
         logger.info("worker stopped")
         return 0
+
+    def _publish_one(self) -> bool:
+        """At most one publish request between render jobs; never raises."""
+        if self.publisher is None:
+            return False
+        try:
+            return bool(self.publisher.run_once())
+        except Exception as e:
+            logger.warning("publish request handling failed (%s)", type(e).__name__)
+            return False
 
     def process(self, job: Mapping) -> str:
         """Run one claimed job to an end state. Returns what happened:
@@ -774,11 +841,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                      "(docs/WORKER_VPS.md) — the queue lives in Supabase.")
         return 2
 
+    token_client = channel_tokens.VaultTokenClient(url, key)
     worker = Worker(QueueClient(url, key), worker_id=args.worker_id,
                     poll_seconds=args.poll_seconds, stale_minutes=args.stale_minutes,
                     grace_seconds=args.grace_seconds,
                     credits=credit_rules.CreditsRest(url, key),
-                    token_client=channel_tokens.VaultTokenClient(url, key))
+                    token_client=token_client,
+                    publisher=social_publish.SocialPublisher(
+                        url, key, output_dir=REPO_DIR / "output", worker_id=args.worker_id,
+                        youtube_credentials=lambda cid: youtube_publish_credentials(
+                            cid, os.environ, token_client)))
     worker.install_signal_handlers()
     logger.info("worker %s started (poll %ss, stale after %s min, stop grace %ss, credits %s)",
                 args.worker_id, args.poll_seconds, args.stale_minutes, int(args.grace_seconds),
