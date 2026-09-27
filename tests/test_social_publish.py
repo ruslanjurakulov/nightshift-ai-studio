@@ -273,6 +273,153 @@ class TiktokFlowTests(Base):
         self.assertFalse(any(c[1].endswith("/video/init/") for c in http.calls))
 
 
+class YtStore(FakeStore):
+    def __init__(self, *, status="ACTIVE", connected=True, **kw):
+        super().__init__(**kw)
+        self._status = status
+        self._connected = connected
+
+    def channel(self, channel_id):
+        return {"channel_id": channel_id, "niche": "history", "status": self._status}
+
+    def channel_connected(self, channel_id):
+        return self._connected
+
+
+class FakeUploader:
+    def __init__(self, exc=None):
+        self.exc = exc
+        self.calls = []
+
+    def upload(self, path, script, privacy=None):
+        self.calls.append((path, script, privacy))
+        if self.exc:
+            raise self.exc
+        return {"id": "dQw4w9WgXcQ", "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+
+
+class HttpErr(Exception):
+    """Shaped like googleapiclient's HttpError."""
+
+    def __init__(self, status, reason):
+        super().__init__("HttpError " + TOKEN)
+        self.resp = type("R", (), {"status": status})()
+        self.content = json.dumps({"error": {"message": "body with " + TOKEN,
+                                             "errors": [{"reason": reason}]}}).encode()
+
+
+class YoutubeFlowTests(Base):
+    YT_TOKEN = json.dumps({"refresh_token": "1//yt-secret-refresh"})
+
+    def yt(self, store, *, uploader=None, factory_exc=None, token=None, cred_exc=None, target="finance"):
+        self.cred_calls = []
+        self.factory_calls = []
+        uploader = uploader or FakeUploader()
+
+        def creds(cid):
+            self.cred_calls.append(cid)
+            if cred_exc:
+                raise cred_exc
+            return (self.YT_TOKEN if token is None else token), {"channel": cid}
+
+        def factory(tok, ctx):
+            self.factory_calls.append(ctx)
+            if factory_exc:
+                raise factory_exc
+            return uploader
+
+        r = {"id": 9, "org_id": "org", "video_id": "vid1", "account_id": None,
+             "target_channel_id": target, "platform": "youtube"}
+        out = sp.process_request(r, store=store, tokens=FakeTokens("instagram", missing=True), worker_id="w1",
+                                 output_dir=self.out, http=FakeHTTP({}), env={}, sleep=lambda s: None,
+                                 probe_fn=lambda p: sp.VideoInfo(60.0, 1920, 1080, 2048),
+                                 youtube=sp.YoutubeAdapter(creds, uploader_factory=factory))
+        return out, uploader
+
+    def test_uploads_master_private_to_the_target_channel(self):
+        store = YtStore(video=self.video)
+        out, up = self.yt(store)
+        self.assertEqual(out, "published")
+        self.assertEqual(self.cred_calls, ["finance"])
+        (path, script, privacy), = up.calls
+        self.assertEqual(path, self.master.resolve())
+        self.assertEqual(privacy, "private")
+        self.assertEqual(script.title, "The Fall of Rome")
+        self.assertEqual(script.tags, ["ancient rome", "history"])
+        self.assertEqual(store.final["status"], "published")
+        self.assertEqual(store.final["privacy"], "private")
+        self.assertEqual(store.final["result_id"], "dQw4w9WgXcQ")
+        self.assertEqual(store.final["result_url"], "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        processing = next(u for u in store.updates if u.get("status") == "processing")
+        self.assertEqual(processing["privacy"], "private")
+        self.assertTrue(processing["caption"].startswith("The Fall of Rome\n\nWhy it fell."))
+        self.assertNotIn("yt-secret", json.dumps(store.updates))
+
+    def test_own_channel_is_refused_without_touching_youtube(self):
+        store = YtStore(video=self.video)
+        out, up = self.yt(store, target="news")
+        self.assertEqual((out, store.final["reason"]), ("refused", "already_on_channel"))
+        self.assertEqual(self.cred_calls, [])
+        self.assertEqual(up.calls, [])
+
+    def test_gate_paused_and_disconnected_are_refused_before_any_token(self):
+        cases = [(YtStore(video=self.video, refusal="not_approved"), "not_approved"),
+                 (YtStore(video=self.video, status="PAUSED"), "account_not_connected"),
+                 (YtStore(video=self.video, connected=False), "account_not_connected")]
+        for store, reason in cases:
+            out, up = self.yt(store)
+            self.assertEqual((out, store.final["reason"]), ("refused", reason))
+            self.assertEqual(self.cred_calls, [])
+            self.assertEqual(up.calls, [])
+
+    def test_no_token_unverified_or_unreachable_channel(self):
+        for kw in ({"token": ""}, {"cred_exc": ValueError("unverified")}, {"factory_exc": ValueError("not reachable")}):
+            store = YtStore(video=self.video)
+            out, up = self.yt(store, **kw)
+            self.assertEqual((out, store.final["reason"]), ("refused", "account_not_connected"), kw)
+            self.assertEqual(up.calls, [])
+
+    def test_master_missing_is_refused(self):
+        self.master.unlink()
+        store = YtStore(video=self.video)
+        out, _ = self.yt(store)
+        self.assertEqual(store.final["reason"], "master_not_available")
+        self.assertEqual(self.cred_calls, [])
+
+    def test_quota_and_other_errors_are_reason_words_without_bodies(self):
+        cases = [(HttpErr(403, "quotaExceeded"), "quota_exceeded"),
+                 (HttpErr(403, "uploadLimitExceeded"), "quota_exceeded"),
+                 (HttpErr(429, "rateLimitExceeded"), "rate_limited"),
+                 (HttpErr(401, "authError"), "token_expired"),
+                 (HttpErr(503, "backendError"), "upload_failed"),
+                 (HttpErr(400, "invalidTitle"), "platform_error")]
+        for exc, reason in cases:
+            store = YtStore(video=self.video)
+            out, _ = self.yt(store, uploader=FakeUploader(exc))
+            self.assertEqual((out, store.final["status"], store.final["reason"]), ("failed", "failed", reason))
+            self.assertNotIn(TOKEN, store.final["error"])
+            self.assertIn(f"HTTP {exc.resp.status}", store.final["error"])
+
+    def test_worker_without_youtube_setup_fails_clearly(self):
+        store = YtStore(video=self.video)
+        r = {"id": 9, "org_id": "org", "video_id": "vid1", "target_channel_id": "finance", "platform": "youtube"}
+        out = sp.process_request(r, store=store, tokens=FakeTokens("instagram"), worker_id="w1",
+                                 output_dir=self.out, http=FakeHTTP({}), env={})
+        self.assertEqual((out, store.final["reason"]), ("failed", "platform_error"))
+
+
+class UploaderFromTokenTests(unittest.TestCase):
+    def test_unusable_token_document_raises_in_our_words(self):
+        try:
+            from modules.youtube_uploader import YouTubeUploader
+        except Exception:  # pragma: no cover - google libs missing
+            self.skipTest("google client libraries not installed")
+        for doc in ('{"token": "ya29.secret-access"}', "not json ya29.secret-access", ""):
+            with self.assertRaises(ValueError) as cm:
+                YouTubeUploader.from_token_json(doc)
+            self.assertNotIn("ya29", str(cm.exception))
+
+
 class PublisherLoopTests(unittest.TestCase):
     def test_run_once_is_false_when_queue_empty_or_unavailable(self):
         class Store:

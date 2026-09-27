@@ -281,6 +281,38 @@ class YouTubeUploader:
         self.service = self._auth()
         self._verify_channel()
 
+    @classmethod
+    def from_token_json(cls, token_json: str, channel: Optional[ChannelContext] = None) -> "YouTubeUploader":
+        """An uploader bound to ``channel`` whose token is held in memory.
+
+        For the publish worker (modules/social_publish.py), which resolves the
+        channel's token exactly as a render run does (its Vault connection, or
+        its own ``CHRONOS_YT_TOKEN_<REF>`` / the default channel's
+        ``YOUTUBE_TOKEN_JSON``) but has no business writing it to a file. The
+        token is refreshed when it has expired (a Vault token always has), and
+        there is no interactive-consent fallback: a token that cannot be used
+        raises. The target channel and its verification are the same as
+        ``__init__``'s, so a token that cannot reach the channel's own YouTube
+        id raises ``ValueError`` before anything is uploaded.
+        """
+        self = cls.__new__(cls)
+        self.channel = channel
+        self.token_file = None
+        self.target_channel_id = cls._resolve_target_channel(channel)
+        try:
+            info = json.loads(token_json or "")
+        except ValueError:
+            info = None
+        if not isinstance(info, dict) or not info.get("refresh_token"):
+            # Our words only: the document itself is never echoed.
+            raise ValueError(f"{self._label}the channel's token is not a usable authorized-user document")
+        creds = Credentials.from_authorized_user_info(info, YOUTUBE_SCOPES)
+        if not creds.valid:
+            creds.refresh(Request())
+        self.service = build("youtube", "v3", credentials=creds, cache_discovery=False)
+        self._verify_channel()
+        return self
+
     # -- channel binding ---------------------------------------------------
 
     @staticmethod

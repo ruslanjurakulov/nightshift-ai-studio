@@ -183,27 +183,52 @@ def _compose(head: str, body: str, tags: List[str], limit: int, measure) -> str:
     return trim(head, limit, measure)
 
 
-def youtube_metadata(meta: SourceMeta) -> YouTubeMeta:
-    """Title + description + tags within YouTube's limits."""
-    title = trim(_clean(meta.title or meta.topic).replace("\n", " "), YT_TITLE_MAX)
-    title = title.replace("<", "").replace(">", "")  # YouTube rejects angle brackets
-    desc = trim(_clean(meta.description).replace("<", "").replace(">", ""),
-                YT_DESCRIPTION_MAX_BYTES, lambda s: len(s.encode("utf-8")))
-    tags: List[str] = []
+def _no_angles(text: str) -> str:
+    return (text or "").replace("<", "").replace(">", "")  # YouTube rejects angle brackets
+
+
+def youtube_tags(tags: Iterable[str], budget: int = YT_TAGS_MAX_CHARS) -> List[str]:
+    """Tags, in order and de-duplicated, while they fit YouTube's 500-character
+    budget. YouTube counts the separating commas and quotes a tag that contains
+    a space (+2), so each tag costs ``len + 1`` (+2 with a space) — the same
+    rule as the pipeline's uploader (``YouTubeUploader._trim_tags``), which
+    therefore never trims these further."""
+    out: List[str] = []
     total = 0
     seen = set()
-    for t in meta.tags:
-        t = _WS.sub(" ", (t or "").replace("<", "").replace(">", "").replace(",", " ")).strip()
+    for t in tags:
+        t = _WS.sub(" ", _no_angles(str(t or "")).replace(",", " ").replace("\n", " ")).strip()
         if not t or t.lower() in seen:
             continue
-        # YouTube counts a tag with a space as if it were quoted (+2).
-        cost = len(t) + (2 if " " in t else 0) + (1 if tags else 0)
-        if total + cost > YT_TAGS_MAX_CHARS:
+        cost = len(t) + (2 if " " in t else 0) + 1
+        if total + cost > budget:
             break
         seen.add(t.lower())
-        tags.append(t)
+        out.append(t)
         total += cost
-    return YouTubeMeta(title=title, description=desc, tags=tags)
+    return out
+
+
+def youtube_metadata(meta: SourceMeta, *, fallback_title: str = "") -> YouTubeMeta:
+    """Title (≤ 100 characters, never empty when ``fallback_title`` is given),
+    description (≤ 5000 UTF-8 bytes) and tags (≤ 500 characters) within
+    YouTube's limits. Angle brackets are removed first, then text is trimmed at
+    a word boundary — so the same video always gets the same metadata."""
+    title = trim(_no_angles(_clean(meta.title or meta.topic).replace("\n", " ")), YT_TITLE_MAX)
+    if not title:
+        title = trim(_no_angles(_clean(fallback_title).replace("\n", " ")), YT_TITLE_MAX)
+    desc = trim(_no_angles(_clean(meta.description)), YT_DESCRIPTION_MAX_BYTES,
+                lambda s: len(s.encode("utf-8")))
+    return YouTubeMeta(title=title, description=desc, tags=youtube_tags(meta.tags))
+
+
+def youtube_record(y: YouTubeMeta) -> str:
+    """What a publish_requests row records as the "caption" of a YouTube
+    upload: the title, the description and the tags, as sent."""
+    parts = [y.title, y.description]
+    if y.tags:
+        parts.append("Tags: " + ", ".join(y.tags))
+    return "\n\n".join(p for p in parts if p)
 
 
 def instagram_caption(meta: SourceMeta, *, max_hashtags: int = IG_HASHTAGS_DEFAULT) -> str:

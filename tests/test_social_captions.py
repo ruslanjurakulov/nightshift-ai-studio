@@ -85,6 +85,32 @@ class YoutubeTests(unittest.TestCase):
         cost = sum(len(t) + (2 if " " in t else 0) for t in y.tags) + len(y.tags) - 1
         self.assertLessEqual(cost, sc.YT_TAGS_MAX_CHARS)
 
+    def test_tags_follow_the_uploaders_rule(self):
+        tags = tuple(f"long tag number {i}" for i in range(100)) + ("a<b>", "x,y")
+        y = sc.youtube_metadata(meta(tags=tags))
+        cost = sum(len(t) + (2 if " " in t else 0) + 1 for t in y.tags)
+        self.assertLessEqual(cost, sc.YT_TAGS_MAX_CHARS)
+        self.assertGreater(len(y.tags), 10)
+        self.assertEqual(sc.youtube_tags(["History", "history", " ", "a<b>", "x,y"]), ["History", "ab", "x y"])
+
+    def test_multibyte_description_under_5000_bytes_and_deterministic(self):
+        m = meta(title="Тарих " * 40, description="Рим пал не за один день. " * 600)
+        y = sc.youtube_metadata(m)
+        self.assertLessEqual(len(y.title), sc.YT_TITLE_MAX)
+        self.assertLessEqual(len(y.description.encode("utf-8")), sc.YT_DESCRIPTION_MAX_BYTES)
+        self.assertTrue(y.description.endswith(sc.ELLIPSIS))
+        self.assertEqual(y, sc.youtube_metadata(m))
+        self.assertNotIn("0:00", sc.youtube_metadata(meta()).description)
+
+    def test_empty_title_falls_back_and_record_fits_the_column(self):
+        y = sc.youtube_metadata(meta(title="", topic="", description=LONG * 2,
+                                     tags=tuple(f"tag {i}" for i in range(200))), fallback_title="vid123")
+        self.assertEqual(y.title, "vid123")
+        rec = sc.youtube_record(y)
+        self.assertTrue(rec.startswith("vid123\n\n"))
+        self.assertIn("Tags: tag 0, tag 1", rec)
+        self.assertLessEqual(len(rec), 6000)  # publish_requests.caption
+
     def test_unknown_platform(self):
         with self.assertRaises(ValueError):
             sc.caption_for("myspace", meta())

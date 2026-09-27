@@ -1,7 +1,9 @@
-"""Cross-post a finished video to Instagram / TikTok — the worker's side of 0029.
+"""Cross-post a finished video to Instagram / TikTok / another YouTube channel —
+the worker's side of 0029.
 
 The Command Center's "Publish to platforms" inserts one ``publish_requests``
-row per ticked account and stops; nothing in a browser uploads. The queue
+row per ticked account or YouTube channel and stops; nothing in a browser
+uploads. The queue
 worker (``tools/queue_worker.py``) claims those rows with the service key and
 hands each to :func:`process_request`, which:
 
@@ -10,7 +12,10 @@ hands each to :func:`process_request`, which:
    approved, the channel's two-person rule satisfied); a "no" is recorded as
    ``refused`` with the reason word, and nothing is uploaded;
 2. reads the account's token from Vault (``modules/social_tokens.py``,
-   refreshing it when it is close to expiry);
+   refreshing it when it is close to expiry) — or, for a YouTube channel, the
+   channel's own token resolved exactly as a render run resolves it (its Vault
+   connection from 0022, else its ``CHRONOS_YT_TOKEN_<REF>`` secret; the
+   default channel's ``YOUTUBE_TOKEN_JSON``), in memory only;
 3. finds the MASTER render on this worker's disk (``videos.local_path`` under
    ``output/``). There is no silent quality fallback: when only the 480p
    review copy exists, the request is refused with ``master_not_available``;
@@ -25,6 +30,16 @@ hands each to :func:`process_request`, which:
    token or a response body).
 
 Uploading costs the platforms nothing, so no credits are held or charged.
+
+YouTube targets: the target must not be the video's own channel (the pipeline
+already uploaded it there — ``already_on_channel``), must be ACTIVE and
+connected (``publish_channel_connected``, the same rule as the account panel).
+The master is uploaded with ``modules/youtube_uploader.py`` — the pipeline's
+own uploader, bound to that channel and verified against its YouTube id —
+always PRIVATE; nothing here makes a video public or changes an existing
+video's privacy. Title ≤ 100 characters, description ≤ 5000 bytes, tags ≤ 500
+characters (``social_captions.youtube_metadata``). A quota error is recorded
+as ``quota_exceeded``.
 
 Platform references (official docs):
 
@@ -57,9 +72,11 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Callable, Mapping, Optional
 
 from modules import social_captions
@@ -84,6 +101,11 @@ TT_MAX_BYTES = 4 * 1024 * 1024 * 1024
 TT_SINGLE_CHUNK_MAX = 64 * 1024 * 1024
 TT_CHUNK = 10 * 1024 * 1024
 TT_PRIVACY = "SELF_ONLY"
+YT_PRIVACY = "private"
+YT_WATCH = "https://www.youtube.com/watch?v="
+_YT_QUOTA = {"quotaExceeded", "dailyLimitExceeded", "uploadLimitExceeded"}
+_YT_RATE = {"rateLimitExceeded", "userRateLimitExceeded"}
+_YT_AUTH = {"authError", "unauthorized", "forbidden_token"}
 
 POLL_SECONDS = 10.0
 MAX_WAIT_SECONDS = 20 * 60.0
@@ -165,7 +187,11 @@ class PublishStore:
                                           "parent_video_id,scenes,manifest", video_id=video_id)
 
     def channel(self, channel_id: str) -> Optional[dict]:
-        return self._select_one("channels", "channel_id,niche", channel_id=channel_id)
+        return self._select_one("channels", "channel_id,niche,status", channel_id=channel_id)
+
+    def channel_connected(self, channel_id: str) -> bool:
+        """publish_channel_connected — the rule the insert trigger used."""
+        return self._rpc("publish_channel_connected", {"p_channel_id": channel_id}) is True
 
     def short_of(self, video_id: str) -> Optional[str]:
         row = self._select_one("videos", "video_id", parent_video_id=video_id, video_format="short")
@@ -520,18 +546,174 @@ class TiktokAdapter:
             waited += self.poll_seconds
 
 
+def _yt_reasons(exc) -> list:
+    """The error reason WORDS of a googleapiclient HttpError (e.g.
+    quotaExceeded) — never its message or body."""
+    reasons = []
+    details = getattr(exc, "error_details", None)
+    if isinstance(details, list):
+        reasons += [d.get("reason") for d in details if isinstance(d, dict)]
+    if not reasons:
+        try:
+            content = getattr(exc, "content", b"") or b""
+            doc = json.loads(content.decode("utf-8") if isinstance(content, bytes) else str(content))
+            errs = ((doc or {}).get("error") or {}).get("errors") or []
+            reasons += [e.get("reason") for e in errs if isinstance(e, dict)]
+        except Exception:
+            pass
+    return [r for r in reasons if isinstance(r, str) and re.fullmatch(r"[A-Za-z_]{1,64}", r)]
+
+
+def _yt_error(what: str, exc) -> PublishStop:
+    from modules import upload_idempotency  # noqa: PLC0415
+
+    status = upload_idempotency.http_status(exc)
+    reasons = _yt_reasons(exc)
+    words = set(reasons)
+    detail = f"youtube {what}: " + (f"HTTP {status}" if status else type(exc).__name__)
+    if reasons:
+        detail += f", {reasons[0]}"
+    if words & _YT_QUOTA:
+        return failed("quota_exceeded", detail + " — the YouTube upload quota is used up; send again tomorrow")
+    if words & _YT_RATE or status == 429:
+        return failed("rate_limited", detail)
+    if status == 401 or words & _YT_AUTH or type(exc).__name__ == "RefreshError":
+        return failed("token_expired", detail + " — reconnect the channel")
+    if upload_idempotency.is_ambiguous(exc):
+        return failed("upload_failed", detail + " — the outcome is unknown; check the channel before sending again")
+    return failed("platform_error", detail)
+
+
+class YoutubeAdapter:
+    """Uploads the master to ANOTHER of the organization's YouTube channels,
+    private, with the pipeline's own uploader.
+
+    ``credentials(channel_id)`` returns ``(token_json, channel_context)`` —
+    tools/queue_worker.py resolves them the way a render run does (never
+    another channel's token). ``uploader_factory`` is
+    ``YouTubeUploader.from_token_json`` (injectable for tests)."""
+
+    def __init__(self, credentials: Callable[[str], tuple], *, uploader_factory: Optional[Callable] = None,
+                 heartbeat: Callable[[], None] = lambda: None, heartbeat_seconds: float = 60.0):
+        self.credentials = credentials
+        self.uploader_factory = uploader_factory
+        self.heartbeat = heartbeat
+        self.heartbeat_seconds = heartbeat_seconds
+
+    def _factory(self):
+        if self.uploader_factory is not None:
+            return self.uploader_factory
+        from modules.youtube_uploader import YouTubeUploader  # noqa: PLC0415 — google libs only when needed
+
+        return YouTubeUploader.from_token_json
+
+    def publish(self, channel_id: str, path: Path, meta: social_captions.YouTubeMeta) -> dict:
+        from modules import channel_tokens  # noqa: PLC0415
+
+        try:
+            token_json, channel = self.credentials(channel_id)
+        except channel_tokens.ChannelTokenError as e:
+            raise failed("token_expired", str(e)) from None
+        except (KeyError, ValueError):
+            raise refused("account_not_connected",
+                          "the channel is unknown or has not been confirmed against YouTube") from None
+        if not token_json:
+            raise refused("account_not_connected", "this worker has no YouTube token for the channel")
+        try:
+            uploader = self._factory()(token_json, channel)
+        except ValueError:
+            raise refused("account_not_connected",
+                          "the channel's token cannot reach its YouTube channel — reconnect it") from None
+        except Exception as e:
+            raise _yt_error("sign-in", e) from None
+
+        script = SimpleNamespace(title=meta.title, description=meta.description, tags=list(meta.tags),
+                                 sections=None)
+        done = threading.Event()
+
+        def beat():
+            while not done.wait(self.heartbeat_seconds):
+                try:
+                    self.heartbeat()
+                except Exception:
+                    pass
+
+        t = threading.Thread(target=beat, daemon=True)
+        t.start()
+        try:
+            out = uploader.upload(path, script, privacy=YT_PRIVACY)
+        except Exception as e:
+            raise _yt_error("upload", e) from None
+        finally:
+            done.set()
+            t.join(timeout=5)
+        vid = str((out or {}).get("id") or "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{6,64}", vid):
+            raise failed("platform_error", "youtube upload: no video id returned")
+        return {"result_id": vid, "result_url": YT_WATCH + vid, "privacy": YT_PRIVACY}
+
+
 # ── one request ──────────────────────────────────────────────────────────────
+
+
+def _now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _process_youtube(req: Mapping, video: Mapping, target: str, *, store: PublishStore, worker_id: str,
+                     output_dir: Path, youtube: Optional[YoutubeAdapter], heartbeat: Callable[[], None]) -> str:
+    """The YouTube half of process_request (raises PublishStop; the caller
+    records it). Uploads a NEW private video to ``target``."""
+    rid = req.get("id")
+    if not target:
+        raise refused("account_not_connected", "the request names no YouTube channel")
+    # The pipeline already put it on its own channel; this never touches that.
+    if target == str(video.get("channel_id") or ""):
+        raise refused("already_on_channel")
+    ch = store.channel(target)
+    if not ch or str(ch.get("status") or "").strip().upper() != "ACTIVE":
+        raise refused("account_not_connected", "the channel is paused")
+    if not store.channel_connected(target):
+        raise refused("account_not_connected")
+    if youtube is None:
+        raise failed("platform_error", "this worker is not set up to upload to YouTube")
+
+    path = resolve_master(video, output_dir)
+    if path is None:
+        raise refused("master_not_available",
+                      "the full-quality render is not on this worker (only the 480p review copy is "
+                      "kept); re-run the video on the queue worker to post it")
+    source = None
+    try:
+        source = store.channel(str(video.get("channel_id") or ""))
+    except Exception:
+        source = None
+    meta = social_captions.youtube_metadata(load_source_meta(video, source, output_dir),
+                                            fallback_title=str(video.get("video_id") or ""))
+    store.update(rid, worker_id, {"status": "processing", "caption": social_captions.youtube_record(meta),
+                                  "privacy": YT_PRIVACY})
+    youtube.heartbeat = heartbeat
+    result = youtube.publish(target, path, meta)
+    store.update(rid, worker_id, {
+        "status": "published", "reason": None, "error": None,
+        "result_id": result.get("result_id"), "result_url": result.get("result_url"),
+        "privacy": YT_PRIVACY, "finished_at": _now(),
+    })
+    logger.info("publish request %s: uploaded privately to YouTube channel %s", rid, target)
+    return "published"
 
 
 def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.SocialTokenClient,
                     worker_id: str, output_dir: Path, http=None, env: Optional[Mapping[str, str]] = None,
                     sleep: Callable[[float], None] = time.sleep,
-                    probe_fn: Callable[[Path], VideoInfo] = probe) -> str:
+                    probe_fn: Callable[[Path], VideoInfo] = probe,
+                    youtube: Optional[YoutubeAdapter] = None) -> str:
     """Carry one claimed request to published | failed | refused. Never raises."""
     rid = req.get("id")
     platform = str(req.get("platform") or "")
     video_id = str(req.get("video_id") or "")
     account_id = str(req.get("account_id") or "")
+    target_channel = str(req.get("target_channel_id") or "")
     http = http or store.http()
     env = os.environ if env is None else env
 
@@ -539,7 +721,7 @@ def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.
         store.update(rid, worker_id, {"heartbeat_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
 
     try:
-        if platform not in ("instagram", "tiktok"):
+        if platform not in ("instagram", "tiktok", "youtube"):
             raise refused("unknown_platform")
         # The gate + approvals, again, right before anything leaves this machine.
         why = store.refusal(video_id)
@@ -548,6 +730,9 @@ def process_request(req: Mapping, *, store: PublishStore, tokens: social_tokens.
         video = store.video(video_id)
         if not video:
             raise refused("video_not_found")
+        if platform == "youtube":
+            return _process_youtube(req, video, target_channel, store=store, worker_id=worker_id,
+                                    output_dir=output_dir, youtube=youtube, heartbeat=heartbeat)
 
         tok = tokens.read(account_id)
         if tok is None:
@@ -624,8 +809,12 @@ class SocialPublisher:
 
     def __init__(self, url: str, service_key: str, *, output_dir: Path, worker_id: str,
                  env: Optional[Mapping[str, str]] = None, store: Optional[PublishStore] = None,
-                 tokens: Optional[social_tokens.SocialTokenClient] = None):
+                 tokens: Optional[social_tokens.SocialTokenClient] = None,
+                 youtube_credentials: Optional[Callable[[str], tuple]] = None):
         self.store = store or PublishStore(url, service_key)
+        # (token_json, ChannelContext) for a YouTube target, resolved by the
+        # queue worker exactly as for a render run. None = no YouTube uploads.
+        self.youtube_credentials = youtube_credentials
         self.tokens = tokens or social_tokens.SocialTokenClient(url, service_key)
         self.output_dir = Path(output_dir)
         self.worker_id = worker_id
@@ -644,12 +833,13 @@ class SocialPublisher:
             return False
         if not req:
             return False
+        youtube = YoutubeAdapter(self.youtube_credentials) if self.youtube_credentials else None
         process_request(req, store=self.store, tokens=self.tokens, worker_id=self.worker_id,
-                        output_dir=self.output_dir, env=self.env)
+                        output_dir=self.output_dir, env=self.env, youtube=youtube)
         return True
 
 
 __all__ = [
     "PublishStore", "SocialPublisher", "process_request", "check_format", "resolve_master",
-    "load_source_meta", "tiktok_chunks", "InstagramAdapter", "TiktokAdapter", "VideoInfo",
+    "load_source_meta", "tiktok_chunks", "InstagramAdapter", "TiktokAdapter", "YoutubeAdapter", "VideoInfo",
 ]

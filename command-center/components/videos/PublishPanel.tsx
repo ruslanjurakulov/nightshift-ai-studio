@@ -17,10 +17,13 @@ import {
   downloadName,
   isLive,
   knownReason,
-  latestByAccount,
+  latestByTarget,
   publishBlocker,
+  targetKey,
+  youtubeWatchUrl,
   type PublishRequestRow,
   type PublishStatus,
+  type YoutubeTarget,
 } from "@/lib/publish";
 
 const TONE: Record<PublishStatus, "ok" | "run" | "fail" | "warn" | "idle"> = {
@@ -35,6 +38,7 @@ const TONE: Record<PublishStatus, "ok" | "run" | "fail" | "warn" | "idle"> = {
 export interface PublishPanelProps {
   video: {
     video_id: string;
+    channel_id: string;
     title: string | null;
     privacy: string | null;
     published_at: string | null;
@@ -45,6 +49,8 @@ export interface PublishPanelProps {
   /** The channel the video was made on, for the YouTube row. */
   channelName: string;
   accounts: SocialAccount[];
+  /** The organization's YouTube channels (the video's own included). */
+  youtube: YoutubeTarget[];
   requests: PublishRequestRow[];
   /** False when 0028 / 0029 are not applied. */
   available: boolean;
@@ -61,8 +67,12 @@ export interface PublishPanelProps {
  * Send writes publish_requests rows through /api/publish-requests and stops.
  * The queue worker uploads, after checking the publish gate and approvals
  * again; this panel only shows each request's status as the worker records it.
+ *
+ * YouTube: the video's own channel already has it (the pipeline uploaded it
+ * there) and is never tickable. Another of the organization's channels gets a
+ * NEW private upload of the master — never public from here.
  */
-export function PublishPanel({ video, channelName, accounts, requests, available, role }: PublishPanelProps) {
+export function PublishPanel({ video, channelName, accounts, youtube, requests, available, role }: PublishPanelProps) {
   const { t } = useI18n();
   const tp = t.publish;
   const path = useChannelPath();
@@ -73,7 +83,7 @@ export function PublishPanel({ video, channelName, accounts, requests, available
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState(false);
 
-  const latest = useMemo(() => latestByAccount(rows), [rows]);
+  const latest = useMemo(() => latestByTarget(rows), [rows]);
   const blocker = publishBlocker(video);
   const editor = atLeast(role, "editor");
   const anyLive = rows.some((r) => isLive(r.status));
@@ -124,7 +134,11 @@ export function PublishPanel({ video, channelName, accounts, requests, available
       const res = await fetch("/api/publish-requests", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ video_id: video.video_id, account_ids: [...picked] }),
+        body: JSON.stringify({
+          video_id: video.video_id,
+          account_ids: [...picked].filter((k) => !k.startsWith("youtube:")),
+          channel_ids: [...picked].filter((k) => k.startsWith("youtube:")).map((k) => k.slice("youtube:".length)),
+        }),
       });
       const body = (await res.json().catch(() => ({}))) as { errors?: { error: string }[]; error?: string };
       if (!res.ok && !body.errors?.length) setSendError(body.error ?? `HTTP ${res.status}`);
@@ -154,6 +168,7 @@ export function PublishPanel({ video, channelName, accounts, requests, available
         <div className="flex flex-wrap items-center gap-2">
           <StatusPill tone={TONE[r.status]} label={tp.status[r.status]} live={isLive(r.status)} />
           {r.status === "published" && r.privacy === "SELF_ONLY" && <span>{tp.privateOnTiktok}</span>}
+          {r.status === "published" && r.platform === "youtube" && <span>{tp.privateOnYoutube}</span>}
           {r.result_url && (
             <a
               href={r.result_url}
@@ -176,6 +191,9 @@ export function PublishPanel({ video, channelName, accounts, requests, available
   }
 
   const held = blocker === "not_uploaded";
+  const ownChannel = youtube.find((c) => c.channel_id === video.channel_id);
+  const otherChannels = youtube.filter((c) => c.channel_id !== video.channel_id);
+  const watchUrl = held ? null : youtubeWatchUrl(video.video_id);
 
   return (
     <section className="section-card flex flex-col gap-4" aria-labelledby="publish-title">
@@ -217,14 +235,68 @@ export function PublishPanel({ video, channelName, accounts, requests, available
           <PlatformLogo platform="youtube" size={20} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 text-[13px]">
-              <span className="truncate">{channelName}</span>
+              <ChannelAvatar url={ownChannel?.avatarUrl ?? null} />
+              <span className="truncate">{ownChannel?.name ?? channelName}</span>
               {!held && <CheckCircle2 size={14} style={{ color: "var(--color-ok)" }} aria-hidden />}
             </div>
-            <div className="text-[11px] text-[var(--color-muted)]">
-              {held ? tp.youtubeHeld : fmt(tp.youtubeHere, { privacy: video.privacy ?? "private" })}
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--color-muted)]">
+              {held ? (
+                tp.youtubeHeld
+              ) : (
+                <>
+                  <span>{fmt(tp.youtubeHere, { privacy: video.privacy ?? "private" })}</span>
+                  {watchUrl && (
+                    <a
+                      href={watchUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[var(--color-primary)] underline"
+                    >
+                      {tp.openOnYoutube} <ExternalLink size={11} aria-hidden />
+                    </a>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </li>
+
+        {/* The organization's OTHER YouTube channels: a new private upload. */}
+        {available &&
+          otherChannels.map((c) => {
+            const key = targetKey({ account_id: null, target_channel_id: c.channel_id });
+            const last = latest.get(key);
+            const live = last ? isLive(last.status) : false;
+            const disabled = !editor || Boolean(blocker) || !c.connected || !c.active || live || sending;
+            return (
+              <li key={key} className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={picked.has(key)}
+                  disabled={disabled}
+                  onChange={() => toggle(key)}
+                  aria-label={c.name}
+                />
+                <PlatformLogo platform="youtube" size={20} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 text-[13px]">
+                    <ChannelAvatar url={c.avatarUrl} />
+                    <span className="truncate">{c.name}</span>
+                    {c.connected && <CheckCircle2 size={14} style={{ color: "var(--color-ok)" }} aria-hidden />}
+                  </div>
+                  {!c.connected ? (
+                    <div className="text-[11px] text-[var(--color-warn)]">{tp.youtubeReconnect}</div>
+                  ) : !c.active ? (
+                    <div className="text-[11px] text-[var(--color-warn)]">{tp.channelPaused}</div>
+                  ) : (
+                    !last && <div className="text-[11px] text-[var(--color-muted)]">{tp.youtubePrivate}</div>
+                  )}
+                  {last && statusLine(last)}
+                </div>
+              </li>
+            );
+          })}
 
         {!available ? (
           <li className="text-[12px] text-[var(--color-muted)]">{tp.notAvailable}</li>
@@ -253,17 +325,7 @@ export function PublishPanel({ video, channelName, accounts, requests, available
                 <PlatformLogo platform={a.platform} size={20} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 text-[13px]">
-                    {a.avatar_url && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={a.avatar_url}
-                        alt=""
-                        width={18}
-                        height={18}
-                        referrerPolicy="no-referrer"
-                        className="h-[18px] w-[18px] rounded-full object-cover"
-                      />
-                    )}
+                    <ChannelAvatar url={a.avatar_url} />
                     <span className="truncate">{accountLabel(a)}</span>
                     {a.status === "connected" && (
                       <CheckCircle2 size={14} style={{ color: "var(--color-ok)" }} aria-hidden />
@@ -283,7 +345,7 @@ export function PublishPanel({ video, channelName, accounts, requests, available
         )}
       </ul>
 
-      {available && accounts.length > 0 && (
+      {available && (accounts.length > 0 || otherChannels.length > 0) && (
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
@@ -299,5 +361,21 @@ export function PublishPanel({ video, channelName, accounts, requests, available
       )}
       {sendError && <p className="mono text-[11px] text-[var(--color-fail)]">{fmt(tp.sendFailed, { error: sendError })}</p>}
     </section>
+  );
+}
+
+/** A small round avatar; only an https URL from the platform is rendered. */
+function ChannelAvatar({ url }: { url: string | null }) {
+  if (!url || !url.startsWith("https://")) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt=""
+      width={18}
+      height={18}
+      referrerPolicy="no-referrer"
+      className="h-[18px] w-[18px] rounded-full object-cover"
+    />
   );
 }

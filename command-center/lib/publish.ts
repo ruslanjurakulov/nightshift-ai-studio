@@ -6,8 +6,6 @@
  * worker carries out after checking the publish gate and approvals again.
  */
 
-import type { SocialPlatform } from "@/lib/social-accounts";
-
 export type HintPlatform = "youtube" | "instagram" | "tiktok";
 
 const HINT_RE = /^(youtube|instagram|tiktok):[A-Za-z0-9._-]{1,128}$/;
@@ -37,13 +35,16 @@ export function acceptedHint(
 }
 
 export type PublishStatus = "queued" | "uploading" | "processing" | "published" | "failed" | "refused";
+export type PublishPlatform = "instagram" | "tiktok" | "youtube";
 
-/** One publish_requests row as the panel reads it. */
+/** One publish_requests row as the panel reads it. Exactly one target:
+ *  `account_id` (Instagram / TikTok) or `target_channel_id` (YouTube). */
 export interface PublishRequestRow {
   id: number;
   video_id: string;
-  account_id: string;
-  platform: SocialPlatform;
+  account_id: string | null;
+  target_channel_id: string | null;
+  platform: PublishPlatform;
   status: PublishStatus;
   reason: string | null;
   error: string | null;
@@ -55,7 +56,7 @@ export interface PublishRequestRow {
 }
 
 export const PUBLISH_REQUEST_COLUMNS =
-  "id, video_id, account_id, platform, status, reason, error, result_id, result_url, privacy, created_at, finished_at";
+  "id, video_id, account_id, target_channel_id, platform, status, reason, error, result_id, result_url, privacy, created_at, finished_at";
 
 const STATUSES: PublishStatus[] = ["queued", "uploading", "processing", "published", "failed", "refused"];
 
@@ -69,14 +70,20 @@ export function coercePublishRequests(data: unknown): PublishRequestRow[] {
   for (const row of data) {
     if (!row || typeof row !== "object") continue;
     const r = row as Record<string, unknown>;
-    if (typeof r.id !== "number" || !str(r.video_id) || !str(r.account_id)) continue;
-    if (r.platform !== "instagram" && r.platform !== "tiktok") continue;
+    if (typeof r.id !== "number" || !str(r.video_id)) continue;
+    const account = str(r.account_id);
+    const channel = str(r.target_channel_id);
+    // The table's own rule: YouTube ⇔ a target channel, else an account.
+    const youtube = r.platform === "youtube";
+    if (!youtube && r.platform !== "instagram" && r.platform !== "tiktok") continue;
+    if (youtube ? !channel || account : !account || channel) continue;
     const url = str(r.result_url);
     out.push({
       id: r.id,
       video_id: r.video_id as string,
-      account_id: r.account_id as string,
-      platform: r.platform,
+      account_id: account,
+      target_channel_id: channel,
+      platform: r.platform as PublishPlatform,
       status: STATUSES.includes(r.status as PublishStatus) ? (r.status as PublishStatus) : "failed",
       reason: str(r.reason),
       error: str(r.error),
@@ -90,11 +97,38 @@ export function coercePublishRequests(data: unknown): PublishRequestRow[] {
   return out;
 }
 
-/** The newest request per account (rows arrive newest first). */
-export function latestByAccount(rows: readonly PublishRequestRow[]): Map<string, PublishRequestRow> {
+/** The key of a request's target: the account id, or "youtube:<channel_id>". */
+export function targetKey(r: { account_id: string | null; target_channel_id: string | null }): string {
+  return r.account_id ?? `youtube:${r.target_channel_id ?? ""}`;
+}
+
+/** The newest request per target (rows arrive newest first). */
+export function latestByTarget(rows: readonly PublishRequestRow[]): Map<string, PublishRequestRow> {
   const out = new Map<string, PublishRequestRow>();
-  for (const r of rows) if (!out.has(r.account_id)) out.set(r.account_id, r);
+  for (const r of rows) {
+    const key = targetKey(r);
+    if (!out.has(key)) out.set(key, r);
+  }
   return out;
+}
+
+/** One of the organization's YouTube channels as a publish target. */
+export interface YoutubeTarget {
+  channel_id: string;
+  name: string;
+  avatarUrl: string | null;
+  /** A usable token is on record (lib/connectedAccounts.ts's rule). */
+  connected: boolean;
+  /** ACTIVE (a paused channel is refused by the database). */
+  active: boolean;
+}
+
+/** A channel id the API accepts as a YouTube target (channels.channel_id). */
+export const CHANNEL_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
+
+/** The public watch URL of an uploaded video, when its id is a YouTube id. */
+export function youtubeWatchUrl(videoId: string | null | undefined): string | null {
+  return videoId && /^[A-Za-z0-9_-]{11}$/.test(videoId) ? `https://www.youtube.com/watch?v=${videoId}` : null;
 }
 
 export function isLive(status: PublishStatus): boolean {
@@ -126,6 +160,7 @@ export const PUBLISH_REASONS = [
   "rejected",
   "awaiting_two_person",
   "account_not_connected",
+  "already_on_channel",
   "master_not_available",
   "unknown_duration",
   "too_long",
@@ -135,6 +170,7 @@ export const PUBLISH_REASONS = [
   "privacy_unavailable",
   "token_expired",
   "rate_limited",
+  "quota_exceeded",
   "staging_failed",
   "upload_failed",
   "processing_failed",

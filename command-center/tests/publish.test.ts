@@ -3,9 +3,12 @@ import {
   acceptedHint,
   coercePublishRequests,
   downloadName,
-  latestByAccount,
+  CHANNEL_ID_RE,
+  latestByTarget,
   parsePublishHint,
   publishBlocker,
+  targetKey,
+  youtubeWatchUrl,
 } from "../lib/publish";
 import { buildRenderJobInsert } from "../lib/runBackend";
 
@@ -51,9 +54,35 @@ describe("publish requests", () => {
     expect(rows[1].status).toBe("failed");
     expect(rows[1].result_url).toBeNull();
   });
-  it("keeps the newest request per account", () => {
-    const rows = coercePublishRequests([row({ id: 9, status: "failed" }), row({ id: 4, status: "published" })]);
-    expect(latestByAccount(rows).get(ACC)?.id).toBe(9);
+  it("keeps the newest request per target", () => {
+    const rows = coercePublishRequests([
+      row({ id: 9, status: "failed" }),
+      row({ id: 8, platform: "youtube", account_id: null, target_channel_id: "finance", status: "published" }),
+      row({ id: 4, status: "published" }),
+      row({ id: 3, platform: "youtube", account_id: null, target_channel_id: "finance", status: "failed" }),
+    ]);
+    const latest = latestByTarget(rows);
+    expect(latest.get(ACC)?.id).toBe(9);
+    expect(latest.get("youtube:finance")?.id).toBe(8);
+  });
+  it("accepts a YouTube row only with a target channel and no account", () => {
+    const rows = coercePublishRequests([
+      row({ id: 5, platform: "youtube", account_id: null, target_channel_id: "finance", privacy: "private" }),
+      row({ id: 4, platform: "youtube", account_id: ACC, target_channel_id: "finance" }),
+      row({ id: 3, platform: "youtube", account_id: null, target_channel_id: null }),
+      row({ id: 2, platform: "tiktok", account_id: ACC, target_channel_id: "finance" }),
+    ]);
+    expect(rows.map((r) => r.id)).toEqual([5]);
+    expect(rows[0]).toMatchObject({ platform: "youtube", target_channel_id: "finance", account_id: null, privacy: "private" });
+    expect(targetKey(rows[0])).toBe("youtube:finance");
+  });
+  it("links the own-channel upload only for a YouTube video id; accepts sane channel ids", () => {
+    expect(youtubeWatchUrl("dQw4w9WgXcQ")).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    expect(youtubeWatchUrl("local-run-123")).toBeNull();
+    expect(youtubeWatchUrl(null)).toBeNull();
+    expect(CHANNEL_ID_RE.test("extinct-world")).toBe(true);
+    expect(CHANNEL_ID_RE.test("a b")).toBe(false);
+    expect(CHANNEL_ID_RE.test("x".repeat(129))).toBe(false);
   });
 });
 

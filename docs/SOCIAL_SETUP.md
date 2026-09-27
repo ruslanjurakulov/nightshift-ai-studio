@@ -192,7 +192,7 @@ xabarlarda ko'rinmaydi.
 ## 5. Tayyor videoni platformalarga joylash (migratsiya 0029)
 
 1. Supabase → SQL Editor → `supabase/migrations/0029_publish_targets.sql` ni
-   ishga tushiring (0028 dan keyin).
+   ishga tushiring (0022 va 0028 dan keyin).
 2. **Create** sahifasining tepasida ixtiyoriy **"Qaysi akkaunt uchun"** tanlovi
    bor — bu faqat eslatma (hint), hech narsani joylamaydi.
 3. Video sahifasida **"Yuklab olish va joylash"** bo'limi:
@@ -206,7 +206,16 @@ xabarlarda ko'rinmaydi.
      kanalda ikkinchi adminning tasdig'i ham kerak. Aks holda so'rov
      "RAD ETILDI" holatida sababi bilan ko'rinadi.
    - YouTube'da video o'z kanalida allaqachon bor; uning maxfiyligi kanal
-     qoidalariga ko'ra qoladi (standart — private). Bu yerdan o'zgarmaydi.
+     qoidalariga ko'ra qoladi (standart — private). Bu yerdan o'zgarmaydi —
+     ro'yxatda "allaqachon shu kanalda" deb ko'rinadi va belgilab bo'lmaydi.
+   - Tashkilotning **boshqa YouTube kanallari** ham ro'yxatda (logo, nom,
+     ulanganlik belgisi). Belgilansa, worker master faylni o'sha kanalga
+     **yangi, har doim PRIVATE** video sifatida yuklaydi (sarlavha ≤ 100
+     belgi, tavsif ≤ 5000 bayt, teglar ≤ 500 belgi — videoning o'z
+     metama'lumotidan). Kanal ACTIVE va ulangan bo'lishi kerak; token render
+     paytidagidek olinadi (Vault ulanishi yoki `CHRONOS_YT_TOKEN_<REF>`,
+     standart kanal uchun `YOUTUBE_TOKEN_JSON`). YouTube API kvotasi
+     tugasa — `quota_exceeded` (har yuklash ~1600 birlik, kuniga 10 000).
    - TikTok'ga har doim **SELF_ONLY (shaxsiy)** joylanadi.
    - Kredit yechilmaydi (platformalarga yuklash bepul).
 5. Cheklovlar:

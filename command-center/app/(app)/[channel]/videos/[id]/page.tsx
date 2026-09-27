@@ -205,11 +205,12 @@ export default async function VideoDetail({
       ? { allowed: heldVerdict.allowed, reasons: [...heldVerdict.blocks, ...heldVerdict.warnings], flagged: null }
       : null;
 
-  // "Publish to platforms": the organization's Instagram / TikTok accounts and
-  // this video's requests (migrations 0028/0029), read through RLS.
+  // "Publish to platforms": the organization's Instagram / TikTok accounts,
+  // its YouTube channels and this video's requests (migrations 0028/0029),
+  // read through RLS.
   const org = await getOrgContext();
   const [publishData, orgRole] = await Promise.all([
-    loadPublishPanel(video.video_id, org.supported && org.current ? org.current.id : null),
+    loadPublishPanel(video.video_id, video.channel_id, org.supported && org.current ? org.current.id : null),
     resolveCurrentOrgRole(),
   ]);
 
@@ -225,6 +226,7 @@ export default async function VideoDetail({
         video={video}
         channelName={channelName || video.channel_id}
         accounts={publishData.accounts}
+        youtube={publishData.youtube}
         requests={publishData.requests}
         available={publishData.available}
         role={orgRole}
