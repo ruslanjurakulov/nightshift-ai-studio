@@ -4,6 +4,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { isCreditExempt } from "@/lib/credits";
 import { readCreditAccount } from "@/lib/server/credits";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
+import { isSocialConfigured } from "@/lib/server/social-oauth";
 import { creditsSpent, derivePlan, type AccountSummary, type Plan } from "@/lib/account";
 
 export const dynamic = "force-dynamic";
@@ -56,7 +57,8 @@ export async function GET() {
   }
 
   const accounts = await readConnectedAccounts().catch(() => []);
-  const body: AccountSummary = { email: user.email ?? null, plan, credits, accounts };
+  const connectable = { instagram: isSocialConfigured("instagram"), tiktok: isSocialConfigured("tiktok") };
+  const body: AccountSummary = { email: user.email ?? null, plan, credits, accounts, connectable };
   return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
 }
 

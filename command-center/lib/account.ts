@@ -122,6 +122,9 @@ export interface AccountSummary {
   /** Null for the operator's exempt organization, before 0020, or on error. */
   credits: AccountCredits | null;
   accounts: ConnectedAccount[];
+  /** Instagram / TikTok: true when the deployment has that platform's app
+   *  keys, so the panel links to Connect instead of "coming soon". */
+  connectable: { instagram: boolean; tiktok: boolean };
 }
 
 /** Coerce the route's JSON; anything malformed reads as unknown / empty. */
@@ -141,7 +144,9 @@ export function coerceAccountSummary(data: unknown): AccountSummary | null {
   const accounts = Array.isArray(d.accounts)
     ? (d.accounts as unknown[]).filter(isConnectedAccount)
     : [];
-  return { email: typeof d.email === "string" ? d.email : null, plan, credits, accounts };
+  const k = (d.connectable ?? {}) as Record<string, unknown>;
+  const connectable = { instagram: k.instagram === true, tiktok: k.tiktok === true };
+  return { email: typeof d.email === "string" ? d.email : null, plan, credits, accounts, connectable };
 }
 
 function coercePlan(v: unknown): Plan {

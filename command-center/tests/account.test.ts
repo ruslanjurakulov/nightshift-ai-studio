@@ -209,12 +209,18 @@ describe("coerceAccountSummary", () => {
       plan: { kind: "pack", pack: "starter" },
       credits: { available: 900, reserved: 100, spent: null },
       accounts: [{ platform: "youtube", id: "c1", name: "Chronos", avatarUrl: null, connected: true }],
+      connectable: { instagram: false, tiktok: false },
     });
     expect(coerceAccountSummary({ plan: { kind: "pack", pack: "mega" }, credits: { available: "9" } })).toEqual({
       email: null,
       plan: { kind: "unknown" },
       credits: null,
       accounts: [],
+      connectable: { instagram: false, tiktok: false },
+    });
+    expect(coerceAccountSummary({ accounts: [], connectable: { instagram: true, tiktok: "yes" } })?.connectable).toEqual({
+      instagram: true,
+      tiktok: false,
     });
     expect(coerceAccountSummary(null)).toBeNull();
   });

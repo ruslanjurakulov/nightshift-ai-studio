@@ -42,7 +42,8 @@ REQUIRED = ("DOMAIN", "ACME_EMAIL", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUP
 # own, but it names which OAuth app the dashboard is, so it stays with its secret.
 # Judged on the end of the name: GITHUB_SECRETS_REPO is an owner/repo, not a secret.
 CREDENTIAL = re.compile(r"(TOKEN|SECRET|PASSWORD|_KEY)$|WEBHOOK")
-EXTRA_SECRETS = {"GOOGLE_OAUTH_CLIENT_ID"}
+# INSTAGRAM_APP_ID likewise names the Meta app the tokens belong to.
+EXTRA_SECRETS = {"GOOGLE_OAUTH_CLIENT_ID", "INSTAGRAM_APP_ID"}
 # `${{ vars.NAME }}` or `${{ secrets.NAME }}`, optionally `|| <fallback>`.
 MAPPING = re.compile(
     r"^\$\{\{\s*(vars|secrets)\.([A-Z][A-Z0-9_]*)(?:\s*\|\|\s*(.+?))?\s*\}\}$"
