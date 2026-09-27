@@ -59,6 +59,10 @@ services:
       # see it (it reports its bind address), and the YouTube OAuth redirect_uri
       # is built from it — see command-center/lib/server/public-origin.ts.
       APP_ORIGIN: https://${DOMAIN:?set DOMAIN in the env file}
+      # Paid 720p / 1080p downloads (migration 0030): the worker writes
+      # <id>.mp4 here and /api/downloads/<id> streams it after an RLS check.
+      # Read-only: the dashboard never writes or deletes a download.
+      NIGHTSHIFT_DOWNLOADS_DIR: /data/downloads
     # No `ports:` on purpose. Docker publishes ports around ufw, so a published
     # 3000 would be open to the internet whatever the firewall says. Caddy
     # reaches the app over the compose network instead.
@@ -66,6 +70,10 @@ services:
       - "3000"
     init: true
     read_only: true
+    volumes:
+      # The worker's prepared downloads only — not its output/ (scripts,
+      # checkpoints, masters). An empty volume while the worker is off.
+      - worker_downloads:/data/downloads:ro
     tmpfs:
       - /tmp
       # Next's runtime cache; uid 1000 is the image's `node` user.
@@ -128,12 +136,16 @@ services:
       # checkpoint, so nothing already paid for is bought again. Kept under
       # stop_grace_period so the worker releases the job itself.
       WORKER_STOP_GRACE_SECONDS: "840"
+      # Paid downloads (migration 0030): prepared files, shared read-only
+      # with the web service. Files expire after 24 hours.
+      NIGHTSHIFT_DOWNLOADS_DIR: /app/downloads
     stop_grace_period: 15m
     volumes:
       # Run checkpoints, resume ledgers and renders; topic memory; logs.
       - worker_output:/app/output
       - worker_history:/app/history
       - worker_logs:/app/logs
+      - worker_downloads:/app/downloads
     init: true
     cap_drop:
       - ALL
@@ -151,3 +163,4 @@ volumes:
   worker_output:
   worker_history:
   worker_logs:
+  worker_downloads:

@@ -91,14 +91,17 @@ export function derivePlan(rows: readonly LedgerPurchaseRow[] | null | undefined
  * when fewer rows than that were read, the sum would be short, so it is null.
  */
 export function creditsSpent(
-  rows: readonly { kind?: string; amount: number | string | null }[] | null | undefined,
+  rows: readonly { kind?: string; amount: number | string | null; job_id?: string | null }[] | null | undefined,
   total: number | null | undefined,
 ): number | null {
   if (!rows) return null;
   if (typeof total === "number" && total > rows.length) return null;
   let sum = 0;
   for (const r of rows) {
-    if (r.kind !== undefined && r.kind !== "capture") continue;
+    // A failed paid download (0030) is refunded with a positive 'refund' row
+    // on the same job: it nets out of what was spent.
+    const downloadRefund = r.kind === "refund" && (r.job_id ?? "").startsWith("download:");
+    if (r.kind !== undefined && r.kind !== "capture" && !downloadRefund) continue;
     const n = Number(r.amount);
     if (!Number.isFinite(n)) return null;
     sum += -n;

@@ -4,6 +4,7 @@ import { getChannelPath } from "@/lib/channels-path-server";
 import { ReviewPanel } from "@/components/review/ReviewPanel";
 import { PublishPanel } from "@/components/videos/PublishPanel";
 import { loadPublishPanel } from "@/lib/server/publish";
+import { loadDownloads } from "@/lib/server/downloads";
 import { getOrgContext } from "@/lib/orgs-server";
 import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { CopyButton } from "@/components/feedback/CopyButton";
@@ -209,9 +210,10 @@ export default async function VideoDetail({
   // its YouTube channels and this video's requests (migrations 0028/0029),
   // read through RLS.
   const org = await getOrgContext();
-  const [publishData, orgRole] = await Promise.all([
+  const [publishData, orgRole, downloads] = await Promise.all([
     loadPublishPanel(video.video_id, video.channel_id, org.supported && org.current ? org.current.id : null),
     resolveCurrentOrgRole(),
+    loadDownloads(video.video_id, video.channel_id),
   ]);
 
   return (
@@ -230,6 +232,7 @@ export default async function VideoDetail({
         requests={publishData.requests}
         available={publishData.available}
         role={orgRole}
+        downloads={downloads}
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">

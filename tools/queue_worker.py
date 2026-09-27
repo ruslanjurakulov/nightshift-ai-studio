@@ -52,6 +52,13 @@ it. Instagram / TikTok tokens come from Supabase Vault (0028); a YouTube
 channel's token is resolved exactly as for a render run of that channel
 (``channel_token``), in memory. None is ever printed.
 
+Paid downloads (migration 0030, ``modules/paid_downloads.py``): between render
+jobs the worker also keeps ``download_masters`` in step with the masters under
+``output/``, prepares at most one queued 720p / 1080p download into
+``NIGHTSHIFT_DOWNLOADS_DIR`` (the Command Center streams it from the same
+volume), and deletes expired files. A failed download is refunded by the
+database. Off when ``NIGHTSHIFT_DOWNLOADS_DIR`` is unset.
+
 Credits (migration 0020, ``modules/credits.py``): a job whose channel belongs
 to an organization other than the operator's own is paid for by the hold its
 ``credit_ref`` names. The worker claims that hold before the run spends
@@ -88,6 +95,7 @@ from modules import channel_tokens  # noqa: E402
 from modules import credits as credit_rules  # noqa: E402
 from modules import run_request  # noqa: E402
 from modules import social_publish  # noqa: E402
+from modules import paid_downloads  # noqa: E402
 
 logger = logging.getLogger("queue_worker")
 
@@ -496,6 +504,7 @@ class Worker:
         ledger_reader: Optional[Callable[[str, str], list]] = None,
         token_client=None,
         publisher=None,
+        downloads=None,
     ):
         self.client = client
         self.worker_id = worker_id
@@ -524,6 +533,8 @@ class Worker:
         # Cross-posting to Instagram / TikTok (migration 0029,
         # modules/social_publish.py): handled between render jobs. None = off.
         self.publisher = publisher
+        # Paid 720p / 1080p downloads (migration 0030): between render jobs.
+        self.downloads = downloads
         # The service-key credits client (None = credits not wired, e.g. tests
         # of the plain queue) and where a finished run's ledger is read from.
         self.credits = credits
@@ -559,6 +570,7 @@ class Worker:
         while not self.stop_requested.is_set():
             self._sweep_credit_holds()
             published = self._publish_one()
+            published = self._download_one() or published
             job = self.client.claim(self.worker_id, self.stale_minutes)
             if job is None:
                 if once:
@@ -581,6 +593,16 @@ class Worker:
             return bool(self.publisher.run_once())
         except Exception as e:
             logger.warning("publish request handling failed (%s)", type(e).__name__)
+            return False
+
+    def _download_one(self) -> bool:
+        """At most one download request between render jobs; never raises."""
+        if self.downloads is None:
+            return False
+        try:
+            return bool(self.downloads.run_once())
+        except Exception as e:
+            logger.warning("download request handling failed (%s)", type(e).__name__)
             return False
 
     def process(self, job: Mapping) -> str:
@@ -842,6 +864,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     token_client = channel_tokens.VaultTokenClient(url, key)
+    downloads_dir = os.environ.get("NIGHTSHIFT_DOWNLOADS_DIR", "").strip()
+    downloads = (paid_downloads.DownloadService(url, key, output_dir=REPO_DIR / "output",
+                                                downloads_dir=Path(downloads_dir), worker_id=args.worker_id)
+                 if downloads_dir and os.path.isabs(downloads_dir) else None)
     worker = Worker(QueueClient(url, key), worker_id=args.worker_id,
                     poll_seconds=args.poll_seconds, stale_minutes=args.stale_minutes,
                     grace_seconds=args.grace_seconds,
@@ -850,7 +876,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     publisher=social_publish.SocialPublisher(
                         url, key, output_dir=REPO_DIR / "output", worker_id=args.worker_id,
                         youtube_credentials=lambda cid: youtube_publish_credentials(
-                            cid, os.environ, token_client)))
+                            cid, os.environ, token_client)),
+                    downloads=downloads)
     worker.install_signal_handlers()
     logger.info("worker %s started (poll %ss, stale after %s min, stop grace %ss, credits %s)",
                 args.worker_id, args.poll_seconds, args.stale_minutes, int(args.grace_seconds),

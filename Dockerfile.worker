@@ -50,7 +50,7 @@ RUN if find /app -maxdepth 2 \( -name 'youtube_token*.json' -o -name 'client_sec
       echo "credential file in build context — remove it; secrets come from --env-file at runtime" >&2; exit 1; \
     fi \
  && useradd --create-home --uid 10001 nightshift \
- && mkdir -p output history logs assets \
+ && mkdir -p output history logs assets downloads \
  && chown -R nightshift:nightshift /app
 
 USER nightshift

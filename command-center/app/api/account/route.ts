@@ -67,19 +67,20 @@ async function readSpent(
   supabase: NonNullable<Awaited<ReturnType<typeof createClient>>>,
   orgId: string,
 ): Promise<number | null> {
-  const rows: { amount: number | string | null }[] = [];
+  const rows: { amount: number | string | null; kind?: string; job_id?: string | null }[] = [];
   let total: number | null = null;
   for (let page = 0; page < MAX_PAGES; page++) {
     const { data, error, count } = await supabase
       .from("credit_transactions")
-      .select("amount", page === 0 ? { count: "exact" } : undefined)
+      .select("amount, kind, job_id", page === 0 ? { count: "exact" } : undefined)
       .eq("org_id", orgId)
-      .eq("kind", "capture")
+      // Charges, net of refunded paid downloads (migration 0030).
+      .or("kind.eq.capture,and(kind.eq.refund,job_id.like.download:*)")
       .order("id", { ascending: true })
       .range(page * PAGE, page * PAGE + PAGE - 1);
     if (error || !data) return null;
     if (page === 0) total = count ?? null;
-    rows.push(...(data as { amount: number | string | null }[]));
+    rows.push(...(data as { amount: number | string | null; kind?: string; job_id?: string | null }[]));
     if (data.length < PAGE || (total !== null && rows.length >= total)) break;
   }
   return creditsSpent(rows, total);
