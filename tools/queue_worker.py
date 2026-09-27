@@ -43,6 +43,13 @@ Durability:
   up to ``WORKER_STOP_GRACE_SECONDS``; after that, or on a second signal, the
   run is terminated and the job released back to the queue.
 
+Cross-posting (migration 0029, ``modules/social_publish.py``): between render
+jobs the worker claims at most one ``publish_requests`` row — a finished video
+someone asked to post to a connected Instagram / TikTok account — and carries
+it out after checking the publish gate and approvals again. Nothing is
+charged for it; its tokens come from Supabase Vault (0028) and are never
+printed.
+
 Credits (migration 0020, ``modules/credits.py``): a job whose channel belongs
 to an organization other than the operator's own is paid for by the hold its
 ``credit_ref`` names. The worker claims that hold before the run spends
@@ -78,6 +85,7 @@ sys.path.insert(0, str(REPO_DIR))
 from modules import channel_tokens  # noqa: E402
 from modules import credits as credit_rules  # noqa: E402
 from modules import run_request  # noqa: E402
+from modules import social_publish  # noqa: E402
 
 logger = logging.getLogger("queue_worker")
 
@@ -444,6 +452,7 @@ class Worker:
         credits=None,
         ledger_reader: Optional[Callable[[str, str], list]] = None,
         token_client=None,
+        publisher=None,
     ):
         self.client = client
         self.worker_id = worker_id
@@ -469,6 +478,9 @@ class Worker:
         # Reads a customer channel's Vault token (migration 0022) with the
         # service key; None = only the env/GitHub-secret path, as before.
         self.token_client = token_client
+        # Cross-posting to Instagram / TikTok (migration 0029,
+        # modules/social_publish.py): handled between render jobs. None = off.
+        self.publisher = publisher
         # The service-key credits client (None = credits not wired, e.g. tests
         # of the plain queue) and where a finished run's ledger is read from.
         self.credits = credits
@@ -503,18 +515,30 @@ class Worker:
     def run_forever(self, *, once: bool = False) -> int:
         while not self.stop_requested.is_set():
             self._sweep_credit_holds()
+            published = self._publish_one()
             job = self.client.claim(self.worker_id, self.stale_minutes)
             if job is None:
                 if once:
                     logger.info("no queued job")
                     return 0
-                self.stop_requested.wait(self.poll_seconds)
+                if not published:
+                    self.stop_requested.wait(self.poll_seconds)
                 continue
             self.process(job)
             if once:
                 return 0
         logger.info("worker stopped")
         return 0
+
+    def _publish_one(self) -> bool:
+        """At most one publish request between render jobs; never raises."""
+        if self.publisher is None:
+            return False
+        try:
+            return bool(self.publisher.run_once())
+        except Exception as e:
+            logger.warning("publish request handling failed (%s)", type(e).__name__)
+            return False
 
     def process(self, job: Mapping) -> str:
         """Run one claimed job to an end state. Returns what happened:
@@ -778,7 +802,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                     poll_seconds=args.poll_seconds, stale_minutes=args.stale_minutes,
                     grace_seconds=args.grace_seconds,
                     credits=credit_rules.CreditsRest(url, key),
-                    token_client=channel_tokens.VaultTokenClient(url, key))
+                    token_client=channel_tokens.VaultTokenClient(url, key),
+                    publisher=social_publish.SocialPublisher(url, key, output_dir=REPO_DIR / "output",
+                                                             worker_id=args.worker_id))
     worker.install_signal_handlers()
     logger.info("worker %s started (poll %ss, stale after %s min, stop grace %ss, credits %s)",
                 args.worker_id, args.poll_seconds, args.stale_minutes, int(args.grace_seconds),

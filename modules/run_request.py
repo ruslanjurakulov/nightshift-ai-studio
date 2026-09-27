@@ -43,6 +43,10 @@ VIDEO_PROVIDERS = ("minimax", "higgsfield", "kling", "veo", "seedance", "wan")
 IMAGE_PROVIDERS = ("pexels", "leonardo", "gpt-image", "nano-banana", "flux", "ideogram", "fal")
 TTS_MODELS = ("eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5")
 KINDS = ("daily", "repair")
+#: Keys a job may carry that are NOT pipeline inputs (never passed to main.py
+#: or its env): the Create page's "Making this for:" account (migration 0029).
+HINT_PARAMS = ("publish_hint",)
+_HINT_RE = re.compile(r"(youtube|instagram|tiktok):[A-Za-z0-9._-]{1,128}")
 
 _MAX_LEN = {"topic": 300, "niche": 120, "language": 40, "visual_style": 300, "repair_scenes": 120}
 _VOICE_RE = re.compile(r"[A-Za-z0-9]{20}")
@@ -66,7 +70,7 @@ def validate(channel_id: str, kind: str, params: Optional[Mapping]) -> Dict:
         params = {}
     if not isinstance(params, Mapping):
         raise InvalidRunRequest("params must be an object")
-    unknown = sorted(k for k in params if k not in ALLOWED_PARAMS)
+    unknown = sorted(k for k in params if k not in ALLOWED_PARAMS and k not in HINT_PARAMS)
     if unknown:
         raise InvalidRunRequest(f"unknown param(s): {', '.join(unknown)}")
 
@@ -103,6 +107,12 @@ def validate(channel_id: str, kind: str, params: Optional[Mapping]) -> Dict:
         if not isinstance(voice, str) or not _VOICE_RE.fullmatch(voice):
             raise InvalidRunRequest("voice_id must be an ElevenLabs voice id (20 letters and digits)")
         out["voice_id"] = voice
+
+    hint = params.get("publish_hint")
+    if hint not in (None, ""):
+        if not isinstance(hint, str) or not _HINT_RE.fullmatch(hint):
+            raise InvalidRunRequest("publish_hint must be <platform>:<account id>")
+        out["publish_hint"] = hint
 
     if params.get("resume") is not None:
         if not isinstance(params["resume"], bool):

@@ -169,7 +169,10 @@ class WorkflowParity(unittest.TestCase):
         sql = [m for m in migrations if "function public.render_job_params_valid" in m.read_text()][-1].read_text()
         m = re.search(r"allowed text\[\] := array\[(.*?)\];", sql, re.S)
         self.assertIsNotNone(m)
-        self.assertEqual(set(re.findall(r"'([a-z_]+)'", m.group(1))), set(run_request.ALLOWED_PARAMS))
+        # The whitelist is the pipeline's inputs plus the hints the Command
+        # Center may record on a job (never passed to the pipeline).
+        self.assertEqual(set(re.findall(r"'([a-z_]+)'", m.group(1))),
+                         set(run_request.ALLOWED_PARAMS) | set(run_request.HINT_PARAMS))
 
 
 # ── scrubbing ──────────────────────────────────────────────────────────────

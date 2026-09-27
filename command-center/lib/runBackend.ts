@@ -37,10 +37,14 @@ export type RunOptions = {
   imageProvider?: string;
   ttsModel?: string;
   voiceId?: string;
+  /** "Making this for:" (migration 0029) — which connected account the video
+   *  is meant for. A hint recorded on the job; the pipeline never reads it. */
+  publishHint?: string;
 };
 
 /** The workflow's choice lists (daily_video.yml); migration 0017 checks the same. */
 export const VIDEO_PROVIDERS = ["minimax", "higgsfield", "kling", "veo", "seedance", "wan"] as const;
+import { formatPublishHint, parsePublishHint } from "./publish";
 import { IMAGE_PROVIDERS } from "./imageProviders";
 import { isTtsModel, isVoiceId } from "./ttsModels";
 
@@ -89,6 +93,8 @@ export function buildRenderJobInsert(
   if (ttsModel && isTtsModel(ttsModel)) params.tts_model = ttsModel;
   const voiceId = opts.voiceId?.trim();
   if (voiceId && isVoiceId(voiceId)) params.voice_id = voiceId;
+  const hint = parsePublishHint(opts.publishHint);
+  if (hint) params.publish_hint = formatPublishHint(hint.platform, hint.id);
   // The credit hold that pays for this job (migration 0020) — a column, not a
   // param: the pipeline never sees it, the worker settles it. Only sent when a
   // hold exists, so a database without 0020 gets exactly the old insert.
