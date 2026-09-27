@@ -2,19 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Download, ExternalLink } from "lucide-react";
+import { CheckCircle2, ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import { StatusPill } from "@/components/ui";
 import { PlatformLogo } from "@/components/social/PlatformLogo";
+import { DownloadMenu, type DownloadMenuProps } from "@/components/videos/DownloadMenu";
 import { atLeast, type Role } from "@/lib/auth/roles-shared";
 import { accountLabel, type SocialAccount } from "@/lib/social-accounts";
 import {
   PUBLISH_REQUEST_COLUMNS,
   coercePublishRequests,
-  downloadName,
   isLive,
   knownReason,
   latestByTarget,
@@ -55,14 +55,16 @@ export interface PublishPanelProps {
   /** False when 0028 / 0029 are not applied. */
   available: boolean;
   role: Role;
+  /** Paid 720p / 1080p downloads (migration 0030). */
+  downloads: Omit<DownloadMenuProps, "video" | "role">;
 }
 
 /**
  * A finished video's "Download" and "Publish to platforms".
  *
- * Download mints a short-lived signed URL for the stored copy with the anon key
- * against the previews bucket's RLS read policy — the same mechanism the
- * review player uses; nothing durable is handed out.
+ * Download (components/videos/DownloadMenu.tsx): 480p is the stored review
+ * copy via a short-lived signed URL; 720p / 1080p are bought with credits
+ * (migration 0030) and served from the Nightshift server.
  *
  * Send writes publish_requests rows through /api/publish-requests and stops.
  * The queue worker uploads, after checking the publish gate and approvals
@@ -72,7 +74,7 @@ export interface PublishPanelProps {
  * there) and is never tickable. Another of the organization's channels gets a
  * NEW private upload of the master — never public from here.
  */
-export function PublishPanel({ video, channelName, accounts, youtube, requests, available, role }: PublishPanelProps) {
+export function PublishPanel({ video, channelName, accounts, youtube, requests, available, role, downloads }: PublishPanelProps) {
   const { t } = useI18n();
   const tp = t.publish;
   const path = useChannelPath();
@@ -80,8 +82,6 @@ export function PublishPanel({ video, channelName, accounts, youtube, requests, 
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState(false);
-  const [downloadError, setDownloadError] = useState(false);
 
   const latest = useMemo(() => latestByTarget(rows), [rows]);
   const blocker = publishBlocker(video);
@@ -106,25 +106,6 @@ export function PublishPanel({ video, channelName, accounts, youtube, requests, 
     const timer = setInterval(refresh, 5000);
     return () => clearInterval(timer);
   }, [anyLive, refresh]);
-
-  async function download() {
-    if (!video.preview_path) return;
-    setDownloading(true);
-    setDownloadError(false);
-    try {
-      const supabase = createClient();
-      if (!supabase) throw new Error("no client");
-      const { data, error } = await supabase.storage
-        .from("previews")
-        .createSignedUrl(video.preview_path, 600, { download: downloadName(video.title, video.video_id) });
-      if (error || !data?.signedUrl) throw new Error("sign");
-      window.location.assign(data.signedUrl);
-    } catch {
-      setDownloadError(true);
-    } finally {
-      setDownloading(false);
-    }
-  }
 
   async function send() {
     if (picked.size === 0) return;
@@ -201,21 +182,7 @@ export function PublishPanel({ video, channelName, accounts, youtube, requests, 
         <h2 id="publish-title" className="t-panel">
           {tp.title}
         </h2>
-        <div className="flex flex-col items-end gap-1">
-          <button
-            type="button"
-            onClick={download}
-            disabled={!video.preview_path || downloading}
-            className="btn-sky ghost pill inline-flex items-center gap-1.5 px-4 py-1.5 text-[12px] disabled:opacity-50"
-          >
-            <Download size={14} aria-hidden />
-            {downloading ? tp.downloading : tp.download}
-          </button>
-          <span className="text-[10px] text-[var(--color-muted)]">
-            {video.preview_path ? tp.downloadNote : tp.downloadNone}
-          </span>
-          {downloadError && <span className="text-[11px] text-[var(--color-fail)]">{tp.downloadFailed}</span>}
-        </div>
+        <DownloadMenu video={video} role={role} {...downloads} />
       </header>
 
       <div>
