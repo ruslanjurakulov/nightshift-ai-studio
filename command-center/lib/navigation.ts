@@ -74,6 +74,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/getting-started", key: "onboarding" },
       { href: "/organization", key: "organization" },
+      { href: "/developers", key: "developers" },
       { href: "/members", key: "members" },
       { href: "/security", key: "security" },
       { href: "/approvals", key: "approvals" },
@@ -110,6 +111,7 @@ export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "approvals",
   "onboarding",
   "organization",
+  "developers",
 ];
 
 /**

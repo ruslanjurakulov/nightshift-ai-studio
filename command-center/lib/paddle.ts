@@ -72,12 +72,9 @@ const PRICE_VAR: Record<CreditPackId, keyof PaddleEnv> = {
  * no pack at all there is nothing to sell.
  */
 export function resolvePaddleConfig(env: PaddleEnv): PaddleConfig | null {
-  const rawEnv = (env.NEXT_PUBLIC_PADDLE_ENV ?? "").trim().toLowerCase();
-  const environment: PaddleEnvironment | null =
-    rawEnv === "" || rawEnv === "sandbox" ? "sandbox" : rawEnv === "production" ? "production" : null;
-  const clientToken = (env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN ?? "").trim();
-  if (!environment || !TOKEN_RE.test(clientToken)) return null;
-  if ((environment === "sandbox") !== clientToken.startsWith("test_")) return null;
+  const client = resolvePaddleClient(env);
+  if (!client) return null;
+  const { environment, clientToken } = client;
 
   const packs: SellablePack[] = [];
   const seen = new Set<string>();
@@ -88,6 +85,56 @@ export function resolvePaddleConfig(env: PaddleEnv): PaddleConfig | null {
     packs.push({ id: pack.id, credits: pack.credits, priceId });
   }
   return packs.length > 0 ? { environment, clientToken, packs } : null;
+}
+
+/**
+ * Paddle.js settings alone — the environment and a client token that belongs
+ * to it — for checkouts that are not a credit pack (the API top-up opens a
+ * server-created transaction). Null when either is missing or they disagree.
+ */
+export function resolvePaddleClient(env: PaddleEnv): { environment: PaddleEnvironment; clientToken: string } | null {
+  const rawEnv = (env.NEXT_PUBLIC_PADDLE_ENV ?? "").trim().toLowerCase();
+  const environment: PaddleEnvironment | null =
+    rawEnv === "" || rawEnv === "sandbox" ? "sandbox" : rawEnv === "production" ? "production" : null;
+  const clientToken = (env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN ?? "").trim();
+  if (!environment || !TOKEN_RE.test(clientToken)) return null;
+  if ((environment === "sandbox") !== clientToken.startsWith("test_")) return null;
+  return { environment, clientToken };
+}
+
+export const paddleClient = resolvePaddleClient({
+  NEXT_PUBLIC_PADDLE_CLIENT_TOKEN: process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN,
+  NEXT_PUBLIC_PADDLE_ENV: process.env.NEXT_PUBLIC_PADDLE_ENV,
+});
+
+/** The server-side Paddle API (API balance top-ups): its key, the "API balance
+ *  top-up" product the custom price hangs off, and the environment's base URL.
+ *  Server env only — PADDLE_API_KEY is a secret and never reaches a browser. */
+export interface PaddleApiConfig {
+  apiKey: string;
+  productId: string;
+  baseUrl: string;
+}
+
+const PRODUCT_ID_RE = /^pro_[a-z0-9]{10,40}$/;
+
+export function resolvePaddleApi(env: {
+  PADDLE_API_KEY?: string;
+  PADDLE_API_TOPUP_PRODUCT_ID?: string;
+  NEXT_PUBLIC_PADDLE_ENV?: string;
+}): PaddleApiConfig | null {
+  const apiKey = (env.PADDLE_API_KEY ?? "").trim();
+  const productId = (env.PADDLE_API_TOPUP_PRODUCT_ID ?? "").trim();
+  const rawEnv = (env.NEXT_PUBLIC_PADDLE_ENV ?? "").trim().toLowerCase();
+  if (apiKey.length < 20 || /\s/.test(apiKey) || !PRODUCT_ID_RE.test(productId)) return null;
+  if (rawEnv !== "" && rawEnv !== "sandbox" && rawEnv !== "production") return null;
+  // A live key against the sandbox (or the reverse) would fail at checkout.
+  if (/^pdl_(sdbx|live)_/.test(apiKey) && apiKey.startsWith("pdl_live_") !== (rawEnv === "production")) return null;
+  return {
+    apiKey,
+    productId,
+    baseUrl: rawEnv === "production" ? "https://api.paddle.com" : "https://sandbox-api.paddle.com",
+  };
 }
 
 /** Next inlines NEXT_PUBLIC_* at build time only when each is named literally. */

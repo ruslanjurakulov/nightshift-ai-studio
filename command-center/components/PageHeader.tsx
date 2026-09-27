@@ -1,4 +1,5 @@
 import {
+  TerminalSquare,
   Film, Workflow, BarChart3, Palette, ListVideo, Users, UserCircle, KeyRound,
   Bot, ListChecks, Hash, Ruler, GitBranch, GraduationCap, Database, Gauge,
   RefreshCw, Lightbulb, Brain, History, Plug, TriangleAlert, ScrollText,
@@ -19,7 +20,8 @@ export type PageIcon =
   | "accounts" | "portfolio" | "providers" | "agents" | "jobs" | "topics" | "measurement"
   | "decisions" | "learning" | "memory" | "autonomy" | "feedback"
   | "advisory" | "intelligence" | "timeMachine" | "integrations" | "errors" | "logs"
-  | "members" | "organization" | "security" | "onboarding" | "approvals" | "alerts" | "audit" | "billing" | "credits";
+  | "members" | "organization" | "security" | "onboarding" | "approvals" | "alerts" | "audit" | "billing" | "credits"
+  | "developers";
 
 const ICONS: Record<PageIcon, LucideIcon> = {
   videos: Film,
@@ -48,6 +50,7 @@ const ICONS: Record<PageIcon, LucideIcon> = {
   logs: ScrollText,
   members: ShieldCheck,
   organization: Building2,
+  developers: TerminalSquare,
   security: Lock,
   onboarding: Rocket,
   approvals: UserCheck,

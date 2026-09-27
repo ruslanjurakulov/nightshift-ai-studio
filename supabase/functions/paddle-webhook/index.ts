@@ -14,6 +14,8 @@
 //   PADDLE_WEBHOOK_SECRET        the notification destination's secret key
 //   PADDLE_PRICE_STARTER / _CREATOR / _STUDIO
 //                                the Paddle price id of each credit pack
+//   PADDLE_API_TOPUP_PRODUCT_ID  the "API balance top-up" product (pro_…);
+//                                unset = API top-ups are recorded rejected
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 //                                provided by Supabase to every Edge Function
 
@@ -25,6 +27,7 @@ const supabaseUrl = env("SUPABASE_URL") ?? "";
 const serviceKey = env("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const secret = env("PADDLE_WEBHOOK_SECRET") ?? "";
 const prices = priceTableFromEnv(env);
+const apiProductId = env("PADDLE_API_TOPUP_PRODUCT_ID") ?? null;
 
 if (prices.size === 0) {
   // Said once at boot, by name only: every purchase would be rejected.
@@ -42,7 +45,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const rawBody = await req.text();
   const res = await handlePaddleWebhook(
     { method: req.method, rawBody, signature: req.headers.get("paddle-signature") },
-    { secret, prices, store },
+    { secret, prices, store, apiProductId },
   );
   return Response.json(res.body, { status: res.status });
 });

@@ -20,8 +20,22 @@
 export const LEGAL_PATHS = ["/privacy", "/terms"] as const;
 
 /** Always public: what a credit pack costs. Paddle's reviewers read it signed
- *  out, and a signed-in user sees the same page (plus the live credit rates). */
-export const INFO_PATHS = ["/pricing"] as const;
+ *  out, and a signed-in user sees the same page (plus the live credit rates).
+ *  The API reference and its OpenAPI spec are read before anyone has a key. */
+export const INFO_PATHS = ["/pricing", "/docs/api", "/docs/api/openapi.json"] as const;
+
+/**
+ * The public API (migration 0031). Its callers are programs holding an API
+ * key, never a browser session: each route authenticates the bearer key
+ * itself, so the cookie gate must neither redirect them to /login nor spend a
+ * Supabase round trip on a session they do not have. Exactly /api/v1 and the
+ * paths under it — /api/v10 or /api/v1x are not the API and stay gated.
+ */
+export const PUBLIC_API_PREFIX = "/api/v1";
+
+export function isPublicApiPath(pathname: string): boolean {
+  return pathname === PUBLIC_API_PREFIX || pathname.startsWith(PUBLIC_API_PREFIX + "/");
+}
 
 /** Served as-is to anyone, signed in or not, without channel resolution. */
 export const ALWAYS_PUBLIC_PATHS = [...LEGAL_PATHS, ...INFO_PATHS] as const;
@@ -56,6 +70,7 @@ export const RESERVED_ROOT_SEGMENTS = [
   "terms",
   "pricing",
   "api",
+  "docs",
 ] as const;
 
 /** Next's router treats `/terms/` as `/terms`; the gate must agree with it. */
@@ -105,6 +120,7 @@ export function isWelcomePath(pathname: string): boolean {
 export type GateDecision = "to-login" | "to-home" | "pass" | "app";
 
 export function gateDecision(pathname: string, signedIn: boolean): GateDecision {
+  if (isPublicApiPath(pathname)) return "pass";
   if (isLoginPath(pathname) || isSignupPath(pathname)) return signedIn ? "to-home" : "pass";
   if (isAlwaysPublicPath(pathname)) return "pass";
   // Either way: a confirmation link opened in a browser that still holds an

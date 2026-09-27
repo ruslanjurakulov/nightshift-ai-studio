@@ -38,6 +38,7 @@ describe("nav filtering by role", () => {
       "series",
       "onboarding",
       "organization",
+      "developers",
       "approvals",
     ]);
     expect(new Set(keys(false))).toEqual(new Set(CUSTOMER_NAV_KEYS));

@@ -9,7 +9,7 @@ import {
   SEARCH_HEADER,
   isSection,
 } from "@/lib/channels";
-import { gateDecision } from "@/lib/public-paths";
+import { gateDecision, isPublicApiPath } from "@/lib/public-paths";
 
 /**
  * Which channel a URL is about, and where a URL that does not say lands.
@@ -58,6 +58,9 @@ function channelRedirect(request: NextRequest): URL | null {
  */
 export async function middleware(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.next();
+  // The public API authenticates its own bearer key (lib/public-paths.ts);
+  // there is no session to refresh and nothing to redirect.
+  if (isPublicApiPath(request.nextUrl.pathname)) return NextResponse.next();
 
   let response = NextResponse.next({ request });
 

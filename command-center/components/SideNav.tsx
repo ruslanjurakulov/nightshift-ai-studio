@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  TerminalSquare,
   LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, Sparkles,
   Users, UserCircle, KeyRound, Bot, ListChecks,
   Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
@@ -57,6 +58,7 @@ const ICONS: Record<NavKey, LucideIcon> = {
   autonomy: Gauge,
   onboarding: Rocket,
   organization: Building2,
+  developers: TerminalSquare,
   members: ShieldCheck,
   security: Lock,
   approvals: UserCheck,

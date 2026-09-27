@@ -656,6 +656,11 @@ class Worker:
         return outcome
 
     def _open_credit_hold(self, job: Mapping, channel_id: str, clean: Mapping):
+        api_ref = str(job.get("api_hold_ref") or "").strip()
+        if api_ref:
+            # Paid from the API balance (migration 0031); settled in the database.
+            credit_rules.open_api_hold(self.credits, hold_ref=api_ref, job_id=job.get("id"))
+            return None
         if self.credits is None:
             if self.credits_enforced:
                 raise credit_rules.CreditRefused("credits are enforced but this worker has no "
