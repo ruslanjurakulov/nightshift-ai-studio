@@ -83,6 +83,10 @@ class MigrationPins(unittest.TestCase):
         self.assertIn("price > p_max_credits", body)  # more than confirmed: refused
         self.assertIn("errcode = 'NS409'", body)
         self.assertIn("on conflict (unit) do nothing;", CODE)
+        # Defaults at the business's ~3x markup: 3 / 5 credits per minute, 5 minimum.
+        self.assertIn("('download_720p_minute', 1.0, 2.0,", CODE)
+        self.assertIn("('download_1080p_minute', 1.25, 3.0,", CODE)
+        self.assertIn("('download_minimum', 5, 0,", CODE)
 
     def test_idempotent_reuse_and_free_redownload(self):
         body = fn_body("request_download")

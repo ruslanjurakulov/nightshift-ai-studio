@@ -19,9 +19,9 @@ import {
 
 // The defaults migration 0030 seeds.
 const PRICES = parsePrices([
-  { unit: "download_720p_minute", credits_per_unit: 1.0, margin: 0.25 },
-  { unit: "download_1080p_minute", credits_per_unit: 1.6, margin: 0.25 },
-  { unit: "download_minimum", credits_per_unit: 3, margin: 0 },
+  { unit: "download_720p_minute", credits_per_unit: 1.0, margin: 2.0 },
+  { unit: "download_1080p_minute", credits_per_unit: 1.25, margin: 3.0 },
+  { unit: "download_minimum", credits_per_unit: 5, margin: 0 },
 ]);
 
 const NOW = Date.parse("2026-09-27T12:00:00Z");
@@ -48,12 +48,12 @@ function row(over: Partial<DownloadRequestRow>): DownloadRequestRow {
 
 describe("download pricing (mirrors request_download)", () => {
   it("charges ceil(minutes × rate × (1 + margin)), never below the minimum", () => {
-    expect(downloadCharge(60, "720p", PRICES)).toBe(3); // 1.25 -> 2 -> minimum 3
-    expect(downloadCharge(60, "1080p", PRICES)).toBe(3); // 2 -> minimum 3
-    expect(downloadCharge(195, "720p", PRICES)).toBe(5); // 3.25 min x 1.25 = 4.06 -> 5
-    expect(downloadCharge(195, "1080p", PRICES)).toBe(7); // 3.25 x 2 = 6.5 -> 7
-    expect(downloadCharge(600, "720p", PRICES)).toBe(13);
-    expect(downloadCharge(600, "1080p", PRICES)).toBe(20);
+    expect(downloadCharge(60, "720p", PRICES)).toBe(5); // 3 -> minimum 5
+    expect(downloadCharge(60, "1080p", PRICES)).toBe(5); // 5
+    expect(downloadCharge(195, "720p", PRICES)).toBe(10); // 3.25 min x 3 = 9.75 -> 10
+    expect(downloadCharge(195, "1080p", PRICES)).toBe(17); // 3.25 x 5 = 16.25 -> 17
+    expect(downloadCharge(600, "720p", PRICES)).toBe(30);
+    expect(downloadCharge(600, "1080p", PRICES)).toBe(50);
   });
 
   it("higher quality never costs less", () => {
@@ -74,9 +74,9 @@ describe("download pricing (mirrors request_download)", () => {
 
   it("the migration seeds exactly these defaults", () => {
     const sql = readFileSync(join(__dirname, "..", "..", "supabase", "migrations", "0030_paid_downloads.sql"), "utf8");
-    expect(sql).toMatch(/\('download_720p_minute', 1\.0, 0\.25,/);
-    expect(sql).toMatch(/\('download_1080p_minute', 1\.6, 0\.25,/);
-    expect(sql).toMatch(/\('download_minimum', 3, 0,/);
+    expect(sql).toMatch(/\('download_720p_minute', 1\.0, 2\.0,/);
+    expect(sql).toMatch(/\('download_1080p_minute', 1\.25, 3\.0,/);
+    expect(sql).toMatch(/\('download_minimum', 5, 0,/);
     expect(sql).toContain("on conflict (unit) do nothing;");
   });
 });
@@ -95,7 +95,7 @@ describe("qualities and idempotent re-download", () => {
     const paid = [row({ status: "expired" })];
     expect(freeRedownload(paid, "720p", NOW)).toBe(true);
     expect(nextCharge({ quality: "720p", master, prices: PRICES, rows: paid, exempt: false, now: NOW })).toBe(0);
-    expect(nextCharge({ quality: "1080p", master, prices: PRICES, rows: paid, exempt: false, now: NOW })).toBe(20);
+    expect(nextCharge({ quality: "1080p", master, prices: PRICES, rows: paid, exempt: false, now: NOW })).toBe(50);
     const old = [row({ paid_until: new Date(NOW - 1).toISOString() })];
     expect(freeRedownload(old, "720p", NOW)).toBe(false);
     const failed = [row({ status: "failed", refunded: true })];

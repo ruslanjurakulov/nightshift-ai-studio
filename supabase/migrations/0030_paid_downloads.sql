@@ -84,23 +84,24 @@
 --                                        ~0.8 credit  ~0.75 credit
 --
 --   So the real cost is under one credit per minute for EITHER quality, and
---   the master's disk dominates it, not the transcode. The rates below cover
---   that cost with the margin the owner asked for, rounded to whole numbers
---   people can read, and step up with quality (1080p is the full master, 2.6x
---   the bytes, and the premium tier):
+--   the master's disk dominates it, not the transcode. The rates below use the
+--   business's normal markup — the site sells video minutes at ~3x cost (60
+--   credits ~ $0.60 retail vs ~ $0.20 cost) — on the cost rounded up to 1
+--   credit/min, and step up with quality (1080p is the full master, 2.6x the
+--   bytes, and the premium tier):
 --
 --     unit                    credits_per_unit  margin  = credits/min  vs cost
---     download_720p_minute          1.0          0.25       1.25       ~1.6x
---     download_1080p_minute         1.6          0.25       2.00       ~2.7x
---     download_minimum              3            —          3 per download
+--     download_720p_minute          1.0          2.0        3          ~3.8x
+--     download_1080p_minute         1.25         3.0        5          ~6.7x
+--     download_minimum              5            —          5 per download
 --
 --   credits_per_unit is the cost basis rounded UP (720p: 0.8 -> 1.0; 1080p:
---   the same cost plus the premium step, 1.6), and the margin is 25% — the
---   margin the credits code and its tests price video_minute with. The
---   minimum covers the per-download overhead a per-minute rate cannot see
---   (a claim, a probe, the payment provider's fixed fee spread over a pack).
---   Examples: a 60 s Short: 3 / 3 credits; the 3:15 benchmark video: 5 / 7;
---   a 10-minute video: 13 / 20 credits (720p / 1080p) = $0.13 / $0.20.
+--   0.75 -> 1.0 plus the premium step, 1.25) and margin 2.0 = 3x, the markup
+--   video minutes are sold at. The minimum covers the per-download overhead a
+--   per-minute rate cannot see (a claim, a probe, the payment provider's
+--   fixed fee spread over a pack).
+--   Examples (720p / 1080p): a 60 s Short: 5 / 5 credits; the 3:15 benchmark
+--   video: 10 / 17; a 10-minute video: 30 / 50 credits = $0.30 / $0.50.
 --   480p stays free (the existing review copy).
 --
 --   The rows are inserted ON CONFLICT DO NOTHING: re-running this file never
@@ -206,11 +207,11 @@ comment on table public.download_requests is
 -- ───────────────────────────────────────────────────────────────────────────
 
 insert into public.credit_prices (unit, credits_per_unit, margin, note) values
-  ('download_720p_minute', 1.0, 0.25,
-   '720p download, per minute of video. Cost ~0.8 cr/min (master disk + transcode + egress); migration 0030.'),
-  ('download_1080p_minute', 1.6, 0.25,
-   '1080p download (the master), per minute of video. Cost ~0.75 cr/min + premium step; migration 0030.'),
-  ('download_minimum', 3, 0,
+  ('download_720p_minute', 1.0, 2.0,
+   '720p download, per minute of video: cost ~0.8 cr/min (master disk + transcode + egress) at the usual ~3x markup; migration 0030.'),
+  ('download_1080p_minute', 1.25, 3.0,
+   '1080p download (the master), per minute of video: cost ~0.75 cr/min + premium step at ~3x markup; migration 0030.'),
+  ('download_minimum', 5, 0,
    'Smallest charge of one 720p/1080p download (margin ignored); migration 0030.')
 on conflict (unit) do nothing;
 
