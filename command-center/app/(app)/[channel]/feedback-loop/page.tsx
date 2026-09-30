@@ -57,7 +57,7 @@ export default async function FeedbackPage() {
       <PageHeader icon="feedback" title={t.feedback.title} subtitle={t.feedback.subtitle} />
 
       {/* The loop, drawn from the real stages the backend runs */}
-      <div className="panel overflow-x-auto p-4">
+      <div tabIndex={0} role="region" aria-label={t.feedback.title} className="panel scroll-focus overflow-x-auto p-4">
         <div className="flex min-w-max items-center gap-2">
           {LOOP.map((step, i) => (
             <div key={step} className="flex items-center gap-2">

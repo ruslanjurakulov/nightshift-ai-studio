@@ -9,7 +9,7 @@ import { useI18n } from "@/lib/i18n/context";
  * no-flash script; this control reads the resolved value after mount (so no
  * hydration mismatch) and flips it, persisting the choice.
  */
-export function ThemeToggle() {
+export function ThemeToggle({ showLabel = false }: { showLabel?: boolean } = {}) {
   const { t } = useI18n();
   const [theme, setTheme] = useState<Theme | null>(null);
 
@@ -32,7 +32,11 @@ export function ThemeToggle() {
       onClick={toggle}
       title={label}
       aria-label={label}
-      className="btn-sky is-quiet pill grid size-9 place-items-center"
+      className={
+        showLabel
+          ? "btn-sky is-quiet pill h-10 gap-2 px-4 text-[13px] font-light"
+          : "btn-sky is-quiet pill grid size-10 place-items-center"
+      }
     >
       {/* Before mount `theme` is null — render an empty, equally sized box so
           server and client first paint match, then swap in the real icon. */}
@@ -50,6 +54,7 @@ export function ThemeToggle() {
           )
         )}
       </span>
+      {showLabel && <span aria-hidden>{theme === null ? label : isDark ? t.common.dark : t.common.light}</span>}
     </button>
   );
 }

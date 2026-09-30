@@ -49,6 +49,12 @@ services:
         NEXT_PUBLIC_PRICE_DISPLAY_STARTER: ${NEXT_PUBLIC_PRICE_DISPLAY_STARTER:-}
         NEXT_PUBLIC_PRICE_DISPLAY_CREATOR: ${NEXT_PUBLIC_PRICE_DISPLAY_CREATOR:-}
         NEXT_PUBLIC_PRICE_DISPLAY_STUDIO: ${NEXT_PUBLIC_PRICE_DISPLAY_STUDIO:-}
+        NEXT_PUBLIC_PADDLE_PLAN_CREATOR: ${NEXT_PUBLIC_PADDLE_PLAN_CREATOR:-}
+        NEXT_PUBLIC_PADDLE_PLAN_PRO: ${NEXT_PUBLIC_PADDLE_PLAN_PRO:-}
+        NEXT_PUBLIC_PADDLE_PLAN_STUDIO: ${NEXT_PUBLIC_PADDLE_PLAN_STUDIO:-}
+        NEXT_PUBLIC_PLAN_DISPLAY_CREATOR: ${NEXT_PUBLIC_PLAN_DISPLAY_CREATOR:-}
+        NEXT_PUBLIC_PLAN_DISPLAY_PRO: ${NEXT_PUBLIC_PLAN_DISPLAY_PRO:-}
+        NEXT_PUBLIC_PLAN_DISPLAY_STUDIO: ${NEXT_PUBLIC_PLAN_DISPLAY_STUDIO:-}
         NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS: ${NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS:-}
     image: nightshift-web:latest
     restart: unless-stopped
@@ -203,6 +209,47 @@ services:
       - no-new-privileges:true
     cpu_shares: 512
     mem_limit: 4g
+    logging: *default-logging
+
+  # ── Creative worker (migration 0036, tools/creative_worker.py) ─────────────
+  # Runs creative_jobs — image / video / speech generations started from the
+  # Command Center — in its own process, so a generation never waits behind a
+  # pipeline render. Same image and env file as the pipeline worker (the
+  # provider keys and the Supabase service key live only there). Started by
+  # hand once 0036 is applied:
+  #   docker compose --profile worker -f deploy/docker-compose.yml up -d creative-worker
+  # A deploy recreates it only if it is already running, and removes it with
+  # the pipeline worker when the worker is switched off.
+  creative-worker:
+    profiles: ["worker"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    image: nightshift-worker:latest
+    command: ["python", "tools/creative_worker.py"]
+    restart: unless-stopped
+    env_file:
+      - path: ${WORKER_ENV_FILE:-/opt/nightshift/.env.worker}
+        required: false
+    environment:
+      NIGHTSHIFT_WORKER_ID: nightshift-creative-01
+      # Generated files, one folder per job id, on the worker's output
+      # volume until the media library (migration 0038) takes them over.
+      NIGHTSHIFT_CREATIVE_DIR: /app/output/creative
+      # Provider jobs mostly wait on the provider; this many run at once.
+      CREATIVE_WORKER_CONCURRENCY: "4"
+    # A job waiting on its provider is handed back on stop with its task id
+    # stored, and polled again on the next start — never paid for twice.
+    stop_grace_period: 1m
+    volumes:
+      - worker_output:/app/output
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 256
+    mem_limit: 2g
     logging: *default-logging
 
 volumes:

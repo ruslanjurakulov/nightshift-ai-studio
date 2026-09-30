@@ -7,31 +7,66 @@
  */
 
 import { CREDIT_PACKS, type CreditPackId } from "@/lib/paddle";
+import { SUBSCRIPTION_STATUSES, type BillingSummary, type SubscriptionStatus } from "@/lib/plans";
 // Type-only: erased at build, so this client-safe file never loads the server module.
 import type { ConnectedAccount } from "@/lib/connectedAccounts";
 
 export type { ConnectedAccount, Platform } from "@/lib/connectedAccounts";
 
 /**
- * What the panel calls the account's plan.
+ * What the ledger says about purchases (credit packs): the rule the API's
+ * activation used before plans existed (lib/api/pricing.ts apiEligible, and
+ * api_org_eligible in 0031 — any purchase row). The account panel no longer
+ * reads a "plan" from here: since migration 0034 the plan is the
+ * organization's real subscription state (AccountPlan, from billing_summary).
  *
- * - `free`      — the ledger has no purchase: only grants (the welcome grant,
- *                 an operator top-up) or nothing at all.
- * - `pack`      — the last purchase was this pack (the largest one, when a
- *                 single checkout bought several).
- * - `purchased` — there is a purchase, but its pack cannot be told from the
- *                 row (an older note format, a custom amount). Said as
- *                 "credits purchased" — never guessed into a pack name.
- * - `exempt`    — the operator's own organization, which is never charged.
- * - `unknown`   — the ledger could not be read (no organization, 0020 not
- *                 applied, a failed query).
+ * - `free`      — the ledger has no purchase.
+ * - `pack`      — the last purchase was this pack.
+ * - `purchased` — a purchase whose pack cannot be told from the row.
+ * - `exempt`    — the operator's own organization.
+ * - `unknown`   — the ledger could not be read.
  */
-export type Plan =
+export type PurchasePlan =
   | { kind: "free" }
   | { kind: "pack"; pack: CreditPackId }
   | { kind: "purchased" }
   | { kind: "exempt" }
   | { kind: "unknown" };
+
+/**
+ * The account panel's plan (migration 0034): the organization's plan by name
+ * with its subscription status and the date it renews or ends; the operator's
+ * exempt organization; or unknown (no organization, 0034 not applied, a failed
+ * read) — never guessed.
+ */
+export type AccountPlan =
+  | {
+      kind: "plan";
+      id: string;
+      name: string;
+      isDefault: boolean;
+      status: SubscriptionStatus | null;
+      periodEnd: string | null;
+      cancelAtPeriodEnd: boolean;
+    }
+  | { kind: "exempt" }
+  | { kind: "unknown" };
+
+/** The panel's plan from billing_summary (lib/plans.ts BillingSummary). */
+export function accountPlan(summary: BillingSummary | null, exempt: boolean): AccountPlan {
+  if (exempt || summary?.exempt) return { kind: "exempt" };
+  if (!summary?.plan) return { kind: "unknown" };
+  const sub = summary.subscription;
+  return {
+    kind: "plan",
+    id: summary.plan.id,
+    name: summary.plan.name,
+    isDefault: summary.plan.isDefault,
+    status: sub?.status ?? null,
+    periodEnd: sub?.periodEnd ?? null,
+    cancelAtPeriodEnd: sub?.cancelAtPeriodEnd ?? false,
+  };
+}
 
 /** One credit_transactions row, as far as the plan needs it. */
 export interface LedgerPurchaseRow {
@@ -73,7 +108,7 @@ export function packFromPurchase(row: Pick<LedgerPurchaseRow, "amount" | "note">
  * The plan from the organization's purchase rows (any order; other kinds are
  * ignored). `null` means the ledger could not be read — unknown, not free.
  */
-export function derivePlan(rows: readonly LedgerPurchaseRow[] | null | undefined): Plan {
+export function derivePlan(rows: readonly LedgerPurchaseRow[] | null | undefined): PurchasePlan {
   if (!rows) return { kind: "unknown" };
   const purchases = rows
     .filter((r) => r.kind === "purchase")
@@ -116,12 +151,15 @@ export interface AccountCredits {
   reserved: number;
   /** Null when the capture rows could not all be read. */
   spent: number | null;
+  /** Available credits by source (0034); null before 0034 or on error. */
+  fromPlan: number | null;
+  fromTopups: number | null;
 }
 
 /** What GET /api/account returns. */
 export interface AccountSummary {
   email: string | null;
-  plan: Plan;
+  plan: AccountPlan;
   /** Null for the operator's exempt organization, before 0020, or on error. */
   credits: AccountCredits | null;
   accounts: ConnectedAccount[];
@@ -142,6 +180,8 @@ export function coerceAccountSummary(data: unknown): AccountSummary | null {
           available: c.available as number,
           reserved: c.reserved as number,
           spent: Number.isFinite(c.spent) ? (c.spent as number) : null,
+          fromPlan: Number.isFinite(c.fromPlan) ? (c.fromPlan as number) : null,
+          fromTopups: Number.isFinite(c.fromTopups) ? (c.fromTopups as number) : null,
         }
       : null;
   const accounts = Array.isArray(d.accounts)
@@ -152,13 +192,21 @@ export function coerceAccountSummary(data: unknown): AccountSummary | null {
   return { email: typeof d.email === "string" ? d.email : null, plan, credits, accounts, connectable };
 }
 
-function coercePlan(v: unknown): Plan {
-  const p = v as { kind?: unknown; pack?: unknown } | null;
+function coercePlan(v: unknown): AccountPlan {
+  const p = v as Record<string, unknown> | null;
   if (!p || typeof p !== "object") return { kind: "unknown" };
-  if (p.kind === "pack" && (PACK_IDS as readonly unknown[]).includes(p.pack))
-    return { kind: "pack", pack: p.pack as CreditPackId };
-  if (p.kind === "free" || p.kind === "purchased" || p.kind === "exempt") return { kind: p.kind };
-  return { kind: "unknown" };
+  if (p.kind === "exempt") return { kind: "exempt" };
+  if (p.kind !== "plan" || typeof p.id !== "string" || typeof p.name !== "string") return { kind: "unknown" };
+  const status = (SUBSCRIPTION_STATUSES as readonly unknown[]).includes(p.status) ? (p.status as SubscriptionStatus) : null;
+  return {
+    kind: "plan",
+    id: p.id,
+    name: p.name,
+    isDefault: p.isDefault === true,
+    status,
+    periodEnd: typeof p.periodEnd === "string" && Number.isFinite(Date.parse(p.periodEnd)) ? p.periodEnd : null,
+    cancelAtPeriodEnd: p.cancelAtPeriodEnd === true,
+  };
 }
 
 function isConnectedAccount(v: unknown): v is ConnectedAccount {

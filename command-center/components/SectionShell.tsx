@@ -42,6 +42,9 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
       const tag = el?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || el?.isContentEditable) return;
       if (e.defaultPrevented) return;
+      // An open dialog (account menu, notifications, drawer, palette) owns
+      // Escape: closing it must not also eject the reader from the page.
+      if (document.querySelector('[role="dialog"]')) return;
       router.push(home);
     }
     document.addEventListener("keydown", onKey);
@@ -58,10 +61,13 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      {/* The ground the panel opened over. Clicking it closes, as a scrim does. */}
+      {/* The ground the panel opened over. Clicking it closes, as a scrim does.
+          The ✕ in the panel's bar is the keyboard's way out, so the scrim is
+          kept out of the tab order rather than announcing "Close" twice. */}
       <button
         type="button"
-        aria-label={t.ops.shortcutsClose}
+        tabIndex={-1}
+        aria-hidden="true"
         onClick={() => router.push(home)}
         className="scrim-enter fixed inset-0 z-0 cursor-default bg-black/55 backdrop-blur-[2px]"
       />

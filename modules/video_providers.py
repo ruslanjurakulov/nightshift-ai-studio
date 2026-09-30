@@ -22,8 +22,8 @@ Guarantees, matching the rest of the pipeline
   CDN host a finished clip is downloaded from.
 
 Each provider speaks its own documented request/response shape (a "dialect"
-below): Kling, Seedance and Wan as their current docs and SDKs describe them
-(Scout report, 2026-09-30); Higgsfield and Veo keep the original generic shape.
+below): Kling, Seedance, Wan and Veo as their current docs and SDKs describe
+them (Scout reports, 2026-09-30); Higgsfield keeps the original generic shape.
 Endpoint paths, base URLs and model ids come from ``config`` so they can be
 pinned without editing code.
 """
@@ -40,7 +40,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Sequence
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import requests
 
@@ -111,6 +111,7 @@ GENERIC = "generic"
 KLING = "kling"
 SEEDANCE = "seedance"
 WAN = "wan"
+VEO = "veo"
 
 
 @dataclass(frozen=True)
@@ -212,6 +213,12 @@ _SEEDANCE_CODES = {
     "ModelNotOpen": NOT_FOUND, "InvalidEndpointOrModel": NOT_FOUND,
 }
 
+_GOOGLE_STATUS = {
+    "UNAUTHENTICATED": AUTH, "PERMISSION_DENIED": AUTH,
+    "RESOURCE_EXHAUSTED": RATE, "INVALID_ARGUMENT": INVALID,
+    "FAILED_PRECONDITION": INVALID, "NOT_FOUND": NOT_FOUND,
+}
+
 _WAN_CODES = {
     "InvalidApiKey": AUTH, "Arrearage": QUOTA, "DataInspectionFailed": POLICY,
     "InvalidParameter": INVALID, "ModelNotFound": NOT_FOUND,
@@ -308,6 +315,16 @@ class GenericAsyncVideoClient:
             if cfg.resolution:
                 body["resolution"] = cfg.resolution
             return body, {}
+        if cfg.dialect == VEO:
+            # Gemini API predictLongRunning: one instance with the prompt, the
+            # settings under "parameters" (google-genai GenerateVideosConfig
+            # field names, camelCase on the wire).
+            params = {"aspectRatio": cfg.aspect_ratio, "durationSeconds": spec.duration_seconds}
+            if spec.negative_prompt:
+                params["negativePrompt"] = spec.negative_prompt
+            if cfg.resolution:
+                params["resolution"] = cfg.resolution
+            return {"instances": [{"prompt": spec.prompt}], "parameters": params}, {}
         if cfg.dialect == WAN:
             inp = {"prompt": spec.prompt}
             if spec.negative_prompt:
@@ -337,6 +354,10 @@ class GenericAsyncVideoClient:
         if d == SEEDANCE:
             code = _dig(data, "error", "code")
             return _prefix_category(code, _SEEDANCE_CODES), str(code or ""), _clean(_dig(data, "error", "message"))
+        if d == VEO:
+            status = _dig(data, "error", "status")
+            return (_GOOGLE_STATUS.get(str(status or "")), str(status or ""),
+                    _clean(_dig(data, "error", "message")))
         if d == WAN:
             code = _dig(data, "code") or _dig(data, "output", "code")
             msg = _dig(data, "message") or _dig(data, "output", "message")
@@ -351,6 +372,8 @@ class GenericAsyncVideoClient:
             tid = _dig(data, "id")
         elif d == WAN:
             tid = _dig(data, "output", "task_id")
+        elif d == VEO:
+            tid = _dig(data, "name")      # the long-running operation's name
         else:
             tid = _first(_unwrap(data), self.cfg.task_id_keys)
         return str(tid) if tid not in (None, "") else None
@@ -376,6 +399,20 @@ class GenericAsyncVideoClient:
             if status in ("failed", "cancelled", "expired"):
                 return OUTCOME_FAILED, None, _clean(_dig(data, "error", "message") or status)
             return OUTCOME_PENDING, None, ""
+        if d == VEO:
+            if not _dig(data, "done"):
+                return OUTCOME_PENDING, None, ""
+            if _dig(data, "error"):
+                return OUTCOME_FAILED, None, _clean(_dig(data, "error", "message") or "operation failed")
+            result = _dig(data, "response", "generateVideoResponse") or {}
+            uri = _dig(result, "generatedSamples", 0, "video", "uri")
+            if uri:
+                return OUTCOME_SUCCEEDED, str(uri), ""
+            reasons = _dig(result, "raiMediaFilteredReasons")
+            if _dig(result, "raiMediaFilteredCount") or reasons:
+                text = "; ".join(map(str, reasons)) if isinstance(reasons, list) else "filtered"
+                return OUTCOME_FAILED, None, _clean(f"Google's safety filter removed the clip: {text}")
+            return OUTCOME_FAILED, None, "the operation finished without a video"
         if d == WAN:
             status = str(_dig(data, "output", "task_status") or "").upper()
             if status == "SUCCEEDED":
@@ -400,7 +437,8 @@ class GenericAsyncVideoClient:
         self.preflight()
         body, extra = self._body(spec)
         try:
-            resp = self.session.post(f"{self.cfg.base_url}{self.cfg.submit_path}", json=body,
+            submit_path = self.cfg.submit_path.replace("{model}", self.cfg.model)
+            resp = self.session.post(f"{self.cfg.base_url}{submit_path}", json=body,
                                      headers={**self._auth_headers(), **extra}, timeout=self.timeout)
         except requests.RequestException as e:
             raise self._reject(message=type(e).__name__) from None
@@ -456,15 +494,28 @@ class GenericAsyncVideoClient:
         return file_url if state == OUTCOME_SUCCEEDED else None
 
     def _download(self, url: str, dest: Path) -> Optional[Path]:
+        """Fetch the clip. Redirects are followed by hand: requests drops only
+        ``Authorization`` on a cross-host redirect, so a key in a bespoke
+        header (Veo's ``x-goog-api-key``) would otherwise ride along to
+        wherever the file endpoint redirects. Each hop gets its own headers."""
         try:
-            with self.session.get(url, stream=True, timeout=self.timeout,
-                                  headers=self._headers_for_download(url)) as resp:
-                resp.raise_for_status()
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                with open(dest, "wb") as fh:
-                    for chunk in resp.iter_content(chunk_size=1 << 16):
-                        if chunk:
-                            fh.write(chunk)
+            for _ in range(5):
+                with self.session.get(url, stream=True, timeout=self.timeout, allow_redirects=False,
+                                      headers=self._headers_for_download(url)) as resp:
+                    headers = getattr(resp, "headers", None) or {}
+                    if 300 <= resp.status_code < 400 and headers.get("Location"):
+                        url = urljoin(url, headers["Location"])
+                        continue
+                    resp.raise_for_status()
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    with open(dest, "wb") as fh:
+                        for chunk in resp.iter_content(chunk_size=1 << 16):
+                            if chunk:
+                                fh.write(chunk)
+                    break
+            else:
+                logger.warning("%s clip download redirected too many times", self.cfg.name)
+                return None
         except Exception as e:
             logger.warning("%s clip download failed (%s)", self.cfg.name, type(e).__name__)
             return None
@@ -614,20 +665,36 @@ def _wan_config() -> VideoProviderConfig:
     )
 
 
+#: Veo ids Google shut down on 2025-11-12 (Gemini API deprecations page).
+_VEO_SHUT_DOWN = ("veo-3.0-generate-preview", "veo-3.0-fast-generate-preview")
+
+
 def _veo_config() -> VideoProviderConfig:
-    # Google Veo (Gemini API) — the key rides the x-goog-api-key header, no
-    # Bearer prefix. Endpoints/model are env-overridable; pin them to the
-    # current Gemini video docs before enabling.
+    # Google Veo on the Gemini API: POST models/{model}:predictLongRunning with
+    # {instances:[{prompt}], parameters:{…}} → an operation name; GET
+    # /v1beta/{name} until done → response.generateVideoResponse
+    # .generatedSamples[0].video.uri, downloaded with the same key header
+    # (the file lives on the API host). The key rides x-goog-api-key.
+    model = getattr(config, "VEO_MODEL", "veo-3.1-generate-preview")
+    submit_path = getattr(config, "VEO_SUBMIT_PATH", "/v1beta/models/{model}:predictLongRunning")
+    problem = ""
+    dead = next((m for m in _VEO_SHUT_DOWN if m == model or m in submit_path), "")
+    if dead:
+        problem = (f"{dead} was shut down by Google on 2025-11-12; set VEO_MODEL to "
+                   "veo-3.1-generate-preview (or -fast- / -lite-) and leave VEO_SUBMIT_PATH unset")
     return VideoProviderConfig(
         name="Veo",
         api_key=getattr(config, "VEO_API_KEY", ""),
         base_url=getattr(config, "VEO_BASE_URL", "https://generativelanguage.googleapis.com").rstrip("/"),
-        model=getattr(config, "VEO_MODEL", "veo-3.0-generate-preview"),
-        submit_path=getattr(config, "VEO_SUBMIT_PATH", "/v1beta/models/veo-3.0-generate-preview:predictLongRunning"),
+        model=model,
+        submit_path=submit_path,
         query_path=getattr(config, "VEO_QUERY_PATH", "/v1beta/{id}"),
         auth_header="x-goog-api-key",
         auth_prefix="",
-        key_hint="VEO_API_KEY",
+        dialect=VEO,
+        resolution=getattr(config, "VEO_RESOLUTION", ""),
+        key_hint="VEO_API_KEY (a Gemini API key with Veo access on a paid tier)",
+        config_problem=problem,
     )
 
 

@@ -10,7 +10,7 @@ function Var({ name, t }: { name: LegalVar; t: Dictionary }) {
   if (value === null) {
     return (
       <span
-        className="mono whitespace-nowrap rounded-md border border-[var(--color-warn)] px-1.5 py-0.5 text-[0.8em] text-[var(--color-warn)]"
+        className="mono break-words rounded-md border border-[var(--color-warn)] px-1.5 py-0.5 text-[0.8em] text-[var(--color-warn)]"
         title={LEGAL_ENV_VARS[name]}
       >
         {t.legal.notConfigured} · {LEGAL_ENV_VARS[name]}
@@ -106,7 +106,12 @@ function Block({ block, t }: { block: LegalBlock; t: Dictionary }) {
   }
   // Tables scroll inside their own box on a phone rather than widening the page.
   return (
-    <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
+    <div
+      tabIndex={0}
+      role="region"
+      aria-label={t.common.scrollTable}
+      className="scroll-focus overflow-x-auto rounded-xl border border-[var(--color-border)]"
+    >
       <table className="w-full min-w-[34rem] border-collapse text-left text-[14px]">
         <thead className="bg-[var(--color-panel-2)]">
           <tr>

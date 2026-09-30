@@ -86,7 +86,7 @@ export function ChannelSwitcher({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={t.channels.switcherLabel}
-        className="btn-sky is-quiet pill h-9 max-w-[104px] gap-2 px-3 sm:h-10 sm:max-w-[220px] sm:gap-3 sm:px-4"
+        className="btn-sky is-quiet pill h-10 max-w-[104px] gap-2 px-3 sm:max-w-[220px] sm:gap-3 sm:px-4"
       >
         <span
           aria-hidden
@@ -108,7 +108,7 @@ export function ChannelSwitcher({
       {open && (
         <ul
           role="listbox"
-          className="drawer-enter absolute right-0 z-50 mt-3 w-64 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-2 shadow-[var(--shadow-elevated)]"
+          className="drawer-enter fixed inset-x-3 top-full z-50 mt-3 overflow-hidden sm:absolute sm:inset-x-auto sm:right-0 sm:w-64 rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-2 shadow-[var(--shadow-elevated)]"
         >
           {channels.map((c) => (
             <li key={c.channel_id}>

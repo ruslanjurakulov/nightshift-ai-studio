@@ -196,7 +196,7 @@ hodisalarni belgilang (avvalgilari qoladi):
   `subscription.activated`, `subscription.canceled`, `subscription.past_due`,
   `subscription.paused`, `subscription.resumed`, `subscription.trialing`
 
-### 3.5. Command Center env (UI — keyingi PR bilan)
+### 3.5. Command Center env
 
 ```
 NEXT_PUBLIC_PADDLE_PLAN_CREATOR=pri_...
@@ -207,6 +207,10 @@ NEXT_PUBLIC_PLAN_DISPLAY_PRO=49 USD
 NEXT_PUBLIC_PLAN_DISPLAY_STUDIO=129 USD
 ```
 
+- Qayerga qo'yiladi: Vercel → Project → Settings → Environment Variables;
+  o'z serverimizda (`deploy_web.yml`) — GitHub → Settings → Secrets and
+  variables → **Variables** (xuddi shu nomlar). O'zgartirgandan keyin qayta
+  build/deploy qiling (NEXT_PUBLIC_* build paytida kiritiladi).
 - Ko'rsatiladigan narxda **`$` belgisini ishlatmang** — deploy uni rad etadi;
   `19 USD` deb yozing. Paddle ishlayotganda sahifa baribir Paddle'ning o'z
   (mahalliy valyuta va soliq bilan) narxini ko'rsatadi; env — zaxira.

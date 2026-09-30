@@ -49,6 +49,7 @@ _DURATION_RULES = (
     ("minimax-hailuo", None, (6, 10)),     # v1 Hailuo models: 6 or 10 s only (vendor MCP docstring)
     ("kling-", None, (5, 10)),             # the legacy text2video endpoint: "5" or "10"
     ("wan2.7", (2, 15), None),             # Wan 2.7: 2-15 s
+    ("veo-3.1", None, (4, 6, 8)),          # Veo 3.1 family: 4, 6 or 8 s
 )
 
 
