@@ -214,6 +214,10 @@ export interface ChannelAgentConfig {
   target_duration_seconds?: number;
   tts_provider?: string;
   elevenlabs_voice_id?: string;
+  /** The voice for the script's quoted lines ([VOICE:secondary]), picked from
+   * the account's list — or "narrator" to use the narrator's voice. Unset stops
+   * an ElevenLabs run at preflight rather than reading them in a guessed voice. */
+  elevenlabs_secondary_voice_id?: string;
   edge_tts_voice?: string;
   system_prompt?: string;
   niche_rules?: string;
