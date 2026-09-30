@@ -6,10 +6,17 @@ import { useRouter } from "next/navigation";
 import { CircleCheck, Coins, LogOut, Settings, UserRound, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
-import { fmt } from "@/lib/i18n";
+import { fmt, LOCALES } from "@/lib/i18n";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useChannelPath } from "@/lib/channels-client";
 import { formatCredits } from "@/lib/credits";
-import { coerceAccountSummary, type AccountSummary, type ConnectedAccount, type Platform, type Plan } from "@/lib/account";
+import {
+  coerceAccountSummary,
+  type AccountPlan,
+  type AccountSummary,
+  type ConnectedAccount,
+  type Platform,
+} from "@/lib/account";
 
 /**
  * The account button in the header and the panel it opens: who is signed in,
@@ -25,7 +32,7 @@ import { coerceAccountSummary, type AccountSummary, type ConnectedAccount, type 
  * header; above, a popover anchored to the button.
  */
 export function AccountMenu({ email }: { email: string | null }) {
-  const { t, locale } = useI18n();
+  const { t, locale, setLocale } = useI18n();
   const path = useChannelPath();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -140,7 +147,7 @@ export function AccountMenu({ email }: { email: string | null }) {
         aria-controls={open ? panelId : undefined}
         aria-label={t.account.open}
         title={shownEmail ?? undefined}
-        className="btn-sky is-quiet pill inline-flex size-9 items-center justify-center p-0 sm:size-10"
+        className="btn-sky is-quiet pill inline-flex size-10 items-center justify-center p-0"
       >
         {initial ? (
           <span aria-hidden className="text-[14px] font-medium text-[var(--color-primary)]">
@@ -181,7 +188,7 @@ export function AccountMenu({ email }: { email: string | null }) {
               type="button"
               onClick={() => close()}
               aria-label={t.account.close}
-              className="btn-sky is-quiet pill inline-flex size-8 shrink-0 items-center justify-center p-0"
+              className="btn-sky is-quiet pill inline-flex size-10 shrink-0 items-center justify-center p-0"
             >
               <X aria-hidden className="size-4" />
             </button>
@@ -196,6 +203,11 @@ export function AccountMenu({ email }: { email: string | null }) {
           <dl className="grid grid-cols-2 gap-2" aria-busy={state === "loading"}>
             <Stat label={t.account.plan} wide>
               {state === "ready" && data ? planLabel(data.plan, t) : state === "loading" ? t.account.loading : dash}
+              {state === "ready" && data && planDetail(data.plan, t, locale) && (
+                <span className="mt-0.5 block text-[10px] font-normal text-[var(--color-muted)]">
+                  {planDetail(data.plan, t, locale)}
+                </span>
+              )}
             </Stat>
             {showCredits && (
               <>
@@ -204,6 +216,14 @@ export function AccountMenu({ email }: { email: string | null }) {
                   {credits && credits.reserved > 0 && (
                     <span className="mt-0.5 block text-[10px] font-normal text-[var(--color-muted)]">
                       {fmt(t.account.onHold, { n: formatCredits(credits.reserved, locale) })}
+                    </span>
+                  )}
+                  {credits && credits.fromPlan !== null && credits.fromTopups !== null && (
+                    <span className="mt-0.5 block text-[10px] font-normal text-[var(--color-muted)]">
+                      {fmt(t.account.bySource, {
+                        plan: formatCredits(credits.fromPlan, locale),
+                        topups: formatCredits(credits.fromTopups, locale),
+                      })}
                     </span>
                   )}
                 </Stat>
@@ -238,6 +258,27 @@ export function AccountMenu({ email }: { email: string | null }) {
             </ul>
           </section>
 
+          {/* Language and theme live here on a phone; the header bar has room for
+              them from `sm` up. */}
+          <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3 sm:hidden">
+            <div role="group" aria-label={t.common.language} className="flex gap-1.5">
+              {LOCALES.map((l) => (
+                <button
+                  key={l.code}
+                  type="button"
+                  lang={l.code}
+                  aria-pressed={l.code === locale}
+                  onClick={() => l.code !== locale && setLocale(l.code)}
+                  className="btn-sky is-quiet pill h-10 flex-1 px-2 text-[13px] font-light"
+                  style={{ color: l.code === locale ? "var(--color-primary)" : undefined }}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+            <ThemeToggle showLabel />
+          </div>
+
           <nav className="flex flex-col gap-1 border-t border-[var(--color-border)] pt-3">
             <Link href={path("/credits")} onClick={() => close(false)} className="side-link">
               <Coins aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
@@ -260,19 +301,24 @@ export function AccountMenu({ email }: { email: string | null }) {
 
 type Dict = ReturnType<typeof useI18n>["t"];
 
-function planLabel(plan: Plan, t: Dict): string {
+function planLabel(plan: AccountPlan, t: Dict): string {
   switch (plan.kind) {
-    case "free":
-      return t.account.planFree;
-    case "pack":
-      return t.credits.buy.pack[plan.pack];
-    case "purchased":
-      return t.account.planPurchased;
+    case "plan":
+      return plan.name;
     case "exempt":
       return t.account.planExempt;
     default:
       return t.common.dash;
   }
+}
+
+/** "Renews 1 Nov" / "Ends 1 Nov" / "Payment failed" under the plan name; null for Free. */
+function planDetail(plan: AccountPlan, t: Dict, locale: string): string | null {
+  if (plan.kind !== "plan" || !plan.status) return null;
+  if (plan.status === "past_due") return t.plans.status.past_due;
+  if (!plan.periodEnd) return t.plans.status[plan.status];
+  const date = new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(new Date(plan.periodEnd));
+  return plan.status === "canceled" || plan.cancelAtPeriodEnd ? fmt(t.plans.endsOn, { date }) : fmt(t.plans.renews, { date });
 }
 
 const PLATFORMS: Platform[] = ["youtube", "instagram", "tiktok"];

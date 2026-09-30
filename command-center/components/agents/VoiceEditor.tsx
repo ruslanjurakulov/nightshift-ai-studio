@@ -17,9 +17,17 @@ import type { ChannelAgentConfig } from "@/lib/types";
  * ElevenLabs voices are listed from the account (never typed): click a voice to
  * preview it, pick the one you like, and Save. The API key is used for exactly
  * one call to list the voices and is never stored — same contract as the
- * channel wizard and the /api/setup/voices route. Editing writes only the three
- * voice fields into `agent_config`, merged over the config loaded with the page.
+ * channel wizard and the /api/setup/voices route. Editing writes only the voice
+ * fields into `agent_config`, merged over the config loaded with the page.
+ *
+ * The same list also picks the QUOTE voice — the second voice the script's
+ * quoted lines are read in. It used to be a voice id typed into the pipeline,
+ * which a free-plan account could not use and which killed runs at the audio
+ * stage; now it is picked here like the narrator (or explicitly "the narrator's
+ * voice"), and an ElevenLabs run without it stops before spending anything.
  */
+const NARRATOR = "narrator";
+
 type Voice = {
   voiceId: string;
   name: string;
@@ -39,6 +47,9 @@ export function VoiceEditor({
   const [provider, setProvider] = useState<string>(agentConfig?.tts_provider || "elevenlabs");
   const [edgeVoice, setEdgeVoice] = useState<string>(agentConfig?.edge_tts_voice || "");
   const [selected, setSelected] = useState<string>(agentConfig?.elevenlabs_voice_id || "");
+  const [secondary, setSecondary] = useState<string>(agentConfig?.elevenlabs_secondary_voice_id || "");
+  // Which of the two voices a tap on the list sets.
+  const [pickFor, setPickFor] = useState<"main" | "secondary">("main");
 
   const [apiKey, setApiKey] = useState("");
   const [voices, setVoices] = useState<Voice[] | null>(null);
@@ -100,7 +111,7 @@ export function VoiceEditor({
       ...(agentConfig ?? {}),
       tts_provider: provider,
       ...(provider === "elevenlabs"
-        ? { elevenlabs_voice_id: selected }
+        ? { elevenlabs_voice_id: selected, elevenlabs_secondary_voice_id: secondary }
         : { edge_tts_voice: edgeVoice.trim() }),
     };
     const { error } = await supabase
@@ -193,18 +204,53 @@ export function VoiceEditor({
                 <p className="text-[12px] text-[var(--color-warn)]">{t.voice.none}</p>
               )}
 
+              {/* Which voice a tap on the list sets: the narrator, or the quote voice. */}
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t.voice.pickFor}>
+                  <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+                    {t.voice.pickFor}
+                  </span>
+                  {(["main", "secondary"] as const).map((role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      aria-pressed={pickFor === role}
+                      onClick={() => setPickFor(role)}
+                      className={`btn-sky pill px-4 py-1.5 text-[12px] ${pickFor === role ? "is-solid" : "is-quiet"}`}
+                    >
+                      {role === "main" ? t.voice.pickNarrator : t.voice.pickQuote}
+                    </button>
+                  ))}
+                </div>
+                <p className="max-w-[72ch] text-[11px] leading-relaxed text-[var(--color-muted)]">
+                  {t.voice.quoteHint}
+                </p>
+                <label className="flex items-center gap-2 text-[12px] text-[var(--color-fg)]">
+                  <input
+                    type="checkbox"
+                    checked={secondary === NARRATOR}
+                    onChange={(e) => {
+                      setSecondary(e.target.checked ? NARRATOR : "");
+                      touch();
+                    }}
+                  />
+                  {t.voice.quoteUseNarrator}
+                </label>
+              </div>
+
               {/* Tap a voice to hear it; the highlighted one is the selection. */}
               {voices && voices.length > 0 && (
                 <ul className="flex max-h-[380px] flex-col gap-2 overflow-y-auto">
                   {voices.map((v) => {
                     const isSel = selected === v.voiceId;
+                    const isQuote = secondary === v.voiceId;
                     return (
                       <li key={v.voiceId}>
                         <div
                           className="flex items-center gap-3 rounded-[14px] border p-2.5 transition-colors"
                           style={{
-                            borderColor: isSel ? "var(--color-primary)" : "var(--color-border)",
-                            background: isSel ? "var(--color-panel-2)" : "transparent",
+                            borderColor: isSel || isQuote ? "var(--color-primary)" : "var(--color-border)",
+                            background: isSel || isQuote ? "var(--color-panel-2)" : "transparent",
                           }}
                         >
                           <button
@@ -219,7 +265,8 @@ export function VoiceEditor({
                           <button
                             type="button"
                             onClick={() => {
-                              setSelected(v.voiceId);
+                              if (pickFor === "main") setSelected(v.voiceId);
+                              else setSecondary(v.voiceId);
                               touch();
                             }}
                             className="min-w-0 flex-1 text-left"
@@ -234,6 +281,11 @@ export function VoiceEditor({
                           {isSel && (
                             <span className="mono shrink-0 text-[10px] uppercase tracking-[0.18em] text-[var(--color-primary)]">
                               {t.voice.selected}
+                            </span>
+                          )}
+                          {isQuote && (
+                            <span className="mono shrink-0 text-[10px] uppercase tracking-[0.18em] text-[var(--color-primary)]">
+                              {t.voice.quoteTag}
                             </span>
                           )}
                         </div>
@@ -254,7 +306,7 @@ export function VoiceEditor({
               disabled={
                 disabled ||
                 state === "saving" ||
-                (provider === "elevenlabs" && !selected) ||
+                (provider === "elevenlabs" && (!selected || !secondary)) ||
                 (provider === "edge" && !edgeVoice.trim())
               }
               className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
@@ -262,7 +314,9 @@ export function VoiceEditor({
               {state === "saving" ? t.voice.saving : t.voice.save}
             </button>
             <span className="mono text-[11px]" aria-live="polite">
-              {state === "saved" ? (
+              {provider === "elevenlabs" && selected && !secondary && state === "idle" ? (
+                <span className="text-[var(--color-warn)]">{t.voice.quoteMissing}</span>
+              ) : state === "saved" ? (
                 <span className="text-[var(--color-ok)]">{t.voice.saved}</span>
               ) : state === "error" ? (
                 <span className="text-[var(--color-fail)]">{t.voice.failed}</span>

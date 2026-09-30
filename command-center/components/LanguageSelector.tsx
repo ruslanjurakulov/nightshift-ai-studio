@@ -43,7 +43,7 @@ export function LanguageSelector() {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={t.common.language}
-        className="btn-sky is-quiet pill h-9 gap-2 px-3.5"
+        className="btn-sky is-quiet pill h-10 gap-2 px-3.5"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4">
           <circle cx="12" cy="12" r="10" />

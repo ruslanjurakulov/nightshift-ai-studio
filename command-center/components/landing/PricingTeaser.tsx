@@ -54,6 +54,33 @@ export function PricingTeaser({
               <h3 className="text-[1.5rem] font-semibold tracking-[-0.02em]">{p.announcedTitle}</h3>
               <p className="text-[15px] font-light leading-relaxed text-[var(--color-muted)]">{p.announcedBody}</p>
             </div>
+          ) : teaser.kind === "plans" ? (
+            <div>
+              <h3 className="t-label">{p.plansLabel}</h3>
+              <ul className="mt-4 flex flex-col">
+                {teaser.plans.map((plan) => (
+                  <li
+                    key={plan.id}
+                    className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-[var(--color-border)] py-4"
+                  >
+                    <span className="flex flex-col">
+                      <span className="text-[15px] font-medium">{plan.name}</span>
+                      <span className="mono text-[12px] text-[var(--color-muted)]">
+                        {fmt(t.plans.monthlyCredits, { n: formatCredits(plan.credits, locale) })}
+                      </span>
+                    </span>
+                    {plan.price ? (
+                      <span className="font-display text-[1.5rem] font-semibold tracking-[-0.02em]">
+                        {plan.price}
+                        <span className="ml-1 text-[12px] font-light text-[var(--color-muted)]">{t.plans.perMonth}</span>
+                      </span>
+                    ) : (
+                      <span className="text-[13px] text-[var(--color-muted)]">{p.atCheckout}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : (
             <div>
               <h3 className="t-label">{p.packsLabel}</h3>

@@ -129,6 +129,20 @@ TABLES: Dict[str, Kind] = {
     "topic_performance": Platform(),
     # region-wide public YouTube data, owned by no channel (0018: deliberately global)
     "trending_snapshots": Public(),
+    # creative generations (0036) and their provider cost (0037: operator economics)
+    "creative_jobs": Org(),
+    "creative_job_events": Org(),
+    "creative_job_costs": Platform(),
+}
+
+
+# ── views ────────────────────────────────────────────────────────────────────
+# A view must be declared here AND run with the caller's rights
+# (security_invoker), or it reads past every policy of the tables under it.
+# Only Platform views exist so far: nobody but the operator reads a row.
+
+VIEWS: Dict[str, Kind] = {
+    "creative_economics": Platform(),
 }
 
 
@@ -268,6 +282,29 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     # web/API hardening (0042)
     "take_web_rate": USER,
     "welcome_email_key": SERVICE,
+    # creative jobs (0036): members quote / create / cancel; the worker runs them
+    "quote_creative_job": USER,
+    "create_creative_job": USER,
+    "cancel_creative_job": USER,
+    "claim_creative_job": SERVICE,
+    "heartbeat_creative_job": SERVICE,
+    "advance_creative_job": SERVICE,
+    "finish_creative_job": SERVICE,
+    "expire_creative_jobs": SERVICE,
+    "creative_capability_supported": SERVICE,
+    "creative_end_locked": SERVICE,
+    "creative_expire_locked": SERVICE,
+    "creative_job_json": SERVICE,
+    "creative_job_log": SERVICE,
+    "creative_json_int": SERVICE,
+    "creative_params_problem": SERVICE,
+    "creative_platform_release": SERVICE,
+    "creative_platform_reserve": SERVICE,
+    "creative_price": SERVICE,
+    "creative_quantity": SERVICE,
+    "creative_refuse": SERVICE,
+    # provider costs (0037)
+    "record_creative_job_cost": SERVICE,
 }
 
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getUser } from "@/lib/supabase/server";
 import { requireOperator } from "@/lib/auth/org-roles";
 import { VOICE_LIST_RATE, rateRefusal, takeWebRate } from "@/lib/server/web-rate";
+import { listAllVoices } from "@/lib/elevenlabsVoices";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,9 @@ export const dynamic = "force-dynamic";
  * that tells any signed-in account whether an arbitrary ElevenLabs key is
  * valid — and whether its account is out of characters — would be a free
  * key-checking proxy running from our servers.
+ *
+ * The list comes from the paginated v2 endpoint (lib/elevenlabsVoices.ts):
+ * v1 stops working once an account has more than 500 voices.
  */
 export async function POST(request: Request) {
   const user = await getUser();
@@ -49,51 +53,12 @@ export async function POST(request: Request) {
     return NextResponse.json(r.body, { status: r.status, headers: r.headers });
   }
 
-  let res: Response;
-  try {
-    res = await fetch("https://api.elevenlabs.io/v1/voices", {
-      headers: { "xi-api-key": apiKey },
-      cache: "no-store",
-    });
-  } catch {
-    return NextResponse.json({ error: "elevenlabs_unreachable" }, { status: 502 });
-  }
-
-  if (res.status === 401) {
-    // 401 covers three different situations that need three different fixes,
-    // so the caller gets ElevenLabs' own code rather than a flat "rejected":
-    // invalid_api_key is a wrong key, quota_exceeded is an account out of
-    // characters, detected_unusual_activity is a blocked free tier.
-    let reason = "";
-    try {
-      const detail = ((await res.json()) as { detail?: { status?: string } }).detail;
-      reason = detail?.status ?? "";
-    } catch {
-      /* an unparseable body is still a 401 */
+  const result = await listAllVoices(apiKey);
+  if (!result.ok) {
+    if (result.error === "key_rejected") {
+      return NextResponse.json({ error: "key_rejected", reason: result.reason }, { status: 400 });
     }
-    return NextResponse.json({ error: "key_rejected", reason }, { status: 400 });
+    return NextResponse.json({ error: result.error }, { status: 502 });
   }
-  if (!res.ok) return NextResponse.json({ error: "elevenlabs_unavailable" }, { status: 502 });
-
-  const data = (await res.json()) as {
-    voices?: {
-      voice_id: string;
-      name?: string;
-      category?: string;
-      preview_url?: string;
-      labels?: Record<string, string>;
-    }[];
-  };
-
-  const voices = (data.voices ?? []).map((v) => ({
-    voiceId: v.voice_id,
-    name: v.name ?? v.voice_id,
-    category: v.category ?? "",
-    previewUrl: v.preview_url ?? "",
-    // Accent, age, gender and use case, as ElevenLabs labels them. This is what
-    // makes two voices distinguishable in a dropdown of thirty.
-    labels: Object.values(v.labels ?? {}).filter(Boolean).join(" · "),
-  }));
-
-  return NextResponse.json({ voices });
+  return NextResponse.json({ voices: result.voices, truncated: result.truncated });
 }

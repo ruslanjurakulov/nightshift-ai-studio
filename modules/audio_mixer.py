@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import logging
+import re
 import shutil
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from config import (
     ELEVENLABS_API_KEY,
     ELEVENLABS_MODEL_ID,
     ELEVENLABS_RUN_VOICE_ID,
+    ELEVENLABS_SECONDARY_VOICE_ID,
     ELEVENLABS_VOICE_ID,
     MUSIC_DIR,
     NARRATOR_VOLUME,
@@ -47,6 +49,12 @@ ELEVENLABS_API = "https://api.elevenlabs.io/v1"
 
 class VoiceUnavailable(RuntimeError):
     """This channel's narrator cannot speak, and no substitute will be used."""
+
+
+#: The explicit "read the [VOICE:secondary] lines in the narrator's voice"
+#: choice — distinct from "not chosen", which stops the run.
+NARRATOR = "narrator"
+_VOICE_ID = re.compile(r"[A-Za-z0-9]{20}")
 
 
 def verify_voice(channel=None) -> None:
@@ -91,7 +99,46 @@ def verify_voice(channel=None) -> None:
             "This channel narrates with ElevenLabs, but no voice id is set. "
             "Set elevenlabs_voice_id for the channel, or switch it to 'edge'."
         )
+    # The script format puts quotes and character speech in [VOICE:secondary]
+    # lines, so an ElevenLabs run needs a second voice too. It used to be a
+    # voice id typed into this file — a library voice that a free-plan account
+    # may not use through the API; runs #147 and #159 died on it (HTTP 402,
+    # paid_plan_required) after paying for topic, research and script.
+    secondary = secondary_voice(agent)
+    if not secondary:
+        raise VoiceUnavailable(
+            "This channel narrates with ElevenLabs, but no second voice is chosen for the "
+            "script's quoted lines ([VOICE:secondary]). Pick one from the account's voices in "
+            "the Command Center (Agents → Voice → Quote voice), or choose 'quotes in the "
+            "narrator's voice' there; for the default channel the ELEVENLABS_SECONDARY_VOICE_ID "
+            "variable does the same. No voice is picked for you."
+        )
 
+    if secondary != NARRATOR and not _VOICE_ID.fullmatch(secondary):
+        # It goes into a request path; and a voice id is 20 letters and digits
+        # (CLAUDE.md known ceilings), so anything else was typed, not picked.
+        raise VoiceUnavailable(
+            f"The quote voice {secondary!r} is not an ElevenLabs voice id (20 letters and "
+            "digits). Pick it from the account's voice list in the Command Center."
+        )
+
+    _verify_voice_exists(voice_id)
+    if secondary != NARRATOR and secondary != voice_id:
+        _verify_voice_exists(secondary)
+
+
+def secondary_voice(agent) -> str:
+    """The voice this run reads [VOICE:secondary] lines in: the channel's
+    choice, else the deployment default, else "" (not chosen). ``NARRATOR`` is
+    returned as is — the caller decides what the narrator's voice is."""
+    chosen = getattr(agent, "elevenlabs_secondary_voice_id", "") if agent is not None else ""
+    if not isinstance(chosen, str):
+        chosen = ""
+    return chosen.strip() or ELEVENLABS_SECONDARY_VOICE_ID
+
+
+def _verify_voice_exists(voice_id: str) -> None:
+    """One request that synthesizes nothing: does this account have the voice?"""
     try:
         resp = requests.get(
             f"{ELEVENLABS_API}/voices/{voice_id}",
@@ -132,6 +179,30 @@ def verify_voice(channel=None) -> None:
     )
 
 
+def _tts_refusal(voice_id: str, status, body) -> str:
+    """ElevenLabs' own reason for refusing a synthesis, and what to do about it.
+    Only the voice id, the status and ElevenLabs' code/message are quoted —
+    never the key or the request."""
+    detail = body.get("detail") if isinstance(body, dict) else None
+    detail = detail if isinstance(detail, dict) else {}
+    code = str(detail.get("code") or detail.get("status") or "")
+    message = " ".join(str(detail.get("message") or "").split())[:200]
+    head = f"ElevenLabs refused to read with voice {voice_id!r} (HTTP {status}"
+    head += f", {code})" if code else ")"
+    if message:
+        head += f": {message}"
+    if code == "paid_plan_required" or status == 402:
+        fix = ("Pick a voice this plan can use from the account's own voice list in the Command "
+               "Center (Agents → Voice), or upgrade the ElevenLabs plan.")
+    elif status == 404:
+        fix = "The account has no such voice; pick one from its voice list in the Command Center."
+    elif status == 401:
+        fix = "'invalid_api_key' means the key is wrong; 'quota_exceeded' means the account is out of characters."
+    else:
+        fix = "No other voice is substituted; fix the cause and re-run."
+    return f"{head}. {fix}"
+
+
 def narrator_voice(agent) -> str:
     """The ElevenLabs voice this run narrates with: the run's own choice
     (ELEVENLABS_RUN_VOICE_ID, set from the Create page) when there is one, else
@@ -158,6 +229,7 @@ class AudioMixer:
         agent = channel.agent if channel is not None else None
         self.tts_provider = agent.tts_provider if agent else TTS_PROVIDER
         self.main_elevenlabs_voice = narrator_voice(agent)
+        self.secondary_elevenlabs_voice = secondary_voice(agent)
         self.main_edge_voice = agent.edge_tts_voice if agent else EDGE_TTS_VOICE
         self.elevenlabs_model = ELEVENLABS_MODEL_ID
         self.work_dir = OUTPUT_DIR / topic_slug / "audio"
@@ -180,15 +252,39 @@ class AudioMixer:
         # eleven_v3 accepts only the stability presets 0.0 / 0.5 / 1.0
         # (creative / natural / robust); the others take any value.
         stability = 0.5 if self.elevenlabs_model == "eleven_v3" else 0.45
-        audio = client.text_to_speech.convert(
-            voice_id=voice_id,
-            text=text,
-            model_id=self.elevenlabs_model,
-            voice_settings=VoiceSettings(stability=stability, similarity_boost=0.82),
-        )
-        with open(out_path, "wb") as f:
-            for chunk in audio:
-                f.write(chunk)
+        try:
+            audio = client.text_to_speech.convert(
+                voice_id=voice_id,
+                text=text,
+                model_id=self.elevenlabs_model,
+                voice_settings=VoiceSettings(stability=stability, similarity_boost=0.82),
+            )
+            with open(out_path, "wb") as f:
+                for chunk in audio:
+                    f.write(chunk)
+        except Exception as e:
+            status = getattr(e, "status_code", None)
+            if status is None:
+                raise
+            out_path.unlink(missing_ok=True)   # never leave half a segment in the cache
+            raise VoiceUnavailable(_tts_refusal(voice_id, status, getattr(e, "body", None))) from None
+
+    def _elevenlabs_voice_for(self, voice_role: str) -> str:
+        """The voice id a segment of ``voice_role`` is read in. Never a
+        built-in id: an unset secondary voice raises (verify_voice stops such a
+        run before it spends anything; this guards every other entry point)."""
+        if voice_role == "main":
+            return self.main_elevenlabs_voice
+        secondary = self.secondary_elevenlabs_voice
+        if secondary == NARRATOR:
+            return self.main_elevenlabs_voice
+        if not secondary:
+            raise VoiceUnavailable(
+                "The script has a [VOICE:secondary] line but this channel has no second "
+                "ElevenLabs voice chosen. Pick one in the Command Center (Agents → Voice → "
+                "Quote voice), or choose 'quotes in the narrator's voice'."
+            )
+        return secondary
 
     def _render_segment(self, text: str, voice_role: str) -> Path:
         """Render a single TTS segment, return path to .mp3.
@@ -203,6 +299,9 @@ class AudioMixer:
         # So is the ElevenLabs model: switching models must re-render, not
         # reuse the old model's audio.
         voice_key = f"{self.tts_provider}:{self.main_elevenlabs_voice}:{self.main_edge_voice}"
+        if self.tts_provider == "elevenlabs" and voice_role != "main":
+            # Which second voice read it is part of what the segment sounds like.
+            voice_key += f":{self._elevenlabs_voice_for(voice_role)}"
         if self.tts_provider == "elevenlabs" and self.elevenlabs_model != "eleven_multilingual_v2":
             voice_key += f":{self.elevenlabs_model}"
         digest = hashlib.sha1(f"{voice_key}:{voice_role}:{text}".encode("utf-8")).hexdigest()[:12]
@@ -211,8 +310,7 @@ class AudioMixer:
             return out
         self.characters_synthesized += len(text)
         if self.tts_provider == "elevenlabs":
-            vid = self.main_elevenlabs_voice if voice_role == "main" else "D38z5RcWu1voky8WS1ja"
-            self._tts_elevenlabs(text, vid, out)
+            self._tts_elevenlabs(text, self._elevenlabs_voice_for(voice_role), out)
         else:
             voice = self.main_edge_voice if voice_role == "main" else EDGE_TTS_SECONDARY_VOICE
             asyncio.run(self._tts_edge(text, voice, out))

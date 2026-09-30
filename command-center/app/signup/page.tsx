@@ -158,13 +158,13 @@ export default function SignupPage() {
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
         />
-        <label className="mt-1 flex items-start gap-3 text-[13px] font-light leading-snug text-[var(--color-muted)]">
+        <label className="tap-row mt-1 flex items-start gap-3 text-[13px] font-light leading-snug text-[var(--color-muted)]">
           <input
             type="checkbox"
             required
             checked={consent}
             onChange={(e) => setConsent(e.target.checked)}
-            className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-primary)]"
+            className="mt-0.5 size-5 shrink-0 accent-[var(--color-primary)]"
           />
           <span>
             {t.signup.consentPre}{" "}
