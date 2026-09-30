@@ -57,6 +57,13 @@ def world(conn, sc, *, target=None, prices=True, channel=None, status=None, gran
         yield s
 
 
+def free_a_slot(s, ref) -> None:
+    """Release one of the scenario's seeded holds, so the org has a parallel
+    run slot free (0034: Alice's Creator plan allows 2 open holds, and the
+    scenario already holds both). Rolled back with the world."""
+    s.value("select public.release_credits(%s)", [ref])
+
+
 def hold(s, org, amount=60, prefix="rj-") -> str:
     """A credit hold, reserved as the SQL editor (a trusted caller)."""
     ref = f"{prefix}{uuid.uuid4()}"
@@ -123,6 +130,7 @@ def test_browser_cannot_attach_an_api_hold(conn, sc):
 def _prepare(su, sc, case):
     bob, alice = sc.bob.org, sc.alice.org
     if case == "another org's open hold":
+        free_a_slot(su, "job-a")
         return hold(su, alice)
     if case == "a released hold":
         ref = hold(su, bob)
@@ -229,6 +237,7 @@ def test_an_outsider_learns_nothing_about_a_tenants_holds(conn, sc):
     # The payment checks run before RLS; a caller who may not run the channel
     # gets the policy's refusal whatever the hold is.
     with world(conn, sc, target=300) as su:
+        free_a_slot(su, "job-a")
         good = hold(su, sc.alice.org)
         with acting(conn, sc.bob.actor) as s:
             outs = [queue(s, sc.alice.channel, {"duration": 300}, credit_ref=r)
@@ -260,7 +269,9 @@ def _dsn(conn) -> str:
 
 @pytest.fixture(scope="module")
 def carol(conn):
-    """A third tenant with only her welcome credits (100) and one channel."""
+    """A third tenant with only her welcome credits (100) and one channel, on
+    0034's Creator plan: two parallel runs, so the race below is decided by
+    the balance, not by the run limit."""
     who = user("carol", "carol@c.test")
     with as_superuser(conn) as s:
         s.rows("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now()) returning 1",
@@ -272,8 +283,13 @@ def carol(conn):
         s.rows("insert into public.channels (channel_id, name, niche, status, org_id, agent_config) "
                "values (%s, 'Channel C', 'tech', 'PAUSED', %s, '{\"target_duration_seconds\": 300}') returning 1",
                [channel, org])
+    with acting(conn, SERVICE, commit=True) as s:
+        s.value("select public.upsert_subscription(%s, 'sub_01seclab0000000000000000cc', "
+                "'ctm_01seclab0000000000000000cc', 'creator', null, 'active', now() - interval '1 day', "
+                "now() + interval '29 days', false, null, now())", [org])
     with as_superuser(conn, commit=False) as s:
         assert s.value("select balance - reserved from public.credit_accounts where org_id = %s", [org]) == 100
+        assert s.value("select public.entitlement_int_internal(%s, 'concurrency')", [org]) == 2
     return who, org, channel
 
 
@@ -300,6 +316,10 @@ def _race(conn, n, body):
 
 def test_two_runs_racing_one_balance_cannot_overspend(conn, carol):
     who, org, channel = carol
+    with as_superuser(conn) as s:  # start from no open hold, whatever ran before
+        s.rows("select public.release_credits(job_id) from public.credit_reservations "
+               "where org_id = %s and status = 'open'", [org])
+        jobs_before = s.value("select count(*) from public.render_jobs where channel_id = %s", [channel])
 
     def run_now(c, barrier, i):
         # "Run now" twice at once: each takes a 60-credit hold and queues its
@@ -320,7 +340,7 @@ def test_two_runs_racing_one_balance_cannot_overspend(conn, carol):
         balance, reserved = s.rows("select balance, reserved from public.credit_accounts where org_id = %s", [org])[0]
         jobs = s.value("select count(*) from public.render_jobs where channel_id = %s", [channel])
         holds = s.value("select count(*) from public.credit_reservations where org_id = %s and status = 'open'", [org])
-    assert (balance, reserved, jobs, holds) == (100, 60, 1, 1)
+    assert (balance, reserved, jobs - jobs_before, holds) == (100, 60, 1, 1)
 
 
 def test_two_jobs_racing_for_one_hold_queue_once(conn, carol):
@@ -339,3 +359,59 @@ def test_two_jobs_racing_for_one_hold_queue_once(conn, carol):
     assert sorted(o.ok for o in outs) == [False, True], outs
     with as_superuser(conn, commit=False) as s:
         assert s.value("select count(*) from public.render_jobs where credit_ref = %s", [ref]) == 1
+
+
+# ── with 0034's parallel-run limit: neither rule hides the other ────────────
+
+def _superuser_again(s) -> None:
+    """After a nested `acting(..., commit=True)` block the role and claims it
+    set stay for the rest of the outer transaction; drop them."""
+    s.conn.execute("reset role")
+    s.conn.execute("select set_config('request.jwt.claims', '', true)")
+
+
+def test_a_plan_with_n_slots_holds_n_runs_and_refuses_the_next(conn, carol):
+    who, org, channel = carol
+    with as_superuser(conn, commit=False) as su:
+        su.rows("select public.release_credits(job_id) from public.credit_reservations "
+                "where org_id = %s and status = 'open'", [org])
+        su.value("select public.grant_credits(%s, 1000, 'test')", [org])
+        slots = su.value("select public.entitlement_int_internal(%s, 'concurrency')", [org])
+        with acting(conn, who, commit=True) as s:
+            queued = []
+            for _ in range(slots):
+                ref = s.value("select public.reserve_credits(%s, 'rj-' || gen_random_uuid()::text, 60) ->> 'job_id'", [org])
+                queued.append(queue(s, channel, {"duration": 300}, credit_ref=ref))
+            one_more = s.run("select public.reserve_credits(%s, 'rj-' || gen_random_uuid()::text, 60)", [org])
+            # 0034 counts holds, 0041 checks jobs: a job with no hold while the
+            # slots are full is still refused by the payment guard, for that reason.
+            no_hold = queue(s, channel, {"duration": 300})
+            unknown_hold = queue(s, channel, {"duration": 300}, credit_ref=f"rj-{uuid.uuid4()}")
+        _superuser_again(su)
+        open_holds = su.value("select count(*) from public.credit_reservations where org_id = %s and status = 'open'", [org])
+    assert slots == 2 and all(q.ok for q in queued), queued
+    assert not one_more.ok and one_more.sqlstate == "NS429", one_more
+    assert "parallel run limit" in one_more.error
+    assert not no_hold.ok and no_hold.sqlstate == "42501" and "credit hold" in no_hold.error, no_hold
+    assert not unknown_hold.ok and unknown_hold.sqlstate == "42501" and "not an open, unused hold" in unknown_hold.error
+    assert open_holds == slots
+
+
+def test_a_freed_slot_takes_a_hold_again_and_the_length_check_still_applies(conn, carol, sc):
+    who, org, channel = carol
+    with world(conn, sc, target=300, channel=channel) as su:
+        su.rows("select public.release_credits(job_id) from public.credit_reservations "
+                "where org_id = %s and status = 'open'", [org])
+        su.value("select public.grant_credits(%s, 1000, 'test')", [org])  # the balance is not what refuses
+        refs = [hold(su, org, 30), hold(su, org, 30)]
+        with acting(conn, who) as s:
+            full = s.run("select public.reserve_credits(%s, 'rj-' || gen_random_uuid()::text, 60)", [org])
+        su.value("select public.release_credits(%s)", [refs[0]])
+        with acting(conn, who) as s:
+            ref = s.value("select public.reserve_credits(%s, 'rj-' || gen_random_uuid()::text, 60) ->> 'job_id'", [org])
+            too_long = queue(s, channel, {"duration": 3600}, credit_ref=ref)
+            fits = queue(s, channel, {"duration": 300}, credit_ref=ref)
+    assert not full.ok and full.sqlstate == "NS429", full
+    # The slot is back, so what refuses the long run is 0041's length check.
+    assert not too_long.ok and too_long.sqlstate == "22023", too_long
+    assert fits.ok, fits

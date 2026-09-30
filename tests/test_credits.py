@@ -302,7 +302,9 @@ class WorkerCredits(unittest.TestCase):
         self.env.pop("NIGHTSHIFT_CREDITS_ENFORCE")
         fake = WithLots()
         self.run_one(job(credit_ref=None), fake)
-        self.assertEqual(fake.calls, [("expire",), ("expire_lots",)])
+        # The sweep runs before the claim. (The job itself is then refused for
+        # having no hold — migration 0041 — after looking up its organization.)
+        self.assertEqual(fake.calls[:2], [("expire",), ("expire_lots",)])
 
     def test_unpriced_entry_captures_the_reservation(self):
         fake = FakeCredits()

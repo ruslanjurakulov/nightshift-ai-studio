@@ -162,22 +162,15 @@ def _seed_tenant(conn: psycopg.Connection, t: Tenant) -> None:
             ("insert into public.api_ledger (org_id, kind, amount_cents, balance_after, reserved_after) values (%s, 'topup', 1000, 1000, 0)", [org]),
     ])
 
-    # Credits through the functions the workers use (trusted caller). The
-    # queued run below is paid the way "Run now" pays for it (migration 0041
-    # refuses a customer's render job without an open queue hold): a hold
-    # first, then the job carrying it and its length.
+    # Credits through the functions the workers use (trusted caller).
     with acting(conn, SERVICE, commit=True) as s:
         s.value("select public.grant_credits(%s, 500, 'seed')", [org])
         s.value("select public.reserve_credits(%s, %s, 60)", [org, f"job-{k}"])
-        s.value("select public.reserve_credits(%s, %s, 60)", [org, f"rj-seed-{k}"])
 
     # Rows the workers create through functions that are closed even to the
     # service role (render_jobs via claim, api_* via the API's own functions).
+    # The tenant's render job is seeded after its plan (_seed_render_job).
     with as_superuser(conn) as s:
-        t.render_job = s.value(
-            "insert into public.render_jobs (channel_id, kind, params, status, requested_by, credit_ref) "
-            "values (%s, 'daily', '{\"duration\": 300}', 'queued', %s, %s) returning id",
-            [ch, uid, f"rj-seed-{k}"])
         t.download_request = s.value(
             "insert into public.download_requests (org_id, channel_id, video_id, quality, status, requested_by) "
             "values (%s, %s, %s, '1080p', 'ready', %s) returning id", [org, ch, vid, uid])
@@ -210,6 +203,21 @@ def _seed_tenant(conn: psycopg.Connection, t: Tenant) -> None:
         t.publish_request = s.value(
             "insert into public.publish_requests (video_id, account_id) values (%s, %s) returning id",
             [vid, t.social_account])
+
+
+def _seed_render_job(conn: psycopg.Connection, t: Tenant) -> None:
+    """The tenant's queued run, paid the way "Run now" pays for it: migration
+    0041 refuses a customer's render job without an open queue hold, so a hold
+    first, then the job carrying it and its length. After the plans are seeded:
+    this is the tenant's second open hold, and 0034's Free plan allows one."""
+    k, org, uid = t.key, t.org, t.actor.uid
+    with acting(conn, SERVICE, commit=True) as s:
+        s.value("select public.reserve_credits(%s, %s, 60)", [org, f"rj-seed-{k}"])
+    with as_superuser(conn) as s:
+        t.render_job = s.value(
+            "insert into public.render_jobs (channel_id, kind, params, status, requested_by, credit_ref) "
+            "values (%s, 'daily', '{\"duration\": 300}', 'queued', %s, %s) returning id",
+            [t.channel, uid, f"rj-seed-{k}"])
 
 
 def _seed_operator(conn: psycopg.Connection, sc: Scenario) -> None:
@@ -256,6 +264,8 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Plans (0034): Alice on Creator, Bob on Pro (tests/security/sec_plans_0034.py).
     import sec_plans_0034
     sec_plans_0034.seed(conn, sc)
+    for t in sc.tenants():
+        _seed_render_job(conn, t)
     # A pending invite into org A, addressed to Ivan's email, not yet accepted.
     with acting(conn, sc.alice.actor, commit=True) as s:
         s.value("select public.invite_org_member(%s, %s, 'viewer')", [sc.alice.org, sc.invitee.email])
