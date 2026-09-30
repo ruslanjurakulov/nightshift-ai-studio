@@ -366,3 +366,113 @@ def test_events_append_only_and_costs_admin_only(db):
     assert rows and all(r[2] is None for r in rows if r[3] > 0)
     st, _ = err(lambda: db.act("authenticated", UA, "select public.record_creative_job_cost(%s,'acme')", [jid]))
     assert st == "42501"
+
+
+# ── the two helpers that call 0020 as the platform ──────────────────────────
+# creative_platform_reserve / creative_platform_release clear the caller's JWT
+# claims for one call to reserve_credits / release_credits. Three things must
+# hold: the claims come back even when that call raises, no API role can call
+# them, and a member of another org cannot steer them at a victim's hold.
+
+HELPERS = ("creative_platform_reserve(uuid,text,numeric)", "creative_platform_release(text)")
+BOB = json.dumps({"role": "authenticated", "sub": UB, "email": "b@x.io"})
+
+
+def _restored_after(db, call_sql, setup_sql=""):
+    """Run `call_sql` as the (superuser) definer with Bob's claims set, catch
+    whatever it raises in a plpgsql exception block, and report the claims and
+    the trusted-caller answer afterwards. Rolled back."""
+    with db.conn() as c:
+        try:
+            if setup_sql:
+                c.execute(setup_sql)
+            c.execute("select set_config('request.jwt.claims', %s, true)", [BOB])
+            c.execute(f"""
+                do $$
+                begin
+                  begin
+                    {call_sql};
+                  exception when others then
+                    perform set_config('creative.test.raised', sqlstate, true);
+                  end;
+                end $$""")
+            row = c.execute("select current_setting('request.jwt.claims', true), public.credits_trusted_caller(), "
+                            "current_setting('creative.test.raised', true)").fetchone()
+        finally:
+            c.rollback()
+    return row
+
+
+def test_claims_come_back_when_reserve_raises(db):
+    # 99,999,999 credits: reserve_credits refuses with insufficient credits.
+    claims_after, trusted, raised = _restored_after(
+        db, f"perform public.creative_platform_reserve('{ORG_A}'::uuid, 'cj:adv-raise', 99999999)")
+    assert raised == "NS402"
+    assert json.loads(claims_after) == json.loads(BOB)
+    assert trusted is False
+
+
+def test_claims_come_back_when_release_raises(db):
+    ref = "cj:adv-release"
+    setup = f"""
+        select public.grant_credits('{ORG_A}'::uuid, 1, 'adv');
+        select set_config('request.jwt.claims', '', true);
+        select public.reserve_credits('{ORG_A}'::uuid, '{ref}', 5);
+        create function pg_temp.boom() returns trigger language plpgsql as
+          $f$ begin raise exception 'release sabotaged' using errcode = 'XX001'; end $f$;
+        create trigger adv_boom before update on public.credit_reservations
+          for each row execute function pg_temp.boom();
+    """
+    claims_after, trusted, raised = _restored_after(db, f"perform public.creative_platform_release('{ref}')", setup)
+    assert raised == "XX001"
+    assert json.loads(claims_after) == json.loads(BOB)
+    assert trusted is False
+
+
+def test_claims_come_back_after_a_successful_call(db):
+    with db.conn() as c:
+        try:
+            c.execute("select set_config('request.jwt.claims', %s, true)", [BOB])
+            c.execute("select public.creative_platform_reserve(%s, 'cj:adv-ok', 6)", [ORG_A])
+            after = c.execute("select current_setting('request.jwt.claims', true), public.credits_trusted_caller()").fetchone()
+            c.execute("select public.creative_platform_release('cj:adv-ok')")
+            after2 = c.execute("select current_setting('request.jwt.claims', true), public.credits_trusted_caller()").fetchone()
+        finally:
+            c.rollback()
+    assert (json.loads(after[0]), after[1]) == (json.loads(BOB), False)
+    assert (json.loads(after2[0]), after2[1]) == (json.loads(BOB), False)
+
+
+@pytest.mark.parametrize("role,uid", [("anon", None), ("authenticated", UA), ("authenticated", UB),
+                                      ("service_role", None)])
+@pytest.mark.parametrize("helper", HELPERS)
+def test_no_api_role_can_call_the_helpers(db, role, uid, helper):
+    assert db.su("select has_function_privilege(%s, %s, 'execute')", [role, "public." + helper])[0][0] is False
+    call = ("select public.creative_platform_reserve(%s, 'cj:adv-direct', 6)" if helper.startswith("creative_platform_reserve")
+            else "select public.creative_platform_release('cj:adv-direct')")
+    params = [ORG_A] if "%s" in call else None
+    st, _ = err(lambda: db.act(role, uid, call, params))
+    assert st == "42501"
+
+
+def test_a_member_of_org_b_cannot_reach_org_as_hold(db):
+    victim = create(db, UA, ORG_A)["job"]
+    ref = "cj:" + victim["id"]
+    before = acct(db, ORG_A)
+    hold = db.su("select org_id::text, amount::float, status from public.credit_reservations where job_id = %s", [ref])
+    # Through the member calls: refused, and nothing of A's moves.
+    st, _ = err(lambda: create(db, UB, ORG_A))
+    assert st == "42501"
+    st, _ = err(lambda: db.act("authenticated", UB, "select public.cancel_creative_job(%s)", [victim["id"]]))
+    assert st == "P0002"
+    # Through 0020 directly, with A's own hold reference: refused.
+    st, _ = err(lambda: db.act("authenticated", UB, "select public.release_credits(%s)", [ref]))
+    assert st == "42501"
+    st, _ = err(lambda: db.act("authenticated", UB, "select public.reserve_credits(%s, %s, 6)", [ORG_A, ref]))
+    assert st == "42501"
+    # Bob may reserve in his own org — but never under A's job reference.
+    st, _ = err(lambda: db.act("authenticated", UB, "select public.reserve_credits(%s, %s, 6)", [ORG_B, ref]))
+    assert st == "23505"
+    assert acct(db, ORG_A) == before
+    assert db.su("select org_id::text, amount::float, status from public.credit_reservations where job_id = %s", [ref]) == hold
+    assert db.su("select status from public.creative_jobs where id = %s", [victim["id"]])[0][0] == "queued"

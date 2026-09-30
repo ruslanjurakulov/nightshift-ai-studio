@@ -288,9 +288,11 @@ create or replace function public.creative_job_log(
 $$;
 
 -- reserve_credits as the platform: see the header. The claims are cleared for
--- this one call only (transaction-local, and an error aborts the transaction
--- or savepoint, which undoes the setting too) and restored before returning,
--- so everything after it runs as the caller again.
+-- this one call only and put back before returning — and before re-raising
+-- when the call fails (a caller that catches the error, in a savepoint or a
+-- plpgsql exception block, must not go on as the platform; the rollback of
+-- that savepoint restores the setting too, this does not rely on it). Every
+-- setting is transaction-local.
 create or replace function public.creative_platform_reserve(p_org uuid, p_ref text, p_amount numeric)
   returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
@@ -299,7 +301,12 @@ declare
   out_  jsonb;
 begin
   perform set_config('request.jwt.claims', '', true);
-  out_ := public.reserve_credits(p_org, p_ref, p_amount);
+  begin
+    out_ := public.reserve_credits(p_org, p_ref, p_amount);
+  exception when others then
+    perform set_config('request.jwt.claims', coalesce(saved, ''), true);
+    raise;
+  end;
   perform set_config('request.jwt.claims', coalesce(saved, ''), true);
   return out_;
 end
@@ -317,7 +324,12 @@ begin
     return 0;
   end if;
   perform set_config('request.jwt.claims', '', true);
-  out_ := public.release_credits(p_ref);
+  begin
+    out_ := public.release_credits(p_ref);
+  exception when others then
+    perform set_config('request.jwt.claims', coalesce(saved, ''), true);
+    raise;
+  end;
   perform set_config('request.jwt.claims', coalesce(saved, ''), true);
   return coalesce(out_, 0);
 end
