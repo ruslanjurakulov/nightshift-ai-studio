@@ -24,6 +24,12 @@
  *     that retrying CAN fix (the database was unreachable) is answered 5xx so
  *     Paddle delivers the event again.
  *   - No secret, and nothing of the payer beyond ids, is ever logged or stored.
+ *   - An API balance top-up (migration 0031) is a transaction the Command
+ *     Center created with one custom-priced line under the "API balance
+ *     top-up" product and custom_data.purpose = "api_topup". It credits the
+ *     organization's API balance (US cents, api_add_topup) with what Paddle
+ *     charged for that line — never site credits — and only when every line
+ *     is that product, in USD, within $5–$5,000.
  */
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -171,6 +177,16 @@ export type Decision =
       note: string;
     }
   | {
+      kind: "api_topup";
+      orgId: string;
+      userId: string | null;
+      transactionId: string;
+      cents: number;
+      currency: string | null;
+      amountMinor: number | null;
+      note: string;
+    }
+  | {
       kind: "refund";
       reason: "refund" | "chargeback";
       transactionId: string;
@@ -220,7 +236,63 @@ export function parseEvent(rawBody: string): PaddleEvent | null {
  * else is rejected whole rather than half-credited, because a person has to
  * look at it either way.
  */
-export function decideTransaction(data: Record<string, unknown>, prices: PriceTable): Decision {
+/** Bounds of one API top-up, in US cents (0031's api_add_topup checks them too). */
+export const API_TOPUP_MIN_CENTS = 500;
+export const API_TOPUP_MAX_CENTS = 500_000;
+export const PADDLE_PRODUCT_ID_RE = /^pro_[a-z0-9]{10,40}$/;
+
+/**
+ * transaction.completed for an API top-up -> how many cents, for which
+ * organization. The amount is Paddle's own record of the line's unit price x
+ * quantity (tax is Paddle's, on top), never anything the browser said.
+ */
+export function decideApiTopup(data: Record<string, unknown>, apiProductId: string | null | undefined): Decision {
+  const transactionId = str(data.id);
+  const custom = obj(data.custom_data);
+  const orgRaw = str(custom.org_id);
+  const orgId = orgRaw && UUID_RE.test(orgRaw) ? orgRaw.toLowerCase() : null;
+  const userRaw = str(custom.user_id);
+  const userId = userRaw && UUID_RE.test(userRaw) ? userRaw.toLowerCase() : null;
+  const currency = currencyCode(data.currency_code);
+  const amountMinor = minorUnits(obj(obj(data.details).totals).grand_total);
+  const reject = (detail: string): Decision => ({
+    kind: "reject",
+    detail,
+    orgId,
+    transactionId: transactionId && TRANSACTION_ID_RE.test(transactionId) ? transactionId : null,
+    currency,
+    amountMinor,
+  });
+  if (!transactionId || !TRANSACTION_ID_RE.test(transactionId)) return reject("transaction without a valid id");
+  if (str(data.status) !== "completed") return { kind: "ignore", detail: `transaction status ${String(data.status)}` };
+  if (!orgId) return reject("paid API top-up without an organization id — not credited");
+  if (!apiProductId || !PADDLE_PRODUCT_ID_RE.test(apiProductId))
+    return reject("paid API top-up, but PADDLE_API_TOPUP_PRODUCT_ID is not set — not credited");
+  const items = Array.isArray(data.items) ? data.items : [];
+  if (items.length === 0) return reject("paid API top-up without items — not credited");
+  let cents = 0;
+  for (const raw of items) {
+    const item = obj(raw);
+    const price = obj(item.price);
+    const unit = obj(price.unit_price);
+    const qty = item.quantity;
+    if (str(price.product_id) !== apiProductId) return reject("paid API top-up with a line that is not the top-up product — not credited");
+    if (currencyCode(unit.currency_code) !== "USD") return reject("paid API top-up not priced in USD — not credited");
+    const amount = minorUnits(unit.amount);
+    if (amount === null || typeof qty !== "number" || !Number.isInteger(qty) || qty < 1 || qty > 1000)
+      return reject("paid API top-up with an unreadable amount or quantity — not credited");
+    cents += amount * qty;
+  }
+  if (cents < API_TOPUP_MIN_CENTS || cents > API_TOPUP_MAX_CENTS)
+    return reject(`paid API top-up of ${cents} cents is outside $5-$5,000 — not credited`);
+  const note = [`Paddle ${transactionId}: API top-up ${(cents / 100).toFixed(2)} USD`, userId ? `by user ${userId}` : null]
+    .filter(Boolean)
+    .join(" · ");
+  return { kind: "api_topup", orgId, userId, transactionId, cents, currency, amountMinor, note };
+}
+
+export function decideTransaction(data: Record<string, unknown>, prices: PriceTable, apiProductId?: string | null): Decision {
+  if (str(obj(data.custom_data).purpose) === "api_topup") return decideApiTopup(data, apiProductId);
   const transactionId = str(data.id);
   const custom = obj(data.custom_data);
   const orgRaw = str(custom.org_id);
@@ -305,10 +377,10 @@ export function decideAdjustment(data: Record<string, unknown>): Decision {
   };
 }
 
-export function decideEvent(event: PaddleEvent, prices: PriceTable): Decision {
+export function decideEvent(event: PaddleEvent, prices: PriceTable, apiProductId?: string | null): Decision {
   switch (event.eventType) {
     case "transaction.completed":
-      return decideTransaction(event.data, prices);
+      return decideTransaction(event.data, prices, apiProductId);
     case "adjustment.created":
     case "adjustment.updated":
       return decideAdjustment(event.data);
@@ -394,6 +466,17 @@ export interface PaddleStore {
     note: string,
     reason: "refund" | "chargeback",
   ): Promise<{ duplicate: boolean; requested: number; taken: number; shortfall: number }>;
+  /** API balance (0031). Optional so a store without them refuses API top-ups
+   *  as a temporary failure instead of mis-crediting them. */
+  addApiTopup?(orgId: string, cents: number, externalId: string, note: string): Promise<{ duplicate: boolean }>;
+  findApiTopup?(transactionId: string): Promise<{ orgId: string; cents: number } | null>;
+  refundApiTopup?(
+    externalId: string,
+    refundId: string,
+    cents: number | null,
+    note: string,
+    reason: "refund" | "chargeback",
+  ): Promise<{ duplicate: boolean; requested: number; taken: number; shortfall: number }>;
 }
 
 export interface Logger {
@@ -415,7 +498,15 @@ const PERMANENT_CODES = new Set(["23505", "22023", "P0002"]);
 
 export async function handlePaddleWebhook(
   req: { method: string; rawBody: string; signature: string | null },
-  deps: { secret: string; prices: PriceTable; store: PaddleStore; now?: () => number; log?: Logger },
+  deps: {
+    secret: string;
+    prices: PriceTable;
+    store: PaddleStore;
+    now?: () => number;
+    log?: Logger;
+    /** The "API balance top-up" product (PADDLE_API_TOPUP_PRODUCT_ID). */
+    apiProductId?: string | null;
+  },
 ): Promise<WebhookResponse> {
   const log: Logger = deps.log ?? console;
   if (req.method !== "POST") return { status: 405, body: { error: "method not allowed" } };
@@ -443,7 +534,7 @@ export async function handlePaddleWebhook(
       return { status: 200, body: { ok: true, duplicate: true, status: prior } };
     }
 
-    const decision = decideEvent(event, deps.prices);
+    const decision = decideEvent(event, deps.prices, deps.apiProductId);
     const record = await execute(decision, deps.store, log, event.eventId);
     await deps.store.recordEvent({ ...base, ...record.row });
     if (record.row.status === "rejected" || record.httpStatus >= 500) {
@@ -532,6 +623,39 @@ async function execute(
       }
     }
 
+    case "api_topup": {
+      const money = {
+        orgId: decision.orgId,
+        transactionId: decision.transactionId,
+        currency: decision.currency,
+        amountMinor: decision.amountMinor,
+      };
+      if (!store.addApiTopup) throw new StoreError("this webhook build cannot credit API top-ups", null);
+      if (!(await store.orgExists(decision.orgId))) {
+        return {
+          httpStatus: 200,
+          row: { status: "rejected", detail: "paid API top-up, but the organization does not exist — not credited", ...money },
+        };
+      }
+      try {
+        const res = await store.addApiTopup(decision.orgId, decision.cents, decision.transactionId, decision.note);
+        log.info(`paddle-webhook: ${eventId} ${res.duplicate ? "API top-up already credited" : `API top-up ${decision.cents} cents`}`);
+        return {
+          httpStatus: 200,
+          row: {
+            status: res.duplicate ? "duplicate" : "processed",
+            detail: res.duplicate ? "API top-up already credited" : `API top-up: credited ${decision.cents} cents`,
+            ...money,
+          },
+        };
+      } catch (err) {
+        if (err instanceof StoreError && err.code && PERMANENT_CODES.has(err.code)) {
+          return { httpStatus: 200, row: { status: "rejected", detail: `API top-up not credited: ${err.code}`, ...money } };
+        }
+        throw err;
+      }
+    }
+
     case "refund": {
       const ids = { transactionId: decision.transactionId, adjustmentId: decision.adjustmentId };
       const purchase = await store.findPurchase(decision.transactionId);
@@ -548,6 +672,48 @@ async function execute(
         return {
           httpStatus: 200,
           row: { status: "ignored", detail: `the purchase was never credited (${purchase.status})`, orgId: purchase.orgId, ...ids },
+        };
+      }
+      // An API top-up is refunded from the API balance, in cents, by the same
+      // proportional rule (refundCredits) as a credit pack.
+      const topup = store.findApiTopup ? await store.findApiTopup(decision.transactionId) : null;
+      if (topup && store.refundApiTopup) {
+        const size = refundCredits(decision, {
+          credits: topup.cents,
+          currency: purchase.currency,
+          amountMinor: purchase.amountMinor,
+        });
+        if (size.unsized) {
+          return {
+            httpStatus: 200,
+            row: {
+              status: "rejected",
+              detail: `partial ${decision.reason} of an API top-up cannot be sized — take the balance back by hand`,
+              orgId: topup.orgId,
+              ...ids,
+            },
+          };
+        }
+        const cents = size.amount === null ? null : Math.round(size.amount);
+        if (cents !== null && cents <= 0) {
+          return { httpStatus: 200, row: { status: "ignored", detail: "refund worth less than one cent", orgId: topup.orgId, ...ids } };
+        }
+        const res = await store.refundApiTopup(decision.transactionId, decision.adjustmentId, cents, `Paddle ${decision.adjustmentId}`, decision.reason);
+        if (res.shortfall > 0)
+          log.warn(`paddle-webhook: ${decision.reason} ${decision.adjustmentId}: ${res.shortfall} API cents were already spent`);
+        return {
+          httpStatus: 200,
+          row: {
+            status: res.duplicate ? "duplicate" : "processed",
+            detail: res.duplicate
+              ? `${decision.reason} of API top-up already recorded`
+              : `${decision.reason} of API top-up: took back ${res.taken} of ${res.requested} cents` +
+                (res.shortfall > 0 ? `; shortfall ${res.shortfall}` : ""),
+            orgId: topup.orgId,
+            currency: decision.currency,
+            amountMinor: decision.amountMinor,
+            ...ids,
+          },
         };
       }
       const size = refundCredits(decision, {
@@ -705,6 +871,39 @@ export function createRestStore(opts: { url: string; serviceKey: string; fetch?:
         credits: num(credited.credits),
         currency: str(credited.currency),
         amountMinor: num(credited.amount_minor),
+      };
+    },
+    async addApiTopup(orgId, cents, externalId, note) {
+      const res = obj(await rpc("api_add_topup", { p_org: orgId, p_cents: cents, p_external_id: externalId, p_note: note }));
+      return { duplicate: res.duplicate === true };
+    },
+    async findApiTopup(transactionId) {
+      const rows = await select(
+        "api_ledger",
+        "api_ledger",
+        `kind=eq.topup&external_id=eq.${q(transactionId)}&select=org_id,amount_cents`,
+      );
+      const first = Array.isArray(rows) && rows.length ? obj(rows[0]) : null;
+      const orgId = first ? str(first.org_id) : null;
+      const cents = first ? Number(first.amount_cents) : NaN;
+      return orgId && Number.isFinite(cents) ? { orgId, cents } : null;
+    },
+    async refundApiTopup(externalId, refundId, cents, note, reason) {
+      const res = obj(
+        await rpc("api_refund_topup", {
+          p_external_id: externalId,
+          p_refund_id: refundId,
+          p_cents: cents,
+          p_note: note,
+          p_reason: reason,
+        }),
+      );
+      const n = (v: unknown) => (typeof v === "number" ? v : Number(v ?? 0));
+      return {
+        duplicate: res.duplicate === true,
+        requested: n(res.requested_cents),
+        taken: n(res.taken_cents),
+        shortfall: n(res.shortfall_cents),
       };
     },
     async refundPurchasedCredits(externalId, refundId, amount, note, reason) {

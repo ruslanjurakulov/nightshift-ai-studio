@@ -83,7 +83,13 @@ class WebhookFunction(unittest.TestCase):
             text = path.read_text(encoding="utf-8")
             with self.subTest(path=str(path.relative_to(ROOT))):
                 self.assertNotIn("PADDLE_WEBHOOK_SECRET", text)
-                self.assertNotRegex(text, r"process\.env\.PADDLE_")
+                # The one exception (migration 0031): the server-only Paddle API
+                # key that creates API top-up transactions, read in exactly one
+                # server-only module. Nothing else named PADDLE_* is read.
+                self.assertNotRegex(text, r"process\.env\.PADDLE_(?!API_KEY\b|API_TOPUP_PRODUCT_ID\b)")
+                if re.search(r"process\.env\.PADDLE_API_(KEY|TOPUP_PRODUCT_ID)\b", text):
+                    self.assertEqual(path.relative_to(APP).as_posix(), "lib/server/paddle-api.ts")
+                    self.assertTrue(text.startswith('import "server-only";'))
 
     def test_docs_deploy_without_jwt_verification(self):
         self.assertIn("supabase functions deploy paddle-webhook --no-verify-jwt", DOCS)

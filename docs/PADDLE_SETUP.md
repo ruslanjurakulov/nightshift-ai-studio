@@ -397,3 +397,41 @@ kerak bo'lsa Credits sahifasidan `grant` qiling.
   `supabase secrets set PADDLE_WEBHOOK_SECRET=…` qiling; almashtirish oralig'ida
   imzo o'tmay qolgan hodisalarni Paddle qayta yuboradi.
 - Imzo 5 daqiqadan eski bo'lsa rad etiladi (qayta yuborilgan eski so'rov o'tmaydi).
+
+## 8. API balansi (0031) — ixtiyoriy summada to'ldirish
+
+Ochiq API (`/api/v1`, `docs/API.md`) kreditlardan alohida, **AQSh sentida**
+oldindan to'lanadigan balansdan to'lanadi. Mijoz **Developers** sahifasida
+$5 dan $5 000 gacha istalgan summani kiritadi; Command Center server'i Paddle
+API orqali shu summaga **non-catalog price** bilan tranzaksiya yaratadi,
+brauzer esa Paddle overlay'ini shu tranzaksiya bilan ochadi. Karta ma'lumotlari
+faqat Paddle'da. Balansni webhook (`paddle-webhook`, service role)
+`api_add_topup()` orqali qo'shadi — bitta Paddle tranzaksiyasi bir marta.
+
+1. Supabase SQL Editor'da `supabase/migrations/0031_public_api.sql` ni
+   ishga tushiring (0030 dan keyin). Fayl oxiridagi "Verify" so'rovida hamma
+   ustun `true` bo'lishi kerak.
+2. Paddle → Catalog → Products → **New product**: nomi masalan
+   "Nightshift API balance top-up", tax category "Standard digital goods".
+   Narx (price) yaratish shart emas — summani server har safar o'zi beradi.
+   Mahsulot id'sini (`pro_…`) yozib oling.
+3. Paddle → Developer tools → Authentication → **API key** yarating
+   (transactions: write, invoices/transactions: read). Sandbox va production
+   kalitlari alohida — `NEXT_PUBLIC_PADDLE_ENV` ga mos bo'lsin.
+4. GitHub → Settings → Environments → `production`:
+   * Secret `PADDLE_API_KEY` = 3-banddagi kalit;
+   * Variable `PADDLE_API_TOPUP_PRODUCT_ID` = 2-banddagi `pro_…`.
+   So'ng **Deploy web** ni qayta ishga tushiring (yoki serverdagi
+   `.env.web` ga qo'shing va `up -d`).
+5. Webhook: `supabase secrets set PADDLE_API_TOPUP_PRODUCT_ID=pro_…` va
+   `supabase functions deploy paddle-webhook --no-verify-jwt` (yangi kod shu
+   mahsulotdan boshqa qatorni API balansiga hech qachon qo'shmaydi).
+6. Sinash (sandbox): Developers → Activate API → Billing → $5 → test karta.
+   Bir necha soniyada balans $5.00, daraja 1 bo'ladi;
+   `select * from public.api_ledger order by id desc limit 5;`.
+
+Narxlar `public.api_prices` jadvalida (standart: daqiqasiga 120 sent, video
+uchun kamida 60 sent, publish bepul, HD yuklab olish = sayt kredit narxi ×
+1,5 sent). O'zgartirish: `update public.api_prices set cents = 150 where unit =
+'video_minute';`. Qo'lda tuzatish:
+`select public.api_adjust_balance('<org uuid>', 500, 'sabab');`.

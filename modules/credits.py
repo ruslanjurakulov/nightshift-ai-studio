@@ -289,6 +289,29 @@ class CreditsRest:
     def expire(self) -> Optional[float]:
         return _num(self._rpc("expire_credit_reservations", {}))
 
+    def api_hold_start(self, hold_ref: str, job_id) -> Optional[float]:
+        """Migration 0031: the API balance hold's amount (cents) when it is open
+        and bound to exactly this job, else None."""
+        return _num(self._rpc("api_hold_start", {"p_ref": hold_ref, "p_job_id": int(job_id)}))
+
+
+def open_api_hold(client, *, hold_ref: str, job_id) -> None:
+    """A job created through the public API (migration 0031) is paid from the
+    organization's API balance, not credits: the database holds it at create
+    and settles it itself when the job ends (a trigger on render_jobs). The
+    runner's part is to refuse the job unless that hold is open and bound to
+    this very job — a browser can insert render_jobs rows, so the column on
+    its own proves nothing. Raises CreditRefused; returns nothing to settle."""
+    if client is None:
+        raise CreditRefused("this job is paid from the API balance, but this worker has no "
+                            "credits client to check the hold")
+    try:
+        amount = client.api_hold_start(hold_ref, job_id)
+    except CreditsUnavailable as e:
+        raise CreditRefused(f"the API balance is unavailable ({e})") from None
+    if amount is None:
+        raise CreditRefused("its API balance hold is not open (expired, settled, or not this job's)")
+
 
 # ── the two ends of a paid run ──────────────────────────────────────────────
 

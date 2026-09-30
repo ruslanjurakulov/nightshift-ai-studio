@@ -82,6 +82,7 @@ export const SECTIONS = [
   "getting-started",
   "members",
   "organization",
+  "developers",
   "security",
   "approvals",
   "alerts",

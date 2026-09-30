@@ -22,7 +22,10 @@ export interface PaddleJs {
   Update(opts: { eventCallback?: (e: PaddleEventData) => void }): void;
   Checkout: {
     open(opts: {
-      items: { priceId: string; quantity: number }[];
+      /** A catalog checkout (credit packs)… */
+      items?: { priceId: string; quantity: number }[];
+      /** …or a transaction the server created (API balance top-up). */
+      transactionId?: string;
       customData?: Record<string, string>;
       customer?: { email: string };
       settings?: {
