@@ -188,6 +188,7 @@ def test_refusals(db):
 
 
 def test_idempotent_replay(db):
+    drain(db)  # 0034: a Free org holds one open run at a time
     a = create(db, UA, ORG_A, key="k-1")
     b = create(db, UA, ORG_A, key="k-1")
     assert a["job"]["id"] == b["job"]["id"] and b["replay"] is True
@@ -227,6 +228,7 @@ def test_concurrent_creates_cannot_overspend(db):
 
 
 def test_cross_org_and_anon(db):
+    drain(db)  # 0034: a Free org holds one open run at a time
     j = create(db, UA, ORG_A)["job"]
     assert db.act("authenticated", UB, "select id from public.creative_jobs where id=%s", [j["id"]]) == []
     assert db.act("authenticated", UB, "select id from public.creative_job_events where job_id=%s", [j["id"]]) == []
@@ -456,6 +458,7 @@ def test_no_api_role_can_call_the_helpers(db, role, uid, helper):
 
 
 def test_a_member_of_org_b_cannot_reach_org_as_hold(db):
+    drain(db)  # 0034: a Free org holds one open run at a time
     victim = create(db, UA, ORG_A)["job"]
     ref = "cj:" + victim["id"]
     before = acct(db, ORG_A)
@@ -476,3 +479,19 @@ def test_a_member_of_org_b_cannot_reach_org_as_hold(db):
     assert acct(db, ORG_A) == before
     assert db.su("select org_id::text, amount::float, status from public.credit_reservations where job_id = %s", [ref]) == hold
     assert db.su("select status from public.creative_jobs where id = %s", [victim["id"]])[0][0] == "queued"
+
+
+def test_the_plans_parallel_limit_applies_to_creative_holds(db):
+    # 0034: on the Free plan an organization has one open hold at a time. A
+    # second generation is refused whole — no hold, no job row.
+    drain(db)
+    first = create(db, UA, ORG_A)["job"]
+    jobs_before = db.su("select count(*) from public.creative_jobs where org_id = %s", [ORG_A])[0][0]
+    bal = acct(db, ORG_A)
+    st, msg = err(lambda: create(db, UA, ORG_A, key="limit-2"))
+    assert st == "NS429", msg
+    assert db.su("select count(*) from public.creative_jobs where org_id = %s", [ORG_A])[0][0] == jobs_before
+    assert acct(db, ORG_A) == bal
+    db.act("authenticated", UA, "select public.cancel_creative_job(%s)", [first["id"]])
+    assert create(db, UA, ORG_A, key="limit-2")["job"]["status"] == "queued"
+    drain(db)

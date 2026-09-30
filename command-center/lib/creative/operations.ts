@@ -55,6 +55,7 @@ export const CREATIVE_ERRORS = [
   "capability_not_supported",
   "mode_not_supported",
   "insufficient_credits",
+  "run_limit_reached",
   "forbidden",
   "not_found",
   "not_cancellable",
@@ -127,6 +128,11 @@ export function mapCreativeError(error: DbError): CreativeResult {
         available: m ? Number(m[1]) : null,
         needed: m ? Number(m[2]) : null,
       });
+    }
+    case "NS429": {
+      // 0034: the plan's parallel runs are all holding credits.
+      const m = /active=(\d+)\s+limit=(\d+)/.exec(error.details ?? "");
+      return fail(429, "run_limit_reached", { active: m ? Number(m[1]) : null, limit: m ? Number(m[2]) : null });
     }
     case "NS400": {
       const hit = NS400[word];

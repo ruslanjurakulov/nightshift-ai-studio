@@ -96,6 +96,11 @@ describe("mapCreativeError", () => {
     expect(r).toEqual({ status: 402, body: { error: "insufficient_credits", available: 4, needed: 6 } });
   });
 
+  it("reports the plan's parallel limit with its numbers", () => {
+    const r = mapCreativeError({ code: "NS429", message: "parallel run limit reached", details: "active=1 limit=1" });
+    expect(r).toEqual({ status: 429, body: { error: "run_limit_reached", active: 1, limit: 1 } });
+  });
+
   it("maps membership and existence refusals", () => {
     expect(mapCreativeError({ code: "42501", message: "forbidden" }).status).toBe(403);
     expect(mapCreativeError({ code: "P0002", message: "not_found" }).status).toBe(404);

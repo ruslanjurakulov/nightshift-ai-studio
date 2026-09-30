@@ -2116,6 +2116,7 @@ export const en = {
       capability_not_supported: "This kind of generation is not available yet.",
       mode_not_supported: "Only the model you pick is used; automatic model choice is not available yet.",
       insufficient_credits: "Not enough credits. Add credits or choose a shorter or cheaper generation.",
+      run_limit_reached: "Your plan's parallel generations are all running. Wait for one to finish, or upgrade the plan.",
       forbidden: "You are not a member of this organization.",
       not_found: "This generation does not exist or belongs to another organization.",
       not_cancellable: "The provider is already working on this generation, so it can no longer be cancelled.",

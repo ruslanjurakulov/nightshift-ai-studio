@@ -84,6 +84,7 @@
 --         mode_not_supported | invalid_idempotency_key
 --   NS409 price_changed | idempotency_conflict | not_cancellable
 --   NS402 insufficient credits (raised by reserve_credits, 0020)
+--   NS429 the plan's parallel runs are all in use (0034's hold trigger)
 --
 -- DURABILITY (the worker's side, modules/creative_worker.py)
 --   The worker marks 'submitting' BEFORE the billable provider call and

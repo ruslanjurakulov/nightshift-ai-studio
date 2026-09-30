@@ -2109,6 +2109,7 @@ export const uz: Dictionary = {
       capability_not_supported: "Bu turdagi generatsiya hali mavjud emas.",
       mode_not_supported: "Faqat siz tanlagan model ishlatiladi; modelni avtomatik tanlash hali mavjud emas.",
       insufficient_credits: "Kredit yetarli emas. Kredit qo'shing yoki qisqaroq yoki arzonroq generatsiyani tanlang.",
+      run_limit_reached: "Tarifingizdagi barcha parallel generatsiyalar band. Bittasi tugashini kuting yoki tarifni oshiring.",
       forbidden: "Siz bu tashkilot a'zosi emassiz.",
       not_found: "Bu generatsiya mavjud emas yoki boshqa tashkilotga tegishli.",
       not_cancellable: "Provayder bu generatsiya ustida ishlayapti, endi uni bekor qilib bo'lmaydi.",
