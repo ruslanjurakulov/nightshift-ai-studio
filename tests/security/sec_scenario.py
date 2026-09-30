@@ -248,6 +248,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     for t, name in ((sc.alice, "Alice Studio"), (sc.bob, "Bob Media")):
         t.org = _create_org(conn, t.actor, name)
         _seed_tenant(conn, t)
+    # Plans (0034): Alice on Creator, Bob on Pro (tests/security/sec_plans_0034.py).
+    import sec_plans_0034
+    sec_plans_0034.seed(conn, sc)
     # A pending invite into org A, addressed to Ivan's email, not yet accepted.
     with acting(conn, sc.alice.actor, commit=True) as s:
         s.value("select public.invite_org_member(%s, %s, 'viewer')", [sc.alice.org, sc.invitee.email])

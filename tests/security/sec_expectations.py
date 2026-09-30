@@ -256,3 +256,9 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "revoke_api_key": USER,
     "set_api_key_limit": USER,
 }
+
+
+# Migration 0034 (plans, entitlements, credit lots): tests/security/sec_plans_0034.py
+import sec_plans_0034  # noqa: E402
+
+sec_plans_0034.extend(TABLES, FUNCTIONS)

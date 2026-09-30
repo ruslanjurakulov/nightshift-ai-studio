@@ -1,8 +1,7 @@
 """Security-lab contract for migration 0034 (plans, entitlements, credit lots).
 
-Kept in its own module so the plans work and the lab could land in either
-order. Two hooks wire it in (both one line, both already in place once the lab
-and 0034 are on the same branch):
+Kept in its own module so the plans work reads as one piece. Two hooks wire
+it in:
 
   * sec_expectations.py, at the bottom:
         import sec_plans_0034; sec_plans_0034.extend(TABLES, FUNCTIONS)
