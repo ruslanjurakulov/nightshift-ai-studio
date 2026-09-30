@@ -44,7 +44,7 @@ export default async function ApiDocsPage() {
   }
   return (
     <PublicShell t={t}>
-      <ApiDocs prices={prices} origin={siteOrigin()} />
+      <ApiDocs prices={prices} origin={siteOrigin()} labels={{ table: t.common.scrollTable, code: t.common.scrollCode }} />
     </PublicShell>
   );
 }

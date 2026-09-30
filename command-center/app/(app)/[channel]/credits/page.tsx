@@ -11,9 +11,15 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { coerceTransactions, formatCredits, isCreditExempt } from "@/lib/credits";
 import { creditsEnforced, readCreditAccount, readCreditPrices } from "@/lib/server/credits";
-import { buyAccess, paddleConfig } from "@/lib/paddle";
+import { buyAccess, paddleClient, paddleConfig } from "@/lib/paddle";
+import { PLAN_ENV, planMatrix, subscribeAccess } from "@/lib/plans";
+import { planValue, readBillingSummary, readCreditLots, readPlanCatalog } from "@/lib/server/plans";
+import { PlanPanel } from "@/components/credits/PlanPanel";
+import { CreditLots } from "@/components/credits/CreditLots";
 import { ErrorState } from "@/components/ReadError";
 import { readFailed } from "@/lib/readState";
+
+const FAILED_READ = { state: "failed" as const };
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -50,7 +56,7 @@ export default async function CreditsPage() {
   if (!org.current) return note(t.credits.noOrg);
   const orgId = org.current.id;
 
-  const [acct, priceRes, txns, admin, userRes] = await Promise.all([
+  const [acct, priceRes, txns, admin, userRes, catalogRead, summaryRead, lotsRead] = await Promise.all([
     readCreditAccount(supabase, orgId),
     readCreditPrices(supabase),
     supabase
@@ -62,6 +68,12 @@ export default async function CreditsPage() {
       .limit(200),
     supabase.rpc("is_platform_admin"),
     supabase.auth.getUser(),
+    // Plans (0034). Each read is ok / unsupported (migration not applied: the
+    // page shows what it showed before) / failed (unknown: never a plan name,
+    // "Free", a 0 or an empty list in its place).
+    readPlanCatalog(supabase).catch(() => FAILED_READ),
+    readBillingSummary(supabase, orgId).catch(() => FAILED_READ),
+    readCreditLots(supabase, orgId).catch(() => FAILED_READ),
   ]);
   if (!acct.supported || !priceRes.supported) return note(t.credits.notMigrated);
 
@@ -74,6 +86,17 @@ export default async function CreditsPage() {
   const ledgerFailed = readFailed(txns);
   const user = userRes.data.user;
   const buy = buyAccess(orgId, org.current.role, paddleConfig);
+  const catalog = planValue(catalogRead);
+  const summary = planValue(summaryRead);
+  const lots = planValue(lotsRead);
+  const catalogFailed = catalogRead.state === "failed";
+  const summaryFailed = summaryRead.state === "failed";
+  const lotsFailed = lotsRead.state === "failed";
+  const matrix = planMatrix(catalog, PLAN_ENV, paddleClient);
+  // Whether the organization already has a live subscription is unknown when
+  // its summary could not be read: offering a second checkout then could
+  // double-charge, so nothing is offered until it reads.
+  const planAccess = summaryFailed ? "hidden" : subscribeAccess(orgId, org.current.role, matrix, summary);
 
   return (
     <div className="rhythm">
@@ -115,6 +138,26 @@ export default async function CreditsPage() {
         </p>
       </div>
 
+      {!exempt && summaryFailed && (
+        <section id="plans" className="panel flex scroll-mt-24 flex-col gap-2 p-4" aria-labelledby="plan-title">
+          <h2 id="plan-title" className="t-section">
+            {t.plans.panelTitle}
+          </h2>
+          <ErrorState compact message={t.plans.billingReadFailed} />
+        </section>
+      )}
+      {!exempt && summary && (
+        <PlanPanel
+          summary={summary}
+          matrix={matrix}
+          access={planAccess}
+          orgId={orgId}
+          userId={user?.id ?? null}
+          email={user?.email ?? null}
+          plansUnread={catalogFailed}
+        />
+      )}
+
       {buy === "allowed" && paddleConfig && account && (
         <BuyCredits
           config={paddleConfig}
@@ -131,6 +174,14 @@ export default async function CreditsPage() {
       )}
 
       {platformAdmin && <GrantCreditsForm orgId={orgId} orgName={org.current.name} />}
+
+      {!exempt && lotsFailed && (
+        <div className="panel p-4">
+          <h2 className="t-section">{t.plans.lotsTitle}</h2>
+          <ErrorState compact message={t.plans.lotsReadFailed} />
+        </div>
+      )}
+      {!exempt && lots && <CreditLots lots={lots} />}
 
       {ledgerFailed ? (
         <div className="panel p-4">

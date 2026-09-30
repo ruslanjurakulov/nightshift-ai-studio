@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { orgWide, scopeQuery, type ChannelScope } from "@/lib/channels";
@@ -11,6 +11,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import { uploadedOnly } from "@/lib/heldVideos";
 import { useNavigation } from "@/components/navigation/NavigationProvider";
 import { sectionAllowed } from "@/lib/navigation";
+import { useOverlay } from "@/components/a11y/useOverlay";
 
 /** The palette's one command that is not a place: it has no href of its own. */
 const BACK_ID = "a:back";
@@ -84,6 +85,9 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
   const [events, setEvents] = useState<Item[]>([]);
   const loaded = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const paletteRef = useRef<HTMLDivElement>(null);
+  const helpRef = useRef<HTMLDivElement>(null);
+  const helpTitleId = useId();
 
   // Search the whole current organization, whichever channel is selected —
   // never every tenant a platform admin's RLS can read. A switch of
@@ -179,9 +183,10 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
     };
   }, [loadData, nav, openPalette, path, router]);
 
-  useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
+  // Escape closes either dialog from anywhere inside it and hands focus back to
+  // whatever opened it; the palette lands on its search field.
+  useOverlay(open, { onClose: () => setOpen(false), container: paletteRef, initialFocus: inputRef });
+  useOverlay(help, { onClose: () => setHelp(false), container: helpRef });
 
   const navItems: Item[] = useMemo(
     () => nav.map((n) => ({ id: `n:${n.href}`, section: "nav" as const, label: t.nav[n.key], href: n.href })),
@@ -216,8 +221,6 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (results[active]) choose(results[active]);
-    } else if (e.key === "Escape") {
-      setOpen(false);
     }
   }
 
@@ -232,7 +235,12 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
       {open && (
         <div className="scrim-enter fixed inset-0 z-[100] flex items-start justify-center bg-black/72 p-4 pt-[12vh] backdrop-blur-sm" onClick={() => setOpen(false)}>
           <div
-            className="sheet-enter w-full max-w-xl overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)]"
+            ref={paletteRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={t.ops.shortcutsPalette}
+            tabIndex={-1}
+            className="sheet-enter w-full max-w-xl overflow-hidden outline-none rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 border-b border-[var(--color-border)] pr-3">
@@ -286,9 +294,17 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
 
       {help && (
         <div className="scrim-enter fixed inset-0 z-[100] flex items-center justify-center bg-black/72 p-4 backdrop-blur-sm" onClick={() => setHelp(false)}>
-          <div className="sheet-enter w-full max-w-sm rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-6" onClick={(e) => e.stopPropagation()}>
+          <div
+            ref={helpRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={helpTitleId}
+            tabIndex={-1}
+            className="sheet-enter w-full max-w-sm rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-6 outline-none"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-start justify-between gap-4">
-              <h2 className="font-display text-base font-semibold">{t.ops.shortcutsTitle}</h2>
+              <h2 id={helpTitleId} className="font-display text-base font-semibold">{t.ops.shortcutsTitle}</h2>
               <button
                 type="button"
                 onClick={() => setHelp(false)}

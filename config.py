@@ -101,10 +101,14 @@ WAN_RESOLUTION = os.getenv("WAN_RESOLUTION", "720P")
 WAN_SUBMIT_PATH = os.getenv("WAN_SUBMIT_PATH", "/api/v1/services/aigc/video-generation/video-synthesis")
 WAN_QUERY_PATH = os.getenv("WAN_QUERY_PATH", "/api/v1/tasks/{id}")
 # Google Veo (Gemini API) — key in the x-goog-api-key header (no Bearer prefix).
+# veo-3.0-generate-preview (the old default) was shut down on 2025-11-12;
+# the 3.1 family is current: veo-3.1-generate-preview, -fast-, -lite-.
+# "{model}" in the submit path is replaced by VEO_MODEL.
 VEO_API_KEY = os.getenv("VEO_API_KEY", "")
 VEO_BASE_URL = os.getenv("VEO_BASE_URL", "https://generativelanguage.googleapis.com").rstrip("/")
-VEO_MODEL = os.getenv("VEO_MODEL", "veo-3.0-generate-preview")
-VEO_SUBMIT_PATH = os.getenv("VEO_SUBMIT_PATH", "/v1beta/models/veo-3.0-generate-preview:predictLongRunning")
+VEO_MODEL = os.getenv("VEO_MODEL", "").strip() or "veo-3.1-generate-preview"
+VEO_RESOLUTION = os.getenv("VEO_RESOLUTION", "").strip()          # "720p" / "1080p"; empty = Google's default
+VEO_SUBMIT_PATH = os.getenv("VEO_SUBMIT_PATH", "").strip() or "/v1beta/models/{model}:predictLongRunning"
 VEO_QUERY_PATH = os.getenv("VEO_QUERY_PATH", "/v1beta/{id}")
 
 # ── Agent / Autopilot (modules/agent_planner.py) ──────────────────────────────
@@ -217,6 +221,13 @@ ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "").strip() or "pNInz6obp
 # else is ignored rather than sent.
 _run_voice = os.getenv("ELEVENLABS_RUN_VOICE_ID", "").strip()
 ELEVENLABS_RUN_VOICE_ID = _run_voice if re.fullmatch(r"[A-Za-z0-9]{20}", _run_voice) else ""
+# The second voice a script's [VOICE:secondary] lines (quotes, character
+# speech) are read in. There is no built-in default: it used to be a voice id
+# typed into audio_mixer.py, a library voice that free-plan accounts may not
+# use through the API, and runs #147 and #159 died on it with HTTP 402 after
+# paying for the script. A channel's own agent_config value wins over this.
+# "narrator" is an explicit choice to read those lines in the narrator's voice.
+ELEVENLABS_SECONDARY_VOICE_ID = os.getenv("ELEVENLABS_SECONDARY_VOICE_ID", "").strip()
 # ElevenLabs model. eleven_multilingual_v2 stays the default (polished,
 # consistent narration); eleven_v3 is the most expressive, eleven_flash_v2_5 /
 # eleven_turbo_v2_5 are cheaper and faster. A value outside the list falls back

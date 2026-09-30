@@ -7,11 +7,11 @@
  * Server pages are async functions; we await them and render the element tree
  * to static markup against a scripted Supabase stub.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { en } from "../lib/i18n/en";
-import { EMPTY, NO_ROW, emptySupabase, esc, failingSupabase, supabaseStub } from "./helpers/supabaseStub";
+import { EMPTY, FAILED, NO_ROW, emptySupabase, esc, failingSupabase, supabaseStub } from "./helpers/supabaseStub";
 
 vi.mock("server-only", () => ({}));
 
@@ -116,10 +116,176 @@ describe("credits: never a 0 balance on failure", () => {
   });
 
   it("no account row is a real 0 and keeps the empty ledger", async () => {
-    state.client = supabaseStub((name) => (name === "credit_accounts" ? NO_ROW : name === "is_platform_admin" ? { data: false, error: null } : EMPTY));
+    state.client = supabaseStub((name) =>
+      name === "credit_accounts" || name === "billing_summary" // billing_summary answers null when there is nothing to show
+        ? NO_ROW
+        : name === "is_platform_admin"
+          ? { data: false, error: null }
+          : EMPTY,
+    );
     const html = await render(load);
     expect(has(html, en.credits.ledgerEmpty)).toBe(true);
     expect(has(html, en.credits.readFailed)).toBe(false);
+    expect(html).not.toContain("data-read-error");
+  });
+});
+
+// ── plans (0034): a failed read of the plan, the lots or the catalog is unknown ──
+
+const FREE_SUMMARY = {
+  exempt: false,
+  plan: { id: "free", name: "Free", monthly_credits: 0, is_default: true },
+  subscription: null,
+  credits: { subscription: 0, pack: 0, other: 0, held: 0 },
+  next_expiry: null,
+  run_slots: null,
+};
+const CATALOG_ROWS: Record<string, unknown[]> = {
+  plans: [
+    { id: "free", name: "Free", sort_order: 0, monthly_credits: 0, is_default: true, is_public: true },
+    { id: "pro", name: "Pro", sort_order: 2, monthly_credits: 4000, is_default: false, is_public: true },
+  ],
+  entitlement_keys: [],
+  plan_entitlements: [],
+  credit_lot_policies: [],
+};
+const MISSING = { data: null, error: { message: "relation does not exist", code: "42P01" } };
+/** A healthy deployment, with `over` replacing individual tables / functions. */
+function plansClient(over: Record<string, { data: unknown; error: unknown }> = {}) {
+  return supabaseStub((name) => {
+    if (over[name]) return over[name];
+    if (name === "credit_accounts") return { data: { balance: 50, reserved: 0 }, error: null };
+    if (name === "billing_summary") return { data: FREE_SUMMARY, error: null };
+    if (name === "is_platform_admin") return { data: false, error: null };
+    if (name in CATALOG_ROWS) return { data: CATALOG_ROWS[name], error: null };
+    return EMPTY;
+  });
+}
+
+describe("credits plans: unknown, never 'Free', 0 or an empty list", () => {
+  const load = async () => (await import("../app/(app)/[channel]/credits/page")).default();
+
+  it("healthy: the plan, the empty lots text and the normal ledger", async () => {
+    state.client = plansClient();
+    const html = await render(load);
+    expect(html).toContain(`Free`);
+    expect(has(html, en.plans.lotsEmpty)).toBe(true);
+    expect(html).not.toContain("data-read-error");
+  });
+
+  it("billing summary failed: plan unknown, nothing to choose, no 'Free'", async () => {
+    state.client = plansClient({ billing_summary: FAILED });
+    const html = await render(load);
+    expect(has(html, en.plans.billingReadFailed)).toBe(true);
+    expect(has(html, en.common.retry)).toBe(true);
+    expect(html).not.toContain("Free");
+    expect(has(html, en.plans.planCredits)).toBe(false);
+    expect(has(html, en.plans.subscribe)).toBe(false);
+  });
+
+  it("billing summary with unreadable credit figures is a failed read, not 0 credits", async () => {
+    state.client = plansClient({
+      billing_summary: { data: { ...FREE_SUMMARY, credits: { subscription: "x", pack: null } }, error: null },
+    });
+    const html = await render(load);
+    expect(has(html, en.plans.billingReadFailed)).toBe(true);
+    expect(has(html, en.plans.planCredits)).toBe(false);
+  });
+
+  it("a summary with no plan shows the plan as unknown, not 'Free'", async () => {
+    state.client = plansClient({ billing_summary: { data: { ...FREE_SUMMARY, plan: null }, error: null } });
+    const html = await render(load);
+    expect(html).not.toContain("Free");
+    expect(has(html, en.common.unknown)).toBe(true);
+  });
+
+  it("lots failed: error state, not 'No credits yet'", async () => {
+    state.client = plansClient({ credit_lots: FAILED });
+    const html = await render(load);
+    expect(has(html, en.plans.lotsReadFailed)).toBe(true);
+    expect(has(html, en.plans.lotsEmpty)).toBe(false);
+  });
+
+  it("a lot row that cannot be read fails the list instead of dropping it", async () => {
+    state.client = plansClient({ credit_lots: { data: [{ id: 1, source: "pack", amount: "many", remaining: 5 }], error: null } });
+    const html = await render(load);
+    expect(has(html, en.plans.lotsReadFailed)).toBe(true);
+  });
+
+  it("catalog failed (plan known): the plan shows, the choice is unknown not absent", async () => {
+    state.client = plansClient({ plans: FAILED });
+    const html = await render(load);
+    expect(html).toContain("Free");
+    expect(has(html, en.plans.readFailed)).toBe(true);
+    expect(has(html, en.plans.billingReadFailed)).toBe(false);
+  });
+
+  it("migration 0034 not applied: what the page showed before, no error state", async () => {
+    state.client = plansClient({
+      billing_summary: MISSING,
+      credit_lots: MISSING,
+      plans: MISSING,
+      entitlement_keys: MISSING,
+      plan_entitlements: MISSING,
+    });
+    const html = await render(load);
+    expect(html).not.toContain("data-read-error");
+    expect(has(html, en.plans.panelTitle)).toBe(false);
+    expect(has(html, en.plans.lotsTitle)).toBe(false);
+    expect(has(html, en.credits.available)).toBe(true);
+  });
+
+  describe("with a plan on sale", () => {
+    beforeEach(() => {
+      vi.stubEnv("NEXT_PUBLIC_PADDLE_CLIENT_TOKEN", "test_abcdefghijkl");
+      vi.stubEnv("NEXT_PUBLIC_PADDLE_ENV", "sandbox");
+      vi.stubEnv("NEXT_PUBLIC_PADDLE_PLAN_PRO", "pri_abcdefghij12");
+      vi.resetModules();
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    });
+
+    it("offers the plan when the summary reads (proves the next case is the read failure's doing)", async () => {
+      state.client = plansClient();
+      const html = await render(load);
+      expect(has(html, en.plans.subscribe)).toBe(true);
+    });
+
+    it("offers no checkout when the summary failed: a live subscription may exist", async () => {
+      state.client = plansClient({ billing_summary: FAILED });
+      const html = await render(load);
+      expect(has(html, en.plans.subscribe)).toBe(false);
+      expect(has(html, en.plans.billingReadFailed)).toBe(true);
+    });
+  });
+});
+
+describe("pricing: a failed read is unknown, not 'none on sale' or 'not published'", () => {
+  const load = async () => (await import("../app/pricing/page")).default();
+
+  it("catalog and rates failed (signed in)", async () => {
+    state.client = failingSupabase();
+    const html = await render(load);
+    expect(has(html, en.plans.readFailed)).toBe(true);
+    expect(has(html, en.pricing.ratesReadFailed)).toBe(true);
+    expect(has(html, en.pricing.ratesUnavailable)).toBe(false);
+    expect(html).toContain("data-read-error");
+  });
+
+  it("catalog failed, signed out: the plans say they could not be read", async () => {
+    state.client = supabaseStub((name) => (name in CATALOG_ROWS ? FAILED : EMPTY), null);
+    const html = await render(load);
+    expect(has(html, en.plans.readFailed)).toBe(true);
+    expect(has(html, en.pricing.ratesSignedOut)).toBe(true);
+  });
+
+  it("not applied / healthy: no error state", async () => {
+    state.client = supabaseStub((name) => (name in CATALOG_ROWS ? MISSING : name === "credit_prices" ? EMPTY : EMPTY));
+    const html = await render(load);
+    expect(has(html, en.plans.readFailed)).toBe(false);
+    expect(has(html, en.pricing.ratesReadFailed)).toBe(false);
     expect(html).not.toContain("data-read-error");
   });
 });

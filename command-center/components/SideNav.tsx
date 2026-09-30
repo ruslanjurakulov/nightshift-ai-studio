@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   TerminalSquare,
   LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, Sparkles,
@@ -14,6 +14,7 @@ import {
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { navGroupsFor, type NavKey } from "@/lib/navigation";
+import { useOverlay } from "@/components/a11y/useOverlay";
 
 /**
  * The app's primary navigation, as a left rail — icon + label, grouped.
@@ -128,15 +129,11 @@ export function SideNav({ operator = false }: { operator?: boolean }) {
     setOpen(false);
   }, [pathname]);
 
-  // Lock body scroll and allow Escape to close while the drawer is open.
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
+  // Escape closes, focus moves into the drawer and returns to the Menu button.
+  const menuRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const drawerId = useId();
+  useOverlay(open, { onClose: () => setOpen(false), container: drawerRef, opener: menuRef });
 
   return (
     <>
@@ -148,13 +145,15 @@ export function SideNav({ operator = false }: { operator?: boolean }) {
       </aside>
 
       {/* Mobile trigger — a slim bar under the header */}
-      <div className="sticky top-[68px] z-20 flex items-center gap-2 border-b border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-bg)_82%,transparent)] px-[clamp(0.75rem,3vw,56px)] py-2 backdrop-blur-md lg:hidden">
+      <div className="sticky top-[73px] z-20 flex items-center gap-2 border-b border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-bg)_82%,transparent)] px-[clamp(0.75rem,3vw,56px)] py-2 backdrop-blur-md lg:hidden">
         <button
+          ref={menuRef}
           type="button"
           onClick={() => setOpen(true)}
-          aria-label={t.nav.menu}
+          aria-haspopup="dialog"
           aria-expanded={open}
-          className="btn-sky is-quiet pill inline-flex h-9 items-center gap-2 px-3 text-[13px]"
+          aria-controls={open ? drawerId : undefined}
+          className="btn-sky is-quiet pill inline-flex h-10 items-center gap-2 px-3 text-[13px]"
         >
           <Menu aria-hidden className="size-4" />
           {t.nav.menu}
@@ -163,8 +162,17 @@ export function SideNav({ operator = false }: { operator?: boolean }) {
 
       {/* Mobile drawer */}
       {open && (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
+        <div
+          ref={drawerRef}
+          id={drawerId}
+          className="fixed inset-0 z-50 outline-none lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t.nav.menu}
+          tabIndex={-1}
+        >
           <div
+            aria-hidden="true"
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setOpen(false)}
           />
@@ -176,8 +184,8 @@ export function SideNav({ operator = false }: { operator?: boolean }) {
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                aria-label={t.nav.menu}
-                className="btn-sky is-quiet pill inline-flex size-9 items-center justify-center"
+                aria-label={t.ops.shortcutsClose}
+                className="btn-sky is-quiet pill inline-flex size-10 items-center justify-center"
               >
                 <X aria-hidden className="size-4" />
               </button>

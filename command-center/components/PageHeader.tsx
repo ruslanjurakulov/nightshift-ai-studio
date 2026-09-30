@@ -86,7 +86,9 @@ export function PageHeader({
           {subtitle && <p className="t-lead mt-3">{subtitle}</p>}
         </div>
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {/* Wraps under the title on a phone: several actions side by side are wider
+          than the screen, and `shrink-0` would make the page scroll sideways. */}
+      {actions && <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }

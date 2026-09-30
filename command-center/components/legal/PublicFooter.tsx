@@ -54,7 +54,7 @@ export function PublicFooter({ t }: { t: Dictionary }) {
         <div className="flex flex-col gap-3">
           <Link
             href="/"
-            className="self-start font-display text-xl font-semibold tracking-[-0.02em] text-[var(--color-primary)]"
+            className="tap-link self-start font-display text-xl font-semibold tracking-[-0.02em] text-[var(--color-primary)]"
           >
             {t.brand.name}
           </Link>
@@ -62,7 +62,7 @@ export function PublicFooter({ t }: { t: Dictionary }) {
           {LEGAL.contactEmail && (
             <a
               href={`mailto:${LEGAL.contactEmail}`}
-              className="mono self-start text-[12px] text-[var(--color-muted)] underline-offset-4 hover:text-[var(--color-primary)] hover:underline"
+              className="tap-link mono self-start text-[12px] text-[var(--color-muted)] underline-offset-4 hover:text-[var(--color-primary)] hover:underline"
             >
               {LEGAL.contactEmail}
             </a>
@@ -78,7 +78,7 @@ export function PublicFooter({ t }: { t: Dictionary }) {
                     key={l.href}
                     href={l.href}
                     {...(l.href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                    className="flex min-h-9 items-center text-[14px] font-light text-[var(--color-fg)] transition-colors hover:text-[var(--color-primary)]"
+                    className="flex min-h-10 items-center text-[14px] font-light text-[var(--color-fg)] transition-colors hover:text-[var(--color-primary)]"
                   >
                     {l.label}
                   </a>
@@ -86,7 +86,7 @@ export function PublicFooter({ t }: { t: Dictionary }) {
                   <Link
                     key={l.href}
                     href={l.href}
-                    className="flex min-h-9 items-center text-[14px] font-light text-[var(--color-fg)] transition-colors hover:text-[var(--color-primary)]"
+                    className="flex min-h-10 items-center text-[14px] font-light text-[var(--color-fg)] transition-colors hover:text-[var(--color-primary)]"
                   >
                     {l.label}
                   </Link>

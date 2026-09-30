@@ -26,7 +26,7 @@ export function CreditBalanceChip({ account }: { account: CreditAccount | null }
       href={path("/credits")}
       title={title}
       aria-label={`${t.credits.headerLabel}: ${title}`}
-      className="btn-sky is-quiet pill h-9 gap-2 px-3 sm:h-10 sm:px-4"
+      className="btn-sky is-quiet pill h-10 gap-2 px-3 sm:px-4"
     >
       <Coins aria-hidden className="size-3.5 shrink-0 text-[var(--color-muted)]" />
       <span className="mono text-[13px]" style={{ color: account.available > 0 ? undefined : "var(--color-warn)" }}>
