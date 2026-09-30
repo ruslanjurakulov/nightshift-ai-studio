@@ -267,6 +267,19 @@ def job(**kw):
     return base
 
 
+class OperatorCredits:
+    """The credits client as the operator's own channels see it: every channel
+    is in the credits-exempt default organization (migration 0020). The worker
+    asks who pays for every job (0041) — these tests are about the queue, so
+    nobody does."""
+
+    def channel_org(self, channel_id):
+        return "00000000-0000-0000-0000-000000000001"
+
+    def expire(self):
+        return 0
+
+
 class WorkerCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -297,7 +310,7 @@ class WorkerCase(unittest.TestCase):
     def worker(self, queue, **kw):
         opts = dict(env=self.env, repo_dir=self.repo, prelude=[], resolve_channel=self.resolve,
                     heartbeat_seconds=0.05, poll_seconds=0.01, grace_seconds=60,
-                    kill_after_seconds=2, out=self.out)
+                    kill_after_seconds=2, out=self.out, credits=OperatorCredits())
         opts.update(kw)
         return qw.Worker(queue, worker_id="w1", **opts)
 

@@ -98,6 +98,13 @@ def _render_job(s, channel, params=None, **cols):
     return s.run(f"insert into public.render_jobs ({names}) values ({marks})", vals)
 
 
+def _hold(s, org) -> str:
+    """A fresh queue credit hold of `org`, reserved by whoever `s` acts as —
+    what "Run now" takes before it queues a customer's run (0041 refuses a
+    customer's render job without one)."""
+    return s.value("select public.reserve_credits(%s, 'rj-' || gen_random_uuid()::text, 60) ->> 'job_id'", [org])
+
+
 def test_customer_cannot_queue_a_render_on_another_orgs_channel(conn, sc):
     with acting(conn, sc.bob.actor) as s:
         out = _render_job(s, sc.alice.channel)
@@ -117,10 +124,10 @@ def test_customer_render_job_cannot_carry_worker_or_publish_fields(conn, sc, ext
     # Nothing in a browser may choose privacy, repair scenes, or skip the
     # queue's state machine.
     extra = dict(extra)
-    params = extra.pop("params", None)
+    params = {"duration": 300, **extra.pop("params", {})}
     with acting(conn, sc.bob.actor) as s:
-        ok = _render_job(s, sc.bob.channel)
-        out = _render_job(s, sc.bob.channel, params=params, **extra)
+        ok = _render_job(s, sc.bob.channel, params={"duration": 300}, credit_ref=_hold(s, sc.bob.org))
+        out = _render_job(s, sc.bob.channel, params=params, credit_ref=_hold(s, sc.bob.org), **extra)
     assert ok.ok, f"control: Bob cannot queue a plain run on his own channel: {ok!r}"
     assert not out.ok, out
 

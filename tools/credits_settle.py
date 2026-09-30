@@ -47,11 +47,23 @@ from modules import credits  # noqa: E402
 logger = logging.getLogger("credits_settle")
 
 _REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$")
+_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+_ENV_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
+
+
+def _env_safe(values: Mapping[str, str]) -> bool:
+    """GITHUB_ENV is line-oriented: a line break inside a value starts a new
+    `NAME=value` line, and a later step would run with a variable nobody set
+    (BASH_ENV, PATH …). Only plain names and single-line values go in."""
+    return all(_ENV_NAME.fullmatch(k) and "\n" not in str(v) and "\r" not in str(v)
+               for k, v in values.items())
 
 
 def _append_env(path: Optional[str], values: Mapping[str, str]) -> None:
     if not path:
         return
+    if not _env_safe(values):
+        raise ValueError("refusing to write a multi-line value to GITHUB_ENV")
     with open(path, "a", encoding="utf-8") as fh:
         for k, v in values.items():
             fh.write(f"{k}={v}\n")
@@ -82,11 +94,22 @@ def start(env: Mapping[str, str], client) -> int:
         # The channel's organization is exempt (the operator's own).
         print("Credits: this channel's organization is exempt — no hold to settle.")
         return 0
-    _append_env(env.get("GITHUB_ENV"), {
+    values = {
         "CREDITS_HOLD": f"{hold.amount:.2f}",
-        "CREDITS_ORG": hold.org_id,
+        "CREDITS_ORG": str(hold.org_id or ""),
         "CREDITS_SINCE": datetime.now(timezone.utc).isoformat(),
-    })
+    }
+    # The organization id comes from the database, and goes into GITHUB_ENV.
+    # Anything but a plain UUID is refused — but the hold is already claimed,
+    # and a failed start skips the settle step, so give it back through the
+    # normal path first: a refusal here must not leave credits stuck on a run
+    # that never happens.
+    if not _UUID.fullmatch(values["CREDITS_ORG"]) or not _env_safe(values):
+        note = credits.settle_hold(client, hold, succeeded=False, channel_id=channel, since=None)
+        print("::error::Credits: the channel's organization id is not a UUID, so it was not passed "
+              f"on; {note or 'the hold could not be released and expires by itself'}. Nothing was run.")
+        return 1
+    _append_env(env.get("GITHUB_ENV"), values)
     print(f"Credits: reservation claimed ({hold.amount:.2f} credits on hold).")
     return 0
 
