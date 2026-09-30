@@ -106,6 +106,14 @@ def test_welcome_email_key_is_not_callable_from_the_api(conn, sc):
 
 def _usage(conn, key_id):
     _owner(conn)
+    # The scenario's counter was written in an earlier transaction, possibly in
+    # an earlier minute; api_begin deletes a key's older-minute counters when a
+    # new minute starts, which would make the count read 1 instead of 2 when
+    # the clock rolls over mid-suite. now() is fixed inside this transaction
+    # and api_begin uses the same now(), so pinning the counter to this minute
+    # makes the comparison deterministic.
+    conn.execute("update public.api_rate_counters set minute = date_trunc('minute', now()) where key_id = %s",
+                 [key_id])
     count = conn.execute("select coalesce(sum(count), 0) from public.api_rate_counters where key_id = %s",
                          [key_id]).fetchone()[0]
     logged = conn.execute("select count(*) from public.api_requests where key_id = %s and status = 500",
