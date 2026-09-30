@@ -93,6 +93,7 @@ sys.path.insert(0, str(REPO_DIR))
 
 from modules import channel_tokens  # noqa: E402
 from modules import credits as credit_rules  # noqa: E402
+from modules import log_redaction  # noqa: E402
 from modules import run_request  # noqa: E402
 from modules import social_publish  # noqa: E402
 from modules import paid_downloads  # noqa: E402
@@ -871,6 +872,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     logging.basicConfig(level=logging.INFO, stream=sys.stdout,
                         format="%(asctime)s queue_worker %(levelname)s %(message)s")
+    log_redaction.install()
 
     url = os.environ.get("SUPABASE_URL", "").strip()
     key = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()

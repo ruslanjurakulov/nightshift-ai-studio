@@ -28,6 +28,7 @@ Path("output").mkdir(exist_ok=True)
 import config
 from config import OUTPUT_DIR, THUMBNAIL_VARIANT_COUNT, VIDEO_HEIGHT, VIDEO_WIDTH, YOUTUBE_CATEGORY_ID, YOUTUBE_PRIVACY
 from modules import event_log as events
+from modules import log_redaction
 from modules import publish_gate
 from modules import publish_score
 from modules import video_critic
@@ -56,6 +57,8 @@ from modules.video_review import VideoReview
 from modules import held_video
 from modules.fact_checker import fact_check_claims
 from modules.media_fetcher import MediaFetcher
+from modules import video_providers
+from modules.minimax_broll import VideoModelUnavailable
 from modules import pinned_comment
 from modules import playlist
 from modules import watch_next
@@ -86,6 +89,9 @@ logging.basicConfig(
         logging.FileHandler("logs/run.log", encoding="utf-8"),
     ],
 )
+# logs/run.log is uploaded as a workflow artifact: scrub token-bearing URLs
+# (Telegram bot path, Slack webhook, ?key=) from every line and traceback.
+log_redaction.install()
 logger = logging.getLogger("chronos")
 
 
@@ -484,6 +490,18 @@ def run(
                     channel_id=channel_id, metadata={"error": str(e), "stage": "preflight"})
         raise
 
+    # ── Stage 0c: Can the configured b-roll model be called at all?
+    # Same reasoning as the voice: with generated b-roll on, a model id this
+    # pipeline cannot call (or a required endpoint not set) is known now, from
+    # config alone — not after the script has been paid for. No request is made.
+    try:
+        video_providers.preflight()
+    except VideoModelUnavailable as e:
+        logger.error("Generated b-roll is not usable for channel %s: %s", channel_id, e)
+        events.emit(events.AGENT_FAILED, agent="minimax_broll", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": str(e), "stage": "preflight"})
+        raise
+
     # ── Resume a crashed run ────────────────────────────────────────────
     # With --resume, reuse a previous run's saved artifacts instead of paying to
     # regenerate them. Today that means loading the saved script.json — skipping
@@ -730,7 +748,15 @@ def run(
     # pool and are recorded in fetcher.video_terms, so broll_match places them.
     # Each generated clip carries its scene's Director shot direction and its
     # Character-Bible consistency directive (whichever are present).
-    broll = fetcher.generate_broll(script.sections, topic, style_for=_scene_style)
+    # When generated b-roll is on, a clip the configured model did not produce
+    # stops the run with the remedy — it is never quietly replaced by stock.
+    try:
+        broll = fetcher.generate_broll(script.sections, topic, style_for=_scene_style)
+    except VideoModelUnavailable as e:
+        logger.error("Generated b-roll failed for channel %s: %s", channel_id, e)
+        events.emit(events.AGENT_FAILED, agent="minimax_broll", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": str(e), "stage": "broll"})
+        raise
     if broll.generated:
         videos.extend(Path(p) for p in broll.by_section.values())
         from modules import video_providers as _vp
