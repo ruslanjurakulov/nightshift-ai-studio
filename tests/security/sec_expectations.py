@@ -121,6 +121,7 @@ TABLES: Dict[str, Kind] = {
     # web/API hardening (0042): written only by their security-definer functions
     "welcome_credit_claims": Service(),
     "web_rate_counters": Service(),
+    "telegram_updates": Service(),
     # the operator's own providers and legacy global scores
     "provider_balances": Platform(),
     "provider_billing_settings": Platform(),

@@ -246,3 +246,23 @@ def test_entry_points_still_refuse_unknown_keys_first(conn, sc, fn):
     with acting(conn, ANON) as s:
         out = s.run(args[0], [hashlib.sha256(b"nobody").hexdigest()])
     assert out.ok and out.rows[0][0]["status"] == 401, out
+
+
+# ── P8: a Telegram update is claimed once ───────────────────────────────────
+
+def test_telegram_update_claims_are_first_come_and_service_only(conn, sc):
+    from sec_db import SERVICE
+
+    claim = ("insert into public.telegram_updates (update_id) values (%s), (%s) "
+             "on conflict (update_id) do nothing returning update_id")
+    with _rolled_back(conn):
+        _as(conn, SERVICE)
+        first = sorted(r[0] for r in conn.execute(claim, [424242, 424243]).fetchall())
+        again = sorted(r[0] for r in conn.execute(claim, [424243, 424244]).fetchall())
+        _owner(conn)
+    assert first == [424242, 424243]
+    assert again == [424244], "an update that was already claimed was claimed again — it would be replayed"
+    for who in (sc.bob.actor, sc.operator, ANON):
+        with acting(conn, who) as s:
+            out = s.run("insert into public.telegram_updates (update_id) values (515151)")
+        assert not out.ok, (who.name, out)

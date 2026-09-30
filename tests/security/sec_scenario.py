@@ -263,6 +263,11 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
         for t in sc.tenants():
             with acting(conn, t.actor, commit=True) as s:
                 s.value("select public.take_web_rate('scenario', 10, 3600)")
+    # A Telegram update the control bot claimed, with the service key (0042).
+    with as_superuser(conn, commit=False) as s:
+        has_tg = s.value("select to_regclass('public.telegram_updates') is not null")
+    if has_tg:
+        _as_service(conn, [("insert into public.telegram_updates (update_id) values (1000)", [])])
 
     with as_superuser(conn) as s:
         sc.channel_org = {r[0]: str(r[1]) for r in s.rows("select channel_id, org_id from public.channels")}

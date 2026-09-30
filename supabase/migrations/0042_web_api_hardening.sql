@@ -35,12 +35,17 @@
 --       signed-in user, for Command Center routes that spend the operator's
 --       ElevenLabs characters or Actions minutes (voice list, voice preview).
 --       Callable by `authenticated` only; counts only for auth.uid().
+--   P8  telegram_updates: the Telegram control bot claims each update_id here
+--       (service key, insert-if-new) before handling it, so an update that
+--       Telegram delivers again — after the Actions cache holding the offset
+--       was evicted or restored from an older copy — is skipped, not replayed.
+--       Nobody but the service role touches it.
 --
 -- NOT CHANGED: who may create / revoke / use an API key, limits, prices, the
 -- API's grants to anon, the welcome amount (100), the credit ledger.
 --
--- REQUIRES 0027 (welcome credits) and 0040 (API keys without a prefix; this
--- branch is stacked on it). Idempotent: every statement can run again.
+-- REQUIRES 0027 (welcome credits) and 0040 (API keys without a prefix).
+-- Idempotent: every statement can run again.
 
 do $$
 begin
@@ -213,6 +218,20 @@ $$;
 
 revoke all on function public.take_web_rate(text, integer, integer) from public, anon, service_role;
 grant execute on function public.take_web_rate(text, integer, integer) to authenticated;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- P8. Telegram updates, handled once
+-- ───────────────────────────────────────────────────────────────────────────
+
+create table if not exists public.telegram_updates (
+  update_id  bigint primary key check (update_id >= 0),
+  claimed_at timestamptz not null default now()
+);
+comment on table public.telegram_updates is
+  'Telegram update ids the control bot has claimed (0042): a claimed update is never handled again. Service role only.';
+alter table public.telegram_updates enable row level security;
+revoke all on public.telegram_updates from public, anon, authenticated;
+grant select, insert on public.telegram_updates to service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
 -- P7. API keys are minted here, not in the browser
@@ -982,9 +1001,12 @@ grant execute on function public.api_get_download(text, bigint, text) to anon;
 --     and public.welcome_email_key('a.b+x@example.com') = 'a.b@example.com'
 --     and public.welcome_email_key('nobody') is null as email_normalised,
 --   (select relrowsecurity from pg_class where oid = 'public.welcome_credit_claims'::regclass)
---     and (select relrowsecurity from pg_class where oid = 'public.web_rate_counters'::regclass) as rls_on,
+--     and (select relrowsecurity from pg_class where oid = 'public.web_rate_counters'::regclass)
+--     and (select relrowsecurity from pg_class where oid = 'public.telegram_updates'::regclass) as rls_on,
 --   not has_table_privilege('authenticated', 'public.welcome_credit_claims', 'SELECT')
---     and not has_table_privilege('authenticated', 'public.web_rate_counters', 'SELECT') as tables_closed,
+--     and not has_table_privilege('authenticated', 'public.web_rate_counters', 'SELECT')
+--     and not has_table_privilege('anon', 'public.telegram_updates', 'INSERT')
+--     and has_table_privilege('service_role', 'public.telegram_updates', 'INSERT') as tables_closed,
 --   to_regprocedure('public.create_api_key(uuid,text,text,bigint)') is null
 --     and to_regprocedure('public.create_api_key(uuid,text,text,text,bigint)') is null as client_hash_gone,
 --   has_function_privilege('authenticated', 'public.create_api_key(uuid,text,bigint)', 'EXECUTE')
