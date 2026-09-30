@@ -176,13 +176,21 @@ class MediaFetcher:
         ``minimax_broll.GenerationResult``.
 
         The provider is chosen by ``config.VIDEO_PROVIDER`` via
-        modules/video_providers.py; the default (``minimax``) behaves exactly as
-        before. Off by default: with no key / the flag unset this makes no
-        request and returns an empty result, so b-roll comes from Pexels exactly
-        as before. Each generated clip is recorded in ``video_terms`` under its
-        section keyword, so the compositor places it via broll_match like any
-        other clip. A per-clip failure is swallowed — that section simply falls
-        back to stock. Never raises.
+        modules/video_providers.py. Off by default: with no key / the flag unset
+        this makes no request and returns an empty result, so b-roll comes from
+        Pexels exactly as before. Each generated clip is recorded in
+        ``video_terms`` under its section keyword, so the compositor places it
+        via broll_match like any other clip.
+
+        When generation is ON, every selected section must get its clip from
+        the configured model: a refusal, a failed task or a task still running
+        raises ``minimax_broll.VideoModelUnavailable`` with the remedy, and the
+        run stops (CLAUDE.md #4). It used to swallow the failure and let that
+        section become stock footage — which is how a provider with the wrong
+        request shape could "work" for every run without producing one clip.
+        Clips that did finish, and tasks still running, stay in the task ledger,
+        so the re-run the remedy asks for reuses or polls them instead of paying
+        again.
 
         ``style_for`` (optional) is an ``index -> style string`` map: when given,
         each generated clip's prompt carries that scene's style direction (a
@@ -197,16 +205,21 @@ class MediaFetcher:
 
         specs = minimax_broll.select_specs(
             sections, topic, max_clips=getattr(config, "MINIMAX_BROLL_MAX_CLIPS", 2),
-            style_for=style_for)
+            style_for=style_for, model=result.model)
         if not specs:
             return result
 
+        provider_name = video_providers.active_provider()
         if client is None:
             client = video_providers.get_client()
-            if client is None:   # selected provider unconfigured — stay on stock
-                return result
+            if client is None:
+                raise minimax_broll.VideoModelUnavailable(
+                    provider_name, result.model, "generated b-roll is on but no API key is configured",
+                    "set the provider's API key, or turn generated b-roll off for this deployment")
+        check = getattr(client, "preflight", None)
+        if callable(check):
+            check()   # a configuration that cannot work stops here, before any submit
 
-        provider_name = video_providers.active_provider()
         # USD per clip only when the operator configured one — None is "unpriced", never 0.
         clip_price = _unit_price(cost_ledger.VIDEO_GEN_CLIPS)
         # Crash-safe task tracking (modules/provider_tasks.py): a client that
@@ -217,38 +230,56 @@ class MediaFetcher:
             ledger = provider_tasks.TaskLedger.open(getattr(self, "slug", None))
         by_section: dict = {}
         task_ids: dict = {}
+        missing: list = []    # (section_index, why) for every clip that did not come back
         generated = 0
         reused = 0
         for spec in specs:
             dest = self.video_dir / f"gen_{spec.section_index}.mp4"
             was_reused = False
+            reason = ""
             try:
                 if ledger is not None:
-                    path, task_id, was_reused = self._generate_tracked(
+                    path, task_id, was_reused, reason = self._generate_tracked(
                         client, spec, dest, provider_name, result.model, ledger)
                     if task_id:
                         task_ids[spec.section_index] = task_id
                 else:
                     path = client.generate(spec, dest)
-            except Exception as e:   # a broken clip must never sink the render
-                logger.warning("%s generation error for section %d (%s: %s)",
-                               provider_name, spec.section_index, type(e).__name__, e)
-                path = None
-            if path is not None:
-                self.video_terms[str(path)] = spec.keyword
-                by_section[spec.section_index] = str(path)
-                # Rights stay "unknown": nothing in this repo documents the
-                # provider's terms for generated output, so none is claimed.
-                self._note_provenance(
-                    path, provider=provider_name, model=result.model,
-                    prompt=spec.prompt, task_id=task_ids.get(spec.section_index),
-                    cost_usd=clip_price, rights="unknown",
-                )
-                generated += 1
-                reused += 1 if was_reused else 0
+            except minimax_broll.VideoModelUnavailable:
+                # The provider refused the request itself (credentials, quota,
+                # model, shape): the next section would be refused too, and
+                # every further submit risks a charge. Stop now.
+                raise
+            except Exception as e:
+                logger.warning("%s generation error for section %d (%s)",
+                               provider_name, spec.section_index, type(e).__name__)
+                path, reason = None, type(e).__name__
+            if path is None:
+                missing.append((spec.section_index, reason or "no clip came back"))
+                continue
+            self.video_terms[str(path)] = spec.keyword
+            by_section[spec.section_index] = str(path)
+            # Rights stay "unknown": nothing in this repo documents the
+            # provider's terms for generated output, so none is claimed.
+            self._note_provenance(
+                path, provider=provider_name, model=result.model,
+                prompt=spec.prompt, task_id=task_ids.get(spec.section_index),
+                cost_usd=clip_price, rights="unknown",
+            )
+            generated += 1
+            reused += 1 if was_reused else 0
 
         logger.info("%s b-roll: %d/%d clip(s) generated (%d reused from an earlier attempt)",
                     provider_name, generated, len(specs), reused)
+        if missing:
+            detail = "; ".join(f"section {i}: {why}" for i, why in missing)
+            raise minimax_broll.VideoModelUnavailable(
+                provider_name, result.model,
+                f"{len(missing)} of {len(specs)} generated clip(s) did not come back ({detail})",
+                "re-run: finished clips are reused and still-running tasks are polled from the task "
+                "ledger, not paid for again. If the provider failed the task, fix what it reported; "
+                "to use stock footage instead, turn generated b-roll off for this deployment "
+                "(CHRONOS_ENABLE_MINIMAX_BROLL / CHRONOS_ENABLE_VIDEO_GEN)")
         return minimax_broll.GenerationResult(
             attempted=len(specs), generated=generated,
             model=result.model, by_section=by_section,
@@ -258,7 +289,9 @@ class MediaFetcher:
     @staticmethod
     def _generate_tracked(client, spec, dest: Path, provider_name: str, model: str, ledger):
         """One clip through the provider task ledger. Returns
-        ``(path_or_None, task_id_or_None, reused_without_request)``.
+        ``(path_or_None, task_id_or_None, reused_without_request, reason)``,
+        where ``reason`` is the provider's own explanation when it failed the
+        task (empty otherwise).
 
         * a task for this scene + prompt that already succeeded and whose clip
           is still on disk → reused, no request at all;
@@ -278,7 +311,7 @@ class MediaFetcher:
             if on_disk is not None:
                 logger.info("%s scene %s: reusing clip from task %s (no new request)",
                             provider_name, sid, task.task_id)
-                return on_disk, task.task_id, True
+                return on_disk, task.task_id, True, ""
             if task.status == pt.STATUS_FAILED:
                 task = None   # the provider said no — a new attempt is a new job
             else:
@@ -288,7 +321,7 @@ class MediaFetcher:
         if task is None:
             task_id = client.submit(spec)
             if not task_id:
-                return None, None, False
+                return None, None, False, "the provider returned no task"
             task = ledger.record_submitted(provider=provider_name, model=model,
                                            task_id=task_id,
                                            section_index=spec.section_index, phash=phash)
@@ -299,7 +332,10 @@ class MediaFetcher:
         ledger.record_outcome(task, outcome)
         if outcome.path is not None:
             logger.info("%s b-roll generated for scene %s (%s)", provider_name, sid, spec.keyword)
-        return outcome.path, task.task_id, False
+        reason = getattr(outcome, "reason", "") or (
+            "the task has not finished, or its clip could not be downloaded yet"
+            if outcome.state == pt.OUTCOME_PENDING else "")
+        return outcome.path, task.task_id, False, reason
 
     # --------------------------------------------------------------- AI images
 
