@@ -226,6 +226,12 @@ describe("Run now refusals", () => {
     );
   });
 
+  it("a failed credits read says retry, not 'unavailable on this database' or a pricing gap", () => {
+    const msg = creditRunError({ error: "credits_read_failed" }, en);
+    expect(msg).toBe(en.credits.readFailedRun);
+    expect(msg).not.toBe(en.credits.unavailable);
+  });
+
   it("names the fix when the estimate is impossible", () => {
     expect(creditRunError({ error: "credit_estimate_unavailable", gap: "no_prices" }, en)).toContain(
       en.credits.gap.no_prices,
