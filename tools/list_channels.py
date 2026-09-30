@@ -8,11 +8,15 @@ The daily workflow calls this once, then fans out one job per returned channel
 with ``fail-fast: false``, so a credential failure on one channel cannot cancel
 another channel's video.
 
-Two safety properties matter here:
+Three safety properties matter here:
 
 * **It never returns a PAUSED channel.** `ChannelRegistry.active()` filters on
   status AND schedule.enabled, so pausing a channel in the Command Center is
   what actually stops it being scheduled.
+* **It schedules only the operator's own channels.** A scheduled run carries
+  no credit hold, so the operator pays for it. A customer organization's
+  channel runs when the Command Center names it (``--only``) together with the
+  reservation that pays for it, never on the schedule.
 * **It cannot fail the workflow open.** If the registry cannot be loaded at
   all, it falls back to the default channel — the single channel this bot has
   always published — rather than emitting an empty matrix that would silently
@@ -45,6 +49,22 @@ def due_channels(due_hour: int | None = None, registry=None) -> list[dict]:
     except Exception as e:  # pragma: no cover - defensive, see module docstring
         print(f"warning: channel registry unavailable ({type(e).__name__}: {e})", file=sys.stderr)
         channels = [legacy_default_channel()]
+
+    # A scheduled run carries no credit hold, so it is the operator's to pay
+    # for: only the operator's own channels are scheduled. A customer's channel
+    # runs when the Command Center names it (--only) with the hold that pays
+    # for it. Before this, a customer who set their verified channel ACTIVE got
+    # a daily video on the operator's runner and provider keys, uncharged.
+    customers = [c for c in channels if not c.is_operators]
+    if customers:
+        print(
+            "note: not scheduling "
+            + ", ".join(str(c.channel_id) for c in customers)
+            + " — a customer organization's channel runs only when started from the Command Center, "
+            "which reserves the credits that pay for it.",
+            file=sys.stderr,
+        )
+    channels = [c for c in channels if c.is_operators]
 
     if not channels:
         print("warning: no active channels resolved — falling back to the default", file=sys.stderr)
