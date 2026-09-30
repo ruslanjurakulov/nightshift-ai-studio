@@ -155,3 +155,8 @@ and `PADDLE_API_TOPUP_PRODUCT_ID` (variable) for the web app, and
 the function. Adjust prices with `update public.api_prices set cents = … where
 unit = 'video_minute'` (platform owner/admin). Correct a balance with
 `select public.api_adjust_balance('<org>', <cents>, '<why>')`.
+
+## MCP
+
+The same keys, limits and prices are available to AI assistants through the
+remote MCP server at `/api/mcp` — see `docs/MCP.md`.
