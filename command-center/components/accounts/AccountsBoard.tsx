@@ -107,8 +107,8 @@ function Row({ account: a, here }: { account: AccountSummary; here: boolean }) {
   return (
     <tr className="border-t border-[var(--color-border)]">
       <td className="px-4 py-2.5">
-        <Link href={`/${a.slug}/command-center`} className="block truncate text-[12px] text-[var(--color-fg)] hover:text-[var(--color-primary)]">
-          {a.name}
+        <Link href={`/${a.slug}/command-center`} className="tap flex items-center text-[12px] text-[var(--color-fg)] hover:text-[var(--color-primary)]">
+          <span className="truncate">{a.name}</span>
         </Link>
         <span className="mono block truncate text-[9px] text-[var(--color-muted)]">
           {a.channelId}

@@ -45,9 +45,9 @@ export const getOrgContext = cache(async (): Promise<OrgContext> => {
   if (!user) return UNSUPPORTED;
 
   try {
-    // Bind any invite addressed to this email first, so an org someone was
-    // just invited to shows up on their very first page load.
-    await supabase.rpc("bind_org_memberships");
+    // Invites are NOT bound here any more (migration 0043): an invite is an
+    // offer the invitee accepts (components/org/PendingInvites.tsx). Binding
+    // on every page load put people into organizations without asking them.
     const { data, error } = await supabase.rpc("my_organizations");
     if (error) return isMissingFunction(error) ? UNSUPPORTED : UNAVAILABLE;
     const orgs = coerceOrgs(data);

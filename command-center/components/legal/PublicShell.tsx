@@ -37,7 +37,7 @@ export function PublicShell({ t, children }: { t: Dictionary; children: React.Re
         <div className="relative mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
           <Link
             href="/"
-            className="font-display text-xl font-semibold tracking-[-0.02em] text-[var(--color-primary)]"
+            className="tap-link font-display text-xl font-semibold tracking-[-0.02em] text-[var(--color-primary)]"
             style={{ textShadow: "0 0 28px var(--glow-primary)" }}
           >
             {t.brand.name}

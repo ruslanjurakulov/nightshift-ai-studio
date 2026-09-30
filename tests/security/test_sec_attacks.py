@@ -292,9 +292,9 @@ def test_binding_invites_only_claims_the_callers_own_email(conn, sc):
     with acting(conn, sc.bob.actor) as s:
         s.value("select public.bind_org_memberships()")
         assert s.value("select public.is_org_member(%s, 'viewer')", [sc.alice.org]) is False
-    with acting(conn, sc.invitee) as s:  # control: the invite does work for its addressee
-        assert s.value("select public.is_org_member(%s, 'viewer')", [sc.alice.org]) is True
-        assert s.value("select public.is_org_member(%s, 'editor')", [sc.alice.org]) is False
+        assert s.rows("select id from public.my_invites()") == []
+    with acting(conn, sc.invitee) as s:  # control: the invite is offered to its addressee
+        assert [str(r[0]) for r in s.rows("select org_id from public.my_invites()")] == [sc.alice.org]
 
 
 def test_my_organizations_lists_only_the_callers_own(conn, sc):
