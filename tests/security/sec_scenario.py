@@ -25,6 +25,7 @@ Every tenant row is recognisable by its owner: channel ``chan-a`` / video
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 from dataclasses import dataclass, field
 from typing import Dict, Optional
@@ -233,6 +234,35 @@ def _seed_operator(conn: psycopg.Connection, sc: Scenario) -> None:
     ])
 
 
+#: Model registry seed (0035): one model that is verified, priced and on sale,
+#: one that is only in the file (hidden), and one whose vendor terms gate it.
+MODEL_SOLD, MODEL_HIDDEN, MODEL_GATED = "lab-sold-1", "lab-hidden-1", "lab-gated-1"
+
+
+def _model_row(mid: str, **spec) -> dict:
+    return {"id": mid, "display_name": mid, "provider": "lab", "adapter": "image.openai",
+            "capabilities": ["t2i"], "credit_unit": f"model_{mid.replace('-', '_')}_image",
+            "entitlement": "models_image:basic",
+            "spec": {"vendor_model": "lab-model-1", "output": "image", "pricing": {"unit": "image",
+                     "provider_usd_per_unit": 0.04}, "terms_gate": None, **spec}}
+
+
+def _seed_models(conn: psycopg.Connection) -> None:
+    rows = [_model_row(MODEL_SOLD), _model_row(MODEL_HIDDEN),
+            _model_row(MODEL_GATED, terms_gate="written_consent_required")]
+    with acting(conn, SERVICE, commit=True) as s:
+        s.value("select public.sync_model_registry(%s::jsonb)", [json.dumps(rows)])
+        for mid in (MODEL_SOLD, MODEL_GATED):
+            s.value("select public.record_model_probe(%s, 'image.openai', 'lab-model-1', 't2i', true, "
+                    "null, null, 900, 1234, 'security-lab')", [mid])
+        s.value("select public.record_model_probe(%s, 'image.openai', 'lab-model-1', 't2i', false, "
+                "'auth', 'HTTP 401', 100, null, 'security-lab')", [MODEL_HIDDEN])
+        s.rows("update public.model_registry set availability = 'beta' where id = %s returning 1", [MODEL_SOLD])
+    with as_superuser(conn) as s:
+        s.rows("insert into public.credit_prices (unit, credits_per_unit) values (%s, 4), (%s, 4), (%s, 4) returning 1",
+               [f"model_{m.replace('-', '_')}_image" for m in (MODEL_SOLD, MODEL_HIDDEN, MODEL_GATED)])
+
+
 def build_scenario(conn: psycopg.Connection) -> Scenario:
     sc = Scenario(
         operator=user("operator", "operator@nightshift.test"),
@@ -245,6 +275,7 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     for who in (sc.operator, sc.alice.actor, sc.bob.actor, sc.stranger, sc.dana, sc.invitee):
         _signup(conn, who)
     _seed_operator(conn, sc)
+    _seed_models(conn)
     for t, name in ((sc.alice, "Alice Studio"), (sc.bob, "Bob Media")):
         t.org = _create_org(conn, t.actor, name)
         _seed_tenant(conn, t)
