@@ -102,6 +102,8 @@ export const en = {
     dark: "Dark",
     light: "Light",
     of: "of",
+    scrollTable: "Table (scrolls sideways)",
+    scrollCode: "Code example (scrolls sideways)",
   },
   account: {
     open: "Open account menu",

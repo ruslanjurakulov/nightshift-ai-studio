@@ -41,7 +41,7 @@ export function CopyButton({ value, label }: { value: string; label?: string }) 
       onClick={onCopy}
       aria-label={aria}
       title={aria}
-      className="press inline-grid size-6 shrink-0 place-items-center rounded-md align-middle text-[var(--color-muted)] hover:bg-[var(--color-panel-2)] hover:text-[var(--color-primary)]"
+      className="press tap-icon inline-grid size-6 shrink-0 max-sm:-m-2 pointer-coarse:-m-2 place-items-center rounded-md align-middle text-[var(--color-muted)] hover:bg-[var(--color-panel-2)] hover:text-[var(--color-primary)]"
     >
       {copied ? (
         <Check aria-hidden className="size-3.5" style={{ color: "var(--color-ok)" }} />

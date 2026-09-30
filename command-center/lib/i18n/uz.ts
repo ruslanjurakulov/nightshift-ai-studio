@@ -96,6 +96,8 @@ export const uz: Dictionary = {
     dark: "Tungi",
     light: "Kunduzgi",
     of: "/",
+    scrollTable: "Jadval (yon tomonga suriladi)",
+    scrollCode: "Kod namunasi (yon tomonga suriladi)",
   },
   account: {
     open: "Hisob menyusini ochish",
