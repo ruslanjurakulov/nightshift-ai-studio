@@ -1957,6 +1957,14 @@ export const en = {
     remove: "Remove",
     signIn: "Sign in to manage the team.",
   },
+  invites: {
+    title: "Invitations",
+    hint: "You were invited to these workspaces. Nothing is shared with you until you accept.",
+    accept: "Accept",
+    decline: "Decline",
+    working: "Joining…",
+    failed: "Couldn't answer the invitation. Refresh and try again.",
+  },
   org: {
     switcherLabel: "Organization",
     newOrg: "New organization",
