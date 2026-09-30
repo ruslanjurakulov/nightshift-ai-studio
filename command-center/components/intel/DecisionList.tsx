@@ -25,7 +25,7 @@ const OUTCOME_COLOR: Record<DecisionOutcome, string> = {
   PUBLISHED: "var(--color-ok)",
   FAILED: "var(--color-fail)",
   IN_PROGRESS: "var(--color-primary)",
-  UNKNOWN: "var(--color-idle)",
+  UNKNOWN: "var(--color-muted)",
 };
 
 function num(v: number | null): string {
@@ -65,7 +65,7 @@ export function DecisionList({
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="mono text-lg font-bold tabular-nums" style={{ color: d.score == null ? "var(--color-idle)" : d.score >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}>
+                <span className="mono text-lg font-bold tabular-nums" style={{ color: d.score == null ? "var(--color-muted)" : d.score >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}>
                   {d.score == null ? t.common.na : d.score.toFixed(0)}
                 </span>
                 <ConfidenceBadge confidence={d.confidence} />

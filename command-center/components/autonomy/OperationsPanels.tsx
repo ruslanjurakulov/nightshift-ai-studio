@@ -8,7 +8,7 @@ import type { ContentQueueRow, PipelineRunRow } from "@/lib/types";
 const STATUS_COLOR: Record<string, string> = {
   queued: "var(--color-primary)",
   published: "var(--color-ok)",
-  skipped: "var(--color-idle)",
+  skipped: "var(--color-muted)",
 };
 
 /**
@@ -55,7 +55,7 @@ export function OperationsPanels({
                         <div className="mono truncate text-[10px] text-[var(--color-muted)]">{q.rationale}</div>
                       )}
                     </td>
-                    <td className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ color: STATUS_COLOR[q.status] ?? "var(--color-idle)" }}>
+                    <td className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ color: STATUS_COLOR[q.status] ?? "var(--color-muted)" }}>
                       {q.status}
                     </td>
                     <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">{q.source ?? t.common.dash}</td>
@@ -95,7 +95,7 @@ export function OperationsPanels({
                       <div className="mono truncate text-[10px] text-[var(--color-muted)]">{r.run_id}</div>
                     </td>
                     <td className="px-4 py-2 mono text-[11px] text-[var(--color-primary)]">{r.current_stage}</td>
-                    <td className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ color: r.human_approved ? "var(--color-ok)" : "var(--color-idle)" }}>
+                    <td className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ color: r.human_approved ? "var(--color-ok)" : "var(--color-muted)" }}>
                       {r.human_approved ? t.auto.rApprovedYes : t.auto.rApprovedNo}
                       {r.approved_by && <span className="ml-1 normal-case text-[var(--color-muted)]">({r.approved_by})</span>}
                     </td>

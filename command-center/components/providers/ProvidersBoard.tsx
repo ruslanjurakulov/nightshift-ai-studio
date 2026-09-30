@@ -66,7 +66,7 @@ export function ProvidersBoard({
       </p>
 
       {!githubConfigured && (
-        <div className="panel border-[var(--color-warn,#e2a03f)] p-4" role="status">
+        <div className="panel border-[var(--color-warn)] p-4" role="status">
           <p className="text-sm text-[var(--color-fg)]">{t.providers.githubNotConfigured}</p>
         </div>
       )}

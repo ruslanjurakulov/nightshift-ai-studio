@@ -145,8 +145,8 @@ export function ReviewPanel({
         style={{
           borderColor: gate
             ? gate.allowed
-              ? "rgba(127,224,176,0.35)"
-              : "rgba(255,138,107,0.4)"
+              ? "color-mix(in srgb, var(--color-ok) 35%, transparent)"
+              : "color-mix(in srgb, var(--color-fail) 40%, transparent)"
             : "var(--color-border)",
         }}
       >

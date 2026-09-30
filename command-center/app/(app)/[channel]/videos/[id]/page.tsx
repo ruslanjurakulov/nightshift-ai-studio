@@ -412,7 +412,7 @@ export default async function VideoDetail({
                     {e.status && (
                       <span
                         className="shrink-0 text-[10px] uppercase tracking-[0.22em]"
-                        style={{ color: TONE_COLOR[tone] }}
+                        style={{ color: tone === "idle" ? "var(--color-muted)" : TONE_COLOR[tone] }}
                       >
                         {e.status}
                       </span>

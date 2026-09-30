@@ -20,7 +20,7 @@ const CONF_COLOR: Record<Confidence, string> = {
 export function ConfidenceBadge({ confidence }: { confidence: Confidence | null }) {
   const { t } = useI18n();
   const label = confidence ? String(t.intel[CONF_KEY[confidence]]) : String(t.intel.confNone);
-  const color = confidence ? CONF_COLOR[confidence] : "var(--color-idle)";
+  const color = confidence ? CONF_COLOR[confidence] : "var(--color-muted)";
   return (
     <span
       className="rounded border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.22em]"
@@ -36,7 +36,7 @@ const STATE_COLOR: Record<TopicState, string> = {
   STABLE: "var(--color-secondary)",
   DECLINING: "var(--color-fail)",
   NEW: "var(--color-primary)",
-  INSUFFICIENT_DATA: "var(--color-idle)",
+  INSUFFICIENT_DATA: "var(--color-muted)",
 };
 
 export function TopicStateBadge({ state }: { state: TopicState }) {
