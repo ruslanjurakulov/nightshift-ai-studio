@@ -3,7 +3,7 @@ import { apiCaller, isCaller } from "@/lib/server/public-api";
 import { buildMcpServer } from "@/lib/api/mcp";
 import { getMe } from "@/lib/api/operations";
 import { apiError, newRequestId, toResponse } from "@/lib/api/http";
-import { needsKeyCheck } from "@/lib/api/mcp-http";
+import { MCP_METHODS, needsKeyCheck } from "@/lib/api/mcp-http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,10 +14,12 @@ export const dynamic = "force-dynamic";
  * `Authorization: Bearer nsk_live_…` key as /api/v1.
  *
  * Every tool call is one API request (the tool calls the REST operation,
- * which the database counts and limits). A request that calls no tool —
- * initialize, tools/list — is checked and counted once through api_auth, so a
- * revoked key, an unactivated organization or a spent rate limit is refused
- * before the handshake too.
+ * which the database counts and limits). Any other POST — initialize,
+ * tools/list, a notification, a client response — is checked and counted once
+ * through api_auth, so a revoked key, an unactivated organization or a spent
+ * rate limit is refused before the transport answers anything. GET and DELETE
+ * (standalone stream, session end) do not exist on a stateless server and are
+ * refused with 405 (lib/api/mcp-http.ts).
  */
 async function handle(request: Request): Promise<Response> {
   const requestId = newRequestId();
@@ -53,6 +55,17 @@ async function handle(request: Request): Promise<Response> {
   }
 }
 
+/** 405 in the API's envelope, with the method that does work here. */
+function methodNotAllowed(): Response {
+  const requestId = newRequestId();
+  const res = toResponse(
+    apiError(405, "method_not_allowed", "The MCP endpoint is stateless: send JSON-RPC messages with POST."),
+    requestId,
+  );
+  res.headers.set("allow", MCP_METHODS.join(", "));
+  return res;
+}
+
 export const POST = handle;
-export const GET = handle;
-export const DELETE = handle;
+export const GET = methodNotAllowed;
+export const DELETE = methodNotAllowed;

@@ -27,7 +27,7 @@ vi.mock("@/lib/server/public-api", () => ({
   },
 }));
 
-const { POST } = await import("@/app/api/mcp/route");
+const { POST, GET, DELETE } = await import("@/app/api/mcp/route");
 
 function rpcRequest(body: unknown, auth = true) {
   return new Request("https://nightshift.test/api/mcp", {
@@ -113,6 +113,45 @@ describe("MCP endpoint", () => {
     expect(JSON.parse(result.content[0].text)).toMatchObject({ error: { type: "billing_error", code: "insufficient_balance", price_cents: 180 } });
   });
 
+  // P4: the SDK answers a notification with 202 and would open a stream on
+  // GET — both without the key ever reaching the database.
+  it("checks the key for a notification-only POST, and refuses a refused key", async () => {
+    const note = { jsonrpc: "2.0", method: "notifications/initialized" };
+    const ok = await POST(rpcRequest(note));
+    expect(ok.status).toBe(202);
+    expect(state.calls.map((c) => c.fn)).toEqual(["api_auth"]);
+
+    state.refuse = { ok: false, status: 401, error: { code: "invalid_api_key", message: "revoked" } };
+    const no = await POST(rpcRequest(note));
+    expect(no.status).toBe(401);
+    expect(await no.json()).toMatchObject({ error: { code: "invalid_api_key" } });
+  });
+
+  it("checks the key for a client response (no method) too", async () => {
+    state.refuse = { ok: false, status: 401, error: { code: "invalid_api_key", message: "revoked" } };
+    const res = await POST(rpcRequest({ jsonrpc: "2.0", id: 9, result: {} }));
+    expect(res.status).toBe(401);
+    expect(state.calls.map((c) => c.fn)).toEqual(["api_auth"]);
+  });
+
+  it.each([
+    ["GET", () => GET as unknown as (r: Request) => Promise<Response> | Response],
+    ["DELETE", () => DELETE as unknown as (r: Request) => Promise<Response> | Response],
+  ])("refuses %s with 405 and never serves it, key or not", async (method, handler) => {
+    for (const auth of [true, false]) {
+      const res = await handler()(
+        new Request("https://nightshift.test/api/mcp", {
+          method,
+          headers: { accept: "text/event-stream", ...(auth ? { authorization: "Bearer nsk_live_" + "x".repeat(43) } : {}) },
+        }),
+      );
+      expect(res.status).toBe(405);
+      expect(res.headers.get("allow")).toBe("POST");
+      expect(await res.json()).toMatchObject({ error: { code: "method_not_allowed" } });
+    }
+    expect(state.calls).toEqual([]);
+  });
+
   it("rejects bad tool arguments before any database call", async () => {
     const res = await POST(rpcRequest({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "create_video", arguments: { channel_id: "c", duration: 5 } } }));
     const body = (await res.json()) as { result?: { isError?: boolean }; error?: unknown };
@@ -122,12 +161,16 @@ describe("MCP endpoint", () => {
 });
 
 describe("MCP helpers", () => {
-  it("count a handshake but not tool calls or notifications", () => {
+  it("count everything but tool calls, which their operation counts", () => {
     expect(needsKeyCheck(init)).toBe(true);
     expect(needsKeyCheck({ jsonrpc: "2.0", id: 1, method: "tools/list" })).toBe(true);
     expect(needsKeyCheck({ jsonrpc: "2.0", id: 1, method: "tools/call" })).toBe(false);
-    expect(needsKeyCheck({ jsonrpc: "2.0", method: "notifications/initialized" })).toBe(false);
+    expect(needsKeyCheck([{ method: "tools/call" }, { method: "tools/call" }])).toBe(false);
+    expect(needsKeyCheck({ jsonrpc: "2.0", method: "notifications/initialized" })).toBe(true);
+    expect(needsKeyCheck({ jsonrpc: "2.0", id: 1, result: {} })).toBe(true);
+    expect(needsKeyCheck([{ method: "tools/call" }, { method: "notifications/cancelled" }])).toBe(true);
     expect(needsKeyCheck([{ method: "tools/call" }, { method: "tools/list" }])).toBe(true);
+    expect(needsKeyCheck(null)).toBe(true);
   });
 
   it("exempt exactly /api/mcp from the cookie gate", () => {
