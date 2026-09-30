@@ -5,7 +5,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { paddleClient, paddleConfig } from "@/lib/paddle";
 import { PLAN_ENV, planMatrix } from "@/lib/plans";
-import { readPlanCatalog } from "@/lib/server/plans";
+import { planValue, readPlanCatalog } from "@/lib/server/plans";
 import { PRICING_ENV, resolvePricing } from "@/lib/pricing";
 import {
   SHOWCASE,
@@ -69,7 +69,8 @@ export default async function Home() {
   // The same pricing source /pricing reads; the teaser only ever shows what it holds.
   // Plans (0034) come from the public price list in the database.
   const supabase = await createClient().catch(() => null);
-  const catalog = supabase ? await readPlanCatalog(supabase).catch(() => null) : null;
+  // An unreadable catalog teases no plans (the pricing page itself says it could not read them).
+  const catalog = supabase ? planValue(await readPlanCatalog(supabase).catch(() => ({ state: "failed" as const }))) : null;
   const pricing = pricingTeaser(resolvePricing(PRICING_ENV, paddleConfig), planMatrix(catalog, PLAN_ENV, paddleClient));
   const jsonLd = softwareApplicationJsonLd({
     name: t.brand.name,

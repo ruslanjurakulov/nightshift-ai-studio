@@ -5,7 +5,8 @@ import { readCreditPrices } from "@/lib/server/credits";
 import { paddleClient, paddleConfig } from "@/lib/paddle";
 import { PRICING_ENV, creditRates, resolvePricing, type CreditRates } from "@/lib/pricing";
 import { PLAN_ENV, planMatrix } from "@/lib/plans";
-import { readPlanCatalog } from "@/lib/server/plans";
+import { planValue, readPlanCatalog, type PlanRead } from "@/lib/server/plans";
+import type { PlanCatalog } from "@/lib/plans";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { PricingView } from "@/components/pricing/PricingView";
 
@@ -34,12 +35,21 @@ export default async function PricingPage() {
   const supabase = await createClient();
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
   let rates: CreditRates | null = null;
+  let ratesFailed = false;
   if (supabase && user) {
     const res = await readCreditPrices(supabase);
-    if (res.supported) rates = creditRates(res.prices);
+    // A failed read is no rates at all — not an empty price list — and the
+    // page says it could not read them, which is not "not published yet".
+    if (res.supported && !res.failed) rates = creditRates(res.prices);
+    ratesFailed = res.failed;
   }
   // The plan catalog is a public price list (0034): read signed in or out.
-  const catalog = supabase ? await readPlanCatalog(supabase).catch(() => null) : null;
+  // `unsupported` (0034 not applied) offers no plans, as before; `failed` says
+  // the plans could not be read instead of silently showing none.
+  const catalogRead: PlanRead<PlanCatalog> = supabase
+    ? await readPlanCatalog(supabase).catch(() => ({ state: "failed" as const }))
+    : { state: "unsupported" };
+  const catalog = planValue(catalogRead);
   const plans = planMatrix(catalog, PLAN_ENV, paddleClient);
 
   return (
@@ -50,6 +60,8 @@ export default async function PricingPage() {
         pricing={pricing}
         signedIn={Boolean(user)}
         rates={rates}
+        ratesFailed={ratesFailed}
+        plansFailed={catalogRead.state === "failed"}
         plans={plans}
         packValidMonths={catalog?.packValidMonths}
       />

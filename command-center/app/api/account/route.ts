@@ -6,7 +6,7 @@ import { readCreditAccount } from "@/lib/server/credits";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
 import { isSocialConfigured } from "@/lib/server/social-oauth";
 import { accountPlan, creditsSpent, type AccountPlan, type AccountSummary } from "@/lib/account";
-import { readBillingSummary } from "@/lib/server/plans";
+import { planValue, readBillingSummary } from "@/lib/server/plans";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -42,11 +42,13 @@ export async function GET() {
   } else if (current) {
     // The plan is the organization's real subscription state (0034's
     // billing_summary), not a guess from its purchases.
-    const [account, summary, spent] = await Promise.all([
+    const [account, summaryRead, spent] = await Promise.all([
       readCreditAccount(supabase, current.id).catch(() => null),
-      readBillingSummary(supabase, current.id).catch(() => null),
+      readBillingSummary(supabase, current.id).catch(() => ({ state: "failed" as const })),
       readSpent(supabase, current.id),
     ]);
+    // Unreadable (or not applied) is an unknown plan, never a Free one.
+    const summary = planValue(summaryRead);
     plan = accountPlan(summary, false);
     const acc = account?.account;
     credits = acc

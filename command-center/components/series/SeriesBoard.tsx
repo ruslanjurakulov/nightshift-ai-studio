@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Panel, EmptyState } from "@/components/ui";
+import { ErrorState } from "@/components/ReadError";
 import type { Dictionary } from "@/lib/i18n";
 import {
   AUTOMATION_LEVELS,
@@ -19,12 +20,15 @@ export function SeriesBoard({
   series,
   channels,
   tableMissing,
+  readFailed = false,
   strings: s,
   canEdit = true,
 }: {
   series: SeriesRow[];
   channels: ChannelOption[];
   tableMissing: boolean;
+  /** The list query errored (not "table missing"): show that, not an empty list. */
+  readFailed?: boolean;
   strings: Dictionary["series"];
   /** Editor+ in the organization being viewed — what /api/series requires.
    *  Presentation only; the route and RLS re-check. */
@@ -207,6 +211,8 @@ export function SeriesBoard({
       <Panel title={s.listTitle}>
         {tableMissing ? (
           <EmptyState>{s.tableMissing}</EmptyState>
+        ) : readFailed ? (
+          <ErrorState />
         ) : series.length === 0 ? (
           <EmptyState>{s.empty}</EmptyState>
         ) : (
