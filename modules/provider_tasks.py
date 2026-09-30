@@ -107,6 +107,9 @@ class TaskOutcome:
 
     state: str                     # one of OUTCOME_*
     path: Optional[Path] = None    # set only when state == succeeded
+    #: The provider's own reason when it reported the task failed (never a
+    #: key), so the run can stop with it instead of a bare "failed".
+    reason: str = ""
 
 
 @dataclass

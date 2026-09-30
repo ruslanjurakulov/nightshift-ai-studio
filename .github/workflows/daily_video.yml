@@ -471,11 +471,19 @@ jobs:
           CHRONOS_ENABLE_VIDEO_GEN: ${{ github.event.inputs.video_provider != '' && 'true' || vars.CHRONOS_ENABLE_VIDEO_GEN }}
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
           CHRONOS_ENABLE_MINIMAX_BROLL: ${{ vars.CHRONOS_ENABLE_MINIMAX_BROLL }}
+          # The MiniMax model id picks its API (v1 Hailuo / v2 H3); an H3 run
+          # also needs the v2 task-query path (modules/minimax_client.py).
+          MINIMAX_H3_MODEL: ${{ vars.MINIMAX_H3_MODEL }}
+          MINIMAX_V2_QUERY_PATH: ${{ vars.MINIMAX_V2_QUERY_PATH }}
           HIGGSFIELD_API_KEY: ${{ secrets.HIGGSFIELD_API_KEY }}
+          # Kling: a console API key, or an access key + secret key pair.
           KLING_API_KEY: ${{ secrets.KLING_API_KEY }}
+          KLING_ACCESS_KEY: ${{ secrets.KLING_ACCESS_KEY }}
+          KLING_SECRET_KEY: ${{ secrets.KLING_SECRET_KEY }}
           VEO_API_KEY: ${{ secrets.VEO_API_KEY }}
           SEEDANCE_API_KEY: ${{ secrets.SEEDANCE_API_KEY }}
           WAN_API_KEY: ${{ secrets.WAN_API_KEY }}
+          WAN_WORKSPACE_ID: ${{ vars.WAN_WORKSPACE_ID }}
           # AI image provider (modules/image_providers.py). Default "pexels"
           # stock; set CHRONOS_IMAGE_PROVIDER=<leonardo|gpt-image|nano-banana|
           # flux|ideogram|fal> + CHRONOS_ENABLE_IMAGE_GEN + that provider's key
