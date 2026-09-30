@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { API_KEY_LIST_COLUMNS, API_KEY_PREFIX, createKeyArgs, generateApiKey, hashApiKey } from "@/lib/api/keys";
+import { API_KEY_LIST_COLUMNS, API_KEY_PREFIX, createKeyArgs, generateApiKey, mintedKey } from "@/lib/api/keys";
 import { apiError } from "@/lib/api/http";
 
 // CLAUDE.md #1: no part of a secret is stored or shown — "not its prefix".
@@ -113,15 +113,19 @@ describe("the browser keeps nothing of a key", () => {
     expect(Object.keys(made)).toEqual(["key"]);
   });
 
-  it("sends only the key's SHA-256 to create_api_key", async () => {
+  // 0042: a browser that chose its own key (or its hash) could register a
+  // weak or reused one; the database mints every key instead.
+  it("sends nothing of a key to create_api_key — the database mints it", () => {
+    const args = createKeyArgs("org-1", "Production", null);
+    expect(Object.keys(args).sort()).toEqual(["p_monthly_limit_cents", "p_name", "p_org"]);
+    expect(CONSOLE).not.toMatch(/generateApiKey|hashApiKey|p_key_hash/);
+  });
+
+  it("shows only a well-formed minted key", () => {
     const { key } = generateApiKey();
-    const secret = key.slice(API_KEY_PREFIX.length);
-    const args = createKeyArgs("org-1", "Production", await hashApiKey(key), null);
-    expect(Object.keys(args).sort()).toEqual(["p_key_hash", "p_monthly_limit_cents", "p_name", "p_org"]);
-    expect(args.p_key_hash).toBe(await hashApiKey(key));
-    const sent = JSON.stringify({ ...args, p_key_hash: undefined });
-    for (const w of windows(secret)) expect(sent).not.toContain(w);
-    expect(sent).not.toContain(API_KEY_PREFIX);
+    expect(mintedKey({ id: "k1", name: "n", key })).toBe(key);
+    for (const bad of [null, {}, { key: "nsk_live_short" }, { key: key.slice(API_KEY_PREFIX.length) }, { key: 42 }])
+      expect(mintedKey(bad)).toBeNull();
   });
 
   it("lists keys by name, id and times — never the retired fragment or the hash", () => {
