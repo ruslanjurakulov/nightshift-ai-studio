@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from sec_db import as_superuser
-from sec_expectations import FUNCTIONS, TABLES
+from sec_expectations import FUNCTIONS, TABLES, VIEWS
 
 
 def _tables(conn, *, rls: bool | None = None) -> set[str]:
@@ -38,12 +38,21 @@ def test_every_rls_table_declares_its_isolation(conn):
     assert not stale, f"TABLES lists tables that do not exist: {stale}"
 
 
-def test_no_views_or_materialized_views_in_public(conn):
+def test_every_view_is_declared_and_runs_as_its_caller(conn):
     # A view runs with its owner's rights and ignores the caller's RLS unless
-    # it is security_invoker; none exist today, and a new one needs a decision.
+    # it is security_invoker, so each one is a decision: declared in VIEWS,
+    # security_invoker, and never a materialized view (which has no RLS).
     with as_superuser(conn, commit=False) as s:
-        rows = s.rows("select relname from pg_class where relnamespace = 'public'::regnamespace and relkind in ('v', 'm')")
-    assert rows == []
+        rows = s.rows(
+            "select c.relname, c.relkind, "
+            "coalesce(exists (select 1 from unnest(c.reloptions) o where o in ('security_invoker=true', 'security_invoker=on')), false) "
+            "from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind in ('v', 'm')")
+    live = {r[0] for r in rows}
+    assert not [r[0] for r in rows if r[1] == "m"], "materialized views bypass RLS"
+    assert not sorted(live - set(VIEWS)), (
+        f"views with no entry in tests/security/sec_expectations.py VIEWS: {sorted(live - set(VIEWS))}")
+    assert not sorted(set(VIEWS) - live), f"VIEWS lists views that do not exist: {sorted(set(VIEWS) - live)}"
+    assert not [r[0] for r in rows if not r[2]], f"views without security_invoker: {[r[0] for r in rows if not r[2]]}"
 
 
 def _functions(conn):
