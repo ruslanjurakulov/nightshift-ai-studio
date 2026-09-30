@@ -381,7 +381,12 @@ migration PR also gets a vitest migration-text test (as `api-migration.test.ts`)
 **PR 1 — Model registry + capability layer** (M–L)
 - Files: `schemas/model_registry.json`, `schemas/model_registry.schema.json`,
   `modules/model_registry.py`, `modules/capabilities/{base,image,video,audio}.py`
-  (adapters wrapping the existing clients; a dedicated Kling JWT adapter),
+  (adapters for the D2 set — Veo, Imagen, Gemini image, OpenAI image,
+  ElevenLabs, Kling (JWT), MiniMax Hailuo, Runway, Luma — plus FLUX.2,
+  Ideogram, Seedance (BytePlus, D5) and Wan; each calls the vendor's
+  documented endpoint, and all ship `hidden`),
+  the stale pipeline defaults in `modules/video_providers.py` fixed behind the
+  existing off-by-default flags,
   `tools/probe_models.py` (admin-run, one cheapest real call per model, writes
   `verified_at`), `command-center/lib/creative/registry.ts`, migration **0033**.
 - Tests: registry validates against schema; every `adapter` key resolves; an
@@ -427,7 +432,10 @@ migration PR also gets a vitest migration-text test (as `api-migration.test.ts`)
   argv for a 3-clip + music + VO + caption timeline; same revision → same argv
   (determinism); timeline referencing another org's asset refused; stale
   `base_rev` refused.
-- Owner steps: apply 0037; decide D3 (render pricing).
+- Also (D3): `credit_prices` units `export_render_minute` (~3–5 credits/min)
+  and `export_render_minimum`; the render is charged when requested and
+  refunded if it fails (the 0030 pattern).
+- Owner steps: apply 0037; review the two export prices.
 
 ### P1 — first usable workspace (each M)
 
@@ -437,8 +445,11 @@ migration PR also gets a vitest migration-text test (as `api-migration.test.ts`)
   QUALITY/EXACT) with the quote shown before confirm.
 - PR 7: Admin economics page (`creative_economics`, platform admin only) +
   per-model enable/disable switch.
-- PR 8: REST `/api/v1/creative/*` + MCP tools on the shared operations —
-  **after D1**, with the `payer` switch.
+- PR 8a: REST `/api/v1/creative/*` on the shared operations, API key +
+  USD API balance (`payer = api_balance`, D1).
+- PR 8b: MCP creative tools with **OAuth sign-in** (web account) paying from
+  **site credits** (`payer = credits`, D1). PR #251's API-key MCP remains an
+  optional developer door on the same tools.
 - PR 9: "Open in editor" — import a pipeline video's Video IR into a project
   (assets registered as `source='pipeline'`).
 
@@ -449,14 +460,15 @@ migration PR also gets a vitest migration-text test (as `api-migration.test.ts`)
 - PR 11: Captions from existing Whisper path (`subtitle_generator.py`) as a
   priced AI op; manual caption editing free.
 - PR 12: Export presets (9:16 / 16:9 / 1:1) + downloads via the 0030 pattern.
-- PR 13: Publish an export (D4) through `publish_requests`, gate unchanged.
+- PR 13: Publish an export (D4): the export becomes a `videos` row, then the
+  existing publish gate, approvals and `publish_requests` apply unchanged.
 - PR 14: PiP / overlapping video lanes in `render_spec`.
 
 ### P3 — agent and scale
 
 - PR 15: Creative agent (plan → confirm → execute under the user's session).
-- PR 16: More adapters after probes (Sora, Runway, Luma, xAI, Seedance intl,
-  Wan current), each its own PR.
+- PR 16: More adapters after probes (Sora, xAI, fal/Replicate routes), each
+  its own PR. (Runway, Luma, Seedance and Wan already land in PR 1, per D2/D5.)
 - PR 17: Off-site backup of `media/` (Hetzner Storage Box or S3-compatible).
 - PR 18: Migrate pipeline provider lists to the registry (removes the 6 copies).
 
@@ -512,15 +524,27 @@ migration PR also gets a vitest migration-text test (as `api-migration.test.ts`)
 - **Unverified providers** (xAI, current Wan, Higgsfield schemas, MiniMax-H3 as
   video): not offered until a probe succeeds.
 
-### 6.4 Owner decisions needed
+### 6.4 Owner decisions
 
-| # | Decision | Recommendation |
+Decided by the owner — see §6.5. The original proposals are kept for the record.
+
+| # | Question | Proposal (superseded by §6.5) |
 | :-- | :-- | :-- |
 | D1 | MCP payer: web credits (new spec) vs API balance (PR #251) | OAuth MCP on credits; keep REST on API balance; optional developer MCP on API keys. |
-| D2 | Which models go `beta` first | Those already wired and verified by probe: GPT Image, Gemini image, FLUX.2, Ideogram, MiniMax Hailuo, ElevenLabs TTS. |
-| D3 | Is timeline **render/export** free? (spec: deterministic edits free) | Edits free; render free up to a daily minutes allowance per org, then a small per-minute credit price (it uses the shared CPU). |
-| D4 | Publishing a timeline export | Create a `videos` row for an export so the existing gate and `publish_requests` apply unchanged — never a second publish path. |
-| D5 | Seedance region | BytePlus international unless the account is on Volcengine China. |
+| D2 | Which models go `beta` first | Those already wired and verified by probe. |
+| D3 | Is timeline **render/export** free? | Free up to a daily allowance, then a small per-minute price. |
+| D4 | Publishing a timeline export | A `videos` row per export, so the existing gate and `publish_requests` apply unchanged. |
+| D5 | Seedance region | BytePlus international. |
+
+### 6.5 Decisions (owner, final)
+
+| # | Decision | What it changes in this plan |
+| :-- | :-- | :-- |
+| **D1** | **MCP pays from site credits**; the user signs in to MCP with **OAuth** (their web account). **REST keeps API keys + the USD API balance.** PR #251 stays as an **optional developer MCP** (API key + API balance). | SQL entry points take a `payer` (`credits` \| `api_balance`) from PR 2 on. The OAuth MCP door is PR 8b; REST creative endpoints are PR 8a. |
+| **D2** | **Broad beta set**: Google (Veo video; Imagen and Gemini image), OpenAI image, ElevenLabs, Kling, MiniMax Hailuo, Runway, Luma. Each is enabled **only once its adapter passes a real probe with the owner's key**; until then the registry marks it unavailable. | PR 1 ships adapters for all of them (plus the already-wired FLUX.2 / Ideogram, and Seedance / Wan fixes). Availability stays `hidden` and the DB refuses `beta`/`ga` without `verified_at`. |
+| **D3** | **Timeline edits free; final render/export charged a small credit fee** (like HD downloads, ~3–5 credits per minute), through `credit_prices` units. | PR 4 adds `credit_prices` units `export_render_minute` and `export_render_minimum`; `request_render` charges and refunds on failure, the 0030 way. |
+| **D4** | **Exports publish through the existing publish gate and approvals.** | PR 13 registers an export as a `videos` row and uses `publish_requests` unchanged. No second publish path. |
+| **D5** | **Seedance via the international BytePlus region.** | PR 1 changes the Seedance default base URL to BytePlus ModelArk (`ark.ap-southeast.bytepluses.com`). |
 
 ---
 
@@ -547,7 +571,10 @@ migration PR also gets a vitest migration-text test (as `api-migration.test.ts`)
   rejimlarda almashtirish bo'lsa, u yozib qo'yiladi va ko'rsatiladi.
 - AI amallar kredit oladi (oldindan hold, muvaffaqiyatda capture, xatoda qaytarish);
   qo'lda tahrirlash bepul. Provayder xarajati faqat admin ko'radi.
-- **Qaror kerak (D1):** yangi spec bo'yicha MCP veb-akkaunt kreditlari bilan ishlaydi,
-  PR #251 esa API kalit + API balansda. Taklif: MCP — OAuth + kreditlar, REST — API
-  balans; umumiy qatlamda `payer` tanlovi. Yana D3 (render narxi) va D4 (eksportni
-  nashr qilish) bo'yicha qaror kerak.
+- **Qarorlar (egasi):** D1 — MCP OAuth orqali kirib sayt kreditlaridan to'laydi, REST
+  API kalit + USD API balansda qoladi, PR #251 ixtiyoriy developer MCP bo'lib qoladi.
+  D2 — keng beta: Google (Veo, Imagen/Gemini), OpenAI rasm, ElevenLabs, Kling,
+  MiniMax Hailuo, Runway, Luma — har biri egasining kaliti bilan real probe'dan
+  o'tgandan keyingina yoqiladi. D3 — timeline tahrirlash bepul, yakuniy render/eksport
+  daqiqasiga ~3–5 kredit. D4 — eksport mavjud publish gate va tasdiqlar orqali.
+  D5 — Seedance xalqaro BytePlus orqali.
