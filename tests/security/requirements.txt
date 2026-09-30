@@ -1,0 +1,4 @@
+# The security lab only (.github/workflows/security.yml). Not part of the
+# pipeline's requirements.txt: nothing that ships talks to Postgres directly.
+pytest>=8.0
+psycopg[binary]>=3.2,<4
