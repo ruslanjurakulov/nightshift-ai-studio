@@ -17,8 +17,9 @@ The rules match the rest of the pipeline:
 - **Cost-aware, never greedy.** A generated clip is billable, so only a bounded
   number of a video's sections get one (``max_clips``) — the highest-value
   sections first (the hook, then the longest sections), the rest stay on stock.
-- **Honest duration.** H3 renders 4-15s; a section's ask is clamped into that
-  window rather than sending a request the model will reject.
+- **Honest duration.** Each model family accepts its own clip lengths (H3
+  4-15s, the v1 Hailuo models only 6 or 10s); a section's ask is fitted to the
+  configured model rather than sending a request it will reject.
 - **The prompt is the section's own subject**, built from its keywords and the
   video topic, and it explicitly asks for clean footage with no captions or
   watermarks (the pipeline burns its own subtitles later).
@@ -29,21 +30,137 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-#: MiniMax H3's supported clip-length window, in seconds.
+#: MiniMax H3's supported clip-length window, in seconds — also the window used
+#: for a model with no documented rule below.
 MIN_CLIP_SECONDS = 4
 MAX_CLIP_SECONDS = 15
 
 _NEGATIVE = "no on-screen text, no captions, no subtitles, no watermark, no logo"
 
+#: Clip lengths each model family accepts, matched on a lower-cased model-id
+#: prefix (first match wins, so the longer prefix goes first). Either a
+#: continuous ``(lo, hi)`` window or a fixed set of values. Sources are the
+#: vendor SDKs and doc extracts recorded in the Scout reports of 2026-09-30.
+#: A request outside these is rejected by the provider after the run has
+#: already paid for everything before b-roll, so it is fixed here instead.
+_DURATION_RULES = (
+    ("minimax-h3-max", (5, 15), None),     # H3-Max: 5-15 s
+    ("minimax-h3", (4, 15), None),         # H3: 4-15 s
+    ("minimax-hailuo", None, (6, 10)),     # v1 Hailuo models: 6 or 10 s only (vendor MCP docstring)
+    ("kling-", None, (5, 10)),             # the legacy text2video endpoint: "5" or "10"
+    ("wan2.7", (2, 15), None),             # Wan 2.7: 2-15 s
+)
 
-def clamp_duration(seconds) -> int:
-    """Clamp a requested clip length into H3's 4-15s window. Non-numeric or
-    non-positive requests fall back to the minimum rather than raising."""
+
+def duration_rule(model: Optional[str]):
+    """``(window, allowed_values)`` for ``model``; exactly one of them is set.
+    An unknown model keeps the historical 4-15 s window."""
+    m = (model or "").strip().lower()
+    for prefix, window, allowed in _DURATION_RULES:
+        if m.startswith(prefix):
+            return window, allowed
+    return (MIN_CLIP_SECONDS, MAX_CLIP_SECONDS), None
+
+
+def clamp_duration(seconds, model: Optional[str] = None) -> int:
+    """Fit a requested clip length to what ``model`` accepts: clamped into a
+    continuous window, or snapped to the nearest allowed value (the shorter,
+    cheaper one on a tie). Non-numeric or non-positive requests fall back to
+    the shortest allowed length rather than raising."""
+    window, allowed = duration_rule(model)
     try:
-        s = int(round(float(seconds)))
+        s = float(seconds)
+        if s <= 0:
+            raise ValueError
     except (TypeError, ValueError):
-        return MIN_CLIP_SECONDS
-    return max(MIN_CLIP_SECONDS, min(MAX_CLIP_SECONDS, s))
+        return min(allowed) if allowed else window[0]
+    if allowed:
+        return min(sorted(allowed), key=lambda v: abs(v - s))
+    return max(window[0], min(window[1], int(round(s))))
+
+
+class VideoModelUnavailable(RuntimeError):
+    """The configured video model could not produce the clips this run asked
+    for, and nothing else will be substituted for them.
+
+    CLAUDE.md #4: a channel set to generated b-roll must not quietly go out on
+    stock footage, or on a different model than the one configured. The run
+    stops, and the message names the remedy rather than the symptom. The
+    message never carries a key or any part of one."""
+
+    def __init__(self, provider: str, model: str, reason: str, remedy: str):
+        self.provider = provider
+        self.model = model
+        self.reason = reason
+        self.remedy = remedy
+        super().__init__(f"{provider} ({model or 'no model'}): {reason}. Fix: {remedy}")
+
+
+# Why a provider said no → what the operator does about it. "auth" and "quota"
+# often share an HTTP status and need opposite fixes (CLAUDE.md #6), so a
+# vendor's own error code, when it has one, picks the category first.
+AUTH, QUOTA, RATE, NOT_FOUND, INVALID, POLICY, UNAVAILABLE = (
+    "auth", "quota", "rate_limited", "not_found", "invalid_request", "policy", "unavailable")
+
+
+def category_for_status(status: Optional[int]) -> str:
+    if status in (401, 403):
+        return AUTH
+    if status == 402:
+        return QUOTA
+    if status == 429:
+        return RATE
+    if status == 404:
+        return NOT_FOUND
+    if status is not None and 400 <= status < 500:
+        return INVALID
+    return UNAVAILABLE
+
+
+def _clean(text, secrets=()) -> str:
+    """A vendor message, safe to put in a log line: one line, bounded, and with
+    any credential the caller holds cut out — some APIs echo the key they
+    were sent back in their error text."""
+    out = " ".join(str(text or "").split())
+    for secret in secrets:
+        if secret:
+            out = out.replace(secret, "[redacted]")
+    return out[:200]
+
+
+def rejection(provider: str, model: str, *, status: Optional[int] = None,
+              category: Optional[str] = None, code="", message="",
+              key_hint: str = "the API key", secrets=()) -> VideoModelUnavailable:
+    """The ``VideoModelUnavailable`` for a provider refusing (or not answering)
+    a generation request, with the remedy for its category.
+
+    A credentials refusal drops the vendor's message text: that is the message
+    most likely to quote the key back (in full or masked), and no part of a
+    key may reach a log. The vendor's code is kept."""
+    category = category or category_for_status(status)
+    message = "" if category == AUTH else _clean(message, secrets)
+    detail = ", ".join(x for x in (
+        f"HTTP {status}" if status else "", _clean(code, secrets), message) if x)
+    what = {
+        AUTH: "refused the credentials",
+        QUOTA: "refused the request for quota or billing",
+        RATE: "rate-limited the request",
+        NOT_FOUND: "does not know this model or endpoint",
+        INVALID: "rejected the request as invalid",
+        POLICY: "refused the prompt under its content policy",
+        UNAVAILABLE: "did not answer",
+    }[category]
+    remedy = {
+        AUTH: f"check {key_hint}; a key issued for one region or console is refused by another",
+        QUOTA: f"top up the {provider} account, or lower CHRONOS_MINIMAX_BROLL_MAX_CLIPS, then re-run",
+        RATE: "wait and re-run; clips already made are reused from the task ledger, not paid for again",
+        NOT_FOUND: f"check the model id {model!r} and the endpoint settings against the {provider} docs",
+        INVALID: f"check the model id {model!r} and its settings; retrying the same request will not help",
+        POLICY: "reword the section keywords that fed this prompt, then re-run",
+        UNAVAILABLE: "re-run; a clip that was never submitted was never charged, and submitted "
+                     "ones are polled from the task ledger instead of paid for again",
+    }[category]
+    return VideoModelUnavailable(provider, model, what + (f" ({detail})" if detail else ""), remedy)
 
 
 @dataclass(frozen=True)
@@ -106,7 +223,8 @@ def _section_keywords(section) -> List[str]:
     return []
 
 
-def select_specs(sections: list, topic: str, *, max_clips: int, style_for=None) -> List[GenerationSpec]:
+def select_specs(sections: list, topic: str, *, max_clips: int, style_for=None,
+                 model: Optional[str] = None) -> List[GenerationSpec]:
     """Choose which sections get a generated clip and build a spec for each.
 
     Only sections that carry at least one keyword are eligible (a section we
@@ -120,7 +238,10 @@ def select_specs(sections: list, topic: str, *, max_clips: int, style_for=None) 
     That string may combine Director Mode's shot direction (camera/lens/
     lighting/motion, modules/director.py) with a Character-Bible consistency
     directive (modules/elements.py).
-    None keeps the default look, so an unconfigured run is unchanged."""
+    None keeps the default look, so an unconfigured run is unchanged.
+
+    ``model`` is the model the clips will be sent to; each clip's length is
+    fitted to what that model accepts (``clamp_duration``)."""
     if max_clips <= 0:
         return []
 
@@ -156,7 +277,7 @@ def select_specs(sections: list, topic: str, *, max_clips: int, style_for=None) 
         prompt = build_prompt(topic, kws, style=style) if style else build_prompt(topic, kws)
         specs.append(GenerationSpec(
             prompt=prompt,
-            duration_seconds=clamp_duration(_section_len(section)),
+            duration_seconds=clamp_duration(_section_len(section), model),
             section_index=i,
             keyword=kws[0],
         ))
