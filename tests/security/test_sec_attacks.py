@@ -210,15 +210,17 @@ def test_nobody_but_the_service_role_reads_a_token(conn, sc):
 # ── the developer console and the public API ────────────────────────────────
 
 def _create_api_key_call(conn) -> str:
-    """create_api_key with whichever signature this schema has: the key
-    prefix argument exists before the change that stops storing prefixes and
-    not after it."""
+    """create_api_key with whichever signature this schema has: a key prefix
+    argument before 0040, a client-computed hash before 0042, and neither
+    once the database mints the key itself (0042)."""
     with as_superuser(conn, commit=False) as s:
         args = s.value("select string_agg(pg_get_function_identity_arguments(oid), '|') "
                        "from pg_proc where proname = 'create_api_key' and pronamespace = 'public'::regnamespace")
     if "p_prefix" in (args or ""):
         return "select public.create_api_key(%(org)s, 'evil', %(hash)s, 'evil1234', null)"
-    return "select public.create_api_key(%(org)s, 'evil', %(hash)s, null)"
+    if "p_key_hash" in (args or ""):
+        return "select public.create_api_key(%(org)s, 'evil', %(hash)s, null)"
+    return "select public.create_api_key(%(org)s, 'evil', null)"
 
 
 @pytest.mark.parametrize("query", [

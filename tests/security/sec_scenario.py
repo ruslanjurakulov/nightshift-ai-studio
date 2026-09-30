@@ -255,6 +255,15 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     with acting(conn, sc.alice.actor, commit=True) as s:
         s.value("select public.invite_org_member(%s, %s, 'viewer')", [sc.alice.org, sc.invitee.email])
 
+    # One web rate-limit window each (0042), written the only way it can be:
+    # by the user's own take_web_rate() call.
+    with as_superuser(conn, commit=False) as s:
+        has_rate = s.value("select to_regprocedure('public.take_web_rate(text,integer,integer)') is not null")
+    if has_rate:
+        for t in sc.tenants():
+            with acting(conn, t.actor, commit=True) as s:
+                s.value("select public.take_web_rate('scenario', 10, 3600)")
+
     with as_superuser(conn) as s:
         sc.channel_org = {r[0]: str(r[1]) for r in s.rows("select channel_id, org_id from public.channels")}
         sc.video_channel = {r[0]: r[1] for r in s.rows("select video_id, channel_id from public.videos")}

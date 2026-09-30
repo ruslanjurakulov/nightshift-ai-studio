@@ -118,6 +118,9 @@ TABLES: Dict[str, Kind] = {
     "api_idempotency": Service(),
     "api_rate_counters": Service(),
     "api_prices": Public(anon=True),
+    # web/API hardening (0042): written only by their security-definer functions
+    "welcome_credit_claims": Service(),
+    "web_rate_counters": Service(),
     # the operator's own providers and legacy global scores
     "provider_balances": Platform(),
     "provider_billing_settings": Platform(),
@@ -257,6 +260,9 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "create_api_key": USER,
     "revoke_api_key": USER,
     "set_api_key_limit": USER,
+    # web/API hardening (0042)
+    "take_web_rate": USER,
+    "welcome_email_key": SERVICE,
 }
 
 
