@@ -71,6 +71,7 @@ const has = (html: string, text: string) => html.includes(esc(text));
 
 afterEach(() => {
   h.client = null;
+  vi.unstubAllGlobals();
 });
 
 describe("MembersBoard / OrgMembersBoard", () => {
@@ -170,5 +171,62 @@ describe("ApprovalsBoard request list", () => {
     const html = await mount(() => createElement(ApprovalsBoard, props));
     expect(html).not.toContain("data-read-error");
     expect(has(html, en.approvals.empty)).toBe(true);
+  });
+});
+
+describe("CreditEstimateLine (estimate read)", () => {
+  const fetchReturning = (status: number, body: unknown) =>
+    vi.stubGlobal("fetch", async () => ({ ok: status < 400, status, json: async () => body }));
+  const props = { channelId: "chan1", durationS: 180 };
+  const okBody = {
+    supported: true,
+    enforced: true,
+    exempt: false,
+    estimate: { credits: 36, basis: "per_minute", sample: 0, floorApplied: false, gap: null },
+  };
+
+  it("a failed estimate read (503) is the error state with Retry, not a hidden line", async () => {
+    fetchReturning(503, { error: "credits_read_failed" });
+    const { CreditEstimateLine } = await import("../components/credits/CreditEstimateLine");
+    const html = await mount(() => createElement(CreditEstimateLine, props));
+    expect(html).toContain("data-read-error");
+    expect(has(html, en.credits.estimateReadFailed)).toBe(true);
+    expect(has(html, en.common.retry)).toBe(true);
+    expect(has(html, en.credits.estimateLabel)).toBe(false);
+  });
+
+  it("no answer at all (network error) is the error state too", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("offline");
+    });
+    const { CreditEstimateLine } = await import("../components/credits/CreditEstimateLine");
+    const html = await mount(() => createElement(CreditEstimateLine, props));
+    expect(html).toContain("data-read-error");
+  });
+
+  it("control: a deployment without credits (supported:false) still renders nothing", async () => {
+    fetchReturning(200, { supported: false, enforced: false });
+    const { CreditEstimateLine } = await import("../components/credits/CreditEstimateLine");
+    const html = await mount(() => createElement(CreditEstimateLine, props));
+    expect(html).toBe("");
+  });
+
+  it("failed balance read: the estimate stays, the balance reads unknown with Retry, not '0 available'", async () => {
+    fetchReturning(200, { ...okBody, available: null, balanceFailed: true });
+    const { CreditEstimateLine } = await import("../components/credits/CreditEstimateLine");
+    const html = await mount(() => createElement(CreditEstimateLine, props));
+    expect(html).not.toContain("data-read-error");
+    expect(has(html, en.credits.availableUnknown)).toBe(true);
+    expect(html).toContain("data-balance-unknown");
+    expect(has(html, en.common.retry)).toBe(true);
+    expect(html).not.toContain(esc("0 available"));
+  });
+
+  it("control: a real zero balance (no account row) still reads '0 available'", async () => {
+    fetchReturning(200, { ...okBody, available: 0, balanceFailed: false });
+    const { CreditEstimateLine } = await import("../components/credits/CreditEstimateLine");
+    const html = await mount(() => createElement(CreditEstimateLine, props));
+    expect(has(html, "0 available")).toBe(true);
+    expect(html).not.toContain("data-balance-unknown");
   });
 });
