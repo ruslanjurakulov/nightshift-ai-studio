@@ -241,3 +241,15 @@ describe("Manage subscription: the Paddle customer portal", () => {
     expect(portalOverviewUrl(null)).toBeNull();
   });
 });
+
+describe("customers see no role names (0033)", () => {
+  const ROLE_WORDS = /\b(admin|administrator|editor|viewer)\b|администратор|редактор|наблюдател|administrator|tahrirchi/i;
+  it("nothing the plan UI says to a customer names a team role", () => {
+    const strip = (s: string) => s.replace(/\{\w+\}/g, "");
+    for (const t of [en, ru, uz]) {
+      const all = JSON.stringify(t.plans);
+      expect(strip(all)).not.toMatch(ROLE_WORDS);
+    }
+    expect(en.plans.adminOnly).toBe("Only the workspace owner can choose a plan.");
+  });
+});

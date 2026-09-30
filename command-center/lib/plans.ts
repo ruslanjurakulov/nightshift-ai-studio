@@ -327,8 +327,11 @@ export type SubscribeAccess = "hidden" | "admin_only" | "allowed" | "manage";
  * What the Credits page offers for plans. The exempt operator organization
  * never pays; nothing is offered without a checkout; an organization that
  * already has a live subscription manages it (Paddle's portal) instead of
- * buying a second one; and choosing a plan is an owner/admin act, like buying
- * credits.
+ * buying a second one; and choosing a plan is the workspace owner's act, like
+ * buying credits. A self-serve customer has no team roles (migration 0033):
+ * the person who created the workspace owns it, which the database records as
+ * the owner role — so the check below still reads the role, but nothing shown
+ * to a customer names one ("workspace owner" is all they see).
  */
 export function subscribeAccess(
   orgId: string | null | undefined,

@@ -2509,7 +2509,7 @@ export const en = {
     changePlanNote: "To switch plans, cancel here and subscribe to the new plan when the current period ends, or contact support.",
     manageFailed: "Couldn't open the portal. Try again in a moment, or use the link in your Paddle receipt.",
     managePortalMissing: "The customer portal is not configured on this deployment (PADDLE_API_KEY). Use the link in your Paddle receipt.",
-    adminOnly: "Only an owner or admin of this organization can choose a plan.",
+    adminOnly: "Only the workspace owner can choose a plan.",
     subscribeHint: "Billed monthly by Paddle until you cancel. Credits for each period arrive as soon as Paddle confirms the payment.",
     renewalTerms: "The plan renews automatically every month. Cancel any time in Manage subscription; it stays active until the end of the period you paid for.",
     paid: "Payment received. Waiting for Paddle to confirm it — the plan appears here in a few seconds.",

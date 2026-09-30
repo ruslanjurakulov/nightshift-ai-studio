@@ -2502,7 +2502,7 @@ export const uz: Dictionary = {
     changePlanNote: "Tarifni almashtirish uchun shu yerda bekor qiling va joriy davr tugagach yangi tarifga obuna bo'ling yoki qo'llab-quvvatlashga yozing.",
     manageFailed: "Portalni ochib bo'lmadi. Birozdan keyin qayta urinib ko'ring yoki Paddle chekidagi havoladan foydalaning.",
     managePortalMissing: "Bu o'rnatishda mijoz portali sozlanmagan (PADDLE_API_KEY). Paddle chekidagi havoladan foydalaning.",
-    adminOnly: "Tarifni faqat shu tashkilotning egasi yoki administratori tanlay oladi.",
+    adminOnly: "Tarifni faqat ish maydoni egasi tanlay oladi.",
     subscribeHint: "Paddle bekor qilmaguningizcha har oy to'lov oladi. Har bir davr kreditlari Paddle to'lovni tasdiqlashi bilan qo'shiladi.",
     renewalTerms: "Tarif har oy avtomatik yangilanadi. «Obunani boshqarish» da istalgan vaqtda bekor qiling; u to'langan davr oxirigacha amal qiladi.",
     paid: "To'lov qabul qilindi. Paddle tasdiqlashini kutyapmiz — tarif bir necha soniyada shu yerda paydo bo'ladi.",
