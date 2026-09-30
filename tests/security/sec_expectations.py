@@ -139,6 +139,10 @@ TABLES: Dict[str, Kind] = {
     "media_uploads": Org(),
     "org_storage_quota": Org(),
     "media_storage_settings": Public(),
+    # model registry (0035): signed-in users read sellable rows' public columns;
+    # probe runs are the operator's evidence
+    "model_registry": Public(),
+    "model_probe_runs": Platform(),
     # creative generations (0036) and their provider cost (0037: operator economics)
     "creative_jobs": Org(),
     "creative_job_events": Org(),
@@ -307,6 +311,11 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "media_quota_limit": SERVICE,
     "media_pending_bytes": SERVICE,
     "media_uploads_sweep": SERVICE,
+    # model registry (0035)
+    "sellable_models": USER,
+    "model_registry_admin": USER,
+    "record_model_probe": SERVICE,
+    "sync_model_registry": SERVICE,
     # creative jobs (0036): members quote / create / cancel; the worker runs them
     "quote_creative_job": USER,
     "create_creative_job": USER,

@@ -5,7 +5,9 @@ the same job, and a crashed job resumes by polling its stored provider task.
 
 Runs in its own scratch database (it commits, and it needs a model registry
 with sellable models): the fake registry below stands in for 0035 when that
-migration is not applied; when it is, the same rows go into the real table.
+migration is not applied. When it is (the lab applies every migration), the
+same models go into the REAL table through the real path: sync_model_registry
+for the file's facts, record_model_probe for the proof, then availability.
 """
 import json
 import os
@@ -34,7 +36,20 @@ create table public.model_registry (
   credit_unit text, entitlement text default 'any');
 alter table public.model_registry enable row level security;
 """
-REGISTRY = """
+PRICES = """
+insert into public.credit_prices (unit, credits_per_unit, margin) values
+ ('model_img_x', 4, 0.5), ('model_vid_y_second', 2, 1), ('job_minimum', 5, 0);
+"""
+# (id, capability, availability, verified, credit_unit, entitlement)
+MODELS = [
+    ("img-x", "t2i", "beta", True, "model_img_x", "any"),
+    ("vid-y", "t2v", "ga", True, "model_vid_y_second", "any"),
+    ("img-hidden", "t2i", "hidden", True, "model_img_x", "any"),
+    ("img-unverified", "t2i", "beta", False, "model_img_x", "any"),
+    ("img-unpriced", "t2i", "beta", True, "model_nope", "any"),
+    ("img-paid", "t2i", "beta", True, "model_img_x", "paid"),
+]
+REGISTRY = PRICES + """
 insert into public.model_registry (id, provider, capabilities, availability, verified_at, credit_unit, entitlement) values
  ('img-x','acme','{t2i}','beta',now(),'model_img_x','any'),
  ('vid-y','acme','{t2v}','ga',now(),'model_vid_y_second','any'),
@@ -42,9 +57,39 @@ insert into public.model_registry (id, provider, capabilities, availability, ver
  ('img-unverified','acme','{t2i}','beta',null,'model_img_x','any'),
  ('img-unpriced','acme','{t2i}','beta',now(),'model_nope','any'),
  ('img-paid','acme','{t2i}','beta',now(),'model_img_x','paid');
-insert into public.credit_prices (unit, credits_per_unit, margin) values
- ('model_img_x', 4, 0.5), ('model_vid_y_second', 2, 1), ('job_minimum', 5, 0);
 """
+
+
+def install_real_registry(d):
+    """The same six models in the real 0035 table, every one through the path
+    production uses, so no CHECK or trigger of 0035 is bypassed, except for
+    'img-unverified' (see below)."""
+    adapter = lambda cap: "image.acme" if cap == "t2i" else "video.acme"
+    rows = [{"id": m, "display_name": m, "provider": "acme", "adapter": adapter(cap),
+             "capabilities": [cap], "credit_unit": unit, "entitlement": ent,
+             "spec": {"vendor_model": "acme-" + m, "output": "image" if cap == "t2i" else "video"}}
+            for m, cap, _av, _v, unit, ent in MODELS]
+    d.su("select public.sync_model_registry(%s::jsonb)", [json.dumps(rows)])
+    for m, cap, av, verified, _unit, _ent in MODELS:
+        if verified:
+            d.su("select public.record_model_probe(%s, %s, %s, %s, true, null, null, 10, 100, 'security-lab')",
+                 [m, adapter(cap), "acme-" + m, cap])
+            if av != "hidden":
+                d.su("update public.model_registry set availability=%s where id=%s", [av, m])
+    # 0035 makes "beta/ga without verified_at" unrepresentable (CHECK). 0036
+    # still refuses such a row itself (defense in depth) and that refusal is an
+    # assertion of this file, so the state is forced once: the CHECK is
+    # dropped, the row set, and the CHECK re-added NOT VALID (still enforced
+    # for every later write; only this one row is outside it). Scratch database.
+    d.su("alter table public.model_registry drop constraint model_registry_verified_before_sale")
+    d.su("update public.model_registry set availability='beta' where id='img-unverified'")
+    d.su("alter table public.model_registry add constraint model_registry_verified_before_sale "
+         "check (availability not in ('beta','ga') or verified_at is not null) not valid")
+    d.su(PRICES)
+    # Fail loudly if the real table does not hold the states the tests name.
+    got = {r[0]: (r[1], r[2]) for r in d.su("select id, availability, verified_at is not null from public.model_registry")}
+    want = {m: (av, v) for m, _c, av, v, _u, _e in MODELS}
+    assert got == want, got
 
 
 def claims(role, uid=None, email=None):
@@ -141,9 +186,11 @@ def test_registry_missing_refuses(db):
 
 
 def test_install_registry(db):
-    if not db.registry_applied:
+    if db.registry_applied:
+        install_real_registry(db)
+    else:
         db.su(FAKE_REGISTRY)
-    db.su(REGISTRY)
+        db.su(REGISTRY)
 
 
 def test_quote_is_the_hold(db):
