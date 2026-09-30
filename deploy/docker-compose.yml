@@ -69,6 +69,12 @@ services:
       # <id>.mp4 here and /api/downloads/<id> streams it after an RLS check.
       # Read-only: the dashboard never writes or deletes a download.
       NIGHTSHIFT_DOWNLOADS_DIR: /data/downloads
+      # Media library (migration 0038): masters, thumbnails and proxies the
+      # media-worker wrote, served read-only through short-lived signed links
+      # (MEDIA_URL_SECRET, in the env file) — and the staging directory the
+      # upload route streams bodies into, the one place this container writes.
+      NIGHTSHIFT_MEDIA_DIR: /data/media
+      NIGHTSHIFT_MEDIA_STAGING_DIR: /data/media-staging
     # No `ports:` on purpose. Docker publishes ports around ufw, so a published
     # 3000 would be open to the internet whatever the firewall says. Caddy
     # reaches the app over the compose network instead.
@@ -80,6 +86,11 @@ services:
       # The worker's prepared downloads only — not its output/ (scripts,
       # checkpoints, masters). An empty volume while the worker is off.
       - worker_downloads:/data/downloads:ro
+      # The library's files: written by media-worker only.
+      - media:/data/media:ro
+      # Uploads land here as <ticket uuid>.upload and wait for media-worker,
+      # which checks the content before anything is stored or served.
+      - media_staging:/data/media-staging
     tmpfs:
       - /tmp
       # Next's runtime cache; uid 1000 is the image's `node` user.
@@ -163,6 +174,43 @@ services:
     mem_limit: 48g
     logging: *default-logging
 
+  # ── Media library ingest (migration 0038, tools/media_worker.py) ─────────
+  # Same image as the worker, its own process: an upload is checked (content
+  # sniffed, ffprobed, thumbnail / proxy made) within seconds instead of
+  # waiting behind a 30-minute render. Started and removed with the worker.
+  #
+  # uid 1000 is the web image's `node` user: the web container writes staged
+  # uploads and this service reads and deletes them, so both run as the same
+  # uid instead of sharing a world-writable directory.
+  media-worker:
+    profiles: ["worker"]
+    image: nightshift-worker:latest
+    restart: unless-stopped
+    command: ["python", "tools/media_worker.py"]
+    user: "1000:1000"
+    env_file:
+      - path: ${WORKER_ENV_FILE:-/opt/nightshift/.env.worker}
+        required: false
+    environment:
+      NIGHTSHIFT_WORKER_ID: nightshift-media-01
+      NIGHTSHIFT_MEDIA_DIR: /app/media
+      NIGHTSHIFT_MEDIA_STAGING_DIR: /app/media-staging
+      HOME: /tmp
+    stop_grace_period: 2m
+    volumes:
+      - media:/app/media
+      - media_staging:/app/media-staging
+    tmpfs:
+      - /tmp
+    init: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpu_shares: 512
+    mem_limit: 4g
+    logging: *default-logging
+
   # ── Creative worker (migration 0036, tools/creative_worker.py) ─────────────
   # Runs creative_jobs — image / video / speech generations started from the
   # Command Center — in its own process, so a generation never waits behind a
@@ -211,3 +259,7 @@ volumes:
   worker_history:
   worker_logs:
   worker_downloads:
+  # The media library (0038). NOT a backup: RAID1 survives a disk, not a
+  # deletion or the server; an off-site copy is a later step.
+  media:
+  media_staging:

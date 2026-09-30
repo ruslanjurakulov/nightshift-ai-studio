@@ -34,6 +34,7 @@ describe("nav filtering by role", () => {
       "create",
       "videos",
       "studio",
+      "library",
       "channels",
       "credits",
       "series",

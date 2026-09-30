@@ -9,7 +9,7 @@ import {
   SEARCH_HEADER,
   isSection,
 } from "@/lib/channels";
-import { gateDecision, isPublicApiPath } from "@/lib/public-paths";
+import { gateDecision, isPublicApiPath, isSignedMediaPath } from "@/lib/public-paths";
 
 /**
  * Which channel a URL is about, and where a URL that does not say lands.
@@ -61,6 +61,8 @@ export async function middleware(request: NextRequest) {
   // The public API authenticates its own bearer key (lib/public-paths.ts);
   // there is no session to refresh and nothing to redirect.
   if (isPublicApiPath(request.nextUrl.pathname)) return NextResponse.next();
+  // A signed media link carries its own authorization (lib/server/media.ts).
+  if (isSignedMediaPath(request.nextUrl.pathname)) return NextResponse.next();
 
   let response = NextResponse.next({ request });
 
@@ -118,6 +120,11 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Run on everything except Next internals and static files.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  // Run on everything except Next internals, static files and the body of a
+  // media upload (PUT /api/media/uploads/<ticket>). Next buffers a request body
+  // in memory for middleware and silently truncates it at 10 MB
+  // (experimental.middlewareClientMaxBodySize), so an upload that passed
+  // through here would sit whole in RAM and arrive cut short. That route
+  // checks the session itself.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/media/uploads/.+|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };
