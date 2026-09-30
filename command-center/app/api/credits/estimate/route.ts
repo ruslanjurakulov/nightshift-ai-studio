@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { requireOrgRole } from "@/lib/auth/org-roles";
-import { isCreditExempt, runDurationS } from "@/lib/credits";
+import { frozenRunDurationS, isCreditExempt, runDurationS } from "@/lib/credits";
+import { resolveRunBackend } from "@/lib/runBackend";
 import { creditsEnforced, estimateForChannel, readCreditAccount, readCreditPrices } from "@/lib/server/credits";
 
 export const runtime = "nodejs";
@@ -46,7 +47,10 @@ export async function GET(request: Request) {
   const { supported, prices } = await readCreditPrices(supabase);
   if (!supported || !orgId) return NextResponse.json({ supported: false, enforced: creditsEnforced });
 
-  const durationS = runDurationS(Number.isFinite(dur) && dur > 0 ? dur : undefined, ch.agent_config);
+  // The same length the run route reserves for: on the queue, the frozen one.
+  const requested = Number.isFinite(dur) && dur > 0 ? dur : undefined;
+  const queue = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND }) === "queue";
+  const durationS = queue ? frozenRunDurationS(requested, ch.agent_config) : runDurationS(requested, ch.agent_config);
   const [estimate, acct] = await Promise.all([
     estimateForChannel(supabase, channelId, durationS, prices),
     readCreditAccount(supabase, orgId),

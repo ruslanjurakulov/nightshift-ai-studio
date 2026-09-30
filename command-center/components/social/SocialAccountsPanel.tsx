@@ -86,7 +86,7 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
       {result && (
         <p
           className="text-[13px]"
-          style={{ color: result.word === "connected" ? "var(--color-primary)" : "var(--color-warn, #e2a03f)" }}
+          style={{ color: result.word === "connected" ? "var(--color-primary)" : "var(--color-warn)" }}
           role="status"
         >
           {fmt(ts.results[result.word], { platform: name(result.platform) })}

@@ -31,6 +31,8 @@ const TONE_COLOR: Record<string, string> = {
   fail: "var(--color-fail)",
   idle: "var(--color-idle)",
 };
+/** Text needs contrast the status dot does not: idle words read in --color-muted. */
+const TONE_TEXT: Record<string, string> = { ...TONE_COLOR, idle: "var(--color-muted)" };
 
 /**
  * Subsystem status board. Each subsystem's state is derived from real event
@@ -78,7 +80,7 @@ export function SystemStatus({
                 {s.lastSuccess && (
                   <span className="mono hidden text-[9px] text-[var(--color-muted)] sm:inline">{relativeTime(s.lastSuccess)}</span>
                 )}
-                <span className="text-[9px] font-semibold uppercase tracking-[0.22em]" style={{ color }}>
+                <span className="text-[9px] font-semibold uppercase tracking-[0.22em]" style={{ color: TONE_TEXT[s.tone] }}>
                   {String(t.ops[STATE_KEY[s.state]])}
                 </span>
               </span>

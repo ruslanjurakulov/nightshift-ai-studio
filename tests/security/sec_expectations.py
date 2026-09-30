@@ -22,6 +22,11 @@ Table kinds
                keeps the isolation tests from passing vacuously).
 ``own_insert`` the tenant may insert a row into its own scope directly
                (an INSERT policy exists for the table).
+``own_insert_setup``  SQL the tenant runs first, in the same transaction, for
+               a table whose own-row insert needs something only the tenant
+               can create (a render job needs its own fresh credit hold,
+               migration 0041). Returns a jsonb of column values for the row;
+               ``%(org)s`` is the tenant's organization.
 """
 
 from __future__ import annotations
@@ -41,6 +46,7 @@ class Kind:
     # Columns to give fresh values when cloning a row for an insert attack,
     # beyond the primary key and unique constraints (expression indexes).
     mutate: Tuple[str, ...] = ()
+    own_insert_setup: Optional[str] = None
 
 
 def Org(col="org_id", **kw) -> Kind:
@@ -90,7 +96,10 @@ TABLES: Dict[str, Kind] = {
     "videos": Channel(),
     "metrics_snapshots": Video(),
     "retention_points": Video(),
-    "render_jobs": Channel(own_insert=True),
+    # A customer's run carries a fresh, open queue hold of its own org (0041).
+    "render_jobs": Channel(own_insert=True, own_insert_setup=(
+        "select jsonb_build_object('credit_ref', r ->> 'job_id') "
+        "from public.reserve_credits(%(org)s, 'rj-' || gen_random_uuid()::text, 60) r")),
     # mixed streams: channel rows are the tenant's, channel-less rows the operator's
     "system_events": Channel(null_is_platform=True),
     "alert_events": Channel(null_is_platform=True, own_insert=True),

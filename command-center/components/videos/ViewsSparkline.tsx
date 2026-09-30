@@ -60,7 +60,7 @@ export function ViewsSparkline({ points, label = "Views over time" }: { points: 
                 <td className="py-1.5 pr-4 mono text-[11px] text-[var(--color-muted)]">
                   {relativeTime(p.date)}
                 </td>
-                <td className="py-1.5 mono text-[10px] text-[var(--color-idle)]">{p.date}</td>
+                <td className="py-1.5 mono text-[10px] text-[var(--color-muted)]">{p.date}</td>
                 <td className="py-1.5 text-right mono tabular-nums text-[var(--color-fg)]">
                   {num(p.views)}
                 </td>

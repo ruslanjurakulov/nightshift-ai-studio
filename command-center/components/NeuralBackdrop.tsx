@@ -11,6 +11,9 @@ import { useEffect, useRef } from "react";
  * then holds its first frame (the still the loop was built from). muted +
  * playsInline are what make autoplay legal on iOS/Android.
  *
+ * The footage is night-only artwork: the light theme hides it (tokens in
+ * globals.css) and the page shows its own light surface instead.
+ *
  * On data-dense screens pass `dim`, which lays a second scrim over the footage so
  * columns of numbers stay crisp; the hero (login) uses the lighter default.
  */
@@ -47,8 +50,7 @@ export function NeuralBackdrop({ dim = false }: { dim?: boolean }) {
     <>
       <video
         ref={ref}
-        className="pointer-events-none fixed inset-0 z-0 h-full w-full object-cover"
-        style={{ background: "#03060c" }}
+        className="neural-video"
         autoPlay
         muted
         loop
@@ -59,13 +61,7 @@ export function NeuralBackdrop({ dim = false }: { dim?: boolean }) {
         src={SRC}
       />
       <div className="veil-neural" aria-hidden />
-      {dim && (
-        <div
-          aria-hidden
-          className="pointer-events-none fixed inset-0 z-0"
-          style={{ background: "rgba(3, 6, 12, 0.46)" }}
-        />
-      )}
+      {dim && <div aria-hidden className="neural-dim" />}
     </>
   );
 }

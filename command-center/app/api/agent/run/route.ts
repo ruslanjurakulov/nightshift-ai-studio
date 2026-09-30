@@ -52,8 +52,15 @@ export const dynamic = "force-dynamic";
  * organization's admin can run their own channel. The platform's owner/admin
  * keep that role in every organization, as RLS already gives them. With
  * credits NOT enforced, a run outside the operator's own organization would
- * spend the operator's providers for free, so there it stays a platform-admin
- * action until the deployment switches credits on.
+ * spend the operator's providers for free, so on Actions it stays a
+ * platform-admin action until the deployment switches credits on — and on the
+ * queue it is refused for everyone: since migration 0041 the database and the
+ * worker refuse a customer organization's job without its credit hold, so the
+ * route says why instead of failing the insert.
+ *
+ * A queued paid run carries the length its hold was priced for
+ * (params.duration, lib/credits.ts frozenRunDurationS) — never "the channel's
+ * target", which the worker would read again at run time.
  */
 
 export async function GET() {
@@ -108,10 +115,11 @@ export async function POST(request: Request) {
   }
   // A customer organization's run is paid for with its credits. Without
   // enforcement nothing would pay, so only the operator may start one.
-  if (!creditsEnforced && access.source === "org" && !isCreditExempt(access.orgId) && !(await isPlatformAdmin()))
+  const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
+  const customerRun = access.source === "org" && !isCreditExempt(access.orgId);
+  if (!creditsEnforced && customerRun && (backend === "queue" || !(await isPlatformAdmin())))
     return NextResponse.json({ error: "credits_not_enforced" }, { status: 403 });
 
-  const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
   if (backend === "actions" && !isGithubConfigured)
     return NextResponse.json({ error: "github_not_configured" }, { status: 503 });
 
@@ -168,6 +176,7 @@ export async function POST(request: Request) {
   // with the run so its runner can settle exactly this hold.
   let creditRef: string | null = null;
   let creditsHeld: number | null = null;
+  let frozenDurationS: number | null = null;
   if (creditsEnforced) {
     const supabase = await createClient();
     if (!supabase) return NextResponse.json({ error: "credits_unavailable" }, { status: 503 });
@@ -175,13 +184,16 @@ export async function POST(request: Request) {
     if (!credit.ok) return NextResponse.json(credit.body, { status: credit.status });
     creditRef = credit.creditRef;
     creditsHeld = creditRef ? credit.estimate?.credits ?? null : null;
+    frozenDurationS = creditRef ? credit.durationS : null;
   }
   const heldNote = creditRef ? { credits_held: creditsHeld } : {};
 
   if (backend === "queue") {
     const supabase = await createClient();
     if (!supabase) return NextResponse.json({ error: "queue_unavailable", ...heldNote }, { status: 503 });
-    const row = buildRenderJobInsert(channelId, opts, user.id, creditRef);
+    // The job runs the length its hold was priced for, and nothing else.
+    const runOpts = frozenDurationS !== null ? { ...opts, duration: frozenDurationS } : opts;
+    const row = buildRenderJobInsert(channelId, runOpts, user.id, creditRef);
     const { data, error } = await supabase.from("render_jobs").insert(row).select("id").single();
     if (error || !data) {
       // A missing table is "0017 not applied yet" — say so, never claim it queued.
