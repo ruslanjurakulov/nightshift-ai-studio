@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 import { Inbox, type LucideIcon } from "lucide-react";
 
-const TONE: Record<string, { fg: string; label: string }> = {
-  ok: { fg: "var(--color-ok)", label: "OK" },
-  run: { fg: "var(--color-primary)", label: "RUNNING" },
-  fail: { fg: "var(--color-fail)", label: "FAILED" },
-  warn: { fg: "var(--color-warn)", label: "WARN" },
-  idle: { fg: "var(--color-idle)", label: "IDLE" },
+/** `fg` colours the dot; `text` colours the label (idle text needs muted's contrast). */
+const TONE: Record<string, { fg: string; text: string; label: string }> = {
+  ok: { fg: "var(--color-ok)", text: "var(--color-ok)", label: "OK" },
+  run: { fg: "var(--color-primary)", text: "var(--color-primary)", label: "RUNNING" },
+  fail: { fg: "var(--color-fail)", text: "var(--color-fail)", label: "FAILED" },
+  warn: { fg: "var(--color-warn)", text: "var(--color-warn)", label: "WARN" },
+  idle: { fg: "var(--color-idle)", text: "var(--color-muted)", label: "IDLE" },
 };
 
 export function StatusPill({
@@ -26,7 +27,7 @@ export function StatusPill({
         className={`glow-dot inline-block size-1.5 rounded-full${live ? " live-ring" : ""}`}
         style={{ color: t.fg, background: t.fg }}
       />
-      <span style={{ color: t.fg }}>{label ?? t.label}</span>
+      <span style={{ color: t.text }}>{label ?? t.label}</span>
     </span>
   );
 }

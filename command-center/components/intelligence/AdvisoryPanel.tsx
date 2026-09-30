@@ -30,7 +30,7 @@ function Card({
   children: React.ReactNode;
 }) {
   const accent =
-    tone === "warn" ? "var(--color-warn, #e2a03f)" : tone === "ok" ? "var(--color-ok, #34d399)" : "var(--color-primary)";
+    tone === "warn" ? "var(--color-warn)" : tone === "ok" ? "var(--color-ok)" : "var(--color-primary)";
   return (
     <section className="panel flex flex-col gap-4 p-5" style={{ borderTop: `2px solid ${accent}` }}>
       <header className="flex items-baseline justify-between gap-3">
@@ -99,7 +99,7 @@ export function AdvisoryPanel({
             )}
             <p
               className="mt-1 text-[13px]"
-              style={{ color: spend.projectedExceeds ? "var(--color-warn, #e2a03f)" : "var(--color-muted)" }}
+              style={{ color: spend.projectedExceeds ? "var(--color-warn)" : "var(--color-muted)" }}
             >
               {spend.ceilingUsd === null
                 ? t.ops.advSpendNoCeilingHint
@@ -164,9 +164,9 @@ export function AdvisoryPanel({
               style={{
                 color:
                   dur.mirrored === true
-                    ? "var(--color-ok, #34d399)"
+                    ? "var(--color-ok)"
                     : dur.mirrored === false
-                      ? "var(--color-warn, #e2a03f)"
+                      ? "var(--color-warn)"
                       : "var(--color-muted)",
               }}
             >

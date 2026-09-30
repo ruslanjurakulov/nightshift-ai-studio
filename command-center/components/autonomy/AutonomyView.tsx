@@ -27,7 +27,7 @@ const CAP_COLOR: Record<CapabilityState, string> = {
   records_only: "var(--color-secondary)",
   // Unconditional publishing is a real risk surface — amber, not green.
   unconditional: "var(--color-warn)",
-  not_configured: "var(--color-idle)",
+  not_configured: "var(--color-muted)",
 };
 
 const OUTCOME_KEY: Record<AutonomousAction["outcome"], keyof Dictionary["auto"]> = {
@@ -40,7 +40,7 @@ const OUTCOME_COLOR: Record<AutonomousAction["outcome"], string> = {
   ok: "var(--color-ok)",
   failed: "var(--color-fail)",
   running: "var(--color-primary)",
-  unknown: "var(--color-idle)",
+  unknown: "var(--color-muted)",
 };
 
 /**
@@ -112,7 +112,7 @@ export function AutonomyView({
               ))}
               <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2">
                 <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">{t.auto.hHuman}</div>
-                <div className="mono text-xl font-bold tabular-nums text-[var(--color-idle)]">
+                <div className="mono text-xl font-bold tabular-nums text-[var(--color-muted)]">
                   {health.humanInterventions ?? t.common.na}
                 </div>
               </div>

@@ -30,7 +30,7 @@ export function QualityGate({ events }: { events: SystemEventRow[] }) {
         </span>
         <span
           className="text-[10px] font-semibold uppercase tracking-[0.22em]"
-          style={{ color: gate.ready ? "var(--color-ok)" : "var(--color-idle)" }}
+          style={{ color: gate.ready ? "var(--color-ok)" : "var(--color-muted)" }}
         >
           {gate.ready ? t.auto.gReady : t.auto.gNotReady}
         </span>
@@ -47,7 +47,7 @@ export function QualityGate({ events }: { events: SystemEventRow[] }) {
               <span
                 aria-hidden
                 className="grid size-3.5 shrink-0 place-items-center rounded-full text-[8px] font-bold"
-                style={{ border: `1.5px solid ${color}`, color }}
+                style={{ border: `1.5px solid ${color}`, color: item.ok ? color : "var(--color-muted)" }}
               >
                 {item.ok ? "✓" : ""}
               </span>

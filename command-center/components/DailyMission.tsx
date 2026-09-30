@@ -41,7 +41,7 @@ export function DailyMission({
         <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">{t.ops.missionLearning}</span>
         <span
           className="mono text-[11px] font-semibold tracking-wider"
-          style={{ color: learningActive ? "var(--color-ok)" : "var(--color-idle)" }}
+          style={{ color: learningActive ? "var(--color-ok)" : "var(--color-muted)" }}
         >
           {learningActive ? t.ops.missionActive : t.ops.missionIdle}
         </span>

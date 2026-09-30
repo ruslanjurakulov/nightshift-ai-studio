@@ -35,7 +35,7 @@ export function NextAction({
           <div className="font-display text-sm font-semibold text-[var(--color-fg)]">{t.ops.nextNone}</div>
           <div className="mono text-[10px] text-[var(--color-muted)]">{t.ops.nextNoneSub}</div>
         </div>
-        <span className="mono text-[10px] font-semibold tracking-wider text-[var(--color-idle)]">{t.ops.nextReady}</span>
+        <span className="mono text-[10px] font-semibold tracking-wider text-[var(--color-muted)]">{t.ops.nextReady}</span>
       </div>
     );
   }

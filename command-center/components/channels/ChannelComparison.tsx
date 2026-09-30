@@ -41,7 +41,7 @@ export function ChannelComparison({ stats }: { stats: ChannelStats[] }) {
                   <span className="block truncate text-[12px] text-[var(--color-fg)]">{s.name}</span>
                   <span className="mono block truncate text-[9px] text-[var(--color-muted)]">{s.channelId}</span>
                 </td>
-                <td className="px-4 py-2 mono text-[10px]" style={{ color: s.status === "ACTIVE" ? "var(--color-ok)" : "var(--color-idle)" }}>
+                <td className="px-4 py-2 mono text-[10px]" style={{ color: s.status === "ACTIVE" ? "var(--color-ok)" : "var(--color-muted)" }}>
                   {s.status === "ACTIVE" ? t.channels.active : t.channels.paused}
                 </td>
                 <td className="px-4 py-2 text-right mono text-[12px] tabular-nums">{num(s.videos)}</td>
