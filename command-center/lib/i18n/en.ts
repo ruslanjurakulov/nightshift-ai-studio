@@ -549,6 +549,13 @@ export const en = {
     saving: "Saving…",
     saved: "Saved — the next run uses this voice.",
     failed: "Couldn't save — try again.",
+    pickFor: "Choosing",
+    pickNarrator: "Narrator voice",
+    pickQuote: "Quote voice",
+    quoteHint: "Quotes and character lines in the script are read in a second voice. Pick it from your list too, or use the narrator's voice. An ElevenLabs run will not start without this choice.",
+    quoteUseNarrator: "Read quotes in the narrator's voice",
+    quoteTag: "Quotes",
+    quoteMissing: "Choose a quote voice (or tick the narrator option) to save.",
   },
   cast: {
     title: "Cast — Character Bible",

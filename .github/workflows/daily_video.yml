@@ -411,6 +411,9 @@ jobs:
           # id); the repo VARIABLE sets the default voice for channels without one.
           ELEVENLABS_RUN_VOICE_ID: ${{ github.event.inputs.voice_id }}
           ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
+          # The voice for the script's quoted lines; a channel's own choice wins.
+          # Empty + an ElevenLabs channel without one = the run stops at preflight.
+          ELEVENLABS_SECONDARY_VOICE_ID: ${{ vars.ELEVENLABS_SECONDARY_VOICE_ID }}
           SCRIPT_LANGUAGE: English
           # x264 encoder threads for the final render. The render has been
           # OOM-killed at exit 143 with ffmpeg eating the 7.9 GB runner; set

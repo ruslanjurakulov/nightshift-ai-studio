@@ -543,6 +543,13 @@ export const uz: Dictionary = {
     saving: "Saqlanyapti…",
     saved: "Saqlandi — keyingi ishga tushirish shu ovozni ishlatadi.",
     failed: "Saqlab bo'lmadi — qayta urining.",
+    pickFor: "Tanlanmoqda",
+    pickNarrator: "Diktor ovozi",
+    pickQuote: "Iqtiboslar ovozi",
+    quoteHint: "Ssenariydagi iqtiboslar va qahramonlar gaplari ikkinchi ovozda o'qiladi. Uni ham ro'yxatdan tanlang yoki diktor ovozidan foydalaning. Bu tanlovsiz ElevenLabs bilan ishga tushirish boshlanmaydi.",
+    quoteUseNarrator: "Iqtiboslarni diktor ovozida o'qish",
+    quoteTag: "Iqtiboslar",
+    quoteMissing: "Saqlash uchun iqtiboslar ovozini tanlang (yoki diktor ovozi variantini belgilang).",
   },
   cast: {
     title: "Aktyorlar — Character Bible",
