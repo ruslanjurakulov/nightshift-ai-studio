@@ -75,7 +75,8 @@ export async function loadDownloads(videoId: string, channelId: string): Promise
     let balance: number | null = null;
     if (orgId && !exempt) {
       const acc = await readCreditAccount(supabase, orgId);
-      balance = acc.account ? acc.account.available : acc.supported ? 0 : null;
+      // A failed read is an unknown balance (null), never 0.
+      balance = acc.failed ? null : acc.account ? acc.account.available : acc.supported ? 0 : null;
     }
     return {
       ...empty,

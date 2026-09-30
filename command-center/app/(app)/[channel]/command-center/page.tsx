@@ -27,6 +27,8 @@ import { isToday, num, relativeTime, statusTone, storedMs } from "@/lib/format";
 import { uploadedOnly } from "@/lib/heldVideos";
 import { getOrgContext } from "@/lib/orgs-server";
 import { WELCOME_PATH } from "@/lib/public-paths";
+import { ErrorState } from "@/components/ReadError";
+import { commandCenterChip, knownCount, readFailed } from "@/lib/readState";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -100,6 +102,11 @@ export default async function CommandCenter() {
   let snapshots: MetricsSnapshotRow[] = [];
   let signals: FeedbackSignalRow[] = [];
   let dbHealthy = true;
+  // Per-source read state: a figure is a number only when ITS read succeeded.
+  let eventsOk = true;
+  let videosOk = true;
+  let snapshotsOk = true;
+  let signalsOk = true;
 
   if (supabase) {
     const [ev, vid, tp, snap, sg, videoIds] = await Promise.all([
@@ -110,7 +117,11 @@ export default async function CommandCenter() {
       scopeQuery(supabase.from("feedback_signals").select("*"), scope).order("analyzed_date", { ascending: false }).limit(200),
       fetchScopedVideoIds(supabase, scope),
     ]);
-    if (ev.error || vid.error) dbHealthy = false;
+    eventsOk = !readFailed(ev);
+    videosOk = !readFailed(vid);
+    snapshotsOk = !readFailed(snap);
+    signalsOk = !readFailed(sg);
+    if (!eventsOk || !videosOk) dbHealthy = false;
     events = (ev.data as SystemEventRow[]) ?? [];
     videos = (vid.data as VideoRow[]) ?? [];
     topics = tp;
@@ -122,17 +133,26 @@ export default async function CommandCenter() {
     signals = (sg.data as FeedbackSignalRow[]) ?? [];
   }
 
-  const publishedToday = videos.filter((v) => isToday(v.published_at)).length;
-  const errors24h = events.filter(
-    (e) => statusTone(e.status) === "fail" && Date.now() - (storedMs(e.ts) ?? 0) < DAY_MS,
-  ).length;
+  // A failed read leaves these arrays empty; the figures below are null
+  // ("unknown") in that case, never a 0.
+  const publishedToday = knownCount(videos.filter((v) => isToday(v.published_at)).length, videosOk);
+  const errors24h = knownCount(
+    events.filter((e) => statusTone(e.status) === "fail" && Date.now() - (storedMs(e.ts) ?? 0) < DAY_MS).length,
+    eventsOk,
+  );
   const runningAgents = Array.from(
     new Set(events.filter((e) => statusTone(e.status) === "run").map((e) => e.agent)),
   ).filter(Boolean);
+  const activeAgents = knownCount(runningAgents.length, eventsOk);
   const lastEventAt = events[0]?.ts ?? null;
-  const healthy = dbHealthy && errors24h === 0;
+  const chip = commandCenterChip({ readable: dbHealthy, errors24h, events: events.length });
   const recentVideos = videos.slice(0, 6);
   const mission = dailyMission(videos, snapshots, signals);
+  const missionView = {
+    publishedToday: knownCount(mission.publishedToday, videosOk),
+    analyticsToday: knownCount(mission.analyticsToday, snapshotsOk),
+    learningToday: knownCount(mission.learningToday, signalsOk),
+  };
   const next = inferNextStage(events);
   const tones = stageTones(events);
   // Roadmap #77: draw the day's upload-quota split (quota.allocated event) as
@@ -154,11 +174,13 @@ export default async function CommandCenter() {
     upload: t.pipeline.sUpload,
     publish: t.pipeline.sPublish,
   };
-  const lead = next
-    ? fmt(t.dashboard.leadNext, { s: STAGE_LABEL[next.key] })
-    : videos.length
-      ? t.dashboard.leadDone
-      : t.dashboard.leadIdle;
+  const lead = !eventsOk
+    ? t.dashboard.leadUnknown
+    : next
+      ? fmt(t.dashboard.leadNext, { s: STAGE_LABEL[next.key] })
+      : videos.length
+        ? t.dashboard.leadDone
+        : t.dashboard.leadIdle;
 
   return (
     <div className="rhythm stagger-enter">
@@ -178,29 +200,41 @@ export default async function CommandCenter() {
         <div className="flex min-w-0 flex-1 flex-col gap-10">
           <div>
             <div className="t-label">
-              {lastEventAt ? `${t.dashboard.latestRun} · ${relativeTime(lastEventAt)}` : t.dashboard.noRunsYet}
+              {!eventsOk
+                ? t.dashboard.runUnknown
+                : lastEventAt
+                  ? `${t.dashboard.latestRun} · ${relativeTime(lastEventAt)}`
+                  : t.dashboard.noRunsYet}
             </div>
-            <h1 className="t-hero mt-5">{latest?.title ?? t.dashboard.heroIdle}</h1>
+            <h1 className="t-hero mt-5">{!videosOk ? t.dashboard.heroUnknown : (latest?.title ?? t.dashboard.heroIdle)}</h1>
             <p className="t-lead mt-6">{lead}</p>
           </div>
 
           <div className="flex flex-wrap gap-x-14 gap-y-8">
-            <Figure label={t.dashboard.publishedToday} value={num(publishedToday)} />
+            <Figure label={t.dashboard.publishedToday} value={publishedToday} unknown={t.common.unknown} unknownSub={t.common.couldNotRead} />
             <Figure
               label={t.dashboard.activeAgents}
-              value={num(runningAgents.length)}
+              value={activeAgents}
+              unknown={t.common.unknown}
+              unknownSub={t.common.couldNotRead}
               sub={runningAgents.length ? runningAgents.join(", ") : t.common.idle}
               tone={runningAgents.length ? "var(--color-warn)" : undefined}
             />
             <Figure
               label={t.dashboard.errors24h}
-              value={num(errors24h)}
+              value={errors24h}
+              unknown={t.common.unknown}
+              unknownSub={t.common.couldNotRead}
               sub={errors24h ? t.dashboard.needsAttention : t.common.none}
               tone={errors24h ? "var(--color-fail)" : "var(--color-ok)"}
             />
             <Figure
               label={t.dashboard.videos}
-              value={num(videos.length >= 8 ? undefined : videos.length)}
+              value={videosOk ? (videos.length >= 8 ? null : videos.length) : null}
+              // A library of 8+ was never a count ("showing latest 8"): that is
+              // N/A, not unknown. Only a failed read is "unknown".
+              unknown={videosOk ? t.common.na : t.common.unknown}
+              unknownSub={videosOk ? undefined : t.common.couldNotRead}
               sub={videos.length >= 8 ? t.dashboard.showingLatest8 : t.dashboard.inLibrary}
             />
           </div>
@@ -230,15 +264,25 @@ export default async function CommandCenter() {
             </Link>
             <CustomizeButton />
             <StatusPill
-              tone={healthy ? "ok" : errors24h > 0 ? "fail" : "run"}
-              label={healthy ? t.dashboard.systemHealthy : errors24h > 0 ? t.dashboard.attention : t.dashboard.active}
-              live={healthy}
+              tone={chip === "healthy" ? "ok" : chip === "attention" ? "fail" : chip === "unreadable" ? "warn" : "idle"}
+              label={
+                chip === "healthy"
+                  ? t.dashboard.systemHealthy
+                  : chip === "attention"
+                    ? t.dashboard.attention
+                    : chip === "unreadable"
+                      ? t.dashboard.unreadable
+                      : t.dashboard.noActivity
+              }
+              live={chip === "healthy"}
             />
           </div>
 
           <div>
             <div className="t-label mb-5">{t.dashboard.recentVideos}</div>
-            {recentVideos.length === 0 ? (
+            {!videosOk ? (
+              <ErrorState compact />
+            ) : recentVideos.length === 0 ? (
               <EmptyState>{t.dashboard.noVideos}</EmptyState>
             ) : (
               <ul>
@@ -264,13 +308,15 @@ export default async function CommandCenter() {
           </Widget>
           <Widget id="mission" title={t.ops.missionTitle}>
             <DailyMission
-              publishedToday={mission.publishedToday}
-              analyticsToday={mission.analyticsToday}
-              learningToday={mission.learningToday}
+              publishedToday={missionView.publishedToday}
+              analyticsToday={missionView.analyticsToday}
+              learningToday={missionView.learningToday}
             />
           </Widget>
           <Widget id="topics" title={t.dashboard.topTopics}>
-            {topics.length === 0 ? (
+            {!dbHealthy ? (
+              <ErrorState compact />
+            ) : topics.length === 0 ? (
               <EmptyState>{t.dashboard.noTopics}</EmptyState>
             ) : (
               <ul>
@@ -295,6 +341,9 @@ export default async function CommandCenter() {
             )}
           </Widget>
           <Widget id="quota" title={t.ops.advQuotaGaugeTitle}>
+            {!eventsOk ? (
+              <ErrorState compact />
+            ) : (
             <QuotaGauges
               view={quotaView}
               labels={{
@@ -306,13 +355,14 @@ export default async function CommandCenter() {
                 hint: t.ops.advQuotaGaugeHint,
               }}
             />
+            )}
           </Widget>
         </aside>
       </div>
 
       <Widget id="feed" title={t.ops.streamTitle}>
-        <div className="h-[420px]">
-          <ActivityFeed initial={events} scope={scope} />
+        <div className={eventsOk ? "h-[420px]" : undefined}>
+          {eventsOk ? <ActivityFeed initial={events} scope={scope} /> : <ErrorState />}
         </div>
       </Widget>
 
@@ -326,14 +376,35 @@ export default async function CommandCenter() {
 }
 
 /** A label above a figure, the way the direction sets its stat row. */
-function Figure({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: string }) {
+function Figure({
+  label,
+  value,
+  sub,
+  tone,
+  unknown,
+  unknownSub,
+}: {
+  label: string;
+  /** null = no number to show (a failed read, or a count that was never one). */
+  value: number | null;
+  sub?: string;
+  tone?: string;
+  /** What a null value reads as ("unknown", or N/A). */
+  unknown: string;
+  unknownSub?: string;
+}) {
+  const known = value !== null;
+  const shownSub = known ? sub : unknownSub ?? sub;
   return (
     <div>
       <div className="t-label">{label}</div>
-      <div className="mt-3 text-[26px] font-semibold tabular-nums" style={tone ? { color: tone } : undefined}>
-        {value}
+      <div
+        className="mt-3 text-[26px] font-semibold tabular-nums"
+        style={known && tone ? { color: tone } : known ? undefined : { color: "var(--color-muted)" }}
+      >
+        {known ? num(value) : unknown}
       </div>
-      {sub && <div className="mt-1.5 max-w-[22ch] truncate text-[12px] font-light text-[var(--color-muted)]">{sub}</div>}
+      {shownSub && <div className="mt-1.5 max-w-[22ch] truncate text-[12px] font-light text-[var(--color-muted)]">{shownSub}</div>}
     </div>
   );
 }

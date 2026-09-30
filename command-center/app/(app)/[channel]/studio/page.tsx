@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { ErrorState } from "@/components/ReadError";
+import { readFailed } from "@/lib/readState";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { Panel } from "@/components/ui";
@@ -27,15 +29,17 @@ export default async function StudioPage() {
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
+  let failed = false;
   if (supabase) {
-    const { data } = await scopeQuery(
+    const res = await scopeQuery(
       supabase.from("system_events").select("*"),
       scope,
       { nullIsGlobal: true },
     )
       .order("ts", { ascending: false })
       .limit(500);
-    events = (data as SystemEventRow[]) ?? [];
+    failed = readFailed(res);
+    events = (res.data as SystemEventRow[]) ?? [];
   }
   const agent = deriveAdvisory(events).agent;
 
@@ -56,7 +60,9 @@ export default async function StudioPage() {
       {/* Autopilot — the day's auto-picked topic (Track 3 Autopilot Lite) */}
       <Panel title={t.studio.autopilotTitle}>
         <div className="p-4">
-          {agent && agent.topic ? (
+          {failed ? (
+            <ErrorState compact />
+          ) : agent && agent.topic ? (
             <div className="space-y-1.5">
               <p className="text-[13px] text-[var(--color-muted)]">{t.studio.autopilotOnTopic}</p>
               <p className="text-base font-semibold text-[var(--color-fg)]">{agent.topic}</p>
