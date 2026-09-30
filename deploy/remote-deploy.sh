@@ -300,9 +300,14 @@ main() {
     log "docker compose up -d --build --no-deps worker"
     compose up -d --build --no-deps worker \
       || die "the worker did not start; on the server: dc logs --tail 100 worker"
-    compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' worker || true
+    # The media library's ingest (migration 0038): same image, its own process.
+    log "docker compose up -d --no-deps media-worker"
+    compose up -d --no-deps media-worker \
+      || die "the media worker did not start; on the server: dc logs --tail 100 media-worker"
+    compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' worker media-worker || true
   else
     # Off: no container, and no copy of the bot's keys left on the disk.
+    compose rm --stop --force media-worker >/dev/null 2>&1 || true
     compose rm --stop --force worker >/dev/null 2>&1 || true
     rm -f "$WORKER_ENV_FILE" "${WORKER_ENV_FILE}.prev"
     log "worker is off (GitHub variable NIGHTSHIFT_WORKER is not 'on')"

@@ -124,6 +124,7 @@ jobs:
           WEBENV_TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
           WEBENV_TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
           WEBENV_SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          WEBENV_MEDIA_URL_SECRET: ${{ secrets.MEDIA_URL_SECRET }}
         run: |
           set -euo pipefail
 

@@ -51,7 +51,11 @@ RUN if find /app -maxdepth 2 \( -name 'youtube_token*.json' -o -name 'client_sec
     fi \
  && useradd --create-home --uid 10001 nightshift \
  && mkdir -p output history logs assets downloads \
- && chown -R nightshift:nightshift /app
+ && chown -R nightshift:nightshift /app \
+ && mkdir -p /app/media /app/media-staging \
+ && chown 1000:1000 /app/media /app/media-staging
+# media/ and media-staging/ belong to uid 1000: media-worker runs as the web
+# image's `node` user so both can manage staged uploads (docker-compose.yml).
 
 USER nightshift
 

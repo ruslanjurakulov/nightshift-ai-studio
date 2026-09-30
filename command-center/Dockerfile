@@ -84,6 +84,11 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 RUN mkdir -p .next/cache && chown node:node .next/cache
+# Mount points of the media library's volumes (migration 0038). An empty named
+# volume takes the owner of the directory it is first mounted over, so both
+# images create them owned by uid 1000 — the uid media-worker runs as too
+# (deploy/docker-compose.yml) — whichever container starts first.
+RUN mkdir -p /data/media /data/media-staging && chown 1000:1000 /data/media /data/media-staging
 
 USER node
 EXPOSE 3000
