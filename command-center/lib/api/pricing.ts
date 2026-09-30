@@ -92,10 +92,16 @@ function round6(n: number): number {
  * May this organization activate the API? The operator's own organization, or
  * one that has bought any credit pack — read from its purchase rows exactly as
  * the account panel reads its plan (derivePlan): a purchase means a paid plan.
- * Mirrors api_org_eligible() in 0031, which is what actually decides.
+ * Since 0034 a plan with the api_access entitlement opens it too (the caller
+ * passes that). Mirrors api_org_eligible() in 0031/0034, which is what decides.
  */
-export function apiEligible(orgId: string | null | undefined, purchaseRows: readonly LedgerPurchaseRow[] | null): boolean {
-  if (isCreditExempt(orgId)) return true;
+export function apiEligible(
+  orgId: string | null | undefined,
+  purchaseRows: readonly LedgerPurchaseRow[] | null,
+  /** 0034: the organization's plan has the api_access entitlement. */
+  apiAccess = false,
+): boolean {
+  if (isCreditExempt(orgId) || apiAccess) return true;
   const plan = derivePlan(purchaseRows);
   return plan.kind === "pack" || plan.kind === "purchased";
 }

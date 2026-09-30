@@ -9,47 +9,61 @@ import { ROLES, atLeast, type Role } from "@/lib/auth/roles-shared";
 export { ROLES, atLeast, type Role };
 
 /**
- * Role-based access for the Command Center.
+ * The caller's PLATFORM role — their row on the operator's roster
+ * (`app_members`, migration 0007) — for actions that spend the operator's own
+ * resources: GitHub secrets and variables, provider keys and top-ups, test
+ * alerts. A customer's role in their own organization is a different question
+ * (lib/auth/org-roles.ts).
  *
- * The effective role comes from `app_members` via the security-definer SQL
- * `bind_current_member()` (migration 0007): it binds an invited-by-email row to
- * the signed-in user on first use and returns their role. Two deliberate
- * fallbacks keep existing single-operator setups working with no change:
+ * The answer comes from the security-definer SQL `bind_current_member()`: it
+ * binds an invited-by-email roster row to the signed-in user on first use and
+ * returns their role — or NULL for anyone not on the roster (migration 0033;
+ * before it, 'viewer').
  *
- * - Supabase not configured  → 'owner' (local/dev, no backend to consult).
- * - The RPC errors (migration not applied yet) → 'owner', i.e. the old
- *   all-admin behavior. Roles only start constraining once 0007 is applied AND
- *   the first member row exists (until then the SQL itself returns 'owner').
- *
- * A user who is not signed in is 'viewer' here; the routes and pages also gate
- * on `getUser()`, so an anonymous caller never reaches a privileged action.
+ * FAIL CLOSED. Any error — the RPC failing, the network, an unexpected value —
+ * means "no platform role". It used to mean 'owner' (a pre-0007 convenience),
+ * which turned one failed database call into platform admin for every
+ * signed-in account (security audit C4). The one exception is a Command
+ * Center with no Supabase configured at all (local development): there is no
+ * roster to ask and no one else to protect, so it stays 'owner'.
  */
 
-function coerce(role: unknown): Role {
-  return typeof role === "string" && (ROLES as string[]).includes(role) ? (role as Role) : "viewer";
+function coerce(role: unknown): Role | null {
+  return typeof role === "string" && (ROLES as string[]).includes(role) ? (role as Role) : null;
 }
 
-/** The caller's effective role, binding an email invite on first use. */
-export async function resolveRole(): Promise<Role> {
+/**
+ * The caller's platform role, binding an email invite on first use; null when
+ * they are not signed in, not on the roster, or the lookup failed.
+ */
+export async function resolvePlatformRole(): Promise<Role | null> {
   const user = await getUser();
-  if (!user) return "viewer";
+  if (!user) return null;
   const supabase = await createClient();
   if (!supabase) return "owner";
   try {
     const { data, error } = await supabase.rpc("bind_current_member");
-    if (error) return "owner";
+    if (error) return null;
     return coerce(data);
   } catch {
-    return "owner";
+    return null;
   }
 }
 
 /**
- * For API routes: the caller's role when it meets `min`, otherwise null. A null
- * return is the route's cue to answer 403 — the caller is signed in but lacks
- * the role for this action.
+ * For pages that draw the platform roster's controls: the platform role, with
+ * "no role" shown as the least one ('viewer'), which no control accepts.
+ * Never use this to allow something — use requireRole.
+ */
+export async function resolveRole(): Promise<Role> {
+  return (await resolvePlatformRole()) ?? "viewer";
+}
+
+/**
+ * For API routes: the caller's platform role when it meets `min`, otherwise
+ * null — the route's cue to answer 403. No platform role meets any minimum.
  */
 export async function requireRole(min: Role): Promise<Role | null> {
-  const role = await resolveRole();
-  return atLeast(role, min) ? role : null;
+  const role = await resolvePlatformRole();
+  return role !== null && atLeast(role, min) ? role : null;
 }

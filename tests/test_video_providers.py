@@ -11,7 +11,7 @@ from unittest import mock
 
 import config
 from modules import video_providers as vp
-from modules.minimax_broll import GenerationSpec
+from modules.minimax_broll import GenerationSpec, VideoModelUnavailable
 
 
 def _spec(i=0):
@@ -19,6 +19,8 @@ def _spec(i=0):
 
 
 class _Resp:
+    status_code = 200
+
     def __init__(self, payload=None, *, chunks=None):
         self._payload = payload or {}
         self._chunks = chunks or []
@@ -160,11 +162,15 @@ class GenericClientTestCase(unittest.TestCase):
         self.assertEqual(out, dest)
         self.assertTrue(dest.exists() and dest.stat().st_size > 0)
 
-    def test_submit_failure_returns_none(self):
+    def test_an_unreachable_provider_stops_the_run_with_a_remedy(self):
+        # It used to return None here, and the section silently became stock.
         client = self._client()
         client.session = mock.Mock()
-        client.session.post.side_effect = RuntimeError("boom")
-        self.assertIsNone(client.generate(_spec(), Path("/tmp/x.mp4")))
+        client.session.post.side_effect = vp.requests.ConnectionError("boom")
+        with self.assertRaises(VideoModelUnavailable) as ctx:
+            client.generate(_spec(), Path("/tmp/x.mp4"))
+        self.assertIn("re-run", ctx.exception.remedy)
+        self.assertNotIn("secret-key", str(ctx.exception))
 
     def test_reported_failure_status_returns_none(self):
         client = self._client()

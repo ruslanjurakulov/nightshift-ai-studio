@@ -173,8 +173,10 @@ class GenerateBrollTrackedTestCase(unittest.TestCase):
 
     def test_a_poll_timeout_keeps_the_task_for_the_next_attempt(self):
         first = FakeResumableClient(outcomes=[pt.OUTCOME_PENDING])
-        result = self._fetcher().generate_broll(self.sections[:1], "History", client=first)
-        self.assertEqual(result.generated, 0)   # this attempt fell back to stock
+        # The attempt stops (no silent stock) — and the paid task is kept.
+        with self.assertRaises(mb.VideoModelUnavailable) as ctx:
+            self._fetcher().generate_broll(self.sections[:1], "History", client=first)
+        self.assertIn("has not finished", str(ctx.exception))
         second = FakeResumableClient(task_ids=["must-not-be-used"])
         self._fetcher().generate_broll(self.sections[:1], "History", client=second)
         self.assertEqual(second.submits, [])
@@ -191,16 +193,18 @@ class GenerateBrollTrackedTestCase(unittest.TestCase):
         self.assertEqual(result.newly_generated, 0)
 
     def test_a_provider_reported_failure_is_submitted_afresh(self):
-        self._fetcher().generate_broll(self.sections[:1], "History",
-                                       client=FakeResumableClient(outcomes=[pt.OUTCOME_FAILED]))
+        with self.assertRaises(mb.VideoModelUnavailable):
+            self._fetcher().generate_broll(self.sections[:1], "History",
+                                           client=FakeResumableClient(outcomes=[pt.OUTCOME_FAILED]))
         again = FakeResumableClient(task_ids=["task-new"])
         result = self._fetcher().generate_broll(self.sections[:1], "History", client=again)
         self.assertEqual(len(again.submits), 1)
         self.assertEqual(result.task_ids, {0: "task-new"})
 
     def test_a_changed_prompt_is_a_new_clip(self):
-        self._fetcher().generate_broll(self.sections[:1], "History",
-                                       client=FakeResumableClient(outcomes=[pt.OUTCOME_PENDING]))
+        with self.assertRaises(mb.VideoModelUnavailable):
+            self._fetcher().generate_broll(self.sections[:1], "History",
+                                           client=FakeResumableClient(outcomes=[pt.OUTCOME_PENDING]))
         again = FakeResumableClient(task_ids=["task-other"])
         self._fetcher().generate_broll(self.sections[:1], "Geography", client=again)
         self.assertEqual(len(again.submits), 1)
@@ -208,8 +212,8 @@ class GenerateBrollTrackedTestCase(unittest.TestCase):
     def test_a_failed_submit_records_nothing(self):
         client = FakeResumableClient()
         client.submit = lambda spec: None
-        result = self._fetcher().generate_broll(self.sections[:1], "History", client=client)
-        self.assertEqual(result.generated, 0)
+        with self.assertRaises(mb.VideoModelUnavailable):
+            self._fetcher().generate_broll(self.sections[:1], "History", client=client)
         self.assertFalse((self.root / "topic" / pt.LEDGER_FILENAME).exists())
 
 
@@ -217,6 +221,8 @@ class ClientSplitTestCase(unittest.TestCase):
     """The real clients: submit → resume, and resume alone makes no POST."""
 
     class _Resp:
+        status_code = 200
+
         def __init__(self, payload=None, chunks=None):
             self._payload = payload or {}
             self._chunks = chunks or []
@@ -263,7 +269,7 @@ class ClientSplitTestCase(unittest.TestCase):
 
     def test_minimax_resume_and_failure_states(self):
         from modules.minimax_client import MiniMaxClient
-        client = MiniMaxClient(api_key="k")
+        client = MiniMaxClient(api_key="k", model="MiniMax-Hailuo-2.3")
         client.session = mock.Mock()
         client.session.post.side_effect = AssertionError("resume must not submit")
         client.session.get.return_value = self._Resp({"status": "Fail"})

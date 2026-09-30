@@ -21,21 +21,24 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 
-# MiniMax H3 — an omni-modal video model (4-15s, 768P/2K, text/image -> video
-# with native audio). Used here as an OPTIONAL b-roll source: when enabled, it
-# generates an on-topic clip for a section instead of pulling stock from Pexels.
-# OFF by default and gated behind a key, so the pipeline's default behaviour is
-# unchanged and no request is ever made without credentials.
+# MiniMax — OPTIONAL generated b-roll: when enabled, a few sections get an
+# on-topic clip instead of Pexels stock. OFF by default and gated behind a key,
+# so no request is ever made without credentials.
 #
-# The endpoint/model/field names are exposed as env vars because MiniMax's API
-# reference could not be reached from this build's network to pin them, and the
-# platform revises them: set them from the current MiniMax docs before enabling.
-# Without MINIMAX_API_KEY (or with CHRONOS_ENABLE_MINIMAX_BROLL off) the feature
-# stays dormant and b-roll comes from Pexels exactly as before.
+# The model id picks MiniMax's API (modules/minimax_client.py):
+#   * MiniMax-Hailuo-2.3 / -2.3-Fast / -02 → the v1 API (task → query → file
+#     retrieve). This is the flow MiniMax's own published client runs.
+#   * MiniMax-H3 / MiniMax-H3-Max → the v2 API (content array, content.url).
+#     Its task-query path is not confirmed, so an H3 run refuses to start until
+#     MINIMAX_V2_QUERY_PATH is set from MiniMax's current v2 docs ("{id}" marks
+#     where the task id goes; without it the id is sent as ?task_id=).
+# The host must match the key's region: api.minimax.io (global) or
+# api.minimaxi.com (mainland China).
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
-MINIMAX_GROUP_ID = os.getenv("MINIMAX_GROUP_ID", "")   # some MiniMax routes scope by group
 MINIMAX_BASE_URL = os.getenv("MINIMAX_BASE_URL", "https://api.minimax.io").rstrip("/")
-MINIMAX_H3_MODEL = os.getenv("MINIMAX_H3_MODEL", "MiniMax-H3")
+# An empty variable (an unset Actions var expands to "") keeps the default.
+MINIMAX_H3_MODEL = os.getenv("MINIMAX_H3_MODEL", "").strip() or "MiniMax-H3"
+MINIMAX_V2_QUERY_PATH = os.getenv("MINIMAX_V2_QUERY_PATH", "").strip()
 MINIMAX_BROLL_ENABLED = (
     bool(MINIMAX_API_KEY)
     and os.getenv("CHRONOS_ENABLE_MINIMAX_BROLL", "").strip().lower() in ("1", "true", "yes", "on")
@@ -53,7 +56,9 @@ MINIMAX_BROLL_MAX_CLIPS = int(os.getenv("CHRONOS_MINIMAX_BROLL_MAX_CLIPS", "2") 
 # with none configured falls back to Pexels stock exactly as before. Endpoints
 # and model strings are read from env (documented defaults) so they can be
 # pinned to a provider's current docs without a code change, and no key is
-# ever logged. See modules/video_providers.py.
+# ever logged. A provider that is ON must produce every clip it is asked for:
+# a refusal stops the run with the remedy instead of quietly using stock
+# footage. See modules/video_providers.py.
 VIDEO_PROVIDER = os.getenv("CHRONOS_VIDEO_PROVIDER", "").strip().lower() or "minimax"
 VIDEO_GEN_OPT_IN = os.getenv("CHRONOS_ENABLE_VIDEO_GEN", "").strip().lower() in ("1", "true", "yes", "on")
 # Higgsfield (https://higgsfield.ai) — text-to-video, async submit → poll → fetch.
@@ -62,22 +67,37 @@ HIGGSFIELD_BASE_URL = os.getenv("HIGGSFIELD_BASE_URL", "https://platform.higgsfi
 HIGGSFIELD_MODEL = os.getenv("HIGGSFIELD_MODEL", "higgsfield-dop")
 HIGGSFIELD_SUBMIT_PATH = os.getenv("HIGGSFIELD_SUBMIT_PATH", "/v1/text2video")
 HIGGSFIELD_QUERY_PATH = os.getenv("HIGGSFIELD_QUERY_PATH", "/v1/jobs/{id}")
-# Kling (Kuaishou) — Bearer auth, async task + query by id.
+# Kling (international) — the api-singapore host. Either a console API key
+# (KLING_API_KEY, sent as Bearer) or an access key + secret key pair
+# (KLING_ACCESS_KEY + KLING_SECRET_KEY, or KLING_API_KEY as "access:secret"),
+# from which a short-lived JWT is signed per request. The text2video path is the
+# one Kling files as "legacy" and documents for kling-v2-6; the v3 per-model
+# path is not confirmed.
 KLING_API_KEY = os.getenv("KLING_API_KEY", "")
-KLING_BASE_URL = os.getenv("KLING_BASE_URL", "https://api.klingai.com").rstrip("/")
-KLING_MODEL = os.getenv("KLING_MODEL", "kling-v1")
+KLING_ACCESS_KEY = os.getenv("KLING_ACCESS_KEY", "")
+KLING_SECRET_KEY = os.getenv("KLING_SECRET_KEY", "")
+KLING_BASE_URL = os.getenv("KLING_BASE_URL", "https://api-singapore.klingai.com").rstrip("/")
+KLING_MODEL = os.getenv("KLING_MODEL", "kling-v2-6")
 KLING_SUBMIT_PATH = os.getenv("KLING_SUBMIT_PATH", "/v1/videos/text2video")
 KLING_QUERY_PATH = os.getenv("KLING_QUERY_PATH", "/v1/videos/text2video/{id}")
-# Seedance (ByteDance / Volcengine Ark) — Bearer auth.
+# Seedance (ByteDance) on BytePlus ModelArk, international region — Bearer
+# ARK API key; the model is a dated id (or an ep-… endpoint id).
 SEEDANCE_API_KEY = os.getenv("SEEDANCE_API_KEY", "")
-SEEDANCE_BASE_URL = os.getenv("SEEDANCE_BASE_URL", "https://ark.cn-beijing.volces.com").rstrip("/")
-SEEDANCE_MODEL = os.getenv("SEEDANCE_MODEL", "seedance-1-0-pro")
+SEEDANCE_BASE_URL = os.getenv("SEEDANCE_BASE_URL", "https://ark.ap-southeast.bytepluses.com").rstrip("/")
+SEEDANCE_MODEL = os.getenv("SEEDANCE_MODEL", "seedance-1-0-pro-250528")
+SEEDANCE_RESOLUTION = os.getenv("SEEDANCE_RESOLUTION", "720p")
 SEEDANCE_SUBMIT_PATH = os.getenv("SEEDANCE_SUBMIT_PATH", "/api/v3/contents/generations/tasks")
 SEEDANCE_QUERY_PATH = os.getenv("SEEDANCE_QUERY_PATH", "/api/v3/contents/generations/tasks/{id}")
-# Wan (Alibaba Tongyi Wanxiang / DashScope) — Bearer auth.
+# Wan (Alibaba Model Studio, international) — Bearer key. The shared
+# dashscope-intl host is in maintenance mode from 2026-09-30 (still served, no
+# new models); set WAN_WORKSPACE_ID to use the workspace host
+# https://{id}.ap-southeast-1.maas.aliyuncs.com instead. WAN_BASE_URL, when
+# set, overrides both.
 WAN_API_KEY = os.getenv("WAN_API_KEY", "")
-WAN_BASE_URL = os.getenv("WAN_BASE_URL", "https://dashscope-intl.aliyuncs.com").rstrip("/")
-WAN_MODEL = os.getenv("WAN_MODEL", "wan2.1-t2v-turbo")
+WAN_WORKSPACE_ID = os.getenv("WAN_WORKSPACE_ID", "").strip()
+WAN_BASE_URL = os.getenv("WAN_BASE_URL", "").strip().rstrip("/")
+WAN_MODEL = os.getenv("WAN_MODEL", "wan2.7-t2v")
+WAN_RESOLUTION = os.getenv("WAN_RESOLUTION", "720P")
 WAN_SUBMIT_PATH = os.getenv("WAN_SUBMIT_PATH", "/api/v1/services/aigc/video-generation/video-synthesis")
 WAN_QUERY_PATH = os.getenv("WAN_QUERY_PATH", "/api/v1/tasks/{id}")
 # Google Veo (Gemini API) — key in the x-goog-api-key header (no Bearer prefix).
