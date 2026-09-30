@@ -38,7 +38,9 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence
 
+from modules import ass_captions
 from modules.render_spec import (
+    FIT_COVER,
     KIND_COLOR,
     KIND_IMAGE,
     KIND_VIDEO,
@@ -46,10 +48,14 @@ from modules.render_spec import (
     Segment,
     build_ffmpeg_command,
     concat_list_lines,
+    segment_frames,
     validate,
 )
 
 logger = logging.getLogger(__name__)
+
+#: The timeline text overlays' ASS file, written in the render's temp dir.
+OVERLAY_FILENAME = "overlays.ass"
 
 
 class RenderBackendError(RuntimeError):
@@ -152,15 +158,83 @@ def ken_burns_filter(style: str, width: int, height: int, fps: int, frames: floa
             f"scale={w}:{h}:flags=lanczos")
 
 
+def _scale_crop(width: int, height: int, fps: int) -> str:
+    """Fill width×height, cropping the overflow (a timeline clip's
+    ``fit: cover`` — e.g. 16:9 footage in a 9:16 frame without bars)."""
+    return (f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},fps={fps}")
+
+
+def _fade_filters(seg: Segment, length_s: float) -> str:
+    """``,fade=...`` for a segment's fades from/to black ('' when it has none,
+    so a pipeline segment's filter is unchanged). ``length_s`` is the clip's
+    real length, so the fade-out ends on its last frame."""
+    out = ""
+    if seg.fade_in_s > 0:
+        out += f",fade=t=in:st=0:d={seg.fade_in_s:.3f}"
+    if seg.fade_out_s > 0:
+        out += f",fade=t=out:st={max(0.0, length_s - seg.fade_out_s):.3f}:d={seg.fade_out_s:.3f}"
+    return out
+
+
 def _static_image_cmd(ffmpeg: str, path: str, dur: str, width: int, height: int,
-                      fps: int, common: List[str], out_path: Path) -> List[str]:
-    return [ffmpeg, "-y", "-loop", "1", "-i", path, "-t", dur,
-            "-vf", _scale_pad(width, height, fps), *common, str(out_path)]
+                      fps: int, common: List[str], out_path: Path, *,
+                      length: Optional[List[str]] = None, extra_vf: str = "") -> List[str]:
+    return [ffmpeg, "-y", "-loop", "1", "-i", path, *(length or ["-t", dur]),
+            "-vf", _scale_pad(width, height, fps) + extra_vf, *common, str(out_path)]
+
+
+def segment_commands(
+    ffmpeg: str, seg: Segment, out_path: Path, width: int, height: int, fps: int,
+    *, seed: Optional[str] = None, x264: Sequence[str] = (), frame_exact: bool = False,
+) -> List[List[str]]:
+    """The ffmpeg command(s) that normalise one segment — pure, runs nothing.
+    Usually one; a still gets two: the Ken Burns move, then the static hold
+    that is run only if the move fails.
+
+    Without the timeline options (``frame_exact`` and the Segment's
+    ``in_s``/``fit``/fades at their defaults) these are exactly the commands
+    this backend always ran. ``frame_exact`` replaces ``-t``/``d=`` with
+    ``-frames:v round(duration*fps)``: measured at 30 fps, a 1.067 s colour
+    segment gave 33 frames and an input-seeked clip one frame short, which
+    would drift every later cut of a timeline off its audio."""
+    dur = f"{max(0.001, seg.duration):.3f}"
+    common = ["-c:v", "libx264", *x264, "-pix_fmt", "yuv420p", "-r", str(fps)]
+    frames = segment_frames(seg.duration, fps)
+    length = ["-frames:v", str(frames)] if frame_exact else ["-t", dur]
+    length_s = frames / fps if frame_exact else float(dur)
+    fades = _fade_filters(seg, length_s)
+
+    if seg.kind == KIND_COLOR or not seg.path:
+        # A black placeholder needs no fade: it already is black.
+        if frame_exact:
+            return [[ffmpeg, "-y", "-f", "lavfi", "-i", f"color=c=black:s={width}x{height}:r={fps}",
+                     *length, *common, str(out_path)]]
+        return [[ffmpeg, "-y", "-f", "lavfi", "-i",
+                 f"color=c=black:s={width}x{height}:r={fps}:d={dur}", *common, str(out_path)]]
+    if seg.kind == KIND_IMAGE:
+        style = ken_burns_style(seed if seed is not None else seg.path)
+        # Same length as the static hold: the frame count is the one the
+        # old path produced, only the pixels move.
+        vf = ken_burns_filter(style, width, height, fps,
+                              float(frames) if frame_exact else float(dur) * fps) + fades
+        hold = _static_image_cmd(ffmpeg, seg.path, dur, width, height, fps, common, out_path,
+                                 length=length if frame_exact else None, extra_vf=fades)
+        return [[ffmpeg, "-y", "-i", seg.path, *length, "-vf", vf, *common, str(out_path)], hold]
+    # KIND_VIDEO. -stream_loop -1: a source shorter than its slot is looped (as
+    # the MoviePy compositor does with vc.loop) instead of yielding a short
+    # clip that would drift every later cut off the audio timeline. -ss before
+    # -i is an input seek, frame-accurate when transcoding, and the output's
+    # timestamps start at 0 — so the fades above are relative to the cut.
+    seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
+    fit = _scale_crop if seg.fit == FIT_COVER else _scale_pad
+    return [[ffmpeg, "-y", "-stream_loop", "-1", *seek, "-i", seg.path, *length, "-an",
+             "-vf", fit(width, height, fps) + fades, *common, str(out_path)]]
 
 
 def _normalize_segment(
     ffmpeg: str, seg: Segment, out_path: Path, width: int, height: int, fps: int,
-    *, seed: Optional[str] = None, x264: Sequence[str] = (),
+    *, seed: Optional[str] = None, x264: Sequence[str] = (), frame_exact: bool = False,
 ) -> None:
     """Render one timeline segment to a uniform silent H.264 clip of its
     duration. A colour placeholder is generated; an image gets the Ken Burns
@@ -170,31 +244,20 @@ def _normalize_segment(
 
     ``x264`` is the encoder settings (``INTERMEDIATE_X264`` from ``render``);
     empty means libx264's defaults — the command this backend always ran."""
-    dur = f"{max(0.001, seg.duration):.3f}"
-    common = ["-c:v", "libx264", *x264, "-pix_fmt", "yuv420p", "-r", str(fps)]
-
-    if seg.kind == KIND_COLOR or not seg.path:
-        cmd = [ffmpeg, "-y", "-f", "lavfi", "-i",
-               f"color=c=black:s={width}x{height}:r={fps}:d={dur}", *common, str(out_path)]
-    elif seg.kind == KIND_IMAGE:
-        style = ken_burns_style(seed if seed is not None else seg.path)
-        # Same "-t dur" as the static hold: the frame count is the one the
-        # old path produced, only the pixels move.
-        vf = ken_burns_filter(style, width, height, fps, float(dur) * fps)
+    cmds = segment_commands(ffmpeg, seg, out_path, width, height, fps,
+                            seed=seed, x264=x264, frame_exact=frame_exact)
+    if seg.kind == KIND_IMAGE and seg.path and len(cmds) == 2:
+        move, hold = cmds
         try:
-            _run([ffmpeg, "-y", "-i", seg.path, "-t", dur, "-vf", vf, *common, str(out_path)])
+            _run(move)
             return
         except RenderBackendError as e:
             logger.warning("Ken Burns (%s) failed for %s — holding the still instead: %s",
-                           style, Path(seg.path).name, e)
-        cmd = _static_image_cmd(ffmpeg, seg.path, dur, width, height, fps, common, out_path)
-    else:  # KIND_VIDEO
-        # -stream_loop -1: a source shorter than its slot is looped (as the
-        # MoviePy compositor does with vc.loop) instead of yielding a short
-        # clip that would drift every later cut off the audio timeline.
-        cmd = [ffmpeg, "-y", "-stream_loop", "-1", "-i", seg.path, "-t", dur, "-an",
-               "-vf", _scale_pad(width, height, fps), *common, str(out_path)]
-    _run(cmd)
+                           ken_burns_style(seed if seed is not None else seg.path),
+                           Path(seg.path).name, e)
+        _run(hold)
+        return
+    _run(cmds[0])
 
 
 # ── segment normalisation: one fast intermediate, a bounded worker pool ─────
@@ -402,8 +465,11 @@ def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
 
     def task(i: int, x264: Sequence[str]) -> Callable[[], None]:
         seg = spec.segments[i]
+        # Only a timeline spec passes frame_exact: a pipeline render makes
+        # exactly the call it always made.
+        extra = {"frame_exact": True} if spec.frame_exact else {}
         return lambda: _normalize_segment(ffmpeg, seg, outs[i], spec.width, spec.height,
-                                          spec.fps, seed=f"{i}:{seg.path}", x264=x264)
+                                          spec.fps, seed=f"{i}:{seg.path}", x264=x264, **extra)
 
     t0 = time.monotonic()
     try:
@@ -453,6 +519,13 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
         raise RenderBackendError("invalid render spec: " + "; ".join(problems))
 
     ffmpeg = ffmpeg or resolve_ffmpeg()
+    if spec.overlays and not ass_captions.has_libass(ffmpeg):
+        # Checked before any segment is encoded: a timeline's titles and
+        # captions are part of the video — rendering without them would be a
+        # silent quality fallback. Say what fixes it instead.
+        raise RenderBackendError(
+            "this ffmpeg build has no libass 'subtitles' filter, so the timeline's text "
+            "overlays and captions cannot be burnt in — install an ffmpeg built with libass")
     Path(spec.output_path).parent.mkdir(parents=True, exist_ok=True)
     timings = timings if timings is not None else RenderTimings()
     timings.segments = len(spec.segments)
@@ -468,7 +541,14 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
         concat_path = tmpdir / "concat.txt"
         concat_path.write_text("\n".join(concat_list_lines(norm_spec)) + "\n", encoding="utf-8")
 
-        cmd = build_ffmpeg_command(norm_spec, str(concat_path))
+        overlay_path = None
+        if spec.overlays:
+            overlay_path = tmpdir / OVERLAY_FILENAME
+            overlay_path.write_text(
+                ass_captions.build_overlay_ass(spec.overlays, width=spec.width, height=spec.height),
+                encoding="utf-8")
+        cmd = build_ffmpeg_command(norm_spec, str(concat_path),
+                                   str(overlay_path) if overlay_path else None)
         cmd[0] = ffmpeg  # the builder emits a literal "ffmpeg"; use the resolved binary
         t0 = time.monotonic()
         _run(cmd)
