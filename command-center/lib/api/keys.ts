@@ -2,12 +2,14 @@
  * API keys (migrations 0031, 0040) — the pure half, shared by the browser that
  * creates a key and the server that checks one.
  *
- * A key is `nsk_live_` + 32 random bytes in base62 (43 characters). It is
- * generated in the admin's browser and shown there once; only its SHA-256
- * (hex) travels to the database. No part of the key — not a prefix, not a
- * length, not a fragment — is stored, shown again or logged (CLAUDE.md #1):
- * keys are told apart by their name, id, creation and last-use time. The API
- * routes hash the presented key the same way and look the hash up.
+ * A key is `nsk_live_` + 43 base62 characters (256 bits). Since migration
+ * 0042 the database mints it (create_api_key), stores only its SHA-256 (hex)
+ * and returns the whole key once, to the admin's browser, which shows it once
+ * — a browser can no longer register a hash of a key it chose. No part of the
+ * key — not a prefix, not a length, not a fragment — is stored, shown again or
+ * logged (CLAUDE.md #1): keys are told apart by their name, id, creation and
+ * last-use time. The API routes hash the presented key the same way and look
+ * the hash up.
  *
  * Web Crypto only (crypto.getRandomValues, crypto.subtle), so the same code
  * runs in the browser, in Node and in the tests.
@@ -23,10 +25,17 @@ export const MAX_ACTIVE_KEYS = 10;
  *  Never the retired `prefix` column (0040) and never the hash. */
 export const API_KEY_LIST_COLUMNS = "id,name,monthly_limit_cents,created_at,last_used_at,revoked_at";
 
-/** What the browser sends to create_api_key (0040): the key's SHA-256 and
- *  nothing else of the key. */
-export function createKeyArgs(orgId: string, name: string, keyHash: string, limitCents: number | null) {
-  return { p_org: orgId, p_name: name.slice(0, 60), p_key_hash: keyHash, p_monthly_limit_cents: limitCents };
+/** What the browser sends to create_api_key (0042): which organization, a
+ *  name and an optional limit — nothing of a key, which the database mints. */
+export function createKeyArgs(orgId: string, name: string, limitCents: number | null) {
+  return { p_org: orgId, p_name: name.slice(0, 60), p_monthly_limit_cents: limitCents };
+}
+
+/** The new key from create_api_key's result, or null when the result is not
+ *  one of our keys (never shown half-formed). */
+export function mintedKey(data: unknown): string | null {
+  const key = data && typeof data === "object" ? (data as { key?: unknown }).key : undefined;
+  return isWellFormedKey(key) ? key : null;
 }
 
 const B62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -45,7 +54,8 @@ export function base62(bytes: Uint8Array, length = API_KEY_SECRET_LENGTH): strin
 }
 
 export interface NewApiKey {
-  /** The whole key: shown once, in the browser that made it; never stored. */
+  /** A whole key in the production format — for tests and tooling; the
+   *  Developer console's keys are minted by the database (0042). */
   key: string;
 }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { isPlatformAdmin, requireOrgRole } from "@/lib/auth/org-roles";
+import { isOperator, isPlatformAdmin, requireOrgRole } from "@/lib/auth/org-roles";
+import { getOrgContext } from "@/lib/orgs-server";
 import { logAudit } from "@/lib/server/audit";
 import { dispatchDailyVideo, isGithubConfigured } from "@/lib/server/github-secrets";
 import { isSupabaseConfigured } from "@/lib/config";
@@ -65,6 +66,11 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // Which backend runs the operator's pipeline is for someone who can run
+  // something here: a member of the organization being viewed, or the
+  // operator — not any account that signed up.
+  const org = await getOrgContext();
+  if (!org.current && !(await isOperator())) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
   return NextResponse.json({
     configured: isRunConfigured(backend, { github: isGithubConfigured, supabase: isSupabaseConfigured }),

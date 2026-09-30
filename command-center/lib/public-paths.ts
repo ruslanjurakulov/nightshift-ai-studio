@@ -64,13 +64,18 @@ export const SIGNUP_PATH = "/signup";
  *  not signed in yet — this route is what signs them in. */
 export const AUTH_CALLBACK_PATH = "/auth/callback";
 
+/** "Continue as <email>?" for an emailed link that is not bound to this
+ *  browser (lib/auth-confirm.ts). Public for the same reason as the callback:
+ *  the person on it is not signed in yet, or is replacing an older session. */
+export const AUTH_CONFIRM_PATH = "/auth/confirm";
+
 /** First-run onboarding: needs a session, but sits outside the channel layout
  *  (a new account has no channel, and possibly no organization, to resolve). */
 export const WELCOME_PATH = "/welcome";
 
 /** Public for a signed-out visitor. `/` is the landing page for them; a signed-in
  *  user asking for `/` is sent on to their Command Center as before. */
-export const PUBLIC_PATHS = ["/", ...ALWAYS_PUBLIC_PATHS, SIGNUP_PATH, AUTH_CALLBACK_PATH] as const;
+export const PUBLIC_PATHS = ["/", ...ALWAYS_PUBLIC_PATHS, SIGNUP_PATH, AUTH_CALLBACK_PATH, AUTH_CONFIRM_PATH] as const;
 
 /**
  * Top-level URL segments that are pages of their own, so no channel may take
@@ -116,7 +121,8 @@ export function isSignupPath(pathname: string): boolean {
 }
 
 export function isAuthCallbackPath(pathname: string): boolean {
-  return normalize(pathname) === AUTH_CALLBACK_PATH;
+  const p = normalize(pathname);
+  return p === AUTH_CALLBACK_PATH || p === AUTH_CONFIRM_PATH;
 }
 
 export function isWelcomePath(pathname: string): boolean {

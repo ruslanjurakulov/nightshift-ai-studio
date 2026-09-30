@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/roles";
+import { requireOperator } from "@/lib/auth/org-roles";
 import { logAudit } from "@/lib/server/audit";
 import {
   GITHUB_REPO,
@@ -16,8 +17,10 @@ export const dynamic = "force-dynamic";
 /**
  * Forward typed keys to the bot repository as Actions secrets.
  *
- * GET reports whether forwarding is configured at all, so the wizard can show
- * the operator what to set up instead of failing at the last step.
+ * GET reports whether forwarding is configured at all, and to which
+ * repository, so the wizard can show the operator what to set up instead of
+ * failing at the last step. Operator only: the repository name is the
+ * operator's configuration, not a customer's business.
  *
  * POST takes `{ secrets: { NAME: value } }`, seals each value to the
  * repository's public key and writes it. Nothing is persisted here: the values
@@ -27,8 +30,8 @@ export const dynamic = "force-dynamic";
  */
 
 export async function GET() {
-  const user = await getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const access = await requireOperator();
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
   return NextResponse.json({ configured: isGithubConfigured, repo: GITHUB_REPO });
 }
 

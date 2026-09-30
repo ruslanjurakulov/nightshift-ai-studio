@@ -11,13 +11,26 @@ reply back to whoever asked. Action commands (``/publish``, ``/pause``,
 the pipeline/driver to execute under the normal gate — this transport never
 uploads a video or flips a channel's autonomy.
 
+Replays are harmless. The offset lives in ``history/`` (an Actions cache
+that is evicted after a week unused, and restored by prefix — possibly an
+older copy), so Telegram can hand the same updates over again. Every update is
+therefore CLAIMED by its ``update_id`` in Supabase (``telegram_updates``,
+migration 0042) before it is handled, and one that was already claimed is
+skipped. When the claim cannot be made — Supabase not configured, unreachable,
+or 0042 not applied — read-only queries are still answered (a repeated
+``/status`` reply is harmless) but actions are refused, since a replay could
+repeat them. An action older than ``ACTION_MAX_AGE_S`` is refused as well, and
+edited messages are ignored: editing an old ``/publish`` must not send it again.
+
 Off unless configured: with no ``TELEGRAM_BOT_TOKEN`` / ``TELEGRAM_CHAT_ID`` it
 logs that it is disabled and exits 0, so a scheduled job is harmless until the
 operator sets the secrets. Always exits 0 — a poll that finds nothing is normal.
 
 Usage:
   python tools/run_telegram_control.py            # one polling batch
-Configuration (env): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (the admin chat).
+Configuration (env): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (the admin chat),
+TELEGRAM_ADMIN_USER_IDS (who may command; see modules/telegram_control.py),
+SUPABASE_URL + SUPABASE_SERVICE_KEY (the durable update claims).
 """
 
 from __future__ import annotations
@@ -40,6 +53,15 @@ from modules import event_log as events
 from modules import log_redaction
 from modules.log_redaction import describe_http_error
 from modules.telegram_control import TelegramControl, route_command
+
+#: An action request older than this is not acted on: a schedule that slipped
+#: by hours, or a replayed batch, must not publish something the admin asked
+#: for yesterday.
+ACTION_MAX_AGE_S = 6 * 3600
+
+_NOT_DURABLE_REPLY = ("Not requested: this command could not be recorded durably, so a repeat "
+                      "delivery could run it twice. Try again later.")
+_TOO_OLD_REPLY = "Not requested: this command is more than 6 hours old. Send it again if you still want it."
 
 _API_BASE = "https://api.telegram.org"
 _OFFSET_FILE = HISTORY_DIR / "telegram_offset.json"
@@ -124,12 +146,42 @@ def _save_offset(offset: int) -> None:
         logger.warning("Could not persist Telegram offset (%s: %s)", type(e).__name__, e)
 
 
-def poll_once(control: TelegramControl, deps, *, session=None, offset: int = 0, timeout: int = 0) -> int:
-    """Fetch one batch of updates, route each message, send its reply, and emit
-    an event per action intent. Returns the offset to use next (max update_id +
-    1). Never raises — a bad batch returns the offset unchanged."""
+def _claim(store, update_ids: list[int]):
+    """The subset of `update_ids` this run is the first to see, or None when
+    that cannot be known (no durable store)."""
+    if store is None or not getattr(store, "enabled", False):
+        return None
+    rows = store.insert_new("telegram_updates", [{"update_id": i} for i in update_ids], on_conflict="update_id")
+    if rows is None:
+        return None
+    claimed = set()
+    for r in rows:
+        try:
+            claimed.add(int(r.get("update_id")))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return claimed
+
+
+def _default_store():
+    try:
+        from modules.supabase_sync import SupabaseSync
+        return SupabaseSync()
+    except Exception as e:
+        logger.warning("Supabase unavailable for Telegram update claims (%s)", type(e).__name__)
+        return None
+
+
+def poll_once(control: TelegramControl, deps, *, session=None, offset: int = 0, timeout: int = 0,
+              store=None, now=None) -> int:
+    """Fetch one batch of updates, claim them durably, route each new message,
+    send its reply, and emit an event per action intent. Returns the offset to
+    use next (max update_id + 1). Never raises — a bad batch returns the offset
+    unchanged."""
+    import time
     import requests
     session = session or requests
+    now = time.time() if now is None else now
     token = getattr(control, "_token", "")
     if not token:
         return offset
@@ -145,17 +197,39 @@ def poll_once(control: TelegramControl, deps, *, session=None, offset: int = 0, 
         logger.warning("Telegram getUpdates failed (%s)", describe_http_error(e))
         return offset
 
+    ids = []
+    for upd in updates:
+        try:
+            ids.append(int(upd.get("update_id")))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    claimed = _claim(store if store is not None else _default_store(), ids)
+    durable = claimed is not None
+
     next_offset = offset
     for upd in updates:
         try:
             update_id = int(upd.get("update_id", 0))
             next_offset = max(next_offset, update_id + 1)
-            message = upd.get("message") or upd.get("edited_message") or {}
+            if durable and update_id not in claimed:
+                logger.info("Telegram update %d was already handled — skipped", update_id)
+                continue
+            # Only new messages: an edit of an old command is not a new command.
+            message = upd.get("message") or {}
             text = message.get("text") or ""
             chat_id = (message.get("chat") or {}).get("id")
+            user_id = (message.get("from") or {}).get("id")
             if not text or chat_id is None:
                 continue
-            result = route_command(text, chat_id, control, deps)
+            result = route_command(text, chat_id, control, deps, user_id=user_id)
+            if result.intent:
+                sent_at = message.get("date")
+                if not durable:
+                    control.send(chat_id, _NOT_DURABLE_REPLY)
+                    continue
+                if not isinstance(sent_at, (int, float)) or now - sent_at > ACTION_MAX_AGE_S:
+                    control.send(chat_id, _TOO_OLD_REPLY)
+                    continue
             control.send(chat_id, result.reply)
             if result.intent:
                 events.emit(events.TELEGRAM_COMMAND, agent="telegram_control",

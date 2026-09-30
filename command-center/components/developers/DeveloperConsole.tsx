@@ -10,7 +10,7 @@ import { ErrorState } from "@/components/ReadError";
 import { resolvedTheme } from "@/lib/theme";
 import { paddleLocale, type PaddleEnvironment } from "@/lib/paddle";
 import { ensurePaddle, type PaddleEventData } from "@/lib/paddle-client";
-import { API_KEY_LIST_COLUMNS, createKeyArgs, generateApiKey, hashApiKey, MAX_ACTIVE_KEYS } from "@/lib/api/keys";
+import { API_KEY_LIST_COLUMNS, createKeyArgs, MAX_ACTIVE_KEYS, mintedKey } from "@/lib/api/keys";
 import {
   API_TERMS_VERSION,
   API_TIERS,
@@ -25,9 +25,9 @@ import {
  *
  * Every read and write goes through the browser's own session (anon key +
  * RLS) and 0031's functions, which check the role again. A new key is
- * generated HERE, in the browser: only its SHA-256 is sent to create_api_key
- * (0040), so neither the key nor any part of it reaches any server; it is
- * shown once, in the dialog below, and forgotten when the dialog closes. In
+ * minted by the database (create_api_key, 0042), which keeps only its SHA-256
+ * and returns the key once; it is shown once, in the dialog below, and
+ * forgotten when the dialog closes — a browser cannot pick its own key. In
  * the list a key is its name, id, creation and last-use time — nothing of the
  * key itself (CLAUDE.md #1). Top-ups open Paddle's overlay on
  * a transaction the server created; the webhook credits the balance.
@@ -317,11 +317,12 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
     }
     setBusy(true);
     setError(null);
-    const { key } = generateApiKey();
-    const { error: e } = await supabase.rpc("create_api_key", createKeyArgs(orgId, clean, await hashApiKey(key), limit.cents));
+    const { data, error: e } = await supabase.rpc("create_api_key", createKeyArgs(orgId, clean, limit.cents));
     setBusy(false);
-    if (e) {
-      setError(e.code === "NS409" ? d.keyLimitReached : isMissing(e) ? d.createNeedsMigration : d.createFailed);
+    const key = e ? null : mintedKey(data);
+    if (!key) {
+      setError(e?.code === "NS409" ? d.keyLimitReached : isMissing(e) ? d.createNeedsMigration : d.createFailed);
+      await load();
       return;
     }
     setShown(key);

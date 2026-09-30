@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/roles";
+import { requireOperator } from "@/lib/auth/org-roles";
 import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/github-secrets";
 import { readVariables } from "@/lib/server/github-variables";
 import {
@@ -17,8 +18,10 @@ export const dynamic = "force-dynamic";
 /**
  * Alert channel status + a "Send test alert".
  *
- * GET (any signed-in user) reports which channels are configured, by secret /
- * variable NAME presence — the web app can never read a secret VALUE.
+ * GET (the operator) reports which channels are configured, by secret /
+ * variable NAME presence — the web app can never read a secret VALUE. Which
+ * of the operator's secrets exist is still the operator's business, so a
+ * customer account is refused.
  *
  * POST (admin) writes a test row into the durable `alert_events` feed and, IF
  * the Slack webhook happens to be present in this runtime's environment, sends
@@ -47,8 +50,8 @@ async function readConfig(): Promise<AlertConfig & { githubConfigured: boolean }
 }
 
 export async function GET() {
-  const user = await getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const access = await requireOperator();
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
   return NextResponse.json(await readConfig());
 }
 

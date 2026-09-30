@@ -14,7 +14,7 @@ Migration: `supabase/migrations/0031_public_api.sql` (needs 0017–0030).
 | :-- | :-- |
 | Off by default | An organization that has bought **any** credit pack (a `purchase` row in the credit ledger — the rule `derivePlan` uses), or the operator's own exempt organization, can activate it. An owner/admin clicks **Activate API** in **Developers** and accepts the Terms. Before that no key can be created and no key works (`api_not_activated`). |
 | Its own balance | US cents in `api_accounts`, not site credits. Top-ups $5–$5,000 per payment through Paddle; append-only `api_ledger` (topup / hold / usage / release / refund / adjustment). |
-| Keys | `nsk_live_` + 32 random bytes in base62 (43 chars). Generated **in the admin's browser**; only the SHA-256 reaches the database — no part of the key (0040 retired the 8-character display prefix 0031 kept). Shown once, in that browser. Listed by name, id, created and last-used time. Max 10 active per organization. Optional monthly spend limit per key. |
+| Keys | `nsk_live_` + 43 base62 chars (256 bits). Minted **by the database** (`create_api_key`, 0042), which stores only the SHA-256 — no part of the key (0040 retired the 8-character display prefix 0031 kept) — and returns the key once. A browser cannot register a key or hash it chose. Shown once, in the admin's browser. Listed by name, id, created and last-used time. Max 10 active per organization. Optional monthly spend limit per key. |
 | Who a key is | Its creator, inside the key's organization only. If the creator leaves or is no longer owner/admin, the key stops (`key_owner_not_admin`). |
 
 ## Pricing (api_prices, editable by a platform owner/admin)
@@ -100,8 +100,9 @@ TypeScript twin of the SQL; `tests/api-pricing.test.ts` pins them together.
   Everything else: nobody. The key hash column is readable by no role.
 * **Logging.** No part of a key is ever logged, stored or shown after
   creation: server log lines carry the request id, status and error code, and
-  the request id finds the key's id in `api_requests`. The key itself never
-  leaves the browser that made it or the program that holds it.
+  the request id finds the key's id in `api_requests`. After `create_api_key`
+  returns it to the admin's browser, the key lives only there and in the
+  program that holds it.
 
 ## Wire format
 

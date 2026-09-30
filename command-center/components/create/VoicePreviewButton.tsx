@@ -9,10 +9,12 @@ import { isVoiceId } from "@/lib/ttsModels";
  * Listen to a narrator voice before choosing it. Plays the clip the
  * voice_previews workflow prepared (private bucket, signed URL from
  * /api/voices/preview). A voice without a clip yet — a custom id — is asked
- * for once, then polled until the clip exists (about a minute).
+ * for once, then polled until the clip exists (about a minute). Preparing a
+ * new clip spends the operator's ElevenLabs characters, so only the operator
+ * may ask for one; anyone else is told so rather than shown a failure.
  */
 
-type State = "idle" | "loading" | "preparing" | "playing" | "failed";
+type State = "idle" | "loading" | "preparing" | "playing" | "failed" | "operator_only" | "rate_limited";
 
 const POLL_MS = 5000;
 const POLL_TRIES = 36; // three minutes
@@ -68,8 +70,10 @@ export function VoicePreviewButton({ voiceId, channelId }: { voiceId: string; ch
       const res = await fetch("/api/voices/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ voice_id: voiceId, channel_id: channelId }),
+        body: JSON.stringify({ voice_id: voiceId }),
       });
+      if (res.status === 403) return setState("operator_only");
+      if (res.status === 429) return setState("rate_limited");
       if (!res.ok) return setState("failed");
       setState("preparing");
       for (let i = 0; i < POLL_TRIES; i++) {
@@ -107,7 +111,15 @@ export function VoicePreviewButton({ voiceId, channelId }: { voiceId: string; ch
         <span>{label}</span>
       </button>
       <span aria-live="polite" className="text-[11px] text-[var(--color-muted)]">
-        {state === "preparing" ? t.create.voicePreparingHint : state === "failed" ? t.create.voicePreviewFailed : ""}
+        {state === "preparing"
+          ? t.create.voicePreparingHint
+          : state === "failed"
+            ? t.create.voicePreviewFailed
+            : state === "operator_only"
+              ? t.create.voicePreviewOperatorOnly
+              : state === "rate_limited"
+                ? t.create.voicePreviewRateLimited
+                : ""}
       </span>
     </div>
   );

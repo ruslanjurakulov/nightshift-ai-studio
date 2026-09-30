@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/supabase/server";
+import { requireOperator } from "@/lib/auth/org-roles";
+import { VOICE_LIST_RATE, rateRefusal, takeWebRate } from "@/lib/server/web-rate";
 import { listAllVoices } from "@/lib/elevenlabsVoices";
 
 export const runtime = "nodejs";
@@ -19,12 +21,20 @@ export const dynamic = "force-dynamic";
  * returns. It is not stored, not cached, not logged, and not echoed back. The
  * response carries only what the picker needs to draw itself.
  *
+ * Operator only, and rate-limited per user: the key belongs to the platform's
+ * own ElevenLabs account (there are no customer provider keys), and a route
+ * that tells any signed-in account whether an arbitrary ElevenLabs key is
+ * valid — and whether its account is out of characters — would be a free
+ * key-checking proxy running from our servers.
+ *
  * The list comes from the paginated v2 endpoint (lib/elevenlabsVoices.ts):
  * v1 stops working once an account has more than 500 voices.
  */
 export async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const access = await requireOperator();
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 
   let body: { apiKey?: string };
   try {
@@ -35,6 +45,13 @@ export async function POST(request: Request) {
 
   const apiKey = (body.apiKey ?? "").trim();
   if (!apiKey) return NextResponse.json({ error: "missing_key" }, { status: 400 });
+
+  // Counted only once the request would reach ElevenLabs.
+  const rate = await takeWebRate(user.id, VOICE_LIST_RATE);
+  if (rate !== "ok") {
+    const r = rateRefusal(rate, VOICE_LIST_RATE);
+    return NextResponse.json(r.body, { status: r.status, headers: r.headers });
+  }
 
   const result = await listAllVoices(apiKey);
   if (!result.ok) {
