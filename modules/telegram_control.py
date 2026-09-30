@@ -10,7 +10,11 @@ Three capabilities, in ascending order of trust:
 3. **Actions** — a chat can ask to pause/resume a channel or publish a held
    video. These are parsed and AUTHORIZED here, then returned as an *intent*;
    this module never performs them itself. That keeps two invariants intact:
-     * only the configured admin chat can issue a command, and
+     * only an allow-listed PERSON, writing in the configured admin chat, can
+       issue a command — authorisation is by the sender (`from.id`), not by
+       the chat: in a group every member shares the chat id, and so would
+       every member's commands, and
+
      * an action never bypasses the publish gate or a channel's autonomy — a
        `/publish` intent still runs through the normal gated upload path when a
        driver executes it. Nothing here uploads, and nothing here can turn the
@@ -19,7 +23,10 @@ Three capabilities, in ascending order of trust:
 Transport (an always-on webhook or long-poll that feeds updates in and runs the
 intents out) is a deploy concern layered on top; this module is the pure,
 testable core it would call. Env: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (the
-admin chat — the only one whose commands are honoured).
+admin chat — the only one whose commands are honoured), TELEGRAM_ADMIN_USER_IDS
+(comma-separated Telegram user ids allowed to command; optional for a private
+chat with the bot, whose chat id IS the admin's user id, and required for a
+group chat, where nobody is allowed until it is set).
 """
 
 from __future__ import annotations
@@ -42,18 +49,34 @@ class TelegramControl:
     """Sends messages to the configured Telegram chat. Off (a no-op) unless both
     TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set. `notify` never raises."""
 
-    def __init__(self, token: Optional[str] = None, chat_id: Optional[str] = None):
+    def __init__(self, token: Optional[str] = None, chat_id: Optional[str] = None,
+                 admin_user_ids: Optional[str] = None):
         self._token = (token if token is not None else os.getenv("TELEGRAM_BOT_TOKEN", "")).strip()
         self._chat_id = (chat_id if chat_id is not None else os.getenv("TELEGRAM_CHAT_ID", "")).strip()
+        raw_ids = admin_user_ids if admin_user_ids is not None else os.getenv("TELEGRAM_ADMIN_USER_IDS", "")
+        self._admin_user_ids = _parse_user_ids(raw_ids)
+        # A private chat's id is its (only) human member's user id — positive.
+        # A group's id is negative and names nobody in particular.
+        if _parse_user_ids(self._chat_id):
+            self._admin_user_ids |= _parse_user_ids(self._chat_id)
 
     @property
     def enabled(self) -> bool:
         return bool(self._token and self._chat_id)
 
-    def authorized(self, chat_id) -> bool:
-        """True only for the configured admin chat. An unset admin chat
-        authorizes NOBODY — commands are refused rather than opened to all."""
-        return bool(self._chat_id) and str(chat_id).strip() == self._chat_id
+    def authorized(self, chat_id, user_id=None) -> bool:
+        """True only for an allow-listed sender (`user_id`, Telegram's
+        `message.from.id`) writing in the configured admin chat. An unset admin
+        chat, an unknown sender, or no sender at all (a channel post, an
+        anonymous group admin) authorizes NOBODY — commands are refused rather
+        than opened to everyone who can post in the chat."""
+        if not self._chat_id or str(chat_id).strip() != self._chat_id:
+            return False
+        try:
+            uid = int(str(user_id).strip())
+        except (TypeError, ValueError):
+            return False
+        return uid in self._admin_user_ids
 
     def notify(self, text: str) -> bool:
         """Send `text` to the admin chat. Returns True on success, False if it
@@ -86,6 +109,17 @@ class TelegramControl:
             # carries the request URL, and the bot token is part of that URL.
             logger.warning("Telegram send failed (%s)", describe_http_error(e))
             return False
+
+
+def _parse_user_ids(raw) -> set[int]:
+    """Positive integer ids from a comma-separated string; anything else is
+    dropped (a group id is negative, and a typo must not allow anyone)."""
+    out: set[int] = set()
+    for part in str(raw or "").split(","):
+        part = part.strip()
+        if part.isdigit() and int(part) > 0:
+            out.add(int(part))
+    return out
 
 
 # -- notification formatting ------------------------------------------------
@@ -160,13 +194,15 @@ _HELP = (
 _ACTION_COMMANDS = {"publish", "pause", "resume"}
 
 
-def route_command(text: str, chat_id, control: TelegramControl, deps: Optional[ControlDeps] = None) -> CommandResult:
+def route_command(text: str, chat_id, control: TelegramControl, deps: Optional[ControlDeps] = None,
+                  user_id=None) -> CommandResult:
     """Parse one Telegram message into a reply and, for actions, an intent.
 
-    Read-only queries are answered from `deps`. Actions are refused for any chat
-    that is not the configured admin, and even for the admin they are returned as
-    an INTENT, never executed here — so a command can never bypass the publish
-    gate or flip a channel's autonomy from inside this module."""
+    Read-only queries are answered from `deps`. Queries and actions are refused
+    unless the sender (`user_id`, the message's `from.id`) is allow-listed and
+    writes in the admin chat, and even then actions are returned as an INTENT,
+    never executed here — so a command can never bypass the publish gate or flip
+    a channel's autonomy from inside this module."""
     parts = (text or "").strip().split()
     if not parts or not parts[0].startswith("/"):
         return CommandResult(reply="Not a command. Send /help for the list.")
@@ -179,7 +215,7 @@ def route_command(text: str, chat_id, control: TelegramControl, deps: Optional[C
     # Read-only queries — safe for the admin chat; still gated to the admin so
     # the panel doesn't leak channel state to arbitrary chats.
     if cmd in ("status", "channels", "pending"):
-        if not control.authorized(chat_id):
+        if not control.authorized(chat_id, user_id):
             return CommandResult(reply="Not authorized.", authorized=False)
         if deps is None:
             return CommandResult(reply="No data source available.")
@@ -197,7 +233,7 @@ def route_command(text: str, chat_id, control: TelegramControl, deps: Optional[C
             return CommandResult(reply="Could not read that right now.")
 
     if cmd in _ACTION_COMMANDS:
-        if not control.authorized(chat_id):
+        if not control.authorized(chat_id, user_id):
             return CommandResult(reply="Not authorized.", authorized=False)
         if not args:
             return CommandResult(reply=f"Usage: /{cmd} <id>")

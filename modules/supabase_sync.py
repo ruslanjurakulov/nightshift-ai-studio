@@ -120,6 +120,33 @@ class SupabaseSync:
             logger.warning("Supabase upsert into %s errored (%s: %s)", table, type(e).__name__, e)
             return 0
 
+    def insert_new(self, table: str, rows: list[dict], on_conflict: str) -> list[dict] | None:
+        """Insert the rows whose conflict key is new and return exactly those
+        (PostgREST answers ignore-duplicates + return=representation with the
+        rows it inserted). None when disabled or on any failure — the caller
+        cannot tell new from seen, and must act as if nothing was claimed.
+        Never raises."""
+        if not self.enabled:
+            return None
+        if not rows:
+            return []
+        try:
+            resp = requests.post(
+                f"{self.url}/rest/v1/{table}",
+                params={"on_conflict": on_conflict},
+                json=rows,
+                headers=self._headers({"Prefer": "resolution=ignore-duplicates,return=representation"}),
+                timeout=_TIMEOUT,
+            )
+            if resp.status_code >= 300:
+                logger.warning("Supabase insert into %s failed: HTTP %s", table, resp.status_code)
+                return None
+            data = resp.json()
+            return data if isinstance(data, list) else None
+        except Exception as e:
+            logger.warning("Supabase insert into %s errored (%s)", table, type(e).__name__)
+            return None
+
     def update(self, table: str, filters: dict, values: dict) -> bool:
         """PATCH the rows of `table` matching PostgREST `filters` (e.g.
         {"status": "eq.pending"}) with `values`. Returns True on success, False
