@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUser } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/roles";
+import { requireOperator } from "@/lib/auth/org-roles";
 import { logAudit } from "@/lib/server/audit";
 import { isGithubConfigured } from "@/lib/server/github-secrets";
 import { isWritableVariable, putVariable, readVariables } from "@/lib/server/github-variables";
@@ -12,8 +13,9 @@ export const dynamic = "force-dynamic";
  * Read and write the pipeline's routing variables (GitHub Actions variables).
  *
  * GET returns whether forwarding is configured and the current values of the
- * allowlisted variables — variables are not secret, so showing them is safe and
- * is what lets the board reflect the live selection.
+ * allowlisted variables — not secret, but the operator's own pipeline
+ * configuration (which providers it pays for), so only the operator reads
+ * them; that is what lets the board reflect the live selection.
  *
  * POST takes `{ variables: { NAME: value } }` and writes each allowlisted name.
  * These are plain config switches (a provider id, an on/off flag), never a
@@ -21,8 +23,8 @@ export const dynamic = "force-dynamic";
  */
 
 export async function GET() {
-  const user = await getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const access = await requireOperator();
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
   if (!isGithubConfigured) return NextResponse.json({ configured: false, variables: {} });
   try {
     const variables = await readVariables();

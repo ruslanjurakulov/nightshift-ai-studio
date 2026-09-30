@@ -235,7 +235,11 @@ export function AddChannelWizard({
             ? fmt(t.channels.voiceKeyRejected, { reason: data.reason || "401" })
             : data.error === "missing_key"
               ? t.channels.voiceNeedsKey
-              : t.channels.voiceFailed,
+              : res.status === 403
+                ? t.channels.voiceOperatorOnly
+                : res.status === 429
+                  ? t.channels.voiceRateLimited
+                  : t.channels.voiceFailed,
         );
         return;
       }

@@ -139,3 +139,19 @@ export const isOperator = cache(async (): Promise<boolean> => {
   if (!org.supported) return !org.unavailable;
   return isPlatformAdmin();
 });
+
+export type OperatorCheck = { ok: true } | { ok: false; status: 401 | 403; error: "unauthorized" | "forbidden" };
+
+/**
+ * For API routes that read or spend the platform operator's own things — the
+ * GitHub secrets and variables, alert channels, run backend, the operator's
+ * ElevenLabs quota and Actions minutes. Signed in (401), then isOperator
+ * (403): a platform owner/admin once organizations exist, fail closed on a
+ * failed lookup. A customer organization's admin is NOT an operator; their
+ * own channel's actions go through requireOrgRole instead.
+ */
+export async function requireOperator(): Promise<OperatorCheck> {
+  const user = await getUser();
+  if (!user) return { ok: false, status: 401, error: "unauthorized" };
+  return (await isOperator()) ? { ok: true } : { ok: false, status: 403, error: "forbidden" };
+}
