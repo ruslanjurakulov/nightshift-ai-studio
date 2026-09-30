@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { ErrorState } from "@/components/ReadError";
+import { readFailed } from "@/lib/readState";
 import { getChannelScope } from "@/lib/channels-server";
 import { orgWide, scopeQuery } from "@/lib/channels";
 import { isSupabaseConfigured } from "@/lib/config";
@@ -28,16 +30,18 @@ export default async function AuditPage() {
 
   const supabase = await createClient();
   let rows: AuditRow[] = [];
+  let failed = false;
   if (supabase) {
     // The whole current organization, whichever channel is selected. Rows
     // with no channel are platform-level and belong to the operator's
     // organization only — the rule 0018's policy draws, applied to the view
     // so a platform admin inside a tenant sees that tenant's log alone.
     const scope = orgWide(await getChannelScope());
-    const { data } = await scopeQuery(supabase.from("app_audit_log").select("*"), scope, { nullIsGlobal: true })
+    const res = await scopeQuery(supabase.from("app_audit_log").select("*"), scope, { nullIsGlobal: true })
       .order("at", { ascending: false })
       .limit(LIMIT);
-    rows = (data as AuditRow[]) ?? [];
+    failed = readFailed(res);
+    rows = (res.data as AuditRow[]) ?? [];
   }
 
   return (
@@ -46,6 +50,8 @@ export default async function AuditPage() {
       <Panel title={t.audit.title}>
         {!supabase ? (
           <EmptyState icon={ScrollText}>{t.audit.notConfigured}</EmptyState>
+        ) : failed ? (
+          <ErrorState />
         ) : rows.length === 0 ? (
           <EmptyState icon={ScrollText}>{t.audit.empty}</EmptyState>
         ) : (

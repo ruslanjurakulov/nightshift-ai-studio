@@ -34,7 +34,8 @@ export default async function PricingPage() {
   let rates: CreditRates | null = null;
   if (supabase && user) {
     const res = await readCreditPrices(supabase);
-    if (res.supported) rates = creditRates(res.prices);
+    // A failed read is no rates at all — not an empty price list.
+    if (res.supported && !res.failed) rates = creditRates(res.prices);
   }
 
   return (

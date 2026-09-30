@@ -12,6 +12,8 @@ import { getDictionary } from "@/lib/i18n/server";
 import { coerceTransactions, formatCredits, isCreditExempt } from "@/lib/credits";
 import { creditsEnforced, readCreditAccount, readCreditPrices } from "@/lib/server/credits";
 import { buyAccess, paddleConfig } from "@/lib/paddle";
+import { ErrorState } from "@/components/ReadError";
+import { readFailed } from "@/lib/readState";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -65,7 +67,11 @@ export default async function CreditsPage() {
 
   const exempt = isCreditExempt(orgId);
   const platformAdmin = admin.data === true;
+  // acct.account is null exactly when the read failed: the balance is unknown,
+  // and no figure, purchase flow or "no prices" line may stand in for it.
   const account = acct.account;
+  const balanceUnknown = acct.failed || account === null;
+  const ledgerFailed = readFailed(txns);
   const user = userRes.data.user;
   const buy = buyAccess(orgId, org.current.role, paddleConfig);
 
@@ -83,26 +89,40 @@ export default async function CreditsPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <StatCard
               label={t.credits.available}
-              value={formatCredits(account?.available ?? 0, locale)}
-              tone={(account?.available ?? 0) > 0 ? "ok" : "warn"}
+              value={account ? formatCredits(account.available, locale) : t.common.unknown}
+              tone={account ? (account.available > 0 ? "ok" : "warn") : "idle"}
+              sub={account ? undefined : t.common.couldNotRead}
             />
-            <StatCard label={t.credits.reserved} value={formatCredits(account?.reserved ?? 0, locale)} />
-            <StatCard label={t.credits.balance} value={formatCredits(account?.balance ?? 0, locale)} />
+            <StatCard
+              label={t.credits.reserved}
+              value={account ? formatCredits(account.reserved, locale) : t.common.unknown}
+              tone={account ? undefined : "idle"}
+              sub={account ? undefined : t.common.couldNotRead}
+            />
+            <StatCard
+              label={t.credits.balance}
+              value={account ? formatCredits(account.balance, locale) : t.common.unknown}
+              tone={account ? undefined : "idle"}
+              sub={account ? undefined : t.common.couldNotRead}
+            />
           </div>
+        )}
+        {!exempt && balanceUnknown && (
+          <ErrorState compact message={t.credits.readFailed} />
         )}
         <p className="mono text-[11px] text-[var(--color-muted)]">
           {creditsEnforced ? t.credits.enforcedOn : t.credits.enforcedOff}
         </p>
       </div>
 
-      {buy === "allowed" && paddleConfig && (
+      {buy === "allowed" && paddleConfig && account && (
         <BuyCredits
           config={paddleConfig}
           orgId={orgId}
           orgName={org.current.name}
           userId={user?.id ?? null}
           email={user?.email ?? null}
-          balance={account?.balance ?? 0}
+          balance={account.balance}
         />
       )}
       {buy === "admin_only" && <BuyCreditsAdminOnly />}
@@ -112,9 +132,23 @@ export default async function CreditsPage() {
 
       {platformAdmin && <GrantCreditsForm orgId={orgId} orgName={org.current.name} />}
 
-      <CreditLedger rows={coerceTransactions(txns.data)} />
+      {ledgerFailed ? (
+        <div className="panel p-4">
+          <h2 className="t-section">{t.credits.ledgerTitle}</h2>
+          <ErrorState compact />
+        </div>
+      ) : (
+        <CreditLedger rows={coerceTransactions(txns.data)} />
+      )}
 
-      <CreditPricesEditor prices={Object.values(priceRes.prices)} canEdit={platformAdmin} />
+      {priceRes.failed ? (
+        <div className="panel p-4">
+          <h2 className="t-section">{t.credits.pricesTitle}</h2>
+          <ErrorState compact />
+        </div>
+      ) : (
+        <CreditPricesEditor prices={Object.values(priceRes.prices)} canEdit={platformAdmin} />
+      )}
     </div>
   );
 }

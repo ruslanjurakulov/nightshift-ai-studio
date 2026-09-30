@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { StatusPill } from "@/components/ui";
+import { ErrorState } from "@/components/ReadError";
 import { ROLES, type Role } from "@/lib/auth/roles-shared";
 import {
   assignableRoles,
@@ -35,6 +36,7 @@ export function OrgMembersBoard({ org, myUserId }: { org: OrgSummary; myUserId: 
   const canManage = canManageMembers(myRole);
 
   const [members, setMembers] = useState<OrgMember[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [name, setName] = useState(org.name);
   const [nameSaved, setNameSaved] = useState(false);
   const [email, setEmail] = useState("");
@@ -45,12 +47,13 @@ export function OrgMembersBoard({ org, myUserId }: { org: OrgSummary; myUserId: 
   const load = useCallback(async () => {
     const supabase = createClient();
     if (!supabase) return;
-    const { data } = await supabase
+    const { data, error: readErr } = await supabase
       .from("org_members")
       .select("id,org_id,user_id,email,role,created_at")
       .eq("org_id", org.id)
       .order("created_at", { ascending: true });
-    setMembers((data as OrgMember[]) ?? []);
+    setLoadFailed(Boolean(readErr));
+    setMembers(readErr ? null : ((data as OrgMember[]) ?? []));
   }, [org.id]);
 
   useEffect(() => {
@@ -241,7 +244,9 @@ export function OrgMembersBoard({ org, myUserId }: { org: OrgSummary; myUserId: 
           <span>{t.members.colRole}</span>
           <span />
         </div>
-        {members === null ? (
+        {loadFailed ? (
+          <ErrorState compact onRetry={load} />
+        ) : members === null ? (
           <p className="p-4 text-[13px] text-[var(--color-muted)]">…</p>
         ) : members.length === 0 ? (
           <p className="p-4 text-[13px] text-[var(--color-muted)]">{t.members.empty}</p>

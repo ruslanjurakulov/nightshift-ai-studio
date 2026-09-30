@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { StatusPill, EmptyState } from "@/components/ui";
+import { ErrorState } from "@/components/ReadError";
 import { canDecide, canRequest, canToggleRequirement, type ApprovalStatus } from "@/lib/approvals";
 import type { Role } from "@/lib/auth/roles-shared";
 
@@ -56,7 +57,8 @@ export function ApprovalsBoard({
   myUserId,
 }: {
   channelId: string;
-  initialRequire: boolean;
+  /** null = the requirement could not be read: unknown, never "not required". */
+  initialRequire: boolean | null;
   myRole: Role;
   myEmail: string;
   myUserId: string;
@@ -65,7 +67,11 @@ export function ApprovalsBoard({
   const router = useRouter();
   const [rows, setRows] = useState<Approval[] | null>(null);
   const [people, setPeople] = useState<Record<string, string>>({});
-  const [require2p, setRequire2p] = useState(initialRequire);
+  const [require2p, setRequire2p] = useState<boolean | null>(initialRequire);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  // A retry re-runs the page; take its (now readable) answer.
+  useEffect(() => setRequire2p(initialRequire), [initialRequire]);
   const [videoRef, setVideoRef] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +82,7 @@ export function ApprovalsBoard({
   async function load() {
     const supabase = createClient();
     if (!supabase) return;
-    const [{ data: approvals }, { data: members }] = await Promise.all([
+    const [{ data: approvals, error: approvalsErr }, { data: members }] = await Promise.all([
       supabase
         .from("publish_approvals")
         .select("id,channel_id,video_ref,requested_by,requested_at,status,decided_by,decided_at,note")
@@ -84,6 +90,13 @@ export function ApprovalsBoard({
         .order("requested_at", { ascending: false }),
       supabase.from("app_members").select("user_id,email"),
     ]);
+    if (approvalsErr) {
+      // An empty list would read as "no requests"; say we could not read them.
+      setLoadFailed(true);
+      setRows(null);
+      return;
+    }
+    setLoadFailed(false);
     setRows((approvals as Approval[]) ?? []);
     // Seed with the current user so their email always resolves, then overlay
     // the roster.
@@ -112,11 +125,17 @@ export function ApprovalsBoard({
     setBusy(true);
     setError(null);
     // Merge into the live config so no other agent setting is clobbered.
-    const { data: current } = await supabase
+    const { data: current, error: readErr } = await supabase
       .from("channels")
       .select("agent_config")
       .eq("channel_id", channelId)
       .maybeSingle();
+    if (readErr) {
+      // Merging into an unread config would overwrite every other setting.
+      setBusy(false);
+      setError(t.common.readFailedTitle);
+      return;
+    }
     const merged = { ...(current?.agent_config ?? {}), require_two_person_publish: next };
     const { error: e } = await supabase
       .from("channels")
@@ -181,10 +200,32 @@ export function ApprovalsBoard({
         <div className="min-w-0">
           <h2 className="t-section">{t.approvals.requireToggle}</h2>
           <p className="mt-1 text-[13px] text-[var(--color-muted)]">
-            {require2p ? t.approvals.requireOn : t.approvals.requireOff}
+            {require2p === null
+              ? t.approvals.requireUnknownNote
+              : require2p
+                ? t.approvals.requireOn
+                : t.approvals.requireOff}
           </p>
         </div>
-        {canToggle ? (
+        {require2p === null ? (
+          // Unknown is not "off": the switch is disabled until it can be read.
+          <div className="flex items-center gap-3">
+            {canToggle && (
+              <button
+                type="button"
+                data-requirement-toggle
+                disabled
+                className="pill btn-sky is-quiet inline-flex items-center gap-2 px-4 py-2 text-[13px] disabled:opacity-40"
+              >
+                <StatusPill tone="idle" label={t.approvals.requireUnknown} />
+              </button>
+            )}
+            {!canToggle && <StatusPill tone="idle" label={t.approvals.requireUnknown} />}
+            <button type="button" onClick={() => router.refresh()} className="btn-sky pill px-4 py-1.5 text-[12px]">
+              {t.common.retry}
+            </button>
+          </div>
+        ) : canToggle ? (
           <button
             type="button"
             role="switch"
@@ -239,7 +280,9 @@ export function ApprovalsBoard({
           <span>{t.approvals.colStatus}</span>
           <span />
         </div>
-        {rows === null ? (
+        {loadFailed ? (
+          <ErrorState compact message={t.approvals.readFailed} onRetry={load} />
+        ) : rows === null ? (
           <p className="p-4 text-[13px] text-[var(--color-muted)]">…</p>
         ) : rows.length === 0 ? (
           <EmptyState>{t.approvals.empty}</EmptyState>

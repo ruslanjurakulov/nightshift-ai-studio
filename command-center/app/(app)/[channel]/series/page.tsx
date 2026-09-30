@@ -32,6 +32,7 @@ export default async function SeriesPage() {
   let series: SeriesRow[] = [];
   let channels: ChannelOption[] = [];
   let tableMissing = false;
+  let readFailedList = false;
 
   // Every series of the CURRENT organization, whichever channel is selected;
   // the channel options are the same org-filtered list the switcher shows.
@@ -41,6 +42,7 @@ export default async function SeriesPage() {
       .order("created_at", { ascending: false })
       .limit(500);
     if (s.error && /content_series/.test(s.error.message)) tableMissing = true;
+    else if (s.error) readFailedList = true;
     series = (s.data as SeriesRow[]) ?? [];
     channels = ctx.channels.map((c) => ({ channel_id: c.channel_id, name: c.name }));
   }
@@ -61,6 +63,7 @@ export default async function SeriesPage() {
         series={series}
         channels={channels}
         tableMissing={tableMissing}
+        readFailed={readFailedList}
         strings={t.series}
         canEdit={canEdit}
       />

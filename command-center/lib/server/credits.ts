@@ -39,28 +39,44 @@ export function isCreditsMissing(error: { code?: string; message?: string } | nu
   );
 }
 
+/**
+ * The organization's credit account. Three outcomes that must never blur:
+ *  - `supported: false`  — migration 0020 is not applied on this deployment;
+ *  - `failed: true`      — the read itself errored: the balance is UNKNOWN
+ *                          (`account` is null), never 0;
+ *  - otherwise           — a real answer. `hasRow: false` is an organization
+ *                          that has never been granted anything: its balance
+ *                          really is 0 (account is all zeros), which is a
+ *                          different fact from "we could not read it".
+ */
 export async function readCreditAccount(
   supabase: SupabaseClient,
   orgId: string,
-): Promise<{ supported: boolean; account: CreditAccount | null }> {
+): Promise<{ supported: boolean; failed: boolean; hasRow: boolean; account: CreditAccount | null }> {
   const { data, error } = await supabase
     .from("credit_accounts")
     .select("balance,reserved")
     .eq("org_id", orgId)
     .maybeSingle();
-  if (error) return { supported: !isCreditsMissing(error), account: null };
-  return { supported: true, account: coerceAccount(data) };
+  if (error) {
+    const missing = isCreditsMissing(error);
+    return { supported: !missing, failed: !missing, hasRow: false, account: null };
+  }
+  return { supported: true, failed: false, hasRow: data != null, account: coerceAccount(data) };
 }
 
 export async function readCreditPrices(
   supabase: SupabaseClient,
-): Promise<{ supported: boolean; prices: PriceMap }> {
+): Promise<{ supported: boolean; failed: boolean; prices: PriceMap }> {
   const { data, error } = await supabase
     .from("credit_prices")
     .select("unit,credits_per_unit,margin,note,updated_at")
     .order("unit");
-  if (error) return { supported: !isCreditsMissing(error), prices: {} };
-  return { supported: true, prices: parsePrices(data) };
+  if (error) {
+    const missing = isCreditsMissing(error);
+    return { supported: !missing, failed: !missing, prices: {} };
+  }
+  return { supported: true, failed: false, prices: parsePrices(data) };
 }
 
 /**

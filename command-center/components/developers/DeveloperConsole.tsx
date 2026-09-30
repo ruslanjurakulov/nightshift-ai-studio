@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { StatusPill } from "@/components/ui";
+import { ErrorState } from "@/components/ReadError";
 import { resolvedTheme } from "@/lib/theme";
 import { paddleLocale, type PaddleEnvironment } from "@/lib/paddle";
 import { ensurePaddle, type PaddleEventData } from "@/lib/paddle-client";
@@ -278,10 +279,11 @@ function Overview({ info, locale }: { info: Console; locale: string }) {
   );
 }
 
-function Keys({ orgId, activated }: { orgId: string; activated: boolean }) {
+export function Keys({ orgId, activated }: { orgId: string; activated: boolean }) {
   const { t, locale } = useI18n();
   const d = t.developers;
   const [keys, setKeys] = useState<KeyRow[] | null>(null);
+  const [keysFailed, setKeysFailed] = useState(false);
   const [name, setName] = useState("");
   const [limitText, setLimitText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -292,8 +294,10 @@ function Keys({ orgId, activated }: { orgId: string; activated: boolean }) {
   const load = useCallback(async () => {
     const supabase = createClient();
     if (!supabase) return;
-    const { data } = await supabase.from("api_keys").select(API_KEY_LIST_COLUMNS).eq("org_id", orgId).order("created_at", { ascending: false });
-    setKeys((data as KeyRow[] | null) ?? []);
+    const { data, error: readErr } = await supabase.from("api_keys").select(API_KEY_LIST_COLUMNS).eq("org_id", orgId).order("created_at", { ascending: false });
+    // A failed read is not "no keys".
+    setKeysFailed(Boolean(readErr));
+    setKeys(readErr ? null : ((data as KeyRow[] | null) ?? []));
   }, [orgId]);
 
   useEffect(() => {
@@ -407,7 +411,9 @@ function Keys({ orgId, activated }: { orgId: string; activated: boolean }) {
       </div>
 
       <div className="panel overflow-x-auto p-4">
-        {keys === null ? (
+        {keysFailed ? (
+          <ErrorState compact onRetry={load} />
+        ) : keys === null ? (
           <p className="text-[13px] text-[var(--color-muted)]">…</p>
         ) : keys.length === 0 ? (
           <p className="text-[13px] text-[var(--color-muted)]">{d.noKeys}</p>
@@ -539,7 +545,7 @@ function UsageTab({ orgId, locale }: { orgId: string; locale: string }) {
   );
 }
 
-function Billing({
+export function Billing({
   orgId,
   info,
   topup,
@@ -556,19 +562,21 @@ function Billing({
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [rows, setRows] = useState<LedgerRow[] | null>(null);
+  const [rowsFailed, setRowsFailed] = useState(false);
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadHistory = useCallback(async () => {
     const supabase = createClient();
     if (!supabase) return;
-    const { data } = await supabase
+    const { data, error: readErr } = await supabase
       .from("api_ledger")
       .select("id,kind,amount_cents,external_id,created_at")
       .eq("org_id", orgId)
       .in("kind", ["topup", "refund", "adjustment"])
       .order("id", { ascending: false })
       .limit(50);
-    setRows((data as LedgerRow[] | null) ?? []);
+    setRowsFailed(Boolean(readErr));
+    setRows(readErr ? null : ((data as LedgerRow[] | null) ?? []));
   }, [orgId]);
 
   useEffect(() => {
@@ -657,7 +665,9 @@ function Billing({
 
       <div className="panel overflow-x-auto p-4">
         <h2 className="t-section mb-2">{d.historyTitle}</h2>
-        {rows === null ? (
+        {rowsFailed ? (
+          <ErrorState compact onRetry={loadHistory} />
+        ) : rows === null ? (
           <p className="text-[13px] text-[var(--color-muted)]">…</p>
         ) : rows.length === 0 ? (
           <p className="text-[13px] text-[var(--color-muted)]">{d.noPayments}</p>

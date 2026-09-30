@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { ErrorState } from "@/components/ReadError";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { StatCard, Panel, EmptyState } from "@/components/ui";
@@ -33,6 +34,8 @@ export default async function VideoLibrary() {
   let held: VideoRow[] = [];
   let snapshots: MetricsSnapshotRow[] = [];
   let dbError = false;
+  // The KPIs: a count is a number only when the read behind it worked.
+  let videosFailed = false;
 
   if (supabase) {
     // The library is what reached YouTube; a held run (lib/heldVideos) has no
@@ -46,7 +49,10 @@ export default async function VideoLibrary() {
         .order("held_at", { ascending: false, nullsFirst: false })
         .limit(50),
     ]);
-    if (vid.error) dbError = true;
+    if (vid.error) {
+      dbError = true;
+      videosFailed = true;
+    }
     videos = (vid.data as VideoRow[]) ?? [];
     // Without migration 0016 there is no held_at to order by; read the held
     // rows unordered rather than not at all.
@@ -88,14 +94,24 @@ export default async function VideoLibrary() {
       <PageHeader icon="videos" title={t.videos.title} subtitle={t.videos.subtitle} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <StatCard label={t.videos.videosShown} value={num(rows.length)} sub={t.videos.latest100} />
+        <StatCard
+          label={t.videos.videosShown}
+          value={videosFailed ? t.common.unknown : num(rows.length)}
+          tone={videosFailed ? "idle" : undefined}
+          sub={videosFailed ? t.common.couldNotRead : t.videos.latest100}
+        />
         <StatCard
           label={t.videos.totalViews}
-          value={hasAnyViews ? num(totalViews) : t.common.na}
-          tone="ok"
-          sub={t.videos.acrossShown}
+          value={dbError ? t.common.unknown : hasAnyViews ? num(totalViews) : t.common.na}
+          tone={dbError ? "idle" : "ok"}
+          sub={dbError ? t.common.couldNotRead : t.videos.acrossShown}
         />
-        <StatCard label={t.videos.publishedToday} value={num(publishedToday)} tone="ok" sub={t.videos.videosLive} />
+        <StatCard
+          label={t.videos.publishedToday}
+          value={videosFailed ? t.common.unknown : num(publishedToday)}
+          tone={videosFailed ? "idle" : "ok"}
+          sub={videosFailed ? t.common.couldNotRead : t.videos.videosLive}
+        />
       </div>
 
       {held.length > 0 && (
@@ -140,7 +156,7 @@ export default async function VideoLibrary() {
 
       <Panel title={t.videos.library}>
         {dbError ? (
-          <EmptyState>{t.videos.readErr}</EmptyState>
+          <ErrorState message={t.videos.readErr} />
         ) : rows.length === 0 ? (
           <EmptyState>{t.videos.empty}</EmptyState>
         ) : (
