@@ -29,6 +29,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional, Protocol
 
+from modules.log_redaction import describe_http_error
+
 logger = logging.getLogger(__name__)
 
 _API_BASE = "https://api.telegram.org"
@@ -80,7 +82,9 @@ class TelegramControl:
                 return False
             return True
         except Exception as e:  # network, import, anything — swallow
-            logger.warning("Telegram send failed (%s: %s)", type(e).__name__, e)
+            # The type and the HTTP status only: a requests exception's text
+            # carries the request URL, and the bot token is part of that URL.
+            logger.warning("Telegram send failed (%s)", describe_http_error(e))
             return False
 
 
