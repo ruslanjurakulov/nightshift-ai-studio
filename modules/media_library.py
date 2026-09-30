@@ -121,6 +121,12 @@ COPY_CHUNK = 1024 * 1024
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
+class StoreUnavailable(Exception):
+    """The database could not be reached to record the result. The ticket is
+    left as it is (its heartbeat goes stale and the claim sweep hands it out
+    again, up to three attempts) and the staged file is kept for that retry."""
+
+
 class IngestReject(Exception):
     """End a ticket as rejected with a reason word the page can translate."""
 
@@ -600,12 +606,15 @@ def ingest(ticket: Mapping, *, store: MediaStore, staging_root: Path, media_root
             provenance={"rights": "uploaded_by_member", "upload_id": tid, "sniffed_mime": info.mime},
             derived_bytes=derived, variants=variants, upload_id=tid,
         )
+    except Exception as e:
+        shutil.rmtree(final, ignore_errors=True)
+        raise StoreUnavailable(type(e).__name__) from e
     except BaseException:
         shutil.rmtree(final, ignore_errors=True)
         raise
     if not out:
         shutil.rmtree(final, ignore_errors=True)
-        raise RuntimeError("register_asset is not available")
+        raise StoreUnavailable("register_asset is not available")
     if out.get("reused") and out.get("id") != aid:
         # A retry after an earlier attempt registered: keep that one.
         shutil.rmtree(final, ignore_errors=True)
@@ -626,6 +635,10 @@ def process_ticket(ticket: Mapping, *, store: MediaStore, staging_root: Path, me
                      worker_id=worker_id, tools=tools, **kw)
         logger.info("media upload %s: ingested as %s", tid, out.get("id"))
         outcome = "ingested"
+    except StoreUnavailable as e:
+        # Nothing is decided: keep the staged file for the retry.
+        logger.warning("media upload %s: could not be recorded (%s); left for a retry", tid, e)
+        return "retry"
     except IngestReject as stop:
         _reject(store, tid, worker_id, stop.reason, stop.detail or None)
         logger.info("media upload %s: rejected (%s)", tid, stop.reason)

@@ -352,6 +352,33 @@ class Ingest(unittest.TestCase):
         self.assertEqual(self.media_files(), [])
 
 
+class RegisterFailure(unittest.TestCase):
+    def test_a_database_hiccup_leaves_the_ticket_for_a_retry(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            staging, media = tmp / "s", tmp / "m"
+            staging.mkdir()
+            media.mkdir()
+            store = FakeStore()
+
+            def down(**_kw):
+                raise RuntimeError("register_asset: HTTP 503")
+
+            store.register = down
+            tid = str(uuid.uuid4())
+            data = b"WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n"
+            ml.staged_path(staging, tid).write_bytes(data)
+            t = {"id": tid, "declared_mime": "text/vtt", "original_name": "a.vtt", "declared_bytes": len(data)}
+            out = ml.process_ticket(t, store=store, staging_root=staging, media_root=media, worker_id="w",
+                                    tools=ml.Tools("ffprobe", "ffmpeg"))
+            self.assertEqual(out, "retry")
+            self.assertEqual(store.rejected, [])
+            self.assertTrue(ml.staged_path(staging, tid).exists(), "the staged file is kept for the retry")
+            self.assertEqual([p for p in media.rglob("*") if p.is_file()], [], "no orphaned files")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class Housekeeping(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
