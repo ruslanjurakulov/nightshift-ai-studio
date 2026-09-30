@@ -49,7 +49,7 @@ class ApiPaidJobs(unittest.TestCase):
 
     def test_open_api_hold_runs_without_a_credit_reservation(self):
         fake = FakeApiCredits()
-        ends = self.run_one(job(credit_ref=None, api_hold_ref=HOLD), fake)
+        ends = self.run_one(job(credit_ref=None, api_hold_ref=HOLD, params={"duration": 300}), fake)
         self.assertEqual(ends, [("succeeded", None)])
         self.assertIn(("api_start", HOLD, 9), fake.calls)
         # Credits are never reserved, captured or released for an API job.
@@ -58,20 +58,30 @@ class ApiPaidJobs(unittest.TestCase):
 
     def test_a_hold_that_is_not_open_for_this_job_refuses_without_running(self):
         fake = FakeApiCredits(api_amount=None)
-        ends = self.run_one(job(credit_ref=None, api_hold_ref=HOLD), fake)
+        ends = self.run_one(job(credit_ref=None, api_hold_ref=HOLD, params={"duration": 300}), fake)
         self.assertEqual(ends[0][0], "failed")
         self.assertIn("API balance hold is not open", ends[0][1])
         self.assertFalse((self.repo / "report.out").exists())
 
     def test_unreachable_database_refuses_an_api_job(self):
         fake = FakeApiCredits(down=True)
-        ends = self.run_one(job(credit_ref=None, api_hold_ref=HOLD), fake)
+        ends = self.run_one(job(credit_ref=None, api_hold_ref=HOLD, params={"duration": 300}), fake)
         self.assertEqual(ends[0][0], "failed")
         self.assertIn("nothing was run", ends[0][1])
 
+    def test_an_api_job_without_its_frozen_length_is_refused_before_its_hold_starts(self):
+        # The API priced a length; 0041 froze it into params. Without it the
+        # run would take the channel's target at run time instead.
+        fake = FakeApiCredits()
+        ends = self.run_one(job(credit_ref=None, api_hold_ref=HOLD, params={}), fake)
+        self.assertEqual(ends[0][0], "failed")
+        self.assertIn("length was not fixed", ends[0][1])
+        self.assertFalse(any(c[0] == "api_start" for c in fake.calls))
+        self.assertFalse((self.repo / "report.out").exists())
+
     def test_without_a_credits_client_an_api_job_is_refused_even_unenforced(self):
         self.env.pop("NIGHTSHIFT_CREDITS_ENFORCE")
-        ends = self.run_one(job(credit_ref=None, api_hold_ref=HOLD), None)
+        ends = self.run_one(job(credit_ref=None, api_hold_ref=HOLD, params={"duration": 300}), None)
         self.assertEqual(ends[0][0], "failed")
 
     def test_rest_client_calls_the_0031_function(self):

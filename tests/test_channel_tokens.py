@@ -36,6 +36,7 @@ sys.path.insert(0, str(ROOT))
 from modules import channel_tokens as ct  # noqa: E402
 from tools import queue_worker as qw  # noqa: E402
 from tools import restore_channel_token as restore  # noqa: E402
+from tests.test_queue_worker import OperatorCredits  # noqa: E402
 
 REFRESH = "1//0gVAULTREFRESHTOKENabcdefghijklmnopqrstuvwxyz0123"
 CLIENT_ID = "123-abc.apps.googleusercontent.com"
@@ -297,7 +298,7 @@ class WorkerWithVault(unittest.TestCase):
         w = qw.Worker(q, worker_id="w1", env=self.env, repo_dir=self.repo, prelude=[],
                       resolve_channel=lambda cid: self.rows[cid], heartbeat_seconds=5,
                       poll_seconds=0.01, grace_seconds=60, kill_after_seconds=2, out=self.out,
-                      token_client=token_client)
+                      token_client=token_client, credits=OperatorCredits())
         w.run_forever(once=True)
         return q, w
 

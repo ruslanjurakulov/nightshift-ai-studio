@@ -371,6 +371,61 @@ def open_hold(client, *, job_ref: Optional[str], channel_id: str,
         return None
 
 
+def frozen_duration(params: Optional[Mapping]) -> Optional[int]:
+    """The length a queued job was priced and frozen at (migration 0041 writes
+    ``params.duration`` when a customer's job is queued), or None."""
+    d = _num((params or {}).get("duration"))
+    return int(d) if d is not None and d > 0 else None
+
+
+def open_queue_hold(client, *, job_ref: Optional[str], channel_id: str,
+                    params: Optional[Mapping]) -> Optional[Hold]:
+    """The queue worker's check before a run spends anything. Returns the Hold
+    to settle at the end, or None for the operator's own (exempt) organization.
+
+    Unlike :func:`open_hold` (the Actions settle step), paying does not depend
+    on ``NIGHTSHIFT_CREDITS_ENFORCE``: with the flag off a customer's job used
+    to run for free, and the rule "only the operator may start an unpaid run"
+    lived only in the web route (review finding C2). So, for any other
+    organization, always:
+
+    * the job carries a credit hold, and it is open for this organization;
+    * the job carries its FROZEN length — ``params.duration``, written when it
+      was queued — and the run uses exactly that (C1: the hold priced one
+      length, and a run without one read the channel's target at run time);
+    * the hold covers that length (``minimum_reservation``).
+
+    Anything the worker cannot check — no credits client, no organization on
+    record, the credits API unreachable — is a refusal: an unpaid run is not a
+    fallback. Raises CreditRefused; nothing has been run."""
+    if client is None:
+        raise CreditRefused("this worker has no credits client, so it cannot tell who pays for this run")
+    ref = (job_ref or "").strip() or None
+    try:
+        org = client.channel_org(channel_id)
+        if is_exempt(org):
+            return None
+        if org is None:
+            raise CreditRefused(f"channel {channel_id} has no organization on record")
+        if not ref:
+            raise CreditRefused("no credit reservation for this run — start it from the Command Center")
+        duration = frozen_duration(params)
+        if duration is None:
+            raise CreditRefused("its length was not fixed when it was queued (no duration) — queue it again")
+        amount = client.start(ref, org)
+        if amount is None:
+            raise CreditRefused("its credit reservation is not open (expired, settled, or for another "
+                                "organization)")
+        minimum = minimum_reservation(client.prices(), duration)
+        if minimum is not None and amount + 1e-9 < minimum:
+            _safe(client.release, ref)
+            raise CreditRefused(f"its reservation of {amount:.2f} credits is below the "
+                                f"{minimum:.2f} a {duration}-second run requires")
+        return Hold(ref, org, float(amount))
+    except CreditsUnavailable as e:
+        raise CreditRefused(f"credits are unavailable ({e})") from None
+
+
 def settle_hold(client, hold: Hold, *, succeeded: bool, channel_id: str, since,
                 ledger=local_run_entries) -> Optional[str]:
     """After the run: capture on success, release on failure. Returns a one-line

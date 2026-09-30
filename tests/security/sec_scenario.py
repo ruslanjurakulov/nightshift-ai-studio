@@ -162,12 +162,22 @@ def _seed_tenant(conn: psycopg.Connection, t: Tenant) -> None:
             ("insert into public.api_ledger (org_id, kind, amount_cents, balance_after, reserved_after) values (%s, 'topup', 1000, 1000, 0)", [org]),
     ])
 
+    # Credits through the functions the workers use (trusted caller). The
+    # queued run below is paid the way "Run now" pays for it (migration 0041
+    # refuses a customer's render job without an open queue hold): a hold
+    # first, then the job carrying it and its length.
+    with acting(conn, SERVICE, commit=True) as s:
+        s.value("select public.grant_credits(%s, 500, 'seed')", [org])
+        s.value("select public.reserve_credits(%s, %s, 60)", [org, f"job-{k}"])
+        s.value("select public.reserve_credits(%s, %s, 60)", [org, f"rj-seed-{k}"])
+
     # Rows the workers create through functions that are closed even to the
     # service role (render_jobs via claim, api_* via the API's own functions).
     with as_superuser(conn) as s:
         t.render_job = s.value(
-            "insert into public.render_jobs (channel_id, kind, params, status, requested_by) values (%s, 'daily', '{}', 'queued', %s) returning id",
-            [ch, uid])
+            "insert into public.render_jobs (channel_id, kind, params, status, requested_by, credit_ref) "
+            "values (%s, 'daily', '{\"duration\": 300}', 'queued', %s, %s) returning id",
+            [ch, uid, f"rj-seed-{k}"])
         t.download_request = s.value(
             "insert into public.download_requests (org_id, channel_id, video_id, quality, status, requested_by) "
             "values (%s, %s, %s, '1080p', 'ready', %s) returning id", [org, ch, vid, uid])
@@ -181,11 +191,6 @@ def _seed_tenant(conn: psycopg.Connection, t: Tenant) -> None:
                [t.api_key_id, f"idem-{k}", _hex64(k)])
         s.rows("insert into public.api_rate_counters (key_id, minute, count) values (%s, date_trunc('minute', now()), 1) returning 1",
                [t.api_key_id])
-
-    # Credits through the functions the workers use (trusted caller).
-    with acting(conn, SERVICE, commit=True) as s:
-        s.value("select public.grant_credits(%s, 500, 'seed')", [org])
-        s.value("select public.reserve_credits(%s, %s, 60)", [org, f"job-{k}"])
 
     # What only Supabase itself writes: Vault secrets, Storage objects.
     with as_superuser(conn) as s:

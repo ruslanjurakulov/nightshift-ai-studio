@@ -298,6 +298,24 @@ export function runDurationS(requested: number | undefined, agentConfig: unknown
   return typeof t === "number" && Number.isFinite(t) && t > 0 ? t : null;
 }
 
+/** The bounds of one run's length (render_job_params_valid, migration 0017). */
+export const MIN_RUN_SECONDS = 30;
+export const MAX_RUN_SECONDS = 3600;
+
+/**
+ * The length a paid queue run is priced at AND runs at: runDurationS, rounded
+ * and capped to what a run may be. It travels on the job as params.duration,
+ * so the worker never reads the channel's target again at run time (a target
+ * raised after the hold would otherwise run longer than was paid for).
+ * Migration 0041 freezes the same value in the database when a job arrives
+ * without one, and refuses a hold that does not cover it. Null = no length to
+ * price by.
+ */
+export function frozenRunDurationS(requested: number | undefined, agentConfig: unknown): number | null {
+  const d = runDurationS(requested, agentConfig);
+  return d === null ? null : Math.min(MAX_RUN_SECONDS, Math.max(MIN_RUN_SECONDS, Math.round(d)));
+}
+
 /**
  * The message for a Run now refusal that is about credits, or null for any
  * other error (the caller keeps its own). When a hold was already taken and

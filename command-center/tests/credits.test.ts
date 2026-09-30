@@ -14,6 +14,7 @@ import {
   resolveCreditsEnforce,
   roundUpCredits,
   runDurationS,
+  frozenRunDurationS,
   videoCredits,
   type PriceMap,
 } from "../lib/credits";
@@ -156,6 +157,18 @@ describe("switches and ids", () => {
     expect(runDurationS(300, { target_duration_seconds: 600 })).toBe(300);
     expect(runDurationS(undefined, { target_duration_seconds: 600 })).toBe(600);
     expect(runDurationS(undefined, null)).toBeNull();
+  });
+
+  it("a queued paid run's length is frozen at what a run may be (0041)", () => {
+    // The hold is priced at this and the job carries it: a target raised or
+    // outside 30..3600 later must not make the run longer than was paid for.
+    expect(frozenRunDurationS(undefined, { target_duration_seconds: 7200 })).toBe(3600);
+    expect(frozenRunDurationS(undefined, { target_duration_seconds: 10 })).toBe(30);
+    expect(frozenRunDurationS(299.6, { target_duration_seconds: 600 })).toBe(300);
+    expect(frozenRunDurationS(undefined, {})).toBeNull();
+    // The job built from it passes 0017's params check unchanged.
+    expect(buildRenderJobInsert("news", { duration: frozenRunDurationS(undefined, { target_duration_seconds: 7200 })! }, "u").params)
+      .toEqual({ duration: 3600 });
   });
 
   it("a queued job carries credit_ref only when a hold exists", () => {

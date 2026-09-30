@@ -61,13 +61,15 @@ database. Off when ``NIGHTSHIFT_DOWNLOADS_DIR`` is unset.
 
 Credits (migration 0020, ``modules/credits.py``): a job whose channel belongs
 to an organization other than the operator's own is paid for by the hold its
-``credit_ref`` names. The worker claims that hold before the run spends
-anything and settles it when the run ends — the metered cost from this
-machine's cost ledger on success (never above the hold, and the whole hold when
-anything was unpriced), a full release on failure. With
-``NIGHTSHIFT_CREDITS_ENFORCE`` on, such a job without an open hold is failed
-without running: rows can be inserted from a browser, so the button is not the
-only way in.
+``credit_ref`` names (or, from the public API, its ``api_hold_ref``). The
+worker claims that hold before the run spends anything and settles it when the
+run ends — the metered cost from this machine's cost ledger on success (never
+above the hold, and the whole hold when anything was unpriced), a full release
+on failure. Such a job without an open hold, or without the length it was
+priced for (``params.duration``, frozen when it was queued — migration 0041),
+is failed without running, whatever ``NIGHTSHIFT_CREDITS_ENFORCE`` says: rows
+can be inserted from a browser, so the button is not the only way in, and the
+run uses that frozen length, never the channel's target as it is by then.
 """
 
 from __future__ import annotations
@@ -535,11 +537,11 @@ class Worker:
         self.publisher = publisher
         # Paid 720p / 1080p downloads (migration 0030): between render jobs.
         self.downloads = downloads
-        # The service-key credits client (None = credits not wired, e.g. tests
-        # of the plain queue) and where a finished run's ledger is read from.
+        # The service-key credits client and where a finished run's ledger is
+        # read from. None = the worker cannot tell who pays for a job, so it
+        # runs none (migration 0041: no unpaid fallback).
         self.credits = credits
         self.ledger_reader = ledger_reader or credit_rules.local_run_entries
-        self.credits_enforced = credit_rules.enforcement_enabled(self.env)
         self._last_sweep: Optional[float] = None
 
     # -- signals ----------------------------------------------------------
@@ -659,16 +661,16 @@ class Worker:
         api_ref = str(job.get("api_hold_ref") or "").strip()
         if api_ref:
             # Paid from the API balance (migration 0031); settled in the database.
+            # The API priced a length, and 0041 froze it into the job: without
+            # it main.py would read the channel's target at run time instead.
+            if credit_rules.frozen_duration(clean) is None:
+                raise credit_rules.CreditRefused("its length was not fixed when it was queued "
+                                                 "(no duration) — create it again")
             credit_rules.open_api_hold(self.credits, hold_ref=api_ref, job_id=job.get("id"))
             return None
-        if self.credits is None:
-            if self.credits_enforced:
-                raise credit_rules.CreditRefused("credits are enforced but this worker has no "
-                                                 "credits client")
-            return None
-        return credit_rules.open_hold(self.credits, job_ref=job.get("credit_ref"),
-                                      channel_id=channel_id, duration_s=clean.get("duration"),
-                                      enforce=self.credits_enforced)
+        # Independent of NIGHTSHIFT_CREDITS_ENFORCE (review finding C2).
+        return credit_rules.open_queue_hold(self.credits, job_ref=job.get("credit_ref"),
+                                            channel_id=channel_id, params=clean)
 
     def _sweep_credit_holds(self, every_seconds: float = 600.0) -> None:
         """Return holds that can no longer settle (expire_credit_reservations).
@@ -884,9 +886,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                             cid, os.environ, token_client)),
                     downloads=downloads)
     worker.install_signal_handlers()
-    logger.info("worker %s started (poll %ss, stale after %s min, stop grace %ss, credits %s)",
-                args.worker_id, args.poll_seconds, args.stale_minutes, int(args.grace_seconds),
-                "enforced" if worker.credits_enforced else "not enforced")
+    logger.info("worker %s started (poll %ss, stale after %s min, stop grace %ss; a customer "
+                "organization's job runs only on its own open hold)",
+                args.worker_id, args.poll_seconds, args.stale_minutes, int(args.grace_seconds))
     return worker.run_forever(once=args.once)
 
 
