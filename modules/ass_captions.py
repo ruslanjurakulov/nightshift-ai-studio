@@ -237,6 +237,69 @@ def build_ass(word_specs: Iterable[dict], *, width: int, height: int,
     return "\n".join(lines) + "\n"
 
 
+# ── timeline text overlays ──────────────────────────────────────────────────
+#
+# Timeline titles and captions (modules/timeline_render.py) are burnt with the
+# same libass ``subtitles`` filter as the word captions, from one ASS file.
+# Every overlay is placed with \pos, so libass never moves a line to avoid
+# another one — the picture is exactly what the timeline says.
+
+#: Anchor name → ASS \an (numpad) alignment.
+ANCHOR_AN = {
+    "bottom-left": 1, "bottom": 2, "bottom-right": 3,
+    "left": 4, "center": 5, "right": 6,
+    "top-left": 7, "top": 8, "top-right": 9,
+}
+
+
+def overlay_text(text) -> str:
+    """User text made inert for a Dialogue line (no override tags can be
+    smuggled in — see :func:`escape_text`), keeping its line breaks as \\N."""
+    lines = [escape_text(line) for line in str(text if text is not None else "").splitlines()]
+    return "\\N".join(lines).strip()
+
+
+def build_overlay_ass(overlays: Sequence, *, width: int, height: int) -> str:
+    """The ``.ass`` document for timeline text overlays (``render_spec.TextOverlay``
+    objects), one style and one event each, drawn in list order (later on
+    top). Pure and deterministic: the same overlays always give the same file."""
+    w, h = int(width), int(height)
+    margin = int(round(w * 0.04))
+    lines = [
+        "[Script Info]",
+        "; Written by modules/ass_captions.py from timeline text overlays",
+        "ScriptType: v4.00+",
+        f"PlayResX: {w}",
+        f"PlayResY: {h}",
+        "WrapStyle: 0",
+        "ScaledBorderAndShadow: yes",
+        "",
+        "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, "
+        "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
+        "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    ]
+    for i, o in enumerate(overlays):
+        primary = ass_colour(o.color, "&H00FFFFFF")
+        outline = ass_colour(o.outline_color, "&H00000000")
+        family = escape_text(o.font).replace(",", " ")
+        lines.append(
+            f"Style: O{i},{family},{int(o.size)},{primary},{primary},{outline},&H00000000,"
+            f"{-1 if o.bold else 0},0,0,0,100,100,0,0,1,{float(o.outline_width):g},0,"
+            f"{ANCHOR_AN.get(o.anchor, 5)},{margin},{margin},0,1")
+    lines += ["", "[Events]",
+              "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
+    for i, o in enumerate(overlays):
+        x, y = int(round(float(o.x) * w)), int(round(float(o.y) * h))
+        tags = f"\\pos({x},{y})"
+        fi, fo = int(round(float(o.fade_in_s) * 1000)), int(round(float(o.fade_out_s) * 1000))
+        if fi or fo:
+            tags += f"\\fad({fi},{fo})"
+        lines.append(f"Dialogue: {i},{ass_time(o.start_s)},{ass_time(o.end_s)},O{i},,0,0,0,,"
+                     "{" + tags + "}" + overlay_text(o.text))
+    return "\n".join(lines) + "\n"
+
+
 # ── environment ─────────────────────────────────────────────────────────────
 
 def configured_style() -> CaptionStyle:

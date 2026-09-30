@@ -3,7 +3,6 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL, isSupabaseConfigured } from "@/lib/config";
 import { runBackend } from "@/lib/server/run-backend";
 import { downloadsDir } from "@/lib/server/downloads";
-import { displayKey } from "@/lib/api/keys";
 import { apiError, newRequestId, toResponse, type ApiResult } from "@/lib/api/http";
 import { authenticate, type ApiCaller, type Rpc } from "@/lib/api/operations";
 
@@ -36,7 +35,7 @@ export async function apiCaller(request: Request, requestId: string): Promise<Ap
   if (!isSupabaseConfigured) return apiError(503, "api_unavailable", "The API is not configured on this deployment.");
   const auth = await authenticate(request.headers.get("authorization"));
   if (!auth.ok) return auth.result;
-  return { keyHash: auth.keyHash, prefix: auth.prefix, requestId, rpc: apiRpc, backend: runBackend, downloads: downloadsDir() !== null };
+  return { keyHash: auth.keyHash, requestId, rpc: apiRpc, backend: runBackend, downloads: downloadsDir() !== null };
 }
 
 export function isCaller(v: ApiCaller | ApiResult): v is ApiCaller {
@@ -45,21 +44,20 @@ export function isCaller(v: ApiCaller | ApiResult): v is ApiCaller {
 
 /**
  * Run one API route: a request id on every answer, the key checked before
- * anything else, and an unexpected failure turned into a 500 envelope. Only
- * the key's display prefix is ever logged.
+ * anything else, and an unexpected failure turned into a 500 envelope. A log
+ * line carries the request id, status and error code — never the key or any
+ * part of it; the request id finds the key's id in api_requests.
  */
 export async function runApi(request: Request, op: (caller: ApiCaller) => Promise<ApiResult>): Promise<Response> {
   const requestId = newRequestId();
-  let prefix = "-";
   try {
     const caller = await apiCaller(request, requestId);
     if (!isCaller(caller)) return toResponse(caller, requestId);
-    prefix = displayKey(caller.prefix);
     const result = await op(caller);
-    if (!result.ok && result.status >= 500) console.error(`[api] ${requestId} ${prefix} ${result.status} ${result.code}`);
+    if (!result.ok && result.status >= 500) console.error(`[api] ${requestId} ${result.status} ${result.code}`);
     return toResponse(result, requestId);
   } catch (e) {
-    console.error(`[api] ${requestId} ${prefix} 500 ${e instanceof Error ? e.name : "error"}`);
+    console.error(`[api] ${requestId} 500 ${e instanceof Error ? e.name : "error"}`);
     return toResponse(apiError(500, "internal_error", "The API could not complete this request."), requestId);
   }
 }
