@@ -49,6 +49,8 @@ class Tenant:
     render_job: int = 0
     download_request: int = 0
     publish_request: int = 0
+    media_asset: str = ""
+    media_ticket: str = ""
 
 
 @dataclass
@@ -205,6 +207,18 @@ def _seed_tenant(conn: psycopg.Connection, t: Tenant) -> None:
         t.publish_request = s.value(
             "insert into public.publish_requests (video_id, account_id) values (%s, %s) returning id",
             [vid, t.social_account])
+
+    # Media library (0038): an upload ticket through the member's own session
+    # (which also creates the org's quota row), and an asset the way the
+    # worker registers a generated file.
+    with acting(conn, t.actor, commit=True) as s:
+        t.media_ticket = str(s.value("select public.request_upload(%s, %s, 'image/png', 1000) ->> 'ticket'",
+                                     [org, f"poster-{k}.png"]))
+    with acting(conn, SERVICE, commit=True) as s:
+        t.media_asset = str(s.value(
+            "select public.register_asset(gen_random_uuid(), %s, 'image', 'image/png', 1000, %s, 'generated', "
+            "p_width => 64, p_height => 64, p_provenance => '{\"job_id\": \"cj:seed\"}'::jsonb) ->> 'id'",
+            [org, _hex64(f"asset-{k}")]))
 
 
 def _seed_operator(conn: psycopg.Connection, sc: Scenario) -> None:
