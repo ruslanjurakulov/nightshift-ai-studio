@@ -129,7 +129,7 @@ function ToastItem({
         type="button"
         onClick={() => onDismiss(toast.id)}
         aria-label={dismissLabel}
-        className="press -m-1 grid size-6 shrink-0 place-items-center rounded-full text-[var(--color-muted)] hover:bg-[var(--color-panel-2)] hover:text-[var(--color-fg)]"
+        className="press tap-icon -m-1 grid size-6 shrink-0 max-sm:-m-2 pointer-coarse:-m-2 place-items-center rounded-full text-[var(--color-muted)] hover:bg-[var(--color-panel-2)] hover:text-[var(--color-fg)]"
       >
         <X aria-hidden className="size-3.5" />
       </button>

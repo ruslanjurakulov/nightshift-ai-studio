@@ -156,7 +156,7 @@ export function SeriesBoard({
                   key={p}
                   type="button"
                   onClick={() => togglePlatform(p)}
-                  className={`rounded-full border px-2.5 py-1 text-xs capitalize ${
+                  className={`tap rounded-full border px-2.5 py-1 text-xs capitalize ${
                     form.platforms.includes(p)
                       ? "border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_15%,transparent)] text-[var(--color-fg)]"
                       : "border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
@@ -193,7 +193,7 @@ export function SeriesBoard({
               type="button"
               onClick={submit}
               disabled={busy || !form.name.trim()}
-              className="btn-sky is-solid mt-1 rounded-md px-3 py-1.5 text-sm disabled:opacity-40"
+              className="tap btn-sky is-solid mt-1 rounded-md px-3 py-1.5 text-sm disabled:opacity-40"
             >
               {busy ? s.creating : s.submit}
             </button>
@@ -248,17 +248,17 @@ export function SeriesBoard({
                     {canEdit && (
                       <div className="flex gap-1.5">
                         {status !== "ACTIVE" && (
-                          <button type="button" onClick={() => setStatus(row.series_id, "ACTIVE")} disabled={busy} className="rounded-md border border-[color-mix(in_srgb,var(--color-ok)_45%,transparent)] bg-[color-mix(in_srgb,var(--color-ok)_10%,transparent)] px-2 py-1 text-xs text-[var(--color-fg)] disabled:opacity-40">
+                          <button type="button" onClick={() => setStatus(row.series_id, "ACTIVE")} disabled={busy} className="tap rounded-md border border-[color-mix(in_srgb,var(--color-ok)_45%,transparent)] bg-[color-mix(in_srgb,var(--color-ok)_10%,transparent)] px-2 py-1 text-xs text-[var(--color-fg)] disabled:opacity-40">
                             {s.activate}
                           </button>
                         )}
                         {status !== "PAUSED" && (
-                          <button type="button" onClick={() => setStatus(row.series_id, "PAUSED")} disabled={busy} className="rounded-md border border-[color-mix(in_srgb,var(--color-warn)_45%,transparent)] bg-[color-mix(in_srgb,var(--color-warn)_10%,transparent)] px-2 py-1 text-xs text-[var(--color-fg)] disabled:opacity-40">
+                          <button type="button" onClick={() => setStatus(row.series_id, "PAUSED")} disabled={busy} className="tap rounded-md border border-[color-mix(in_srgb,var(--color-warn)_45%,transparent)] bg-[color-mix(in_srgb,var(--color-warn)_10%,transparent)] px-2 py-1 text-xs text-[var(--color-fg)] disabled:opacity-40">
                             {s.pause}
                           </button>
                         )}
                         {status !== "ARCHIVED" && (
-                          <button type="button" onClick={() => setStatus(row.series_id, "ARCHIVED")} disabled={busy} className="rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2 py-1 text-xs text-[var(--color-muted)] disabled:opacity-40">
+                          <button type="button" onClick={() => setStatus(row.series_id, "ARCHIVED")} disabled={busy} className="tap rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2 py-1 text-xs text-[var(--color-muted)] disabled:opacity-40">
                             {s.archive}
                           </button>
                         )}

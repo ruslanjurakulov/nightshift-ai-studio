@@ -355,10 +355,11 @@ describe("handlePaddleWebhook", () => {
 
   it("ignores events it does not handle with 200", async () => {
     const store = new FakeStore();
-    const body = JSON.stringify({ event_id: "evt_01sub", event_type: "subscription.created", data: {} });
+    // subscription.* is handled since 0034 (tests/paddle-subscriptions.test.ts).
+    const body = JSON.stringify({ event_id: "evt_01cust", event_type: "customer.updated", data: {} });
     const res = await deliver(store, body);
     expect(res.status).toBe(200);
-    expect(store.events.get("evt_01sub")?.status).toBe("ignored");
+    expect(store.events.get("evt_01cust")?.status).toBe("ignored");
   });
 
   it("rejects a non-POST and a non-event body", async () => {

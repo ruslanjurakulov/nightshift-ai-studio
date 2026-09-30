@@ -286,15 +286,22 @@ jobs:
           # Say which way this went. Silence here meant a run could look
           # perfectly normal while no token was ever written, and the failure
           # only surfaced later as "no usable token" from deep inside the
-          # OAuth path. Only the fact is printed, never any part of the value.
-          if [ -n "${YOUTUBE_TOKEN_JSON:-}" ]; then
-            printf '%s' "$YOUTUBE_TOKEN_JSON" > youtube_token.json
-            echo "YOUTUBE_TOKEN_JSON is set — wrote youtube_token.json ($(wc -c < youtube_token.json) bytes)."
-          else
+          # OAuth path. Only the fact is printed, never any part of the value
+          # (not its length either). A value that is not a JSON object is not
+          # written: the uploader could not use it, and the warning names the
+          # secret to fix.
+          umask 077
+          if [ -z "${YOUTUBE_TOKEN_JSON:-}" ]; then
             echo "YOUTUBE_TOKEN_JSON is EMPTY OR UNSET — no token file written, so"
             echo "publishing and analytics will be skipped. Check that it is stored"
             echo "under Settings -> Secrets and variables -> Actions -> Repository"
             echo "secrets (an Environment or Dependabot secret is NOT visible here)."
+          elif python tools/validate_json_env.py --warning YOUTUBE_TOKEN_JSON; then
+            printf '%s' "$YOUTUBE_TOKEN_JSON" > youtube_token.json
+            echo "YOUTUBE_TOKEN_JSON is set — wrote youtube_token.json."
+          else
+            echo "YOUTUBE_TOKEN_JSON is not a JSON object — no token file written, so"
+            echo "publishing and analytics will be skipped."
           fi
 
       # This channel's own token, for every channel that is not the legacy
@@ -313,21 +320,42 @@ jobs:
           CHANNEL_TOKEN_JSON: ${{ secrets[matrix.token_secret] }}
           TOKEN_SECRET_NAME: ${{ matrix.token_secret }}
         run: |
-          if [ -n "${CHANNEL_TOKEN_JSON:-}" ]; then
-            # The heredoc form is required for a multi-line value. Actions masks
-            # the secret in the log; only its length is printed here.
-            {
-              echo "${TOKEN_SECRET_NAME}<<CHRONOS_TOKEN_EOF"
-              printf '%s\n' "$CHANNEL_TOKEN_JSON"
-              echo "CHRONOS_TOKEN_EOF"
-            } >> "$GITHUB_ENV"
-            echo "$TOKEN_SECRET_NAME is set (${#CHANNEL_TOKEN_JSON} bytes) — this channel will publish to its own account."
-          else
+          set -euo pipefail
+          # The name becomes an environment variable of every later step, so
+          # only the shape channel_credentials.env_var_name() produces is
+          # accepted — never PATH, BASH_ENV or anything a later step would run.
+          if [[ ! "$TOKEN_SECRET_NAME" =~ ^CHRONOS_YT_TOKEN_[A-Z0-9_]+$ ]]; then
+            echo "::error::matrix.token_secret is not a CHRONOS_YT_TOKEN_<REF> name (see tools/list_channels.py). Nothing was exported."
+            exit 1
+          fi
+          if [ -z "${CHANNEL_TOKEN_JSON:-}" ]; then
             echo "$TOKEN_SECRET_NAME is EMPTY OR UNSET, so this channel has no token of"
             echo "its own. Publishing and analytics will be skipped for it. This is"
             echo "deliberate: falling back to the default channel's token would upload"
             echo "this channel's video to somebody else's account. Add the token in the"
             echo "Command Center's channel wizard, which forwards it under this name."
+          elif python tools/validate_json_env.py --warning CHANNEL_TOKEN_JSON; then
+            # The heredoc form is required for a multi-line value. Its
+            # delimiter is random per run, so no line of the value can close
+            # the block early and define a variable of its own. Actions masks
+            # the secret in the log; nothing about the value is printed here.
+            delim="CHRONOS_TOKEN_$(python -c 'import secrets; print(secrets.token_hex(16))')"
+            if [[ "$CHANNEL_TOKEN_JSON" == *"$delim"* ]]; then
+              echo "::error::$TOKEN_SECRET_NAME could not be exported safely. Nothing was exported."
+              exit 1
+            fi
+            {
+              printf '%s<<%s\n' "$TOKEN_SECRET_NAME" "$delim"
+              printf '%s\n' "$CHANNEL_TOKEN_JSON"
+              printf '%s\n' "$delim"
+            } >> "$GITHUB_ENV"
+            echo "$TOKEN_SECRET_NAME is set — this channel will publish to its own account."
+          else
+            # materialize_token() would ignore it anyway ("not valid token
+            # JSON"); saying so here names the secret before anything is spent.
+            echo "$TOKEN_SECRET_NAME is not a JSON object, so it was not exported and this"
+            echo "channel has no usable token of its own. Publishing and analytics will be"
+            echo "skipped for it. Reconnect it in the Command Center's channel wizard."
           fi
 
       # A customer organization's channel, connected from the Command Center,
@@ -361,10 +389,15 @@ jobs:
           # check and then fails deep inside the OAuth library with a bare
           # JSONDecodeError. No file at all produces a message that names the
           # missing secret.
-          if [ -n "${YOUTUBE_CLIENT_SECRET_JSON:-}" ]; then
+          # A value that is not a JSON object is not written either; the
+          # warning names the secret.
+          umask 077
+          if [ -z "${YOUTUBE_CLIENT_SECRET_JSON:-}" ]; then
+            echo "YOUTUBE_CLIENT_SECRET_JSON is not set — YouTube API calls will be skipped."
+          elif python tools/validate_json_env.py --warning YOUTUBE_CLIENT_SECRET_JSON; then
             printf '%s' "$YOUTUBE_CLIENT_SECRET_JSON" > client_secret.json
           else
-            echo "YOUTUBE_CLIENT_SECRET_JSON is not set — YouTube API calls will be skipped."
+            echo "YOUTUBE_CLIENT_SECRET_JSON is not a JSON object — YouTube API calls will be skipped."
           fi
 
       - name: Generate audio assets
@@ -411,6 +444,9 @@ jobs:
           # id); the repo VARIABLE sets the default voice for channels without one.
           ELEVENLABS_RUN_VOICE_ID: ${{ github.event.inputs.voice_id }}
           ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
+          # The voice for the script's quoted lines; a channel's own choice wins.
+          # Empty + an ElevenLabs channel without one = the run stops at preflight.
+          ELEVENLABS_SECONDARY_VOICE_ID: ${{ vars.ELEVENLABS_SECONDARY_VOICE_ID }}
           SCRIPT_LANGUAGE: English
           # x264 encoder threads for the final render. The render has been
           # OOM-killed at exit 143 with ffmpeg eating the 7.9 GB runner; set
@@ -471,11 +507,19 @@ jobs:
           CHRONOS_ENABLE_VIDEO_GEN: ${{ github.event.inputs.video_provider != '' && 'true' || vars.CHRONOS_ENABLE_VIDEO_GEN }}
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
           CHRONOS_ENABLE_MINIMAX_BROLL: ${{ vars.CHRONOS_ENABLE_MINIMAX_BROLL }}
+          # The MiniMax model id picks its API (v1 Hailuo / v2 H3); an H3 run
+          # also needs the v2 task-query path (modules/minimax_client.py).
+          MINIMAX_H3_MODEL: ${{ vars.MINIMAX_H3_MODEL }}
+          MINIMAX_V2_QUERY_PATH: ${{ vars.MINIMAX_V2_QUERY_PATH }}
           HIGGSFIELD_API_KEY: ${{ secrets.HIGGSFIELD_API_KEY }}
+          # Kling: a console API key, or an access key + secret key pair.
           KLING_API_KEY: ${{ secrets.KLING_API_KEY }}
+          KLING_ACCESS_KEY: ${{ secrets.KLING_ACCESS_KEY }}
+          KLING_SECRET_KEY: ${{ secrets.KLING_SECRET_KEY }}
           VEO_API_KEY: ${{ secrets.VEO_API_KEY }}
           SEEDANCE_API_KEY: ${{ secrets.SEEDANCE_API_KEY }}
           WAN_API_KEY: ${{ secrets.WAN_API_KEY }}
+          WAN_WORKSPACE_ID: ${{ vars.WAN_WORKSPACE_ID }}
           # AI image provider (modules/image_providers.py). Default "pexels"
           # stock; set CHRONOS_IMAGE_PROVIDER=<leonardo|gpt-image|nano-banana|
           # flux|ideogram|fal> + CHRONOS_ENABLE_IMAGE_GEN + that provider's key

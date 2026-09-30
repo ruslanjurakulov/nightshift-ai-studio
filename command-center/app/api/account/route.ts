@@ -5,7 +5,8 @@ import { isCreditExempt } from "@/lib/credits";
 import { readCreditAccount } from "@/lib/server/credits";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
 import { isSocialConfigured } from "@/lib/server/social-oauth";
-import { creditsSpent, derivePlan, type AccountSummary, type Plan } from "@/lib/account";
+import { accountPlan, creditsSpent, type AccountPlan, type AccountSummary } from "@/lib/account";
+import { readBillingSummary } from "@/lib/server/plans";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -20,7 +21,7 @@ const MAX_PAGES = 20;
  *
  * Read-only, and read as the signed-in user (anon key + their session, so RLS
  * decides): the email from their session, the plan and credits from their
- * organization's ledger (0020), the connected accounts from their channels.
+ * organization's plan (0034) and ledger (0020), the connected accounts from their channels.
  * Nothing here writes, spends or publishes, and nothing secret is returned or
  * logged.
  */
@@ -33,27 +34,30 @@ export async function GET() {
   const org = await getOrgContext();
   const current = org.supported ? org.current : null;
 
-  let plan: Plan = { kind: "unknown" };
+  let plan: AccountPlan = { kind: "unknown" };
   let credits: AccountSummary["credits"] = null;
 
   if (current && (current.is_default || isCreditExempt(current.id))) {
     plan = { kind: "exempt" };
   } else if (current) {
-    const [account, purchases, spent] = await Promise.all([
+    // The plan is the organization's real subscription state (0034's
+    // billing_summary), not a guess from its purchases.
+    const [account, summary, spent] = await Promise.all([
       readCreditAccount(supabase, current.id).catch(() => null),
-      supabase
-        .from("credit_transactions")
-        .select("kind,amount,note,created_at")
-        .eq("org_id", current.id)
-        .eq("kind", "purchase")
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false })
-        .limit(1),
+      readBillingSummary(supabase, current.id).catch(() => null),
       readSpent(supabase, current.id),
     ]);
-    plan = derivePlan(purchases.error ? null : purchases.data);
+    plan = accountPlan(summary, false);
     const acc = account?.account;
-    credits = acc ? { available: acc.available, reserved: acc.reserved, spent } : null;
+    credits = acc
+      ? {
+          available: acc.available,
+          reserved: acc.reserved,
+          spent,
+          fromPlan: summary ? summary.credits.subscription : null,
+          fromTopups: summary ? summary.credits.pack : null,
+        }
+      : null;
   }
 
   const accounts = await readConnectedAccounts().catch(() => []);

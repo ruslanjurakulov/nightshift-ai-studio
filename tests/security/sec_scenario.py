@@ -49,6 +49,7 @@ class Tenant:
     render_job: int = 0
     download_request: int = 0
     publish_request: int = 0
+    creative_job: str = ""
 
 
 @dataclass
@@ -181,11 +182,24 @@ def _seed_tenant(conn: psycopg.Connection, t: Tenant) -> None:
                [t.api_key_id, f"idem-{k}", _hex64(k)])
         s.rows("insert into public.api_rate_counters (key_id, minute, count) values (%s, date_trunc('minute', now()), 1) returning 1",
                [t.api_key_id])
+        # creative_jobs / creative_job_events are written only through 0036's
+        # functions (and those need a model registry the lab does not have).
+        t.creative_job = str(s.value(
+            "insert into public.creative_jobs (org_id, capability, requested_model, routed_model, params, status, "
+            "quoted_credits, requested_by) values (%s, 't2i', 'img-x', 'img-x', '{\"prompt\": \"seed\"}', 'completed', 6, %s) "
+            "returning id", [org, uid]))
+        s.rows("insert into public.creative_job_events (job_id, org_id, event, status) values (%s, %s, 'created', 'queued') returning 1",
+               [t.creative_job, org])
 
     # Credits through the functions the workers use (trusted caller).
     with acting(conn, SERVICE, commit=True) as s:
         s.value("select public.grant_credits(%s, 500, 'seed')", [org])
         s.value("select public.reserve_credits(%s, %s, 60)", [org, f"job-{k}"])
+
+    # The worker's record of what that job cost at the provider (0037).
+    with acting(conn, SERVICE, commit=True) as s:
+        s.value("select public.record_creative_job_cost(%s, 'acme', null, 'img-x-1', 'image', 1, null, null)",
+                [t.creative_job])
 
     # What only Supabase itself writes: Vault secrets, Storage objects.
     with as_superuser(conn) as s:
@@ -248,6 +262,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     for t, name in ((sc.alice, "Alice Studio"), (sc.bob, "Bob Media")):
         t.org = _create_org(conn, t.actor, name)
         _seed_tenant(conn, t)
+    # Plans (0034): Alice on Creator, Bob on Pro (tests/security/sec_plans_0034.py).
+    import sec_plans_0034
+    sec_plans_0034.seed(conn, sc)
     # A pending invite into org A, addressed to Ivan's email, not yet accepted.
     with acting(conn, sc.alice.actor, commit=True) as s:
         s.value("select public.invite_org_member(%s, %s, 'viewer')", [sc.alice.org, sc.invitee.email])

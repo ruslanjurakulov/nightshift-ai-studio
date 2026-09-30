@@ -8,11 +8,29 @@ import { MAX_ACTIVE_KEYS } from "@/lib/api/keys";
  */
 
 
-function Code({ children }: { children: string }) {
+/** What a screen reader calls a box that scrolls sideways. A scroll container
+ *  must be reachable by keyboard, and a focusable box needs a name. */
+export type ScrollLabels = { table: string; code: string };
+
+function Code({ children, label }: { children: string; label: string }) {
   return (
-    <pre className="overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-[12px] leading-relaxed">
+    <pre
+      tabIndex={0}
+      role="region"
+      aria-label={label}
+      className="scroll-focus overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-[12px] leading-relaxed"
+    >
       <code>{children}</code>
     </pre>
+  );
+}
+
+/** A table that scrolls inside its own box on a phone instead of widening the page. */
+function Table({ children, label }: { children: React.ReactNode; label: string }) {
+  return (
+    <div tabIndex={0} role="region" aria-label={label} className="scroll-focus overflow-x-auto">
+      <table className="w-full text-left text-[13px]">{children}</table>
+    </div>
   );
 }
 
@@ -56,7 +74,7 @@ const ERRORS: [number, string, string][] = [
   [503, "api_error", "queue_backend_required, downloads_unavailable, pricing_unavailable, api_unavailable"],
 ];
 
-export function ApiDocs({ prices, origin }: { prices: ApiPriceMap | null; origin: string }) {
+export function ApiDocs({ prices, origin, labels }: { prices: ApiPriceMap | null; origin: string; labels: ScrollLabels }) {
   const BASE = `${origin}/api/v1`;
   const live = prices && prices.video_minute !== undefined;
   const p = live ? prices : { ...DEFAULT_API_PRICES };
@@ -88,7 +106,7 @@ export function ApiDocs({ prices, origin }: { prices: ApiPriceMap | null; origin
           <li>Top up the API balance (at least $5; it is separate from site credits).</li>
           <li>Create a key (up to {MAX_ACTIVE_KEYS} active keys). It is shown once — store it as a secret.</li>
         </ol>
-        <Code>{`curl ${BASE}/me \\
+        <Code label={labels.code}>{`curl ${BASE}/me \\
   -H "Authorization: Bearer $NIGHTSHIFT_API_KEY"`}</Code>
         <P>
           A key acts as the admin who created it, inside that organization only. If that person leaves the organization
@@ -102,7 +120,7 @@ export function ApiDocs({ prices, origin }: { prices: ApiPriceMap | null; origin
           {live ? "Current prices" : "Default prices (the live price list could not be read just now)"} — prepaid, in
           US dollars:
         </P>
-        <table className="w-full text-left text-[13px]">
+        <Table label={labels.table}>
           <tbody className="divide-y divide-[var(--color-border)]">
             <tr>
               <td className="py-2">Video</td>
@@ -119,7 +137,7 @@ export function ApiDocs({ prices, origin }: { prices: ApiPriceMap | null; origin
               <td className="py-2">the site&apos;s download price in credits × {perCredit}¢</td>
             </tr>
           </tbody>
-        </table>
+        </Table>
         <P>
           How it is charged: creating a video <b>holds</b> max(⌈seconds × {perMinute}¢ / 60⌉, {minimum}¢) from your
           available balance. When the job succeeds the hold is charged; if it fails or is cancelled, all of it is
@@ -132,7 +150,7 @@ export function ApiDocs({ prices, origin }: { prices: ApiPriceMap | null; origin
 
       <Section id="tiers" title="Usage tiers and limits">
         <P>Your tier rises automatically with what you have paid in top-ups (net of refunds):</P>
-        <table className="w-full text-left text-[13px]">
+        <Table label={labels.table}>
           <thead>
             <tr className="text-[var(--color-muted)]">
               <th className="py-1">Tier</th>
@@ -153,7 +171,7 @@ export function ApiDocs({ prices, origin }: { prices: ApiPriceMap | null; origin
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
         <P>
           The organization can set a lower monthly limit, and each key its own. Spend this month counts charges plus
           holds still open. Rate limits are per key per minute; every response carries <code>x-ratelimit-limit</code>,{" "}
@@ -166,7 +184,7 @@ export function ApiDocs({ prices, origin }: { prices: ApiPriceMap | null; origin
         <P>
           Base URL <code>{BASE}</code>. JSON in, JSON out. Money is in integer US cents.
         </P>
-        <table className="w-full text-left text-[13px]">
+        <Table label={labels.table}>
           <tbody className="divide-y divide-[var(--color-border)]">
             {ENDPOINTS.map(([m, path, what]) => (
               <tr key={m + path}>
@@ -176,9 +194,9 @@ export function ApiDocs({ prices, origin }: { prices: ApiPriceMap | null; origin
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
         <h3 className="text-[14px] font-semibold">Make a video</h3>
-        <Code>{`curl -X POST ${BASE}/videos \\
+        <Code label={labels.code}>{`curl -X POST ${BASE}/videos \\
   -H "Authorization: Bearer $NIGHTSHIFT_API_KEY" \\
   -H "Content-Type: application/json" \\
   -H "Idempotency-Key: $(uuidgen)" \\
@@ -191,10 +209,10 @@ export function ApiDocs({ prices, origin }: { prices: ApiPriceMap | null; origin
           Unknown fields are refused. The video is rendered private and follows the channel&apos;s own publish rules.
         </P>
         <h3 className="text-[14px] font-semibold">Follow the job, then find the video</h3>
-        <Code>{`curl ${BASE}/jobs/42 -H "Authorization: Bearer $NIGHTSHIFT_API_KEY"
+        <Code label={labels.code}>{`curl ${BASE}/jobs/42 -H "Authorization: Bearer $NIGHTSHIFT_API_KEY"
 curl "${BASE}/videos?channel_id=my-channel&limit=5" -H "Authorization: Bearer $NIGHTSHIFT_API_KEY"`}</Code>
         <h3 className="text-[14px] font-semibold">Publish to platforms</h3>
-        <Code>{`curl -X POST ${BASE}/videos/VIDEO_ID/publish \\
+        <Code label={labels.code}>{`curl -X POST ${BASE}/videos/VIDEO_ID/publish \\
   -H "Authorization: Bearer $NIGHTSHIFT_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"account_ids": ["<instagram or tiktok account id>"], "channel_ids": ["my-second-channel"]}'`}</Code>
@@ -204,7 +222,7 @@ curl "${BASE}/videos?channel_id=my-channel&limit=5" -H "Authorization: Bearer $N
           <code>GET /accounts</code>.
         </P>
         <h3 className="text-[14px] font-semibold">Download in HD</h3>
-        <Code>{`curl -X POST ${BASE}/videos/VIDEO_ID/downloads -H "Authorization: Bearer $NIGHTSHIFT_API_KEY" \\
+        <Code label={labels.code}>{`curl -X POST ${BASE}/videos/VIDEO_ID/downloads -H "Authorization: Bearer $NIGHTSHIFT_API_KEY" \\
   -H "Content-Type: application/json" -d '{"quality": "1080p"}'
 curl ${BASE}/downloads/7 -H "Authorization: Bearer $NIGHTSHIFT_API_KEY"          # until status = ready
 curl -o video.mp4 ${BASE}/downloads/7/file -H "Authorization: Bearer $NIGHTSHIFT_API_KEY"`}</Code>
@@ -217,10 +235,10 @@ curl -o video.mp4 ${BASE}/downloads/7/file -H "Authorization: Bearer $NIGHTSHIFT
           publish_video, request_download, get_download, get_balance.
         </P>
         <h3 className="text-[14px] font-semibold">Claude Code</h3>
-        <Code>{`claude mcp add --transport http nightshift ${origin}/api/mcp \\
+        <Code label={labels.code}>{`claude mcp add --transport http nightshift ${origin}/api/mcp \\
   --header "Authorization: Bearer nsk_live_…"`}</Code>
         <h3 className="text-[14px] font-semibold">Cursor (~/.cursor/mcp.json)</h3>
-        <Code>{`{"mcpServers": {"nightshift": {"url": "${origin}/api/mcp",
+        <Code label={labels.code}>{`{"mcpServers": {"nightshift": {"url": "${origin}/api/mcp",
   "headers": {"Authorization": "Bearer nsk_live_…"}}}}`}</Code>
         <P>
           Claude Desktop and claude.ai custom connectors, and ChatGPT connectors, authenticate remote servers with OAuth
@@ -228,16 +246,16 @@ curl -o video.mp4 ${BASE}/downloads/7/file -H "Authorization: Bearer $NIGHTSHIFT
           the local <code>mcp-remote</code> bridge instead (see the MCP guide in the repository, docs/MCP.md); ChatGPT is
           not supported until OAuth is offered.
         </P>
-        <Code>{`{"mcpServers": {"nightshift": {"command": "npx",
+        <Code label={labels.code}>{`{"mcpServers": {"nightshift": {"command": "npx",
   "args": ["-y", "mcp-remote", "${origin}/api/mcp", "--header", "Authorization:\${NIGHTSHIFT_AUTH}"],
   "env": {"NIGHTSHIFT_AUTH": "Bearer nsk_live_…"}}}}`}</Code>
       </Section>
 
       <Section id="errors" title="Errors">
-        <Code>{`{"error": {"type": "billing_error", "code": "insufficient_balance",
+        <Code label={labels.code}>{`{"error": {"type": "billing_error", "code": "insufficient_balance",
            "message": "Your API balance does not cover this video. Top up in the Developer console.",
            "request_id": "req_…", "price_cents": 360, "available_cents": 120}}`}</Code>
-        <table className="w-full text-left text-[13px]">
+        <Table label={labels.table}>
           <tbody className="divide-y divide-[var(--color-border)]">
             {ERRORS.map(([status, type, codes]) => (
               <tr key={status}>
@@ -247,7 +265,7 @@ curl -o video.mp4 ${BASE}/downloads/7/file -H "Authorization: Bearer $NIGHTSHIFT
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
         <P>
           Every response has an <code>x-request-id</code>; quote it when you contact support. POST endpoints accept an{" "}
           <code>Idempotency-Key</code> header: the same key with the same body within 24 hours returns the first

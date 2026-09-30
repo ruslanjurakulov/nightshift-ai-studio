@@ -11,7 +11,11 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { coerceTransactions, formatCredits, isCreditExempt } from "@/lib/credits";
 import { creditsEnforced, readCreditAccount, readCreditPrices } from "@/lib/server/credits";
-import { buyAccess, paddleConfig } from "@/lib/paddle";
+import { buyAccess, paddleClient, paddleConfig } from "@/lib/paddle";
+import { PLAN_ENV, planMatrix, subscribeAccess } from "@/lib/plans";
+import { readBillingSummary, readCreditLots, readPlanCatalog } from "@/lib/server/plans";
+import { PlanPanel } from "@/components/credits/PlanPanel";
+import { CreditLots } from "@/components/credits/CreditLots";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -48,7 +52,7 @@ export default async function CreditsPage() {
   if (!org.current) return note(t.credits.noOrg);
   const orgId = org.current.id;
 
-  const [acct, priceRes, txns, admin, userRes] = await Promise.all([
+  const [acct, priceRes, txns, admin, userRes, catalog, summary, lots] = await Promise.all([
     readCreditAccount(supabase, orgId),
     readCreditPrices(supabase),
     supabase
@@ -60,6 +64,11 @@ export default async function CreditsPage() {
       .limit(200),
     supabase.rpc("is_platform_admin"),
     supabase.auth.getUser(),
+    // Plans (0034); each is null before the migration, and the page then
+    // shows what it showed before.
+    readPlanCatalog(supabase).catch(() => null),
+    readBillingSummary(supabase, orgId).catch(() => null),
+    readCreditLots(supabase, orgId).catch(() => null),
   ]);
   if (!acct.supported || !priceRes.supported) return note(t.credits.notMigrated);
 
@@ -68,6 +77,8 @@ export default async function CreditsPage() {
   const account = acct.account;
   const user = userRes.data.user;
   const buy = buyAccess(orgId, org.current.role, paddleConfig);
+  const matrix = planMatrix(catalog, PLAN_ENV, paddleClient);
+  const planAccess = subscribeAccess(orgId, org.current.role, matrix, summary);
 
   return (
     <div className="rhythm">
@@ -95,6 +106,17 @@ export default async function CreditsPage() {
         </p>
       </div>
 
+      {!exempt && summary && (
+        <PlanPanel
+          summary={summary}
+          matrix={matrix}
+          access={planAccess}
+          orgId={orgId}
+          userId={user?.id ?? null}
+          email={user?.email ?? null}
+        />
+      )}
+
       {buy === "allowed" && paddleConfig && (
         <BuyCredits
           config={paddleConfig}
@@ -111,6 +133,8 @@ export default async function CreditsPage() {
       )}
 
       {platformAdmin && <GrantCreditsForm orgId={orgId} orgName={org.current.name} />}
+
+      {!exempt && lots && <CreditLots lots={lots} />}
 
       <CreditLedger rows={coerceTransactions(txns.data)} />
 

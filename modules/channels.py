@@ -175,6 +175,14 @@ class AgentConfig:
     target_duration_seconds: int = field(default_factory=lambda: cfg.VIDEO_DURATION_TARGET)
     tts_provider: str = field(default_factory=lambda: cfg.TTS_PROVIDER)
     elevenlabs_voice_id: str = field(default_factory=lambda: cfg.ELEVENLABS_VOICE_ID)
+    # The voice for the script's [VOICE:secondary] lines (quotes, character
+    # speech), picked from the account's voice list like the narrator's — or
+    # "narrator" to read them in the narrator's own voice. Empty means not
+    # chosen, and an ElevenLabs run refuses to start (audio_mixer.verify_voice)
+    # rather than reading them in a voice nobody picked. In the agent_config
+    # blob, so no migration.
+    elevenlabs_secondary_voice_id: str = field(
+        default_factory=lambda: getattr(cfg, "ELEVENLABS_SECONDARY_VOICE_ID", ""))
     edge_tts_voice: str = field(default_factory=lambda: cfg.EDGE_TTS_VOICE)
     # Free-text prompt fragments. Appended to the shared prompts rather than
     # replacing them — the retention rules in script_engine.SCRIPT_SYSTEM_PROMPT
@@ -255,6 +263,7 @@ class AgentConfig:
             "target_duration_seconds": self.target_duration_seconds,
             "tts_provider": self.tts_provider,
             "elevenlabs_voice_id": self.elevenlabs_voice_id,
+            "elevenlabs_secondary_voice_id": self.elevenlabs_secondary_voice_id,
             "edge_tts_voice": self.edge_tts_voice,
             "system_prompt": self.system_prompt,
             "niche_rules": self.niche_rules,
@@ -286,6 +295,8 @@ class AgentConfig:
             target_duration_seconds=duration,
             tts_provider=d.get("tts_provider") or base.tts_provider,
             elevenlabs_voice_id=d.get("elevenlabs_voice_id") or base.elevenlabs_voice_id,
+            elevenlabs_secondary_voice_id=(str(d.get("elevenlabs_secondary_voice_id") or "").strip()
+                                           or base.elevenlabs_secondary_voice_id),
             edge_tts_voice=d.get("edge_tts_voice") or base.edge_tts_voice,
             system_prompt=d.get("system_prompt") or "",
             niche_rules=d.get("niche_rules") or "",
@@ -431,6 +442,18 @@ class ChannelContext:
     credential: CredentialRef = field(default_factory=CredentialRef)
     created_at: str = ""
     updated_at: str = ""
+    # The organization that owns this channel (migration 0018). A row with no
+    # org — channels.json, a database from before 0018 — is the operator's
+    # own, which is what every channel was then. Not in to_dict(): the writers
+    # that mirror a channel set org_id themselves (supabase_sync).
+    org_id: str = DEFAULT_ORG_ID
+
+    @property
+    def is_operators(self) -> bool:
+        """Does the operator's own organization own this channel? Only these
+        run on the operator's schedule: a customer's run is paid from a credit
+        hold, and a scheduled run carries none."""
+        return self.org_id == DEFAULT_ORG_ID
 
     @property
     def is_active(self) -> bool:
@@ -500,6 +523,7 @@ class ChannelContext:
             credential=CredentialRef.from_dict(d.get("credential_ref")),
             created_at=d.get("created_at") or "",
             updated_at=d.get("updated_at") or "",
+            org_id=str(d.get("org_id") or DEFAULT_ORG_ID),
         )
 
 

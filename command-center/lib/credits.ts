@@ -48,6 +48,8 @@ export const MAX_GRANT = 100_000_000;
 
 /** The error code reserve_credits raises when available credits do not cover a hold. */
 export const INSUFFICIENT_CREDITS_CODE = "NS402";
+/** 0034: the plan's parallel-run limit is reached (reserve_credits refuses one more hold). */
+export const RUN_LIMIT_CODE = "NS429";
 
 export interface CreditPrice {
   unit: string;
@@ -65,7 +67,17 @@ export interface CreditAccount {
   available: number;
 }
 
-export type CreditTxnKind = "grant" | "purchase" | "reserve" | "capture" | "release" | "refund" | "adjust";
+export type CreditTxnKind =
+  | "grant"
+  | "purchase"
+  | "reserve"
+  | "capture"
+  | "release"
+  | "refund"
+  | "adjust"
+  // 0034: a plan's billing-period credits, and credits that expired.
+  | "subscription"
+  | "expire";
 
 export interface CreditTransaction {
   id: number;
@@ -78,7 +90,17 @@ export interface CreditTransaction {
   createdAt: string;
 }
 
-const KINDS: readonly string[] = ["grant", "purchase", "reserve", "capture", "release", "refund", "adjust"];
+const KINDS: readonly string[] = [
+  "grant",
+  "purchase",
+  "reserve",
+  "capture",
+  "release",
+  "refund",
+  "adjust",
+  "subscription",
+  "expire",
+];
 
 function finite(v: unknown): number | null {
   const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v;
@@ -253,6 +275,16 @@ export function parseInsufficient(
   return { available: m ? Number(m[1]) : null, needed: m ? Number(m[2]) : null };
 }
 
+/** Did reserve_credits refuse because the plan's parallel runs are all in use?
+ *  Reads "active=… limit=…" (0034's credit_reservations_concurrency). */
+export function parseRunLimit(
+  error: { code?: string; details?: string | null } | null | undefined,
+): { active: number | null; limit: number | null } | null {
+  if (!error || error.code !== RUN_LIMIT_CODE) return null;
+  const m = /active=(\d+)\s+limit=(\d+)/.exec(error.details ?? "");
+  return { active: m ? Number(m[1]) : null, limit: m ? Number(m[2]) : null };
+}
+
 /** A reservation reference both runners accept (0020's job_id check). */
 export function newCreditRef(prefix: "rj" | "gh", uuid: string): string {
   return `${prefix}-${uuid.replace(/[^A-Za-z0-9-]/g, "").slice(0, 64)}`;
@@ -320,6 +352,11 @@ export function creditRunError(data: Record<string, unknown>, t: Dictionary, loc
     case "credit_estimate_unavailable": {
       const gap = typeof data.gap === "string" && data.gap in t.credits.gap ? t.credits.gap[data.gap as EstimateGap] : "";
       text = gap ? `${t.credits.estimateUnavailable} ${gap}` : t.credits.estimateUnavailable;
+      break;
+    }
+    case "run_limit": {
+      const limit = num(data.limit);
+      text = limit !== null ? fmt(t.credits.runLimit, { n: limit }) : t.credits.runLimitShort;
       break;
     }
     case "credits_unavailable":

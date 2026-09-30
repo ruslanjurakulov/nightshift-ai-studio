@@ -11,7 +11,8 @@ import {
   navGroupsFor,
   sectionAllowed,
 } from "@/lib/navigation";
-import { coerceAccountSummary, creditsSpent, derivePlan, packFromPurchase } from "@/lib/account";
+import { accountPlan, coerceAccountSummary, creditsSpent, derivePlan, packFromPurchase } from "@/lib/account";
+import { coerceBillingSummary } from "@/lib/plans";
 import type { ChannelCredentialRow, ChannelRow } from "@/lib/types";
 import type { ChannelTokenStatus } from "@/lib/channel-tokens";
 
@@ -39,7 +40,6 @@ describe("nav filtering by role", () => {
       "onboarding",
       "organization",
       "developers",
-      "approvals",
     ]);
     expect(new Set(keys(false))).toEqual(new Set(CUSTOMER_NAV_KEYS));
   });
@@ -68,13 +68,25 @@ describe("nav filtering by role", () => {
     expect(isOperatorOnlySection("members")).toBe(true);
     expect(isOperatorOnlySection("pipeline")).toBe(true);
     expect(isOperatorOnlySection("logs")).toBe(true);
-    for (const s of ["command-center", "create", "videos", "studio", "channels", "credits", "series", "approvals", "getting-started", "organization"])
+    for (const s of ["command-center", "create", "videos", "studio", "channels", "credits", "series", "getting-started", "organization"])
       expect(isOperatorOnlySection(s), s).toBe(false);
     // Not a section at all: left to 404 or the channel index, not bounced.
     expect(isOperatorOnlySection("")).toBe(false);
     expect(isOperatorOnlySection("no-such-page")).toBe(false);
     expect(sectionAllowed("pipeline", true)).toBe(true);
     expect(sectionAllowed("pipeline", false)).toBe(false);
+  });
+
+  it("keeps team features away from a self-serve customer: no Team page, no two-person approvals", () => {
+    // A workspace has one person and no roles, so a second approver cannot
+    // exist; both screens stay for the platform operator.
+    for (const s of ["members", "approvals"]) {
+      expect(isOperatorOnlySection(s), s).toBe(true);
+      expect(sectionAllowed(s, false), s).toBe(false);
+      expect(sectionAllowed(s, true), s).toBe(true);
+    }
+    expect(keys(false)).not.toContain("approvals");
+    expect(keys(true)).toContain("approvals");
   });
 });
 
@@ -198,8 +210,8 @@ describe("coerceAccountSummary", () => {
   it("keeps real values and turns anything malformed into unknown / —", () => {
     const s = coerceAccountSummary({
       email: "a@b.co",
-      plan: { kind: "pack", pack: "starter" },
-      credits: { available: 900, reserved: 100, spent: null },
+      plan: { kind: "plan", id: "pro", name: "Pro", isDefault: false, status: "active", periodEnd: "2026-11-01T00:00:00Z", cancelAtPeriodEnd: false },
+      credits: { available: 900, reserved: 100, spent: null, fromPlan: 600, fromTopups: 300 },
       accounts: [
         { platform: "youtube", id: "c1", name: "Chronos", avatarUrl: null, connected: true },
         { platform: "myspace", id: "x", name: "x", avatarUrl: null, connected: true },
@@ -207,23 +219,56 @@ describe("coerceAccountSummary", () => {
     });
     expect(s).toEqual({
       email: "a@b.co",
-      plan: { kind: "pack", pack: "starter" },
-      credits: { available: 900, reserved: 100, spent: null },
+      plan: { kind: "plan", id: "pro", name: "Pro", isDefault: false, status: "active", periodEnd: "2026-11-01T00:00:00Z", cancelAtPeriodEnd: false },
+      credits: { available: 900, reserved: 100, spent: null, fromPlan: 600, fromTopups: 300 },
       accounts: [{ platform: "youtube", id: "c1", name: "Chronos", avatarUrl: null, connected: true }],
       connectable: { instagram: false, tiktok: false },
     });
-    expect(coerceAccountSummary({ plan: { kind: "pack", pack: "mega" }, credits: { available: "9" } })).toEqual({
+    expect(coerceAccountSummary({ plan: { kind: "pack", pack: "starter" }, credits: { available: "9" } })).toEqual({
       email: null,
       plan: { kind: "unknown" },
       credits: null,
       accounts: [],
       connectable: { instagram: false, tiktok: false },
     });
+    expect(coerceAccountSummary({ plan: { kind: "plan", id: "free", name: "Free", status: "hacked", periodEnd: "soon" } })?.plan).toEqual({
+      kind: "plan",
+      id: "free",
+      name: "Free",
+      isDefault: false,
+      status: null,
+      periodEnd: null,
+      cancelAtPeriodEnd: false,
+    });
     expect(coerceAccountSummary({ accounts: [], connectable: { instagram: true, tiktok: "yes" } })?.connectable).toEqual({
       instagram: true,
       tiktok: false,
     });
     expect(coerceAccountSummary(null)).toBeNull();
+  });
+});
+
+describe("the account panel's plan is the real subscription (0034)", () => {
+  const summary = coerceBillingSummary({
+    exempt: false,
+    plan: { id: "creator", name: "Creator", monthly_credits: 2000, is_default: false },
+    subscription: { plan_id: "creator", status: "active", current_period_end: "2026-11-01T00:00:00Z", cancel_at_period_end: true, manageable: true },
+    credits: { subscription: 1500, pack: 800, other: 100, held: 0 },
+  });
+  it("names the plan and when it ends", () => {
+    expect(accountPlan(summary, false)).toEqual({
+      kind: "plan",
+      id: "creator",
+      name: "Creator",
+      isDefault: false,
+      status: "active",
+      periodEnd: "2026-11-01T00:00:00Z",
+      cancelAtPeriodEnd: true,
+    });
+  });
+  it("is exempt for the operator and unknown when nothing could be read — never guessed from purchases", () => {
+    expect(accountPlan(summary, true)).toEqual({ kind: "exempt" });
+    expect(accountPlan(null, false)).toEqual({ kind: "unknown" });
   });
 });
 

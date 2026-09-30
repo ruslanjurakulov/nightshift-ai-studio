@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { inSelection, orgWide, scopeQuery, type ChannelScope } from "@/lib/channels";
 import { buildNotifications, type Notification, type NotificationKind } from "@/lib/intelligence";
@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n/context";
 import type { Dictionary } from "@/lib/i18n";
 import type { FeedbackSignalRow, SystemEventRow } from "@/lib/types";
 import { relativeTime, storedMs } from "@/lib/format";
+import { useOverlay } from "@/components/a11y/useOverlay";
 
 const SEEN_KEY = "chronos_notif_seen";
 const CLEARED_KEY = "chronos_notif_cleared";
@@ -39,6 +40,9 @@ export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
   const [seen, setSeen] = useState<number>(0);
   const [cleared, setCleared] = useState<number>(0);
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const panelId = useId();
   const knownKeys = useRef<Set<string>>(new Set());
   // The whole current organization, whichever channel is selected. Realtime
   // delivers whatever RLS allows — for a platform admin, every tenant — so
@@ -93,6 +97,9 @@ export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
+  // Escape closes, focus moves into the panel and comes back to the bell.
+  useOverlay(open, { onClose: () => setOpen(false), container: panelRef, opener: buttonRef });
+
   const notifications = useMemo(
     () => buildNotifications(events, signals, 30).filter((n) => (storedMs(n.ts) ?? 0) > cleared),
     [events, signals, cleared],
@@ -126,10 +133,14 @@ export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
   return (
     <div ref={ref} className="relative">
       <button
+        ref={buttonRef}
         type="button"
         onClick={toggle}
         aria-label={t.ops.notifTitle}
-        className="btn-sky is-quiet pill relative grid size-9 place-items-center"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        className="btn-sky is-quiet pill relative grid size-10 place-items-center"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4">
           <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -146,7 +157,18 @@ export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
       </button>
 
       {open && (
-        <div className="drawer-enter absolute right-0 z-50 mt-3 w-80 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)]">
+        // Below sm the header's own width is the only room there is: the bell is
+        // not at the right edge, so an anchored w-80 panel started off-screen.
+        // The header's backdrop-filter is the containing block for `fixed`.
+        <div
+          ref={panelRef}
+          id={panelId}
+          role="dialog"
+          aria-modal="false"
+          aria-label={t.ops.notifTitle}
+          tabIndex={-1}
+          className="drawer-enter fixed inset-x-3 top-full z-50 mt-3 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] outline-none sm:absolute sm:inset-x-auto sm:right-0 sm:w-80"
+        >
           <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
             <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--color-fg)]">{t.ops.notifTitle}</span>
             <span className="flex items-center gap-1">
@@ -159,13 +181,17 @@ export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label={t.ops.shortcutsClose}
-                className="sheet-close size-7 text-[15px]"
+                className="sheet-close text-[15px]"
               >
                 ✕
               </button>
             </span>
           </div>
-          <ul className="max-h-[60vh] overflow-y-auto">
+          <ul
+            tabIndex={notifications.length > 0 ? 0 : undefined}
+            aria-label={t.ops.notifTitle}
+            className="scroll-focus max-h-[60vh] overflow-y-auto overscroll-contain"
+          >
             {notifications.length === 0 ? (
               <li className="p-4 text-center mono text-xs text-[var(--color-muted)]">{t.ops.notifEmpty}</li>
             ) : (

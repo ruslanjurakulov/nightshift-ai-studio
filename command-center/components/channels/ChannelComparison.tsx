@@ -21,7 +21,7 @@ export function ChannelComparison({ stats }: { stats: ChannelStats[] }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="overflow-x-auto">
+      <div tabIndex={0} role="region" aria-label={t.common.scrollTable} className="scroll-focus overflow-x-auto">
         <table className="w-full min-w-[560px] border-collapse text-left">
           <thead>
             <tr className="text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]">

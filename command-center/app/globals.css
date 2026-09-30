@@ -700,6 +700,42 @@ option {
   border-radius: 0.35rem;
 }
 
+/* A box that scrolls is a tab stop (the browser makes it one, and we make the
+   ones that hold no control focusable on purpose). Its ring is drawn inside:
+   outside, the box's own overflow — or its card's — would clip it away. */
+.scroll-focus:focus-visible { outline-offset: -2px; }
+
+/* ── Touch targets ──────────────────────────────────────────────────────────
+   One rule for "big enough for a thumb": 40px. It applies on any touch device
+   and on any phone-width viewport (a narrow desktop window has the same
+   problem, and cannot be told apart by `pointer` alone). The shared controls
+   below carry it already; anything else opts in:
+     .tap       a text control or pill        → min-height 40px
+     .tap-icon  an icon-only control          → 40 × 40px
+     .tap-link  a standalone link on its own line (breadcrumb, footer link)
+                                              → a 40px-tall row, text unchanged
+   Set on min-height/min-width, not height, so a control with a longer label
+   still grows, and it sits outside Tailwind's layer so it wins over `h-8`.
+   Above the breakpoint, on a mouse, nothing changes. */
+@media (pointer: coarse), (max-width: 40rem) {
+  .tap,
+  .tap-icon,
+  .btn-sky,
+  .cta-glass,
+  .side-link,
+  .nav-link { min-height: 2.5rem; min-width: 2.5rem; }
+  .sheet-close,
+  .nav-back { width: 2.5rem; height: 2.5rem; }
+  .tap-link { display: inline-flex; align-items: center; min-height: 2.5rem; }
+  /* Text fields and selects; a checkbox or radio is tapped through its label
+     row (see .tap-row), and hidden inputs have no box. */
+  :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="hidden"], [type="file"]), select) {
+    min-height: 2.5rem;
+  }
+  /* A label wrapping a checkbox or radio: the whole row is the target. */
+  .tap-row { display: flex; align-items: center; gap: 0.75rem; min-height: 2.5rem; }
+}
+
 /* Atmospheric backdrop — deep-space-inspired but restrained: two soft
    radial washes in the accent hues, layered under the technical grid. */
 .atmos {
