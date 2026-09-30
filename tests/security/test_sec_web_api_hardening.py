@@ -167,6 +167,30 @@ def test_a_failing_create_leaves_no_job_and_no_hold(conn, sc):
     assert after == (before[0] + 1, before[1] + 1)
 
 
+def test_a_short_channel_target_is_priced_at_the_length_that_runs(conn, sc):
+    """0041 freezes a paid run's length to whole seconds 30..3600; the API hold
+    must be priced for that frozen length, not for the raw channel target."""
+    b = sc.bob
+    with _rolled_back(conn):
+        conn.execute("update public.channels set status = 'ACTIVE', credential_ref = '{\"verified_at\": \"2026-09-01\"}', "
+                     "agent_config = agent_config || '{\"target_duration_seconds\": 10}' where channel_id = %s", [b.channel])
+        conn.execute("insert into public.api_prices (unit, cents) values ('video_minute', 600), ('job_minimum', 0) "
+                     "on conflict (unit) do update set cents = excluded.cents")
+        price_10 = conn.execute("select public.api_video_price(10)").fetchone()[0]
+        price_30 = conn.execute("select public.api_video_price(30)").fetchone()[0]
+        assert price_10 < price_30, (price_10, price_30)
+        _as(conn, ANON)
+        res, err = _try(conn, "select public.api_create_video(%s, %s, '{}'::jsonb, null, null, null)",
+                        [b.api_key_hash, b.channel])
+        _owner(conn)
+        assert err is None and res["ok"] is True and res["status"] == 201, (err, res)
+        params, hold = conn.execute(
+            "select j.params, h.amount_cents from public.render_jobs j join public.api_holds h on h.ref = j.api_hold_ref "
+            "where j.id = %s", [res["data"]["job_id"]]).fetchone()
+    assert params == {"duration": 30}, params
+    assert res["data"]["price_cents"] == price_30 and hold == price_30, (res, hold, price_30)
+
+
 # ── P7: the database mints API keys ──────────────────────────────────────────
 
 KEY_RE = re.compile(r"^nsk_live_[0-9A-Za-z]{43}$")

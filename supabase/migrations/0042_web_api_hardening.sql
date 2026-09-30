@@ -510,6 +510,13 @@ begin
         return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, public.api_err(400, 'duration_required',
           'Pass duration (seconds): this channel has no target length to price the video by.')));
       end if;
+      -- 0041 freezes the length a paid run renders at, whole seconds 30..3600
+      -- (render_jobs_payment_guard). Freeze it here, in the same way, BEFORE
+      -- pricing, so the hold is for the length that runs: a 10-second target
+      -- renders 30 seconds and is priced as 30, and a target read again
+      -- inside the insert cannot differ from the one priced.
+      v_secs := least(greatest(round(v_secs), 30), 3600);
+      v_p := v_p || jsonb_build_object('duration', v_secs::integer);
       v_price := public.api_video_price(v_secs);
       if v_price is null then
         return public.api_finish(ctx, public.api_idem_end(ctx, p_idem_key, public.api_err(503, 'pricing_unavailable',

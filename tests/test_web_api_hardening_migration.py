@@ -24,6 +24,15 @@ ENTRY_POINTS = [
     "api_get_download",
 ]
 OK_CHECK = "begin\n  if not (ctx ->> 'ok')::boolean then\n    return ctx;\n  end if;\n"
+FROZEN_LENGTH = (
+    "    -- 0041 freezes the length a paid run renders at, whole seconds 30..3600\n"
+    "    -- (render_jobs_payment_guard). Freeze it here, in the same way, BEFORE\n"
+    "    -- pricing, so the hold is for the length that runs: a 10-second target\n"
+    "    -- renders 30 seconds and is priced as 30, and a target read again\n"
+    "    -- inside the insert cannot differ from the one priced.\n"
+    "    v_secs := least(greatest(round(v_secs), 30), 3600);\n"
+    "    v_p := v_p || jsonb_build_object('duration', v_secs::integer);\n"
+)
 HANDLER_RE = re.compile(
     r"\n  exception when others then\n    -- [^\n]*\n    return public\.api_finish\(ctx, public\.api_err\(500, 'internal_error',\n"
     r"      '[^']*'\)\);\n  end;\nend\n\$\$;\n$")
@@ -50,7 +59,21 @@ class EntryPointBodiesTestCase(unittest.TestCase):
         for name in ENTRY_POINTS:
             with self.subTest(name=name):
                 latest = definition(M40 if name == "api_auth" else M31, name)
-                self.assertEqual(unwrap(definition(M42, name)), latest)
+                body = unwrap(definition(M42, name))
+                # The one deliberate difference from the latest body: 0041's
+                # frozen run length, applied before the API price is taken.
+                if name == "api_create_video":
+                    self.assertEqual(body.count(FROZEN_LENGTH), 1)
+                    body = body.replace(FROZEN_LENGTH, "")
+                else:
+                    self.assertNotIn("v_secs := least(", body)
+                self.assertEqual(body, latest)
+
+    def test_api_create_video_prices_the_length_0041_freezes(self):
+        fn = unwrap(definition(M42, "api_create_video"))
+        # frozen (30..3600 whole seconds, as render_jobs_payment_guard) first, priced second
+        self.assertLess(fn.index(FROZEN_LENGTH), fn.index("v_price := public.api_video_price(v_secs);"))
+        self.assertLess(fn.index("v_price := public.api_video_price(v_secs);"), fn.index("insert into public.render_jobs"))
 
     def test_api_begin_is_0040s_body_with_its_tail_guarded(self):
         new, old = definition(M42, "api_begin"), definition(M40, "api_begin")
