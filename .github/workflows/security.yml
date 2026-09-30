@@ -1,0 +1,71 @@
+name: Security lab
+
+# Applies supabase/schema.sql and every migration to a throwaway Postgres 16,
+# then attacks the result as the API roles a browser can reach (anon and
+# authenticated): tenant B against tenant A, a stranger, the anon key.
+# See tests/security/ — bootstrap.sql stands in for what Supabase provides.
+#
+# Nothing here touches the real project: no Supabase secret is read, and the
+# database lives and dies with the job.
+
+on:
+  pull_request:
+    paths:
+      - "supabase/**"
+      - "tests/security/**"
+      - ".github/workflows/security.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/**"
+      - "tests/security/**"
+      - ".github/workflows/security.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # A throwaway container's superuser password, reachable only from
+          # this job's runner. Not a secret.
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      NIGHTSHIFT_SECURITY_PG: postgresql://postgres:postgres@localhost:5432/postgres
+      # A missing database or driver fails the job instead of skipping tests.
+      NIGHTSHIFT_SECURITY_REQUIRED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install the lab's dependencies
+        run: pip install -r tests/security/requirements.txt
+
+      # Its own step so a migration that does not apply on a fresh project is
+      # reported as exactly that, with the file name, before any test runs.
+      - name: Apply every migration to a fresh database
+        run: python tests/security/sec_db.py
+
+      - name: Attack it
+        run: python -m pytest tests/security -v -p no:cacheprovider
