@@ -37,6 +37,8 @@ logger = logging.getLogger("run_telegram_control")
 
 from config import HISTORY_DIR
 from modules import event_log as events
+from modules import log_redaction
+from modules.log_redaction import describe_http_error
 from modules.telegram_control import TelegramControl, route_command
 
 _API_BASE = "https://api.telegram.org"
@@ -138,7 +140,9 @@ def poll_once(control: TelegramControl, deps, *, session=None, offset: int = 0, 
         resp.raise_for_status()
         updates = (resp.json() or {}).get("result", []) or []
     except Exception as e:
-        logger.warning("Telegram getUpdates failed (%s: %s)", type(e).__name__, e)
+        # Type and HTTP status only: raise_for_status() and every connection
+        # error quote the URL, and the bot token is part of it.
+        logger.warning("Telegram getUpdates failed (%s)", describe_http_error(e))
         return offset
 
     next_offset = offset
@@ -164,6 +168,9 @@ def poll_once(control: TelegramControl, deps, *, session=None, offset: int = 0, 
 
 
 def main() -> int:
+    # This job's log is uploaded as an artifact: scrub any token-bearing URL
+    # a library message might still carry.
+    log_redaction.install()
     control = TelegramControl()
     if not control.enabled:
         logger.info("Telegram control panel not configured (set TELEGRAM_BOT_TOKEN + "

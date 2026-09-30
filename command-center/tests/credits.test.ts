@@ -9,6 +9,7 @@ import {
   newCreditRef,
   parseGrantAmount,
   parseInsufficient,
+  parseRunLimit,
   parsePriceInput,
   parsePrices,
   resolveCreditsEnforce,
@@ -225,5 +226,25 @@ describe("Run now refusals", () => {
 
   it("leaves unrelated errors to the caller", () => {
     expect(creditRunError({ error: "github_unauthorized" }, en)).toBeNull();
+  });
+});
+
+describe("plans (0034) in the credit helpers", () => {
+  it("reads the parallel-run refusal and says it plainly", () => {
+    expect(parseRunLimit({ code: "NS429", details: "active=2 limit=2" })).toEqual({ active: 2, limit: 2 });
+    expect(parseRunLimit({ code: "NS429", details: null })).toEqual({ active: null, limit: null });
+    expect(parseRunLimit({ code: "NS402", details: "available=1 needed=2" })).toBeNull();
+    expect(creditRunError({ error: "run_limit", limit: 2 }, en)).toBe(en.credits.runLimit.replace("{n}", "2"));
+    expect(creditRunError({ error: "run_limit" }, en)).toBe(en.credits.runLimitShort);
+  });
+
+  it("keeps plan credits and expiry rows in the ledger", () => {
+    const rows = coerceTransactions([
+      { id: 1, kind: "subscription", amount: 2000, balance_after: 2000, reserved_after: 0 },
+      { id: 2, kind: "expire", amount: -150, balance_after: 1850, reserved_after: 0, job_id: "lot:7" },
+    ]);
+    expect(rows.map((r) => r.kind)).toEqual(["subscription", "expire"]);
+    expect(en.credits.kind.subscription).toBeTruthy();
+    expect(en.credits.kind.expire).toBeTruthy();
   });
 });

@@ -42,6 +42,7 @@ from datetime import datetime, timezone
 import requests
 
 from config import OUTPUT_DIR
+from modules.log_redaction import describe_http_error
 from modules.pipeline_stages import PipelineStage, PipelineStateMachine
 
 logger = logging.getLogger(__name__)
@@ -177,5 +178,7 @@ class Notifier:
             )
             return False
         except requests.RequestException as e:
-            logger.warning("Slack notification failed: %s", e)
+            # Type and HTTP status only: the exception's text quotes the
+            # webhook URL, and for Slack that URL is the secret.
+            logger.warning("Slack notification failed: %s", describe_http_error(e))
             return False

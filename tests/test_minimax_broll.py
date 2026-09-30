@@ -1,7 +1,7 @@
 """AI b-roll decision layer (MiniMax H3) — pure, offline.
 
-The rules that keep it safe and cheap: clip length is clamped into H3's 4-15s
-window, only keyworded sections are eligible, the hook and longest sections win
+The rules that keep it safe and cheap: clip length is fitted to the model
+(H3 4-15s, Hailuo 6 or 10s), only keyworded sections are eligible, the hook and longest sections win
 a bounded budget, the prompt is the section's own subject with captions
 suppressed, and the client is dormant unless a key + flag are set (no network in
 any of these tests)."""
@@ -22,6 +22,63 @@ class ClampTestCase(unittest.TestCase):
         self.assertEqual(mb.clamp_duration("x"), 4)
         self.assertEqual(mb.clamp_duration(None), 4)
         self.assertEqual(mb.clamp_duration(-3), 4)
+
+
+class PerModelDurationTestCase(unittest.TestCase):
+    """A length the model does not accept is rejected by the provider after
+    the run already paid for topic, research and script — so it is fitted to
+    the configured model before the request is built."""
+
+    def test_h3_is_a_4_to_15_second_window(self):
+        self.assertEqual(mb.clamp_duration(2, "MiniMax-H3"), 4)
+        self.assertEqual(mb.clamp_duration(9, "MiniMax-H3"), 9)
+        self.assertEqual(mb.clamp_duration(40, "MiniMax-H3"), 15)
+
+    def test_h3_max_starts_at_5_seconds(self):
+        self.assertEqual(mb.clamp_duration(4, "MiniMax-H3-Max"), 5)
+
+    def test_hailuo_accepts_only_6_or_10_seconds(self):
+        for asked, sent in ((2, 6), (7, 6), (8, 6), (9, 10), (30, 10)):
+            with self.subTest(asked=asked):
+                self.assertEqual(mb.clamp_duration(asked, "MiniMax-Hailuo-2.3"), sent)
+        self.assertEqual(mb.clamp_duration(None, "MiniMax-Hailuo-2.3"), 6)
+
+    def test_kling_legacy_endpoint_takes_5_or_10(self):
+        self.assertEqual(mb.clamp_duration(12, "kling-v2-6"), 10)
+        self.assertEqual(mb.clamp_duration(3, "kling-v2-6"), 5)
+
+    def test_unknown_model_keeps_the_old_window(self):
+        self.assertEqual(mb.clamp_duration(40, "some-new-model"), 15)
+
+    def test_select_specs_fits_lengths_to_the_model(self):
+        secs = [{"keywords": ["hook"], "duration": 13}]
+        self.assertEqual(mb.select_specs(secs, "T", max_clips=1, model="MiniMax-H3")[0].duration_seconds, 13)
+        self.assertEqual(mb.select_specs(secs, "T", max_clips=1,
+                                         model="MiniMax-Hailuo-2.3")[0].duration_seconds, 10)
+
+
+class RejectionTestCase(unittest.TestCase):
+    def test_auth_and_quota_get_opposite_remedies(self):
+        auth = mb.rejection("Kling", "kling-v2-6", status=401, key_hint="KLING_API_KEY")
+        quota = mb.rejection("Kling", "kling-v2-6", status=402)
+        self.assertIn("KLING_API_KEY", auth.remedy)
+        self.assertIn("top up", quota.remedy)
+        self.assertNotIn("top up", auth.remedy)
+
+    def test_vendor_code_overrides_the_status(self):
+        e = mb.rejection("Wan", "wan2.7-t2v", status=400, category=mb.QUOTA, code="Arrearage")
+        self.assertIn("top up", e.remedy)
+        self.assertIn("Arrearage", str(e))
+
+    def test_network_failure_says_re_run(self):
+        e = mb.rejection("MiniMax", "MiniMax-H3", message="ConnectionError")
+        self.assertIn("re-run", e.remedy)
+        self.assertIn("did not answer", str(e))
+
+    def test_vendor_message_is_one_bounded_line(self):
+        e = mb.rejection("X", "m", status=400, message="line one\nline two " + "x" * 500)
+        self.assertNotIn("\n", str(e))
+        self.assertLess(len(e.reason), 300)
 
 
 class BuildPromptTestCase(unittest.TestCase):
@@ -139,7 +196,10 @@ class FetcherGenerateBrollTestCase(unittest.TestCase):
         self.assertIn("hook", f.video_terms.values())
         self.assertIn("ruins", f.video_terms.values())
 
-    def test_per_clip_failure_falls_back(self):
+    def test_a_missing_clip_stops_the_run_instead_of_becoming_stock(self):
+        # CLAUDE.md #4: with generated b-roll on, a section whose clip did not
+        # come back used to quietly become stock footage. Now the run stops
+        # and says why.
         import tempfile
         from pathlib import Path
         from unittest.mock import patch
@@ -147,14 +207,44 @@ class FetcherGenerateBrollTestCase(unittest.TestCase):
             f = self._fetcher(Path(d))
             sections = [{"keywords": ["hook"], "duration": 5}, {"keywords": ["ruins"], "duration": 20}]
             client = MagicMock()
-            # one clip generates, the other returns None (falls back to stock)
             client.generate.side_effect = [Path(d) / "gen_0.mp4", None]
             with patch("config.MINIMAX_BROLL_ENABLED", True), \
-                    patch("config.MINIMAX_BROLL_MAX_CLIPS", 2):
-                result = f.generate_broll(sections, "History", client=client)
-        self.assertEqual(result.attempted, 2)
-        self.assertEqual(result.generated, 1)
-        self.assertEqual(len(f.video_terms), 1)
+                    patch("config.MINIMAX_BROLL_MAX_CLIPS", 2), \
+                    self.assertRaises(mb.VideoModelUnavailable) as ctx:
+                f.generate_broll(sections, "History", client=client)
+        self.assertIn("1 of 2", str(ctx.exception))
+        self.assertIn("re-run", ctx.exception.remedy)
+
+    def test_a_provider_refusal_stops_before_the_next_paid_submit(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as d:
+            f = self._fetcher(Path(d))
+            sections = [{"keywords": ["hook"], "duration": 5}, {"keywords": ["ruins"], "duration": 20}]
+            client = MagicMock()
+            client.generate.side_effect = mb.rejection("MiniMax", "MiniMax-H3", status=401)
+            with patch("config.MINIMAX_BROLL_ENABLED", True), \
+                    patch("config.MINIMAX_BROLL_MAX_CLIPS", 2), \
+                    self.assertRaises(mb.VideoModelUnavailable):
+                f.generate_broll(sections, "History", client=client)
+        self.assertEqual(client.generate.call_count, 1)
+
+    def test_an_unconfigured_preflight_stops_before_any_request(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from modules.minimax_client import MiniMaxClient
+        with tempfile.TemporaryDirectory() as d:
+            f = self._fetcher(Path(d))
+            client = MiniMaxClient(api_key="k", model="MiniMax-H3")
+            client.v2_query_path = ""
+            client.session = MagicMock()
+            client.session.post.side_effect = AssertionError("no request before preflight passes")
+            with patch("config.MINIMAX_BROLL_ENABLED", True), \
+                    self.assertRaises(mb.VideoModelUnavailable) as ctx:
+                f.generate_broll([{"keywords": ["hook"], "duration": 5}], "History", client=client)
+        self.assertIn("MINIMAX_V2_QUERY_PATH", ctx.exception.remedy)
 
 
 if __name__ == "__main__":

@@ -149,7 +149,9 @@ VIEWS: Dict[str, Kind] = {
 # SERVICE: the workers' and webhooks' functions. Neither API role may call them.
 # USER:    a signed-in user may call it; the function checks org membership or
 #          platform admin itself (tests in test_sec_attacks.py prove the check).
-# HELPER:  a pure or read-only helper the RLS policies are built from.
+# HELPER:  a read-only helper the RLS policies are built from; signed-in only
+#          (0033: anon may not probe tenancy, e.g. channel_org of any id).
+# HELPER_ANON: pure functions with nothing to reveal.
 # API:     the public REST API's entry points: anon calls them with a key hash.
 
 SERVICE = (False, False)
@@ -160,24 +162,28 @@ HELPER = (False, True)
 
 FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     # tenancy and roles (0007, 0018)
-    "accessible_channel_ids": HELPER_ANON,
-    "accessible_org_ids": HELPER_ANON,
-    "accessible_video_ids": HELPER_ANON,
-    "app_members_empty": HELPER_ANON,
+    "accessible_channel_ids": HELPER,
+    "accessible_org_ids": HELPER,
+    "accessible_video_ids": HELPER,
+    "app_members_empty": HELPER,
     "app_role_rank": HELPER_ANON,
-    "bind_current_member": HELPER_ANON,
+    "bind_current_member": HELPER,
+    "accept_org_invite": USER,
     "bind_org_memberships": USER,
-    "channel_org": HELPER_ANON,
+    "decline_org_invite": USER,
+    "my_confirmed_email": HELPER,
+    "my_invites": USER,
+    "channel_org": HELPER,
     "create_organization": USER,
-    "current_app_role": HELPER_ANON,
+    "current_app_role": HELPER,
     "default_org_id": HELPER_ANON,
-    "in_default_org_roster": HELPER_ANON,
+    "in_default_org_roster": HELPER,
     "invite_org_member": USER,
-    "is_org_member": HELPER_ANON,
-    "is_platform_admin": HELPER_ANON,
-    "my_organizations": HELPER_ANON,
-    "org_role": HELPER_ANON,
-    "platform_role": HELPER_ANON,
+    "is_org_member": HELPER,
+    "is_platform_admin": HELPER,
+    "my_organizations": HELPER,
+    "org_role": HELPER,
+    "platform_role": HELPER,
     "render_job_params_valid": HELPER_ANON,
     # credits (0020, 0021, 0027)
     "add_purchased_credits": SERVICE,
@@ -293,3 +299,9 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     # provider costs (0037)
     "record_creative_job_cost": SERVICE,
 }
+
+
+# Migration 0034 (plans, entitlements, credit lots): tests/security/sec_plans_0034.py
+import sec_plans_0034  # noqa: E402
+
+sec_plans_0034.extend(TABLES, FUNCTIONS)
