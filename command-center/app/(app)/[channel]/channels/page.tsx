@@ -135,7 +135,7 @@ export default async function ChannelsPage({
           {ytResult && (
             <p
               className="text-[13px]"
-              style={{ color: ytResult === "connected" ? "var(--color-primary)" : "var(--color-warn, #e2a03f)" }}
+              style={{ color: ytResult === "connected" ? "var(--color-primary)" : "var(--color-warn)" }}
               role="status"
             >
               {t.channelTokens.results[ytResult]}

@@ -22,7 +22,8 @@ const TONE_COLOR: Record<StageTone, string> = {
   done: "var(--color-primary)",
   run: "var(--color-warn)",
   fail: "var(--color-fail)",
-  idle: "var(--color-idle)",
+  // Used for label text, so the idle tone takes muted (idle is for dots).
+  idle: "var(--color-muted)",
 };
 
 /**

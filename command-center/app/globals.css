@@ -57,6 +57,22 @@
   --atmos-2: rgba(74, 143, 208, 0.08);
   --shadow-panel: 0 1px 2px rgba(11, 16, 22, 0.04), 0 4px 16px rgba(11, 16, 22, 0.05);
   --shadow-elevated: 0 8px 30px rgba(11, 16, 22, 0.10);
+  /* Backdrop: the neural footage is night-only artwork, so on paper it steps
+     aside and the page is the light surface with a faint sky glow. */
+  --backdrop-video-display: none;
+  --backdrop-base: var(--color-bg);
+  --veil-rgb: 238, 242, 247;
+  --backdrop-glow:
+    radial-gradient(1100px 620px at 12% -8%, var(--atmos-1), transparent 60%),
+    radial-gradient(900px 560px at 100% 0%, var(--atmos-2), transparent 55%);
+  --backdrop-dim: transparent;
+  /* Glass CTA: on paper it is a solid accent pill (white text on the sky
+     accent), not translucent white over footage. */
+  --cta-fg: var(--color-on-accent);
+  --cta-base: var(--color-primary);
+  --cta-sheen: linear-gradient(180deg, rgba(0, 0, 0, 0) 45%, rgba(6, 12, 22, 0.16) 100%);
+  --cta-glow: 0 6px 20px color-mix(in srgb, var(--color-primary) 28%, transparent);
+  --cta-glow-hover: 0 8px 28px color-mix(in srgb, var(--color-primary) 42%, transparent);
 }
 
 /* Dark — the reference itself: true black, one sky accent, black text on it. */
@@ -83,6 +99,25 @@
     --atmos-2: rgba(161, 208, 252, 0.05);
     --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.60), 0 6px 24px rgba(0, 0, 0, 0.50);
     --shadow-elevated: 0 24px 80px rgba(0, 0, 0, 0.80);
+    --backdrop-video-display: block;
+    --backdrop-base: #03060c;
+    --veil-rgb: 6, 10, 18;
+    --backdrop-glow: none;
+    --backdrop-dim: rgba(3, 6, 12, 0.46);
+    --cta-fg: #ffffff;
+    --cta-base: transparent;
+    --cta-sheen:
+      linear-gradient(180deg, rgba(6, 12, 22, 0) 45%, rgba(6, 12, 22, 0.12) 78%, rgba(6, 12, 22, 0.28) 100%),
+      linear-gradient(90deg, rgba(255, 226, 178, 0.17) 0%, rgba(255, 236, 208, 0.07) 22%, rgba(176, 206, 238, 0.03) 55%, rgba(150, 196, 244, 0.09) 100%),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.11) 40%, rgba(255, 255, 255, 0.05) 100%);
+    --cta-glow:
+      0 -2px 20px rgba(255, 224, 176, 0.18),
+      0 0 34px rgba(168, 204, 252, 0.16),
+      inset 0 1px 0 0 rgba(255, 251, 242, 0.45);
+    --cta-glow-hover:
+      0 -2px 24px rgba(255, 224, 176, 0.28),
+      0 0 44px rgba(168, 204, 252, 0.24),
+      inset 0 1px 0 0 rgba(255, 251, 242, 0.55);
   }
 }
 
@@ -108,6 +143,25 @@
   --atmos-2: rgba(161, 208, 252, 0.05);
   --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.60), 0 6px 24px rgba(0, 0, 0, 0.50);
   --shadow-elevated: 0 24px 80px rgba(0, 0, 0, 0.80);
+  --backdrop-video-display: block;
+  --backdrop-base: #03060c;
+  --veil-rgb: 6, 10, 18;
+  --backdrop-glow: none;
+  --backdrop-dim: rgba(3, 6, 12, 0.46);
+  --cta-fg: #ffffff;
+  --cta-base: transparent;
+  --cta-sheen:
+    linear-gradient(180deg, rgba(6, 12, 22, 0) 45%, rgba(6, 12, 22, 0.12) 78%, rgba(6, 12, 22, 0.28) 100%),
+    linear-gradient(90deg, rgba(255, 226, 178, 0.17) 0%, rgba(255, 236, 208, 0.07) 22%, rgba(176, 206, 238, 0.03) 55%, rgba(150, 196, 244, 0.09) 100%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.11) 40%, rgba(255, 255, 255, 0.05) 100%);
+  --cta-glow:
+    0 -2px 20px rgba(255, 224, 176, 0.18),
+    0 0 34px rgba(168, 204, 252, 0.16),
+    inset 0 1px 0 0 rgba(255, 251, 242, 0.45);
+  --cta-glow-hover:
+    0 -2px 24px rgba(255, 224, 176, 0.28),
+    0 0 44px rgba(168, 204, 252, 0.24),
+    inset 0 1px 0 0 rgba(255, 251, 242, 0.55);
 }
 
 * {
@@ -784,31 +838,45 @@ option {
    veil that keeps type legible over bright footage, and the glass CTA whose
    hairline runs warm gold on the left to cool sky on the right. Used on the
    login hero; the site-wide adoption is the Sora typeface set in @theme. */
+.neural-video {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  display: var(--backdrop-video-display);
+  background: var(--backdrop-base);
+}
+.neural-dim {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--backdrop-dim);
+}
 .veil-neural {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background:
+  background-image:
+    var(--backdrop-glow),
     radial-gradient(140% 60% at 50% 40%,
-        rgba(6, 10, 18, 0.16) 0%, rgba(6, 10, 18, 0.057) 50%, rgba(6, 10, 18, 0) 100%),
-    linear-gradient(180deg, rgba(6, 10, 18, 0) 45%, rgba(6, 10, 18, 0.28) 100%);
+        rgba(var(--veil-rgb), 0.16) 0%, rgba(var(--veil-rgb), 0.057) 50%, rgba(var(--veil-rgb), 0) 100%),
+    linear-gradient(180deg, rgba(var(--veil-rgb), 0) 45%, rgba(var(--veil-rgb), 0.28) 100%);
 }
 .cta-glass {
   position: relative;
   overflow: hidden;
   border-radius: 999px;
-  color: #ffffff;
-  background:
-    linear-gradient(180deg, rgba(6, 12, 22, 0) 45%, rgba(6, 12, 22, 0.12) 78%, rgba(6, 12, 22, 0.28) 100%),
-    linear-gradient(90deg, rgba(255, 226, 178, 0.17) 0%, rgba(255, 236, 208, 0.07) 22%, rgba(176, 206, 238, 0.03) 55%, rgba(150, 196, 244, 0.09) 100%),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.11) 40%, rgba(255, 255, 255, 0.05) 100%);
+  color: var(--cta-fg);
+  background-color: var(--cta-base);
+  background-image: var(--cta-sheen);
   -webkit-backdrop-filter: blur(14px) saturate(0.6);
   backdrop-filter: blur(14px) saturate(0.6);
-  box-shadow:
-    0 -2px 20px rgba(255, 224, 176, 0.18),
-    0 0 34px rgba(168, 204, 252, 0.16),
-    inset 0 1px 0 0 rgba(255, 251, 242, 0.45);
+  box-shadow: var(--cta-glow);
   transition: transform 0.12s ease, box-shadow 0.28s ease;
 }
 .cta-glass::before {
@@ -826,12 +894,7 @@ option {
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask-composite: exclude;
 }
-.cta-glass:hover {
-  box-shadow:
-    0 -2px 24px rgba(255, 224, 176, 0.28),
-    0 0 44px rgba(168, 204, 252, 0.24),
-    inset 0 1px 0 0 rgba(255, 251, 242, 0.55);
-}
+.cta-glass:hover { box-shadow: var(--cta-glow-hover); }
 .cta-glass:active { transform: scale(0.985); }
 
 /* ── Public landing page ─────────────────────────────────────────────────────

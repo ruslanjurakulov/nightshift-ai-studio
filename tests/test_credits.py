@@ -249,7 +249,9 @@ class FakeQueue:
 
 
 def job(**kw):
-    base = {"id": 9, "channel_id": "news", "kind": "daily", "params": {}, "attempts": 1,
+    # A customer's job as migration 0041 queues it: its hold, and the length
+    # that hold was priced for (a minute: 25 credits at PRICES, under the 40 held).
+    base = {"id": 9, "channel_id": "news", "kind": "daily", "params": {"duration": 60}, "attempts": 1,
             "max_attempts": 3, "created_at": "2026-09-26T10:00:00+00:00", "credit_ref": "rj-abc"}
     base.update(kw)
     return base
@@ -300,7 +302,9 @@ class WorkerCredits(unittest.TestCase):
         self.env.pop("NIGHTSHIFT_CREDITS_ENFORCE")
         fake = WithLots()
         self.run_one(job(credit_ref=None), fake)
-        self.assertEqual(fake.calls, [("expire",), ("expire_lots",)])
+        # The sweep runs before the claim. (The job itself is then refused for
+        # having no hold — migration 0041 — after looking up its organization.)
+        self.assertEqual(fake.calls[:2], [("expire",), ("expire_lots",)])
 
     def test_unpriced_entry_captures_the_reservation(self):
         fake = FakeCredits()
@@ -333,12 +337,63 @@ class WorkerCredits(unittest.TestCase):
         self.assertEqual(ends[0][0], "failed")
         self.assertFalse(self.ran())
 
-    def test_not_enforced_worker_runs_unpaid_jobs_as_before(self):
+    # -- C2: a customer's job is paid for, whatever the env flag says -------
+
+    def test_customer_job_without_a_hold_is_refused_even_when_not_enforced(self):
         self.env.pop("NIGHTSHIFT_CREDITS_ENFORCE")
         fake = FakeCredits()
         ends = self.run_one(job(credit_ref=None), fake)
+        self.assertEqual(ends[0][0], "failed")
+        self.assertIn("no credit reservation", ends[0][1])
+        self.assertFalse(self.ran())
+        self.assertEqual(fake.settled(), [])
+
+    def test_customer_job_whose_hold_is_not_open_is_refused_even_when_not_enforced(self):
+        self.env.pop("NIGHTSHIFT_CREDITS_ENFORCE")
+        ends = self.run_one(job(), FakeCredits(hold=None))
+        self.assertEqual(ends[0][0], "failed")
+        self.assertFalse(self.ran())
+
+    def test_unreachable_credits_refuse_even_when_not_enforced(self):
+        self.env.pop("NIGHTSHIFT_CREDITS_ENFORCE")
+        ends = self.run_one(job(), FakeCredits(down=True))
+        self.assertEqual(ends[0][0], "failed")
+        self.assertIn("unavailable", ends[0][1])
+        self.assertFalse(self.ran())
+
+    def test_without_a_credits_client_nothing_runs_even_when_not_enforced(self):
+        self.env.pop("NIGHTSHIFT_CREDITS_ENFORCE")
+        ends = self.run_one(job(credit_ref=None), None)
+        self.assertEqual(ends[0][0], "failed")
+        self.assertFalse(self.ran())
+
+    def test_operators_own_job_runs_unpaid_when_not_enforced_as_before(self):
+        self.env.pop("NIGHTSHIFT_CREDITS_ENFORCE")
+        fake = FakeCredits(org=credits.DEFAULT_ORG_ID)
+        ends = self.run_one(job(credit_ref=None, channel_id="chronos", params={}), fake)
         self.assertEqual(ends, [("succeeded", None)])
-        self.assertEqual(fake.calls, [("expire",)])
+        self.assertEqual(fake.settled(), [])
+
+    # -- C1: the length the hold priced is the length that runs ------------
+
+    def test_customer_job_without_its_frozen_length_is_refused_before_its_hold_starts(self):
+        # Without params.duration main.py would read the channel's target at
+        # run time — whatever the customer set it to after the hold.
+        fake = FakeCredits()
+        ends = self.run_one(job(params={}), fake)
+        self.assertEqual(ends[0][0], "failed")
+        self.assertIn("length was not fixed", ends[0][1])
+        self.assertFalse(self.ran())
+        self.assertFalse(any(c[0] == "start" for c in fake.calls))
+
+    def test_hold_below_the_frozen_length_is_refused_and_released_even_when_not_enforced(self):
+        self.env.pop("NIGHTSHIFT_CREDITS_ENFORCE")
+        fake = FakeCredits(hold=40.0)
+        ends = self.run_one(job(params={"duration": 3600}), fake)  # 60 min = 1500 credits
+        self.assertEqual(ends[0][0], "failed")
+        self.assertIn("below the 1500.00", ends[0][1])
+        self.assertFalse(self.ran())
+        self.assertEqual(fake.settled(), [("release", "rj-abc")])
 
 
 # ── the Actions settle step ──────────────────────────────────────────────
@@ -364,6 +419,29 @@ class ActionsSettle(unittest.TestCase):
         self.assertEqual(written["CREDITS_HOLD"], "40.00")
         self.assertEqual(written["CREDITS_ORG"], CUSTOMER_ORG)
         self.assertIn("CREDITS_SINCE", written)
+
+    def test_start_never_writes_an_organization_id_that_is_not_a_uuid(self):
+        # GITHUB_ENV is line-oriented: a line break in a database value would
+        # set a variable for every later step. The hold was claimed already,
+        # so it is released through the normal path before the refusal.
+        for org in (CUSTOMER_ORG + "\nBASH_ENV=/tmp/evil", "not-a-uuid", CUSTOMER_ORG + "\r"):
+            fake = FakeCredits(org=org)
+            self.assertEqual(credits_settle.start(self.env(), fake), 1)
+            self.assertEqual(self.github_env.read_text(), "")
+            self.assertEqual(fake.settled(), [("release", "gh-123")])
+
+    def test_start_refusal_when_the_release_cannot_be_recorded_still_writes_nothing(self):
+        class ReleaseDown(FakeCredits):
+            def release(self, ref):
+                raise CreditsUnavailable("release_credits: HTTP 503")
+
+        self.assertEqual(credits_settle.start(self.env(), ReleaseDown(org="x\nPATH=/tmp")), 1)
+        self.assertEqual(self.github_env.read_text(), "")
+
+    def test_env_writer_refuses_multi_line_values(self):
+        with self.assertRaises(ValueError):
+            credits_settle._append_env(str(self.github_env), {"CREDITS_ORG": "a\nB=c"})
+        self.assertEqual(self.github_env.read_text(), "")
 
     def test_start_refuses_a_fan_out_dispatch(self):
         self.assertEqual(credits_settle.start(self.env(REQUESTED_CHANNEL=""), FakeCredits()), 1)

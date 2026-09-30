@@ -40,7 +40,16 @@ const state: {
 };
 
 const dispatchDailyVideo = vi.fn(async () => undefined);
-const reserveRunCredits = vi.fn(async () => ({ ok: true, creditRef: null, estimate: null, exempt: false }));
+const reserveRunCredits = vi.fn(
+  async (..._args: unknown[]): Promise<Record<string, unknown>> => ({
+    ok: true,
+    creditRef: null,
+    estimate: null,
+    exempt: false,
+    durationS: null,
+  }),
+);
+const renderJobInsert = vi.fn();
 const learningUpdate = vi.fn();
 const seriesInsert = vi.fn();
 const seriesUpdate = vi.fn();
@@ -60,8 +69,10 @@ function builder(table: string) {
   b.insert = (row: Row) => {
     op = "insert";
     if (table === "content_series") seriesInsert(row);
+    if (table === "render_jobs") renderJobInsert(row);
     return b;
   };
+  b.single = async () => ({ data: table === "render_jobs" ? { id: 42 } : null, error: null });
   b.maybeSingle = async () => ({
     data: table === "learnings" ? state.learning : table === "content_series" ? state.series : null,
     error: null,
@@ -155,6 +166,8 @@ beforeEach(() => {
   state.series = null;
   dispatchDailyVideo.mockClear();
   reserveRunCredits.mockClear();
+  renderJobInsert.mockClear();
+  delete process.env.NIGHTSHIFT_RUN_BACKEND;
   learningUpdate.mockClear();
   seriesInsert.mockClear();
   seriesUpdate.mockClear();
@@ -290,6 +303,47 @@ describe("POST /api/agent/run", () => {
     state.creditsEnforced = false;
     const res = await run.POST(post({ channel_id: "default" }));
     expect(res.status).toBe(200);
+  });
+
+  it("queue: a customer's run with credits off is refused for everyone, the platform admin included", async () => {
+    // Migration 0041: the database and the worker refuse a customer's job
+    // without its credit hold, so the route says why instead of queuing it.
+    process.env.NIGHTSHIFT_RUN_BACKEND = "queue";
+    viewing(org(ORG_A, "admin"), ["ch-a"], "admin");
+    state.platformAdmin = true;
+    state.creditsEnforced = false;
+    const res = await run.POST(post({ channel_id: "ch-a" }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "credits_not_enforced" });
+    expect(renderJobInsert).not.toHaveBeenCalled();
+  });
+
+  it("queue: the operator's own organization still queues unpaid with credits off", async () => {
+    process.env.NIGHTSHIFT_RUN_BACKEND = "queue";
+    viewing(org("00000000-0000-0000-0000-000000000001", "admin", true), ["default"]);
+    state.creditsEnforced = false;
+    const res = await run.POST(post({ channel_id: "default" }));
+    expect(res.status).toBe(200);
+    expect(renderJobInsert).toHaveBeenCalledOnce();
+    const row = renderJobInsert.mock.calls[0][0] as Record<string, unknown>;
+    expect(row).not.toHaveProperty("credit_ref");
+    expect(row.params).toEqual({});
+  });
+
+  it("queue: a paid run carries the length its hold was priced for, not the channel's target", async () => {
+    process.env.NIGHTSHIFT_RUN_BACKEND = "queue";
+    viewing(org(ORG_A, "admin"), ["ch-a"]);
+    reserveRunCredits.mockResolvedValueOnce({
+      ok: true,
+      creditRef: "rj-1",
+      estimate: { credits: 60 },
+      exempt: false,
+      durationS: 300,
+    });
+    const res = await run.POST(post({ channel_id: "ch-a" }));
+    expect(res.status).toBe(200);
+    expect(reserveRunCredits.mock.calls[0][3]).toBe("rj");
+    expect(renderJobInsert.mock.calls[0][0]).toMatchObject({ credit_ref: "rj-1", params: { duration: 300 } });
   });
 
   it("before 0018, gates on the platform role exactly as it used to", async () => {

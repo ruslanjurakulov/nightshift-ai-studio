@@ -219,7 +219,7 @@ export function Storyboard({
                         )}
                       </>
                     ) : (
-                      <span className="text-[11px] text-[var(--color-idle)]">{rl.unknown}</span>
+                      <span className="text-[11px] text-[var(--color-muted)]">{rl.unknown}</span>
                     )}
                   </div>
                   {bar !== null && (
@@ -300,5 +300,5 @@ const STATUS_TONE: Record<ClaimStatus, string> = {
   likely_accurate: "text-[var(--color-ok)]",
   likely_inaccurate: "text-[var(--color-fail)]",
   unverifiable: "text-[var(--color-warn)]",
-  not_checked: "text-[var(--color-idle)]",
+  not_checked: "text-[var(--color-muted)]",
 };

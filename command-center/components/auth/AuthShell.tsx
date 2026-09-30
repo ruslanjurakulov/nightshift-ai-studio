@@ -23,7 +23,7 @@ export function AuthShell({
 }) {
   const { t } = useI18n();
   return (
-    <main className="relative flex min-h-dvh flex-col items-center overflow-hidden bg-[#03060c]">
+    <main className="relative flex min-h-dvh flex-col items-center overflow-hidden bg-[var(--color-bg)]">
       <NeuralBackdrop />
 
       <div className="absolute right-4 top-4 z-10 flex items-center gap-2">

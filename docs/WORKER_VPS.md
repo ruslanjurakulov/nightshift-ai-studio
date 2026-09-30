@@ -205,10 +205,15 @@ o'chirish yoki `claim` qilish faqat worker'ning service key'i bilan mumkin.
 kredit bandini (`start_credit_reservation`) oladi va oxirida hisob-kitob qiladi:
 muvaffaqiyatda — shu mashinadagi xarajatlar jurnali (`history/chronos.db`) bo'yicha
 `capture_credits` (band miqdoridan oshmaydi; birorta yozuv narxlanmagan bo'lsa —
-butun band), xatoda — `release_credits`. Worker env faylida
-`NIGHTSHIFT_CREDITS_ENFORCE=1` qo'yilsa, standart bo'lmagan tashkilot kanalining
-bandsiz (yoki juda kichik bandli) vazifasi hech narsa ishga tushirilmasdan `failed`
-bo'ladi. Command Center'da ham xuddi shu o'zgaruvchini yoqing.
+butun band), xatoda — `release_credits`. 0041 migratsiyasidan beri standart
+bo'lmagan tashkilot kanalining vazifasi `NIGHTSHIFT_CREDITS_ENFORCE` qiymatidan
+qat'i nazar faqat o'z ochiq bandi bilan ishlaydi: bandsiz, juda kichik bandli
+yoki uzunligi navbatga qo'yilganda qotirilmagan (`params.duration`) vazifa hech
+narsa ishga tushirilmasdan `failed` bo'ladi. Worker aynan shu qotirilgan
+uzunlikni ishlatadi — kanalning keyinroq o'zgartirilgan maqsad uzunligini emas.
+Operatorning o'z (standart) tashkiloti kanallari avvalgidek bandsiz ishlaydi.
+Navbat rejimida Command Center'da `NIGHTSHIFT_CREDITS_ENFORCE` o'chiq bo'lsa,
+mijoz tashkilotining "Run now"i rad etiladi (`credits_not_enforced`).
 
 ## 6. Orqaga qaytish (GitHub Actions)
 

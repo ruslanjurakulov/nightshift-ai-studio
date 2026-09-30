@@ -362,6 +362,8 @@ def test_tenant_inserts_into_its_own_scope_only_where_declared(conn, sc, table):
         return
     row = _clone(conn, sc, table, sc.bob, "authenticated")
     with acting(conn, sc.bob.actor) as s:
+        if kind.own_insert_setup:
+            row.update(s.value(kind.own_insert_setup, {"org": sc.bob.org}) or {})
         out = _insert(s, table, row)
     if kind.own_insert:
         assert out.ok and out.rowcount == 1, f"{table}: declared own_insert but Bob cannot insert his own row: {out!r}"

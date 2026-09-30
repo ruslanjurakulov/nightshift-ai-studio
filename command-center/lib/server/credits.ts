@@ -4,6 +4,7 @@ import { unitEconomics, type DurationRow, type LedgerRow } from "../unitEconomic
 import {
   coerceAccount,
   estimateRunCredits,
+  frozenRunDurationS,
   isCreditExempt,
   newCreditRef,
   parseInsufficient,
@@ -100,7 +101,15 @@ export async function estimateForChannel(
 }
 
 export type RunCreditResult =
-  | { ok: true; creditRef: string | null; estimate: CreditEstimate | null; exempt: boolean }
+  | {
+      ok: true;
+      creditRef: string | null;
+      estimate: CreditEstimate | null;
+      exempt: boolean;
+      /** Queue runs: the length the hold was priced for, which the job must
+       *  carry as params.duration. Null for an exempt run or an Actions run. */
+      durationS: number | null;
+    }
   | { ok: false; status: number; body: Record<string, unknown> };
 
 /**
@@ -114,6 +123,12 @@ export type RunCreditResult =
  * goes through reserve_credits() as the signed-in user: the function checks
  * they are an admin of the channel's organization, locks the account, and
  * refuses with NS402 when the available balance does not cover it.
+ *
+ * A queue run ("rj") is priced at its FROZEN length (frozenRunDurationS) and
+ * returns it: the job carries exactly that length, so what runs is what was
+ * held for (migration 0041 refuses a job the hold does not cover). No length
+ * at all is a refusal naming the fix, never a guess. The Actions path ("gh")
+ * prices as it always has.
  */
 export async function reserveRunCredits(
   supabase: SupabaseClient,
@@ -131,11 +146,15 @@ export async function reserveRunCredits(
   if (!ch) return { ok: false, status: 404, body: { error: "channel_not_found" } };
   const orgId = typeof ch.org_id === "string" ? ch.org_id : null;
   if (!orgId) return unavailable;
-  if (isCreditExempt(orgId)) return { ok: true, creditRef: null, estimate: null, exempt: true };
+  if (isCreditExempt(orgId)) return { ok: true, creditRef: null, estimate: null, exempt: true, durationS: null };
 
   const { supported, prices } = await readCreditPrices(supabase);
   if (!supported) return unavailable;
-  const estimate = await estimateForChannel(supabase, channelId, runDurationS(requestedDurationS, ch.agent_config), prices);
+  const frozen = prefix === "rj" ? frozenRunDurationS(requestedDurationS, ch.agent_config) : null;
+  if (prefix === "rj" && frozen === null)
+    return { ok: false, status: 409, body: { error: "credit_estimate_unavailable", gap: "no_length" } };
+  const durationS = prefix === "rj" ? frozen : runDurationS(requestedDurationS, ch.agent_config);
+  const estimate = await estimateForChannel(supabase, channelId, durationS, prices);
   if (estimate.credits === null)
     return { ok: false, status: 409, body: { error: "credit_estimate_unavailable", gap: estimate.gap } };
 
@@ -160,5 +179,5 @@ export async function reserveRunCredits(
     return { ok: false, status: 502, body: { error: "credit_reserve_failed" } };
   }
   const exempt = !!(data && typeof data === "object" && (data as { exempt?: unknown }).exempt === true);
-  return { ok: true, creditRef: exempt ? null : creditRef, estimate, exempt };
+  return { ok: true, creditRef: exempt ? null : creditRef, estimate, exempt, durationS: exempt ? null : frozen };
 }

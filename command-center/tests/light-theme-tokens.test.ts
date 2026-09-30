@@ -1,0 +1,90 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+
+const root = process.cwd();
+const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
+
+// Components that once bypassed the design tokens and broke the light theme.
+const TOKEN_ONLY = [
+  "components/NeuralBackdrop.tsx",
+  "components/auth/AuthShell.tsx",
+  "components/legal/LegalFooter.tsx",
+  "components/series/SeriesBoard.tsx",
+  "components/review/ReviewPanel.tsx",
+  "components/developers/DeveloperConsole.tsx",
+  "components/providers/ProvidersBoard.tsx",
+  "components/SystemStatus.tsx",
+  "components/ui.tsx",
+  "components/autonomy/AutonomyView.tsx",
+  "components/autonomy/QualityGate.tsx",
+  "components/autonomy/OperationsPanels.tsx",
+  "components/intelligence/AdvisoryPanel.tsx",
+  "components/social/SocialAccountsPanel.tsx",
+  "components/alerts/SendTestAlert.tsx",
+];
+
+// Tailwind palette colours (text-rose-300, bg-white/10, border-sky-400/60 ...).
+const PALETTE =
+  /\b(?:text|bg|border|ring|from|to|via|fill|stroke|divide|outline|shadow)-(?:white|black|slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)(?:-\d{2,3})?(?:\/\d+)?\b/;
+const RAW_HEX = /#[0-9a-fA-F]{3,8}\b/;
+const RAW_RGB = /\brgba?\(/;
+const COLOR_FALLBACK = /var\(--color-[a-z0-9-]+\s*,/;
+
+describe("light theme: components use tokens, not raw colours", () => {
+  for (const file of TOKEN_ONLY) {
+    it(`${file} has no palette classes, hex, rgb() or var() colour fallbacks`, () => {
+      // A video player's letterbox is black by nature, in either theme.
+      const src = read(file).replace('border-[var(--color-border)] bg-black"', 'border-[var(--color-border)]"');
+      expect(src.match(PALETTE)?.[0]).toBeUndefined();
+      expect(src.match(RAW_HEX)?.[0]).toBeUndefined();
+      expect(src.match(RAW_RGB)?.[0]).toBeUndefined();
+      expect(src.match(COLOR_FALLBACK)?.[0]).toBeUndefined();
+    });
+  }
+
+  it("no component refers to the undefined --color-danger token", () => {
+    expect(read("components/developers/DeveloperConsole.tsx")).not.toContain("--color-danger");
+  });
+
+  it("idle-coloured text uses --color-muted (idle stays for dots)", () => {
+    expect(read("components/ui.tsx")).toMatch(/idle: \{ fg: "var\(--color-idle\)", text: "var\(--color-muted\)"/);
+    expect(read("components/SystemStatus.tsx")).toMatch(/idle: "var\(--color-muted\)"/);
+    expect(read("components/autonomy/OperationsPanels.tsx")).not.toContain("--color-idle");
+  });
+});
+
+describe("light theme: globals.css defines the backdrop and CTA per theme", () => {
+  const css = read("app/globals.css");
+  const TOKENS = [
+    "--backdrop-video-display",
+    "--backdrop-base",
+    "--veil-rgb",
+    "--backdrop-glow",
+    "--backdrop-dim",
+    "--cta-fg",
+    "--cta-base",
+    "--cta-sheen",
+    "--cta-glow",
+    "--cta-glow-hover",
+  ];
+
+  it("declares each token in the light, prefers-dark and data-theme=dark blocks", () => {
+    for (const token of TOKENS) {
+      const declarations = css.split(`${token}:`).length - 1;
+      expect(declarations, token).toBe(3);
+    }
+  });
+
+  it("hides the dark footage on the light theme and keeps it on dark", () => {
+    expect(css).toMatch(/--backdrop-video-display: none;/);
+    expect(css).toMatch(/--backdrop-video-display: block;/);
+  });
+
+  it("the CTA and backdrop rules read tokens, not literal colours", () => {
+    const block = css.slice(css.indexOf(".neural-video {"), css.indexOf(".cta-glass:active"));
+    expect(block).toContain("var(--cta-fg)");
+    expect(block).toContain("var(--backdrop-base)");
+    expect(block).not.toMatch(/color:\s*#fff/);
+  });
+});

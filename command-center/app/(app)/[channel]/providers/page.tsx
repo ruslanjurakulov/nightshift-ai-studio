@@ -83,7 +83,7 @@ export default async function ProvidersPage({
         {ytMsg && (
           <p
             className="mt-3 text-[13px]"
-            style={{ color: ytOk ? "var(--color-primary)" : "var(--color-warn, #e2a03f)" }}
+            style={{ color: ytOk ? "var(--color-primary)" : "var(--color-warn)" }}
             role="status"
           >
             {ytMsg}

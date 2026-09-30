@@ -51,7 +51,7 @@ export function SendTestAlert() {
       {state === "error" && (
         <span
           className="mono text-[12px]"
-          style={{ color: "var(--color-warn, #e2a03f)" }}
+          style={{ color: "var(--color-warn)" }}
           role="status"
         >
           {t.alerts.testFailed}

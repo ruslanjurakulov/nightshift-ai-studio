@@ -225,7 +225,7 @@ function Activate({
           </div>
         </>
       )}
-      {error && <p className="text-[13px] text-[var(--color-danger,#e5484d)]">{error}</p>}
+      {error && <p className="text-[13px] text-[var(--color-fail)]">{error}</p>}
     </div>
   );
 }
@@ -403,7 +403,7 @@ function Keys({ orgId, activated }: { orgId: string; activated: boolean }) {
           </button>
         </div>
         {active >= MAX_ACTIVE_KEYS && <p className="text-[12px] text-[var(--color-muted)]">{d.keyLimitReached}</p>}
-        {error && <p className="text-[13px] text-[var(--color-danger,#e5484d)]">{error}</p>}
+        {error && <p className="text-[13px] text-[var(--color-fail)]">{error}</p>}
       </div>
 
       <div className="panel overflow-x-auto p-4">
