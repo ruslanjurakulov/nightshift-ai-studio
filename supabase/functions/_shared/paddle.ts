@@ -15,6 +15,12 @@
  *     custom_data { org_id, user_id }, which only says WHO is being paid for;
  *     the credits come from CREDIT_PACKS via the Paddle price id, and a price
  *     that is not one of our packs credits nothing.
+ *   - Credits follow what was PAID, not the list price: a discounted
+ *     transaction mints credits in proportion to its totals after discount
+ *     (subtotal − discount), and a 100%-discounted one mints none — unless its
+ *     discount id is an explicitly allowed promo (PADDLE_PROMO_DISCOUNT_IDS),
+ *     which the owner created on purpose to give credits away. Packs and plan
+ *     periods alike.
  *   - Every purchase is credited through add_purchased_credits() with the
  *     Paddle transaction id as its external_id, so a webhook delivered twice,
  *     or retried after a timeout, credits once.
@@ -77,6 +83,245 @@ export function priceTableFromEnv(get: (name: string) => string | undefined): Pr
     if (PADDLE_PRICE_ID_RE.test(id) && !table.has(id)) table.set(id, { id: pack.id, credits: pack.credits });
   }
   return table;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Subscription plans (migration 0034)
+// ───────────────────────────────────────────────────────────────────────────
+
+/** PADDLE_PLAN_CREATOR=pri_… -> plan "creator". The plan ids themselves live
+ *  in the database (plans); an env var naming a plan the database does not
+ *  know is refused there (upsert_subscription / grant_subscription_credits). */
+export const PLAN_ENV_RE = /^PADDLE_PLAN_([A-Z][A-Z0-9_]{1,30})$/;
+const SUBSCRIPTION_ID_RE = /^sub_[a-z0-9]{10,40}$/;
+const CUSTOMER_ID_RE = /^ctm_[a-z0-9]{10,40}$/;
+
+/** price id -> plan id. */
+export type PlanTable = ReadonlyMap<string, string>;
+
+/**
+ * The plan prices from the webhook's environment (all of it: the plan ids are
+ * not known here). A malformed price id is skipped; a price id that is also a
+ * credit pack is skipped too — one price cannot be both a one-time pack and a
+ * subscription, and guessing which was meant would be wrong half the time.
+ */
+export function planTableFromEnv(
+  entries: Iterable<readonly [string, string | undefined]>,
+  packs: PriceTable = new Map(),
+): PlanTable {
+  const table = new Map<string, string>();
+  for (const [name, raw] of entries) {
+    const m = PLAN_ENV_RE.exec(name);
+    if (!m) continue;
+    const id = (raw ?? "").trim();
+    if (!PADDLE_PRICE_ID_RE.test(id) || packs.has(id) || table.has(id)) continue;
+    table.set(id, m[1].toLowerCase());
+  }
+  return table;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Discounts
+// ───────────────────────────────────────────────────────────────────────────
+
+export const DISCOUNT_ID_RE = /^dsc_[a-z0-9]{10,40}$/;
+
+/** Discount ids the owner explicitly allows to give credits at full value
+ *  (PADDLE_PROMO_DISCOUNT_IDS="dsc_…,dsc_…"). Anything malformed is dropped. */
+export type PromoAllowlist = ReadonlySet<string>;
+
+export function promoAllowlistFromEnv(raw: string | undefined): PromoAllowlist {
+  return new Set(
+    (raw ?? "")
+      .split(/[\s,]+/)
+      .map((v) => v.trim())
+      .filter((v) => DISCOUNT_ID_RE.test(v)),
+  );
+}
+
+export type PaidShare = { share: number; discountId: string | null; promo: boolean } | { error: string };
+
+/**
+ * The share of the list price this transaction actually charged, from
+ * Paddle's own totals: 1 without a discount, (subtotal − discount) / subtotal
+ * with one, 1 for an allowed promo. A discount whose totals cannot be read is
+ * an error — the credits are not guessed.
+ */
+export function paidShare(data: Record<string, unknown>, promos: PromoAllowlist = new Set()): PaidShare {
+  const discountRaw = str(data.discount_id);
+  const discountId = discountRaw && DISCOUNT_ID_RE.test(discountRaw) ? discountRaw : null;
+  const totals = obj(obj(data.details).totals);
+  const hasDiscountField = totals.discount !== undefined && totals.discount !== null;
+  const discount = hasDiscountField ? minorUnits(totals.discount) : 0;
+  const subtotal = minorUnits(totals.subtotal);
+  if (discountId && promos.has(discountId)) return { share: 1, discountId, promo: true };
+  if (discountRaw && !discountId) return { error: "discount id is malformed" };
+  if (discount === null) return { error: "discount total cannot be read" };
+  if (!discountId && discount === 0) return { share: 1, discountId: null, promo: false };
+  if (subtotal === null) return { error: "discounted, but the subtotal cannot be read" };
+  if (subtotal <= 0 || discount >= subtotal) return { share: 0, discountId, promo: false };
+  return { share: (subtotal - discount) / subtotal, discountId, promo: false };
+}
+
+/** Credits for what was paid, rounded DOWN to the cent. */
+export function creditsForShare(listCredits: number, share: number): number {
+  return Math.floor(Math.round(listCredits * share * 1e6) / 1e4) / 100;
+}
+
+function shareNote(p: { share: number; discountId: string | null; promo: boolean }): string | null {
+  if (p.promo) return `promo ${p.discountId} (full credits)`;
+  if (p.share >= 1) return null;
+  return `discount ${p.discountId ?? "(no id)"}: ${(p.share * 100).toFixed(2)}% paid`;
+}
+
+export const SUBSCRIPTION_STATUSES = ["active", "trialing", "past_due", "paused", "canceled"] as const;
+export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
+
+export const SUBSCRIPTION_EVENTS = [
+  "subscription.created",
+  "subscription.updated",
+  "subscription.activated",
+  "subscription.canceled",
+  "subscription.past_due",
+  "subscription.paused",
+  "subscription.resumed",
+  "subscription.trialing",
+] as const;
+
+/** An ISO timestamp Paddle sent, or null. Never a date we made up. */
+function isoTime(v: unknown): string | null {
+  const s = str(v);
+  if (!s || s.length > 40 || !/^\d{4}-\d{2}-\d{2}T/.test(s) || !Number.isFinite(Date.parse(s))) return null;
+  return s;
+}
+
+/** The single plan the items name, or why not. */
+function planOfItems(items: unknown, plans: PlanTable): { planId: string; priceId: string } | { error: string } {
+  const list = Array.isArray(items) ? items : [];
+  if (list.length === 0) return { error: "no items" };
+  let found: { planId: string; priceId: string } | null = null;
+  for (const raw of list) {
+    const item = obj(raw);
+    const priceId = str(obj(item.price).id) ?? str(item.price_id);
+    const planId = priceId ? plans.get(priceId) : undefined;
+    if (!planId || !priceId) return { error: `price ${priceId ?? "(none)"} is not a plan on this deployment` };
+    if (found && found.planId !== planId) return { error: "several plans in one subscription" };
+    found = { planId, priceId };
+  }
+  return found ?? { error: "no items" };
+}
+
+/** transaction.completed that pays for a plan -> that billing period's credits. */
+export function decideSubscriptionPayment(
+  data: Record<string, unknown>,
+  plans: PlanTable,
+  promos: PromoAllowlist = new Set(),
+): Decision {
+  const transactionId = str(data.id);
+  const custom = obj(data.custom_data);
+  const orgRaw = str(custom.org_id);
+  const orgId = orgRaw && UUID_RE.test(orgRaw) ? orgRaw.toLowerCase() : null;
+  const userRaw = str(custom.user_id);
+  const userId = userRaw && UUID_RE.test(userRaw) ? userRaw.toLowerCase() : null;
+  const currency = currencyCode(data.currency_code);
+  const amountMinor = minorUnits(obj(obj(data.details).totals).grand_total);
+  const reject = (detail: string): Decision => ({
+    kind: "reject",
+    detail,
+    orgId,
+    transactionId: transactionId && TRANSACTION_ID_RE.test(transactionId) ? transactionId : null,
+    currency,
+    amountMinor,
+  });
+  if (!transactionId || !TRANSACTION_ID_RE.test(transactionId)) return reject("transaction without a valid id");
+  if (str(data.status) !== "completed") return { kind: "ignore", detail: `transaction status ${String(data.status)}` };
+  const subscriptionId = str(data.subscription_id);
+  if (!subscriptionId || !SUBSCRIPTION_ID_RE.test(subscriptionId))
+    return reject("paid plan without a subscription id — not credited");
+  const plan = planOfItems(data.items, plans);
+  if ("error" in plan) return reject(`paid subscription, but ${plan.error} — not credited`);
+  for (const raw of Array.isArray(data.items) ? data.items : []) {
+    const qty = obj(raw).quantity;
+    if (qty !== undefined && qty !== 1) return reject("paid plan with a quantity other than 1 — not credited");
+  }
+  const period = obj(data.billing_period);
+  const periodStart = isoTime(period.starts_at);
+  const periodEnd = isoTime(period.ends_at);
+  if (!periodStart || !periodEnd || Date.parse(periodEnd) <= Date.parse(periodStart))
+    return reject("paid plan without a billing period — not credited");
+  const paid = paidShare(data, promos);
+  if ("error" in paid) return reject(`paid plan, but ${paid.error} — not credited`);
+  if (paid.share <= 0)
+    return reject(
+      `plan fully discounted (${paid.discountId ?? "no discount id"}) — no credits; ` +
+        "add the discount to PADDLE_PROMO_DISCOUNT_IDS if it is meant to give credits",
+    );
+  const customerRaw = str(data.customer_id);
+  const origin = str(data.origin);
+  const note = [
+    `Paddle ${transactionId}: ${plan.planId} plan${origin ? ` (${origin})` : ""}`,
+    shareNote(paid),
+    userId ? `by user ${userId}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return {
+    kind: "subscription_payment",
+    orgId,
+    subscriptionId,
+    customerId: customerRaw && CUSTOMER_ID_RE.test(customerRaw) ? customerRaw : null,
+    planId: plan.planId,
+    priceId: plan.priceId,
+    transactionId,
+    periodStart,
+    periodEnd,
+    paidShare: paid.share,
+    currency,
+    amountMinor,
+    note,
+  };
+}
+
+/** subscription.* -> the subscription's state as Paddle now reports it. */
+export function decideSubscription(event: PaddleEvent, plans: PlanTable): Decision {
+  const data = event.data;
+  const subscriptionId = str(data.id);
+  const custom = obj(data.custom_data);
+  const orgRaw = str(custom.org_id);
+  const orgId = orgRaw && UUID_RE.test(orgRaw) ? orgRaw.toLowerCase() : null;
+  const reject = (detail: string): Decision => ({
+    kind: "reject",
+    detail,
+    orgId,
+    transactionId: null,
+    currency: null,
+    amountMinor: null,
+  });
+  if (!subscriptionId || !SUBSCRIPTION_ID_RE.test(subscriptionId)) return reject("subscription without a valid id");
+  const status = str(data.status);
+  if (!status || !(SUBSCRIPTION_STATUSES as readonly string[]).includes(status))
+    return { kind: "ignore", detail: `subscription status ${String(data.status)} is not handled` };
+  // A price this deployment no longer maps (rotated, removed) must not stop a
+  // cancellation from landing: the state is still recorded with the plan left
+  // as it was. A NEW subscription without a known plan is refused by the
+  // database (upsert_subscription needs a plan to create a row).
+  const plan = planOfItems(data.items, plans);
+  const period = obj(data.current_billing_period);
+  const customerRaw = str(data.customer_id);
+  return {
+    kind: "subscription_state",
+    orgId,
+    subscriptionId,
+    customerId: customerRaw && CUSTOMER_ID_RE.test(customerRaw) ? customerRaw : null,
+    planId: "error" in plan ? null : plan.planId,
+    priceId: "error" in plan ? null : plan.priceId,
+    status: status as SubscriptionStatus,
+    periodStart: isoTime(period.starts_at),
+    periodEnd: isoTime(period.ends_at),
+    cancelAtPeriodEnd: str(obj(data.scheduled_change).action) === "cancel",
+    canceledAt: isoTime(data.canceled_at),
+    occurredAt: event.occurredAt,
+  };
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -187,6 +432,37 @@ export type Decision =
       note: string;
     }
   | {
+      kind: "subscription_payment";
+      orgId: string | null;
+      subscriptionId: string;
+      customerId: string | null;
+      planId: string;
+      priceId: string;
+      transactionId: string;
+      periodStart: string;
+      periodEnd: string;
+      /** Share of the list price paid (0 < share <= 1); the database scales the allowance by it. */
+      paidShare: number;
+      currency: string | null;
+      amountMinor: number | null;
+      note: string;
+    }
+  | {
+      kind: "subscription_state";
+      orgId: string | null;
+      subscriptionId: string;
+      customerId: string | null;
+      /** Null when the price is not (or no longer) a plan here: status still recorded. */
+      planId: string | null;
+      priceId: string | null;
+      status: SubscriptionStatus;
+      periodStart: string | null;
+      periodEnd: string | null;
+      cancelAtPeriodEnd: boolean;
+      canceledAt: string | null;
+      occurredAt: string | null;
+    }
+  | {
       kind: "refund";
       reason: "refund" | "chargeback";
       transactionId: string;
@@ -246,7 +522,11 @@ export const PADDLE_PRODUCT_ID_RE = /^pro_[a-z0-9]{10,40}$/;
  * organization. The amount is Paddle's own record of the line's unit price x
  * quantity (tax is Paddle's, on top), never anything the browser said.
  */
-export function decideApiTopup(data: Record<string, unknown>, apiProductId: string | null | undefined): Decision {
+export function decideApiTopup(
+  data: Record<string, unknown>,
+  apiProductId: string | null | undefined,
+  promos: PromoAllowlist = new Set(),
+): Decision {
   const transactionId = str(data.id);
   const custom = obj(data.custom_data);
   const orgRaw = str(custom.org_id);
@@ -283,6 +563,11 @@ export function decideApiTopup(data: Record<string, unknown>, apiProductId: stri
       return reject("paid API top-up with an unreadable amount or quantity — not credited");
     cents += amount * qty;
   }
+  // A discount scales the balance to what was paid, like credits.
+  const paid = paidShare(data, promos);
+  if ("error" in paid) return reject(`paid API top-up, but ${paid.error} — not credited`);
+  cents = Math.floor(Math.round(cents * paid.share * 1e6) / 1e6);
+  if (cents <= 0) return reject("API top-up fully discounted — not credited");
   if (cents < API_TOPUP_MIN_CENTS || cents > API_TOPUP_MAX_CENTS)
     return reject(`paid API top-up of ${cents} cents is outside $5-$5,000 — not credited`);
   const note = [`Paddle ${transactionId}: API top-up ${(cents / 100).toFixed(2)} USD`, userId ? `by user ${userId}` : null]
@@ -291,8 +576,22 @@ export function decideApiTopup(data: Record<string, unknown>, apiProductId: stri
   return { kind: "api_topup", orgId, userId, transactionId, cents, currency, amountMinor, note };
 }
 
-export function decideTransaction(data: Record<string, unknown>, prices: PriceTable, apiProductId?: string | null): Decision {
-  if (str(obj(data.custom_data).purpose) === "api_topup") return decideApiTopup(data, apiProductId);
+export function decideTransaction(
+  data: Record<string, unknown>,
+  prices: PriceTable,
+  apiProductId?: string | null,
+  plans: PlanTable = new Map(),
+  promos: PromoAllowlist = new Set(),
+): Decision {
+  if (str(obj(data.custom_data).purpose) === "api_topup") return decideApiTopup(data, apiProductId, promos);
+  // A subscription's transaction (first payment, renewal, upgrade) or any line
+  // that is a plan price: the period's credits, never pack credits.
+  const anyPlan = (Array.isArray(data.items) ? data.items : []).some((raw) => {
+    const item = obj(raw);
+    const priceId = str(obj(item.price).id) ?? str(item.price_id);
+    return priceId ? plans.has(priceId) : false;
+  });
+  if (anyPlan || str(data.subscription_id)) return decideSubscriptionPayment(data, plans, promos);
   const transactionId = str(data.id);
   const custom = obj(data.custom_data);
   const orgRaw = str(custom.org_id);
@@ -333,7 +632,22 @@ export function decideTransaction(data: Record<string, unknown>, prices: PriceTa
     lines.push(`${qty}× ${pack.id}`);
   }
 
-  const note = [`Paddle ${transactionId}: ${lines.join(", ")}`, userId ? `bought by user ${userId}` : null]
+  // What was actually paid decides the credits (a discount scales them).
+  const paid = paidShare(data, promos);
+  if ("error" in paid) return reject(`paid, but ${paid.error} — not credited`);
+  const listCredits = credits;
+  credits = creditsForShare(listCredits, paid.share);
+  if (credits <= 0)
+    return reject(
+      `fully discounted (${paid.discountId ?? "no discount id"}) — no credits; ` +
+        "add the discount to PADDLE_PROMO_DISCOUNT_IDS if it is meant to give credits",
+    );
+
+  const note = [
+    `Paddle ${transactionId}: ${lines.join(", ")}`,
+    paid.share < 1 || paid.promo ? `${shareNote(paid)} → ${credits} of ${listCredits} credits` : null,
+    userId ? `bought by user ${userId}` : null,
+  ]
     .filter(Boolean)
     .join(" · ");
   return { kind: "purchase", orgId, userId, transactionId, credits, currency, amountMinor, note };
@@ -377,10 +691,17 @@ export function decideAdjustment(data: Record<string, unknown>): Decision {
   };
 }
 
-export function decideEvent(event: PaddleEvent, prices: PriceTable, apiProductId?: string | null): Decision {
+export function decideEvent(
+  event: PaddleEvent,
+  prices: PriceTable,
+  apiProductId?: string | null,
+  plans: PlanTable = new Map(),
+  promos: PromoAllowlist = new Set(),
+): Decision {
+  if ((SUBSCRIPTION_EVENTS as readonly string[]).includes(event.eventType)) return decideSubscription(event, plans);
   switch (event.eventType) {
     case "transaction.completed":
-      return decideTransaction(event.data, prices, apiProductId);
+      return decideTransaction(event.data, prices, apiProductId, plans, promos);
     case "adjustment.created":
     case "adjustment.updated":
       return decideAdjustment(event.data);
@@ -466,6 +787,34 @@ export interface PaddleStore {
     note: string,
     reason: "refund" | "chargeback",
   ): Promise<{ duplicate: boolean; requested: number; taken: number; shortfall: number }>;
+  /** Plans (0034). Optional so a store without them refuses plan events as a
+   *  temporary failure (Paddle retries) instead of dropping them. */
+  findSubscriptionOrg?(subscriptionId: string): Promise<string | null>;
+  upsertSubscription?(s: {
+    orgId: string;
+    subscriptionId: string;
+    customerId: string | null;
+    planId: string | null;
+    priceId: string | null;
+    status: SubscriptionStatus;
+    periodStart: string | null;
+    periodEnd: string | null;
+    cancelAtPeriodEnd: boolean;
+    canceledAt: string | null;
+    occurredAt: string | null;
+  }): Promise<{ stale: boolean }>;
+  grantSubscriptionCredits?(g: {
+    orgId: string;
+    subscriptionId: string;
+    planId: string;
+    periodStart: string;
+    periodEnd: string;
+    transactionId: string;
+    note: string;
+    customerId: string | null;
+    priceId: string | null;
+    paidShare: number;
+  }): Promise<{ duplicate: boolean; granted: number }>;
   /** API balance (0031). Optional so a store without them refuses API top-ups
    *  as a temporary failure instead of mis-crediting them. */
   addApiTopup?(orgId: string, cents: number, externalId: string, note: string): Promise<{ duplicate: boolean }>;
@@ -506,6 +855,10 @@ export async function handlePaddleWebhook(
     log?: Logger;
     /** The "API balance top-up" product (PADDLE_API_TOPUP_PRODUCT_ID). */
     apiProductId?: string | null;
+    /** Plan prices (PADDLE_PLAN_<ID>), migration 0034. */
+    plans?: PlanTable;
+    /** Discounts allowed to give credits at full value (PADDLE_PROMO_DISCOUNT_IDS). */
+    promos?: PromoAllowlist;
   },
 ): Promise<WebhookResponse> {
   const log: Logger = deps.log ?? console;
@@ -534,7 +887,7 @@ export async function handlePaddleWebhook(
       return { status: 200, body: { ok: true, duplicate: true, status: prior } };
     }
 
-    const decision = decideEvent(event, deps.prices, deps.apiProductId);
+    const decision = decideEvent(event, deps.prices, deps.apiProductId, deps.plans ?? new Map(), deps.promos ?? new Set());
     const record = await execute(decision, deps.store, log, event.eventId);
     await deps.store.recordEvent({ ...base, ...record.row });
     if (record.row.status === "rejected" || record.httpStatus >= 500) {
@@ -651,6 +1004,98 @@ async function execute(
       } catch (err) {
         if (err instanceof StoreError && err.code && PERMANENT_CODES.has(err.code)) {
           return { httpStatus: 200, row: { status: "rejected", detail: `API top-up not credited: ${err.code}`, ...money } };
+        }
+        throw err;
+      }
+    }
+
+    case "subscription_state": {
+      if (!store.upsertSubscription || !store.findSubscriptionOrg)
+        throw new StoreError("this webhook build cannot record subscriptions", null);
+      const orgId = decision.orgId ?? (await store.findSubscriptionOrg(decision.subscriptionId));
+      if (!orgId || !(await store.orgExists(orgId))) {
+        return {
+          httpStatus: 200,
+          row: { status: "rejected", detail: `subscription ${decision.subscriptionId} names no known organization`, orgId: null },
+        };
+      }
+      try {
+        const res = await store.upsertSubscription({
+          orgId,
+          subscriptionId: decision.subscriptionId,
+          customerId: decision.customerId,
+          planId: decision.planId,
+          priceId: decision.priceId,
+          status: decision.status,
+          periodStart: decision.periodStart,
+          periodEnd: decision.periodEnd,
+          cancelAtPeriodEnd: decision.cancelAtPeriodEnd,
+          canceledAt: decision.canceledAt,
+          occurredAt: decision.occurredAt,
+        });
+        return {
+          httpStatus: 200,
+          row: res.stale
+            ? { status: "ignored", detail: `older than the subscription's last event; ${decision.subscriptionId} unchanged`, orgId }
+            : {
+                status: "processed",
+                detail: `subscription ${decision.subscriptionId}: ${decision.planId ?? "plan unchanged (price not mapped)"}, ${decision.status}` +
+                  (decision.cancelAtPeriodEnd ? ", cancels at period end" : ""),
+                orgId,
+              },
+        };
+      } catch (err) {
+        if (err instanceof StoreError && err.code && PERMANENT_CODES.has(err.code)) {
+          return { httpStatus: 200, row: { status: "rejected", detail: `subscription not recorded: ${err.code}`, orgId } };
+        }
+        throw err;
+      }
+    }
+
+    case "subscription_payment": {
+      if (!store.grantSubscriptionCredits || !store.findSubscriptionOrg)
+        throw new StoreError("this webhook build cannot credit subscriptions", null);
+      const orgId = decision.orgId ?? (await store.findSubscriptionOrg(decision.subscriptionId));
+      const money = {
+        orgId,
+        transactionId: decision.transactionId,
+        currency: decision.currency,
+        amountMinor: decision.amountMinor,
+      };
+      if (!orgId || !(await store.orgExists(orgId))) {
+        return {
+          httpStatus: 200,
+          row: { status: "rejected", detail: "paid plan, but no known organization — not credited", ...money, orgId: null },
+        };
+      }
+      try {
+        const res = await store.grantSubscriptionCredits({
+          orgId,
+          subscriptionId: decision.subscriptionId,
+          planId: decision.planId,
+          periodStart: decision.periodStart,
+          periodEnd: decision.periodEnd,
+          transactionId: decision.transactionId,
+          note: decision.note,
+          customerId: decision.customerId,
+          priceId: decision.priceId,
+          paidShare: decision.paidShare,
+        });
+        log.info(`paddle-webhook: ${eventId} ${res.duplicate ? "plan period already credited" : `plan credits ${res.granted}`}`);
+        return {
+          httpStatus: 200,
+          row: {
+            status: res.duplicate ? "duplicate" : "processed",
+            detail: res.duplicate
+              ? "plan transaction already credited"
+              : `${decision.planId} plan: credited ${res.granted} credits for the period ending ${decision.periodEnd}`,
+            credits: res.duplicate ? null : res.granted,
+            ...money,
+          },
+        };
+      } catch (err) {
+        if (err instanceof StoreError && err.code && PERMANENT_CODES.has(err.code)) {
+          return { httpStatus: 200, row: { status: "rejected", detail: `plan not credited: ${err.code}`, ...money } };
         }
         throw err;
       }
@@ -872,6 +1317,51 @@ export function createRestStore(opts: { url: string; serviceKey: string; fetch?:
         currency: str(credited.currency),
         amountMinor: num(credited.amount_minor),
       };
+    },
+    async findSubscriptionOrg(subscriptionId) {
+      const rows = await select(
+        "subscriptions",
+        "subscriptions",
+        `provider=eq.paddle&provider_subscription_id=eq.${q(subscriptionId)}&select=org_id`,
+      );
+      const first = Array.isArray(rows) && rows.length ? obj(rows[0]) : null;
+      return first ? str(first.org_id) : null;
+    },
+    async upsertSubscription(s) {
+      const res = obj(
+        await rpc("upsert_subscription", {
+          p_org: s.orgId,
+          p_subscription_id: s.subscriptionId,
+          p_customer_id: s.customerId,
+          p_plan: s.planId,
+          p_price_id: s.priceId,
+          p_status: s.status,
+          p_period_start: s.periodStart,
+          p_period_end: s.periodEnd,
+          p_cancel_at_period_end: s.cancelAtPeriodEnd,
+          p_canceled_at: s.canceledAt,
+          p_occurred_at: s.occurredAt,
+        }),
+      );
+      return { stale: res.stale === true };
+    },
+    async grantSubscriptionCredits(g) {
+      const res = obj(
+        await rpc("grant_subscription_credits", {
+          p_org: g.orgId,
+          p_subscription_id: g.subscriptionId,
+          p_plan: g.planId,
+          p_period_start: g.periodStart,
+          p_period_end: g.periodEnd,
+          p_external_id: g.transactionId,
+          p_note: g.note,
+          p_customer_id: g.customerId,
+          p_price_id: g.priceId,
+          p_paid_share: g.paidShare,
+        }),
+      );
+      const granted = typeof res.granted === "number" ? res.granted : Number(res.granted ?? 0);
+      return { duplicate: res.duplicate === true, granted: Number.isFinite(granted) ? granted : 0 };
     },
     async addApiTopup(orgId, cents, externalId, note) {
       const res = obj(await rpc("api_add_topup", { p_org: orgId, p_cents: cents, p_external_id: externalId, p_note: note }));

@@ -10,7 +10,7 @@
  */
 
 import { VIDEO_PROVIDERS, IMAGE_PROVIDERS, type RunBackend } from "@/lib/runBackend";
-import { API_KEY_PREFIX, hashApiKey, keyPrefix, parseBearer, sha256Hex } from "@/lib/api/keys";
+import { API_KEY_PREFIX, hashApiKey, parseBearer, sha256Hex } from "@/lib/api/keys";
 import { apiError, fromRpcResult, type ApiResult } from "@/lib/api/http";
 
 export type Rpc = (
@@ -19,9 +19,8 @@ export type Rpc = (
 ) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>;
 
 export interface ApiCaller {
+  /** The key's SHA-256. The key itself, and any part of it, is never kept. */
   keyHash: string;
-  /** The key's display prefix — the only part of a key that may be logged. */
-  prefix: string;
   requestId: string;
   rpc: Rpc;
   backend: RunBackend;
@@ -38,7 +37,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** The key from the Authorization header, hashed; or the 401 to send. */
 export async function authenticate(
   authorization: string | null | undefined,
-): Promise<{ ok: true; keyHash: string; prefix: string } | { ok: false; result: ApiResult }> {
+): Promise<{ ok: true; keyHash: string } | { ok: false; result: ApiResult }> {
   const key = parseBearer(authorization);
   if (!key) {
     return {
@@ -50,7 +49,7 @@ export async function authenticate(
       ),
     };
   }
-  return { ok: true, keyHash: await hashApiKey(key), prefix: keyPrefix(key) ?? "" };
+  return { ok: true, keyHash: await hashApiKey(key) };
 }
 
 function isMissing(error: { code?: string; message?: string }): boolean {

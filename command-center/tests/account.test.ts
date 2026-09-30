@@ -40,7 +40,6 @@ describe("nav filtering by role", () => {
       "onboarding",
       "organization",
       "developers",
-      "approvals",
     ]);
     expect(new Set(keys(false))).toEqual(new Set(CUSTOMER_NAV_KEYS));
   });
@@ -69,13 +68,25 @@ describe("nav filtering by role", () => {
     expect(isOperatorOnlySection("members")).toBe(true);
     expect(isOperatorOnlySection("pipeline")).toBe(true);
     expect(isOperatorOnlySection("logs")).toBe(true);
-    for (const s of ["command-center", "create", "videos", "studio", "channels", "credits", "series", "approvals", "getting-started", "organization"])
+    for (const s of ["command-center", "create", "videos", "studio", "channels", "credits", "series", "getting-started", "organization"])
       expect(isOperatorOnlySection(s), s).toBe(false);
     // Not a section at all: left to 404 or the channel index, not bounced.
     expect(isOperatorOnlySection("")).toBe(false);
     expect(isOperatorOnlySection("no-such-page")).toBe(false);
     expect(sectionAllowed("pipeline", true)).toBe(true);
     expect(sectionAllowed("pipeline", false)).toBe(false);
+  });
+
+  it("keeps team features away from a self-serve customer: no Team page, no two-person approvals", () => {
+    // A workspace has one person and no roles, so a second approver cannot
+    // exist; both screens stay for the platform operator.
+    for (const s of ["members", "approvals"]) {
+      expect(isOperatorOnlySection(s), s).toBe(true);
+      expect(sectionAllowed(s, false), s).toBe(false);
+      expect(sectionAllowed(s, true), s).toBe(true);
+    }
+    expect(keys(false)).not.toContain("approvals");
+    expect(keys(true)).toContain("approvals");
   });
 });
 

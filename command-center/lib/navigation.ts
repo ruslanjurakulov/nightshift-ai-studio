@@ -98,6 +98,10 @@ export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
  * console (providers, agents, the intelligence stack, logs, the platform team)
  * and is shown only to a platform owner/admin.
  *
+ * Two-person publish approval ("approvals") is not here: a self-serve workspace
+ * has one person and no roles, so a second approver cannot exist. The screen
+ * and the database rule stay for the operator (and a future Teams plan).
+ *
  * Presentation and routing only: RLS decides what anyone may read, and every
  * API route re-checks its own role. Hiding a section is not what protects it.
  */
@@ -110,7 +114,6 @@ export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "channels",
   "credits",
   "series",
-  "approvals",
   "onboarding",
   "organization",
   "developers",
