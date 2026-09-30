@@ -1941,6 +1941,14 @@ export const uz: Dictionary = {
     remove: "O'chirish",
     signIn: "Jamoani boshqarish uchun tizimga kiring.",
   },
+  invites: {
+    title: "Taklifnomalar",
+    hint: "Sizni ushbu ish maydonlariga taklif qilishdi. Qabul qilmaguningizcha sizga hech narsa ochilmaydi.",
+    accept: "Qabul qilish",
+    decline: "Rad etish",
+    working: "Qo'shilmoqda…",
+    failed: "Taklifnomaga javob berib bo'lmadi. Sahifani yangilab, qayta urinib ko'ring.",
+  },
   org: {
     switcherLabel: "Tashkilot",
     newOrg: "Yangi tashkilot",
