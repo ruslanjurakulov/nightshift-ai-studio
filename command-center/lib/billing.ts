@@ -96,7 +96,7 @@ export const BILLED_PROVIDERS: BilledProvider[] = [
       r.unit === "gemini_input_tokens" || r.unit === "gemini_output_tokens" ? r.quantity : 0,
   },
   { id: "minimax", name: "MiniMax", billingUrl: "https://www.minimax.io/platform", unitLabel: "clip", unitSize: 1, usage: clipsOf("minimax") },
-  { id: "kling", name: "Kling", billingUrl: "https://klingai.com", unitLabel: "clip", unitSize: 1, usage: clipsOf("kling") },
+  { id: "kling", name: "Kling", billingUrl: "https://kling.ai/dev", unitLabel: "clip", unitSize: 1, usage: clipsOf("kling") },
   { id: "veo", name: "Google Veo", billingUrl: "https://console.cloud.google.com/billing", unitLabel: "clip", unitSize: 1, usage: clipsOf("veo") },
   { id: "seedance", name: "Seedance", billingUrl: "https://console.volcengine.com/finance", unitLabel: "clip", unitSize: 1, usage: clipsOf("seedance") },
   { id: "wan", name: "Wan", billingUrl: "https://usercenter2-intl.aliyun.com/billing", unitLabel: "clip", unitSize: 1, usage: clipsOf("wan") },

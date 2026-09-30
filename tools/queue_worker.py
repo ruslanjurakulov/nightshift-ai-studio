@@ -95,6 +95,7 @@ sys.path.insert(0, str(REPO_DIR))
 
 from modules import channel_tokens  # noqa: E402
 from modules import credits as credit_rules  # noqa: E402
+from modules import log_redaction  # noqa: E402
 from modules import run_request  # noqa: E402
 from modules import social_publish  # noqa: E402
 from modules import paid_downloads  # noqa: E402
@@ -686,6 +687,17 @@ class Worker:
                 logger.info("credits: released %d stale reservation(s)", int(n))
         except credit_rules.CreditsUnavailable as e:
             logger.info("credits: expiry sweep skipped (%s)", e)
+        # Plans (migration 0034): expired credit lots. Separate, so a database
+        # without 0034 still gets its holds swept.
+        expire_lots = getattr(self.credits, "expire_lots", None)
+        if expire_lots is None:
+            return
+        try:
+            n = expire_lots()
+            if n:
+                logger.info("credits: %s expired credit(s) left the balance", n)
+        except credit_rules.CreditsUnavailable as e:
+            logger.info("credits: lot expiry skipped (%s)", e)
 
     def _execute(self, job: Mapping, argv: List[str], run_env: Mapping[str, str],
                  channel_row: Mapping) -> str:
@@ -862,6 +874,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     logging.basicConfig(level=logging.INFO, stream=sys.stdout,
                         format="%(asctime)s queue_worker %(levelname)s %(message)s")
+    log_redaction.install()
 
     url = os.environ.get("SUPABASE_URL", "").strip()
     key = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()

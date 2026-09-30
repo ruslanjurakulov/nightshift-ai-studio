@@ -9,6 +9,7 @@ import {
   newCreditRef,
   parseInsufficient,
   parsePrices,
+  parseRunLimit,
   resolveCreditsEnforce,
   runDurationS,
   type CreditAccount,
@@ -171,6 +172,8 @@ export async function reserveRunCredits(
         status: 402,
         body: { error: "insufficient_credits", needed: short.needed ?? estimate.credits, available: short.available },
       };
+    const busy = parseRunLimit(error);
+    if (busy) return { ok: false, status: 429, body: { error: "run_limit", active: busy.active, limit: busy.limit } };
     if (isCreditsMissing(error)) return unavailable;
     if (error.code === "42501") return { ok: false, status: 403, body: { error: "forbidden" } };
     return { ok: false, status: 502, body: { error: "credit_reserve_failed" } };

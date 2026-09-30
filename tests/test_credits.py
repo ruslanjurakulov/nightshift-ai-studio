@@ -293,6 +293,17 @@ class WorkerCredits(unittest.TestCase):
         self.assertEqual(fake.settled(), [("capture", "rj-abc", 5.0)])
         self.assertEqual(self.ledger_calls[0][0], "news")
 
+    def test_the_sweep_also_expires_credit_lots_when_the_client_can(self):
+        class WithLots(FakeCredits):
+            def expire_lots(self):
+                self.calls.append(("expire_lots",))
+                return 0
+
+        self.env.pop("NIGHTSHIFT_CREDITS_ENFORCE")
+        fake = WithLots()
+        self.run_one(job(credit_ref=None), fake)
+        self.assertEqual(fake.calls, [("expire",), ("expire_lots",)])
+
     def test_unpriced_entry_captures_the_reservation(self):
         fake = FakeCredits()
         self.run_one(job(), fake, [entry("tts_characters", 5000), entry("upload_bytes", 1e9)])
@@ -513,6 +524,14 @@ class CreditsRestClient(unittest.TestCase):
         url, body = s.posts[0]
         self.assertTrue(url.endswith("/rest/v1/rpc/capture_credits"))
         self.assertEqual(body, {"p_job_id": "r1", "p_actual": 12.35, "p_allow_over": False})
+
+    def test_expire_lots_calls_the_0034_rpc_with_no_arguments(self):
+        s = self.Session(self.Resp(200, 1700))
+        c = credits.CreditsRest("https://x.supabase.co", "service-secret", session=s)
+        self.assertEqual(c.expire_lots(), 1700)
+        url, body = s.posts[0]
+        self.assertTrue(url.endswith("/rest/v1/rpc/expire_credit_lots"))
+        self.assertEqual(body, {})
 
     def test_http_error_names_the_status_not_the_body_or_key(self):
         s = self.Session(self.Resp(401, {"message": "service-secret leaked?"}))

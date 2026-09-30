@@ -289,6 +289,12 @@ class CreditsRest:
     def expire(self) -> Optional[float]:
         return _num(self._rpc("expire_credit_reservations", {}))
 
+    def expire_lots(self) -> Optional[float]:
+        """Migration 0034: credits of lots past their expiry (a subscription
+        period that ended, a pack older than its validity) leave the balance.
+        Returns the credits expired."""
+        return _num(self._rpc("expire_credit_lots", {}))
+
     def api_hold_start(self, hold_ref: str, job_id) -> Optional[float]:
         """Migration 0031: the API balance hold's amount (cents) when it is open
         and bound to exactly this job, else None."""
