@@ -1,0 +1,1984 @@
+{
+  "$schema": "./model_registry.schema.json",
+  "version": 1,
+  "note": "Static facts about each generative model (docs/CREATIVE_OS_PLAN.md §3.2). Nothing here makes a model available: availability and verified_at live in the database (migration 0035), which refuses beta/ga until tools/probe_models.py has recorded a successful real call. Prices stay null until pinned from the vendor's page with source_url and as_of.",
+  "models": [
+    {
+      "id": "openai-gpt-image-2",
+      "display_name": "OpenAI GPT Image 2",
+      "provider": "openai",
+      "adapter": "image.openai",
+      "vendor_model": "gpt-image-2",
+      "capabilities": [
+        "t2i",
+        "edit"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 16
+      },
+      "aspect_ratios": [
+        "1:1",
+        "3:2",
+        "2:3",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://developers.openai.com/api/docs/guides/image-generation",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "openai/openai-python: types/image_model.py; POST /images/generations and multipart /images/edits (image[])"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "billed per token ($30 per 1M image output tokens per a search extract; another extract said $15); no per-image figure"
+      },
+      "credit_unit": "model_openai_gpt_image_2_image",
+      "entitlement": "models_image:premium",
+      "terms_gate": null,
+      "terms_notes": [],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1"
+      }
+    },
+    {
+      "id": "openai-gpt-image-2.5-flare",
+      "display_name": "OpenAI GPT Image 2.5 Flare",
+      "provider": "openai",
+      "adapter": "image.openai",
+      "vendor_model": "gpt-image-2.5-flare",
+      "capabilities": [
+        "t2i",
+        "edit"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 16
+      },
+      "aspect_ratios": [
+        "1:1",
+        "3:2",
+        "2:3",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://developers.openai.com/api/docs/models/gpt-image-2.5-flare",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "openai/openai-python: types/image_model.py; POST /images/generations and multipart /images/edits (image[])"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "billed per token ($30 per 1M image output tokens, search extract); no per-image figure"
+      },
+      "credit_unit": "model_openai_gpt_image_2_5_flare_image",
+      "entitlement": "models_image:premium",
+      "terms_gate": null,
+      "terms_notes": [],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 5,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1"
+      }
+    },
+    {
+      "id": "openai-gpt-image-2.5-sunburst",
+      "display_name": "OpenAI GPT Image 2.5 Sunburst",
+      "provider": "openai",
+      "adapter": "image.openai",
+      "vendor_model": "gpt-image-2.5-sunburst",
+      "capabilities": [
+        "t2i",
+        "edit"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 16
+      },
+      "aspect_ratios": [
+        "1:1",
+        "3:2",
+        "2:3",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "openai/openai-python: types/image_model.py; POST /images/generations and multipart /images/edits (image[])"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "billed per token ($30 per 1M image output tokens, search extract); no per-image figure"
+      },
+      "credit_unit": "model_openai_gpt_image_2_5_sunburst_image",
+      "entitlement": "models_image:ultra",
+      "terms_gate": null,
+      "terms_notes": [],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1"
+      }
+    },
+    {
+      "id": "gemini-2.5-flash-image",
+      "display_name": "Gemini 2.5 Flash Image",
+      "provider": "google",
+      "adapter": "image.gemini",
+      "vendor_model": "gemini-2.5-flash-image",
+      "capabilities": [
+        "t2i",
+        "edit"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 3
+      },
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3",
+        "21:9"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://ai.google.dev/gemini-api/docs/image-generation",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "googleapis/python-genai (README and models.py), read 2026-09-30",
+        "note": "previous generation"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "billed per output token ($30 per 1M on Vertex); no per-image figure"
+      },
+      "credit_unit": "model_gemini_2_5_flash_image_image",
+      "entitlement": "models_image:basic",
+      "terms_gate": null,
+      "terms_notes": [
+        "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1"
+      }
+    },
+    {
+      "id": "gemini-3.1-flash-image",
+      "display_name": "Gemini 3.1 Flash Image",
+      "provider": "google",
+      "adapter": "image.gemini",
+      "vendor_model": "gemini-3.1-flash-image",
+      "capabilities": [
+        "t2i",
+        "edit"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 14
+      },
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3",
+        "21:9"
+      ],
+      "image_sizes": [
+        "512",
+        "1K",
+        "2K",
+        "4K"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://ai.google.dev/gemini-api/docs/image-generation",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "googleapis/python-genai (README and models.py), read 2026-09-30; google-gemini/cookbook"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": 0.067,
+        "source_url": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+        "as_of": "2026-09-30",
+        "confirmed": false,
+        "variants": {
+          "by": "image_size",
+          "prices": {
+            "512": 0.045,
+            "1K": 0.067,
+            "2K": 0.101,
+            "4K": 0.15
+          }
+        },
+        "note": "Vertex price page read 2026-09-30; the Gemini API page could not be read"
+      },
+      "credit_unit": "model_gemini_3_1_flash_image_image",
+      "entitlement": "models_image:basic",
+      "terms_gate": null,
+      "terms_notes": [
+        "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 4,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1",
+        "image_size": "512"
+      }
+    },
+    {
+      "id": "gemini-3.1-flash-lite-image",
+      "display_name": "Gemini 3.1 Flash Lite Image",
+      "provider": "google",
+      "adapter": "image.gemini",
+      "vendor_model": "gemini-3.1-flash-lite-image",
+      "capabilities": [
+        "t2i",
+        "edit"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 3
+      },
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3",
+        "21:9"
+      ],
+      "image_sizes": [
+        "1K"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://ai.google.dev/gemini-api/docs/image-generation",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "google-gemini/cookbook (Get_Started_Nano_Banana) lists it"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": 0.034,
+        "source_url": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+        "as_of": "2026-09-30",
+        "confirmed": false,
+        "variants": {
+          "by": "image_size",
+          "prices": {
+            "1K": 0.034
+          }
+        },
+        "note": "Vertex price page read 2026-09-30"
+      },
+      "credit_unit": "model_gemini_3_1_flash_lite_image_image",
+      "entitlement": "models_image:basic",
+      "terms_gate": null,
+      "terms_notes": [
+        "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 3,
+      "speed_tier": 5,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1",
+        "image_size": "1K"
+      }
+    },
+    {
+      "id": "gemini-3-pro-image",
+      "display_name": "Gemini 3 Pro Image",
+      "provider": "google",
+      "adapter": "image.gemini",
+      "vendor_model": "gemini-3-pro-image",
+      "capabilities": [
+        "t2i",
+        "edit"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 14
+      },
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3",
+        "21:9"
+      ],
+      "image_sizes": [
+        "1K",
+        "2K",
+        "4K"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://ai.google.dev/gemini-api/docs/image-generation",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "GA id per search extracts; google-genai README still shows gemini-3-pro-image-preview",
+        "note": "GA id vs -preview is settled by the probe (GET /v1beta/models); change vendor_model here if the probe says not_found"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": 0.134,
+        "source_url": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+        "as_of": "2026-09-30",
+        "confirmed": false,
+        "variants": {
+          "by": "image_size",
+          "prices": {
+            "1K": 0.134,
+            "2K": 0.134,
+            "4K": 0.24
+          }
+        },
+        "note": "Vertex price page read 2026-09-30"
+      },
+      "credit_unit": "model_gemini_3_pro_image_image",
+      "entitlement": "models_image:premium",
+      "terms_gate": null,
+      "terms_notes": [
+        "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1",
+        "image_size": "1K"
+      }
+    },
+    {
+      "id": "flux-2-pro",
+      "display_name": "FLUX.2 Pro",
+      "provider": "bfl",
+      "adapter": "image.bfl",
+      "vendor_model": "flux-2-pro",
+      "capabilities": [
+        "t2i"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.bfl.ai/quick_start/generating_images",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "search extracts of docs.bfl.ai: POST api.bfl.ai/v1/flux-2-pro, x-key, polling_url"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "BFL bills per megapixel; our sizes are about 1 MP; per-MP figure not captured"
+      },
+      "credit_unit": "model_flux_2_pro_image",
+      "entitlement": "models_image:premium",
+      "terms_gate": null,
+      "terms_notes": [
+        "BFL FLUX API terms: never expose FLUX through an endpoint third parties can call"
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1"
+      }
+    },
+    {
+      "id": "flux-2-max",
+      "display_name": "FLUX.2 Max",
+      "provider": "bfl",
+      "adapter": "image.bfl",
+      "vendor_model": "flux-2-max",
+      "capabilities": [
+        "t2i"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.bfl.ai/quick_start/generating_images",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "search extracts of docs.bfl.ai model list"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "BFL bills per megapixel"
+      },
+      "credit_unit": "model_flux_2_max_image",
+      "entitlement": "models_image:ultra",
+      "terms_gate": null,
+      "terms_notes": [
+        "BFL FLUX API terms: never expose FLUX through an endpoint third parties can call"
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1"
+      }
+    },
+    {
+      "id": "flux-2-flex",
+      "display_name": "FLUX.2 Flex",
+      "provider": "bfl",
+      "adapter": "image.bfl",
+      "vendor_model": "flux-2-flex",
+      "capabilities": [
+        "t2i"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.bfl.ai/quick_start/generating_images",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "search extracts of docs.bfl.ai model list"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "BFL bills per megapixel"
+      },
+      "credit_unit": "model_flux_2_flex_image",
+      "entitlement": "models_image:premium",
+      "terms_gate": null,
+      "terms_notes": [
+        "BFL FLUX API terms: never expose FLUX through an endpoint third parties can call"
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a red apple on a white table",
+        "aspect_ratio": "1:1"
+      }
+    },
+    {
+      "id": "ideogram-3",
+      "display_name": "Ideogram 3",
+      "provider": "ideogram",
+      "adapter": "image.ideogram",
+      "vendor_model": "TURBO",
+      "capabilities": [
+        "t2i"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3"
+      ],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://developer.ideogram.ai",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "search extracts of developer.ideogram.ai: POST /v1/ideogram-v3/generate, multipart, Api-Key, aspect 16x9 form",
+        "note": "vendor_model is the rendering speed"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false
+      },
+      "credit_unit": "model_ideogram_3_image",
+      "entitlement": "models_image:basic",
+      "terms_gate": null,
+      "terms_notes": [
+        "Ideogram API terms: show 'Powered by Ideogram' and Ideogram's marks where the feature is offered"
+      ],
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 4,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a poster that says HELLO",
+        "aspect_ratio": "1:1"
+      }
+    },
+    {
+      "id": "ideogram-4",
+      "display_name": "Ideogram 4.0",
+      "provider": "ideogram",
+      "adapter": "image.ideogram_v4",
+      "vendor_model": "TURBO",
+      "capabilities": [
+        "t2i"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://developer.ideogram.ai",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "search extract of developer.ideogram.ai: POST /v1/ideogram-v4/generate with text_prompt and rendering_speed",
+        "note": "request encoding and aspect/resolution fields not confirmed; the adapter sends only text_prompt and rendering_speed"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false
+      },
+      "credit_unit": "model_ideogram_4_image",
+      "entitlement": "models_image:premium",
+      "terms_gate": null,
+      "terms_notes": [
+        "Ideogram API terms: show 'Powered by Ideogram' and Ideogram's marks where the feature is offered"
+      ],
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 5,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2i",
+        "prompt": "a poster that says HELLO"
+      }
+    },
+    {
+      "id": "veo-3.1",
+      "display_name": "Veo 3.1",
+      "provider": "google",
+      "adapter": "video.veo",
+      "vendor_model": "veo-3.1-generate-preview",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "9:16"
+      ],
+      "resolutions": [
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "durations_s": [
+        4,
+        6,
+        8
+      ],
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://ai.google.dev/gemini-api/docs/video",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "googleapis/python-genai (README and models.py), read 2026-09-30; generate_videos → :predictLongRunning"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.4,
+        "source_url": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+        "as_of": "2026-09-30",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "720p": 0.4,
+            "1080p": 0.4,
+            "4k": 0.6
+          }
+        },
+        "note": "per second with audio; Vertex page read 2026-09-30, Gemini API per-second figure from a search extract"
+      },
+      "credit_unit": "model_veo_3_1_second",
+      "entitlement": "models_video:ultra",
+      "terms_gate": null,
+      "terms_notes": [
+        "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "aspect_ratio": "16:9",
+        "resolution": "720p",
+        "duration_s": 4
+      }
+    },
+    {
+      "id": "veo-3.1-fast",
+      "display_name": "Veo 3.1 Fast",
+      "provider": "google",
+      "adapter": "video.veo",
+      "vendor_model": "veo-3.1-fast-generate-preview",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "9:16"
+      ],
+      "resolutions": [
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "durations_s": [
+        4,
+        6,
+        8
+      ],
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://ai.google.dev/gemini-api/docs/video",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "google-gemini/cookbook model selector and google-genai test constants"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.1,
+        "source_url": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+        "as_of": "2026-09-30",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "720p": 0.1,
+            "1080p": 0.12,
+            "4k": 0.3
+          }
+        },
+        "note": "per second with audio"
+      },
+      "credit_unit": "model_veo_3_1_fast_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": null,
+      "terms_notes": [
+        "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "aspect_ratio": "16:9",
+        "resolution": "720p",
+        "duration_s": 4
+      }
+    },
+    {
+      "id": "veo-3.1-lite",
+      "display_name": "Veo 3.1 Lite",
+      "provider": "google",
+      "adapter": "video.veo",
+      "vendor_model": "veo-3.1-lite-generate-preview",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "9:16"
+      ],
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "durations_s": [
+        4,
+        6,
+        8
+      ],
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://ai.google.dev/gemini-api/docs/video",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "google-gemini/cookbook model selector (Gemini API id; the -001 id is Vertex only)"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.05,
+        "source_url": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+        "as_of": "2026-09-30",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "720p": 0.05,
+            "1080p": 0.08
+          }
+        },
+        "note": "per second with audio"
+      },
+      "credit_unit": "model_veo_3_1_lite_second",
+      "entitlement": "models_video:basic",
+      "terms_gate": null,
+      "terms_notes": [
+        "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "aspect_ratio": "16:9",
+        "resolution": "720p",
+        "duration_s": 4
+      }
+    },
+    {
+      "id": "kling-v2.6",
+      "display_name": "Kling 2.6",
+      "provider": "kling",
+      "adapter": "video.kling",
+      "vendor_model": "kling-v2-6",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "resolutions": [],
+      "durations_s": [
+        5,
+        10
+      ],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://kling.ai/document-api/apiReference/model/textToVideo",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "search extracts of kling.ai/document-api: /v1/videos/{text2video|image2video}, model_name, JWT or API key",
+        "note": "Kling files the /v1/videos pages under legacy; base URL api-singapore.klingai.com"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false
+      },
+      "credit_unit": "model_kling_v2_6_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "Kling paid-service terms: licence is non-sublicensable; offering it to our users may read as sublicensing — written confirmation needed"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "aspect_ratio": "16:9",
+        "duration_s": 5
+      }
+    },
+    {
+      "id": "kling-v3",
+      "display_name": "Kling 3.0",
+      "provider": "kling",
+      "adapter": "video.kling",
+      "vendor_model": "kling-v3",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "resolutions": [],
+      "durations_s": [
+        5,
+        10
+      ],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://kling.ai/document-api/apiReference/model/textToVideo",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "search extracts of the Kling model list (kling-v3, 3-15 s, native audio)",
+        "note": "the v3 per-model endpoint is not confirmed; the adapter uses the legacy /v1/videos path, which a probe must prove"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false
+      },
+      "credit_unit": "model_kling_v3_second",
+      "entitlement": "models_video:ultra",
+      "terms_gate": "terms_review_required",
+      "terms_notes": [
+        "Kling paid-service terms: licence is non-sublicensable; offering it to our users may read as sublicensing — written confirmation needed"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "aspect_ratio": "16:9",
+        "duration_s": 5
+      }
+    },
+    {
+      "id": "minimax-hailuo-2.3",
+      "display_name": "MiniMax Hailuo 2.3",
+      "provider": "minimax",
+      "adapter": "video.minimax",
+      "vendor_model": "MiniMax-Hailuo-2.3",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [],
+      "resolutions": [
+        "768p",
+        "1080p"
+      ],
+      "durations_s": [
+        6,
+        10
+      ],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://platform.minimax.io/docs/api-reference/video-generation-i2v",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "MiniMax-AI/MiniMax-MCP (vendor's own client): DEFAULT_T2V_MODEL, /v1/video_generation, /v1/query/video_generation, /v1/files/retrieve"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false
+      },
+      "credit_unit": "model_minimax_hailuo_2_3_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": null,
+      "terms_notes": [
+        "MiniMax API terms (resale clauses) could not be read; rate control applies to shared-key multi-user patterns"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "resolution": "768p",
+        "duration_s": 6
+      }
+    },
+    {
+      "id": "runway-gen4.5",
+      "display_name": "Runway Gen-4.5",
+      "provider": "runway",
+      "adapter": "video.runway",
+      "vendor_model": "gen4.5",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4",
+        "21:9"
+      ],
+      "aspect_ratios_by_capability": {
+        "t2v": [
+          "16:9",
+          "9:16"
+        ]
+      },
+      "resolutions": [],
+      "durations_s": [
+        5,
+        10
+      ],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.dev.runwayml.com/guides/using-the-api/",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "runwayml/sdk-python: text_to_video gen4.5 ratios 1280:720|720:1280, image_to_video six ratios, X-Runway-Version 2024-11-06"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.12,
+        "source_url": "https://docs.dev.runwayml.com/guides/pricing",
+        "as_of": "2026-09-30",
+        "confirmed": false,
+        "note": "12 credits/s at $0.01 per credit (search extract)"
+      },
+      "credit_unit": "model_runway_gen4_5_second",
+      "entitlement": "models_video:ultra",
+      "terms_gate": null,
+      "terms_notes": [
+        "Runway API terms: show 'Powered by Runway' linking runwayml.com where the feature appears; our user terms must protect Runway at least as much"
+      ],
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runwayml.com"
+      },
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 1000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "aspect_ratio": "16:9",
+        "duration_s": 5
+      }
+    },
+    {
+      "id": "runway-gen4-turbo",
+      "display_name": "Runway Gen-4 Turbo",
+      "provider": "runway",
+      "adapter": "video.runway",
+      "vendor_model": "gen4_turbo",
+      "capabilities": [
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4",
+        "21:9"
+      ],
+      "resolutions": [],
+      "durations_s": [
+        5,
+        10
+      ],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.dev.runwayml.com/guides/using-the-api/",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "runwayml/sdk-python: image_to_video gen4_turbo",
+        "note": "image-to-video only"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.05,
+        "source_url": "https://docs.dev.runwayml.com/guides/pricing",
+        "as_of": "2026-09-30",
+        "confirmed": false,
+        "note": "5 credits/s at $0.01 per credit, minimum 10 credits per task (search extract)"
+      },
+      "credit_unit": "model_runway_gen4_turbo_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": null,
+      "terms_notes": [
+        "Runway API terms: show 'Powered by Runway' linking runwayml.com where the feature appears; our user terms must protect Runway at least as much"
+      ],
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runwayml.com"
+      },
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 1000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 4,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "i2v",
+        "prompt": "slow push in",
+        "aspect_ratio": "16:9",
+        "duration_s": 5,
+        "input_image": "generated"
+      }
+    },
+    {
+      "id": "luma-ray-3.2",
+      "display_name": "Luma Ray 3.2",
+      "provider": "luma",
+      "adapter": "video.luma",
+      "vendor_model": "ray-3.2",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "21:9",
+        "16:9",
+        "4:3",
+        "3:2",
+        "1:1",
+        "3:4",
+        "2:3",
+        "9:16"
+      ],
+      "resolutions": [
+        "540p",
+        "720p",
+        "1080p"
+      ],
+      "durations_s": [
+        5,
+        10
+      ],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.agents.lumalabs.ai",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "luma-agents 0.5.0 (vendor SDK): POST /v1/generations type=video, video.duration 5s|10s, video.resolution, output[].url",
+        "note": "Dream Machine API and Ray 2 are deprecated by Luma"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false
+      },
+      "credit_unit": "model_luma_ray_3_2_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": "written_consent_required",
+      "terms_notes": [
+        "Luma API terms: no product that substantially replicates Luma, and no output as a standalone service, without Luma's prior written consent"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 5,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "aspect_ratio": "16:9",
+        "resolution": "540p",
+        "duration_s": 5
+      }
+    },
+    {
+      "id": "seedance-1.0-pro",
+      "display_name": "Seedance 1.0 Pro",
+      "provider": "bytedance",
+      "adapter": "video.seedance",
+      "vendor_model": "seedance-1-0-pro-250528",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16",
+        "21:9"
+      ],
+      "resolutions": [
+        "480p",
+        "720p",
+        "1080p"
+      ],
+      "durations_s": [
+        5,
+        10
+      ],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.byteplus.com/en/docs/ModelArk/1587798",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "byteplus-python-sdk-v2 3.0.61 (endpoint, body fields, ap-southeast host); model id from search extracts of docs.byteplus.com",
+        "note": "BytePlus international region (owner decision D5)"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "$2.50 per 1M tokens, tokens = W×H×fps×seconds/1024 (search extract); no per-second figure"
+      },
+      "credit_unit": "model_seedance_1_0_pro_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": null,
+      "terms_notes": [],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "aspect_ratio": "16:9",
+        "resolution": "480p",
+        "duration_s": 5
+      }
+    },
+    {
+      "id": "seedance-1.5-pro",
+      "display_name": "Seedance 1.5 Pro",
+      "provider": "bytedance",
+      "adapter": "video.seedance",
+      "vendor_model": "seedance-1-5-pro-251215",
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16",
+        "21:9"
+      ],
+      "resolutions": [
+        "480p",
+        "720p",
+        "1080p"
+      ],
+      "durations_s": [
+        5,
+        10
+      ],
+      "audio_out": true,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.byteplus.com/en/docs/ModelArk/2168087",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "byteplus-python-sdk-v2 3.0.61 (endpoint, generate_audio); model id from search extracts of BytePlus pages"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false
+      },
+      "credit_unit": "model_seedance_1_5_pro_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": null,
+      "terms_notes": [],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "aspect_ratio": "16:9",
+        "resolution": "480p",
+        "duration_s": 5
+      }
+    },
+    {
+      "id": "wan-2.7",
+      "display_name": "Wan 2.7",
+      "provider": "alibaba",
+      "adapter": "video.wan",
+      "vendor_model": "wan2.7-t2v",
+      "vendor_model_by_capability": {
+        "i2v": "wan2.7-i2v"
+      },
+      "capabilities": [
+        "t2v",
+        "i2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4"
+      ],
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "durations_s": [
+        5,
+        10
+      ],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://www.alibabacloud.com/help/en/model-studio/text-to-video-api-reference",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "dashscope 1.27.7 (vendor SDK): video-synthesis path, resolution/ratio parameters, recommended models wan2.7-t2v, wan2.7-i2v",
+        "note": "i2v sends input.media[first_frame] (search extract); set WAN_WORKSPACE_ID for the workspace host"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false
+      },
+      "credit_unit": "model_wan_2_7_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": null,
+      "terms_notes": [],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "aspect_ratio": "16:9",
+        "resolution": "720p",
+        "duration_s": 5
+      }
+    },
+    {
+      "id": "wan-3.0",
+      "display_name": "Wan 3.0",
+      "provider": "alibaba",
+      "adapter": "video.wan",
+      "vendor_model": "wan3.0-video",
+      "capabilities": [
+        "t2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [
+        "16:9",
+        "9:16",
+        "1:1"
+      ],
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "durations_s": [
+        5,
+        10
+      ],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://www.alibabacloud.com/help/en/model-studio/use-video-generation",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "search extracts of the Model Studio API reference (wan3.0-video, resolution/ratio/duration)",
+        "note": "documented on the workspace host only; needs WAN_WORKSPACE_ID"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.1,
+        "source_url": "https://www.alibabacloud.com/blog/alibaba-unveils-wan2-7-video-to-elevate-creators-from-executors-to-directors_603009",
+        "as_of": "2026-09-30",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "720p": 0.1,
+            "1080p": 0.2
+          }
+        },
+        "note": "vendor blog, search extract"
+      },
+      "credit_unit": "model_wan_3_0_second",
+      "entitlement": "models_video:ultra",
+      "terms_gate": null,
+      "terms_notes": [],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 5,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "aspect_ratio": "16:9",
+        "resolution": "720p",
+        "duration_s": 5
+      }
+    },
+    {
+      "id": "flux-3-video",
+      "display_name": "FLUX 3 Video",
+      "provider": "bfl",
+      "adapter": "video.bfl",
+      "vendor_model": "flux-3-video",
+      "capabilities": [
+        "t2v"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "durations_s": [],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.bfl.ai/release-notes",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "search extract of docs.bfl.ai release notes: flux-3-video, resolution hd/fhd",
+        "note": "duration and aspect fields not confirmed; the adapter sends only prompt and resolution"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.17,
+        "source_url": "https://docs.bfl.ai/release-notes",
+        "as_of": "2026-09-30",
+        "confirmed": false,
+        "note": "from $0.17/s full render (search extract)"
+      },
+      "credit_unit": "model_flux_3_video_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": null,
+      "terms_notes": [
+        "BFL FLUX API terms: never expose FLUX through an endpoint third parties can call"
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "t2v",
+        "prompt": "a paper boat drifting on a calm lake",
+        "resolution": "720p"
+      }
+    },
+    {
+      "id": "elevenlabs-v4",
+      "display_name": "ElevenLabs v4",
+      "provider": "elevenlabs",
+      "adapter": "audio.elevenlabs_tts",
+      "vendor_model": "eleven_v4",
+      "capabilities": [
+        "tts"
+      ],
+      "output": "audio",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://elevenlabs.io/docs/overview/capabilities/text-to-speech/eleven-v4",
+        "checked_at": "2026-09-30",
+        "source": "vendor_docs_search",
+        "evidence": "search extracts of elevenlabs.io docs (eleven_v4, 90+ languages)",
+        "note": "character limit not found; 3000 kept as a safe ceiling"
+      },
+      "pricing": {
+        "unit": "character",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false
+      },
+      "credit_unit": "model_elevenlabs_v4_character",
+      "entitlement": "models_audio:premium",
+      "terms_gate": "plan_required:scale",
+      "terms_notes": [
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 3000,
+        "max_concurrent_per_org": 4
+      },
+      "quality_tier": 5,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "tts",
+        "prompt": "Hello from Nightshift."
+      }
+    },
+    {
+      "id": "elevenlabs-v3",
+      "display_name": "ElevenLabs v3",
+      "provider": "elevenlabs",
+      "adapter": "audio.elevenlabs_tts",
+      "vendor_model": "eleven_v3",
+      "capabilities": [
+        "tts"
+      ],
+      "output": "audio",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://elevenlabs.io/docs/overview/models",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "elevenlabs/elevenlabs-python: POST v1/text-to-speech/{voice_id}, model eleven_v3"
+      },
+      "pricing": {
+        "unit": "character",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false
+      },
+      "credit_unit": "model_elevenlabs_v3_character",
+      "entitlement": "models_audio:premium",
+      "terms_gate": "plan_required:scale",
+      "terms_notes": [
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 3000,
+        "max_concurrent_per_org": 4
+      },
+      "quality_tier": 5,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "tts",
+        "prompt": "Hello from Nightshift."
+      }
+    },
+    {
+      "id": "elevenlabs-multilingual-v2",
+      "display_name": "ElevenLabs Multilingual v2",
+      "provider": "elevenlabs",
+      "adapter": "audio.elevenlabs_tts",
+      "vendor_model": "eleven_multilingual_v2",
+      "capabilities": [
+        "tts"
+      ],
+      "output": "audio",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://elevenlabs.io/docs/overview/models",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "elevenlabs/elevenlabs-python: model eleven_multilingual_v2"
+      },
+      "pricing": {
+        "unit": "character",
+        "provider_usd_per_unit": 8e-05,
+        "source_url": "https://elevenlabs.io/pricing/api",
+        "as_of": "2026-09-30",
+        "confirmed": false,
+        "note": "$0.08 per 1K characters (search extract)"
+      },
+      "credit_unit": "model_elevenlabs_multilingual_v2_character",
+      "entitlement": "models_audio:basic",
+      "terms_gate": "plan_required:scale",
+      "terms_notes": [
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 10000,
+        "max_concurrent_per_org": 4
+      },
+      "quality_tier": 4,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "tts",
+        "prompt": "Hello from Nightshift."
+      }
+    },
+    {
+      "id": "elevenlabs-flash-v2.5",
+      "display_name": "ElevenLabs Flash v2.5",
+      "provider": "elevenlabs",
+      "adapter": "audio.elevenlabs_tts",
+      "vendor_model": "eleven_flash_v2_5",
+      "capabilities": [
+        "tts"
+      ],
+      "output": "audio",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://elevenlabs.io/docs/overview/models",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "elevenlabs/elevenlabs-python: model eleven_flash_v2_5"
+      },
+      "pricing": {
+        "unit": "character",
+        "provider_usd_per_unit": 4e-05,
+        "source_url": "https://elevenlabs.io/pricing/api",
+        "as_of": "2026-09-30",
+        "confirmed": false,
+        "note": "$0.04 per 1K characters (search extract)"
+      },
+      "credit_unit": "model_elevenlabs_flash_v2_5_character",
+      "entitlement": "models_audio:basic",
+      "terms_gate": "plan_required:scale",
+      "terms_notes": [
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 40000,
+        "max_concurrent_per_org": 4
+      },
+      "quality_tier": 3,
+      "speed_tier": 5,
+      "probe": {
+        "capability": "tts",
+        "prompt": "Hello from Nightshift."
+      }
+    },
+    {
+      "id": "elevenlabs-sfx",
+      "display_name": "ElevenLabs Sound Effects",
+      "provider": "elevenlabs",
+      "adapter": "audio.elevenlabs_sfx",
+      "vendor_model": "eleven_text_to_sound_v2",
+      "capabilities": [
+        "sfx"
+      ],
+      "output": "audio",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [
+        1,
+        2,
+        3,
+        5,
+        10,
+        15,
+        20,
+        30
+      ],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert",
+        "checked_at": "2026-09-30",
+        "source": "vendor_sdk",
+        "evidence": "elevenlabs/elevenlabs-python: POST v1/sound-generation, SfxModelId eleven_text_to_sound_v2, 0.5-30 s",
+        "note": "whole seconds only here; the vendor also accepts 0.5 s"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.002,
+        "source_url": "https://elevenlabs.io/pricing/api",
+        "as_of": "2026-09-30",
+        "confirmed": false,
+        "note": "$0.12 per minute (search extract)"
+      },
+      "credit_unit": "model_elevenlabs_sfx_second",
+      "entitlement": "models_audio:basic",
+      "terms_gate": "plan_required:scale",
+      "terms_notes": [
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 450,
+        "max_concurrent_per_org": 4
+      },
+      "quality_tier": 4,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "sfx",
+        "prompt": "a short door knock",
+        "duration_s": 1
+      }
+    }
+  ]
+}
