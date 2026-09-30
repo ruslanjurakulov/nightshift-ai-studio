@@ -14,7 +14,7 @@ Migration: `supabase/migrations/0031_public_api.sql` (needs 0017–0030).
 | :-- | :-- |
 | Off by default | An organization that has bought **any** credit pack (a `purchase` row in the credit ledger — the rule `derivePlan` uses), or the operator's own exempt organization, can activate it. An owner/admin clicks **Activate API** in **Developers** and accepts the Terms. Before that no key can be created and no key works (`api_not_activated`). |
 | Its own balance | US cents in `api_accounts`, not site credits. Top-ups $5–$5,000 per payment through Paddle; append-only `api_ledger` (topup / hold / usage / release / refund / adjustment). |
-| Keys | `nsk_live_` + 32 random bytes in base62 (43 chars). Generated **in the admin's browser**; only the SHA-256 and the first 8 characters of the random part reach the database. Shown once. Max 10 active per organization. Optional monthly spend limit per key. |
+| Keys | `nsk_live_` + 32 random bytes in base62 (43 chars). Generated **in the admin's browser**; only the SHA-256 reaches the database — no part of the key (0040 retired the 8-character display prefix 0031 kept). Shown once, in that browser. Listed by name, id, created and last-used time. Max 10 active per organization. Optional monthly spend limit per key. |
 | Who a key is | Its creator, inside the key's organization only. If the creator leaves or is no longer owner/admin, the key stops (`key_owner_not_admin`). |
 
 ## Pricing (api_prices, editable by a platform owner/admin)
@@ -86,7 +86,7 @@ TypeScript twin of the SQL; `tests/api-pricing.test.ts` pins them together.
   organization, video in the same organization, publish gate, approvals,
   connected account — run **unchanged**, instead of a second copy of those
   rules that could drift. `requested_by` is the creator, and every action is
-  written to `app_audit_log` with the key's id and display prefix.
+  written to `app_audit_log` with the key's id (never any part of the key).
 * **Same validation as the site.** `POST /videos` accepts exactly the params
   0019's insert policy lets a browser queue (topic, niche, duration, language,
   visual_style, video_provider, image_provider), checked by the same
@@ -98,9 +98,10 @@ TypeScript twin of the SQL; `tests/api-pricing.test.ts` pins them together.
 * **Grants.** Entry points: `anon` only. Console functions: `authenticated`.
   `api_add_topup` / `api_refund_topup` / `api_hold_start`: `service_role`.
   Everything else: nobody. The key hash column is readable by no role.
-* **Logging.** Only the key's display prefix (`nsk_live_AbCd1234…`) is ever
-  logged; the key itself never leaves the browser that made it or the program
-  that holds it.
+* **Logging.** No part of a key is ever logged, stored or shown after
+  creation: server log lines carry the request id, status and error code, and
+  the request id finds the key's id in `api_requests`. The key itself never
+  leaves the browser that made it or the program that holds it.
 
 ## Wire format
 
@@ -155,3 +156,8 @@ and `PADDLE_API_TOPUP_PRODUCT_ID` (variable) for the web app, and
 the function. Adjust prices with `update public.api_prices set cents = … where
 unit = 'video_minute'` (platform owner/admin). Correct a balance with
 `select public.api_adjust_balance('<org>', <cents>, '<why>')`.
+
+## MCP
+
+The same keys, limits and prices are available to AI assistants through the
+remote MCP server at `/api/mcp` — see `docs/MCP.md`.

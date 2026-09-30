@@ -126,6 +126,42 @@ all typecheck cleanly and fail the build.
 Every user-visible string in the dashboard goes in all three of
 `lib/i18n/{en,ru,uz}.ts` — never inline.
 
+## Definition of Done
+
+A feature is not done because its page renders. It is done when the whole
+chain actually works: UI → server route → authorization (RLS / security-definer
+SQL) → credits (quote, hold, capture, refund) → job → provider → result →
+storage → project/editor → render → export/publish. And when it survives:
+refresh mid-job, provider timeout or outage, insufficient credits, duplicate
+submit, concurrent requests, expired session, malformed input, mobile width.
+
+Every screen shows loading, empty, success, error, retry, disabled and
+insufficient-credits states; none is a dead end. Nothing is shown as available
+that is not: a model appears only after a real call through its adapter has
+succeeded, and a price only when the backend computes it.
+
+## The team
+
+Work is done by named project subagents (`.claude/agents/`), coordinated by
+the main session (**Atlas**), one feature per draft PR:
+
+| Agent | Role |
+|---|---|
+| **Scout** | verifies an external provider/API from official docs before anything is built on it |
+| **Forge** | builds the feature in its own worktree and branch |
+| **Lens** | reviews the diff for bugs, regressions and rule violations (read-only) |
+| **Probe** | writes and runs tests, including browser E2E and edge cases |
+| **Breach** | attacks the change inside the isolated security lab only — never production |
+| **Sentinel** | triages Breach/Lens findings, root cause, severity, the regression test |
+| **Pixel** | audits UI states, responsive layout, accessibility and en/ru/uz copy |
+
+Pipeline per PR: Scout (when a provider is involved) → Forge → Lens → Probe →
+Breach → Sentinel → Forge fixes → Pixel (when there is UI) → Atlas final check
+→ CI green → the owner is told it is ready. Every confirmed vulnerability
+becomes a permanent failing-then-passing test in `tests/security/`. Critical
+and high findings block "ready". Independent PRs run in parallel, each in its
+own worktree; the shared checkout's branch is never changed.
+
 ## Writing code here
 
 Comments explain **why**, not what. The reasoning that made a line necessary is

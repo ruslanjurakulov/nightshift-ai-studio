@@ -1,11 +1,12 @@
 /**
- * API keys (migration 0031) — the pure half, shared by the browser that
+ * API keys (migrations 0031, 0040) — the pure half, shared by the browser that
  * creates a key and the server that checks one.
  *
  * A key is `nsk_live_` + 32 random bytes in base62 (43 characters). It is
- * generated in the admin's browser and shown once; only its SHA-256 (hex) and
- * the first 8 characters of its random part travel to the database, so the
- * key itself is never sent to this app's server or stored anywhere. The API
+ * generated in the admin's browser and shown there once; only its SHA-256
+ * (hex) travels to the database. No part of the key — not a prefix, not a
+ * length, not a fragment — is stored, shown again or logged (CLAUDE.md #1):
+ * keys are told apart by their name, id, creation and last-use time. The API
  * routes hash the presented key the same way and look the hash up.
  *
  * Web Crypto only (crypto.getRandomValues, crypto.subtle), so the same code
@@ -14,10 +15,19 @@
 
 export const API_KEY_PREFIX = "nsk_live_";
 export const API_KEY_SECRET_LENGTH = 43;
-export const API_KEY_DISPLAY_LENGTH = 8;
 export const API_KEY_RE = /^nsk_live_[0-9A-Za-z]{43}$/;
 export const API_KEY_HASH_RE = /^[0-9a-f]{64}$/;
 export const MAX_ACTIVE_KEYS = 10;
+
+/** The columns the Developer console lists a key by: its name, id and times.
+ *  Never the retired `prefix` column (0040) and never the hash. */
+export const API_KEY_LIST_COLUMNS = "id,name,monthly_limit_cents,created_at,last_used_at,revoked_at";
+
+/** What the browser sends to create_api_key (0040): the key's SHA-256 and
+ *  nothing else of the key. */
+export function createKeyArgs(orgId: string, name: string, keyHash: string, limitCents: number | null) {
+  return { p_org: orgId, p_name: name.slice(0, 60), p_key_hash: keyHash, p_monthly_limit_cents: limitCents };
+}
 
 const B62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
@@ -35,31 +45,18 @@ export function base62(bytes: Uint8Array, length = API_KEY_SECRET_LENGTH): strin
 }
 
 export interface NewApiKey {
-  /** The whole key: shown once, never stored. */
+  /** The whole key: shown once, in the browser that made it; never stored. */
   key: string;
-  /** The first 8 characters of the random part, for telling keys apart. */
-  prefix: string;
 }
 
 export function generateApiKey(
   random: (n: number) => Uint8Array = (n) => globalThis.crypto.getRandomValues(new Uint8Array(n)),
 ): NewApiKey {
-  const secret = base62(random(32));
-  return { key: API_KEY_PREFIX + secret, prefix: secret.slice(0, API_KEY_DISPLAY_LENGTH) };
+  return { key: API_KEY_PREFIX + base62(random(32)) };
 }
 
 export function isWellFormedKey(key: unknown): key is string {
   return typeof key === "string" && API_KEY_RE.test(key);
-}
-
-/** The display prefix of a well-formed key, or null. */
-export function keyPrefix(key: string): string | null {
-  return isWellFormedKey(key) ? key.slice(API_KEY_PREFIX.length, API_KEY_PREFIX.length + API_KEY_DISPLAY_LENGTH) : null;
-}
-
-/** How a key is named on screen and in logs — never more of it than this. */
-export function displayKey(prefix: string): string {
-  return `${API_KEY_PREFIX}${prefix}…`;
 }
 
 export async function sha256Hex(text: string): Promise<string> {
