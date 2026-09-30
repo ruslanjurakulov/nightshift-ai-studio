@@ -43,7 +43,9 @@ export interface PaddleConfig {
 
 export const PADDLE_JS_URL = "https://cdn.paddle.com/paddle/v2/paddle.js";
 
-const PRICE_ID_RE = /^pri_[a-z0-9]{10,40}$/;
+/** A Paddle price id (pri_…). */
+export const PADDLE_PRICE_ID_RE = /^pri_[a-z0-9]{10,40}$/;
+const PRICE_ID_RE = PADDLE_PRICE_ID_RE;
 const TOKEN_RE = /^(test|live)_[A-Za-z0-9]{10,}$/;
 
 /** The public env this reads. Literal names only — see resolvePaddleConfig's caller. */
@@ -135,6 +137,36 @@ export function resolvePaddleApi(env: {
     productId,
     baseUrl: rawEnv === "production" ? "https://api.paddle.com" : "https://sandbox-api.paddle.com",
   };
+}
+
+/**
+ * The server-side Paddle API for the customer portal (0034, "Manage
+ * subscription"): only the API key and the environment's base URL — unlike
+ * resolvePaddleApi, no top-up product is needed. Null when unset or when a
+ * live key is paired with the sandbox (or the reverse).
+ */
+export function resolvePaddleServerKey(env: {
+  PADDLE_API_KEY?: string;
+  NEXT_PUBLIC_PADDLE_ENV?: string;
+}): { apiKey: string; baseUrl: string } | null {
+  const apiKey = (env.PADDLE_API_KEY ?? "").trim();
+  const rawEnv = (env.NEXT_PUBLIC_PADDLE_ENV ?? "").trim().toLowerCase();
+  if (apiKey.length < 20 || /\s/.test(apiKey)) return null;
+  if (rawEnv !== "" && rawEnv !== "sandbox" && rawEnv !== "production") return null;
+  if (/^pdl_(sdbx|live)_/.test(apiKey) && apiKey.startsWith("pdl_live_") !== (rawEnv === "production")) return null;
+  return { apiKey, baseUrl: rawEnv === "production" ? "https://api.paddle.com" : "https://sandbox-api.paddle.com" };
+}
+
+/** The customer portal's overview link from a portal-session answer, or null. */
+export function portalOverviewUrl(json: unknown): string | null {
+  const url = (json as { data?: { urls?: { general?: { overview?: unknown } } } } | null)?.data?.urls?.general?.overview;
+  if (typeof url !== "string") return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && /(^|\.)paddle\.com$/.test(u.hostname) ? url : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Next inlines NEXT_PUBLIC_* at build time only when each is named literally. */
