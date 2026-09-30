@@ -101,6 +101,12 @@ describe("activation eligibility (mirrors api_org_eligible)", () => {
     expect(apiEligible(ORG, null)).toBe(false);
   });
 
+  it("also opens to a plan with the api_access entitlement (0034)", () => {
+    expect(apiEligible(ORG, [], true)).toBe(true);
+    const SQL_0034 = readFileSync(join(__dirname, "..", "..", "supabase/migrations/0034_plans_entitlements.sql"), "utf8");
+    expect(SQL_0034).toMatch(/or public\.has_entitlement_internal\(p_org, 'api_access'\)\)/);
+  });
+
   it("is always open to the operator's own organization", () => {
     expect(apiEligible(DEFAULT_ORG_ID, [])).toBe(true);
     expect(SQL).toMatch(/public\.credits_exempt\(p_org\)\s+or exists \(select 1 from public\.credit_transactions t where t\.org_id = p_org and t\.kind = 'purchase'\)/);

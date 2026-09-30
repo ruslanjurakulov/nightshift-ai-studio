@@ -685,6 +685,17 @@ class Worker:
                 logger.info("credits: released %d stale reservation(s)", int(n))
         except credit_rules.CreditsUnavailable as e:
             logger.info("credits: expiry sweep skipped (%s)", e)
+        # Plans (migration 0034): expired credit lots. Separate, so a database
+        # without 0034 still gets its holds swept.
+        expire_lots = getattr(self.credits, "expire_lots", None)
+        if expire_lots is None:
+            return
+        try:
+            n = expire_lots()
+            if n:
+                logger.info("credits: %s expired credit(s) left the balance", n)
+        except credit_rules.CreditsUnavailable as e:
+            logger.info("credits: lot expiry skipped (%s)", e)
 
     def _execute(self, job: Mapping, argv: List[str], run_env: Mapping[str, str],
                  channel_row: Mapping) -> str:
