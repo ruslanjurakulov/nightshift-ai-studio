@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { getDictionary } from "@/lib/i18n/server";
 import { createClient } from "@/lib/supabase/server";
 import { readCreditPrices } from "@/lib/server/credits";
-import { paddleConfig } from "@/lib/paddle";
+import { paddleClient, paddleConfig } from "@/lib/paddle";
 import { PRICING_ENV, creditRates, resolvePricing, type CreditRates } from "@/lib/pricing";
+import { PLAN_ENV, planMatrix } from "@/lib/plans";
+import { readPlanCatalog } from "@/lib/server/plans";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { PricingView } from "@/components/pricing/PricingView";
 
@@ -36,10 +38,21 @@ export default async function PricingPage() {
     const res = await readCreditPrices(supabase);
     if (res.supported) rates = creditRates(res.prices);
   }
+  // The plan catalog is a public price list (0034): read signed in or out.
+  const catalog = supabase ? await readPlanCatalog(supabase).catch(() => null) : null;
+  const plans = planMatrix(catalog, PLAN_ENV, paddleClient);
 
   return (
     <PublicShell t={t}>
-      <PricingView t={t} locale={locale} pricing={pricing} signedIn={Boolean(user)} rates={rates} />
+      <PricingView
+        t={t}
+        locale={locale}
+        pricing={pricing}
+        signedIn={Boolean(user)}
+        rates={rates}
+        plans={plans}
+        packValidMonths={catalog?.packValidMonths}
+      />
     </PublicShell>
   );
 }

@@ -6,6 +6,7 @@
  * nobody set, or an origin nobody configured is left out, never filled in.
  */
 
+import { plansOnSale, type PlanMatrix } from "@/lib/plans";
 import type { Pricing } from "@/lib/pricing";
 import type { CreditPackId } from "@/lib/paddle";
 
@@ -49,6 +50,11 @@ export type PricingTeaser =
   | {
       kind: "packs";
       packs: { id: CreditPackId; credits: number; price: string | null }[];
+    }
+  | {
+      /** Monthly plans (0034) are on sale: the teaser lists them instead of packs. */
+      kind: "plans";
+      plans: { id: string; name: string; credits: number; price: string | null }[];
     };
 
 /**
@@ -61,7 +67,15 @@ export type PricingTeaser =
  * section says pricing is announced at launch. It never prints a number the
  * owner did not set.
  */
-export function pricingTeaser(pricing: Pricing): PricingTeaser {
+export function pricingTeaser(pricing: Pricing, plans: PlanMatrix | null = null): PricingTeaser {
+  if (plans && plansOnSale(plans)) {
+    return {
+      kind: "plans",
+      plans: plans.columns
+        .filter((c) => !c.isDefault && (c.priceId !== null || c.displayPrice !== null))
+        .map((c) => ({ id: c.id, name: c.name, credits: c.monthlyCredits, price: c.displayPrice })),
+    };
+  }
   if (pricing.source === "none" || pricing.packs.length === 0) return { kind: "announced" };
   return {
     kind: "packs",

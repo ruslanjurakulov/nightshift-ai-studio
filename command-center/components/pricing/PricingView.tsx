@@ -5,7 +5,9 @@ import { formatCredits } from "@/lib/credits";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import { ALL_CHANNELS_SLUG } from "@/lib/channels";
 import type { CreditRates, Pricing } from "@/lib/pricing";
+import { plansOnSale, type PlanMatrix as Matrix } from "@/lib/plans";
 import { PackCards } from "@/components/pricing/PackCards";
+import { PlanMatrix } from "@/components/pricing/PlanMatrix";
 
 const PADDLE_BUYER_TERMS = "https://www.paddle.com/legal/checkout-buyer-terms";
 
@@ -23,6 +25,8 @@ export function PricingView({
   pricing,
   signedIn,
   rates,
+  plans,
+  packValidMonths,
 }: {
   t: Dictionary;
   locale: Locale;
@@ -30,6 +34,10 @@ export function PricingView({
   signedIn: boolean;
   /** Live rates; null when the visitor may not read them or 0020 is not applied. */
   rates: CreditRates | null;
+  /** The plan matrix (0034); null when the catalog could not be read. */
+  plans: Matrix | null;
+  /** Top-up validity from the database (credit_lot_policies); undefined = not known, use the env. */
+  packValidMonths?: number | null;
 }) {
   const p = t.pricing;
   const steps = [
@@ -39,7 +47,11 @@ export function PricingView({
     { icon: Eye, title: p.how4Title, body: p.how4Body },
   ];
   const rateText = (n: number | null) => (n === null ? p.rateUnset : fmt(p.rateValue, { n: formatCredits(n, locale) }));
-  const expiry = CREDIT_EXPIRY_MONTHS === null ? p.expiryNever : fmt(p.expiryAfter, { m: CREDIT_EXPIRY_MONTHS });
+  // The database's own policy when it could be read (it is what expires the
+  // credits); the operator's env otherwise.
+  const months = packValidMonths === undefined ? CREDIT_EXPIRY_MONTHS : packValidMonths;
+  const expiry = months === null ? p.expiryNever : fmt(p.expiryAfter, { m: months });
+  const showPlans = plans !== null && plansOnSale(plans);
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-20 px-4 pb-20 pt-10 sm:px-6 sm:pt-16 lg:gap-28">
@@ -54,10 +66,33 @@ export function PricingView({
         <p className="t-lead mt-6">{p.lead}</p>
       </section>
 
+      {showPlans && plans && (
+        <section aria-labelledby="plans-title" className="flex flex-col gap-6">
+          <div className="max-w-3xl">
+            <h2 id="plans-title" className="t-section">
+              {t.plans.matrixTitle}
+            </h2>
+            <p className="t-lead mt-3">{t.plans.matrixLead}</p>
+          </div>
+          <PlanMatrix
+            matrix={plans}
+            perMinute={rates?.perMinute ?? null}
+            signedIn={signedIn}
+            subscribeHref={`/${ALL_CHANNELS_SLUG}/credits#plans`}
+          />
+          <ul className="flex max-w-3xl flex-col gap-2 text-[13px] font-light text-[var(--color-muted)]">
+            <li>{t.plans.expiresNote}</li>
+            <li>{t.plans.spendOrder}</li>
+            <li>{t.plans.apiNote}</li>
+          </ul>
+        </section>
+      )}
+
       <section aria-labelledby="packs-title" className="flex flex-col gap-6">
-        <h2 id="packs-title" className="sr-only">
-          {p.packsLabel}
+        <h2 id="packs-title" className={showPlans ? "t-section" : "sr-only"}>
+          {showPlans ? t.plans.topupsTitle : p.packsLabel}
         </h2>
+        {showPlans && <p className="t-lead -mt-3 max-w-3xl">{t.plans.topupsLead}</p>}
         {pricing.source === "none" ? (
           <div className="glass-card flex flex-col gap-3 rounded-[22px] border border-dashed border-[var(--color-primary)] p-6 sm:p-10">
             <h3 className="text-[1.5rem] font-semibold tracking-[-0.02em]">{p.comingSoonTitle}</h3>
