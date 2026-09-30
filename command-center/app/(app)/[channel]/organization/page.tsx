@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/PageHeader";
 import { OrgMembersBoard } from "@/components/org/OrgMembersBoard";
 import { CreateOrganizationForm } from "@/components/org/CreateOrganizationForm";
+import { PendingInvites } from "@/components/org/PendingInvites";
 import { getOrgContext } from "@/lib/orgs-server";
 import { isOperator } from "@/lib/auth/org-roles";
 import { getUser } from "@/lib/supabase/server";
@@ -34,11 +35,15 @@ export default async function OrganizationPage() {
         <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.org.notMigrated}</div>
       ) : org.current ? (
         <>
+          <PendingInvites />
           <OrgMembersBoard key={org.current.id} org={org.current} myUserId={user.id} team={operator} />
           <CreateOrganizationForm variant="another" />
         </>
       ) : (
-        <CreateOrganizationForm variant="first" />
+        <>
+          <PendingInvites />
+          <CreateOrganizationForm variant="first" />
+        </>
       )}
     </div>
   );
