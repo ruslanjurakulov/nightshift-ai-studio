@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { ALL_CHANNELS_SLUG } from "@/lib/channels";
-import { getUser } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
-import { paddleConfig } from "@/lib/paddle";
+import { paddleClient, paddleConfig } from "@/lib/paddle";
+import { PLAN_ENV, planMatrix } from "@/lib/plans";
+import { readPlanCatalog } from "@/lib/server/plans";
 import { PRICING_ENV, resolvePricing } from "@/lib/pricing";
 import {
   SHOWCASE,
@@ -65,7 +67,10 @@ export default async function Home() {
 
   const { t, locale } = await getDictionary();
   // The same pricing source /pricing reads; the teaser only ever shows what it holds.
-  const pricing = pricingTeaser(resolvePricing(PRICING_ENV, paddleConfig));
+  // Plans (0034) come from the public price list in the database.
+  const supabase = await createClient().catch(() => null);
+  const catalog = supabase ? await readPlanCatalog(supabase).catch(() => null) : null;
+  const pricing = pricingTeaser(resolvePricing(PRICING_ENV, paddleConfig), planMatrix(catalog, PLAN_ENV, paddleClient));
   const jsonLd = softwareApplicationJsonLd({
     name: t.brand.name,
     description: t.landing.meta.description,

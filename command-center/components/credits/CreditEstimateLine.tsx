@@ -80,7 +80,7 @@ export function CreditEstimateLine({ channelId, durationS }: { channelId: string
     <p className="mono flex flex-wrap items-center gap-x-1 text-[11px]" aria-live="polite">
       <span className="text-[var(--color-muted)]">{t.credits.estimateLabel}:</span> {body}
       {!data.exempt && (
-        <Link href={path("/credits")} className="ml-2 text-[var(--color-primary)] hover:underline">
+        <Link href={path("/credits")} className="tap-link ml-2 text-[var(--color-primary)] hover:underline">
           {t.credits.openCredits}
         </Link>
       )}

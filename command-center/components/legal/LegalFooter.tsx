@@ -21,19 +21,19 @@ export function LegalFooter({ className = "" }: { className?: string }) {
       className={`relative z-10 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 px-4 py-6 text-[12px] font-light text-[var(--color-muted)] ${className}`}
     >
       {LEGAL.legalName && <span>© {LEGAL.legalName}</span>}
-      <Link href="/pricing" className="underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline">
+      <Link href="/pricing" className="tap-link underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline">
         {t.legal.pricing}
       </Link>
-      <Link href="/privacy" className="underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline">
+      <Link href="/privacy" className="tap-link underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline">
         {t.legal.privacy}
       </Link>
-      <Link href="/terms" className="underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline">
+      <Link href="/terms" className="tap-link underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline">
         {t.legal.terms}
       </Link>
       {LEGAL.contactEmail && (
         <a
           href={`mailto:${LEGAL.contactEmail}`}
-          className="underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline"
+          className="tap-link underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline"
         >
           {LEGAL.contactEmail}
         </a>

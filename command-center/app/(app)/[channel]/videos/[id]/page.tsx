@@ -150,7 +150,7 @@ export default async function VideoDetail({
       <div className="rhythm stagger-enter">
         <Link
           href={path("/videos")}
-          className="mono text-[11px] text-[var(--color-primary)] hover:underline"
+          className="tap-link mono text-[11px] text-[var(--color-primary)] hover:underline"
         >
           {t.videoDetail.back}
         </Link>
@@ -238,7 +238,7 @@ export default async function VideoDetail({
         <div className="min-w-0">
           <Link
             href={path("/videos")}
-            className="mono text-[11px] text-[var(--color-primary)] hover:underline"
+            className="tap-link mono text-[11px] text-[var(--color-primary)] hover:underline"
           >
             {t.videoDetail.back}
           </Link>

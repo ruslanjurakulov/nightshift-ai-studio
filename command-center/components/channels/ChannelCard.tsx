@@ -323,7 +323,7 @@ export function ChannelCard({
         // This channel's videos, on this channel's own URL — the link carries
         // the lens, so the page opens already scoped.
         href={`/${encodeURIComponent(slug)}/videos`}
-        className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-primary)] hover:underline"
+        className="tap-link text-[10px] uppercase tracking-[0.22em] text-[var(--color-primary)] hover:underline"
       >
         {t.channels.videos} →
       </Link>

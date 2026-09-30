@@ -44,10 +44,11 @@ def _spec(duration=6):
 
 
 class FakeResp:
-    def __init__(self, payload=None, status=200, chunks=None):
+    def __init__(self, payload=None, status=200, chunks=None, headers=None):
         self._payload = payload
         self.status_code = status
         self._chunks = chunks or []
+        self.headers = headers or {}
 
     def json(self):
         if self._payload is None:
@@ -87,9 +88,10 @@ class FakeSession:
         self.calls.append({"method": "POST", "url": url, "json": json, "headers": headers or {}})
         return self._next(self.posts)
 
-    def get(self, url, params=None, headers=None, stream=False, timeout=None):
+    def get(self, url, params=None, headers=None, stream=False, timeout=None, allow_redirects=True):
         self.calls.append({"method": "GET", "url": url, "params": params or {},
-                           "headers": headers or {}, "stream": stream})
+                           "headers": headers or {}, "stream": stream,
+                           "allow_redirects": allow_redirects})
         return self._next(self.gets)
 
 
@@ -507,6 +509,111 @@ class WanTestCase(unittest.TestCase):
             client.submit(_spec())
         self.assertIn("top up", ctx.exception.remedy)
         _assert_no_secret(self, ctx.exception)
+
+
+# ── Veo (Gemini API) ─────────────────────────────────────────────────────────
+
+class VeoTestCase(unittest.TestCase):
+    """The committed Veo client could never produce a clip: a model id Google
+    shut down on 2025-11-12, a flat body instead of instances/parameters, no
+    `name` among the task-id keys, and a poll that ignored `done` and the
+    generatedSamples URI — so every call silently became stock footage."""
+
+    OP = "models/veo-3.1-generate-preview/operations/abc123"
+
+    def _client(self, posts=(), gets=(), **cfg):
+        values = {"VEO_API_KEY": KEY, "VEO_MODEL": "veo-3.1-generate-preview",
+                  "VEO_SUBMIT_PATH": "/v1beta/models/{model}:predictLongRunning",
+                  "VEO_BASE_URL": "https://generativelanguage.googleapis.com"}
+        values.update(cfg)
+        with mock.patch.multiple(config, **values, create=True):
+            client = vp.GenericAsyncVideoClient(vp._veo_config())
+        self.session_headers = dict(client.session.headers)
+        client.session = FakeSession(posts, gets)
+        return client
+
+    def test_defaults_are_a_live_model(self):
+        self.assertEqual(config.VEO_MODEL, "veo-3.1-generate-preview")
+        self.assertNotIn("veo-3.0", config.VEO_SUBMIT_PATH)
+
+    def test_request_is_instances_and_parameters_on_predict_long_running(self):
+        client = self._client(posts=[FakeResp({"name": self.OP})])
+        self.assertEqual(client.submit(_spec(8)), self.OP)
+        call = client.session.calls[0]
+        self.assertEqual(call["url"], "https://generativelanguage.googleapis.com/v1beta/models/"
+                                      "veo-3.1-generate-preview:predictLongRunning")
+        self.assertEqual(call["json"]["instances"], [{"prompt": "a cinematic shot of Rome"}])
+        params = call["json"]["parameters"]
+        self.assertEqual(params["durationSeconds"], 8)
+        self.assertEqual(params["aspectRatio"], "16:9")
+        self.assertIn("negativePrompt", params)
+        self.assertNotIn("prompt", call["json"])
+        self.assertEqual(self.session_headers.get("x-goog-api-key"), KEY)
+        self.assertNotIn("Authorization", self.session_headers)
+
+    def test_poll_waits_for_done_and_reads_generated_samples(self):
+        uri = "https://generativelanguage.googleapis.com/v1beta/files/f1:download?alt=media"
+        client = self._client(gets=[
+            FakeResp({"name": self.OP}),                    # not done yet
+            FakeResp({"name": self.OP, "done": True, "response": {"generateVideoResponse": {
+                "generatedSamples": [{"video": {"uri": uri}}]}}}),
+        ])
+        with _no_sleep():
+            self.assertEqual(client._await(self.OP)[:2], (OUTCOME_SUCCEEDED, uri))
+        self.assertEqual(client.session.calls[0]["url"],
+                         f"https://generativelanguage.googleapis.com/v1beta/{self.OP}")
+
+    def test_an_operation_error_and_a_safety_filter_are_failures_with_reasons(self):
+        client = self._client(gets=[FakeResp({"done": True, "error": {"code": 3, "message": "bad prompt"}})])
+        outcome = client.resume(self.OP, "/tmp/none.mp4")
+        self.assertEqual(outcome.state, OUTCOME_FAILED)
+        self.assertIn("bad prompt", outcome.reason)
+        client = self._client(gets=[FakeResp({"done": True, "response": {"generateVideoResponse": {
+            "raiMediaFilteredCount": 1, "raiMediaFilteredReasons": ["celebrity likeness"]}}})])
+        outcome = client.resume(self.OP, "/tmp/none.mp4")
+        self.assertEqual(outcome.state, OUTCOME_FAILED)
+        self.assertIn("celebrity likeness", outcome.reason)
+
+    def test_a_shut_down_model_is_refused_before_any_request(self):
+        for override in ({"VEO_MODEL": "veo-3.0-generate-preview"},
+                         {"VEO_SUBMIT_PATH": "/v1beta/models/veo-3.0-generate-preview:predictLongRunning"}):
+            with self.subTest(**override):
+                client = self._client(**override)
+                with self.assertRaises(VideoModelUnavailable) as ctx:
+                    client.submit(_spec())
+                self.assertEqual(client.session.calls, [])
+                self.assertIn("veo-3.1", ctx.exception.remedy)
+
+    def test_google_error_statuses_pick_the_remedy(self):
+        cases = ((403, "PERMISSION_DENIED", "VEO_API_KEY"), (429, "RESOURCE_EXHAUSTED", "wait"),
+                 (400, "INVALID_ARGUMENT", "will not help"))
+        for status, name, needle in cases:
+            with self.subTest(status=name):
+                client = self._client(posts=[FakeResp({"error": {"code": status, "status": name,
+                                                                 "message": "m"}}, status=status)])
+                with self.assertRaises(VideoModelUnavailable) as ctx:
+                    client.submit(_spec())
+                self.assertIn(needle, ctx.exception.remedy)
+
+    def test_the_key_goes_to_the_file_endpoint_but_not_through_a_redirect(self):
+        uri = "https://generativelanguage.googleapis.com/v1beta/files/f1:download?alt=media"
+        client = self._client(gets=[
+            FakeResp(status=302, headers={"Location": "https://storage.example.test/blob?sig=1"}),
+            FakeResp(chunks=[b"\x00\x01"]),
+        ])
+        with tempfile.TemporaryDirectory() as d:
+            out = client._download(uri, Path(d) / "v.mp4")
+            self.assertTrue(out and out.exists())
+        first, second = client.session.calls
+        self.assertFalse(first["allow_redirects"])
+        self.assertNotIn("x-goog-api-key", first["headers"])      # session header kept on Google's host
+        self.assertIsNone(second["headers"]["x-goog-api-key"])    # stripped for the other host
+
+    def test_clip_length_is_4_6_or_8(self):
+        from modules.minimax_broll import clamp_duration
+        self.assertEqual(clamp_duration(15, "veo-3.1-generate-preview"), 8)
+        self.assertEqual(clamp_duration(5, "veo-3.1-fast-generate-preview"), 4)
+        self.assertEqual(clamp_duration(7, "veo-3.1-lite-generate-preview"), 6)
 
 
 # ── shared client behaviour ──────────────────────────────────────────────────

@@ -129,6 +129,20 @@ TABLES: Dict[str, Kind] = {
     # probe runs are the operator's evidence
     "model_registry": Public(),
     "model_probe_runs": Platform(),
+    # creative generations (0036) and their provider cost (0037: operator economics)
+    "creative_jobs": Org(),
+    "creative_job_events": Org(),
+    "creative_job_costs": Platform(),
+}
+
+
+# ── views ────────────────────────────────────────────────────────────────────
+# A view must be declared here AND run with the caller's rights
+# (security_invoker), or it reads past every policy of the tables under it.
+# Only Platform views exist so far: nobody but the operator reads a row.
+
+VIEWS: Dict[str, Kind] = {
+    "creative_economics": Platform(),
 }
 
 
@@ -158,7 +172,11 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "app_members_empty": HELPER,
     "app_role_rank": HELPER_ANON,
     "bind_current_member": HELPER,
+    "accept_org_invite": USER,
     "bind_org_memberships": USER,
+    "decline_org_invite": USER,
+    "my_confirmed_email": HELPER,
+    "my_invites": USER,
     "channel_org": HELPER,
     "create_organization": USER,
     "current_app_role": HELPER,
@@ -266,6 +284,29 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "model_registry_admin": USER,
     "record_model_probe": SERVICE,
     "sync_model_registry": SERVICE,
+    # creative jobs (0036): members quote / create / cancel; the worker runs them
+    "quote_creative_job": USER,
+    "create_creative_job": USER,
+    "cancel_creative_job": USER,
+    "claim_creative_job": SERVICE,
+    "heartbeat_creative_job": SERVICE,
+    "advance_creative_job": SERVICE,
+    "finish_creative_job": SERVICE,
+    "expire_creative_jobs": SERVICE,
+    "creative_capability_supported": SERVICE,
+    "creative_end_locked": SERVICE,
+    "creative_expire_locked": SERVICE,
+    "creative_job_json": SERVICE,
+    "creative_job_log": SERVICE,
+    "creative_json_int": SERVICE,
+    "creative_params_problem": SERVICE,
+    "creative_platform_release": SERVICE,
+    "creative_platform_reserve": SERVICE,
+    "creative_price": SERVICE,
+    "creative_quantity": SERVICE,
+    "creative_refuse": SERVICE,
+    # provider costs (0037)
+    "record_creative_job_cost": SERVICE,
 }
 
 

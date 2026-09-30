@@ -175,6 +175,14 @@ class AgentConfig:
     target_duration_seconds: int = field(default_factory=lambda: cfg.VIDEO_DURATION_TARGET)
     tts_provider: str = field(default_factory=lambda: cfg.TTS_PROVIDER)
     elevenlabs_voice_id: str = field(default_factory=lambda: cfg.ELEVENLABS_VOICE_ID)
+    # The voice for the script's [VOICE:secondary] lines (quotes, character
+    # speech), picked from the account's voice list like the narrator's — or
+    # "narrator" to read them in the narrator's own voice. Empty means not
+    # chosen, and an ElevenLabs run refuses to start (audio_mixer.verify_voice)
+    # rather than reading them in a voice nobody picked. In the agent_config
+    # blob, so no migration.
+    elevenlabs_secondary_voice_id: str = field(
+        default_factory=lambda: getattr(cfg, "ELEVENLABS_SECONDARY_VOICE_ID", ""))
     edge_tts_voice: str = field(default_factory=lambda: cfg.EDGE_TTS_VOICE)
     # Free-text prompt fragments. Appended to the shared prompts rather than
     # replacing them — the retention rules in script_engine.SCRIPT_SYSTEM_PROMPT
@@ -255,6 +263,7 @@ class AgentConfig:
             "target_duration_seconds": self.target_duration_seconds,
             "tts_provider": self.tts_provider,
             "elevenlabs_voice_id": self.elevenlabs_voice_id,
+            "elevenlabs_secondary_voice_id": self.elevenlabs_secondary_voice_id,
             "edge_tts_voice": self.edge_tts_voice,
             "system_prompt": self.system_prompt,
             "niche_rules": self.niche_rules,
@@ -286,6 +295,8 @@ class AgentConfig:
             target_duration_seconds=duration,
             tts_provider=d.get("tts_provider") or base.tts_provider,
             elevenlabs_voice_id=d.get("elevenlabs_voice_id") or base.elevenlabs_voice_id,
+            elevenlabs_secondary_voice_id=(str(d.get("elevenlabs_secondary_voice_id") or "").strip()
+                                           or base.elevenlabs_secondary_voice_id),
             edge_tts_voice=d.get("edge_tts_voice") or base.edge_tts_voice,
             system_prompt=d.get("system_prompt") or "",
             niche_rules=d.get("niche_rules") or "",
