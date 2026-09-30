@@ -19,7 +19,7 @@ function caller(answer: unknown = { ok: true, status: 200, data: {} }, over: Par
     calls.push({ fn, args });
     return typeof answer === "function" ? (answer as () => { data: unknown; error: null })() : { data: answer, error: null };
   };
-  const c: ApiCaller = { keyHash: "a".repeat(64), prefix: "AbCd1234", requestId: "req_test", rpc, backend: "queue", downloads: true, ...over };
+  const c: ApiCaller = { keyHash: "a".repeat(64), requestId: "req_test", rpc, backend: "queue", downloads: true, ...over };
   return { c, calls };
 }
 
@@ -36,10 +36,10 @@ describe("authentication", () => {
     }
   });
 
-  it("hashes a well-formed key and keeps only its prefix", async () => {
-    const { key, prefix } = generateApiKey();
+  it("hashes a well-formed key and keeps nothing of the key itself", async () => {
+    const { key } = generateApiKey();
     const r = await authenticate(`Bearer ${key}`);
-    expect(r).toEqual({ ok: true, keyHash: await hashApiKey(key), prefix });
+    expect(r).toEqual({ ok: true, keyHash: await hashApiKey(key) });
   });
 });
 

@@ -1,0 +1,466 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nightshift.local/schemas/timeline.schema.json",
+  "title": "Nightshift Creative OS timeline v1",
+  "description": "A studio timeline (modules/timeline.py), rendered by the ffmpeg engine through modules/timeline_render.py. Assets are referenced by id only; a resolver turns ids into files and refuses any the caller may not use. The hand-written validator in modules/timeline.py is the twin of this schema and also checks what JSON Schema cannot: out_s > in_s, end_s > start_s, unique ids, no overlapping clips on a track, at most one V track, at most 64 audio clips and 5000 clips in all, fades that fit inside their clip, and a total length of at most 4 hours. tests/test_timeline.py keeps the two in sync.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "width",
+    "height",
+    "fps",
+    "tracks"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "width": {
+      "$ref": "#/$defs/side"
+    },
+    "height": {
+      "$ref": "#/$defs/side"
+    },
+    "fps": {
+      "enum": [
+        24,
+        25,
+        30,
+        50,
+        60
+      ]
+    },
+    "tracks": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/video_track"
+          },
+          {
+            "$ref": "#/$defs/audio_track"
+          },
+          {
+            "$ref": "#/$defs/text_track"
+          }
+        ]
+      }
+    },
+    "captions": {
+      "$ref": "#/$defs/captions"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "asset_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "seconds": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 14400.0
+    },
+    "side": {
+      "type": "integer",
+      "minimum": 16,
+      "maximum": 4096,
+      "multipleOf": 2
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "pattern": "\\S"
+    },
+    "video_track": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "clips"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "V"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "clips": {
+          "type": "array",
+          "maxItems": 2000,
+          "items": {
+            "$ref": "#/$defs/video_clip"
+          }
+        }
+      }
+    },
+    "audio_track": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "clips"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "A"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "clips": {
+          "type": "array",
+          "maxItems": 2000,
+          "items": {
+            "$ref": "#/$defs/audio_clip"
+          }
+        }
+      }
+    },
+    "text_track": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "clips"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "T"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "clips": {
+          "type": "array",
+          "maxItems": 2000,
+          "items": {
+            "$ref": "#/$defs/text_clip"
+          }
+        }
+      }
+    },
+    "video_clip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "asset_id",
+        "start_s",
+        "in_s",
+        "out_s"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "asset_id": {
+          "$ref": "#/$defs/asset_id"
+        },
+        "start_s": {
+          "$ref": "#/$defs/seconds",
+          "description": "Where the clip starts on the timeline."
+        },
+        "in_s": {
+          "$ref": "#/$defs/seconds",
+          "description": "Source time the clip starts from (trim in). Ignored for a still image."
+        },
+        "out_s": {
+          "$ref": "#/$defs/seconds",
+          "description": "Source time the clip ends at (trim out); must be greater than in_s. The clip lasts out_s - in_s."
+        },
+        "fit": {
+          "enum": [
+            "contain",
+            "cover"
+          ],
+          "default": "contain",
+          "description": "contain = letter/pillar-box, cover = fill and crop."
+        },
+        "fade_in_s": {
+          "$ref": "#/$defs/seconds",
+          "default": 0
+        },
+        "fade_out_s": {
+          "$ref": "#/$defs/seconds",
+          "default": 0
+        },
+        "transition": {
+          "$ref": "#/$defs/transition"
+        }
+      }
+    },
+    "audio_clip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "asset_id",
+        "start_s",
+        "in_s",
+        "out_s"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "asset_id": {
+          "$ref": "#/$defs/asset_id"
+        },
+        "start_s": {
+          "$ref": "#/$defs/seconds",
+          "description": "Where the clip starts on the timeline."
+        },
+        "in_s": {
+          "$ref": "#/$defs/seconds",
+          "description": "Source time the clip starts from (trim in). Ignored for a still image."
+        },
+        "out_s": {
+          "$ref": "#/$defs/seconds",
+          "description": "Source time the clip ends at (trim out); must be greater than in_s. The clip lasts out_s - in_s."
+        },
+        "gain_db": {
+          "type": "number",
+          "minimum": -60.0,
+          "maximum": 12.0,
+          "default": 0
+        },
+        "fade_in_s": {
+          "$ref": "#/$defs/seconds",
+          "default": 0
+        },
+        "fade_out_s": {
+          "$ref": "#/$defs/seconds",
+          "default": 0
+        }
+      }
+    },
+    "text_clip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "start_s",
+        "end_s",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "start_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "end_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "text": {
+          "$ref": "#/$defs/text"
+        },
+        "font": {
+          "enum": [
+            "DejaVu Sans",
+            "DejaVu Serif",
+            "Liberation Sans",
+            "Liberation Serif"
+          ],
+          "default": "DejaVu Sans"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 512,
+          "default": 64
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "default": "#FFFFFF"
+        },
+        "outline_color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "default": "#000000"
+        },
+        "outline_width": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 20.0,
+          "default": 3.0
+        },
+        "bold": {
+          "type": "boolean",
+          "default": false
+        },
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5,
+          "description": "Fraction of the frame width where the anchor point sits."
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5,
+          "description": "Fraction of the frame height where the anchor point sits."
+        },
+        "anchor": {
+          "enum": [
+            "top-left",
+            "top",
+            "top-right",
+            "left",
+            "center",
+            "right",
+            "bottom-left",
+            "bottom",
+            "bottom-right"
+          ],
+          "default": "center"
+        },
+        "fade_in_s": {
+          "$ref": "#/$defs/seconds",
+          "default": 0
+        },
+        "fade_out_s": {
+          "$ref": "#/$defs/seconds",
+          "default": 0
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "duration_s"
+      ],
+      "description": "Transition INTO this clip. dip_to_black fades the previous (touching) clip out and this one in over duration_s/2 each; no clip moves. A cross-dissolve needs overlapping video and is not supported in v1.",
+      "properties": {
+        "type": {
+          "enum": [
+            "cut",
+            "dip_to_black"
+          ]
+        },
+        "duration_s": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        }
+      }
+    },
+    "captions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cues"
+      ],
+      "properties": {
+        "style": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "font": {
+              "enum": [
+                "DejaVu Sans",
+                "DejaVu Serif",
+                "Liberation Sans",
+                "Liberation Serif"
+              ],
+              "default": "DejaVu Sans"
+            },
+            "size": {
+              "type": "integer",
+              "minimum": 8,
+              "maximum": 512,
+              "default": 56
+            },
+            "color": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$",
+              "default": "#FFFFFF"
+            },
+            "outline_color": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$",
+              "default": "#000000"
+            },
+            "outline_width": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 20.0,
+              "default": 3.0
+            },
+            "bold": {
+              "type": "boolean",
+              "default": true
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.9,
+              "description": "Fraction of the frame height where the bottom of the caption sits."
+            }
+          }
+        },
+        "cues": {
+          "type": "array",
+          "maxItems": 5000,
+          "items": {
+            "$ref": "#/$defs/cue"
+          }
+        }
+      }
+    },
+    "cue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "start_s",
+        "end_s",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "start_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "end_s": {
+          "$ref": "#/$defs/seconds"
+        },
+        "text": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # Nightshift → Creative OS: audit and implementation plan
 
-Status: **plan only**. This document ships no feature code. It is Step 1 of
+Status: **plan only, v2**. This document ships no feature code. It is Step 1 of
 the Creative OS work: what exists today (from the source, not the README),
 which providers really have an official API, the target architecture built out
 of the pieces we already have, the data model, and a PR-by-PR roadmap.
@@ -10,8 +10,13 @@ capability layer (image / video / audio) → provider adapters → durable jobs 
 media library → creative workspace / timeline → render → export / publish /
 analytics. **One core** shared by the web app, the REST API and MCP.
 
-Migration numbering: 0031 is the public API (PR #250, open), 0032 is taken by
-the small `render_jobs` insert-policy fix. **New migrations here start at 0033.**
+Migration numbering: 0031 is the public API, 0032 the `render_jobs`
+insert-policy fix. Phase 0 (§5.0) takes **0033** (roles cleanup) and **0034**
+(plans, subscriptions, entitlements). **Creative OS migrations start at 0035.**
+
+v2 changes: Phase 0 added (engineering team, CI security lab, customer roles
+removed, subscription plans); roadmap grouped into phases 0–7 (§5.0);
+migrations renumbered +2; **BYOK is out of scope permanently** (D6).
 
 ---
 
@@ -347,18 +352,18 @@ balance**. PR #251 builds MCP on **API keys + API balance**. Proposal:
 
 ---
 
-## 4. Data model (migrations from 0033)
+## 4. Data model (migrations from 0035)
 
 All additive, idempotent, `org_id`-keyed, RLS via 0018 helpers, service role
 for the worker, anon gets nothing, browsers never update/delete job rows.
 
 | Migration | Adds | RLS / who | Money |
 | :-- | :-- | :-- | :-- |
-| **0033_model_registry.sql** | `model_registry` (id, provider, capabilities text[], spec jsonb, availability, verified_at, verified_by, credit_unit, entitlement); `model_probe_runs` (append-only). Function `sellable_models(capability)` | select: signed-in users see `availability in ('beta','ga') and verified_at is not null`; platform admin sees all; writes: platform admin + service role | none |
-| **0034_creative_jobs.sql** | `creative_jobs` (id, org_id, kind `generate|ingest|render|agent`, capability, mode, requested_model, routed_model, route, fallback_from/reason, params jsonb (validated per capability), status, provider_task_id, attempts, heartbeat_at, ttl, payer, credit_ref, quoted_credits, charged_credits, error_code, error, result_asset_ids, parent_job_id, requested_by); `creative_job_events` (append-only status log); functions `quote_creative_job`, `create_creative_job` (session) / `api_create_creative_job` (0031 key-hash entry, after D1), `cancel_creative_job`, `claim_creative_job` (service), `finish_creative_job` (captures or releases in the same transaction), `expire_creative_jobs` | select: viewer+ of org; create: editor+ (same as buying downloads); worker: service role | reserve via `reserve_credits(org, 'cj:<id>', quote)` at create; `start_credit_reservation` at claim; `capture_credits(actual ≤ hold)` on success; `release_credits` on fail/cancel/expire. Exempt org unchanged. |
-| **0035_provider_costs.sql** | `creative_job_costs` (job_id, org_id, provider, route, vendor_model, unit, quantity, usd_estimate null-unless-priced, price_source, recorded_at); view `creative_economics` (credits captured vs provider USD per model/day) | **platform admin only** (never org members — internal economics) | reporting only |
-| **0036_media_assets.sql** | `media_assets` (id uuid, org_id, project_id, kind image/video/audio/caption, storage `local`/`supabase`, storage_key (id-derived), bytes, mime, width, height, duration_s, sha256, source `generated|upload|render|pipeline`, provenance jsonb (provider, model, prompt_hash, job_id, rights status), parent_asset_id, version, created_by, deleted_at); `org_storage_quota`; functions `request_upload`, `register_asset` (service), `soft_delete_asset` | select: viewer+; upload/delete: editor+; register: service role | free (storage quota only) |
-| **0037_creative_projects.sql** | `creative_projects` (id, org_id, title, width, height, fps, current_rev, created_by); `timeline_revisions` (project_id, rev, doc jsonb, created_by, created_at; append-only); functions `timeline_doc_valid(jsonb)`, `save_timeline(project, base_rev, doc)` (checks every `asset_id` belongs to the same org), `request_render(project, rev)` | select: viewer+; edit: editor+ | edits free; render per D3 |
+| **0035_model_registry.sql** | `model_registry` (id, provider, capabilities text[], spec jsonb, availability, verified_at, verified_by, credit_unit, entitlement); `model_probe_runs` (append-only). Function `sellable_models(capability)` | select: signed-in users see `availability in ('beta','ga') and verified_at is not null`; platform admin sees all; writes: platform admin + service role | none |
+| **0036_creative_jobs.sql** | `creative_jobs` (id, org_id, kind `generate|ingest|render|agent`, capability, mode, requested_model, routed_model, route, fallback_from/reason, params jsonb (validated per capability), status, provider_task_id, attempts, heartbeat_at, ttl, payer, credit_ref, quoted_credits, charged_credits, error_code, error, result_asset_ids, parent_job_id, requested_by); `creative_job_events` (append-only status log); functions `quote_creative_job`, `create_creative_job` (session) / `api_create_creative_job` (0031 key-hash entry, after D1), `cancel_creative_job`, `claim_creative_job` (service), `finish_creative_job` (captures or releases in the same transaction), `expire_creative_jobs` | select/create: any member of the org (0033 removed customer roles); worker: service role | reserve via `reserve_credits(org, 'cj:<id>', quote)` at create; `start_credit_reservation` at claim; `capture_credits(actual ≤ hold)` on success; `release_credits` on fail/cancel/expire. Exempt org unchanged. |
+| **0037_provider_costs.sql** | `creative_job_costs` (job_id, org_id, provider, route, vendor_model, unit, quantity, usd_estimate null-unless-priced, price_source, recorded_at); view `creative_economics` (credits captured vs provider USD per model/day) | **platform admin only** (never org members — internal economics) | reporting only |
+| **0038_media_assets.sql** | `media_assets` (id uuid, org_id, project_id, kind image/video/audio/caption, storage `local`/`supabase`, storage_key (id-derived), bytes, mime, width, height, duration_s, sha256, source `generated|upload|render|pipeline`, provenance jsonb (provider, model, prompt_hash, job_id, rights status), parent_asset_id, version, created_by, deleted_at); `org_storage_quota`; functions `request_upload`, `register_asset` (service), `soft_delete_asset` | select/upload/delete: org members; register: service role | free (storage quota only) |
+| **0039_creative_projects.sql** | `creative_projects` (id, org_id, title, width, height, fps, current_rev, created_by); `timeline_revisions` (project_id, rev, doc jsonb, created_by, created_at; append-only); functions `timeline_doc_valid(jsonb)`, `save_timeline(project, base_rev, doc)` (checks every `asset_id` belongs to the same org), `request_render(project, rev)` | select/edit: org members | edits free; render per D3 |
 
 Credit flow for one generation: quote (router + `credit_prices`) → user sees
 it → `create_creative_job` locks the credit account, reserves, inserts the job
@@ -375,6 +380,25 @@ open hold is refused by the worker when enforcement is on (the
 Effort: S ≤ 1 day · M 2–3 days · L 4–6 days (implementation + review fixes).
 Every PR: Python `unittest`, `tsc`, `next lint`, `vitest`, `next build`; a
 migration PR also gets a vitest migration-text test (as `api-migration.test.ts`).
+Every PR goes through the team pipeline in `CLAUDE.md` (Forge → Lens → Probe →
+Breach → Sentinel → Pixel) and, once it exists, the CI security lab
+(`.github/workflows/security.yml`).
+
+### 5.0 Phases (v2)
+
+| Phase | Scope | PRs / migrations |
+| :-- | :-- | :-- |
+| **0 — Groundwork** | Named agent team + Definition of Done (merged); CI security lab: throwaway Postgres, all migrations applied, cross-org attack tests; **customer roles removed** — the workspace creator owns it, no owner/editor/viewer choice in the customer UI, platform admin kept, `current_app_role()` stops defaulting every signed-in user to `viewer`; **plans and entitlements** — monthly subscriptions whose credits expire at period end, top-up packs valid 12 months, subscription credits spent first, plan-gated model categories / features / concurrency, Paddle subscription webhook, pricing page | 0033 roles cleanup, 0034 plans |
+| **1 — Foundation** | Model registry + capability layer, `creative_jobs` + credits + worker, **file upload** + media library, project/timeline + render adapter | P0 below, 0035–0039 |
+| **2 — AI Studio** | Workspace, image / video / TTS generation, AI image edit (inpaint, upscale, background) | P1 PR 5–7 |
+| **3 — Editor** | CapCut-level timeline editor, captions, export presets, publish an export | P2 |
+| **4 — Intelligence** | Highlight / clip detection from long videos, asset analytics | P3–P4 |
+| **5 — Channel DNA, workflows, distribution** | Per-channel style memory, reusable workflows, multi-platform scheduling through the existing gate | after P4 |
+| **6 — Platform** | REST creative endpoints (API balance), OAuth MCP on site credits (D1) | PR 8a / 8b |
+| **7 — Production gate** | Load, security and recovery checks before any feature leaves beta | last |
+
+Entitlements from 0034 decide *which* registry models and features an org may
+use; `model_registry.entitlement` names the plan entitlement a model needs.
 
 ### P0 — core (no user-facing generation until P0.4 lands behind a flag)
 
@@ -388,16 +412,16 @@ migration PR also gets a vitest migration-text test (as `api-migration.test.ts`)
   the stale pipeline defaults in `modules/video_providers.py` fixed behind the
   existing off-by-default flags,
   `tools/probe_models.py` (admin-run, one cheapest real call per model, writes
-  `verified_at`), `command-center/lib/creative/registry.ts`, migration **0033**.
+  `verified_at`), `command-center/lib/creative/registry.ts`, migration **0035**.
 - Tests: registry validates against schema; every `adapter` key resolves; an
   unverified model is never returned by `sellable_models`; adapters map vendor
   errors to typed codes (auth vs quota vs policy); no key ever appears in a
   log line (scrubber test); Kling JWT expiry.
-- Owner steps: apply 0033; run `probe_models.py` on the worker with the keys
+- Owner steps: apply 0035; run `probe_models.py` on the worker with the keys
   already in `.env.worker`; approve which verified models go `beta`.
 
 **PR 2 — creative_jobs + credits + creative worker** (L)
-- Files: migration **0034** (+ **0035** costs), `modules/creative_worker.py`,
+- Files: migration **0036** (+ **0037** costs), `modules/creative_worker.py`,
   `tools/creative_worker.py`, `deploy/docker-compose.yml` (`creative-worker`
   service, profile `worker`), `command-center/lib/creative/operations.ts`
   (`quote`, `createGeneration`, `getJob`, `cancelJob`), routes
@@ -407,22 +431,22 @@ migration PR also gets a vitest migration-text test (as `api-migration.test.ts`)
   polling its stored `provider_task_id` (no second submit); EXACT mode never
   fails over; AUTO failover stays ≤ hold and ≥ tier; cross-org job read denied;
   exempt org holds nothing; unpriced model refused.
-- Owner steps: apply 0034/0035; set `credit_prices` rows for the beta models;
+- Owner steps: apply 0036/0037; set `credit_prices` rows for the beta models;
   `docker compose --profile worker up -d creative-worker`.
 
 **PR 3 — Media asset library + storage** (M–L)
-- Files: migration **0036**, `modules/media_library.py` (ingest: MIME sniff,
+- Files: migration **0038**, `modules/media_library.py` (ingest: MIME sniff,
   ffprobe, thumbnail/proxy, id-derived paths), `command-center/app/api/media/*`
   (serve, signed URL, upload to staging), `lib/server/media.ts`, compose
   volumes `media` + `media_staging`, `MEDIA_URL_SECRET`.
 - Tests: path traversal impossible (id-only paths); signed URL expiry and
   tamper; cross-org asset denied; quota enforced; upload of a non-media file
   rejected at ingest; generated outputs from PR 2 land as assets with provenance.
-- Owner steps: apply 0036; add `MEDIA_URL_SECRET` to web + worker env; set the
+- Owner steps: apply 0038; add `MEDIA_URL_SECRET` to web + worker env; set the
   default per-org quota.
 
 **PR 4 — Project/timeline schema + render adapter** (L)
-- Files: migration **0037**, `schemas/timeline.schema.json`,
+- Files: migration **0039**, `schemas/timeline.schema.json`,
   `modules/timeline.py`, `modules/timeline_render.py`, backwards-compatible
   extension of `modules/render_spec.py` / `modules/render_backend.py` (trim,
   audio tracks, text overlays), `lib/creative/timeline.ts`,
@@ -435,7 +459,7 @@ migration PR also gets a vitest migration-text test (as `api-migration.test.ts`)
 - Also (D3): `credit_prices` units `export_render_minute` (~3–5 credits/min)
   and `export_render_minimum`; the render is charged when requested and
   refunded if it fails (the 0030 pattern).
-- Owner steps: apply 0037; review the two export prices.
+- Owner steps: apply 0039; review the two export prices.
 
 ### P1 — first usable workspace (each M)
 
@@ -519,8 +543,8 @@ migration PR also gets a vitest migration-text test (as `api-migration.test.ts`)
 - **Frame-accurate in-browser preview of the full timeline**: needs a browser
   compositor (Remotion Player or similar; Remotion's company licence terms must
   be checked first). P2 uses server proxy renders.
-- **Per-org BYOK provider keys**: keys live only in worker env today; adding a
-  Vault-backed BYOK is a separate security design.
+- **BYOK (customer's own provider keys)**: not built, ever (D6). Every
+  generation runs on Nightshift's own provider accounts and is paid in credits.
 - **Unverified providers** (xAI, current Wan, Higgsfield schemas, MiniMax-H3 as
   video): not offered until a probe succeeds.
 
@@ -545,6 +569,9 @@ Decided by the owner — see §6.5. The original proposals are kept for the reco
 | **D3** | **Timeline edits free; final render/export charged a small credit fee** (like HD downloads, ~3–5 credits per minute), through `credit_prices` units. | PR 4 adds `credit_prices` units `export_render_minute` and `export_render_minimum`; `request_render` charges and refunds on failure, the 0030 way. |
 | **D4** | **Exports publish through the existing publish gate and approvals.** | PR 13 registers an export as a `videos` row and uses `publish_requests` unchanged. No second publish path. |
 | **D5** | **Seedance via the international BytePlus region.** | PR 1 changes the Seedance default base URL to BytePlus ModelArk (`ark.ap-southeast.bytepluses.com`). |
+| **D6** | **No BYOK**, in any plan, now or later. | No customer provider-key storage; the only payer paths are site credits and the API balance. |
+| **D7** | **No owner/editor/viewer roles for customers.** | Phase 0 (0033). Access checks become "member of this org" or "platform admin"; team roles may return later only as a plan entitlement. |
+| **D8** | **Standard SaaS pricing**: monthly subscriptions (credits expire at period end) + top-up packs (12 months); subscription credits spent first; entitlements are config, not code. | Phase 0 (0034). Creative jobs reserve credits through the same spend order. |
 
 ---
 
@@ -555,7 +582,7 @@ Decided by the owner — see §6.5. The original proposals are kept for the reco
   worker'i (0017), ffmpeg render spec, Video IR, pullik yuklab olish (0030) —
   bularni **qayta ishlatamiz**, qaytadan yozmaymiz.
 - Yetishmaydi: model reestri, umumiy creative job, media kutubxona, loyiha/timeline.
-  Bular P0 dagi 4 ta PR (migratsiyalar **0033–0037**, 0032 band).
+  Bular P0 dagi 4 ta PR (migratsiyalar **0035–0039**, 0032 band).
 - `render_jobs`ni kengaytirmaymiz — yangi `creative_jobs` jadvali va alohida
   `creative-worker` jarayoni (rasm generatsiyasi 30 daqiqalik render ortida kutmasin).
 - Provayderlar: rasmiy hujjatlar qidiruv orqali topildi, lekin to'g'ridan-to'g'ri
@@ -577,4 +604,9 @@ Decided by the owner — see §6.5. The original proposals are kept for the reco
   MiniMax Hailuo, Runway, Luma — har biri egasining kaliti bilan real probe'dan
   o'tgandan keyingina yoqiladi. D3 — timeline tahrirlash bepul, yakuniy render/eksport
   daqiqasiga ~3–5 kredit. D4 — eksport mavjud publish gate va tasdiqlar orqali.
-  D5 — Seedance xalqaro BytePlus orqali.
+  D5 — Seedance xalqaro BytePlus orqali. D6 — BYOK umuman yo'q. D7 — mijoz uchun
+  egasi/muharrir/kuzatuvchi rollari yo'q. D8 — oylik obuna (kredit oy oxirida yonadi)
+  + 12 oylik qo'shimcha paketlar, avval obuna krediti sarflanadi.
+- **v2 fazalar:** 0 — jamoa, CI xavfsizlik laboratoriyasi, rollar (0033), tariflar (0034);
+  1 — poydevor (0035–0039); 2 — AI Studiya; 3 — muharrir; 4 — intellekt/highlight;
+  5 — Channel DNA/workflow/tarqatish; 6 — REST/MCP OAuth; 7 — production gate.

@@ -23,7 +23,7 @@ vi.mock("@/lib/server/public-api", () => ({
       state.calls.push({ fn, args });
       return { data: fn === "api_auth" && state.refuse ? state.refuse : state.answer, error: null };
     };
-    return { keyHash: "b".repeat(64), prefix: "AbCd1234", requestId, rpc, backend: "queue", downloads: true };
+    return { keyHash: "b".repeat(64), requestId, rpc, backend: "queue", downloads: true };
   },
 }));
 

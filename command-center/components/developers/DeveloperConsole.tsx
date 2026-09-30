@@ -9,7 +9,7 @@ import { StatusPill } from "@/components/ui";
 import { resolvedTheme } from "@/lib/theme";
 import { paddleLocale, type PaddleEnvironment } from "@/lib/paddle";
 import { ensurePaddle, type PaddleEventData } from "@/lib/paddle-client";
-import { displayKey, generateApiKey, hashApiKey, MAX_ACTIVE_KEYS } from "@/lib/api/keys";
+import { API_KEY_LIST_COLUMNS, createKeyArgs, generateApiKey, hashApiKey, MAX_ACTIVE_KEYS } from "@/lib/api/keys";
 import {
   API_TERMS_VERSION,
   API_TIERS,
@@ -24,9 +24,11 @@ import {
  *
  * Every read and write goes through the browser's own session (anon key +
  * RLS) and 0031's functions, which check the role again. A new key is
- * generated HERE, in the browser: only its SHA-256 and display prefix are sent
- * to create_api_key, so the key itself never reaches any server; it is shown
- * once and forgotten when the dialog closes. Top-ups open Paddle's overlay on
+ * generated HERE, in the browser: only its SHA-256 is sent to create_api_key
+ * (0040), so neither the key nor any part of it reaches any server; it is
+ * shown once, in the dialog below, and forgotten when the dialog closes. In
+ * the list a key is its name, id, creation and last-use time — nothing of the
+ * key itself (CLAUDE.md #1). Top-ups open Paddle's overlay on
  * a transaction the server created; the webhook credits the balance.
  */
 
@@ -51,7 +53,6 @@ interface Console {
 interface KeyRow {
   id: string;
   name: string;
-  prefix: string;
   monthly_limit_cents: number | null;
   created_at: string;
   last_used_at: string | null;
@@ -77,8 +78,6 @@ interface LedgerRow {
   external_id: string | null;
   created_at: string;
 }
-
-const KEY_COLUMNS = "id,name,prefix,monthly_limit_cents,created_at,last_used_at,revoked_at";
 
 function isMissing(e: { code?: string; message?: string } | null): boolean {
   return !!e && (e.code === "PGRST202" || e.code === "42P01" || e.code === "PGRST205" || /does not exist|could not find/i.test(e.message ?? ""));
@@ -293,7 +292,7 @@ function Keys({ orgId, activated }: { orgId: string; activated: boolean }) {
   const load = useCallback(async () => {
     const supabase = createClient();
     if (!supabase) return;
-    const { data } = await supabase.from("api_keys").select(KEY_COLUMNS).eq("org_id", orgId).order("created_at", { ascending: false });
+    const { data } = await supabase.from("api_keys").select(API_KEY_LIST_COLUMNS).eq("org_id", orgId).order("created_at", { ascending: false });
     setKeys((data as KeyRow[] | null) ?? []);
   }, [orgId]);
 
@@ -314,17 +313,11 @@ function Keys({ orgId, activated }: { orgId: string; activated: boolean }) {
     }
     setBusy(true);
     setError(null);
-    const { key, prefix } = generateApiKey();
-    const { error: e } = await supabase.rpc("create_api_key", {
-      p_org: orgId,
-      p_name: clean.slice(0, 60),
-      p_key_hash: await hashApiKey(key),
-      p_prefix: prefix,
-      p_monthly_limit_cents: limit.cents,
-    });
+    const { key } = generateApiKey();
+    const { error: e } = await supabase.rpc("create_api_key", createKeyArgs(orgId, clean, await hashApiKey(key), limit.cents));
     setBusy(false);
     if (e) {
-      setError(e.code === "NS409" ? d.keyLimitReached : d.createFailed);
+      setError(e.code === "NS409" ? d.keyLimitReached : isMissing(e) ? d.createNeedsMigration : d.createFailed);
       return;
     }
     setShown(key);
@@ -423,7 +416,7 @@ function Keys({ orgId, activated }: { orgId: string; activated: boolean }) {
             <thead className="text-[12px] text-[var(--color-muted)]">
               <tr>
                 <th className="py-1 pr-3">{d.keyName}</th>
-                <th className="py-1 pr-3">{d.prefix}</th>
+                <th className="py-1 pr-3">{d.keyId}</th>
                 <th className="py-1 pr-3">{d.created}</th>
                 <th className="py-1 pr-3">{d.lastUsed}</th>
                 <th className="py-1 pr-3">{d.keyLimitShort}</th>
@@ -434,7 +427,7 @@ function Keys({ orgId, activated }: { orgId: string; activated: boolean }) {
               {keys.map((k) => (
                 <tr key={k.id} className={k.revoked_at ? "opacity-50" : ""}>
                   <td className="py-2 pr-3">{k.name}</td>
-                  <td className="mono py-2 pr-3">{displayKey(k.prefix)}</td>
+                  <td className="mono py-2 pr-3 text-[12px]">{k.id}</td>
                   <td className="py-2 pr-3">{new Date(k.created_at).toLocaleDateString(locale)}</td>
                   <td className="py-2 pr-3">{k.last_used_at ? new Date(k.last_used_at).toLocaleString(locale) : d.never}</td>
                   <td className="py-2 pr-3">{k.monthly_limit_cents === null ? d.noLimit : formatUsd(k.monthly_limit_cents, locale)}</td>
