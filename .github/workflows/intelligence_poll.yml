@@ -41,33 +41,51 @@ jobs:
           key: chronos-history-${{ github.run_number }}
           restore-keys: chronos-history-
 
+      # Secrets reach these steps through `env:` only, never spliced into the
+      # script text: GitHub expands ${{ ... }} before the shell runs, so a
+      # value containing a quote would otherwise end the string and run the
+      # rest as commands. Same steps as daily_video.yml.
       - name: Restore YouTube token
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
         run: |
           # Say which way this went. Silence here meant a run could look
           # perfectly normal while no token was ever written, and the failure
           # only surfaced later as "no usable token" from deep inside the
-          # OAuth path. Only the fact is printed, never any part of the value.
-          if [ -n "${{ secrets.YOUTUBE_TOKEN_JSON }}" ]; then
-            echo '${{ secrets.YOUTUBE_TOKEN_JSON }}' > youtube_token.json
-            echo "YOUTUBE_TOKEN_JSON is set — wrote youtube_token.json ($(wc -c < youtube_token.json) bytes)."
-          else
+          # OAuth path. Only the fact is printed, never any part of the value
+          # (not its length either). A value that is not a JSON object is not
+          # written; the warning names the secret to fix.
+          umask 077
+          if [ -z "${YOUTUBE_TOKEN_JSON:-}" ]; then
             echo "YOUTUBE_TOKEN_JSON is EMPTY OR UNSET — no token file written, so"
             echo "publishing and analytics will be skipped. Check that it is stored"
             echo "under Settings -> Secrets and variables -> Actions -> Repository"
             echo "secrets (an Environment or Dependabot secret is NOT visible here)."
+          elif python tools/validate_json_env.py --warning YOUTUBE_TOKEN_JSON; then
+            printf '%s\n' "$YOUTUBE_TOKEN_JSON" > youtube_token.json
+            echo "YOUTUBE_TOKEN_JSON is set — wrote youtube_token.json."
+          else
+            echo "YOUTUBE_TOKEN_JSON is not a JSON object — no token file written, so"
+            echo "analytics will be skipped."
           fi
 
       - name: Restore YouTube client secret
+        env:
+          YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
         run: |
           # Only when the secret is actually set. Writing it unconditionally
           # left an EMPTY client_secret.json behind, which passes an exists()
           # check and then fails deep inside the OAuth library with a bare
           # JSONDecodeError. No file at all produces a message that names the
-          # missing secret.
-          if [ -n "${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}" ]; then
-            echo '${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}' > client_secret.json
-          else
+          # missing secret. A value that is not a JSON object is not written
+          # either; the warning names the secret.
+          umask 077
+          if [ -z "${YOUTUBE_CLIENT_SECRET_JSON:-}" ]; then
             echo "YOUTUBE_CLIENT_SECRET_JSON is not set — YouTube API calls will be skipped."
+          elif python tools/validate_json_env.py --warning YOUTUBE_CLIENT_SECRET_JSON; then
+            printf '%s\n' "$YOUTUBE_CLIENT_SECRET_JSON" > client_secret.json
+          else
+            echo "YOUTUBE_CLIENT_SECRET_JSON is not a JSON object — YouTube API calls will be skipped."
           fi
 
       - name: Run intelligence poll
@@ -88,12 +106,14 @@ jobs:
           # CHRONOS_YT_TOKEN_FINANCE: ${{ secrets.CHRONOS_YT_TOKEN_FINANCE }}
           # An unset secret reports as not_connected; it never falls back to
           # another channel's token.
+          # The dispatch input, through env like every other value.
+          INPUT_SKIP_COMMENTS: ${{ github.event.inputs.skip_comments }}
         run: |
-          SKIP_ARG=""
-          if [ "${{ github.event.inputs.skip_comments }}" = "true" ]; then
-            SKIP_ARG="--skip-comments"
+          args=()
+          if [ "${INPUT_SKIP_COMMENTS:-}" = "true" ]; then
+            args+=(--skip-comments)
           fi
-          python tools/run_intelligence_poll.py $SKIP_ARG
+          python tools/run_intelligence_poll.py "${args[@]}"
 
       - name: Upload poll log
         if: always()

@@ -442,6 +442,18 @@ class ChannelContext:
     credential: CredentialRef = field(default_factory=CredentialRef)
     created_at: str = ""
     updated_at: str = ""
+    # The organization that owns this channel (migration 0018). A row with no
+    # org — channels.json, a database from before 0018 — is the operator's
+    # own, which is what every channel was then. Not in to_dict(): the writers
+    # that mirror a channel set org_id themselves (supabase_sync).
+    org_id: str = DEFAULT_ORG_ID
+
+    @property
+    def is_operators(self) -> bool:
+        """Does the operator's own organization own this channel? Only these
+        run on the operator's schedule: a customer's run is paid from a credit
+        hold, and a scheduled run carries none."""
+        return self.org_id == DEFAULT_ORG_ID
 
     @property
     def is_active(self) -> bool:
@@ -511,6 +523,7 @@ class ChannelContext:
             credential=CredentialRef.from_dict(d.get("credential_ref")),
             created_at=d.get("created_at") or "",
             updated_at=d.get("updated_at") or "",
+            org_id=str(d.get("org_id") or DEFAULT_ORG_ID),
         )
 
 

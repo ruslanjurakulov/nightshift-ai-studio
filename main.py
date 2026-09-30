@@ -28,6 +28,7 @@ Path("output").mkdir(exist_ok=True)
 import config
 from config import OUTPUT_DIR, THUMBNAIL_VARIANT_COUNT, VIDEO_HEIGHT, VIDEO_WIDTH, YOUTUBE_CATEGORY_ID, YOUTUBE_PRIVACY
 from modules import event_log as events
+from modules import log_redaction
 from modules import publish_gate
 from modules import publish_score
 from modules import video_critic
@@ -88,6 +89,9 @@ logging.basicConfig(
         logging.FileHandler("logs/run.log", encoding="utf-8"),
     ],
 )
+# logs/run.log is uploaded as a workflow artifact: scrub token-bearing URLs
+# (Telegram bot path, Slack webhook, ?key=) from every line and traceback.
+log_redaction.install()
 logger = logging.getLogger("chronos")
 
 
