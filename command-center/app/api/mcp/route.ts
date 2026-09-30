@@ -3,7 +3,6 @@ import { apiCaller, isCaller } from "@/lib/server/public-api";
 import { buildMcpServer } from "@/lib/api/mcp";
 import { getMe } from "@/lib/api/operations";
 import { apiError, newRequestId, toResponse } from "@/lib/api/http";
-import { displayKey } from "@/lib/api/keys";
 import { needsKeyCheck } from "@/lib/api/mcp-http";
 
 export const runtime = "nodejs";
@@ -49,7 +48,7 @@ async function handle(request: Request): Promise<Response> {
     headers.set("x-request-id", requestId);
     return new Response(res.body, { status: res.status, headers });
   } catch (e) {
-    console.error(`[mcp] ${requestId} ${displayKey(caller.prefix)} 500 ${e instanceof Error ? e.name : "error"}`);
+    console.error(`[mcp] ${requestId} 500 ${e instanceof Error ? e.name : "error"}`);
     return toResponse(apiError(500, "internal_error", "The MCP endpoint could not complete this request."), requestId);
   }
 }
