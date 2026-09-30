@@ -48,6 +48,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("intelligence_poll")
 
+# logs/intelligence_poll.log is uploaded as an artifact. A googleapiclient
+# error quotes its request URI, and the Data API key rides in it as ?key=.
+from modules import log_redaction  # noqa: E402
+
+log_redaction.install()
+
 from modules.audience_demand import AudienceDemandEngine
 from modules.comment_fetcher import CommentFetcher
 from modules.comment_intelligence import classify_comments
