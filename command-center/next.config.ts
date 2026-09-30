@@ -21,6 +21,24 @@ const nextConfig: NextConfig = {
    * the paths those screens used to have; they are kept permanently so an old
    * bookmark, or a link in an earlier conversation, still lands correctly.
    */
+  /**
+   * The emailed sign-in steps (/auth/callback, /auth/confirm) are never framed
+   * — a framed "Continue as …" button could be clicked for someone who never
+   * saw it — never cached, and never leak their URL (a link token) by Referer.
+   */
+  async headers() {
+    return [
+      {
+        source: "/auth/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
+    ];
+  },
   async redirects() {
     return [
       { source: "/timemachine", destination: "/time-machine", permanent: true },
