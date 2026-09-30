@@ -16,10 +16,22 @@
 //                                the Paddle price id of each credit pack
 //   PADDLE_API_TOPUP_PRODUCT_ID  the "API balance top-up" product (pro_…);
 //                                unset = API top-ups are recorded rejected
+//   PADDLE_PLAN_<ID>             the monthly Paddle price id of each plan in
+//                                the plans table (0034), e.g. PADDLE_PLAN_PRO;
+//                                see docs/BILLING_PLANS.md
+//   PADDLE_PROMO_DISCOUNT_IDS    optional: dsc_… ids (comma-separated) that
+//                                may give credits at full value; any other
+//                                discount scales the credits to what was paid
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 //                                provided by Supabase to every Edge Function
 
-import { createRestStore, handlePaddleWebhook, priceTableFromEnv } from "../_shared/paddle.ts";
+import {
+  createRestStore,
+  handlePaddleWebhook,
+  planTableFromEnv,
+  priceTableFromEnv,
+  promoAllowlistFromEnv,
+} from "../_shared/paddle.ts";
 
 const env = (name: string) => Deno.env.get(name) ?? undefined;
 
@@ -28,6 +40,8 @@ const serviceKey = env("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const secret = env("PADDLE_WEBHOOK_SECRET") ?? "";
 const prices = priceTableFromEnv(env);
 const apiProductId = env("PADDLE_API_TOPUP_PRODUCT_ID") ?? null;
+const plans = planTableFromEnv(Object.entries(Deno.env.toObject()), prices);
+const promos = promoAllowlistFromEnv(env("PADDLE_PROMO_DISCOUNT_IDS"));
 
 if (prices.size === 0) {
   // Said once at boot, by name only: every purchase would be rejected.
@@ -45,7 +59,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const rawBody = await req.text();
   const res = await handlePaddleWebhook(
     { method: req.method, rawBody, signature: req.headers.get("paddle-signature") },
-    { secret, prices, store, apiProductId },
+    { secret, prices, store, apiProductId, plans, promos },
   );
   return Response.json(res.body, { status: res.status });
 });
