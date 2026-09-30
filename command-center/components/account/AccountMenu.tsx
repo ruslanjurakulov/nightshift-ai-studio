@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { CircleCheck, Coins, LogOut, Settings, UserRound, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
-import { fmt } from "@/lib/i18n";
+import { fmt, LOCALES } from "@/lib/i18n";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useChannelPath } from "@/lib/channels-client";
 import { formatCredits } from "@/lib/credits";
 import { coerceAccountSummary, type AccountSummary, type ConnectedAccount, type Platform, type Plan } from "@/lib/account";
@@ -25,7 +26,7 @@ import { coerceAccountSummary, type AccountSummary, type ConnectedAccount, type 
  * header; above, a popover anchored to the button.
  */
 export function AccountMenu({ email }: { email: string | null }) {
-  const { t, locale } = useI18n();
+  const { t, locale, setLocale } = useI18n();
   const path = useChannelPath();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -140,7 +141,7 @@ export function AccountMenu({ email }: { email: string | null }) {
         aria-controls={open ? panelId : undefined}
         aria-label={t.account.open}
         title={shownEmail ?? undefined}
-        className="btn-sky is-quiet pill inline-flex size-9 items-center justify-center p-0 sm:size-10"
+        className="btn-sky is-quiet pill inline-flex size-10 items-center justify-center p-0"
       >
         {initial ? (
           <span aria-hidden className="text-[14px] font-medium text-[var(--color-primary)]">
@@ -181,7 +182,7 @@ export function AccountMenu({ email }: { email: string | null }) {
               type="button"
               onClick={() => close()}
               aria-label={t.account.close}
-              className="btn-sky is-quiet pill inline-flex size-8 shrink-0 items-center justify-center p-0"
+              className="btn-sky is-quiet pill inline-flex size-10 shrink-0 items-center justify-center p-0"
             >
               <X aria-hidden className="size-4" />
             </button>
@@ -237,6 +238,27 @@ export function AccountMenu({ email }: { email: string | null }) {
               )}
             </ul>
           </section>
+
+          {/* Language and theme live here on a phone; the header bar has room for
+              them from `sm` up. */}
+          <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3 sm:hidden">
+            <div role="group" aria-label={t.common.language} className="flex gap-1.5">
+              {LOCALES.map((l) => (
+                <button
+                  key={l.code}
+                  type="button"
+                  lang={l.code}
+                  aria-pressed={l.code === locale}
+                  onClick={() => l.code !== locale && setLocale(l.code)}
+                  className="btn-sky is-quiet pill h-10 flex-1 px-2 text-[13px] font-light"
+                  style={{ color: l.code === locale ? "var(--color-primary)" : undefined }}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+            <ThemeToggle showLabel />
+          </div>
 
           <nav className="flex flex-col gap-1 border-t border-[var(--color-border)] pt-3">
             <Link href={path("/credits")} onClick={() => close(false)} className="side-link">

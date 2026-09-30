@@ -96,6 +96,8 @@ export const ru: Dictionary = {
     dark: "Тёмная",
     light: "Светлая",
     of: "из",
+    scrollTable: "Таблица (прокручивается вбок)",
+    scrollCode: "Пример кода (прокручивается вбок)",
   },
   account: {
     open: "Открыть меню аккаунта",

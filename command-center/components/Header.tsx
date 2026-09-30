@@ -57,32 +57,45 @@ export function Header({
         <div className="flex min-w-0 items-center gap-6 xl:gap-10">
         <Link
           href={path("/command-center")}
-          className="font-display shrink-0 text-lg font-semibold tracking-[-0.02em] text-[var(--color-primary)] sm:text-xl"
+          className="tap-link font-display shrink-0 text-lg font-semibold tracking-[-0.02em] text-[var(--color-primary)] sm:text-xl"
         >
           {t.brand.name}
         </Link>
       </div>
 
+        {/* Below `sm` the bar keeps only what a phone needs every minute: the
+            channel, the bell and the account. Credits, language and theme move
+            into the account menu (which shows them anyway), and the ⌘K search
+            has no keyboard on a phone. The wrappers are `contents` from `sm`
+            up, so the desktop bar is unchanged. They are spans rather than a
+            `hidden` class on the control because `.btn-sky` sets its own
+            display, which beats the utility. */}
         <div className="flex flex-wrap items-center justify-end gap-2 sm:flex-nowrap sm:gap-3">
         <OrgSwitcher orgs={orgs} currentId={currentOrgId} />
-        <CreditBalanceChip account={credits} />
+        <span className="hidden sm:contents">
+          <CreditBalanceChip account={credits} />
+        </span>
         <ChannelSwitcher channels={channels} selection={selection} />
-        <button
-          type="button"
-          onClick={openPalette}
-          aria-label={t.ops.palettePlaceholder}
-          className="btn-sky is-quiet pill hidden h-9 gap-2 px-3.5 sm:inline-flex"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4">
-            <circle cx="11" cy="11" r="7" />
-            <path d="m21 21-4.3-4.3" />
-          </svg>
-          <span className="mono pill border border-[var(--color-border)] px-1.5 text-[9px] tracking-wider">⌘K</span>
-        </button>
+        <span className="hidden sm:contents">
+          <button
+            type="button"
+            onClick={openPalette}
+            aria-label={t.ops.palettePlaceholder}
+            className="btn-sky is-quiet pill h-10 gap-2 px-3.5"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <span className="mono pill border border-[var(--color-border)] px-1.5 text-[9px] tracking-wider">⌘K</span>
+          </button>
+        </span>
         <UtcClock />
         <NotificationsCenter scope={scope} />
-        <LanguageSelector />
-        <ThemeToggle />
+        <span className="hidden sm:contents">
+          <LanguageSelector />
+          <ThemeToggle />
+        </span>
         <AccountMenu email={email} />
       </div>
       </div>

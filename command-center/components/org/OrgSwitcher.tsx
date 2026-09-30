@@ -78,7 +78,7 @@ export function OrgSwitcher({ orgs, currentId }: { orgs: OrgSummary[]; currentId
         aria-label={t.org.switcherLabel}
         title={error ? t.org.switchFailed : undefined}
         disabled={busy}
-        className="btn-sky is-quiet pill h-9 max-w-[104px] gap-2 px-3 disabled:opacity-60 sm:h-10 sm:max-w-[200px] sm:gap-3 sm:px-4"
+        className="btn-sky is-quiet pill h-10 max-w-[104px] gap-2 px-3 disabled:opacity-60 sm:max-w-[200px] sm:gap-3 sm:px-4"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="size-3.5 shrink-0 text-[var(--color-muted)]">
           <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z" />
@@ -97,7 +97,7 @@ export function OrgSwitcher({ orgs, currentId }: { orgs: OrgSummary[]; currentId
         <ul
           role="listbox"
           aria-label={t.org.switcherLabel}
-          className="drawer-enter absolute right-0 z-50 mt-3 w-64 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-2 shadow-[var(--shadow-elevated)]"
+          className="drawer-enter fixed inset-x-3 top-full z-50 mt-3 overflow-hidden sm:absolute sm:inset-x-auto sm:right-0 sm:w-64 rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-2 shadow-[var(--shadow-elevated)]"
         >
           {orgs.map((o) => {
             const active = o.id === currentId;

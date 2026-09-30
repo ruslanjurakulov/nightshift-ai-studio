@@ -338,10 +338,10 @@ export function CreateStudio({
           </span>
           {operator && (
             <>
-              <Link href={path("/agents")} className="text-[var(--color-primary)] hover:underline">
+              <Link href={path("/agents")} className="tap-link text-[var(--color-primary)] hover:underline">
                 {t.create.editVoice}
               </Link>
-              <Link href={path("/providers")} className="text-[var(--color-primary)] hover:underline">
+              <Link href={path("/providers")} className="tap-link text-[var(--color-primary)] hover:underline">
                 {t.create.editProviders}
               </Link>
             </>
