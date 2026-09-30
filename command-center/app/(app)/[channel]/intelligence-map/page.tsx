@@ -1,4 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { ErrorState } from "@/components/ReadError";
+import { readFailed } from "@/lib/readState";
+import { Panel } from "@/components/ui";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { IntelligenceMap } from "@/components/intelligence/IntelligenceMap";
@@ -20,21 +23,29 @@ export default async function IntelligencePage() {
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
+  let failed = false;
   if (supabase) {
-    const { data } = await scopeQuery(
+    const res = await scopeQuery(
         supabase.from("system_events").select("*"),
         scope, { nullIsGlobal: true },
       )
       .order("ts", { ascending: false })
       .limit(500);
-    events = (data as SystemEventRow[]) ?? [];
+    failed = readFailed(res);
+    events = (res.data as SystemEventRow[]) ?? [];
   }
 
   return (
     <div className="rhythm stagger-enter">
       <PageHeader icon="intelligence" title={t.ops.intelTitle} subtitle={t.ops.intelSubtitle} />
 
-      <IntelligenceMap initial={events} scope={scope} />
+      {failed ? (
+        <Panel title={t.ops.intelTitle}>
+          <ErrorState />
+        </Panel>
+      ) : (
+        <IntelligenceMap initial={events} scope={scope} />
+      )}
     </div>
   );
 }

@@ -1,4 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { ErrorState } from "@/components/ReadError";
+import { readFailed } from "@/lib/readState";
+import { Panel } from "@/components/ui";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { TimeMachine } from "@/components/timemachine/TimeMachine";
@@ -22,22 +25,30 @@ export default async function TimeMachinePage() {
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
+  let failed = false;
   if (supabase) {
     const since = new Date(Date.now() - WINDOW_MS).toISOString();
-    const { data } = await scopeQuery(
+    const res = await scopeQuery(
         supabase.from("system_events").select("*"),
         scope, { nullIsGlobal: true },
       )
       .gte("ts", since)
       .order("ts", { ascending: false })
       .limit(1000);
-    events = (data as SystemEventRow[]) ?? [];
+    failed = readFailed(res);
+    events = (res.data as SystemEventRow[]) ?? [];
   }
 
   return (
     <div className="rhythm stagger-enter">
       <PageHeader icon="timeMachine" title={t.ops.timeMachineTitle} subtitle={t.ops.timeMachineSubtitle} />
-      <TimeMachine initial={events} />
+      {failed ? (
+        <Panel title={t.ops.timeMachineTitle}>
+          <ErrorState />
+        </Panel>
+      ) : (
+        <TimeMachine initial={events} />
+      )}
     </div>
   );
 }

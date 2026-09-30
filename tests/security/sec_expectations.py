@@ -138,6 +138,11 @@ TABLES: Dict[str, Kind] = {
     "topic_performance": Platform(),
     # region-wide public YouTube data, owned by no channel (0018: deliberately global)
     "trending_snapshots": Public(),
+    # media library (0038): rows appear only through its functions
+    "media_assets": Org(),
+    "media_uploads": Org(),
+    "org_storage_quota": Org(),
+    "media_storage_settings": Public(),
     # model registry (0035): signed-in users read sellable rows' public columns;
     # probe runs are the operator's evidence
     "model_registry": Public(),
@@ -295,6 +300,24 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     # web/API hardening (0042)
     "take_web_rate": USER,
     "welcome_email_key": SERVICE,
+    # media library (0038)
+    "request_upload": USER,
+    "begin_upload_receive": USER,
+    "finish_upload_receive": USER,
+    "soft_delete_asset": USER,
+    "claim_media_upload": SERVICE,
+    "reject_media_upload": SERVICE,
+    "register_asset": SERVICE,
+    "claim_media_purge": SERVICE,
+    "mark_asset_purged": SERVICE,
+    "media_mime_kind": SERVICE,
+    "media_ext_mime": SERVICE,
+    "media_clean_name": SERVICE,
+    "media_normalize_mime": SERVICE,
+    "media_quota_lock": SERVICE,
+    "media_quota_limit": SERVICE,
+    "media_pending_bytes": SERVICE,
+    "media_uploads_sweep": SERVICE,
     # model registry (0035)
     "sellable_models": USER,
     "model_registry_admin": USER,

@@ -8,6 +8,7 @@ import type { CreditRates, Pricing } from "@/lib/pricing";
 import { plansOnSale, type PlanMatrix as Matrix } from "@/lib/plans";
 import { PackCards } from "@/components/pricing/PackCards";
 import { PlanMatrix } from "@/components/pricing/PlanMatrix";
+import { ErrorState } from "@/components/ReadError";
 
 const PADDLE_BUYER_TERMS = "https://www.paddle.com/legal/checkout-buyer-terms";
 
@@ -25,7 +26,9 @@ export function PricingView({
   pricing,
   signedIn,
   rates,
+  ratesFailed = false,
   plans,
+  plansFailed = false,
   packValidMonths,
 }: {
   t: Dictionary;
@@ -34,8 +37,12 @@ export function PricingView({
   signedIn: boolean;
   /** Live rates; null when the visitor may not read them or 0020 is not applied. */
   rates: CreditRates | null;
-  /** The plan matrix (0034); null when the catalog could not be read. */
+  /** The rates read itself failed (as opposed to "not published" / signed out): they are unknown. */
+  ratesFailed?: boolean;
+  /** The plan matrix (0034); null when the catalog is absent or could not be read. */
   plans: Matrix | null;
+  /** The catalog read itself failed: the plans are unknown, not "none on sale". */
+  plansFailed?: boolean;
   /** Top-up validity from the database (credit_lot_policies); undefined = not known, use the env. */
   packValidMonths?: number | null;
 }) {
@@ -65,6 +72,19 @@ export function PricingView({
         </h1>
         <p className="t-lead mt-6">{p.lead}</p>
       </section>
+
+      {plansFailed && (
+        <section aria-labelledby="plans-title" className="flex flex-col gap-6">
+          <div className="max-w-3xl">
+            <h2 id="plans-title" className="t-section">
+              {t.plans.matrixTitle}
+            </h2>
+          </div>
+          <div className="panel">
+            <ErrorState compact message={t.plans.readFailed} />
+          </div>
+        </section>
+      )}
 
       {showPlans && plans && (
         <section aria-labelledby="plans-title" className="flex flex-col gap-6">
@@ -151,6 +171,8 @@ export function PricingView({
                 <dd className="mono text-[18px]">{rateText(rates.jobMinimum)}</dd>
               </div>
             </dl>
+          ) : ratesFailed ? (
+            <ErrorState compact message={p.ratesReadFailed} />
           ) : (
             <p className="text-[14px] font-light leading-relaxed text-[var(--color-muted)]">
               {signedIn ? p.ratesUnavailable : p.ratesSignedOut}

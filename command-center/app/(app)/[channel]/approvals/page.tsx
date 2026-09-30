@@ -5,6 +5,7 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { getChannelSelection } from "@/lib/channels-server";
 import { isScoped } from "@/lib/channels";
 import { getDictionary } from "@/lib/i18n/server";
+import { readFailed } from "@/lib/readState";
 import type { ChannelRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -53,15 +54,19 @@ export default async function ApprovalsPage() {
   }
 
   // Read the current channel's requirement flag so the toggle renders without a flash.
-  let initialRequire = false;
+  // null = unknown (the read failed, or there is no client): the board then
+  // shows "unknown" and disables the switch rather than "Not required".
+  let initialRequire: boolean | null = null;
   const supabase = await createClient();
   if (supabase) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("channels")
       .select("agent_config")
       .eq("channel_id", selection)
       .maybeSingle();
-    initialRequire = Boolean((data as Pick<ChannelRow, "agent_config"> | null)?.agent_config?.require_two_person_publish);
+    if (!readFailed({ error })) {
+      initialRequire = Boolean((data as Pick<ChannelRow, "agent_config"> | null)?.agent_config?.require_two_person_publish);
+    }
   }
 
   return (

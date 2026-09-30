@@ -10,6 +10,7 @@ import { resolvedTheme } from "@/lib/theme";
 import { checkoutCustomData, paddleLocale } from "@/lib/paddle";
 import { columnPrice, type BillingSummary, type PlanMatrix, type SubscribeAccess } from "@/lib/plans";
 import { ensurePaddle, previewPrices, type PaddleEventData } from "@/lib/paddle-client";
+import { ErrorState } from "@/components/ReadError";
 import { entitlementText } from "@/components/pricing/PlanMatrix";
 
 type Phase = "idle" | "opening" | "paid" | "arrived" | "slow" | "cancelled" | "error" | "load_failed";
@@ -36,6 +37,7 @@ export function PlanPanel({
   orgId,
   userId,
   email,
+  plansUnread = false,
 }: {
   summary: BillingSummary | null;
   matrix: PlanMatrix | null;
@@ -43,6 +45,8 @@ export function PlanPanel({
   orgId: string;
   userId: string | null;
   email: string | null;
+  /** The plan catalog could not be read: the plans to choose from are unknown, not absent. */
+  plansUnread?: boolean;
 }) {
   const { t, locale } = useI18n();
   const p = t.plans;
@@ -146,7 +150,8 @@ export function PlanPanel({
   }
 
   const sub = summary?.subscription ?? null;
-  const planName = summary?.plan?.name ?? "—";
+  // A summary without a plan is an unknown plan — never "Free".
+  const planName = summary?.plan?.name ?? t.common.unknown;
   const statusText = sub ? p.status[sub.status] : null;
   const dateLine = !sub
     ? null
@@ -230,6 +235,8 @@ export function PlanPanel({
           {portal === "missing" && <p className="text-[12px] text-[var(--color-muted)]">{p.managePortalMissing}</p>}
         </div>
       )}
+
+      {plansUnread && !live && <ErrorState compact message={p.readFailed} />}
 
       {access === "admin_only" && <p className="text-[13px] text-[var(--color-muted)]">{p.adminOnly}</p>}
 

@@ -1,4 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { ErrorState } from "@/components/ReadError";
+import { readFailed } from "@/lib/readState";
+import { Panel } from "@/components/ui";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { AdvisoryPanel } from "@/components/intelligence/AdvisoryPanel";
@@ -18,21 +21,29 @@ export default async function AdvisoryIntelligencePage() {
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
+  let failed = false;
   if (supabase) {
-    const { data } = await scopeQuery(
+    const res = await scopeQuery(
         supabase.from("system_events").select("*"),
         scope, { nullIsGlobal: true },
       )
       .order("ts", { ascending: false })
       .limit(500);
-    events = (data as SystemEventRow[]) ?? [];
+    failed = readFailed(res);
+    events = (res.data as SystemEventRow[]) ?? [];
   }
 
   return (
     <div className="rhythm stagger-enter">
       <PageHeader icon="advisory" title={t.ops.advTitle} subtitle={t.ops.advSubtitle} />
 
-      <AdvisoryPanel initial={events} scope={scope} />
+      {failed ? (
+        <Panel title={t.ops.advTitle}>
+          <ErrorState />
+        </Panel>
+      ) : (
+        <AdvisoryPanel initial={events} scope={scope} />
+      )}
     </div>
   );
 }

@@ -284,6 +284,19 @@ function isoOrNull(v: unknown): string | null {
   return typeof v === "string" && Number.isFinite(Date.parse(v)) ? v : null;
 }
 
+/**
+ * True when billing_summary()'s `credits` object carries all four figures as
+ * numbers. coerceBillingSummary() reads a missing figure as 0 to stay total;
+ * a caller that shows those figures must check this first, so a malformed
+ * answer is an unknown, never "0 credits".
+ */
+export function billingCreditsReadable(data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  const c = (data as Record<string, unknown>).credits;
+  if (!c || typeof c !== "object") return false;
+  return ["subscription", "pack", "other", "held"].every((k) => num((c as Record<string, unknown>)[k]) !== null);
+}
+
 /** billing_summary()'s jsonb, or null when it is not one (not a member, 0034 missing). */
 export function coerceBillingSummary(data: unknown): BillingSummary | null {
   if (!data || typeof data !== "object") return null;

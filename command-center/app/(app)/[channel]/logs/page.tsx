@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { ErrorState } from "@/components/ReadError";
+import { readFailed } from "@/lib/readState";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { Panel, EmptyState } from "@/components/ui";
@@ -24,21 +26,25 @@ export default async function LogsPage() {
 
   const supabase = await createClient();
   let rows: SystemEventRow[] = [];
+  let failed = false;
   if (supabase) {
-    const { data } = await scopeQuery(
+    const res = await scopeQuery(
         supabase.from("system_events").select("*"),
         scope, { nullIsGlobal: true },
       )
       .order("ts", { ascending: false })
       .limit(LIMIT);
-    rows = (data as SystemEventRow[]) ?? [];
+    failed = readFailed(res);
+    rows = (res.data as SystemEventRow[]) ?? [];
   }
 
   return (
     <div className="rhythm stagger-enter">
       <PageHeader icon="logs" title={t.logs.title} subtitle={fmt(t.logs.subtitle, { n: LIMIT })} />
       <Panel title={t.logs.eventLog}>
-        {rows.length === 0 ? (
+        {failed ? (
+          <ErrorState />
+        ) : rows.length === 0 ? (
           <EmptyState>{t.logs.empty}</EmptyState>
         ) : (
           <div className="h-[560px]">

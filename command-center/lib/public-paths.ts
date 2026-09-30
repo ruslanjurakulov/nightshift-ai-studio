@@ -40,6 +40,19 @@ export function isPublicApiPath(pathname: string): boolean {
   return pathname === PUBLIC_API_PREFIX || pathname.startsWith(PUBLIC_API_PREFIX + "/") || pathname === MCP_PATH;
 }
 
+/**
+ * Media files behind a signed link (migration 0038,
+ * app/api/media/file/[id]/[variant]). The HMAC in the query string is the
+ * authorization — minted only after an RLS read under a member's session —
+ * so the cookie gate neither redirects nor spends a Supabase round trip on
+ * every range request a <video> makes. Exactly `/api/media/file/<id>/<variant>`.
+ */
+export const SIGNED_MEDIA_PREFIX = "/api/media/file/";
+
+export function isSignedMediaPath(pathname: string): boolean {
+  return /^\/api\/media\/file\/[0-9a-f-]{36}\/(original|thumb|proxy)$/.test(pathname);
+}
+
 /** Served as-is to anyone, signed in or not, without channel resolution. */
 export const ALWAYS_PUBLIC_PATHS = [...LEGAL_PATHS, ...INFO_PATHS] as const;
 

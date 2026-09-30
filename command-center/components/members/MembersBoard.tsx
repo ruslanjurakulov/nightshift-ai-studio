@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { StatusPill } from "@/components/ui";
+import { ErrorState } from "@/components/ReadError";
 import { ROLES, type Role } from "@/lib/auth/roles-shared";
 
 /**
@@ -40,6 +41,7 @@ export function MembersBoard({
   const { t } = useI18n();
   const router = useRouter();
   const [members, setMembers] = useState<Member[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("editor");
   const [busy, setBusy] = useState(false);
@@ -51,11 +53,13 @@ export function MembersBoard({
   async function load() {
     const supabase = createClient();
     if (!supabase) return;
-    const { data } = await supabase
+    const { data, error: readErr } = await supabase
       .from("app_members")
       .select("id,user_id,email,role,created_at")
       .order("created_at", { ascending: true });
-    setMembers((data as Member[]) ?? []);
+    // A failed read is not an empty roster (that would offer "claim ownership").
+    setLoadFailed(Boolean(readErr));
+    setMembers(readErr ? null : ((data as Member[]) ?? []));
   }
 
   useEffect(() => {
@@ -214,7 +218,9 @@ export function MembersBoard({
           <span>{t.members.colRole}</span>
           <span />
         </div>
-        {members === null ? (
+        {loadFailed ? (
+          <ErrorState compact onRetry={load} />
+        ) : members === null ? (
           <p className="p-4 text-[13px] text-[var(--color-muted)]">…</p>
         ) : members.length === 0 ? (
           <p className="p-4 text-[13px] text-[var(--color-muted)]">{t.members.empty}</p>
