@@ -81,39 +81,50 @@ export async function readCreditPrices(
   return { supported: true, failed: false, prices: parsePrices(data) };
 }
 
+/** An estimate, or the fact that a read behind it failed (never a number from a partial read). */
+export type EstimateRead = { ok: true; estimate: CreditEstimate } | { ok: false };
+
 /**
  * The estimate for one run of `channelId`: the price list, and this channel's
  * last 30 days of cost ledger (with each video's real length from its Video
  * IR, when it has one) for the history basis. Everything is read as the user,
  * so an estimate can only ever be built from rows they may see.
+ *
+ * A ledger read that ERRORS is not an empty ledger: it would fall back to
+ * another basis (the per-minute price) and produce a number that then gets
+ * held and captured. It returns `{ ok: false }` instead. A ledger that reads
+ * fine and is empty keeps its normal behaviour.
  */
 export async function estimateForChannel(
   supabase: SupabaseClient,
   channelId: string,
   durationS: number | null,
   prices: PriceMap,
-): Promise<CreditEstimate> {
+): Promise<EstimateRead> {
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("video_costs")
     .select("unit,quantity,stage,recorded_at,video_id,slug,channel_id,estimated_usd")
     .eq("channel_id", channelId)
     .gte("recorded_at", since)
     .limit(5000);
+  if (error) return { ok: false };
   const rows = (data ?? []) as LedgerRow[];
   let ue = unitEconomics(rows);
   if (ue.sampleSize > 0 && durationS) {
     const slugs = [...new Set(ue.videos.flatMap((v) => (v.slug ? [v.slug] : [])))];
     if (slugs.length) {
-      const { data: d } = await supabase
+      const { data: d, error: dErr } = await supabase
         .from("videos")
         .select("video_id,slug,channel_id,duration_s:manifest->audio->duration_s")
         .eq("channel_id", channelId)
         .in("slug", slugs);
+      // Without the real lengths the history basis would silently change.
+      if (dErr) return { ok: false };
       if (d?.length) ue = unitEconomics(rows, { durations: d as unknown as DurationRow[] });
     }
   }
-  return estimateRunCredits({ prices, durationS, videos: ue.videos });
+  return { ok: true, estimate: estimateRunCredits({ prices, durationS, videos: ue.videos }) };
 }
 
 export type RunCreditResult =
@@ -153,6 +164,8 @@ export async function reserveRunCredits(
   prefix: "rj" | "gh",
 ): Promise<RunCreditResult> {
   const unavailable = { ok: false as const, status: 503, body: { error: "credits_unavailable" } };
+  // A read behind the quote errored: unknown, not a gap. Retry; nothing was held.
+  const readFailedRun = { ok: false as const, status: 503, body: { error: "credits_read_failed" } };
   const { data: ch, error: chErr } = await supabase
     .from("channels")
     .select("org_id,agent_config")
@@ -164,13 +177,17 @@ export async function reserveRunCredits(
   if (!orgId) return unavailable;
   if (isCreditExempt(orgId)) return { ok: true, creditRef: null, estimate: null, exempt: true, durationS: null };
 
-  const { supported, prices } = await readCreditPrices(supabase);
+  const { supported, failed, prices } = await readCreditPrices(supabase);
   if (!supported) return unavailable;
+  // A price list that could not be read is not an empty one: retryable, no hold.
+  if (failed) return readFailedRun;
   const frozen = prefix === "rj" ? frozenRunDurationS(requestedDurationS, ch.agent_config) : null;
   if (prefix === "rj" && frozen === null)
     return { ok: false, status: 409, body: { error: "credit_estimate_unavailable", gap: "no_length" } };
   const durationS = prefix === "rj" ? frozen : runDurationS(requestedDurationS, ch.agent_config);
-  const estimate = await estimateForChannel(supabase, channelId, durationS, prices);
+  const read = await estimateForChannel(supabase, channelId, durationS, prices);
+  if (!read.ok) return readFailedRun;
+  const estimate = read.estimate;
   if (estimate.credits === null)
     return { ok: false, status: 409, body: { error: "credit_estimate_unavailable", gap: estimate.gap } };
 

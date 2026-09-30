@@ -380,6 +380,9 @@ export function creditRunError(data: Record<string, unknown>, t: Dictionary, loc
     case "credits_unavailable":
       text = t.credits.unavailable;
       break;
+    case "credits_read_failed":
+      text = t.credits.readFailedRun;
+      break;
     case "credits_not_enforced":
       text = t.credits.notEnforced;
       break;

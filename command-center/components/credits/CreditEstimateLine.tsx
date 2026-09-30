@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import { formatCredits, type CreditEstimate } from "@/lib/credits";
+import { ErrorState } from "@/components/ReadError";
 
 type EstimateResponse = {
   supported?: boolean;
@@ -13,6 +14,8 @@ type EstimateResponse = {
   exempt?: boolean;
   estimate?: CreditEstimate | null;
   available?: number | null;
+  /** The balance read errored: `available` is unknown, not 0 and not "no account". */
+  balanceFailed?: boolean;
 };
 
 /**
@@ -20,31 +23,52 @@ type EstimateResponse = {
  * same estimate the run route reserves (/api/credits/estimate). Renders
  * nothing before migration 0020, and says "no charge" for the operator's own,
  * exempt organization. An estimate that cannot be made says why instead of
- * showing a number.
+ * showing a number. A read that FAILED (a 5xx or no answer) is not any of
+ * those: it shows the read-error state with Retry, never a hidden line, a
+ * "price gap" or a number; an unreadable balance reads "unknown" with Retry.
  */
 export function CreditEstimateLine({ channelId, durationS }: { channelId: string | null; durationS: number | null }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
   const [data, setData] = useState<EstimateResponse | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const retry = () => setAttempt((n) => n + 1);
 
   useEffect(() => {
     if (!channelId) return;
     let live = true;
+    setFailed(false);
     const qs = new URLSearchParams({ channel: channelId });
     if (durationS && durationS > 0) qs.set("duration", String(Math.round(durationS)));
     fetch(`/api/credits/estimate?${qs}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
+      .then(async (r) => {
+        // 4xx (unauthorized, channel not found…) keeps hiding the line; a 5xx is a failed read.
+        if (r.status >= 500) return "failed" as const;
+        return r.ok ? ((await r.json()) as EstimateResponse) : null;
+      })
       .then((d) => {
-        if (live) setData(d);
+        if (!live) return;
+        setFailed(d === "failed");
+        setData(d === "failed" ? null : d);
       })
       .catch(() => {
-        if (live) setData(null);
+        if (!live) return;
+        setFailed(true);
+        setData(null);
       });
     return () => {
       live = false;
     };
-  }, [channelId, durationS]);
+  }, [channelId, durationS, attempt]);
 
+  if (channelId && failed) {
+    return (
+      <div className="text-[11px]" aria-live="polite">
+        <ErrorState compact message={t.credits.estimateReadFailed} onRetry={retry} />
+      </div>
+    );
+  }
   if (!channelId || !data?.supported) return null;
 
   let body: React.ReactNode;
@@ -65,11 +89,22 @@ export function CreditEstimateLine({ channelId, durationS }: { channelId: string
         </span>
         {basis && <span className="text-[var(--color-muted)]"> · {basis}</span>}
         {e.floorApplied && <span className="text-[var(--color-muted)]"> · {t.credits.floorApplied}</span>}
-        {data.available !== null && data.available !== undefined && (
-          <span className="text-[var(--color-muted)]">
+        {data.balanceFailed ? (
+          <span className="text-[var(--color-warn)]" data-balance-unknown>
             {" "}
-            · {fmt(t.credits.estimateAvailable, { n: formatCredits(data.available, locale) })}
+            · {t.credits.availableUnknown}{" "}
+            <button type="button" onClick={retry} className="tap-link text-[var(--color-primary)] hover:underline">
+              {t.common.retry}
+            </button>
           </span>
+        ) : (
+          data.available !== null &&
+          data.available !== undefined && (
+            <span className="text-[var(--color-muted)]">
+              {" "}
+              · {fmt(t.credits.estimateAvailable, { n: formatCredits(data.available, locale) })}
+            </span>
+          )
         )}
         {!data.enforced && <span className="text-[var(--color-muted)]"> · {t.credits.estimateNotEnforced}</span>}
       </>
