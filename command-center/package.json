@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@supabase/ssr": "0.5.2",
     "@supabase/supabase-js": "2.48.1",
     "libsodium-wrappers": "^0.7.15",
@@ -19,7 +20,8 @@
     "next": "^15.5.25",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "3.2.0",

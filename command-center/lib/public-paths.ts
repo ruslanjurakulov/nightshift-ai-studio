@@ -33,8 +33,11 @@ export const INFO_PATHS = ["/pricing", "/docs/api", "/docs/api/openapi.json"] as
  */
 export const PUBLIC_API_PREFIX = "/api/v1";
 
+/** The MCP endpoint (Streamable HTTP): the same bearer keys, exactly this path. */
+export const MCP_PATH = "/api/mcp";
+
 export function isPublicApiPath(pathname: string): boolean {
-  return pathname === PUBLIC_API_PREFIX || pathname.startsWith(PUBLIC_API_PREFIX + "/");
+  return pathname === PUBLIC_API_PREFIX || pathname.startsWith(PUBLIC_API_PREFIX + "/") || pathname === MCP_PATH;
 }
 
 /** Served as-is to anyone, signed in or not, without channel resolution. */

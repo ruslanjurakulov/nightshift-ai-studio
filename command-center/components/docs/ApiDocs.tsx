@@ -210,6 +210,29 @@ curl ${BASE}/downloads/7 -H "Authorization: Bearer $NIGHTSHIFT_API_KEY"         
 curl -o video.mp4 ${BASE}/downloads/7/file -H "Authorization: Bearer $NIGHTSHIFT_API_KEY"`}</Code>
       </Section>
 
+      <Section id="mcp" title="MCP server (AI assistants)">
+        <P>
+          <code>{origin}/api/mcp</code> is a remote MCP server (Streamable HTTP) with the same key, limits and prices.
+          Tools: list_channels, create_video, get_job_status, list_videos, get_video, list_connected_accounts,
+          publish_video, request_download, get_download, get_balance.
+        </P>
+        <h3 className="text-[14px] font-semibold">Claude Code</h3>
+        <Code>{`claude mcp add --transport http nightshift ${origin}/api/mcp \\
+  --header "Authorization: Bearer nsk_live_…"`}</Code>
+        <h3 className="text-[14px] font-semibold">Cursor (~/.cursor/mcp.json)</h3>
+        <Code>{`{"mcpServers": {"nightshift": {"url": "${origin}/api/mcp",
+  "headers": {"Authorization": "Bearer nsk_live_…"}}}}`}</Code>
+        <P>
+          Claude Desktop and claude.ai custom connectors, and ChatGPT connectors, authenticate remote servers with OAuth
+          and cannot send an API-key header, so they cannot connect directly. In Claude Desktop, add the server through
+          the local <code>mcp-remote</code> bridge instead (see the MCP guide in the repository, docs/MCP.md); ChatGPT is
+          not supported until OAuth is offered.
+        </P>
+        <Code>{`{"mcpServers": {"nightshift": {"command": "npx",
+  "args": ["-y", "mcp-remote", "${origin}/api/mcp", "--header", "Authorization:\${NIGHTSHIFT_AUTH}"],
+  "env": {"NIGHTSHIFT_AUTH": "Bearer nsk_live_…"}}}}`}</Code>
+      </Section>
+
       <Section id="errors" title="Errors">
         <Code>{`{"error": {"type": "billing_error", "code": "insufficient_balance",
            "message": "Your API balance does not cover this video. Top up in the Developer console.",
