@@ -9,33 +9,37 @@ type FooterLink = { href: string; label: string; external?: boolean };
 /**
  * The public pages' footer: Product, Resources and Legal columns. Every link
  * resolves — section anchors point at sections the homepage always renders
- * (never the showcase, which may be absent), and the contact address appears
- * only when the operator configured one. Google's verification checks that the
- * homepage links the Privacy Policy; Paddle's that pricing is one click away.
+ * (never the showcase, which may be absent). Pricing, Privacy, Terms and
+ * Contact are always there: Contact mails the operator's configured address,
+ * or opens the Terms' contact section when none is set. Google's verification
+ * checks that the homepage links the Privacy Policy; Paddle's that pricing is
+ * one click away.
  *
  * /login keeps the compact LegalFooter; this one is for the marketing frame.
  */
 export function PublicFooter({ t }: { t: Dictionary }) {
   const f = t.landing.footer;
+  const contact: FooterLink = LEGAL.contactEmail
+    ? { href: `mailto:${LEGAL.contactEmail}`, label: f.contact, external: true }
+    : { href: "/terms#contact", label: f.contact };
   const columns: { title: string; links: FooterLink[] }[] = [
     {
       title: f.product,
       links: [
         { href: "/#product", label: f.overview },
         { href: "/#how", label: f.how },
-        { href: "/#autonomy", label: f.autonomy },
-        { href: "/#series", label: f.series },
-        { href: "/#capabilities", label: f.capabilities },
+        { href: "/#why", label: f.why },
+        { href: "/pricing", label: t.legal.pricing },
+        { href: "/#faq", label: f.faq },
       ],
     },
     {
       title: f.resources,
       links: [
-        { href: "/#faq", label: f.faq },
+        contact,
+        { href: "/login", label: f.signIn },
         { href: "/#google-data", label: f.googleData },
         { href: GOOGLE_PERMISSIONS, label: f.googleAccess, external: true },
-        { href: "/login", label: f.signIn },
-        ...(LEGAL.contactEmail ? [{ href: `mailto:${LEGAL.contactEmail}`, label: f.contact, external: true }] : []),
       ],
     },
     {
@@ -43,7 +47,6 @@ export function PublicFooter({ t }: { t: Dictionary }) {
       links: [
         { href: "/privacy", label: t.legal.privacy },
         { href: "/terms", label: t.legal.terms },
-        { href: "/pricing", label: t.legal.pricing },
       ],
     },
   ];

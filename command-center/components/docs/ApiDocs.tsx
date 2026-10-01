@@ -82,7 +82,7 @@ export function ApiDocs({ prices, origin, labels }: { prices: ApiPriceMap | null
   const minimum = p.job_minimum ?? DEFAULT_API_PRICES.job_minimum;
   const perCredit = p.download_cents_per_credit ?? DEFAULT_API_PRICES.download_cents_per_credit;
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-col gap-5 px-4 py-10 sm:px-6">
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-5 px-4 py-10 sm:px-6">
       <header className="flex flex-col gap-2">
         <h1 className="font-display text-3xl font-semibold tracking-[-0.02em]">Nightshift API</h1>
         <P>
@@ -273,6 +273,6 @@ curl -o video.mp4 ${BASE}/downloads/7/file -H "Authorization: Bearer $NIGHTSHIFT
           with a different body is a 422.
         </P>
       </Section>
-    </main>
+    </div>
   );
 }

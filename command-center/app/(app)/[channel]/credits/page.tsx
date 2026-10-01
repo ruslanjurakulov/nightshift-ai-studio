@@ -1,18 +1,20 @@
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { PageHeader } from "@/components/PageHeader";
-import { StatCard } from "@/components/ui";
-import { CreditLedger } from "@/components/credits/CreditLedger";
+import { CreditActivity } from "@/components/credits/CreditActivity";
+import { BalanceHero } from "@/components/credits/BalanceHero";
 import { GrantCreditsForm } from "@/components/credits/GrantCreditsForm";
 import { CreditPricesEditor } from "@/components/credits/CreditPricesEditor";
 import { BuyCredits, BuyCreditsAdminOnly } from "@/components/credits/BuyCredits";
 import { getOrgContext } from "@/lib/orgs-server";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
-import { coerceTransactions, formatCredits, isCreditExempt } from "@/lib/credits";
+import { coerceTransactions, isCreditExempt } from "@/lib/credits";
 import { creditsEnforced, readCreditAccount, readCreditPrices } from "@/lib/server/credits";
 import { buyAccess, paddleClient, paddleConfig } from "@/lib/paddle";
-import { PLAN_ENV, planMatrix, subscribeAccess } from "@/lib/plans";
+import { PLAN_ENV, balanceSplit, generationRates, planMatrix, subscribeAccess } from "@/lib/plans";
+import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
+import { readSellableModels } from "@/lib/creative/registry";
 import { planValue, readBillingSummary, readCreditLots, readPlanCatalog } from "@/lib/server/plans";
 import { PlanPanel } from "@/components/credits/PlanPanel";
 import { CreditLots } from "@/components/credits/CreditLots";
@@ -25,8 +27,11 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
- * The current organization's credits: available and on hold, the ledger, and
- * — for a platform owner/admin — the grant form and the price list editor.
+ * The current organization's credits, phone-first: the balance at the top
+ * (available, on hold for jobs in progress, and by source with expiry), then
+ * the plans and top-up packs with what each buys at today's prices and their
+ * terms before the buttons, then the history in plain language. For a
+ * platform owner/admin, the grant form and the price list editor at the end.
  *
  * Everything is read as the signed-in user; migration 0020's policies decide
  * what they see (their own organization's rows, the platform price list).
@@ -42,7 +47,7 @@ export const revalidate = 0;
  */
 export default async function CreditsPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
-  const { t, locale } = await getDictionary();
+  const { t } = await getDictionary();
   const [org, supabase] = await Promise.all([getOrgContext(), createClient()]);
   const header = <PageHeader icon="credits" title={t.credits.title} subtitle={t.credits.subtitle} />;
   const note = (text: string) => (
@@ -56,7 +61,7 @@ export default async function CreditsPage() {
   if (!org.current) return note(t.credits.noOrg);
   const orgId = org.current.id;
 
-  const [acct, priceRes, txns, admin, userRes, catalogRead, summaryRead, lotsRead] = await Promise.all([
+  const [acct, priceRes, txns, admin, userRes, catalogRead, summaryRead, lotsRead, modelsRead] = await Promise.all([
     readCreditAccount(supabase, orgId),
     readCreditPrices(supabase),
     supabase
@@ -74,6 +79,7 @@ export default async function CreditsPage() {
     readPlanCatalog(supabase).catch(() => FAILED_READ),
     readBillingSummary(supabase, orgId).catch(() => FAILED_READ),
     readCreditLots(supabase, orgId).catch(() => FAILED_READ),
+    readSellableModels(supabase),
   ]);
   if (!acct.supported || !priceRes.supported) return note(t.credits.notMigrated);
 
@@ -98,45 +104,41 @@ export default async function CreditsPage() {
   // double-charge, so nothing is offered until it reads.
   const planAccess = summaryFailed ? "hidden" : subscribeAccess(orgId, org.current.role, matrix, summary);
 
+  // What credits buy, from today's prices: the registry's sellable models
+  // (0035, priced from credit_prices) and the per-minute price. A failed or
+  // missing read leaves the equivalents out — never a hand-typed figure.
+  const rates = priceRes.failed ? null : generationRates(modelsRead.status === "ok" ? modelsRead.models : null, priceRes.prices);
+  const split = balanceSplit(account, summary, lots);
+  // How long pack credits last: the database's policy (0034) when it was read;
+  // before 0034 the deployment's documented term; otherwise not stated.
+  const packValidMonths =
+    catalogRead.state === "ok"
+      ? catalogRead.value.packValidMonths
+      : catalogRead.state === "unsupported"
+        ? CREDIT_EXPIRY_MONTHS
+        : undefined;
+  const offersPacks = buy === "allowed" && Boolean(paddleConfig) && Boolean(account);
+  const offersPlans = !exempt && Boolean(summary) && planAccess === "allowed";
+
   return (
     <div className="rhythm">
       {header}
 
-      <div className="panel flex flex-col gap-4 p-4">
-        {exempt ? (
-          <div className="flex flex-col gap-1">
-            <h2 className="t-section">{t.credits.exemptTitle}</h2>
-            <p className="text-[13px] text-[var(--color-muted)]">{t.credits.exempt}</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard
-              label={t.credits.available}
-              value={account ? formatCredits(account.available, locale) : t.common.unknown}
-              tone={account ? (account.available > 0 ? "ok" : "warn") : "idle"}
-              sub={account ? undefined : t.common.couldNotRead}
-            />
-            <StatCard
-              label={t.credits.reserved}
-              value={account ? formatCredits(account.reserved, locale) : t.common.unknown}
-              tone={account ? undefined : "idle"}
-              sub={account ? undefined : t.common.couldNotRead}
-            />
-            <StatCard
-              label={t.credits.balance}
-              value={account ? formatCredits(account.balance, locale) : t.common.unknown}
-              tone={account ? undefined : "idle"}
-              sub={account ? undefined : t.common.couldNotRead}
-            />
-          </div>
-        )}
-        {!exempt && balanceUnknown && (
-          <ErrorState compact message={t.credits.readFailed} />
-        )}
-        <p className="mono text-[11px] text-[var(--color-muted)]">
-          {creditsEnforced ? t.credits.enforcedOn : t.credits.enforcedOff}
-        </p>
-      </div>
+      {exempt ? (
+        <div className="panel flex flex-col gap-1 p-5 sm:p-6">
+          <h2 className="t-section">{t.credits.exemptTitle}</h2>
+          <p className="text-[13px] text-[var(--color-muted)]">{t.credits.exempt}</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <BalanceHero split={split} rates={rates} offers={{ plans: offersPlans, packs: offersPacks }} />
+          {balanceUnknown && (
+            <div className="panel p-4">
+              <ErrorState compact message={t.credits.readFailed} />
+            </div>
+          )}
+        </div>
+      )}
 
       {!exempt && summaryFailed && (
         <section id="plans" className="panel flex scroll-mt-24 flex-col gap-2 p-4" aria-labelledby="plan-title">
@@ -155,25 +157,31 @@ export default async function CreditsPage() {
           userId={user?.id ?? null}
           email={user?.email ?? null}
           plansUnread={catalogFailed}
+          rates={rates}
         />
       )}
 
-      {buy === "allowed" && paddleConfig && account && (
+      {offersPacks && paddleConfig && account && (
         <BuyCredits
           config={paddleConfig}
           orgId={orgId}
-          orgName={org.current.name}
           userId={user?.id ?? null}
           email={user?.email ?? null}
           balance={account.balance}
+          rates={rates}
+          packValidMonths={packValidMonths}
         />
       )}
       {buy === "admin_only" && <BuyCreditsAdminOnly />}
-      {!paddleConfig && platformAdmin && !exempt && (
-        <p className="mono text-[11px] text-[var(--color-muted)]">{t.credits.buy.notConfigured}</p>
-      )}
 
-      {platformAdmin && <GrantCreditsForm orgId={orgId} orgName={org.current.name} />}
+      {ledgerFailed ? (
+        <div className="panel p-4">
+          <h2 className="t-section">{t.credits.ledgerTitle}</h2>
+          <ErrorState compact />
+        </div>
+      ) : (
+        <CreditActivity rows={coerceTransactions(txns.data)} showRefs={platformAdmin} />
+      )}
 
       {!exempt && lotsFailed && (
         <div className="panel p-4">
@@ -183,22 +191,23 @@ export default async function CreditsPage() {
       )}
       {!exempt && lots && <CreditLots lots={lots} />}
 
-      {ledgerFailed ? (
-        <div className="panel p-4">
-          <h2 className="t-section">{t.credits.ledgerTitle}</h2>
-          <ErrorState compact />
-        </div>
-      ) : (
-        <CreditLedger rows={coerceTransactions(txns.data)} />
-      )}
-
-      {priceRes.failed ? (
-        <div className="panel p-4">
-          <h2 className="t-section">{t.credits.pricesTitle}</h2>
-          <ErrorState compact />
-        </div>
-      ) : (
-        <CreditPricesEditor prices={Object.values(priceRes.prices)} canEdit={platformAdmin} />
+      {/* Operator tools: the deployment switch, granting, and the raw price list. */}
+      {platformAdmin && (
+        <>
+          <p className="mono text-[11px] text-[var(--color-muted)]">
+            {creditsEnforced ? t.credits.enforcedOn : t.credits.enforcedOff}
+          </p>
+          {!paddleConfig && !exempt && <p className="mono text-[11px] text-[var(--color-muted)]">{t.credits.buy.notConfigured}</p>}
+          <GrantCreditsForm orgId={orgId} orgName={org.current.name} />
+          {priceRes.failed ? (
+            <div className="panel p-4">
+              <h2 className="t-section">{t.credits.pricesTitle}</h2>
+              <ErrorState compact />
+            </div>
+          ) : (
+            <CreditPricesEditor prices={Object.values(priceRes.prices)} canEdit />
+          )}
+        </>
       )}
     </div>
   );
