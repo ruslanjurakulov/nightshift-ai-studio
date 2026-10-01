@@ -30,6 +30,10 @@ const STATUSES: readonly string[] = ["ready", "approved", "rendered", "discarded
 /** The columns the screen reads — never `script` (the worker's, not the page's). */
 export const STORYBOARD_COLUMNS =
   "id,channel_id,slug,topic,title,scenes,duration_s,status,created_at,decided_at,credits_held,render_job_id";
+/** The same, plus what editing needs (migration 0058). A database without
+ *  0058 refuses these columns; the reader then falls back and the screen is
+ *  read-only, as before. */
+export const STORYBOARD_EDIT_COLUMNS = `${STORYBOARD_COLUMNS},revision,opening_edited,reopened_at`;
 
 export interface StoryboardScene {
   n: number;
@@ -54,6 +58,9 @@ export interface StoryboardView {
   decidedAt: string | null;
   creditsHeld: number | null;
   renderJobId: number | null;
+  /** The edit counter (0058). Null when 0058 is not applied: nothing on the
+   *  screen can be edited, and approving does not name a revision. */
+  revision?: number | null;
 }
 
 export function isStoryboardId(v: unknown): v is string {
@@ -114,6 +121,7 @@ export function toStoryboard(row: unknown): StoryboardView | null {
     decidedAt: str(r.decided_at) || null,
     creditsHeld: Number.isFinite(held) ? held : null,
     renderJobId: Number.isFinite(job) ? job : null,
+    revision: intIn(r.revision, 0, 100_000),
   };
 }
 
@@ -122,6 +130,83 @@ export function minutesLabel(seconds: number): string {
   const m = seconds / 60;
   return m >= 10 ? String(Math.round(m)) : (Math.round(m * 10) / 10).toString();
 }
+
+// ── editing (migration 0058) ───────────────────────────────────────────────
+// The database is the judge of every rule below (save_storyboard_edits); the
+// screen checks the same ones only to say what is wrong before a round trip.
+
+/** One scene of an edit, as save_storyboard_edits takes it: which scene of
+ *  the saved revision it is (`src`, 1-based) or null for a new one, and its
+ *  text. No length — the database measures an edited scene — and no ids. */
+export interface SceneEdit {
+  src: number | null;
+  narration: string;
+  visual: string;
+}
+
+export const MAX_TOTAL_TEXT = 120_000;
+export const MAX_VISUAL_TERMS = 8;
+export const MAX_VISUAL_TERM = 120;
+
+const CONTROL_RE = /[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
+const DIRECTION_RE = /[\u202a-\u202e\u2066-\u2069]/;
+const CUE_RE = /\[\s*(sfx|music|pause|voice)\s*:/i;
+
+/** Whitespace collapsed, as the database stores a scene's text. */
+export function squash(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+export type SceneProblem = "empty" | "too_long" | "markup" | "characters" | "terms";
+
+/** What is wrong with one scene's text, or null. */
+export function sceneProblem(e: Pick<SceneEdit, "narration" | "visual">): SceneProblem | null {
+  for (const raw of [e.narration, e.visual]) {
+    if (CONTROL_RE.test(raw) || DIRECTION_RE.test(raw)) return "characters";
+    if (CUE_RE.test(raw)) return "markup";
+  }
+  const n = squash(e.narration);
+  const v = squash(e.visual);
+  if (!n) return "empty";
+  if (n.length > MAX_NARRATION || v.length > MAX_VISUAL) return "too_long";
+  const terms = v.split(",").map((t) => t.trim()).filter(Boolean);
+  if (terms.length > MAX_VISUAL_TERMS || terms.some((t) => t.length > MAX_VISUAL_TERM)) return "terms";
+  return null;
+}
+
+/** The scenes of an edit, checked as a whole. Null when it may be sent. */
+export function editProblem(scenes: SceneEdit[]): "count" | "total" | "duplicate" | "scene" | null {
+  if (scenes.length < 1 || scenes.length > MAX_SCENES) return "count";
+  const srcs = scenes.flatMap((s) => (s.src === null ? [] : [s.src]));
+  if (new Set(srcs).size !== srcs.length) return "duplicate";
+  if (scenes.some((s) => sceneProblem(s) !== null)) return "scene";
+  const total = scenes.reduce((a, s) => a + squash(s.narration).length + squash(s.visual).length, 0);
+  if (total > MAX_TOTAL_TEXT) return "total";
+  return null;
+}
+
+/** An edit body from the route's JSON, or null when it is not one. Strict:
+ *  only `src`, `narration` and `visual` on each scene — no ids of any kind
+ *  pass through to the database (which refuses them too). */
+export function toSceneEdits(raw: unknown): SceneEdit[] | null {
+  if (!Array.isArray(raw) || raw.length < 1 || raw.length > MAX_SCENES) return null;
+  const out: SceneEdit[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const r = item as Record<string, unknown>;
+    if (Object.keys(r).some((k) => k !== "src" && k !== "narration" && k !== "visual")) return null;
+    const src = r.src ?? null;
+    if (src !== null && intIn(src, 1, MAX_SCENES) === null) return null;
+    if (typeof src === "string") return null;
+    if (typeof r.narration !== "string") return null;
+    if (r.visual != null && typeof r.visual !== "string") return null;
+    out.push({ src: src as number | null, narration: r.narration, visual: (r.visual as string | undefined) ?? "" });
+  }
+  return out;
+}
+
+/** Why a failed render's storyboard can or cannot be re-opened (0058). */
+export type ReopenState = { reopenable: boolean; reason: string | null };
 
 // ── the price on the button ────────────────────────────────────────────────
 
@@ -147,6 +232,14 @@ export type StoryboardErrorCode =
   | "credit_estimate_unavailable"
   | "credits_not_enforced"
   | "dispatch_failed"
+  | "stale_revision"
+  | "scenes_invalid"
+  | "storyboard_too_long"
+  | "storyboard_not_editable"
+  | "render_in_progress"
+  | "render_finished"
+  | "hold_not_released"
+  | "render_unverifiable"
   | "approve_failed";
 
 type DbError = { code?: string; message?: string; details?: string | null; hint?: string | null };
@@ -176,8 +269,17 @@ export function mapStoryboardError(error: DbError): { status: number; body: Reco
       },
     };
   if (code === "NS429") return { status: 429, body: { error: "run_limit" } };
+  // 0058: an edit or an approval made on a revision that is no longer the
+  // latest — never merged, the person reloads.
+  if (code === "NS412") return { status: 409, body: { error: "stale_revision", revision: detailNumber(error.details, "revision") } };
+  if (code === "NS423" && ["render_in_progress", "render_finished", "hold_not_released", "render_unverifiable"].includes(msg))
+    return { status: 409, body: { error: msg } };
   if (code === "22023" && ["price_required", "below_floor", "invalid_backend"].includes(msg))
     return { status: msg === "invalid_backend" ? 400 : 409, body: { error: msg } };
+  if (code === "22023" && (msg === "scenes_invalid" || msg === "storyboard_too_long"))
+    return { status: 400, body: { error: msg } };
+  if (code === "22023" && msg === "storyboard_not_editable") return { status: 409, body: { error: msg } };
+  if (code === "23514") return { status: 400, body: { error: "scenes_invalid" } };
   if (
     code === "42P01" ||
     code === "42883" ||
@@ -217,6 +319,24 @@ export function storyboardErrorText(body: Record<string, unknown> | null, t: Dic
       return t.noPrice;
     case "dispatch_failed":
       return t.errDispatch;
+    case "stale_revision":
+      return t.errStale;
+    case "scenes_invalid":
+    case "bad_request":
+      return t.errScenes;
+    case "storyboard_too_long":
+      return t.errTooLong;
+    case "storyboard_not_editable":
+    case "editing_unavailable":
+      return t.errNotEditable;
+    case "unsaved_changes":
+      return t.saveFirst;
+    case "render_in_progress":
+    case "hold_not_released":
+    case "render_unverifiable":
+      return t.errReopenBusy;
+    case "render_finished":
+      return t.errReopenFinished;
     default:
       return t.errGeneric;
   }

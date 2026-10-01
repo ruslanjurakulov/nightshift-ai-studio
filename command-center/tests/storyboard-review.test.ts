@@ -156,3 +156,82 @@ describe("the notification", () => {
     ]);
   });
 });
+
+// ── migration 0058: editing ──────────────────────────────────────────────
+
+describe("an edit as the server takes it", () => {
+  it("only src, narration and visual pass — no length, no ids, nothing else", async () => {
+    const { toSceneEdits } = await import("@/lib/storyboardReview");
+    expect(toSceneEdits([{ src: 2, narration: "a", visual: "b" }, { src: null, narration: "c" }])).toEqual([
+      { src: 2, narration: "a", visual: "b" },
+      { src: null, narration: "c", visual: "" },
+    ]);
+    for (const bad of [
+      [{ src: 1, narration: "a", duration_s: 9 }],
+      [{ src: 1, narration: "a", id: "x" }],
+      [{ src: 1, narration: "a", asset_id: "00000000-0000-4000-8000-000000000001" }],
+      [{ src: "1", narration: "a" }],
+      [{ src: 0, narration: "a" }],
+      [{ src: 61, narration: "a" }],
+      [{ src: 1, narration: null }],
+      [{ src: 1, narration: "a", visual: 3 }],
+      [],
+      Array.from({ length: MAX_SCENES + 1 }, () => ({ src: null, narration: "a" })),
+      { src: 1, narration: "a" },
+      null,
+    ]) {
+      expect(toSceneEdits(bad), JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  it("the screen names the same problems the database refuses", async () => {
+    const { sceneProblem, editProblem } = await import("@/lib/storyboardReview");
+    expect(sceneProblem({ narration: "Fine words.", visual: "harbour, dawn" })).toBeNull();
+    expect(sceneProblem({ narration: "   ", visual: "" })).toBe("empty");
+    expect(sceneProblem({ narration: "x".repeat(4001), visual: "" })).toBe("too_long");
+    expect(sceneProblem({ narration: "Hi [ VOICE : secondary ] there", visual: "" })).toBe("markup");
+    expect(sceneProblem({ narration: "x", visual: "[sfx:boom]" })).toBe("markup");
+    expect(sceneProblem({ narration: "a\u0007b", visual: "" })).toBe("characters");
+    expect(sceneProblem({ narration: "abc‮def", visual: "" })).toBe("characters");
+    expect(sceneProblem({ narration: "x", visual: "a,b,c,d,e,f,g,h,i" })).toBe("terms");
+    // A bracket that is not a cue is just text.
+    expect(sceneProblem({ narration: "The year [1912] began.", visual: "" })).toBeNull();
+    expect(editProblem([])).toBe("count");
+    expect(editProblem([{ src: 1, narration: "a", visual: "" }, { src: 1, narration: "b", visual: "" }])).toBe("duplicate");
+    expect(editProblem([{ src: 1, narration: "", visual: "" }])).toBe("scene");
+  });
+
+  it("reads the revision when the database has it, and none when it does not", () => {
+    expect(toStoryboard(row({ revision: 3 }))?.revision).toBe(3);
+    expect(toStoryboard(row())?.revision).toBeNull();
+    expect(toStoryboard(row({ revision: -1 }))?.revision).toBeNull();
+  });
+
+  it("the edit's and the re-open's refusals become answers", () => {
+    expect(mapStoryboardError({ code: "NS412", message: "stale_revision", details: "revision=7" })).toEqual({
+      status: 409,
+      body: { error: "stale_revision", revision: 7 },
+    });
+    for (const m of ["render_in_progress", "render_finished", "hold_not_released", "render_unverifiable"])
+      expect(mapStoryboardError({ code: "NS423", message: m })).toEqual({ status: 409, body: { error: m } });
+    expect(mapStoryboardError({ code: "22023", message: "scenes_invalid", details: "scene=2 cue_markup" })).toEqual({
+      status: 400,
+      body: { error: "scenes_invalid" },
+    });
+    expect(mapStoryboardError({ code: "22023", message: "storyboard_too_long" }).status).toBe(400);
+    expect(mapStoryboardError({ code: "23514", message: "violates check constraint" }).body).toEqual({ error: "scenes_invalid" });
+    // An unknown NS423 text never passes through.
+    expect(mapStoryboardError({ code: "NS423", message: "something internal" })).toEqual({ status: 502, body: { error: "approve_failed" } });
+  });
+
+  it("each new refusal has its own sentence in every language", () => {
+    for (const dict of [en, ru, uz]) {
+      const t = dict.storyboardReview;
+      for (const error of ["stale_revision", "scenes_invalid", "storyboard_too_long", "render_in_progress", "render_finished"]) {
+        const text = storyboardErrorText({ error }, t);
+        expect(text, error).not.toBe(t.errGeneric);
+        expect(text).not.toMatch(PROVIDER_BRANDS);
+      }
+    }
+  });
+});

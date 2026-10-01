@@ -305,6 +305,48 @@ class ResumeFromApproved(unittest.TestCase):
         self.assertEqual(body["status"], "rendered")
         self.assertFalse(sb.mark_rendered(None, store(http)))
 
+    # ── edited before approval (migration 0058) ──────────────────────────
+
+    def edited_row(self, **kw):
+        """A storyboard as save_storyboard_edits leaves it: scene 2 moved first
+        with its section untouched (cues and all), scene 1 rewritten as plain
+        text with new search terms and a measured length, one scene added."""
+        s = make_script(2).to_dict()
+        rewritten = dict(s["sections"][0], narration="A person's own words [not a cue].",
+                         keywords=["harbour", "dawn"], duration_hint=3)
+        added = {"name": "Added scene", "type": "story", "voice": "main", "narration": "Closing line.",
+                 "duration_hint": 1, "cut_interval": 5.0, "keywords": []}
+        s["sections"] = [s["sections"][1], rewritten, added]
+        return self.approved_row(script=s, opening_edited=True, revision=3, **kw)
+
+    def test_the_render_uses_the_edited_scenes_in_their_new_order(self):
+        http = FakeHttp([self.edited_row()])
+        got = sb.approved_for_resume("news", "The Lighthouse Keeper", store=store(http), output_dir=self.out)
+        loaded = ScriptEngine.load(got.script_path, "The Lighthouse Keeper")
+        self.assertEqual([s.name for s in loaded.sections], ["part 1", "part 0", "Added scene"])
+        self.assertEqual(loaded.sections[1].narration, "A person's own words [not a cue].")
+        self.assertEqual(loaded.sections[1].keywords, ["harbour", "dawn"])
+        # The untouched scene keeps the cues it was written with; the person's
+        # text carries none (0058 refuses cue markup in an edit).
+        self.assertTrue(loaded.sections[0].sfx_cues)
+        self.assertEqual(loaded.sections[1].sfx_cues, [])
+        self.assertEqual(loaded.sections[1].clean_narration(), "A person's own words [not a cue].")
+
+    def test_an_edited_opening_is_not_credited_to_a_hook_arm(self):
+        got = sb.approved_for_resume("news", "The Lighthouse Keeper", store=store(FakeHttp([self.edited_row()])),
+                                     output_dir=self.out)
+        self.assertTrue(got.opening_edited)
+        # A database without 0058 has no such column: the opening is the plan's.
+        plain = sb.approved_for_resume("news", "The Lighthouse Keeper", store=store(FakeHttp([self.approved_row()])),
+                                       output_dir=self.out)
+        self.assertFalse(plain.opening_edited)
+
+    def test_the_lookup_never_names_a_column_an_older_database_lacks(self):
+        http = FakeHttp([self.approved_row()])
+        sb.approved_for_resume("news", "The Lighthouse Keeper", store=store(http), output_dir=self.out)
+        (_, params), = [c for c in http.calls if c[0] == "get"]
+        self.assertEqual(params["select"], "*")
+
 
 # ── the money around a paused run ─────────────────────────────────────────
 
@@ -432,6 +474,13 @@ class Wiring(unittest.TestCase):
         body = ast.get_source_segment(self.src, self._run())
         self.assertIn("storyboard_review.approved_for_resume(channel_id, topic)", body)
         self.assertLess(body.index("approved_for_resume("), body.index("ScriptEngine.load(Path(script_file)"))
+
+    def test_an_edited_opening_records_no_hook_arm(self):
+        body = ast.get_source_segment(self.src, self._run())
+        start = body.index("hook_variant = approved_storyboard.hook_variant")
+        branch = body[start:body.index("else:", start)]
+        self.assertIn("if approved_storyboard.opening_edited:", branch)
+        self.assertIn('hook_variant = ""', branch)
 
     def test_a_paused_run_exits_with_the_code_the_runners_read(self):
         self.assertIn("sys.exit(storyboard_review.PAUSED_EXIT)", self.src)

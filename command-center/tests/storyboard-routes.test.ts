@@ -29,6 +29,7 @@ const h = vi.hoisted(() => ({
   quote: { kind: "paid", credits: 54 } as Record<string, unknown>,
   rpc: {} as Record<string, { data: unknown; error: Err | null }>,
   rpcCalls: [] as { name: string; args: Record<string, unknown> }[],
+  quoted: [] as unknown[],
   dispatch: vi.fn(async (_channel: string, _opts: Record<string, unknown>) => undefined),
   backend: "queue",
   github: true,
@@ -57,11 +58,16 @@ vi.mock("@/lib/server/github-secrets", () => ({
 }));
 vi.mock("@/lib/server/storyboards", () => ({
   readStoryboard: async () => h.read ?? { ok: true, storyboard: h.storyboard },
-  quoteStoryboard: async () => h.quote,
+  quoteStoryboard: async (_s: unknown, sb: unknown) => {
+    h.quoted.push(sb);
+    return h.quote;
+  },
 }));
 
 const approve = (await import("@/app/api/storyboards/[id]/approve/route")).POST;
 const discard = (await import("@/app/api/storyboards/[id]/discard/route")).POST;
+const edit = (await import("@/app/api/storyboards/[id]/edit/route")).POST;
+const reopen = (await import("@/app/api/storyboards/[id]/reopen/route")).POST;
 
 function req(body: unknown = {}) {
   return new Request(`http://x/api/storyboards/${ID}/approve`, { method: "POST", body: JSON.stringify(body) });
@@ -80,6 +86,7 @@ beforeEach(() => {
   h.quote = { kind: "paid", credits: 54 };
   h.rpc = { approve_storyboard: { data: { credit_ref: "rj-sb1-x", credits_held: 54, render_job_id: 9 }, error: null } };
   h.rpcCalls = [];
+  h.quoted = [];
   h.dispatch.mockReset();
   h.dispatch.mockResolvedValue(undefined);
   h.github = true;
@@ -215,11 +222,180 @@ describe("discard", () => {
   });
 });
 
+// ── migration 0058: editing, the revision an approval names, re-opening ──
+
+const EDITED = [
+  { n: 1, name: "Scene 2", type: "story", narration: "Two.", visual: "dawn", duration_s: 100 },
+  { n: 2, name: "Added scene", type: "story", narration: "A new one.", visual: "", duration_s: 2 },
+];
+
+function editReq(body: unknown) {
+  return new Request(`http://x/api/storyboards/${ID}/edit`, { method: "POST", body: JSON.stringify(body) });
+}
+
+describe("approve, once storyboards can be edited", () => {
+  beforeEach(() => {
+    h.storyboard = { ...h.storyboard, revision: 4 };
+    h.rpc.approve_storyboard_at = { data: { credit_ref: "rj-sb1-x", credits_held: 54, render_job_id: 9 }, error: null };
+  });
+
+  it("approves exactly the revision the price was shown for", async () => {
+    const res = await approve(req({ max_credits: 54, revision: 4 }), ctx());
+    expect(res.status).toBe(200);
+    expect(h.rpcCalls).toEqual([
+      { name: "approve_storyboard_at", args: { p_storyboard: ID, p_revision: 4, p_amount: 54, p_backend: "queue" } },
+    ]);
+  });
+
+  it("a press for an older revision, or none, holds nothing", async () => {
+    for (const body of [{ max_credits: 54, revision: 3 }, { max_credits: 54 }]) {
+      const res = await approve(req(body), ctx());
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "stale_revision", revision: 4 });
+    }
+    expect((await approve(req({ max_credits: 54, revision: "4" }), ctx())).status).toBe(400);
+    expect(h.rpcCalls).toEqual([]);
+  });
+
+  it("an edit that lands between the read and the press is the database's refusal", async () => {
+    h.rpc.approve_storyboard_at = { data: null, error: { code: "NS412", message: "stale_revision", details: "revision=5" } };
+    const res = await approve(req({ max_credits: 54, revision: 4 }), ctx());
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "stale_revision", revision: 5 });
+  });
+});
+
+describe("edit", () => {
+  beforeEach(() => {
+    h.storyboard = { ...h.storyboard, revision: 0 };
+    h.quote = { kind: "paid", credits: 21 };
+    h.rpc.save_storyboard_edits = {
+      data: { id: ID, status: "ready", revision: 1, duration_s: 102, scenes: EDITED, changed: true },
+      error: null,
+    };
+  });
+
+  const body = {
+    revision: 0,
+    scenes: [
+      { src: 2, narration: "Two.", visual: "dawn" },
+      { src: null, narration: "A new one.", visual: "" },
+    ],
+  };
+
+  it("saves through the database and re-quotes from the length it stored", async () => {
+    const res = await edit(editReq(body), ctx());
+    expect(res.status).toBe(200);
+    expect(h.rpcCalls).toEqual([
+      { name: "save_storyboard_edits", args: { p_storyboard: ID, p_revision: 0, p_scenes: body.scenes } },
+    ]);
+    // The price is for the database's length, never one the browser sent.
+    expect(h.quoted).toEqual([{ channelId: "chan-a", durationS: 102 }]);
+    const out = await res.json();
+    expect(out).toMatchObject({ ok: true, revision: 1, durationS: 102, quote: { kind: "paid", credits: 21 } });
+    expect(out.scenes.map((s: { narration: string }) => s.narration)).toEqual(["Two.", "A new one."]);
+    expect(h.audits).toHaveLength(1);
+    expect(JSON.stringify(h.audits[0])).not.toContain("A new one.");
+  });
+
+  it("a length, an id or any other field never reaches the database", async () => {
+    for (const scenes of [
+      [{ src: 1, narration: "x", visual: "", duration_s: 1 }],
+      [{ src: 1, narration: "x", asset_id: "00000000-0000-4000-8000-000000000001" }],
+      [{ src: "1", narration: "x" }],
+      [{ src: 1.5, narration: "x" }],
+      [{ src: 1, narration: 5 }],
+      [],
+      "not a list",
+    ]) {
+      const res = await edit(editReq({ revision: 0, scenes }), ctx());
+      expect(res.status, JSON.stringify(scenes)).toBe(400);
+    }
+    expect((await edit(editReq({ revision: -1, scenes: body.scenes }), ctx())).status).toBe(400);
+    expect((await edit(new Request("http://x", { method: "POST", body: "x".repeat(300_001) }), ctx())).status).toBe(413);
+    expect(h.rpcCalls).toEqual([]);
+  });
+
+  it("someone who may not start runs, or a decided storyboard, never reaches the database", async () => {
+    h.access = { ok: false, status: 403, error: "forbidden" };
+    expect((await edit(editReq(body), ctx())).status).toBe(403);
+    h.access = { ok: true, role: "admin", orgId: ORG, source: "org" };
+    h.storyboard = { ...h.storyboard, status: "approved" };
+    expect((await edit(editReq(body), ctx())).status).toBe(409);
+    h.user = null;
+    expect((await edit(editReq(body), ctx())).status).toBe(401);
+    expect(h.rpcCalls).toEqual([]);
+  });
+
+  it("a stale revision is refused, never overwritten", async () => {
+    h.storyboard = { ...h.storyboard, revision: 2 };
+    const res = await edit(editReq(body), ctx());
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "stale_revision", revision: 2 });
+    expect(h.rpcCalls).toEqual([]);
+    h.storyboard = { ...h.storyboard, revision: 0 };
+    h.rpc.save_storyboard_edits = { data: null, error: { code: "NS412", message: "stale_revision", details: "revision=1" } };
+    const raced = await edit(editReq(body), ctx());
+    expect(raced.status).toBe(409);
+    expect(await raced.json()).toEqual({ error: "stale_revision", revision: 1 });
+    expect(h.audits).toEqual([]);
+  });
+
+  it("without migration 0058 nothing is editable", async () => {
+    h.storyboard = { ...h.storyboard, revision: null };
+    const res = await edit(editReq(body), ctx());
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "editing_unavailable" });
+    expect(h.rpcCalls).toEqual([]);
+  });
+
+  it("the database's bounds become answers", async () => {
+    h.rpc.save_storyboard_edits = { data: null, error: { code: "22023", message: "storyboard_too_long", details: "seconds=4000" } };
+    let res = await edit(editReq(body), ctx());
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "storyboard_too_long" });
+    h.rpc.save_storyboard_edits = { data: null, error: { code: "22023", message: "scenes_invalid", details: "scene=1 cue_markup" } };
+    res = await edit(editReq(body), ctx());
+    expect(await res.json()).toEqual({ error: "scenes_invalid" });
+  });
+});
+
+describe("reopen", () => {
+  const post = () => reopen(new Request("http://x", { method: "POST" }), ctx());
+
+  it("re-opens a failed render's storyboard through the database", async () => {
+    h.storyboard = { ...h.storyboard, status: "approved", revision: 1 };
+    const res = await post();
+    expect(res.status).toBe(200);
+    expect(h.rpcCalls).toEqual([{ name: "reopen_storyboard", args: { p_storyboard: ID } }]);
+    expect(h.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("a render that may still be running is a refusal", async () => {
+    h.storyboard = { ...h.storyboard, status: "approved", revision: 1 };
+    h.rpc.reopen_storyboard = { data: null, error: { code: "NS423", message: "hold_not_released" } };
+    const res = await post();
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "hold_not_released" });
+    expect(h.audits).toEqual([]);
+  });
+
+  it("only an approved storyboard, and only for someone who may start runs", async () => {
+    expect((await post()).status).toBe(409);
+    h.storyboard = { ...h.storyboard, status: "approved" };
+    h.access = { ok: false, status: 403, error: "forbidden" };
+    expect((await post()).status).toBe(403);
+    expect(h.rpcCalls).toEqual([]);
+  });
+});
+
 describe("the routes hold no service key", () => {
   it("never names it", () => {
     for (const f of [
       "app/api/storyboards/[id]/approve/route.ts",
       "app/api/storyboards/[id]/discard/route.ts",
+      "app/api/storyboards/[id]/edit/route.ts",
+      "app/api/storyboards/[id]/reopen/route.ts",
       "lib/server/storyboards.ts",
       "lib/storyboardReview.ts",
       "components/storyboard/StoryboardReview.tsx",

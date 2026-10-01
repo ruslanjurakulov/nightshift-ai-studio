@@ -2,7 +2,15 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isCreditExempt } from "../credits";
 import { scopeQuery, type ChannelScope } from "../channels";
-import { STORYBOARD_COLUMNS, isStoryboardId, toStoryboard, type StoryboardQuote, type StoryboardView } from "../storyboardReview";
+import {
+  STORYBOARD_COLUMNS,
+  STORYBOARD_EDIT_COLUMNS,
+  isStoryboardId,
+  toStoryboard,
+  type ReopenState,
+  type StoryboardQuote,
+  type StoryboardView,
+} from "../storyboardReview";
 import { creditsEnforced, estimateForChannel, isCreditsMissing, readCreditPrices } from "./credits";
 
 /**
@@ -18,7 +26,12 @@ export type StoryboardRead =
 
 export async function readStoryboard(supabase: SupabaseClient, id: string): Promise<StoryboardRead> {
   if (!isStoryboardId(id)) return { ok: false, status: 404, error: "not_found" };
-  const { data, error } = await supabase.from("storyboards").select(STORYBOARD_COLUMNS).eq("id", id).maybeSingle();
+  let { data, error } = await supabase.from("storyboards").select(STORYBOARD_EDIT_COLUMNS).eq("id", id).maybeSingle();
+  if (error && isMissingColumn(error)) {
+    // 0057 without 0058: the storyboard reads as before, with no revision —
+    // so nothing on the screen offers to edit it.
+    ({ data, error } = await supabase.from("storyboards").select(STORYBOARD_COLUMNS).eq("id", id).maybeSingle());
+  }
   if (error) {
     // 0057 not applied: say so, never "not found".
     if (isCreditsMissing(error)) return { ok: false, status: 503, error: "storyboard_unavailable" };
@@ -27,6 +40,27 @@ export async function readStoryboard(supabase: SupabaseClient, id: string): Prom
   const storyboard = toStoryboard(data);
   if (!storyboard) return { ok: false, status: 404, error: "not_found" };
   return { ok: true, storyboard };
+}
+
+/** PostgREST's "no such column" (42703) — a migration that adds columns is
+ *  not applied yet. Distinct from a missing table (0057 itself not applied). */
+function isMissingColumn(error: { code?: string; message?: string }): boolean {
+  return error.code === "42703" || /column .* does not exist/i.test(error.message ?? "");
+}
+
+/**
+ * Whether an approved storyboard whose render did not finish may go back to
+ * waiting (0058 storyboard_reopen_check — the same rule reopen_storyboard
+ * enforces). Null when it cannot be known (not allowed, 0058 not applied, the
+ * read failed): the screen then offers nothing, never a guess.
+ */
+export async function readReopenState(supabase: SupabaseClient, id: string): Promise<ReopenState | null> {
+  if (!isStoryboardId(id)) return null;
+  const { data, error } = await supabase.rpc("storyboard_reopen_check", { p_storyboard: id });
+  if (error || !data || typeof data !== "object") return null;
+  const r = data as Record<string, unknown>;
+  if (typeof r.reopenable !== "boolean") return null;
+  return { reopenable: r.reopenable, reason: typeof r.reason === "string" ? r.reason : null };
 }
 
 /** Waiting storyboards of the channels in scope, newest first. Null when the

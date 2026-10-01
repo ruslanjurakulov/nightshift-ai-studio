@@ -398,3 +398,8 @@ sec_dna_0056.extend(TABLES, FUNCTIONS)
 import sec_storyboard_0057  # noqa: E402
 
 sec_storyboard_0057.extend(TABLES, FUNCTIONS)
+
+# Migration 0058 (storyboard editing, re-open after a failed render): tests/security/sec_storyboard_0058.py
+import sec_storyboard_0058  # noqa: E402
+
+sec_storyboard_0058.extend(TABLES, FUNCTIONS)

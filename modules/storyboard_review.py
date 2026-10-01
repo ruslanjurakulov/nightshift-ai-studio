@@ -13,6 +13,11 @@ Why here and not later: the first paid generation for the scenes is the voice
 before this point is the planning the run has always paid for; everything after
 it is what the person is now asked to approve, at one price.
 
+Before approving, a person may edit the storyboard (migration 0058): change a
+scene's narration or visual description, delete, reorder or add scenes. The
+database rewrites the scene cards AND the stored script together, so the
+approved script below is the edited one; nothing here re-derives it.
+
 How it continues: approving (``approve_storyboard`` in the Command Center)
 places the render's credit hold and starts the SAME run again with
 ``--resume --topic <its topic>``. :func:`approved_for_resume` finds the approved
@@ -222,9 +227,12 @@ class StoryboardStore:
         """The newest storyboard of this run, or None. Raises StoryboardUnavailable."""
         self._require()
         try:
+            # "*" rather than a column list: opening_edited exists only once
+            # migration 0058 is applied, and naming it would make every resume
+            # fail on a database without it.
             r = self._http().get(
                 f"{self.url}/rest/v1/storyboards",
-                params={"select": "id,status,topic,script,hook_variant,duration_s",
+                params={"select": "*",
                         "channel_id": f"eq.{channel_id}", "slug": f"eq.{slug}",
                         "order": "created_at.desc", "limit": "1"},
                 headers=self._headers(), timeout=self._timeout)
@@ -296,6 +304,10 @@ class Approved:
     script_path: Path
     hook_variant: str
     duration_s: int
+    #: A person changed the first scene before approving (migration 0058). The
+    #: opening is then theirs, not either hook arm's: the render records no
+    #: hook variant, so the A/B readback is never credited to it.
+    opening_edited: bool = False
 
 
 def materialize(script: Any, path: Path) -> Path:
@@ -344,7 +356,8 @@ def approved_for_resume(channel_id: str, topic: str, *, store: Optional[Storyboa
     except (TypeError, ValueError):
         duration = 0
     logger.info("[channel: %s] Rendering approved storyboard %s", channel_id, row.get("id"))
-    return Approved(str(row.get("id")), path, "B" if row.get("hook_variant") == "B" else "A", duration)
+    return Approved(str(row.get("id")), path, "B" if row.get("hook_variant") == "B" else "A", duration,
+                    opening_edited=row.get("opening_edited") is True)
 
 
 # ── the checkpoint ──────────────────────────────────────────────────────────
