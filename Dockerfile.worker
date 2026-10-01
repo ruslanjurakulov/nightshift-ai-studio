@@ -56,10 +56,16 @@ RUN if find /app -maxdepth 2 \( -name 'youtube_token*.json' -o -name 'client_sec
  && useradd --create-home --uid 10001 nightshift \
  && mkdir -p output history logs assets downloads \
  && chown -R nightshift:nightshift /app \
+ && chmod -R go+rX,go-w /app \
+ && chmod 700 output history logs \
  && mkdir -p /app/media /app/media-staging \
  && chown 1000:1000 /app/media /app/media-staging
 # media/ and media-staging/ belong to uid 1000: media-worker runs as the web
 # image's `node` user so both can manage staged uploads (docker-compose.yml).
+# The code must be readable by that uid too: COPY keeps the build context's
+# modes, and the deploy checks the repo out under umask 077 (files 600), which
+# left media-worker unable to open its own script (python exit 2, "Permission
+# denied"). Code is read-only for others; the worker's own state stays 700.
 
 USER nightshift
 
