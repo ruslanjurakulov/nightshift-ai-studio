@@ -220,3 +220,53 @@ function isConnectedAccount(v: unknown): v is ConnectedAccount {
     typeof a.connected === "boolean"
   );
 }
+
+/** What a ledger row's job reference says it was for (the prefixes 0020/0030/0031/0034/0036 write). */
+export type TxnPurpose = "generation" | "video" | "download" | "api" | "other";
+
+export function txnPurpose(jobId: string | null | undefined): TxnPurpose {
+  const j = jobId ?? "";
+  if (j.startsWith("cj:")) return "generation";
+  if (j.startsWith("rj-") || j.startsWith("gh-")) return "video";
+  if (j.startsWith("download:")) return "download";
+  if (j.startsWith("ah-")) return "api";
+  return "other";
+}
+
+/**
+ * The plain-language line a ledger row reads as, as a key into
+ * `creditsPage.txn`. A hold and a charge say what they were for; a refund on a
+ * download is the failed download's credits coming back, any other refund is
+ * a purchase being refunded (its credits leave). The kinds are 0020 + 0034's.
+ */
+export type TxnLabel =
+  | `reserve.${TxnPurpose}`
+  | `capture.${TxnPurpose}`
+  | "release"
+  | "refundDownload"
+  | "refund"
+  | "purchase"
+  | "subscription"
+  | "grant"
+  | "adjust"
+  | "expire";
+
+export function txnLabel(row: { kind: string; jobId: string | null }): TxnLabel {
+  const purpose = txnPurpose(row.jobId);
+  switch (row.kind) {
+    case "reserve":
+      return `reserve.${purpose}`;
+    case "capture":
+      return `capture.${purpose}`;
+    case "refund":
+      return purpose === "download" ? "refundDownload" : "refund";
+    case "release":
+    case "purchase":
+    case "subscription":
+    case "grant":
+    case "expire":
+      return row.kind;
+    default:
+      return "adjust";
+  }
+}

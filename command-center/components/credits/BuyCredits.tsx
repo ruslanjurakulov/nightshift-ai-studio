@@ -9,6 +9,8 @@ import { formatCredits } from "@/lib/credits";
 import { resolvedTheme } from "@/lib/theme";
 import { checkoutCustomData, paddleLocale, purchaseArrived, type PaddleConfig, type SellablePack } from "@/lib/paddle";
 import { ensurePaddle, previewPrices, type PaddleEventData } from "@/lib/paddle-client";
+import type { GenerationRates } from "@/lib/plans";
+import { Equivalents } from "@/components/credits/Equivalents";
 
 /**
  * Buy credits for the current organization with Paddle's overlay checkout.
@@ -20,7 +22,9 @@ import { ensurePaddle, previewPrices, type PaddleEventData } from "@/lib/paddle-
  * waits for the balance to grow, re-reading the page every few seconds.
  *
  * The page renders this only for an owner/admin of an organization that pays,
- * and only when this deployment has Paddle configured (lib/paddle.ts).
+ * and only when this deployment has Paddle configured (lib/paddle.ts). The
+ * one-time, validity and refund terms sit above the Buy buttons, and the
+ * customer-facing copy names no payment provider.
  */
 
 type Phase = "idle" | "opening" | "paid" | "arrived" | "slow" | "cancelled" | "error" | "load_failed";
@@ -31,19 +35,24 @@ const POLL_TRIES = 20;
 export function BuyCredits({
   config,
   orgId,
-  orgName,
   userId,
   email,
   balance,
+  rates = null,
+  packValidMonths,
 }: {
   config: PaddleConfig;
   orgId: string;
-  orgName: string;
   userId: string | null;
   email: string | null;
   balance: number;
+  /** Today's generation prices, for each pack's "≈ N images" line; null = not shown. */
+  rates?: GenerationRates | null;
+  /** How long pack credits last: months, null = never expire, undefined = unknown (then not stated). */
+  packValidMonths?: number | null;
 }) {
   const { t, locale } = useI18n();
+  const cp = t.creditsPage;
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("idle");
   const [prices, setPrices] = useState<Record<string, string>>({});
@@ -154,52 +163,75 @@ export function BuyCredits({
   }
 
   const message: Partial<Record<Phase, { text: string; ok?: boolean }>> = {
-    paid: { text: t.credits.buy.paid, ok: true },
-    arrived: { text: t.credits.buy.arrived, ok: true },
-    slow: { text: t.credits.buy.slow },
-    cancelled: { text: t.credits.buy.cancelled },
-    error: { text: t.credits.buy.checkoutError },
-    load_failed: { text: t.credits.buy.loadFailed },
+    paid: { text: cp.packPaid, ok: true },
+    arrived: { text: cp.packArrived, ok: true },
+    slow: { text: cp.packSlow },
+    cancelled: { text: cp.cancelled },
+    error: { text: cp.checkoutError },
+    load_failed: { text: cp.loadFailed },
   };
   const msg = message[phase];
+  const validity =
+    packValidMonths === undefined
+      ? cp.packTermsBase
+      : packValidMonths === null
+        ? cp.packTermsNever
+        : fmt(cp.packTermsMonths, { months: packValidMonths });
 
   return (
-    <div className="panel flex flex-col gap-3 p-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="t-section">
-          {t.credits.buy.title} · <span className="font-light">{orgName}</span>
-        </h2>
-        {config.environment === "sandbox" && (
-          <span className="mono pill px-2 py-0.5 text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--color-warn)" }}>
-            {t.credits.buy.sandbox}
-          </span>
-        )}
-      </div>
-      <p className="text-[12px] text-[var(--color-muted)]">{t.credits.buy.hint}</p>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {config.packs.map((pack) => (
-          <div key={pack.id} className="flex flex-col gap-2 rounded-xl border border-[var(--color-border)] p-4">
-            <span className="text-[11px] uppercase tracking-[0.14em] text-[var(--color-muted)]">
-              {t.credits.buy.pack[pack.id]}
+    <section id="topups" className="panel flex scroll-mt-24 flex-col gap-5 p-5 sm:p-6" aria-labelledby="topups-title">
+      <div className="flex flex-col gap-1.5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="topups-title" className="t-section">
+            {cp.packsTitle}
+          </h2>
+          {config.environment === "sandbox" && (
+            <span className="pill border border-[var(--color-warn)] px-2.5 py-0.5 text-[11px]" style={{ color: "var(--color-warn)" }}>
+              {cp.testMode}
             </span>
-            <span className="mono text-[20px]">{fmt(t.credits.buy.credits, { n: formatCredits(pack.credits, locale) })}</span>
-            <span className="text-[12px] text-[var(--color-muted)]">{prices[pack.priceId] ?? t.credits.buy.priceAtCheckout}</span>
-            <button
-              type="button"
-              onClick={() => buy(pack)}
-              disabled={phase === "opening"}
-              className="btn-sky is-solid pill mt-1 px-5 py-2 text-[13px] disabled:opacity-40"
-            >
-              {phase === "opening" ? t.credits.buy.opening : t.credits.buy.buy}
-            </button>
-          </div>
-        ))}
+          )}
+        </div>
+        <p className="text-[14px] font-light text-[var(--color-muted)]">
+          {cp.packsLead}
+        </p>
       </div>
+
+      {/* The terms come before the buttons: read before any checkout opens. */}
+      <p className="text-[12px] leading-relaxed text-[var(--color-muted)]" data-purchase-terms>
+        {validity} {cp.refunds}{" "}
+        <Link href="/terms#credits" className="underline underline-offset-2 hover:text-[var(--color-fg)]">
+          {cp.termsLink}
+        </Link>
+      </p>
+
+      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {config.packs.map((pack) => (
+          <li key={pack.id} className="flex flex-col gap-3 rounded-2xl border border-[var(--color-border)] p-4">
+            <span className="text-[15px] font-medium">{t.credits.buy.pack[pack.id]}</span>
+            <div className="flex flex-col gap-1">
+              <span className="text-[28px] font-semibold leading-none tabular-nums">{formatCredits(pack.credits, locale)}</span>
+              <span className="text-[13px] text-[var(--color-muted)]">{cp.unit}</span>
+            </div>
+            <Equivalents credits={pack.credits} rates={rates} />
+            <div className="mt-auto flex items-center justify-between gap-3 border-t border-[var(--color-border)] pt-3">
+              <span className="text-[15px] font-medium tabular-nums">{prices[pack.priceId] ?? <span className="text-[12px] font-normal text-[var(--color-muted)]">{cp.priceAtCheckout}</span>}</span>
+              <button
+                type="button"
+                onClick={() => buy(pack)}
+                disabled={phase === "opening"}
+                className="btn-sky is-solid pill tap shrink-0 px-5 py-2 text-[14px] disabled:opacity-40"
+              >
+                {phase === "opening" ? cp.opening : cp.buy}
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {rates && <p className="text-[11px] text-[var(--color-muted)]">{cp.eq.note}</p>}
 
       {msg && (
         <p
-          className="text-[12px]"
+          className="text-[13px]"
           style={{ color: msg.ok ? "var(--color-ok)" : phase === "slow" || phase === "cancelled" ? "var(--color-muted)" : "var(--color-fail)" }}
           aria-live="polite"
         >
@@ -207,13 +239,14 @@ export function BuyCredits({
         </p>
       )}
 
+      {/* Legal disclosure, not branding: the Merchant of Record must be named before payment. */}
       <p className="text-[11px] text-[var(--color-muted)]">
         {t.credits.buy.merchant}{" "}
         <Link href="/terms" className="underline">
           {t.credits.buy.terms}
         </Link>
       </p>
-    </div>
+    </section>
   );
 }
 
