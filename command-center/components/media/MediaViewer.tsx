@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject, type TouchEvent } from "react";
+import Link from "next/link";
 import { ChevronLeft, ChevronRight, ExternalLink, Trash2, X } from "lucide-react";
 import { useOverlay } from "@/components/a11y/useOverlay";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
+import { useChannelPath } from "@/lib/channels-client";
+import { SOURCE_CAPABILITIES } from "@/lib/creative/operations";
 import { formatDuration, formatMediaBytes, type LibraryAsset } from "@/lib/media";
 import { stepIndex } from "./libraryView";
 import { KIND_ICON } from "./kindIcon";
@@ -51,6 +54,7 @@ export function MediaViewer({
   opener?: RefObject<HTMLElement | null>;
 }) {
   const { t, locale } = useI18n();
+  const path = useChannelPath();
   const tm = t.media;
   const tv = tm.viewer;
   const box = useRef<HTMLDivElement>(null);
@@ -234,6 +238,24 @@ export function MediaViewer({
                   ))}
               </dl>
             </div>
+
+            {/* A picture opens a Studio tool with it chosen. A link only: nothing is priced or spent here. */}
+            {asset.kind === "image" && picture && (
+              <div className="flex flex-col gap-2">
+                <span className="t-label">{t.gen.useInStudio}</span>
+                <div className="flex flex-wrap gap-2">
+                  {SOURCE_CAPABILITIES.map((tool) => (
+                    <Link
+                      key={tool}
+                      href={path(`/create?tool=${tool}&source=${encodeURIComponent(asset.id)}`)}
+                      className="btn-sky is-quiet pill px-3 py-1.5 text-[12px]"
+                    >
+                      {t.gen.kinds[tool]}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               {asset.viewUrl && (

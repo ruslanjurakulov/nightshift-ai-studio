@@ -6,13 +6,36 @@
  * /api/creative/quote (the database), and is only ever shown and echoed back
  * as `max_credits` — the ceiling the person confirmed.
  */
-import { CREATIVE_ERRORS, type CreativeCapability, type CreativeError, PARAM_KEYS } from "@/lib/creative/operations";
+import {
+  CREATIVE_ERRORS,
+  type CreativeCapability,
+  type CreativeError,
+  PARAM_KEYS,
+  SOURCE_CAPABILITIES,
+  UPSCALE_FACTORS,
+  isUuid,
+} from "@/lib/creative/operations";
 import { formatCredits } from "@/lib/credits";
 import { fmt, type Dictionary } from "@/lib/i18n";
 
 /** What the panel can make today (the rest wait for their own UI). */
-export const STUDIO_CAPABILITIES = ["t2i", "t2v", "tts"] as const satisfies readonly CreativeCapability[];
+export const STUDIO_CAPABILITIES = ["t2i", "t2v", "tts", "edit", "i2v", "upscale", "remove_bg"] as const satisfies readonly CreativeCapability[];
 export type StudioCapability = (typeof STUDIO_CAPABILITIES)[number];
+
+/** The tools that start from a picture in the library (migration 0046). */
+export type SourceCapability = (typeof SOURCE_CAPABILITIES)[number];
+export type UpscaleFactor = (typeof UPSCALE_FACTORS)[number];
+
+export function needsSource(c: string): c is SourceCapability {
+  return (SOURCE_CAPABILITIES as readonly string[]).includes(c);
+}
+
+/** 0046: the prompt is required for these, optional for i2v / upscale, refused for remove_bg. */
+export function promptRule(c: StudioCapability): "required" | "optional" | "none" {
+  if (c === "remove_bg") return "none";
+  if (c === "i2v" || c === "upscale") return "optional";
+  return "required";
+}
 
 export const ASPECT_RATIOS = ["16:9", "9:16", "1:1"] as const;
 export type AspectRatio = (typeof ASPECT_RATIOS)[number];
@@ -67,17 +90,45 @@ export interface StudioForm {
   prompt: string;
   aspect: AspectRatio;
   duration: VideoDuration;
+  /** The library picture edit / i2v / upscale / remove_bg start from. */
+  sourceId?: string | null;
+  factor?: UpscaleFactor;
 }
 
 type ParamKey = (typeof PARAM_KEYS)[number];
 
-/** Only what 0036's creative_params_problem accepts for the capability. */
+/**
+ * Only what 0036 / 0046's creative_params_problem accepts for the capability.
+ * The source tools keep the picture's own shape, so they never send an aspect
+ * ratio; an empty optional prompt is left out rather than sent blank.
+ */
 export function buildParams(form: StudioForm): Partial<Record<ParamKey, string | number>> {
   const prompt = form.prompt.trim();
-  if (form.capability === "t2i") return { prompt, aspect_ratio: form.aspect };
-  if (form.capability === "t2v") return { prompt, aspect_ratio: form.aspect, duration_s: form.duration };
-  // Speech: the words are the prompt; the price counts their characters.
-  return { prompt };
+  const source = form.sourceId ?? "";
+  switch (form.capability) {
+    case "t2i":
+      return { prompt, aspect_ratio: form.aspect };
+    case "t2v":
+      return { prompt, aspect_ratio: form.aspect, duration_s: form.duration };
+    case "edit":
+      return { prompt, source_asset_id: source };
+    case "i2v":
+      return { ...(prompt ? { prompt } : {}), source_asset_id: source, duration_s: form.duration };
+    case "upscale":
+      return { ...(prompt ? { prompt } : {}), source_asset_id: source, factor: form.factor ?? 2 };
+    case "remove_bg":
+      return { source_asset_id: source };
+    default:
+      // Speech: the words are the prompt; the price counts their characters.
+      return { prompt };
+  }
+}
+
+/** Enough to ask for a price: the picture when the tool needs one, the words when they are required. */
+export function canQuote(form: StudioForm): boolean {
+  if (needsSource(form.capability) && !isUuid(form.sourceId)) return false;
+  if (promptRule(form.capability) === "required" && !form.prompt.trim()) return false;
+  return true;
 }
 
 /** One key per click: a replayed click answers the first job instead of paying twice. */
@@ -261,6 +312,12 @@ export interface StudioPrefill {
   prompt: string;
   aspect: AspectRatio;
   duration: VideoDuration;
+  sourceId?: string | null;
+  factor?: UpscaleFactor;
+}
+
+function asFactor(v: unknown): UpscaleFactor {
+  return (UPSCALE_FACTORS as readonly unknown[]).includes(v) ? (v as UpscaleFactor) : 2;
 }
 
 export function prefillFromJob(job: StudioJob): StudioPrefill | null {
@@ -274,7 +331,20 @@ export function prefillFromJob(job: StudioJob): StudioPrefill | null {
     prompt: typeof p.prompt === "string" ? p.prompt : "",
     aspect,
     duration,
+    ...(needsSource(job.capability)
+      ? { sourceId: isUuid(p.source_asset_id) ? p.source_asset_id : null, factor: asFactor(p.factor) }
+      : {}),
   };
+}
+
+/**
+ * "Use in Studio" from the Library: /create?tool=upscale&source=<id>. Only
+ * the shape is checked here; whether the picture is this organization's and
+ * usable is decided by the database when it is priced. Spends nothing.
+ */
+export function prefillFromQuery(tool: unknown, source: unknown): StudioPrefill | null {
+  if (typeof tool !== "string" || !needsSource(tool) || !isUuid(source)) return null;
+  return { capability: tool, model: "", prompt: "", aspect: "16:9", duration: 5, sourceId: source, factor: 2 };
 }
 
 // ── dismissed failures (a per-viewer convenience; the job itself stays) ─────
