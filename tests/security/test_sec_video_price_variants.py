@@ -401,3 +401,71 @@ def test_the_starting_rows_are_the_documented_prices_with_margin_1_5_and_never_o
     db.su(_seed_statement())
     assert db.su("select credits_per_unit::float from public.credit_prices where unit = 'model_wan_2_7_second_720p'") == [(7.0,)]
     db.su("delete from public.credit_prices where unit = any(%s)", [units])
+
+
+# ── what is sent changed: the proof is re-opened (model_registry_guard) ──────
+
+def _verified(db, mid, spec):
+    row = {"id": mid, "display_name": mid, "provider": "acme", "adapter": "video.acme", "capabilities": ["t2v"],
+           "credit_unit": f"model_{mid}_second", "entitlement": "any", "spec": spec}
+    db.su("select public.sync_model_registry(%s::jsonb)", [json.dumps([row])])
+    db.su("select public.record_model_probe(%s, 'video.acme', %s, 't2v', true, null, null, 10, 100, 'security-lab')",
+          [mid, spec["vendor_model"]])
+    db.su("update public.model_registry set availability='beta' where id=%s", [mid])
+    assert db.su("select verified_probe_id is not null from public.model_registry where id=%s", [mid])[0][0]
+
+
+def _state(db, mid):
+    return db.su("select verified_at is not null, verified_probe_id is not null, availability "
+                 "from public.model_registry where id=%s", [mid])[0]
+
+
+@pytest.mark.parametrize("name,change", [
+    ("res", "set spec = jsonb_set(spec, '{default_resolution}', '\"1080p\"')"),
+    ("res_dropped", "set spec = spec - 'default_resolution'"),
+    ("by", "set spec = jsonb_set(spec, '{pricing,variants,by}', '\"resolution_audio\"')"),
+    ("by_dropped", "set spec = spec #- '{pricing,variants}'"),
+    ("tiers", "set spec = jsonb_set(spec, '{qualities}', '[\"low\",\"high\"]')"),
+    ("tiers_added", "set spec = spec || '{\"qualities\":[\"low\"]}'::jsonb"),
+])
+def test_a_change_of_what_is_sent_reopens_the_proof(db, name, change):
+    mid = "g" + name.replace("_", "")
+    spec = _spec("resolution", {"720p": 0.1, "1080p": 0.2}, ["720p", "1080p"], "720p")
+    spec["qualities"] = ["low", "medium"]
+    _verified(db, mid, spec)
+    assert _state(db, mid)[:2] == (True, True)
+    db.su(f"update public.model_registry {change} where id=%s", [mid])
+    assert _state(db, mid) == (False, False, "hidden"), name
+
+
+@pytest.mark.parametrize("change", [
+    "set spec = jsonb_set(spec, '{pricing,variants,prices,720p}', '0.5')",       # a price is not a call
+    "set display_name = 'renamed'",
+    "set spec = jsonb_set(spec, '{pricing,note}', '\"read again\"')",
+])
+def test_a_change_that_does_not_alter_the_call_keeps_the_proof(db, change):
+    mid = f"k{abs(hash(change)) % 10**8}"
+    _verified(db, mid, _spec("resolution", {"720p": 0.1, "1080p": 0.2}, ["720p", "1080p"], "720p"))
+    db.su(f"update public.model_registry {change} where id=%s", [mid])
+    assert _state(db, mid) == (True, True, "beta")
+
+
+@pytest.mark.parametrize("name,change", [
+    ("endframe", "set spec = jsonb_set(spec, '{end_frame}', 'true')"),
+    ("factors", "set spec = jsonb_set(spec, '{upscale_factors}', '[2,4]')"),
+    ("vendor", "set spec = jsonb_set(spec, '{vendor_model}', '\"acme-vid-2\"')"),
+    ("languages", "set spec = jsonb_set(spec, '{languages}', '[\"en\"]')"),
+    ("targets", "set spec = jsonb_set(spec, '{upscale_targets}', '[\"4k\"]')"),
+])
+def test_the_guard_keeps_every_earlier_trigger(db, name, change):
+    mid = f"e{name}"
+    spec = _spec(None, None, ["720p"]) | {"end_frame": False, "upscale_factors": [2], "languages": ["ru"],
+                                           "upscale_targets": ["2k"]}
+    _verified(db, mid, spec)
+    db.su(f"update public.model_registry {change} where id=%s", [mid])
+    assert _state(db, mid) == (False, False, "hidden"), name
+
+
+def test_the_guard_is_closed_to_the_api(db):
+    assert db.su("select not has_function_privilege('authenticated','public.model_registry_guard()','EXECUTE')"
+                 " and not has_function_privilege('anon','public.model_registry_guard()','EXECUTE')")[0][0]
