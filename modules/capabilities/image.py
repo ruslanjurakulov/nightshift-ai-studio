@@ -70,6 +70,9 @@ class OpenAIImageAdapter(HttpAdapter):
     base_url_env = "OPENAI_BASE_URL"
     default_base_url = "https://api.openai.com/v1"
     capabilities = (T2I, EDIT)
+    #: /images/edits takes several ``image[]`` parts; /images/generations
+    #: takes none, so text-to-image gets no references here.
+    reference_capabilities = (EDIT,)
     timeout = 180
     SIZES = {"1:1": "1024x1024", "3:2": "1536x1024", "2:3": "1024x1536",
              "16:9": "1536x864", "9:16": "864x1536", "4:3": "1344x1008", "3:4": "1008x1344"}
@@ -118,6 +121,9 @@ class GeminiImageAdapter(_GoogleAdapter):
 
     key = "image.gemini"
     capabilities = (T2I, EDIT)
+    #: Every input image rides as an inline part of the same call, which is
+    #: how Gemini takes reference images (registry inputs.image_refs_max).
+    reference_capabilities = (T2I, EDIT)
     timeout = 120
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:

@@ -26,8 +26,9 @@ export const revalidate = 0;
  * (main.py, effective_visual_style channel default), so the whole look follows.
  *
  * Below them, the organization's style kits and characters (migration 0047):
- * looks and recurring subjects built from its own media library. They are
- * configuration only — nothing reads them during a run yet.
+ * looks and recurring subjects built from its own media library. Generations
+ * made on the Create page use them (a kit picked as the Style, @names in the
+ * words — migration 0048); the autonomous video pipeline does not read them yet.
  */
 export default async function StudioPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
