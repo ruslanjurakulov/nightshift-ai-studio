@@ -138,6 +138,8 @@ describe("jobs", () => {
       prompt: "a forest",
       aspect: "9:16",
       duration: 10,
+      // 0048: a video can take a style kit; this job had none.
+      styleKitId: null,
     });
     expect(prefillFromJob(job({ capability: "music" }))).toBeNull();
   });

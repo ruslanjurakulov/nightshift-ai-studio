@@ -18,6 +18,10 @@ job folder), the capability layer knows vendors (``CapabilityRequest``,
   (``problems``) before the paid call: a refusal is ``bad_request``, free;
 * input images are the local files the worker resolved from the media
   library (``GenerationRequest.input_files``) — never a URL from a job row;
+* style / character reference pictures (0048,
+  ``GenerationRequest.reference_files``) follow them only for a capability
+  the adapter lists in ``reference_capabilities``, and only as many as the
+  registry entry's ``inputs.image_refs_max`` leaves (``style_support``);
 * synchronous vendors (the image APIs) finish inside ``submit``: their
   outputs are kept in this process under a ``sync:<uuid>`` task id and
   written out by the first ``poll``. A worker that restarts in between has
@@ -37,6 +41,7 @@ from pathlib import Path
 from typing import Dict, List, Mapping, Optional
 
 from modules import model_registry
+from modules.creative_style import StyleSupport
 from modules.capabilities import build_adapter
 from modules.capabilities.base import (
     FAILED,
@@ -84,7 +89,8 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
     p: Mapping = request.params or {}
     return CapabilityRequest(
         capability=request.capability,
-        prompt=str(p.get("prompt") or ""),
+        # The worker's prompt when it appended a style guide (0048), else the stored one.
+        prompt=request.prompt if request.prompt is not None else str(p.get("prompt") or ""),
         negative_prompt=str(p.get("negative_prompt") or ""),
         aspect_ratio=_str(p.get("aspect_ratio")),
         resolution=_str(p.get("resolution")),
@@ -93,7 +99,7 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         scale=_int(p.get("factor")),
         # An opaque per-organization id for the vendors that ask for one.
         end_user=hashlib.sha256(f"nightshift-org:{request.org_id}".encode()).hexdigest()[:32],
-        input_images=tuple(str(f) for f in request.input_files),
+        input_images=tuple(str(f) for f in (*request.input_files, *request.reference_files)),
     )
 
 
@@ -110,12 +116,29 @@ class RegistryAdapter:
     def _vendor_model(self, capability: str) -> str:
         return self.entry.vendor_model_for(capability)
 
+    def style_support(self, request: GenerationRequest) -> StyleSupport:
+        """How many reference pictures this model takes for the job beside its
+        own inputs (0 unless the adapter declares references for the
+        capability), and its longest prompt."""
+        cap = request.capability
+        slots = 0
+        if cap in getattr(self.adapter, "reference_capabilities", ()):
+            slots = max(0, self.entry.image_refs_max - len(request.input_files))
+        return StyleSupport(reference_slots=slots, max_prompt_chars=self.entry.max_prompt_chars)
+
     def submit(self, request: GenerationRequest) -> str:
         cap = request.capability
         if cap not in self.adapter.capabilities or cap not in self.entry.capabilities:
             raise CreativeAdapterError(
                 "capability_not_supported",
                 f"{self.entry.id} cannot do {cap} on this deployment; nothing was charged")
+        # A reference must never reach an adapter that would drop it or read
+        # it as something else (a first frame): the worker asks style_support
+        # first, and this holds even if it did not.
+        if request.reference_files and (
+                cap not in getattr(self.adapter, "reference_capabilities", ())
+                or len(request.input_files) + len(request.reference_files) > self.entry.image_refs_max):
+            raise CreativeAdapterError("bad_request", f"{self.entry.id} cannot take these reference pictures")
         req = capability_request(request)
         problems = self.adapter.problems(req, self.entry)
         if problems:

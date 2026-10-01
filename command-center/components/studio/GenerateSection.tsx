@@ -16,11 +16,14 @@ export function GenerateSection({
   orgId,
   models,
   initial = null,
+  defaultStyleKitId = null,
 }: {
   orgId: string;
   models: StudioModel[];
   /** From the Library's "Use in Studio" link; fills the form only. */
   initial?: StudioPrefill | null;
+  /** The open channel's default style kit (0047), if it has one. */
+  defaultStyleKitId?: string | null;
 }) {
   const [prefill, setPrefill] = useState<{ nonce: number; value: StudioPrefill } | null>(
     initial ? { nonce: 0, value: initial } : null,
@@ -42,6 +45,7 @@ export function GenerateSection({
           orgId={orgId}
           models={models}
           initial={prefill?.value ?? null}
+          defaultStyleKitId={defaultStyleKitId}
           onCreated={() => setRefreshKey((k) => k + 1)}
         />
       </div>

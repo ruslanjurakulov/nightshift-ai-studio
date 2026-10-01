@@ -64,8 +64,9 @@ export interface LoadOptions {
  * `available: false` when 0047 is not applied; `error: "read_failed"` when a
  * read failed — never an empty list that would read as "you have none".
  *
- * Not wired into generation yet: this is the typed read a later generation
- * step will use to turn a channel's default kit or an @name into references.
+ * Studio generations do not read through here: the creative worker reads a
+ * job's kit and @characters itself, in the job's organization (migration
+ * 0048, creative_job_style). This is the page's read.
  */
 export async function loadStyleContext(orgId: string, opts: LoadOptions = {}): Promise<StyleContext> {
   const supabase = await createClient();

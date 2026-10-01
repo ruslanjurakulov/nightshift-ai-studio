@@ -351,6 +351,10 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "creative_source_problem": SERVICE,
     "creative_job_source": SERVICE,
     "attach_creative_job_assets": SERVICE,
+    # style inputs (0048): the kit check is internal; the worker reads the
+    # style of a job it holds (its kit and @characters, in the job's org)
+    "creative_style_problem": SERVICE,
+    "creative_job_style": SERVICE,
     # provider costs (0037)
     "record_creative_job_cost": SERVICE,
     # worker status (0045): workers report; a signed-in user may ask only whether media checking runs
