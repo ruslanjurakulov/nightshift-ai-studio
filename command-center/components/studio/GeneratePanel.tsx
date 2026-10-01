@@ -12,6 +12,7 @@ import { TOOL_ICONS } from "@/components/studio/toolIcons";
 import { useModelPrices } from "@/components/studio/useModelPrices";
 import { useStyleKits } from "@/components/studio/useStyleKits";
 import { PlanUpsellDialog } from "@/components/studio/PlanUpsellDialog";
+import { SegmentedSwitch } from "@/components/ui/SegmentedSwitch";
 import { ChannelDnaHint } from "@/components/studio/ChannelDnaHint";
 import { PriceButton } from "@/components/ui/PriceButton";
 import { creditUnit } from "@/lib/credits";
@@ -313,10 +314,11 @@ export function GeneratePanel({
     edited();
   };
 
-  // A tablist: ←/→ (and ↑/↓) move and choose, Home/End jump; one tab stop.
+  // The tool row is a tablist of its own under the mode switch: ←/→ (and
+  // ↑/↓) move and choose, Home/End jump; one tab stop.
   function onTabKey(e: KeyboardEvent<HTMLButtonElement>, c: StudioCapability) {
-    const i = PANEL_CAPABILITIES.indexOf(c);
-    const n = PANEL_CAPABILITIES.length;
+    const i = MEDIA_TOOLS.indexOf(c);
+    const n = MEDIA_TOOLS.length;
     let to = -1;
     if (e.key === "ArrowRight" || e.key === "ArrowDown") to = (i + 1) % n;
     else if (e.key === "ArrowLeft" || e.key === "ArrowUp") to = (i - 1 + n) % n;
@@ -324,7 +326,7 @@ export function GeneratePanel({
     else if (e.key === "End") to = n - 1;
     if (to < 0) return;
     e.preventDefault();
-    const next = PANEL_CAPABILITIES[to];
+    const next = MEDIA_TOOLS[to];
     pick(next);
     tabRefs.current[next]?.focus();
   }
@@ -343,7 +345,7 @@ export function GeneratePanel({
         id={`gen-tab-${c}`}
         aria-selected={on}
         aria-controls="gen-tabpanel"
-        tabIndex={on ? 0 : -1}
+        tabIndex={on || (!MEDIA_TOOLS.includes(capability) && c === MEDIA_TOOLS[0]) ? 0 : -1}
         onClick={() => pick(c)}
         onKeyDown={(e) => onTabKey(e, c)}
         className="studio-tab"
@@ -407,12 +409,23 @@ export function GeneratePanel({
         {t.gen.title}
       </h2>
 
-      <div role="tablist" aria-label={t.gen.kindLabel} className="flex flex-col gap-1">
-        <div role="presentation" className="grid grid-cols-3 gap-1">
-          {MAKE_KINDS.map(tab)}
-        </div>
-        <div role="presentation" className="mx-1 my-0.5 h-px bg-[var(--color-border)]" />
-        <div role="presentation" className="grid grid-cols-3 gap-1">
+      <div className="flex flex-col gap-2">
+        {/* The mode switch: what to make. The tools below it start from something in the library. */}
+        <SegmentedSwitch
+          semantics="tab"
+          label={t.gen.kindLabel}
+          idPrefix="gen-tab"
+          controls="gen-tabpanel"
+          size="lg"
+          className="w-full [&>button]:flex-1 [&>button]:justify-center"
+          value={MAKE_KINDS.includes(capability) ? capability : null}
+          onChange={pick}
+          options={MAKE_KINDS.map((c) => {
+            const Icon = TOOL_ICONS[c];
+            return { value: c, label: t.gen.tabs[c], icon: <Icon aria-hidden className="size-4" strokeWidth={1.75} /> };
+          })}
+        />
+        <div role="tablist" aria-label={t.gen.toolRowLabel} className="grid grid-cols-3 gap-1">
           {MEDIA_TOOLS.map(tab)}
         </div>
       </div>

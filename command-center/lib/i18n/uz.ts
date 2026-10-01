@@ -2562,6 +2562,7 @@ export const uz: Dictionary = {
     title: "Rasm, video yoki ovoz yarating",
     subtitle: "Tasvirlang, narxni ko'ring, yarating. Kreditlar ish davomida band qilinadi va faqat muvaffaqiyatli bo'lsa yechiladi.",
     kindLabel: "Nima yaratiladi",
+    toolRowLabel: "Vositalar",
     kinds: { t2i: "Rasm", t2v: "Video", tts: "Ovoz", sfx: "Tovush", music: "Musiqa", edit: "Tahrirlash", i2v: "Jonlantirish", upscale: "Kattalashtirish", remove_bg: "Fonni olib tashlash", voice_change: "Ovozni almashtirish", dub: "Dublyaj / tarjima", video_upscale: "Video sifatini oshirish", describe: "Tasvirlash" },
     promptLabel: "Tasvirlang",
     voiceTextLabel: "Aytiladigan matn",

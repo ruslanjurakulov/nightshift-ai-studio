@@ -2569,6 +2569,7 @@ export const en = {
     title: "Make an image, video or voice",
     subtitle: "Describe it, see the price, generate. Credits are held while it works and charged only when it succeeds.",
     kindLabel: "What to make",
+    toolRowLabel: "Tools",
     kinds: { t2i: "Image", t2v: "Video", tts: "Voice", sfx: "Sound", music: "Music", edit: "Edit", i2v: "Animate", upscale: "Upscale", remove_bg: "Remove background", voice_change: "Change voice", dub: "Dub / translate", video_upscale: "Upscale video", describe: "Describe" },
     promptLabel: "Describe it",
     voiceTextLabel: "Words to speak",
