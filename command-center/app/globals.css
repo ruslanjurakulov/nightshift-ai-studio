@@ -1432,3 +1432,167 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ── Public landing v3: the Studio picture, the flow, the format tiles ───────
+   Same contract as the lp- rules above: the static style is the finished,
+   legible frame; the load-in motion is layered on only under
+   prefers-reduced-motion: no-preference. The Studio picture reuses the Studio's
+   own surfaces (studio-surface, studio-field, studio-cta) so the public page
+   and the signed-in app read as one product. */
+
+/* Tool tabs inside the picture: the Studio's tab, selected without ARIA (the
+   picture is one image to assistive tech). */
+.lp-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 52px;
+  padding: 6px 4px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+.lp-tab.is-on {
+  color: var(--color-fg);
+  background: var(--studio-raised);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-panel);
+}
+.lp-tab.is-on svg { color: var(--color-primary); }
+.lp-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-panel);
+}
+.lp-seg > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.lp-seg > span.is-on { color: var(--studio-cta-fg); background: var(--studio-cta-bg); }
+
+/* Result tiles' artwork — drawn with gradients, never a generated picture. */
+.lp-art-sunset {
+  background:
+    radial-gradient(circle at 70% 46%, #ffe3b0 0 7%, rgba(255, 227, 176, 0.35) 8%, transparent 20%),
+    linear-gradient(180deg, #2d3f73 0%, #b0627c 48%, #f2a46c 70%, #3c4d7a 70.5%, #1d2747 100%);
+}
+.lp-art-sunset::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 30% 0;
+  height: 34%;
+  background: linear-gradient(180deg, #3a3560, #22213f);
+  clip-path: polygon(0 70%, 18% 30%, 34% 62%, 52% 18%, 70% 58%, 86% 36%, 100% 64%, 100% 100%, 0 100%);
+}
+.lp-art-forest {
+  background:
+    linear-gradient(180deg, rgba(220, 232, 240, 0.0) 30%, rgba(220, 232, 240, 0.45) 62%, rgba(220, 232, 240, 0) 80%),
+    linear-gradient(180deg, #5e7f8f 0%, #9fb7bf 46%, #2e4a45 100%);
+}
+.lp-art-forest::before,
+.lp-art-forest::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+}
+.lp-art-forest::before {
+  height: 58%;
+  background: #3a5a52;
+  opacity: 0.75;
+  clip-path: polygon(0 40%, 6% 10%, 12% 40%, 18% 5%, 24% 38%, 32% 12%, 40% 42%, 48% 8%, 56% 40%, 64% 14%, 72% 44%, 80% 6%, 88% 40%, 94% 16%, 100% 42%, 100% 100%, 0 100%);
+}
+.lp-art-forest::after {
+  height: 40%;
+  background: #1c302c;
+  clip-path: polygon(0 36%, 8% 4%, 16% 38%, 26% 10%, 34% 44%, 44% 6%, 54% 40%, 62% 12%, 72% 46%, 82% 8%, 90% 40%, 100% 14%, 100% 100%, 0 100%);
+}
+.lp-art-portrait {
+  background:
+    radial-gradient(ellipse 22% 26% at 50% 40%, #f0c9b0 0 98%, transparent 100%),
+    radial-gradient(ellipse 36% 30% at 50% 100%, #3a2f55 0 98%, transparent 100%),
+    linear-gradient(160deg, #2a5f6b 0%, #6c3d55 100%);
+}
+.lp-art-check {
+  background-color: #d9dde3;
+  background-image:
+    linear-gradient(45deg, #b9bfc8 25%, transparent 25%, transparent 75%, #b9bfc8 75%),
+    linear-gradient(45deg, #b9bfc8 25%, transparent 25%, transparent 75%, #b9bfc8 75%);
+  background-size: 14px 14px;
+  background-position: 0 0, 7px 7px;
+}
+
+/* A result still being made: a slow light sweep, like the Studio's own. */
+.lp-making {
+  background:
+    linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--color-primary) 16%, transparent) 50%, transparent 70%),
+    var(--studio-field);
+  background-size: 220% 100%, auto;
+  background-position: 30% 0, 0 0;
+}
+
+/* The hero's flow: channel → … → YouTube. Done steps carry a tick, the
+   approval step is the accent, YouTube is what comes after you. */
+.lp-flow-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-panel) 80%, transparent);
+  font-size: 12.5px;
+  white-space: nowrap;
+  color: var(--color-fg);
+}
+.lp-flow-step.is-you {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  box-shadow: 0 0 22px var(--glow-primary);
+}
+.lp-flow-step.is-next { color: var(--color-muted); }
+.lp-flow-link {
+  width: 18px;
+  height: 1px;
+  background: color-mix(in srgb, var(--color-primary) 50%, transparent);
+  transform-origin: 0 50%;
+}
+
+/* Format tiles: the artwork leans in a little on hover, nothing jumps. */
+.lp-tile svg { transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.25, 1); }
+.lp-tile:hover svg { transform: scale(1.04); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .lp-in { animation: lp-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; animation-delay: var(--d, 0s); }
+  .lp-type { animation: lp-type 1.8s steps(42, end) 0.5s both; }
+  .lp-making { animation: lp-sweep 2.4s ease-in-out infinite; }
+  .lp-flow-step { animation: lp-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; animation-delay: calc(0.25s + var(--i, 0) * 0.14s); }
+  .lp-flow-link { animation: lp-grow 0.4s ease-out both; animation-delay: calc(0.32s + var(--i, 0) * 0.14s); }
+}
+@keyframes lp-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes lp-type { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes lp-sweep { from { background-position: 130% 0, 0 0; } to { background-position: -30% 0, 0 0; } }
+@keyframes lp-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* Public pages' section heading: calmer than the app's t-section, so on the
+   landing and Pricing pages only the hero speaks loudest. */
+.lp-h2 {
+  font-size: clamp(1.625rem, 3vw, 40px);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}

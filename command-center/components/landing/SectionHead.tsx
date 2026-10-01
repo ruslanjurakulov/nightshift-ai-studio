@@ -34,10 +34,10 @@ export function SectionHead({
   return (
     <div className={`max-w-3xl ${className}`}>
       <Eyebrow hour={hour}>{eyebrow}</Eyebrow>
-      <h2 id={id} className="t-section mt-5">
+      <h2 id={id} className="lp-h2 mt-5">
         {title}
       </h2>
-      {lead && <p className="t-lead mt-5">{lead}</p>}
+      {lead && <p className="mt-4 max-w-[62ch] text-[16px] font-light leading-relaxed text-[var(--color-muted)] sm:text-[17.5px]">{lead}</p>}
     </div>
   );
 }

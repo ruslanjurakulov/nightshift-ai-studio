@@ -6,7 +6,8 @@ import { paddleClient, paddleConfig } from "@/lib/paddle";
 import { PRICING_ENV, creditRates, resolvePricing, type CreditRates } from "@/lib/pricing";
 import { PLAN_ENV, planMatrix } from "@/lib/plans";
 import { planValue, readPlanCatalog, type PlanRead } from "@/lib/server/plans";
-import type { PlanCatalog } from "@/lib/plans";
+import { generationRates, type GenerationRates, type PlanCatalog } from "@/lib/plans";
+import { readSellableModels } from "@/lib/creative/registry";
 import { siteOrigin } from "@/lib/landing";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { PricingView } from "@/components/pricing/PricingView";
@@ -63,11 +64,17 @@ export default async function PricingPage() {
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
   let rates: CreditRates | null = null;
   let ratesFailed = false;
+  let genRates: GenerationRates | null = null;
   if (supabase && user) {
-    const res = await readCreditPrices(supabase);
+    const [res, models] = await Promise.all([readCreditPrices(supabase), readSellableModels(supabase)]);
     // A failed read is no rates at all — not an empty price list — and the
     // page says it could not read them, which is not "not published yet".
-    if (res.supported && !res.failed) rates = creditRates(res.prices);
+    if (res.supported && !res.failed) {
+      rates = creditRates(res.prices);
+      // "≈ N images · M videos" from the same two reads the Credits page uses;
+      // a model list that could not be read leaves those parts out, never guessed.
+      genRates = generationRates(models.status === "ok" ? models.models : null, res.prices);
+    }
     ratesFailed = res.failed;
   }
   // The plan catalog is a public price list (0034): read signed in or out.
@@ -88,6 +95,7 @@ export default async function PricingPage() {
         signedIn={Boolean(user)}
         rates={rates}
         ratesFailed={ratesFailed}
+        generationRates={genRates}
         plansFailed={catalogRead.state === "failed"}
         plans={plans}
         packValidMonths={catalog?.packValidMonths}

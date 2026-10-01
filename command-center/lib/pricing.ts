@@ -145,3 +145,13 @@ export const PRICING_ENV: PricingEnv = {
   NEXT_PUBLIC_PRICE_DISPLAY_CREATOR: process.env.NEXT_PUBLIC_PRICE_DISPLAY_CREATOR,
   NEXT_PUBLIC_PRICE_DISPLAY_STUDIO: process.env.NEXT_PUBLIC_PRICE_DISPLAY_STUDIO,
 };
+
+/**
+ * The one-time welcome grant a new workspace receives on sign-up. The database
+ * sets the amount (grant_welcome_credits(), migration 0042 — "the one place
+ * the amount is set"); this mirrors it so the public pages can name it without
+ * a read the signed-out visitor is not allowed to make. tests/pricing.test.ts
+ * fails if the two ever disagree, so the page cannot promise a different gift
+ * than the trigger gives.
+ */
+export const WELCOME_CREDITS = 100;
