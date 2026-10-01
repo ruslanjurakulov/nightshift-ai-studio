@@ -375,3 +375,8 @@ sec_plans_0034.extend(TABLES, FUNCTIONS)
 import sec_style_0047  # noqa: E402
 
 sec_style_0047.extend(TABLES, FUNCTIONS)
+
+# Migration 0049 (media library folders): tests/security/sec_folders_0049.py
+import sec_folders_0049  # noqa: E402
+
+sec_folders_0049.extend(TABLES, FUNCTIONS)

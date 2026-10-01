@@ -4,7 +4,9 @@ import { existsSync } from "node:fs";
 import { open, unlink } from "node:fs/promises";
 import { createClient } from "@/lib/supabase/server";
 import {
+  LIBRARY_PAGE,
   MEDIA_ASSET_COLUMNS,
+  MEDIA_ASSET_FOLDER_COLUMNS,
   MEDIA_UPLOAD_COLUMNS,
   PIPELINE_UNKNOWN,
   coerceAssets,
@@ -19,6 +21,8 @@ import {
   type MediaLibraryData,
   type MediaVariant,
 } from "@/lib/media";
+import { FOLDERS_UNAVAILABLE, cleanSearch, ilikeContains } from "@/lib/media-folders";
+import { loadMediaFolders } from "@/lib/server/media-folders";
 
 export type { LibraryAsset, MediaLibraryData };
 
@@ -246,9 +250,23 @@ export function withUrls(asset: MediaAsset, secret: Buffer | null, served: boole
   return { ...asset, thumbUrl, viewUrl };
 }
 
-export async function loadMediaLibrary(orgId: string): Promise<MediaLibraryData> {
+export interface LibraryReadOptions {
+  /** Only the files in this folder (0049); null / absent = every folder. */
+  folder?: string | null;
+  /** Only files whose name contains this (case-insensitive, on the server). */
+  query?: string | null;
+}
+
+/** "This column does not exist": 0049 is not applied, so read the library as before it. */
+function isMissingColumn(e: { code?: string; message?: string } | null | undefined): boolean {
+  return Boolean(e && (e.code === "42703" || /column .* does not exist/i.test(e.message ?? "")));
+}
+
+export async function loadMediaLibrary(orgId: string, opts: LibraryReadOptions = {}): Promise<MediaLibraryData> {
   const secret = mediaUrlSecret();
   const host = { media: mediaDir() !== null, staging: mediaStagingDir() !== null, signing: secret !== null };
+  const folder = parseMediaId(opts.folder ?? null);
+  const query = cleanSearch(opts.query);
   const empty: MediaLibraryData = {
     available: false,
     host,
@@ -256,12 +274,22 @@ export async function loadMediaLibrary(orgId: string): Promise<MediaLibraryData>
     uploads: [],
     quota: { usedBytes: 0, limitBytes: null, maxUploadBytes: null },
     pipeline: PIPELINE_UNKNOWN,
+    folders: FOLDERS_UNAVAILABLE,
+    folder: null,
+    query: "",
+    truncated: false,
   };
   const supabase = await createClient();
   if (!supabase || !parseMediaId(orgId)) return empty;
+  const readAssets = (withFolders: boolean) => {
+    let q = supabase.from("media_assets").select(withFolders ? MEDIA_ASSET_FOLDER_COLUMNS : MEDIA_ASSET_COLUMNS).eq("org_id", orgId);
+    if (withFolders && folder) q = q.eq("folder_id", folder);
+    if (query) q = q.ilike("original_name", ilikeContains(query));
+    return q.order("created_at", { ascending: false }).limit(LIBRARY_PAGE);
+  };
   try {
-    const [assets, uploads, quota, settings, pipeline] = await Promise.all([
-      supabase.from("media_assets").select(MEDIA_ASSET_COLUMNS).eq("org_id", orgId).order("created_at", { ascending: false }).limit(200),
+    const [first, uploads, quota, settings, pipeline, folders] = await Promise.all([
+      readAssets(true),
       supabase
         .from("media_uploads")
         .select(MEDIA_UPLOAD_COLUMNS)
@@ -273,7 +301,12 @@ export async function loadMediaLibrary(orgId: string): Promise<MediaLibraryData>
       supabase.from("media_storage_settings").select("default_quota_bytes, max_upload_bytes").maybeSingle(),
       // Is file checking running (0045)? Missing function or a failed read is "unknown", never "ok".
       Promise.resolve(supabase.rpc("media_pipeline_state")).catch(() => ({ data: null, error: true })),
+      loadMediaFolders(orgId),
     ]);
+    // Before 0049 there is no folder_id: the library reads exactly as it did,
+    // unnarrowed by folder, and shows no folders.
+    const foldersOn = !isMissingColumn(first.error);
+    const assets = foldersOn ? first : await readAssets(false);
     if (assets.error || uploads.error) {
       const missing = [assets.error, uploads.error].some((e) => e && /does not exist|42P01|PGRST205/i.test(`${e.code} ${e.message}`));
       return missing ? empty : { ...empty, available: true, error: "read_failed" };
@@ -282,10 +315,11 @@ export async function loadMediaLibrary(orgId: string): Promise<MediaLibraryData>
     const s = settings.data as { default_quota_bytes?: number | string; max_upload_bytes?: number | string } | null;
     const n = (v: unknown) => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
     const served = host.media;
+    const rows = coerceAssets(assets.data);
     return {
       available: true,
       host,
-      assets: coerceAssets(assets.data).map((a) => withUrls(a, secret, served)),
+      assets: rows.map((a) => withUrls(a, secret, served)),
       uploads: coerceUploads(uploads.data),
       quota: {
         usedBytes: n(q?.used_bytes) ?? 0,
@@ -294,6 +328,10 @@ export async function loadMediaLibrary(orgId: string): Promise<MediaLibraryData>
         maxUploadBytes: settings.error ? null : n(s?.max_upload_bytes),
       },
       pipeline: pipeline.error ? PIPELINE_UNKNOWN : parsePipelineState(pipeline.data),
+      folders: foldersOn ? folders : FOLDERS_UNAVAILABLE,
+      folder: foldersOn ? folder : null,
+      query,
+      truncated: rows.length >= LIBRARY_PAGE,
     };
   } catch {
     return { ...empty, available: true, error: "read_failed" };

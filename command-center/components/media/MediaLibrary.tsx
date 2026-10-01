@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Check, Images, Search, Upload } from "lucide-react";
+import { Check, FolderInput, Images, Search, Upload } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
@@ -18,14 +18,23 @@ import {
   type MediaUpload,
   type UploadStatus,
 } from "@/lib/media";
+import { SEARCH_MAX, cleanSearch, type FolderError } from "@/lib/media-folders";
 import { KIND_ICON } from "./kindIcon";
 import { LibrarySkeleton } from "./LibrarySkeleton";
 import { MediaViewer } from "./MediaViewer";
+import { FolderRail } from "./FolderRail";
+import { FolderMenu } from "./FolderMenu";
+import { DeleteFolderDialog, FolderNameDialog } from "./FolderDialogs";
+import { MoveSheet } from "./MoveSheet";
+import { createFolder, deleteFolder, moveAssets, renameFolder } from "./folderApi";
 import {
   DEFAULT_VIEW,
   LIBRARY_FILTERS,
+  commonFolder,
   countByFilter,
+  fileCount,
   guessUploadKind,
+  inFolder,
   isNarrowed,
   visibleAssets,
   visibleUploads,
@@ -46,8 +55,13 @@ const STATUS_TONE: Record<UploadStatus, "ok" | "run" | "fail" | "warn" | "idle">
 /** A signed link lives 10 minutes; fetch fresh ones well before that. */
 const RESIGN_MS = 5 * 60_000;
 const POLL_MS = 3000;
+/** How long the search box waits for typing to stop before asking the server. */
+const SEARCH_DEBOUNCE_MS = 350;
 
 type ErrorWord = keyof ReturnType<typeof useI18n>["t"]["media"]["errors"];
+
+/** Which folder dialog is open, if any. */
+type Dialog = { kind: "create" } | { kind: "rename" } | { kind: "delete" } | { kind: "move" } | null;
 
 /** The small chip laid over a thumbnail (kind, duration): legible on any picture, in both themes. */
 const BADGE =
@@ -55,52 +69,80 @@ const BADGE =
 
 /**
  * The library's interactive half: upload (ticket -> streamed PUT with
- * progress), the uploads still being checked, the assets as a grid with
- * chips / search / sort, a viewer, delete (one, or several in a row).
+ * progress), the uploads still being checked, folders (migration 0049), the
+ * assets as a grid with chips / search / sort, a viewer, delete and move (one,
+ * or several in a row).
  *
  * Nothing here decides anything: /api/media/uploads asks the database for a
  * ticket (membership, type, size, quota), the PUT route streams the body to
- * the server, and the media worker checks the content. The list is what
- * GET /api/media returns under the member's session — refreshed while an
- * upload is on its way, and every few minutes so the signed links stay fresh.
- * Deleting several files is the same DELETE /api/media/{id}, once per file.
+ * the server, and the media worker checks the content. Folders are created,
+ * renamed, deleted and filled by the database's own functions, which check
+ * that the member edits the organization and that every file and folder is
+ * its own. The list is what GET /api/media returns under the member's
+ * session — for the open folder, refreshed while an upload is on its way, and
+ * every few minutes so the signed links stay fresh. Deleting several files is
+ * the same DELETE /api/media/{id}, once per file; moving several is one call.
+ *
+ * Search narrows what is loaded at once; when the library is larger than one
+ * page, it also asks the server, so older files are found too.
  *
  * Without `initial` the list is fetched on mount, and until it arrives the
- * page shows a skeleton — never "nothing here yet".
+ * page shows a skeleton — never "nothing here yet". Before 0049 is applied
+ * the page has no folders at all, and works exactly as it did.
  */
 export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: MediaLibraryData | null }) {
   const { t, locale } = useI18n();
   const tm = t.media;
+  const tf = tm.folders;
   const [data, setData] = useState<MediaLibraryData | null>(initial ?? null);
   const [progress, setProgress] = useState<{ name: string; pct: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [readFailed, setReadFailed] = useState(Boolean(initial?.error));
   const [view, setView] = useState<LibraryView>(DEFAULT_VIEW);
+  const [folder, setFolder] = useState<string | null>(initial?.folder ?? null);
+  const [serverQuery, setServerQuery] = useState(initial?.query ?? "");
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [bulkConfirm, setBulkConfirm] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [dialog, setDialog] = useState<Dialog>(null);
   const input = useRef<HTMLInputElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   const tiles = useRef(new Map<string, HTMLButtonElement>());
+  const allButton = useRef<HTMLButtonElement>(null);
+  const newButton = useRef<HTMLButtonElement>(null);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const moveButton = useRef<HTMLButtonElement>(null);
+  const selectButton = useRef<HTMLButtonElement>(null);
+  /** Where focus goes once the next render is on screen (after a dialog whose opener is gone). */
+  const focusNext = useRef<(() => HTMLElement | null) | null>(null);
+  /** Only the latest read may land: a slow answer for the last folder must not replace this one's. */
+  const readSeq = useRef(0);
   const inputId = useId();
 
   const refresh = useCallback(async () => {
+    const seq = ++readSeq.current;
+    const q = new URLSearchParams({ org: orgId });
+    if (folder) q.set("folder", folder);
+    if (serverQuery) q.set("q", serverQuery);
     try {
-      const res = await fetch(`/api/media?org=${encodeURIComponent(orgId)}`, { cache: "no-store" });
+      const res = await fetch(`/api/media?${q.toString()}`, { cache: "no-store" });
+      if (seq !== readSeq.current) return;
       if (!res.ok) {
         setReadFailed(true);
         return;
       }
       const next = (await res.json()) as MediaLibraryData;
+      if (seq !== readSeq.current) return;
       setData(next);
       setReadFailed(Boolean(next.error));
     } catch {
-      setReadFailed(true);
+      if (seq === readSeq.current) setReadFailed(true);
     }
-  }, [orgId]);
+  }, [orgId, folder, serverQuery]);
 
   // No list from the server render: read it now (the skeleton shows meanwhile).
   useEffect(() => {
@@ -108,6 +150,17 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
     // Only on mount: `initial` is the server's first answer, not a live input.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Another folder or another server search: read that list.
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    void refresh();
+    // `refresh` changes exactly when the folder or the server search does.
+  }, [refresh]);
 
   const inFlight = Boolean(data?.uploads.some(isUploadInFlight));
   useEffect(() => {
@@ -121,10 +174,40 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
     return () => clearInterval(timer);
   }, [refresh]);
 
-  const assets = useMemo(() => data?.assets ?? [], [data]);
+  // The server is asked to search only when one page does not hold the whole
+  // library (or a server search is already showing): otherwise everything is
+  // here and the box narrows it at once.
+  const searchOnServer = Boolean(data?.truncated) || serverQuery !== "";
+  useEffect(() => {
+    const q = cleanSearch(view.query).slice(0, SEARCH_MAX);
+    if (!searchOnServer || q === serverQuery) return;
+    const timer = setTimeout(() => setServerQuery(q), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [view.query, searchOnServer, serverQuery]);
+
+  // After a dialog whose opener has gone (a moved selection, a deleted folder):
+  // focus lands somewhere that still exists rather than on <body>.
+  // One try, on the render right after: a target that is not there then
+  // (the list emptied) must not steal focus later.
+  useEffect(() => {
+    const find = focusNext.current;
+    if (!find) return;
+    focusNext.current = null;
+    const target = find();
+    if (target && target.isConnected) target.focus();
+  });
+
+  const foldersState = data?.folders;
+  const foldersOn = Boolean(foldersState?.available);
+  const folderList = useMemo(() => foldersState?.folders ?? [], [foldersState]);
+  const openFolder = foldersOn && folder ? (folderList.find((f) => f.id === folder) ?? null) : null;
+  // The answer on screen may still be the last folder's for a moment: narrow
+  // it here too, so a folder never shows a file that is not in it.
+  const assets = useMemo(() => inFolder(data?.assets ?? [], foldersOn ? folder : null), [data, foldersOn, folder]);
+  const switching = Boolean(data) && foldersOn && ((data?.folder ?? null) !== folder || (data?.query ?? "") !== serverQuery);
   const counts = useMemo(() => countByFilter(assets), [assets]);
   const shown = useMemo(() => visibleAssets(assets, view, (k) => tm.kinds[k]), [assets, view, tm]);
-  const pending = useMemo(() => visibleUploads(data?.uploads ?? [], view), [data, view]);
+  const pending = useMemo(() => (folder ? [] : visibleUploads(data?.uploads ?? [], view)), [data, view, folder]);
   const viewerIndex = viewerId ? shown.findIndex((a) => a.id === viewerId) : -1;
 
   // The open file left the grid (deleted elsewhere, filtered away): the viewer closes.
@@ -140,6 +223,11 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
       return next.size === prev.size ? prev : next;
     });
   }, [assets]);
+
+  // A folder that is gone (deleted in another tab): back to All files.
+  useEffect(() => {
+    if (foldersOn && folder && !foldersState?.error && !folderList.some((f) => f.id === folder)) setFolder(null);
+  }, [foldersOn, folder, folderList, foldersState]);
 
   if (!data) {
     return readFailed ? (
@@ -158,8 +246,13 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
   // on it: say so instead of "waiting for the server" for good. "unknown"
   // (0045 missing, or the read failed) says nothing.
   const checkingDown = pipelineIsDown(data.pipeline) && data.uploads.some(isWaitingForCheck);
-  const nothingAtAll = assets.length === 0 && data.uploads.length === 0 && progress === null;
+  const libraryEmpty =
+    folder === null && serverQuery === "" && !switching && assets.length === 0 && data.uploads.length === 0 && progress === null;
+  // Nothing at all, and no folder to show either: the first-run empty state.
+  const nothingAtAll = libraryEmpty && (!foldersOn || folderList.length === 0);
+  const folderEmpty = openFolder !== null && !switching && assets.length === 0 && serverQuery === "";
   const nothingShown = shown.length === 0 && pending.length === 0 && progress === null;
+  const viewCount = openFolder ? openFolder.count : foldersOn ? (foldersState?.total ?? null) : assets.length;
 
   function errorText(word: unknown, max?: number | null): string {
     const key = (typeof word === "string" && word in tm.errors ? word : "failed") as ErrorWord;
@@ -191,6 +284,7 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
 
   async function upload(file: File) {
     setError(null);
+    setNotice(null);
     setProgress({ name: file.name, pct: 0 });
     try {
       const res = await fetch("/api/media/uploads", {
@@ -250,6 +344,7 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
     if (ids.length === 0) return;
     setBulkBusy(true);
     setError(null);
+    setNotice(null);
     let failed = 0;
     // One at a time: each is the same checked DELETE a single delete makes.
     for (const id of ids) {
@@ -265,6 +360,78 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
     }
     await refresh();
   }
+
+  // ── folders ──────────────────────────────────────────────────────────────
+
+  function chooseFolder(id: string | null) {
+    if (id === folder) return;
+    setFolder(id);
+    setNotice(null);
+    setError(null);
+    setSelected(new Set());
+    setBulkConfirm(false);
+  }
+
+  async function submitNewFolder(name: string): Promise<FolderError | null> {
+    const r = await createFolder(orgId, name);
+    if (!r.ok) return r.error;
+    setDialog(null);
+    setNotice(fmt(tf.created, { name: r.value.name }));
+    setFolder(r.value.id);
+    setSelected(new Set());
+    return null;
+  }
+
+  async function submitRename(name: string): Promise<FolderError | null> {
+    if (!openFolder) return "not_found";
+    const r = await renameFolder(openFolder.id, name);
+    if (!r.ok) return r.error;
+    setDialog(null);
+    setNotice(fmt(tf.renamed, { name: r.value.name }));
+    await refresh();
+    return null;
+  }
+
+  async function confirmDeleteFolder(): Promise<FolderError | null> {
+    if (!openFolder) return "not_found";
+    const r = await deleteFolder(openFolder.id);
+    if (!r.ok) return r.error;
+    setDialog(null);
+    setNotice(tf.deleted);
+    focusNext.current = () => allButton.current;
+    if (folder === null) await refresh();
+    else setFolder(null);
+    return null;
+  }
+
+  async function moveSelected(target: string | null, targetName: string | null): Promise<FolderError | null> {
+    const ids = [...selected];
+    const r = await moveAssets(orgId, target, ids);
+    if (!r.ok) return r.error;
+    setDialog(null);
+    setSelected(new Set());
+    setSelecting(false);
+    setBulkConfirm(false);
+    setNotice(
+      r.value.moved === 0
+        ? tf.movedNone
+        : target === null
+          ? fmt(tf.movedOut, { n: r.value.moved, files: fileCount(tf, r.value.moved) })
+          : fmt(tf.moved, { n: r.value.moved, files: fileCount(tf, r.value.moved), folder: targetName ?? "" }),
+    );
+    focusNext.current = () => selectButton.current;
+    await refresh();
+    return null;
+  }
+
+  async function createAndMove(name: string): Promise<FolderError | null> {
+    const made = await createFolder(orgId, name);
+    if (!made.ok) return made.error;
+    // The folder exists now whatever happens next; the list shows it.
+    return moveSelected(made.value.id, made.value.name);
+  }
+
+  // ── selection, viewer ────────────────────────────────────────────────────
 
   function openViewer(asset: LibraryAsset, from: HTMLElement) {
     opener.current = from;
@@ -294,8 +461,10 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
     setSelecting(false);
     setSelected(new Set());
     setBulkConfirm(false);
+    focusNext.current = () => selectButton.current;
   }
 
+  const allShownSelected = shown.length > 0 && shown.every((a) => selected.has(a.id));
   const setFilter = (filter: LibraryView["filter"]) => setView((v) => ({ ...v, filter }));
   const q = data.quota;
   const storageLine =
@@ -304,6 +473,13 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
       : fmt(tm.storageUsed, { used: formatMediaBytes(q.usedBytes) || "0 KB", limit: formatMediaBytes(q.limitBytes) || "0 KB" });
   const usedPct = q.limitBytes ? Math.min(100, Math.round((q.usedBytes / q.limitBytes) * 100)) : null;
   const dateFmt = new Intl.DateTimeFormat(locale, { dateStyle: "medium" });
+  const folderName = (id: string | null | undefined) => (id ? (folderList.find((f) => f.id === id)?.name ?? null) : null);
+  const truncatedLine =
+    data.truncated && serverQuery === ""
+      ? viewCount !== null && viewCount > data.assets.length
+        ? fmt(tf.truncatedOf, { shown: data.assets.length, total: viewCount })
+        : fmt(tf.truncated, { shown: data.assets.length })
+      : null;
 
   const uploadButton = (large = false) => (
     <label
@@ -317,6 +493,8 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
       {progress ? fmt(tm.uploading, { name: progress.name, pct: progress.pct }) : tm.upload}
     </label>
   );
+
+  const headingId = `${inputId}-assets`;
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -387,212 +565,315 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
           {canUpload && uploadButton(true)}
         </section>
       ) : (
-        <section className="flex min-w-0 flex-col gap-3" aria-labelledby={`${inputId}-assets`}>
-          <h2 id={`${inputId}-assets`} className="sr-only">
-            {fmt(tm.assets, { n: assets.length })}
-          </h2>
+        <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
+          {foldersOn && foldersState && (
+            <FolderRail
+              state={foldersState}
+              current={folder}
+              onSelect={chooseFolder}
+              onNew={() => setDialog({ kind: "create" })}
+              allRef={allButton}
+              newRef={newButton}
+            />
+          )}
 
-          {selecting ? (
-            <div className="panel flex flex-wrap items-center justify-between gap-3 px-4 py-3" data-library-selection>
-              <span className="text-[13px] font-semibold" aria-live="polite">
-                {fmt(tm.selectedCount, { n: selected.size })}
-              </span>
-              <div className="flex flex-wrap items-center gap-2">
-                {bulkConfirm ? (
-                  <>
-                    <span className="w-full text-[12px] text-[var(--color-muted)] sm:w-auto sm:max-w-[42ch]">
-                      {fmt(tm.deleteSelectedConfirm, { n: selected.size })}
-                    </span>
+          <section className="flex min-w-0 flex-1 flex-col gap-3" aria-labelledby={headingId} aria-busy={switching || undefined}>
+            {foldersOn ? (
+              <div className="flex min-w-0 items-start justify-between gap-3" data-folder-header>
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <h2 id={headingId} className="m-0 truncate text-[18px] font-semibold leading-tight text-[var(--color-fg)]" title={openFolder?.name}>
+                    {openFolder ? openFolder.name : tf.allFiles}
+                  </h2>
+                  <span className="text-[12px] text-[var(--color-muted)]">
+                    {[viewCount === null ? null : fileCount(tf, viewCount), openFolder ? tf.uploadsLand : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </div>
+                {openFolder && (
+                  <FolderMenu
+                    ref={menuButton}
+                    label={tf.actions}
+                    renameLabel={tf.rename}
+                    deleteLabel={tf.delete}
+                    onRename={() => setDialog({ kind: "rename" })}
+                    onDelete={() => setDialog({ kind: "delete" })}
+                  />
+                )}
+              </div>
+            ) : (
+              <h2 id={headingId} className="sr-only">
+                {fmt(tm.assets, { n: assets.length })}
+              </h2>
+            )}
+
+            <p role="status" aria-live="polite" className={notice ? "m-0 text-[13px] text-[var(--color-ok)]" : "sr-only"} data-library-notice>
+              {notice ?? ""}
+            </p>
+
+            {selecting ? (
+              <div className="panel flex flex-wrap items-center justify-between gap-3 px-4 py-3" data-library-selection>
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-semibold" aria-live="polite">
+                    {fmt(tm.selectedCount, { n: selected.size })}
+                  </span>
+                  {!bulkConfirm && shown.length > 0 && (
                     <button
                       type="button"
-                      disabled={bulkBusy}
-                      onClick={() => void removeSelected()}
-                      className="btn-sky is-solid pill px-4 py-2 text-[13px] disabled:opacity-40"
+                      onClick={() => setSelected(allShownSelected ? new Set() : new Set(shown.map((a) => a.id)))}
+                      className="text-[13px] text-[var(--color-primary)] underline-offset-4 hover:underline"
                     >
-                      {bulkBusy ? tm.deleting : fmt(tm.deleteSelected, { n: selected.size })}
+                      {allShownSelected ? tf.clearSelection : tf.selectAll}
                     </button>
-                    <button type="button" disabled={bulkBusy} onClick={() => setBulkConfirm(false)} className="btn-sky is-quiet pill px-4 py-2 text-[13px]">
-                      {tm.cancel}
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {bulkConfirm ? (
+                    <>
+                      <span className="w-full text-[12px] text-[var(--color-muted)] sm:w-auto sm:max-w-[42ch]">
+                        {fmt(tm.deleteSelectedConfirm, { n: selected.size })}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={bulkBusy}
+                        onClick={() => void removeSelected()}
+                        className="btn-sky is-solid pill px-4 py-2 text-[13px] disabled:opacity-40"
+                      >
+                        {bulkBusy ? tm.deleting : fmt(tm.deleteSelected, { n: selected.size })}
+                      </button>
+                      <button type="button" disabled={bulkBusy} onClick={() => setBulkConfirm(false)} className="btn-sky is-quiet pill px-4 py-2 text-[13px]">
+                        {tm.cancel}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {foldersOn && (
+                        <button
+                          ref={moveButton}
+                          type="button"
+                          disabled={selected.size === 0}
+                          onClick={() => {
+                            setNotice(null);
+                            setDialog({ kind: "move" });
+                          }}
+                          className="btn-sky is-solid pill inline-flex items-center gap-2 px-4 py-2 text-[13px] disabled:opacity-40"
+                        >
+                          <FolderInput className="size-4" aria-hidden />
+                          {tf.moveTo}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={selected.size === 0}
+                        onClick={() => setBulkConfirm(true)}
+                        className="btn-sky is-quiet pill px-4 py-2 text-[13px] hover:text-[var(--color-fail)]! disabled:opacity-40"
+                      >
+                        {fmt(tm.deleteSelected, { n: selected.size })}
+                      </button>
+                    </>
+                  )}
+                  {!bulkConfirm && (
+                    <button type="button" onClick={stopSelecting} className="btn-sky ghost pill px-4 py-2 text-[13px]">
+                      {tm.selectDone}
                     </button>
-                  </>
-                ) : (
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            <div role="group" aria-label={tm.filterLabel} className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+              {LIBRARY_FILTERS.map((f) => {
+                const on = view.filter === f;
+                return (
                   <button
+                    key={f}
                     type="button"
-                    disabled={selected.size === 0}
-                    onClick={() => setBulkConfirm(true)}
-                    className="btn-sky is-quiet pill px-4 py-2 text-[13px] hover:text-[var(--color-fail)]! disabled:opacity-40"
+                    aria-pressed={on}
+                    onClick={() => setFilter(f)}
+                    className={`press pill inline-flex shrink-0 items-center gap-2 border px-4 py-2 text-[13px] font-medium ${
+                      on
+                        ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-on-accent)]"
+                        : "border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-fg)] hover:border-[var(--color-primary)]"
+                    }`}
                   >
-                    {fmt(tm.deleteSelected, { n: selected.size })}
+                    {tm.filters[f]}
+                    <span className={`mono text-[11px] ${on ? "opacity-80" : "text-[var(--color-muted)]"}`}>{counts[f]}</span>
                   </button>
-                )}
-                {!bulkConfirm && (
-                  <button type="button" onClick={stopSelecting} className="btn-sky ghost pill px-4 py-2 text-[13px]">
-                    {tm.selectDone}
+                );
+              })}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="relative min-w-0 flex-[1_1_12rem]">
+                <span className="sr-only">{tm.search}</span>
+                <Search
+                  aria-hidden
+                  className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-muted)]"
+                />
+                <input
+                  type="search"
+                  value={view.query}
+                  onChange={(e) => setView((v) => ({ ...v, query: e.target.value }))}
+                  placeholder={tm.search}
+                  enterKeyHint="search"
+                  maxLength={SEARCH_MAX * 2}
+                  className="pill w-full border border-[var(--color-border)] bg-[var(--color-panel)] py-2 pl-9 pr-3 text-[16px] text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[13px]"
+                />
+              </label>
+              <label className="shrink-0">
+                <span className="sr-only">{tm.sort}</span>
+                <select
+                  value={view.sort}
+                  onChange={(e) => setView((v) => ({ ...v, sort: e.target.value as LibrarySort }))}
+                  className="pill border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
+                >
+                  <option value="newest">{tm.sortNewest}</option>
+                  <option value="oldest">{tm.sortOldest}</option>
+                </select>
+              </label>
+              {!selecting && assets.length > 0 && (
+                <button
+                  ref={selectButton}
+                  type="button"
+                  onClick={() => {
+                    setNotice(null);
+                    setSelecting(true);
+                  }}
+                  className="btn-sky is-quiet pill shrink-0 px-4 py-2 text-[13px]"
+                >
+                  {tm.select}
+                </button>
+              )}
+            </div>
+
+            {checkingDown && !folder && (
+              <p role="status" data-pipeline-down className="m-0 text-[13px] text-[var(--color-warn)]">
+                {tm.pipelineDown}
+              </p>
+            )}
+            {truncatedLine && <p className="m-0 text-[12px] text-[var(--color-muted)]" data-library-truncated>{truncatedLine}</p>}
+            {switching && serverQuery !== "" && (
+              <p className="m-0 text-[12px] text-[var(--color-muted)]">{tf.searching}</p>
+            )}
+
+            {folderEmpty ? (
+              <div className="panel flex flex-col items-center gap-3 px-6 py-10 text-center" data-folder-empty>
+                <p className="m-0 max-w-[46ch] text-[13px] leading-relaxed text-[var(--color-muted)]">{tf.emptyFolder}</p>
+                <button type="button" onClick={() => chooseFolder(null)} className="btn-sky ghost pill px-4 py-2 text-[13px]">
+                  {tf.allFiles}
+                </button>
+              </div>
+            ) : libraryEmpty ? (
+              <div className="panel flex flex-col items-center gap-4 px-6 py-10 text-center" data-library-empty-all>
+                <p className="m-0 max-w-[46ch] text-[13px] leading-relaxed text-[var(--color-muted)]">{tf.emptyAll}</p>
+                {canUpload && uploadButton()}
+              </div>
+            ) : nothingShown ? (
+              <div className="panel flex flex-col items-center gap-3 px-6 py-10 text-center" data-library-no-match>
+                <p className="m-0 text-[13px] text-[var(--color-muted)]">{switching ? tm.loading : tm.noMatches}</p>
+                {isNarrowed(view) && !switching && (
+                  <button type="button" onClick={() => setView(DEFAULT_VIEW)} className="btn-sky ghost pill px-4 py-2 text-[13px]">
+                    {tm.showAll}
                   </button>
                 )}
               </div>
-            </div>
-          ) : null}
-
-          <div role="group" aria-label={tm.filterLabel} className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
-            {LIBRARY_FILTERS.map((f) => {
-              const on = view.filter === f;
-              return (
-                <button
-                  key={f}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => setFilter(f)}
-                  className={`press pill inline-flex shrink-0 items-center gap-2 border px-4 py-2 text-[13px] font-medium ${
-                    on
-                      ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-on-accent)]"
-                      : "border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-fg)] hover:border-[var(--color-primary)]"
-                  }`}
-                >
-                  {tm.filters[f]}
-                  <span className={`mono text-[11px] ${on ? "opacity-80" : "text-[var(--color-muted)]"}`}>{counts[f]}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="relative min-w-0 flex-[1_1_12rem]">
-              <span className="sr-only">{tm.search}</span>
-              <Search
-                aria-hidden
-                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-muted)]"
-              />
-              <input
-                type="search"
-                value={view.query}
-                onChange={(e) => setView((v) => ({ ...v, query: e.target.value }))}
-                placeholder={tm.search}
-                enterKeyHint="search"
-                className="pill w-full border border-[var(--color-border)] bg-[var(--color-panel)] py-2 pl-9 pr-3 text-[16px] text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[13px]"
-              />
-            </label>
-            <label className="shrink-0">
-              <span className="sr-only">{tm.sort}</span>
-              <select
-                value={view.sort}
-                onChange={(e) => setView((v) => ({ ...v, sort: e.target.value as LibrarySort }))}
-                className="pill border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
+            ) : (
+              <ul
+                className={`m-0 grid list-none grid-cols-2 gap-x-3 gap-y-4 p-0 transition-opacity sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 ${
+                  switching ? "opacity-60" : ""
+                }`}
               >
-                <option value="newest">{tm.sortNewest}</option>
-                <option value="oldest">{tm.sortOldest}</option>
-              </select>
-            </label>
-            {!selecting && assets.length > 0 && (
-              <button type="button" onClick={() => setSelecting(true)} className="btn-sky is-quiet pill shrink-0 px-4 py-2 text-[13px]">
-                {tm.select}
-              </button>
-            )}
-          </div>
-
-          {checkingDown && (
-            <p role="status" data-pipeline-down className="m-0 text-[13px] text-[var(--color-warn)]">
-              {tm.pipelineDown}
-            </p>
-          )}
-
-          {nothingShown ? (
-            <div className="panel flex flex-col items-center gap-3 px-6 py-10 text-center" data-library-no-match>
-              <p className="m-0 text-[13px] text-[var(--color-muted)]">{tm.noMatches}</p>
-              {isNarrowed(view) && (
-                <button type="button" onClick={() => setView(DEFAULT_VIEW)} className="btn-sky ghost pill px-4 py-2 text-[13px]">
-                  {tm.showAll}
-                </button>
-              )}
-            </div>
-          ) : (
-            <ul className="m-0 grid list-none grid-cols-2 gap-x-3 gap-y-4 p-0 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {progress && (
-                <li className="flex min-w-0 flex-col gap-1.5" data-upload-local>
-                  <div className="flex aspect-square flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[var(--color-primary)] bg-[var(--color-panel-2)] p-4 text-center">
-                    <Upload className="size-6 text-[var(--color-primary)]" strokeWidth={1.5} aria-hidden />
-                    <span className="text-[12px] text-[var(--color-fg)]">{fmt(tm.uploadingCard, { pct: progress.pct })}</span>
-                    <div
-                      className="h-1 w-full max-w-[8rem] overflow-hidden rounded-full bg-[var(--color-border)]"
-                      role="progressbar"
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={progress.pct}
-                      aria-label={progress.name}
-                    >
-                      <div className="h-full bg-[var(--color-primary)] transition-[width]" style={{ width: `${progress.pct}%` }} />
-                    </div>
-                  </div>
-                  <span className="truncate text-[13px]" title={progress.name}>
-                    {progress.name}
-                  </span>
-                </li>
-              )}
-              {pending.map((u) => (
-                <UploadCard key={u.id} upload={u} checkingDown={checkingDown} />
-              ))}
-              {shown.map((a) => {
-                const Icon = KIND_ICON[a.kind];
-                const name = a.name ?? tm.kinds[a.kind];
-                const isSelected = selected.has(a.id);
-                const duration = a.kind === "video" || a.kind === "audio" ? formatDuration(a.durationS) : "";
-                const meta = [formatMediaBytes(a.bytes), a.createdAt ? dateFmt.format(new Date(a.createdAt)) : ""].filter(Boolean);
-                return (
-                  <li key={a.id} className="min-w-0" data-asset-kind={a.kind}>
-                    <button
-                      type="button"
-                      ref={(el) => {
-                        if (el) tiles.current.set(a.id, el);
-                        else tiles.current.delete(a.id);
-                      }}
-                      onClick={(e) => (selecting ? toggleSelected(a.id) : openViewer(a, e.currentTarget))}
-                      aria-pressed={selecting ? isSelected : undefined}
-                      aria-label={fmt(selecting ? tm.selectItem : tm.openItem, { name })}
-                      className="press group flex w-full min-w-0 flex-col gap-1.5 rounded-2xl text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg)]"
-                    >
-                      <span
-                        className={`relative block aspect-square w-full overflow-hidden rounded-2xl border bg-[var(--color-panel-2)] transition-colors ${
-                          isSelected ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]" : "border-[var(--color-border)] group-hover:border-[var(--color-primary)]"
-                        }`}
+                {progress && (
+                  <li className="flex min-w-0 flex-col gap-1.5" data-upload-local>
+                    <div className="flex aspect-square flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[var(--color-primary)] bg-[var(--color-panel-2)] p-4 text-center">
+                      <Upload className="size-6 text-[var(--color-primary)]" strokeWidth={1.5} aria-hidden />
+                      <span className="text-[12px] text-[var(--color-fg)]">{fmt(tm.uploadingCard, { pct: progress.pct })}</span>
+                      <div
+                        className="h-1 w-full max-w-[8rem] overflow-hidden rounded-full bg-[var(--color-border)]"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={progress.pct}
+                        aria-label={progress.name}
                       >
-                        {a.thumbUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element -- a signed, short-lived same-origin link; next/image would re-host it
-                          <img src={a.thumbUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
-                        ) : (
-                          <span className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-[var(--color-muted)]">
-                            <Icon className="size-7" strokeWidth={1.25} aria-hidden />
-                            <span className="text-[11px]">{tm.noPreview}</span>
-                          </span>
-                        )}
-                        <span className={`absolute left-2 top-2 ${BADGE}`}>
-                          <Icon className="size-3" aria-hidden />
-                          {tm.kinds[a.kind]}
-                        </span>
-                        {duration && <span className={`mono absolute bottom-2 right-2 ${BADGE}`}>{duration}</span>}
-                        {selecting && (
-                          <span
-                            aria-hidden
-                            className={`absolute right-2 top-2 grid size-6 place-items-center rounded-full border-2 ${
-                              isSelected
-                                ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-on-accent)]"
-                                : "border-[var(--color-panel)] bg-[color-mix(in_srgb,var(--color-panel)_60%,transparent)]"
-                            }`}
-                          >
-                            {isSelected && <Check className="size-3.5" strokeWidth={3} />}
-                          </span>
-                        )}
-                      </span>
-                      <span className="block truncate px-0.5 text-[13px] text-[var(--color-fg)]" title={name}>
-                        {name}
-                      </span>
-                      <span className="block truncate px-0.5 text-[12px] text-[var(--color-muted)]">{meta.join(" · ")}</span>
-                    </button>
+                        <div className="h-full bg-[var(--color-primary)] transition-[width]" style={{ width: `${progress.pct}%` }} />
+                      </div>
+                    </div>
+                    <span className="truncate text-[13px]" title={progress.name}>
+                      {progress.name}
+                    </span>
                   </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+                )}
+                {pending.map((u) => (
+                  <UploadCard key={u.id} upload={u} checkingDown={checkingDown} />
+                ))}
+                {shown.map((a) => {
+                  const Icon = KIND_ICON[a.kind];
+                  const name = a.name ?? tm.kinds[a.kind];
+                  const isSelected = selected.has(a.id);
+                  const duration = a.kind === "video" || a.kind === "audio" ? formatDuration(a.durationS) : "";
+                  // In All files a tile says which folder it is in (its size is in the viewer).
+                  const where = folder === null ? folderName(a.folderId) : null;
+                  const meta = [formatMediaBytes(a.bytes), a.createdAt ? dateFmt.format(new Date(a.createdAt)) : ""].filter(Boolean);
+                  return (
+                    <li key={a.id} className="min-w-0" data-asset-kind={a.kind}>
+                      <button
+                        type="button"
+                        ref={(el) => {
+                          if (el) tiles.current.set(a.id, el);
+                          else tiles.current.delete(a.id);
+                        }}
+                        onClick={(e) => (selecting ? toggleSelected(a.id) : openViewer(a, e.currentTarget))}
+                        aria-pressed={selecting ? isSelected : undefined}
+                        aria-label={fmt(selecting ? tm.selectItem : tm.openItem, { name })}
+                        className="press group flex w-full min-w-0 flex-col gap-1.5 rounded-2xl text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg)]"
+                      >
+                        <span
+                          className={`relative block aspect-square w-full overflow-hidden rounded-2xl border bg-[var(--color-panel-2)] transition-colors ${
+                            isSelected ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]" : "border-[var(--color-border)] group-hover:border-[var(--color-primary)]"
+                          }`}
+                        >
+                          {a.thumbUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element -- a signed, short-lived same-origin link; next/image would re-host it
+                            <img src={a.thumbUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+                          ) : (
+                            <span className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-[var(--color-muted)]">
+                              <Icon className="size-7" strokeWidth={1.25} aria-hidden />
+                              <span className="text-[11px]">{tm.noPreview}</span>
+                            </span>
+                          )}
+                          <span className={`absolute left-2 top-2 ${BADGE}`}>
+                            <Icon className="size-3" aria-hidden />
+                            {tm.kinds[a.kind]}
+                          </span>
+                          {duration && <span className={`mono absolute bottom-2 right-2 ${BADGE}`}>{duration}</span>}
+                          {selecting && (
+                            <span
+                              aria-hidden
+                              className={`absolute right-2 top-2 grid size-6 place-items-center rounded-full border-2 ${
+                                isSelected
+                                  ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-on-accent)]"
+                                  : "border-[var(--color-panel)] bg-[color-mix(in_srgb,var(--color-panel)_60%,transparent)]"
+                              }`}
+                            >
+                              {isSelected && <Check className="size-3.5" strokeWidth={3} />}
+                            </span>
+                          )}
+                        </span>
+                        <span className="block truncate px-0.5 text-[13px] text-[var(--color-fg)]" title={name}>
+                          {name}
+                        </span>
+                        <span className="block truncate px-0.5 text-[12px] text-[var(--color-muted)]">
+                          {(where ? [where, meta[meta.length - 1]].filter(Boolean) : meta).join(" · ")}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
       )}
 
       {viewerId && viewerIndex >= 0 && (
@@ -604,6 +885,40 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
           onDelete={(a) => void removeFromViewer(a)}
           deleting={deleting !== null}
           opener={opener}
+          folderName={foldersOn ? folderName : undefined}
+        />
+      )}
+
+      {dialog?.kind === "create" && (
+        <FolderNameDialog mode="create" onSubmit={submitNewFolder} onClose={() => setDialog(null)} opener={newButton} />
+      )}
+      {dialog?.kind === "rename" && openFolder && (
+        <FolderNameDialog
+          mode="rename"
+          initialName={openFolder.name}
+          onSubmit={submitRename}
+          onClose={() => setDialog(null)}
+          opener={menuButton}
+        />
+      )}
+      {dialog?.kind === "delete" && openFolder && (
+        <DeleteFolderDialog
+          name={openFolder.name}
+          count={openFolder.count}
+          onConfirm={confirmDeleteFolder}
+          onClose={() => setDialog(null)}
+          opener={menuButton}
+        />
+      )}
+      {dialog?.kind === "move" && (
+        <MoveSheet
+          count={selected.size}
+          folders={folderList}
+          here={commonFolder(assets, selected)}
+          onMove={moveSelected}
+          onCreateAndMove={createAndMove}
+          onClose={() => setDialog(null)}
+          opener={moveButton}
         />
       )}
     </div>
