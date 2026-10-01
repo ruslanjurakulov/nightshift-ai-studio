@@ -60,6 +60,26 @@ _UPSERT_TABLES = {
 #: cost real money twice, and an upsert would collapse that into one charge.
 _APPEND_TABLES = ("video_costs",)
 
+#: PostgREST / Postgres codes for "this table does not exist" — a deployment
+#: where the migration that creates it has not been applied yet.
+_TABLE_MISSING_CODES = ("PGRST205", "42P01")
+
+
+class SupabaseReadError(RuntimeError):
+    """A ``select_strict`` read that did not answer with rows. ``detail`` is
+    safe to log: an HTTP status and a PostgREST code, never body text or a key."""
+
+    def __init__(self, table: str, status: int | None = None, code: str = ""):
+        self.table = table
+        self.status = status
+        self.code = code
+        self.detail = ", ".join(x for x in (f"HTTP {status}" if status else "", code) if x) or "no answer"
+        super().__init__(f"Supabase read of {table} failed ({self.detail})")
+
+    @property
+    def table_missing(self) -> bool:
+        return self.code in _TABLE_MISSING_CODES
+
 
 class SupabaseSync:
     def __init__(self, url: str | None = None, service_key: str | None = None):
@@ -199,6 +219,39 @@ class SupabaseSync:
         except Exception as e:
             logger.warning("Supabase select from %s errored (%s: %s)", table, type(e).__name__, e)
             return []
+
+    def select_strict(self, table: str, params: dict | None = None) -> list[dict]:
+        """Like ``select``, but a failed read raises ``SupabaseReadError``
+        instead of reading as "no rows" — for a caller that must tell "this
+        channel has none" from "we could not find out" (modules/dna_render.py).
+        Disabled returns []."""
+        if not self.enabled:
+            return []
+        try:
+            resp = requests.get(
+                f"{self.url}/rest/v1/{table}",
+                params={"select": "*", **(params or {})},
+                headers=self._headers(),
+                timeout=_TIMEOUT,
+            )
+        except Exception as e:
+            raise SupabaseReadError(table, None, type(e).__name__) from None
+        if resp.status_code >= 300:
+            code = ""
+            try:
+                body = resp.json()
+                raw = str(body.get("code") or "") if isinstance(body, dict) else ""
+                code = raw if raw.isalnum() and len(raw) <= 16 else ""
+            except Exception:
+                pass
+            raise SupabaseReadError(table, resp.status_code, code)
+        try:
+            data = resp.json()
+        except Exception:
+            raise SupabaseReadError(table, resp.status_code, "not json") from None
+        if not isinstance(data, list):
+            raise SupabaseReadError(table, resp.status_code, "not a list")
+        return data
 
     # -- high-level --------------------------------------------------------
 

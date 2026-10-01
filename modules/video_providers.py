@@ -154,6 +154,27 @@ class VideoProviderConfig:
     config_problem: str = ""
 
 
+#: Frames each dialect's API is known to take for text-to-video — the
+#: Scout-verified ``aspect_ratios`` of the matching models in
+#: schemas/model_registry.json (kling-v2.6/v3, seedance-1.x, veo-3.1, wan-2.7).
+#: GENERIC (and MiniMax) send no ratio field at all.
+_DIALECT_RATIOS = {
+    KLING: ("16:9", "9:16", "1:1"),
+    SEEDANCE: ("16:9", "9:16", "1:1"),
+    VEO: ("16:9", "9:16"),
+    WAN: ("16:9", "9:16", "1:1"),
+}
+
+
+def spec_ratio(cfg: "VideoProviderConfig", spec) -> str:
+    """The ratio to send for ``spec``: the frame it asks for when this
+    dialect takes it, else the configured one (and the renderer crops the
+    clip to the frame, as it always has). Never a value the API would refuse
+    after the run has already paid for its script."""
+    wanted = getattr(spec, "aspect_ratio", "") or ""
+    return wanted if wanted in _DIALECT_RATIOS.get(cfg.dialect, ()) else cfg.aspect_ratio
+
+
 # ── Kling JWT (access key + secret key) ─────────────────────────────────────
 
 KLING_JWT_TTL_S = 1800
@@ -300,7 +321,7 @@ class GenericAsyncVideoClient:
                 "prompt": spec.prompt,
                 "duration": str(spec.duration_seconds),   # Kling takes "5" / "10"
                 "mode": "std",
-                "aspect_ratio": cfg.aspect_ratio,
+                "aspect_ratio": spec_ratio(cfg, spec),
             }
             if spec.negative_prompt:
                 body["negative_prompt"] = spec.negative_prompt
@@ -309,7 +330,7 @@ class GenericAsyncVideoClient:
             body = {
                 "model": cfg.model,
                 "content": [{"type": "text", "text": spec.prompt}],
-                "ratio": cfg.aspect_ratio,
+                "ratio": spec_ratio(cfg, spec),
                 "duration": spec.duration_seconds,
             }
             if cfg.resolution:
@@ -319,7 +340,7 @@ class GenericAsyncVideoClient:
             # Gemini API predictLongRunning: one instance with the prompt, the
             # settings under "parameters" (google-genai GenerateVideosConfig
             # field names, camelCase on the wire).
-            params = {"aspectRatio": cfg.aspect_ratio, "durationSeconds": spec.duration_seconds}
+            params = {"aspectRatio": spec_ratio(cfg, spec), "durationSeconds": spec.duration_seconds}
             if spec.negative_prompt:
                 params["negativePrompt"] = spec.negative_prompt
             if cfg.resolution:
@@ -329,7 +350,7 @@ class GenericAsyncVideoClient:
             inp = {"prompt": spec.prompt}
             if spec.negative_prompt:
                 inp["negative_prompt"] = spec.negative_prompt
-            params = {"ratio": cfg.aspect_ratio, "duration": spec.duration_seconds}
+            params = {"ratio": spec_ratio(cfg, spec), "duration": spec.duration_seconds}
             if cfg.resolution:
                 params["resolution"] = cfg.resolution
             # Without this header DashScope refuses a video task outright:

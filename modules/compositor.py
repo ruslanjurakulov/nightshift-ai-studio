@@ -68,8 +68,15 @@ COVER_OVERSCAN = 1.15   # scale beyond canvas so panning has room to move
 
 
 class Compositor:
-    def __init__(self, topic_slug: str):
+    #: The frame; an instance sets its own (``__init__``).
+    width: int = VIDEO_WIDTH
+    height: int = VIDEO_HEIGHT
+
+    def __init__(self, topic_slug: str, *, width: int = VIDEO_WIDTH, height: int = VIDEO_HEIGHT):
         self.slug = topic_slug
+        # The frame (config's 1920x1080 unless the channel's DNA renders it
+        # vertical or square — modules/dna_render.py).
+        self.width, self.height = int(width), int(height)
         self.out_dir = OUTPUT_DIR / topic_slug
         self.out_dir.mkdir(parents=True, exist_ok=True)
         # One reader per source file, not per clip slot. A 5-minute video cuts
@@ -95,7 +102,7 @@ class Compositor:
         """Animate a still image with zoom/pan (Ken Burns effect)."""
         img = Image.open(image_path).convert("RGB")
         src_w, src_h = img.size
-        target_w, target_h = VIDEO_WIDTH, VIDEO_HEIGHT
+        target_w, target_h = self.width, self.height
 
         scale = max(target_w / src_w, target_h / src_h) * COVER_OVERSCAN
         new_w, new_h = int(src_w * scale), int(src_h * scale)
@@ -137,6 +144,20 @@ class Compositor:
         return VideoClip(make_frame, duration=duration)
 
     # ------------------------------------------------------------------ Clip pool
+
+    def _fit(self, clip):
+        """A footage clip on this frame. The configured 16:9 frame resizes
+        exactly as it always has; another frame (a vertical DNA video) is
+        covered and centre-cropped, because stretching 16:9 stock to 9:16
+        would squash every face in it."""
+        if (self.width, self.height) == (VIDEO_WIDTH, VIDEO_HEIGHT):
+            return clip.resize((self.width, self.height))
+        scale = max(self.width / clip.w, self.height / clip.h)
+        # Rounded up to at least the frame, so the crop never comes out a pixel short.
+        new_w = max(self.width, int(round(clip.w * scale)))
+        new_h = max(self.height, int(round(clip.h * scale)))
+        x1, y1 = (new_w - self.width) // 2, (new_h - self.height) // 2
+        return clip.resize((new_w, new_h)).crop(x1=x1, y1=y1, x2=x1 + self.width, y2=y1 + self.height)
 
     def _open_video(self, path: Path) -> VideoFileClip:
         """Reader cache — reopening the same file per slot exhausts handles.
@@ -219,7 +240,7 @@ class Compositor:
 
             try:
                 if source is None:
-                    clip = ColorClip((VIDEO_WIDTH, VIDEO_HEIGHT), color=(15, 15, 30),
+                    clip = ColorClip((self.width, self.height), color=(15, 15, 30),
                                      duration=clip_dur)
                 elif source.suffix.lower() in (".mp4", ".mov", ".avi", ".webm", ".mkv"):
                     vc = self._open_video(source)
@@ -228,12 +249,12 @@ class Compositor:
                         vc = vc.subclip(start, start + clip_dur)
                     else:
                         vc = vc.loop(duration=clip_dur)
-                    clip = vc.resize((VIDEO_WIDTH, VIDEO_HEIGHT))
+                    clip = self._fit(vc)
                 else:
                     clip = self._ken_burns_clip(source, clip_dur)
             except Exception as e:
                 logger.warning("Clip load error %s: %s", source, e)
-                clip = ColorClip((VIDEO_WIDTH, VIDEO_HEIGHT), color=(15, 15, 30),
+                clip = ColorClip((self.width, self.height), color=(15, 15, 30),
                                  duration=clip_dur)
 
             clips.append(clip)
@@ -268,7 +289,7 @@ class Compositor:
             stroke_color=SUBTITLE_STROKE_COLOR,
             stroke_width=SUBTITLE_STROKE_WIDTH,
             method="caption",
-            size=(VIDEO_WIDTH - 100, None),
+            size=(self.width - 100, None),
             align="center",
         )
 
@@ -306,7 +327,7 @@ class Compositor:
                     logger.error("Subtitle rendering failed: %s", e)
                 continue
 
-            y = int(VIDEO_HEIGHT * 0.80)
+            y = int(self.height * 0.80)
             for c in (layer, hi):
                 clips.append(
                     c.set_start(start).set_duration(duration).set_position(("center", y))
@@ -344,7 +365,7 @@ class Compositor:
         # Registered so the finally-block in render() closes its reader.
         self._readers[Path(presenter_path)] = clip
         try:
-            layout = presenter_layout(VIDEO_WIDTH, VIDEO_HEIGHT)
+            layout = presenter_layout(self.width, self.height)
             src_dur = clip.duration or total_duration
             dur = min(src_dur, total_duration)
             positioned = (
@@ -418,7 +439,7 @@ class Compositor:
 
             if not all_clips:
                 logger.warning("No visual clips built — using black background")
-                all_clips = [ColorClip((VIDEO_WIDTH, VIDEO_HEIGHT), color=(0, 0, 0),
+                all_clips = [ColorClip((self.width, self.height), color=(0, 0, 0),
                                        duration=total_duration)]
 
             mark_stage(f"concatenate {len(all_clips)} section(s)")
@@ -448,7 +469,7 @@ class Compositor:
 
             mark_stage(f"composite {len(subtitle_clips) + len(presenter_layer) + 1} layer(s)")
             final = CompositeVideoClip([bg] + presenter_layer + subtitle_clips,
-                                       size=(VIDEO_WIDTH, VIDEO_HEIGHT))
+                                       size=(self.width, self.height))
             final = final.set_audio(audio).set_duration(total_duration)
 
             out_path = self.out_dir / "final_video.mp4"

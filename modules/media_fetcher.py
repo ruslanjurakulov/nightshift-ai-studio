@@ -170,7 +170,8 @@ class MediaFetcher:
 
     # --------------------------------------------------------------- AI b-roll
 
-    def generate_broll(self, sections: list, topic: str, *, client=None, style_for=None):
+    def generate_broll(self, sections: list, topic: str, *, client=None, style_for=None,
+                       prompt_hook=None, aspect_ratio: str = ""):
         """Generate on-topic b-roll for a few sections with the selected video
         provider, when generation is enabled and configured. Returns a
         ``minimax_broll.GenerationResult``.
@@ -195,7 +196,11 @@ class MediaFetcher:
         ``style_for`` (optional) is an ``index -> style string`` map: when given,
         each generated clip's prompt carries that scene's style direction (a
         Director shot direction and/or a Character-Bible consistency directive).
-        None keeps the default look."""
+        None keeps the default look.
+
+        ``prompt_hook`` (``(index, prompt) -> prompt``) adds the channel DNA's
+        style guide to each clip's prompt, and ``aspect_ratio`` asks for clips
+        in the video's frame (modules/dna_render.py); both default to nothing."""
         import config
         from modules import cost_ledger, minimax_broll, provider_tasks, video_providers
 
@@ -205,7 +210,8 @@ class MediaFetcher:
 
         specs = minimax_broll.select_specs(
             sections, topic, max_clips=getattr(config, "MINIMAX_BROLL_MAX_CLIPS", 2),
-            style_for=style_for, model=result.model)
+            style_for=style_for, model=result.model, prompt_hook=prompt_hook,
+            aspect_ratio=aspect_ratio)
         if not specs:
             return result
 
@@ -339,13 +345,19 @@ class MediaFetcher:
 
     # --------------------------------------------------------------- AI images
 
-    def generate_images(self, sections: list, topic: str, *, client=None, max_images=None) -> list[Path]:
+    def generate_images(self, sections: list, topic: str, *, client=None, max_images=None,
+                        prompt_hook=None, size=(1024, 576)) -> list[Path]:
         """Optionally generate a few on-topic stills with the selected image
         provider (modules/image_providers.py), supplementing the Pexels stock
         above. Off by default: with no key / the flag unset this makes no request
         and returns ``[]``, so backgrounds come from stock exactly as before. A
         per-image failure is swallowed — that section simply falls back to stock.
-        Never raises."""
+        Never raises.
+
+        ``prompt_hook`` (``(index, prompt) -> prompt``) adds the channel DNA's
+        style guide to each still's prompt; ``size`` is the still's
+        ``(width, height)`` — 16:9 unless the video renders in another frame
+        (modules/dna_render.py)."""
         import config
         from modules import cost_ledger, image_providers
 
@@ -381,9 +393,11 @@ class MediaFetcher:
         for i, kws in eligible[:cap]:
             subject = ", ".join(dict.fromkeys(k.strip() for k in kws if k.strip())) or (topic or "").strip()
             prompt = f"{subject} — {topic}. Cinematic, high-detail, dramatic lighting.".strip(" —")
+            if prompt_hook is not None:
+                prompt = prompt_hook(i, prompt)
             dest = self.image_dir / f"gen_img_{i}.jpg"
             try:
-                path = client.generate(prompt, dest, width=1024, height=576)
+                path = client.generate(prompt, dest, width=int(size[0]), height=int(size[1]))
             except Exception as e:   # a broken image must never sink the render
                 logger.warning("Image generation error for section %d (%s: %s)",
                                i, type(e).__name__, e)

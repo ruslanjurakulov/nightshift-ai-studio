@@ -93,6 +93,11 @@ def prompt_hash(provider: str, model: str, spec) -> str:
         "negative_prompt": getattr(spec, "negative_prompt", "") or "",
         "duration_seconds": getattr(spec, "duration_seconds", None),
     }
+    # Only when set, so every hash recorded before frames could differ is
+    # unchanged — and a 16:9 clip is never reused for a 9:16 video.
+    aspect = getattr(spec, "aspect_ratio", "") or ""
+    if aspect:
+        payload["aspect_ratio"] = aspect
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()[:16]
 
