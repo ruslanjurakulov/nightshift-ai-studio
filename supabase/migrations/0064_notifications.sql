@@ -21,17 +21,21 @@
 --   creative_job_failed      the person who started it → it failed or expired
 --                            and the hold was released (data: capability,
 --                            code, credits_returned).
---   storyboard_ready         every member of the channel's organization → a
---                            run stopped at "Storyboard ready" and waits for a
---                            person (0057). Nothing renders or is charged
---                            until someone approves.
+--   storyboard_ready         the members of the channel's organization who
+--                            may approve it (an admin or an owner of the
+--                            org — what storyboard_lock_for_runner, 0057,
+--                            requires) → a run stopped at "Storyboard ready"
+--                            and waits for a person. Nothing renders or is
+--                            charged until one of them approves; a member who
+--                            could not act on it is not interrupted for it.
 --   editor_export_done       the person who asked → a finished export is in
 --                            the library (0054).
 --   credits_low              every member of the organization → available
 --                            credits (balance - reserved) CROSSED below the
---                            low-credits line; at most once per UTC day, and
---                            never for the platform's own organization, which
---                            is exempt from credits.
+--                            low-credits line; at most once per UTC day PER
+--                            ORGANIZATION (a person in two organizations is
+--                            told about each), and never for the platform's
+--                            own organization, which is exempt from credits.
 --   Cancelled jobs tell nobody: the person did it. Ingest jobs tell nobody:
 --   they are the library's own plumbing, not something anyone asked for.
 --
@@ -197,6 +201,31 @@ begin
 end
 $$;
 
+-- Tell the members of the organization whose role is at least p_min_role
+-- (viewer < editor < admin < owner, public.app_role_rank): the people who can
+-- act on the event. Same recipient rules as notification_emit.
+create or replace function public.notification_emit_org_role(
+  p_org uuid, p_kind text, p_ref text, p_data jsonb, p_min_role text
+) returns integer
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  m record;
+  n integer := 0;
+begin
+  if p_org is null or p_min_role is null or p_min_role not in ('viewer', 'editor', 'admin', 'owner') then
+    return 0;
+  end if;
+  for m in select distinct user_id from public.org_members
+            where org_id = p_org and user_id is not null
+              and public.app_role_rank(role) >= public.app_role_rank(p_min_role) loop
+    if public.notification_emit(p_org, m.user_id, p_kind, p_ref, p_data) then
+      n := n + 1;
+    end if;
+  end loop;
+  return n;
+end
+$$;
+
 -- ───────────────────────────────────────────────────────────────────────────
 -- 3. Events
 -- ───────────────────────────────────────────────────────────────────────────
@@ -241,7 +270,9 @@ create trigger creative_jobs_notify
   when (new.status in ('completed', 'failed', 'expired') and old.status is distinct from new.status)
   execute function public.notify_creative_job_ended();
 
--- A run stopped at "Storyboard ready" and waits for a person.
+-- A run stopped at "Storyboard ready" and waits for a person who may approve
+-- it: approve_storyboard needs an admin of the channel's organization
+-- (storyboard_lock_for_runner, 0057), so only an admin or an owner is told.
 create or replace function public.notify_storyboard_ready() returns trigger
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
@@ -249,8 +280,8 @@ declare
 begin
   begin
     select c.org_id into org from public.channels c where c.channel_id = new.channel_id;
-    perform public.notification_emit_org(org, 'storyboard_ready', new.id::text,
-      jsonb_build_object('storyboard_id', new.id, 'scenes', jsonb_array_length(new.scenes)));
+    perform public.notification_emit_org_role(org, 'storyboard_ready', new.id::text,
+      jsonb_build_object('storyboard_id', new.id, 'scenes', jsonb_array_length(new.scenes)), 'admin');
   exception when others then
     raise warning 'notify_storyboard_ready: % (%)', sqlerrm, sqlstate;
   end;
@@ -300,7 +331,9 @@ begin
   begin
     if was >= line and now_ < line and not public.credits_exempt(new.org_id) then
       perform public.notification_emit_org(new.org_id, 'credits_low',
-        'low:' || to_char(now() at time zone 'utc', 'YYYY-MM-DD'),
+        -- The organization is part of the key: the unique index is per person, and
+        -- a person in two organizations must be told about each (51 characters).
+        'low:' || new.org_id::text || ':' || to_char(now() at time zone 'utc', 'YYYY-MM-DD'),
         jsonb_build_object('available', now_));
     end if;
   exception when others then
@@ -374,6 +407,7 @@ create policy notifications_select on public.notifications
 revoke all on function public.notification_low_credits_threshold() from public, anon, authenticated, service_role;
 revoke all on function public.notification_emit(uuid, uuid, text, text, jsonb) from public, anon, authenticated, service_role;
 revoke all on function public.notification_emit_org(uuid, text, text, jsonb) from public, anon, authenticated, service_role;
+revoke all on function public.notification_emit_org_role(uuid, text, text, jsonb, text) from public, anon, authenticated, service_role;
 revoke all on function public.notify_creative_job_ended() from public, anon, authenticated, service_role;
 revoke all on function public.notify_storyboard_ready() from public, anon, authenticated, service_role;
 revoke all on function public.notify_editor_export_done() from public, anon, authenticated, service_role;
@@ -413,10 +447,12 @@ end $$;
 --     and not has_function_privilege('anon', 'public.mark_all_notifications_read(uuid)', 'EXECUTE')
 --     and not has_function_privilege('authenticated', 'public.notification_emit(uuid,uuid,text,text,jsonb)', 'EXECUTE')
 --     and not has_function_privilege('authenticated', 'public.notification_emit_org(uuid,text,text,jsonb)', 'EXECUTE')
+--     and not has_function_privilege('authenticated', 'public.notification_emit_org_role(uuid,text,text,jsonb,text)', 'EXECUTE')
 --     and not has_function_privilege('authenticated', 'public.notify_credits_low()', 'EXECUTE') as functions_scoped,
 --   (select bool_and(p.prosecdef and exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%'))
 --      from pg_proc p where p.pronamespace = 'public'::regnamespace
---       and p.proname in ('notification_emit', 'notification_emit_org', 'notify_creative_job_ended',
+--       and p.proname in ('notification_emit', 'notification_emit_org', 'notification_emit_org_role',
+--                         'notify_creative_job_ended',
 --                         'notify_storyboard_ready', 'notify_editor_export_done', 'notify_credits_low',
 --                         'mark_notification_read', 'mark_all_notifications_read'))
 --     as definer_functions_pin_search_path,
