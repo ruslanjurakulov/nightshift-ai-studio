@@ -3,18 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
-import {
-  TerminalSquare,
-  LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, Sparkles,
-  Users, UserCircle, KeyRound, Bot, ListChecks,
-  Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
-  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Menu, X, Images, Settings, Cpu,
-  type LucideIcon,
-} from "lucide-react";
+import { Menu, X } from "lucide-react";
+import { ICONS } from "@/components/navigation/navIcons";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { navGroupsFor, tabsFor, type NavKey } from "@/lib/navigation";
 import { useOverlay } from "@/components/a11y/useOverlay";
+import { CustomerSidebar } from "@/components/shell/CustomerSidebar";
+import type { AccountPlan } from "@/lib/account";
 
 /**
  * The app's primary navigation, as a left rail — icon + label, grouped.
@@ -30,50 +26,12 @@ import { useOverlay } from "@/components/a11y/useOverlay";
  * opens the same list as a left drawer.
  *
  * The routes and their order live in lib/navigation (the breadcrumbs and tab
- * titles read them too); only the icons are the rail's own.
+ * titles read them too); the icons are shared (navigation/navIcons).
+ *
+ * That rail is the operator's. A customer gets the creative-app sidebar
+ * (shell/CustomerSidebar) on wide screens and the bottom bar on a phone.
  */
-export const ICONS: Record<NavKey, LucideIcon> = {
-  hub: Sparkles,
-  settings: Settings,
-  command: LayoutDashboard,
-  create: Sparkles,
-  videos: Film,
-  studio: Palette,
-  library: Images,
-  pipeline: Workflow,
-  analytics: BarChart3,
-  channels: Users,
-  accounts: UserCircle,
-  portfolio: PieChart,
-  providers: KeyRound,
-  models: Cpu,
-  billing: Wallet,
-  credits: Coins,
-  series: ListVideo,
-  agents: Bot,
-  jobs: ListChecks,
-  advisory: Lightbulb,
-  intelligence: Brain,
-  decisions: GitBranch,
-  learning: GraduationCap,
-  memory: Database,
-  topics: Hash,
-  measure: Ruler,
-  feedback: RefreshCw,
-  autonomy: Gauge,
-  onboarding: Rocket,
-  organization: Building2,
-  developers: TerminalSquare,
-  members: ShieldCheck,
-  security: Lock,
-  approvals: UserCheck,
-  alerts: BellRing,
-  audit: ClipboardList,
-  timeMachine: History,
-  integrations: Plug,
-  errors: TriangleAlert,
-  logs: ScrollText,
-};
+export { ICONS };
 
 /** Is a rail entry the current place? Studio and Settings also own their tabs' screens. */
 export function useIsActive() {
@@ -126,7 +84,16 @@ function NavList({ operator, onNavigate }: { operator: boolean; onNavigate?: () 
  * (lib/navigation.ts CUSTOMER_NAV_KEYS). Presentation only — the layout
  * redirects operator-only URLs, and RLS and each route guard the data.
  */
-export function SideNav({ operator = false }: { operator?: boolean }) {
+export function SideNav({
+  operator = false,
+  email = null,
+  plan = null,
+}: {
+  operator?: boolean;
+  /** For the customer sidebar's user card. */
+  email?: string | null;
+  plan?: AccountPlan | null;
+}) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
@@ -147,9 +114,13 @@ export function SideNav({ operator = false }: { operator?: boolean }) {
       {/* Desktop rail. z-30 keeps it above a section panel's scrim (z-0) so the
           nav stays bright and clickable while a panel is open — clicking a
           section jumps straight there instead of the scrim closing to home. */}
-      <aside className="sticky top-[72px] z-30 hidden h-[calc(100dvh-72px)] w-[236px] shrink-0 overflow-y-auto border-r border-[var(--color-border)] px-3 py-5 lg:block">
-        <NavList operator={operator} />
-      </aside>
+      {operator ? (
+        <aside className="sticky top-[72px] z-30 hidden h-[calc(100dvh-72px)] w-[236px] shrink-0 overflow-y-auto border-r border-[var(--color-border)] px-3 py-5 lg:block">
+          <NavList operator={operator} />
+        </aside>
+      ) : (
+        <CustomerSidebar email={email} plan={plan} />
+      )}
 
       {/* A customer's phone: the five destinations as a bottom tab bar, Studio in
           the middle and raised — where the thumb is, as phone apps do. */}
@@ -223,9 +194,9 @@ function BottomBar() {
   return (
     <nav
       aria-label={t.nav.menu}
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-bg)_92%,transparent)] pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden"
+      className="shell-topbar fixed inset-x-0 bottom-0 z-40 border-b-0 border-t border-[var(--shell-border)] pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
-      <ul className="mx-auto grid max-w-[520px] grid-cols-5 items-end px-2 pt-1.5">
+      <ul className="mx-auto grid max-w-[520px] grid-cols-5 items-end px-2 pt-1">
         {ordered.map(({ href, key }) => {
           const active = isActive(href, key);
           const Icon = ICONS[key];
@@ -235,19 +206,25 @@ function BottomBar() {
               <Link
                 href={path(href)}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-12 min-w-12 flex-col items-center justify-end gap-0.5 pb-1.5 text-[11px] ${
-                  active ? "text-[var(--color-primary)]" : "text-[var(--color-muted)]"
+                className={`flex min-h-12 min-w-14 flex-col items-center justify-end gap-1 rounded-[12px] pb-1.5 text-[11px] font-medium ${
+                  active ? "text-[var(--color-fg)]" : "text-[var(--color-muted)]"
                 }`}
               >
-                <span
-                  className={
-                    centre
-                      ? "-mt-5 inline-flex size-12 items-center justify-center rounded-full bg-[var(--color-primary)] text-[var(--color-on-accent)] shadow-[var(--shadow-elevated)]"
-                      : "inline-flex size-6 items-center justify-center"
-                  }
-                >
-                  <Icon aria-hidden className={centre ? "size-6" : "size-[20px]"} strokeWidth={active ? 2.25 : 1.75} />
-                </span>
+                {centre ? (
+                  // Studio, raised where the thumb is: the one solid accent on the bar.
+                  <span className="-mt-4 inline-flex size-12 items-center justify-center rounded-[16px] bg-[var(--color-primary)] text-[var(--color-on-accent)] shadow-[var(--shadow-elevated)]">
+                    <Icon aria-hidden className="size-[22px]" strokeWidth={2.1} />
+                  </span>
+                ) : (
+                  // The current tab sits on a soft pill, as phone tab bars mark it.
+                  <span
+                    className={`inline-flex h-7 w-12 items-center justify-center rounded-full transition-colors ${
+                      active ? "bg-[var(--color-active)] text-[var(--color-primary)]" : ""
+                    }`}
+                  >
+                    <Icon aria-hidden className="size-[19px]" strokeWidth={active ? 2.2 : 1.8} />
+                  </span>
+                )}
                 <span className="truncate">{t.nav[key]}</span>
               </Link>
             </li>

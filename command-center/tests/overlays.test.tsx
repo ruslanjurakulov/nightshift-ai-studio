@@ -8,6 +8,7 @@ let pathname = "/chronos/videos";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => pathname,
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push, refresh: vi.fn(), back: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
 }));
 vi.mock("next/link", () => ({

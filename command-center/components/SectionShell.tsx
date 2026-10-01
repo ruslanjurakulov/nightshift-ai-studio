@@ -7,6 +7,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import { HOME } from "@/lib/navigation";
 import { PageNav } from "@/components/navigation/PageNav";
 import { SectionTabs } from "@/components/navigation/SectionTabs";
+import { useShell } from "@/components/shell/ShellContext";
 
 export { HOME };
 
@@ -30,9 +31,14 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
   const home = path(HOME);
   // Compared after the channel segment: every channel has its own ground floor.
   const isHome = pathname === home;
+  const { operator } = useShell();
+  // Below a section (/videos/<id>): the way back is worth a row of its own.
+  const nested = pathname.split("/").filter(Boolean).length > 2;
 
   useEffect(() => {
-    if (isHome) return;
+    // A customer's screens are pages, not panels over a dashboard: Escape
+    // has nothing to close, and must not eject them to the Command Center.
+    if (isHome || !operator) return;
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
       // Don't hijack Escape from a control that handles it itself — closing a
@@ -50,7 +56,24 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [isHome, home, router]);
+  }, [isHome, home, router, operator]);
+
+  // The customer's frame: the page itself on the canvas, beside the sidebar —
+  // no scrim, no ✕, no card around the whole screen. The sidebar says where
+  // you are; the back arrow and trail appear once you are inside a section.
+  if (!operator) {
+    return (
+      <div className="page-rise mx-auto w-full max-w-[1200px]">
+        {nested && (
+          <div className="mb-4">
+            <PageNav />
+          </div>
+        )}
+        <SectionTabs />
+        {children}
+      </div>
+    );
+  }
 
   if (isHome) {
     return (

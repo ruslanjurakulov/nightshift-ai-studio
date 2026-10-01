@@ -18,8 +18,9 @@ export function SectionTabs() {
   const group = tabsFor(section);
   if (!group) return null;
   return (
-    <nav aria-label={t.nav.sections} className="-mt-2 mb-5 overflow-x-auto">
-      <ul className="flex w-max gap-1 border-b border-[var(--color-border)]">
+    <nav aria-label={t.nav.sections} className="mb-6 overflow-x-auto">
+      {/* A segmented control: the current screen sits on a raised chip. */}
+      <ul className="flex w-max gap-1 rounded-full border border-[var(--shell-border)] bg-[var(--color-panel)] p-1">
         {group.items.map(({ href, key }) => {
           const active = "/" + section === href;
           return (
@@ -27,10 +28,10 @@ export function SectionTabs() {
               <Link
                 href={path(href)}
                 aria-current={active ? "page" : undefined}
-                className={`inline-flex min-h-11 items-center px-3 text-[13px] font-medium ${
+                className={`inline-flex min-h-9 items-center rounded-full px-4 max-sm:min-h-10 pointer-coarse:min-h-10 text-[13px] font-medium transition-colors ${
                   active
-                    ? "border-b-2 border-[var(--color-primary)] text-[var(--color-fg)]"
-                    : "border-b-2 border-transparent text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+                    ? "bg-[var(--color-active)] text-[var(--color-fg)]"
+                    : "text-[var(--color-muted)] hover:bg-[var(--color-hover)] hover:text-[var(--color-fg)]"
                 }`}
               >
                 {t.nav[key]}
