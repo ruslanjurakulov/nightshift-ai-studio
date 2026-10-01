@@ -60,6 +60,9 @@ export default async function CreatePage({
           orgId={genOrgId}
           models={models}
           initial={initial}
+          // The channel's look (0047) is the starting style; the panel uses it
+          // only if it is one of the organization's kits as loaded.
+          defaultStyleKitId={typeof scopedChannel?.default_style_kit_id === "string" ? scopedChannel.default_style_kit_id : null}
         />
       )}
       <CreateStudio

@@ -46,6 +46,19 @@ by its id alone (``media_library.copy_source``). A source that cannot be read
 fails the job with ``source_unavailable`` and releases the hold. Nothing about
 the file's location is stored or logged.
 
+Style kits and @characters (migration 0048)
+-------------------------------------------
+``t2i``, ``t2v``, ``edit`` and ``i2v`` may name a style kit
+(``params.style_kit_id``) and mention characters by ``@name``. Right before the
+paid call the worker reads them for the job it holds (``creative_job_style``,
+in the JOB's organization), checks the answer again in code, appends their
+descriptions to the prompt it sends (the stored prompt is never changed) and
+hands their reference pictures — copied by id like a source — only to an
+adapter that declares it takes references (``modules/creative_style.py``). A
+kit deleted since, an answer that is not the job's organization's, or a style
+the model could not use at all fails the job with ``style_unavailable`` and
+releases the hold.
+
 Outputs into the library
 ------------------------
 With a media volume configured, each output becomes a library asset of the
@@ -69,10 +82,11 @@ import shutil
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, List, Mapping, Optional, Protocol, Sequence, Tuple
 
+from modules import creative_style as cs
 from modules import credits as credit_rules
 from modules import media_library as ml
 
@@ -120,6 +134,14 @@ class GenerationRequest:
     #: Local copies of the job's input pictures (0046), made by the worker
     #: from the media library just before submit. Empty when resuming a task.
     input_files: Tuple[Path, ...] = ()
+    #: The prompt to send when the worker built one (0048: the style guide
+    #: appended); None = ``params.prompt`` as stored.
+    prompt: Optional[str] = None
+    #: Style / character reference pictures (0048), local copies, sent after
+    #: ``input_files`` — only ever to an adapter that takes references.
+    reference_files: Tuple[Path, ...] = ()
+    #: What the style added, for the job's result (counts only).
+    style: Optional[Mapping[str, Any]] = None
 
 
 @dataclass(frozen=True)
@@ -166,6 +188,11 @@ class CreativeUnavailable(RuntimeError):
     """The 0036 functions could not be reached. Never carries a key or body."""
 
 
+class CreativeFunctionMissing(CreativeUnavailable):
+    """PostgREST answered 404: the function is not there (its migration is not
+    applied). Retrying will not help, unlike a database out of reach."""
+
+
 class CreativeRest:
     """The worker's 0036/0037 functions over Supabase REST with the service
     key. Every write is a security-definer function that checks the worker id,
@@ -192,6 +219,8 @@ class CreativeRest:
                 )
         except Exception as e:
             raise CreativeUnavailable(f"{name}: {type(e).__name__}") from None
+        if r.status_code == 404:
+            raise CreativeFunctionMissing(f"{name}: HTTP 404 (is its migration applied?)")
         if r.status_code >= 300:
             raise CreativeUnavailable(f"{name}: HTTP {r.status_code} (is migration 0036 applied?)")
         try:
@@ -227,6 +256,10 @@ class CreativeRest:
 
     def job_source(self, job_id: str, worker_id: str) -> Optional[dict]:
         out = self._rpc("creative_job_source", {"p_job": job_id, "p_worker": worker_id})
+        return out if isinstance(out, dict) else None
+
+    def job_style(self, job_id: str, worker_id: str) -> Optional[dict]:
+        out = self._rpc("creative_job_style", {"p_job": job_id, "p_worker": worker_id})
         return out if isinstance(out, dict) else None
 
     def attach_assets(self, job_id: str, worker_id: str, asset_ids: Sequence[str]) -> bool:
@@ -410,9 +443,9 @@ class CreativeWorker:
         if not task_id:
             if request.capability in SOURCE_CAPABILITIES:
                 # Before 'submitting': a refusal here costs nobody anything.
-                request = GenerationRequest(job_id=request.job_id, org_id=request.org_id,
-                                            capability=request.capability, model=request.model,
-                                            params=request.params, input_files=(self._source(request),))
+                request = replace(request, input_files=(self._source(request),))
+            if cs.wants_style(request.capability, request.params):
+                request = self._style(request, adapter)
             if not self.queue.advance(job_id, self.worker_id, "submitting"):
                 logger.warning("job %s: not ours to submit any more; leaving it", job_id)
                 return "left"
@@ -451,6 +484,59 @@ class CreativeWorker:
             raise _Refused("source_unavailable", str(e)) from None
         except OSError as e:
             raise _Refused("source_unavailable", f"the source image could not be read ({type(e).__name__})") from None
+
+    def _style(self, request: GenerationRequest, adapter: CreativeAdapter) -> GenerationRequest:
+        """The job's style kit and mentioned characters, applied to the request
+        (module doc). Before 'submitting': a refusal here costs nobody anything."""
+        try:
+            info = self.queue.job_style(request.job_id, self.worker_id)
+        except CreativeFunctionMissing:
+            # 0048 not applied: say so and release the hold now, rather than
+            # leave the job to be re-claimed until its attempts run out.
+            raise _Refused("style_unavailable", "style kits and characters cannot be used for generations "
+                                                "on this deployment yet") from None
+        if not isinstance(info, dict) or info.get("ok") is not True:
+            problem = info.get("problem") if isinstance(info, dict) else None
+            raise _Refused("style_unavailable", str(problem or "the style kit cannot be used"))
+        prompt = str(request.params.get("prompt") or "")
+        try:
+            inputs = cs.parse_answer(info, org_id=request.org_id,
+                                     kit_id=request.params.get("style_kit_id"), prompt=prompt)
+        except cs.StyleProblem as e:
+            logger.warning("job %s: the style answer was refused (%s)", request.job_id, e)
+            raise _Refused("style_unavailable", str(e)) from None
+        if inputs.empty:
+            return request  # only unknown @names: the prompt goes as typed
+        support_of = getattr(adapter, "style_support", None)
+        support = support_of(request) if callable(support_of) else cs.StyleSupport()
+        picked = cs.pick_references(inputs, support.reference_slots)
+        lost = cs.unusable(inputs, picked)
+        if lost:
+            one = len(lost) == 1
+            raise _Refused("style_unavailable",
+                           f"{' and '.join(lost)} {'has' if one else 'have'} no description and this model "
+                           f"cannot use {'its' if one else 'their'} pictures; add a description or pick a "
+                           "model that takes reference pictures")
+        text = cs.compose_prompt(prompt, inputs, picked)
+        if support.max_prompt_chars and cs.prompt_units(text) > support.max_prompt_chars:
+            raise _Refused("style_unavailable",
+                           f"the prompt with the style and character descriptions is longer than this model "
+                           f"takes ({support.max_prompt_chars} characters); shorten the prompt or the descriptions")
+        files: List[Path] = []
+        if picked:
+            if self.media_root is None:
+                raise _Refused("style_unavailable", "this worker cannot read the reference pictures")
+            dest = self.out_dir / request.job_id / "input"
+            for i, (_owner, ref) in enumerate(picked):
+                try:
+                    files.append(ml.copy_source(self.media_root, ref.asset_id, ref.mime, list(ref.variants),
+                                                dest, name=f"ref_{i}"))
+                except ml.SourceUnavailable as e:
+                    raise _Refused("style_unavailable", f"a reference picture cannot be used: {e}") from None
+                except (OSError, ValueError) as e:
+                    raise _Refused("style_unavailable",
+                                   f"a reference picture could not be read ({type(e).__name__})") from None
+        return replace(request, prompt=text, reference_files=tuple(files), style=cs.summary(inputs, picked))
 
     def _check_hold(self, job: Mapping[str, Any]) -> None:
         """The hold must be open before anything is spent (enforced), as for
@@ -530,6 +616,8 @@ class CreativeWorker:
         out = {"files": described, "storage": "library" if asset_ids else "worker"}
         if asset_ids:
             out["asset_ids"] = asset_ids
+        if request.style:
+            out["style"] = dict(request.style)
         done = self.queue.finish(job_id, self.worker_id, True, result=out)
         if asset_ids:
             # The library holds the outputs now; the job folder is scratch.

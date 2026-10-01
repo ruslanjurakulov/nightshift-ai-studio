@@ -12,6 +12,7 @@ import {
   type CreativeError,
   PARAM_KEYS,
   SOURCE_CAPABILITIES,
+  STYLE_CAPABILITIES,
   UPSCALE_FACTORS,
   isUuid,
 } from "@/lib/creative/operations";
@@ -28,6 +29,11 @@ export type UpscaleFactor = (typeof UPSCALE_FACTORS)[number];
 
 export function needsSource(c: string): c is SourceCapability {
   return (SOURCE_CAPABILITIES as readonly string[]).includes(c);
+}
+
+/** 0048: the kinds a style kit can steer (the picture tools that keep their input cannot). */
+export function takesStyle(c: string): boolean {
+  return (STYLE_CAPABILITIES as readonly string[]).includes(c);
 }
 
 /** 0046: the prompt is required for these, optional for i2v / upscale, refused for remove_bg. */
@@ -93,16 +99,25 @@ export interface StudioForm {
   /** The library picture edit / i2v / upscale / remove_bg start from. */
   sourceId?: string | null;
   factor?: UpscaleFactor;
+  /** A style kit of the organization (0048); null / absent = no style. */
+  styleKitId?: string | null;
 }
 
 type ParamKey = (typeof PARAM_KEYS)[number];
 
 /**
- * Only what 0036 / 0046's creative_params_problem accepts for the capability.
- * The source tools keep the picture's own shape, so they never send an aspect
- * ratio; an empty optional prompt is left out rather than sent blank.
+ * Only what 0036 / 0046 / 0048's creative_params_problem accepts for the
+ * capability. The source tools keep the picture's own shape, so they never
+ * send an aspect ratio; an empty optional prompt is left out rather than sent
+ * blank; "no style" is the key left out, never sent empty. @names stay in the
+ * prompt as typed — the worker resolves them.
  */
 export function buildParams(form: StudioForm): Partial<Record<ParamKey, string | number>> {
+  const base = baseParams(form);
+  return takesStyle(form.capability) && isUuid(form.styleKitId) ? { ...base, style_kit_id: form.styleKitId } : base;
+}
+
+function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>> {
   const prompt = form.prompt.trim();
   const source = form.sourceId ?? "";
   switch (form.capability) {
@@ -279,6 +294,7 @@ const REASON_GROUPS: Record<string, keyof Dictionary["gen"]["reasons"]> = {
   no_credit_hold: "credits",
   hold_not_open: "credits",
   hold_below_quote: "credits",
+  style_unavailable: "style",
   not_picked_up: "expired",
   cancelled: "cancelled",
 };
@@ -329,6 +345,8 @@ export interface StudioPrefill {
   duration: VideoDuration;
   sourceId?: string | null;
   factor?: UpscaleFactor;
+  /** Present only for the kinds a style can steer: the job's kit, or null for none. */
+  styleKitId?: string | null;
 }
 
 function asFactor(v: unknown): UpscaleFactor {
@@ -349,6 +367,7 @@ export function prefillFromJob(job: StudioJob): StudioPrefill | null {
     ...(needsSource(job.capability)
       ? { sourceId: isUuid(p.source_asset_id) ? p.source_asset_id : null, factor: asFactor(p.factor) }
       : {}),
+    ...(takesStyle(job.capability) ? { styleKitId: isUuid(p.style_kit_id) ? p.style_kit_id : null } : {}),
   };
 }
 

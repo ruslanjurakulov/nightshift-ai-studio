@@ -257,6 +257,12 @@ class HttpAdapter:
     default_base_url = ""
     #: Registry capabilities this adapter can serve at all.
     capabilities: Sequence[str] = ()
+    #: Capabilities for which pictures beyond the job's own source are sent
+    #: to the vendor as style / subject references (0048: a style kit's and
+    #: @characters' pictures). Off unless the vendor call is documented to
+    #: take several images for that capability: an adapter that would drop
+    #: them, or read them as a first frame, must never receive them.
+    reference_capabilities: Sequence[str] = ()
     timeout = 60
 
     def __init__(self, *, env: Optional[Mapping[str, str]] = None, session=None):

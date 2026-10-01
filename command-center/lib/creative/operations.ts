@@ -44,10 +44,17 @@ export type CreativeCapability = (typeof CREATIVE_CAPABILITIES)[number];
  */
 export const SOURCE_CAPABILITIES = ["edit", "i2v", "upscale", "remove_bg"] as const satisfies readonly CreativeCapability[];
 
+/**
+ * The capabilities a style kit can steer (migration 0048: `params.style_kit_id`).
+ * Whether the kit may be used — it exists and is the SAME organization's — is
+ * decided by the database (creative_style_problem), never here.
+ */
+export const STYLE_CAPABILITIES = ["t2i", "t2v", "edit", "i2v"] as const satisfies readonly CreativeCapability[];
+
 /** Upscale factors 0046 accepts; the model must also list the factor (spec.upscale_factors). */
 export const UPSCALE_FACTORS = [2, 4] as const;
 
-/** Keys 0036 / 0046's creative_params_problem accepts; anything else is refused there too. */
+/** Keys 0036 / 0046 / 0048's creative_params_problem accepts; anything else is refused there too. */
 export const PARAM_KEYS = [
   "prompt",
   "negative_prompt",
@@ -58,6 +65,7 @@ export const PARAM_KEYS = [
   "seed",
   "source_asset_id",
   "factor",
+  "style_kit_id",
 ] as const;
 
 /** Codes the routes answer with. Each has a sentence in lib/i18n `creative.errors`. */
@@ -78,6 +86,7 @@ export const CREATIVE_ERRORS = [
   "unpriced",
   "capability_not_supported",
   "source_unavailable",
+  "style_unavailable",
   "mode_not_supported",
   "insufficient_credits",
   "run_limit_reached",
@@ -130,6 +139,9 @@ const NS400: Partial<Record<string, { status: number; code: CreativeError }>> = 
   // 0046: the picture is not this organization's, was deleted, or is not a
   // usable image. Another organization's id reads exactly like a missing one.
   source_unavailable: { status: 422, code: "source_unavailable" },
+  // 0048: the style kit is not this organization's or no longer exists —
+  // another organization's kit reads exactly like a missing one.
+  style_unavailable: { status: 422, code: "style_unavailable" },
   mode_not_supported: { status: 422, code: "mode_not_supported" },
   invalid_params: { status: 400, code: "invalid_params" },
   invalid_idempotency_key: { status: 400, code: "invalid_idempotency_key" },
@@ -226,6 +238,12 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: "factor must be 2 or 4" }) };
   if (capability !== "upscale" && params.factor !== undefined)
     return { ok: false, result: fail(400, "invalid_params", { detail: `factor does not apply to ${capability}` }) };
+  if (params.style_kit_id !== undefined) {
+    if (!(STYLE_CAPABILITIES as readonly string[]).includes(capability))
+      return { ok: false, result: fail(400, "invalid_params", { detail: `style_kit_id does not apply to ${capability}` }) };
+    if (!isUuid(params.style_kit_id))
+      return { ok: false, result: fail(400, "invalid_params", { detail: "style_kit_id must be the id of a style kit" }) };
+  }
   const mode = b.mode == null ? "exact" : typeof b.mode === "string" ? b.mode.trim().toLowerCase() : "";
   if (!mode) return { ok: false, result: fail(400, "invalid_params", { detail: "mode must be text" }) };
 

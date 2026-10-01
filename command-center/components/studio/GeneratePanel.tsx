@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { SourcePicker } from "@/components/studio/SourcePicker";
+import { useStyleKits } from "@/components/studio/useStyleKits";
 import { UPSCALE_FACTORS, type CreativeError } from "@/lib/creative/operations";
 import {
   ASPECT_RATIOS,
@@ -21,6 +22,7 @@ import {
   needsSource,
   newIdempotencyKey,
   promptRule,
+  takesStyle,
   type AspectRatio,
   type QuoteState,
   type StudioCapability,
@@ -47,17 +49,24 @@ const label = "text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]
  * (/api/creative/quote, debounced while typing); the price is on the button,
  * and pressing it sends exactly that price as `max_credits` — a higher price
  * is refused by the database, never charged. One idempotency key per press.
+ *
+ * Images and videos can take one of the organization's style kits (0048),
+ * the channel's default kit picked to start with; a style adds no credits.
+ * @names in the words stay as typed — the worker brings in the characters.
  */
 export function GeneratePanel({
   orgId,
   models,
   initial = null,
+  defaultStyleKitId = null,
   onCreated,
 }: {
   orgId: string;
   models: StudioModel[];
   /** "Try again" from the feed: fills the form; spends nothing by itself. */
   initial?: StudioPrefill | null;
+  /** The open channel's default style kit (0047), picked to start with when it is one of the org's kits. */
+  defaultStyleKitId?: string | null;
   onCreated?: () => void;
 }) {
   const { t, fmt, locale } = useI18n();
@@ -72,6 +81,11 @@ export function GeneratePanel({
   const [model, setModel] = useState(initial?.model ?? "");
   const [sourceId, setSourceId] = useState<string | null>(initial?.sourceId ?? null);
   const [factor, setFactor] = useState<UpscaleFactor>(initial?.factor ?? 2);
+  // A retried job keeps its own choice (even "none"); a fresh form starts from the channel's look.
+  const [styleKitId, setStyleKitId] = useState<string | null>(
+    initial && "styleKitId" in initial ? (initial.styleKitId ?? null) : defaultStyleKitId,
+  );
+  const styles = useStyleKits(orgId);
   const [quote, setQuote] = useState<QuoteState>({ status: "idle" });
   const [requote, setRequote] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -80,10 +94,13 @@ export function GeneratePanel({
   const available = modelsFor(models, capability);
   // The picked model if it can make this kind, else the first that can.
   const effectiveModel = available.some((m) => m.id === model) ? model : (available[0]?.id ?? "");
-  const form = { capability, prompt, aspect, duration, sourceId, factor };
+  // Only a kit the organization has (as loaded) is ever sent: a stale default
+  // or a deleted kit reads as "None" rather than as a refusal at the price.
+  const effectiveStyle = styles.state === "ready" && styles.kits.some((k) => k.id === styleKitId) ? styleKitId : null;
+  const form = { capability, prompt, aspect, duration, sourceId, factor, styleKitId: effectiveStyle };
   const params = useMemo(
-    () => buildParams({ capability, prompt, aspect, duration, sourceId, factor }),
-    [capability, prompt, aspect, duration, sourceId, factor],
+    () => buildParams({ capability, prompt, aspect, duration, sourceId, factor, styleKitId: effectiveStyle }),
+    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle],
   );
   const paramsKey = JSON.stringify(params);
   // A price is asked for only once the form is complete (the picture, the words).
@@ -231,7 +248,66 @@ export function GeneratePanel({
             placeholder={t.gen.promptPh[capability]}
             className="w-full resize-y rounded-[14px] border border-[var(--color-border)] bg-transparent p-3 text-[16px] leading-relaxed outline-none transition-colors placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[14px]"
           />
+          {takesStyle(capability) && <span className="text-[12px] text-[var(--color-muted)]">{t.gen.mentionHint}</span>}
         </label>
+      )}
+
+      {takesStyle(capability) && styles.state !== "unavailable" && (
+        <div className="flex flex-col gap-1">
+          <span className={label}>{t.gen.styleLabel}</span>
+          {styles.state === "loading" ? (
+            <div className="flex flex-wrap gap-2" aria-busy="true" aria-label={t.gen.styleLoading}>
+              {[0, 1, 2].map((i) => (
+                <span key={i} className="pill min-h-[36px] w-20 animate-pulse bg-[var(--color-panel-2)]" />
+              ))}
+            </div>
+          ) : styles.state === "failed" ? (
+            <div className="flex flex-wrap items-center gap-3 text-[13px] text-[var(--color-muted)]">
+              <span>{t.gen.styleFailed}</span>
+              <button type="button" onClick={() => void styles.reload()} className="btn-sky is-quiet pill px-3 py-1.5 text-[12px]">
+                {t.gen.styleRetry}
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2" role="group" aria-label={t.gen.styleLabel}>
+                <button
+                  type="button"
+                  aria-pressed={effectiveStyle === null}
+                  onClick={() => {
+                    setStyleKitId(null);
+                    edited();
+                  }}
+                  className={chip(effectiveStyle === null)}
+                >
+                  {t.gen.styleNone}
+                </button>
+                {styles.kits.map((k) => (
+                  <button
+                    key={k.id}
+                    type="button"
+                    aria-pressed={effectiveStyle === k.id}
+                    onClick={() => {
+                      setStyleKitId(k.id);
+                      edited();
+                    }}
+                    className={chip(effectiveStyle === k.id) + " max-w-full truncate"}
+                  >
+                    {k.name}
+                  </button>
+                ))}
+              </div>
+              {styles.kits.length === 0 && (
+                <span className="text-[12px] text-[var(--color-muted)]">
+                  {t.gen.styleEmpty}{" "}
+                  <Link href={path("/studio")} className="tap-link text-[var(--color-primary)] underline">
+                    {t.gen.styleMake}
+                  </Link>
+                </span>
+              )}
+            </>
+          )}
+        </div>
       )}
 
       {(capability === "t2i" || capability === "t2v") && (
