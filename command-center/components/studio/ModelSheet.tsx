@@ -152,7 +152,7 @@ export function ModelSheet({
             type="button"
             onClick={onClose}
             aria-label={g.sheetClose}
-            className="tap-icon grid size-8 shrink-0 place-items-center rounded-full text-[var(--color-muted)] hover:bg-[var(--studio-field)] hover:text-[var(--color-fg)]"
+            className="tap-icon grid size-8 shrink-0 place-items-center rounded-[var(--ns-r-key)] text-[var(--color-muted)] hover:bg-[var(--studio-field)] hover:text-[var(--color-fg)]"
           >
             <X aria-hidden className="size-4" />
           </button>
@@ -215,7 +215,7 @@ export function ModelSheet({
                 >
                   <span
                     aria-hidden
-                    className={`grid size-5 shrink-0 place-items-center rounded-full border ${
+                    className={`grid size-5 shrink-0 place-items-center rounded-[var(--ns-r-key)] border ${
                       on ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-on-accent)]" : "border-[var(--color-border)]"
                     }`}
                   >
@@ -225,7 +225,7 @@ export function ModelSheet({
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate text-[14px] font-medium text-[var(--color-fg)]">{m.displayName}</span>
                       {m.beta && (
-                        <span className="shrink-0 rounded-full border border-[var(--color-border)] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
+                        <span className="shrink-0 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
                           {g.beta}
                         </span>
                       )}

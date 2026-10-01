@@ -449,7 +449,7 @@ export function GeneratePanel({
                   {current.displayName}
                 </span>
                 {current.beta && (
-                  <span className="shrink-0 rounded-full border border-[var(--color-border)] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
+                  <span className="shrink-0 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
                     {t.gen.beta}
                   </span>
                 )}
@@ -542,7 +542,7 @@ export function GeneratePanel({
                     setEndOpen(false);
                     edited();
                   }}
-                  className="btn-sky is-quiet pill w-fit px-3 py-1.5 text-[12px]"
+                  className="btn-quiet w-fit text-[12px]"
                 >
                   {t.gen.endFrameRemove}
                 </button>
@@ -683,7 +683,7 @@ export function GeneratePanel({
             {styles.state === "loading" ? (
               <div className="flex flex-wrap gap-2" aria-busy="true" aria-label={t.gen.styleLoading}>
                 {[0, 1, 2].map((i) => (
-                  <span key={i} className="skeleton h-8 w-20 rounded-full" />
+                  <span key={i} className="skeleton h-8 w-20 rounded-[var(--ns-r-key)]" />
                 ))}
               </div>
             ) : styles.state === "failed" ? (
