@@ -39,6 +39,13 @@ async function askPrice(
   }
 }
 
+/** The same settings with the model's own soundtrack setting (0070): a model that offers no choice is asked without one (the database refuses audio it does not price). */
+function withSound(params: Record<string, unknown>, sound: boolean | null | undefined): Record<string, unknown> {
+  delete params.audio;
+  if (typeof sound === "boolean") params.audio = sound;
+  return params;
+}
+
 /** The same settings with the model's own tier: a model without tiers is asked without one (the database refuses a tier it does not list). */
 function withTier(paramsKey: string, tier: ImageQuality | null | undefined): Record<string, unknown> {
   const params = JSON.parse(paramsKey) as Record<string, unknown>;
@@ -63,6 +70,7 @@ export function useModelPrices({
   selectedId,
   params,
   tierFor,
+  soundFor,
 }: {
   open: boolean;
   orgId: string;
@@ -72,9 +80,12 @@ export function useModelPrices({
   params: Record<string, unknown> | null;
   /** Each model's own tier (0060) for a picture tool; absent or null = ask without one. */
   tierFor?: Record<string, ImageQuality | null>;
+  /** Each model's own soundtrack setting (0070) for a video tool; absent or null = ask without one. */
+  soundFor?: Record<string, boolean | null>;
 }): Record<string, ModelPrice> {
   const [prices, setPrices] = useState<Record<string, ModelPrice>>({});
   const tiersKey = JSON.stringify(tierFor ?? {});
+  const soundKey = JSON.stringify(soundFor ?? {});
   const paramsKey = params ? JSON.stringify(params) : "";
   const ids = pricedIds(modelIds, selectedId);
   const idsKey = ids.join(",");
@@ -91,7 +102,8 @@ export function useModelPrices({
       for (const id of list) {
         void (async () => {
           const tiers = JSON.parse(tiersKey) as Record<string, ImageQuality | null>;
-          const next = await askPrice(orgId, capability, id, withTier(paramsKey, tiers[id]), ctrl.signal);
+          const sounds = JSON.parse(soundKey) as Record<string, boolean | null>;
+          const next = await askPrice(orgId, capability, id, withSound(withTier(paramsKey, tiers[id]), sounds[id]), ctrl.signal);
           if (next && !ctrl.signal.aborted) setPrices((p) => ({ ...p, [id]: next }));
         })();
       }
@@ -100,7 +112,7 @@ export function useModelPrices({
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [open, orgId, capability, idsKey, paramsKey, tiersKey]);
+  }, [open, orgId, capability, idsKey, paramsKey, tiersKey, soundKey]);
 
   return prices;
 }
@@ -160,4 +172,54 @@ export function pricedIds(modelIds: string[], selectedId: string): string[] {
   const rest = modelIds.filter((id) => id !== selectedId);
   const head = modelIds.includes(selectedId) ? [selectedId] : [];
   return [...head, ...rest].slice(0, SHEET_PRICE_MAX);
+}
+
+/**
+ * The price of each soundtrack setting (0070) of the picked model, for the
+ * same settings — the toggle shows what a silent clip and one with sound
+ * would cost before the person picks. Each is a real quote from the database
+ * (a price, nothing held, nothing spent); a setting that cannot be priced
+ * says so (`unpriced`) rather than showing a number nobody computed. `params`
+ * null = no entries (the model offers no choice, or no honest price can be
+ * asked for yet).
+ */
+export function useSoundPrices({
+  orgId,
+  capability,
+  modelId,
+  params,
+}: {
+  orgId: string;
+  capability: StudioCapability;
+  modelId: string;
+  params: Record<string, unknown> | null;
+}): { silent?: ModelPrice; sound?: ModelPrice } {
+  const [prices, setPrices] = useState<{ silent?: ModelPrice; sound?: ModelPrice }>({});
+  const paramsKey = params ? JSON.stringify(params) : "";
+
+  useEffect(() => {
+    if (!paramsKey || !modelId) {
+      setPrices({});
+      return;
+    }
+    setPrices({ silent: { status: "quoting" }, sound: { status: "quoting" } });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => {
+      for (const [slot, audio] of [
+        ["silent", false],
+        ["sound", true],
+      ] as const) {
+        void (async () => {
+          const next = await askPrice(orgId, capability, modelId, withSound(JSON.parse(paramsKey) as Record<string, unknown>, audio), ctrl.signal);
+          if (next && !ctrl.signal.aborted) setPrices((p) => ({ ...p, [slot]: next }));
+        })();
+      }
+    }, SHEET_QUOTE_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [orgId, capability, modelId, paramsKey]);
+
+  return prices;
 }

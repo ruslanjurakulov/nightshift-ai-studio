@@ -226,18 +226,25 @@ def test_a_model_that_lists_no_tiers_refuses_one_instead_of_ignoring_it(db):
     assert footprint(db, ORG_A) == before
 
 
+def _set_tiers(db, mid, tiers):
+    """Change the tiers a model lists and prove the new call again: what is sent changed, so the
+    registry guard re-opens the old proof (0070 extends it to ``qualities``)."""
+    db.su("update public.model_registry set spec = jsonb_set(spec, '{qualities}', %s::jsonb) where id = %s",
+          [json.dumps(tiers), mid])
+    db.su("select public.record_model_probe(%s, 'image.acme', 'acme-img', 't2i', true, null, null, 10, 100, 'security-lab')", [mid])
+    db.su("update public.model_registry set availability='beta' where id=%s", [mid])
+
+
 def test_a_tier_the_model_does_not_list_is_refused_even_when_a_price_row_exists(db):
     # A stray credit_prices row must not sell a tier the model never listed.
-    db.su("update public.model_registry set spec = jsonb_set(spec, '{qualities}', '[\"medium\",\"high\"]') "
-          "where id = 'qimg-none'")
+    _set_tiers(db, "qimg-none", ["medium", "high"])
     db.su("insert into public.credit_prices (unit, credits_per_unit, margin) values ('model_qimg_none_image_low', 1, 0)"
           " on conflict (unit) do nothing")
     try:
         st, word, detail = err(lambda: quote(db, UA, ORG_A, "t2i", "qimg-none", t2i(quality="low")))
         assert (st, word) == ("NS400", "invalid_params") and "does not offer" in detail
     finally:
-        db.su("update public.model_registry set spec = jsonb_set(spec, '{qualities}', '[\"low\",\"medium\",\"high\"]') "
-              "where id = 'qimg-none'")
+        _set_tiers(db, "qimg-none", ["low", "medium", "high"])
         db.su("delete from public.credit_prices where unit = 'model_qimg_none_image_low'")
 
 

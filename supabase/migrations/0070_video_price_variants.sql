@@ -41,6 +41,9 @@
 --                             half, and a model sold by audio or by a pinned
 --                             resolution listed only while at least one of its
 --                             variants has a price.
+--   model_registry_guard      0052's, plus spec.qualities (0060), spec.default_resolution
+--                             and spec.pricing.variants.by (0070): what is sent to the
+--                             vendor changed, so the old probe proves nothing.
 --   credit_prices             starting rows (below), inserted only where no row exists.
 --
 -- PRICES (provider USD per second x 100 = credits per second, margin 1.5, read
@@ -80,8 +83,71 @@ begin
      or position('quality' in pg_get_functiondef('public.creative_params_problem(text, jsonb)'::regprocedure)) = 0 then
     raise exception '0070 needs 0060_image_quality.sql: apply it first';
   end if;
+  -- The guard below is 0052's plus lines: replacing anything older would drop an earlier check.
+  if to_regprocedure('public.model_registry_guard()') is null
+     or position('end_frame' in pg_get_functiondef('public.model_registry_guard()'::regprocedure)) = 0 then
+    raise exception '0070 needs 0052_video_tools.sql: apply it first';
+  end if;
 end $$;
 
+
+-- 0052's guard (0050's, 0046's before it), plus what is now SENT to the vendor
+-- because of how a model is priced: the quality tiers (0060, never extended
+-- there), the pinned resolution and the way a clip is priced by resolution /
+-- soundtrack (0070). Changing any of them re-opens the proof: the model goes
+-- back to hidden until a probe of the new call passes. Every earlier check is kept.
+create or replace function public.model_registry_guard() returns trigger
+  language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  p public.model_probe_runs;
+begin
+  new.updated_at := now();
+  -- What is called changed → the old probe proves nothing about the new call.
+  if tg_op = 'UPDATE' and (new.adapter is distinct from old.adapter
+      or new.capabilities is distinct from old.capabilities
+      or new.spec -> 'vendor_model' is distinct from old.spec -> 'vendor_model'
+      or new.spec -> 'vendor_model_by_capability' is distinct from old.spec -> 'vendor_model_by_capability'
+      or new.spec -> 'upscale_factors' is distinct from old.spec -> 'upscale_factors'
+      or new.spec -> 'languages' is distinct from old.spec -> 'languages'
+      or new.spec -> 'upscale_targets' is distinct from old.spec -> 'upscale_targets'
+      or new.spec -> 'end_frame' is distinct from old.spec -> 'end_frame'
+      -- 0060: the tiers a picture model is sent a quality for.
+      or new.spec -> 'qualities' is distinct from old.spec -> 'qualities'
+      -- 0070: the resolution a clip is always sent, and how it is priced by
+      -- resolution / soundtrack (the worker then sends resolution / sound).
+      or new.spec -> 'default_resolution' is distinct from old.spec -> 'default_resolution'
+      or new.spec -> 'pricing' -> 'variants' -> 'by' is distinct from old.spec -> 'pricing' -> 'variants' -> 'by') then
+    if new.verified_probe_id is not distinct from old.verified_probe_id then
+      new.verified_at := null;
+      new.verified_by := null;
+      new.verified_probe_id := null;
+      if new.availability in ('beta', 'ga') then
+        new.availability := 'hidden';
+      end if;
+    end if;
+  end if;
+  -- A (new) proof must be a successful probe of THIS model as it is now.
+  if new.verified_probe_id is not null
+     and (tg_op = 'INSERT' or new.verified_probe_id is distinct from old.verified_probe_id
+          or new.verified_at is distinct from old.verified_at) then
+    select * into p from public.model_probe_runs where id = new.verified_probe_id;
+    if not found or not p.ok or p.model_id <> new.id or p.adapter <> new.adapter
+       or not (p.vendor_model = new.spec ->> 'vendor_model'
+               or p.vendor_model in (select jsonb_each_text.value
+                                       from jsonb_each_text(coalesce(new.spec -> 'vendor_model_by_capability', '{}'::jsonb)))) then
+      raise exception 'model %: verified_probe_id must be a successful probe of this model, adapter and vendor model', new.id
+        using errcode = '23514';
+    end if;
+    new.verified_at := p.created_at;
+  end if;
+  if new.verified_probe_id is null and new.verified_at is not null then
+    raise exception 'model %: verified_at is set only from a probe run', new.id using errcode = '23514';
+  end if;
+  return new;
+end
+$$;
+
+revoke all on function public.model_registry_guard() from public, anon, authenticated;
 
 -- 0060's sellable_models, with the pinned resolution and the way a model is priced
 -- in the public half of spec, and a model priced by soundtrack (or by a pinned
@@ -642,6 +708,10 @@ revoke all on function public.creative_price(uuid, text, text, jsonb) from publi
 --     and public.creative_params_problem('video_upscale',
 --       '{"source_asset_id":"00000000-0000-4000-8000-000000000000","target_resolution":"4k"}') is null
 --     as earlier_capabilities_kept,
+--   position('default_resolution' in pg_get_functiondef('public.model_registry_guard()'::regprocedure)) > 0
+--     and position('qualities' in pg_get_functiondef('public.model_registry_guard()'::regprocedure)) > 0
+--     and position('vendor_model_by_capability' in pg_get_functiondef('public.model_registry_guard()'::regprocedure)) > 0
+--     as guard_reopens_proof,
 --   (select count(*) from public.credit_prices
 --     where unit in ('model_seedance_1_5_pro_second_720p_silent', 'model_seedance_1_5_pro_second_720p_audio',
 --                    'model_seedance_1_5_pro_second_1080p_audio', 'model_wan_2_7_second_720p',

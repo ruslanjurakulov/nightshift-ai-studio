@@ -286,7 +286,8 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         raise AssertionError(name)
 
     def test_the_functions_replaced_are_the_ones_the_quote_runs(self):
-        self.assertEqual(sorted(bodies(self.SQL)), ["creative_params_problem", "creative_price", "sellable_models"])
+        self.assertEqual(sorted(bodies(self.SQL)),
+                         ["creative_params_problem", "creative_price", "model_registry_guard", "sellable_models"])
 
     def test_every_literal_of_the_latest_bodies_survives(self):
         new = bodies(self.SQL)
@@ -299,13 +300,38 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         # If a later migration (below 0070) replaces one of these, 0070 must be rebuilt on it.
         for name in ("creative_price", "creative_params_problem", "sellable_models"):
             self.assertEqual(self.latest(name)[0], "0060_image_quality.sql", name)
+        self.assertEqual(self.latest("model_registry_guard")[0], "0052_video_tools.sql")
 
     def test_no_check_of_the_replaced_functions_is_dropped(self):
         new = bodies(self.SQL)
         for name in new:
             _, old = self.latest(name)
-            for stmt in ("perform public.creative_refuse", "return format(", "return '"):
+            for stmt in ("perform public.creative_refuse", "return format(", "return '", "raise exception"):
                 self.assertGreaterEqual(new[name].count(stmt), old.count(stmt), f"{name}: fewer {stmt}")
+
+    def test_the_guard_reopens_the_proof_for_what_is_now_sent_and_keeps_every_earlier_trigger(self):
+        guard = bodies(self.SQL)["model_registry_guard"]
+        for field in ("adapter", "capabilities", "spec -> 'vendor_model'", "spec -> 'vendor_model_by_capability'",
+                      "spec -> 'upscale_factors'", "spec -> 'languages'", "spec -> 'upscale_targets'",
+                      "spec -> 'end_frame'",
+                      # 0060 (never extended there) and 0070
+                      "spec -> 'qualities'", "spec -> 'default_resolution'",
+                      "spec -> 'pricing' -> 'variants' -> 'by'"):
+            self.assertIn(f"new.{field} is distinct from old.{field}", guard, field)
+        # A change that leaves the verification untouched must not lose it, and the proof is cleared whole.
+        for line in ("new.verified_at := null;", "new.verified_by := null;", "new.verified_probe_id := null;",
+                     "new.availability := 'hidden';"):
+            self.assertIn(line, guard)
+        self.assertIn("security definer set search_path = public, pg_temp", guard)
+        self.assertIn("revoke all on function public.model_registry_guard() from public, anon, authenticated;",
+                      self.SQL)
+
+    def test_every_spec_key_the_worker_sends_because_of_a_price_is_watched_by_the_guard(self):
+        # What the registry adds to a call because of how a model is priced: the guard must name each.
+        guard = bodies(self.SQL)["model_registry_guard"]
+        for key in ("qualities", "default_resolution"):
+            self.assertIn(f"'{key}'", guard)
+        self.assertIn("'variants' -> 'by'", guard)
 
     def test_the_quote_refuses_what_the_model_does_not_list_and_names_the_variant(self):
         price = bodies(self.SQL)["creative_price"]
