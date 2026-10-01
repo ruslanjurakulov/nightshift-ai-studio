@@ -11,6 +11,8 @@ import { TierMarks } from "@/components/studio/TierMarks";
 import { TOOL_ICONS } from "@/components/studio/toolIcons";
 import { useModelPrices } from "@/components/studio/useModelPrices";
 import { useStyleKits } from "@/components/studio/useStyleKits";
+import { PlanUpsellDialog } from "@/components/studio/PlanUpsellDialog";
+import { isUpsellCode, refusalFrom, type Refusal, type UpsellCatalog } from "@/lib/upsell";
 import { UPSCALE_FACTORS, type CreativeError } from "@/lib/creative/operations";
 import {
   ASPECT_RATIOS,
@@ -77,6 +79,7 @@ export function GeneratePanel({
   initial = null,
   defaultStyleKitId = null,
   sourceRequest = null,
+  plans,
   onCreated,
 }: {
   orgId: string;
@@ -91,6 +94,12 @@ export function GeneratePanel({
    * it once; the words and settings already typed stay.
    */
   sourceRequest?: { nonce: number; id: string } | null;
+  /**
+   * What the plan dialog may offer (lib/upsell.ts): a refusal for a plan,
+   * parallel runs or credits opens it. Absent or null (an organization that
+   * never pays): no dialog, the message alone.
+   */
+  plans?: UpsellCatalog | null;
   onCreated?: () => void;
 }) {
   const { t, fmt, locale } = useI18n();
@@ -109,7 +118,7 @@ export function GeneratePanel({
   const [styleKitId, setStyleKitId] = useState<string | null>(
     initial && "styleKitId" in initial ? (initial.styleKitId ?? null) : defaultStyleKitId,
   );
-  // A voice change speaks in a voice the person picks; a dub in a language they pick. Neither is defaulted.
+  // Speech and a voice change speak in a voice the person picks; a dub in a language they pick. None is defaulted.
   const [voiceId, setVoiceId] = useState<string | null>(initial?.voiceId ?? null);
   const [targetLanguage, setTargetLanguage] = useState<DubLanguage | null>(initial?.targetLanguage ?? null);
   // 0052: the picture an animation ends on (optional), and the size a video upscale makes.
@@ -123,6 +132,8 @@ export function GeneratePanel({
   const [notice, setNotice] = useState<{ kind: "ok" } | { kind: "error"; code: CreativeError } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const changeRef = useRef<HTMLButtonElement>(null);
+  const generateRef = useRef<HTMLButtonElement>(null);
+  const [upsell, setUpsell] = useState<{ refusal: Refusal; open: boolean } | null>(null);
   const tabRefs = useRef<Partial<Record<StudioCapability, HTMLButtonElement | null>>>({});
 
   const available = modelsFor(models, capability);
@@ -252,6 +263,7 @@ export function GeneratePanel({
         const code = asCreativeError(body.error);
         setNotice({ kind: "error", code });
         if (code === "price_changed") setRequote((n) => n + 1);
+        if (plans && isUpsellCode(code)) setUpsell({ refusal: refusalFrom(code, body), open: true });
       }
     } catch {
       setNotice({ kind: "error", code: "failed" });
@@ -520,10 +532,10 @@ export function GeneratePanel({
           </div>
         )}
 
-        {capability === "voice_change" && (
+        {(capability === "voice_change" || capability === "tts") && (
           <div className="flex flex-col gap-2">
             <label htmlFor="gen-voice" className="studio-label">
-              {t.gen.voiceLabel}
+              {capability === "tts" ? t.gen.ttsVoiceLabel : t.gen.voiceLabel}
             </label>
             <select
               id="gen-voice"
@@ -662,6 +674,7 @@ export function GeneratePanel({
 
       <div className="studio-dock flex flex-col gap-2" data-testid="gen-dock">
         <button
+          ref={generateRef}
           type="button"
           disabled={disabled}
           onClick={generate}
@@ -684,6 +697,21 @@ export function GeneratePanel({
                   <Link href={path("/credits")} className="tap-link text-[var(--color-primary)] underline">
                     {t.gen.addCredits}
                   </Link>
+                </>
+              )}
+              {plans && isUpsellCode(errorCode) && errorAction(errorCode) === "plans" && (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    aria-haspopup="dialog"
+                    onClick={() =>
+                      setUpsell((u) => ({ refusal: u?.refusal.code === errorCode ? u.refusal : refusalFrom(errorCode, null), open: true }))
+                    }
+                    className="tap-link text-[var(--color-primary)] underline"
+                  >
+                    {t.upsell.seePlans}
+                  </button>
                 </>
               )}
             </span>
@@ -709,6 +737,16 @@ export function GeneratePanel({
           }}
           onClose={() => setSheetOpen(false)}
           returnTo={changeRef}
+        />
+      )}
+
+      {upsell?.open && plans && (
+        <PlanUpsellDialog
+          refusal={upsell.refusal}
+          model={current ? { name: current.displayName, entitlement: current.entitlement } : null}
+          data={plans}
+          onClose={() => setUpsell((u) => u && { ...u, open: false })}
+          returnTo={generateRef}
         />
       )}
     </section>

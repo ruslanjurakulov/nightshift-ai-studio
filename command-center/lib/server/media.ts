@@ -8,6 +8,7 @@ import {
   MEDIA_ASSET_COLUMNS,
   MEDIA_ASSET_FOLDER_COLUMNS,
   MEDIA_UPLOAD_COLUMNS,
+  MEDIA_UPLOAD_FOLDER_COLUMNS,
   PIPELINE_UNKNOWN,
   coerceAssets,
   coerceUploads,
@@ -287,16 +288,18 @@ export async function loadMediaLibrary(orgId: string, opts: LibraryReadOptions =
     if (query) q = q.ilike("original_name", ilikeContains(query));
     return q.order("created_at", { ascending: false }).limit(LIBRARY_PAGE);
   };
+  const readUploads = (withFolders: boolean) =>
+    supabase
+      .from("media_uploads")
+      .select(withFolders ? MEDIA_UPLOAD_FOLDER_COLUMNS : MEDIA_UPLOAD_COLUMNS)
+      .eq("org_id", orgId)
+      .neq("status", "ingested")
+      .order("created_at", { ascending: false })
+      .limit(20);
   try {
-    const [first, uploads, quota, settings, pipeline, folders] = await Promise.all([
+    const [first, firstUploads, quota, settings, pipeline, folders] = await Promise.all([
       readAssets(true),
-      supabase
-        .from("media_uploads")
-        .select(MEDIA_UPLOAD_COLUMNS)
-        .eq("org_id", orgId)
-        .neq("status", "ingested")
-        .order("created_at", { ascending: false })
-        .limit(20),
+      readUploads(true),
       supabase.from("org_storage_quota").select("limit_bytes, used_bytes").eq("org_id", orgId).maybeSingle(),
       supabase.from("media_storage_settings").select("default_quota_bytes, max_upload_bytes").maybeSingle(),
       // Is file checking running (0045)? Missing function or a failed read is "unknown", never "ok".
@@ -307,6 +310,9 @@ export async function loadMediaLibrary(orgId: string, opts: LibraryReadOptions =
     // unnarrowed by folder, and shows no folders.
     const foldersOn = !isMissingColumn(first.error);
     const assets = foldersOn ? first : await readAssets(false);
+    // Before 0051 an upload has no folder: read them as before (each one is
+    // then only in All files, which is where it will land).
+    const uploads = isMissingColumn(firstUploads.error) ? await readUploads(false) : firstUploads;
     if (assets.error || uploads.error) {
       const missing = [assets.error, uploads.error].some((e) => e && /does not exist|42P01|PGRST205/i.test(`${e.code} ${e.message}`));
       return missing ? empty : { ...empty, available: true, error: "read_failed" };

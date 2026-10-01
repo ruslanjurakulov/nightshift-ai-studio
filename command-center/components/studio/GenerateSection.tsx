@@ -5,6 +5,7 @@ import { GeneratePanel } from "@/components/studio/GeneratePanel";
 import { JobFeed } from "@/components/studio/JobFeed";
 import { TemplateGallery } from "@/components/studio/TemplateGallery";
 import type { StudioModel, StudioPrefill } from "@/lib/creative/studio";
+import type { UpsellCatalog } from "@/lib/upsell";
 
 /**
  * The Studio's "make one thing" half: the composer on the left (sticky from
@@ -22,6 +23,7 @@ export function GenerateSection({
   initial = null,
   defaultStyleKitId = null,
   bottomBar = true,
+  plans = null,
 }: {
   orgId: string;
   models: StudioModel[];
@@ -31,6 +33,8 @@ export function GenerateSection({
   defaultStyleKitId?: string | null;
   /** The phone's bottom tab bar is shown (not for the platform operator): Generate docks above it. */
   bottomBar?: boolean;
+  /** What the plan dialog may offer when a generation is refused (lib/upsell.ts); null = no dialog. */
+  plans?: UpsellCatalog | null;
 }) {
   const [prefill, setPrefill] = useState<{ nonce: number; value: StudioPrefill } | null>(
     initial ? { nonce: 0, value: initial } : null,
@@ -69,6 +73,7 @@ export function GenerateSection({
           initial={prefill?.value ?? null}
           defaultStyleKitId={defaultStyleKitId}
           sourceRequest={sourceRequest}
+          plans={plans}
           onCreated={() => setRefreshKey((k) => k + 1)}
         />
       </div>

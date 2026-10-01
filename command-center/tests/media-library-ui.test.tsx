@@ -296,6 +296,7 @@ describe("upload cards", () => {
     bytes: 4096,
     assetId: null,
     createdAt: "2026-09-10T00:00:00Z",
+    folderId: null,
   });
 
   it("each state is a card with a plain label; a refusal says why", () => {

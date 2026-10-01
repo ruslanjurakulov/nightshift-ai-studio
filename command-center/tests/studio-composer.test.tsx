@@ -254,7 +254,7 @@ describe("pricing the sheet", () => {
       { id: "a", spec: { quality_tier: 4, speed_tier: 9 } },
       { id: "hidden", spec: { quality_tier: 5, speed_tier: 5 } },
     ]);
-    expect(out).toEqual([{ ...base[0], qualityTier: 4, speedTier: null }]);
+    expect(out).toEqual([{ ...base[0], qualityTier: 4, speedTier: null, entitlement: null }]);
     expect(withTiers(base, null)).toEqual(base);
   });
 

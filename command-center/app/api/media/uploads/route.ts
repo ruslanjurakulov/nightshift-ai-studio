@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 /**
  * Ask for an upload ticket (migration 0038).
  *
- * POST `{ org_id, filename, mime, bytes, project_id? }`. Calls request_upload()
+ * POST `{ org_id, filename, mime, bytes, project_id?, folder_id? }`. Calls request_upload()
  * as the signed-in user (anon key + session): the database checks membership
  * of that organization, the type allowlist (declared type and extension must
  * agree), the size cap, uploads in flight and the storage quota, and returns a
@@ -20,6 +20,18 @@ export const dynamic = "force-dynamic";
  * (PostgREST refuses NUL in text) and the database keeps its last path
  * segment. No path is ever built from it.
  *
+ * `folder_id` (migration 0051) is the folder open while the file was chosen;
+ * absent / null means All files. The database checks it: a folder of this
+ * organization (another one's reads like a made-up id) and an editor asking
+ * (a viewer uploads to All files only). It is stored on the ticket and
+ * re-checked when the worker registers the file, so a folder deleted
+ * meanwhile sends the file to All files instead of failing it.
+ *
+ * Before 0051 is applied there is no six-argument request_upload: a request
+ * that names a folder is then asked again without one, and the answer says
+ * `folder_applied: false` so the page can say where the file really went —
+ * never a silent All files.
+ *
  * On a host without the media volumes (Vercel) no ticket is handed out: the
  * body could never be received or served here.
  */
@@ -28,7 +40,7 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!mediaStagingDir() || !mediaDir()) return NextResponse.json({ error: "media_unavailable" }, { status: 503 });
 
-  let body: { org_id?: unknown; filename?: unknown; mime?: unknown; bytes?: unknown; project_id?: unknown };
+  let body: { org_id?: unknown; filename?: unknown; mime?: unknown; bytes?: unknown; project_id?: unknown; folder_id?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -42,17 +54,22 @@ export async function POST(request: Request) {
   const projectId = body.project_id === undefined || body.project_id === null ? null : parseMediaId(body.project_id);
   if (body.project_id !== undefined && body.project_id !== null && !projectId)
     return NextResponse.json({ error: "bad_project" }, { status: 400 });
+  const folderId = body.folder_id === undefined || body.folder_id === null ? null : parseMediaId(body.folder_id);
+  if (body.folder_id !== undefined && body.folder_id !== null && !folderId)
+    return NextResponse.json({ error: "bad_request" }, { status: 400 });
   const filename = cleanUploadName(body.filename);
 
   const supabase = await createClient();
   if (!supabase) return NextResponse.json({ error: "not_configured" }, { status: 503 });
-  const { data, error } = await supabase.rpc("request_upload", {
-    p_org: org,
-    p_filename: filename,
-    p_mime: mime,
-    p_bytes: bytes,
-    p_project_id: projectId,
-  });
+  const args = { p_org: org, p_filename: filename, p_mime: mime, p_bytes: bytes, p_project_id: projectId };
+  // No folder: exactly the five arguments every version of the database takes.
+  let { data, error } = await supabase.rpc("request_upload", folderId ? { ...args, p_folder_id: folderId } : args);
+  let folderApplied = folderId !== null;
+  if (error && folderId && mapMediaError(error).error === "not_available") {
+    // 0051 not applied: upload to All files, and say so.
+    ({ data, error } = await supabase.rpc("request_upload", args));
+    folderApplied = false;
+  }
   if (error) {
     const mapped = mapMediaError(error);
     const extra =
@@ -63,13 +80,21 @@ export async function POST(request: Request) {
           : {};
     return NextResponse.json({ error: mapped.error, ...extra }, { status: mapped.status });
   }
-  const out = (data ?? {}) as { ticket?: string; kind?: string; mime?: string; name?: string; max_bytes?: number; expires_at?: string };
+  const out = (data ?? {}) as {
+    ticket?: string;
+    kind?: string;
+    mime?: string;
+    name?: string;
+    max_bytes?: number;
+    expires_at?: string;
+    folder_id?: string | null;
+  };
   const ticket = parseMediaId(out.ticket);
   if (!ticket) return NextResponse.json({ error: "failed" }, { status: 502 });
   await logAudit({
     action: "media.upload_request",
     target: ticket,
-    detail: { org, kind: out.kind ?? null, bytes },
+    detail: { org, kind: out.kind ?? null, bytes, folder: folderApplied ? folderId : null },
   });
   return NextResponse.json({
     ok: true,
@@ -80,5 +105,8 @@ export async function POST(request: Request) {
     name: out.name ?? filename,
     max_bytes: out.max_bytes ?? bytes,
     expires_at: out.expires_at ?? null,
+    // What the ticket holds — the database's answer, not what was asked.
+    folder_id: folderApplied ? (parseMediaId(out.folder_id) ?? null) : null,
+    folder_applied: folderId === null ? null : folderApplied,
   });
 }

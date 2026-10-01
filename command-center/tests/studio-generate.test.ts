@@ -96,7 +96,9 @@ describe("the button and errors", () => {
     expect(apiErrorMessage(t, "something_internal")).toBe(t.creative.errors.failed);
     expect(errorAction("insufficient_credits")).toBe("credits");
     expect(errorAction("price_changed")).toBe("requote");
-    expect(errorAction("run_limit_reached")).toBeNull();
+    expect(errorAction("run_limit_reached")).toBe("plans");
+    expect(errorAction("entitlement_required")).toBe("plans");
+    expect(errorAction("failed")).toBeNull();
   });
 });
 

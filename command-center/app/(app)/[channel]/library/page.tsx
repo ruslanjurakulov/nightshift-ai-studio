@@ -6,6 +6,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { getDictionary } from "@/lib/i18n/server";
 import { fmt } from "@/lib/i18n";
 import { loadMediaLibrary } from "@/lib/server/media";
+import { atLeast } from "@/lib/auth/roles-shared";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -20,6 +21,11 @@ export const revalidate = 0;
  * server's staging volume; the media worker checks the content before an
  * asset appears here. On a host without the media volumes, without the
  * migration, or without a signing key, the page says exactly that.
+ *
+ * Folder controls (new, rename, delete, move, upload into a folder) are shown
+ * to editors and up: the role is the database's own answer for this
+ * organization (my_organizations -> org_role). Hiding them is for the reader;
+ * the database refuses a viewer either way (0049, 0051).
  */
 export default async function LibraryPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
@@ -44,7 +50,7 @@ export default async function LibraryPage() {
   return (
     <div className="rhythm">
       {header(org.current.name)}
-      <MediaLibrary orgId={org.current.id} initial={lib} />
+      <MediaLibrary orgId={org.current.id} initial={lib} canEditFolders={atLeast(org.current.role, "editor")} />
     </div>
   );
 }
