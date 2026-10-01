@@ -170,14 +170,14 @@ function libraryAsset(kind: "video" | "image" | "audio" | "caption"): LibraryAss
     width: 1920,
     height: 1080,
     durationS: 12,
-    source: "generation",
+    source: "generated",
     name: "Result",
     variants: [],
     version: 1,
     createdAt: "2026-09-01T10:00:00Z",
     thumbUrl: null,
     viewUrl: null,
-  } as LibraryAsset;
+  };
 }
 
 describe("the library viewer", () => {

@@ -78,6 +78,7 @@ vi.mock("@/lib/server/audit", () => ({ logAudit: async (e: { action?: string }) 
 const send = await import("../app/api/editor/send/route");
 const projects = await import("../app/api/editor/projects/route");
 const lib = await import("@/lib/editor");
+type Doc = import("@/lib/editor").TimelineDoc;
 
 const row = (id: string, kind: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -134,8 +135,7 @@ const req = (body?: unknown) =>
     body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
   });
 const rpcCalls = (name?: string) => h.calls.filter((c) => c.kind === "rpc" && (!name || c.name === name));
-const savedDoc = () => (rpcCalls("save_editor_project")[0]!.args as { p_doc: lib.TimelineDoc }).p_doc;
-type Doc = lib.TimelineDoc;
+const savedDoc = () => (rpcCalls("save_editor_project")[0]!.args as { p_doc: Doc }).p_doc;
 
 beforeEach(() => {
   h.user = { id: "u1", email: "me@example.com" };
