@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, Sparkles,
   Users, UserCircle, KeyRound, Bot, ListChecks,
   Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
-  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Menu, X, Images, Settings,
+  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Menu, X, Images, Settings, Cpu,
   type LucideIcon,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
@@ -46,6 +46,7 @@ export const ICONS: Record<NavKey, LucideIcon> = {
   accounts: UserCircle,
   portfolio: PieChart,
   providers: KeyRound,
+  models: Cpu,
   billing: Wallet,
   credits: Coins,
   series: ListVideo,
