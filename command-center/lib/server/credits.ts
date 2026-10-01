@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { unitEconomics, type DurationRow, type LedgerRow } from "../unitEconomics";
 import {
@@ -157,11 +158,32 @@ export type RunCreditResult =
  * at all is a refusal naming the fix, never a guess. The Actions path ("gh")
  * prices as it always has.
  */
+/**
+ * A hold reference that is the same every time the same person asks for the
+ * same run with the same key (the Assistant's plan step). reserve_credits()
+ * refuses a second hold with an existing reference (23505), so a double press
+ * or a reload re-sending the step can never hold — or start — a second run.
+ * Hashed so the reference carries no user id, and scoped by user and channel
+ * so one person's key can never collide with another's.
+ */
+export function runCreditRefFor(prefix: "rj" | "gh", userId: string, channelId: string, key: string): string {
+  const digest = createHash("sha256").update(`assistant-run\n${userId}\n${channelId}\n${key}`).digest("hex");
+  return newCreditRef(prefix, digest.slice(0, 48));
+}
+
+export interface RunCreditOptions {
+  /** The price the person confirmed: a higher estimate is refused (409 price_changed), nothing held. */
+  maxCredits?: number | null;
+  /** A stable hold reference (runCreditRefFor) instead of a fresh one: a replay is refused, never held twice. */
+  creditRef?: string | null;
+}
+
 export async function reserveRunCredits(
   supabase: SupabaseClient,
   channelId: string,
   requestedDurationS: number | undefined,
   prefix: "rj" | "gh",
+  opts: RunCreditOptions = {},
 ): Promise<RunCreditResult> {
   const unavailable = { ok: false as const, status: 503, body: { error: "credits_unavailable" } };
   // A read behind the quote errored: unknown, not a gap. Retry; nothing was held.
@@ -191,7 +213,11 @@ export async function reserveRunCredits(
   if (estimate.credits === null)
     return { ok: false, status: 409, body: { error: "credit_estimate_unavailable", gap: estimate.gap } };
 
-  const creditRef = newCreditRef(prefix, crypto.randomUUID());
+  // The person confirmed a price; a run that now costs more is asked again, never held.
+  if (typeof opts.maxCredits === "number" && estimate.credits > opts.maxCredits)
+    return { ok: false, status: 409, body: { error: "price_changed", credits: estimate.credits } };
+
+  const creditRef = opts.creditRef ?? newCreditRef(prefix, crypto.randomUUID());
   const { data, error } = await supabase.rpc("reserve_credits", {
     p_org: orgId,
     p_job_id: creditRef,
@@ -208,6 +234,9 @@ export async function reserveRunCredits(
     const busy = parseRunLimit(error);
     if (busy) return { ok: false, status: 429, body: { error: "run_limit", active: busy.active, limit: busy.limit } };
     if (isCreditsMissing(error)) return unavailable;
+    // The same stable reference was held before: this run was already started
+    // by an earlier press of the same step. Answer that, never a second hold.
+    if (error.code === "23505" && opts.creditRef) return { ok: false, status: 409, body: { error: "run_already_started" } };
     if (error.code === "42501") return { ok: false, status: 403, body: { error: "forbidden" } };
     return { ok: false, status: 502, body: { error: "credit_reserve_failed" } };
   }
