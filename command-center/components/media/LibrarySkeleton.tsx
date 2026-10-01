@@ -19,17 +19,17 @@ export function LibrarySkeleton({ label, tiles = 8 }: { label: string; tiles?: n
           <Skeleton className="h-4 w-40 max-w-full" />
           <Skeleton className="h-1.5 w-56 max-w-full" />
         </div>
-        <Skeleton className="h-10 w-32 shrink-0 rounded-full" />
+        <Skeleton className="h-10 w-32 shrink-0 rounded-[var(--ns-r-key)]" />
       </div>
       <div className="flex gap-2 overflow-hidden">
         {[64, 84, 78, 70].map((w, i) => (
-          <Skeleton key={i} className="h-9 shrink-0 rounded-full" style={{ width: w }} />
+          <Skeleton key={i} className="h-9 shrink-0 rounded-[var(--ns-r-key)]" style={{ width: w }} />
         ))}
       </div>
       <ul className="m-0 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" aria-hidden>
         {Array.from({ length: tiles }, (_, i) => (
           <li key={i} className="flex flex-col gap-2" style={{ opacity: 1 - Math.min(i, 6) * 0.08 }}>
-            <Skeleton className="aspect-square w-full rounded-2xl" />
+            <Skeleton className="aspect-square w-full rounded-[var(--ns-r-key)]" />
             <Skeleton className="h-3.5 w-3/4" />
             <Skeleton className="h-3 w-1/3" />
           </li>
