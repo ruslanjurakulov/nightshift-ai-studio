@@ -104,7 +104,7 @@ export function GeneratePanel({
   const [styleKitId, setStyleKitId] = useState<string | null>(
     initial && "styleKitId" in initial ? (initial.styleKitId ?? null) : defaultStyleKitId,
   );
-  // A voice change speaks in a voice the person picks; a dub in a language they pick. Neither is defaulted.
+  // Speech and a voice change speak in a voice the person picks; a dub in a language they pick. None is defaulted.
   const [voiceId, setVoiceId] = useState<string | null>(initial?.voiceId ?? null);
   const [targetLanguage, setTargetLanguage] = useState<DubLanguage | null>(initial?.targetLanguage ?? null);
   const styles = useStyleKits(orgId);
@@ -414,10 +414,10 @@ export function GeneratePanel({
           </div>
         )}
 
-        {capability === "voice_change" && (
+        {(capability === "voice_change" || capability === "tts") && (
           <div className="flex flex-col gap-2">
             <label htmlFor="gen-voice" className="studio-label">
-              {t.gen.voiceLabel}
+              {capability === "tts" ? t.gen.ttsVoiceLabel : t.gen.voiceLabel}
             </label>
             <select
               id="gen-voice"

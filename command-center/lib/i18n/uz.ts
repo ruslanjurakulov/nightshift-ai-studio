@@ -2438,6 +2438,7 @@ export const uz: Dictionary = {
     recordingNoLength: "davomiyligi hali noma'lum",
     voiceChangeNote: "5 daqiqagacha. So'zlar va ohang saqlanadi, ovoz almashadi. Natija kutubxonangizdagi yangi audio fayl.",
     dubNote: "30 daqiqagacha. Nutq tarjima qilinadi, so'zlovchilar o'z ovozini saqlaydi. Natija dublyaj qilingan audio yo'lak, kutubxonangizga saqlanadi.",
+    ttsVoiceLabel: "Ovoz",
     voiceLabel: "Yangi ovoz",
     voicePick: "Ovozni tanlang",
     languageLabel: "Qaysi tilga",
