@@ -270,7 +270,8 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
               additionalProperties: false,
               description:
                 "What to generate. edit, i2v, upscale, remove_bg and describe take source_asset_id: an image in the key's organization's media library " +
-                "(another organization's id answers exactly like one that does not exist).",
+                "(another organization's id answers exactly like one that does not exist). A value the model does not offer " +
+                "(for example an image quality tier it does not list) is refused with 400 invalid_params, or 422 unpriced when it has no price, before anything is held.",
               properties: Object.fromEntries(PARAM_KEYS.map((k) => [k, {}])),
             },
             mode: { const: "exact", description: "Only exact: the model you named runs." },

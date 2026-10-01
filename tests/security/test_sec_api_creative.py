@@ -66,6 +66,11 @@ MODELS = [
     ("img-webonly", ["t2i"], "image.acme", {"api_exposure": "web_only"}, "model_img_webonly_image", 4),
     ("img-edit", ["t2i", "edit"], "image.acme", {}, "model_img_edit_image", 4),
 ]
+# Picture models sold by quality tier (0060). Priced apart from MODELS: no margin, so a tier costs its row.
+TIERS = ["low", "medium", "high"]
+TIER_PRICE = {"low": 1, "medium": 4, "high": 16}
+QUALITY_SPEC = {"qualities": TIERS, "pricing": {"unit": "image", "variants": {"by": "quality", "prices": {t: None for t in TIERS}}}}
+QMODELS = [("img-q", ["t2i", "edit"]), ("img-q-part", ["t2i"])]  # img-q-part: only 'high' has a price
 PRICES = ", ".join(f"('{u}', {c}, 0.5)" for _m, _c, _a, _s, u, c in MODELS) + ", ('job_minimum', 1, 0)"
 PROMPT = {"prompt": "a lighthouse at dawn"}
 PRICE = 6  # 4 credits x (1 + 0.5)
@@ -146,11 +151,25 @@ def db():
              "credit_unit": unit, "entitlement": "any",
              "spec": {"vendor_model": "acme-" + m, "output": "image", **extra}}
             for m, caps, a, extra, unit, _c in MODELS]
+    rows += [{"id": m, "display_name": m, "provider": "acme", "adapter": "image.acme", "capabilities": caps,
+              "credit_unit": f"model_{m.replace('-', '_')}_image", "entitlement": "any",
+              "spec": {"vendor_model": "acme-" + m, "output": "image", **QUALITY_SPEC}} for m, caps in QMODELS]
     d.su("select public.sync_model_registry(%s::jsonb)", [json.dumps(rows)])
     for m, caps, a, _x, _u, _c in MODELS:
         d.su("select public.record_model_probe(%s, %s, %s, %s, true, null, null, 10, 100, 'security-lab')",
              [m, a, "acme-" + m, caps[-1]])
         d.su("update public.model_registry set availability='beta' where id=%s", [m])
+    for m, caps in QMODELS:
+        d.su("select public.record_model_probe(%s, 'image.acme', %s, %s, true, null, null, 10, 100, 'security-lab')",
+             [m, "acme-" + m, caps[-1]])
+        d.su("update public.model_registry set availability='beta' where id=%s", [m])
+        d.su("insert into public.credit_prices (unit, credits_per_unit, margin) values (%s, 16, 0)",
+             [f"model_{m.replace('-', '_')}_image"])
+    for tier, c in TIER_PRICE.items():
+        d.su("insert into public.credit_prices (unit, credits_per_unit, margin) values (%s, %s, 0)", [f"model_img_q_image_{tier}", c])
+    d.su("insert into public.credit_prices (unit, credits_per_unit, margin) values ('model_img_q_part_image_high', 16, 0)")
+    # 0060 (image quality) may or may not be applied yet: its tests run only when it is.
+    d.quality = d.su("select prosrc like '%quality%' from pg_proc where proname = 'creative_params_problem'")[0][0]
     d.su(f"insert into public.credit_prices (unit, credits_per_unit, margin) values {PRICES} "
          "on conflict (unit) do update set credits_per_unit = excluded.credits_per_unit, margin = excluded.margin")
     d.key_id = {}
@@ -636,6 +655,65 @@ def test_a_model_the_vendor_keeps_off_the_api_is_refused_on_the_api_only(db):
     # and an unknown model is the same answer, never a different one that confirms a name
     unknown = quote(db, "a_full", model="no-such-model")
     assert unknown["status"] == 422 and code(unknown) == "model_not_sellable"
+
+
+# ── image quality tiers (0060): the API carries them with the Studio's rules ──
+
+needs_quality = pytest.mark.usefixtures("quality_applied")
+
+
+@pytest.fixture
+def quality_applied(db):
+    if not db.quality:
+        pytest.skip("0060 (image quality) is not applied")
+
+
+@needs_quality
+@pytest.mark.parametrize("tier", TIERS)
+def test_a_tier_is_quoted_and_held_at_its_own_price(db, tier):
+    drain(db)
+    params = {**PROMPT, "quality": tier}
+    q = quote(db, "a_full", model="img-q", params=params)
+    assert q["status"] == 200 and q["data"]["quote"]["credits"] == TIER_PRICE[tier] and q["data"]["quote"].get("quality") == tier, q
+    before = footprint(db, ORG_A)
+    res = create(db, "a_full", model="img-q", params=params, maxc=TIER_PRICE[tier], idem=uniq())
+    assert res["status"] == 201 and res["data"]["quoted_credits"] == TIER_PRICE[tier], res
+    after = footprint(db, ORG_A)
+    assert after[3][1] == before[3][1] + TIER_PRICE[tier], "the hold is not the tier's quote"
+    drain(db)
+
+
+@needs_quality
+def test_an_absent_tier_is_medium_in_the_quote_and_the_hold(db):
+    drain(db)
+    assert quote(db, "a_full", model="img-q")["data"]["quote"]["credits"] == TIER_PRICE["medium"]
+    res = create(db, "a_full", model="img-q", maxc=TIER_PRICE["medium"], idem=uniq())
+    assert res["status"] == 201 and res["data"]["quoted_credits"] == TIER_PRICE["medium"], res
+    drain(db)
+
+
+@needs_quality
+@pytest.mark.parametrize("model,params,status,want", [
+    ("img-q", {"quality": "ultra"}, 400, "invalid_params"),       # not a tier
+    ("img-q", {"quality": 3}, 400, "invalid_params"),             # not a word
+    ("img-q-part", {"quality": "low"}, 422, "unpriced"),          # listed, no price row: never free
+    ("img-api", {"quality": "high"}, 400, "invalid_params"),      # a model that lists no tiers
+])
+def test_an_unlisted_unpriced_or_misplaced_tier_is_refused_before_any_hold(db, model, params, status, want):
+    before = footprint(db, ORG_A)
+    for res in (quote(db, "a_full", "t2i", model, {"prompt": "x", **params}),
+                create(db, "a_full", "t2i", model, {"prompt": "x", **params}, idem=uniq())):
+        assert (res["status"], code(res)) == (status, want), res
+    assert footprint(db, ORG_A) == before
+
+
+@needs_quality
+def test_the_confirmed_price_of_another_tier_is_not_enough(db):
+    drain(db)
+    before = footprint(db, ORG_A)
+    res = create(db, "a_full", model="img-q", params={**PROMPT, "quality": "high"}, maxc=TIER_PRICE["medium"], idem=uniq())
+    assert res["status"] == 409 and code(res) == "price_changed", res
+    assert footprint(db, ORG_A) == before
 
 
 # ── request limits ──────────────────────────────────────────────────────────

@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createCreative, getCreativeJob, parseCreativeBody, quoteCreative, type ApiCaller, type Rpc } from "@/lib/api/operations";
-import { toWire } from "@/lib/api/http";
+import { toWire, type ApiResult } from "@/lib/api/http";
+import { PARAM_KEYS } from "@/lib/creative/operations";
 import { openApiSpec } from "@/lib/api/openapi";
 
 vi.mock("server-only", () => ({}));
@@ -20,7 +21,7 @@ function caller(answer: unknown = { ok: true, status: 200, data: {} }) {
   return { c, calls };
 }
 
-const code = (r: { ok: boolean }) => (r.ok ? null : (r as { code: string }).code);
+const code = (r: ApiResult) => (r.ok ? null : r.code);
 
 describe("POST /creative/jobs", () => {
   it("passes the key hash, the Studio-parsed request, the price confirmed and the idempotency key to api_creative_create", async () => {
@@ -81,7 +82,7 @@ describe("POST /creative/jobs", () => {
     for (const [body, status, want] of cases) {
       const r = await createCreative(c, body, "k");
       expect(r.ok, JSON.stringify(body)).toBe(false);
-      expect([(r as { status: number }).status, code(r)], JSON.stringify(body)).toEqual([status, want]);
+      expect([r.ok ? 200 : r.status, code(r)], JSON.stringify(body)).toEqual([status, want]);
     }
     expect(calls).toEqual([]);
   });
@@ -124,6 +125,36 @@ describe("POST /creative/jobs", () => {
       expect(r).toMatchObject({ ok: false, status: 503, code: "api_unavailable" });
       expect((r as { message: string }).message).toContain("0062");
     }
+  });
+});
+
+// 0060 (image quality) adds `quality` to the Studio's parser; the API uses that
+// parser, so a tier is carried and refused by the same rules. Runs once 0060 is in.
+describe.skipIf(!(PARAM_KEYS as readonly string[]).includes("quality"))("image quality tiers", () => {
+  it("passes a tier to the database untouched, for a quote and for a create", async () => {
+    const { c, calls } = caller();
+    const body = { ...BODY, params: { prompt: "x", quality: "high" } };
+    await quoteCreative(c, body);
+    await createCreative(c, body, "k");
+    expect(calls.map((x) => (x.args.p_params as { quality?: string }).quality)).toEqual(["high", "high"]);
+  });
+
+  it("refuses an unknown tier, a non-string and a tier on a capability that has none before any database call", async () => {
+    const { c, calls } = caller();
+    for (const params of [{ prompt: "x", quality: "ultra" }, { prompt: "x", quality: 3 }, { prompt: "x", quality: null }]) {
+      const r = await createCreative(c, { ...BODY, params }, "k");
+      expect([r.ok ? 200 : r.status, code(r)], JSON.stringify(params)).toEqual([400, "invalid_params"]);
+      expect(code(await quoteCreative(c, { ...BODY, params }))).toBe("invalid_params");
+    }
+    expect(code(await createCreative(c, { ...BODY, capability: "tts", params: { prompt: "x", quality: "high" } }, "k"))).toBe("invalid_params");
+    expect(calls).toEqual([]);
+  });
+
+  it("fingerprints the tier: the same key with another tier is another request", async () => {
+    const { c, calls } = caller();
+    await createCreative(c, { ...BODY, params: { prompt: "x", quality: "low" } }, "k");
+    await createCreative(c, { ...BODY, params: { prompt: "x", quality: "high" } }, "k");
+    expect(calls[0].args.p_fingerprint).not.toBe(calls[1].args.p_fingerprint);
   });
 });
 
