@@ -122,10 +122,21 @@ export function isImageQuality(v: unknown): v is ImageQuality {
   return typeof v === "string" && (IMAGE_QUALITIES as readonly string[]).includes(v);
 }
 
+/**
+ * 0070's `audio` (t2v and i2v only, a JSON boolean, optional): the soundtrack
+ * of a clip on a model that prices it apart. Absent means silent — in the quote
+ * AND in the worker. Whether a model offers the choice, and what each setting
+ * costs, is decided by the database (spec.pricing.variants, one credit_prices
+ * row per setting); a setting without a price is refused as `unpriced`, never
+ * free. The `resolution` already accepted is likewise checked against the
+ * model there (an unlisted one is refused before any hold).
+ */
+export const AUDIO_CAPABILITIES = ["t2v", "i2v"] as const satisfies readonly CreativeCapability[];
+
 /** Upscale factors 0046 accepts; the model must also list the factor (spec.upscale_factors). */
 export const UPSCALE_FACTORS = [2, 4] as const;
 
-/** Keys 0036 / 0046 / 0048 / 0050 / 0052 / 0055 / 0060's creative_params_problem accepts; anything else is refused there too. */
+/** Keys 0036 / 0046 / 0048 / 0050 / 0052 / 0055 / 0060 / 0070's creative_params_problem accepts; anything else is refused there too. */
 export const PARAM_KEYS = [
   "prompt",
   "negative_prompt",
@@ -142,6 +153,7 @@ export const PARAM_KEYS = [
   "end_asset_id",
   "language",
   "quality",
+  "audio",
 ] as const;
 
 /** Codes the routes answer with. Each has a sentence in lib/i18n `creative.errors`. */
@@ -346,6 +358,12 @@ export function parseGenerationInput(
       return { ok: false, result: fail(400, "invalid_params", { detail: `quality does not apply to ${capability}` }) };
     if (!isImageQuality(params.quality))
       return { ok: false, result: fail(400, "invalid_params", { detail: `quality must be one of ${IMAGE_QUALITIES.join(", ")}` }) };
+  }
+  if (params.audio !== undefined) {
+    if (!(AUDIO_CAPABILITIES as readonly string[]).includes(capability))
+      return { ok: false, result: fail(400, "invalid_params", { detail: `audio does not apply to ${capability}` }) };
+    if (typeof params.audio !== "boolean")
+      return { ok: false, result: fail(400, "invalid_params", { detail: "audio must be true or false" }) };
   }
   if (params.style_kit_id !== undefined) {
     if (!(STYLE_CAPABILITIES as readonly string[]).includes(capability))
