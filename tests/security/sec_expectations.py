@@ -403,3 +403,8 @@ sec_storyboard_0057.extend(TABLES, FUNCTIONS)
 import sec_storyboard_0058  # noqa: E402
 
 sec_storyboard_0058.extend(TABLES, FUNCTIONS)
+
+# Migration 0059 (auto-captions): tests/security/sec_captions_0059.py
+import sec_captions_0059  # noqa: E402
+
+sec_captions_0059.extend(TABLES, FUNCTIONS)
