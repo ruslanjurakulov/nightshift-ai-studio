@@ -299,16 +299,18 @@ class DeadlineTestCase(unittest.TestCase):
         popen.assert_not_called()
 
     def test_a_timeout_is_not_retried_or_fallen_back_from(self):
-        spec = tr.to_render_spec(xdoc(), ASSETS.get, "/out/x.mp4")
         calls = []
 
         def hang(cmd, deadline=None):
             calls.append(deadline)
             raise render_backend.RenderTimeout("late")
 
-        with tempfile.TemporaryDirectory() as tmp, \
+        # The output lives under its own temp dir: CI runs unprivileged, so a
+        # path like /out would be refused before the render even starts.
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as out, \
                 mock.patch.object(render_backend, "_run", side_effect=hang), \
                 mock.patch.object(render_backend.ass_captions, "has_libass", return_value=True):
+            spec = tr.to_render_spec(xdoc(), ASSETS.get, str(Path(out) / "x.mp4"))
             with self.assertRaises(render_backend.RenderTimeout):
                 render_backend.render(spec, ffmpeg="ffmpeg", workdir=tmp, jobs=1, timeout_s=30)
             # The work dir is left empty: the render's temp folder is gone.
