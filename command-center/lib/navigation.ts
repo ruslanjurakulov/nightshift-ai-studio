@@ -26,6 +26,14 @@ export interface NavGroup {
 export const HOME = "/command-center";
 
 /**
+ * Where a viewer starts: the operator on the Command Center, a customer in
+ * Studio — the first of their five destinations, where things are made.
+ */
+export function landingSection(operator: boolean): string {
+  return operator ? HOME.slice(1) : "create";
+}
+
+/**
  * The primary navigation, in rail order. The first group has no heading: those
  * are the daily loop (make a video, watch it, shape the look, follow the
  * pipeline, read the numbers). SideNav attaches the icons.

@@ -25,7 +25,7 @@ import type {
 } from "@/lib/types";
 import { storedMs } from "@/lib/format";
 import { RESERVED_ROOT_SEGMENTS } from "@/lib/public-paths";
-import { sectionAllowed } from "@/lib/navigation";
+import { landingSection, sectionAllowed } from "@/lib/navigation";
 
 /** Remembers the last channel viewed, so "/" knows where to send you. It is a
  *  memory, not the selection — the URL is the selection. */
@@ -205,7 +205,7 @@ export function appRedirect(opts: {
   }
   const allowed = sectionAllowed(rest[0] ?? "", opts.operator);
   if (target === slug && allowed) return null;
-  const tail = allowed ? rest : ["command-center"];
+  const tail = allowed ? rest : [landingSection(opts.operator)];
   return ["", target, ...tail].join("/") + (allowed ? (opts.search ?? "") : "");
 }
 

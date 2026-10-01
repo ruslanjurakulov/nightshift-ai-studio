@@ -41,12 +41,9 @@ function channelRedirect(request: NextRequest): URL | null {
   // With no channel remembered, "/" goes to the bare every-channel segment:
   // its index page lands on the first channel (app/(app)/[channel]/page.tsx),
   // so nobody starts on a roll-up they did not ask for.
-  url.pathname =
-    path === "/"
-      ? slug === ALL_CHANNELS_SLUG
-        ? `/${slug}`
-        : `/${slug}/command-center`
-      : `/${slug}${path}`;
+  // "/" goes to the channel's index, which picks the viewer's landing
+  // (operator: Command Center; customer: Studio) — middleware cannot tell them apart.
+  url.pathname = path === "/" ? `/${slug}` : `/${slug}${path}`;
   return url;
 }
 
