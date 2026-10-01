@@ -9,6 +9,9 @@ export const uz: Dictionary = {
     operations: "OPERATSIYALAR",
   },
   nav: {
+    hub: "Studiya",
+    settings: "Sozlamalar",
+    sections: "Bo'limlar",
     more: "Yana",
     gManage: "Boshqaruv",
     gIntel: "Aql",

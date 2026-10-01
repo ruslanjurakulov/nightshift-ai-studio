@@ -15,6 +15,9 @@ export const en = {
     operations: "OPERATIONS",
   },
   nav: {
+    hub: "Studio",
+    settings: "Settings",
+    sections: "Sections",
     more: "More",
     gManage: "Manage",
     gIntel: "Intelligence",

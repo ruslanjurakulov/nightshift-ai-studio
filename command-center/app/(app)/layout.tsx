@@ -101,7 +101,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           />
           <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
             <SideNav operator={operator} />
-            <main className="pad-page min-w-0 flex-1">{children}</main>
+            {/* A customer's phone has the bottom tab bar (SideNav): keep the page's end above it. */}
+            <main className={`pad-page min-w-0 flex-1${operator ? "" : " pb-24 lg:pb-0"}`}>{children}</main>
           </div>
         </div>
         <CommandPalette scope={scope} operator={operator} />

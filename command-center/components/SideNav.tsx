@@ -8,12 +8,12 @@ import {
   LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, Sparkles,
   Users, UserCircle, KeyRound, Bot, ListChecks,
   Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
-  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Menu, X, Images,
+  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Menu, X, Images, Settings,
   type LucideIcon,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { navGroupsFor, type NavKey } from "@/lib/navigation";
+import { navGroupsFor, tabsFor, type NavKey } from "@/lib/navigation";
 import { useOverlay } from "@/components/a11y/useOverlay";
 
 /**
@@ -32,7 +32,9 @@ import { useOverlay } from "@/components/a11y/useOverlay";
  * The routes and their order live in lib/navigation (the breadcrumbs and tab
  * titles read them too); only the icons are the rail's own.
  */
-const ICONS: Record<NavKey, LucideIcon> = {
+export const ICONS: Record<NavKey, LucideIcon> = {
+  hub: Sparkles,
+  settings: Settings,
   command: LayoutDashboard,
   create: Sparkles,
   videos: Film,
@@ -72,10 +74,13 @@ const ICONS: Record<NavKey, LucideIcon> = {
   logs: ScrollText,
 };
 
-function useIsActive() {
+/** Is a rail entry the current place? Studio and Settings also own their tabs' screens. */
+export function useIsActive() {
   const pathname = usePathname();
   const section = "/" + pathname.split("/").slice(2).join("/");
-  return (href: string) => section === href || section.startsWith(href + "/");
+  const group = tabsFor(pathname.split("/")[2] ?? "")?.rail;
+  return (href: string, key?: NavKey) =>
+    section === href || section.startsWith(href + "/") || (key !== undefined && key === group);
 }
 
 function NavList({ operator, onNavigate }: { operator: boolean; onNavigate?: () => void }) {
@@ -92,7 +97,7 @@ function NavList({ operator, onNavigate }: { operator: boolean; onNavigate?: () 
             </div>
           )}
           {group.items.map(({ href, key }) => {
-            const active = isActive(href);
+            const active = isActive(href, key);
             const Icon = ICONS[key];
             return (
               <Link
@@ -145,7 +150,12 @@ export function SideNav({ operator = false }: { operator?: boolean }) {
         <NavList operator={operator} />
       </aside>
 
-      {/* Mobile trigger — a slim bar under the header */}
+      {/* A customer's phone: the five destinations as a bottom tab bar, Studio in
+          the middle and raised — where the thumb is, as phone apps do. */}
+      {!operator && <BottomBar />}
+
+      {/* Mobile trigger (operator) — a slim bar under the header */}
+      {operator && (
       <div className="sticky top-[73px] z-20 flex items-center gap-2 border-b border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-bg)_82%,transparent)] px-[clamp(0.75rem,3vw,56px)] py-2 backdrop-blur-md lg:hidden">
         <button
           ref={menuRef}
@@ -160,9 +170,10 @@ export function SideNav({ operator = false }: { operator?: boolean }) {
           {t.nav.menu}
         </button>
       </div>
+      )}
 
       {/* Mobile drawer */}
-      {open && (
+      {operator && open && (
         <div
           ref={drawerRef}
           id={drawerId}
@@ -196,5 +207,52 @@ export function SideNav({ operator = false }: { operator?: boolean }) {
         </div>
       )}
     </>
+  );
+}
+
+/** Bottom order: Videos, Channels, Studio (centre), Credits, Settings. */
+const BOTTOM_ORDER: readonly NavKey[] = ["videos", "channels", "hub", "credits", "settings"];
+
+function BottomBar() {
+  const { t } = useI18n();
+  const isActive = useIsActive();
+  const path = useChannelPath();
+  const items = navGroupsFor(false)[0]?.items ?? [];
+  const ordered = BOTTOM_ORDER.map((k) => items.find((i) => i.key === k)).filter((i) => i !== undefined);
+  return (
+    <nav
+      aria-label={t.nav.menu}
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-bg)_92%,transparent)] pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden"
+    >
+      <ul className="mx-auto grid max-w-[520px] grid-cols-5 items-end px-2 pt-1.5">
+        {ordered.map(({ href, key }) => {
+          const active = isActive(href, key);
+          const Icon = ICONS[key];
+          const centre = key === "hub";
+          return (
+            <li key={key} className="flex justify-center">
+              <Link
+                href={path(href)}
+                aria-current={active ? "page" : undefined}
+                className={`flex min-h-12 min-w-12 flex-col items-center justify-end gap-0.5 pb-1.5 text-[11px] ${
+                  active ? "text-[var(--color-primary)]" : "text-[var(--color-muted)]"
+                }`}
+              >
+                <span
+                  className={
+                    centre
+                      ? "-mt-5 inline-flex size-12 items-center justify-center rounded-full bg-[var(--color-primary)] text-[var(--color-on-accent)] shadow-[var(--shadow-elevated)]"
+                      : "inline-flex size-6 items-center justify-center"
+                  }
+                >
+                  <Icon aria-hidden className={centre ? "size-6" : "size-[20px]"} strokeWidth={active ? 2.25 : 1.75} />
+                </span>
+                <span className="truncate">{t.nav[key]}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
   );
 }

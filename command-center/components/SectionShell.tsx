@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { HOME } from "@/lib/navigation";
 import { PageNav } from "@/components/navigation/PageNav";
+import { SectionTabs } from "@/components/navigation/SectionTabs";
 
 export { HOME };
 
@@ -88,6 +89,7 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
               ✕
             </button>
           </div>
+          <SectionTabs />
           {children}
         </div>
       </div>
