@@ -303,6 +303,9 @@ export interface ChannelRow {
   /** The organization that owns this channel (migration 0018). Absent before
    *  that migration is applied. */
   org_id?: string | null;
+  /** The style kit this channel looks like by default (migration 0047), or
+   *  null. Absent before that migration is applied. */
+  default_style_kit_id?: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
