@@ -35,6 +35,26 @@ and ``poll`` — and a ``resolve_adapter(model_id)`` function handed to
 :class:`CreativeWorker`. ``tools/creative_worker.py`` loads that function from
 ``NIGHTSHIFT_CREATIVE_ADAPTERS`` (``module:function``); the tests pass fakes.
 
+Inputs from the media library (migration 0046)
+-----------------------------------------------
+``edit``, ``i2v``, ``upscale`` and ``remove_bg`` start from a picture the
+organization owns (``params.source_asset_id``). The database checked it when
+the job was created; the worker asks again right before the paid call
+(``creative_job_source`` — for the job it holds, in the JOB's organization, so
+a picture deleted since is refused) and copies the file from the media volume
+by its id alone (``media_library.copy_source``). A source that cannot be read
+fails the job with ``source_unavailable`` and releases the hold. Nothing about
+the file's location is stored or logged.
+
+Outputs into the library
+------------------------
+With a media volume configured, each output becomes a library asset of the
+job's organization (``source='generated'``, provenance: the job, model and
+source; an edit / upscale / cut-out is a new version of its source), and
+``attach_creative_job_assets`` records them on the job before it is settled.
+If the library cannot take them the job still completes: the files stay in
+the worker's job folder (``storage: worker``), as before 0046.
+
 Nothing here logs a key, a token, a prompt or a provider response body: stored
 error text goes through the scrubber the CLI provides.
 """
@@ -45,13 +65,16 @@ import hashlib
 import logging
 import mimetypes
 import re
+import shutil
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, List, Mapping, Optional, Protocol, Sequence
+from typing import Any, Callable, List, Mapping, Optional, Protocol, Sequence, Tuple
 
 from modules import credits as credit_rules
+from modules import media_library as ml
 
 logger = logging.getLogger("creative_worker")
 
@@ -60,7 +83,7 @@ SUCCEEDED = "succeeded"
 FAILED = "failed"
 
 #: Error codes worth polling again for (the task is still the provider's).
-RETRYABLE_POLL_CODES = frozenset({"network", "provider_error", "rate_limited"})
+RETRYABLE_POLL_CODES = frozenset({"network", "provider_error", "rate_limited", "unavailable"})
 #: Consecutive poll errors before a job is given up on.
 MAX_POLL_ERRORS = 10
 DEFAULT_POLL_SECONDS = 5.0
@@ -70,6 +93,16 @@ DEFAULT_HEARTBEAT_SECONDS = 30.0
 MAX_ERROR_CHARS = 2000
 #: ``module:function`` of the adapter resolver the CLI loads.
 ADAPTERS_ENV = "NIGHTSHIFT_CREATIVE_ADAPTERS"
+#: Capabilities whose input is a library image (params.source_asset_id, 0046).
+SOURCE_CAPABILITIES = frozenset({"edit", "i2v", "upscale", "remove_bg"})
+#: Of those, the ones whose output is a new version of the input picture.
+VERSION_CAPABILITIES = frozenset({"edit", "upscale", "remove_bg"})
+#: What each capability produces (the library checks the provider's output).
+OUTPUT_KIND = {"t2i": "image", "edit": "image", "upscale": "image", "remove_bg": "image",
+               "t2v": "video", "i2v": "video", "tts": "audio", "sfx": "audio", "music": "audio"}
+#: Library asset ids of a job's outputs are derived from the job id, so a
+#: retried store reuses the same rows instead of adding copies.
+ASSET_NS = uuid.UUID("5b0c1d1e-0046-4c2e-9a7e-c4ea71e0a55e")
 
 _CODE_RE = re.compile(r"^[a-z0-9_]{1,64}$")
 
@@ -84,6 +117,9 @@ class GenerationRequest:
     capability: str
     model: str
     params: Mapping[str, Any]
+    #: Local copies of the job's input pictures (0046), made by the worker
+    #: from the media library just before submit. Empty when resuming a task.
+    input_files: Tuple[Path, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -189,6 +225,14 @@ class CreativeRest:
     def expire(self) -> Optional[int]:
         return self._rpc("expire_creative_jobs", {})
 
+    def job_source(self, job_id: str, worker_id: str) -> Optional[dict]:
+        out = self._rpc("creative_job_source", {"p_job": job_id, "p_worker": worker_id})
+        return out if isinstance(out, dict) else None
+
+    def attach_assets(self, job_id: str, worker_id: str, asset_ids: Sequence[str]) -> bool:
+        return bool(self._rpc("attach_creative_job_assets", {
+            "p_job": job_id, "p_worker": worker_id, "p_assets": list(asset_ids)}))
+
     def record_cost(self, job_id: str, usage: ProviderUsage) -> None:
         self._rpc("record_creative_job_cost", {
             "p_job": job_id, "p_provider": usage.provider, "p_route": usage.route,
@@ -270,11 +314,24 @@ class _Heartbeat:
         return False
 
 
+# ── the media library (0046) ────────────────────────────────────────────────
+
+@dataclass
+class Library:
+    """Where generated outputs become library assets: the 0038 functions
+    (``register_asset``, service key) and the media volume, writable here.
+    ``tools`` (ffprobe / ffmpeg) add dimensions and thumbnails when present."""
+    store: Any
+    media_root: Path
+    tools: Optional[Any] = None
+
+
 # ── the worker ──────────────────────────────────────────────────────────────
 
 class CreativeWorker:
     def __init__(self, queue, resolve_adapter: AdapterResolver, *, worker_id: str,
                  out_dir: Path, credits=None, enforce: bool = False,
+                 media_root: Optional[Path] = None, library: Optional[Library] = None,
                  scrub: Callable[[str], str] = lambda s: s,
                  poll_seconds: float = DEFAULT_POLL_SECONDS,
                  max_poll_seconds: float = DEFAULT_MAX_POLL_SECONDS,
@@ -285,6 +342,9 @@ class CreativeWorker:
                  clock: Callable[[], float] = time.monotonic):
         self.queue = queue
         self.resolve_adapter = resolve_adapter
+        #: The media volume source pictures are read from (read-only is enough).
+        self.media_root = Path(media_root) if media_root is not None else None
+        self.library = library
         self.worker_id = worker_id
         self.out_dir = Path(out_dir)
         self.credits = credits
@@ -348,6 +408,11 @@ class CreativeWorker:
 
         task_id = job.get("provider_task_id")
         if not task_id:
+            if request.capability in SOURCE_CAPABILITIES:
+                # Before 'submitting': a refusal here costs nobody anything.
+                request = GenerationRequest(job_id=request.job_id, org_id=request.org_id,
+                                            capability=request.capability, model=request.model,
+                                            params=request.params, input_files=(self._source(request),))
             if not self.queue.advance(job_id, self.worker_id, "submitting"):
                 logger.warning("job %s: not ours to submit any more; leaving it", job_id)
                 return "left"
@@ -362,6 +427,30 @@ class CreativeWorker:
                 logger.error("job %s: the task id could not be stored; leaving it", job_id)
                 return "left"
         return self._poll(job, request, adapter, str(task_id), beat)
+
+    def _source(self, request: GenerationRequest) -> Path:
+        """The job's input picture, copied into its folder. The database names
+        the asset (for this worker's job, in the job's organization); the path
+        comes from the asset id alone."""
+        if self.media_root is None:
+            raise _Refused("source_unavailable", "this worker cannot read the media library")
+        info = self.queue.job_source(request.job_id, self.worker_id)
+        if not isinstance(info, dict) or info.get("ok") is not True:
+            problem = (info or {}).get("problem") if isinstance(info, dict) else None
+            raise _Refused("source_unavailable", str(problem or "the source image cannot be used"))
+        try:
+            aid = ml.canonical_id(str(info.get("asset_id") or "").lower())
+        except ValueError:
+            raise _Refused("source_unavailable", "the source image cannot be used") from None
+        if aid != str(request.params.get("source_asset_id") or "").lower():
+            raise _Refused("source_unavailable", "the source image cannot be used")
+        try:
+            return ml.copy_source(self.media_root, aid, str(info.get("mime") or ""),
+                                  list(info.get("variants") or ()), self.out_dir / request.job_id / "input")
+        except ml.SourceUnavailable as e:
+            raise _Refused("source_unavailable", str(e)) from None
+        except OSError as e:
+            raise _Refused("source_unavailable", f"the source image could not be read ({type(e).__name__})") from None
 
     def _check_hold(self, job: Mapping[str, Any]) -> None:
         """The hold must be open before anything is spent (enforced), as for
@@ -437,8 +526,14 @@ class CreativeWorker:
             logger.warning("job %s: no longer this worker's; its outputs are not recorded here", job_id)
             return "left"
         described = describe_files(files)
-        done = self.queue.finish(job_id, self.worker_id, True,
-                                 result={"files": described, "storage": "worker"})
+        asset_ids = self._to_library(request, files, result.usage)
+        out = {"files": described, "storage": "library" if asset_ids else "worker"}
+        if asset_ids:
+            out["asset_ids"] = asset_ids
+        done = self.queue.finish(job_id, self.worker_id, True, result=out)
+        if asset_ids:
+            # The library holds the outputs now; the job folder is scratch.
+            shutil.rmtree(self.out_dir / job_id, ignore_errors=True)
         if result.usage is not None:
             try:
                 self.queue.record_cost(job_id, result.usage)
@@ -447,7 +542,43 @@ class CreativeWorker:
         status = (done or {}).get("status") if isinstance(done, dict) else None
         return f"completed:{len(described)}" if status in (None, "completed") else str(status)
 
+    def _to_library(self, request: GenerationRequest, files: Sequence[Path],
+                    usage: Optional[ProviderUsage]) -> List[str]:
+        """Each output as a library asset of the job's organization, attached
+        to the job. [] when there is no library or it could not take them —
+        the job still completes (its files stay in the worker's folder)."""
+        if self.library is None:
+            return []
+        source = str(request.params.get("source_asset_id") or "").lower() or None
+        provenance = {"job_id": request.job_id, "capability": request.capability, "model": request.model,
+                      "rights": "generated_for_org"}
+        if usage is not None and usage.provider:
+            provenance["provider"] = usage.provider
+        if source:
+            provenance["source_asset_id"] = source
+        ids: List[str] = []
+        try:
+            for i, f in enumerate(files):
+                aid = str(uuid.uuid5(ASSET_NS, f"{request.job_id}:{i}"))
+                ml.store_generated(
+                    f, asset_id=aid, org_id=request.org_id, store=self.library.store,
+                    media_root=self.library.media_root, tools=self.library.tools, provenance=provenance,
+                    expect_kind=OUTPUT_KIND.get(request.capability),
+                    parent_asset_id=source if request.capability in VERSION_CAPABILITIES else None)
+                ids.append(aid)
+            if not self.queue.attach_assets(request.job_id, self.worker_id, ids):
+                logger.warning("job %s: outputs stored but not attached (job no longer this worker's)",
+                               request.job_id)
+                return []
+        except Exception as e:  # the paid result must not be lost over its library copy
+            logger.warning("job %s: outputs not added to the library (%s); kept in the job folder",
+                           request.job_id, type(e).__name__)
+            return []
+        return ids
+
     def _fail(self, job_id: str, code: str, message: str) -> None:
+        # The input copy is scratch; a failed job has no use for it.
+        shutil.rmtree(self.out_dir / job_id / "input", ignore_errors=True)
         text = self.scrub(message or code)[:MAX_ERROR_CHARS]
         try:
             self.queue.finish(job_id, self.worker_id, False, error_code=code, error=text)

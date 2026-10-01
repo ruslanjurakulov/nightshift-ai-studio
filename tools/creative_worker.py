@@ -24,6 +24,12 @@ What each job does is ``modules/creative_worker.py``. This file wires it up:
   nobody picked up in time (``expire_creative_jobs``);
 * outputs are written under ``NIGHTSHIFT_CREATIVE_DIR/<job id>/`` (default
   ``output/creative``);
+* ``NIGHTSHIFT_MEDIA_DIR`` (the media library volume, migration 0038) is where
+  the source picture of an edit / i2v / upscale / remove_bg job is read from
+  (migration 0046). When it is writable here, outputs are also added to the
+  organization's library and attached to the job; read-only, they stay in the
+  job folder. Unset: jobs that need a source fail with ``source_unavailable``
+  and their credits are released;
 * stored error text is scrubbed of every secret in this process's
   environment (the pipeline worker's scrubber) and of token-shaped strings.
 
@@ -63,6 +69,15 @@ def make_scrubber(env) -> Callable[[str], str]:
 
     secrets = secret_values(env)
     return lambda text: scrub(text, secrets)
+
+
+def media_root_from(env) -> Optional[Path]:
+    """NIGHTSHIFT_MEDIA_DIR when it is an absolute, existing directory."""
+    raw = (env.get("NIGHTSHIFT_MEDIA_DIR") or "").strip()
+    if not raw:
+        return None
+    p = Path(raw)
+    return p if p.is_absolute() and p.is_dir() else None
 
 
 def idle_loop(queue, stop: threading.Event, every: float = EXPIRE_EVERY_SECONDS) -> None:
@@ -127,16 +142,31 @@ def main(argv: Optional[List[str]] = None) -> int:
         idle_loop(cw.CreativeRest(url, key), stop)
         return 0
 
+    media_root = media_root_from(os.environ)
+    library_on = media_root is not None and os.access(media_root, os.W_OK)
+    tools = None
+    if library_on:
+        from modules import media_library as ml  # noqa: PLC0415
+
+        tools = ml.find_tools()
+
     def run_thread(n: int) -> None:
+        library = None
+        if library_on:
+            from modules import media_library as ml  # noqa: PLC0415
+
+            library = cw.Library(ml.MediaStore(url, key), media_root, tools)
         worker = cw.CreativeWorker(
             cw.CreativeRest(url, key), resolver,
             worker_id=f"{args.worker_id}-{n}", out_dir=out_dir,
-            credits=credit_rules.CreditsRest(url, key), enforce=enforce, scrub=scrub, stop=stop)
+            credits=credit_rules.CreditsRest(url, key), enforce=enforce, scrub=scrub, stop=stop,
+            media_root=media_root, library=library)
         worker.run_forever(once=args.once)
 
     concurrency = 1 if args.once else args.concurrency
-    logger.info("creative worker %s started (%s at once, credits %s, outputs in %s)",
-                args.worker_id, concurrency, "enforced" if enforce else "not enforced", out_dir)
+    logger.info("creative worker %s started (%s at once, credits %s, media library %s)",
+                args.worker_id, concurrency, "enforced" if enforce else "not enforced",
+                "read/write" if library_on else ("read-only" if media_root else "not mounted"))
     threads = [threading.Thread(target=run_thread, args=(i,), name=f"creative-{i}")
                for i in range(concurrency)]
     for t in threads:

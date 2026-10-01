@@ -46,8 +46,15 @@ T2V = "t2v"          # text → video
 I2V = "i2v"          # first-frame image (+ text) → video
 TTS = "tts"          # text → speech
 SFX = "sfx"          # text → sound effect
-CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX)
-OUTPUT_OF = {T2I: "image", EDIT: "image", T2V: "video", I2V: "video", TTS: "audio", SFX: "audio"}
+UPSCALE = "upscale"  # image → the same image, 2x / 4x the pixels (CapabilityRequest.scale)
+REMOVE_BG = "remove_bg"  # image → the subject on a transparent background
+CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG)
+OUTPUT_OF = {T2I: "image", EDIT: "image", T2V: "video", I2V: "video", TTS: "audio", SFX: "audio",
+             UPSCALE: "image", REMOVE_BG: "image"}
+#: Capabilities whose input is an image (CapabilityRequest.input_images).
+IMAGE_INPUT = frozenset({EDIT, I2V, UPSCALE, REMOVE_BG})
+#: Capabilities where the prompt is optional (i2v, upscale) or absent (remove_bg).
+PROMPT_OPTIONAL = frozenset({I2V, UPSCALE, REMOVE_BG})
 
 # ── task states ──────────────────────────────────────────────────────────────
 PENDING = "pending"
@@ -162,6 +169,8 @@ class CapabilityRequest:
     #: First-frame / reference images: local paths (sent inline where the
     #: vendor accepts data) or https URLs (for vendors that only fetch URLs).
     input_images: Sequence[str] = ()
+    #: Upscale factor (2 or 4); only for ``upscale``.
+    scale: Optional[int] = None
 
 
 @dataclass

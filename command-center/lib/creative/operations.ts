@@ -29,12 +29,36 @@ export interface CreativeResult {
   body: Record<string, unknown>;
 }
 
-/** Capabilities 0036 accepts today; the ones that take an input image or clip wait for the media library. */
-export const CREATIVE_CAPABILITIES = ["t2i", "t2v", "tts", "sfx", "music"] as const;
+/**
+ * Capabilities 0036 / 0046 accept. The last four start from a picture in the
+ * organization's media library (`params.source_asset_id`, migration 0046).
+ */
+export const CREATIVE_CAPABILITIES = ["t2i", "t2v", "tts", "sfx", "music", "edit", "i2v", "upscale", "remove_bg"] as const;
 export type CreativeCapability = (typeof CREATIVE_CAPABILITIES)[number];
 
-/** Keys 0036's creative_params_problem accepts; anything else is refused there too. */
-export const PARAM_KEYS = ["prompt", "negative_prompt", "aspect_ratio", "resolution", "duration_s", "voice_id", "seed"] as const;
+/**
+ * The capabilities whose input is a library image. Whether that image may be
+ * used — it exists, belongs to the SAME organization, is live, is an image a
+ * provider takes — is decided by the database (0046's
+ * creative_source_problem), never here: this only checks the id's shape.
+ */
+export const SOURCE_CAPABILITIES = ["edit", "i2v", "upscale", "remove_bg"] as const satisfies readonly CreativeCapability[];
+
+/** Upscale factors 0046 accepts; the model must also list the factor (spec.upscale_factors). */
+export const UPSCALE_FACTORS = [2, 4] as const;
+
+/** Keys 0036 / 0046's creative_params_problem accepts; anything else is refused there too. */
+export const PARAM_KEYS = [
+  "prompt",
+  "negative_prompt",
+  "aspect_ratio",
+  "resolution",
+  "duration_s",
+  "voice_id",
+  "seed",
+  "source_asset_id",
+  "factor",
+] as const;
 
 /** Codes the routes answer with. Each has a sentence in lib/i18n `creative.errors`. */
 export const CREATIVE_ERRORS = [
@@ -53,6 +77,7 @@ export const CREATIVE_ERRORS = [
   "entitlement_required",
   "unpriced",
   "capability_not_supported",
+  "source_unavailable",
   "mode_not_supported",
   "insufficient_credits",
   "run_limit_reached",
@@ -102,6 +127,9 @@ const NS400: Partial<Record<string, { status: number; code: CreativeError }>> = 
   entitlement_required: { status: 403, code: "entitlement_required" },
   unpriced: { status: 422, code: "unpriced" },
   capability_not_supported: { status: 422, code: "capability_not_supported" },
+  // 0046: the picture is not this organization's, was deleted, or is not a
+  // usable image. Another organization's id reads exactly like a missing one.
+  source_unavailable: { status: 422, code: "source_unavailable" },
   mode_not_supported: { status: 422, code: "mode_not_supported" },
   invalid_params: { status: 400, code: "invalid_params" },
   invalid_idempotency_key: { status: 400, code: "invalid_idempotency_key" },
@@ -186,6 +214,18 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: `unknown parameter(s): ${badKeys.join(", ")}` }) };
   if (JSON.stringify(params).length > MAX_PARAMS_BYTES)
     return { ok: false, result: fail(400, "invalid_params", { detail: "params are too large" }) };
+  const sourced = (SOURCE_CAPABILITIES as readonly string[]).includes(capability);
+  if (sourced && !isUuid(params.source_asset_id))
+    return {
+      ok: false,
+      result: fail(400, "invalid_params", { detail: `source_asset_id (an image in the media library) is required for ${capability}` }),
+    };
+  if (!sourced && params.source_asset_id !== undefined)
+    return { ok: false, result: fail(400, "invalid_params", { detail: `source_asset_id does not apply to ${capability}` }) };
+  if (capability === "upscale" && !(UPSCALE_FACTORS as readonly unknown[]).includes(params.factor))
+    return { ok: false, result: fail(400, "invalid_params", { detail: "factor must be 2 or 4" }) };
+  if (capability !== "upscale" && params.factor !== undefined)
+    return { ok: false, result: fail(400, "invalid_params", { detail: `factor does not apply to ${capability}` }) };
   const mode = b.mode == null ? "exact" : typeof b.mode === "string" ? b.mode.trim().toLowerCase() : "";
   if (!mode) return { ok: false, result: fail(400, "invalid_params", { detail: "mode must be text" }) };
 

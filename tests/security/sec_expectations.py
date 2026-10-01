@@ -346,6 +346,11 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "creative_price": SERVICE,
     "creative_quantity": SERVICE,
     "creative_refuse": SERVICE,
+    # media inputs (0046): the source check is internal; the worker re-reads
+    # the source of a job it holds and attaches the job's library outputs
+    "creative_source_problem": SERVICE,
+    "creative_job_source": SERVICE,
+    "attach_creative_job_assets": SERVICE,
     # provider costs (0037)
     "record_creative_job_cost": SERVICE,
     # worker status (0045): workers report; a signed-in user may ask only whether media checking runs
