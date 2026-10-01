@@ -1,8 +1,10 @@
 import type { Dictionary } from "./index";
+import { siteUz } from "./site/uz";
 
 /** O'zbek (lotin). Texnik identifikatorlar (system_events, upload.completed,
  *  Supabase, Gemini, YouTube, CTR) atayin tarjima qilinmaydi. */
 export const uz: Dictionary = {
+  site: siteUz,
   brand: {
     name: "Nightshift",
     tagline: "BOSHQARUV MARKAZI",

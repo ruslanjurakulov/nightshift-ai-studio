@@ -1,3 +1,5 @@
+import { siteEn } from "./site/en";
+
 /**
  * English dictionary — the source of truth. The exported type `Dictionary`
  * (see ./index.ts) is `typeof en`, so ru.ts and uz.ts must provide exactly the
@@ -9,6 +11,8 @@
  * shape while still free to supply their own text.
  */
 export const en = {
+  /** The public site (landing, Solutions, sign-in shell, 404): ./site/en.ts. */
+  site: siteEn,
   brand: {
     name: "Nightshift",
     tagline: "COMMAND CENTER",
