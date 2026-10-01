@@ -44,6 +44,7 @@ export function MediaViewer({
   onDelete,
   deleting,
   opener,
+  folderName,
 }: {
   items: readonly LibraryAsset[];
   index: number;
@@ -52,6 +53,8 @@ export function MediaViewer({
   onDelete?: (asset: LibraryAsset) => void;
   deleting: boolean;
   opener?: RefObject<HTMLElement | null>;
+  /** The name of the folder a file is in (migration 0049); absent before folders exist. */
+  folderName?: (id: string | null | undefined) => string | null;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
@@ -126,6 +129,7 @@ export function MediaViewer({
     [tv.duration, formatDuration(asset.durationS)],
     [tv.source, tm.sources[asset.source]],
     [tv.added, asset.createdAt ? dateFmt.format(new Date(asset.createdAt)) : ""],
+    [tv.folder, folderName ? (folderName(asset.folderId) ?? "") : ""],
   ];
   const picture = asset.kind === "image" ? (asset.viewUrl ?? asset.thumbUrl) : null;
 

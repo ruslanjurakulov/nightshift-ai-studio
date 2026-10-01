@@ -128,3 +128,40 @@ export function stepIndex(current: number, delta: number, length: number): numbe
 export function isNarrowed(view: LibraryView): boolean {
   return view.filter !== "all" || normalizeQuery(view.query) !== "";
 }
+
+/**
+ * The files of one folder (null: every file). A file whose folder was not
+ * read (no `folderId` at all: the library before migration 0049) is only
+ * ever in "every file".
+ */
+export function inFolder<T extends { folderId?: string | null }>(assets: readonly T[], folder: string | null): T[] {
+  if (folder === null) return [...assets];
+  return assets.filter((a) => a.folderId === folder);
+}
+
+/**
+ * Where every selected file already is: a folder id, null (all in no folder),
+ * or undefined (they are in different places, or none is selected) — the move
+ * picker marks that place "here now" and does not offer it.
+ */
+export function commonFolder(
+  assets: readonly { id: string; folderId?: string | null }[],
+  selected: ReadonlySet<string>,
+): string | null | undefined {
+  let place: string | null | undefined;
+  let seen = false;
+  for (const a of assets) {
+    if (!selected.has(a.id)) continue;
+    if (a.folderId === undefined) return undefined;
+    if (!seen) {
+      place = a.folderId;
+      seen = true;
+    } else if (place !== a.folderId) return undefined;
+  }
+  return seen ? place : undefined;
+}
+
+/** "1 file" / "3 files": the one plural the folder strings need (ru and uz read the same either way). */
+export function fileCount(words: { count: string; countOne: string }, n: number): string {
+  return n === 1 ? words.countOne : words.count.replace("{n}", String(n));
+}

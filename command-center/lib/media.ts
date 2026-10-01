@@ -9,6 +9,8 @@
  * Unit-tested in tests/media.test.ts.
  */
 
+import type { MediaFoldersState } from "@/lib/media-folders";
+
 export type MediaKind = "image" | "video" | "audio" | "caption";
 export type MediaVariant = "original" | "thumb" | "proxy" | "display";
 export const MEDIA_VARIANTS: readonly MediaVariant[] = ["original", "thumb", "proxy", "display"];
@@ -97,10 +99,16 @@ export interface MediaAsset {
   variants: MediaVariant[];
   version: number;
   createdAt: string | null;
+  /** The folder it is in (migration 0049); null = in no folder; absent = folders not read. */
+  folderId?: string | null;
 }
 
 export const MEDIA_ASSET_COLUMNS =
   "id, kind, mime, bytes, width, height, duration_s, source, original_name, variants, version, created_at";
+/** The library page's read once 0049 is applied (the column does not exist before it). */
+export const MEDIA_ASSET_FOLDER_COLUMNS = `${MEDIA_ASSET_COLUMNS}, folder_id`;
+/** How many files one read of the library returns, newest first. */
+export const LIBRARY_PAGE = 200;
 
 export type UploadStatus = "requested" | "receiving" | "uploaded" | "ingesting" | "ingested" | "rejected" | "expired";
 const UPLOAD_STATUSES: UploadStatus[] = [
@@ -159,6 +167,7 @@ export function coerceAssets(data: unknown): MediaAsset[] {
       variants: Array.isArray(r.variants) ? (r.variants.filter(isVariant) as MediaVariant[]) : [],
       version: num(r.version) ?? 1,
       createdAt: str(r.created_at),
+      ...("folder_id" in r ? { folderId: parseMediaId(r.folder_id) } : {}),
     });
   }
   return out;
@@ -250,6 +259,14 @@ export interface MediaLibraryData {
   quota: StorageQuota;
   /** Is file checking running (0045). Absent or "unknown": say nothing. */
   pipeline?: MediaPipeline;
+  /** Folders (0049). Absent or `available: false`: the page shows no folder at all. */
+  folders?: MediaFoldersState;
+  /** The folder `assets` is narrowed to; null = every folder. */
+  folder?: string | null;
+  /** The name search `assets` is narrowed to on the server ("" = none). */
+  query?: string;
+  /** `assets` stopped at LIBRARY_PAGE: there may be more than the page shows. */
+  truncated?: boolean;
   error?: "read_failed";
 }
 
