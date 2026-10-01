@@ -7,7 +7,10 @@ import { Panel } from "@/components/ui";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
 import { getChannelContext } from "@/lib/channels-server";
-import { isScoped, scopeQuery } from "@/lib/channels";
+import { channelPath, isScoped, scopeQuery } from "@/lib/channels";
+import { getOrgContext } from "@/lib/orgs-server";
+import { loadStyleContext } from "@/lib/server/style-kits";
+import { StyleSections } from "@/components/studio/StyleSections";
 import { deriveAdvisory } from "@/lib/advisory";
 import { PresetGallery } from "@/components/studio/PresetGallery";
 import type { SystemEventRow } from "@/lib/types";
@@ -21,11 +24,16 @@ export const revalidate = 0;
  * and the autopilot's latest auto-picked topic. Applying a preset writes it to
  * the scoped channel; the pipeline reads that as the channel's base visual style
  * (main.py, effective_visual_style channel default), so the whole look follows.
+ *
+ * Below them, the organization's style kits and characters (migration 0047):
+ * looks and recurring subjects built from its own media library. They are
+ * configuration only — nothing reads them during a run yet.
  */
 export default async function StudioPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t } = await getDictionary();
-  const { selection, channels, scope } = await getChannelContext();
+  const { selection, channels, scope, slug } = await getChannelContext();
+  const org = await getOrgContext();
 
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
@@ -42,6 +50,9 @@ export default async function StudioPage() {
     events = (res.data as SystemEventRow[]) ?? [];
   }
   const agent = deriveAdvisory(events).agent;
+  // Read as the member (RLS): before 0047 is applied this is "not enabled",
+  // and a failed read says so — never an empty grid that reads as "none yet".
+  const style = org.current ? await loadStyleContext(org.current.id, { urls: true }) : null;
 
   // Applying a preset needs exactly one channel to write to. When a single
   // channel is in view, find its row; "All channels" leaves this null and the
@@ -52,6 +63,15 @@ export default async function StudioPage() {
   const agentConfig = (scopedChannel?.agent_config ?? {}) as Record<string, unknown>;
   const currentStyle =
     typeof agentConfig.visual_style_prompt === "string" ? agentConfig.visual_style_prompt : "";
+  const channelKitId =
+    typeof scopedChannel?.default_style_kit_id === "string" ? scopedChannel.default_style_kit_id : null;
+  const styleNote = !org.current
+    ? t.styleKits.noOrg
+    : !style?.available
+      ? t.styleKits.notEnabled
+      : style.error
+        ? t.styleKits.readFailed
+        : null;
 
   return (
     <div className="rhythm stagger-enter">
@@ -85,6 +105,20 @@ export default async function StudioPage() {
         currentStyle={currentStyle}
         agentConfig={agentConfig}
       />
+
+      {/* Style kits and characters — built from the organization's library (0047) */}
+      {styleNote || !org.current || !style ? (
+        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{styleNote}</div>
+      ) : (
+        <StyleSections
+          orgId={org.current.id}
+          initialKits={style.kits}
+          initialCharacters={style.characters}
+          channelId={scopedChannel?.channel_id ?? null}
+          channelKitId={channelKitId}
+          libraryHref={channelPath(slug, "/library")}
+        />
+      )}
     </div>
   );
 }
