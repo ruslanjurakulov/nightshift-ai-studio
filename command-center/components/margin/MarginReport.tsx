@@ -81,7 +81,7 @@ export function MarginReport({ rows, days }: { rows: MarginRow[]; days: Period }
             </p>
           )}
 
-          <div className="panel overflow-x-auto">
+          <div tabIndex={0} role="region" aria-label={t.common.scrollTable} className="panel scroll-focus overflow-x-auto">
             <table className="w-full min-w-[56rem] border-collapse text-left text-[12px]">
               <thead>
                 <tr className="border-b border-[var(--color-border)] text-[var(--color-muted)]">

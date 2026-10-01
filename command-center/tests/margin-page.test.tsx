@@ -122,6 +122,11 @@ describe("what it shows", () => {
     expect(html).not.toContain(">unpriced<");
   });
 
+  it("the table scrolls inside a focusable, named region, never the page", async () => {
+    const html = await page();
+    expect(html).toMatch(/<div tabindex="0" role="region" aria-label="[^"]+" class="panel scroll-focus overflow-x-auto">\s*<table/);
+  });
+
   it("failed jobs are flagged apart, with the cost they still ran up", async () => {
     state.report = {
       data: [raw({ jobs_released: 2, credits_released: 12, provider_usd_released: 0.05, flags: ["released_jobs"] })],
