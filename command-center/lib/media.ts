@@ -203,6 +203,42 @@ export interface LibraryAsset extends MediaAsset {
   viewUrl: string | null;
 }
 
+/**
+ * Is file checking running? The answer of `media_pipeline_state()` (migration
+ * 0045), which carries a state and an age and nothing else. "unknown" is the
+ * honest value when the function is missing, the read failed, or no media
+ * worker has ever reported: it shows nothing to the customer.
+ */
+export type MediaPipelineState = "ok" | "stale" | "failed" | "unknown";
+export interface MediaPipeline {
+  state: MediaPipelineState;
+  ageSeconds: number | null;
+}
+export const PIPELINE_UNKNOWN: MediaPipeline = { state: "unknown", ageSeconds: null };
+
+export function parsePipelineState(data: unknown): MediaPipeline {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return PIPELINE_UNKNOWN;
+  const o = data as Record<string, unknown>;
+  const state = o.state === "ok" || o.state === "stale" || o.state === "failed" ? o.state : null;
+  if (!state) return PIPELINE_UNKNOWN;
+  const age = typeof o.age_seconds === "number" && Number.isFinite(o.age_seconds) && o.age_seconds >= 0 ? Math.floor(o.age_seconds) : null;
+  return { state, ageSeconds: age };
+}
+
+/** Checking is down (not reporting, or failed). Only then may a waiting upload say so. */
+export function pipelineIsDown(p: MediaPipeline | undefined): boolean {
+  return p?.state === "stale" || p?.state === "failed";
+}
+
+/**
+ * An upload the worker has not finished with — received and waiting for its
+ * check, or claimed and being checked. While checking is down these would read
+ * "waiting for the server" / "checking" forever; the page says what is true.
+ */
+export function isWaitingForCheck(u: Pick<MediaUpload, "status">): boolean {
+  return u.status === "uploaded" || u.status === "ingesting";
+}
+
 /** What GET /api/media and the Library page start from. */
 export interface MediaLibraryData {
   /** 0038 applied and readable. */
@@ -212,6 +248,8 @@ export interface MediaLibraryData {
   assets: LibraryAsset[];
   uploads: MediaUpload[];
   quota: StorageQuota;
+  /** Is file checking running (0045). Absent or "unknown": say nothing. */
+  pipeline?: MediaPipeline;
   error?: "read_failed";
 }
 

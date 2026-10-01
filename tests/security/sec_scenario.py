@@ -304,6 +304,18 @@ def _seed_models(conn: psycopg.Connection) -> None:
                [f"model_{m.replace('-', '_')}_image" for m in (MODEL_SOLD, MODEL_HIDDEN, MODEL_GATED)])
 
 
+#: Worker status seed (0045): one media worker and one creative worker, both
+#: reporting 'running', each with a detail text no customer may ever see.
+WORKER_MEDIA, WORKER_CREATIVE = "lab-media-1", "lab-creative-1"
+WORKER_DETAIL = "LAB-WORKER-DETAIL: NIGHTSHIFT_MEDIA_DIR is not a writable directory"
+
+
+def _seed_workers(conn: psycopg.Connection) -> None:
+    with acting(conn, SERVICE, commit=True) as s:
+        for wid, kind in ((WORKER_MEDIA, "media"), (WORKER_CREATIVE, "creative")):
+            s.value("select public.report_worker_status(%s, %s, 'running', %s, 'lab')", [wid, kind, WORKER_DETAIL])
+
+
 def build_scenario(conn: psycopg.Connection) -> Scenario:
     sc = Scenario(
         operator=user("operator", "operator@nightshift.test"),
@@ -317,6 +329,7 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
         _signup(conn, who)
     _seed_operator(conn, sc)
     _seed_models(conn)
+    _seed_workers(conn)
     for t, name in ((sc.alice, "Alice Studio"), (sc.bob, "Bob Media")):
         t.org = _create_org(conn, t.actor, name)
         _seed_tenant(conn, t)

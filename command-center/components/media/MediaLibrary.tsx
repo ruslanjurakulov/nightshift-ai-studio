@@ -10,7 +10,9 @@ import {
   formatDuration,
   formatMediaBytes,
   isUploadInFlight,
+  isWaitingForCheck,
   knownUploadReason,
+  pipelineIsDown,
   type LibraryAsset,
   type MediaKind,
   type MediaLibraryData,
@@ -64,6 +66,10 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial: Media
   const canUpload = data.host.media && data.host.staging;
   const inFlight = data.uploads.some(isUploadInFlight);
   const maxLabel = formatMediaBytes(data.quota.maxUploadBytes);
+  // File checking is down (not reporting, or failed) AND something is waiting
+  // on it: say so instead of "waiting for the server" for good. "unknown"
+  // (0045 missing, or the read failed) says nothing.
+  const checkingDown = pipelineIsDown(data.pipeline) && data.uploads.some(isWaitingForCheck);
 
   const refresh = useCallback(async () => {
     try {
@@ -243,6 +249,11 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial: Media
       {data.uploads.length > 0 && (
         <div className="panel flex flex-col gap-2 p-4">
           <h2 className="t-section">{tm.uploads}</h2>
+          {checkingDown && (
+            <p role="status" data-pipeline-down className="m-0 text-[13px] text-[var(--color-warn)]">
+              {tm.pipelineDown}
+            </p>
+          )}
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {data.uploads.map((u) => {
               const reason = knownUploadReason(u.reason);
@@ -251,7 +262,11 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial: Media
                   <span className="min-w-0 truncate">{u.name}</span>
                   <span className="flex items-center gap-2">
                     <span className="text-[12px] text-[var(--color-muted)]">{formatMediaBytes(u.bytes)}</span>
-                    <StatusPill tone={STATUS_TONE[u.status]} label={tm.status[u.status]} live={isUploadInFlight(u)} />
+                    {checkingDown && isWaitingForCheck(u) ? (
+                      <StatusPill tone="warn" label={tm.status.paused} />
+                    ) : (
+                      <StatusPill tone={STATUS_TONE[u.status]} label={tm.status[u.status]} live={isUploadInFlight(u)} />
+                    )}
                   </span>
                   {(u.status === "rejected" || u.status === "expired") && (
                     <span className="w-full text-[12px] text-[var(--color-muted)]">

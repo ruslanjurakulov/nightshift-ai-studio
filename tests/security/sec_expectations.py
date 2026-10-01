@@ -151,6 +151,8 @@ TABLES: Dict[str, Kind] = {
     "creative_jobs": Org(),
     "creative_job_events": Org(),
     "creative_job_costs": Platform(),
+    # worker status (0045): the operator's view of the workers; written only by report_worker_status()
+    "worker_status": Platform(),
 }
 
 
@@ -346,6 +348,9 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "creative_refuse": SERVICE,
     # provider costs (0037)
     "record_creative_job_cost": SERVICE,
+    # worker status (0045): workers report; a signed-in user may ask only whether media checking runs
+    "report_worker_status": SERVICE,
+    "media_pipeline_state": USER,
 }
 
 
