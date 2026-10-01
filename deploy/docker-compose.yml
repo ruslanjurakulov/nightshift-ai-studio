@@ -220,6 +220,15 @@ services:
   #   docker compose --profile worker -f deploy/docker-compose.yml up -d creative-worker
   # A deploy recreates it only if it is already running, and removes it with
   # the pipeline worker when the worker is switched off.
+  #
+  # Migration 0046: it reads the source picture of an edit / image-to-video /
+  # upscale / background-removal job from the media library, and adds every
+  # output to the organization's library. So it shares the `media` volume
+  # with media-worker, and runs as the same uid (1000), which owns it. A job's
+  # scratch folder lives on that volume too (same filesystem: the finished
+  # file is moved into place, never half-copied); the web container serves
+  # only id-derived paths, never this folder. Provider adapters are switched
+  # on by NIGHTSHIFT_CREATIVE_ADAPTERS below; without it nothing is claimed.
   creative-worker:
     profiles: ["worker"]
     build:
@@ -228,21 +237,29 @@ services:
     image: nightshift-worker:latest
     command: ["python", "tools/creative_worker.py"]
     restart: unless-stopped
+    user: "1000:1000"
     env_file:
       - path: ${WORKER_ENV_FILE:-/opt/nightshift/.env.worker}
         required: false
     environment:
       NIGHTSHIFT_WORKER_ID: nightshift-creative-01
-      # Generated files, one folder per job id, on the worker's output
-      # volume until the media library (migration 0038) takes them over.
-      NIGHTSHIFT_CREATIVE_DIR: /app/output/creative
+      # The provider adapters (modules/creative_adapters.py). Set here, not in
+      # the env file, so a deploy never starts a worker that claims nothing.
+      NIGHTSHIFT_CREATIVE_ADAPTERS: modules.creative_adapters:resolve
+      NIGHTSHIFT_MEDIA_DIR: /app/media
+      # One scratch folder per job id; emptied once the outputs are library
+      # assets.
+      NIGHTSHIFT_CREATIVE_DIR: /app/media/.creative-jobs
       # Provider jobs mostly wait on the provider; this many run at once.
       CREATIVE_WORKER_CONCURRENCY: "4"
+      HOME: /tmp
     # A job waiting on its provider is handed back on stop with its task id
     # stored, and polled again on the next start — never paid for twice.
     stop_grace_period: 1m
     volumes:
-      - worker_output:/app/output
+      - media:/app/media
+    tmpfs:
+      - /tmp
     init: true
     cap_drop:
       - ALL

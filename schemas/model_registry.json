@@ -772,6 +772,65 @@
       }
     },
     {
+      "id": "ideogram-upscale",
+      "display_name": "Ideogram Upscale",
+      "provider": "ideogram",
+      "adapter": "image.ideogram_upscale",
+      "vendor_model": "upscale",
+      "capabilities": [
+        "upscale"
+      ],
+      "output": "image",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "upscale_factors": [
+        2
+      ],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://developer.ideogram.ai/api-reference/api-reference/upscale",
+        "checked_at": "2026-10-01",
+        "source": "vendor_docs_search",
+        "evidence": "search extract of developer.ideogram.ai Upscale: POST https://api.ideogram.ai/upscale, multipart image_request (prompt optional, resemblance, detail) + image_file (JPEG/WebP/PNG, max 10MB); data[0].url; enhances up to 2X",
+        "note": "vendor_model is not sent: the endpoint has no model field; resemblance and detail keep the vendor defaults"
+      },
+      "pricing": {
+        "unit": "image",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false
+      },
+      "credit_unit": "model_ideogram_upscale_image",
+      "entitlement": "models_image:basic",
+      "terms_gate": null,
+      "terms_notes": [
+        "Ideogram API terms: show 'Powered by Ideogram' and Ideogram's marks where the feature is offered"
+      ],
+      "attribution": {
+        "text": "Powered by Ideogram",
+        "url": "https://ideogram.ai"
+      },
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 2000,
+        "max_concurrent_per_org": 2
+      },
+      "quality_tier": 4,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "upscale",
+        "prompt": "keep it sharp",
+        "input_image": "generated",
+        "factor": 2
+      }
+    },
+    {
       "id": "veo-3.1",
       "display_name": "Veo 3.1",
       "provider": "google",

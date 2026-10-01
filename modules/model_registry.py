@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from modules.capabilities import ADAPTERS
-from modules.capabilities.base import EDIT, I2V, OUTPUT_OF, CapabilityRequest
+from modules.capabilities.base import IMAGE_INPUT, OUTPUT_OF, PROMPT_OPTIONAL, UPSCALE, CapabilityRequest
 
 SCHEMAS = Path(__file__).resolve().parent.parent / "schemas"
 REGISTRY_PATH = SCHEMAS / "model_registry.json"
@@ -189,6 +189,8 @@ class ModelEntry:
     image_sizes: Tuple[str, ...]
     resolutions: Tuple[str, ...]
     durations_s: Tuple[int, ...]
+    #: Upscale factors the model is sold for (empty unless it lists upscale).
+    upscale_factors: Tuple[int, ...]
     audio_out: bool
     is_async: bool
     api_documented_url: str
@@ -217,7 +219,7 @@ class ModelEntry:
         cap = request.capability
         if cap not in self.capabilities:
             out.append(f"{self.id} does not support {cap}")
-        if not (request.prompt or "").strip():
+        if cap not in PROMPT_OPTIONAL and not (request.prompt or "").strip():
             out.append("prompt is empty")
         if prompt_units(request.prompt) > self.max_prompt_chars:
             out.append(f"prompt is longer than {self.max_prompt_chars} characters")
@@ -232,8 +234,12 @@ class ModelEntry:
             out.append(f"duration {request.duration_s}s is not offered by {self.id}")
         if request.audio and not self.audio_out:
             out.append(f"{self.id} does not generate audio")
-        if cap in (I2V, EDIT) and not request.input_images:
+        if cap in IMAGE_INPUT and not request.input_images:
             out.append(f"{cap} needs an input image")
+        if cap == UPSCALE and request.scale not in self.upscale_factors:
+            out.append(f"{self.id} does not offer a {request.scale}x upscale")
+        if cap != UPSCALE and request.scale is not None:
+            out.append(f"an upscale factor does not apply to {cap}")
         if len(request.input_images) > self.image_refs_max:
             out.append(f"{self.id} takes at most {self.image_refs_max} input image(s)")
         return out
@@ -248,7 +254,7 @@ class ModelEntry:
         return CapabilityRequest(capability=p["capability"], prompt=p["prompt"],
                                  aspect_ratio=p.get("aspect_ratio"), resolution=p.get("resolution"),
                                  image_size=p.get("image_size"), duration_s=p.get("duration_s"),
-                                 voice_id=voice_id, input_images=tuple(images))
+                                 voice_id=voice_id, input_images=tuple(images), scale=p.get("factor"))
 
 
 def _entry(m: Mapping) -> ModelEntry:
@@ -260,6 +266,7 @@ def _entry(m: Mapping) -> ModelEntry:
         aspect_ratios_by_capability={k: tuple(v) for k, v in (m.get("aspect_ratios_by_capability") or {}).items()},
         image_sizes=tuple(m.get("image_sizes") or ()),
         resolutions=tuple(m["resolutions"]), durations_s=tuple(m["durations_s"]),
+        upscale_factors=tuple(m.get("upscale_factors") or ()),
         audio_out=bool(m["audio_out"]), is_async=bool(m["async"]),
         api_documented_url=m["api_documented"]["url"], doc_source=m["api_documented"]["source"],
         credit_unit=m["credit_unit"], entitlement=m["entitlement"], terms_gate=m["terms_gate"],
@@ -297,8 +304,11 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
                 errors.append(_err(mid, f"{key} names a capability the model does not list"))
         if any(a not in m["aspect_ratios"] for v in (m.get("aspect_ratios_by_capability") or {}).values() for a in v):
             errors.append(_err(mid, "aspect_ratios_by_capability must narrow aspect_ratios"))
-        if any(c in (I2V, EDIT) for c in caps) and m["inputs"]["image_refs_max"] < 1:
-            errors.append(_err(mid, "i2v/edit needs image_refs_max >= 1"))
+        if any(c in IMAGE_INPUT for c in caps) and m["inputs"]["image_refs_max"] < 1:
+            errors.append(_err(mid, "a capability that takes an image needs image_refs_max >= 1"))
+        if (UPSCALE in caps) != bool(m.get("upscale_factors")):
+            # 0046 sells an upscale only at a factor the model lists.
+            errors.append(_err(mid, "upscale_factors is required with upscale and only with it"))
         if m.get("image_sizes") and m["output"] != "image":
             errors.append(_err(mid, "image_sizes is for image models"))
         pricing = m["pricing"]

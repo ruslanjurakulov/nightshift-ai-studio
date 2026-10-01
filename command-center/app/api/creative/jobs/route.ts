@@ -16,6 +16,12 @@ export const dynamic = "force-dynamic";
  * is the price the member confirmed; a higher one is refused, never charged.
  * A replayed key answers the first job (200) instead of paying twice.
  *
+ * edit / i2v / upscale / remove_bg (migration 0046) name their input picture
+ * as `params.source_asset_id`. The database refuses (422
+ * `source_unavailable`) an id that is not a live image of THIS organization —
+ * another organization's id answers exactly like one that does not exist —
+ * before anything is held.
+ *
  * GET `?org_id=` lists the organization's newest jobs (RLS: its members).
  */
 export async function POST(request: Request) {
@@ -39,7 +45,9 @@ export async function POST(request: Request) {
       action: "creative.generate",
       target: job.id,
       detail: { org_id: parsed.input.orgId, capability: parsed.input.capability, model: parsed.input.model,
-                quoted_credits: job.quoted_credits ?? null },
+                quoted_credits: job.quoted_credits ?? null,
+                source_asset_id: typeof parsed.input.params.source_asset_id === "string"
+                  ? parsed.input.params.source_asset_id : null },
     });
   }
   return NextResponse.json(out.body, { status: out.status });

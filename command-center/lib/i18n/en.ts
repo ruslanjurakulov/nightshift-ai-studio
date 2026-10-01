@@ -2331,6 +2331,7 @@ export const en = {
       entitlement_required: "This model is available after your organization's first credit purchase.",
       unpriced: "This model has no price yet, so it cannot be used.",
       capability_not_supported: "This kind of generation is not available yet.",
+      source_unavailable: "This picture cannot be used: it is not in your organization's library, was deleted, or is not a PNG, JPEG or WebP image.",
       mode_not_supported: "Only the model you pick is used; automatic model choice is not available yet.",
       insufficient_credits: "Not enough credits. Add credits or choose a shorter or cheaper generation.",
       run_limit_reached: "Your plan's parallel generations are all running. Wait for one to finish, or upgrade the plan.",

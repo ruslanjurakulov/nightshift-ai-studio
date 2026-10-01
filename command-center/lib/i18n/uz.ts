@@ -2324,6 +2324,7 @@ export const uz: Dictionary = {
       entitlement_required: "Bu model tashkilotingiz birinchi marta kredit sotib olgandan keyin ochiladi.",
       unpriced: "Bu modelning hali narxi yo'q, shuning uchun uni ishlatib bo'lmaydi.",
       capability_not_supported: "Bu turdagi generatsiya hali mavjud emas.",
+      source_unavailable: "Bu rasmdan foydalanib bo'lmaydi: u tashkilotingiz mediatekasida yo'q, o'chirilgan yoki PNG, JPEG yoki WebP emas.",
       mode_not_supported: "Faqat siz tanlagan model ishlatiladi; modelni avtomatik tanlash hali mavjud emas.",
       insufficient_credits: "Kredit yetarli emas. Kredit qo'shing yoki qisqaroq yoki arzonroq generatsiyani tanlang.",
       run_limit_reached: "Tarifingizdagi barcha parallel generatsiyalar band. Bittasi tugashini kuting yoki tarifni oshiring.",

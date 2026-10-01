@@ -1,4 +1,11 @@
-"""Image adapters: OpenAI GPT Image, Gemini image, FLUX.2, Ideogram 3 and 4.
+"""Image adapters: OpenAI GPT Image, Gemini image, FLUX.2, Ideogram 3 and 4,
+Ideogram Upscale.
+
+Background removal (``remove_bg``) has no adapter: none of the vendors wired
+here documents a background-removal endpoint, so no registry model lists it
+and the creative worker answers ``capability_not_supported`` (never a fake
+result). The same holds for a 4x upscale: Ideogram's documented upscale
+enhances "up to 2X", so its registry entry offers factor 2 only.
 
 Imagen is not here: Google shut Imagen down on the Gemini API (2026-08-17);
 it is still sold on Vertex AI, which needs its own adapter (OAuth, another host).
@@ -12,11 +19,13 @@ call with the owner's key (migration 0035 refuses ``beta``/``ga`` otherwise).
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Dict, List
 
 from modules.capabilities.base import (
+    E_BAD_REQUEST,
     E_BAD_RESPONSE,
     E_NOT_FOUND,
     E_POLICY,
@@ -26,6 +35,7 @@ from modules.capabilities.base import (
     PENDING,
     SUCCEEDED,
     T2I,
+    UPSCALE,
     AdapterError,
     CapabilityRequest,
     HttpAdapter,
@@ -37,6 +47,7 @@ from modules.capabilities.base import (
     host_is,
     image_b64,
     image_mime,
+    is_url,
 )
 
 #: Pixel sizes for vendors that take width/height (multiples of 16, ~1 MP).
@@ -242,7 +253,56 @@ class IdeogramV4Adapter(IdeogramAdapter):
                             outputs=[Output("image/png", url=str(first["url"]))])
 
 
+class IdeogramUpscaleAdapter(IdeogramAdapter):
+    """``POST https://api.ideogram.ai/upscale`` — multipart: ``image_request``
+    (a JSON object as a form field: optional ``prompt``) and ``image_file``
+    (JPEG / WebP / PNG, at most 10 MB); header ``Api-Key``; answers
+    ``data[0].url`` like the generate endpoints. Ideogram documents it as
+    enhancing "up to 2X", so only factor 2 is offered; the resemblance and
+    detail sliders keep the vendor's defaults (not sent)."""
+
+    key = "image.ideogram_upscale"
+    capabilities = (UPSCALE,)
+    MAX_BYTES = 10 * 1024 * 1024
+    _TYPES = {"image/png", "image/jpeg", "image/webp"}
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        if request.scale not in (None, 2):
+            out.append("Ideogram upscales 2x only")
+        for p in request.input_images[:1]:
+            path = Path(str(p))
+            if is_url(str(p)):
+                out.append("Ideogram takes the image as an uploaded file, not an https URL")
+            elif image_mime(str(path)) not in self._TYPES or path.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+                out.append("Ideogram upscales JPEG, PNG or WebP images")
+            elif path.is_file() and path.stat().st_size > self.MAX_BYTES:
+                out.append("Ideogram upscales images of at most 10 MB")
+        return out
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        if not request.input_images:
+            raise AdapterError(E_BAD_REQUEST, "upscale needs an input image")
+        if is_url(str(request.input_images[0])):
+            raise AdapterError(E_BAD_REQUEST, "Ideogram takes the image as an uploaded file, not a URL")
+        path = Path(str(request.input_images[0]))
+        image_request: Dict[str, str] = {}
+        if (request.prompt or "").strip():
+            image_request["prompt"] = request.prompt.strip()
+        form = {"image_request": (None, json.dumps(image_request)),
+                "image_file": (path.name, path.read_bytes(), image_mime(str(path)))}
+        data = self._call("POST", f"{self.base_url}/upscale", files=form, what="upscale")
+        first = dig(data, "data", 0) or {}
+        if first.get("is_image_safe") is False:
+            raise AdapterError(E_POLICY, "the vendor marked the image unsafe")
+        if not first.get("url"):
+            raise AdapterError(E_BAD_RESPONSE, "no image in the response")
+        return ProviderTask(self.key, vendor_model, None,
+                            outputs=[Output("image/png", url=str(first["url"]))])
+
+
 ADAPTERS = (OpenAIImageAdapter, GeminiImageAdapter, FluxAdapter, IdeogramAdapter,
-            IdeogramV4Adapter)
+            IdeogramV4Adapter, IdeogramUpscaleAdapter)
 
 __all__ = [a.__name__ for a in ADAPTERS] + ["ADAPTERS"]
