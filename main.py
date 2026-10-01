@@ -58,6 +58,7 @@ from modules import held_video
 from modules.fact_checker import fact_check_claims
 from modules.media_fetcher import MediaFetcher
 from modules import video_providers
+from modules import dna_render
 from modules.minimax_broll import VideoModelUnavailable
 from modules import pinned_comment
 from modules import playlist
@@ -374,6 +375,14 @@ def run(
         agent_overrides["target_duration_seconds"] = int(duration)
     if agent_overrides:
         ctx = _dc_replace(ctx, agent=_dc_replace(ctx.agent, **agent_overrides))
+    # Channel DNA's format and aspect (modules/dna_render.py): the frame this
+    # video renders in, and a Shorts channel's shorter default length. The
+    # run's own --duration always wins; publishing reads none of it.
+    render_fmt = dna_render.resolve_format(
+        ctx.dna, channel_target_seconds=ctx.agent.target_duration_seconds,
+        base_size=(VIDEO_WIDTH, VIDEO_HEIGHT), run_duration=duration)
+    if render_fmt.target_seconds != ctx.agent.target_duration_seconds:
+        ctx = _dc_replace(ctx, agent=_dc_replace(ctx.agent, target_duration_seconds=render_fmt.target_seconds))
     channel_id = str(ctx.channel_id)
     # A series is an optional recurring content line within the channel. When
     # given, its niche seeds this run (unless --niche was passed explicitly) and
@@ -501,6 +510,28 @@ def run(
         events.emit(events.AGENT_FAILED, agent="minimax_broll", status=events.STATUS_FAILED,
                     channel_id=channel_id, metadata={"error": str(e), "stage": "preflight"})
         raise
+
+    # ── Stage 0d: Channel DNA's style kit and characters
+    # Read now, before anything is paid for: a kit or character the generated
+    # pictures could not carry stops the run here with the remedy, never
+    # after the script (CLAUDE.md #4, #6). Only when this run generates
+    # pictures — stock footage has nothing for a look to steer.
+    dna_look = None
+    pictures = dna_render.generates_pictures()
+    if pictures:
+        try:
+            dna_look = dna_render.load_look(ctx)
+        except dna_render.DnaUnavailable as e:
+            logger.error("Channel DNA cannot be used for channel %s: %s", channel_id, e)
+            events.emit(events.AGENT_FAILED, agent="dna_render", status=events.STATUS_FAILED,
+                        channel_id=channel_id, metadata={"error": str(e), "stage": "preflight"})
+            raise
+        if dna_look.character_names:
+            ctx = _dc_replace(ctx, dna=_dc_replace(ctx.dna, character_names=dna_look.character_names))
+    events.emit(events.DNA_APPLIED, agent="dna_render", status=events.STATUS_COMPLETED,
+                channel_id=channel_id,
+                metadata={**render_fmt.to_metadata(), "pictures_generated": pictures,
+                          "look": dna_look.to_metadata() if dna_look is not None else None})
 
     # ── Resume a crashed run ────────────────────────────────────────────
     # With --resume, reuse a previous run's saved artifacts instead of paying to
@@ -751,7 +782,10 @@ def run(
     # When generated b-roll is on, a clip the configured model did not produce
     # stops the run with the remedy — it is never quietly replaced by stock.
     try:
-        broll = fetcher.generate_broll(script.sections, topic, style_for=_scene_style)
+        broll = fetcher.generate_broll(
+            script.sections, topic, style_for=_scene_style,
+            prompt_hook=dna_render.scene_prompt_hook(dna_look, script.sections),
+            aspect_ratio="" if render_fmt.aspect_source == "default" else render_fmt.aspect)
     except VideoModelUnavailable as e:
         logger.error("Generated b-roll failed for channel %s: %s", channel_id, e)
         events.emit(events.AGENT_FAILED, agent="minimax_broll", status=events.STATUS_FAILED,
@@ -767,7 +801,9 @@ def run(
     # Optional: generate on-topic stills with the selected image provider
     # (Leonardo), supplementing the Pexels images above. Off unless a key + flag
     # are set; a failure falls back to stock and never breaks the render.
-    gen_images = fetcher.generate_images(script.sections, topic)
+    gen_images = fetcher.generate_images(
+        script.sections, topic, prompt_hook=dna_render.scene_prompt_hook(dna_look, script.sections),
+        size=render_fmt.image_size)
     if gen_images:
         from modules import image_providers as _img
         images = list(gen_images) + list(images)
@@ -791,7 +827,7 @@ def run(
     # Keeping the path lets the upload also offer it to YouTube as a caption
     # track — see YouTubeUploader.upload_captions.
     srt_path = sub_gen.to_srt(word_timestamps)
-    word_clips_specs = sub_gen.word_clips(word_timestamps, VIDEO_WIDTH, VIDEO_HEIGHT)
+    word_clips_specs = sub_gen.word_clips(word_timestamps, render_fmt.width, render_fmt.height)
     # Nothing after this point transcribes anything, and the render two stages
     # down is the one that keeps getting killed.
     sub_gen.release_model()
@@ -806,7 +842,7 @@ def run(
         elements=channel_elements, video_paths=videos, image_paths=images,
         clip_terms=getattr(fetcher, "video_terms", None), broll=broll,
         provenance=getattr(fetcher, "provenance", None),
-        generated_images=gen_images, width=VIDEO_WIDTH, height=VIDEO_HEIGHT, fps=config.VIDEO_FPS,
+        generated_images=gen_images, width=render_fmt.width, height=render_fmt.height, fps=config.VIDEO_FPS,
         scene_plan=claim_scenes.annotate_scenes(script, section_claims, fact_results),
     )
 
@@ -882,7 +918,7 @@ def run(
     # ── Stage 7: Compositor
     events.emit(events.RENDER_STARTED, agent="compositor", status=events.STATUS_RUNNING, channel_id=channel_id)
     render_started = time.monotonic()
-    comp = Compositor(slug)
+    comp = Compositor(slug, width=render_fmt.width, height=render_fmt.height)
     # Two runs have died in here without leaving a reason. If a third does,
     # the sampler's last line is the state just before the kill.
     # config.RENDER_BACKEND picks the renderer (modules/render_dispatch.py):
@@ -912,7 +948,7 @@ def run(
             # them as the same word-highlighted lines (an .ass beside the .srt;
             # the .srt itself is unchanged and still goes to YouTube).
             word_captions=word_clips_specs,
-            width=VIDEO_WIDTH, height=VIDEO_HEIGHT, fps=config.VIDEO_FPS,
+            width=render_fmt.width, height=render_fmt.height, fps=config.VIDEO_FPS,
             # CHRONOS_SCENE_RENDER=1: render per IR scene with a cache (modules/scene_render.py).
             ir_project=ir_project,
         )
@@ -944,7 +980,8 @@ def run(
     # Measure the file first (modules/video_qc.py): streams, duration vs the
     # narration, truncation, black and silent runs. Never raises; the report
     # lands in qc_report.json and in the gate event's metadata.
-    qc_report = video_qc.run(video_path, audio_path=audio_path, timeline=timeline)
+    qc_report = video_qc.run(video_path, audio_path=audio_path, timeline=timeline,
+                             expected_width=render_fmt.width, expected_height=render_fmt.height)
     gate = publish_gate.evaluate(
         script=script,
         video_path=video_path,

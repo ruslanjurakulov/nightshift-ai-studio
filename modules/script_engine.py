@@ -15,6 +15,9 @@ from modules.research_engine import ResearchBrief
 
 logger = logging.getLogger(__name__)
 
+#: A character's @name as 0047 stores it; anything else never reaches the prompt.
+_DNA_NAME_RE = re.compile(r"^[a-z0-9_]{2,32}$")
+
 SCRIPT_SYSTEM_PROMPT = """
 You are an elite viral YouTube scriptwriter. Your scripts follow strict retention psychology rules:
 
@@ -537,6 +540,18 @@ class ScriptEngine:
             tone = getattr(getattr(channel, "dna", None), "tone", "")
             if isinstance(tone, str) and tone:
                 prompt += f"\nChannel tone — write every line in this voice:\n{tone}\n"
+            # The channel's DNA characters, by name only (their look goes to the
+            # picture prompts, modules/dna_render.py): a scene that names one
+            # is drawn with that character's description, so the writer has to
+            # know the names to use. Names are ^[a-z0-9_]{2,32}$ by 0047.
+            names = [n for n in (getattr(getattr(channel, "dna", None), "character_names", ()) or ())
+                     if isinstance(n, str) and _DNA_NAME_RE.match(n)]
+            if names:
+                prompt += (
+                    "\nRecurring characters on this channel — when one of them appears, call them by "
+                    "this name in the narration and in that section's `keywords`: "
+                    + ", ".join(n.replace("_", " ") for n in names[:8]) + "\n"
+                )
             prompt += "\n"
 
         # Channel-lifecycle strategy note (modules/strategy.py). Appended, never

@@ -174,15 +174,22 @@ class GenerationSpec:
     section_index: int
     keyword: str = ""
     negative_prompt: str = _NEGATIVE
+    #: The frame the clip is wanted in ("9:16" for a vertical video), or ""
+    #: for the provider's configured one. A client sends it only where its
+    #: API is known to take that ratio (video_providers.spec_ratio).
+    aspect_ratio: str = ""
 
     def to_dict(self) -> dict:
-        return {
+        out = {
             "prompt": self.prompt,
             "duration_seconds": self.duration_seconds,
             "section_index": self.section_index,
             "keyword": self.keyword,
             "negative_prompt": self.negative_prompt,
         }
+        if self.aspect_ratio:
+            out["aspect_ratio"] = self.aspect_ratio
+        return out
 
 
 def build_prompt(topic: str, keywords: List[str], *, style: str = "cinematic, documentary, realistic") -> str:
@@ -225,7 +232,8 @@ def _section_keywords(section) -> List[str]:
 
 
 def select_specs(sections: list, topic: str, *, max_clips: int, style_for=None,
-                 model: Optional[str] = None) -> List[GenerationSpec]:
+                 model: Optional[str] = None, prompt_hook=None,
+                 aspect_ratio: str = "") -> List[GenerationSpec]:
     """Choose which sections get a generated clip and build a spec for each.
 
     Only sections that carry at least one keyword are eligible (a section we
@@ -242,7 +250,12 @@ def select_specs(sections: list, topic: str, *, max_clips: int, style_for=None,
     None keeps the default look, so an unconfigured run is unchanged.
 
     ``model`` is the model the clips will be sent to; each clip's length is
-    fitted to what that model accepts (``clamp_duration``)."""
+    fitted to what that model accepts (``clamp_duration``).
+
+    ``prompt_hook`` (optional) is ``(index, prompt) -> prompt``, applied last:
+    the channel DNA's style guide for that scene (modules/dna_render.py).
+    ``aspect_ratio`` is the frame the video renders in; "" keeps the
+    provider's own."""
     if max_clips <= 0:
         return []
 
@@ -276,11 +289,14 @@ def select_specs(sections: list, topic: str, *, max_clips: int, style_for=None,
             except Exception:
                 style = None
         prompt = build_prompt(topic, kws, style=style) if style else build_prompt(topic, kws)
+        if prompt_hook is not None:
+            prompt = prompt_hook(i, prompt)
         specs.append(GenerationSpec(
             prompt=prompt,
             duration_seconds=clamp_duration(_section_len(section), model),
             section_index=i,
             keyword=kws[0],
+            aspect_ratio=aspect_ratio or "",
         ))
     return specs
 

@@ -445,16 +445,22 @@ class ChannelDNA:
     not send columns a database without 0056 does not have).
 
     What a run does with it: the tone goes into the script prompt
-    (script_engine). The style kit, format and aspect pre-fill the Command
-    Center's forms; the video pipeline renders exactly as before — a Shorts
-    format here never starts a second upload (that stays agent_config.shorts,
-    opted into separately, because it spends YouTube quota).
+    (script_engine); the format and aspect pick the frame and the default
+    target length, and the style kit and the DNA characters reach each
+    generated picture's prompt (modules/dna_render.py). A Shorts format here
+    never starts a second upload (that stays agent_config.shorts, opted into
+    separately, because it spends YouTube quota), and nothing here is read by
+    auto publish, approvals or the publish gate.
     """
 
     tone: str = ""
     format: str = ""
     aspect: str = ""
     style_kit_id: str = ""
+    #: The @names of the channel's DNA characters, once a run has read them
+    #: from channel_dna_characters (dna_render.load_look) — never from the
+    #: channels row, so empty in a freshly loaded context.
+    character_names: tuple = ()
 
     @staticmethod
     def from_row(d: dict | None) -> "ChannelDNA":

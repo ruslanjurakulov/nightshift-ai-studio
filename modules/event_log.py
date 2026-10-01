@@ -84,6 +84,10 @@ DIRECTOR_PLAN = "director.plan"
 # reusable characters/locations/props were applied to this run's scenes for
 # visual consistency. Never gates.
 ELEMENTS_APPLIED = "elements.applied"
+# Channel DNA in a run (modules/dna_render.py): the frame and target length
+# it picked and where each came from, and whether a style kit / which @names
+# reached the picture prompts. Counts and names only, never a description.
+DNA_APPLIED = "dna.applied"
 RENDER_STARTED = "render.started"
 RENDER_COMPLETED = "render.completed"
 RENDER_FAILED = "render.failed"
