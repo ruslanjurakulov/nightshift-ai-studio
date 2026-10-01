@@ -47,6 +47,21 @@ export const TEXT_SIZE_MIN = 24;
 export const TEXT_SIZE_MAX = 200;
 export const GAIN_DB_MIN = -60;
 export const GAIN_DB_MAX = 12;
+/** Music ducking (modules/timeline.py DUCK_*): a track is lowered by an exact
+ *  amount while speech plays. The slider offers a narrower range than a
+ *  document may hold: under 3 dB is hard to hear, over 30 dB is a mute. */
+export const ROLES = ["music", "speech"] as const;
+export const DUCK_DB_MIN = 1;
+export const DUCK_DB_MAX = 40;
+export const DUCK_ATTACK_MIN_S = 0.05;
+export const DUCK_ATTACK_MAX_S = 2;
+export const DUCK_RELEASE_MIN_S = 0.1;
+export const DUCK_RELEASE_MAX_S = 5;
+export const DUCK_UI_MIN_DB = 3;
+export const DUCK_UI_MAX_DB = 30;
+/** What switching ducking on starts with (the document's own defaults for
+ *  attack and release; the amount is a clearly audible 12 dB). */
+export const DUCK_DEFAULT: Duck = { amount_db: 12, attack_s: 0.3, release_s: 0.8 };
 /** The volume slider's range for a sound: quieter than -40 dB is inaudible
  *  under a voice, louder than +6 dB clips; a typed number may use 12 dB. */
 export const GAIN_UI_MIN = -40;
@@ -104,6 +119,9 @@ const DOC_REQUIRED = ["version", "width", "height", "fps", "tracks"];
 const DOC_KEYS = [...DOC_REQUIRED, "captions"];
 const TRACK_REQUIRED = ["id", "kind", "clips"];
 const TRACK_KEYS = [...TRACK_REQUIRED, "name"];
+const A_TRACK_KEYS = [...TRACK_KEYS, "role", "duck"];
+const DUCK_REQUIRED = ["amount_db"];
+const DUCK_KEYS = [...DUCK_REQUIRED, "attack_s", "release_s"];
 const MEDIA_REQUIRED = ["id", "asset_id", "start_s", "in_s", "out_s"];
 const V_CLIP_KEYS = [
   ...MEDIA_REQUIRED,
@@ -162,6 +180,17 @@ export interface VideoClip {
   fade_out_s?: number;
 }
 
+export type SoundRole = (typeof ROLES)[number];
+
+/** Lower a music track while speech plays (modules/timeline.py): by
+ *  `amount_db`, reaching it `attack_s` before speech starts and coming back
+ *  over `release_s` after it ends. */
+export interface Duck {
+  amount_db: number;
+  attack_s: number;
+  release_s: number;
+}
+
 /** A music or sound-effect clip on its own A track. */
 export interface SoundClip {
   id: string;
@@ -172,6 +201,11 @@ export interface SoundClip {
   gain_db: number;
   fade_in_s: number;
   fade_out_s: number;
+  /** What the track carries; none = music. A speech sound is what a ducked
+   *  music sound is lowered under. These two live on the A track in the
+   *  document (the editor gives every sound a track of its own). */
+  role?: SoundRole;
+  duck?: Duck;
 }
 
 export interface TextClip {
@@ -191,6 +225,8 @@ export interface TimelineTrack {
   id: string;
   kind: "V" | "A" | "T";
   name?: string;
+  role?: SoundRole;
+  duck?: Duck;
   clips: Record<string, unknown>[];
 }
 
@@ -382,7 +418,17 @@ export function validateTimeline(doc: unknown): string[] {
   let vTracks = 0;
   tracks.forEach((track, ti) => {
     const where0 = `tracks[${ti}]`;
-    if (!fields(track, TRACK_KEYS, TRACK_REQUIRED, where0, problems)) return;
+    const isAudio = isObj(track) && track.kind === "A";
+    if (
+      !fields(
+        track,
+        isAudio ? A_TRACK_KEYS : TRACK_KEYS,
+        TRACK_REQUIRED,
+        where0,
+        problems,
+      )
+    )
+      return;
     const where = `track ${String(track.id)}`;
     claim(track.id, where);
     const kind = track.kind;
@@ -396,6 +442,7 @@ export function validateTimeline(doc: unknown): string[] {
       !(typeof track.name === "string" && track.name.length <= 100)
     )
       problems.push(`${where}: name must be text of at most 100 characters`);
+    if (kind === "A") validateAudioTrackOptions(track, where, problems);
     if (!Array.isArray(track.clips)) {
       problems.push(`${where}: clips must be a list`);
       return;
@@ -449,6 +496,42 @@ export function validateTimeline(doc: unknown): string[] {
   else if (total > MAX_DURATION_S)
     problems.push("timeline: longer than 4 hours");
   return problems;
+}
+
+/** `role` and `duck` of an A track (modules/timeline.py _validate_audio_track_options). */
+function validateAudioTrackOptions(
+  track: Record<string, unknown>,
+  where: string,
+  problems: string[],
+) {
+  if ("role" in track && !(ROLES as readonly unknown[]).includes(track.role))
+    problems.push(`${where}: role must be music or speech`);
+  if (!("duck" in track)) return;
+  const duck = track.duck;
+  const dwhere = `${where} duck`;
+  if (fields(duck, DUCK_KEYS, DUCK_REQUIRED, dwhere, problems)) {
+    numIn(duck, "amount_db", DUCK_DB_MIN, DUCK_DB_MAX, dwhere, problems);
+    numIn(
+      duck,
+      "attack_s",
+      DUCK_ATTACK_MIN_S,
+      DUCK_ATTACK_MAX_S,
+      dwhere,
+      problems,
+    );
+    numIn(
+      duck,
+      "release_s",
+      DUCK_RELEASE_MIN_S,
+      DUCK_RELEASE_MAX_S,
+      dwhere,
+      problems,
+    );
+  }
+  if (track.role === "speech")
+    problems.push(
+      `${where}: a speech track cannot be lowered under speech (remove duck or set role to music)`,
+    );
 }
 
 function validateMediaClip(
@@ -909,6 +992,17 @@ function transitionOf(v: unknown): { transition: Transition } | object {
   };
 }
 
+/** A document's duck as the model holds it (defaults filled in), or null
+ *  when it has none or it is not an object. */
+function duckOf(v: unknown): Duck | null {
+  if (!isObj(v) || !isNum(v.amount_db)) return null;
+  return {
+    amount_db: v.amount_db,
+    attack_s: isNum(v.attack_s) ? v.attack_s : DUCK_DEFAULT.attack_s,
+    release_s: isNum(v.release_s) ? v.release_s : DUCK_DEFAULT.release_s,
+  };
+}
+
 export function toModel(doc: TimelineDoc): EditorModel {
   const v = doc.tracks.find((t) => t.kind === "V");
   const clips: VideoClip[] = (v?.clips ?? [])
@@ -948,6 +1042,10 @@ export function toModel(doc: TimelineDoc): EditorModel {
         gain_db: isNum(c.gain_db) ? c.gain_db : 0,
         fade_in_s: isNum(c.fade_in_s) ? c.fade_in_s : 0,
         fade_out_s: isNum(c.fade_out_s) ? c.fade_out_s : 0,
+        // Every clip of the track carries the track's own options: each
+        // becomes a track of its own again in toDoc.
+        ...(t.role === "music" || t.role === "speech" ? { role: t.role } : {}),
+        ...(duckOf(t.duck) ? { duck: duckOf(t.duck) as Duck } : {}),
       })),
     );
   // Every text track's texts, in track order (later ones draw on top).
@@ -1008,6 +1106,16 @@ export function toDoc(model: EditorModel): TimelineDoc {
     soundTracks.push({
       id: `a${a}`,
       kind: "A",
+      ...(x.role ? { role: x.role } : {}),
+      ...(x.duck && x.role !== "speech"
+        ? {
+            duck: {
+              amount_db: ms(x.duck.amount_db),
+              attack_s: ms(x.duck.attack_s),
+              release_s: ms(x.duck.release_s),
+            },
+          }
+        : {}),
       clips: [
         {
           id: x.id,
@@ -1517,6 +1625,9 @@ export function updateSound(
       if (patch.out_s !== undefined)
         next.out_s = ms(clamp(next.out_s, next.in_s + MIN_CLIP_S, max));
       next.gain_db = ms(clamp(next.gain_db, GAIN_DB_MIN, GAIN_DB_MAX));
+      if (next.duck) next.duck = clampDuck(next.duck);
+      // A speech sound is never lowered (the document refuses a duck on one).
+      if (next.role === "speech" || !next.duck) delete next.duck;
       const keep =
         patch.fade_out_s !== undefined
           ? "out"
@@ -1526,6 +1637,74 @@ export function updateSound(
       return { ...next, ...fitFades(next, keep) };
     }),
   };
+}
+
+/** A duck kept inside what a document accepts. */
+export function clampDuck(d: Duck): Duck {
+  return {
+    amount_db: ms(clamp(d.amount_db, DUCK_DB_MIN, DUCK_DB_MAX)),
+    attack_s: ms(clamp(d.attack_s, DUCK_ATTACK_MIN_S, DUCK_ATTACK_MAX_S)),
+    release_s: ms(clamp(d.release_s, DUCK_RELEASE_MIN_S, DUCK_RELEASE_MAX_S)),
+  };
+}
+
+/** Where speech plays on the timeline, sorted: every picture clip that plays
+ *  its own sound and every sound marked as speech (modules/timeline.py
+ *  speech_spans; the render also needs the source to really carry sound,
+ *  which only the worker can tell). */
+export function speechSpans(model: EditorModel): [number, number][] {
+  const out: [number, number][] = [];
+  for (const c of layout(model.clips))
+    if (c.audio) out.push([ms(c.start_s), clipEnd(c)]);
+  for (const x of model.sounds)
+    if (x.role === "speech") out.push([ms(x.start_s), ms(x.start_s + soundLength(x))]);
+  return out.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+}
+
+/** Spans joined across a pause shorter than `gapS` (modules/timeline.py
+ *  merge_spans): music that has no time to come back up stays down. */
+export function mergeSpans(
+  spans: readonly (readonly [number, number])[],
+  gapS: number,
+): [number, number][] {
+  const out: [number, number][] = [];
+  for (const [s, e] of [...spans].sort((a, b) => a[0] - b[0] || a[1] - b[1])) {
+    const last = out[out.length - 1];
+    if (last && s - last[1] < gapS) last[1] = Math.max(last[1], e);
+    else out.push([s, e]);
+  }
+  return out;
+}
+
+/** The linear gain a duck applies at timeline time `t`: 1 away from speech,
+ *  `10 ** (-amount / 20)` inside it, ramped over attack (ending where speech
+ *  starts) and release (starting where it ends). The same envelope the
+ *  export's volume filter draws (render_spec.duck_expression). */
+export function duckGainAt(
+  duck: Duck,
+  speech: readonly (readonly [number, number])[],
+  t: number,
+): number {
+  let depth = 0;
+  for (const [s, e] of mergeSpans(speech, duck.attack_s + duck.release_s))
+    depth = Math.max(
+      depth,
+      clamp(
+        Math.min(
+          (t - (s - duck.attack_s)) / duck.attack_s,
+          (e + duck.release_s - t) / duck.release_s,
+        ),
+        0,
+        1,
+      ),
+    );
+  return 1 - (1 - 10 ** (-duck.amount_db / 20)) * depth;
+}
+
+/** True when a ducked sound has speech to be lowered under: without any, the
+ *  setting does nothing and the person should be told so. */
+export function hasSpeech(model: EditorModel): boolean {
+  return speechSpans(model).length > 0;
 }
 
 /** End a sound where the picture ends (when it starts before that). */
