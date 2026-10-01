@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { StatusPill } from "@/components/ui";
+import { BeforeAfter } from "@/components/studio/BeforeAfter";
+import { useLibraryImages } from "@/components/studio/useLibraryImages";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import type { CreativeError } from "@/lib/creative/operations";
@@ -11,6 +13,7 @@ import {
   apiErrorMessage,
   asCreativeError,
   coerceJobs,
+  compareSources,
   creditsLine,
   failureReason,
   isActiveStatus,
@@ -34,7 +37,9 @@ const FEED_SHOWN = 20;
  * members). Polls every few seconds only while one of them is still working,
  * and stops when none is. A job that ended without a result keeps its card
  * until it is dismissed (on this device); its held credits were already
- * returned by the database.
+ * returned by the database. A finished edit, upscale or background removal
+ * is shown against its source picture (before / after) when the library
+ * still holds both; the library is read only when there is such a job.
  */
 export function JobFeed({
   orgId,
@@ -115,6 +120,13 @@ export function JobFeed({
 
   const names = new Map(models.map((m) => [m.id, m.displayName]));
   const shown = (jobs ?? []).filter((j) => !dismissed.includes(j.id)).slice(0, FEED_SHOWN);
+  const pairs = new Map(shown.flatMap((j) => {
+    const p = compareSources(j);
+    return p ? [[j.id, p] as const] : [];
+  }));
+  const pairKey = [...pairs.values()].map((p) => p.after).join(",");
+  const library = useLibraryImages(orgId, { enabled: pairs.size > 0, key: pairKey });
+  const pictures = new Map(library.images.map((i) => [i.id, i.viewUrl ?? i.thumbUrl]));
   const btn = "btn-sky is-quiet pill min-h-[36px] px-4 py-1.5 text-[12px]";
 
   return (
@@ -138,6 +150,9 @@ export function JobFeed({
                 const prompt = typeof job.params.prompt === "string" ? job.params.prompt : "";
                 const href = job.status === "completed" ? resultHref(job) : null;
                 const retry = isUnsuccessful(job.status) ? prefillFromJob(job) : null;
+                const pair = pairs.get(job.id);
+                const before = pair ? pictures.get(pair.before) : null;
+                const after = pair ? pictures.get(pair.after) : null;
                 return (
                   <li
                     key={job.id}
@@ -154,6 +169,7 @@ export function JobFeed({
                       </span>
                     </div>
                     {prompt && <p className="break-words text-[13px] text-[var(--color-fg)]">{truncate(prompt)}</p>}
+                    {before && after && <BeforeAfter before={before} after={after} alt={kindLabel(t, job.capability)} />}
                     <p className="mono text-[11px] text-[var(--color-muted)]">{creditsLine(t, job, locale)}</p>
                     {isUnsuccessful(job.status) && (
                       <p className="text-[12px] text-[var(--color-muted)]">
