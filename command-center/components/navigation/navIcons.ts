@@ -1,6 +1,6 @@
 import {
   TerminalSquare,
-  LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, CircleDot,
+  LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, CircleDot, SwatchBook,
   Users, UserCircle, KeyRound, Bot, ListChecks,
   Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
   History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Settings, Cpu, Scissors,
@@ -17,6 +17,7 @@ export const ICONS: Record<NavKey, LucideIcon> = {
   // The record key, not a sparkle: making something is a REC press (IDENTITY.md §Iconography).
   hub: CircleDot,
   settings: Settings,
+  design: SwatchBook,
   command: LayoutDashboard,
   create: CircleDot,
   videos: Film,

@@ -15,6 +15,7 @@ export const en = {
     operations: "OPERATIONS",
   },
   nav: {
+    design: "Design system",
     hub: "Studio",
     home: "Home",
     settings: "Settings",

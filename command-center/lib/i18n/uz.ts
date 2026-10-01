@@ -9,6 +9,7 @@ export const uz: Dictionary = {
     operations: "OPERATSIYALAR",
   },
   nav: {
+    design: "Dizayn tizimi",
     hub: "Studiya",
     home: "Bosh sahifa",
     settings: "Sozlamalar",

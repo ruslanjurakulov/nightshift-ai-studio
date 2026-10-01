@@ -110,6 +110,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/audit", key: "audit" },
       { href: "/time-machine", key: "timeMachine" },
       { href: "/integrations", key: "integrations" },
+      { href: "/design", key: "design" },
       { href: "/errors", key: "errors" },
       { href: "/logs", key: "logs" },
     ],

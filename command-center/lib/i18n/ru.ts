@@ -9,6 +9,7 @@ export const ru: Dictionary = {
     operations: "ОПЕРАЦИИ",
   },
   nav: {
+    design: "Дизайн-система",
     hub: "Студия",
     home: "Главная",
     settings: "Настройки",
