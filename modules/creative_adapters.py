@@ -26,6 +26,9 @@ job folder), the capability layer knows vendors (``CapabilityRequest``,
   ``end_image`` only to a model whose registry entry has ``end_frame`` — a
   model that would drop it fails the job before any call instead of
   delivering a clip that ends somewhere else;
+* a picture model that bills by quality (0060) is always sent one: the tier
+  the job was quoted (``params.quality``), else ``medium`` — the same default
+  the quote used, never the vendor's own (dearer) default;
 * style / character reference pictures (0048,
   ``GenerationRequest.reference_files``) follow them only for a capability
   the adapter lists in ``reference_capabilities``, and only as many as the
@@ -45,6 +48,7 @@ from __future__ import annotations
 import hashlib
 import threading
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional
 
@@ -52,10 +56,12 @@ from modules import model_registry
 from modules.creative_style import StyleSupport
 from modules.capabilities import build_adapter
 from modules.capabilities.base import (
+    DEFAULT_IMAGE_QUALITY,
     FAILED,
     FILE_INPUT,
     MEDIA_INPUT,
     PENDING,
+    QUALITY_CAPABILITIES,
     VIDEO_INPUT,
     SUCCEEDED,
     AdapterError,
@@ -119,6 +125,8 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         upscale_target=_str(p.get("target_resolution")),
         # describe (0055): the language the description is written in.
         output_language=_str(p.get("language")),
+        # t2i / edit on a model that bills by quality (0060): the tier quoted.
+        quality=_str(p.get("quality")),
     )
 
 
@@ -162,6 +170,9 @@ class RegistryAdapter:
         if request.params.get("end_asset_id") and (request.end_file is None or not self.entry.end_frame):
             raise CreativeAdapterError("bad_request", f"{self.entry.id} cannot end this clip on the chosen picture")
         req = capability_request(request)
+        if self.entry.qualities and cap in QUALITY_CAPABILITIES and req.quality is None:
+            # The quote priced the default tier; send that tier, never nothing.
+            req = replace(req, quality=DEFAULT_IMAGE_QUALITY)
         problems = self.adapter.problems(req, self.entry)
         if problems:
             raise CreativeAdapterError("bad_request", "; ".join(problems)[:500])

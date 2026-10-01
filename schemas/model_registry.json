@@ -27,6 +27,11 @@
         "3:4"
       ],
       "resolutions": [],
+      "qualities": [
+        "low",
+        "medium",
+        "high"
+      ],
       "durations_s": [],
       "audio_out": false,
       "async": false,
@@ -42,6 +47,14 @@
         "source_url": null,
         "as_of": null,
         "confirmed": false,
+        "variants": {
+          "by": "quality",
+          "prices": {
+            "low": null,
+            "medium": null,
+            "high": null
+          }
+        },
         "note": "billed per token ($30 per 1M image output tokens per a search extract; another extract said $15); no per-image figure"
       },
       "credit_unit": "model_openai_gpt_image_2_image",
@@ -59,7 +72,8 @@
       "probe": {
         "capability": "t2i",
         "prompt": "a red apple on a white table",
-        "aspect_ratio": "1:1"
+        "aspect_ratio": "1:1",
+        "quality": "low"
       }
     },
     {
@@ -86,6 +100,11 @@
         "3:4"
       ],
       "resolutions": [],
+      "qualities": [
+        "low",
+        "medium",
+        "high"
+      ],
       "durations_s": [],
       "audio_out": false,
       "async": false,
@@ -101,6 +120,14 @@
         "source_url": null,
         "as_of": null,
         "confirmed": false,
+        "variants": {
+          "by": "quality",
+          "prices": {
+            "low": null,
+            "medium": null,
+            "high": null
+          }
+        },
         "note": "billed per token ($30 per 1M image output tokens, search extract); no per-image figure"
       },
       "credit_unit": "model_openai_gpt_image_2_5_flare_image",
@@ -118,7 +145,8 @@
       "probe": {
         "capability": "t2i",
         "prompt": "a red apple on a white table",
-        "aspect_ratio": "1:1"
+        "aspect_ratio": "1:1",
+        "quality": "low"
       }
     },
     {
@@ -145,6 +173,11 @@
         "3:4"
       ],
       "resolutions": [],
+      "qualities": [
+        "low",
+        "medium",
+        "high"
+      ],
       "durations_s": [],
       "audio_out": false,
       "async": false,
@@ -160,6 +193,14 @@
         "source_url": null,
         "as_of": null,
         "confirmed": false,
+        "variants": {
+          "by": "quality",
+          "prices": {
+            "low": null,
+            "medium": null,
+            "high": null
+          }
+        },
         "note": "billed per token ($30 per 1M image output tokens, search extract); no per-image figure"
       },
       "credit_unit": "model_openai_gpt_image_2_5_sunburst_image",
@@ -177,7 +218,8 @@
       "probe": {
         "capability": "t2i",
         "prompt": "a red apple on a white table",
-        "aspect_ratio": "1:1"
+        "aspect_ratio": "1:1",
+        "quality": "low"
       }
     },
     {
