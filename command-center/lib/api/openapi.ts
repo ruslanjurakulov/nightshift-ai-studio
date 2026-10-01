@@ -7,6 +7,8 @@
 
 import { API_TIERS, DEFAULT_API_PRICES, TOPUP_MAX_CENTS, TOPUP_MIN_CENTS } from "@/lib/api/pricing";
 import { IMAGE_PROVIDERS, VIDEO_PROVIDERS } from "@/lib/runBackend";
+import { API_SCOPES, KEY_RPM_MAX, LEGACY_SCOPES } from "@/lib/api/scopes";
+import { CREATIVE_CAPABILITIES, PARAM_KEYS } from "@/lib/creative/operations";
 
 const ERROR_CODES = [
   "invalid_api_key",
@@ -17,6 +19,22 @@ const ERROR_CODES = [
   "insufficient_balance",
   "monthly_limit_reached",
   "key_limit_reached",
+  "insufficient_scope",
+  "insufficient_credits",
+  "key_credit_limit_reached",
+  "run_limit_reached",
+  "price_changed",
+  "max_credits_required",
+  "idempotency_key_required",
+  "model_not_sellable",
+  "entitlement_required",
+  "unpriced",
+  "capability_not_supported",
+  "source_unavailable",
+  "style_unavailable",
+  "mode_not_supported",
+  "registry_missing",
+  "forbidden",
   "invalid_body",
   "unknown_parameter",
   "invalid_params",
@@ -48,6 +66,7 @@ const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 const errors = (...codes: number[]) =>
   Object.fromEntries(codes.map((c) => [String(c), { $ref: `#/components/responses/E${c}` }]));
 const idem = { $ref: "#/components/parameters/IdempotencyKey" };
+const idemRequired = { $ref: "#/components/parameters/IdempotencyKeyRequired" };
 const pathId = (name: string, description: string) => ({
   name,
   in: "path",
@@ -56,14 +75,42 @@ const pathId = (name: string, description: string) => ({
   schema: { type: "string" },
 });
 
+/** The scope each existing operation needs (the creative ones state theirs inline). */
+const SCOPE_OF: Record<string, string | null> = {
+  "get /me": null,
+  "get /balance": "account:read",
+  "get /channels": "account:read",
+  "get /accounts": "account:read",
+  "post /videos": "videos:write",
+  "get /videos": "videos:read",
+  "get /videos/{id}": "videos:read",
+  "post /videos/{id}/publish": "videos:write",
+  "post /videos/{id}/downloads": "videos:write",
+  "get /downloads/{id}": "videos:read",
+  "get /downloads/{id}/file": "videos:read",
+  "get /jobs/{id}": "videos:read",
+};
+
 export function openApiSpec(serverUrl: string): Record<string, unknown> {
+  const spec = buildSpec(serverUrl);
+  const paths = spec.paths as Record<string, Record<string, Record<string, unknown>>>;
+  for (const [key, scope] of Object.entries(SCOPE_OF)) {
+    const [method, path] = key.split(" ");
+    // /me is open to every valid key: it is how a client reads its own scopes.
+    paths[path][method]["x-required-scope"] = scope ?? "none (any valid key)";
+  }
+  return spec;
+}
+
+function buildSpec(serverUrl: string): Record<string, unknown> {
   return {
     openapi: "3.1.0",
     info: {
       title: "Nightshift API",
       version: "1.0.0",
       description:
-        "Make, list and publish videos programmatically. Prepaid, in US dollars, separate from site credits. " +
+        "Make, list and publish videos, and generate images, video and audio, programmatically. Videos are prepaid in US dollars, separate from site credits; " +
+        "generations (/creative) are paid in the organization's credits, exactly like the Studio. " +
         `Video: $${(DEFAULT_API_PRICES.video_minute / 100).toFixed(2)} per minute of requested length, at least ` +
         `$${(DEFAULT_API_PRICES.job_minimum / 100).toFixed(2)} (default prices; the live list is on /docs/api).`,
     },
@@ -71,7 +118,15 @@ export function openApiSpec(serverUrl: string): Record<string, unknown> {
     security: [{ bearer: [] }],
     components: {
       securitySchemes: {
-        bearer: { type: "http", scheme: "bearer", description: "An API key: nsk_live_ followed by 43 characters." },
+        bearer: {
+          type: "http",
+          scheme: "bearer",
+          description:
+            "An API key: nsk_live_ followed by 43 characters. A key has scopes (" + API_SCOPES.join(", ") + "); each operation names the one it needs " +
+            "in x-required-scope, and a key without it is refused with 403 insufficient_scope. Keys made before generations existed hold only " +
+            LEGACY_SCOPES.join(", ") + ". A key may also carry its own requests-per-minute limit (it can only lower the usage tier's, up to " + KEY_RPM_MAX +
+            ") and a monthly credit ceiling for generations.",
+        },
       },
       parameters: {
         IdempotencyKey: {
@@ -79,6 +134,15 @@ export function openApiSpec(serverUrl: string): Record<string, unknown> {
           in: "header",
           required: false,
           description: "Retry-safe POST: the same key and body within 24 hours replays the first success.",
+          schema: { type: "string", pattern: "^[A-Za-z0-9_:.-]{1,255}$" },
+        },
+        IdempotencyKeyRequired: {
+          name: "Idempotency-Key",
+          in: "header",
+          required: true,
+          description:
+            "Required: a generation spends credits, so a retry must not spend twice. The same key and body replays the first answer; " +
+            "the same key with another body is 422 idempotency_key_reused. Keys are per API key.",
           schema: { type: "string", pattern: "^[A-Za-z0-9_:.-]{1,255}$" },
         },
       },
@@ -194,6 +258,81 @@ export function openApiSpec(serverUrl: string): Record<string, unknown> {
             tier: { type: "integer", enum: API_TIERS.map((t) => t.tier) },
           },
         },
+        CreativeQuoteRequest: {
+          type: "object",
+          required: ["capability", "model", "params"],
+          additionalProperties: false,
+          properties: {
+            capability: { type: "string", enum: [...CREATIVE_CAPABILITIES] },
+            model: { type: "string", description: "A model id the API sells for this capability (not every model the Studio offers is on the API)." },
+            params: {
+              type: "object",
+              additionalProperties: false,
+              description:
+                "What to generate. edit, i2v, upscale, remove_bg and describe take source_asset_id: an image in the key's organization's media library " +
+                "(another organization's id answers exactly like one that does not exist).",
+              properties: Object.fromEntries(PARAM_KEYS.map((k) => [k, {}])),
+            },
+            mode: { const: "exact", description: "Only exact: the model you named runs." },
+          },
+        },
+        CreativeCreateRequest: {
+          type: "object",
+          required: ["capability", "model", "params", "max_credits"],
+          additionalProperties: false,
+          properties: {
+            capability: { type: "string", enum: [...CREATIVE_CAPABILITIES] },
+            model: { type: "string" },
+            params: { type: "object", description: "As in the quote." },
+            mode: { const: "exact" },
+            max_credits: {
+              type: "number",
+              minimum: 0,
+              description: "The most credits you accept to be charged. A price above it is refused with 409 price_changed; nothing is held.",
+            },
+          },
+        },
+        CreativeQuote: {
+          type: "object",
+          properties: {
+            quote: {
+              type: "object",
+              properties: {
+                credits: { type: "number", description: "What the generation costs; exactly what is held when it is started." },
+                exempt: { type: "boolean" },
+                model: { type: "string" },
+                capability: { type: "string" },
+                unit: { type: "string" },
+                quantity: { type: "number" },
+                credits_per_unit: { type: "number" },
+                margin: { type: "number" },
+                minimum: { type: "number" },
+              },
+            },
+          },
+        },
+        CreativeJob: {
+          type: "object",
+          properties: {
+            id: { type: "string", format: "uuid" },
+            capability: { type: "string" },
+            model: { type: "string" },
+            status: {
+              type: "string",
+              enum: ["queued", "running", "provider_pending", "processing", "completed", "failed", "cancelled", "expired"],
+            },
+            quoted_credits: { type: "number", description: "Held when the job was started." },
+            charged_credits: { type: ["number", "null"], description: "What was captured; null until the job ends. 0 when it failed, was cancelled or expired (the hold is released)." },
+            error_code: { type: ["string", "null"] },
+            error: { type: ["string", "null"] },
+            result: { type: ["object", "null"], description: "Files (type, size, digest) or, for describe, the text. Outputs are in the organization's media library: result_asset_ids." },
+            result_asset_ids: { type: "array", items: { type: "string", format: "uuid" } },
+            created_at: { type: "string", format: "date-time" },
+            updated_at: { type: "string", format: "date-time" },
+            finished_at: { type: ["string", "null"], format: "date-time" },
+            expires_at: { type: "string", format: "date-time", description: "A job no worker picks up by then expires and its hold is released." },
+          },
+        },
         Download: {
           type: "object",
           properties: {
@@ -279,6 +418,40 @@ export function openApiSpec(serverUrl: string): Record<string, unknown> {
           summary: "The MP4 of a ready download",
           parameters: [pathId("id", "Download id")],
           responses: { "200": { description: "video/mp4", content: { "video/mp4": { schema: { type: "string", format: "binary" } } } }, ...errors(401, 403, 404, 409, 410, 429, 503) },
+        },
+      },
+      "/creative/quote": {
+        post: {
+          summary: "The price of one generation, in credits. Nothing is held.",
+          "x-required-scope": "creative:quote",
+          requestBody: { required: true, content: json(ref("CreativeQuoteRequest")) },
+          responses: { "200": { description: "OK", content: json(ref("CreativeQuote")) }, ...errors(400, 401, 403, 422, 429, 503) },
+        },
+      },
+      "/creative/jobs": {
+        post: {
+          summary: "Start a generation: held now at the quoted price, captured when it succeeds, released if it fails.",
+          description:
+            "The same start as the Studio's, on the organization's credits: the quote is held in one transaction with the job, the worker captures " +
+            "the charge when the provider succeeds and releases it on failure, expiry or cancellation. Idempotency-Key and max_credits are required. " +
+            "The plan's parallel-run limit applies (429 run_limit_reached).",
+          "x-required-scope": "creative:create",
+          parameters: [idemRequired],
+          requestBody: { required: true, content: json(ref("CreativeCreateRequest")) },
+          responses: {
+            "201": { description: "Queued, and the quote held", content: json(ref("CreativeJob")) },
+            "200": { description: "The job's own idempotency record answered: the same job, nothing more held", content: json(ref("CreativeJob")) },
+            ...errors(400, 401, 402, 403, 409, 422, 429, 503),
+          },
+        },
+      },
+      "/creative/jobs/{id}": {
+        get: {
+          summary: "A generation this key started: status, held and charged credits, result.",
+          description: "Another key's generation, another organization's and a missing id all answer 404 job_not_found.",
+          "x-required-scope": "creative:read",
+          parameters: [pathId("id", "Generation id")],
+          responses: { "200": { description: "OK", content: json(ref("CreativeJob")) }, ...errors(401, 403, 404, 429) },
         },
       },
       "/jobs/{id}": {
