@@ -2653,6 +2653,8 @@ export const uz: Dictionary = {
     },
     held: "{n} kredit band qilindi",
     charged: "{n} kredit yechildi",
+    /** A credit, abbreviated for a frame's edge print. */
+    crShort: "kr",
     returned: "kreditlar qaytarildi",
     returnedNote: "Band qilingan kreditlar balansingizga avtomatik qaytadi.",
     open: "Ochish",

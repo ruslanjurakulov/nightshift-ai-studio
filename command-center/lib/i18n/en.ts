@@ -2660,6 +2660,8 @@ export const en = {
     },
     held: "held {n} credits",
     charged: "charged {n} credits",
+    /** A credit, abbreviated for a frame's edge print. */
+    crShort: "cr",
     returned: "credits returned",
     returnedNote: "Held credits go back to your balance automatically.",
     open: "Open",

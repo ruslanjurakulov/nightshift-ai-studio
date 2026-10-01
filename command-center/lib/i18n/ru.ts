@@ -2653,6 +2653,8 @@ export const ru: Dictionary = {
     },
     held: "зарезервировано {n} кредитов",
     charged: "списано {n} кредитов",
+    /** A credit, abbreviated for a frame's edge print. */
+    crShort: "кр",
     returned: "кредиты возвращены",
     returnedNote: "Зарезервированные кредиты возвращаются на баланс автоматически.",
     open: "Открыть",
