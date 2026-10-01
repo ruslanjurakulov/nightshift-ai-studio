@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { isChannelVerified } from "@/lib/channels";
 import { createClient } from "@/lib/supabase/client";
@@ -35,6 +35,7 @@ export function ChannelCard({
   queued,
   videos,
   vault,
+  dna,
 }: {
   channel: ChannelRow;
   /** The channel's URL segment — its name, not its internal id. */
@@ -45,6 +46,8 @@ export function ChannelCard({
   videos: number;
   /** Set for a customer organization's channel: its Vault connection panel. */
   vault?: Omit<ChannelTokenPanelProps, "channelId">;
+  /** The channel's DNA card (components/channels/ChannelDnaSection), when the page has it. */
+  dna?: ReactNode;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -349,6 +352,8 @@ export function ChannelCard({
         )}
         {vault && <ChannelTokenPanel channelId={channel.channel_id} {...vault} />}
       </div>
+
+      {dna}
 
       {/* -- configuration ----------------------------------------------- */}
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">

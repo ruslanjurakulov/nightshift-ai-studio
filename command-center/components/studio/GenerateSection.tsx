@@ -6,6 +6,7 @@ import { JobFeed } from "@/components/studio/JobFeed";
 import { TemplateGallery } from "@/components/studio/TemplateGallery";
 import type { StudioModel, StudioPrefill } from "@/lib/creative/studio";
 import type { UpsellCatalog } from "@/lib/upsell";
+import type { StudioDna } from "@/lib/channel-dna";
 
 /**
  * The Studio's "make one thing" half: the composer on the left (sticky from
@@ -22,6 +23,7 @@ export function GenerateSection({
   models,
   initial = null,
   defaultStyleKitId = null,
+  dna = null,
   bottomBar = true,
   plans = null,
 }: {
@@ -31,6 +33,8 @@ export function GenerateSection({
   initial?: StudioPrefill | null;
   /** The open channel's default style kit (0047), if it has one. */
   defaultStyleKitId?: string | null;
+  /** The open channel's DNA (0056), for a form that starts fresh. */
+  dna?: (StudioDna & { href: string }) | null;
   /** The phone's bottom tab bar is shown (not for the platform operator): Generate docks above it. */
   bottomBar?: boolean;
   /** What the plan dialog may offer when a generation is refused (lib/upsell.ts); null = no dialog. */
@@ -72,6 +76,8 @@ export function GenerateSection({
           models={models}
           initial={prefill?.value ?? null}
           defaultStyleKitId={defaultStyleKitId}
+          // A retried job or a template brings its own settings: DNA starts only the page's own form.
+          dna={prefill && prefill.nonce > 0 ? null : dna}
           sourceRequest={sourceRequest}
           plans={plans}
           onCreated={() => setRefreshKey((k) => k + 1)}

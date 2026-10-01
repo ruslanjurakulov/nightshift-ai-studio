@@ -12,6 +12,8 @@ import { IMAGE_GENERATORS } from "@/lib/imageProviders";
 import { TTS_MODELS, TTS_MODEL_LABELS, VOICES, isVoiceId } from "@/lib/ttsModels";
 import { VoicePreviewButton } from "@/components/create/VoicePreviewButton";
 import type { RunPrefill } from "@/lib/home";
+import type { RunDna } from "@/lib/channel-dna";
+import { ChannelDnaHint } from "@/components/studio/ChannelDnaHint";
 
 const CUSTOM_VOICE = "__custom__";
 
@@ -55,6 +57,7 @@ export function CreateStudio({
   operator = false,
   targets = [],
   initial = null,
+  dna = null,
 }: {
   channelId: string | null;
   githubConfigured: boolean;
@@ -73,19 +76,21 @@ export function CreateStudio({
   /** From Home's composer (lib/home runPrefillFromQuery): fills the form only.
    *  Create still asks for confirmation, with the price shown, as always. */
   initial?: RunPrefill | null;
+  /** The channel's DNA (0056): where an empty field starts. Home's choices win; Create still asks. */
+  dna?: (RunDna & { href: string }) | null;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
 
   const [brief, setBrief] = useState(initial?.brief ?? "");
-  const [duration, setDuration] = useState(initial?.duration ?? "");
-  const [language, setLanguage] = useState(initial?.language ?? "");
+  const [duration, setDuration] = useState(initial?.duration || dna?.duration || "");
+  const [language, setLanguage] = useState(initial?.language || dna?.language || "");
   const [style, setStyle] = useState("");
   const [videoProvider, setVideoProvider] = useState("");
   const [imageProvider, setImageProvider] = useState("");
   const [ttsModel, setTtsModel] = useState("");
   // "" = the channel's voice, a voice id, or CUSTOM_VOICE to type one in.
-  const [voice, setVoice] = useState("");
+  const [voice, setVoice] = useState(dna?.voice ?? "");
   const [customVoice, setCustomVoice] = useState("");
   // "platform:id" of the account this video is for, or "" (none chosen).
   const [target, setTarget] = useState("");
@@ -184,6 +189,7 @@ export function CreateStudio({
   return (
     <div id="run" className="flex scroll-mt-4 flex-col gap-4">
       {initial && <p className="text-[13px] text-[var(--color-muted)]">{t.create.prefilled}</p>}
+      {dna && <ChannelDnaHint href={dna.href} />}
       {connectedTargets.length > 0 && (
         <div className="flex justify-center">
           <label className="flex flex-wrap items-center justify-center gap-2">

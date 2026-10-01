@@ -344,6 +344,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Media library folders (0049): tests/security/sec_folders_0049.py.
     import sec_folders_0049
     sec_folders_0049.seed(conn, sc)
+    # Channel DNA (0056): tests/security/sec_dna_0056.py — after 0047's kits and characters.
+    import sec_dna_0056
+    sec_dna_0056.seed(conn, sc)
     # Storyboards waiting for review (0057): tests/security/sec_storyboard_0057.py.
     import sec_storyboard_0057
     sec_storyboard_0057.seed(conn, sc)

@@ -16,6 +16,7 @@ import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery } from "@/lib/creative/studio";
 import { runPrefillFromQuery, runnableChannels, toolPrefill } from "@/lib/home";
 import { AssistantPlanner } from "@/components/assistant/AssistantPlanner";
+import { channelDnaForCreate } from "@/lib/server/channel-dna";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -52,7 +53,9 @@ export default async function CreatePage({
   // form: nothing is priced or spent until Generate is pressed.
   const q = await searchParams;
   // Home's quick tools open a tool with no picture yet (/create?tool=t2i).
-  const initial = prefillFromQuery(q.tool, q.source) ?? toolPrefill(q.tool);
+  // Channel DNA (0056): the scoped channel's look and voice start both forms.
+  const dna = await channelDnaForCreate(scopedChannel);
+  const initial = dna.withStudio(prefillFromQuery(q.tool, q.source) ?? toolPrefill(q.tool));
   // Home's composer: topic, length and language for the channel run below.
   // Fills the form; Create still shows the price and asks before it runs.
   const runInitial = runPrefillFromQuery(q);
@@ -68,6 +71,7 @@ export default async function CreatePage({
       operator={operator}
       targets={targets}
       initial={runInitial}
+      dna={dna.run}
     />
   );
 
@@ -110,6 +114,7 @@ export default async function CreatePage({
           // The channel's look (0047) is the starting style; the panel uses it
           // only if it is one of the organization's kits as loaded.
           defaultStyleKitId={typeof scopedChannel?.default_style_kit_id === "string" ? scopedChannel.default_style_kit_id : null}
+          dna={dna.studio}
           // The platform operator has no phone tab bar to dock Generate above.
           bottomBar={!operator}
           plans={plans}
