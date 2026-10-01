@@ -322,13 +322,14 @@ export function CaptionsPanel({
 
   const pickedId = picked?.id ?? null;
   useEffect(() => {
-    if (!pickedId) return;
+    // Without an organization (or a model to be sold) the feature is not on here: stay silent.
+    if (!pickedId || !orgId) return;
     setTracks(null);
     setTrack(null);
     const ctrl = new AbortController();
     void loadTracks(pickedId, ctrl.signal);
     return () => ctrl.abort();
-  }, [pickedId, loadTracks]);
+  }, [pickedId, orgId, loadTracks]);
 
   async function pickTrack(id: string) {
     setLoadingTrack(id);

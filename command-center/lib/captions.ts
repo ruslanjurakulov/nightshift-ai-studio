@@ -569,7 +569,7 @@ function sorted(cues: readonly Cue[]): Cue[] {
 /** A file name for a download: letters and digits of the title, the language, the extension. */
 export function captionFileName(title: string, language: string, ext: "srt" | "vtt"): string {
   const base = title
-    .normalize("NFKD")
+    .normalize("NFC")
     .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 60);
