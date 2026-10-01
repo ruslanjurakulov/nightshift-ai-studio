@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { reserveRunCredits } = await import("../lib/server/credits");
+const { reserveRunCredits, runCreditRefFor } = await import("../lib/server/credits");
 
 const ORG = "0a000000-0000-0000-0000-00000000000a";
 
@@ -116,5 +116,53 @@ describe("reserveRunCredits: a failed read is unknown, never a number or a gap",
     const { client, rpc } = fakeSupabase({ target_duration_seconds: 180 });
     expect(await reserveRunCredits(client, "ch-a", undefined, "rj")).toMatchObject({ ok: true });
     expect(rpc).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The Assistant's confirmed plan starts runs with a stable hold reference
+ * and the price the person saw. What would break without these: a double
+ * press or a reload holding (and running) a second video, or a run held at
+ * a price higher than the one confirmed.
+ */
+describe("reserveRunCredits: a confirmed plan step", () => {
+  const ref = (u = "user-1", c = "ch-a", k = "assistant:p:s1:0") => runCreditRefFor("rj", u, c, k);
+
+  it("the reference is stable for (user, channel, key), different otherwise, and a valid hold id", () => {
+    expect(ref()).toBe(ref());
+    expect(new Set([ref(), ref("user-2"), ref("user-1", "ch-b"), ref("user-1", "ch-a", "assistant:p:s1:1")]).size).toBe(4);
+    expect(ref()).toMatch(/^rj-[0-9a-f]{48}$/);
+    // reserve_credits' own check on the reference (migration 0020).
+    expect(ref()).toMatch(/^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$/);
+    expect(ref()).not.toContain("user-1");
+  });
+
+  it("holds with the given reference", async () => {
+    const { client, rpc } = fakeSupabase({ target_duration_seconds: 180 });
+    expect(await reserveRunCredits(client, "ch-a", undefined, "rj", { creditRef: ref() })).toMatchObject({ ok: true, creditRef: ref() });
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_job_id: ref() });
+  });
+
+  it("a replay of the same reference is 'already started', never a second hold", async () => {
+    const { client, rpc } = fakeSupabase({ target_duration_seconds: 180 });
+    rpc.mockImplementationOnce(async () => ({ data: null, error: { code: "23505", message: "a reservation for this job already exists" } }) as never);
+    expect(await reserveRunCredits(client, "ch-a", undefined, "rj", { creditRef: ref() })).toEqual({
+      ok: false,
+      status: 409,
+      body: { error: "run_already_started" },
+    });
+  });
+
+  it("an estimate above the confirmed price is refused and nothing is held; at or below it holds", async () => {
+    // 3 minutes at 12 credits a minute = 36.
+    const { client, rpc } = fakeSupabase({ target_duration_seconds: 180 });
+    expect(await reserveRunCredits(client, "ch-a", undefined, "rj", { maxCredits: 35 })).toEqual({
+      ok: false,
+      status: 409,
+      body: { error: "price_changed", credits: 36 },
+    });
+    expect(rpc).not.toHaveBeenCalled();
+    expect(await reserveRunCredits(client, "ch-a", undefined, "rj", { maxCredits: 36 })).toMatchObject({ ok: true });
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_amount: 36 });
   });
 });
