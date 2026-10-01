@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from modules.capabilities import ADAPTERS
 from modules.capabilities.base import (
+    CAPTIONS,
     DESCRIBE,
     DUB,
     FILE_INPUT,
@@ -282,6 +283,11 @@ class ModelEntry:
             out.append(f"a target language does not apply to {cap}")
         if cap != DESCRIBE and request.output_language is not None:
             out.append(f"an output language does not apply to {cap}")
+        # Captions (0059) sell a spoken language only when the model was proven for it.
+        if cap == CAPTIONS and request.spoken_language is not None and request.spoken_language not in self.languages:
+            out.append(f"{self.id} does not transcribe {request.spoken_language}")
+        if cap != CAPTIONS and request.spoken_language is not None:
+            out.append(f"a spoken language does not apply to {cap}")
         return out
 
     def probe_request(self, *, voice_id: Optional[str] = None,
@@ -315,7 +321,7 @@ class ModelEntry:
                                  else p["prompt"],
                                  aspect_ratio=p.get("aspect_ratio"), resolution=p.get("resolution"),
                                  image_size=p.get("image_size"), duration_s=p.get("duration_s"),
-                                 voice_id=None if cap == DUB else voice_id, input_images=tuple(images),
+                                 voice_id=None if cap in (DUB, CAPTIONS) else voice_id, input_images=tuple(images),
                                  scale=p.get("factor"), input_media=tuple(media),
                                  target_language=p.get("target_language"), end_image=end,
                                  upscale_target=p.get("upscale_target"))
@@ -377,9 +383,10 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
         if (UPSCALE in caps) != bool(m.get("upscale_factors")):
             # 0046 sells an upscale only at a factor the model lists.
             errors.append(_err(mid, "upscale_factors is required with upscale and only with it"))
-        if (DUB in caps) != bool(m.get("languages")):
-            # 0050 sells a dub only into a language the model lists.
-            errors.append(_err(mid, "languages is required with dub and only with it"))
+        if (DUB in caps or CAPTIONS in caps) != bool(m.get("languages")):
+            # 0050 sells a dub only into a language the model lists; 0059
+            # sells captions only in a spoken language it lists.
+            errors.append(_err(mid, "languages is required with dub or captions and only with them"))
         if (VIDEO_UPSCALE in caps) != bool(m.get("upscale_targets")):
             # 0052 sells a video upscale only at a target the model lists.
             errors.append(_err(mid, "upscale_targets is required with video_upscale and only with it"))

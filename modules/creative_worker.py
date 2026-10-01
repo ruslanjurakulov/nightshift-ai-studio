@@ -79,6 +79,21 @@ on the job row as ``result.text`` — never as a library asset (0055's CHECK
 refuses one). Nothing usable left fails the job (``bad_response``) and
 releases the hold: an empty answer is never charged.
 
+Captions (migration 0059)
+------------------------
+``captions`` starts from a recording of the organization like the voice tools
+(``params.source_asset_id``, copied by id as a recording) and produces DATA:
+the words the provider heard, each with its start and end second. The
+adapter's one ``application/json`` output is read here, cleaned again
+(``modules/captions``: words only, control and bidi characters removed, times
+forward and inside the recording, nothing kept past 20 000 words) and stored
+by ``store_caption_track`` — in the JOB's organization, for the job this
+worker holds. The job row keeps only the track's id. A recording with no
+speech, or nothing usable left, fails the job (``no_speech`` /
+``bad_response``) and releases the hold: an empty transcript is never charged.
+The price was the recording's length as the DATABASE measured it, reported
+back as the provider's usage.
+
 Style kits and @characters (migration 0048)
 -------------------------------------------
 ``t2i``, ``t2v``, ``edit`` and ``i2v`` may name a style kit
@@ -122,6 +137,7 @@ from typing import Any, Callable, List, Mapping, Optional, Protocol, Sequence, T
 from modules import creative_style as cs
 from modules import credits as credit_rules
 from modules import media_library as ml
+from modules.captions import CaptionsError, base_language, clean_words
 from modules.describe_text import clean_description
 
 logger = logging.getLogger("creative_worker")
@@ -144,10 +160,10 @@ ADAPTERS_ENV = "NIGHTSHIFT_CREATIVE_ADAPTERS"
 #: Capabilities whose input is a library asset (params.source_asset_id): an
 #: image (0046) or, for the voice tools, a recording (0050).
 SOURCE_CAPABILITIES = frozenset({"edit", "i2v", "upscale", "remove_bg", "voice_change", "dub", "video_upscale",
-                                 "describe"})
+                                 "describe", "captions"})
 #: Of those, the ones whose input is a file copied whole: a recording (audio
 #: or video, 0050) or a video (0052).
-MEDIA_SOURCE_CAPABILITIES = frozenset({"voice_change", "dub", "video_upscale"})
+MEDIA_SOURCE_CAPABILITIES = frozenset({"voice_change", "dub", "video_upscale", "captions"})
 #: Of those, the ones that take a VIDEO and nothing else (0052).
 VIDEO_SOURCE_CAPABILITIES = frozenset({"video_upscale"})
 #: Of those, the ones whose output is a new version of the input.
@@ -155,9 +171,13 @@ VERSION_CAPABILITIES = frozenset({"edit", "upscale", "remove_bg", "video_upscale
 #: What each capability produces (the library checks the provider's output).
 OUTPUT_KIND = {"t2i": "image", "edit": "image", "upscale": "image", "remove_bg": "image",
                "t2v": "video", "i2v": "video", "tts": "audio", "sfx": "audio", "music": "audio",
-               "voice_change": "audio", "dub": "audio", "video_upscale": "video", "describe": "text"}
+               "voice_change": "audio", "dub": "audio", "video_upscale": "video", "describe": "text", "captions": "text"}
 #: Capabilities whose result is text on the job row, never a library asset (0055).
 TEXT_CAPABILITIES = frozenset({"describe"})
+#: Capabilities whose result is a caption track in its own table (0059), never a library asset.
+CAPTION_CAPABILITIES = frozenset({"captions"})
+#: The largest provider answer read for a caption track (20 000 words fit well inside).
+CAPTIONS_MAX_BYTES = 8 * 1024 * 1024
 #: The languages a description is written in (0055); absent = English.
 DESCRIBE_LANGUAGES = ("en", "ru", "uz")
 #: Library asset ids of a job's outputs are derived from the job id, so a
@@ -196,6 +216,9 @@ class GenerationRequest:
     #: The source picture's pixel size as the library recorded it (width,
     #: height) — a description keeps it so "Make similar" can pick the shape.
     source_size: Optional[Tuple[int, int]] = None
+    #: The recording's length as the library measured it (captions, 0059): words
+    #: are kept inside it.
+    source_duration_s: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -316,6 +339,14 @@ class CreativeRest:
         out = self._rpc("creative_job_style", {"p_job": job_id, "p_worker": worker_id})
         return out if isinstance(out, dict) else None
 
+    def store_caption_track(self, job_id: str, worker_id: str, language: str, duration_s: float,
+                            words: Sequence[Mapping[str, Any]]) -> Optional[str]:
+        """0059: the words of the captions job this worker holds; the track's id."""
+        out = self._rpc("store_caption_track", {
+            "p_job": job_id, "p_worker": worker_id, "p_language": language,
+            "p_duration_s": duration_s, "p_words": list(words)})
+        return out if isinstance(out, str) and out else None
+
     def attach_assets(self, job_id: str, worker_id: str, asset_ids: Sequence[str]) -> bool:
         return bool(self._rpc("attach_creative_job_assets", {
             "p_job": job_id, "p_worker": worker_id, "p_assets": list(asset_ids)}))
@@ -364,6 +395,17 @@ def _pixel_size(info: Mapping[str, Any]) -> Optional[Tuple[int, int]]:
     w, h = info.get("width"), info.get("height")
     ok = all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in (w, h))
     return (int(w), int(h)) if ok else None
+
+
+def _duration_s(info: Mapping[str, Any]) -> Optional[float]:
+    """The source's length in seconds as the library recorded it, when it is a
+    positive number; else None."""
+    d = info.get("duration_s")
+    try:
+        f = float(d)
+    except (TypeError, ValueError):
+        return None
+    return f if f > 0 and f == f and f != float("inf") else None
 
 
 class _Refused(Exception):
@@ -511,7 +553,7 @@ class CreativeWorker:
                 # Before 'submitting': a refusal here costs nobody anything.
                 info = self._source_answer(request)
                 request = replace(request, input_files=(self._source(request, info),),
-                                  source_size=_pixel_size(info))
+                                  source_size=_pixel_size(info), source_duration_s=_duration_s(info))
                 if request.params.get("end_asset_id"):
                     request = replace(request, end_file=self._end_frame(request, info))
             if cs.wants_style(request.capability, request.params):
@@ -709,6 +751,8 @@ class CreativeWorker:
             raise _Refused("bad_response", "the provider reported success without an output file")
         if request.capability in TEXT_CAPABILITIES:
             return self._store_text(request, files, result)
+        if request.capability in CAPTION_CAPABILITIES:
+            return self._store_captions(request, files, result)
         if not self.queue.advance(job_id, self.worker_id, "processing"):
             logger.warning("job %s: no longer this worker's; its outputs are not recorded here", job_id)
             return "left"
@@ -758,6 +802,51 @@ class CreativeWorker:
                 logger.warning("job %s: provider cost not recorded (%s)", job_id, type(e).__name__)
         status = (done or {}).get("status") if isinstance(done, dict) else None
         return "completed:text" if status in (None, "completed") else str(status)
+
+    def _store_captions(self, request: GenerationRequest, files: Sequence[Path], result: ProviderPoll) -> str:
+        """Captions: the cleaned words kept as a caption track (module doc).
+        The provider's file is scratch; nothing goes to the library."""
+        import json  # noqa: PLC0415 — one call site
+
+        job_id = request.job_id
+        try:
+            size = Path(files[0]).stat().st_size
+            if size > CAPTIONS_MAX_BYTES:
+                raise _Refused("bad_response", "the transcript is larger than a caption track may be")
+            doc = json.loads(Path(files[0]).read_bytes().decode("utf-8", errors="replace"))
+        except OSError as e:
+            raise _Refused("bad_response", f"the transcript could not be read ({type(e).__name__})") from None
+        except ValueError:
+            raise _Refused("bad_response", "the transcript is not readable") from None
+        if not isinstance(doc, Mapping) or not isinstance(doc.get("words"), list):
+            raise _Refused("bad_response", "the transcript has no words")
+        try:
+            words = clean_words(doc["words"], duration_s=request.source_duration_s)
+        except CaptionsError as e:
+            raise _Refused(e.code if _CODE_RE.match(e.code) else "bad_response", e.message) from None
+        asked = request.params.get("language")
+        # The language the person named, else the one the provider detected;
+        # "und" (undetermined) when neither is a language tag — never a guess.
+        language = (asked if isinstance(asked, str) and asked in DESCRIBE_LANGUAGES
+                    else base_language(doc.get("language"))) or "und"
+        duration = max(words[-1]["e"], request.source_duration_s or 0.0)
+        if not self.queue.advance(job_id, self.worker_id, "processing"):
+            logger.warning("job %s: no longer this worker's; its captions are not recorded here", job_id)
+            return "left"
+        track = self.queue.store_caption_track(job_id, self.worker_id, language, duration, words)
+        if not track:
+            raise _Refused("bad_response", "the caption track could not be stored")
+        out = {"track_id": track, "language": language, "words": len(words), "duration_s": round(duration, 3),
+               "storage": "table"}
+        done = self.queue.finish(job_id, self.worker_id, True, result=out)
+        shutil.rmtree(self.out_dir / job_id, ignore_errors=True)
+        if result.usage is not None:
+            try:
+                self.queue.record_cost(job_id, result.usage)
+            except Exception as e:  # reporting only; the job is settled
+                logger.warning("job %s: provider cost not recorded (%s)", job_id, type(e).__name__)
+        status = (done or {}).get("status") if isinstance(done, dict) else None
+        return "completed:captions" if status in (None, "completed") else str(status)
 
     def _to_library(self, request: GenerationRequest, files: Sequence[Path],
                     usage: Optional[ProviderUsage]) -> List[str]:
