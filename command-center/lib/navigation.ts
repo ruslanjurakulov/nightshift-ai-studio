@@ -57,6 +57,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/accounts", key: "accounts" },
       { href: "/portfolio", key: "portfolio" },
       { href: "/providers", key: "providers" },
+      { href: "/models", key: "models" },
       { href: "/billing", key: "billing" },
       { href: "/credits", key: "credits" },
       { href: "/series", key: "series" },

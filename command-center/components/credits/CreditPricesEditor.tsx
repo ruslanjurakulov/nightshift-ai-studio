@@ -71,7 +71,7 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
   const suggestions = [...SPECIAL_UNITS, ...LEDGER_UNITS];
 
   return (
-    <div className="panel flex flex-col gap-3 p-4">
+    <div id="credit-prices" className="panel flex scroll-mt-24 flex-col gap-3 p-4">
       <h2 className="t-section">{t.credits.pricesTitle}</h2>
       <p className="text-[12px] leading-relaxed text-[var(--color-muted)]">{t.credits.pricesHint}</p>
 
