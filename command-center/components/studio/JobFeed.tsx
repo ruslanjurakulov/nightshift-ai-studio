@@ -6,6 +6,7 @@ import { AudioLines, Check, Copy, ExternalLink, FolderOpen, ImagePlus, Play, Sca
 import { StatusPill } from "@/components/ui";
 import { BeforeAfter } from "@/components/studio/BeforeAfter";
 import { TOOL_ICONS } from "@/components/studio/toolIcons";
+import { SendToEditor, isSendKind } from "@/components/editor/SendToEditor";
 import { useLibraryImages } from "@/components/studio/useLibraryImages";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
@@ -326,6 +327,9 @@ export function JobFeed({
                             >
                               <ImagePlus aria-hidden className="size-4" />
                             </button>
+                          )}
+                          {isSendKind(kind) && job.result_asset_ids[0] && (
+                            <SendToEditor orgId={orgId} assetId={job.result_asset_ids[0]} kind={kind} variant="icon" className={onMedia} />
                           )}
                           {href ? (
                             <a href={href} target="_blank" rel="noopener noreferrer" className={onMedia} aria-label={t.gen.open} title={t.gen.open}>
