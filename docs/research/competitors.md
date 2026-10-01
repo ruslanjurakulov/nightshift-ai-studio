@@ -157,7 +157,7 @@ Nothing was generated, bought or changed. Screens that did not load fully are ma
 - Video tool: the Generate button carries the price (578 for the selected model, 6 s, 16:9); the model sheet shows approximate prices per model (about 300 to 900).
 - Credit meter in the profile menu: "100 credits remaining, 100 per day", with Upgrade, Buy credits and Usage statistics.
 - Locked feature: opening "Train new LoRA" on Free shows an upgrade dialog (monthly/yearly toggle, three plan cards). Nothing was selected.
-- Assets page: empty on this account.
+- Assets page: 4 files on this account (an earlier read taken before the page finished loading showed it empty; corrected).
 
 ### Higgsfield (Free plan, 10 credits)
 
@@ -180,5 +180,5 @@ Nothing was generated, bought or changed. Screens that did not load fully are ma
 
 - Price on the Generate button is the shared rule in Krea and Higgsfield: confirmed, keep it.
 - Locked features open a plan dialog with a monthly/yearly toggle: confirmed.
-- Empty library states are plain; ours should offer the first action ("add a file") instead.
+- Empty library states (Higgsfield) are plain; ours should offer the first action ("add a file") instead. Asset pages can load slowly: show a loading state, never an empty one, until the list has arrived.
 - Still not seen: Higgsfield Shorts/Faceless flows, MagicLight create flow past step 1, mobile apps, cancellation flows.
