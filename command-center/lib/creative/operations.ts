@@ -123,10 +123,37 @@ export const VOICE_ID_RE = /^[A-Za-z0-9]{20}$/;
  */
 export const STYLE_CAPABILITIES = ["t2i", "t2v", "edit", "i2v"] as const satisfies readonly CreativeCapability[];
 
+/**
+ * 0060's explicit allow-list for a picture's `quality` (t2i and edit only,
+ * optional). Absent means medium — in the quote AND in the worker, so the
+ * tier priced is the tier sent. Whether a model offers a tier, and what it
+ * costs, is decided by the database (spec.qualities, one credit_prices row
+ * per tier); a tier without a price is refused as `unpriced`, never free.
+ */
+export const IMAGE_QUALITIES = ["low", "medium", "high"] as const;
+export type ImageQuality = (typeof IMAGE_QUALITIES)[number];
+export const DEFAULT_IMAGE_QUALITY: ImageQuality = "medium";
+export const QUALITY_CAPABILITIES = ["t2i", "edit"] as const satisfies readonly CreativeCapability[];
+
+export function isImageQuality(v: unknown): v is ImageQuality {
+  return typeof v === "string" && (IMAGE_QUALITIES as readonly string[]).includes(v);
+}
+
+/**
+ * 0070's `audio` (t2v and i2v only, a JSON boolean, optional): the soundtrack
+ * of a clip on a model that prices it apart. Absent means silent — in the quote
+ * AND in the worker. Whether a model offers the choice, and what each setting
+ * costs, is decided by the database (spec.pricing.variants, one credit_prices
+ * row per setting); a setting without a price is refused as `unpriced`, never
+ * free. The `resolution` already accepted is likewise checked against the
+ * model there (an unlisted one is refused before any hold).
+ */
+export const AUDIO_CAPABILITIES = ["t2v", "i2v"] as const satisfies readonly CreativeCapability[];
+
 /** Upscale factors 0046 accepts; the model must also list the factor (spec.upscale_factors). */
 export const UPSCALE_FACTORS = [2, 4] as const;
 
-/** Keys 0036 / 0046 / 0048's creative_params_problem accepts; anything else is refused there too. */
+/** Keys 0036 / 0046 / 0048 / 0050 / 0052 / 0055 / 0060 / 0070's creative_params_problem accepts; anything else is refused there too. */
 export const PARAM_KEYS = [
   "prompt",
   "negative_prompt",
@@ -142,6 +169,8 @@ export const PARAM_KEYS = [
   "target_resolution",
   "end_asset_id",
   "language",
+  "quality",
+  "audio",
 ] as const;
 
 /** Codes the routes answer with. Each has a sentence in lib/i18n `creative.errors`. */
@@ -342,6 +371,18 @@ export function parseGenerationInput(
       return { ok: false, result: fail(400, "invalid_params", { detail: `end_asset_id does not apply to ${capability}` }) };
     if (!isUuid(params.end_asset_id))
       return { ok: false, result: fail(400, "invalid_params", { detail: "end_asset_id must be the id of an image in the media library" }) };
+  }
+  if (params.quality !== undefined) {
+    if (!(QUALITY_CAPABILITIES as readonly string[]).includes(capability))
+      return { ok: false, result: fail(400, "invalid_params", { detail: `quality does not apply to ${capability}` }) };
+    if (!isImageQuality(params.quality))
+      return { ok: false, result: fail(400, "invalid_params", { detail: `quality must be one of ${IMAGE_QUALITIES.join(", ")}` }) };
+  }
+  if (params.audio !== undefined) {
+    if (!(AUDIO_CAPABILITIES as readonly string[]).includes(capability))
+      return { ok: false, result: fail(400, "invalid_params", { detail: `audio does not apply to ${capability}` }) };
+    if (typeof params.audio !== "boolean")
+      return { ok: false, result: fail(400, "invalid_params", { detail: "audio must be true or false" }) };
   }
   if (params.style_kit_id !== undefined) {
     if (!(STYLE_CAPABILITIES as readonly string[]).includes(capability))

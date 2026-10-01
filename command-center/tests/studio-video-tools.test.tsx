@@ -263,7 +263,7 @@ describe("pinned to 0052", () => {
   });
 
   it("every capability and param key the code sends is one 0052 accepts (0055's and 0072's own are pinned to theirs)", () => {
-    const later: readonly string[] = ["describe", "language", "captions"];
+    const later: readonly string[] = ["describe", "language", "captions", "quality", "audio"];
     const supported = fn("creative_capability_supported");
     for (const c of CREATIVE_CAPABILITIES) if (!later.includes(c)) expect(supported, c).toContain(`'${c}'`);
     const params = fn("creative_params_problem");

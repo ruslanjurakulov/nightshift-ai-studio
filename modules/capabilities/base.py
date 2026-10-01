@@ -66,6 +66,15 @@ IMAGE_INPUT = frozenset({EDIT, I2V, UPSCALE, REMOVE_BG, DESCRIBE})
 TEXT_OUTPUT = frozenset({DESCRIBE, CAPTIONS})
 #: The languages a description is written in (0055's allow-list).
 DESCRIBE_LANGUAGES = ("en", "ru", "uz")
+#: The render quality an image model that bills by it is asked for (0060), and
+#: the one used when a job names none. Without the field OpenAI renders at its
+#: own default and bills accordingly — the reason this exists.
+IMAGE_QUALITIES = ("low", "medium", "high")
+DEFAULT_IMAGE_QUALITY = "medium"
+#: The capabilities a quality tier applies to.
+QUALITY_CAPABILITIES = frozenset({T2I, EDIT})
+#: The capabilities a video's resolution and soundtrack apply to (0070).
+VIDEO_VARIANT_CAPABILITIES = frozenset({T2V, I2V})
 #: Capabilities whose input is a recording — audio or video with speech
 #: (CapabilityRequest.input_media, migration 0050). Never mixed with images.
 #: Captions (0072) start from one too: the recording is the whole input.
@@ -182,6 +191,10 @@ class CapabilityRequest:
     aspect_ratio: Optional[str] = None      # "16:9"
     resolution: Optional[str] = None        # "720p" / "4k" (video)
     image_size: Optional[str] = None        # "512" / "1K" / "2K" / "4K" (Gemini image)
+    #: Render quality of an image model that bills by it (t2i / edit; 0060):
+    #: one of IMAGE_QUALITIES, which the model's ``qualities`` must list. None
+    #: = not sent (a model without tiers takes no such field).
+    quality: Optional[str] = None
     duration_s: Optional[int] = None
     #: An opaque, stable per-end-user id (a hash, never an email) that vendors
     #: ask aggregators to send so abuse is traced to one user, not our account.
@@ -313,6 +326,19 @@ class HttpAdapter:
     #: so deliver a clip that does not end where the person asked — never
     #: receives one: the registry refuses ``end_frame`` on any other adapter.
     end_frame_capabilities: Sequence[str] = ()
+    #: Capabilities for which this adapter sends ``CapabilityRequest.quality``
+    #: (0060). An adapter that would drop it would bill the vendor's own
+    #: default tier under a price quoted for another: the registry refuses
+    #: ``qualities`` on any other adapter, and a request naming one is refused.
+    quality_capabilities: Sequence[str] = ()
+    #: Capabilities for which this adapter sends ``CapabilityRequest.audio``
+    #: as the vendor's own sound flag (0070). Left unsent the vendor decides
+    #: (and bills) for itself: the registry refuses a model priced by audio on
+    #: any other adapter, and a request naming audio is refused.
+    audio_capabilities: Sequence[str] = ()
+    #: Capabilities for which this adapter always sends a resolution — the
+    #: request's, else the one the registry pins (``default_resolution``, 0070).
+    resolution_capabilities: Sequence[str] = ()
     timeout = 60
 
     def __init__(self, *, env: Optional[Mapping[str, str]] = None, session=None):
@@ -356,6 +382,10 @@ class HttpAdapter:
             out.append(f"adapter {self.key} cannot do {request.capability}")
         if request.end_image and request.capability not in self.end_frame_capabilities:
             out.append(f"adapter {self.key} cannot end a clip on a chosen frame")
+        if request.quality and request.capability not in self.quality_capabilities:
+            out.append(f"adapter {self.key} does not send a quality")
+        if request.audio is not None and request.capability not in self.audio_capabilities:
+            out.append(f"adapter {self.key} does not send an audio flag")
         out.extend(entry.problems(request))
         return out
 

@@ -218,7 +218,8 @@ describe("pinned to 0055", () => {
     // captions (0072) is pinned to 0072, which replaces these functions on top of 0055's.
     for (const c of CREATIVE_CAPABILITIES) if (c !== "captions") expect(supported, c).toContain(`'${c}'`);
     const params = fn("creative_params_problem");
-    for (const k of PARAM_KEYS) expect(params, k).toContain(`'${k}'`);
+    // quality is 0060's own (tests/image-quality.test.tsx), audio is 0070's (tests/video-price-variants.test.ts).
+    for (const k of PARAM_KEYS) if (k !== "quality" && k !== "audio") expect(params, k).toContain(`'${k}'`);
     expect(CAPABILITIES as readonly string[]).toContain("describe");
   });
 
