@@ -1628,6 +1628,7 @@ export function updateSound(
       if (next.duck) next.duck = clampDuck(next.duck);
       // A speech sound is never lowered (the document refuses a duck on one).
       if (next.role === "speech" || !next.duck) delete next.duck;
+      if (next.role === undefined) delete next.role;
       const keep =
         patch.fade_out_s !== undefined
           ? "out"
