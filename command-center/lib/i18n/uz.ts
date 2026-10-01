@@ -3093,4 +3093,22 @@ export const uz: Dictionary = {
     orgLimit: "Tashkilot limiti, $",
     save: "Saqlash",
   },
+  studioTemplates: {
+    title: "Shablondan boshlash",
+    hint: "Birini tanlang — forma to'ladi. [Qavslarni] almashtiring, narxni ko'ring, keyin yarating.",
+    use: "Tanlash",
+    items: {
+      yt_thumbnail: { title: "YouTube muqovasi", who: "Uzun video uchun" },
+      shorts_cover: { title: "Shorts muqovasi", who: "Vertikal, Shorts va Reels uchun" },
+      story_scene: { title: "Hikoya sahnasi", who: "Yuzsiz, ovozli kanallar uchun" },
+      product_shot: { title: "Mahsulot surati", who: "Do'kon va sharhlar uchun" },
+      broll: { title: "Fon klipi", who: "Besh soniyalik manzara" },
+      shorts_clip: { title: "Vertikal klip", who: "Shorts uchun harakatli kadr" },
+      voice_intro: { title: "Kanal kirish ovozi", who: "Videoning birinchi jumlasi" },
+      new_background: { title: "Yangi fon", who: "O'sha obyekt, yangi joy" },
+      animate_photo: { title: "Suratni jonlantirish", who: "Rasm qisqa klipga aylanadi" },
+      sharpen: { title: "Tiniqroq va kattaroq", who: "Ikki barobar katta, muqova uchun" },
+      cutout: { title: "Obyektni qirqib olish", who: "Shaffof fon" },
+    },
+  },
 };
