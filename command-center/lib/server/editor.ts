@@ -284,3 +284,28 @@ export async function readEditorVideo(
   const a = toEditorAssets([data])[aid];
   return a && a.kind === "video" ? a : null;
 }
+
+/**
+ * One video, picture or sound of the given organization, read under the
+ * caller's own session (RLS) AND pinned to that organization: a person who
+ * belongs to two organizations can read both organizations' files, so the
+ * `org_id` filter is what keeps a file of one out of the other's project.
+ * Another organization's file, a deleted one and a made-up id all read null.
+ */
+export async function readEditorAsset(
+  orgId: string,
+  assetId: string,
+): Promise<EditorAsset | null> {
+  const supabase = await createClient();
+  const aid = parseMediaId(assetId);
+  if (!supabase || !aid || !parseMediaId(orgId)) return null;
+  const { data, error } = await supabase
+    .from("media_assets")
+    .select(MEDIA_ASSET_COLUMNS)
+    .eq("id", aid)
+    .eq("org_id", orgId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error || !data) return null;
+  return toEditorAssets([data])[aid] ?? null;
+}
