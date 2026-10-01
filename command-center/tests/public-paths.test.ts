@@ -79,12 +79,14 @@ describe("signed-out visitors (what Google's reviewer sees)", () => {
 });
 
 describe("signed-in users keep today's behaviour", () => {
-  it("are sent from / to the Command Center of the channel they last viewed", async () => {
+  // The channel's index page then picks where this viewer starts (operator:
+  // Command Center; customer: Studio) — middleware cannot tell them apart.
+  it("are sent from / to the channel they last viewed", async () => {
     auth.user = { id: "u1" };
     const req = new NextRequest("https://nightshift.test/");
     req.cookies.set("chronos_channel", "chronos");
     const res = await middleware(req);
-    expect(new URL(res.headers.get("location")!).pathname).toBe("/chronos/command-center");
+    expect(new URL(res.headers.get("location")!).pathname).toBe("/chronos");
   });
 
   // The bare segment's index page then opens the first channel — nobody starts

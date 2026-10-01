@@ -11,6 +11,7 @@ import {
   NAV_ITEMS,
   RAIL_HIDDEN_KEYS,
   isOperatorOnlySection,
+  landingSection,
   navGroupsFor,
   sectionAllowed,
 } from "@/lib/navigation";
@@ -145,13 +146,19 @@ describe("appRedirect", () => {
     expect(appRedirect({ ...base, path: "/all-channels/accounts", honestSlug: "all-channels", operator: true })).toBeNull();
   });
 
-  it("sends a customer on an operator-only screen to that channel's Command Center, dropping the query", () => {
+  it("sends a customer on an operator-only screen to that channel's Studio, dropping the query", () => {
     expect(
       appRedirect({ ...base, selection: "default", path: "/chronos/members", search: "?x=1", honestSlug: "chronos", operator: false }),
-    ).toBe("/chronos/command-center");
+    ).toBe("/chronos/create");
     expect(appRedirect({ ...base, path: "/all-channels/accounts", honestSlug: "all-channels", operator: false })).toBe(
-      "/chronos/command-center",
+      "/chronos/create",
     );
+  });
+
+  it("starts the operator on the Command Center and a customer in Studio", () => {
+    expect(landingSection(true)).toBe("command-center");
+    expect(landingSection(false)).toBe("create");
+    expect(sectionAllowed(landingSection(false), false)).toBe(true);
   });
 
   it("still rewrites a channel id to its name, for everyone", () => {
