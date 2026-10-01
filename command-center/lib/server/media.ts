@@ -6,10 +6,12 @@ import { createClient } from "@/lib/supabase/server";
 import {
   MEDIA_ASSET_COLUMNS,
   MEDIA_UPLOAD_COLUMNS,
+  PIPELINE_UNKNOWN,
   coerceAssets,
   coerceUploads,
   isVariant,
   parseMediaId,
+  parsePipelineState,
   variantContentType,
   type LibraryAsset,
   type MediaAsset,
@@ -239,11 +241,12 @@ export async function loadMediaLibrary(orgId: string): Promise<MediaLibraryData>
     assets: [],
     uploads: [],
     quota: { usedBytes: 0, limitBytes: null, maxUploadBytes: null },
+    pipeline: PIPELINE_UNKNOWN,
   };
   const supabase = await createClient();
   if (!supabase || !parseMediaId(orgId)) return empty;
   try {
-    const [assets, uploads, quota, settings] = await Promise.all([
+    const [assets, uploads, quota, settings, pipeline] = await Promise.all([
       supabase.from("media_assets").select(MEDIA_ASSET_COLUMNS).eq("org_id", orgId).order("created_at", { ascending: false }).limit(200),
       supabase
         .from("media_uploads")
@@ -254,6 +257,8 @@ export async function loadMediaLibrary(orgId: string): Promise<MediaLibraryData>
         .limit(20),
       supabase.from("org_storage_quota").select("limit_bytes, used_bytes").eq("org_id", orgId).maybeSingle(),
       supabase.from("media_storage_settings").select("default_quota_bytes, max_upload_bytes").maybeSingle(),
+      // Is file checking running (0045)? Missing function or a failed read is "unknown", never "ok".
+      Promise.resolve(supabase.rpc("media_pipeline_state")).catch(() => ({ data: null, error: true })),
     ]);
     if (assets.error || uploads.error) {
       const missing = [assets.error, uploads.error].some((e) => e && /does not exist|42P01|PGRST205/i.test(`${e.code} ${e.message}`));
@@ -274,6 +279,7 @@ export async function loadMediaLibrary(orgId: string): Promise<MediaLibraryData>
         limitBytes: quota.error || settings.error ? null : (n(q?.limit_bytes) ?? n(s?.default_quota_bytes)),
         maxUploadBytes: settings.error ? null : n(s?.max_upload_bytes),
       },
+      pipeline: pipeline.error ? PIPELINE_UNKNOWN : parsePipelineState(pipeline.data),
     };
   } catch {
     return { ...empty, available: true, error: "read_failed" };

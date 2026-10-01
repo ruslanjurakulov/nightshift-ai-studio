@@ -9,6 +9,8 @@ import { scopeQuery } from "@/lib/channels";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import type { SystemEventRow } from "@/lib/types";
 import { relativeTime, storedMs } from "@/lib/format";
+import { WorkerStatusPanel } from "@/components/workers/WorkerStatusPanel";
+import { WORKER_COLUMNS, coerceWorkers, isMissingWorkerTable, type WorkerRow } from "@/lib/workers";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -59,15 +61,24 @@ export default async function IntegrationsPage() {
   const supabase = await createClient();
   let events: SystemEventRow[] = [];
   let dbOk = false;
+  // The workers' own reports (0045): not channel-owned, platform admins only by RLS.
+  let workers: WorkerRow[] = [];
+  let workersRead: "ok" | "missing" | "failed" = "failed";
   if (supabase) {
-    const { data, error } = await scopeQuery(
-        supabase.from("system_events").select("*"),
-        scope, { nullIsGlobal: true },
-      )
-      .order("ts", { ascending: false })
-      .limit(1000);
-    dbOk = !error;
-    events = (data as SystemEventRow[]) ?? [];
+    const [ev, wk] = await Promise.all([
+      scopeQuery(supabase.from("system_events").select("*"), scope, { nullIsGlobal: true })
+        .order("ts", { ascending: false })
+        .limit(1000),
+      supabase.from("worker_status").select(WORKER_COLUMNS).order("updated_at", { ascending: false }).limit(50),
+    ]);
+    dbOk = !ev.error;
+    events = (ev.data as SystemEventRow[]) ?? [];
+    if (!wk.error) {
+      workersRead = "ok";
+      workers = coerceWorkers(wk.data);
+    } else if (isMissingWorkerTable(wk.error)) {
+      workersRead = "missing";
+    }
   }
 
   const items: Health[] = [
@@ -102,6 +113,8 @@ export default async function IntegrationsPage() {
           </div>
         ))}
       </div>
+
+      <WorkerStatusPanel read={workersRead} rows={workers} nowMs={Date.now()} />
 
       <Panel title={t.integrations.measuredTitle}>
         <div className="p-4 text-[11px] leading-relaxed text-[var(--color-muted)]">
