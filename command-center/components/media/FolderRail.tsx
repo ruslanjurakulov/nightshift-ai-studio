@@ -12,6 +12,10 @@ import { fileCount } from "./libraryView";
  * sideways on a phone, a column beside the grid from `lg` up. Choosing one
  * only narrows what the grid shows.
  *
+ * "New folder" is there only for someone who may make one (`canCreate`: an
+ * editor or more). A viewer reads the folders and opens them; the database
+ * would refuse them the rest anyway (0049).
+ *
  * A count that could not be read is not shown at all — never as 0.
  */
 export function FolderRail({
@@ -22,6 +26,7 @@ export function FolderRail({
   allRef,
   newRef,
   disabled = false,
+  canCreate = true,
 }: {
   state: MediaFoldersState;
   current: string | null;
@@ -30,6 +35,7 @@ export function FolderRail({
   allRef?: Ref<HTMLButtonElement>;
   newRef?: Ref<HTMLButtonElement>;
   disabled?: boolean;
+  canCreate?: boolean;
 }) {
   const { t } = useI18n();
   const tf = t.media.folders;
@@ -90,18 +96,20 @@ export function FolderRail({
             </li>
           );
         })}
-        <li className="shrink-0 lg:mt-1 lg:w-full">
-          <button
-            ref={newRef}
-            type="button"
-            disabled={disabled}
-            onClick={onNew}
-            className="press flex items-center gap-2 whitespace-nowrap rounded-full border border-dashed border-[var(--color-border)] px-3.5 py-2 text-[13px] font-medium text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-fg)] lg:w-full lg:rounded-xl lg:px-3 lg:py-2.5"
-          >
-            <FolderPlus className="size-4 shrink-0" aria-hidden />
-            {tf.newFolder}
-          </button>
-        </li>
+        {canCreate && (
+          <li className="shrink-0 lg:mt-1 lg:w-full">
+            <button
+              ref={newRef}
+              type="button"
+              disabled={disabled}
+              onClick={onNew}
+              className="press flex items-center gap-2 whitespace-nowrap rounded-full border border-dashed border-[var(--color-border)] px-3.5 py-2 text-[13px] font-medium text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-fg)] lg:w-full lg:rounded-xl lg:px-3 lg:py-2.5"
+            >
+              <FolderPlus className="size-4 shrink-0" aria-hidden />
+              {tf.newFolder}
+            </button>
+          </li>
+        )}
       </ul>
       {state.error && (
         <p role="alert" className="m-0 mt-2 text-[12px] text-[var(--color-fail)]">

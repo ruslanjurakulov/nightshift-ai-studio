@@ -136,8 +136,8 @@ describe("the rail", () => {
     await waitFor(() => expect(calls("GET", "/api/media?")).toHaveLength(1));
     expect(calls("GET", "/api/media?")[0][0]).toBe(`/api/media?org=${ORG}&folder=${BRAND}`);
     expect(within(rail()).getByRole("button", { name: "Brand, 2 files" }).getAttribute("aria-current")).toBe("true");
-    // Uploads land in All files, and the folder says so.
-    expect(screen.getByText(new RegExp(tf.uploadsLand))).toBeTruthy();
+    // An upload made now lands in this folder (0051), and the folder says so.
+    expect(screen.getByText(new RegExp(tf.uploadsLandHere))).toBeTruthy();
   });
 
   it("an empty folder says how to fill it", () => {

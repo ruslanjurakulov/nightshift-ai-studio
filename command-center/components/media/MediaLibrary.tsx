@@ -89,8 +89,24 @@ const BADGE =
  * Without `initial` the list is fetched on mount, and until it arrives the
  * page shows a skeleton — never "nothing here yet". Before 0049 is applied
  * the page has no folders at all, and works exactly as it did.
+ *
+ * A file uploaded while a folder is open goes into that folder (0051): the
+ * ticket names it, and the database checks it and re-checks it when the file
+ * is registered. Its card waits in that folder meanwhile. `canEditFolders`
+ * (editor or more, the database's own answer for this organization) decides
+ * whether folder controls are offered at all — a viewer reads folders, opens
+ * them and uploads to All files; the database refuses them the rest anyway.
  */
-export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: MediaLibraryData | null }) {
+export function MediaLibrary({
+  orgId,
+  initial,
+  canEditFolders = true,
+}: {
+  orgId: string;
+  initial?: MediaLibraryData | null;
+  /** Editor or more in this organization: may create, rename, delete, move and upload into folders. */
+  canEditFolders?: boolean;
+}) {
   const { t, locale } = useI18n();
   const tm = t.media;
   const tf = tm.folders;
@@ -207,7 +223,12 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
   const switching = Boolean(data) && foldersOn && ((data?.folder ?? null) !== folder || (data?.query ?? "") !== serverQuery);
   const counts = useMemo(() => countByFilter(assets), [assets]);
   const shown = useMemo(() => visibleAssets(assets, view, (k) => tm.kinds[k]), [assets, view, tm]);
-  const pending = useMemo(() => (folder ? [] : visibleUploads(data?.uploads ?? [], view)), [data, view, folder]);
+  // An upload waits where it will land: in All files every one, in a folder
+  // the ones asked into it (0051; before it, none name a folder).
+  const pending = useMemo(
+    () => visibleUploads((data?.uploads ?? []).filter((u) => folder === null || u.folderId === folder), view),
+    [data, view, folder],
+  );
   const viewerIndex = viewerId ? shown.findIndex((a) => a.id === viewerId) : -1;
 
   // The open file left the grid (deleted elsewhere, filtered away): the viewer closes.
@@ -250,7 +271,10 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
     folder === null && serverQuery === "" && !switching && assets.length === 0 && data.uploads.length === 0 && progress === null;
   // Nothing at all, and no folder to show either: the first-run empty state.
   const nothingAtAll = libraryEmpty && (!foldersOn || folderList.length === 0);
-  const folderEmpty = openFolder !== null && !switching && assets.length === 0 && serverQuery === "";
+  const folderEmpty =
+    openFolder !== null && !switching && assets.length === 0 && serverQuery === "" && pending.length === 0 && progress === null;
+  // Only an editor files an upload; a viewer's upload goes to All files, and the folder says so.
+  const uploadFolder = foldersOn && canEditFolders && openFolder ? openFolder : null;
   const nothingShown = shown.length === 0 && pending.length === 0 && progress === null;
   const viewCount = openFolder ? openFolder.count : foldersOn ? (foldersState?.total ?? null) : assets.length;
 
@@ -286,17 +310,33 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
     setError(null);
     setNotice(null);
     setProgress({ name: file.name, pct: 0 });
+    // The folder open when the file was chosen, fixed now: switching folders
+    // during the upload does not move where it goes.
+    const target = uploadFolder;
     try {
       const res = await fetch("/api/media/uploads", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ org_id: orgId, filename: file.name, mime: file.type, bytes: file.size }),
+        body: JSON.stringify({
+          org_id: orgId,
+          filename: file.name,
+          mime: file.type,
+          bytes: file.size,
+          ...(target ? { folder_id: target.id } : {}),
+        }),
       });
-      const ticket = (await res.json().catch(() => ({}))) as { upload_url?: string; error?: string; max_bytes?: number };
+      const ticket = (await res.json().catch(() => ({}))) as {
+        upload_url?: string;
+        error?: string;
+        max_bytes?: number;
+        folder_applied?: boolean | null;
+      };
       if (!res.ok || !ticket.upload_url) {
         setError(errorText(ticket.error, ticket.max_bytes));
         return;
       }
+      // The deployment cannot file uploads yet (0051 missing): it goes to All files, said plainly.
+      if (target && ticket.folder_applied === false) setNotice(tf.uploadedToAll);
       await refresh();
       const put = await send(ticket.upload_url, file);
       if (put.status < 200 || put.status >= 300) {
@@ -574,6 +614,7 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
               onNew={() => setDialog({ kind: "create" })}
               allRef={allButton}
               newRef={newButton}
+              canCreate={canEditFolders}
             />
           )}
 
@@ -585,12 +626,15 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
                     {openFolder ? openFolder.name : tf.allFiles}
                   </h2>
                   <span className="text-[12px] text-[var(--color-muted)]">
-                    {[viewCount === null ? null : fileCount(tf, viewCount), openFolder ? tf.uploadsLand : null]
+                    {[
+                      viewCount === null ? null : fileCount(tf, viewCount),
+                      openFolder ? (uploadFolder ? tf.uploadsLandHere : tf.uploadsLand) : null,
+                    ]
                       .filter(Boolean)
                       .join(" · ")}
                   </span>
                 </div>
-                {openFolder && (
+                {openFolder && canEditFolders && (
                   <FolderMenu
                     ref={menuButton}
                     label={tf.actions}
@@ -647,7 +691,7 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
                     </>
                   ) : (
                     <>
-                      {foldersOn && (
+                      {foldersOn && canEditFolders && (
                         <button
                           ref={moveButton}
                           type="button"
@@ -746,7 +790,7 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
               )}
             </div>
 
-            {checkingDown && !folder && (
+            {checkingDown && (!folder || pending.some(isWaitingForCheck)) && (
               <p role="status" data-pipeline-down className="m-0 text-[13px] text-[var(--color-warn)]">
                 {tm.pipelineDown}
               </p>
@@ -758,7 +802,9 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
 
             {folderEmpty ? (
               <div className="panel flex flex-col items-center gap-3 px-6 py-10 text-center" data-folder-empty>
-                <p className="m-0 max-w-[46ch] text-[13px] leading-relaxed text-[var(--color-muted)]">{tf.emptyFolder}</p>
+                <p className="m-0 max-w-[46ch] text-[13px] leading-relaxed text-[var(--color-muted)]">
+                  {canEditFolders ? tf.emptyFolder : tf.emptyFolderReadOnly}
+                </p>
                 <button type="button" onClick={() => chooseFolder(null)} className="btn-sky ghost pill px-4 py-2 text-[13px]">
                   {tf.allFiles}
                 </button>
@@ -889,10 +935,10 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
         />
       )}
 
-      {dialog?.kind === "create" && (
+      {canEditFolders && dialog?.kind === "create" && (
         <FolderNameDialog mode="create" onSubmit={submitNewFolder} onClose={() => setDialog(null)} opener={newButton} />
       )}
-      {dialog?.kind === "rename" && openFolder && (
+      {canEditFolders && dialog?.kind === "rename" && openFolder && (
         <FolderNameDialog
           mode="rename"
           initialName={openFolder.name}
@@ -901,7 +947,7 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
           opener={menuButton}
         />
       )}
-      {dialog?.kind === "delete" && openFolder && (
+      {canEditFolders && dialog?.kind === "delete" && openFolder && (
         <DeleteFolderDialog
           name={openFolder.name}
           count={openFolder.count}
@@ -910,7 +956,7 @@ export function MediaLibrary({ orgId, initial }: { orgId: string; initial?: Medi
           opener={menuButton}
         />
       )}
-      {dialog?.kind === "move" && (
+      {canEditFolders && dialog?.kind === "move" && (
         <MoveSheet
           count={selected.size}
           folders={folderList}
