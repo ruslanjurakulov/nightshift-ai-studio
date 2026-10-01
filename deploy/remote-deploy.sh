@@ -318,6 +318,12 @@ main() {
         "$DOCKER" inspect -f "$svc after ${WORKER_SETTLE_SECONDS}s: state={{.State.Status}} exit={{.State.ExitCode}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}" "$cid" || true
       fi
     done
+    # Why does the media worker stop? Its exit code says only "2". Run its own
+    # probe in its own configuration (same uid, env file, volumes): yes/no
+    # checks and one HTTP status, nothing else. Only "probe:" lines are kept
+    # (the output is public), and a probe that fails never fails the deploy.
+    compose run --rm --no-deps -T media-worker python tools/media_worker.py --probe 2>/dev/null \
+      | grep '^probe: ' || true
     # The creative worker (0036) is started by hand, never by a deploy; one
     # that is already running is moved onto the image just built.
     if [[ -n "$(compose ps -q creative-worker 2>/dev/null)" ]]; then

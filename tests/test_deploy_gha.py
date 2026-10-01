@@ -815,6 +815,13 @@ class RemoteDeployWorkerTests(_RemoteDeployFixture):
         # Never the container's log text: this output is a public Actions log.
         self.assertFalse([c for c in calls if " logs" in f" {c}"])
 
+    def test_the_media_worker_probe_runs_after_start_and_never_fails_the_deploy(self):
+        proc = self.deploy(self.worker_payload())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        runs = [c for c in self.docker_calls() if " run " in f" {c} " and "--probe" in c]
+        self.assertEqual(len(runs), 1)
+        self.assertTrue(runs[0].endswith("run --rm --no-deps -T media-worker python tools/media_worker.py --probe"))
+
     def test_switching_the_worker_off_removes_it_and_its_keys(self):
         self.assertEqual(self.deploy(self.worker_payload()).returncode, 0)
         self.assertTrue(self.worker_env_file.exists())
