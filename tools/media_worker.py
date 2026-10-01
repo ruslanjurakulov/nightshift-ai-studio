@@ -79,13 +79,60 @@ def _withheld(_text: str) -> str:
     raise RuntimeError("no scrubber")
 
 
+def _dir_state(name: str) -> str:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return "unset"
+    if not os.path.isabs(raw):
+        return "relative"
+    d = Path(raw)
+    if not d.is_dir():
+        return "missing"
+    return "writable" if os.access(d, os.W_OK) else "not_writable"
+
+
+def probe() -> int:
+    """One line for the deploy log: what this worker would find at start.
+
+    Run in the worker's own configuration (same uid, env file and volumes) so
+    it answers the question the container's exit code cannot: why it stops.
+    Only words and numbers go out, never a value, a path or a message: the
+    deploy log is public. Writes one row for kind 'other' (worker id
+    'deploy-probe') to prove the status report reaches the database.
+    """
+    url = os.environ.get("SUPABASE_URL", "").strip()
+    key = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
+    report = "skipped"
+    if url and key:
+        reporter = WorkerStatusReporter(url, key, worker_id="deploy-probe", kind="other",
+                                        scrub=make_scrubber(os.environ) or _withheld)
+        reporter.report("stopped", "deploy probe")
+        report = reporter.last_status or "unknown"
+    fields = {
+        "uid": os.getuid(),
+        "url_set": str(bool(url)).lower(),
+        "key_set": str(bool(key)).lower(),
+        "media_dir": _dir_state("NIGHTSHIFT_MEDIA_DIR"),
+        "staging_dir": _dir_state("NIGHTSHIFT_MEDIA_STAGING_DIR"),
+        "ffmpeg": str(media_library.find_tools() is not None).lower(),
+        "heic": str(bool(media_library.heic_available())).lower(),
+        "report": report,
+    }
+    print("probe: " + " ".join(f"{k}={v}" for k, v in fields.items()), flush=True)
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Ingest media uploads (migration 0038)")
+    parser.add_argument("--probe", action="store_true",
+                        help="Print one line of yes/no checks for the deploy log and exit")
     parser.add_argument("--once", action="store_true", help="Handle at most one ticket and exit")
     parser.add_argument("--worker-id", default=os.environ.get("NIGHTSHIFT_WORKER_ID")
                         or f"{socket.gethostname()}-{os.getpid()}")
     parser.add_argument("--poll-seconds", type=float, default=DEFAULT_POLL_SECONDS)
     args = parser.parse_args(argv)
+    if args.probe:
+        return probe()
 
     logging.basicConfig(level=logging.INFO, stream=sys.stdout,
                         format="%(asctime)s media_worker %(levelname)s %(message)s")

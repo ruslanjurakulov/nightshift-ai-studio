@@ -69,6 +69,9 @@ class WorkerStatusReporter:
         self._interval = interval
         self._closed = False
         self._warned: Optional[str] = None
+        # The last answer, for a one-off check: an HTTP status code, or
+        # "error" when the request never got one. Never a message.
+        self.last_status: Optional[str] = None
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
@@ -96,6 +99,7 @@ class WorkerStatusReporter:
                     headers={"apikey": self._key, "Authorization": f"Bearer {self._key}",
                              "Content-Type": "application/json"},
                     timeout=self._timeout)
+            self.last_status = str(r.status_code)
             if r.status_code == 404:
                 self._warn_once("HTTP 404: apply migration 0045_worker_status.sql")
                 return False
@@ -105,6 +109,7 @@ class WorkerStatusReporter:
             self._warned = None
             return True
         except Exception as e:
+            self.last_status = "error"
             self._warn_once(describe_http_error(e))
             return False
 

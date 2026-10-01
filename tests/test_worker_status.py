@@ -395,3 +395,61 @@ class MediaWorkerExitPaths(unittest.TestCase):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     unittest.main()
+
+
+class ProbeTest(unittest.TestCase):
+    """`media_worker.py --probe`: one line of words and numbers for the deploy
+    log. The log is public, so no value, path or message may ever be in it."""
+
+    def run_probe(self, env, status="204"):
+        import contextlib
+        import io
+
+        class Reporter:
+            def __init__(self, *a, **k):
+                self.last_status = None
+
+            def report(self, state, detail=None):
+                self.last_status = status
+                return True
+
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch.object(media_worker, "WorkerStatusReporter", Reporter), \
+                mock.patch.object(media_worker, "make_scrubber", return_value=None), \
+                mock.patch.object(media_worker.media_library, "find_tools", return_value=("ffmpeg", "ffprobe")), \
+                mock.patch.object(media_worker.media_library, "heic_available", return_value=True), \
+                contextlib.redirect_stdout(out):
+            code = media_worker.main(["--probe"])
+        return code, out.getvalue()
+
+    def test_a_healthy_setup_prints_yes_answers_and_the_http_status(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            code, text = self.run_probe({"SUPABASE_URL": FAKE_URL, "SUPABASE_SERVICE_KEY": FAKE_KEY,
+                                         "NIGHTSHIFT_MEDIA_DIR": a, "NIGHTSHIFT_MEDIA_STAGING_DIR": b})
+        self.assertEqual(code, 0)
+        self.assertTrue(text.startswith("probe: "), text)
+        for part in ("url_set=true", "key_set=true", "media_dir=writable", "staging_dir=writable",
+                     "ffmpeg=true", "heic=true", "report=204"):
+            self.assertIn(part, text)
+        self.assertEqual(len(text.strip().splitlines()), 1)
+
+    def test_every_problem_is_a_word_and_no_value_or_path_is_printed(self):
+        with tempfile.TemporaryDirectory() as a:
+            code, text = self.run_probe({"SUPABASE_URL": FAKE_URL, "SUPABASE_SERVICE_KEY": FAKE_KEY,
+                                         "NIGHTSHIFT_MEDIA_DIR": a + "/missing",
+                                         "NIGHTSHIFT_MEDIA_STAGING_DIR": "relative/path"}, status="401")
+            self.assertEqual(code, 0)
+            self.assertIn("media_dir=missing", text)
+            self.assertIn("staging_dir=relative", text)
+            self.assertIn("report=401", text)
+            for secret in (FAKE_URL, FAKE_KEY, a, "relative/path"):
+                self.assertNotIn(secret, text)
+
+    def test_without_url_or_key_nothing_is_sent(self):
+        code, text = self.run_probe({})
+        self.assertEqual(code, 0)
+        self.assertIn("url_set=false", text)
+        self.assertIn("key_set=false", text)
+        self.assertIn("report=skipped", text)
+        self.assertIn("media_dir=unset", text)
