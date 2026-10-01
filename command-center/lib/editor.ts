@@ -1133,6 +1133,93 @@ export function newDocForAsset(
   };
 }
 
+/** How long a still picture is held when it is sent to the editor (a person
+ *  trims it; any length is valid, the file has no time inside it). */
+export const STILL_DEFAULT_S = 5;
+
+/** A first document for ANY library file sent to the editor: a video starts
+ *  as itself, a picture as a still held {@link STILL_DEFAULT_S} seconds, a
+ *  sound as an audio track under an empty picture track (the export is black
+ *  with the sound). null when the file has no known length where one is
+ *  needed — an unknown length is never guessed. */
+export function newDocForAnyAsset(
+  asset: Pick<EditorAsset, "id" | "kind" | "durationS" | "width" | "height">,
+): TimelineDoc | null {
+  if (asset.kind === "video") return newDocForAsset(asset);
+  const { width, height } = frameFor(asset);
+  const empty: EditorModel = {
+    width,
+    height,
+    fps: EDITOR_FPS,
+    clips: [],
+    texts: [],
+    sounds: [],
+    keep: [],
+  };
+  if (asset.kind === "image") {
+    const next = addStill(empty, asset);
+    return next === empty ? null : toDoc(next);
+  }
+  const out = addSound(empty, asset, 0);
+  return out ? toDoc(out.model) : null;
+}
+
+/** A picture as one more clip at the end of the picture track: a still, no
+ *  sound of its own (the renderer ignores `audio` on a picture anyway). */
+export function addStill(
+  model: EditorModel,
+  asset: Pick<EditorAsset, "id">,
+): EditorModel {
+  if (model.clips.length >= MAX_EDITOR_CLIPS) return model;
+  const clip: VideoClip = {
+    id: freshId(model, "c"),
+    asset_id: asset.id,
+    start_s: 0,
+    in_s: 0,
+    out_s: STILL_DEFAULT_S,
+    speed: 1,
+    audio: false,
+  };
+  return { ...model, clips: layout([...model.clips, clip]) };
+}
+
+/** Why a file could not be added to an existing project. */
+export type AppendProblem = "clips_full" | "sounds_full" | "no_duration";
+
+/**
+ * Add a library file to a saved document, the way the editor's own "add"
+ * buttons would: a video or a picture goes to the END of the picture track, a
+ * sound starts at 0 under the picture (the person moves it). Everything else
+ * in the document — frame size, texts, captions, other tracks — is kept.
+ *
+ * Which organization the file belongs to is NOT decided here: the route reads
+ * the file under the caller's session scoped to the project's organization,
+ * and the database checks it again on save (0054 editor_doc_problem).
+ */
+export function appendAssetToDoc(
+  doc: TimelineDoc,
+  asset: Pick<EditorAsset, "id" | "kind" | "durationS">,
+): { ok: true; doc: TimelineDoc } | { ok: false; problem: AppendProblem } {
+  const model = toModel(doc);
+  if (asset.kind === "audio") {
+    if (!asset.durationS || !(asset.durationS > 0))
+      return { ok: false, problem: "no_duration" };
+    const out = addSound(model, asset, 0);
+    return out
+      ? { ok: true, doc: toDoc(out.model) }
+      : { ok: false, problem: "sounds_full" };
+  }
+  if (asset.kind === "video" && !(asset.durationS && asset.durationS > 0))
+    return { ok: false, problem: "no_duration" };
+  const next =
+    asset.kind === "video"
+      ? addClip(model, asset)
+      : addStill(model, asset);
+  return next === model
+    ? { ok: false, problem: "clips_full" }
+    : { ok: true, doc: toDoc(next) };
+}
+
 /** How many sounds the final mix would have: every clip playing its own
  *  sound and every music / sound clip (MAX_AUDIO_CLIPS bounds them). */
 export function audioInputs(model: EditorModel): number {
@@ -1582,6 +1669,9 @@ export const EDITOR_ERRORS = [
   "export_in_progress",
   "limit_reached",
   "daily_limit",
+  "clips_full",
+  "sounds_full",
+  "no_duration",
   "not_available",
   "network",
   "failed",
