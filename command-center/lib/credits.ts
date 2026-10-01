@@ -317,6 +317,30 @@ export function formatCredits(n: number | null | undefined, locale = "en"): stri
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(n);
 }
 
+/**
+ * The number the header's credit pill shows, or null when it must show
+ * nothing: no account (the exempt organization, migration 0020 missing, a
+ * failed read) or a value that is not a number. Never a 0 standing in for
+ * "we don't know".
+ */
+export function creditPillAmount(account: CreditAccount | null | undefined): number | null {
+  if (!account) return null;
+  return typeof account.available === "number" && Number.isFinite(account.available) ? account.available : null;
+}
+
+export type CreditUnitForms = Record<"one" | "few" | "many" | "other", string>;
+
+/** "credit" / "credits" (en), "кредит" / "кредита" / "кредитов" (ru) for `n`. */
+export function creditUnit(n: number, locale: string, forms: CreditUnitForms): string {
+  let rule: Intl.LDMLPluralRule = "other";
+  try {
+    rule = new Intl.PluralRules(locale).select(n);
+  } catch {
+    // An unknown locale tag: the general form reads fine in every language here.
+  }
+  return rule === "one" || rule === "few" || rule === "many" ? forms[rule] : forms.other;
+}
+
 /** Does this ledger row move the balance (vs. only the hold)? */
 export function movesBalance(kind: CreditTxnKind): boolean {
   return kind !== "reserve" && kind !== "release";

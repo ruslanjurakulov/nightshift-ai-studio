@@ -270,3 +270,15 @@ export function txnLabel(row: { kind: string; jobId: string | null }): TxnLabel 
       return "adjust";
   }
 }
+
+/**
+ * The plan's name for the shell (the sidebar's user card, the credit menu), or
+ * null when there is nothing true to name — an unknown plan is left out, never
+ * shown as "Free".
+ */
+export function planName(plan: AccountPlan | null | undefined, exemptLabel: string): string | null {
+  if (!plan) return null;
+  if (plan.kind === "plan") return plan.name;
+  if (plan.kind === "exempt") return exemptLabel;
+  return null;
+}

@@ -43,7 +43,8 @@ export default async function CreatePage({
   const genOrgId = org.supported && org.current ? org.current.id : null;
   const models = genOrgId ? await loadStudioModels() : [];
   // "Use in Studio" from the Library opens a picture tool with the picture
-  // chosen. It only fills the form: nothing is priced or spent until pressed.
+  // chosen, and a sidebar tool row opens that tool. Either only fills the
+  // form: nothing is priced or spent until Generate is pressed.
   const q = await searchParams;
   const initial = prefillFromQuery(q.tool, q.source);
   const operator = await isOperator();
@@ -51,8 +52,12 @@ export default async function CreatePage({
   return (
     <div className="rhythm stagger-enter">
       <PageHeader icon="studio" title={t.create.title} subtitle={t.create.subtitle} />
+      {/* Keyed by the link's tool and picture: moving between the sidebar's
+          tool rows is a client navigation to the same page, and without a new
+          key the panel would keep the tool it already had. */}
       {genOrgId && (
         <GenerateSection
+          key={`${initial?.capability ?? ""}:${initial?.sourceId ?? ""}`}
           orgId={genOrgId}
           models={models}
           initial={initial}

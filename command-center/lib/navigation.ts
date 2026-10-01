@@ -165,6 +165,72 @@ export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly NavItem[
   ],
 };
 
+/**
+ * The Studio's tools, in the order the customer sidebar lists them. Mirrors
+ * STUDIO_CAPABILITIES in lib/creative/studio.ts (kept out of this pure module
+ * on purpose; tests/navigation-shell.test.ts holds the two in step).
+ */
+export const STUDIO_TOOLS = ["t2i", "t2v", "tts", "edit", "i2v", "upscale", "remove_bg"] as const;
+export type StudioTool = (typeof STUDIO_TOOLS)[number];
+
+export interface ToolLink {
+  tool: StudioTool;
+  /** `/create?tool=…` — it opens the Studio with that tool chosen; it fills the
+   *  form only, so nothing is priced or spent by following it. */
+  href: string;
+}
+
+export function toolHref(tool: StudioTool): string {
+  return `/create?tool=${tool}`;
+}
+
+/**
+ * A customer's desktop sidebar: Studio on top, the tools as direct links (the
+ * way a creative app lists them), then their work, and the account at the foot.
+ * Every destination is a customer section — never an operator screen — and the
+ * five rail destinations (CUSTOMER_RAIL, which the phone's bottom bar keeps)
+ * are all here, so the two never disagree about what a customer can reach.
+ */
+export interface CustomerSidebar {
+  home: NavItem;
+  tools: readonly ToolLink[];
+  work: readonly NavItem[];
+  footer: readonly NavItem[];
+}
+
+export const CUSTOMER_SIDEBAR: CustomerSidebar = {
+  home: { href: "/create", key: "hub" },
+  tools: STUDIO_TOOLS.map((tool) => ({ tool, href: toolHref(tool) })),
+  work: [
+    { href: "/library", key: "library" },
+    { href: "/videos", key: "videos" },
+    { href: "/channels", key: "channels" },
+  ],
+  footer: [
+    { href: "/credits", key: "credits" },
+    { href: "/organization", key: "settings" },
+  ],
+};
+
+/**
+ * Which sidebar row is the current place, from the section path (no channel,
+ * e.g. "/create") and the `tool` query value. A tool row wins on /create when
+ * the URL names one; Studio owns the rest of its tab group except Library,
+ * which has its own row; Settings owns its tabs.
+ */
+export function sidebarCurrent(section: string, tool: string | null): string | null {
+  const first = "/" + (section.split("/").filter(Boolean)[0] ?? "");
+  if (first === "/create" && tool && (STUDIO_TOOLS as readonly string[]).includes(tool)) return `tool:${tool}`;
+  if (first === "/library") return "library";
+  const group = tabsFor(first.slice(1))?.rail;
+  if (group === "hub") return "hub";
+  if (group === "settings") return "settings";
+  for (const item of [...CUSTOMER_SIDEBAR.work, ...CUSTOMER_SIDEBAR.footer]) {
+    if (first === item.href) return item.key;
+  }
+  return null;
+}
+
 /** The tab group (and its rail entry) that `section` belongs to, if any. */
 export function tabsFor(section: string): { rail: "hub" | "settings"; items: readonly NavItem[] } | null {
   const href = "/" + section;

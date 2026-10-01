@@ -12,7 +12,9 @@ import { UtcClock } from "@/components/UtcClock";
 import { ChannelSwitcher } from "@/components/ChannelSwitcher";
 import { OrgSwitcher } from "@/components/org/OrgSwitcher";
 import { CreditBalanceChip } from "@/components/credits/CreditBalanceChip";
+import { CreditMenu } from "@/components/shell/CreditMenu";
 import type { CreditAccount } from "@/lib/credits";
+import type { AccountPlan } from "@/lib/account";
 import type { OrgSummary } from "@/lib/orgs";
 import { ALL_CHANNELS, unscopedScope, type ChannelScope, type ChannelSelection } from "@/lib/channels";
 import type { ChannelRow } from "@/lib/types";
@@ -31,6 +33,8 @@ export function Header({
   credits = null,
   scope = unscopedScope(),
   email = null,
+  operator = true,
+  plan = null,
 }: {
   channels?: ChannelRow[];
   selection?: ChannelSelection;
@@ -43,12 +47,68 @@ export function Header({
   /** The signed-in email, for the account button's initial; the panel reads
    *  the rest itself when it opens. */
   email?: string | null;
+  /** The platform operator keeps the console's bar; a customer gets the
+   *  creative app's (sidebar wordmark, credit pill, account on the card). */
+  operator?: boolean;
+  /** The organization's plan, read server-side, for the credit menu. */
+  plan?: AccountPlan | null;
 }) {
   const { t } = useI18n();
   const path = useChannelPath();
 
   function openPalette() {
     window.dispatchEvent(new CustomEvent("chronos:palette-open"));
+  }
+
+  if (!operator) {
+    return (
+      <header className="shell-topbar sticky top-0 z-30 px-4 py-2 lg:px-6">
+        <div className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-2">
+          {/* The wordmark lives in the sidebar from `lg` up. */}
+          <Link
+            href={path("/create")}
+            className="tap-link font-display shrink-0 text-[17px] font-semibold tracking-[-0.02em] text-[var(--color-fg)] lg:hidden"
+          >
+            <span aria-hidden className="mr-2 inline-block size-2 rounded-full bg-[var(--color-primary)] align-middle" />
+            {t.brand.name}
+          </Link>
+          {/* The organization and channel, when there is more than one to choose
+              between (each renders nothing otherwise): beside the wordmark on a
+              wide screen, a row of their own under the bar on a phone. */}
+          <div className="order-last flex w-full min-w-0 items-center gap-2 empty:hidden sm:order-none sm:mr-auto sm:w-auto">
+            <OrgSwitcher orgs={orgs} currentId={currentOrgId} />
+            <ChannelSwitcher channels={channels} selection={selection} />
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="hidden sm:contents">
+              <button
+                type="button"
+                onClick={openPalette}
+                aria-label={t.ops.palettePlaceholder}
+                className="btn-sky is-quiet pill h-10 gap-2 px-3.5"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m21 21-4.3-4.3" />
+                </svg>
+                <span className="mono pill border border-[var(--color-border)] px-1.5 text-[9px] tracking-wider">⌘K</span>
+              </button>
+            </span>
+            <CreditMenu account={credits} plan={plan} />
+            <NotificationsCenter scope={scope} />
+            <span className="hidden sm:contents">
+              <LanguageSelector />
+              <ThemeToggle />
+            </span>
+            {/* On a phone and tablet the account sits here; from `lg` up it is
+                the sidebar's user card. */}
+            <div className="lg:hidden">
+              <AccountMenu email={email} plan={plan} />
+            </div>
+          </div>
+        </div>
+      </header>
+    );
   }
 
   return (
