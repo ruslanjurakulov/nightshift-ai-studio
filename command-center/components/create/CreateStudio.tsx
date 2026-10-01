@@ -11,6 +11,7 @@ import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
 import { IMAGE_GENERATORS } from "@/lib/imageProviders";
 import { TTS_MODELS, TTS_MODEL_LABELS, VOICES, isVoiceId } from "@/lib/ttsModels";
 import { VoicePreviewButton } from "@/components/create/VoicePreviewButton";
+import type { RunPrefill } from "@/lib/home";
 
 const CUSTOM_VOICE = "__custom__";
 
@@ -53,6 +54,7 @@ export function CreateStudio({
   canRun = true,
   operator = false,
   targets = [],
+  initial = null,
 }: {
   channelId: string | null;
   githubConfigured: boolean;
@@ -68,13 +70,16 @@ export function CreateStudio({
   operator?: boolean;
   /** "Making this for:" — the organization's connected accounts. Optional to pick. */
   targets?: CreateTarget[];
+  /** From Home's composer (lib/home runPrefillFromQuery): fills the form only.
+   *  Create still asks for confirmation, with the price shown, as always. */
+  initial?: RunPrefill | null;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
 
-  const [brief, setBrief] = useState("");
-  const [duration, setDuration] = useState("");
-  const [language, setLanguage] = useState("");
+  const [brief, setBrief] = useState(initial?.brief ?? "");
+  const [duration, setDuration] = useState(initial?.duration ?? "");
+  const [language, setLanguage] = useState(initial?.language ?? "");
   const [style, setStyle] = useState("");
   const [videoProvider, setVideoProvider] = useState("");
   const [imageProvider, setImageProvider] = useState("");
@@ -177,7 +182,8 @@ export function CreateStudio({
   const connectedTargets = targets.filter((a) => a.connected);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div id="run" className="flex scroll-mt-4 flex-col gap-4">
+      {initial && <p className="text-[13px] text-[var(--color-muted)]">{t.create.prefilled}</p>}
       {connectedTargets.length > 0 && (
         <div className="flex justify-center">
           <label className="flex flex-wrap items-center justify-center gap-2">
@@ -218,6 +224,7 @@ export function CreateStudio({
           onKeyDown={onKeyDown}
           rows={4}
           maxLength={300}
+          autoFocus={initial !== null}
           placeholder={t.create.placeholder}
           className="w-full resize-y bg-transparent text-[15px] leading-relaxed outline-none placeholder:text-[var(--color-muted)]"
         />
@@ -228,6 +235,7 @@ export function CreateStudio({
             <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.agents.runDurationLabel}</span>
             <select value={duration} onChange={(e) => setDuration(e.target.value)} className={selectClass}>
               <option value="">{t.agents.runOptChannel}</option>
+              <option value="60">{t.agents.runDur1m}</option>
               <option value="180">{t.agents.runDur3m}</option>
               <option value="300">{t.agents.runDur5m}</option>
               <option value="600">{t.agents.runDur10m}</option>
@@ -238,6 +246,7 @@ export function CreateStudio({
             <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.agents.runLangLabel}</span>
             <select value={language} onChange={(e) => setLanguage(e.target.value)} className={selectClass}>
               <option value="">{t.agents.runOptChannel}</option>
+              <option value="Uzbek">O&apos;zbek</option>
               <option value="English">English</option>
               <option value="Arabic">العربية</option>
               <option value="Russian">Русский</option>

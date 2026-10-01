@@ -56,6 +56,7 @@ export const ALL_CHANNELS_SLUG = "all-channels";
  */
 export const SECTIONS = [
   "command-center",
+  "home",
   "create",
   "videos",
   "studio",
