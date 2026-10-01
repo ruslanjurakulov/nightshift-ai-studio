@@ -233,7 +233,7 @@ describe("GeneratePanel Style chips", () => {
   it("voice has no Style row", async () => {
     render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} />));
     await styleGroup();
-    fireEvent.click(screen.getByRole("button", { name: t.gen.kinds.tts }));
+    fireEvent.click(screen.getByRole("tab", { name: t.gen.tabs.tts }));
     expect(screen.queryByRole("group", { name: t.gen.styleLabel })).toBeNull();
     expect(screen.queryByText(t.gen.mentionHint)).toBeNull();
   });

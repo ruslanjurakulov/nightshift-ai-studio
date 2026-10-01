@@ -90,7 +90,7 @@ describe("TemplateGallery in the Studio", () => {
     render(withI18n(<GenerateSection orgId={ORG} models={MODELS} />));
     fireEvent.click(screen.getByRole("button", { name: `${t.studioTemplates.use}: ${t.studioTemplates.items.shorts_clip.title}` }));
 
-    expect(screen.getByRole("button", { name: t.gen.kinds.t2v }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("tab", { name: t.gen.tabs.t2v }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("button", { name: "9:16" }).getAttribute("aria-pressed")).toBe("true");
     const box = screen.getByRole("textbox") as HTMLTextAreaElement;
     expect(box.value).toContain("[subject]");
@@ -101,7 +101,7 @@ describe("TemplateGallery in the Studio", () => {
   it("a picture tool template opens the picker instead of a price", async () => {
     render(withI18n(<GenerateSection orgId={ORG} models={MODELS} />));
     fireEvent.click(screen.getByRole("button", { name: `${t.studioTemplates.use}: ${t.studioTemplates.items.cutout.title}` }));
-    expect(screen.getByRole("button", { name: t.gen.kinds.remove_bg }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("tab", { name: t.gen.tabs.remove_bg }).getAttribute("aria-selected")).toBe("true");
     expect(await screen.findByText(t.gen.sourceEmpty)).toBeTruthy();
     expect(fetchMock.mock.calls.some(([u]) => u === "/api/creative/quote")).toBe(false);
   });

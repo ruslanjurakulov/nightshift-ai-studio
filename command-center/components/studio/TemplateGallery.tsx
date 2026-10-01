@@ -1,58 +1,50 @@
 "use client";
 
-import { Film, Image as ImageIcon, Mic, Play, Scissors, Wand2, ZoomIn, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { kindLabel, type StudioPrefill } from "@/lib/creative/studio";
 import { STUDIO_TEMPLATES, templateGradient, templatePrefill } from "@/lib/creative/templates";
-
-const ICON: Record<string, LucideIcon> = {
-  t2i: ImageIcon,
-  t2v: Film,
-  tts: Mic,
-  edit: Wand2,
-  i2v: Play,
-  upscale: ZoomIn,
-  remove_bg: Scissors,
-};
+import { TOOL_ICONS } from "@/components/studio/toolIcons";
 
 /**
- * Ready starting points above the generate panel. A card only fills the
- * panel (onPick); it never prices or starts anything by itself. A horizontal
- * row on a phone, a grid on wider screens.
+ * Ready starting points, as a compact strip above the results. A card only
+ * fills the composer (onPick); it never prices or starts anything by itself.
+ * One scrolling row at every width: the results are the page, not this.
  */
 export function TemplateGallery({ onPick }: { onPick: (prefill: StudioPrefill) => void }) {
   const { t } = useI18n();
   const tt = t.studioTemplates;
 
   return (
-    <section className="flex flex-col gap-2" aria-labelledby="tpl-title">
-      <div className="flex flex-col gap-0.5">
-        <h2 id="tpl-title" className="t-section">
+    <section className="flex min-w-0 flex-col gap-2" aria-labelledby="tpl-title">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 id="tpl-title" className="shrink-0 whitespace-nowrap text-[13px] font-semibold text-[var(--color-fg)]">
           {tt.title}
         </h2>
-        <p className="text-[12px] text-[var(--color-muted)]">{tt.hint}</p>
+        <p className="hidden min-w-0 truncate text-[12px] text-[var(--color-muted)] sm:block">{tt.hint}</p>
       </div>
-      <ul className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-4">
+      <ul className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-2">
         {STUDIO_TEMPLATES.map((tpl) => {
-          const Icon = ICON[tpl.capability] ?? ImageIcon;
+          const Icon = TOOL_ICONS[tpl.capability];
           const copy = tt.items[tpl.id];
           return (
-            <li key={tpl.id} className="w-40 shrink-0 snap-start sm:w-auto">
+            <li key={tpl.id} className="shrink-0 snap-start">
               <button
                 type="button"
                 onClick={() => onPick(templatePrefill(tpl))}
                 aria-label={`${tt.use}: ${copy.title}`}
-                className="press group flex h-full w-full flex-col overflow-hidden rounded-[14px] border border-[var(--color-border)] bg-[var(--color-panel)] text-left transition-colors hover:border-[var(--color-primary)] focus-visible:border-[var(--color-primary)]"
+                title={copy.who}
+                className="press flex h-14 w-[200px] items-center gap-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-panel)] p-2 pr-3 text-left transition-colors hover:border-[var(--color-primary)]"
               >
-                <span aria-hidden className="relative grid h-16 place-items-center" style={{ background: templateGradient(tpl) }}>
-                  <Icon className="size-6 text-white drop-shadow" strokeWidth={1.75} />
-                  <span className="absolute bottom-1.5 left-2 rounded bg-black/45 px-1.5 py-0.5 text-[10px] text-white">
-                    {kindLabel(t, tpl.capability)}
-                  </span>
+                <span
+                  aria-hidden
+                  className="grid size-10 shrink-0 place-items-center rounded-[10px] text-[var(--studio-on-media)]"
+                  style={{ background: templateGradient(tpl) }}
+                >
+                  <Icon className="size-[18px]" strokeWidth={1.75} />
                 </span>
-                <span className="flex flex-col gap-0.5 p-2.5">
-                  <span className="text-[13px] font-semibold text-[var(--color-fg)]">{copy.title}</span>
-                  <span className="text-[11px] leading-snug text-[var(--color-muted)]">{copy.who}</span>
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-[13px] font-medium text-[var(--color-fg)]">{copy.title}</span>
+                  <span className="truncate text-[11px] text-[var(--color-muted)]">{kindLabel(t, tpl.capability)}</span>
                 </span>
               </button>
             </li>

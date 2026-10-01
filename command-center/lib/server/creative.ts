@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { JOB_COLUMNS, type CreativeDb, type CreativeResult } from "@/lib/creative/operations";
-import { coerceModels, type StudioModel } from "@/lib/creative/studio";
+import { coerceModels, withTiers, type StudioModel } from "@/lib/creative/studio";
 
 /**
  * The creative operations' database door for the web: the signed-in user's
@@ -63,7 +63,14 @@ export async function loadStudioModels(): Promise<StudioModel[]> {
       .order("display_name", { ascending: true })
       .limit(200);
     if (error) return [];
-    return coerceModels(data);
+    const models = coerceModels(data);
+    if (models.length === 0) return models;
+    // The speed and quality marks live in spec, which members cannot read
+    // directly; sellable_models() (0035/0046, security definer, granted to
+    // signed-in users) returns its public half. Without it the models are
+    // simply shown unmarked.
+    const marks = await supabase.rpc("sellable_models", { p_capability: null, p_surface: "web" });
+    return marks.error ? models : withTiers(models, marks.data);
   } catch {
     return [];
   }

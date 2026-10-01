@@ -117,11 +117,23 @@ describe("JobFeed before / after", () => {
     expect(slider.getAttribute("aria-valuetext")).toBe("80%");
   });
 
-  it("does not read the library when nothing can be compared", async () => {
-    feedJobs = [job({ capability: "t2i", params: { prompt: "a lighthouse" }, result_asset_ids: [OUT] })];
+  it("does not read the library when no job has a result to draw", async () => {
+    feedJobs = [
+      job({ capability: "t2i", params: { prompt: "a lighthouse" }, result_asset_ids: [] }),
+      job({ id: "f", status: "failed", capability: "t2i", params: { prompt: "a cliff" }, result_asset_ids: [] }),
+    ];
     render(withI18n(<JobFeed orgId={ORG} />));
     await screen.findByText("a lighthouse");
     expect(mediaCalls()).toBe(0);
+    expect(screen.queryByRole("slider")).toBeNull();
+  });
+
+  it("draws a finished image's own thumbnail from the library, with no slider", async () => {
+    feedJobs = [job({ capability: "t2i", params: { prompt: "a lighthouse" }, result_asset_ids: [OUT] })];
+    const { container } = render(withI18n(<JobFeed orgId={ORG} />));
+    await screen.findByText("a lighthouse");
+    await vi.waitFor(() => expect(container.querySelector(`img[src="/thumb/${OUT}"]`)).not.toBeNull());
+    expect(mediaCalls()).toBe(1);
     expect(screen.queryByRole("slider")).toBeNull();
   });
 

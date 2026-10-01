@@ -73,6 +73,20 @@
   --cta-sheen: linear-gradient(180deg, rgba(0, 0, 0, 0) 45%, rgba(6, 12, 22, 0.16) 100%);
   --cta-glow: 0 6px 20px color-mix(in srgb, var(--color-primary) 28%, transparent);
   --cta-glow-hover: 0 8px 28px color-mix(in srgb, var(--color-primary) 42%, transparent);
+  /* Studio (the generate composer and its canvas). One solid accent for the
+     one action that spends; quiet raised fields around it; a scrim for the
+     labels that sit on top of a picture, dark in both themes because the
+     picture under it can be anything. */
+  --studio-field: #f5f8fc;
+  --studio-raised: #ffffff;
+  --studio-canvas: color-mix(in srgb, var(--color-panel) 55%, transparent);
+  --studio-scrim: rgba(11, 16, 22, 0.42);
+  --studio-cta-bg: var(--color-primary);
+  --studio-cta-fg: var(--color-on-accent);
+  --studio-cta-shadow: 0 6px 18px color-mix(in srgb, var(--color-primary) 30%, transparent);
+  --studio-on-media: #ffffff;
+  --studio-media-chip: rgba(6, 10, 18, 0.62);
+  --studio-dock-bg: color-mix(in srgb, var(--color-bg) 90%, transparent);
   /* App shell surfaces (v2): the sidebar and top bar sit a step off the page,
      rows hover and select on a quiet wash rather than a coloured box. */
   --shell-bg: #f8fafc;
@@ -130,6 +144,16 @@
       0 -2px 24px rgba(255, 224, 176, 0.28),
       0 0 44px rgba(168, 204, 252, 0.24),
       inset 0 1px 0 0 rgba(255, 251, 242, 0.55);
+    --studio-field: #0e1217;
+    --studio-raised: #141920;
+    --studio-canvas: color-mix(in srgb, var(--color-panel) 60%, transparent);
+    --studio-scrim: rgba(0, 0, 0, 0.66);
+    --studio-cta-bg: var(--color-primary);
+    --studio-cta-fg: var(--color-on-accent);
+    --studio-cta-shadow: 0 8px 28px color-mix(in srgb, var(--color-primary) 24%, transparent);
+    --studio-on-media: #ffffff;
+    --studio-media-chip: rgba(0, 0, 0, 0.6);
+    --studio-dock-bg: color-mix(in srgb, var(--color-bg) 88%, transparent);
   }
 }
 
@@ -179,6 +203,16 @@
     0 -2px 24px rgba(255, 224, 176, 0.28),
     0 0 44px rgba(168, 204, 252, 0.24),
     inset 0 1px 0 0 rgba(255, 251, 242, 0.55);
+  --studio-field: #0e1217;
+  --studio-raised: #141920;
+  --studio-canvas: color-mix(in srgb, var(--color-panel) 60%, transparent);
+  --studio-scrim: rgba(0, 0, 0, 0.66);
+  --studio-cta-bg: var(--color-primary);
+  --studio-cta-fg: var(--color-on-accent);
+  --studio-cta-shadow: 0 8px 28px color-mix(in srgb, var(--color-primary) 24%, transparent);
+  --studio-on-media: #ffffff;
+  --studio-media-chip: rgba(0, 0, 0, 0.6);
+  --studio-dock-bg: color-mix(in srgb, var(--color-bg) 88%, transparent);
 }
 
 * {
@@ -1233,4 +1267,168 @@ html:has(.lp-root) { scroll-behavior: smooth; }
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ── Studio: the generate composer and its canvas ─────────────────────────────
+   A product type scale (13–15px, nothing display-sized), an 8px rhythm, quiet
+   raised surfaces with hairline borders, and one solid accent for Generate. */
+.studio-surface {
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-panel);
+}
+.studio-field {
+  background: var(--studio-field);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.studio-field:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+/* The field draws the focus ring (above); its own text box must not draw a
+   second one inside it. Unlayered, because the global :focus-visible is. */
+.studio-field textarea:focus-visible,
+.studio-field input:focus-visible { outline: none; }
+.studio-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+/* A tool tab: icon over a short name. Selected = raised, accent icon. */
+.studio-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 56px;
+  padding: 8px 4px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-muted);
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.studio-tab:hover { color: var(--color-fg); background: var(--studio-field); }
+.studio-tab[aria-selected="true"] {
+  color: var(--color-fg);
+  background: var(--studio-raised);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-panel);
+}
+.studio-tab[aria-selected="true"] svg { color: var(--color-primary); }
+/* Segmented settings inside the prompt box (shape, length, size). */
+.studio-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-panel);
+}
+.studio-seg > button {
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--color-muted);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.studio-seg > button:hover { color: var(--color-fg); }
+.studio-seg > button[aria-pressed="true"] {
+  color: var(--studio-cta-fg);
+  background: var(--studio-cta-bg);
+}
+.studio-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  max-width: 100%;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  font-size: 12px;
+  color: var(--color-muted);
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+.studio-chip:hover { color: var(--color-fg); }
+.studio-chip[aria-pressed="true"] {
+  color: var(--color-fg);
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+/* THE action: full width, solid accent, the price on it. */
+.studio-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 20px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--studio-cta-fg);
+  background: var(--studio-cta-bg);
+  box-shadow: var(--studio-cta-shadow);
+  transition: filter 0.15s ease, transform 0.12s ease, box-shadow 0.2s ease;
+}
+.studio-cta:hover:not(:disabled) { filter: brightness(1.06); }
+.studio-cta:active:not(:disabled) { transform: translateY(1px); }
+.studio-cta:disabled {
+  cursor: not-allowed;
+  color: var(--color-muted);
+  background: var(--studio-field);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+/* The composer's Generate on a phone: pinned above the bottom tab bar while
+   the composer is on screen, then it scrolls away with it. */
+.studio-dock {
+  position: sticky;
+  bottom: calc(env(safe-area-inset-bottom) + var(--studio-dock-offset, 76px));
+  z-index: 20;
+  margin: 0 -16px -16px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--color-border);
+  border-radius: 0 0 20px 20px;
+  background: var(--studio-dock-bg);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+@media (min-width: 1024px) {
+  .studio-dock {
+    position: static;
+    margin: 0;
+    padding: 0;
+    border-top: 0;
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+/* A result card's actions: on the picture, shown on hover and on keyboard
+   focus; always shown where there is no hover (a phone). */
+.studio-card-actions { opacity: 0; transition: opacity 0.15s ease; }
+.studio-card:hover .studio-card-actions,
+.studio-card:focus-within .studio-card-actions { opacity: 1; }
+@media (hover: none) {
+  .studio-card-actions { opacity: 1; }
+}
+.studio-on-media {
+  color: var(--studio-on-media);
+  background: var(--studio-media-chip);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.studio-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

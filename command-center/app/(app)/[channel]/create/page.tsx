@@ -52,6 +52,7 @@ export default async function CreatePage({
   // Home's composer: topic, length and language for the channel run below.
   // Fills the form; Create still shows the price and asks before it runs.
   const runInitial = runPrefillFromQuery(q);
+  const operator = await isOperator();
 
   const run = (
     <CreateStudio
@@ -60,7 +61,7 @@ export default async function CreatePage({
       backend={runBackend}
       agentConfig={scopedChannel?.agent_config ?? null}
       canRun={canRun}
-      operator={await isOperator()}
+      operator={operator}
       targets={targets}
       initial={runInitial}
     />
@@ -84,6 +85,8 @@ export default async function CreatePage({
           // The channel's look (0047) is the starting style; the panel uses it
           // only if it is one of the organization's kits as loaded.
           defaultStyleKitId={typeof scopedChannel?.default_style_kit_id === "string" ? scopedChannel.default_style_kit_id : null}
+          // The platform operator has no phone tab bar to dock Generate above.
+          bottomBar={!operator}
         />
       )}
       {!runInitial && run}
