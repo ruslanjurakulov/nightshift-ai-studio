@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowUpRight,
@@ -25,6 +25,8 @@ import { HOME_FORMATS, QUICK_ACTIONS, toolHref, type HomeChannel, type QuickActi
 import { HomeComposer, type ComposerChannel, type ComposerHandle } from "@/components/home/HomeComposer";
 import { FormatArt } from "@/components/home/FormatArt";
 import { RecentStrip } from "@/components/home/RecentStrip";
+import { AssistantPlanner } from "@/components/assistant/AssistantPlanner";
+import type { StudioModel } from "@/lib/creative/studio";
 
 const QUICK_ICON: Record<QuickActionId, LucideIcon> = {
   image: ImagePlus,
@@ -61,6 +63,7 @@ export function HomeHub({
   currentSlug,
   orgId,
   allPrivate,
+  assistant,
 }: {
   channels: HomeChannel[];
   /** The channel in the URL — the composer's first choice. */
@@ -69,6 +72,11 @@ export function HomeHub({
   orgId: string | null;
   /** True when every connected channel keeps videos private until approved. */
   allPrivate: boolean;
+  /**
+   * The Assistant: one goal → a priced plan → one confirm. Absent: not shown.
+   * It prices only once a plan is made and spends nothing before Start.
+   */
+  assistant?: { models: StudioModel[]; canRun: boolean; runConfigured: boolean };
 }) {
   const { t } = useI18n();
   const path = useChannelPath();
@@ -76,6 +84,13 @@ export function HomeHub({
   const runnable: ComposerChannel[] = channels
     .filter((c) => c.standing !== "draft")
     .map((c) => ({ slug: c.slug, name: c.name, autoPublish: c.autoPublish }));
+  const plannerChannels = useMemo(
+    () =>
+      channels
+        .filter((c) => c.standing !== "draft")
+        .map((c) => ({ id: c.id, slug: c.slug, name: c.name, language: c.language })),
+    [channels],
+  );
 
   return (
     <div className="flex flex-col gap-10 sm:gap-12">
@@ -129,6 +144,17 @@ export function HomeHub({
           ))}
         </ul>
       </section>
+
+      {assistant && (
+        <AssistantPlanner
+          orgId={orgId}
+          models={assistant.models}
+          channels={plannerChannels}
+          currentSlug={currentSlug}
+          canRun={assistant.canRun}
+          runConfigured={assistant.runConfigured}
+        />
+      )}
 
       {/* ── Quick tools → the Studio panel, filled ─────────────────────── */}
       <section aria-labelledby="home-quick" className="flex flex-col gap-3">

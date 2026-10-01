@@ -122,6 +122,7 @@ vi.mock("@/lib/server/credits", () => ({
     return state.creditsEnforced;
   },
   reserveRunCredits,
+  runCreditRefFor: (prefix: string, user: string, channel: string, key: string) => `${prefix}-ref:${user}:${channel}:${key}`,
 }));
 
 const { requireOrgRole, resolveCurrentOrgRole } = await import("../lib/auth/org-roles");
@@ -249,6 +250,47 @@ describe("requireOrgRole", () => {
     viewing(org(ORG_A, "owner"), ["ch-a"]);
     state.user = null;
     expect(await requireOrgRole({ channelId: "ch-a" }, "viewer")).toMatchObject({ ok: false, status: 401 });
+  });
+});
+
+describe("POST /api/agent/run: a confirmed Assistant step", () => {
+  it("holds with a reference derived from the caller, the channel and the key, capped at the confirmed price", async () => {
+    viewing(org(ORG_A, "admin"), ["ch-a"]);
+    const res = await run.POST(post({ channel_id: "ch-a", idempotency_key: "assistant:p:s1:0", max_credits: 12 }));
+    expect(res.status).toBe(200);
+    const [, channel, , prefix, opts] = reserveRunCredits.mock.calls[0] as unknown[];
+    expect(channel).toBe("ch-a");
+    expect(opts).toEqual({ maxCredits: 12, creditRef: `${prefix}-ref:${state.user?.id}:ch-a:assistant:p:s1:0` });
+  });
+
+  it("a replayed step is answered as already started and nothing is dispatched", async () => {
+    viewing(org(ORG_A, "admin"), ["ch-a"]);
+    reserveRunCredits.mockImplementationOnce(async () => ({ ok: false, status: 409, body: { error: "run_already_started" } }));
+    const res = await run.POST(post({ channel_id: "ch-a", idempotency_key: "assistant:p:s1:0", max_credits: 12 }));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "run_already_started" });
+    expect(dispatchDailyVideo).not.toHaveBeenCalled();
+  });
+
+  it("a malformed key or price is refused before anything is held", async () => {
+    viewing(org(ORG_A, "admin"), ["ch-a"]);
+    for (const body of [
+      { channel_id: "ch-a", idempotency_key: "bad key with spaces" },
+      { channel_id: "ch-a", idempotency_key: 5 },
+      { channel_id: "ch-a", max_credits: -1 },
+      { channel_id: "ch-a", max_credits: "12" },
+    ]) {
+      const res = await run.POST(post(body));
+      expect(res.status).toBe(400);
+    }
+    expect(reserveRunCredits).not.toHaveBeenCalled();
+    expect(dispatchDailyVideo).not.toHaveBeenCalled();
+  });
+
+  it("without a key the hold is made as before (a fresh reference)", async () => {
+    viewing(org(ORG_A, "admin"), ["ch-a"]);
+    await run.POST(post({ channel_id: "ch-a" }));
+    expect((reserveRunCredits.mock.calls[0] as unknown[])[4]).toEqual({ maxCredits: null, creditRef: null });
   });
 });
 
