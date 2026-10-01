@@ -385,3 +385,8 @@ sec_folders_0049.extend(TABLES, FUNCTIONS)
 import sec_editor_0054  # noqa: E402
 
 sec_editor_0054.extend(TABLES, FUNCTIONS)
+
+# Migration 0056 (Channel DNA): tests/security/sec_dna_0056.py
+import sec_dna_0056  # noqa: E402
+
+sec_dna_0056.extend(TABLES, FUNCTIONS)
