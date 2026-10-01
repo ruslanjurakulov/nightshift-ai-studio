@@ -23,6 +23,8 @@ export const MAX_ACTIVE_KEYS = 10;
 
 /** The columns the Developer console lists a key by: its name, id, times and
  *  what it may do (0062). Never the retired `prefix` column (0040) and never the hash. */
+/** The list before 0062: what a deployment that has not applied it can still read. */
+export const API_KEY_BASE_COLUMNS = "id,name,monthly_limit_cents,created_at,last_used_at,revoked_at";
 export const API_KEY_LIST_COLUMNS =
   "id,name,monthly_limit_cents,created_at,last_used_at,revoked_at,scopes,rpm_limit,creative_monthly_credits";
 
