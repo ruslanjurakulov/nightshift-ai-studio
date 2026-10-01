@@ -140,7 +140,7 @@ def test_anon_reads_nothing(conn, sc, table):
     assert (not out.ok) or out.rows == [], f"{table}: the anon key reads {[r[0] for r in out.rows][:3]}"
 
 
-@pytest.mark.parametrize("table", SCOPED)
+@pytest.mark.parametrize("table", [t for t in SCOPED if TABLES[t].operator_reads])
 def test_platform_admin_still_reads_every_tenant(conn, sc, table):
     # The other half of isolation: the operator must not be locked out of a
     # customer's data by a tightened policy (support, refunds, abuse).

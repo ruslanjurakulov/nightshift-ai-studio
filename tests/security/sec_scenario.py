@@ -356,6 +356,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Auto-captions (0072): tests/security/sec_captions_0072.py — a completed job and its track per tenant.
     import sec_captions_0072
     sec_captions_0072.seed(conn, sc)
+    # Notifications (0064): tests/security/sec_notify_0064.py — raised by the real triggers.
+    import sec_notify_0064
+    sec_notify_0064.seed(conn, sc)
     # A pending invite into org A, addressed to Ivan's email, not yet accepted.
     with acting(conn, sc.alice.actor, commit=True) as s:
         s.value("select public.invite_org_member(%s, %s, 'viewer')", [sc.alice.org, sc.invitee.email])
