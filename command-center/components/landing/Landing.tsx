@@ -1,54 +1,35 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  Check,
+  ArrowUpRight,
   Clapperboard,
-  Coins,
-  FileText,
+  Film,
   ImagePlus,
-  Languages,
-  Lightbulb,
+  Library,
   Lock,
   Mic,
   Play,
-  RotateCcw,
   Scissors,
-  Send,
-  ShieldCheck,
-  Sparkles,
-  Tv,
   Wand2,
-  X,
   ZoomIn,
   type LucideIcon,
 } from "lucide-react";
-import { fmt, LOCALES, type Dictionary, type Locale } from "@/lib/i18n";
+import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
 import type { PricingTeaser as PricingTeaserData, ShowcaseItem } from "@/lib/landing";
 import { WELCOME_CREDITS } from "@/lib/pricing";
-import { HOME_FORMATS } from "@/lib/home";
-import { FormatArt } from "@/components/home/FormatArt";
-import { StudioMock } from "@/components/landing/StudioMock";
+import { formatCredits } from "@/lib/credits";
+import { isSolutionId, solutionHref } from "@/lib/solutions";
+import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
+import { Rundown } from "@/components/site/Rundown";
+import { EditorPicture } from "@/components/site/EditorPicture";
+import { Slug } from "@/components/site/Slug";
 import { Showcase } from "@/components/landing/Showcase";
 import { PricingTeaser } from "@/components/landing/PricingTeaser";
 import { Faq } from "@/components/landing/Faq";
-import { Eyebrow, SectionHead } from "@/components/landing/SectionHead";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 
-/** The video flow, in the order a video moves through it (same as Home's). */
-const FLOW = ["channel", "topic", "script", "video", "approval", "youtube"] as const;
-const FLOW_ICON: Record<(typeof FLOW)[number], LucideIcon> = {
-  channel: Tv,
-  topic: Lightbulb,
-  script: FileText,
-  video: Clapperboard,
-  approval: ShieldCheck,
-  youtube: Send,
-};
-
-/** The Studio's single-result tools, in the order the Studio lists them. */
-const TOOLS = ["image", "video", "voice", "edit", "animate", "upscale", "cutout"] as const;
-const TOOL_ICON: Record<(typeof TOOLS)[number], LucideIcon> = {
+const TOOL_ICON: Record<string, LucideIcon> = {
   image: ImagePlus,
   video: Clapperboard,
   voice: Mic,
@@ -56,37 +37,30 @@ const TOOL_ICON: Record<(typeof TOOLS)[number], LucideIcon> = {
   animate: Play,
   upscale: ZoomIn,
   cutout: Scissors,
-};
-/** Each tool's mark on its own painted square — the same hues as Home's quick tools. */
-const TOOL_HUE: Record<(typeof TOOLS)[number], string> = {
-  image: "linear-gradient(135deg,#ff7a59,#ffb35c)",
-  video: "linear-gradient(135deg,#7b5cff,#d65cff)",
-  voice: "linear-gradient(135deg,#2bb3a3,#5ad1e6)",
-  edit: "linear-gradient(135deg,#3f7bff,#69b4ff)",
-  animate: "linear-gradient(135deg,#5b3cc4,#e2559f)",
-  upscale: "linear-gradient(135deg,#ffb020,#ff6a3d)",
-  cutout: "linear-gradient(135deg,#e2559f,#ff8fb1)",
+  styles: Library,
+  editor: Film,
 };
 
+/** Each rule's state, as the app would show it on its lamp. */
+const RULE_TONE: Record<string, LampTone> = { price: "ok", refund: "ok", approval: "run" };
+
 /**
- * The signed-out homepage. It leads with the product itself — the Studio as
- * it looks signed in, and the channel → topic → script → video → approval →
- * YouTube flow — then what you can make, how a video gets made, the five
- * rules that set Nightshift apart, the money, and the questions to settle
- * before paying.
+ * The signed-out homepage, drawn as the control room at 03:00 (IDENTITY.md).
  *
- * Every claim on it is one the code in this repository backs; where something
- * is not true yet (no public results, no published price) the section says so
- * or is left out. No competitor and no AI provider is named: the comparison
- * is with patterns common in the market. The only figure it states is the
- * welcome grant, read from WELCOME_CREDITS (which a test pins to the database).
+ * It leads with the product's promise and its proof in one frame: the headline
+ * on the left, and on the right a rundown of one video with the only lit lamp
+ * on the page — the approval waiting for its person. Then the three rules the
+ * product enforces, how a video moves, the Studio, channels and languages, the
+ * Solutions, the money, the questions to settle before paying, and the Google
+ * data statement OAuth reviewers read.
  *
- * It is also the page Google's OAuth reviewers read to learn why the app asks
- * for YouTube access, which is why "Your Google data" stays on it with links to
- * the Privacy Policy and Google's own permissions page.
+ * Every claim on it is one the code backs; the only figures are the welcome
+ * grant (WELCOME_CREDITS, pinned to the database by a test) and whatever the
+ * pricing source holds. No competitor and no AI provider is named, and there
+ * are no testimonials, logos or usage numbers, because there are none to show.
  *
- * A Server Component. The only client code on the page is the shell's mobile
- * menu and its theme and language controls; all motion is CSS.
+ * A Server Component. The only client code on the page is the header's menu
+ * and its theme and language keys; the one animation is the waiting lamp.
  */
 export function Landing({
   t,
@@ -100,313 +74,284 @@ export function Landing({
   showcase: ShowcaseItem[];
 }) {
   return (
-    <div className="lp-root mx-auto flex w-full max-w-6xl flex-col gap-24 px-4 pb-24 pt-10 sm:px-6 sm:pt-16 lg:gap-32">
-      <Hero t={t} />
-      <MakeSection t={t} />
-      <HowSection t={t} />
-      <WhySection t={t} />
-      {showcase.length > 0 && <Showcase t={t} items={showcase} hour="02:00" />}
-      <PricingTeaser t={t} locale={locale} teaser={pricing} hour="03:00" />
-      <Faq t={t} hour="04:00" />
+    <div className="lp-root">
+      <Hero t={t} locale={locale} />
+      <Rules t={t} />
+      <How t={t} />
+      <Studio t={t} />
+      <Desk t={t} locale={locale} />
+      {showcase.length > 0 && (
+        <div className="st-section">
+          <div className="st-wrap">
+            <Showcase t={t} items={showcase} hour="02:00" />
+          </div>
+        </div>
+      )}
+      <SolutionsTeaser t={t} />
+      <PricingTeaser t={t} locale={locale} teaser={pricing} />
+      <Faq t={t} />
       <GoogleData t={t} />
       <FinalCta t={t} />
     </div>
   );
 }
 
-function Hero({ t }: { t: Dictionary }) {
-  const h = t.landing.hero;
+function Hero({ t, locale }: { t: Dictionary; locale: Locale }) {
+  const h = t.site.hero;
   return (
-    <section aria-labelledby="hero-title" className="flex flex-col gap-10 sm:gap-12">
-      <div className="lp-in max-w-3xl">
-        <Eyebrow hour="22:00">{h.eyebrow}</Eyebrow>
-        <h1
-          id="hero-title"
-          className="mt-6 font-display font-semibold tracking-[-0.03em]"
-          style={{ fontSize: "clamp(2.25rem, 4.6vw, 58px)", lineHeight: 1.05, textWrap: "balance" }}
-        >
-          {h.title}
+    <section aria-labelledby="hero-title" className="st-wrap st-hero">
+      <div>
+        <p className="st-kicker">{h.kicker}</p>
+        <h1 id="hero-title" className="st-h1 mt-5">
+          {h.titleA} <span className="st-h1-b">{h.titleB}</span>
         </h1>
-        <p className="mt-5 max-w-[60ch] text-[16.5px] font-light leading-relaxed text-[var(--color-muted)] sm:text-[18px]">
-          {h.lead}
-        </p>
-        <div className="mt-8 flex flex-col gap-3 min-[420px]:flex-row min-[420px]:flex-wrap min-[420px]:items-center">
-          <Link href="/signup" className="btn-sky is-solid pill min-h-12 px-7 text-[15px]">
-            {h.ctaPrimary}
-            <ArrowRight className="btn-arrow size-4" aria-hidden />
+        <p className="st-lead mt-7">{h.lead}</p>
+        <div className="st-hero-actions">
+          <Link href="/signup" className="st-key">
+            {h.cta}
+            <ArrowRight aria-hidden />
           </Link>
-          <Link href="/pricing" className="btn-sky ghost pill min-h-12 px-7 text-[15px]">
-            {h.ctaSecondary}
+          <Link href="/pricing" className="st-link">
+            {h.secondary}
           </Link>
         </div>
-        <p className="mt-4 flex items-center gap-2 text-[13px] text-[var(--color-muted)]">
-          <Coins className="size-3.5 shrink-0 text-[var(--color-primary)]" aria-hidden />
-          {fmt(h.note, { n: WELCOME_CREDITS })}
+        <p className="st-hero-note">
+          <span aria-hidden className="ns-lamp" data-tone="ok" />
+          {fmt(h.note, { n: formatCredits(WELCOME_CREDITS, locale) })}
         </p>
       </div>
+      <Rundown t={t} />
+    </section>
+  );
+}
 
-      <Flow t={t} />
-
-      <div className="lg:pb-6">
-        <StudioMock t={t} />
+function Rules({ t }: { t: Dictionary }) {
+  const r = t.site.rules;
+  return (
+    <section id="rules" aria-labelledby="rules-title" className="st-section">
+      <div className="st-wrap">
+        <Slug>{r.slug}</Slug>
+        <h2 id="rules-title" className="st-h2 mt-8 max-w-[26ch]">
+          {r.title}
+        </h2>
+        <ul className="st-rules">
+          {r.items.map((item) => (
+            <li key={item.id} className="st-rule">
+              <StatusLamp tone={RULE_TONE[item.id] ?? "ok"} label={item.state} />
+              <h3 className="st-h3">{item.title}</h3>
+              <p className="st-body">{item.body}</p>
+              <ol className="st-ledger" aria-label={item.title}>
+                {item.lines.map((line, i) => {
+                  const last = i === item.lines.length - 1;
+                  // The refund ledger's middle line is the failure itself.
+                  const tone: LampTone = item.id === "refund" && i === 1 ? "fail" : last && item.id === "approval" ? "run" : "ok";
+                  return (
+                    <li key={line}>
+                      <span aria-hidden className="ns-lamp" data-tone={tone} />
+                      {line}
+                    </li>
+                  );
+                })}
+              </ol>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );
 }
 
-/** The hero's flow strip: a real ordered list (it is the product's promise, not decoration). */
-function Flow({ t }: { t: Dictionary }) {
-  const f = t.landing.flow;
+function How({ t }: { t: Dictionary }) {
+  const h = t.site.how;
   return (
-    <ol aria-label={t.landing.hero.flowLabel} className="flex flex-wrap items-center gap-x-2 gap-y-2.5 sm:gap-x-1">
-      {FLOW.map((id, i) => {
-        const Icon = FLOW_ICON[id];
-        const you = id === "approval";
-        const next = id === "youtube";
-        return (
-          <li key={id} className="flex items-center gap-1">
-            <span
-              className={`lp-flow-step ${you ? "is-you" : ""} ${next ? "is-next" : ""}`}
-              style={{ "--i": i } as React.CSSProperties}
-            >
-              {you || next ? (
-                <Icon className="size-3.5 shrink-0" aria-hidden />
-              ) : (
-                <Check className="size-3.5 shrink-0 text-[var(--color-ok)]" aria-hidden />
+    <section id="how" aria-labelledby="how-title" className="st-section">
+      <div className="st-wrap">
+        <Slug>{h.slug}</Slug>
+        <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] lg:items-end">
+          <h2 id="how-title" className="st-h2">
+            {h.title}
+          </h2>
+          <p className="st-lead">{h.lead}</p>
+        </div>
+        <ol className="st-steps" aria-label={h.slug}>
+          {h.steps.map((s, i) => (
+            <li key={s.id} className="st-step">
+              <span className="st-step-no st-num" aria-hidden>
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <h3 className="st-step-title">{s.title}</h3>
+              {s.id === "approval" && (
+                <span className="st-step-lamp">
+                  <StatusLamp tone="run" label={t.site.rundown.yours} />
+                </span>
               )}
-              {f[id]}
-            </span>
-            {i < FLOW.length - 1 && (
-              <span className="lp-flow-link hidden sm:block" style={{ "--i": i } as React.CSSProperties} aria-hidden />
-            )}
+              <p>{s.body}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  );
+}
+
+function Studio({ t }: { t: Dictionary }) {
+  const s = t.site.studio;
+  return (
+    <section id="studio" aria-labelledby="studio-title" className="st-section">
+      <div className="st-wrap">
+        <Slug>{s.slug}</Slug>
+        <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] lg:items-end">
+          <h2 id="studio-title" className="st-h2">
+            {s.title}
+          </h2>
+          <p className="st-lead">{s.lead}</p>
+        </div>
+        <div className="st-split">
+          <ul className="st-tools" aria-label={s.slug}>
+            {s.tools.map((tool) => {
+              const Icon = TOOL_ICON[tool.id] ?? ImagePlus;
+              return (
+                <li key={tool.id} className="st-tool">
+                  <Icon aria-hidden />
+                  <b>{tool.title}</b>
+                  <span>{tool.body}</span>
+                </li>
+              );
+            })}
+          </ul>
+          <EditorPicture t={t} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Desk({ t, locale }: { t: Dictionary; locale: Locale }) {
+  const d = t.site.desk;
+  const codes = ["uz", "ru", "en"] as const;
+  return (
+    <section id="channels" aria-labelledby="desk-title" className="st-section">
+      <div className="st-wrap">
+        <Slug>{d.slug}</Slug>
+        <h2 id="desk-title" className="st-h2 mt-8">
+          {d.title}
+        </h2>
+        <p className="st-lead mt-6">{d.lead}</p>
+        <div className="st-split">
+          <figure className="st-panel">
+            <div className="st-panel-head">
+              <b aria-hidden>{d.cols.channel}</b>
+              <span className="st-tag">{d.tag}</span>
+            </div>
+            <div className="st-table-wrap">
+              <table className="st-table">
+                <caption className="sr-only">{d.figure}</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">{d.cols.channel}</th>
+                    <th scope="col">{d.cols.language}</th>
+                    <th scope="col" className="st-col-voice">
+                      {d.cols.voice}
+                    </th>
+                    <th scope="col">{d.cols.autopublish}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.rows.map((row) => (
+                    <tr key={row.name}>
+                      <td>{row.name}</td>
+                      <td>{row.language}</td>
+                      <td className="st-col-voice text-[var(--ns-text-dim)]">{row.voice}</td>
+                      <td>
+                        <StatusLamp tone="idle" label={d.off} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </figure>
+          <ul className="st-langs" aria-label={d.slug}>
+            {d.languages.map((l, i) => (
+              <li key={l} lang={codes[i]} aria-current={codes[i] === locale ? "true" : undefined}>
+                {l}
+                {codes[i] === locale && <span aria-hidden className="ns-lamp" data-tone="run" data-size="md" />}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SolutionsTeaser({ t }: { t: Dictionary }) {
+  const s = t.site.solutionsTeaser;
+  return (
+    <section id="solutions" aria-labelledby="solutions-title" className="st-section">
+      <div className="st-wrap">
+        <Slug>{s.slug}</Slug>
+        <div className="mt-8 flex flex-wrap items-end justify-between gap-6">
+          <h2 id="solutions-title" className="st-h2">
+            {s.title}
+          </h2>
+          <Link href="/solutions" className="st-link">
+            {s.more}
+            <ArrowRight aria-hidden />
+          </Link>
+        </div>
+        <SolutionRows pages={t.site.solutions.pages} />
+      </div>
+    </section>
+  );
+}
+
+/** The solutions as full-width rows, each one link. Shared with /solutions. */
+export function SolutionRows({ pages }: { pages: Dictionary["site"]["solutions"]["pages"] }) {
+  return (
+    <ul className="st-sol-list">
+      {pages.map((p) =>
+        isSolutionId(p.id) ? (
+          <li key={p.id}>
+            <Link href={solutionHref(p.id)} className="st-sol-row">
+              <span className="st-kicker">{p.kicker}</span>
+              <span className="st-sol-title">{p.title}</span>
+              <span className="st-small">{p.lead}</span>
+              <span className="st-sol-arrow" aria-hidden>
+                <ArrowRight className="size-5" />
+              </span>
+            </Link>
           </li>
-        );
-      })}
-    </ol>
+        ) : null,
+      )}
+    </ul>
   );
-}
-
-function MakeSection({ t }: { t: Dictionary }) {
-  const m = t.landing.make;
-  return (
-    <section id="product" aria-labelledby="make-title" className="scroll-mt-24">
-      <SectionHead hour="23:00" eyebrow={m.eyebrow} title={m.title} lead={m.lead} id="make-title" />
-
-      <h3 className="t-label mt-12">{m.formatsLabel}</h3>
-      <ul className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3">
-        {HOME_FORMATS.map((f) => {
-          const copy = m.formats[f.id];
-          return (
-            <li
-              key={f.id}
-              className="lp-tile group overflow-hidden rounded-[18px] border border-[var(--color-border)] bg-[var(--color-panel)]"
-            >
-              <div className="relative aspect-[16/10] overflow-hidden">
-                <FormatArt id={f.id} className="absolute inset-0 size-full" />
-              </div>
-              <div className="flex flex-col gap-0.5 p-3 sm:p-4">
-                <h4 className="text-[14.5px] font-medium sm:text-[15px]">{copy.title}</h4>
-                <p className="text-[12.5px] leading-snug text-[var(--color-muted)] sm:text-[13px]">{copy.who}</p>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-
-      <h3 className="t-label mt-12">{m.toolsLabel}</h3>
-      <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-        {TOOLS.map((id) => {
-          const Icon = TOOL_ICON[id];
-          const copy = m.tools[id];
-          return (
-            <li
-              key={id}
-              className="flex items-center gap-3 rounded-[16px] border border-[var(--color-border)] bg-[var(--color-panel)] p-3 last:col-span-2 sm:p-3.5 sm:last:col-span-1 lg:flex-col lg:items-start"
-            >
-              <span
-                className="grid size-9 shrink-0 place-items-center rounded-[10px] text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)]"
-                style={{ background: TOOL_HUE[id] }}
-              >
-                <Icon className="size-[18px]" aria-hidden />
-              </span>
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span className="text-[14px] font-medium">{copy.title}</span>
-                <span className="text-[12px] leading-snug text-[var(--color-muted)]">{copy.sub}</span>
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
-  );
-}
-
-function HowSection({ t }: { t: Dictionary }) {
-  const h = t.landing.how;
-  return (
-    <section id="how" aria-labelledby="how-title" className="scroll-mt-24">
-      <SectionHead hour="00:00" eyebrow={h.eyebrow} title={h.title} lead={h.lead} id="how-title" />
-      <ol className="mt-12 grid gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
-        {h.steps.map((s, i) => {
-          const Icon = FLOW_ICON[s.id as (typeof FLOW)[number]] ?? Sparkles;
-          const yours = s.id === "approval";
-          return (
-            <li key={s.id} className="flex flex-col gap-3 border-t border-[var(--color-border)] pt-5">
-              <div className="flex items-center gap-3">
-                <span
-                  className={`grid size-9 place-items-center rounded-xl ${
-                    yours
-                      ? "bg-[var(--color-primary)] text-[var(--color-on-accent)]"
-                      : "bg-[var(--color-accent-soft)] text-[var(--color-primary)]"
-                  }`}
-                >
-                  <Icon className="size-[18px]" aria-hidden />
-                </span>
-                <span className="mono text-[12px] text-[var(--color-muted)]" aria-hidden>
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-              </div>
-              <h3 className="t-panel">{s.title}</h3>
-              <p className="text-[14.5px] font-light leading-relaxed text-[var(--color-muted)]">{s.body}</p>
-            </li>
-          );
-        })}
-      </ol>
-    </section>
-  );
-}
-
-const WHY_ICON: Record<string, LucideIcon> = {
-  price: Coins,
-  refund: RotateCcw,
-  approval: ShieldCheck,
-  channels: Tv,
-  languages: Languages,
-};
-
-/**
- * The five differences, each with the market pattern it answers — never a
- * named product. Every card carries a small piece of the real interface as
- * its picture, drawn from the same strings the app uses.
- */
-function WhySection({ t }: { t: Dictionary }) {
-  const w = t.landing.why;
-  return (
-    <section id="why" aria-labelledby="why-title" className="scroll-mt-24">
-      <SectionHead hour="01:00" eyebrow={w.eyebrow} title={w.title} lead={w.lead} id="why-title" />
-      <ul className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-6">
-        {w.items.map((item, i) => {
-          const Icon = WHY_ICON[item.id] ?? Sparkles;
-          const span = i < 2 ? "lg:col-span-3" : i === w.items.length - 1 ? "md:col-span-2 lg:col-span-2" : "lg:col-span-2";
-          return (
-            <li
-              key={item.id}
-              className={`glass-card flex min-w-0 flex-col gap-4 rounded-[22px] border border-[var(--color-border)] p-6 ${span}`}
-            >
-              <div className="flex min-w-0 items-start justify-between gap-4">
-                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--color-accent-soft)] text-[var(--color-primary)]">
-                  <Icon className="size-5" aria-hidden />
-                </span>
-                <WhyVisual id={item.id} t={t} />
-              </div>
-              <h3 className="text-[1.15rem] font-semibold tracking-[-0.015em]">{item.title}</h3>
-              <p className="text-[14.5px] font-light leading-relaxed text-[var(--color-muted)]">{item.body}</p>
-              <p className="mt-auto flex items-start gap-2 border-t border-[var(--color-border)] pt-4 text-[13px] text-[var(--color-muted)]">
-                <X className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                <span>
-                  <span className="sr-only">{w.elsewhere}: </span>
-                  <span aria-hidden className="font-medium text-[var(--color-fg)]">
-                    {w.elsewhere}:{" "}
-                  </span>
-                  {item.typical}
-                </span>
-              </p>
-            </li>
-          );
-        })}
-      </ul>
-      <p className="mt-4 text-[12.5px] font-light text-[var(--color-muted)]">{w.note}</p>
-    </section>
-  );
-}
-
-/** A small, decorative slice of the interface for each difference. */
-function WhyVisual({ id, t }: { id: string; t: Dictionary }) {
-  const m = t.landing.mock;
-  const base = "pill min-w-0 items-center gap-1.5 truncate whitespace-nowrap border border-[var(--color-border)] px-2.5 py-1 text-[11px]";
-  const chip = `${base} inline-flex`;
-  if (id === "price")
-    return (
-      <span aria-hidden className={`${base} hidden text-[var(--color-muted)] min-[420px]:inline-flex`}>
-        <Coins className="size-3 text-[var(--color-primary)]" />
-        {m.priceNote}
-      </span>
-    );
-  if (id === "refund")
-    return (
-      <span aria-hidden className={`${chip} text-[var(--color-ok)]`}>
-        <RotateCcw className="size-3" />
-        {m.returned}
-      </span>
-    );
-  if (id === "approval")
-    return (
-      <span aria-hidden className={`${chip} border-[var(--color-primary)] text-[var(--color-primary)]`}>
-        <Lock className="size-3" />
-        {m.approve}
-      </span>
-    );
-  if (id === "channels")
-    return (
-      <span aria-hidden className="flex -space-x-2">
-        {["#7b5cff", "#2bb3a3", "#ff7a59"].map((c) => (
-          <span key={c} className="grid size-7 place-items-center rounded-full border-2 border-[var(--color-panel)] text-white" style={{ background: c }}>
-            <Tv className="size-3.5" />
-          </span>
-        ))}
-      </span>
-    );
-  if (id === "languages")
-    return (
-      <span aria-hidden className="flex flex-wrap justify-end gap-1">
-        {[...LOCALES].reverse().map((l) => (
-          <span key={l.code} className={`${chip} px-2 py-0.5`}>
-            {l.label}
-          </span>
-        ))}
-      </span>
-    );
-  return null;
 }
 
 function GoogleData({ t }: { t: Dictionary }) {
   const d = t.landing.data;
   return (
-    <section
-      id="google-data"
-      aria-labelledby="data-title"
-      className="grid scroll-mt-24 gap-6 rounded-[22px] border border-[var(--color-border)] bg-[var(--color-panel)] p-6 sm:p-8 lg:grid-cols-[auto_1fr]"
-    >
-      <span className="grid size-11 place-items-center rounded-2xl bg-[var(--color-accent-soft)] text-[var(--color-primary)]">
-        <Lock className="size-5" aria-hidden />
-      </span>
-      <div>
-        <h2 id="data-title" className="text-[1.375rem] font-semibold tracking-[-0.02em]">
-          {d.title}
-        </h2>
-        <p className="mt-3 max-w-[70ch] text-[15px] font-light leading-relaxed text-[var(--color-muted)]">{d.body}</p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Link href="/privacy" className="btn-sky pill min-h-11 px-5 text-sm">
-            {d.privacy}
-          </Link>
-          <a
-            href={GOOGLE_PERMISSIONS}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-sky ghost pill min-h-11 px-5 text-sm"
-          >
-            {d.revoke}
-          </a>
+    <section id="google-data" aria-labelledby="data-title" className="st-section">
+      <div className="st-wrap grid gap-6 lg:grid-cols-[minmax(0,0.6fr)_minmax(0,1fr)] lg:gap-14">
+        <div className="flex items-start gap-4">
+          <span className="grid size-11 shrink-0 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)]">
+            <Lock className="size-5" aria-hidden />
+          </span>
+          <h2 id="data-title" className="st-h3 pt-2">
+            {d.title}
+          </h2>
+        </div>
+        <div>
+          <p className="st-body">{d.body}</p>
+          <div className="mt-5 flex flex-wrap gap-x-6">
+            <Link href="/privacy" className="st-link">
+              {d.privacy}
+            </Link>
+            <a href={GOOGLE_PERMISSIONS} target="_blank" rel="noopener noreferrer" className="st-link">
+              {d.revoke}
+              <ArrowUpRight aria-hidden />
+            </a>
+          </div>
         </div>
       </div>
     </section>
@@ -414,35 +359,26 @@ function GoogleData({ t }: { t: Dictionary }) {
 }
 
 function FinalCta({ t }: { t: Dictionary }) {
-  const f = t.landing.final;
+  const f = t.site.final;
   return (
-    <section
-      aria-labelledby="final-title"
-      className="lp-horizon relative overflow-hidden rounded-[28px] border border-[var(--color-border)] px-5 pb-14 pt-16 text-center sm:px-12 sm:pb-20 sm:pt-20"
-    >
-      <div className="flex justify-center">
-        <Eyebrow hour="06:00">{t.brand.name}</Eyebrow>
+    <section aria-labelledby="final-title" className="st-section">
+      <div className="st-wrap grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:items-end">
+        <h2 id="final-title" className="st-h1-page">
+          {f.title}
+        </h2>
+        <div>
+          <p className="st-lead">{f.lead}</p>
+          <div className="st-hero-actions mt-7">
+            <Link href="/signup" className="st-key">
+              {f.cta}
+              <ArrowRight aria-hidden />
+            </Link>
+            <Link href="/pricing" className="st-link">
+              {t.site.hero.secondary}
+            </Link>
+          </div>
+        </div>
       </div>
-      <h2
-        id="final-title"
-        className="mx-auto mt-6 max-w-2xl font-display font-semibold tracking-[-0.03em]"
-        style={{ fontSize: "clamp(1.875rem, 3.8vw, 46px)", lineHeight: 1.08, textWrap: "balance" }}
-      >
-        {f.title}
-      </h2>
-      <p className="mx-auto mt-4 max-w-[52ch] text-[16px] font-light leading-relaxed text-[var(--color-muted)] sm:text-[17px]">
-        {f.lead}
-      </p>
-      <div className="mt-8 flex flex-col justify-center gap-3 min-[420px]:flex-row">
-        <Link href="/signup" className="btn-sky is-solid pill min-h-12 px-7 text-[15px]">
-          {f.ctaPrimary}
-          <ArrowRight className="btn-arrow size-4" aria-hidden />
-        </Link>
-        <Link href="/pricing" className="btn-sky ghost pill min-h-12 px-7 text-[15px]">
-          {f.ctaSecondary}
-        </Link>
-      </div>
-      <span className="lp-horizon-line absolute inset-x-[12%] bottom-0 h-px" aria-hidden />
     </section>
   );
 }

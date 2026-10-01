@@ -1,40 +1,46 @@
 import Link from "next/link";
 import type { Dictionary } from "@/lib/i18n";
 import { LEGAL } from "@/lib/legal";
+import { SOLUTION_IDS, solutionHref } from "@/lib/solutions";
+import { BrandMark } from "@/components/site/BrandMark";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 
 type FooterLink = { href: string; label: string; external?: boolean };
 
 /**
- * The public pages' footer: Product, Resources and Legal columns. Every link
- * resolves — section anchors point at sections the homepage always renders
- * (never the showcase, which may be absent). Pricing, Privacy, Terms and
- * Contact are always there: Contact mails the operator's configured address,
- * or opens the Terms' contact section when none is set. Google's verification
- * checks that the homepage links the Privacy Policy; Paddle's that pricing is
- * one click away.
+ * The public pages' footer: Product, Solutions, Company and Legal columns.
+ * Every link resolves — section anchors point at sections the homepage always
+ * renders. Pricing, Privacy, Terms and Contact are always there: Contact mails
+ * the operator's configured address, or opens the Terms' contact section when
+ * none is set. Google's verification checks that the homepage links the
+ * Privacy Policy; Paddle's that pricing is one click away.
  *
  * /login keeps the compact LegalFooter; this one is for the marketing frame.
  */
 export function PublicFooter({ t }: { t: Dictionary }) {
-  const f = t.landing.footer;
+  const f = t.site.footer;
   const contact: FooterLink = LEGAL.contactEmail
     ? { href: `mailto:${LEGAL.contactEmail}`, label: f.contact, external: true }
     : { href: "/terms#contact", label: f.contact };
+  const pages = t.site.solutions.pages;
   const columns: { title: string; links: FooterLink[] }[] = [
     {
       title: f.product,
       links: [
-        { href: "/#product", label: f.overview },
         { href: "/#how", label: f.how },
-        { href: "/#why", label: f.why },
-        { href: "/pricing", label: t.legal.pricing },
+        { href: "/#studio", label: f.studio },
+        { href: "/pricing", label: f.pricing },
         { href: "/#faq", label: f.faq },
+        { href: "/docs/api", label: f.api },
       ],
     },
     {
-      title: f.resources,
+      title: f.solutions,
+      links: SOLUTION_IDS.map((id) => ({ href: solutionHref(id), label: pages.find((p) => p.id === id)?.nav ?? id })),
+    },
+    {
+      title: f.company,
       links: [
         contact,
         { href: "/login", label: f.signIn },
@@ -52,45 +58,31 @@ export function PublicFooter({ t }: { t: Dictionary }) {
   ];
 
   return (
-    <footer className="relative z-10 border-t border-[var(--color-border)]">
-      <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))]">
+    <footer className="st-footer">
+      <div className="st-wrap st-footer-grid">
         <div className="flex flex-col gap-3">
-          <Link
-            href="/"
-            className="tap-link self-start font-display text-xl font-semibold tracking-[-0.02em] text-[var(--color-primary)]"
-          >
+          <Link href="/" className="st-brand self-start">
+            <BrandMark />
             {t.brand.name}
           </Link>
-          <p className="max-w-xs text-[13px] font-light leading-relaxed text-[var(--color-muted)]">{t.legal.tagline}</p>
+          <p className="st-small max-w-[30ch]">{f.note}</p>
           {LEGAL.contactEmail && (
-            <a
-              href={`mailto:${LEGAL.contactEmail}`}
-              className="tap-link mono self-start text-[12px] text-[var(--color-muted)] underline-offset-4 hover:text-[var(--color-primary)] hover:underline"
-            >
+            <a href={`mailto:${LEGAL.contactEmail}`} className="st-link self-start text-[14px]">
               {LEGAL.contactEmail}
             </a>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 md:contents">
+        <div className="st-footer-cols">
           {columns.map((col) => (
-            <nav key={col.title} aria-label={col.title} className="flex flex-col gap-1">
-              <h2 className="t-label mb-2">{col.title}</h2>
+            <nav key={col.title} aria-label={col.title}>
+              <h2>{col.title}</h2>
               {col.links.map((l) =>
                 l.external ? (
-                  <a
-                    key={l.href}
-                    href={l.href}
-                    {...(l.href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                    className="flex min-h-10 items-center text-[14px] font-light text-[var(--color-fg)] transition-colors hover:text-[var(--color-primary)]"
-                  >
+                  <a key={l.href} href={l.href} {...(l.href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
                     {l.label}
                   </a>
                 ) : (
-                  <Link
-                    key={l.href}
-                    href={l.href}
-                    className="flex min-h-10 items-center text-[14px] font-light text-[var(--color-fg)] transition-colors hover:text-[var(--color-primary)]"
-                  >
+                  <Link key={l.href} href={l.href}>
                     {l.label}
                   </Link>
                 ),
@@ -99,9 +91,10 @@ export function PublicFooter({ t }: { t: Dictionary }) {
           ))}
         </div>
       </div>
-      <div className="border-t border-[var(--color-border)]">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-5 text-[12px] font-light text-[var(--color-muted)] sm:px-6">
+      <div className="st-wrap">
+        <div className="st-footer-base">
           <span>{LEGAL.legalName ? `© ${LEGAL.legalName}` : t.brand.name}</span>
+          <span>{t.legal.tagline}</span>
         </div>
       </div>
     </footer>

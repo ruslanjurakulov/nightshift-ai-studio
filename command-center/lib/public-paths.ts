@@ -1,3 +1,5 @@
+import { SOLUTIONS_PATH, SOLUTION_IDS, solutionHref } from "@/lib/solutions";
+
 /**
  * Which URLs a signed-out visitor may see, and what the auth gate does with
  * every other one.
@@ -23,6 +25,10 @@ export const LEGAL_PATHS = ["/privacy", "/terms"] as const;
  *  out, and a signed-in user sees the same page (plus the live credit rates).
  *  The API reference and its OpenAPI spec are read before anyone has a key. */
 export const INFO_PATHS = ["/pricing", "/docs/api", "/docs/api/openapi.json"] as const;
+
+/** Always public: what the product does, by who it is for (lib/solutions.ts).
+ *  Listed one by one — the index and each page — never as a prefix. */
+export const SOLUTION_PATHS = [SOLUTIONS_PATH, ...SOLUTION_IDS.map(solutionHref)] as const;
 
 /**
  * The public API (migration 0031). Its callers are programs holding an API
@@ -54,7 +60,7 @@ export function isSignedMediaPath(pathname: string): boolean {
 }
 
 /** Served as-is to anyone, signed in or not, without channel resolution. */
-export const ALWAYS_PUBLIC_PATHS = [...LEGAL_PATHS, ...INFO_PATHS] as const;
+export const ALWAYS_PUBLIC_PATHS = [...LEGAL_PATHS, ...INFO_PATHS, ...SOLUTION_PATHS] as const;
 
 /** Create an account. Like /login, only for someone signed out: a signed-in
  *  user asking for it is sent on to their app. */
@@ -90,6 +96,7 @@ export const RESERVED_ROOT_SEGMENTS = [
   "privacy",
   "terms",
   "pricing",
+  "solutions",
   "api",
   "docs",
 ] as const;

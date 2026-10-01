@@ -10,14 +10,14 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 /**
  * The public header's menu below the desktop breakpoint: the section links,
  * Sign in, and the theme and language controls that do not fit a phone's bar.
- * The sign-up button stays outside it, in the bar. Closes on a link, on Escape,
+ * The sign-up key stays outside it, in the bar. Closes on a link, on Escape,
  * and on a tap outside, and hands focus back to its button on Escape.
  */
 export function PublicMobileMenu({
   links,
   signInLabel,
 }: {
-  links: { href: string; label: string }[];
+  links: { href: string; label: string; current?: boolean }[];
   signInLabel: string;
 }) {
   const { t } = useI18n();
@@ -55,39 +55,27 @@ export function PublicMobileMenu({
         aria-expanded={open}
         aria-controls={panelId}
         aria-label={open ? n.close : n.menu}
-        className="btn-sky is-quiet pill grid size-11 place-items-center"
+        className="st-menu-btn"
       >
         {open ? <X className="size-5" aria-hidden /> : <Menu className="size-5" aria-hidden />}
       </button>
 
       {open && (
-        <div
-          id={panelId}
-          className="sheet-enter absolute inset-x-3 top-[calc(100%+0.5rem)] z-50 rounded-[20px] border border-[var(--color-border)] bg-[var(--color-panel)] p-3 shadow-[var(--shadow-elevated)]"
-        >
+        <div id={panelId} className="st-menu">
           <nav aria-label={n.label} className="flex flex-col">
             {links.map((l) => (
-              <Link
-                key={l.href}
-                href={l.href}
-                onClick={() => setOpen(false)}
-                className="flex min-h-12 items-center rounded-xl px-4 text-[16px] transition-colors hover:bg-[var(--color-panel-2)]"
-              >
+              <Link key={l.href} href={l.href} onClick={() => setOpen(false)} aria-current={l.current ? "page" : undefined}>
                 {l.label}
               </Link>
             ))}
-            <Link
-              href="/login"
-              onClick={() => setOpen(false)}
-              className="flex min-h-12 items-center rounded-xl px-4 text-[16px] transition-colors hover:bg-[var(--color-panel-2)]"
-            >
+            <Link href="/login" onClick={() => setOpen(false)}>
               {signInLabel}
             </Link>
           </nav>
-          <div className="mt-2 flex items-center justify-between gap-3 border-t border-[var(--color-border)] px-2 pt-3">
+          <div className="mt-2 flex items-center justify-between gap-3 border-t border-[var(--ns-rule)] px-2 pt-3">
             {/* Theme first: the language list opens leftwards from its button,
                 which must therefore sit at the panel's right edge. */}
-            <ThemeToggle />
+            <ThemeToggle showLabel />
             <LanguageSelector />
           </div>
         </div>
