@@ -2,33 +2,33 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink } from "lucide-react";
+import Link from "next/link";
+import { Check, ExternalLink } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { formatCredits } from "@/lib/credits";
 import { resolvedTheme } from "@/lib/theme";
 import { checkoutCustomData, paddleLocale } from "@/lib/paddle";
-import { columnPrice, type BillingSummary, type PlanMatrix, type SubscribeAccess } from "@/lib/plans";
+import { columnPrice, type BillingSummary, type GenerationRates, type PlanMatrix, type SubscribeAccess } from "@/lib/plans";
 import { ensurePaddle, previewPrices, type PaddleEventData } from "@/lib/paddle-client";
 import { ErrorState } from "@/components/ReadError";
 import { entitlementText } from "@/components/pricing/PlanMatrix";
+import { Equivalents, shortDate } from "@/components/credits/Equivalents";
 
 type Phase = "idle" | "opening" | "paid" | "arrived" | "slow" | "cancelled" | "error" | "load_failed";
 const POLL_MS = 3000;
 const POLL_TRIES = 20;
 
-function shortDate(iso: string | null, locale: string): string {
-  if (!iso) return "—";
-  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric" }).format(new Date(iso));
-}
-
 /**
  * The organization's plan on the Credits page: which plan, its status and
- * renewal (or end) date, the credits by where they came from, and — for an
- * owner/admin — either the plans to subscribe to (Paddle's overlay checkout)
- * or "Manage subscription" (Paddle's customer portal, through
- * /api/billing/portal). Nothing here grants anything: the webhook does, and
- * this component waits for the plan to show up.
+ * renewal (or end) date, the plans as cards (monthly credits, what they buy at
+ * today's prices, what each unlocks), and — for an owner/admin — either
+ * Subscribe (Paddle's overlay checkout) or "Manage subscription" (Paddle's
+ * customer portal, through /api/billing/portal). The renewal, cancellation
+ * and refund terms sit above the buttons, so they are read before a checkout
+ * opens. The credits by source live in BalanceHero. Nothing here grants
+ * anything: the webhook does, and this component waits for the plan to show
+ * up. The customer-facing copy names no payment provider.
  */
 export function PlanPanel({
   summary,
@@ -38,6 +38,7 @@ export function PlanPanel({
   userId,
   email,
   plansUnread = false,
+  rates = null,
 }: {
   summary: BillingSummary | null;
   matrix: PlanMatrix | null;
@@ -47,9 +48,12 @@ export function PlanPanel({
   email: string | null;
   /** The plan catalog could not be read: the plans to choose from are unknown, not absent. */
   plansUnread?: boolean;
+  /** Today's generation prices, for each plan's "≈ N images" line; null = not shown. */
+  rates?: GenerationRates | null;
 }) {
   const { t, locale } = useI18n();
   const p = t.plans;
+  const cp = t.creditsPage;
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("idle");
   const [prices, setPrices] = useState<Record<string, string> | null>(null);
@@ -152,87 +156,73 @@ export function PlanPanel({
   const sub = summary?.subscription ?? null;
   // A summary without a plan is an unknown plan — never "Free".
   const planName = summary?.plan?.name ?? t.common.unknown;
+  const currentId = summary?.plan?.id ?? null;
   const statusText = sub ? p.status[sub.status] : null;
   const dateLine = !sub
     ? null
     : sub.status === "canceled" || sub.cancelAtPeriodEnd
       ? fmt(p.endsOn, { date: shortDate(sub.periodEnd, locale) })
       : fmt(p.renews, { date: shortDate(sub.periodEnd, locale) });
-  const c = summary?.credits;
   const message: Partial<Record<Phase, { text: string; ok?: boolean }>> = {
-    paid: { text: p.paid, ok: true },
-    arrived: { text: p.arrived, ok: true },
-    slow: { text: p.slow },
-    cancelled: { text: t.credits.buy.cancelled },
-    error: { text: t.credits.buy.checkoutError },
-    load_failed: { text: t.credits.buy.loadFailed },
+    paid: { text: cp.planPaid, ok: true },
+    arrived: { text: cp.planArrived, ok: true },
+    slow: { text: cp.planSlow },
+    cancelled: { text: cp.cancelled },
+    error: { text: cp.checkoutError },
+    load_failed: { text: cp.loadFailed },
   };
   const msg = message[phase];
+  // The plans are shown to anyone who could act on them or already has one;
+  // the buttons only to the person who may buy (access "allowed").
+  const showCards = Boolean(matrix) && (access === "allowed" || access === "manage" || access === "admin_only");
+  const cards = (matrix?.columns ?? []).filter((col) => !col.isDefault && (col.priceId || col.displayPrice || col.id === currentId));
 
   return (
-    <section id="plans" className="panel flex scroll-mt-24 flex-col gap-4 p-4" aria-labelledby="plan-title">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
+    <section id="plans" className="panel flex scroll-mt-24 flex-col gap-5 p-5 sm:p-6" aria-labelledby="plan-title">
+      <div className="flex flex-col gap-1.5">
         <h2 id="plan-title" className="t-section">
-          {p.panelTitle} · <span className="font-light">{planName}</span>
+          {cp.plansTitle}
         </h2>
+        <p className="text-[14px] font-light text-[var(--color-muted)]">{cp.plansLead}</p>
+      </div>
+
+      <div className="flex items-start justify-between gap-3 rounded-xl border border-[var(--color-border)] p-4">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-[12px] text-[var(--color-muted)]">{cp.yourPlan}</span>
+          <span className="text-[17px] font-medium">{planName}</span>
+          {dateLine && <span className="text-[12px] text-[var(--color-muted)]">{dateLine}</span>}
+        </div>
         {statusText && (
           <span
-            className="mono pill px-2 py-0.5 text-[10px] uppercase tracking-[0.14em]"
+            className="pill shrink-0 border border-[var(--color-border)] px-2.5 py-0.5 text-[11px]"
             style={{ color: sub?.status === "past_due" ? "var(--color-warn)" : "var(--color-muted)" }}
           >
             {statusText}
           </span>
         )}
       </div>
-      {dateLine && <p className="text-[13px] text-[var(--color-muted)]">{dateLine}</p>}
-      {sub?.status === "past_due" && <p className="text-[13px] text-[var(--color-warn)]">{p.pastDue}</p>}
-
-      {c && (
-        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="flex flex-col gap-1 rounded-xl border border-[var(--color-border)] p-3">
-            <dt className="text-[11px] uppercase tracking-[0.14em] text-[var(--color-muted)]">{p.planCredits}</dt>
-            <dd className="mono text-[18px]">{formatCredits(c.subscription, locale)}</dd>
-          </div>
-          <div className="flex flex-col gap-1 rounded-xl border border-[var(--color-border)] p-3">
-            <dt className="text-[11px] uppercase tracking-[0.14em] text-[var(--color-muted)]">{p.topupCredits}</dt>
-            <dd className="mono text-[18px]">{formatCredits(c.pack, locale)}</dd>
-          </div>
-          <div className="flex flex-col gap-1 rounded-xl border border-[var(--color-border)] p-3">
-            <dt className="text-[11px] uppercase tracking-[0.14em] text-[var(--color-muted)]">{p.otherCredits}</dt>
-            <dd className="mono text-[18px]">{formatCredits(c.other, locale)}</dd>
-          </div>
-        </dl>
+      {sub?.status === "past_due" && <p className="text-[13px] text-[var(--color-warn)]">{cp.pastDue}</p>}
+      {summary?.runSlots && summary.runSlots.limit !== null && (
+        <p className="text-[12px] text-[var(--color-muted)]">
+          {fmt(p.runSlots, { active: summary.runSlots.active, limit: summary.runSlots.limit })}
+        </p>
       )}
-      <div className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
-        {summary?.nextExpiry && (
-          <span>
-            {fmt(p.nextExpiry, {
-              n: formatCredits(summary.nextExpiry.credits, locale),
-              date: shortDate(summary.nextExpiry.at, locale),
-            })}
-          </span>
-        )}
-        {summary?.runSlots && summary.runSlots.limit !== null && (
-          <span>{fmt(p.runSlots, { active: summary.runSlots.active, limit: summary.runSlots.limit })}</span>
-        )}
-        <span>{p.spendOrder}</span>
-      </div>
 
       {access === "manage" && (
-        <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-4">
+        <div className="flex flex-col gap-2">
           <button
             type="button"
             onClick={manage}
             disabled={portal === "opening"}
-            className="btn-sky pill self-start px-5 py-2 text-[13px] disabled:opacity-40"
+            className="btn-sky pill tap self-start px-5 py-2 text-[13px] disabled:opacity-40"
           >
             {portal === "opening" ? p.manageOpening : p.manage}
             <ExternalLink className="size-3.5" aria-hidden />
           </button>
-          <p className="text-[12px] text-[var(--color-muted)]">{p.manageHint}</p>
-          <p className="text-[12px] text-[var(--color-muted)]">{p.changePlanNote}</p>
-          {portal === "failed" && <p className="text-[12px] text-[var(--color-fail)]">{p.manageFailed}</p>}
-          {portal === "missing" && <p className="text-[12px] text-[var(--color-muted)]">{p.managePortalMissing}</p>}
+          <p className="text-[12px] text-[var(--color-muted)]">{cp.manageHint}</p>
+          <p className="text-[12px] text-[var(--color-muted)]">{cp.changePlan}</p>
+          {portal === "failed" && <p className="text-[12px] text-[var(--color-fail)]">{cp.manageFailed}</p>}
+          {portal === "missing" && <p className="text-[12px] text-[var(--color-muted)]">{cp.manageMissing}</p>}
         </div>
       )}
 
@@ -240,52 +230,87 @@ export function PlanPanel({
 
       {access === "admin_only" && <p className="text-[13px] text-[var(--color-muted)]">{p.adminOnly}</p>}
 
-      {access === "allowed" && matrix && (
-        <div className="flex flex-col gap-3 border-t border-[var(--color-border)] pt-4">
-          <p className="text-[12px] text-[var(--color-muted)]">{p.subscribeHint}</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {matrix.columns
-              .filter((col) => !col.isDefault && col.priceId)
-              .map((col) => {
-                const i = matrix.columns.indexOf(col);
-                const price = columnPrice(col, prices, prices === null);
-                return (
-                  <div key={col.id} className="flex flex-col gap-2 rounded-xl border border-[var(--color-border)] p-4">
-                    <span className="text-[11px] uppercase tracking-[0.14em] text-[var(--color-muted)]">{col.name}</span>
-                    <span className="mono text-[18px]">
-                      {fmt(p.monthlyCredits, { n: formatCredits(col.monthlyCredits, locale) })}
+      {showCards && matrix && cards.length > 0 && (
+        <div className="flex flex-col gap-4">
+          {/* The terms come before the buttons: read before any checkout opens. */}
+          {access === "allowed" && (
+            <p className="text-[12px] leading-relaxed text-[var(--color-muted)]" data-purchase-terms>
+              {cp.planTerms} {cp.refunds}{" "}
+              <Link href="/terms#credits" className="underline underline-offset-2 hover:text-[var(--color-fg)]">
+                {cp.termsLink}
+              </Link>
+            </p>
+          )}
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {cards.map((col) => {
+              const i = matrix.columns.indexOf(col);
+              const price = columnPrice(col, prices, prices === null && access === "allowed");
+              const priceText = price.kind === "preview" || price.kind === "display" ? price.text : null;
+              const current = col.id === currentId;
+              const canBuy = access === "allowed" && Boolean(col.priceId) && !current;
+              return (
+                <li
+                  key={col.id}
+                  className="flex flex-col gap-3 rounded-2xl border p-4"
+                  style={{ borderColor: current ? "var(--color-primary)" : "var(--color-border)" }}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[15px] font-medium">{col.name}</span>
+                    {current && (
+                      <span className="pill border border-[var(--color-primary)] px-2 py-0.5 text-[11px] text-[var(--color-primary)]">
+                        {cp.yourPlan}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    {priceText ? (
+                      <>
+                        <span className="text-[28px] font-semibold leading-none tabular-nums">{priceText}</span>
+                        <span className="text-[13px] text-[var(--color-muted)]">{cp.perMonth}</span>
+                      </>
+                    ) : (
+                      <span className="text-[13px] text-[var(--color-muted)]">{cp.priceAtCheckout}</span>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[15px] font-medium tabular-nums">
+                      {fmt(cp.monthlyCredits, { n: formatCredits(col.monthlyCredits, locale) })}
                     </span>
-                    <span className="text-[12px] text-[var(--color-muted)]">
-                      {price.kind === "preview" || price.kind === "display"
-                        ? `${price.text} ${p.perMonth}`
-                        : t.pricing.priceAtCheckout}
-                    </span>
-                    <ul className="flex flex-col gap-0.5 text-[11px] text-[var(--color-muted)]">
+                    <Equivalents credits={col.monthlyCredits} rates={rates} />
+                  </div>
+                  {matrix.rows.length > 0 && (
+                    <ul className="flex flex-col gap-1.5 border-t border-[var(--color-border)] pt-3 text-[12px]">
                       {matrix.rows.map((row) => (
-                        <li key={row.key}>
-                          {(p.row as Record<string, string>)[row.key] ?? row.key}:{" "}
-                          {entitlementText(row.key, row.type, row.cells[i], t)}
+                        <li key={row.key} className="flex items-start gap-2">
+                          <Check className="mt-0.5 size-3.5 shrink-0 text-[var(--color-primary)]" aria-hidden />
+                          <span>
+                            <span className="text-[var(--color-muted)]">{(p.row as Record<string, string>)[row.key] ?? row.key}: </span>
+                            {entitlementText(row.key, row.type, row.cells[i], t)}
+                          </span>
                         </li>
                       ))}
                     </ul>
+                  )}
+                  {canBuy && (
                     <button
                       type="button"
                       onClick={() => col.priceId && subscribe(col.priceId)}
                       disabled={phase === "opening"}
-                      className="btn-sky is-solid pill mt-1 px-5 py-2 text-[13px] disabled:opacity-40"
+                      className="btn-sky is-solid pill tap mt-auto w-full px-5 py-2.5 text-[14px] disabled:opacity-40"
                     >
-                      {phase === "opening" ? t.credits.buy.opening : p.subscribe}
+                      {phase === "opening" ? cp.opening : p.subscribe}
                     </button>
-                  </div>
-                );
-              })}
-          </div>
-          <p className="text-[11px] text-[var(--color-muted)]">{p.renewalTerms}</p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {rates && <p className="text-[11px] text-[var(--color-muted)]">{cp.eq.note}</p>}
         </div>
       )}
 
       {msg && (
-        <p className="text-[12px]" style={{ color: msg.ok ? "var(--color-ok)" : "var(--color-muted)" }} aria-live="polite">
+        <p className="text-[13px]" style={{ color: msg.ok ? "var(--color-ok)" : "var(--color-muted)" }} aria-live="polite">
           {msg.text}
         </p>
       )}

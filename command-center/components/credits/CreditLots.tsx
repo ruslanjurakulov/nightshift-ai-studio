@@ -9,7 +9,9 @@ import { EmptyState } from "@/components/ui";
  * Where the organization's credits are, lot by lot (migration 0034): each
  * plan period, top-up pack and grant, what is left of it, what is on hold for
  * runs in progress, and when it expires. Listed in the order they are spent.
- * A read of the organization's own rows (RLS), nothing more.
+ * A read of the organization's own rows (RLS), nothing more. A list, not a
+ * table, so it reads on a phone without sideways scrolling; a lot's internal
+ * note (it can name the payment provider) is not shown.
  */
 export function CreditLots({ lots }: { lots: CreditLot[] }) {
   const { t, locale } = useI18n();
@@ -17,44 +19,41 @@ export function CreditLots({ lots }: { lots: CreditLot[] }) {
   const when = (iso: string | null) =>
     iso ? new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric" }).format(new Date(iso)) : p.never;
   return (
-    <div className="panel flex flex-col gap-3 p-4">
-      <h2 className="t-section">{p.lotsTitle}</h2>
-      <p className="text-[12px] text-[var(--color-muted)]">{p.lotsLead}</p>
+    <section className="panel flex flex-col gap-3 p-5 sm:p-6" aria-labelledby="lots-title">
+      <h2 id="lots-title" className="t-section">
+        {p.lotsTitle}
+      </h2>
+      <p className="text-[13px] text-[var(--color-muted)]">{p.lotsLead}</p>
       {lots.length === 0 ? (
         <EmptyState>{p.lotsEmpty}</EmptyState>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-left text-[12px]">
-            <thead className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-muted)]">
-              <tr>
-                <th className="py-2 pr-3 font-semibold">{p.colSource}</th>
-                <th className="py-2 pr-3 text-right font-semibold">{p.colRemaining}</th>
-                <th className="py-2 pr-3 text-right font-semibold">{p.colHeld}</th>
-                <th className="py-2 pr-3 text-right font-semibold">{p.colAmount}</th>
-                <th className="py-2 font-semibold">{p.colExpires}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lots.map((l) => {
-                const spent = l.remaining <= 0 || l.expired;
-                return (
-                  <tr key={l.id} className="border-t border-[var(--color-border)]" style={spent ? { opacity: 0.55 } : undefined}>
-                    <td className="py-2 pr-3" title={l.note ?? ""}>
-                      {p.source[l.source]}
-                    </td>
-                    <td className="mono py-2 pr-3 text-right">{formatCredits(l.remaining - l.held, locale)}</td>
-                    <td className="mono py-2 pr-3 text-right text-[var(--color-muted)]">{formatCredits(l.held, locale)}</td>
-                    <td className="mono py-2 pr-3 text-right text-[var(--color-muted)]">{formatCredits(l.amount, locale)}</td>
-                    <td className="py-2" style={l.expired ? { color: "var(--color-muted)" } : undefined}>
-                      {l.expired ? `${p.expired} · ${when(l.expiresAt)}` : when(l.expiresAt)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <ul className="flex flex-col">
+          {lots.map((l) => {
+            const spent = l.remaining <= 0 || l.expired;
+            return (
+              <li
+                key={l.id}
+                className="flex items-start justify-between gap-4 border-t border-[var(--color-border)] py-3 first:border-t-0"
+                style={spent ? { opacity: 0.55 } : undefined}
+              >
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <span className="text-[14px]">{p.source[l.source]}</span>
+                  <span className="text-[12px] text-[var(--color-muted)]">
+                    {p.colExpires}: {l.expired ? `${p.expired} · ${when(l.expiresAt)}` : when(l.expiresAt)}
+                  </span>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-0.5 tabular-nums">
+                  <span className="text-[15px] font-medium">{formatCredits(l.remaining - l.held, locale)}</span>
+                  <span className="text-[11px] text-[var(--color-muted)]">
+                    {p.colAmount} {formatCredits(l.amount, locale)}
+                    {l.held > 0 && ` · ${p.colHeld} ${formatCredits(l.held, locale)}`}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
-    </div>
+    </section>
   );
 }
