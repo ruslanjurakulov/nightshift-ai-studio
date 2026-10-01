@@ -358,3 +358,8 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
 import sec_plans_0034  # noqa: E402
 
 sec_plans_0034.extend(TABLES, FUNCTIONS)
+
+# Migration 0047 (style kits, characters): tests/security/sec_style_0047.py
+import sec_style_0047  # noqa: E402
+
+sec_style_0047.extend(TABLES, FUNCTIONS)
