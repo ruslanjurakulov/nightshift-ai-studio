@@ -306,6 +306,11 @@ export interface ChannelRow {
   /** The style kit this channel looks like by default (migration 0047), or
    *  null. Absent before that migration is applied. */
   default_style_kit_id?: string | null;
+  /** Channel DNA (migration 0056): the format and aspect new work starts in,
+   *  and one line of tone. Pre-fill only. Absent before 0056 is applied. */
+  dna_format?: string | null;
+  dna_aspect?: string | null;
+  dna_tone?: string | null;
   created_at: string | null;
   updated_at: string | null;
 }

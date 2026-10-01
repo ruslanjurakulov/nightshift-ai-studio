@@ -344,6 +344,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Media library folders (0049): tests/security/sec_folders_0049.py.
     import sec_folders_0049
     sec_folders_0049.seed(conn, sc)
+    # Channel DNA (0056): tests/security/sec_dna_0056.py — after 0047's kits and characters.
+    import sec_dna_0056
+    sec_dna_0056.seed(conn, sc)
     # A pending invite into org A, addressed to Ivan's email, not yet accepted.
     with acting(conn, sc.alice.actor, commit=True) as s:
         s.value("select public.invite_org_member(%s, %s, 'viewer')", [sc.alice.org, sc.invitee.email])
