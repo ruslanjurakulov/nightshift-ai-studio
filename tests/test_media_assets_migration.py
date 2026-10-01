@@ -142,5 +142,98 @@ class MediaAssetsMigration(unittest.TestCase):
         self.assertNotRegex(CODE, r"accessible_org_ids\('")
 
 
+SQL44 = (ROOT / "supabase" / "migrations" / "0044_media_heic.sql").read_text()
+CODE44 = "\n".join(line.split("--", 1)[0] for line in SQL44.splitlines())
+HEIC_FNS = ("media_mime_kind", "media_ext_mime", "media_normalize_mime", "request_upload")
+
+
+def fn_body44(name):
+    return CODE44.split(f"function public.{name}(", 1)[1].split("$$;", 1)[0]
+
+
+def pairs(body):
+    return dict(re.findall(r"when '([^']+)' then '([^']+)'", body))
+
+
+class MediaHeicMigration(unittest.TestCase):
+    """0044: iPhone photos. It adds no table and no function, so the security
+    lab's declarations are untouched; these pin that it only widens the type
+    allowlist and the variants list, and keeps every 0038 check."""
+
+    def test_applies_on_top_of_0038_only(self):
+        self.assertIn("apply 0038_media_assets.sql first", CODE44)
+        self.assertIn("to_regclass('public.media_assets') is null", CODE44)
+
+    def test_adds_nothing_and_removes_nothing(self):
+        self.assertEqual(sorted(re.findall(r"create or replace function public\.(\w+)\(", CODE44)), sorted(HEIC_FNS))
+        self.assertNotRegex(CODE44, r"create (table|policy|index|trigger|extension|schema|type)")
+        self.assertNotRegex(CODE44, r"drop (table|function|policy|column|index|schema|type)")
+        # request_upload's own insert of a ticket is 0038's; nothing else writes rows.
+        outside = CODE44.replace(fn_body44("request_upload"), "")
+        self.assertIsNone(re.search(r"\b(insert into|delete from|truncate)\b|\bupdate\s+public\.", outside))
+        self.assertIsNone(re.search(r"\bto anon\b", CODE44))
+        self.assertIsNone(re.search(r"alter table public\.(?!media_assets\b)", CODE44))
+        # Quotas, credits, the publish gate and privacy are not this migration's business:
+        # the quota tables appear only inside request_upload, which is 0038's body.
+        for word in ("credit", "publish", "privacy", "org_storage_quota", "media_storage_settings"):
+            self.assertNotIn(word, outside, word)
+
+    def test_the_type_allowlist_only_grows_by_heic_and_heif(self):
+        old, new = pairs(fn_body("media_mime_kind")), pairs(fn_body44("media_mime_kind"))
+        self.assertEqual({k: v for k, v in new.items() if k not in old}, {"image/heic": "image", "image/heif": "image"})
+        self.assertEqual({k: v for k, v in old.items() if new.get(k) != v}, {})
+        old, new = pairs(fn_body("media_ext_mime")), pairs(fn_body44("media_ext_mime"))
+        self.assertEqual({k: v for k, v in new.items() if k not in old}, {"heic": "image/heic", "heif": "image/heif"})
+        self.assertEqual({k: v for k, v in old.items() if new.get(k) != v}, {})
+        # Not AVIF, not an image sequence, nothing a browser would run.
+        for word in ("avif", "heic-sequence", "heif-sequence", "svg", "html"):
+            self.assertNotIn(word, "".join(pairs(fn_body44("media_mime_kind"))))
+
+    def test_aliases_are_folded_to_the_canonical_types(self):
+        old, new = pairs(fn_body("media_normalize_mime")), pairs(fn_body44("media_normalize_mime"))
+        self.assertEqual({k: v for k, v in new.items() if k not in old},
+                         {"image/x-heic": "image/heic", "image/x-heif": "image/heif"})
+        self.assertEqual({k: v for k, v in old.items() if new.get(k) != v}, {})
+        # Both fold into types that media_mime_kind knows.
+        for target in ("image/heic", "image/heif"):
+            self.assertIn(target, pairs(fn_body44("media_mime_kind")))
+        # An empty or generic type still comes from the extension (Windows sends '').
+        self.assertIn("when '' then public.media_ext_mime(", fn_body44("media_normalize_mime"))
+
+    def test_request_upload_is_0038s_with_only_the_hint_changed(self):
+        new = fn_body44("request_upload")
+        old = fn_body("request_upload")
+        self.assertEqual(new.replace("Images (JPEG, PNG, WebP, GIF, HEIC, HEIF)", "Images (JPEG, PNG, WebP, GIF)"), old)
+        self.assertIn("HEIC, HEIF", new)
+        # Every 0038 check is still there.
+        for needle in ("if auth.uid() is null then", "not public.is_org_member(p_org)",
+                       "kind_ := public.media_mime_kind(mime_);", "errcode = 'NS415'",
+                       "public.media_mime_kind(ext_mime) <> kind_", "p_bytes > cfg.max_upload_bytes",
+                       "errcode = 'NS413'", "errcode = 'NS429'", "errcode = 'NS507'",
+                       "q := public.media_quota_lock(p_org);", "if q.used_bytes + pending + p_bytes > lim then",
+                       "reason=server_full", "kind_ = 'caption' and p_bytes > 2097152"):
+            self.assertIn(needle, new)
+
+    def test_search_path_pinned_and_privileges_are_0038s(self):
+        headers = re.findall(r"create or replace function public\.\w+\([\s\S]*?\$\$", CODE44)
+        self.assertEqual(len(headers), len(HEIC_FNS))
+        for h in headers:
+            self.assertIn("set search_path = public, pg_temp", h)
+        for fn in HEIC_FNS:
+            self.assertRegex(CODE44, rf"revoke all on function public\.{fn}\([^)]*\) from public, anon, authenticated, "
+                                     r"service_role;")
+        granted = re.findall(r"grant execute on function public\.(\w+)\([^)]*\) to ([a-z_, ]+);", CODE44)
+        self.assertEqual(granted, [("request_upload", "authenticated")])
+
+    def test_variants_check_is_replaced_idempotently_with_display(self):
+        self.assertIn("pg_get_constraintdef(oid) like '%variants%'", CODE44)
+        self.assertIn("alter table public.media_assets drop constraint %I", CODE44)
+        self.assertIn("check (variants <@ array['thumb', 'proxy', 'display']::text[]);", CODE44)
+        # 0038's was inline and named by Postgres; the new one has a name of its own.
+        self.assertIn("check (variants <@ array['thumb', 'proxy']::text[])", SQL)
+        self.assertIn("add constraint media_assets_variants_check", CODE44)
+        self.assertLess(CODE44.index("drop constraint"), CODE44.index("add constraint media_assets_variants_check"))
+
+
 if __name__ == "__main__":
     unittest.main()

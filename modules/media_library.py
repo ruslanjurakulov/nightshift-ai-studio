@@ -11,14 +11,21 @@ run by ``tools/media_worker.py``, then for each ticket:
    from the extension and not from the declared type — and refuses anything
    that is not on the allowlist, or whose kind disagrees with the declared
    type or the filename's extension (a PNG called ``clip.mp4`` is refused);
-3. ffprobes it with the demuxer FORCED to the sniffed format and only the
+3. (HEIC / HEIF photos, migration 0044: no ffprobe — ffmpeg cannot decode
+   them. The brand and an image item are checked in the container, then
+   pillow-heif decodes a COPY in a child process with memory / CPU / time
+   limits, after the header's size was checked: 100 megapixels and 16384 px a
+   side. A failed or over-limit decode rejects the ticket.)
+   ffprobes it with the demuxer FORCED to the sniffed format and only the
    ``file`` protocol allowed, so a playlist or concat script dressed up as
    media cannot make ffmpeg open other files or URLs; confirms the streams
    match the kind (a video has a real video stream, audio has audio);
 4. copies it to ``media/<aa>/<uuid>/original`` — the asset id is chosen here,
    and every path is derived from it alone — hashing while copying, and makes
-   a JPEG thumbnail (images, video) and a 480p H.264 proxy (video) that any
-   browser can play;
+   a JPEG thumbnail (images, video), a 480p H.264 proxy (video) that any
+   browser can play, and — for a HEIC / HEIF — a JPEG ``display`` copy (long
+   side <= 2048) because most browsers cannot show the original, which is
+   stored untouched;
 5. registers the row (``register_asset``, service role) or rejects the ticket
    with a reason word (``reject_media_upload``), then deletes the staged file.
 
@@ -32,12 +39,14 @@ Nothing secret is logged: ticket / asset ids, reason words and exception types.
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import logging
 import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -55,6 +64,8 @@ ALLOWED_MIME: Dict[str, str] = {
     "image/png": "image",
     "image/webp": "image",
     "image/gif": "image",
+    "image/heic": "image",
+    "image/heif": "image",
     "video/mp4": "video",
     "video/quicktime": "video",
     "video/webm": "video",
@@ -73,12 +84,18 @@ ALLOWED_MIME: Dict[str, str] = {
 #: Filename extension -> MIME type.
 EXT_MIME: Dict[str, str] = {
     "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif",
+    "heic": "image/heic", "heif": "image/heif",
     "mp4": "video/mp4", "m4v": "video/mp4", "mov": "video/quicktime", "webm": "video/webm",
     "mkv": "video/x-matroska",
     "mp3": "audio/mpeg", "m4a": "audio/mp4", "wav": "audio/wav", "ogg": "audio/ogg", "oga": "audio/ogg",
     "flac": "audio/flac", "aac": "audio/aac",
     "vtt": "text/vtt", "srt": "application/x-subrip",
 }
+
+#: HEIC / HEIF photos (0044). Deliberately NOT in DEMUXER: ffprobe and ffmpeg
+#: never open them (the ffmpeg here cannot decode HEIF); pillow-heif does, in
+#: a child process (modules/heic_decode.py).
+HEIF_MIMES = frozenset({"image/heic", "image/heif"})
 
 #: The demuxer ffprobe / ffmpeg are forced to for each sniffed type. Forcing it
 #: is the point: auto-detection is what lets an .m3u8 or ffconcat script
@@ -102,7 +119,8 @@ DEMUXER: Dict[str, str] = {
 }
 
 #: Files an asset may have, and their names inside its directory.
-VARIANT_FILES: Dict[str, str] = {"original": "original", "thumb": "thumb.jpg", "proxy": "proxy.mp4"}
+VARIANT_FILES: Dict[str, str] = {"original": "original", "thumb": "thumb.jpg", "proxy": "proxy.mp4",
+                                 "display": "display.jpg"}
 
 CAPTION_MAX_BYTES = 2 * 1024 * 1024
 MAX_SIDE = 16384
@@ -115,6 +133,17 @@ STAGING_MAX_AGE_S = 26 * 3600
 PROBE_TIMEOUT_S = 60
 THUMB_TIMEOUT_S = 120
 PROXY_TIMEOUT_S = 2 * 3600
+#: HEIC decoding (0044): the picture is checked on its header first.
+MAX_PIXELS = 100_000_000
+DISPLAY_SIDE = 2048
+HEIC_DECODE_TIMEOUT_S = 120
+HEIC_DECODE_CPU_S = 90
+#: Address-space limit of the decoding child. The container's own memory limit
+#: (4 GiB) is the hard wall; this makes the child fail before it gets there.
+HEIC_DECODE_MEM_BYTES = 3 * 1024 ** 3
+#: The ``meta`` box of an image is read whole to find its handler; real files
+#: have tens of kB, a tile-heavy grid a few hundred.
+HEIF_META_MAX_BYTES = 8 * 1024 * 1024
 HEARTBEAT_S = 30.0
 COPY_CHUNK = 1024 * 1024
 
@@ -177,6 +206,49 @@ _MP4_AUDIO_BRANDS = {b"M4A ", b"M4B ", b"M4P "}
 _SRT_TIME = re.compile(r"^\d{1,2}:\d{2}:\d{2}[,.]\d{3}\s+-->\s+\d{1,2}:\d{2}:\d{2}[,.]\d{3}")
 
 
+#: Major brands of an HEVC-coded still (or image sequence) in a HEIF file.
+_HEIC_BRANDS = frozenset({b"heic", b"heix", b"hevc", b"hevx"})
+#: The generic HEIF brands: they say "an image collection", not which codec.
+_HEIF_GENERIC_BRANDS = frozenset({b"mif1", b"msf1"})
+#: AVIF shares mif1; it is not accepted.
+_AVIF_BRANDS = frozenset({b"avif", b"avis"})
+
+
+def _ftyp_brands(head: bytes) -> Optional[List[bytes]]:
+    """The major brand and the compatible brands of a leading ``ftyp`` box, or
+    None. Only a plain 32-bit box size is read, bounded by the head."""
+    if len(head) < 16 or head[4:8] != b"ftyp":
+        return None
+    size = int.from_bytes(head[0:4], "big")
+    if size < 16:  # 0 and 1 (to-end / 64-bit size) are not what a photo writes
+        return None
+    end = min(size, len(head))
+    brands = [head[8:12]]
+    brands += [head[i:i + 4] for i in range(16, end - 3, 4)]  # [12:16] is the minor version
+    return brands
+
+
+def _heif_brands(head: bytes) -> Tuple[bool, Optional[str]]:
+    """(this is a HEIF-family file, its type). AVIF is (True, None): a file the
+    HEIF rules recognise and refuse, so it never falls through to video/mp4.
+    ``image/heic`` for an HEVC major brand, ``image/heif`` for a generic
+    mif1 / msf1 major brand that lists an HEVC brand as compatible (without one
+    the codec is not HEVC: AVIF, JPEG, ... — not accepted)."""
+    brands = _ftyp_brands(head)
+    if brands is None:
+        return False, None
+    if any(b in _AVIF_BRANDS for b in brands):
+        return True, None
+    if brands[0] in _HEIC_BRANDS:
+        return True, "image/heic"
+    if brands[0] in _HEIF_GENERIC_BRANDS:
+        if any(b in _HEIC_BRANDS for b in brands[1:]):
+            return True, "image/heif"
+        # mif1 with no HEVC brand: not an accepted picture, and not a video.
+        return True, None
+    return False, None
+
+
 def sniff(head: bytes) -> Optional[str]:
     """The MIME type the first bytes of a file say it is, or None when it is
     none of the allowed kinds. Order matters: JPEG's FF D8 is checked before
@@ -197,6 +269,11 @@ def sniff(head: bytes) -> Optional[str]:
         return None
     if len(head) >= 12 and head[4:8] == b"ftyp":
         brand = head[8:12]
+        # HEIC / HEIF before the generic MP4 fallthrough (an iPhone photo is
+        # an ISO-BMFF file whose brand would otherwise read as video/mp4).
+        found, heif = _heif_brands(head)
+        if found:
+            return heif  # a HEIF type, or None for AVIF
         if brand == b"qt  ":
             return "video/quicktime"
         if brand in _MP4_AUDIO_BRANDS:
@@ -251,6 +328,62 @@ def extension_mime(name: str) -> Tuple[bool, Optional[str]]:
     return True, EXT_MIME.get(m.group(1).lower())
 
 
+def _boxes(buf: bytes, limit: int = 64):
+    """(type, payload) of the boxes laid end to end in ``buf``: 32-bit sizes
+    only, at most ``limit`` boxes, stopping at anything that does not fit."""
+    pos, n = 0, 0
+    while pos + 8 <= len(buf) and n < limit:
+        size = int.from_bytes(buf[pos:pos + 4], "big")
+        if size < 8 or pos + size > len(buf):
+            return
+        yield buf[pos + 4:pos + 8], buf[pos + 8:pos + size]
+        pos += size
+        n += 1
+
+
+def heif_has_image_item(path: Path) -> bool:
+    """A HEIF brand alone is not a picture: the file must carry a ``meta`` box
+    whose handler is ``pict`` and that names a primary item (``pitm``). The
+    top-level boxes are walked with seeks (an ``mdat`` is skipped, never read),
+    at most 64 of them, and ``meta`` is read only up to HEIF_META_MAX_BYTES.
+    The decode that follows is the real arbiter; this keeps an empty or
+    sequence-only container from being treated as a photo."""
+    try:
+        with open(path, "rb") as f:
+            total = os.fstat(f.fileno()).st_size
+            pos = 0
+            for _ in range(64):
+                f.seek(pos)
+                hdr = f.read(8)
+                if len(hdr) < 8:
+                    return False
+                size = int.from_bytes(hdr[:4], "big")
+                if size == 1:
+                    ext = f.read(8)
+                    if len(ext) < 8:
+                        return False
+                    size, body = int.from_bytes(ext, "big"), 16
+                elif size == 0:
+                    size, body = total - pos, 8
+                else:
+                    body = 8
+                if size < body or pos + size > total:
+                    return False
+                if hdr[4:8] == b"meta":
+                    if size > HEIF_META_MAX_BYTES:
+                        return False
+                    payload = f.read(size - body)
+                    # meta is a FullBox: 4 bytes of version / flags, then boxes.
+                    kids = dict(_boxes(payload[4:], 256))
+                    hdlr = kids.get(b"hdlr")
+                    return bool(hdlr is not None and len(hdlr) >= 12 and hdlr[8:12] == b"pict"
+                                and b"pitm" in kids)
+                pos += size
+    except OSError:
+        return False
+    return False
+
+
 #: Containers whose first bytes cannot say whether they hold a picture: an
 #: .m4a is often written with a generic MP4 brand, a sound-only .webm looks
 #: like any WebM. For these, ffprobe's streams settle the kind afterwards.
@@ -267,6 +400,15 @@ def check_declared(sniffed: str, declared_mime: str, original_name: str) -> None
     has_ext, ext_mime = extension_mime(original_name)
     if has_ext and ALLOWED_MIME.get(ext_mime or "") not in kinds:
         raise IngestReject("extension_mismatch", f"the file is {kind}; its name says otherwise")
+    # HEIC / HEIF (0044): the same kind is not enough. A declared HEIF type or a
+    # .heic / .heif name REQUIRES HEIF content (a PNG or JPEG renamed .heic is
+    # refused). The reverse is fine: HEIC content named .jpg is accepted and
+    # stored as image/heic, because the content decides the type.
+    if sniffed not in HEIF_MIMES:
+        if declared_mime in HEIF_MIMES:
+            raise IngestReject("type_mismatch", f"the file is {sniffed.split('/')[-1]}, not a HEIC / HEIF image")
+        if has_ext and ext_mime in HEIF_MIMES:
+            raise IngestReject("extension_mismatch", "the name says HEIC / HEIF; the content is not")
 
 
 # ── ffprobe ──────────────────────────────────────────────────────────────────
@@ -428,6 +570,111 @@ def run_tool(argv: Sequence[str], heartbeat: Callable[[], None], *, timeout_s: f
                 pass
 
 
+# ── HEIC decoding: a child process with limits ───────────────────────────────
+
+_HEIC_CHILD = Path(__file__).with_name("heic_decode.py")
+_HEIC_REASONS = {"too_large_dimensions", "decode_failed"}
+HEIC_UNAVAILABLE_DETAIL = "heic decoding is not available on this server"
+_heic_checked: Optional[bool] = None
+
+
+def heic_available() -> bool:
+    """pillow-heif imports here. Checked once; the worker logs a warning at
+    startup when it does not and keeps serving everything else."""
+    global _heic_checked
+    if _heic_checked is None:
+        try:
+            importlib.import_module("pillow_heif")
+            importlib.import_module("PIL.Image")
+            _heic_checked = True
+        except Exception as e:
+            logger.warning("pillow-heif is not importable (%s)", type(e).__name__)
+            _heic_checked = False
+    return _heic_checked
+
+
+def decode_heic(src: Path, out_dir: Path, heartbeat: Callable[[], None], *,
+                timeout_s: float = HEIC_DECODE_TIMEOUT_S, beat_s: float = HEARTBEAT_S,
+                mem_bytes: int = HEIC_DECODE_MEM_BYTES, cpu_s: int = HEIC_DECODE_CPU_S) -> Tuple[int, int]:
+    """Decode a HEIC / HEIF into ``display.jpg`` and ``thumb.jpg`` inside
+    ``out_dir`` and return the oriented (width, height). Runs
+    modules/heic_decode.py as a child process: argv only (no shell), a near
+    empty environment (the service key stays here), its own session so a
+    timeout kills it whole, and limits it sets on itself before it opens the
+    file. Raises IngestReject; never returns a result for a failed or
+    over-limit decode."""
+    argv = [sys.executable, "-I", str(_HEIC_CHILD), str(src), str(out_dir), str(int(mem_bytes)), str(int(cpu_s))]
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LANG": "C.UTF-8", "OMP_NUM_THREADS": "2",
+           "PYTHONDONTWRITEBYTECODE": "1",
+           "MALLOC_ARENA_MAX": "2"}
+    try:
+        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                env=env, cwd=str(out_dir), close_fds=True, start_new_session=True)
+    except OSError as e:
+        raise IngestReject("decode_failed", f"the decoder could not start ({type(e).__name__})") from None
+    started = time.monotonic()
+    while True:
+        try:
+            code = proc.wait(timeout=beat_s)
+            break
+        except subprocess.TimeoutExpired:
+            if time.monotonic() - started > timeout_s:
+                _kill_group(proc)
+                raise IngestReject("timeout", "decoding the picture took too long") from None
+            try:
+                heartbeat()
+            except Exception:
+                pass
+    try:
+        raw = (proc.stdout.read(4096) if proc.stdout else b"") or b""
+    finally:
+        if proc.stdout:
+            proc.stdout.close()
+    answer: Mapping = {}
+    for line in reversed(raw.decode("utf-8", "replace").splitlines()):
+        try:
+            data = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(data, dict):
+            answer = data
+            break
+    if answer.get("ok") is True and code == 0:
+        w, h = answer.get("width"), answer.get("height")
+        if not (isinstance(w, int) and isinstance(h, int) and 1 <= w <= MAX_SIDE and 1 <= h <= MAX_SIDE
+                and w * h <= MAX_PIXELS):
+            raise IngestReject("decode_failed", "the decoder reported an impossible size")
+        for name in ("display.jpg", "thumb.jpg"):
+            f = Path(out_dir) / name
+            if f.is_symlink() or not f.is_file() or f.stat().st_size <= 0:
+                raise IngestReject("decode_failed", "the picture could not be decoded")
+            with open(f, "rb") as fh:
+                if fh.read(3) != b"\xff\xd8\xff":
+                    raise IngestReject("decode_failed", "the picture could not be decoded")
+        return w, h
+    reason = answer.get("reason")
+    if reason == "unavailable":
+        raise IngestReject("heic_unavailable", HEIC_UNAVAILABLE_DETAIL)
+    if reason in _HEIC_REASONS:
+        raise IngestReject(str(reason), str(answer.get("detail") or ""))
+    if code < 0:  # killed by a signal: the CPU or memory limit, or a crash
+        raise IngestReject("decode_failed", "the decoder was stopped (a resource limit or a crash)")
+    raise IngestReject("decode_failed", "the picture could not be decoded")
+
+
+def _kill_group(proc: "subprocess.Popen") -> None:
+    try:
+        os.killpg(proc.pid, 9)
+    except (ProcessLookupError, PermissionError, OSError):
+        proc.kill()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
+    if proc.stdout:
+        proc.stdout.close()
+
+
 def copy_and_hash(src: Path, dst: Path, limit: int) -> Tuple[int, str]:
     """Copy src to dst (created exclusively) while hashing what is written.
     Refuses past ``limit`` bytes: the file on disk is measured, not trusted."""
@@ -527,7 +774,8 @@ def find_tools() -> Optional[Tools]:
 
 def ingest(ticket: Mapping, *, store: MediaStore, staging_root: Path, media_root: Path, worker_id: str,
            tools: Tools, new_id: Callable[[], str] = lambda: str(uuid.uuid4()),
-           runner: Callable[..., int] = run_tool, prober: Callable[..., Probe] = run_probe) -> dict:
+           runner: Callable[..., int] = run_tool, prober: Callable[..., Probe] = run_probe,
+           decoder: Callable[..., Tuple[int, int]] = decode_heic) -> dict:
     """Turn one claimed ticket into files under media/ and a registered row.
     Returns register_asset's answer. Raises IngestReject with a reason word on
     anything the person should be told; any other exception is a worker error.
@@ -557,6 +805,15 @@ def ingest(ticket: Mapping, *, store: MediaStore, staging_root: Path, media_root
     if ALLOWED_MIME[sniffed] == "caption":
         check_caption(staged)
         info = Probe("caption", sniffed, None, None, None)
+    elif sniffed in HEIF_MIMES:
+        # No ffprobe for HEIF: the brand was read from the head, the container
+        # must hold a picture, and the decode below (size from the header
+        # first) is the arbiter. Never stored without it.
+        if not heic_available():
+            raise IngestReject("heic_unavailable", HEIC_UNAVAILABLE_DETAIL)
+        if not heif_has_image_item(staged):
+            raise IngestReject("not_media", "the HEIF container holds no still picture")
+        info = Probe("image", sniffed, None, None, None)
     else:
         info = prober(tools.ffprobe, staged, sniffed)
         # Declared as sound, found to carry a picture: not what was asked for.
@@ -574,7 +831,11 @@ def ingest(ticket: Mapping, *, store: MediaStore, staging_root: Path, media_root
     try:
         nbytes, digest = copy_and_hash(staged, work / VARIANT_FILES["original"], declared_bytes)
         variants: List[str] = []
-        if info.kind in ("image", "video"):
+        if sniffed in HEIF_MIMES:
+            w, h = decoder(work / VARIANT_FILES["original"], work, beat)
+            info = Probe("image", info.mime, w, h, None)
+            variants += ["thumb", "display"]
+        elif info.kind in ("image", "video"):
             thumb = work / VARIANT_FILES["thumb"]
             code = runner(thumbnail_command(tools.ffmpeg, work / "original", thumb, info.mime, info.duration),
                           beat, timeout_s=THUMB_TIMEOUT_S)
@@ -751,7 +1012,8 @@ class MediaService:
 
 
 __all__ = [
-    "ALLOWED_MIME", "DEMUXER", "EXT_MIME", "IngestReject", "MediaService", "MediaStore", "Probe", "Tools",
-    "VARIANT_FILES", "asset_dir", "asset_file", "canonical_id", "check_declared", "find_tools", "gc_staging",
-    "ingest", "interpret_probe", "process_ticket", "purge_deleted", "sniff", "staged_path", "storage_key",
+    "ALLOWED_MIME", "DEMUXER", "EXT_MIME", "HEIF_MIMES", "IngestReject", "MediaService", "MediaStore", "Probe",
+    "Tools", "VARIANT_FILES", "asset_dir", "asset_file", "canonical_id", "check_declared", "decode_heic",
+    "find_tools", "gc_staging", "heic_available", "heif_has_image_item", "ingest", "interpret_probe",
+    "process_ticket", "purge_deleted", "sniff", "staged_path", "storage_key",
 ]

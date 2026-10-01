@@ -2,3 +2,7 @@
 # pipeline's requirements.txt: nothing that ships talks to Postgres directly.
 pytest>=8.0
 psycopg[binary]>=3.2,<4
+# test_sec_media.py attacks the worker's HEIC path with a real file made by pillow-heif
+# (modules/media_library.py): the lab needs the encoder, nothing that ships does.
+Pillow>=10.0.0
+pillow-heif>=0.20.0,<2
