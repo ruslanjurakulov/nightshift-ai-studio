@@ -278,6 +278,7 @@ FAKE_DOCKER = textwrap.dedent(
       *" up "*worker) exit "${FAKE_WORKER_UP_RC:-0}" ;;
       *" up "*) exit "${FAKE_UP_RC:-0}" ;;
       *" ps -q web") echo cid123 ;;
+      *" ps -q worker"|*" ps -q media-worker") echo cidw ;;
       inspect*) echo "${FAKE_HEALTH:-healthy}" ;;
     esac
     exit 0
@@ -367,6 +368,7 @@ class _RemoteDeployFixture(unittest.TestCase):
             NIGHTSHIFT_LOCK_FILE=str(self.tmp / ".deploy.lock"),
             NIGHTSHIFT_DOCKER=str(self.tmp / "docker"),
             NIGHTSHIFT_HEALTH_TIMEOUT="10",
+            NIGHTSHIFT_WORKER_SETTLE_SECONDS="0",
             FAKE_DOCKER_LOG=str(self.docker_log),
             **extra,
         )
@@ -801,6 +803,17 @@ class RemoteDeployWorkerTests(_RemoteDeployFixture):
         self.assertLess(web_up[0], worker_up[0])
         self.assertTrue(all("--profile worker" in c for c in calls if " up " in f" {c} "))
         self.assertIn("worker on", proc.stdout)
+
+    def test_each_worker_state_is_printed_after_start_as_numbers_not_log_text(self):
+        proc = self.deploy(self.worker_payload())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        calls = self.docker_calls()
+        inspects = [c for c in calls if c.startswith("inspect -f") and "ExitCode" in c]
+        self.assertEqual(len(inspects), 2)
+        self.assertTrue(any(c.startswith("inspect -f worker after") for c in inspects))
+        self.assertTrue(any(c.startswith("inspect -f media-worker after") for c in inspects))
+        # Never the container's log text: this output is a public Actions log.
+        self.assertFalse([c for c in calls if " logs" in f" {c}"])
 
     def test_switching_the_worker_off_removes_it_and_its_keys(self):
         self.assertEqual(self.deploy(self.worker_payload()).returncode, 0)

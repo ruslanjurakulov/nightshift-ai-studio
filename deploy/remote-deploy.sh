@@ -48,6 +48,7 @@
 #   NIGHTSHIFT_LOCK_FILE      one deploy at a time     (/opt/nightshift/.deploy.lock)
 #   NIGHTSHIFT_DOCKER         docker binary            (docker)
 #   NIGHTSHIFT_HEALTH_TIMEOUT seconds to wait for web  (420)
+#   NIGHTSHIFT_WORKER_SETTLE_SECONDS  pause before the worker state line (20)
 # sshd does not accept client-sent environment by default (PermitUserEnvironment
 # no, AcceptEnv LANG LC_*), so the key holder cannot set these.
 
@@ -67,6 +68,7 @@ WORKER_ENV_FILE="${NIGHTSHIFT_WORKER_ENV_FILE:-/opt/nightshift/.env.worker}"
 LOCK_FILE="${NIGHTSHIFT_LOCK_FILE:-/opt/nightshift/.deploy.lock}"
 DOCKER="${NIGHTSHIFT_DOCKER:-docker}"
 HEALTH_TIMEOUT="${NIGHTSHIFT_HEALTH_TIMEOUT:-420}"
+WORKER_SETTLE_SECONDS="${NIGHTSHIFT_WORKER_SETTLE_SECONDS:-20}"
 
 MAX_INPUT_BYTES=262144
 SHA_KEY=NIGHTSHIFT_DEPLOY_SHA
@@ -305,6 +307,17 @@ main() {
     compose up -d --no-deps media-worker \
       || die "the media worker did not start; on the server: dc logs --tail 100 media-worker"
     compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' worker media-worker || true
+    # A container that dies right after start still reads "Up" in the line
+    # above. Wait a moment, then print how each worker is doing: state, last
+    # exit code, restart count, whether the kernel killed it for memory.
+    # Numbers and a state word only, never log text: this output is public.
+    if [[ "$WORKER_SETTLE_SECONDS" -gt 0 ]]; then sleep "$WORKER_SETTLE_SECONDS"; fi
+    for svc in worker media-worker; do
+      cid="$(compose ps -q "$svc" 2>/dev/null || true)"
+      if [[ -n "$cid" ]]; then
+        "$DOCKER" inspect -f "$svc after ${WORKER_SETTLE_SECONDS}s: state={{.State.Status}} exit={{.State.ExitCode}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}" "$cid" || true
+      fi
+    done
     # The creative worker (0036) is started by hand, never by a deploy; one
     # that is already running is moved onto the image just built.
     if [[ -n "$(compose ps -q creative-worker 2>/dev/null)" ]]; then
