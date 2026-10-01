@@ -44,6 +44,7 @@ import {
   sheetQuoteParams,
   takesQuality,
   takesStyle,
+  tierQuoteParams,
   type AspectRatio,
   type DescribeLanguage,
   type DubLanguage,
@@ -273,7 +274,8 @@ export function GeneratePanel({
     capability,
     modelId: effectiveModel,
     tiers,
-    params: tiers.length ? sheetQuoteParams({ ...form, quality: null }) : null,
+    // Without the words: the tiers' prices do not depend on them, and typing must not re-ask or send them.
+    params: tiers.length ? tierQuoteParams(form) : null,
   });
   const tierText = (q: ImageQuality): string => {
     const label = t.gen.qualities[q];

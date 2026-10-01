@@ -139,6 +139,10 @@ def drain(db):
         svc(db, "select public.finish_creative_job(%s,'drain',false,null,null,'test_drain','drained')", [jid])
 
 
+def unit_of(db, job):
+    return db.su("select credit_unit from public.creative_jobs where id=%s", [job["id"]])[0][0]
+
+
 def t2i(**extra):
     return {"prompt": "a red apple", **extra}
 
@@ -254,10 +258,55 @@ def test_the_hold_is_the_tiers_price_and_the_confirmed_price_is_the_ceiling(db):
     drain(db)
 
 
-def test_a_job_that_names_no_tier_is_held_at_medium_and_stores_no_tier_it_was_not_given(db):
+def test_a_job_that_names_no_tier_is_held_at_medium_and_carries_the_tier_it_was_priced_at(db):
+    # The worker sends exactly params.quality and has no default: the database
+    # writes down the tier it priced, so the two can never disagree.
     drain(db)
     j = create(db, UA, ORG_A, "t2i", "qimg", t2i(), maxc=PRICES["medium"])["job"]
-    assert float(j["quoted_credits"]) == PRICES["medium"] and "quality" not in j["params"]
+    assert float(j["quoted_credits"]) == PRICES["medium"] and j["params"]["quality"] == "medium"
+    assert unit_of(db, j) == "model_qimg_image_medium"
+    drain(db)
+
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_the_stored_tier_is_always_the_priced_one_and_the_rest_of_the_params_are_untouched(db, tier):
+    drain(db)
+    params = t2i(aspect_ratio="16:9", **({} if tier == "medium" else {"quality": tier}))
+    j = create(db, UA, ORG_A, "t2i", "qimg", params, maxc=PRICES[tier])["job"]
+    assert j["params"] == {**params, "quality": tier}
+    assert unit_of(db, j) == f"model_qimg_image_{tier}" and float(j["quoted_credits"]) == PRICES[tier]
+    drain(db)
+
+
+def test_an_edit_job_carries_its_priced_tier_too(db):
+    drain(db)
+    params = {"prompt": "x", "source_asset_id": db.assets["a_png"]}
+    j = create(db, UA, ORG_A, "edit", "qimg", params)["job"]
+    assert j["params"]["quality"] == "medium" and j["params"]["source_asset_id"] == db.assets["a_png"]
+    drain(db)
+
+
+def test_a_model_without_tiers_stores_no_tier(db):
+    drain(db)
+    j = create(db, UA, ORG_A, "t2i", "flat-img", t2i())["job"]
+    assert "quality" not in j["params"] and unit_of(db, j) == "model_flat_img_image"
+    drain(db)
+
+
+def test_a_replayed_key_is_still_a_replay_and_a_changed_tier_under_one_key_is_a_conflict(db):
+    drain(db)
+    key = "studio:" + uuid.uuid4().hex
+
+    def go(params):
+        return db.act("authenticated", UA,
+                      "select public.create_creative_job(%s,'t2i','qimg',%s::jsonb,'exact',%s::text,1000)",
+                      [ORG_A, json.dumps(params), key])[0][0]
+    first = go(t2i())                              # no tier named: priced and stored as medium
+    again = go(t2i())                              # same request, same key
+    assert again["replay"] is True and again["job"]["id"] == first["job"]["id"]
+    st, word, _ = err(lambda: go(t2i(quality="high")))
+    assert (st, word) == ("NS409", "idempotency_conflict")
+    assert db.su("select count(*) from public.credit_reservations where job_id=%s", ["cj:" + first["job"]["id"]]) == [(1,)]
     drain(db)
 
 

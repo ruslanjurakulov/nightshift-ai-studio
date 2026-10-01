@@ -36,6 +36,7 @@ import {
   effectiveQuality,
   prefillFromJob,
   sheetQuoteParams,
+  tierQuoteParams,
   withTiers,
   type StudioForm,
   type StudioJob,
@@ -217,6 +218,19 @@ describe("the route's input check", () => {
   });
 });
 
+describe("the tiers are priced without the words", () => {
+  it("a stand-in for the prompt, no tier of its own, and nothing until an edit has its picture", () => {
+    expect(tierQuoteParams(form({ prompt: "my secret plan" }))).toEqual({ prompt: "price check", aspect_ratio: "16:9" });
+    expect(tierQuoteParams(form({ prompt: "x", quality: "high" }))).not.toHaveProperty("quality");
+    expect(tierQuoteParams(form({ capability: "edit", prompt: "x", sourceId: null }))).toBeNull();
+    expect(tierQuoteParams(form({ capability: "edit", prompt: "x", sourceId: PIC }))).toEqual({
+      prompt: "price check",
+      source_asset_id: PIC,
+    });
+    expect(tierQuoteParams(form({ capability: "t2v", prompt: "x" }))).toBeNull();
+  });
+});
+
 describe("the sheet prices the same settings", () => {
   it("never carries a tier of its own: each model is priced at its own", () => {
     expect(sheetQuoteParams(form({ prompt: "a cat" }))).not.toHaveProperty("quality");
@@ -237,6 +251,23 @@ describe("the quality selector", () => {
     // Every number came from a quote of that tier — nothing was computed here.
     const asked = quotes.filter((q) => q.params.quality).map((q) => q.params.quality);
     expect(new Set(asked)).toEqual(new Set(["low", "medium", "high"]));
+  });
+
+  it("never sends the words to a tier price, and typing does not ask the tiers again", async () => {
+    render(withI18n(<GeneratePanel orgId={ORG} models={[TIERED]} />));
+    await waitFor(() => expect(screen.getByTestId("gen-quality-high").textContent).toContain("16 credits"));
+    const tierQuotes = () => quotes.filter((q) => q.params.prompt === "price check");
+    expect(tierQuotes()).toHaveLength(3);
+    const area = document.getElementById("gen-prompt") as HTMLTextAreaElement;
+    for (const text of ["a", "a red", "a red kite over a quiet harbour"]) fireEvent.change(area, { target: { value: text } });
+    // The one price for the button (the real words, the picked tier) is asked once the typing pauses.
+    await screen.findByRole("button", { name: /Generate · 4 credits/ });
+    expect(tierQuotes()).toHaveLength(3);
+    const typed = quotes.filter((q) => q.params.prompt !== "price check");
+    expect(typed.length).toBeGreaterThan(0);
+    // Only the button's own quote carries the words; none of the tier prices do.
+    expect(typed.every((q) => q.params.quality === "medium")).toBe(true);
+    expect(JSON.stringify(tierQuotes())).not.toContain("harbour");
   });
 
   it("asks the price of the picked tier for the button, and sends exactly that tier and price on create", async () => {

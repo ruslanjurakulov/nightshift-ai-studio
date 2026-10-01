@@ -26,9 +26,12 @@ job folder), the capability layer knows vendors (``CapabilityRequest``,
   ``end_image`` only to a model whose registry entry has ``end_frame`` — a
   model that would drop it fails the job before any call instead of
   delivering a clip that ends somewhere else;
-* a picture model that bills by quality (0060) is always sent one: the tier
-  the job was quoted (``params.quality``), else ``medium`` — the same default
-  the quote used, never the vendor's own (dearer) default;
+* a picture model that bills by quality (0060) is sent EXACTLY the tier the
+  job was priced at (``params.quality``, written by the database at create
+  time) and never a default of this process's own: a job without one (made
+  before 0060, or priced flat by a database whose registry copy was not
+  synced) fails before the call and its hold is released, because sending
+  any tier would bill something the customer was not quoted;
 * style / character reference pictures (0048,
   ``GenerationRequest.reference_files``) follow them only for a capability
   the adapter lists in ``reference_capabilities``, and only as many as the
@@ -48,7 +51,6 @@ from __future__ import annotations
 import hashlib
 import threading
 import uuid
-from dataclasses import replace
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional
 
@@ -56,7 +58,6 @@ from modules import model_registry
 from modules.creative_style import StyleSupport
 from modules.capabilities import build_adapter
 from modules.capabilities.base import (
-    DEFAULT_IMAGE_QUALITY,
     FAILED,
     FILE_INPUT,
     MEDIA_INPUT,
@@ -171,8 +172,12 @@ class RegistryAdapter:
             raise CreativeAdapterError("bad_request", f"{self.entry.id} cannot end this clip on the chosen picture")
         req = capability_request(request)
         if self.entry.qualities and cap in QUALITY_CAPABILITIES and req.quality is None:
-            # The quote priced the default tier; send that tier, never nothing.
-            req = replace(req, quality=DEFAULT_IMAGE_QUALITY)
+            # No tier was priced for this job. Sending none bills the vendor's
+            # own default; sending one of ours bills a tier nobody quoted.
+            raise CreativeAdapterError(
+                "bad_request",
+                f"this job carries no quality tier for {self.entry.id}, so it cannot be billed as quoted; "
+                "nothing was charged — start it again")
         problems = self.adapter.problems(req, self.entry)
         if problems:
             raise CreativeAdapterError("bad_request", "; ".join(problems)[:500])
