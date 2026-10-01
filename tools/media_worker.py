@@ -14,7 +14,9 @@ Environment (the worker's env file plus the compose service's own values):
   NIGHTSHIFT_WORKER_ID                 optional; defaults to host-pid
 
 Exits 2 with the remedy when something it needs is missing, rather than
-claiming tickets it could only reject.
+claiming tickets it could only reject. The one exception is pillow-heif (HEIC
+photos, migration 0044): without it the worker logs a warning at startup and
+keeps serving everything else; a HEIC upload is rejected with a clear reason.
 """
 
 from __future__ import annotations
@@ -79,6 +81,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         logger.error("ffmpeg and ffprobe are required to check uploads; install the ffmpeg package "
                      "(Dockerfile.worker does).")
         return 2
+
+    if not media_library.heic_available():
+        logger.warning("pillow-heif is not installed: HEIC / HEIF uploads will be rejected with 'heic decoding is "
+                       "not available on this server'; everything else is served. Rebuild the worker image "
+                       "(requirements.txt lists pillow-heif).")
 
     service = media_library.MediaService(url, key, staging_root=staging_root, media_root=media_root,
                                          worker_id=args.worker_id, tools=tools)

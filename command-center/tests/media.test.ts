@@ -37,8 +37,12 @@ vi.mock("@/lib/server/audit", () => ({ logAudit: async () => {} }));
 
 import {
   ALLOWED_MIME,
+  MEDIA_VARIANTS,
+  UPLOAD_ACCEPT,
+  UPLOAD_REASONS,
   cleanUploadName,
   coerceAssets,
+  isVariant,
   mapMediaError,
   parseMediaId,
   parseQuotaDetail,
@@ -54,9 +58,17 @@ import {
   signedMediaPath,
   stagedUploadPath,
   verifyMedia,
+  withUrls,
 } from "@/lib/server/media";
 
-const SQL = readFileSync(join(__dirname, "..", "..", "supabase/migrations/0038_media_assets.sql"), "utf8");
+const MIGRATIONS = join(__dirname, "..", "..", "supabase/migrations");
+const SQL_0038 = readFileSync(join(MIGRATIONS, "0038_media_assets.sql"), "utf8");
+const SQL_0044 = readFileSync(join(MIGRATIONS, "0044_media_heic.sql"), "utf8");
+/** The LATEST definition of a function: 0044 redefines the type helpers, 0038 has the rest. */
+function latestFunctionBody(name: string): string {
+  const src = SQL_0044.includes(`function public.${name}(`) ? SQL_0044 : SQL_0038;
+  return src.split(`function public.${name}(`, 2)[1].split("$$;", 1)[0];
+}
 const SECRET = Buffer.from("s".repeat(48));
 const ID = "3f2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e";
 const OTHER = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
@@ -164,6 +176,44 @@ describe("signed media links", () => {
   });
 });
 
+describe("the link a browser opens (viewUrl)", () => {
+  const base = { id: ID, bytes: 100, width: 100, height: 50, durationS: null, source: "upload" as const, name: "IMG_1.HEIC", version: 1, createdAt: null };
+  const heic = { ...base, kind: "image" as const, mime: "image/heic" };
+
+  function variantOf(url: string | null): string | null {
+    return url ? (url.split("?")[0].split("/").pop() ?? null) : null;
+  }
+
+  it("prefers the JPEG display copy for a HEIC and shows its thumbnail", () => {
+    const a = withUrls({ ...heic, variants: ["thumb", "display"] }, SECRET, true, NOW);
+    expect(variantOf(a.viewUrl)).toBe("display");
+    expect(variantOf(a.thumbUrl)).toBe("thumb");
+  });
+
+  it("offers nothing for a HEIC without a display copy, never the original", () => {
+    for (const variants of [[], ["thumb"]] as const) {
+      const a = withUrls({ ...heic, mime: "image/heif", variants: [...variants] }, SECRET, true, NOW);
+      expect(a.viewUrl).toBeNull();
+    }
+    // and no thumbnail is invented when the file is not there
+    expect(withUrls({ ...heic, variants: [] }, SECRET, true, NOW).thumbUrl).toBeNull();
+  });
+
+  it("is unchanged for everything else", () => {
+    const png = withUrls({ ...base, kind: "image", mime: "image/png", variants: ["thumb"] }, SECRET, true, NOW);
+    expect(variantOf(png.viewUrl)).toBe("original");
+    const video = withUrls({ ...base, kind: "video", mime: "video/mp4", variants: ["thumb", "proxy"] }, SECRET, true, NOW);
+    expect(variantOf(video.viewUrl)).toBe("proxy");
+    const audio = withUrls({ ...base, kind: "audio", mime: "audio/mpeg", variants: [] }, SECRET, true, NOW);
+    expect(variantOf(audio.viewUrl)).toBe("original");
+  });
+
+  it("links nothing when this host cannot serve files", () => {
+    expect(withUrls({ ...heic, variants: ["thumb", "display"] }, SECRET, false, NOW)).toMatchObject({ thumbUrl: null, viewUrl: null });
+    expect(withUrls({ ...heic, variants: ["thumb", "display"] }, null, true, NOW)).toMatchObject({ thumbUrl: null, viewUrl: null });
+  });
+});
+
 describe("ranges", () => {
   it("parses what a <video> element sends", () => {
     expect(parseRange(null, 100)).toBeNull();
@@ -250,9 +300,46 @@ describe("errors and rows", () => {
   });
 
   it("mirrors the SQL allowlist exactly", () => {
-    const body = SQL.split("function public.media_mime_kind(", 2)[1].split("$$;", 1)[0];
+    const body = latestFunctionBody("media_mime_kind");
     const sqlKinds = Object.fromEntries([...body.matchAll(/when '([^']+)' then '([^']+)'/g)].map((m) => [m[1], m[2]]));
     expect(sqlKinds).toEqual(ALLOWED_MIME);
+    expect(latestFunctionBody("media_mime_kind")).toContain("when 'image/heic' then 'image'");
+    expect(latestFunctionBody("media_ext_mime")).toContain("when 'heif' then 'image/heif'");
+  });
+
+  it("offers HEIC / HEIF in the file picker by extension and by type (iOS keeps the original)", () => {
+    const tokens = UPLOAD_ACCEPT.split(",");
+    for (const t of [".heic", ".heif", "image/heic", "image/heif"]) expect(tokens, t).toContain(t);
+    // Everything the picker names by extension is something the SQL knows.
+    const sqlExt = new Set(
+      [...latestFunctionBody("media_ext_mime").matchAll(/when '([^']+)' then/g)].map((m) => `.${m[1]}`),
+    );
+    for (const t of tokens.filter((x) => x.startsWith("."))) expect(sqlExt.has(t), t).toBe(true);
+    // Never something a browser would run.
+    expect(tokens).not.toContain(".svg");
+    expect(tokens).not.toContain("image/avif");
+  });
+
+  it("has a `display` variant, served as a JPEG, and a reason for a server without the decoder", () => {
+    expect(MEDIA_VARIANTS).toContain("display");
+    expect(isVariant("display")).toBe(true);
+    expect(isVariant("display.jpg")).toBe(false);
+    expect(variantContentType("display", "image/heic")).toBe("image/jpeg");
+    expect(UPLOAD_REASONS).toContain("heic_unavailable");
+    expect(SQL_0044).toContain("array['thumb', 'proxy', 'display']");
+    expect(coerceAssets([{ id: ID, kind: "image", mime: "image/heic", bytes: 5, variants: ["thumb", "display", "zip"] }])[0].variants).toEqual([
+      "thumb",
+      "display",
+    ]);
+  });
+
+  it("maps a signed `display` file to the worker's fixed name and nothing else", () => {
+    expect(assetFilePath("/media", ID, "display")).toBe(`/media/${ID.slice(0, 2)}/${ID}/display.jpg`);
+    expect(assetFilePath("/media", ID, "display.jpg")).toBeNull();
+    const path = signedMediaPath(SECRET, ID, "display", "image/heic", NOW);
+    expect(verifyMedia(SECRET, query(path), NOW)).toBe("ok");
+    // bound to its variant: the same signature does not open the original
+    expect(verifyMedia(SECRET, { ...query(path), variant: "original" }, NOW)).toBe("bad_signature");
   });
 });
 

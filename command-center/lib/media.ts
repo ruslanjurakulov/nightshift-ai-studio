@@ -10,15 +10,17 @@
  */
 
 export type MediaKind = "image" | "video" | "audio" | "caption";
-export type MediaVariant = "original" | "thumb" | "proxy";
-export const MEDIA_VARIANTS: readonly MediaVariant[] = ["original", "thumb", "proxy"];
+export type MediaVariant = "original" | "thumb" | "proxy" | "display";
+export const MEDIA_VARIANTS: readonly MediaVariant[] = ["original", "thumb", "proxy", "display"];
 
-/** 0038's media_mime_kind, verbatim (tests pin them equal). */
+/** 0044's media_mime_kind (0038's plus HEIC / HEIF), verbatim (tests pin them equal to the latest SQL). */
 export const ALLOWED_MIME: Readonly<Record<string, MediaKind>> = {
   "image/jpeg": "image",
   "image/png": "image",
   "image/webp": "image",
   "image/gif": "image",
+  "image/heic": "image",
+  "image/heif": "image",
   "video/mp4": "video",
   "video/quicktime": "video",
   "video/webm": "video",
@@ -34,9 +36,20 @@ export const ALLOWED_MIME: Readonly<Record<string, MediaKind>> = {
   "application/x-subrip": "caption",
 };
 
-/** What the file picker offers (the database and the worker still check). */
+/**
+ * What the file picker offers (the database and the worker still check). HEIC /
+ * HEIF are listed by extension AND by type on purpose: iOS Safari converts a
+ * HEIC to a JPEG in the picker unless the accept list names HEIC itself, and
+ * the original is what the library should keep.
+ */
 export const UPLOAD_ACCEPT =
-  ".jpg,.jpeg,.png,.webp,.gif,.mp4,.m4v,.mov,.webm,.mkv,.mp3,.m4a,.wav,.ogg,.oga,.flac,.aac,.vtt,.srt";
+  ".jpg,.jpeg,.png,.webp,.gif,.heic,.heif,image/heic,image/heif,.mp4,.m4v,.mov,.webm,.mkv,.mp3,.m4a,.wav,.ogg,.oga,.flac,.aac,.vtt,.srt";
+
+/** iPhone photos: kept untouched; the worker makes JPEG `thumb` and `display` copies
+ *  because most browsers cannot show the original. */
+export function isHeifMime(mime: unknown): boolean {
+  return mime === "image/heic" || mime === "image/heif";
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -46,12 +59,12 @@ export function parseMediaId(raw: unknown): string | null {
 }
 
 export function isVariant(raw: unknown): raw is MediaVariant {
-  return raw === "original" || raw === "thumb" || raw === "proxy";
+  return raw === "original" || raw === "thumb" || raw === "proxy" || raw === "display";
 }
 
 /** The Content-Type a variant is served with; null when the type is not allowed. */
 export function variantContentType(variant: MediaVariant, mime: string): string | null {
-  if (variant === "thumb") return "image/jpeg";
+  if (variant === "thumb" || variant === "display") return "image/jpeg";
   if (variant === "proxy") return "video/mp4";
   if (!(mime in ALLOWED_MIME)) return null;
   // <track> needs text/vtt; an .srt is offered as plain text, never rendered.
@@ -286,6 +299,7 @@ export const UPLOAD_REASONS = [
   "too_long",
   "empty",
   "decode_failed",
+  "heic_unavailable",
   "probe_failed",
   "file_missing",
   "timeout",
