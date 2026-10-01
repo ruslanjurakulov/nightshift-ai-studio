@@ -11,6 +11,7 @@ import { atLeast } from "@/lib/auth/roles";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
 import { getOrgContext } from "@/lib/orgs-server";
 import { loadStudioModels } from "@/lib/server/creative";
+import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery } from "@/lib/creative/studio";
 import { runPrefillFromQuery, toolPrefill } from "@/lib/home";
@@ -42,7 +43,9 @@ export default async function CreatePage({
   // organizations (0018) or an open one there is nothing to bill, so neither shows.
   const org = await getOrgContext();
   const genOrgId = org.supported && org.current ? org.current.id : null;
-  const models = genOrgId ? await loadStudioModels() : [];
+  // The plan dialog's catalog (0034) is read beside the models: a refused
+  // generation then names the plans that unlock it without another round trip.
+  const [models, plans] = genOrgId ? await Promise.all([loadStudioModels(), loadUpsellCatalog(genOrgId)]) : [[], null];
   // "Use in Studio" from the Library opens a picture tool with the picture
   // chosen, and a sidebar tool row opens that tool. Either only fills the
   // form: nothing is priced or spent until Generate is pressed.
@@ -87,6 +90,7 @@ export default async function CreatePage({
           defaultStyleKitId={typeof scopedChannel?.default_style_kit_id === "string" ? scopedChannel.default_style_kit_id : null}
           // The platform operator has no phone tab bar to dock Generate above.
           bottomBar={!operator}
+          plans={plans}
         />
       )}
       {!runInitial && run}

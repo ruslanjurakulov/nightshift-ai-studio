@@ -627,6 +627,8 @@ option {
   --tool-i2v: #db2777;
   --tool-upscale: #0e7490;
   --tool-remove_bg: #b45309;
+  --tool-voice_change: #4f46e5;
+  --tool-dub: #a21caf;
 }
 
 .shell-sidebar {
