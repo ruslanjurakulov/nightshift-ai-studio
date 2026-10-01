@@ -16,6 +16,7 @@ export function Chip({
   count,
   icon,
   plain = false,
+  tone,
   children,
   className,
   type = "button",
@@ -24,6 +25,8 @@ export function Chip({
   pressed?: boolean;
   /** A readout, not a key: drawn as a chip but not a button (a count of what is attached). */
   plain?: boolean;
+  /** `lit`: the current or chosen one (amber). `warn`: needs attention (caution). Words still say what it is. */
+  tone?: "lit" | "warn";
   /** A real count beside the name (references attached, results in a filter). */
   count?: number | null;
   icon?: ReactNode;
@@ -31,7 +34,7 @@ export function Chip({
 }) {
   if (plain) {
     return (
-      <span className={`ns-chip${className ? ` ${className}` : ""}`} data-plain="true">
+      <span className={`ns-chip${className ? ` ${className}` : ""}`} data-plain="true" data-tone={tone}>
         {icon}
         <span className="truncate">{children}</span>
         {typeof count === "number" && Number.isFinite(count) && <span className="ns-chip-count ns-tc">{count}</span>}
@@ -43,6 +46,7 @@ export function Chip({
       type={type}
       {...rest}
       aria-pressed={pressed === undefined ? undefined : pressed}
+      data-tone={tone}
       className={`ns-chip${className ? ` ${className}` : ""}`}
     >
       {icon}

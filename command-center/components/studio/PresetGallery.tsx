@@ -86,7 +86,7 @@ export function PresetGallery({
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-[var(--color-fg)]">{p.name}</span>
                   {isApplied ? (
-                    <Chip plain className="shrink-0 border-[var(--color-primary)] text-[var(--color-primary)]">
+                    <Chip plain tone="lit" className="shrink-0">
                       {t.studio.currentBadge}
                     </Chip>
                   ) : (

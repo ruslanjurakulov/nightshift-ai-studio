@@ -5,6 +5,9 @@ import { ImageOff, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useLibraryImages, type PickerImage } from "@/components/studio/useLibraryImages";
+import { Chip } from "@/components/ui/Chip";
+import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
+import { Panel } from "@/components/ui/Panel";
 
 export type { PickerImage };
 
@@ -52,121 +55,123 @@ export function ReferencePicker({
     else if (!full) onChange([...selected, id]);
   }
 
+  const short = selected.length < min;
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-[12px] text-[var(--color-muted)]">{fmt(ts.refsHint, { min, max })}</span>
-        <span
-          className="mono text-[12px]"
-          style={{ color: selected.length < min ? "var(--color-warn)" : "var(--color-fg)" }}
-          aria-live="polite"
-        >
-          {fmt(ts.selected, { n: selected.length })} · {min}–{max}
-        </span>
-      </div>
+    <Panel tone="sunken" as="div" className={`ns-dropzone${selected.length > 0 ? " ns-dropzone-filled" : ""}`}>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span aria-live="polite" className="inline-flex items-center gap-2">
+            <Chip plain tone={short ? "warn" : "lit"} count={selected.length}>
+              {ts.referencesLabel}
+            </Chip>
+            <span className="sr-only">{fmt(ts.selected, { n: selected.length })}</span>
+            <span className="ns-tc text-[12px] text-[var(--color-muted)]" aria-hidden>
+              {min}–{max}
+            </span>
+          </span>
+          <span className="text-[12px] text-[var(--color-muted)]">{fmt(ts.refsHint, { min, max })}</span>
+        </div>
 
-      {/* The order is the order of use: the first is the cover. */}
-      {selected.length > 0 && (
-        <ol className="flex gap-2 overflow-x-auto pb-1" aria-label={ts.referencesLabel}>
-          {selected.map((id, i) => {
-            const img = byId.get(id);
-            return (
-              <li key={id} className="relative size-16 shrink-0 overflow-hidden rounded-lg border border-[var(--color-primary)] bg-[var(--color-panel-2)]">
-                {img?.thumbUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={img.thumbUrl} alt={img.name ?? ""} className="h-full w-full object-cover" loading="lazy" />
-                ) : (
-                  <span className="grid h-full w-full place-items-center text-[var(--color-muted)]">
-                    <ImageOff aria-hidden className="size-4" />
-                  </span>
-                )}
-                <span className="mono absolute left-1 top-1 rounded bg-black/60 px-1 text-[10px] text-white">{i + 1}</span>
-                <button
-                  type="button"
-                  onClick={() => toggle(id)}
-                  aria-label={fmt(ts.removeRef, { n: i + 1 })}
-                  className="absolute right-0.5 top-0.5 grid size-6 place-items-center rounded-full bg-black/60 text-white"
+        {/* The order is the order of use: the first is the cover. */}
+        {selected.length > 0 && (
+          <ol className="flex gap-2 overflow-x-auto pb-1" aria-label={ts.referencesLabel}>
+            {selected.map((id, i) => {
+              const img = byId.get(id);
+              return (
+                <li
+                  key={id}
+                  className="relative size-20 shrink-0 overflow-hidden rounded-[var(--ns-r-frame)] border-2 border-[var(--ns-amber)] bg-[var(--ns-film)]"
                 >
-                  <X aria-hidden className="size-3.5" />
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      )}
-
-      {full && state === "ready" && <p className="text-[12px] text-[var(--color-muted)]">{ts.pickerFull}</p>}
-
-      {state === "loading" && (
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4" aria-busy="true" aria-label={ts.pickerLoading}>
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="aspect-square animate-pulse rounded-lg bg-[var(--color-panel-2)]" />
-          ))}
-        </div>
-      )}
-
-      {state === "failed" && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">
-          <span>{ts.pickerFailed}</span>
-          <button type="button" onClick={() => void load()} className="disabled:opacity-50 btn-sky is-quiet pill px-3 py-1.5 text-[12px]">
-            {ts.retry}
-          </button>
-        </div>
-      )}
-
-      {state === "unavailable" && (
-        <p className="rounded-lg border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">{ts.pickerUnavailable}</p>
-      )}
-
-      {state === "ready" && images.length === 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">
-          <span>{ts.pickerEmpty}</span>
-          <Link href={libraryHref} className="disabled:opacity-50 btn-sky is-quiet pill px-3 py-1.5 text-[12px]">
-            {ts.pickerOpenLibrary}
-          </Link>
-        </div>
-      )}
-
-      {state === "ready" && images.length > 0 && (
-        <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-          {images.map((img) => {
-            const index = selected.indexOf(img.id);
-            const on = index >= 0;
-            const disabled = !on && full;
-            return (
-              <li key={img.id}>
-                <button
-                  type="button"
-                  onClick={() => toggle(img.id)}
-                  disabled={disabled}
-                  aria-pressed={on}
-                  aria-label={img.name ?? ts.referencesLabel}
-                  className="relative block aspect-square w-full overflow-hidden rounded-lg border bg-[var(--color-panel-2)] transition-opacity disabled:opacity-40"
-                  style={{ borderColor: on ? "var(--color-primary)" : "var(--color-border)", borderWidth: on ? 2 : 1 }}
-                >
-                  {img.thumbUrl ? (
+                  {img?.thumbUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={img.thumbUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                    <img src={img.thumbUrl} alt={img.name ?? ""} className="h-full w-full object-cover" loading="lazy" />
                   ) : (
-                    <span className="grid h-full w-full place-items-center gap-1 text-[10px] text-[var(--color-muted)]">
+                    <span className="grid h-full w-full place-items-center text-[var(--ns-on-film)]">
                       <ImageOff aria-hidden className="size-4" />
-                      {ts.noPreview}
                     </span>
                   )}
-                  {on && (
-                    <span
-                      className="mono absolute right-1 top-1 grid size-6 place-items-center rounded-full text-[11px] font-semibold text-white"
-                      style={{ background: "var(--color-primary)" }}
-                    >
-                      {index + 1}
-                    </span>
-                  )}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
+                  <span className="ns-edge-no absolute bottom-0 left-0 bg-[var(--ns-film)] px-1.5 font-mono text-[10px] text-[var(--ns-edge-print)]">
+                    {i + 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => toggle(id)}
+                    aria-label={fmt(ts.removeRef, { n: i + 1 })}
+                    className="absolute right-0 top-0 grid size-7 place-items-center rounded-bl-[var(--ns-r-key)] bg-[var(--ns-film)] text-[var(--ns-on-film)] max-sm:size-11 pointer-coarse:size-11"
+                  >
+                    <X aria-hidden className="size-3.5" />
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+
+        {full && state === "ready" && <p className="text-[12px] text-[var(--color-muted)]">{ts.pickerFull}</p>}
+
+        {state === "loading" && (
+          <ContactSheet label={ts.pickerLoading} min={96}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Frame key={i} aspect="1 / 1" aria-busy="true">
+                <div className="h-full w-full animate-pulse bg-[color-mix(in_srgb,var(--ns-on-film)_12%,var(--ns-film))]" />
+              </Frame>
+            ))}
+          </ContactSheet>
+        )}
+
+        {state === "failed" && (
+          <div className="flex flex-wrap items-center gap-3 text-[13px] text-[var(--color-muted)]">
+            <span>{ts.pickerFailed}</span>
+            <button type="button" onClick={() => void load()} className="btn-quiet disabled:opacity-50">
+              {ts.retry}
+            </button>
+          </div>
+        )}
+
+        {state === "unavailable" && <p className="text-[13px] text-[var(--color-muted)]">{ts.pickerUnavailable}</p>}
+
+        {state === "ready" && images.length === 0 && (
+          <div className="flex flex-wrap items-center gap-3 text-[13px] text-[var(--color-muted)]">
+            <span>{ts.pickerEmpty}</span>
+            <Link href={libraryHref} className="btn-quiet">
+              {ts.pickerOpenLibrary}
+            </Link>
+          </div>
+        )}
+
+        {state === "ready" && images.length > 0 && (
+          <ContactSheet label={ts.referencesLabel} min={96}>
+            {images.map((img) => {
+              const index = selected.indexOf(img.id);
+              const on = index >= 0;
+              const disabled = !on && full;
+              return (
+                <Frame key={img.id} aspect="1 / 1" selected={on} number={on ? index + 1 : null}>
+                  <button
+                    type="button"
+                    onClick={() => toggle(img.id)}
+                    disabled={disabled}
+                    aria-pressed={on}
+                    aria-label={img.name ?? ts.referencesLabel}
+                    className="absolute inset-0 block h-full w-full outline-none transition-opacity focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--ns-cue)] disabled:opacity-40"
+                  >
+                    {img.thumbUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={img.thumbUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                    ) : (
+                      <span className="grid h-full w-full place-items-center gap-1 text-[10px] text-[var(--ns-on-film)]">
+                        <ImageOff aria-hidden className="size-4" />
+                        {ts.noPreview}
+                      </span>
+                    )}
+                  </button>
+                </Frame>
+              );
+            })}
+          </ContactSheet>
+        )}
+      </div>
+    </Panel>
   );
 }
