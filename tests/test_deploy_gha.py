@@ -870,3 +870,16 @@ class RemoteDeployWorkerTests(_RemoteDeployFixture):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WorkerImageTest(unittest.TestCase):
+    """Dockerfile.worker: media-worker (uid 1000) must be able to read the code."""
+
+    def test_code_is_readable_by_other_uids_and_state_stays_private(self):
+        text = (ROOT / "Dockerfile.worker").read_text()
+        chown = text.index("chown -R nightshift:nightshift /app")
+        readable = text.index("chmod -R go+rX,go-w /app")
+        private = text.index("chmod 700 output history logs")
+        self.assertLess(chown, readable)
+        self.assertLess(readable, private)
+

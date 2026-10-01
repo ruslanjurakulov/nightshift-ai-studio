@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { JOB_COLUMNS, type CreativeDb, type CreativeResult } from "@/lib/creative/operations";
+import { coerceModels, type StudioModel } from "@/lib/creative/studio";
 
 /**
  * The creative operations' database door for the web: the signed-in user's
@@ -41,4 +42,29 @@ export async function creativeSession(): Promise<
   if (!supabase) return { ok: false, result: { status: 503, body: { error: "not_configured" } } };
   const org = await getOrgContext();
   return { ok: true, db: creativeDb(supabase), defaultOrg: org.current?.id ?? null };
+}
+
+/**
+ * The models the signed-in member may pick in the Studio (migration 0035),
+ * read with their own client: RLS shows sellable rows' public columns only.
+ * The filter is repeated here because a platform admin's RLS shows every row,
+ * and the Studio offers only what quote/create would accept. A missing table
+ * or a failed read is "nothing to pick", never a crash.
+ */
+export async function loadStudioModels(): Promise<StudioModel[]> {
+  try {
+    const supabase = await createClient();
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from("model_registry")
+      .select("id,display_name,capabilities,availability,verified_at")
+      .in("availability", ["beta", "ga"])
+      .not("verified_at", "is", null)
+      .order("display_name", { ascending: true })
+      .limit(200);
+    if (error) return [];
+    return coerceModels(data);
+  } catch {
+    return [];
+  }
 }
