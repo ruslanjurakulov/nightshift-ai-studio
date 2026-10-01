@@ -10,7 +10,7 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 /**
  * The public header's menu below the desktop breakpoint: the section links,
  * Sign in, and the theme and language controls that do not fit a phone's bar.
- * "Start creating" stays outside it, in the bar. Closes on a link, on Escape,
+ * The sign-up button stays outside it, in the bar. Closes on a link, on Escape,
  * and on a tap outside, and hands focus back to its button on Escape.
  */
 export function PublicMobileMenu({
