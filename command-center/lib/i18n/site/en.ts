@@ -189,6 +189,33 @@ export const siteEn = {
     others: "Other solutions",
     cta: "Start free",
     secondary: "See pricing",
+    pictures: {
+      composer: {
+        figure: "Illustration of the Studio composer: a description, the 16:9 shape selected, a style from the library, and the Generate key that carries its price.",
+        title: "Studio",
+        tag: "Illustration",
+        describe: "Describe it",
+        prompt: "A caravan at the Registan at dusk, long shadows, warm dust",
+        shape: "Shape",
+        style: "Style",
+        styleName: "16 mm night street",
+        generate: "Generate",
+        price: "price on the key",
+      },
+      api: {
+        figure: "The public API's endpoints, as listed in the API reference.",
+        title: "API",
+        tag: "From the API reference",
+        rows: [
+          { method: "POST", path: "/api/v1/videos", body: "Make a video: held now, charged on success, released on failure" },
+          { method: "GET", path: "/api/v1/jobs/{id}", body: "Where a job is" },
+          { method: "POST", path: "/api/v1/videos/{id}/publish", body: "Send to YouTube — always uploaded private" },
+          { method: "POST", path: "/api/v1/videos/{id}/downloads", body: "Ask for a download" },
+          { method: "GET", path: "/api/v1/balance", body: "The API balance and this month’s use" },
+          { method: "POST", path: "/api/mcp", body: "The same, for assistants (MCP)" },
+        ],
+      },
+    },
     pages: [
       {
         id: "youtube-channels",

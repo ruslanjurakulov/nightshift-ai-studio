@@ -42,6 +42,7 @@ html:has(.st) { scroll-padding-top: 80px; }
   border-top: 1px solid var(--ns-rule);
 }
 .st-section[data-flush="top"] { border-top: 0; }
+.st-section[data-size="sm"] { padding-block: calc(var(--st-section) * 0.62); }
 
 /* ── Type ─────────────────────────────────────────────────────────────── */
 .st-slug {
@@ -95,7 +96,7 @@ html:has(.st) { scroll-padding-top: 80px; }
   line-height: 0.96;
   letter-spacing: -0.008em;
   text-wrap: balance;
-  max-width: 20ch;
+  max-width: 24ch;
 }
 .st-h3 {
   font-family: var(--font-display);
@@ -494,6 +495,7 @@ html:has(.st) { scroll-padding-top: 80px; }
 }
 @media (min-width: 720px) { .st-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; } }
 @media (min-width: 1100px) { .st-steps { grid-template-columns: repeat(6, minmax(0, 1fr)); column-gap: 0; } }
+@media (min-width: 1100px) { .st-steps[data-cols="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .st-step {
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr);
@@ -1070,3 +1072,78 @@ html:has(.st) { scroll-padding-top: 80px; }
   font-size: clamp(20px, 3.6vw, 34px);
   box-shadow: 0 0 0 1px #2a2f38;
 }
+
+/* Drawn copies of the Studio's segmented keys and style chip (illustrations only). */
+.st-fake-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--ns-r-key);
+  border: 1px solid var(--ns-rule);
+  background: var(--ns-console);
+}
+.st-fake-seg > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: var(--ns-r-chip);
+  font-size: 13px;
+  color: var(--ns-text-dim);
+}
+.st-fake-seg > span[data-on="true"] { color: var(--ns-cta-fg); background: var(--ns-cta-bg); }
+.st-fake-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 0 12px 0 10px;
+  border-radius: var(--ns-r-chip);
+  border: 1px solid var(--ns-amber-ink);
+  background: var(--ns-select);
+  font-size: 13px;
+  color: var(--ns-text);
+}
+.st-fake-chip::before {
+  content: "";
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ns-amber);
+}
+
+/* ── Solutions index: three ways in, side by side on one rack ─────────── */
+.st-ways {
+  list-style: none;
+  margin: 48px 0 0;
+  padding: 0;
+  display: grid;
+  border-top: 1px solid var(--ns-rule-strong);
+}
+@media (min-width: 960px) { .st-ways { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.st-way {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px 0 32px;
+  border-bottom: 1px solid var(--ns-rule);
+}
+@media (min-width: 960px) {
+  /* One object, not three cards: the columns share rows, so the titles,
+     leads and lists line up across the rack. */
+  .st-way { display: grid; grid-row: span 5; grid-template-rows: subgrid; align-content: start; padding: 28px 28px 8px; border-bottom: 0; border-left: 1px solid var(--ns-rule); }
+  .st-way:first-child { padding-left: 0; border-left: 0; }
+  .st-way:last-child { padding-right: 0; }
+}
+.st-way-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ns-rule); }
+.st-way-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--ns-rule);
+  font-size: 15px;
+}
+.st-way-list li[data-kind="not"] { color: var(--ns-text-dim); }

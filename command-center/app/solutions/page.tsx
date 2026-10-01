@@ -1,0 +1,115 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { ArrowRight, X } from "lucide-react";
+import { getDictionary } from "@/lib/i18n/server";
+import { siteOrigin } from "@/lib/landing";
+import { PublicShell } from "@/components/legal/PublicShell";
+import { isSolutionId, solutionHref } from "@/lib/solutions";
+import { Slug } from "@/components/site/Slug";
+import { StatusLamp } from "@/components/ui/StatusLamp";
+
+const OG_IMAGE = { url: "/og.png", width: 1200, height: 630, type: "image/png" };
+
+/** Public: listed exactly in lib/public-paths.ts (SOLUTION_PATHS). */
+export async function generateMetadata(): Promise<Metadata> {
+  const { t, locale } = await getDictionary();
+  const m = t.site.solutions.meta;
+  const title = `${m.title} · ${t.brand.name}`;
+  const base = siteOrigin({ APP_ORIGIN: process.env.APP_ORIGIN });
+  return {
+    ...(base ? { metadataBase: new URL(base), alternates: { canonical: "/solutions" } } : {}),
+    title: { absolute: title },
+    description: m.description,
+    openGraph: {
+      type: "website",
+      siteName: t.brand.name,
+      title,
+      description: m.description,
+      locale: { en: "en_US", ru: "ru_RU", uz: "uz_UZ" }[locale],
+      images: [{ ...OG_IMAGE, alt: t.landing.meta.ogAlt }],
+      ...(base ? { url: "/solutions" } : {}),
+    },
+    twitter: { card: "summary_large_image", title, description: m.description, images: [{ url: OG_IMAGE.url, alt: t.landing.meta.ogAlt }] },
+  };
+}
+
+/**
+ * The Solutions index: the three ways into the one product, then the three
+ * rules that hold whichever way you came in.
+ */
+export default async function SolutionsPage() {
+  const { t } = await getDictionary();
+  const s = t.site.solutions;
+  const rules = t.site.rules;
+  return (
+    <PublicShell t={t} current="solutions">
+      <section aria-labelledby="solutions-title" className="st-wrap pb-16 pt-10 lg:pb-24 lg:pt-20">
+        <Slug>{s.slug}</Slug>
+        <h1 id="solutions-title" className="st-h1-page mt-8 max-w-[20ch]">
+          {s.title}
+        </h1>
+        <p className="st-lead mt-7">{s.lead}</p>
+        <ul className="st-ways">
+          {s.pages.map((page) =>
+            isSolutionId(page.id) ? (
+              <li key={page.id} className="st-way" aria-labelledby={`way-${page.id}`}>
+                <span className="st-kicker">{page.kicker}</span>
+                <h2 id={`way-${page.id}`} className="st-h3 text-[clamp(26px,2.4vw,32px)]">
+                  {page.title}
+                </h2>
+                <p className="st-small">{page.lead}</p>
+                <ul className="st-way-list" aria-label={s.whatLabel}>
+                  {page.what.slice(0, 3).map((w) => (
+                    <li key={w.title}>
+                      <span aria-hidden className="ns-lamp" data-tone="ok" />
+                      {w.title}
+                    </li>
+                  ))}
+                  <li data-kind="not">
+                    <X className="size-4 shrink-0" aria-hidden />
+                    <span>
+                      <span className="sr-only">{s.notLabel}: </span>
+                      {page.not[0]}
+                    </span>
+                  </li>
+                </ul>
+                <Link href={solutionHref(page.id)} className="st-key self-start" data-tone="quiet" data-size="sm">
+                  {s.open}
+                  <span className="sr-only">: {page.nav}</span>
+                  <ArrowRight aria-hidden />
+                </Link>
+              </li>
+            ) : null,
+          )}
+        </ul>
+      </section>
+
+      <section aria-labelledby="same-title" className="st-section">
+        <div className="st-wrap">
+          <Slug>{rules.slug}</Slug>
+          <h2 id="same-title" className="st-h2 mt-8">
+            {rules.title}
+          </h2>
+          <ul className="st-rules">
+            {rules.items.map((item) => (
+              <li key={item.id} className="st-rule">
+                <StatusLamp tone={item.id === "approval" ? "run" : "ok"} label={item.state} />
+                <h3 className="st-h3">{item.title}</h3>
+                <p className="st-body">{item.body}</p>
+              </li>
+            ))}
+          </ul>
+          <div className="st-hero-actions mt-12">
+            <Link href="/signup" className="st-key">
+              {s.cta}
+              <ArrowRight aria-hidden />
+            </Link>
+            <Link href="/pricing" className="st-link">
+              {s.secondary}
+            </Link>
+          </div>
+        </div>
+      </section>
+    </PublicShell>
+  );
+}

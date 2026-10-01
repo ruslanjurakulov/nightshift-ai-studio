@@ -182,6 +182,33 @@ export const siteRu: SiteDictionary = {
     others: "Другие решения",
     cta: "Начать бесплатно",
     secondary: "Посмотреть цены",
+    pictures: {
+      composer: {
+        figure: "Иллюстрация конструктора Студии: описание, выбранный формат 16:9, стиль из библиотеки и кнопка «Создать» с ценой на ней.",
+        title: "Студия",
+        tag: "Иллюстрация",
+        describe: "Опишите",
+        prompt: "Караван у Регистана в сумерках, длинные тени, тёплая пыль",
+        shape: "Формат",
+        style: "Стиль",
+        styleName: "Ночная улица на 16 мм",
+        generate: "Создать",
+        price: "цена на кнопке",
+      },
+      api: {
+        figure: "Эндпоинты публичного API, как в справочнике API.",
+        title: "API",
+        tag: "Из справочника API",
+        rows: [
+          { method: "POST", path: "/api/v1/videos", body: "Сделать видео: резерв сразу, списание при успехе, возврат при сбое" },
+          { method: "GET", path: "/api/v1/jobs/{id}", body: "Где сейчас задача" },
+          { method: "POST", path: "/api/v1/videos/{id}/publish", body: "Отправить на YouTube — всегда приватно" },
+          { method: "POST", path: "/api/v1/videos/{id}/downloads", body: "Запросить загрузку файла" },
+          { method: "GET", path: "/api/v1/balance", body: "Баланс API и расход за месяц" },
+          { method: "POST", path: "/api/mcp", body: "То же самое — для ассистентов (MCP)" },
+        ],
+      },
+    },
     pages: [
       {
         id: "youtube-channels",

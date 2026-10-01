@@ -182,6 +182,33 @@ export const siteUz: SiteDictionary = {
     others: "Boshqa yechimlar",
     cta: "Bepul boshlash",
     secondary: "Narxlarni koʻrish",
+    pictures: {
+      composer: {
+        figure: "Studiya konstruktori rasmi: tavsif, tanlangan 16:9 shakli, kutubxonadan uslub va narxi ustida koʻrsatilgan «Yaratish» tugmasi.",
+        title: "Studiya",
+        tag: "Rasm",
+        describe: "Tasvirlab bering",
+        prompt: "Shom chogʻi Registon yonida karvon, uzun soyalar, iliq chang",
+        shape: "Shakl",
+        style: "Uslub",
+        styleName: "16 mm plyonkada tungi koʻcha",
+        generate: "Yaratish",
+        price: "narx tugmada",
+      },
+      api: {
+        figure: "Ommaviy API nuqtalari, API maʼlumotnomasidagidek.",
+        title: "API",
+        tag: "API maʼlumotnomasidan",
+        rows: [
+          { method: "POST", path: "/api/v1/videos", body: "Video yaratish: hozir zaxira, muvaffaqiyatda yechim, nosozlikda qaytarish" },
+          { method: "GET", path: "/api/v1/jobs/{id}", body: "Vazifa qayerda" },
+          { method: "POST", path: "/api/v1/videos/{id}/publish", body: "YouTube’ga yuborish — doim shaxsiy holda" },
+          { method: "POST", path: "/api/v1/videos/{id}/downloads", body: "Yuklab olishni soʻrash" },
+          { method: "GET", path: "/api/v1/balance", body: "API balansi va shu oydagi sarf" },
+          { method: "POST", path: "/api/mcp", body: "Xuddi shu — yordamchilar uchun (MCP)" },
+        ],
+      },
+    },
     pages: [
       {
         id: "youtube-channels",
