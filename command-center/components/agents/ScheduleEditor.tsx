@@ -69,7 +69,7 @@ export function ScheduleEditor({
       )}
 
       {/* Autopilot on/off */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-4 py-3">
         <div className="min-w-0">
           <div className="text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
             {t.agents.schedAutopilot}
@@ -87,7 +87,7 @@ export function ScheduleEditor({
             setEnabled((v) => !v);
             if (state !== "idle") setState("idle");
           }}
-          className="btn-sky pill shrink-0 px-4 py-2 text-[12px] disabled:opacity-50"
+          className="btn-quiet shrink-0 px-4 py-2 text-[12px] disabled:opacity-50"
           style={{
             borderColor: enabled ? "var(--color-ok)" : "var(--color-border)",
             color: enabled ? "var(--color-ok)" : "var(--color-muted)",
@@ -128,7 +128,7 @@ export function ScheduleEditor({
           type="button"
           onClick={save}
           disabled={disabled || state === "saving"}
-          className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
+          className="btn-primary text-[13px] disabled:opacity-40"
         >
           {state === "saving" ? t.agents.schedSaving : t.agents.schedSave}
         </button>

@@ -25,6 +25,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
+import { Chip } from "@/components/ui/Chip";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import {
@@ -111,9 +112,9 @@ const HISTORY = 100;
 const POLL_MS = 4000;
 
 const fieldClass =
-  "pill w-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
+  "rounded-[var(--ns-r-key)] w-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
 const quietBtn =
-  "btn-sky is-quiet pill inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px]";
+  "btn-quiet inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px]";
 
 /** Keys inside these keep their own meaning. */
 function typing(target: EventTarget | null): boolean {
@@ -603,7 +604,7 @@ export function TimelineEditor({
             type="button"
             onClick={() => void save()}
             disabled={!dirty || saving}
-            className="btn-sky ghost pill px-4 py-2 text-[13px]"
+            className="btn-quiet text-[13px]"
           >
             {saving ? te.saving : te.save}
           </button>
@@ -612,7 +613,7 @@ export function TimelineEditor({
             onClick={() => void startExport()}
             disabled={Boolean(exportBlocked) || starting}
             aria-describedby={exportBlocked ? `${ids}-export-why` : undefined}
-            className="btn-sky is-solid pill px-4 py-2 text-[13px]"
+            className="btn-primary text-[13px]"
           >
             {starting ? te.exporting : te.export}
           </button>
@@ -651,7 +652,7 @@ export function TimelineEditor({
         <div className="flex min-w-0 flex-col gap-3">
           {/* preview */}
           <div
-            className="relative mx-auto w-full overflow-hidden rounded-2xl border border-[var(--color-border)] bg-black"
+            className="relative mx-auto w-full overflow-hidden rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-black"
             style={{
               aspectRatio: `${model.width} / ${model.height}`,
               maxHeight: "60vh",
@@ -729,7 +730,7 @@ export function TimelineEditor({
               type="button"
               onClick={togglePlay}
               aria-label={playing ? te.pause : te.play}
-              className="btn-sky is-solid pill inline-flex size-10 items-center justify-center p-0"
+              className="btn-primary inline-flex size-10 items-center justify-center p-0"
             >
               {playing ? (
                 <Pause className="size-4" aria-hidden />
@@ -847,7 +848,7 @@ export function TimelineEditor({
                       <button
                         type="button"
                         onClick={() => onAddSound(a)}
-                        className="flex w-full min-w-0 items-center justify-between gap-2 rounded-xl border border-[var(--color-border)] p-2 text-left text-[12px]"
+                        className="flex w-full min-w-0 items-center justify-between gap-2 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-2 text-left text-[12px]"
                       >
                         <span className="truncate text-[var(--color-fg)]">
                           {a.name ?? te.untitledSound}
@@ -900,7 +901,7 @@ export function TimelineEditor({
                       <button
                         type="button"
                         onClick={() => onAddVideo(v)}
-                        className="flex w-full min-w-0 flex-col gap-1 rounded-xl border border-[var(--color-border)] p-2 text-left text-[12px]"
+                        className="flex w-full min-w-0 flex-col gap-1 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-2 text-left text-[12px]"
                       >
                         <span className="truncate text-[var(--color-fg)]">
                           {v.name ?? te.untitledVideo}
@@ -1077,7 +1078,7 @@ export function TimelineEditor({
             <button
               type="button"
               onClick={() => void onDelete()}
-              className="btn-sky is-solid pill px-3 py-1.5 text-[12px]"
+              className="btn-primary text-[12px]"
             >
               {te.deleteYes}
             </button>
@@ -1403,7 +1404,7 @@ function TextInspector({
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => draft !== text.text && onChange({ text: draft })}
             aria-describedby={`${id}-count`}
-            className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
+            className="rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
           />
         </label>
         <span id={`${id}-count`} className="text-[11px]">
@@ -1613,17 +1614,15 @@ function SoundInspector({
           {(["music", "speech"] as const).map((r) => {
             const on = (sound.role ?? "music") === r;
             return (
-              <button
+              <Chip
                 key={r}
-                type="button"
-                aria-pressed={on}
+                pressed={on}
                 onClick={() => {
                   if (!on) onChange({ role: r });
                 }}
-                className={`btn-sky pill px-3 py-1.5 text-[12px] ${on ? "is-solid" : "is-quiet"}`}
               >
                 {r === "music" ? te.roleMusic : te.roleSpeech}
-              </button>
+              </Chip>
             );
           })}
         </div>

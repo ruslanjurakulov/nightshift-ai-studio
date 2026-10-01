@@ -101,7 +101,7 @@ export function BillingBoard({
             type="button"
             onClick={doRefresh}
             disabled={!githubConfigured || refresh === "busy"}
-            className="btn-sky pill inline-flex w-fit items-center gap-2 px-4 py-2 text-[13px] disabled:opacity-40"
+            className="btn-quiet inline-flex w-fit items-center gap-2 px-4 py-2 text-[13px] disabled:opacity-40"
           >
             <RefreshCw className="size-3.5" aria-hidden />
             {refresh === "busy" ? t.billing.refreshing : t.billing.refresh}
@@ -243,13 +243,13 @@ function ProviderCard({ p, onSaved }: { p: ProviderView; onSaved: () => void }) 
               setState("idle");
             }}
             placeholder={t.billing.pricePlaceholder}
-            className="pill min-w-0 flex-1 border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 mono text-[12px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+            className="rounded-[var(--ns-r-key)] min-w-0 flex-1 border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 mono text-[12px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
           />
           <button
             type="button"
             onClick={save}
             disabled={state === "busy"}
-            className="btn-sky is-quiet pill px-3 py-1.5 text-[12px] disabled:opacity-40"
+            className="btn-quiet text-[12px] disabled:opacity-40"
           >
             {state === "ok" ? t.billing.saved : t.billing.save}
           </button>
@@ -261,7 +261,7 @@ function ProviderCard({ p, onSaved }: { p: ProviderView; onSaved: () => void }) 
           type="button"
           onClick={() => setPaying((v) => !v)}
           aria-expanded={paying}
-          className="cta-glass pill px-4 py-1.5 text-[12px] font-semibold"
+          className="btn-primary text-[12px] font-semibold"
         >
           {t.billing.pay}
         </button>

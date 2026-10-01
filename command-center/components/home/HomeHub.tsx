@@ -112,7 +112,7 @@ export function HomeHub({
             <li key={step} className="flex shrink-0 items-center gap-1">
               {i > 0 && <ChevronRight aria-hidden className="size-3.5 opacity-50" />}
               <span
-                className={`pill border px-2.5 py-1 ${
+                className={`rounded-[var(--ns-r-key)] border px-2.5 py-1 ${
                   step === "approval"
                     ? "border-[color-mix(in_srgb,var(--color-primary)_55%,var(--color-border))] text-[var(--color-fg)]"
                     : "border-[var(--color-border)]"
@@ -168,7 +168,7 @@ export function HomeHub({
               <li key={a.id}>
                 <Link
                   href={path(toolHref(a.tool))}
-                  className="press group flex h-full flex-col gap-3 rounded-[16px] border border-[var(--color-border)] bg-[var(--color-panel)] p-3 transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-border))]"
+                  className="press group flex h-full flex-col gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel)] p-3 transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-border))]"
                 >
                   <span aria-hidden className="grid size-9 place-items-center rounded-[11px] text-white" style={{ background: QUICK_HUES[a.id] }}>
                     <Icon className="size-[18px]" strokeWidth={2} />
@@ -198,7 +198,7 @@ export function HomeHub({
               <button
                 type="button"
                 onClick={() => composer.current?.preset(f.length, t.home.formats[f.id].starter)}
-                className="press group flex h-full w-full flex-col overflow-hidden rounded-[16px] border border-[var(--color-border)] bg-[var(--color-panel)] text-left transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-border))]"
+                className="press group flex h-full w-full flex-col overflow-hidden rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel)] text-left transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-border))]"
               >
                 <span className="relative block aspect-[16/10] w-full overflow-hidden">
                   <FormatArt id={f.id} className="absolute inset-0 size-full transition-transform duration-500 group-hover:scale-[1.04]" />
@@ -232,15 +232,15 @@ export function HomeHub({
           )}
         </div>
         {channels.length === 0 ? (
-          <div className="flex flex-col items-start gap-3 rounded-[18px] border border-dashed border-[var(--color-border)] p-5 sm:flex-row sm:items-center">
-            <span aria-hidden className="grid size-11 shrink-0 place-items-center rounded-[14px] bg-[var(--color-panel-2)] text-[var(--color-primary)]">
+          <div className="flex flex-col items-start gap-3 rounded-[var(--ns-r-panel)] border border-dashed border-[var(--color-border)] p-5 sm:flex-row sm:items-center">
+            <span aria-hidden className="grid size-11 shrink-0 place-items-center rounded-[var(--ns-r-panel)] bg-[var(--color-panel-2)] text-[var(--color-primary)]">
               <Film className="size-5" />
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-[14px] font-medium text-[var(--color-fg)]">{t.home.noChannelsTitle}</p>
               <p className="text-[13px] text-[var(--color-muted)]">{t.home.noChannelsBody}</p>
             </div>
-            <Link href={path("/channels/new")} className="cta-glass pill inline-flex min-h-10 items-center gap-1.5 px-4 text-[13px] font-semibold">
+            <Link href={path("/channels/new")} className="btn-primary inline-flex min-h-10 items-center gap-1.5 px-4 text-[13px] font-semibold">
               <Plus aria-hidden className="size-4" />
               {t.home.connect}
             </Link>
@@ -299,7 +299,7 @@ function ChannelCard({ c }: { c: HomeChannel }) {
 
   return (
     <li className="w-[272px] shrink-0 snap-start sm:w-[300px]" data-channel={c.slug}>
-      <div className="flex h-full flex-col gap-3 rounded-[18px] border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
+      <div className="flex h-full flex-col gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
         <div className="flex items-center gap-3">
           {c.avatar ? (
             // eslint-disable-next-line @next/next/no-img-element -- the channel's public YouTube avatar

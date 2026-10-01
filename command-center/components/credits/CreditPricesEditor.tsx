@@ -102,14 +102,14 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
                   <td className="py-2 pr-3 text-[var(--color-muted)]">{p.updatedAt ? relativeTime(p.updatedAt) : "—"}</td>
                   {canEdit && (
                     <td className="py-2 text-right">
-                      <button type="button" onClick={() => edit(p)} className="btn-sky is-quiet pill px-3 py-1 text-[11px]">
+                      <button type="button" onClick={() => edit(p)} className="btn-quiet text-[11px]">
                         {t.credits.editPrice}
                       </button>{" "}
                       <button
                         type="button"
                         onClick={() => remove(p.unit)}
                         disabled={busy}
-                        className="btn-sky is-quiet pill px-3 py-1 text-[11px] disabled:opacity-40"
+                        className="btn-quiet text-[11px] disabled:opacity-40"
                         style={{ color: "var(--color-fail)" }}
                       >
                         {t.credits.removePrice}
@@ -164,7 +164,7 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
             type="button"
             onClick={save}
             disabled={busy || !unit.trim() || !rate.trim()}
-            className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
+            className="btn-primary text-[13px] disabled:opacity-40"
           >
             {t.credits.savePrice}
           </button>

@@ -1,15 +1,22 @@
 import type { ReactNode } from "react";
 import { Inbox, type LucideIcon } from "lucide-react";
+import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 
-/** `fg` colours the dot; `text` colours the label (idle text needs muted's contrast). */
-const TONE: Record<string, { fg: string; text: string; label: string }> = {
-  ok: { fg: "var(--color-ok)", text: "var(--color-ok)", label: "OK" },
-  run: { fg: "var(--color-primary)", text: "var(--color-primary)", label: "RUNNING" },
-  fail: { fg: "var(--color-fail)", text: "var(--color-fail)", label: "FAILED" },
-  warn: { fg: "var(--color-warn)", text: "var(--color-warn)", label: "WARN" },
-  idle: { fg: "var(--color-idle)", text: "var(--color-muted)", label: "IDLE" },
+/** `fg` colours a StatCard figure; `label` is the word a lamp wears when the caller gives none. */
+const TONE: Record<string, { fg: string; label: string }> = {
+  ok: { fg: "var(--color-ok)", label: "OK" },
+  run: { fg: "var(--color-primary)", label: "RUNNING" },
+  fail: { fg: "var(--color-fail)", label: "FAILED" },
+  warn: { fg: "var(--color-warn)", label: "WARN" },
+  idle: { fg: "var(--color-idle)", label: "IDLE" },
 };
 
+/**
+ * The older name for a run-state mark. It is a status lamp now (IDENTITY.md):
+ * a lamp in a bezel with its state word beside it, so the screens that still
+ * import StatusPill match the ones that use StatusLamp. New code uses
+ * StatusLamp directly. Only a running state breathes.
+ */
 export function StatusPill({
   tone,
   label,
@@ -17,19 +24,12 @@ export function StatusPill({
 }: {
   tone: keyof typeof TONE;
   label?: string;
-  /** Breathe the dot (for genuinely-active states like a live connection). */
+  /** Breathe the lamp: only honoured for a running state. */
   live?: boolean;
 }) {
   const t = TONE[tone] ?? TONE.idle;
-  return (
-    <span className="inline-flex items-center gap-1.5 mono text-[10px] font-semibold tracking-wider">
-      <span
-        className={`glow-dot inline-block size-1.5 rounded-full${live ? " live-ring" : ""}`}
-        style={{ color: t.fg, background: t.fg }}
-      />
-      <span style={{ color: t.text }}>{label ?? t.label}</span>
-    </span>
-  );
+  const lampTone: LampTone = tone in TONE ? (tone as LampTone) : "idle";
+  return <StatusLamp tone={lampTone} label={label ?? t.label} live={live && lampTone === "run"} />;
 }
 
 export function StatCard({
@@ -86,7 +86,7 @@ export function EmptyState({
     <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
       <span
         aria-hidden
-        className="grid size-14 place-items-center rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
+        className="grid size-14 place-items-center rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
       >
         <Icon className="size-6" strokeWidth={1.5} />
       </span>

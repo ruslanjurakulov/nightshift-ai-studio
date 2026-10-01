@@ -74,7 +74,7 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
       {state === "loading" && (
         <div className="flex gap-3 overflow-hidden" aria-hidden>
           {[0, 1, 2].map((i) => (
-            <div key={i} className="skeleton h-[148px] w-[180px] shrink-0 rounded-[16px]" />
+            <div key={i} className="skeleton h-[148px] w-[180px] shrink-0 rounded-[var(--ns-r-panel)]" />
           ))}
         </div>
       )}
@@ -82,10 +82,10 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
       {state === "unavailable" && <p className="text-[13px] text-[var(--color-muted)]">{t.home.recentUnavailable}</p>}
 
       {state === "ok" && jobs && jobs.length === 0 && (
-        <div className="flex flex-col items-start gap-3 rounded-[18px] border border-dashed border-[var(--color-border)] p-5 sm:flex-row sm:items-center">
+        <div className="flex flex-col items-start gap-3 rounded-[var(--ns-r-panel)] border border-dashed border-[var(--color-border)] p-5 sm:flex-row sm:items-center">
           <span
             aria-hidden
-            className="grid size-11 shrink-0 place-items-center rounded-[14px] bg-[var(--color-panel-2)] text-[var(--color-primary)]"
+            className="grid size-11 shrink-0 place-items-center rounded-[var(--ns-r-panel)] bg-[var(--color-panel-2)] text-[var(--color-primary)]"
           >
             <ImagePlus className="size-5" />
           </span>
@@ -93,7 +93,7 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
             <p className="text-[14px] font-medium text-[var(--color-fg)]">{t.home.recentEmptyTitle}</p>
             <p className="text-[13px] text-[var(--color-muted)]">{t.home.recentEmptyBody}</p>
           </div>
-          <Link href={path(toolHref("t2i"))} className="btn-sky is-quiet pill inline-flex min-h-10 items-center px-4 text-[13px]">
+          <Link href={path(toolHref("t2i"))} className="btn-quiet inline-flex min-h-10 items-center px-4 text-[13px]">
             {t.home.recentEmptyCta}
           </Link>
         </div>
@@ -110,7 +110,7 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
               <li key={job.id} className="w-[180px] shrink-0 snap-start" data-status={job.status}>
                 <Link
                   href={path("/create")}
-                  className="flex h-full flex-col overflow-hidden rounded-[16px] border border-[var(--color-border)] bg-[var(--color-panel)] transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_40%,var(--color-border))]"
+                  className="flex h-full flex-col overflow-hidden rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel)] transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_40%,var(--color-border))]"
                 >
                   <div className="relative grid aspect-[16/10] place-items-center bg-[var(--color-panel-2)] text-[var(--color-muted)]">
                     {thumb ? (

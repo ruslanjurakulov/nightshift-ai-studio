@@ -14,6 +14,21 @@ import { ensurePaddle, previewPrices, type PaddleEventData } from "@/lib/paddle-
 import { ErrorState } from "@/components/ReadError";
 import { entitlementText } from "@/components/pricing/PlanMatrix";
 import { Equivalents, shortDate } from "@/components/credits/Equivalents";
+import { Chip } from "@/components/ui/Chip";
+import { PriceButton } from "@/components/ui/PriceButton";
+import { Timecode } from "@/components/ui/Timecode";
+
+/** A "{n} credits a month" line with its figure in the counter face. */
+function withFigure(template: string, value: number, locale: string) {
+  const [before, after = ""] = template.split("{n}");
+  return (
+    <>
+      {before}
+      <Timecode value={value} locale={locale} />
+      {after}
+    </>
+  );
+}
 
 type Phase = "idle" | "opening" | "paid" | "arrived" | "slow" | "cancelled" | "error" | "load_failed";
 const POLL_MS = 3000;
@@ -186,19 +201,16 @@ export function PlanPanel({
         <p className="text-[14px] font-light text-[var(--color-muted)]">{cp.plansLead}</p>
       </div>
 
-      <div className="flex items-start justify-between gap-3 rounded-xl border border-[var(--color-border)] p-4">
+      <div className="flex items-start justify-between gap-3 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-4">
         <div className="flex min-w-0 flex-col gap-0.5">
           <span className="text-[12px] text-[var(--color-muted)]">{cp.yourPlan}</span>
           <span className="text-[17px] font-medium">{planName}</span>
           {dateLine && <span className="text-[12px] text-[var(--color-muted)]">{dateLine}</span>}
         </div>
         {statusText && (
-          <span
-            className="pill shrink-0 border border-[var(--color-border)] px-2.5 py-0.5 text-[11px]"
-            style={{ color: sub?.status === "past_due" ? "var(--color-warn)" : "var(--color-muted)" }}
-          >
+          <Chip plain tone={sub?.status === "past_due" ? "warn" : undefined} className="shrink-0">
             {statusText}
-          </span>
+          </Chip>
         )}
       </div>
       {sub?.status === "past_due" && <p className="text-[13px] text-[var(--color-warn)]">{cp.pastDue}</p>}
@@ -214,7 +226,7 @@ export function PlanPanel({
             type="button"
             onClick={manage}
             disabled={portal === "opening"}
-            className="btn-sky pill tap self-start px-5 py-2 text-[13px] disabled:opacity-40"
+            className="btn-quiet self-start text-[13px] disabled:opacity-40"
           >
             {portal === "opening" ? p.manageOpening : p.manage}
             <ExternalLink className="size-3.5" aria-hidden />
@@ -251,21 +263,21 @@ export function PlanPanel({
               return (
                 <li
                   key={col.id}
-                  className="flex flex-col gap-3 rounded-2xl border p-4"
+                  className="flex flex-col gap-3 rounded-[var(--ns-r-panel)] border p-4"
                   style={{ borderColor: current ? "var(--color-primary)" : "var(--color-border)" }}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[15px] font-medium">{col.name}</span>
                     {current && (
-                      <span className="pill border border-[var(--color-primary)] px-2 py-0.5 text-[11px] text-[var(--color-primary)]">
+                      <Chip plain tone="lit">
                         {cp.yourPlan}
-                      </span>
+                      </Chip>
                     )}
                   </div>
                   <div className="flex items-baseline gap-1.5">
                     {priceText ? (
                       <>
-                        <span className="text-[28px] font-semibold leading-none tabular-nums">{priceText}</span>
+                        <span className="ns-tc text-[28px] font-semibold leading-none">{priceText}</span>
                         <span className="text-[13px] text-[var(--color-muted)]">{cp.perMonth}</span>
                       </>
                     ) : (
@@ -273,8 +285,8 @@ export function PlanPanel({
                     )}
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="text-[15px] font-medium tabular-nums">
-                      {fmt(cp.monthlyCredits, { n: formatCredits(col.monthlyCredits, locale) })}
+                    <span className="text-[15px] font-medium">
+                      {withFigure(cp.monthlyCredits, col.monthlyCredits, locale)}
                     </span>
                     <Equivalents credits={col.monthlyCredits} rates={rates} />
                   </div>
@@ -292,14 +304,13 @@ export function PlanPanel({
                     </ul>
                   )}
                   {canBuy && (
-                    <button
-                      type="button"
+                    <PriceButton
+                      className="mt-auto"
                       onClick={() => col.priceId && subscribe(col.priceId)}
                       disabled={phase === "opening"}
-                      className="btn-sky is-solid pill tap mt-auto w-full px-5 py-2.5 text-[14px] disabled:opacity-40"
-                    >
-                      {phase === "opening" ? cp.opening : p.subscribe}
-                    </button>
+                      label={phase === "opening" ? cp.opening : p.subscribe}
+                      priceText={priceText}
+                    />
                   )}
                 </li>
               );
