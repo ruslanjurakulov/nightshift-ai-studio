@@ -97,16 +97,30 @@ export interface NotificationView {
 }
 
 /** What a row says and where it leads. Never invents a number. */
+/**
+ * Where a finished generation is found. A picture, clip or voice is a file in
+ * the Library; a description is text in the Studio's results; captions are a
+ * transcript the editor's captions panel turns into subtitles (0072) — there
+ * is nothing for either of the last two in the Library, so the link must not
+ * go there.
+ */
+function creativeSection(data: Record<string, unknown>, failed: boolean): string {
+  const capability = typeof data.capability === "string" ? data.capability : "";
+  if (capability === "captions") return "/editor";
+  if (capability === "describe") return "/create";
+  return failed ? "/studio" : "/library";
+}
+
 export function describeNotification(row: InboxRow): NotificationView {
   const base = { id: row.id, createdAt: row.created_at, unread: row.read_at === null };
   switch (row.kind) {
     case "creative_job_completed": {
       const n = numberField(row.data, "credits_charged");
-      return { ...base, copy: "creativeDone", amount: n === null ? null : { key: "charged", n }, section: "/library" };
+      return { ...base, copy: "creativeDone", amount: n === null ? null : { key: "charged", n }, section: creativeSection(row.data, false) };
     }
     case "creative_job_failed": {
       const n = numberField(row.data, "credits_returned");
-      return { ...base, copy: "creativeFailed", amount: n === null ? null : { key: "returned", n }, section: "/studio" };
+      return { ...base, copy: "creativeFailed", amount: n === null ? null : { key: "returned", n }, section: creativeSection(row.data, true) };
     }
     case "storyboard_ready": {
       const id = idField(row.data, "storyboard_id");

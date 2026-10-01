@@ -254,6 +254,10 @@ export function CaptionsPanel({
   const [requote, setRequote] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [job, setJob] = useState<CaptionJob | null>(null);
+  // Captions being made in this organization for recordings that are not in this project:
+  // found here too, so a started job is never a job nobody can see or stop.
+  const [others, setOthers] = useState<CaptionJob[]>([]);
+  const [cancelling, setCancelling] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [tracks, setTracks] = useState<CaptionTrackSummary[] | null>(null);
   const [tracksError, setTracksError] = useState(false);
@@ -370,13 +374,13 @@ export function CaptionsPanel({
         const res = await fetch(`/api/creative/jobs?org_id=${encodeURIComponent(orgId)}`, { signal: ctrl.signal, cache: "no-store" });
         const body = (await res.json().catch(() => ({}))) as { jobs?: unknown };
         if (!res.ok) return;
-        const running = coerceCaptionJobs(body.jobs).find(
-          (j) => isActiveStatus(j.status) && j.sourceAssetId !== null && ids.current.has(j.sourceAssetId),
-        );
-        if (running) {
-          setJob(running);
-          if (running.sourceAssetId) setSourceId(running.sourceAssetId);
+        const active = coerceCaptionJobs(body.jobs).filter((j) => isActiveStatus(j.status));
+        const mine = active.find((j) => j.sourceAssetId !== null && ids.current.has(j.sourceAssetId));
+        if (mine) {
+          setJob(mine);
+          if (mine.sourceAssetId) setSourceId(mine.sourceAssetId);
         }
+        setOthers(active.filter((j) => j !== mine && !(j.sourceAssetId !== null && ids.current.has(j.sourceAssetId))));
       } catch {
         /* the panel works without it: a refresh just does not find a running job */
       }
@@ -414,6 +418,35 @@ export function CaptionsPanel({
     // pickTrack and loadTracks only set state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId, jobActive]);
+
+  // ── cancelling a job the provider has not started: the database releases the hold ──
+  async function cancel(id: string) {
+    if (cancelling) return;
+    setCancelling(id);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/creative/jobs/${encodeURIComponent(id)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "cancel" }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { job?: unknown; error?: unknown };
+      const ended = res.ok ? coerceCaptionJobs([body.job])[0] : undefined;
+      if (ended) {
+        setJob((cur) => (cur?.id === id ? ended : cur));
+        setOthers((l) => l.filter((j) => j.id !== id));
+        setNotice(tc.cancelled);
+      } else if (body.error === "not_cancellable") {
+        setNotice(tc.notCancellable);
+      } else {
+        setErrorCode(asCreativeError(body.error));
+      }
+    } catch {
+      setErrorCode("failed");
+    } finally {
+      setCancelling(null);
+    }
+  }
 
   // ── the priced press: the only thing here that spends ────────────────────────
   async function start() {
@@ -505,6 +538,22 @@ export function CaptionsPanel({
       </div>
       <p className="m-0 text-[12px] text-[var(--color-muted)]">{tc.intro}</p>
 
+      {others.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          <h3 className="m-0 text-[13px] font-semibold">{tc.othersHeading}</h3>
+          <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+            {others.map((j) => (
+              <li key={j.id} className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--color-muted)]">
+                <span className="min-w-0 flex-1">{tc.otherRunning}</span>
+                <button type="button" onClick={() => void cancel(j.id)} disabled={cancelling === j.id} className={quietBtn}>
+                  {tc.cancel}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {models.length === 0 ? (
         <p className="m-0 text-[13px] text-[var(--color-muted)]">{tc.noModels}</p>
       ) : recordings.length === 0 ? (
@@ -591,7 +640,14 @@ export function CaptionsPanel({
             ) : null}
             <div aria-live="polite" className="text-[13px]">
               {status === "working" ? (
-                <span className="text-[var(--color-warn)]">{tc.working}</span>
+                <span className="inline-flex flex-wrap items-center gap-2 text-[var(--color-warn)]">
+                  {tc.working}
+                  {job ? (
+                    <button type="button" onClick={() => void cancel(job.id)} disabled={cancelling === job.id} className={quietBtn}>
+                      {tc.cancel}
+                    </button>
+                  ) : null}
+                </span>
               ) : status === "ready" && activeTrack ? (
                 <span className="text-[var(--color-ok)]">
                   {fmt(tc.ready, { words: activeTrack.wordCount, lang: tc.languages[activeTrack.language as CaptionLanguage] ?? tc.lang.und })}

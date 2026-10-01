@@ -426,6 +426,11 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             # 0052 prices the source's seconds: a model without a documented
             # longest input would be sold a length the vendor refuses.
             errors.append(_err(mid, "video_upscale needs limits.max_source_seconds"))
+        if CAPTIONS in caps and m["api_exposure"] != "web_only":
+            # The transcript is read from caption_tracks by a signed-in member's
+            # session only (0072): an API key that bought captions could never
+            # fetch the result, so the registry never offers them to the API.
+            errors.append(_err(mid, "captions are a web tool: api_exposure must be web_only"))
         if any(c in VIDEO_INPUT for c in caps) and any(c not in VIDEO_INPUT for c in caps):
             errors.append(_err(mid, "a video tool model lists only video tools"))
         if m.get("end_frame"):

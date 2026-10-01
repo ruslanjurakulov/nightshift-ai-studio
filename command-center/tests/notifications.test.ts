@@ -80,6 +80,7 @@ describe("describeNotification", () => {
       section: "/library",
     });
     expect(describeNotification(row({ kind: "storyboard_ready", data: { storyboard_id: ID } })).section).toBe(`/videos/storyboard/${ID}`);
+    expect(describeNotification(row({ kind: "creative_job_completed", data: { capability: "t2i", credits_charged: 4 } })).section).toBe("/library");
     expect(describeNotification(row({ kind: "editor_export_done", data: { project_id: ID } })).section).toBe(`/editor/${ID}`);
     expect(describeNotification(row({ kind: "credits_low", data: { available: 7 } }))).toMatchObject({
       copy: "creditsLow",
@@ -141,6 +142,27 @@ describe("notification copy", () => {
       if (locale === "en") continue;
       for (const c of COPY) expect(d.notifications[c].title, `${locale}.${c}`).not.toBe(en[c].title);
       expect(d.notifications.markAll).not.toBe(en.markAll);
+    }
+  });
+});
+
+describe("where a finished captions or describe job leads (nothing of theirs is in the Library)", () => {
+  it("captions lead to the editor, finished or failed: the panel there has the transcript, the retry and the cancel", () => {
+    for (const kind of ["creative_job_completed", "creative_job_failed"] as const) {
+      expect(describeNotification(row({ kind, data: { capability: "captions", credits_charged: 4 } })).section).toBe("/editor");
+    }
+  });
+
+  it("a description leads to the Studio's results, where its text is", () => {
+    for (const kind of ["creative_job_completed", "creative_job_failed"] as const) {
+      expect(describeNotification(row({ kind, data: { capability: "describe" } })).section).toBe("/create");
+    }
+  });
+
+  it("every other capability keeps its old destination", () => {
+    for (const capability of ["t2i", "t2v", "tts", "voice_change", "dub", "video_upscale", undefined, 5]) {
+      expect(describeNotification(row({ kind: "creative_job_completed", data: { capability } })).section).toBe("/library");
+      expect(describeNotification(row({ kind: "creative_job_failed", data: { capability } })).section).toBe("/studio");
     }
   });
 });

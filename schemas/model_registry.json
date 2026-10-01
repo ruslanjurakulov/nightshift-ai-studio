@@ -615,7 +615,7 @@
         "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
       ],
       "attribution": null,
-      "api_exposure": "any",
+      "api_exposure": "web_only",
       "limits": {
         "max_prompt_chars": 200,
         "max_concurrent_per_org": 2,

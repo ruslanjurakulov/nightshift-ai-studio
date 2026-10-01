@@ -247,6 +247,16 @@ class Registry(unittest.TestCase):
         self.assertEqual((req.capability, req.prompt, req.input_media, req.voice_id),
                          ("captions", "", ("/tmp/probe_speech.mp3",), None))
 
+    def test_captions_are_a_web_tool_the_api_never_sells(self):
+        # A key that bought captions could never read the transcript (it lives in
+        # caption_tracks, readable by a member's session only).
+        self.assertEqual(reg.get(MODEL).api_exposure, "web_only")
+        doc = json.loads((Path(reg.REGISTRY_PATH)).read_text())
+        for m in doc["models"]:
+            if m["id"] == MODEL:
+                m["api_exposure"] = "any"
+        self.assertTrue(any("web_only" in p for p in reg.validate(doc)))
+
     def test_a_captions_model_must_list_its_languages(self):
         doc = json.loads((Path(reg.REGISTRY_PATH)).read_text())
         for m in doc["models"]:
@@ -485,6 +495,15 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         self.assertIn("'default_resolution'", new["creative_price"])
         self.assertIn("'default_resolution', m.spec -> 'default_resolution'", new["sellable_models"])
         self.assertIn("'price_variants_by'", new["sellable_models"])
+
+    def test_sellable_models_lists_captions_on_the_web_surface_only(self):
+        # api_creative_model_ok (0062) sells through sellable_models(cap, 'api'):
+        # a model it does not list cannot be quoted or created with a key.
+        body = bodies((MIGRATIONS / "0072_captions.sql").read_text())["sellable_models"]
+        self.assertIn("if p_capability = 'captions' and p_surface <> 'web' then\n    return;", body)
+        self.assertIn("and (p_surface = 'web' or not ('captions' = any (m.capabilities)))", body)
+        # …and the registry flag keeps working for every other model.
+        self.assertIn("coalesce(m.spec ->> 'api_exposure', 'any') <> 'web_only'", body)
 
     def test_it_refuses_to_apply_without_the_migrations_it_is_built_on(self):
         text = (MIGRATIONS / "0072_captions.sql").read_text()

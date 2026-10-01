@@ -31,7 +31,9 @@
 --   model_registry / model_probe_runs   the capability CHECKs accept
 --                        'captions' (at most 13 per model).
 --   sellable_models      0070's (0060's quality tiers and the video price variants),
---                        accepting 'captions'.
+--                        accepting 'captions' and listing it on the web surface
+--                        ONLY (never to the API or MCP: a key could buy a job
+--                        whose transcript it can never read).
 --   creative_capability_supported   + captions.
 --   creative_params_problem          0070's rules (0055's plus the quality key and
 --                        the audio key) plus, for captions:
@@ -145,6 +147,14 @@ begin
                               'voice_change', 'dub', 'video_upscale', 'describe', 'captions') then
     raise exception 'unknown capability %', p_capability using errcode = '22023';
   end if;
+  -- Captions are a web tool (0072): the transcript lives in caption_tracks,
+  -- which only a signed-in member's session can read. Sold through the API or
+  -- MCP (api_creative_model_ok asks this function for 'api'), a key could pay
+  -- for a job whose result it can never fetch. No other surface lists them,
+  -- whatever the registry says.
+  if p_capability = 'captions' and p_surface <> 'web' then
+    return;
+  end if;
   return query
     select m.id, m.display_name, m.provider, m.capabilities, m.availability, m.verified_at,
            m.credit_unit, m.entitlement, cp.credits_per_unit, cp.margin,
@@ -191,6 +201,7 @@ begin
                         where vp.credits_per_unit > 0))
        and (p_capability is null or p_capability = any (m.capabilities))
        and (p_surface = 'web' or coalesce(m.spec ->> 'api_exposure', 'any') <> 'web_only')
+       and (p_surface = 'web' or not ('captions' = any (m.capabilities)))
      order by m.provider, m.id;
 end
 $$;

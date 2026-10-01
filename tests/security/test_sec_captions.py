@@ -533,3 +533,35 @@ def test_a_track_follows_its_job_and_organization_when_they_go(db):
     db.su("delete from public.media_assets where id=%s", [a])
     assert db.su("select asset_id from public.caption_tracks where id=%s", [tid]) == [(None,)]
     assert tid in tracks(db, "authenticated", UA)
+
+
+# ── captions are a web tool: the API and MCP never sell them ────────────────
+
+def sellable(db, cap, surface):
+    return [r[0] for r in db.act("authenticated", UA, "select id from public.sellable_models(%s, %s) order by id",
+                                 [cap, surface])]
+
+
+def test_captions_are_listed_on_the_web_surface_and_on_no_other(db):
+    # The lab's models say nothing about api_exposure (= 'any'): the database
+    # refuses the other surfaces by itself, not because the registry says so.
+    assert sellable(db, "captions", "web") == ["scribe", "scribe-narrow"]
+    assert sellable(db, "captions", "api") == []
+    assert sellable(db, "captions", "mcp") == []
+    # Nor under the unfiltered listing of another surface.
+    for surface in ("api", "mcp"):
+        assert not {"scribe", "scribe-narrow", "scribe-unpriced"} & set(sellable(db, None, surface))
+    assert {"scribe", "seer"} <= set(sellable(db, None, "web"))
+    # The other tools are still sold to the API as before (0062 asks for 'api').
+    assert "seer" in sellable(db, "describe", "api")
+    assert "dubber" in sellable(db, "dub", "api")
+
+
+def test_a_registry_flag_still_hides_a_web_only_model_from_the_api(db):
+    db.su("update public.model_registry set spec = spec || '{\"api_exposure\":\"web_only\"}'::jsonb where id = 'seer'")
+    try:
+        assert "seer" not in sellable(db, "describe", "api")
+        assert "seer" in sellable(db, "describe", "web")
+    finally:
+        db.su("update public.model_registry set spec = spec - 'api_exposure' where id = 'seer'")
+    assert "seer" in sellable(db, "describe", "api")

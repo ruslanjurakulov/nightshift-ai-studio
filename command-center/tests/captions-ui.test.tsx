@@ -314,6 +314,71 @@ describe("a job on its way", () => {
   });
 });
 
+describe("stopping and finding a job", () => {
+  const running = (source: string, status = "queued") => ({
+    id: JOB, capability: "captions", status, params: { source_asset_id: source }, quoted_credits: 6.2,
+  });
+
+  it("a queued job can be cancelled: the database releases the hold, and the button is pressable again", async () => {
+    routes.push(
+      quoteOk(6.2),
+      noTracks,
+      (url) => (url.startsWith("/api/creative/jobs?") ? json({ jobs: [running(A)] }) : undefined),
+      (url, init) =>
+        url.endsWith(`/api/creative/jobs/${JOB}`) && init?.method === "POST"
+          ? json({ job: { ...running(A), status: "cancelled" }, already: false })
+          : undefined,
+    );
+    render(<Host />);
+    fireEvent.click(await screen.findByRole("button", { name: tc.cancel }));
+    await waitFor(() => expect(screen.getByText(tc.cancelled)).toBeTruthy());
+    const [post] = calls("POST", `/api/creative/jobs/${JOB}`);
+    expect(bodyOf(post)).toEqual({ action: "cancel" });
+    expect(screen.queryByText(tc.working)).toBeNull();
+    await waitFor(() => expect(makeBtn(6.2)).toHaveProperty("disabled", false));
+    // Cancelling never starts (or pays for) a job.
+    expect(fetchMock.mock.calls.filter(([u, init]) => u === "/api/creative/jobs" && (init as RequestInit | undefined)?.method === "POST")).toHaveLength(0);
+  });
+
+  it("a job the provider already has is not cancellable, and says so instead of failing silently", async () => {
+    routes.push(
+      quoteOk(6.2),
+      noTracks,
+      (url) => (url.startsWith("/api/creative/jobs?") ? json({ jobs: [running(A, "provider_pending")] }) : undefined),
+      (url, init) => (url.endsWith(`/api/creative/jobs/${JOB}`) && init?.method === "POST" ? json({ error: "not_cancellable" }, 409) : undefined),
+    );
+    render(<Host />);
+    fireEvent.click(await screen.findByRole("button", { name: tc.cancel }));
+    await waitFor(() => expect(screen.getByText(tc.notCancellable)).toBeTruthy());
+    expect(screen.getByText(tc.working)).toBeTruthy();
+  });
+
+  it("a job for a recording that is not in this project is still listed, and can be cancelled from here", async () => {
+    routes.push(
+      quoteOk(6.2),
+      noTracks,
+      (url) => (url.startsWith("/api/creative/jobs?") ? json({ jobs: [running(B)] }) : undefined),
+      (url, init) =>
+        url.endsWith(`/api/creative/jobs/${JOB}`) && init?.method === "POST" ? json({ job: { ...running(B), status: "cancelled" } }) : undefined,
+    );
+    render(<Host />);
+    await screen.findByText(tc.otherRunning);
+    expect(screen.getByRole("heading", { name: tc.othersHeading })).toBeTruthy();
+    // It is not this recording's job: the panel is not "working" on this one.
+    expect(screen.queryByText(tc.working)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: tc.cancel }));
+    await waitFor(() => expect(screen.queryByText(tc.otherRunning)).toBeNull());
+    expect(screen.getByText(tc.cancelled)).toBeTruthy();
+  });
+
+  it("is found even in a project with no recording yet", async () => {
+    routes.push(noTracks, (url) => (url.startsWith("/api/creative/jobs?") ? json({ jobs: [running(B)] }) : undefined));
+    render(<Host model={baseModel({ clips: [] })} />);
+    await screen.findByText(tc.otherRunning);
+    expect(screen.getByText(tc.noRecordings)).toBeTruthy();
+  });
+});
+
 describe("a transcript, then captions on the video (free)", () => {
   function withTrack() {
     routes.push(
