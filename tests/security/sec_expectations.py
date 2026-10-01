@@ -393,3 +393,8 @@ sec_editor_0054.extend(TABLES, FUNCTIONS)
 import sec_dna_0056  # noqa: E402
 
 sec_dna_0056.extend(TABLES, FUNCTIONS)
+
+# Migration 0057 (storyboard review): tests/security/sec_storyboard_0057.py
+import sec_storyboard_0057  # noqa: E402
+
+sec_storyboard_0057.extend(TABLES, FUNCTIONS)

@@ -128,6 +128,13 @@ SHORT_FAILED = "short.failed"
 # the paid Gemini generation). Advisory bookkeeping — it never changes what is
 # produced, only what gets re-paid-for.
 RUN_RESUMED = "run.resumed"
+# Storyboard review (modules/storyboard_review.py, migration 0057). `storyboard.ready`
+# records a run that stopped after its script and scene plan, before anything
+# was spent on the render, and waits for a person; `storyboard.stopped` a run
+# that stopped on an earlier storyboard (still waiting, or discarded). Neither
+# is a failure, and neither ever causes a render or an upload.
+STORYBOARD_READY = "storyboard.ready"
+STORYBOARD_STOPPED = "storyboard.stopped"
 # Targeted scene repair (modules/scene_repair.py). A repair re-fetches footage
 # for the named scenes only, re-renders them through the scene cache and holds
 # the new cut for review — it never uploads; `repair.completed` carries scene

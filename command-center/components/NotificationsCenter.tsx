@@ -18,12 +18,14 @@ const KIND_LABEL: Record<NotificationKind, keyof Dictionary["ops"]> = {
   error: "notifError",
   learning: "notifLearning",
   anomaly: "notifAnomaly",
+  storyboard: "notifStoryboard",
 };
 const KIND_COLOR: Record<NotificationKind, string> = {
   published: "var(--color-primary)",
   error: "var(--color-fail)",
   learning: "var(--color-ok)",
   anomaly: "var(--color-warn)",
+  storyboard: "var(--color-primary)",
 };
 
 /**
