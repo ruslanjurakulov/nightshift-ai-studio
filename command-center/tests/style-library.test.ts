@@ -17,7 +17,7 @@ import {
   libraryStyleById,
   type LibraryStyle,
 } from "../lib/styles/library";
-import { parseLibraryAdd } from "../lib/styles/add";
+import { parseLibraryAdd, startStyleKitId } from "../lib/styles/add";
 import { hashSeed, luminance, tileShapes } from "../lib/styles/tile";
 
 /**
@@ -277,5 +277,21 @@ describe("POST body for adding a style", () => {
     for (const bad of [null, [], "x", {}, { library_id: "nope" }, { library_id: "../etc" }, { library_id: ["linocut-print"] }, { library_id: "LINOCUT-PRINT" }]) {
       expect(parseLibraryAdd(bad)).toEqual({ ok: false, error: "bad_request" });
     }
+  });
+});
+
+describe("the style the Studio starts on", () => {
+  const A = "0b000000-0000-4000-8000-00000000000b";
+  const B = "0c000000-0000-4000-8000-00000000000c";
+
+  it("is the Library link's kit when it is a well-formed id, else the channel's default look", () => {
+    expect(startStyleKitId(A, B)).toBe(A);
+    expect(startStyleKitId(null, B)).toBe(B);
+    expect(startStyleKitId(undefined, undefined)).toBeNull();
+  });
+
+  it("ignores a malformed link value rather than passing it on", () => {
+    for (const bad of ["../x", "not-a-uuid", [A], 5, "", A.toUpperCase()]) expect(startStyleKitId(bad, null)).toBeNull();
+    expect(startStyleKitId("bogus", B)).toBe(B);
   });
 });

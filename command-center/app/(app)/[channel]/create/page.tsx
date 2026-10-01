@@ -17,6 +17,7 @@ import { prefillFromQuery } from "@/lib/creative/studio";
 import { runPrefillFromQuery, runnableChannels, toolPrefill } from "@/lib/home";
 import { AssistantPlanner } from "@/components/assistant/AssistantPlanner";
 import { channelDnaForCreate } from "@/lib/server/channel-dna";
+import { startStyleKitId } from "@/lib/styles/add";
 import { parseStyleId } from "@/lib/style-kits";
 
 export const dynamic = "force-dynamic";
@@ -66,8 +67,7 @@ export default async function CreatePage({
   // if it is one of the organization's kits as loaded, so a stale or foreign id reads
   // as "None". Without it, the channel's own default look starts the form.
   const askedStyle = typeof q.style === "string" ? parseStyleId(q.style) : null;
-  const startStyleKitId =
-    askedStyle ?? (typeof scopedChannel?.default_style_kit_id === "string" ? scopedChannel.default_style_kit_id : null);
+  const startKit = startStyleKitId(askedStyle, scopedChannel?.default_style_kit_id);
 
   const run = (
     <CreateStudio
@@ -121,7 +121,7 @@ export default async function CreatePage({
           initial={initial}
           // The channel's look (0047) is the starting style; the panel uses it
           // only if it is one of the organization's kits as loaded.
-          defaultStyleKitId={startStyleKitId}
+          defaultStyleKitId={startKit}
           dna={dna.studio}
           // The platform operator has no phone tab bar to dock Generate above.
           bottomBar={!operator}
