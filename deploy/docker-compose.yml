@@ -228,8 +228,7 @@ services:
   # scratch folder lives on that volume too (same filesystem: the finished
   # file is moved into place, never half-copied); the web container serves
   # only id-derived paths, never this folder. Provider adapters are switched
-  # on by NIGHTSHIFT_CREATIVE_ADAPTERS=modules.creative_adapters:resolve in
-  # the worker env file; without it nothing is claimed.
+  # on by NIGHTSHIFT_CREATIVE_ADAPTERS below; without it nothing is claimed.
   creative-worker:
     profiles: ["worker"]
     build:
@@ -244,6 +243,9 @@ services:
         required: false
     environment:
       NIGHTSHIFT_WORKER_ID: nightshift-creative-01
+      # The provider adapters (modules/creative_adapters.py). Set here, not in
+      # the env file, so a deploy never starts a worker that claims nothing.
+      NIGHTSHIFT_CREATIVE_ADAPTERS: modules.creative_adapters:resolve
       NIGHTSHIFT_MEDIA_DIR: /app/media
       # One scratch folder per job id; emptied once the outputs are library
       # assets.

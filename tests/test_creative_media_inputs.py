@@ -350,8 +350,8 @@ class Compose(unittest.TestCase):
         self.assertIn("media:/app/media", cwk["volumes"])
         self.assertEqual(cwk["environment"]["NIGHTSHIFT_MEDIA_DIR"], "/app/media")
         self.assertTrue(cwk["environment"]["NIGHTSHIFT_CREATIVE_DIR"].startswith("/app/media/."))
-        # Adapters stay an explicit opt-in in the worker env file.
-        self.assertNotIn(cw.ADAPTERS_ENV, cwk["environment"])
+        # Running the container is the opt-in; once it runs it claims jobs.
+        self.assertEqual(cwk["environment"][cw.ADAPTERS_ENV], "modules.creative_adapters:resolve")
         self.assertNotIn("media_staging:/app/media-staging", cwk["volumes"])
 
 
