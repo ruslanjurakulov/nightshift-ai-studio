@@ -68,3 +68,10 @@ Recorded so these are not re-reported.
   only `'`, not `:` or `\` (all such paths are internal temp paths); `_download` has no response size or
   time cap (its URLs come only from vendor poll responses). Re-open either if a user can ever name an
   output path or supply a fetch URL.
+- **BR-B-SUMMARY (lane B, data access and privilege, migrations 0034–0058 and API routes, 2026-10-01):**
+  no findings. Every cross-org (BOLA/IDOR), privilege-escalation and operator-only attack was refused.
+  The lane added 33 passing regression tests in `tests/security/test_sec_breach_access.py` (branch
+  `claude/breach-access`), with positive controls. Gaps it did not cover, which also count as **not
+  verified** for this ledger: the real Supabase Storage bucket policies live in the project and not in
+  migrations, so only the modelled ones are tested; route authorization was reviewed by reading, with
+  no vitest route tests.
