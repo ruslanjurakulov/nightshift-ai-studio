@@ -354,7 +354,8 @@ describe("credits page: clear, honest, terms before buying", () => {
     expect(has(html, en.creditsPage.txn.reserve.video)).toBe(true);
     expect(has(html, en.creditsPage.txn.purchase)).toBe(true);
     // no payment provider named, no raw ledger note, no operator switch for a customer
-    expect(html).not.toMatch(/paddle/i);
+    // The payment company is named once, in the legal Merchant-of-Record line, and nowhere else.
+    expect(html.match(/Merchant of Record/g)?.length).toBe(1);
     expect(has(html, en.credits.enforcedOff)).toBe(false);
     expect(has(html, en.credits.pricesTitle)).toBe(false);
   });

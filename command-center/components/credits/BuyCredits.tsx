@@ -239,7 +239,13 @@ export function BuyCredits({
         </p>
       )}
 
-      <p className="text-[11px] text-[var(--color-muted)]">{cp.secureCheckout}</p>
+      {/* Legal disclosure, not branding: the Merchant of Record must be named before payment. */}
+      <p className="text-[11px] text-[var(--color-muted)]">
+        {t.credits.buy.merchant}{" "}
+        <Link href="/terms" className="underline">
+          {t.credits.buy.terms}
+        </Link>
+      </p>
     </section>
   );
 }
