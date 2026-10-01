@@ -18,7 +18,7 @@
 import { PADDLE_PRICE_ID_RE, type PaddleEnvironment } from "@/lib/paddle";
 import { readDisplayPrice } from "@/lib/pricing";
 import { atLeast, type Role } from "@/lib/auth/roles-shared";
-import { isCreditExempt } from "@/lib/credits";
+import { UNIT_JOB_MINIMUM, UNIT_VIDEO_MINUTE, isCreditExempt, roundUpCredits, type PriceMap } from "@/lib/credits";
 
 // ── the catalog ──────────────────────────────────────────────────────────────
 
@@ -430,3 +430,179 @@ export const PLAN_ENV: PlanEnv = {
   NEXT_PUBLIC_PLAN_DISPLAY_PRO: process.env.NEXT_PUBLIC_PLAN_DISPLAY_PRO,
   NEXT_PUBLIC_PLAN_DISPLAY_STUDIO: process.env.NEXT_PUBLIC_PLAN_DISPLAY_STUDIO,
 };
+
+// ── the Credits page: what credits buy, and where they are ───────────────────
+
+/**
+ * One sellable model as far as pricing needs it: the structural half of
+ * lib/creative/registry.ts SellableModel (that module is server-only; the
+ * page maps its rows to this before anything reaches the browser).
+ */
+export interface PricedModel {
+  capabilities: readonly string[];
+  /** The model's plan entitlement; null / "any" = usable without one. */
+  entitlement: string | null;
+  creditsPerUnit: number;
+  margin: number;
+  spec: { unit: string; durationsS: readonly number[] };
+}
+
+/**
+ * What the cheapest generally-usable generation of each kind costs right now,
+ * priced the way migration 0036's creative_price() prices a quote:
+ * ceil_cent(quantity × credits_per_unit × (1 + margin)), raised to the
+ * job_minimum when positive. Null when nothing of that kind is sellable and
+ * priced — the page then leaves that equivalent out, never invents one.
+ */
+export interface GenerationRates {
+  /** Credits for one image. */
+  image: number | null;
+  /** Credits for the shortest clip a video model offers, and its length. */
+  shortVideo: { credits: number; seconds: number } | null;
+  /** Credits per finished minute of channel video (video_minute × (1 + margin)). */
+  videoMinute: number | null;
+}
+
+function quoteLike(qty: number, m: Pick<PricedModel, "creditsPerUnit" | "margin">, minimum: number): number | null {
+  if (!(qty > 0) || !(m.creditsPerUnit > 0) || !(m.margin >= 0)) return null;
+  const price = roundUpCredits(Math.round(qty * m.creditsPerUnit * (1 + m.margin) * 1e6) / 1e6);
+  return price > 0 ? Math.max(price, minimum) : null;
+}
+
+/**
+ * Only models anyone can use count: a model behind an entitlement (or behind a
+ * first purchase, "paid") would make the equivalent a promise the plan does
+ * not keep.
+ */
+function openToAll(m: PricedModel): boolean {
+  return m.entitlement === null || m.entitlement === "any";
+}
+
+export function generationRates(models: readonly PricedModel[] | null, prices: PriceMap): GenerationRates {
+  const floor = prices[UNIT_JOB_MINIMUM];
+  const minimum = floor && floor.creditsPerUnit > 0 ? roundUpCredits(floor.creditsPerUnit) : 0;
+  let image: number | null = null;
+  let shortVideo: GenerationRates["shortVideo"] = null;
+  for (const m of models ?? []) {
+    if (!openToAll(m)) continue;
+    if (m.capabilities.includes("t2i") && m.spec.unit === "image") {
+      const c = quoteLike(1, m, minimum);
+      if (c !== null && (image === null || c < image)) image = c;
+    }
+    if (m.capabilities.includes("t2v") && m.spec.unit === "second") {
+      const seconds = Math.min(...m.spec.durationsS.filter((d) => Number.isInteger(d) && d > 0));
+      if (!Number.isFinite(seconds)) continue;
+      const c = quoteLike(seconds, m, minimum);
+      if (c !== null && (shortVideo === null || c < shortVideo.credits)) shortVideo = { credits: c, seconds };
+    }
+  }
+  const minute = prices[UNIT_VIDEO_MINUTE];
+  const videoMinute = minute && minute.creditsPerUnit > 0 ? roundUpCredits(minute.creditsPerUnit * (1 + minute.margin)) : null;
+  return { image, shortVideo, videoMinute };
+}
+
+/** "≈ N images · M short videos · K min of video" for an amount of credits; each part only when priced and ≥ 1. */
+export interface CreditEquivalents {
+  images: number | null;
+  videos: { count: number; seconds: number } | null;
+  minutes: number | null;
+}
+
+export function creditEquivalents(credits: number, rates: GenerationRates | null): CreditEquivalents | null {
+  if (!rates || !Number.isFinite(credits) || credits <= 0) return null;
+  const count = (per: number | null) => {
+    if (per === null || !(per > 0)) return null;
+    const n = Math.floor(credits / per + 1e-9);
+    return n >= 1 ? n : null;
+  };
+  const images = count(rates.image);
+  const v = rates.shortVideo ? count(rates.shortVideo.credits) : null;
+  const videos = v !== null && rates.shortVideo ? { count: v, seconds: rates.shortVideo.seconds } : null;
+  const minutes = count(rates.videoMinute);
+  return images === null && videos === null && minutes === null ? null : { images, videos, minutes };
+}
+
+/**
+ * The saving of a yearly price over twelve monthly ones, in whole percent
+ * (rounded down: "save 17%" must never overstate). Null unless both prices are
+ * positive amounts in the same currency unit and yearly is actually cheaper.
+ *
+ * The plan data carries monthly prices only today (PLAN_ENV), so the Credits
+ * page shows no Monthly / Yearly toggle; this is the rule it uses once a
+ * yearly price exists.
+ */
+export function yearlySavingPercent(monthly: number, yearly: number): number | null {
+  if (!Number.isFinite(monthly) || !Number.isFinite(yearly) || monthly <= 0 || yearly <= 0) return null;
+  const full = monthly * 12;
+  if (yearly >= full) return null;
+  const pct = Math.floor(((full - yearly) / full) * 100 + 1e-9);
+  return pct >= 1 ? pct : null;
+}
+
+/** One line of the balance breakdown: credits available from one source, and when the soonest of them expire. */
+export interface BalanceSource {
+  source: "plan" | "pack" | "other";
+  credits: number;
+  /** Soonest expiry among this source's live lots; null = never / unknown. */
+  expiresAt: string | null;
+}
+
+export interface BalanceSplit {
+  /** Spendable now (balance − on hold); null = unknown. */
+  available: number | null;
+  /** Held by jobs in progress; null = unknown. */
+  held: number | null;
+  /** Everything in the account, held included; null = unknown. */
+  total: number | null;
+  /** Available credits by source; null when the source split could not be read (or 0034 is not applied). */
+  sources: BalanceSource[] | null;
+}
+
+/**
+ * The Credits page's balance, from what was actually read:
+ *  - account (0020 credit_accounts): available / held / total, or null when
+ *    that read failed — then the held figure falls back to billing_summary's
+ *    own count of held credits, which is a separate read;
+ *  - summary (0034 billing_summary): available credits by source;
+ *  - lots (0034 credit_lots): when each source's soonest credits expire.
+ * A source with nothing in it is left out (a free account is not shown
+ * "Plan credits 0"), except plan credits while a subscription is live.
+ */
+export function balanceSplit(
+  account: { balance: number; reserved: number; available: number } | null,
+  summary: BillingSummary | null,
+  lots: readonly CreditLot[] | null,
+): BalanceSplit {
+  const held = account ? account.reserved : summary ? summary.credits.held : null;
+  const soonest = (pick: (l: CreditLot) => boolean): string | null => {
+    let best: string | null = null;
+    for (const l of lots ?? []) {
+      if (!pick(l) || l.expired || l.remaining - l.held <= 0 || !l.expiresAt) continue;
+      if (best === null || Date.parse(l.expiresAt) < Date.parse(best)) best = l.expiresAt;
+    }
+    return best;
+  };
+  let sources: BalanceSource[] | null = null;
+  if (summary) {
+    const c = summary.credits;
+    const live = Boolean(summary.subscription?.live);
+    sources = [];
+    if (c.subscription > 0 || live) {
+      sources.push({
+        source: "plan",
+        credits: c.subscription,
+        expiresAt: soonest((l) => l.source === "subscription") ?? (c.subscription > 0 ? (summary.subscription?.periodEnd ?? null) : null),
+      });
+    }
+    if (c.pack > 0) sources.push({ source: "pack", credits: c.pack, expiresAt: soonest((l) => l.source === "pack") });
+    if (c.other > 0) {
+      sources.push({ source: "other", credits: c.other, expiresAt: soonest((l) => l.source === "grant" || l.source === "adjustment") });
+    }
+  }
+  return {
+    available: account ? account.available : null,
+    held,
+    total: account ? account.balance : null,
+    sources,
+  };
+}
