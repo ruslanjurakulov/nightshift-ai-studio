@@ -37,6 +37,7 @@ from modules.capabilities.base import (
     IMAGE_INPUT,
     QUALITY_CAPABILITIES,
     MEDIA_INPUT,
+    VIDEO_VARIANT_CAPABILITIES,
     OUTPUT_OF,
     PROMPT_OPTIONAL,
     UPSCALE,
@@ -174,6 +175,12 @@ def load_schema() -> Mapping:
 
 
 # ── entries ─────────────────────────────────────────────────────────────────
+#: Price variants that name the soundtrack (0070). Keys: ``silent`` / ``audio``,
+#: or ``<resolution>_silent`` / ``<resolution>_audio`` for resolution_audio.
+AUDIO_VARIANTS = ("audio", "resolution_audio")
+AUDIO_STATES = ("silent", "audio")
+
+
 def credit_unit_for(model_id: str, unit: str, variant: Optional[str] = None) -> str:
     """The ``credit_prices`` unit a model is sold by: ``model_<id>_<unit>``,
     plus ``_<variant>`` for a priced variant (a resolution / image size)."""
@@ -205,6 +212,10 @@ class ModelEntry:
     #: empty = the model has no tiers and takes no ``quality``.
     qualities: Tuple[str, ...]
     resolutions: Tuple[str, ...]
+    #: The resolution a video job runs at when it names none (0070): the
+    #: quote prices it and the worker sends it, never the vendor's own
+    #: default. None = the model's price does not depend on the resolution.
+    default_resolution: Optional[str]
     durations_s: Tuple[int, ...]
     #: Upscale factors the model is sold for (empty unless it lists upscale).
     upscale_factors: Tuple[int, ...]
@@ -230,6 +241,15 @@ class ModelEntry:
     quality_tier: int
     speed_tier: int
     raw: Mapping
+
+    @property
+    def variants_by(self) -> Optional[str]:
+        return (self.raw["pricing"].get("variants") or {}).get("by")
+
+    @property
+    def priced_by_audio(self) -> bool:
+        """The soundtrack is priced apart (0070): the worker pins it off unless the job asks."""
+        return self.variants_by in AUDIO_VARIANTS
 
     def vendor_model_for(self, capability: str) -> str:
         return self.vendor_model_by_capability.get(capability) or self.vendor_model
@@ -340,7 +360,8 @@ def _entry(m: Mapping) -> ModelEntry:
         aspect_ratios_by_capability={k: tuple(v) for k, v in (m.get("aspect_ratios_by_capability") or {}).items()},
         image_sizes=tuple(m.get("image_sizes") or ()),
         qualities=tuple(m.get("qualities") or ()),
-        resolutions=tuple(m["resolutions"]), durations_s=tuple(m["durations_s"]),
+        resolutions=tuple(m["resolutions"]), default_resolution=m.get("default_resolution"),
+        durations_s=tuple(m["durations_s"]),
         upscale_factors=tuple(m.get("upscale_factors") or ()),
         languages=tuple(m.get("languages") or ()),
         upscale_targets=tuple(m.get("upscale_targets") or ()),
@@ -437,10 +458,31 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
         units = [m["credit_unit"]]
         if m["credit_unit"] != credit_unit_for(mid, pricing["unit"]):
             errors.append(_err(mid, f"credit_unit must be {credit_unit_for(mid, pricing['unit'])}"))
+        by = (variants or {}).get("by")
+        res_default = m.get("default_resolution")
+        if res_default is not None and (by not in ("resolution", "resolution_audio") or res_default not in m["resolutions"]):
+            errors.append(_err(mid, "default_resolution must be a listed resolution of a model priced by resolution"))
+        video_caps = VIDEO_VARIANT_CAPABILITIES & set(caps)
+        if by in ("resolution", "resolution_audio", "audio") and (res_default is not None or by != "resolution"):
+            # 0070: a price that depends on the resolution or the soundtrack is only
+            # true if the adapter sends what was priced (never the vendor's default).
+            if m["output"] != "video" or not video_caps:
+                errors.append(_err(mid, f"price variants by {by} are for video models"))
+            elif cls is not None:
+                if by in AUDIO_VARIANTS and not (video_caps & set(cls.audio_capabilities)):
+                    errors.append(_err(mid, f"adapter {m['adapter']} does not send an audio flag"))
+                if res_default is not None and not (video_caps & set(cls.resolution_capabilities)):
+                    errors.append(_err(mid, f"adapter {m['adapter']} does not always send a resolution"))
+            if by in AUDIO_VARIANTS and not m["audio_out"]:
+                errors.append(_err(mid, "audio price variants need audio_out"))
+            if by == "resolution_audio" and res_default is None:
+                errors.append(_err(mid, "resolution_audio prices need default_resolution"))
         if variants:
             allowed = {"resolution": m["resolutions"], "image_size": m.get("image_sizes") or [],
                        "upscale_target": m.get("upscale_targets") or [],
-                       "quality": m.get("qualities") or []}[variants["by"]]
+                       "quality": m.get("qualities") or [],
+                       "audio": list(AUDIO_STATES),
+                       "resolution_audio": [f"{r}_{a}" for r in m["resolutions"] for a in AUDIO_STATES]}[variants["by"]]
             if any(k not in allowed for k in variants["prices"]):
                 errors.append(_err(mid, f"price variants must be listed {variants['by']}s"))
             units += [credit_unit_for(mid, pricing["unit"], k) for k in variants["prices"]]

@@ -29,6 +29,9 @@ job folder), the capability layer knows vendors (``CapabilityRequest``,
 * a picture model that bills by quality (0060) is always sent one: the tier
   the job was quoted (``params.quality``), else ``medium`` — the same default
   the quote used, never the vendor's own (dearer) default;
+* a video model priced by resolution or soundtrack (0070) is always sent
+  both: the job's, else the registry's ``default_resolution`` and a silent
+  clip — the same defaults the quote used, never the vendor's;
 * style / character reference pictures (0048,
   ``GenerationRequest.reference_files``) follow them only for a capability
   the adapter lists in ``reference_capabilities``, and only as many as the
@@ -63,6 +66,7 @@ from modules.capabilities.base import (
     PENDING,
     QUALITY_CAPABILITIES,
     VIDEO_INPUT,
+    VIDEO_VARIANT_CAPABILITIES,
     SUCCEEDED,
     AdapterError,
     CapabilityRequest,
@@ -97,6 +101,10 @@ def _int(v) -> Optional[int]:
     return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and float(v).is_integer() else None
 
 
+def _bool(v) -> Optional[bool]:
+    return v if isinstance(v, bool) else None
+
+
 def _str(v) -> Optional[str]:
     return v if isinstance(v, str) and v else None
 
@@ -127,6 +135,8 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         output_language=_str(p.get("language")),
         # t2i / edit on a model that bills by quality (0060): the tier quoted.
         quality=_str(p.get("quality")),
+        # t2v / i2v on a model that prices the soundtrack apart (0070).
+        audio=_bool(p.get("audio")),
     )
 
 
@@ -173,6 +183,13 @@ class RegistryAdapter:
         if self.entry.qualities and cap in QUALITY_CAPABILITIES and req.quality is None:
             # The quote priced the default tier; send that tier, never nothing.
             req = replace(req, quality=DEFAULT_IMAGE_QUALITY)
+        if cap in VIDEO_VARIANT_CAPABILITIES:
+            # What the quote priced is what is sent (0070): the resolution the
+            # registry pins and a silent clip, never the vendor's own defaults.
+            if self.entry.default_resolution and req.resolution is None:
+                req = replace(req, resolution=self.entry.default_resolution)
+            if self.entry.priced_by_audio and req.audio is None:
+                req = replace(req, audio=False)
         problems = self.adapter.problems(req, self.entry)
         if problems:
             raise CreativeAdapterError("bad_request", "; ".join(problems)[:500])
