@@ -922,43 +922,121 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .lp-eyebrow > .lp-hour { order: 0; }
 .lp-eyebrow > .lp-eyebrow-text { order: 2; }
 
-/* Live run: each status cell is a 3-slot strip (queued · running · done) seen
-   through a one-slot window; a run advances by sliding the strip. */
-.lp-window { overflow: hidden; }
-.lp-strip { display: flex; flex-direction: column; transform: translateY(-66.6667%); }
-.lp-strip > * { flex: none; }
-.lp-step:last-child .lp-strip { transform: translateY(-33.3333%); }
-.lp-rail-fill { transform-origin: top; transform: scaleY(1); }
-.lp-dawn-dot { left: 100%; }
+/* Studio illustration (components/landing/StudioMock.tsx). The artwork in its
+   cards is the picture's own content — a night landscape and a lighthouse —
+   drawn with gradients and clip-paths, so the page loads no image for it. */
+.lp-art {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 12px;
+  aspect-ratio: 4 / 3;
+  isolation: isolate;
+}
+.lp-art-night {
+  background:
+    radial-gradient(circle at 74% 28%, #fff7dc 0 6%, rgba(255, 247, 220, 0.3) 7%, transparent 17%),
+    radial-gradient(circle at 18% 18%, #fff 0 0.6%, transparent 1%),
+    radial-gradient(circle at 36% 30%, #fff 0 0.5%, transparent 0.9%),
+    radial-gradient(circle at 52% 14%, #fff 0 0.6%, transparent 1%),
+    radial-gradient(circle at 88% 12%, #fff 0 0.5%, transparent 0.9%),
+    linear-gradient(180deg, #071226 0%, #15305a 58%, #2f5689 100%);
+}
+.lp-art-night::before,
+.lp-art-night::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+}
+.lp-art-night::before {
+  height: 52%;
+  background: linear-gradient(180deg, #24467a, #12284a);
+  clip-path: polygon(0 55%, 14% 30%, 28% 48%, 44% 12%, 60% 42%, 76% 22%, 100% 50%, 100% 100%, 0 100%);
+}
+.lp-art-night::after {
+  height: 36%;
+  background: linear-gradient(180deg, #0c1a31, #040912);
+  clip-path: polygon(0 40%, 22% 70%, 40% 30%, 58% 62%, 78% 35%, 100% 60%, 100% 100%, 0 100%);
+}
+.lp-art-sea {
+  background:
+    radial-gradient(circle at 22% 31%, rgba(255, 236, 170, 0.9) 0 2%, rgba(255, 236, 170, 0.25) 3%, transparent 9%),
+    linear-gradient(180deg, #0a1730 0%, #1c3157 52%, #0e2445 52.5%, #06152b 100%);
+}
+.lp-art-sea::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 46%;
+  height: 58%;
+  background: #040b17;
+  clip-path: polygon(0 20%, 58% 18%, 74% 42%, 100% 100%, 0 100%);
+}
+.lp-tower {
+  position: absolute;
+  z-index: 1;
+  left: 19.5%;
+  bottom: 46%;
+  width: 5%;
+  height: 22%;
+  background: linear-gradient(90deg, #dfe4ec, #9aa4b4);
+  clip-path: polygon(22% 0, 78% 0, 100% 100%, 0 100%);
+}
+.lp-beam {
+  position: absolute;
+  top: 22%;
+  left: 22%;
+  width: 90%;
+  height: 18%;
+  background: linear-gradient(90deg, rgba(255, 236, 170, 0.55), transparent 75%);
+  clip-path: polygon(0 45%, 100% 0, 100% 100%, 0 55%);
+  transform-origin: 0 50%;
+}
+.lp-progress { width: 62%; }
+.lp-wave { transform-origin: center; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .lp-step:nth-of-type(1) .lp-strip { animation: lp-row-0 16s step-end infinite; }
-  .lp-step:nth-of-type(2) .lp-strip { animation: lp-row-1 16s step-end infinite; }
-  .lp-step:nth-of-type(3) .lp-strip { animation: lp-row-2 16s step-end infinite; }
-  .lp-step:nth-of-type(4) .lp-strip { animation: lp-row-3 16s step-end infinite; }
-  .lp-step:nth-of-type(5) .lp-strip { animation: lp-row-4 16s step-end infinite; }
-  .lp-step:nth-of-type(6) .lp-strip { animation: lp-row-5 16s step-end infinite; }
-  .lp-step:nth-of-type(7) .lp-strip { animation: lp-row-6 16s step-end infinite; }
-  .lp-rail-fill { animation: lp-rail 16s linear infinite; }
-  .lp-dawn-dot { animation: lp-dawn 16s linear infinite; }
+  .lp-caret { animation: lp-caret 1.1s steps(1, end) infinite; }
+  .lp-wave { animation: lp-wave 1.4s ease-in-out infinite alternate; }
+  .lp-progress { animation: lp-progress 6s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+  .lp-beam { animation: lp-beam 5s ease-in-out infinite alternate; }
+  .lp-pulse { animation: lp-pulse 1.6s ease-in-out infinite; }
+  .lp-approval { animation: lp-float 7s ease-in-out infinite; }
 }
-/* Seven stages of 2s each; the last one waits on a human, then the cycle rests. */
-@keyframes lp-row-0 { 0% { transform: translateY(-33.3333%); } 12.5% { transform: translateY(-66.6667%); } 97%, 100% { transform: translateY(0); } }
-@keyframes lp-row-1 { 0% { transform: translateY(0); } 12.5% { transform: translateY(-33.3333%); } 25% { transform: translateY(-66.6667%); } 97%, 100% { transform: translateY(0); } }
-@keyframes lp-row-2 { 0% { transform: translateY(0); } 25% { transform: translateY(-33.3333%); } 37.5% { transform: translateY(-66.6667%); } 97%, 100% { transform: translateY(0); } }
-@keyframes lp-row-3 { 0% { transform: translateY(0); } 37.5% { transform: translateY(-33.3333%); } 50% { transform: translateY(-66.6667%); } 97%, 100% { transform: translateY(0); } }
-@keyframes lp-row-4 { 0% { transform: translateY(0); } 50% { transform: translateY(-33.3333%); } 62.5% { transform: translateY(-66.6667%); } 97%, 100% { transform: translateY(0); } }
-@keyframes lp-row-5 { 0% { transform: translateY(0); } 62.5% { transform: translateY(-33.3333%); } 75% { transform: translateY(-66.6667%); } 97%, 100% { transform: translateY(0); } }
-@keyframes lp-row-6 { 0% { transform: translateY(0); } 75% { transform: translateY(-33.3333%); } 97%, 100% { transform: translateY(0); } }
-@keyframes lp-rail {
-  0% { transform: scaleY(0); }
-  75%, 96% { transform: scaleY(1); }
-  100% { transform: scaleY(0); }
-}
-@keyframes lp-dawn {
-  0% { left: 0%; }
-  75%, 96% { left: 100%; }
-  100% { left: 0%; }
+@keyframes lp-caret { 50% { opacity: 0; } }
+@keyframes lp-wave { from { transform: scaleY(0.45); } to { transform: scaleY(1); } }
+@keyframes lp-progress { 0% { width: 8%; } 85%, 100% { width: 92%; } }
+@keyframes lp-beam { from { transform: rotate(-7deg); } to { transform: rotate(5deg); } }
+@keyframes lp-pulse { 50% { opacity: 0.35; } }
+@keyframes lp-float { 50% { transform: translateY(-6px); } }
+
+/* The comparison table. From md up it is a table; below, each row folds into
+   a card and every cell names its column, so a phone needs no sideways scroll. */
+.lp-compare-ours { background: color-mix(in srgb, var(--color-primary) 6%, transparent); }
+@media (max-width: 767.98px) {
+  .lp-compare thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .lp-compare tr,
+  .lp-compare th,
+  .lp-compare td { display: block; }
+  .lp-compare tbody th { padding-bottom: 0.25rem; }
+  .lp-compare td { padding-top: 0.5rem; padding-bottom: 0.75rem; }
+  .lp-compare td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
 }
 
 /* FAQ disclosure: the plus turns to a cross when an answer is open. */

@@ -84,15 +84,28 @@ describe("landing copy", () => {
   it("keeps the same list lengths in every language, so no section renders half-translated", () => {
     for (const d of [ru, uz]) {
       const l = d.landing;
-      expect(l.run.stages).toHaveLength(en.landing.run.stages.length);
-      expect(l.trust.items).toHaveLength(en.landing.trust.items.length);
-      expect(l.loop.nodes).toHaveLength(en.landing.loop.nodes.length);
+      expect(l.mock.filters).toHaveLength(en.landing.mock.filters.length);
+      expect(l.mock.chips).toHaveLength(en.landing.mock.chips.length);
+      expect(l.promises.items).toHaveLength(en.landing.promises.items.length);
       expect(l.how.steps).toHaveLength(en.landing.how.steps.length);
-      expect(l.autonomy.modes).toHaveLength(en.landing.autonomy.modes.length);
-      expect(l.autonomy.controls).toHaveLength(en.landing.autonomy.controls.length);
-      expect(l.series.states).toHaveLength(en.landing.series.states.length);
-      expect(l.caps.groups.map((g) => g.items.length)).toEqual(en.landing.caps.groups.map((g) => g.items.length));
+      expect(l.features.items.map((i) => i.id)).toEqual(en.landing.features.items.map((i) => i.id));
+      expect(l.features.items.map((i) => i.points.length)).toEqual(en.landing.features.items.map((i) => i.points.length));
+      expect(l.why.rows).toHaveLength(en.landing.why.rows.length);
+      expect(d.pricing.terms).toHaveLength(en.pricing.terms.length);
+      expect(d.pricing.faq.map((i) => i.id)).toEqual(en.pricing.faq.map((i) => i.id));
       expect(l.faq.items.map((i) => i.id)).toEqual(en.landing.faq.items.map((i) => i.id));
+    }
+  });
+
+  it("has three steps in How it works", () => {
+    expect(en.landing.how.steps).toHaveLength(3);
+  });
+
+  it("names no competitor or provider brand in public copy", () => {
+    const brands = /\b(?:krea|higgsfield|magiclight|kling|capcut|inshot|runway|midjourney|elevenlabs|veo|sora|pika)\b/i;
+    for (const d of [en, ru, uz]) {
+      expect(JSON.stringify(d.landing)).not.toMatch(brands);
+      expect(JSON.stringify(d.pricing)).not.toMatch(brands);
     }
   });
 

@@ -3,8 +3,8 @@ import { en } from "@/lib/i18n/en";
 
 /**
  * The social card for the homepage: the hero line on the brand's true-black
- * ground with the sky accent, and the pipeline's stage names — words only, no
- * figures. English, because a shared link's card is cached once for everyone.
+ * ground with the sky accent, and the three steps from the homepage — words
+ * only, no figures. English, because a shared link's card is cached once for everyone.
  * Rendered with next/og's bundled font, so building it fetches nothing.
  *
  * Why a route at /og.png and not the app/opengraph-image.tsx convention: that
@@ -23,7 +23,7 @@ const MUTED = "#7f8a97";
 const BORDER = "#1b1f25";
 
 export function GET() {
-  const stages = en.landing.run.stages.map((s) => s.name);
+  const stages = en.landing.how.steps.map((s) => s.title);
   return new ImageResponse(
     (
       <div

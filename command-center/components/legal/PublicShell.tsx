@@ -12,6 +12,7 @@ export function publicNavLinks(t: Dictionary): { href: string; label: string }[]
   return [
     { href: "/#product", label: n.product },
     { href: "/#how", label: n.how },
+    { href: "/#why", label: n.why },
     { href: "/pricing", label: n.pricing },
   ];
 }
@@ -22,7 +23,7 @@ export function publicNavLinks(t: Dictionary): { href: string; label: string }[]
  * channel switcher), which reads Supabase and would have nothing to show.
  *
  * The header sticks, and on a phone collapses its links into a menu while
- * keeping the primary "Start creating" button in view — the one action the
+ * keeping the primary sign-up button in view — the one action the
  * page exists to offer should never be behind a tap.
  *
  * The backdrop is the token-driven `atmos` wash and grid rather than the login
@@ -32,6 +33,12 @@ export function PublicShell({ t, children }: { t: Dictionary; children: React.Re
   const links = publicNavLinks(t);
   return (
     <div className="atmos relative flex min-h-dvh flex-col">
+      <a
+        href="#main"
+        className="sr-only z-50 rounded-full bg-[var(--color-primary)] px-4 py-2 text-sm text-[var(--color-on-accent)] focus:not-sr-only focus:absolute focus:left-3 focus:top-3"
+      >
+        {t.landing.nav.skip}
+      </a>
       <div className="grid-bg pointer-events-none absolute inset-0 opacity-70" aria-hidden />
       <header className="sticky top-0 z-40 border-b border-[color-mix(in_srgb,var(--color-border)_70%,transparent)] bg-[color-mix(in_srgb,var(--color-bg)_78%,transparent)] backdrop-blur-md">
         <div className="relative mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
@@ -66,7 +73,10 @@ export function PublicShell({ t, children }: { t: Dictionary; children: React.Re
           </div>
         </div>
       </header>
-      <div className="relative z-10 flex-1">{children}</div>
+      {/* The one main landmark of every public page; the pages render sections inside it. */}
+      <main id="main" tabIndex={-1} className="relative z-10 flex-1 focus:outline-none">
+        {children}
+      </main>
       <PublicFooter t={t} />
     </div>
   );

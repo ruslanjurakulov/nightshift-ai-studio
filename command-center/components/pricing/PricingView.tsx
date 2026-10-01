@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, Clock, Eye, Receipt, RotateCcw } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, Clock, Eye, Receipt, RotateCcw } from "lucide-react";
 import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
 import { formatCredits } from "@/lib/credits";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
@@ -9,12 +9,17 @@ import { plansOnSale, type PlanMatrix as Matrix } from "@/lib/plans";
 import { PackCards } from "@/components/pricing/PackCards";
 import { PlanMatrix } from "@/components/pricing/PlanMatrix";
 import { ErrorState } from "@/components/ReadError";
+import { FaqList } from "@/components/landing/Faq";
 
 const PADDLE_BUYER_TERMS = "https://www.paddle.com/legal/checkout-buyer-terms";
 
 /**
- * The public Pricing page. A Server Component; only the pack cards are client
- * code, because Paddle's localized price preview runs in the browser.
+ * The public Pricing page. A Server Component; only the plan and pack cards
+ * are client code, because Paddle's localized price preview runs in the browser.
+ *
+ * Read top to bottom it answers: what it costs (plans, then packs), what you
+ * agree to (terms at a glance — renewal, cancelling, expiry, failures), what a
+ * credit buys, who takes the money, and the questions people ask before paying.
  *
  * Nothing here is a number the code made up: pack prices come from Paddle or
  * the owner's env, rates from the live price list, and when there is neither
@@ -59,22 +64,38 @@ export function PricingView({
   const months = packValidMonths === undefined ? CREDIT_EXPIRY_MONTHS : packValidMonths;
   const expiry = months === null ? p.expiryNever : fmt(p.expiryAfter, { m: months });
   const showPlans = plans !== null && plansOnSale(plans);
+  const credits = `/${ALL_CHANNELS_SLUG}/credits`;
+  const primary = signedIn ? { href: credits, label: p.ctaSignedIn } : { href: "/signup", label: p.ctaSignedOut };
+  // The expiry line is this deployment's own policy, so it sits among the terms.
+  const terms = [...p.terms.slice(0, 3), expiry, ...p.terms.slice(3)];
+  const faqLink = (id: string) => (id === "cancel" || id === "refund" ? { href: "/terms#credits", label: p.linkTerms } : null);
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-20 px-4 pb-20 pt-10 sm:px-6 sm:pt-16 lg:gap-28">
-      <section className="page-rise max-w-3xl">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-20 px-4 pb-20 pt-10 sm:px-6 sm:pt-16 lg:gap-28">
+      <section aria-labelledby="pricing-title" className="page-rise max-w-3xl">
         <div className="t-label text-[var(--color-primary)]">{p.eyebrow}</div>
         <h1
+          id="pricing-title"
           className="mt-5 font-display font-semibold tracking-[-0.03em]"
           style={{ fontSize: "clamp(2.5rem, 6vw, 64px)", lineHeight: 1.04, textWrap: "balance" }}
         >
           {p.title}
         </h1>
         <p className="t-lead mt-6">{p.lead}</p>
+        <div className="mt-8 flex flex-col gap-3 min-[420px]:flex-row min-[420px]:flex-wrap min-[420px]:items-center">
+          <Link href={primary.href} className="btn-sky is-solid pill min-h-12 px-7 text-[15px]">
+            {primary.label}
+            <ArrowRight className="btn-arrow size-4" aria-hidden />
+          </Link>
+          <a href="#terms" className="btn-sky ghost pill min-h-12 px-7 text-[15px]">
+            {p.termsTitle}
+          </a>
+        </div>
+        {!signedIn && <p className="mt-4 text-[13px] font-light text-[var(--color-muted)]">{p.ctaNote}</p>}
       </section>
 
       {plansFailed && (
-        <section aria-labelledby="plans-title" className="flex flex-col gap-6">
+        <section id="plans" aria-labelledby="plans-title" className="flex scroll-mt-24 flex-col gap-6">
           <div className="max-w-3xl">
             <h2 id="plans-title" className="t-section">
               {t.plans.matrixTitle}
@@ -87,7 +108,7 @@ export function PricingView({
       )}
 
       {showPlans && plans && (
-        <section aria-labelledby="plans-title" className="flex flex-col gap-6">
+        <section id="plans" aria-labelledby="plans-title" className="flex scroll-mt-24 flex-col gap-6">
           <div className="max-w-3xl">
             <h2 id="plans-title" className="t-section">
               {t.plans.matrixTitle}
@@ -98,7 +119,7 @@ export function PricingView({
             matrix={plans}
             perMinute={rates?.perMinute ?? null}
             signedIn={signedIn}
-            subscribeHref={`/${ALL_CHANNELS_SLUG}/credits#plans`}
+            subscribeHref={`${credits}#plans`}
           />
           <ul className="flex max-w-3xl flex-col gap-2 text-[13px] font-light text-[var(--color-muted)]">
             <li>{t.plans.expiresNote}</li>
@@ -128,7 +149,7 @@ export function PricingView({
               </p>
               {pricing.source === "paddle" && (
                 <Link
-                  href={signedIn ? `/${ALL_CHANNELS_SLUG}/credits` : "/login"}
+                  href={signedIn ? credits : "/login"}
                   className="btn-sky is-solid pill self-start px-6 py-3 text-sm sm:self-auto"
                 >
                   {signedIn ? p.buySignedIn : p.buySignedOut}
@@ -137,6 +158,31 @@ export function PricingView({
             </div>
           </>
         )}
+      </section>
+
+      <section
+        id="terms"
+        aria-labelledby="terms-title"
+        className="glass-card scroll-mt-24 rounded-[22px] border border-[var(--color-border)] p-6 sm:p-10"
+      >
+        <h2 id="terms-title" className="text-[1.625rem] font-semibold tracking-[-0.02em]">
+          {p.termsTitle}
+        </h2>
+        <ul className="mt-6 grid gap-x-10 gap-y-4 md:grid-cols-2">
+          {terms.map((line) => (
+            <li key={line} className="flex items-start gap-3 text-[15px] leading-relaxed">
+              <Check className="mt-1 size-4 shrink-0 text-[var(--color-primary)]" aria-hidden />
+              <span>{line}</span>
+            </li>
+          ))}
+        </ul>
+        <Link
+          href="/terms#credits"
+          className="mt-6 inline-flex min-h-11 items-center gap-1.5 text-[14px] text-[var(--color-primary)] underline-offset-4 hover:underline"
+        >
+          {p.linkTerms}
+          <ArrowRight className="size-3.5" aria-hidden />
+        </Link>
       </section>
 
       <section aria-labelledby="how-title" className="grid gap-10 lg:grid-cols-[1fr_20rem] lg:gap-14">
@@ -211,6 +257,34 @@ export function PricingView({
           </Link>
         </div>
       </section>
-    </main>
+
+      <section id="pricing-faq" aria-labelledby="pricing-faq-title" className="grid scroll-mt-24 gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
+        <h2 id="pricing-faq-title" className="t-section lg:sticky lg:top-28 lg:self-start">
+          {p.faqTitle}
+        </h2>
+        <FaqList items={p.faq} linkFor={faqLink} />
+      </section>
+
+      <section
+        aria-labelledby="pricing-final-title"
+        className="lp-horizon relative overflow-hidden rounded-[28px] border border-[var(--color-border)] px-5 py-14 text-center sm:px-12 sm:py-20"
+      >
+        <h2
+          id="pricing-final-title"
+          className="mx-auto max-w-2xl font-display font-semibold tracking-[-0.03em]"
+          style={{ fontSize: "clamp(1.75rem, 4vw, 44px)", lineHeight: 1.08, textWrap: "balance" }}
+        >
+          {p.finalTitle}
+        </h2>
+        <p className="t-lead mx-auto mt-4">{p.finalLead}</p>
+        <div className="mt-8 flex justify-center">
+          <Link href={primary.href} className="btn-sky is-solid pill min-h-12 px-7 text-[15px]">
+            {primary.label}
+            <ArrowRight className="btn-arrow size-4" aria-hidden />
+          </Link>
+        </div>
+        <span className="lp-horizon-line absolute inset-x-[12%] bottom-0 h-px" aria-hidden />
+      </section>
+    </div>
   );
 }
