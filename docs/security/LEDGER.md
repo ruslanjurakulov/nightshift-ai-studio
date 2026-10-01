@@ -56,3 +56,15 @@ Recorded so these are not re-reported.
   The web container publishes no host port, so Caddy is the only way in.
 - **Python environment:** `pip-audit` of the installed, frozen dependency set reports no known
   vulnerabilities (2026-10-01).
+
+## Inbox triage notes
+
+- **BR-C-SUMMARY (lane C, 2026-10-01):** one real finding, BR-C-001, is in the table above. The lane's
+  `npm audit --omit=dev` note duplicates **BR-S-005** and is not a separate row. Areas it attacked that held:
+  ASS/ffmpeg filter-graph injection, describe-output cleaning, SSRF (`capabilities/base._download`
+  is https-only and drops auth headers on redirect), the media worker's sniffing, forced demuxer and
+  path handling, prompt injection into the Assistant planner, the Telegram control panel, and CI input
+  handling. Two hardening notes, neither reachable today, so no row: the ffmpeg `subtitles=` path escapes
+  only `'`, not `:` or `\` (all such paths are internal temp paths); `_download` has no response size or
+  time cap (its URLs come only from vendor poll responses). Re-open either if a user can ever name an
+  output path or supply a fetch URL.
