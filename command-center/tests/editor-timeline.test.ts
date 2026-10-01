@@ -23,6 +23,7 @@ import {
   clipEnd,
   coerceExports,
   docAssetIds,
+  docAssetProblems,
   editorErrorWord,
   formatTime,
   layout,
@@ -53,8 +54,21 @@ const cases = JSON.parse(
     "utf8",
   ),
 ) as {
-  cases: { name: string; valid: boolean; doc: unknown }[];
+  cases: {
+    name: string;
+    valid: boolean;
+    doc: unknown;
+    /** asset id → its kind in the project's organization, or "other_org". */
+    assets?: Record<string, string>;
+  }[];
 };
+
+/** The files a case's member could read: their own organization's only. */
+function readable(assets: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(assets).filter(([, kind]) => kind !== "other_org"),
+  );
+}
 
 function start(): TimelineDoc {
   return newDocForAsset({ id: A, durationS: 10, width: 1920, height: 1080 })!;
@@ -62,7 +76,10 @@ function start(): TimelineDoc {
 
 describe("validateTimeline agrees with modules/timeline.py", () => {
   it.each(cases.cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
-    const problems = validateTimeline(c.doc);
+    let problems = validateTimeline(c.doc);
+    // A case with files is judged on them too, as the save route does.
+    if (!problems.length && c.assets)
+      problems = docAssetProblems(c.doc as TimelineDoc, readable(c.assets));
     expect(problems.length === 0, problems.join("; ")).toBe(c.valid);
   });
 

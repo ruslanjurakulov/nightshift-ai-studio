@@ -5,7 +5,11 @@ import { PageHeader } from "@/components/PageHeader";
 import { TimelineEditor } from "@/components/editor/TimelineEditor";
 import { getOrgContext } from "@/lib/orgs-server";
 import { getDictionary } from "@/lib/i18n/server";
-import { loadEditorProject, loadEditorVideos } from "@/lib/server/editor";
+import {
+  loadEditorProject,
+  loadEditorSounds,
+  loadEditorVideos,
+} from "@/lib/server/editor";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -42,7 +46,10 @@ export default async function EditorProjectPage({
   if (project.state === "not_found") notFound();
   if (project.state === "not_available") return note(t.editor.notEnabled);
   if (project.state !== "ok") return note(t.editor.readFailed);
-  const videos = await loadEditorVideos(project.value.orgId);
+  const [videos, sounds] = await Promise.all([
+    loadEditorVideos(project.value.orgId),
+    loadEditorSounds(project.value.orgId),
+  ]);
   const p = project.value;
 
   return (
@@ -56,6 +63,7 @@ export default async function EditorProjectPage({
         exports={p.exports}
         assets={p.assets}
         videos={videos.state === "ok" ? videos.value : []}
+        soundFiles={sounds.state === "ok" ? sounds.value : []}
       />
     </div>
   );

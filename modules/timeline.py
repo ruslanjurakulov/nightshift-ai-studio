@@ -15,7 +15,7 @@ not a project dependency — tests keep the two in sync)::
       captions?: { style?: {...}, cues: [ { id, start_s, end_s, text } ] } }
 
     V clip: { id, asset_id, start_s, in_s, out_s, fit?, fade_in_s?, fade_out_s?,
-              transition?: { type: "cut"|"dip_to_black", duration_s },
+              transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s },
               speed?: 0.5..2, audio?: bool }
     A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s? }
     T clip: { id, start_s, end_s, text, font?, size?, color?, outline_color?,
@@ -28,11 +28,16 @@ Rules this module keeps:
   so the database layer decides what this organisation may use. An id the
   resolver does not return is refused — never skipped, never replaced.
 * **One picture lane in v1.** Clips on a track may not overlap and there is at
-  most one V track: overlapping video (picture-in-picture) needs a different
-  filter graph and is a later PR. Gaps in the picture render as black.
+  most one V track: picture-in-picture needs a different filter graph and is
+  a later PR. Gaps in the picture render as black. The one exception is a
+  cross-fade (below): two neighbouring V clips may share exactly its span.
 * **Only deterministic transitions.** ``dip_to_black`` fades the previous clip
-  out and this one in, inside their own spans, so no clip moves. A
-  cross-dissolve overlaps two clips and belongs with picture-in-picture.
+  out and this one in, inside their own spans, so no clip moves.
+  ``crossfade`` blends the previous clip into this one: the clip STARTS
+  ``duration_s`` (0.2-2 s) before the previous one ends, and that overlap is
+  the dissolve. No material outside either clip's ``in_s``..``out_s`` is
+  used (there are no hidden handles), so a cross-fade is never longer than
+  either clip, and a clip's incoming and outgoing cross-fades never meet.
 * **Times are seconds, normalised to milliseconds**, and the render cuts on
   the frame grid (``round(t * fps)``), so the same document always renders
   the same frames.
@@ -86,7 +91,13 @@ MAX_ID = 64
 MAX_DOC_BYTES = 2_000_000
 
 FITS = ("contain", "cover")
-TRANSITIONS = ("cut", "dip_to_black")
+TRANSITIONS = ("cut", "dip_to_black", "crossfade")
+#: A cross-fade's length: under 0.2 s it reads as a glitch, not a dissolve;
+#: over 2 s both clips are half-visible for longer than a viewer will wait.
+XFADE_MIN_S, XFADE_MAX_S = 0.2, 2.0
+#: Times are milliseconds: a cross-fade's overlap must equal its duration to
+#: within half of one (both validators use the same tolerance).
+_XFADE_TOLERANCE = 0.0005
 ANCHORS = ("top-left", "top", "top-right", "left", "center", "right",
            "bottom-left", "bottom", "bottom-right")
 #: Fonts the render worker is expected to have (fonts-dejavu, fonts-liberation).
@@ -370,9 +381,11 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
             tr = clip["transition"]
             if _fields(tr, _TRANSITION_KEYS, _TRANSITION_KEYS, f"{where} transition", problems):
                 if tr.get("type") not in TRANSITIONS:
-                    problems.append(f"{where}: transition type must be one of {list(TRANSITIONS)} "
-                                    "(a cross-dissolve needs overlapping video, not supported yet)")
-                _num_in(tr, "duration_s", 0, 10.0, f"{where} transition", problems)
+                    problems.append(f"{where}: transition type must be one of {list(TRANSITIONS)}")
+                if tr.get("type") == "crossfade":
+                    _num_in(tr, "duration_s", XFADE_MIN_S, XFADE_MAX_S, f"{where} transition", problems)
+                else:
+                    _num_in(tr, "duration_s", 0, 10.0, f"{where} transition", problems)
     else:
         _num_in(clip, "gain_db", GAIN_DB_MIN, GAIN_DB_MAX, where, problems)
 
@@ -466,15 +479,50 @@ def duration_s(doc: dict) -> float:
 def overlaps(doc: dict) -> List[Tuple[str, str, str, float, float]]:
     """``(track id, clip a, clip b, from_s, to_s)`` for every pair of items on
     the same track (or among the captions) that are on screen at once.
-    Touching (one ends where the next starts) is not an overlap."""
+    Touching (one ends where the next starts) is not an overlap, and neither
+    is a cross-fade's own overlap with the clip before it."""
+    blended = {(str(t["id"]), str(p["id"]), str(c["id"]))
+               for t in doc.get("tracks") or [] if t.get("kind") == KIND_V
+               for p, c, _d in crossfades(t)}
     found = []
     for lane, items in _spans(doc):
         for i, (s1, e1, id1) in enumerate(items):
             for s2, e2, id2 in items[i + 1:]:
                 if s2 >= e1:
                     break  # sorted by start: nothing later can overlap this one
+                if (lane, id1, id2) in blended:
+                    continue
                 found.append((lane, id1, id2, s2, min(e1, e2)))
     return found
+
+
+def _sorted_clips(track: dict) -> List[dict]:
+    return sorted(track.get("clips") or [], key=lambda c: (_ms(c["start_s"]), str(c["id"])))
+
+
+def crossfade_s(clip: dict) -> float:
+    """A V clip's cross-fade from the clip before it, in seconds (0 = none)."""
+    tr = clip.get("transition") or {}
+    if tr.get("type") != "crossfade" or not _is_num(tr.get("duration_s")):
+        return 0.0
+    return _ms(tr["duration_s"])
+
+
+def crossfades(track: dict) -> List[Tuple[dict, dict, float]]:
+    """``(previous clip, clip, seconds)`` for every cross-fade on a V track
+    that is laid out as one: the clip starts exactly its duration before the
+    previous clip (by start time) ends. Anything else is a problem
+    :func:`validate` reports, not a cross-fade."""
+    out = []
+    clips = _sorted_clips(track)
+    for i, clip in enumerate(clips):
+        d = crossfade_s(clip)
+        if i == 0 or d <= 0:
+            continue
+        prev = clips[i - 1]
+        if abs((clip_end_s(prev) - _ms(clip["start_s"])) - d) < _XFADE_TOLERANCE:
+            out.append((prev, clip, d))
+    return out
 
 
 def gaps(doc: dict, track_id: Optional[str] = None) -> List[Tuple[str, float, float]]:
@@ -520,11 +568,52 @@ def effective_fades(track: dict) -> Dict[str, Tuple[float, float]]:
     return {k: (round(v[0], 3), round(v[1], 3)) for k, v in fades.items()}
 
 
+def _crossfade_problems(track: dict) -> List[str]:
+    """A cross-fade needs a clip before it that it overlaps by exactly its
+    duration, may not be longer than either clip, and may not run into the
+    clip's other cross-fade (no material outside in..out exists to show)."""
+    problems = []
+    clips = _sorted_clips(track)
+    laid = {str(c["id"]) for _p, c, _d in crossfades(track)}
+    into: Dict[str, float] = {}
+    out_of: Dict[str, float] = {}
+    for i, clip in enumerate(clips):
+        d = crossfade_s(clip)
+        if d <= 0:
+            continue
+        where = _where(track, clip)
+        if i == 0:
+            problems.append(f"{where}: a cross-fade needs a clip before it")
+            continue
+        prev = clips[i - 1]
+        if str(clip["id"]) not in laid:
+            problems.append(f"{where}: a {d:.3f} s cross-fade must start {d:.3f} s before clip "
+                            f"{prev['id']!r} ends (it starts "
+                            f"{clip_end_s(prev) - _ms(clip['start_s']):.3f} s before)")
+            continue
+        for c in (prev, clip):
+            length = clip_end_s(c) - _ms(c["start_s"])
+            if d > length + 1e-9:
+                problems.append(f"{where}: the cross-fade ({d:.3f} s) is longer than clip "
+                                f"{c['id']!r} ({length:.3f} s)")
+        into[str(clip["id"])] = d
+        out_of[str(prev["id"])] = d
+    for clip in clips:
+        cid = str(clip["id"])
+        a, b = into.get(cid, 0.0), out_of.get(cid, 0.0)
+        length = clip_end_s(clip) - _ms(clip["start_s"])
+        if a and b and a + b > length + 1e-9:
+            problems.append(f"{_where(track, clip)}: its cross-fades ({a:.3f} + {b:.3f} s) are "
+                            f"longer than the clip ({length:.3f} s)")
+    return problems
+
+
 def _transition_problems(doc: dict) -> List[str]:
     problems = []
     for track in doc.get("tracks") or []:
         if track.get("kind") != KIND_V:
             continue
+        problems.extend(_crossfade_problems(track))
         fades = effective_fades(track)
         for clip in track.get("clips") or []:
             fi, fo = fades[str(clip["id"])]

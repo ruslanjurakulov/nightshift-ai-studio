@@ -6,16 +6,21 @@ import { fmt } from "@/lib/i18n";
 import {
   clipEnd,
   clipLength,
+  crossfadeOf,
   formatTime,
+  soundLength,
   type EditorAsset,
+  type SoundClip,
   type TextClip,
   type VideoClip,
 } from "@/lib/editor";
 
-export type Selection = { kind: "clip" | "text"; id: string } | null;
+export type Selection = { kind: "clip" | "text" | "sound"; id: string } | null;
 
-/** Lanes so texts that share time sit one above the other, not on top of each other. */
-export function textLanes(texts: readonly TextClip[]): Map<string, number> {
+/** Lanes so items that share time sit one above the other, not on top of each other. */
+export function textLanes(
+  texts: readonly { id: string; start_s: number; end_s: number }[],
+): Map<string, number> {
   const ends: number[] = [];
   const lane = new Map<string, number>();
   for (const t of [...texts].sort(
@@ -29,9 +34,16 @@ export function textLanes(texts: readonly TextClip[]): Map<string, number> {
   return lane;
 }
 
+const soundSpan = (x: SoundClip) => ({
+  id: x.id,
+  start_s: x.start_s,
+  end_s: x.start_s + soundLength(x),
+});
+
 /**
- * The timeline: the picture's clips end to end, the texts under them, and the
- * playhead. A selected clip gets two trim handles — sliders a keyboard can
+ * The timeline: the picture's clips end to end (a cross-faded clip starts
+ * over the end of the one before it), the music and sounds and the texts
+ * under them, and the playhead. A selected clip gets two trim handles — sliders a keyboard can
  * move (arrow = one frame, Shift + arrow = one second, Home / End = as far as
  * the source allows) and a pointer can drag. The strip only reports changes;
  * the editor decides (and the model clamps them).
@@ -39,6 +51,7 @@ export function textLanes(texts: readonly TextClip[]): Map<string, number> {
 export function TimelineStrip({
   clips,
   texts,
+  sounds,
   total,
   fps,
   playhead,
@@ -50,6 +63,7 @@ export function TimelineStrip({
 }: {
   clips: readonly VideoClip[];
   texts: readonly TextClip[];
+  sounds: readonly SoundClip[];
   total: number;
   fps: number;
   playhead: number;
@@ -81,6 +95,8 @@ export function TimelineStrip({
   const pct = (s: number) => `${(Math.max(0, s) / span) * 100}%`;
   const lanes = textLanes(texts);
   const laneCount = Math.max(1, ...[...lanes.values()].map((l) => l + 1));
+  const sLanes = textLanes(sounds.map(soundSpan));
+  const sLaneCount = Math.max(1, ...[...sLanes.values()].map((l) => l + 1));
   const frame = 1 / fps;
 
   function onHandleKey(
@@ -143,7 +159,7 @@ export function TimelineStrip({
         style={{ minWidth: `max(100%, ${clips.length * 44}px)` }}
       >
         <div
-          className="flex h-14 w-full"
+          className="relative h-14 w-full"
           aria-label={te.clipsTrack}
           role="list"
         >
@@ -152,28 +168,43 @@ export function TimelineStrip({
             const on = selected?.kind === "clip" && selected.id === c.id;
             const name = assets[c.asset_id]?.name ?? te.untitledVideo;
             const src = assets[c.asset_id]?.durationS ?? undefined;
+            const x = crossfadeOf(c);
+            const label = fmt(te.clipLabel, {
+              n: i + 1,
+              name,
+              length: formatTime(len),
+            });
             return (
               <div
                 key={c.id}
                 role="listitem"
-                className="relative h-full shrink-0 px-px"
-                style={{ width: pct(len) }}
+                className={`absolute top-0 h-full px-px ${on ? "z-10" : ""}`}
+                style={{ left: pct(c.start_s), width: pct(len) }}
               >
                 <button
                   type="button"
                   onClick={() => onSelect({ kind: "clip", id: c.id })}
                   aria-pressed={on}
-                  aria-label={fmt(te.clipLabel, {
-                    n: i + 1,
-                    name,
-                    length: formatTime(len),
-                  })}
-                  className={`flex size-full min-w-0 flex-col justify-between overflow-hidden rounded-lg border px-1.5 py-1 text-left text-[11px] ${
+                  aria-label={
+                    x > 0
+                      ? `${label}, ${fmt(te.clipCrossfade, { s: x })}`
+                      : label
+                  }
+                  className={`relative flex size-full min-w-0 flex-col justify-between overflow-hidden rounded-lg border px-1.5 py-1 text-left text-[11px] ${
                     on
                       ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                       : "border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
                   }`}
                 >
+                  {x > 0 ? (
+                    // The cross-fade: the part of this clip that overlaps
+                    // the end of the one before it.
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-y-0 left-0 bg-gradient-to-r from-[var(--color-primary)] to-transparent opacity-40"
+                      style={{ width: `${(x / len) * 100}%` }}
+                    />
+                  ) : null}
                   <span className="truncate">{name}</span>
                   {c.speed !== 1 ? (
                     <span className="font-semibold text-[var(--color-primary)]">
@@ -220,6 +251,50 @@ export function TimelineStrip({
             );
           })}
         </div>
+        {sounds.length ? (
+          <div
+            className="relative w-full"
+            style={{ height: `${sLaneCount * 30}px` }}
+            aria-label={te.soundsTrack}
+            role="list"
+          >
+            {sounds.map((x) => {
+              const on = selected?.kind === "sound" && selected.id === x.id;
+              const end = x.start_s + soundLength(x);
+              const name = assets[x.asset_id]?.name ?? te.untitledSound;
+              return (
+                <div
+                  key={x.id}
+                  role="listitem"
+                  className="absolute h-7"
+                  style={{
+                    left: pct(x.start_s),
+                    width: pct(end - x.start_s),
+                    top: `${(sLanes.get(x.id) ?? 0) * 30}px`,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onSelect({ kind: "sound", id: x.id })}
+                    aria-pressed={on}
+                    aria-label={fmt(te.soundClipLabel, {
+                      name,
+                      from: formatTime(x.start_s),
+                      to: formatTime(end),
+                    })}
+                    className={`size-full truncate rounded-md border px-1.5 text-left text-[11px] ${
+                      on
+                        ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
+                        : "border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
+                    }`}
+                  >
+                    ♪ {name}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
         <div
           className="relative w-full"
           style={{ height: `${laneCount * 30}px` }}
