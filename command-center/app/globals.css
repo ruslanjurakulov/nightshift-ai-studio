@@ -1595,10 +1595,8 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   padding: 12px;
   border: 1px solid var(--ns-rule-strong);
   border-radius: var(--ns-r-panel);
-  background: var(--studio-dock-bg);
+  background: var(--color-panel);
   box-shadow: var(--shadow-elevated);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
 }
 @media (min-width: 1024px) {
   .sb-dock { --sb-dock-offset: 0px; }

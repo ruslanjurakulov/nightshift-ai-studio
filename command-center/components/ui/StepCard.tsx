@@ -45,6 +45,8 @@ export function StepCard({
   format = "credits",
   priceWords,
   totalWords,
+  priceSpoken,
+  totalSpoken,
   locale = "en",
   testId,
   children,
@@ -68,6 +70,9 @@ export function StepCard({
   /** A known state said in words instead of a figure ("not charged"); never a stand-in for an unknown. */
   priceWords?: string;
   totalWords?: string;
+  /** A spoken form of the figures for a screen reader ("250 s" for 4:10). */
+  priceSpoken?: string;
+  totalSpoken?: string;
   locale?: string;
   testId?: string;
   children?: ReactNode;
@@ -88,13 +93,13 @@ export function StepCard({
         <span>
           {priceLabel}{" "}
           <strong>
-            {priceWords ? <span>{priceWords}</span> : <Timecode value={price} format={format} locale={locale} unit={unit} unknown={unknownPrice} />}
+            {priceWords ? <span>{priceWords}</span> : <Timecode value={price} format={format} locale={locale} unit={unit} unknown={unknownPrice} label={priceSpoken} />}
           </strong>
         </span>
         <span>
           {totalLabel}{" "}
           <strong>
-            {totalWords ? <span>{totalWords}</span> : <Timecode value={total} format={format} locale={locale} unit={unit} unknown={unknownPrice} />}
+            {totalWords ? <span>{totalWords}</span> : <Timecode value={total} format={format} locale={locale} unit={unit} unknown={unknownPrice} label={totalSpoken} />}
           </strong>
         </span>
         {action && <span className="ml-auto">{action}</span>}
