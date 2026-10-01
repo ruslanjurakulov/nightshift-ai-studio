@@ -19,6 +19,7 @@ import {
   Plus,
   Redo2,
   Scissors,
+  Music,
   Trash2,
   Type,
   Undo2,
@@ -27,9 +28,18 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import {
+  GAIN_DB_MAX,
+  GAIN_DB_MIN,
+  GAIN_UI_MAX,
+  GAIN_UI_MIN,
+  MAX_AUDIO_CLIPS,
   MAX_EDITOR_CLIPS,
+  MAX_EDITOR_SOUNDS,
   MAX_EDITOR_TEXTS,
   MAX_TEXT,
+  SOUND_FADE_MAX_S,
+  XFADE_DEFAULT_S,
+  XFADE_MIN_S,
   SPEEDS,
   TEXT_COLOR,
   TEXT_OUTLINE_COLOR,
@@ -37,32 +47,44 @@ import {
   TEXT_SIZE_MAX,
   TEXT_SIZE_MIN,
   addClip,
+  addSound,
   addText,
+  audioInputs,
+  canAddSound,
   canSplit,
   clamp,
   clipAt,
+  crossfadeOf,
   exportActive,
+  fitSoundToPicture,
   formatTime,
   layout,
+  maxCrossfade,
   modelDuration,
   moveClip,
   positionOf,
   removeClip,
+  removeSound,
   removeText,
   setClipAudio,
+  setCrossfade,
   setSpeed,
+  soundLength,
+  soundWarnings,
   splitClip,
   textWarnings,
   textsAt,
   toDoc,
   toModel,
   trimClip,
+  updateSound,
   updateText,
   validateTimeline,
   type EditorAsset,
   type EditorError,
   type EditorExport,
   type EditorModel,
+  type SoundClip,
   type TextClip,
   type TextPosition,
   type TimelineDoc,
@@ -74,6 +96,7 @@ import {
   saveProject,
 } from "./editorApi";
 import { TimelineStrip, pictureEnd, type Selection } from "./TimelineStrip";
+import { SoundPreview } from "./SoundPreview";
 
 const HISTORY = 100;
 const POLL_MS = 4000;
@@ -113,8 +136,10 @@ function textBoxStyle(x: TextClip, width: number): CSSProperties {
 
 /**
  * The editor: a preview, the timeline, and the free tools — trim (handles or
- * numbers), split at the playhead, speed 0.5–2×, the clip's own sound, and
- * text on the picture (what, when, how big, where). Every change is a new
+ * numbers), split at the playhead, speed 0.5–2×, the clip's own sound, a
+ * cross-fade from the clip before, music and sound effects from the library
+ * (where, which part, how loud, fades), and text on the picture (what, when,
+ * how big, where). Every change is a new
  * document in memory with undo; Save stores it (the route and the database
  * check it); Export asks the media worker to render the SAVED version. No
  * button here renders, spends or publishes by itself: an export is a request
@@ -128,6 +153,7 @@ export function TimelineEditor({
   exports: initialExports,
   assets: initialAssets,
   videos,
+  soundFiles = [],
 }: {
   projectId: string;
   title: string;
@@ -136,6 +162,8 @@ export function TimelineEditor({
   exports: EditorExport[];
   assets: Record<string, EditorAsset>;
   videos: readonly EditorAsset[];
+  /** The library's audio files, for music and sound effects. */
+  soundFiles?: readonly EditorAsset[];
 }) {
   const { t, locale } = useI18n();
   const te = t.editor;
@@ -162,6 +190,7 @@ export function TimelineEditor({
   const [exports, setExports] = useState(initialExports);
   const [assets, setAssets] = useState(initialAssets);
   const [adding, setAdding] = useState(false);
+  const [addingSound, setAddingSound] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const dragBase = useRef<EditorModel | null>(null);
 
@@ -172,6 +201,7 @@ export function TimelineEditor({
   const dirty = current !== saved || title.trim() !== savedTitle;
   const active = exportActive(exports);
   const warnings = textWarnings(model);
+  const soundWarns = soundWarnings(model);
 
   // ── history ────────────────────────────────────────────────────────────────
   const apply = useCallback(
@@ -209,6 +239,11 @@ export function TimelineEditor({
     if (
       selected?.kind === "text" &&
       !model.texts.some((x) => x.id === selected.id)
+    )
+      setSelected(null);
+    if (
+      selected?.kind === "sound" &&
+      !model.sounds.some((x) => x.id === selected.id)
     )
       setSelected(null);
   }, [model, selected]);
@@ -424,6 +459,10 @@ export function TimelineEditor({
     selected?.kind === "text"
       ? (model.texts.find((x) => x.id === selected.id) ?? null)
       : null;
+  const sound =
+    selected?.kind === "sound"
+      ? (model.sounds.find((x) => x.id === selected.id) ?? null)
+      : null;
   const srcLen = (c: { asset_id: string }) =>
     assets[c.asset_id]?.durationS ?? null;
 
@@ -475,6 +514,16 @@ export function TimelineEditor({
     setAdding(false);
   }
 
+  function onAddSound(a: EditorAsset) {
+    const out = addSound(model, a, playhead < picture ? playhead : 0);
+    if (!out) return;
+    setAssets((x) => ({ ...x, [a.id]: a }));
+    apply(out.model);
+    setSelected({ kind: "sound", id: out.id });
+    setAddingSound(false);
+  }
+
+  const audioFull = audioInputs(model) >= MAX_AUDIO_CLIPS;
   const shownTexts = textsAt(model, playhead);
   const errorText =
     error === "text_empty" ? te.textEmpty : error ? te.errors[error] : null;
@@ -639,7 +688,14 @@ export function TimelineEditor({
           </div>
           <p className="m-0 text-center text-[11px] text-[var(--color-muted)]">
             {te.previewNote}
+            {model.sounds.length ? ` ${te.soundPreviewNote}` : ""}
           </p>
+          <SoundPreview
+            sounds={model.sounds}
+            assets={assets}
+            playhead={playhead}
+            playing={playing}
+          />
 
           {/* transport */}
           <div className="flex items-center gap-3">
@@ -680,6 +736,7 @@ export function TimelineEditor({
           <TimelineStrip
             clips={clips}
             texts={model.texts}
+            sounds={model.sounds}
             total={total}
             fps={model.fps}
             playhead={playhead}
@@ -703,6 +760,16 @@ export function TimelineEditor({
             </button>
             <button
               type="button"
+              onClick={() => setAddingSound((a) => !a)}
+              aria-expanded={addingSound}
+              disabled={!canAddSound(model)}
+              className={quietBtn}
+            >
+              <Music className="size-3.5" aria-hidden />
+              {te.addSound}
+            </button>
+            <button
+              type="button"
               onClick={onAddText}
               disabled={model.texts.length >= MAX_EDITOR_TEXTS}
               className={quietBtn}
@@ -711,6 +778,64 @@ export function TimelineEditor({
               {te.addText}
             </button>
           </div>
+          {model.sounds.length >= MAX_EDITOR_SOUNDS ? (
+            <p className="m-0 text-[12px] text-[var(--color-muted)]">
+              {fmt(te.maxSounds, { max: MAX_EDITOR_SOUNDS })}
+            </p>
+          ) : audioFull ? (
+            <p className="m-0 text-[12px] text-[var(--color-muted)]">
+              {fmt(te.audioFull, { max: MAX_AUDIO_CLIPS })}
+            </p>
+          ) : null}
+          {addingSound ? (
+            <section
+              aria-label={te.addSoundTitle}
+              className="panel flex flex-col gap-2 p-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="m-0 text-[13px] font-semibold">
+                  {te.addSoundTitle}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setAddingSound(false)}
+                  className={quietBtn}
+                >
+                  {te.close}
+                </button>
+              </div>
+              {soundFiles.length === 0 ? (
+                <p className="m-0 text-[12px] text-[var(--color-muted)]">
+                  {te.noSounds}{" "}
+                  <Link
+                    href={path("/library")}
+                    className="text-[var(--color-primary)] underline-offset-4 hover:underline"
+                  >
+                    {te.openLibrary}
+                  </Link>
+                </p>
+              ) : (
+                <ul className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2">
+                  {soundFiles.map((a) => (
+                    <li key={a.id}>
+                      <button
+                        type="button"
+                        onClick={() => onAddSound(a)}
+                        className="flex w-full min-w-0 items-center justify-between gap-2 rounded-xl border border-[var(--color-border)] p-2 text-left text-[12px]"
+                      >
+                        <span className="truncate text-[var(--color-fg)]">
+                          {a.name ?? te.untitledSound}
+                        </span>
+                        <span className="shrink-0 tabular-nums text-[var(--color-muted)]">
+                          {formatTime(a.durationS ?? 0)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ) : null}
           {model.clips.length >= MAX_EDITOR_CLIPS ? (
             <p className="m-0 text-[12px] text-[var(--color-muted)]">
               {fmt(te.maxClips, { max: MAX_EDITOR_CLIPS })}
@@ -769,9 +894,40 @@ export function TimelineEditor({
         {/* inspector */}
         <aside
           className="panel flex min-w-0 flex-col gap-3 p-4"
-          aria-label={clip ? te.trim : text ? te.textLabel : te.timeline}
+          aria-label={
+            clip
+              ? te.trim
+              : text
+                ? te.textLabel
+                : sound
+                  ? te.soundHeading
+                  : te.timeline
+          }
         >
-          {clip ? (
+          {sound ? (
+            <SoundInspector
+              key={sound.id}
+              sound={sound}
+              name={assets[sound.asset_id]?.name ?? te.untitledSound}
+              sourceS={srcLen(sound)}
+              warning={soundWarns[sound.id] ?? null}
+              onChange={(patch) =>
+                apply(updateSound(model, sound.id, patch, srcLen(sound)))
+              }
+              onToPlayhead={() =>
+                apply(
+                  updateSound(
+                    model,
+                    sound.id,
+                    { start_s: playhead },
+                    srcLen(sound),
+                  ),
+                )
+              }
+              onFit={() => apply(fitSoundToPicture(model, sound.id))}
+              onDelete={() => apply(removeSound(model, sound.id))}
+            />
+          ) : clip ? (
             <ClipInspector
               key={clip.id}
               n={clipIndex + 1}
@@ -789,6 +945,10 @@ export function TimelineEditor({
               }
               onSpeed={(s) => apply(setSpeed(model, clip.id, s))}
               onAudio={(a) => apply(setClipAudio(model, clip.id, a))}
+              audioLocked={!clip.audio && audioFull}
+              crossfade={crossfadeOf(clip)}
+              maxCrossfade={maxCrossfade(model, clip.id)}
+              onCrossfade={(d) => apply(setCrossfade(model, clip.id, d))}
               onSplit={onSplit}
               onMove={(by) => apply(moveClip(model, clip.id, by))}
               onDelete={() => apply(removeClip(model, clip.id))}
@@ -972,6 +1132,10 @@ function ClipInspector({
   onOut,
   onSpeed,
   onAudio,
+  audioLocked,
+  crossfade,
+  maxCrossfade: maxX,
+  onCrossfade,
   onSplit,
   onMove,
   onDelete,
@@ -993,6 +1157,12 @@ function ClipInspector({
   onOut: (v: number) => void;
   onSpeed: (s: number) => void;
   onAudio: (a: boolean) => void;
+  audioLocked: boolean;
+  /** The cross-fade into this clip in seconds (0 = a cut). */
+  crossfade: number;
+  /** The longest it can be (0 = this clip cannot have one). */
+  maxCrossfade: number;
+  onCrossfade: (seconds: number) => void;
   onSplit: () => void;
   onMove: (by: -1 | 1) => void;
   onDelete: () => void;
@@ -1054,11 +1224,70 @@ function ClipInspector({
         <input
           type="checkbox"
           checked={clip.audio}
+          disabled={audioLocked}
           onChange={(e) => onAudio(e.target.checked)}
           className="size-4 accent-[var(--color-primary)]"
         />
         {te.sound}
       </label>
+      <fieldset
+        className="m-0 flex flex-col gap-1.5 border-0 p-0"
+        aria-describedby={`${id}-xf`}
+      >
+        <legend className="mb-1 p-0 text-[12px] text-[var(--color-muted)]">
+          {te.transition}
+        </legend>
+        <div className="flex flex-wrap gap-1.5">
+          {(["cut", "crossfade"] as const).map((kind) => {
+            const on = kind === "cut" ? crossfade <= 0 : crossfade > 0;
+            const disabled = kind === "crossfade" && !maxX && crossfade <= 0;
+            return (
+              <label
+                key={kind}
+                className={`rounded-full border px-2.5 py-1 text-[12px] focus-within:ring-2 focus-within:ring-[var(--color-primary)] ${
+                  disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+                } ${
+                  on
+                    ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
+                    : "border-[var(--color-border)] text-[var(--color-muted)]"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name={`${id}-xf`}
+                  value={kind}
+                  checked={on}
+                  disabled={disabled}
+                  onChange={() =>
+                    onCrossfade(
+                      kind === "cut" ? 0 : Math.min(XFADE_DEFAULT_S, maxX),
+                    )
+                  }
+                  className="sr-only"
+                />
+                {kind === "cut" ? te.cut : te.crossfade}
+              </label>
+            );
+          })}
+        </div>
+        {crossfade > 0 && maxX ? (
+          <NumberField
+            label={te.crossfadeLength}
+            value={crossfade}
+            min={XFADE_MIN_S}
+            max={maxX}
+            step={0.1}
+            onCommit={onCrossfade}
+          />
+        ) : null}
+        <p id={`${id}-xf`} className="m-0 text-[11px] text-[var(--color-muted)]">
+          {first
+            ? te.crossfadeFirst
+            : !maxX && crossfade <= 0
+              ? fmt(te.crossfadeTooShort, { min: XFADE_MIN_S })
+              : te.crossfadeHint}
+        </p>
+      </fieldset>
       <div className="flex flex-col gap-1">
         <button
           type="button"
@@ -1223,6 +1452,136 @@ function TextInspector({
       >
         <Trash2 className="size-3.5" aria-hidden />
         {te.deleteText}
+      </button>
+    </>
+  );
+}
+
+function SoundInspector({
+  sound,
+  name,
+  sourceS,
+  warning,
+  onChange,
+  onToPlayhead,
+  onFit,
+  onDelete,
+}: {
+  sound: SoundClip;
+  name: string;
+  sourceS: number | null;
+  warning: "past_end" | null;
+  onChange: (patch: Partial<Omit<SoundClip, "id" | "asset_id">>) => void;
+  onToPlayhead: () => void;
+  onFit: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useI18n();
+  const te = t.editor;
+  const id = useId();
+  const len = soundLength(sound);
+  const fadeMax = Math.min(SOUND_FADE_MAX_S, len);
+  return (
+    <>
+      <h2 className="m-0 text-[14px] font-semibold">{te.soundHeading}</h2>
+      <p className="m-0 truncate text-[12px] text-[var(--color-muted)]">
+        {name} · {formatTime(len)}
+      </p>
+      {warning ? (
+        <div role="status" className="flex flex-col gap-1.5">
+          <p className="m-0 text-[12px] text-[var(--color-warn)]">
+            {te.soundPastEnd}
+          </p>
+          <button
+            type="button"
+            onClick={onFit}
+            className={`${quietBtn} self-start`}
+          >
+            {te.soundFit}
+          </button>
+        </div>
+      ) : null}
+      <div className="grid grid-cols-2 gap-2">
+        <NumberField
+          label={te.soundStart}
+          value={sound.start_s}
+          min={0}
+          step={0.1}
+          onCommit={(v) => onChange({ start_s: v })}
+        />
+        <div className="flex items-end">
+          <button
+            type="button"
+            onClick={onToPlayhead}
+            className={`${quietBtn} w-full justify-center`}
+          >
+            {te.soundToPlayhead}
+          </button>
+        </div>
+        <NumberField
+          label={te.soundIn}
+          value={sound.in_s}
+          min={0}
+          max={sound.out_s}
+          step={0.1}
+          onCommit={(v) => onChange({ in_s: v })}
+        />
+        <NumberField
+          label={te.soundOut}
+          value={sound.out_s}
+          min={sound.in_s}
+          max={sourceS ?? undefined}
+          step={0.1}
+          onCommit={(v) => onChange({ out_s: v })}
+        />
+      </div>
+      <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+        <span id={`${id}-vol`}>
+          {te.soundVolume} · {fmt(te.soundVolumeValue, { db: sound.gain_db })}
+        </span>
+        <input
+          type="range"
+          min={Math.min(GAIN_UI_MIN, sound.gain_db)}
+          max={Math.max(GAIN_UI_MAX, sound.gain_db)}
+          step={1}
+          value={sound.gain_db}
+          aria-valuetext={fmt(te.soundVolumeValue, { db: sound.gain_db })}
+          onChange={(e) =>
+            onChange({
+              gain_db: Math.min(
+                GAIN_DB_MAX,
+                Math.max(GAIN_DB_MIN, Number(e.target.value)),
+              ),
+            })
+          }
+          className="accent-[var(--color-primary)]"
+        />
+      </label>
+      <div className="grid grid-cols-2 gap-2">
+        <NumberField
+          label={te.soundFadeIn}
+          value={sound.fade_in_s}
+          min={0}
+          max={fadeMax}
+          step={0.1}
+          onCommit={(v) => onChange({ fade_in_s: v })}
+        />
+        <NumberField
+          label={te.soundFadeOut}
+          value={sound.fade_out_s}
+          min={0}
+          max={fadeMax}
+          step={0.1}
+          onCommit={(v) => onChange({ fade_out_s: v })}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={onDelete}
+        className={`${quietBtn} self-start text-[var(--color-fail)]`}
+      >
+        <Trash2 className="size-3.5" aria-hidden />
+        {te.deleteSound}
       </button>
     </>
   );

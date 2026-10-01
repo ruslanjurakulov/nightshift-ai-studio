@@ -119,9 +119,25 @@ export async function loadEditorProjects(
   }
 }
 
+/** The organization's audio files a project can use as music or a sound
+ *  effect (newest first). Only files with a known length: a sound is placed
+ *  and trimmed in seconds of its file. */
+export async function loadEditorSounds(
+  orgId: string,
+): Promise<EditorRead<EditorAsset[]>> {
+  return loadEditorFiles(orgId, "audio");
+}
+
 /** The organization's videos a project can start from or add (newest first). */
 export async function loadEditorVideos(
   orgId: string,
+): Promise<EditorRead<EditorAsset[]>> {
+  return loadEditorFiles(orgId, "video");
+}
+
+async function loadEditorFiles(
+  orgId: string,
+  kind: "video" | "audio",
 ): Promise<EditorRead<EditorAsset[]>> {
   const supabase = await createClient();
   if (!supabase || !parseMediaId(orgId)) return { state: "not_available" };
@@ -130,7 +146,7 @@ export async function loadEditorVideos(
       .from("media_assets")
       .select(MEDIA_ASSET_COLUMNS)
       .eq("org_id", orgId)
-      .eq("kind", "video")
+      .eq("kind", kind)
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(100);
@@ -215,6 +231,37 @@ export async function loadEditorProject(
     };
   } catch {
     return { state: "read_failed" };
+  }
+}
+
+/**
+ * The kind of every file a document names, as the caller's own session can
+ * read them (RLS: live files of the caller's organizations). An id missing
+ * from the answer is not available to this person. null = the read failed.
+ */
+export async function readDocAssetKinds(
+  ids: readonly string[],
+): Promise<Record<string, string> | null> {
+  const clean = ids
+    .map((x) => parseMediaId(x))
+    .filter((x): x is string => Boolean(x));
+  if (!clean.length) return {};
+  const supabase = await createClient();
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from("media_assets")
+      .select("id, kind")
+      .in("id", clean)
+      .is("deleted_at", null);
+    if (error || !Array.isArray(data)) return null;
+    const out: Record<string, string> = {};
+    for (const r of data as { id?: unknown; kind?: unknown }[])
+      if (typeof r.id === "string" && typeof r.kind === "string")
+        out[r.id.toLowerCase()] = r.kind;
+    return out;
+  } catch {
+    return null;
   }
 }
 

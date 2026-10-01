@@ -51,6 +51,17 @@ against the argv captured from the code before this extension):
     fitted and resampled to the output rate; the sound with one ``atempo``
     stage, which keeps its pitch. Text never reaches a filter graph: it goes
     into the ASS file, escaped by ``ass_captions.escape_text``.
+  * ``Segment.clip_s`` / ``offset_s`` / ``seed`` / ``xfade`` — a cross-fade.
+    A clip that dissolves into the next is rendered as pieces: each piece is
+    ``duration`` seconds of a clip ``clip_s`` long, starting ``offset_s``
+    into it (fades and a still's move are computed over the whole clip, so
+    they carry on across the cut), and the overlap is one segment whose
+    ``xfade`` is the incoming clip's head — the backend blends the two with
+    ffmpeg ``xfade``. The picture stays a concatenation of exactly the
+    timeline's frames, so nothing else in the render changes.
+  * ``AudioTrack.crossfade_s`` — this track is joined to the one before it
+    with ``acrossfade`` over that many seconds (a cross-fade between two
+    clips that both play their own sound).
 """
 
 from __future__ import annotations
@@ -121,6 +132,17 @@ class Segment:
     fade_in_s: float = 0.0
     fade_out_s: float = 0.0
     speed: float = 1.0
+    #: A piece of a longer clip (frame_exact only): the clip is ``clip_s``
+    #: seconds long and this segment is ``duration`` seconds of it from
+    #: ``offset_s``. 0 = the segment is the whole clip (the original model).
+    clip_s: float = 0.0
+    offset_s: float = 0.0
+    #: The Ken Burns seed of the clip this piece belongs to, so every piece
+    #: of one still moves the same way ('' = the backend's own per-segment seed).
+    seed: str = ""
+    #: A cross-fade: this segment (the outgoing clip's last ``duration``
+    #: seconds) dissolves into ``xfade`` (the incoming clip's first ones).
+    xfade: Optional["Segment"] = None
 
     def to_dict(self) -> dict:
         d = {"duration": self.duration, "path": self.path, "kind": self.kind}
@@ -129,10 +151,16 @@ class Segment:
         _put_if(d, "fade_in_s", self.fade_in_s, 0.0)
         _put_if(d, "fade_out_s", self.fade_out_s, 0.0)
         _put_if(d, "speed", self.speed, 1.0)
+        _put_if(d, "clip_s", self.clip_s, 0.0)
+        _put_if(d, "offset_s", self.offset_s, 0.0)
+        _put_if(d, "seed", self.seed, "")
+        if self.xfade is not None:
+            d["xfade"] = self.xfade.to_dict()
         return d
 
     @staticmethod
     def from_dict(d: dict) -> "Segment":
+        x = d.get("xfade")
         return Segment(
             duration=float(d.get("duration") or 0.0),
             path=(d.get("path") or None),
@@ -142,7 +170,16 @@ class Segment:
             fade_in_s=float(d.get("fade_in_s") or 0.0),
             fade_out_s=float(d.get("fade_out_s") or 0.0),
             speed=float(d.get("speed") or 1.0),
+            clip_s=float(d.get("clip_s") or 0.0),
+            offset_s=float(d.get("offset_s") or 0.0),
+            seed=str(d.get("seed") or ""),
+            xfade=Segment.from_dict(x) if isinstance(x, dict) else None,
         )
+
+    @property
+    def full_s(self) -> float:
+        """The length of the clip this segment belongs to (its own when whole)."""
+        return self.clip_s if self.clip_s > 0 else self.duration
 
 
 @dataclass(frozen=True)
@@ -160,6 +197,9 @@ class AudioTrack:
     fade_in_s: float = 0.0
     fade_out_s: float = 0.0
     speed: float = 1.0
+    #: Joined to the PREVIOUS track in the list with ``acrossfade`` over this
+    #: many seconds (0 = mixed on its own, the original model).
+    crossfade_s: float = 0.0
 
     @property
     def output_s(self) -> float:
@@ -171,6 +211,7 @@ class AudioTrack:
              "in_s": self.in_s, "gain_db": self.gain_db, "fade_in_s": self.fade_in_s,
              "fade_out_s": self.fade_out_s}
         _put_if(d, "speed", self.speed, 1.0)
+        _put_if(d, "crossfade_s", self.crossfade_s, 0.0)
         return d
 
     @staticmethod
@@ -184,6 +225,7 @@ class AudioTrack:
             fade_in_s=float(d.get("fade_in_s") or 0.0),
             fade_out_s=float(d.get("fade_out_s") or 0.0),
             speed=float(d.get("speed") or 1.0),
+            crossfade_s=float(d.get("crossfade_s") or 0.0),
         )
 
 
@@ -309,6 +351,39 @@ class RenderSpec:
         return bool(self.audio_tracks or self.overlays)
 
 
+def _segment_problems(name: str, seg: Segment, frame_exact: bool) -> List[str]:
+    problems: List[str] = []
+    if seg.duration <= 0:
+        problems.append(f"{name} has non-positive duration {seg.duration}")
+    if seg.kind not in _KINDS:
+        problems.append(f"{name} has unknown kind {seg.kind!r}")
+    if seg.kind in (KIND_VIDEO, KIND_IMAGE) and not seg.path:
+        problems.append(f"{name} is a {seg.kind} but has no path")
+    if not _finite(seg.in_s) or seg.in_s < 0:
+        problems.append(f"{name} has a negative or non-finite in_s {seg.in_s}")
+    if seg.fit not in FITS:
+        problems.append(f"{name} has unknown fit {seg.fit!r}")
+    for field_name in ("fade_in_s", "fade_out_s", "clip_s", "offset_s"):
+        v = getattr(seg, field_name)
+        if not _finite(v) or v < 0:
+            problems.append(f"{name} has a negative or non-finite {field_name} {v}")
+    if not _speed_ok(seg.speed):
+        problems.append(f"{name} speed must be from {SPEED_MIN:g} to {SPEED_MAX:g} "
+                        f"(got {seg.speed})")
+    if (seg.clip_s or seg.offset_s or seg.xfade is not None) and not frame_exact:
+        # Pieces are cut by frame number; without the frame grid a cut would drift.
+        problems.append(f"{name} is a piece of a clip or a cross-fade, which needs frame_exact")
+    if (_finite(seg.clip_s) and _finite(seg.offset_s) and seg.clip_s > 0
+            and seg.offset_s + seg.duration > seg.clip_s + 1e-6):
+        problems.append(f"{name} runs past the end of its clip ({seg.offset_s} + {seg.duration} s "
+                        f"of {seg.clip_s} s)")
+    if (_finite(seg.fade_in_s) and _finite(seg.fade_out_s) and _finite(seg.clip_s)
+            and seg.fade_in_s + seg.fade_out_s > seg.full_s + 1e-9):
+        problems.append(f"{name} fades ({seg.fade_in_s} + {seg.fade_out_s} s) "
+                        f"are longer than the segment ({seg.full_s} s)")
+    return problems
+
+
 def validate(spec: RenderSpec) -> List[str]:
     """Problems that would make this spec un-renderable, as human-readable
     strings. Empty list means the spec is well-formed. Pure — checks the data,
@@ -323,34 +398,24 @@ def validate(spec: RenderSpec) -> List[str]:
     if not spec.segments:
         problems.append("no segments — nothing to render")
     for i, seg in enumerate(spec.segments):
-        if seg.duration <= 0:
-            problems.append(f"segment {i} has non-positive duration {seg.duration}")
-        if seg.kind not in _KINDS:
-            problems.append(f"segment {i} has unknown kind {seg.kind!r}")
-        if seg.kind in (KIND_VIDEO, KIND_IMAGE) and not seg.path:
-            problems.append(f"segment {i} is a {seg.kind} but has no path")
-        if not _finite(seg.in_s) or seg.in_s < 0:
-            problems.append(f"segment {i} has a negative or non-finite in_s {seg.in_s}")
-        if seg.fit not in FITS:
-            problems.append(f"segment {i} has unknown fit {seg.fit!r}")
-        for name in ("fade_in_s", "fade_out_s"):
-            v = getattr(seg, name)
-            if not _finite(v) or v < 0:
-                problems.append(f"segment {i} has a negative or non-finite {name} {v}")
-        if not _speed_ok(seg.speed):
-            problems.append(f"segment {i} speed must be from {SPEED_MIN:g} to {SPEED_MAX:g} "
-                            f"(got {seg.speed})")
-        if (_finite(seg.fade_in_s) and _finite(seg.fade_out_s)
-                and seg.fade_in_s + seg.fade_out_s > seg.duration + 1e-9):
-            problems.append(f"segment {i} fades ({seg.fade_in_s} + {seg.fade_out_s} s) "
-                            f"are longer than the segment ({seg.duration} s)")
+        problems.extend(_segment_problems(f"segment {i}", seg, spec.frame_exact))
+        if seg.xfade is not None:
+            x = seg.xfade
+            problems.extend(_segment_problems(f"segment {i} cross-fade", x, spec.frame_exact))
+            if x.xfade is not None:
+                problems.append(f"segment {i} cross-fade cannot itself cross-fade")
+            if any(s.kind == KIND_COLOR or not s.path for s in (seg, x)):
+                problems.append(f"segment {i} cross-fade needs a picture on both sides")
+            if _finite(x.duration) and abs(x.duration - seg.duration) > 1e-6:
+                problems.append(f"segment {i} cross-fade sides must be equally long")
     if spec.audio_path and spec.audio_tracks:
         problems.append("audio_path and audio_tracks are mutually exclusive — "
                         "put the narration in audio_tracks")
     for i, t in enumerate(spec.audio_tracks):
         if not t.path:
             problems.append(f"audio track {i} has no path")
-        nums = ("duration_s", "start_s", "in_s", "gain_db", "fade_in_s", "fade_out_s", "speed")
+        nums = ("duration_s", "start_s", "in_s", "gain_db", "fade_in_s", "fade_out_s", "speed",
+                "crossfade_s")
         if not all(_finite(getattr(t, n)) for n in nums):
             problems.append(f"audio track {i} has a non-finite number")
             continue
@@ -363,6 +428,13 @@ def validate(spec: RenderSpec) -> List[str]:
             continue
         if t.fade_in_s + t.fade_out_s > t.output_s + 1e-9:
             problems.append(f"audio track {i} fades are longer than the track")
+        if t.crossfade_s < 0 or (t.crossfade_s > 0 and i == 0):
+            problems.append(f"audio track {i} cross-fade needs a track before it")
+        elif t.crossfade_s > 0:
+            prev = spec.audio_tracks[i - 1]
+            if t.crossfade_s > t.output_s + 1e-9 or (
+                    _finite(prev.output_s) and t.crossfade_s > prev.output_s + 1e-9):
+                problems.append(f"audio track {i} cross-fade is longer than a track it joins")
     for i, o in enumerate(spec.overlays):
         if not str(o.text or "").strip():
             problems.append(f"overlay {i} has no text")
@@ -448,11 +520,14 @@ def _t(x: float) -> str:
     return f"{float(x):.3f}"
 
 
-def audio_track_filter(track: AudioTrack, input_index: int, label: str) -> str:
+def audio_track_filter(track: AudioTrack, input_index: int, label: str, *,
+                       delay: bool = True) -> str:
     """The filter chain placing one audio track: cut ``duration_s`` from
     ``in_s``, change its tempo when it has a speed (one ``atempo`` stage,
     pitch kept), one sample format for every input (so amix never guesses),
-    gain, fades inside the span it sounds for, then delay to ``start_s``."""
+    gain, fades inside the span it sounds for, then delay to ``start_s``
+    (``delay`` False: the caller places it — a cross-faded run is delayed
+    once, after its tracks are joined)."""
     chain = [
         f"atrim=start={_t(track.in_s)}:duration={_t(track.duration_s)}",
         "asetpts=PTS-STARTPTS",
@@ -468,9 +543,41 @@ def audio_track_filter(track: AudioTrack, input_index: int, label: str) -> str:
         chain.append(f"afade=t=out:st={_t(track.output_s - track.fade_out_s)}"
                      f":d={_t(track.fade_out_s)}")
     delay_ms = int(round(track.start_s * 1000))
-    if delay_ms > 0:
+    if delay and delay_ms > 0:
         chain.append(f"adelay=delays={delay_ms}:all=1")
     return f"[{input_index}:a]" + ",".join(chain) + f"[{label}]"
+
+
+def audio_runs(tracks: List[AudioTrack]) -> List[List[int]]:
+    """Track indexes grouped into runs joined by cross-fades: a track with
+    ``crossfade_s`` belongs to the run of the track before it."""
+    runs: List[List[int]] = []
+    for i, t in enumerate(tracks):
+        if t.crossfade_s > 0 and runs:
+            runs[-1].append(i)
+        else:
+            runs.append([i])
+    return runs
+
+
+def audio_run_filters(tracks: List[AudioTrack], run: List[int], label: str) -> List[str]:
+    """The filter chains for one run: a single track is placed as always; a
+    cross-faded run is each track's chain (undelayed), joined pairwise by
+    ``acrossfade`` (linear both ways — the outgoing sound fades out exactly
+    as the incoming one fades in), then delayed once to the first track's
+    start. Inputs are 1-based (input 0 is the picture)."""
+    head = run[0]
+    if len(run) == 1:
+        return [audio_track_filter(tracks[head], head + 1, label)]
+    out = [audio_track_filter(tracks[i], i + 1, f"s{i}", delay=False) for i in run]
+    prev = f"s{head}"
+    for i in run[1:]:
+        out.append(f"[{prev}][s{i}]acrossfade=d={_t(tracks[i].crossfade_s)}:c1=tri:c2=tri[x{i}]")
+        prev = f"x{i}"
+    delay_ms = int(round(tracks[head].start_s * 1000))
+    out.append(f"[{prev}]" + (f"adelay=delays={delay_ms}:all=1" if delay_ms > 0 else "anull")
+               + f"[{label}]")
+    return out
 
 
 def _timeline_command(spec: RenderSpec, concat_list_path: str,
@@ -500,9 +607,9 @@ def _timeline_command(spec: RenderSpec, concat_list_path: str,
         graph.append("[0:v]" + ",".join(burn) + "[vout]")
         video_out = "[vout]"
     labels = []
-    for i, track in enumerate(spec.audio_tracks):
-        label = f"a{i}"
-        graph.append(audio_track_filter(track, i + 1, label))
+    for run in audio_runs(spec.audio_tracks):
+        label = f"a{run[0]}"
+        graph.extend(audio_run_filters(spec.audio_tracks, run, label))
         labels.append(f"[{label}]")
     if labels:
         graph.append("".join(labels)

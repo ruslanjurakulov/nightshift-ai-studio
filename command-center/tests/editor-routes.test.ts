@@ -177,6 +177,61 @@ describe("POST /api/editor/projects", () => {
 });
 
 describe("PUT /api/editor/projects/<id>", () => {
+  const MUS = "0e000000-0000-4000-8000-00000000000e";
+  const PIC = "0f000000-0000-4000-8000-00000000000f";
+  beforeEach(() => {
+    // What the member's own session can read of the files the document names.
+    h.table.media_assets = {
+      data: [
+        { id: VID, kind: "video" },
+        { id: MUS, kind: "audio" },
+        { id: PIC, kind: "image" },
+      ],
+      error: null,
+    };
+  });
+  const withSound = (asset: string) => {
+    const doc = goodDoc();
+    (doc.tracks as unknown[]).splice(1, 0, {
+      id: "a1",
+      kind: "A",
+      clips: [{ id: "m1", asset_id: asset, start_s: 0, in_s: 0, out_s: 3, gain_db: -6, fade_in_s: 1, fade_out_s: 1 }],
+    });
+    return doc;
+  };
+
+  it("sends music on its own track to the database", async () => {
+    h.rpc.save_editor_project = { data: 2, error: null };
+    const res = await project.PUT(req("PUT", { base_rev: 1, doc: withSound(MUS) }), params(PID));
+    expect(res.status).toBe(200);
+    const read = h.calls.find((c) => c.kind === "from" && c.name === "media_assets")!;
+    // Read under the member's session (RLS), for exactly the document's files.
+    expect(read.chain.find((c) => c.m === "in")?.a).toEqual(["id", [VID, MUS]]);
+    expect(rpcCalls("save_editor_project")).toHaveLength(1);
+  });
+
+  it.each([
+    ["a video on the music track", VID, "invalid_doc"],
+    ["an image on the music track", PIC, "invalid_doc"],
+    // Another organization's file reads like a made-up one: not there.
+    ["a file this member cannot read", "0d000000-0000-4000-8000-0000000000aa", "invalid_asset"],
+  ])("refuses %s before the database", async (_name, asset, word) => {
+    const res = await project.PUT(req("PUT", { base_rev: 1, doc: withSound(asset) }), params(PID));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe(word);
+    expect(rpcCalls()).toHaveLength(0);
+  });
+
+  it("refuses a sound on the picture track, and fails closed when files cannot be read", async () => {
+    const res = await project.PUT(req("PUT", { base_rev: 1, doc: goodDoc({ asset_id: MUS }) }), params(PID));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("invalid_doc");
+    h.table.media_assets = { data: null, error: { code: "57014", message: "timeout" } };
+    const down = await project.PUT(req("PUT", { base_rev: 1, doc: goodDoc() }), params(PID));
+    expect(down.status).toBe(502);
+    expect(rpcCalls()).toHaveLength(0);
+  });
+
   it("sends a valid document with its base revision", async () => {
     h.rpc.save_editor_project = { data: 4, error: null };
     const res = await project.PUT(req("PUT", { base_rev: 3, title: null, doc: goodDoc() }), params(PID));

@@ -371,12 +371,13 @@
         "type",
         "duration_s"
       ],
-      "description": "Transition INTO this clip. dip_to_black fades the previous (touching) clip out and this one in over duration_s/2 each; no clip moves. A cross-dissolve needs overlapping video and is not supported in v1.",
+      "description": "Transition INTO this clip. dip_to_black fades the previous (touching) clip out and this one in over duration_s/2 each; no clip moves. crossfade dissolves the previous clip into this one: this clip starts exactly duration_s (0.2-2) before the previous one ends, the overlap is the dissolve, and duration_s may not be longer than either clip (validated in modules/timeline.py).",
       "properties": {
         "type": {
           "enum": [
             "cut",
-            "dip_to_black"
+            "dip_to_black",
+            "crossfade"
           ]
         },
         "duration_s": {

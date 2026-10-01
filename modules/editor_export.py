@@ -18,6 +18,16 @@ The limits that stand in for a price (length, one at a time, a daily count)
 are the database's (0054); this module re-checks the length before it spends
 any CPU.
 
+A wall-clock limit, too
+-----------------------
+A render that hangs (a source that decodes forever, a filter that never
+finishes) used to hold the export slot with a live heartbeat, so the
+database never handed the export out again and nobody was told. Every
+render now gets ``render_timeout_s(length)``: three times the video's length
+plus two minutes, never more than ``RENDER_TIMEOUT_MAX_S``. Past it the
+ffmpeg running is killed (render_backend), the work folder is removed, and
+the export ends as failed with ``timed_out``.
+
 Nothing here publishes
 ----------------------
 The result is a file in the library and nothing else. Publishing a video
@@ -52,6 +62,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional
 
 from modules import media_library as ml
+from modules import render_backend
 from modules import timeline as tl
 from modules import timeline_render
 
@@ -66,10 +77,33 @@ EXPORT_MAX_S = 1800.0
 WORK_DIRNAME = ".editor-exports"
 HEARTBEAT_S = 60.0
 AUDIO_PROBE_TIMEOUT_S = 60
+#: The wall-clock budget of one render: RENDER_TIMEOUT_PER_S seconds per
+#: second of video plus RENDER_TIMEOUT_BASE_S (ffmpeg start-up, probing, the
+#: final mux of a very short video), capped. Three times the length is
+#: generous for a render that is working and still ends a hung one in a
+#: bounded time; the cap (90 minutes) is what a 30-minute export
+#: (EXPORT_MAX_S) gets instead of the formula's 5520 s. Not measured on the
+#: production worker yet: if a long, legitimate export is cut off, the
+#: factor is the number to raise.
+RENDER_TIMEOUT_PER_S = 3.0
+RENDER_TIMEOUT_BASE_S = 120.0
+RENDER_TIMEOUT_MAX_S = 5400.0
 
 #: Reason words a failed export can carry (the Command Center has a sentence
 #: for each; lib/editor.ts EXPORT_REASONS).
-REASONS = ("invalid_timeline", "asset_unavailable", "too_long", "render_failed", "store_failed")
+REASONS = ("invalid_timeline", "asset_unavailable", "too_long", "render_failed", "store_failed",
+           "timed_out")
+
+
+def render_timeout_s(length_s: float) -> float:
+    """How long one export's render may take, in wall-clock seconds."""
+    try:
+        length = max(0.0, float(length_s))
+    except (TypeError, ValueError):
+        length = 0.0
+    if length != length or length == float("inf"):  # NaN / inf: the cap, never no limit
+        return RENDER_TIMEOUT_MAX_S
+    return min(RENDER_TIMEOUT_MAX_S, RENDER_TIMEOUT_PER_S * length + RENDER_TIMEOUT_BASE_S)
 
 
 class ExportFailed(Exception):
@@ -218,7 +252,11 @@ def run_export(export: Mapping, *, store: ml.MediaStore, media_root: Path, worke
             try:
                 # One segment at a time: this runs beside upload checking in the
                 # media worker's memory budget, not in the render worker's.
-                render(norm, resolver, str(out), ffmpeg=tools.ffmpeg, workdir=str(work), jobs=1)
+                render(norm, resolver, str(out), ffmpeg=tools.ffmpeg, workdir=str(work), jobs=1,
+                       timeout_s=render_timeout_s(tl.duration_s(norm)))
+            except render_backend.RenderTimeout:
+                logger.warning("editor export %s: render ran past its time limit", eid)
+                raise ExportFailed("timed_out") from None
             except Exception as e:
                 logger.warning("editor export %s: render failed (%s)", eid, type(e).__name__)
                 raise ExportFailed("render_failed") from None
@@ -284,4 +322,4 @@ def serve(service: ExportService, stop: threading.Event, poll_s: float) -> None:
 
 
 __all__ = ["EXPORT_MAX_S", "ExportFailed", "ExportService", "REASONS", "audio_probe_command",
-           "build_resolver", "probe_has_audio", "run_export", "serve"]
+           "build_resolver", "probe_has_audio", "render_timeout_s", "run_export", "serve"]

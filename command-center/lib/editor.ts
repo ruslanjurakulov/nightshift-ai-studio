@@ -6,12 +6,16 @@
  * modules/timeline_render.py). This file holds:
  *
  *   * the editor's model of a document (one picture track laid end to end,
- *     text on top) and the free tools as pure functions on it — trim, split,
- *     speed, clip sound, add / change / remove text;
+ *     text on top, music and sound effects under it) and the free tools as
+ *     pure functions on it — trim, split, speed, clip sound, cross-fade, add /
+ *     change / remove text, add / place / trim / mix sounds;
  *   * `validateTimeline`, the twin of modules/timeline.py `validate` — the
  *     save route runs it before the database is asked, and
  *     tests/editor-timeline.test.ts and tests/test_editor_doc_cases.py run the
  *     same cases through both so the two never drift apart;
+ *   * `docAssetProblems`, the twin of timeline.resolve_assets' kind check:
+ *     which files a document may use on which track (the database checks
+ *     whose files they are);
  *   * the database's refusals mapped to words the page has sentences for.
  *
  * Nothing here spends, renders or publishes. An export is free (no credits,
@@ -43,6 +47,19 @@ export const TEXT_SIZE_MIN = 24;
 export const TEXT_SIZE_MAX = 200;
 export const GAIN_DB_MIN = -60;
 export const GAIN_DB_MAX = 12;
+/** The volume slider's range for a sound: quieter than -40 dB is inaudible
+ *  under a voice, louder than +6 dB clips; a typed number may use 12 dB. */
+export const GAIN_UI_MIN = -40;
+export const GAIN_UI_MAX = 6;
+/** The longest fade the editor offers on a sound, in seconds. */
+export const SOUND_FADE_MAX_S = 10;
+/** A cross-fade's length (modules/timeline.py XFADE_MIN_S / XFADE_MAX_S). */
+export const XFADE_MIN_S = 0.2;
+export const XFADE_MAX_S = 2;
+/** The cross-fade a new one starts with. */
+export const XFADE_DEFAULT_S = 0.5;
+/** Overlap and cross-fade must agree to within half a millisecond. */
+const XFADE_TOLERANCE = 0.0005;
 export const OUTLINE_MAX = 20;
 /** The longest export (0054 request_editor_export, modules/editor_export.py). */
 export const EXPORT_MAX_S = 1800;
@@ -53,10 +70,13 @@ export const MIN_CLIP_S = 0.1;
 export const MAX_EDITOR_CLIPS = MAX_AUDIO_CLIPS;
 /** The most texts: each is its own track, and a document has at most 32. */
 export const MAX_EDITOR_TEXTS = 24;
+/** The most music / sound-effect clips: each is its own A track too (so two
+ *  can play at once), and 1 + 24 + 6 tracks stays under the 32 allowed. */
+export const MAX_EDITOR_SOUNDS = 6;
 export const MAX_DOC_BYTES = 262_144;
 
 const FITS = ["contain", "cover"] as const;
-const TRANSITIONS = ["cut", "dip_to_black"] as const;
+const TRANSITIONS = ["cut", "dip_to_black", "crossfade"] as const;
 export const ANCHORS = [
   "top-left",
   "top",
@@ -121,6 +141,11 @@ const CUE_KEYS = ["id", "start_s", "end_s", "text"];
 
 export type Anchor = (typeof ANCHORS)[number];
 
+export interface Transition {
+  type: (typeof TRANSITIONS)[number];
+  duration_s: number;
+}
+
 export interface VideoClip {
   id: string;
   asset_id: string;
@@ -130,6 +155,23 @@ export interface VideoClip {
   speed: number;
   audio: boolean;
   fit?: "contain" | "cover";
+  /** Into this clip. The editor makes cross-fades; a dip_to_black from
+   *  another tool is kept as it is. */
+  transition?: Transition;
+  fade_in_s?: number;
+  fade_out_s?: number;
+}
+
+/** A music or sound-effect clip on its own A track. */
+export interface SoundClip {
+  id: string;
+  asset_id: string;
+  start_s: number;
+  in_s: number;
+  out_s: number;
+  gain_db: number;
+  fade_in_s: number;
+  fade_out_s: number;
 }
 
 export interface TextClip {
@@ -169,7 +211,8 @@ export interface EditorModel {
   fps: number;
   clips: VideoClip[];
   texts: TextClip[];
-  /** Tracks this editor does not edit (music, more text tracks), kept verbatim. */
+  sounds: SoundClip[];
+  /** Tracks this editor does not edit, kept verbatim. */
   keep: TimelineTrack[];
   captions?: unknown;
 }
@@ -462,9 +505,18 @@ function validateMediaClip(
       ) {
         if (!(TRANSITIONS as readonly unknown[]).includes(tr.type))
           problems.push(
-            `${where}: transition type must be cut or dip_to_black`,
+            `${where}: transition type must be cut, dip_to_black or crossfade`,
           );
-        numIn(tr, "duration_s", 0, 10, `${where} transition`, problems);
+        if (tr.type === "crossfade")
+          numIn(
+            tr,
+            "duration_s",
+            XFADE_MIN_S,
+            XFADE_MAX_S,
+            `${where} transition`,
+            problems,
+          );
+        else numIn(tr, "duration_s", 0, 10, `${where} transition`, problems);
       }
     }
   } else {
@@ -587,12 +639,57 @@ export function docDuration(doc: TimelineDoc): number {
   return end;
 }
 
+/** Python's str ordering (code points), not the locale's: the two
+ *  validators must sort clips the same way. */
+const byCodePoint = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+function sortedClips(track: TimelineTrack): Record<string, unknown>[] {
+  return [...track.clips].sort(
+    (a, b) =>
+      ms(Number(a.start_s)) - ms(Number(b.start_s)) ||
+      byCodePoint(String(a.id), String(b.id)),
+  );
+}
+
+/** A V clip's cross-fade from the clip before it, in seconds (0 = none). */
+export function crossfadeOf(c: Record<string, unknown> | VideoClip): number {
+  const tr = (c as Record<string, unknown>).transition;
+  if (!isObj(tr) || tr.type !== "crossfade" || !isNum(tr.duration_s)) return 0;
+  return ms(tr.duration_s);
+}
+
+/** [previous clip, clip, seconds] for every cross-fade laid out as one
+ *  (modules/timeline.py `crossfades`). */
+function crossfades(
+  track: TimelineTrack,
+): [Record<string, unknown>, Record<string, unknown>, number][] {
+  const out: [Record<string, unknown>, Record<string, unknown>, number][] =
+    [];
+  const clips = sortedClips(track);
+  clips.forEach((c, i) => {
+    const d = crossfadeOf(c);
+    if (i === 0 || d <= 0) return;
+    const prev = clips[i - 1];
+    if (Math.abs(clipEnd(prev) - ms(Number(c.start_s)) - d) < XFADE_TOLERANCE)
+      out.push([prev, c, d]);
+  });
+  return out;
+}
+
 function overlaps(doc: TimelineDoc): [string, string, string][] {
+  const blended = new Set<string>();
+  for (const t of doc.tracks)
+    if (t.kind === "V")
+      for (const [p, c] of crossfades(t)) {
+        blended.add(JSON.stringify([t.id, String(p.id), String(c.id)]));
+        blended.add(JSON.stringify([t.id, String(c.id), String(p.id)]));
+      }
   const found: [string, string, string][] = [];
   for (const [lane, items] of spans(doc)) {
     items.forEach(([, e1, id1], i) => {
       for (const [s2, , id2] of items.slice(i + 1)) {
         if (s2 >= e1) break;
+        if (blended.has(JSON.stringify([lane, id1, id2]))) continue;
         found.push([lane, id1, id2]);
       }
     });
@@ -600,10 +697,54 @@ function overlaps(doc: TimelineDoc): [string, string, string][] {
   return found;
 }
 
+/** The twin of modules/timeline.py `_crossfade_problems`. */
+function crossfadeProblems(track: TimelineTrack): string[] {
+  const problems: string[] = [];
+  const clips = sortedClips(track);
+  const laid = new Set(crossfades(track).map(([, c]) => String(c.id)));
+  const into = new Map<string, number>();
+  const outOf = new Map<string, number>();
+  const len = (c: Record<string, unknown>) =>
+    clipEnd(c) - ms(Number(c.start_s));
+  clips.forEach((c, i) => {
+    const d = crossfadeOf(c);
+    if (d <= 0) return;
+    const where = `track ${track.id} clip ${String(c.id)}`;
+    if (i === 0) {
+      problems.push(`${where}: a cross-fade needs a clip before it`);
+      return;
+    }
+    const prev = clips[i - 1];
+    if (!laid.has(String(c.id))) {
+      problems.push(
+        `${where}: a cross-fade must start its length before the previous clip ends`,
+      );
+      return;
+    }
+    for (const x of [prev, c])
+      if (d > len(x) + 1e-9)
+        problems.push(
+          `${where}: the cross-fade is longer than clip ${String(x.id)}`,
+        );
+    into.set(String(c.id), d);
+    outOf.set(String(prev.id), d);
+  });
+  for (const c of clips) {
+    const a = into.get(String(c.id)) ?? 0;
+    const b = outOf.get(String(c.id)) ?? 0;
+    if (a && b && a + b > len(c) + 1e-9)
+      problems.push(
+        `track ${track.id} clip ${String(c.id)}: its cross-fades are longer than the clip`,
+      );
+  }
+  return problems;
+}
+
 function transitionProblems(doc: TimelineDoc): string[] {
   const problems: string[] = [];
   for (const track of doc.tracks) {
     if (track.kind !== "V") continue;
+    problems.push(...crossfadeProblems(track));
     const clips = [...track.clips].sort(
       (a, b) =>
         ms(Number(a.start_s)) - ms(Number(b.start_s)) ||
@@ -647,14 +788,97 @@ function nextStart(prevEnd: number): number {
   return Math.ceil(prevEnd * 1000 - 1e-6) / 1000;
 }
 
-/** Lay the picture clips end to end from 0, in order: no gaps, no overlaps. */
+/** A clip without its transition (a key set to undefined would still be a
+ *  field the validator sees). */
+function withoutTransition(c: VideoClip): VideoClip {
+  const rest = { ...c };
+  delete rest.transition;
+  return rest;
+}
+
+/**
+ * Lay the picture clips end to end from 0, in order: no gaps, and no
+ * overlaps except a cross-fade, which starts a clip exactly its length before
+ * the previous one ends. A cross-fade is kept inside what both clips can give
+ * — never longer than the clip itself, never into the part of the previous
+ * clip its own cross-fade uses, and always leaving it a moment of its own so
+ * the clips keep their order — and dropped (a cut) when less than
+ * XFADE_MIN_S is left. The first clip has nothing to cross-fade from.
+ */
 export function layout(clips: VideoClip[]): VideoClip[] {
-  let t = 0;
-  return clips.map((c) => {
-    const placed = { ...c, start_s: t };
-    t = nextStart(clipEnd(placed));
+  let prevEnd = 0;
+  let prevIn = 0;
+  let prevLen = 0;
+  return clips.map((c, i) => {
+    let x = i > 0 ? crossfadeOf(c) : 0;
+    if (x > 0) {
+      // The previous clip must still start strictly before this one, or
+      // sorting by start (both validators do) could swap the two.
+      x = Math.min(x, XFADE_MAX_S, prevLen - prevIn - 0.001, clipLength(c));
+      x = Math.floor(x * 1000 + 1e-6) / 1000;
+      if (x < XFADE_MIN_S) x = 0;
+    }
+    let base: VideoClip = c;
+    if (x > 0)
+      base = { ...c, transition: { type: "crossfade", duration_s: x } };
+    else if (c.transition?.type === "crossfade") base = withoutTransition(c);
+    const start = i === 0 ? 0 : x > 0 ? ms(prevEnd - x) : nextStart(prevEnd);
+    const placed = { ...base, start_s: start };
+    prevEnd = clipEnd(placed);
+    prevIn = x;
+    prevLen = clipLength(placed);
     return placed;
   });
+}
+
+/** The longest cross-fade clip `id` can have from the clip before it (0 when
+ *  it cannot have one: the first clip, or too little material on a side). */
+export function maxCrossfade(model: EditorModel, id: string): number {
+  const clips = layout(model.clips);
+  const i = clips.findIndex((c) => c.id === id);
+  if (i <= 0) return 0;
+  const prevIn = crossfadeOf(clips[i - 1]);
+  const nextOut = i + 1 < clips.length ? crossfadeOf(clips[i + 1]) : 0;
+  const max = Math.min(
+    XFADE_MAX_S,
+    ms(clipLength(clips[i - 1]) - prevIn - 0.001),
+    ms(clipLength(clips[i]) - nextOut - 0.001),
+  );
+  const floored = Math.floor(max * 1000 + 1e-6) / 1000;
+  return floored >= XFADE_MIN_S ? floored : 0;
+}
+
+/** Cross-fade into clip `id` over `seconds` (bounded by maxCrossfade), or
+ *  back to a cut with 0. Unchanged when the clip cannot have one. */
+export function setCrossfade(
+  model: EditorModel,
+  id: string,
+  seconds: number,
+): EditorModel {
+  const i = model.clips.findIndex((c) => c.id === id);
+  if (i < 0) return model;
+  if (!(seconds > 0)) {
+    if (model.clips[i].transition?.type !== "crossfade") return model;
+    return {
+      ...model,
+      clips: layout(
+        model.clips.map((c) => (c.id === id ? withoutTransition(c) : c)),
+      ),
+    };
+  }
+  const max = maxCrossfade(model, id);
+  if (!max) return model;
+  const d = ms(clamp(seconds, XFADE_MIN_S, max));
+  return {
+    ...model,
+    clips: layout(
+      model.clips.map((c) =>
+        c.id === id
+          ? { ...c, transition: { type: "crossfade", duration_s: d } }
+          : c,
+      ),
+    ),
+  };
 }
 
 /** The renderer's default text colours (modules/timeline.py TEXT_DEFAULTS):
@@ -670,9 +894,24 @@ const DEFAULT_TEXT: Omit<TextClip, "id" | "start_s" | "end_s" | "text"> = {
   bold: true,
 };
 
+function transitionOf(v: unknown): { transition: Transition } | object {
+  if (
+    !isObj(v) ||
+    !(TRANSITIONS as readonly unknown[]).includes(v.type) ||
+    !isNum(v.duration_s)
+  )
+    return {};
+  return {
+    transition: {
+      type: v.type as Transition["type"],
+      duration_s: v.duration_s,
+    },
+  };
+}
+
 export function toModel(doc: TimelineDoc): EditorModel {
   const v = doc.tracks.find((t) => t.kind === "V");
-  const clips = (v?.clips ?? [])
+  const clips: VideoClip[] = (v?.clips ?? [])
     .map((c) => ({
       id: String(c.id),
       asset_id: String(c.asset_id),
@@ -684,8 +923,33 @@ export function toModel(doc: TimelineDoc): EditorModel {
       ...(c.fit === "cover" || c.fit === "contain"
         ? { fit: c.fit as "cover" | "contain" }
         : {}),
+      ...transitionOf(c.transition),
+      ...(isNum(c.fade_in_s) && c.fade_in_s > 0
+        ? { fade_in_s: c.fade_in_s }
+        : {}),
+      ...(isNum(c.fade_out_s) && c.fade_out_s > 0
+        ? { fade_out_s: c.fade_out_s }
+        : {}),
     }))
-    .sort((a, b) => a.start_s - b.start_s);
+    .sort(
+      (a, b) => a.start_s - b.start_s || byCodePoint(a.id, b.id),
+    );
+  // Every music / sound clip, whatever A track it was on: each gets a track
+  // of its own again in toDoc, so two can play at once.
+  const sounds: SoundClip[] = doc.tracks
+    .filter((t) => t.kind === "A")
+    .flatMap((t) =>
+      t.clips.map((c) => ({
+        id: String(c.id),
+        asset_id: String(c.asset_id),
+        start_s: Number(c.start_s),
+        in_s: Number(c.in_s),
+        out_s: Number(c.out_s),
+        gain_db: isNum(c.gain_db) ? c.gain_db : 0,
+        fade_in_s: isNum(c.fade_in_s) ? c.fade_in_s : 0,
+        fade_out_s: isNum(c.fade_out_s) ? c.fade_out_s : 0,
+      })),
+    );
   // Every text track's texts, in track order (later ones draw on top).
   const texts = doc.tracks
     .filter((t) => t.kind === "T")
@@ -705,7 +969,8 @@ export function toModel(doc: TimelineDoc): EditorModel {
     fps: doc.fps,
     clips,
     texts,
-    keep: doc.tracks.filter((t) => t !== v && t.kind !== "T"),
+    sounds,
+    keep: doc.tracks.filter((t) => t !== v && t.kind !== "T" && t.kind !== "A"),
     ...(doc.captions !== undefined ? { captions: doc.captions } : {}),
   };
 }
@@ -729,11 +994,36 @@ export function toDoc(model: EditorModel): TimelineDoc {
     },
     ...model.keep,
   ];
-  // Ids are one namespace across tracks, clips and texts.
+  // Ids are one namespace across tracks, clips, sounds and texts.
   const used = new Set([
     ...tracks.flatMap((t) => [t.id, ...t.clips.map((c) => String(c.id))]),
+    ...model.sounds.map((x) => x.id),
     ...model.texts.map((t) => t.id),
   ]);
+  let a = 1;
+  const soundTracks: TimelineTrack[] = [];
+  for (const x of model.sounds) {
+    while (used.has(`a${a}`)) a += 1;
+    used.add(`a${a}`);
+    soundTracks.push({
+      id: `a${a}`,
+      kind: "A",
+      clips: [
+        {
+          id: x.id,
+          asset_id: x.asset_id,
+          start_s: ms(x.start_s),
+          in_s: ms(x.in_s),
+          out_s: ms(x.out_s),
+          gain_db: ms(x.gain_db),
+          fade_in_s: ms(x.fade_in_s),
+          fade_out_s: ms(x.fade_out_s),
+        },
+      ],
+    });
+  }
+  // Sounds go right after the picture (where a music track always sat).
+  tracks.splice(1, 0, ...soundTracks);
   let n = 1;
   for (const t of model.texts) {
     while (used.has(`t${n}`)) n += 1;
@@ -768,15 +1058,20 @@ export function modelDuration(model: EditorModel): number {
 }
 
 /** A new id for a clip or a text: letters and digits, never one the model uses. */
-export function freshId(model: EditorModel, prefix: "c" | "x"): string {
-  // Track ids share the namespace too (v1, t1, t2… are tracks).
+export function freshId(model: EditorModel, prefix: "c" | "x" | "m"): string {
+  // Track ids share the namespace too (v1, a1, t1, t2… are tracks).
   const used = new Set([
     "v1",
     ...model.clips.map((c) => c.id),
     ...model.texts.map((t) => t.id),
+    ...model.sounds.map((x) => x.id),
     ...model.keep.flatMap((t) => [t.id, ...t.clips.map((c) => String(c.id))]),
   ]);
-  for (let n = model.clips.length + model.texts.length + 1; ; n += 1) {
+  for (
+    let n = model.clips.length + model.texts.length + model.sounds.length + 1;
+    ;
+    n += 1
+  ) {
     const id = `${prefix}${n}`;
     if (!used.has(id)) return id;
   }
@@ -838,6 +1133,12 @@ export function newDocForAsset(
   };
 }
 
+/** How many sounds the final mix would have: every clip playing its own
+ *  sound and every music / sound clip (MAX_AUDIO_CLIPS bounds them). */
+export function audioInputs(model: EditorModel): number {
+  return model.clips.filter((c) => c.audio).length + model.sounds.length;
+}
+
 export function addClip(
   model: EditorModel,
   asset: Pick<EditorAsset, "id" | "durationS">,
@@ -850,7 +1151,9 @@ export function addClip(
     in_s: 0,
     out_s: ms(asset.durationS),
     speed: 1,
-    audio: true,
+    // Its own sound, unless the mix is already full (it can be turned on
+    // once something else is turned off).
+    audio: audioInputs(model) < MAX_AUDIO_CLIPS,
   };
   return { ...model, clips: layout([...model.clips, clip]) };
 }
@@ -922,12 +1225,15 @@ export function splitClip(
   const c = clips[i];
   const cut = ms(c.in_s + (ms(t) - c.start_s) * c.speed);
   const newId = freshId(model, "c");
-  const next = [
-    ...clips.slice(0, i),
-    { ...c, out_s: cut },
-    { ...c, id: newId, in_s: cut },
-    ...clips.slice(i + 1),
-  ];
+  // modules/timeline.py split_clip: the first half keeps the way in (its
+  // transition and fade in), the second the way out (its fade out).
+  const first: VideoClip = { ...c, out_s: cut };
+  delete first.fade_out_s;
+  const second: VideoClip = withoutTransition({ ...c, id: newId, in_s: cut });
+  delete second.fade_in_s;
+  if (second.audio && audioInputs(model) >= MAX_AUDIO_CLIPS)
+    second.audio = false;
+  const next = [...clips.slice(0, i), first, second, ...clips.slice(i + 1)];
   return { model: { ...model, clips: layout(next) }, newId };
 }
 
@@ -950,6 +1256,7 @@ export function setClipAudio(
   id: string,
   audio: boolean,
 ): EditorModel {
+  if (audio && audioInputs(model) >= MAX_AUDIO_CLIPS) return model;
   return {
     ...model,
     clips: model.clips.map((c) => (c.id === id ? { ...c, audio } : c)),
@@ -1035,6 +1342,132 @@ export function removeText(model: EditorModel, id: string): EditorModel {
   return { ...model, texts: model.texts.filter((t) => t.id !== id) };
 }
 
+// ── music and sound effects ─────────────────────────────────────────────────
+
+/** Where the picture ends (the last clip's end). */
+export function pictureEndOf(model: EditorModel): number {
+  return layout(model.clips).reduce((e, c) => Math.max(e, clipEnd(c)), 0);
+}
+
+export function soundLength(x: Pick<SoundClip, "in_s" | "out_s">): number {
+  return ms(ms(x.out_s) - ms(x.in_s));
+}
+
+export function canAddSound(model: EditorModel): boolean {
+  return (
+    model.sounds.length < MAX_EDITOR_SOUNDS &&
+    audioInputs(model) < MAX_AUDIO_CLIPS
+  );
+}
+
+/** Fades kept inside the sound: each 0..SOUND_FADE_MAX_S, and together no
+ *  longer than it; the one just changed (`keep`) wins. */
+function fitFades(
+  x: SoundClip,
+  keep: "in" | "out" | null,
+): Pick<SoundClip, "fade_in_s" | "fade_out_s"> {
+  const len = soundLength(x);
+  let fi = ms(clamp(x.fade_in_s, 0, Math.min(SOUND_FADE_MAX_S, len)));
+  let fo = ms(clamp(x.fade_out_s, 0, Math.min(SOUND_FADE_MAX_S, len)));
+  if (fi + fo > len + 1e-9) {
+    if (keep === "out") fi = ms(Math.max(0, len - fo));
+    else fo = ms(Math.max(0, len - fi));
+  }
+  return { fade_in_s: fi, fade_out_s: fo };
+}
+
+/**
+ * A music or sound file at timeline time `at` (the playhead): from its
+ * beginning, and no longer than the picture has left — a song longer than
+ * the video would make the export longer, with black at the end.
+ */
+export function addSound(
+  model: EditorModel,
+  asset: Pick<EditorAsset, "id" | "durationS">,
+  at: number,
+): { model: EditorModel; id: string } | null {
+  const dur = asset.durationS;
+  if (!dur || !(dur > 0) || !canAddSound(model)) return null;
+  const picture = pictureEndOf(model);
+  const start = ms(clamp(at, 0, Math.max(0, picture - MIN_CLIP_S)));
+  const room = picture - start;
+  const length = ms(
+    Math.max(Math.min(dur, room > MIN_CLIP_S ? room : dur), MIN_CLIP_S),
+  );
+  const id = freshId(model, "m");
+  const sound: SoundClip = {
+    id,
+    asset_id: asset.id,
+    start_s: start,
+    in_s: 0,
+    out_s: ms(Math.min(length, dur)),
+    gain_db: 0,
+    fade_in_s: 0,
+    fade_out_s: 0,
+  };
+  return { model: { ...model, sounds: [...model.sounds, sound] }, id };
+}
+
+/** Change a sound, kept renderable: inside its file (`sourceS` when known),
+ *  at least MIN_CLIP_S long, volume within GAIN_DB_MIN..GAIN_DB_MAX, fades
+ *  that fit. */
+export function updateSound(
+  model: EditorModel,
+  id: string,
+  patch: Partial<Omit<SoundClip, "id" | "asset_id">>,
+  sourceS: number | null,
+): EditorModel {
+  return {
+    ...model,
+    sounds: model.sounds.map((x) => {
+      if (x.id !== id) return x;
+      const max =
+        sourceS && sourceS > 0 ? ms(sourceS) : Number.POSITIVE_INFINITY;
+      const next = { ...x, ...patch };
+      next.start_s = ms(clamp(next.start_s, 0, MAX_DURATION_S));
+      if (patch.in_s !== undefined)
+        next.in_s = ms(clamp(next.in_s, 0, next.out_s - MIN_CLIP_S));
+      if (patch.out_s !== undefined)
+        next.out_s = ms(clamp(next.out_s, next.in_s + MIN_CLIP_S, max));
+      next.gain_db = ms(clamp(next.gain_db, GAIN_DB_MIN, GAIN_DB_MAX));
+      const keep =
+        patch.fade_out_s !== undefined
+          ? "out"
+          : patch.fade_in_s !== undefined
+            ? "in"
+            : null;
+      return { ...next, ...fitFades(next, keep) };
+    }),
+  };
+}
+
+/** End a sound where the picture ends (when it starts before that). */
+export function fitSoundToPicture(model: EditorModel, id: string): EditorModel {
+  const picture = pictureEndOf(model);
+  const x = model.sounds.find((s) => s.id === id);
+  if (!x || picture - x.start_s < MIN_CLIP_S) return model;
+  return updateSound(
+    model,
+    id,
+    { out_s: ms(x.in_s + (picture - x.start_s)) },
+    null,
+  );
+}
+
+export function removeSound(model: EditorModel, id: string): EditorModel {
+  return { ...model, sounds: model.sounds.filter((x) => x.id !== id) };
+}
+
+/** Sounds a person should know about: one that runs past the end of the
+ *  picture makes the export longer, with black at the end. */
+export function soundWarnings(model: EditorModel): Record<string, "past_end"> {
+  const picture = pictureEndOf(model);
+  const out: Record<string, "past_end"> = {};
+  for (const x of model.sounds)
+    if (ms(x.start_s + soundLength(x)) > picture + 0.001) out[x.id] = "past_end";
+  return out;
+}
+
 /** Text on screen at time `t`. */
 export function textsAt(model: EditorModel, t: number): TextClip[] {
   return model.texts.filter((x) => t >= x.start_s && t < x.end_s);
@@ -1077,6 +1510,7 @@ export const EXPORT_REASONS = [
   "too_long",
   "render_failed",
   "store_failed",
+  "timed_out",
   "worker_lost",
   "project_deleted",
 ] as const;
@@ -1232,6 +1666,44 @@ export function docAssetIds(doc: TimelineDoc): string[] {
     for (const c of t.clips)
       if (typeof c.asset_id === "string") ids.add(c.asset_id.toLowerCase());
   return [...ids].sort();
+}
+
+/** What a track kind may hold (modules/timeline.py TRACK_ASSET_KINDS). */
+const TRACK_ASSET_KINDS: Record<"V" | "A", readonly string[]> = {
+  V: ["video", "image"],
+  A: ["audio"],
+};
+
+/**
+ * Why the files a document names may not be used as it uses them — the twin
+ * of modules/timeline.py `resolve_assets`' kind check. `kinds` is what the
+ * caller's own session could read (RLS: its organizations' live files); an id
+ * missing from it is not available, exactly like a made-up one. Which
+ * organization a file belongs to is the database's check (0054
+ * editor_doc_problem), not this one.
+ */
+export function docAssetProblems(
+  doc: TimelineDoc,
+  kinds: Record<string, string>,
+): string[] {
+  const problems: string[] = [];
+  const known = new Map(
+    Object.entries(kinds).map(([k, v]) => [k.toLowerCase(), v]),
+  );
+  for (const id of docAssetIds(doc))
+    if (!known.has(id)) problems.push(`asset ${id} is not available`);
+  for (const t of doc.tracks) {
+    if (t.kind !== "V" && t.kind !== "A") continue;
+    const allowed = TRACK_ASSET_KINDS[t.kind];
+    for (const c of t.clips) {
+      const kind = known.get(String(c.asset_id).toLowerCase());
+      if (kind !== undefined && !allowed.includes(kind))
+        problems.push(
+          `track ${t.id} clip ${String(c.id)}: a ${t.kind} track takes ${allowed.join(" or ")}, not ${kind}`,
+        );
+    }
+  }
+  return problems;
 }
 
 /** The size the database measures, roughly: the JSON text in bytes. */

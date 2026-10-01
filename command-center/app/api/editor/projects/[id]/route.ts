@@ -2,14 +2,17 @@ import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/server/audit";
 import { readJsonBody } from "@/lib/server/media-folders";
-import { loadEditorProject } from "@/lib/server/editor";
+import { loadEditorProject, readDocAssetKinds } from "@/lib/server/editor";
 import { parseMediaId } from "@/lib/media";
 import {
   MAX_DOC_BYTES,
+  docAssetIds,
+  docAssetProblems,
   docBytes,
   mapEditorError,
   parseTitle,
   validateTimeline,
+  type TimelineDoc,
 } from "@/lib/editor";
 
 export const runtime = "nodejs";
@@ -92,6 +95,26 @@ export async function PUT(
       { error: "invalid_doc", problems: problems.slice(0, 10) },
       { status: 400 },
     );
+  // Which files go on which track (a picture on the music track, a sound on
+  // the picture track) — the renderer would refuse them at export, so say it
+  // now. Read under the member's own session: a file they cannot read is
+  // not available, exactly like a made-up id. Whose files they are is the
+  // database's check below (invalid_asset).
+  const doc = b.doc as TimelineDoc;
+  const kinds = await readDocAssetKinds(docAssetIds(doc));
+  if (kinds === null)
+    return NextResponse.json({ error: "failed" }, { status: 502 });
+  const fileProblems = docAssetProblems(doc, kinds);
+  if (fileProblems.length) {
+    const missing = docAssetIds(doc).some((x) => !(x in kinds));
+    return NextResponse.json(
+      {
+        error: missing ? "invalid_asset" : "invalid_doc",
+        problems: fileProblems.slice(0, 10),
+      },
+      { status: 400 },
+    );
+  }
 
   const supabase = await createClient();
   if (!supabase)

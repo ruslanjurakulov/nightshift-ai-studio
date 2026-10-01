@@ -17,6 +17,15 @@ How a timeline maps onto the spec:
 * **Speed** — a V clip's ``speed`` becomes the segment's (``setpts``): its
   slot on the frame grid is already the sped-up length, and the source range
   ``in_s``..``out_s`` fills it.
+* **Cross-fade** — two V clips that overlap by a ``crossfade`` transition
+  become: the first clip's own part, ONE segment of the overlap that holds
+  both pictures (``Segment.xfade``; the backend blends them with ffmpeg
+  ``xfade``), then the second clip's own part. Each piece is rendered over
+  its whole clip and cut (``clip_s`` / ``offset_s``), so fades and a still's
+  slow zoom carry on across the cut. The concatenation is still exactly the
+  timeline's frames. When both clips play their own sound, the two sounds
+  are joined with ``acrossfade`` (``AudioTrack.crossfade_s``); when only one
+  does, it fades in or out across the overlap.
 * **Sound** — a V clip with ``audio: true`` whose source has a sound track
   becomes an ``AudioTrack`` of that same file (same trim, start and speed,
   ``atempo`` keeping the pitch), first; then every A clip (trim, gain, fades,
@@ -32,6 +41,7 @@ a golden one).
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import List, Optional, Union
 
 from modules import timeline as tl
@@ -50,6 +60,20 @@ def _frame(t: float, fps: int) -> int:
     return int(round(float(t) * fps))
 
 
+def _crossfade_frames(clips: List[dict], fps: int) -> dict:
+    """Clip index → how many frames of its head are its cross-fade from the
+    clip before (on the frame grid: the previous clip's last frame minus this
+    one's first). Validation keeps every cross-fade at least 0.2 s, so this is
+    always several frames."""
+    out = {}
+    for i in range(1, len(clips)):
+        if tl.crossfade_s(clips[i]) > 0:
+            n = _frame(tl.clip_end_s(clips[i - 1]), fps) - _frame(clips[i]["start_s"], fps)
+            if n >= 1:
+                out[i] = n
+    return out
+
+
 def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
     fps = doc["fps"]
     segments: List[Segment] = []
@@ -62,20 +86,15 @@ def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
         if track["kind"] != tl.KIND_V:
             continue
         fades = tl.effective_fades(track)
-        for clip in track["clips"]:  # normalised: sorted by start, no overlaps
-            start = _frame(clip["start_s"], fps)
-            end = _frame(tl.clip_end_s(clip), fps)
-            if end <= start:
-                # Validation keeps a clip at least one frame long, but a clip
-                # of ~1 frame can still fall between two frame boundaries:
-                # there is no frame for it to be shown on.
-                continue
-            if start > cursor:
-                black(start - cursor)
+        clips = track["clips"]  # normalised: sorted by start; only cross-fades overlap
+        xin = _crossfade_frames(clips, fps)
+
+        def piece(clip: dict, frames: int, *, full: int = 0, offset: int = 0,
+                  seed: str = "") -> Segment:
             asset = assets[clip["asset_id"]]
             fade_in, fade_out = fades[clip["id"]]
-            segments.append(Segment(
-                duration=(end - start) / fps,
+            return Segment(
+                duration=frames / fps,
                 path=asset.path,
                 kind=KIND_IMAGE if asset.kind == tl.ASSET_IMAGE else KIND_VIDEO,
                 # A still has no time inside it: only video seeks.
@@ -84,7 +103,46 @@ def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
                 fade_in_s=fade_in,
                 fade_out_s=fade_out,
                 speed=clip["speed"] if asset.kind == tl.ASSET_VIDEO else 1.0,
-            ))
+                clip_s=full / fps if full else 0.0,
+                offset_s=offset / fps,
+                seed=seed,
+            )
+
+        for i, clip in enumerate(clips):
+            start = _frame(clip["start_s"], fps)
+            end = _frame(tl.clip_end_s(clip), fps)
+            if end <= start:
+                # Validation keeps a clip at least one frame long, but a clip
+                # of ~1 frame can still fall between two frame boundaries:
+                # there is no frame for it to be shown on.
+                continue
+            head, tail = xin.get(i, 0), xin.get(i + 1, 0)
+            if not head and not tail:
+                # No cross-fade touches this clip: exactly the segment a
+                # timeline always rendered (older documents' argv is pinned).
+                if start > cursor:
+                    black(start - cursor)
+                segments.append(piece(clip, end - start))
+                cursor = end
+                continue
+            # A cross-faded clip is cut into its pieces on the frame grid: the
+            # part only it shows, then the dissolve into the next clip as ONE
+            # segment that holds both pictures (render_backend blends them
+            # with xfade). Every piece is rendered over the whole clip — fades,
+            # a still's slow zoom — and cut, so nothing restarts at a cut.
+            full = end - start
+            seed = f"clip:{clip['id']}"
+            if not head and start > cursor:
+                black(start - cursor)
+            solo = full - head - tail
+            if solo > 0:
+                segments.append(piece(clip, solo, full=full, offset=head, seed=seed))
+            if tail:
+                nxt = clips[i + 1]
+                n_full = _frame(tl.clip_end_s(nxt), fps) - _frame(nxt["start_s"], fps)
+                incoming = piece(nxt, tail, full=n_full, seed=f"clip:{nxt['id']}")
+                segments.append(replace(piece(clip, tail, full=full, offset=full - tail, seed=seed),
+                                        xfade=incoming))
             cursor = end
     if cursor < total_frames:
         black(total_frames - cursor)
@@ -96,18 +154,33 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
     for track in doc["tracks"]:
         if track["kind"] != tl.KIND_V:
             continue
-        for clip in track["clips"]:
-            asset = assets[clip["asset_id"]]
+        clips = track["clips"]
+
+        def sounding(i: int) -> bool:
             # Only a source KNOWN to carry sound: an input with no audio
             # stream would make the whole mix fail, and a still has none.
-            if not clip["audio"] or asset.kind != tl.ASSET_VIDEO or asset.has_audio is not True:
+            if not 0 <= i < len(clips):
+                return False
+            asset = assets[clips[i]["asset_id"]]
+            return bool(clips[i]["audio"]) and asset.kind == tl.ASSET_VIDEO and asset.has_audio is True
+
+        for i, clip in enumerate(clips):
+            if not sounding(i):
                 continue
+            d_in = tl.crossfade_s(clip) if i > 0 else 0.0
+            d_out = tl.crossfade_s(clips[i + 1]) if i + 1 < len(clips) else 0.0
+            # Both clips sound: their sounds are joined with acrossfade. Only
+            # one does: it fades in (or out) under the silent picture instead.
+            joined = d_in > 0 and sounding(i - 1)
             tracks.append(AudioTrack(
-                path=asset.path,
+                path=assets[clip["asset_id"]].path,
                 duration_s=round(clip["out_s"] - clip["in_s"], 3),
                 start_s=clip["start_s"],
                 in_s=clip["in_s"],
                 speed=clip["speed"],
+                fade_in_s=d_in if d_in > 0 and not joined else 0.0,
+                fade_out_s=d_out if d_out > 0 and not sounding(i + 1) else 0.0,
+                crossfade_s=d_in if joined else 0.0,
             ))
     for track in doc["tracks"]:
         if track["kind"] != tl.KIND_A:
@@ -177,9 +250,14 @@ def to_render_spec(doc: Union[str, bytes, dict], resolver: tl.AssetResolver,
 
 def render(doc: Union[str, bytes, dict], resolver: tl.AssetResolver, output_path: str, *,
            ffmpeg: Optional[str] = None, workdir: Optional[str] = None,
-           jobs: Optional[int] = None) -> str:
-    """Render a timeline to ``output_path`` with the ffmpeg backend."""
+           jobs: Optional[int] = None, timeout_s: Optional[float] = None) -> str:
+    """Render a timeline to ``output_path`` with the ffmpeg backend.
+    ``timeout_s`` bounds the whole render's wall time (render_backend kills
+    the ffmpeg running when it runs out and raises RenderTimeout)."""
     from modules import render_backend
 
     spec = to_render_spec(doc, resolver, output_path)
-    return render_backend.render(spec, ffmpeg=ffmpeg, workdir=workdir, jobs=jobs)
+    if timeout_s is None:
+        return render_backend.render(spec, ffmpeg=ffmpeg, workdir=workdir, jobs=jobs)
+    return render_backend.render(spec, ffmpeg=ffmpeg, workdir=workdir, jobs=jobs,
+                                 timeout_s=timeout_s)

@@ -62,6 +62,11 @@ class RenderBackendError(RuntimeError):
     """A render failed — ffmpeg missing, a bad segment, or a non-zero exit."""
 
 
+class RenderTimeout(RenderBackendError):
+    """The render ran past its wall-clock limit; the ffmpeg running was killed.
+    Never retried or fallen back from: the next attempt would hang the same way."""
+
+
 def resolve_ffmpeg() -> str:
     """Path to an ffmpeg binary. Prefers the imageio-ffmpeg binary MoviePy
     already installs; falls back to `ffmpeg` on PATH."""
@@ -73,14 +78,37 @@ def resolve_ffmpeg() -> str:
         return "ffmpeg"
 
 
-def _run(cmd: List[str]) -> None:
+def _run(cmd: List[str], deadline: Optional[float] = None) -> None:
     """Run one ffmpeg command, raising RenderBackendError with its stderr tail
-    on failure. Never leaks a process — subprocess.run waits and reaps."""
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if proc.returncode != 0:
-        tail = (proc.stderr or "").strip().splitlines()[-8:]
+    on failure. Never leaks a process — subprocess.run waits and reaps.
+
+    ``deadline`` (a ``time.monotonic()`` instant) bounds it: a render that
+    hangs — a source that decodes forever, a filter that never ends — used to
+    keep its export's heartbeat alive indefinitely. Past the deadline the
+    process is killed, reaped, and RenderTimeout is raised."""
+    if deadline is None:
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        returncode, stderr = proc.returncode, proc.stderr
+    else:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RenderTimeout("the render ran past its time limit")
+        child = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            _out, stderr = child.communicate(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.communicate()  # reap: no zombie, no open pipes
+            raise RenderTimeout("the render ran past its time limit") from None
+        except BaseException:
+            child.kill()
+            child.communicate()
+            raise
+        returncode = child.returncode
+    if returncode != 0:
+        tail = (stderr or "").strip().splitlines()[-8:]
         raise RenderBackendError(
-            f"ffmpeg exited {proc.returncode}: {' / '.join(tail) or 'no stderr'}"
+            f"ffmpeg exited {returncode}: {' / '.join(tail) or 'no stderr'}"
         )
 
 
@@ -177,6 +205,15 @@ def _fade_filters(seg: Segment, length_s: float) -> str:
     return out
 
 
+def _piece_trim(seg: Segment, fps: int) -> str:
+    """``,trim=...`` that keeps a piece of a clip from its offset ('' for a
+    whole clip, so its filter is unchanged). It runs AFTER the clip's own
+    filters, so fades and a still's move are where they would be in the
+    whole clip; ``-frames:v`` then takes the piece's length."""
+    k = int(round(seg.offset_s * fps))
+    return f",trim=start_frame={k},setpts=PTS-STARTPTS" if k > 0 else ""
+
+
 def _static_image_cmd(ffmpeg: str, path: str, dur: str, width: int, height: int,
                       fps: int, common: List[str], out_path: Path, *,
                       length: Optional[List[str]] = None, extra_vf: str = "") -> List[str]:
@@ -198,12 +235,18 @@ def segment_commands(
     ``-frames:v round(duration*fps)``: measured at 30 fps, a 1.067 s colour
     segment gave 33 frames and an input-seeked clip one frame short, which
     would drift every later cut of a timeline off its audio."""
+    if seg.xfade is not None:
+        return _xfade_commands(ffmpeg, seg, out_path, width, height, fps,
+                               seed=seed, x264=x264)
     dur = f"{max(0.001, seg.duration):.3f}"
     common = ["-c:v", "libx264", *x264, "-pix_fmt", "yuv420p", "-r", str(fps)]
     frames = segment_frames(seg.duration, fps)
     length = ["-frames:v", str(frames)] if frame_exact else ["-t", dur]
-    length_s = frames / fps if frame_exact else float(dur)
-    fades = _fade_filters(seg, length_s)
+    # A piece of a clip is filtered as the whole clip (its fades end on the
+    # clip's last frame, a still's move spans the clip), then trimmed.
+    full = segment_frames(seg.clip_s, fps) if frame_exact and seg.clip_s > 0 else frames
+    length_s = full / fps if frame_exact else float(dur)
+    fades = _fade_filters(seg, length_s) + (_piece_trim(seg, fps) if frame_exact else "")
 
     if seg.kind == KIND_COLOR or not seg.path:
         # A black placeholder needs no fade: it already is black.
@@ -217,7 +260,7 @@ def segment_commands(
         # Same length as the static hold: the frame count is the one the
         # old path produced, only the pixels move.
         vf = ken_burns_filter(style, width, height, fps,
-                              float(frames) if frame_exact else float(dur) * fps) + fades
+                              float(full) if frame_exact else float(dur) * fps) + fades
         hold = _static_image_cmd(ffmpeg, seg.path, dur, width, height, fps, common, out_path,
                                  length=length if frame_exact else None, extra_vf=fades)
         return [[ffmpeg, "-y", "-i", seg.path, *length, "-vf", vf, *common, str(out_path)], hold]
@@ -231,6 +274,57 @@ def segment_commands(
     return [[ffmpeg, "-y", "-stream_loop", "-1", *seek, "-i", seg.path, *length, "-an",
              "-vf", speed_filter(seg.speed) + fit(width, height, fps) + fades, *common,
              str(out_path)]]
+
+
+def _xfade_side(seg: Segment, width: int, height: int, fps: int, seed: str,
+                hold: bool) -> tuple:
+    """(input args, filter chain) for one side of a cross-fade: the clip's
+    usual normalisation over the whole clip, cut to this piece, and pinned
+    to one frame rate, time base and pixel format — xfade refuses two inputs
+    that differ in any of them (a still's pan reaches it at the still's own
+    rate otherwise)."""
+    full = segment_frames(seg.full_s, fps)
+    tail = (_fade_filters(seg, full / fps) + _piece_trim(seg, fps)
+            + f",settb=1/{fps},fps={fps},format=yuv420p")
+    if seg.kind == KIND_IMAGE:
+        if hold:
+            return ["-loop", "1", "-i", seg.path], _scale_pad(width, height, fps) + tail
+        return (["-i", seg.path],
+                ken_burns_filter(ken_burns_style(seed), width, height, fps, float(full)) + tail)
+    seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
+    fit = _scale_crop if seg.fit == FIT_COVER else _scale_pad
+    return (["-stream_loop", "-1", *seek, "-i", seg.path],
+            speed_filter(seg.speed) + fit(width, height, fps) + tail)
+
+
+def _xfade_commands(ffmpeg: str, seg: Segment, out_path: Path, width: int, height: int,
+                    fps: int, *, seed: Optional[str] = None,
+                    x264: Sequence[str] = ()) -> List[List[str]]:
+    """The command(s) for a cross-fade segment: the outgoing clip's last
+    frames (``seg``) dissolve into the incoming clip's first ones
+    (``seg.xfade``) with ffmpeg ``xfade``, exactly ``round(duration * fps)``
+    frames. Two decoders at once, for this segment only. Every number in the
+    graph is formatted here from validated floats; nothing from a document
+    reaches it as text (paths are -i arguments, never in the graph).
+    With a still on either side there is a second command, both stills held
+    without the Ken Burns move, run only if the first fails."""
+    x = seg.xfade
+    frames = segment_frames(seg.duration, fps)
+    seed_a = seg.seed or (seed if seed is not None else str(seg.path))
+    seed_b = x.seed or f"{seed_a}:xfade"
+    common = ["-c:v", "libx264", *x264, "-pix_fmt", "yuv420p", "-r", str(fps)]
+
+    def cmd(hold: bool) -> List[str]:
+        ia, ca = _xfade_side(seg, width, height, fps, seed_a, hold)
+        ib, cb = _xfade_side(x, width, height, fps, seed_b, hold)
+        graph = (f"[0:v]{ca}[xa];[1:v]{cb}[xb];"
+                 f"[xa][xb]xfade=transition=fade:duration={frames / fps:.6f}:offset=0[xv]")
+        return [ffmpeg, "-y", *ia, *ib, "-filter_complex", graph, "-map", "[xv]",
+                "-frames:v", str(frames), "-an", *common, str(out_path)]
+
+    if KIND_IMAGE in (seg.kind, x.kind):
+        return [cmd(False), cmd(True)]
+    return [cmd(False)]
 
 
 def speed_filter(speed: float) -> str:
@@ -249,6 +343,7 @@ def speed_filter(speed: float) -> str:
 def _normalize_segment(
     ffmpeg: str, seg: Segment, out_path: Path, width: int, height: int, fps: int,
     *, seed: Optional[str] = None, x264: Sequence[str] = (), frame_exact: bool = False,
+    deadline: Optional[float] = None,
 ) -> None:
     """Render one timeline segment to a uniform silent H.264 clip of its
     duration. A colour placeholder is generated; an image gets the Ken Burns
@@ -260,18 +355,24 @@ def _normalize_segment(
     empty means libx264's defaults — the command this backend always ran."""
     cmds = segment_commands(ffmpeg, seg, out_path, width, height, fps,
                             seed=seed, x264=x264, frame_exact=frame_exact)
-    if seg.kind == KIND_IMAGE and seg.path and len(cmds) == 2:
+    # Only a timeline export passes a deadline; every other caller (and the
+    # tests that stand in for _run) makes exactly the call it always made.
+    run = _run if deadline is None else (lambda c: _run(c, deadline=deadline))
+    if len(cmds) == 2 and seg.path:
+        # A still (or a cross-fade with one): the Ken Burns move, else held.
         move, hold = cmds
         try:
-            _run(move)
+            run(move)
             return
+        except RenderTimeout:
+            raise
         except RenderBackendError as e:
             logger.warning("Ken Burns (%s) failed for %s — holding the still instead: %s",
                            ken_burns_style(seed if seed is not None else seg.path),
                            Path(seg.path).name, e)
-        _run(hold)
+        run(hold)
         return
-    _run(cmds[0])
+    run(cmds[0])
 
 
 # ── segment normalisation: one fast intermediate, a bounded worker pool ─────
@@ -468,7 +569,7 @@ def _free_mb(path: Path) -> Optional[float]:
 
 
 def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
-                   timings: RenderTimings) -> List[Segment]:
+                   timings: RenderTimings, deadline: Optional[float] = None) -> List[Segment]:
     """Every segment → ``seg_NNNN.mp4``, in parallel when ``jobs`` > 1.
 
     Any failure of the parallel path — a segment, the pool itself — is logged
@@ -482,8 +583,13 @@ def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
         # Only a timeline spec passes frame_exact: a pipeline render makes
         # exactly the call it always made.
         extra = {"frame_exact": True} if spec.frame_exact else {}
+        if deadline is not None:
+            extra["deadline"] = deadline
+        # A piece of a cross-faded clip carries its clip's seed, so every
+        # piece of one still makes the same move.
         return lambda: _normalize_segment(ffmpeg, seg, outs[i], spec.width, spec.height,
-                                          spec.fps, seed=f"{i}:{seg.path}", x264=x264, **extra)
+                                          spec.fps, seed=seg.seed or f"{i}:{seg.path}",
+                                          x264=x264, **extra)
 
     t0 = time.monotonic()
     try:
@@ -494,6 +600,10 @@ def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
         else:
             timings.segment_s = _run_sequential(tasks)
         timings.mode, timings.jobs = ("parallel" if jobs > 1 else "sequential"), jobs
+    except RenderTimeout:
+        # Out of time: redoing the stage one segment at a time would only
+        # run past the limit again.
+        raise
     except Exception as e:
         logger.warning("ffmpeg segment normalisation (%d job(s)) failed (%s) — redoing it "
                        "one segment at a time", jobs, f"{type(e).__name__}: {e}"[:300])
@@ -519,7 +629,8 @@ def _run_sequential(tasks: Sequence[Callable[[], None]]) -> List[float]:
 
 
 def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[str] = None,
-           jobs: Optional[int] = None, timings: Optional[RenderTimings] = None) -> str:
+           jobs: Optional[int] = None, timings: Optional[RenderTimings] = None,
+           timeout_s: Optional[float] = None) -> str:
     """Render `spec` to `spec.output_path` via ffmpeg and return that path.
 
     Normalises every segment (``jobs`` at once; default ``render_jobs``),
@@ -527,6 +638,11 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
     Raises RenderBackendError on an invalid spec or an ffmpeg failure — never a
     silent empty file. ``timings`` (optional) is filled in; the same numbers are
     logged as one ``ffmpeg render timing:`` line.
+
+    ``timeout_s`` bounds the whole render's wall time: every ffmpeg it starts
+    shares one deadline, the one running when it passes is killed, the temp
+    directory is removed, and RenderTimeout is raised. None = no limit (the
+    pipeline's renders, unchanged).
     """
     problems = validate(spec)
     if problems:
@@ -545,11 +661,13 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
     timings.segments = len(spec.segments)
     jobs = render_jobs(len(spec.segments)) if jobs is None else max(1, int(jobs))
     t_start = time.monotonic()
+    deadline = t_start + float(timeout_s) if timeout_s is not None else None
 
     tmp_ctx = tempfile.TemporaryDirectory(dir=workdir) if workdir else tempfile.TemporaryDirectory()
     with tmp_ctx as tmp:
         tmpdir = Path(tmp)
-        normalized = _normalize_all(ffmpeg, spec, tmpdir, jobs, timings)
+        normalized = (_normalize_all(ffmpeg, spec, tmpdir, jobs, timings) if deadline is None
+                      else _normalize_all(ffmpeg, spec, tmpdir, jobs, timings, deadline))
 
         norm_spec = replace(spec, segments=normalized)
         concat_path = tmpdir / "concat.txt"
@@ -565,7 +683,10 @@ def render(spec: RenderSpec, *, ffmpeg: Optional[str] = None, workdir: Optional[
                                    str(overlay_path) if overlay_path else None)
         cmd[0] = ffmpeg  # the builder emits a literal "ffmpeg"; use the resolved binary
         t0 = time.monotonic()
-        _run(cmd)
+        if deadline is None:
+            _run(cmd)
+        else:
+            _run(cmd, deadline=deadline)
         timings.final_s = round(time.monotonic() - t0, 3)
     timings.total_s = round(time.monotonic() - t_start, 3)
 
