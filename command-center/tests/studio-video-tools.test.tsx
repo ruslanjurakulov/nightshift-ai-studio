@@ -262,8 +262,8 @@ describe("pinned to 0052", () => {
     expect(fn("creative_params_problem")).toContain(`not in (${UPSCALE_TARGETS.map((x) => `'${x}'`).join(", ")})`);
   });
 
-  it("every capability and param key the code sends is one 0052 accepts (0055's own are pinned to 0055)", () => {
-    const later: readonly string[] = ["describe", "language"];
+  it("every capability and param key the code sends is one 0052 accepts (0055's and 0059's own are pinned to theirs)", () => {
+    const later: readonly string[] = ["describe", "language", "captions"];
     const supported = fn("creative_capability_supported");
     for (const c of CREATIVE_CAPABILITIES) if (!later.includes(c)) expect(supported, c).toContain(`'${c}'`);
     const params = fn("creative_params_problem");

@@ -97,6 +97,8 @@ import {
 } from "./editorApi";
 import { TimelineStrip, pictureEnd, type Selection } from "./TimelineStrip";
 import { SoundPreview } from "./SoundPreview";
+import { CaptionsPanel, type CaptionModelOption } from "./CaptionsPanel";
+import { captionsOf, cuesAt } from "@/lib/captions";
 
 const HISTORY = 100;
 const POLL_MS = 4000;
@@ -154,6 +156,8 @@ export function TimelineEditor({
   assets: initialAssets,
   videos,
   soundFiles = [],
+  orgId = "",
+  captionModels = [],
 }: {
   projectId: string;
   title: string;
@@ -164,6 +168,10 @@ export function TimelineEditor({
   videos: readonly EditorAsset[];
   /** The library's audio files, for music and sound effects. */
   soundFiles?: readonly EditorAsset[];
+  /** The project's organization: auto-captions are priced and run in it (0059). */
+  orgId?: string;
+  /** The transcription models the member may be sold (empty: auto-captions are not offered). */
+  captionModels?: readonly CaptionModelOption[];
 }) {
   const { t, locale } = useI18n();
   const te = t.editor;
@@ -676,6 +684,27 @@ export function TimelineEditor({
                 {te.noPreview}
               </p>
             )}
+            {cuesAt(model, playhead).map((c) => {
+              const st = captionsOf(model)?.style;
+              return st ? (
+                <span
+                  key={c.id}
+                  className="pointer-events-none absolute whitespace-pre-wrap text-center leading-tight"
+                  style={{
+                    left: "50%",
+                    top: `${st.y * 100}%`,
+                    transform: "translate(-50%, -100%)",
+                    maxWidth: "92%",
+                    fontSize: `${(st.size / model.width) * 100}cqw`,
+                    fontWeight: st.bold ? 700 : 400,
+                    color: st.color,
+                    textShadow: `0 0 2px ${st.outline_color}, 0 0 2px ${st.outline_color}, 0 0 3px ${st.outline_color}`,
+                  }}
+                >
+                  {c.text}
+                </span>
+              ) : null;
+            })}
             {shownTexts.map((x) => (
               <span
                 key={x.id}
@@ -968,6 +997,17 @@ export function TimelineEditor({
           )}
         </aside>
       </div>
+
+      {/* auto-captions: the transcript is the one paid step (0059); the rest is free */}
+      <CaptionsPanel
+        orgId={orgId}
+        projectTitle={title}
+        model={model}
+        assets={assets}
+        models={captionModels}
+        pictureEnd={picture}
+        onChange={apply}
+      />
 
       {/* exports */}
       <section

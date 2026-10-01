@@ -33,7 +33,8 @@ export interface CreativeResult {
  * Capabilities 0036 / 0046 / 0050 / 0055 accept. edit…remove_bg start from a
  * picture in the organization's media library (`params.source_asset_id`,
  * migration 0046); voice_change and dub start from a recording there (0050);
- * describe reads a picture there and answers with text (0055).
+ * describe reads a picture there and answers with text (0055); captions
+ * transcribe a recording there into a word-timed caption track (0059).
  */
 export const CREATIVE_CAPABILITIES = [
   "t2i",
@@ -49,6 +50,7 @@ export const CREATIVE_CAPABILITIES = [
   "dub",
   "video_upscale",
   "describe",
+  "captions",
 ] as const;
 export type CreativeCapability = (typeof CREATIVE_CAPABILITIES)[number];
 
@@ -75,6 +77,21 @@ export type DescribeLanguage = (typeof DESCRIBE_LANGUAGES)[number];
  * the quantity (the recording's seconds), never this code or the browser.
  */
 export const MEDIA_SOURCE_CAPABILITIES = ["voice_change", "dub"] as const satisfies readonly CreativeCapability[];
+
+/**
+ * Captions (0059) also start from a library recording, checked exactly like a
+ * voice tool's (and at most 30 minutes) — but they are an editor tool, not a
+ * Studio tab, so they are not in MEDIA_SOURCE_CAPABILITIES (which the Studio's
+ * panel types are built from).
+ */
+export const RECORDING_CAPABILITIES: readonly string[] = [...MEDIA_SOURCE_CAPABILITIES, "captions"];
+
+/**
+ * 0059's explicit allow-list for the spoken `language` of a captions job
+ * (optional; absent = the provider detects it). The model must list it too.
+ */
+export const CAPTION_LANGUAGES = ["uz", "ru", "en"] as const;
+export type CaptionLanguage = (typeof CAPTION_LANGUAGES)[number];
 
 /**
  * The capabilities whose input is a library VIDEO (migration 0052). Whether it
@@ -285,7 +302,7 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: `unknown parameter(s): ${badKeys.join(", ")}` }) };
   if (JSON.stringify(params).length > MAX_PARAMS_BYTES)
     return { ok: false, result: fail(400, "invalid_params", { detail: "params are too large" }) };
-  const recorded = (MEDIA_SOURCE_CAPABILITIES as readonly string[]).includes(capability);
+  const recorded = RECORDING_CAPABILITIES.includes(capability);
   const filmed = (VIDEO_SOURCE_CAPABILITIES as readonly string[]).includes(capability);
   const sourced = recorded || filmed || (SOURCE_CAPABILITIES as readonly string[]).includes(capability);
   if (sourced && !isUuid(params.source_asset_id))
@@ -309,7 +326,9 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: `target_language does not apply to ${capability}` }) };
   if (capability === "describe" && params.language !== undefined && !(DESCRIBE_LANGUAGES as readonly unknown[]).includes(params.language))
     return { ok: false, result: fail(400, "invalid_params", { detail: `language must be one of ${DESCRIBE_LANGUAGES.join(", ")}` }) };
-  if (capability !== "describe" && params.language !== undefined)
+  if (capability === "captions" && params.language !== undefined && !(CAPTION_LANGUAGES as readonly unknown[]).includes(params.language))
+    return { ok: false, result: fail(400, "invalid_params", { detail: `language must be one of ${CAPTION_LANGUAGES.join(", ")}` }) };
+  if (capability !== "describe" && capability !== "captions" && params.language !== undefined)
     return { ok: false, result: fail(400, "invalid_params", { detail: `language does not apply to ${capability}` }) };
   if ((recorded || filmed) && params.duration_s !== undefined)
     // The length is the file's own, measured by the database — never sent.

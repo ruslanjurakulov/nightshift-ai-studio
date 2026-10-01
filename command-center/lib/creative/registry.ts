@@ -15,7 +15,7 @@ import { UPSCALE_TARGETS, type UpscaleTarget } from "@/lib/creative/operations";
  * shown with a guessed price (CLAUDE.md #5).
  */
 
-export const CAPABILITIES = ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe"] as const;
+export const CAPABILITIES = ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe", "captions"] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export type Surface = "web" | "api" | "mcp";
 

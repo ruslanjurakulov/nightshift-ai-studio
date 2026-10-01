@@ -435,37 +435,62 @@ def literals(sql):
 
 class BuiltOnTheLatestBodies(unittest.TestCase):
     """``create or replace`` keeps the LAST definition: a 0059 written on older
-    bodies would silently remove describe, the voice tools or the video upscale.
-    Every function it replaces must keep every literal of the latest body
-    before it (0055's; creative_price is 0052's)."""
+    bodies would silently remove describe, the voice tools, the video upscale
+    or another change's lines. Every function it replaces must keep every
+    literal of the latest body before it: the highest-numbered OTHER migration
+    that defines it (0060's, once that change is in the tree; until then
+    0055's / 0052's, with 0060's own lines pinned by name below)."""
 
-    def latest_before(self, name):
-        for f in ("0055_describe_image.sql", "0052_video_tools.sql", "0050_voice_tools.sql"):
-            b = bodies((MIGRATIONS / f).read_text())
+    REPLACED = ("sellable_models", "creative_capability_supported", "creative_params_problem",
+                "creative_source_problem", "creative_price")
+
+    def latest_other(self, name):
+        found = None
+        for path in sorted(MIGRATIONS.glob("*.sql")):
+            if path.name.startswith("0059"):
+                continue
+            b = bodies(path.read_text())
             if name in b:
-                return f, b[name]
-        raise AssertionError(name)
+                found = (path.name, b[name])
+        if found is None:
+            raise AssertionError(name)
+        return found
 
-    def test_every_function_0059_replaces_keeps_every_literal_of_the_latest_body(self):
+    def test_every_function_0059_replaces_keeps_every_literal_of_the_latest_other_body(self):
         new = bodies((MIGRATIONS / "0059_captions.sql").read_text())
-        replaced = {"sellable_models", "creative_capability_supported", "creative_params_problem",
-                    "creative_source_problem", "creative_price"}
-        self.assertEqual(replaced, {n for n in new if n not in ("store_caption_track", "delete_caption_track")})
-        for name in replaced:
-            src, old = self.latest_before(name)
+        self.assertEqual(set(self.REPLACED), {n for n in new if n not in ("store_caption_track", "delete_caption_track")})
+        for name in self.REPLACED:
+            src, old = self.latest_other(name)
             for lit in literals(old):
                 self.assertIn(lit, new[name], f"{name} lost {lit} from {src}")
 
-    def test_the_latest_body_is_really_the_one_it_was_built_on(self):
-        # If a later migration (0056..0058, or another change's 0059-adjacent
-        # number) replaces one of these functions, this fails and says which.
-        names = ("creative_params_problem", "creative_source_problem", "creative_price",
-                 "creative_capability_supported", "sellable_models")
+    def test_the_picture_quality_lines_of_0060_are_kept(self):
+        # 0060 (image quality) replaces these three; 0059 is built on its bodies.
+        new = bodies((MIGRATIONS / "0059_captions.sql").read_text())
+        self.assertIn("'quality must be one of low, medium, high'", new["creative_params_problem"])
+        self.assertIn("'language', 'quality') then", new["creative_params_problem"])
+        self.assertIn("%s does not offer the %s quality", new["creative_price"])
+        self.assertIn("'quality'", new["creative_price"])
+        self.assertIn("'quality_tier', m.spec -> 'quality_tier'", new["sellable_models"])
+        self.assertIn("is distinct from 'quality'", new["sellable_models"])
+
+    def test_a_later_migration_that_replaces_these_functions_must_know_captions(self):
+        # Numbered after 0059 = applied after it: its bodies win, and a body
+        # without the captions lines would take the capability away again.
+        for path in sorted(MIGRATIONS.glob("*.sql")):
+            if int(path.name[:4]) <= 59:
+                continue
+            for name, body in bodies(path.read_text()).items():
+                if name in ("sellable_models", "creative_capability_supported", "creative_params_problem",
+                            "creative_source_problem", "creative_price"):
+                    self.assertIn("'captions'", body, f"{path.name} replaces {name} without the captions lines")
+
+    def test_nothing_between_0055_and_0059_replaces_them(self):
         for path in sorted(MIGRATIONS.glob("*.sql")):
             number = int(path.name[:4])
             if number <= 55 or number >= 59:
                 continue
-            hit = [n for n in bodies(path.read_text()) if n in names]
+            hit = [n for n in bodies(path.read_text()) if n in self.REPLACED]
             self.assertEqual(hit, [], f"{path.name} replaces {hit}: rebuild 0059 on it")
 
     def test_captions_are_added_to_every_list_that_names_the_recording_tools(self):

@@ -30,9 +30,10 @@
 -- WHAT IT CHANGES (create-or-replace / drop-then-add; nothing dropped)
 --   model_registry / model_probe_runs   the capability CHECKs accept
 --                        'captions' (at most 13 per model).
---   sellable_models      0055's, accepting 'captions'.
+--   sellable_models      0060's (0055's with the quality tiers), accepting 'captions'.
 --   creative_capability_supported   + captions.
---   creative_params_problem          0055's rules plus, for captions:
+--   creative_params_problem          0060's rules (0055's plus the quality key)
+--                        plus, for captions:
 --       source_asset_id  required (a recording; creative_source_problem decides);
 --       language         optional, one of 'en', 'ru', 'uz' (the explicit
 --                        allow-list; absent = the provider detects it).
@@ -43,9 +44,10 @@
 --                        (another organization's file, a deleted one and an id
 --                        that never existed read EXACTLY alike) and refuse a
 --                        recording over 30 minutes.
---   creative_price       0052's, pricing captions by the recording's seconds
---                        (like a dub), and refusing a language the model was
---                        not proven and listed for (spec.languages).
+--   creative_price       0060's (0052's with the quality tier), pricing captions
+--                        by the recording's seconds (like a dub), and refusing a
+--                        language the model was not proven and listed for
+--                        (spec.languages).
 --   creative_jobs        NEW CHECK creative_jobs_captions_check: a captions
 --                        job never has library assets, and its result, once
 --                        there, names its track.
@@ -54,10 +56,22 @@
 --   new rules through the functions above (the guard already re-opens a
 --   model's proof when its spec.languages change).
 --
--- BUILT ON 0055 / 0052. Every function replaced here is the latest body
--- (0055's; creative_price is 0052's) with the captions lines added: applying
--- 0059 keeps describe, the voice tools, the video upscale and the i2v end
--- frame exactly as they were (tests pin every string literal).
+-- BUILT ON 0060 / 0055 / 0052. Every function replaced here is the latest body
+-- (sellable_models, creative_params_problem and creative_price: 0060's, the
+-- picture-quality change; creative_source_problem and
+-- creative_capability_supported: 0055's) with the captions lines added:
+-- applying 0059 keeps the quality tiers, describe, the voice tools, the video
+-- upscale and the i2v end frame exactly as they were (tests pin every string
+-- literal).
+--
+-- ORDER. 0059 is numbered before 0060, but it contains 0060's bodies: apply
+-- 0060, THEN 0059 (both are create-or-replace and idempotent, so applying
+-- 0059 again after 0060 is safe). A database that applies 0060 after 0059
+-- would end with 0060's functions, which do not know captions: sellable_models
+-- refuses the capability (the editor then offers no captions) and a quote for
+-- captions is refused 'invalid_params' — never a wrong price, nothing held.
+-- tests/test_captions.py fails when a migration numbered above 0059 replaces
+-- one of these functions without the captions lines.
 --
 -- MONEY: UNCHANGED. 0036's hold / capture / release, untouched.
 --
@@ -70,7 +84,7 @@
 --   store_caption_track    service role only (the creative worker).
 --   anon: nothing.
 --
--- REQUIRES 0018, 0020, 0035, 0036, 0038, 0050, 0052 and 0055.
+-- REQUIRES 0018, 0020, 0035, 0036, 0038, 0050, 0052 and 0055; apply it after 0060 (above).
 -- Additive and idempotent: guarded creates, drop-then-add constraints,
 -- create-or-replace functions, drop-then-create policies, revoke-then-grant.
 
@@ -104,7 +118,7 @@ alter table public.model_probe_runs add constraint model_probe_runs_capability_c
   check (capability in ('t2i', 'edit', 't2v', 'i2v', 'tts', 'sfx', 'upscale', 'remove_bg',
                         'voice_change', 'dub', 'video_upscale', 'describe', 'captions'));
 
--- 0055's sellable_models, accepting 'captions'. Every other line is 0055's.
+-- 0060's sellable_models, accepting 'captions'. Every other line is 0060's.
 create or replace function public.sellable_models(p_capability text default null, p_surface text default 'web')
   returns table (
     id text, display_name text, provider text, capabilities text[], availability text,
@@ -134,6 +148,7 @@ begin
              'upscale_factors', m.spec -> 'upscale_factors', 'languages', m.spec -> 'languages',
              'upscale_targets', m.spec -> 'upscale_targets', 'end_frame', m.spec -> 'end_frame',
              'async', m.spec -> 'async', 'unit', m.spec -> 'pricing' -> 'unit',
+             'qualities', m.spec -> 'qualities',
              'attribution', m.spec -> 'attribution', 'api_exposure', m.spec -> 'api_exposure',
              'limits', m.spec -> 'limits', 'quality_tier', m.spec -> 'quality_tier',
              'speed_tier', m.spec -> 'speed_tier'))
@@ -144,6 +159,13 @@ begin
        and m.verified_probe_id is not null
        and coalesce(m.spec ->> 'terms_gate', '') = ''
        and cp.credits_per_unit > 0
+       -- A model sold by quality is shown only when at least one of its tiers
+       -- has a price: a tier without a row is unpriced, never free.
+       and (m.spec -> 'pricing' -> 'variants' ->> 'by' is distinct from 'quality'
+            or exists (select 1
+                         from jsonb_array_elements_text(coalesce(m.spec -> 'qualities', '[]'::jsonb)) as tiers(tier)
+                         join public.credit_prices qp on qp.unit = m.credit_unit || '_' || tiers.tier
+                        where qp.credits_per_unit > 0))
        and (p_capability is null or p_capability = any (m.capabilities))
        and (p_surface = 'web' or coalesce(m.spec ->> 'api_exposure', 'any') <> 'web_only')
      order by m.provider, m.id;
@@ -166,7 +188,7 @@ alter table public.creative_jobs add constraint creative_jobs_captions_check
                               false))));
 
 -- ───────────────────────────────────────────────────────────────────────────
--- 3. Params, the source, the price (0055's and 0052's latest bodies + captions)
+-- 3. Params, the source, the price (0060's, 0055's latest bodies + captions)
 -- ───────────────────────────────────────────────────────────────────────────
 
 -- 0055's, with captions in the list.
@@ -176,7 +198,7 @@ create or replace function public.creative_capability_supported(p_capability tex
                           'voice_change', 'dub', 'video_upscale', 'describe', 'captions')
 $$;
 
--- 0055's rules plus captions (header). Pure: whether the recording may be used
+-- 0060's rules plus captions (header). Pure: whether the recording may be used
 -- is creative_source_problem's question (it needs the organization).
 create or replace function public.creative_params_problem(p_capability text, p_params jsonb)
   returns text
@@ -209,7 +231,7 @@ begin
   for k in select jsonb_object_keys(p_params) loop
     if k not in ('prompt', 'negative_prompt', 'aspect_ratio', 'resolution', 'duration_s',
                  'voice_id', 'seed', 'source_asset_id', 'factor', 'style_kit_id', 'target_language',
-                 'target_resolution', 'end_asset_id', 'language') then
+                 'target_resolution', 'end_asset_id', 'language', 'quality') then
       return format('unknown parameter %s', k);
     end if;
   end loop;
@@ -356,6 +378,18 @@ begin
       return 'language must be one of en, ru, uz';
     end if;
   end if;
+  if p_params ? 'quality' then
+    -- The render quality of a picture model that bills by it (0060): t2i and
+    -- edit only, the explicit allow-list. Whether THIS model offers the tier
+    -- (and has a price for it) is creative_price's question. Absent = medium.
+    if p_capability not in ('t2i', 'edit') then
+      return format('quality does not apply to %s', p_capability);
+    end if;
+    if jsonb_typeof(p_params -> 'quality') is distinct from 'string'
+       or (p_params ->> 'quality') not in ('low', 'medium', 'high') then
+      return 'quality must be one of low, medium, high';
+    end if;
+  end if;
   if p_params ? 'style_kit_id' then
     if not styled then
       return format('style_kit_id does not apply to %s', p_capability);
@@ -465,9 +499,9 @@ begin
 end
 $$;
 
--- 0052's quote, with captions priced by the recording's seconds (from the
+-- 0060's quote, with captions priced by the recording's seconds (from the
 -- database, like a dub) and its language checked against the model's list.
--- Every other line is 0052's.
+-- Every other line is 0060's.
 create or replace function public.creative_price(
   p_org uuid, p_capability text, p_model text, p_params jsonb
 ) returns jsonb
@@ -486,6 +520,7 @@ declare
   price   numeric;
   minimum numeric := 0;
   longest numeric;
+  tier    text;
 begin
   if cap !~ '^[a-z][a-z0-9_]{0,31}$' then
     perform public.creative_refuse('invalid_params', 'capability is required');
@@ -574,12 +609,35 @@ begin
       format('%s cannot end a clip on a chosen picture', mdl));
   end if;
 
+  -- A quality the model does not offer is refused, never ignored: the
+  -- provider would bill its own default under the quoted price (0060).
+  if p_params ? 'quality'
+     and not coalesce(jsonb_typeof(m_spec -> 'qualities') = 'array'
+                      and (m_spec -> 'qualities') @> jsonb_build_array(p_params ->> 'quality'), false) then
+    perform public.creative_refuse('invalid_params',
+      format('%s does not offer the %s quality', mdl, p_params ->> 'quality'));
+  end if;
+
   -- One price per target when the registry prices the targets apart
   -- (model_registry.credit_unit_for): a target without its own row is
   -- unpriced, never sold at another target's rate.
   if cap = 'video_upscale' and m_unit is not null
      and m_spec -> 'pricing' -> 'variants' ->> 'by' = 'upscale_target' then
     m_unit := m_unit || '_' || regexp_replace(lower(p_params ->> 'target_resolution'), '[^a-z0-9]', '_', 'g');
+  end if;
+  -- One price per quality tier when the registry prices the tiers apart
+  -- (model_registry.credit_unit_for: model_<id>_<unit>_<tier>). No tier named
+  -- = medium, the same tier the worker sends; a tier without its own row is
+  -- unpriced, never sold at another tier's rate and never at 0.
+  if cap in ('t2i', 'edit') and m_unit is not null
+     and m_spec -> 'pricing' -> 'variants' ->> 'by' = 'quality' then
+    tier := coalesce(p_params ->> 'quality', 'medium');
+    if not coalesce(jsonb_typeof(m_spec -> 'qualities') = 'array'
+                    and (m_spec -> 'qualities') @> jsonb_build_array(tier), false) then
+      perform public.creative_refuse('invalid_params',
+        format('%s does not offer the %s quality', mdl, tier));
+    end if;
+    m_unit := m_unit || '_' || regexp_replace(lower(tier), '[^a-z0-9]', '_', 'g');
   end if;
   if m_unit is not null then
     select * into rate from public.credit_prices where unit = m_unit;
@@ -627,7 +685,9 @@ begin
   return jsonb_build_object(
     'credits', price, 'exempt', public.credits_exempt(p_org),
     'model', mdl, 'capability', cap, 'unit', rate.unit, 'quantity', qty,
-    'credits_per_unit', rate.credits_per_unit, 'margin', rate.margin, 'minimum', minimum);
+    'credits_per_unit', rate.credits_per_unit, 'margin', rate.margin, 'minimum', minimum)
+    -- The tier this price is for, so what the person confirms names it.
+    || case when tier is null then '{}'::jsonb else jsonb_build_object('quality', tier) end;
 end
 $$;
 
