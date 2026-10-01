@@ -727,6 +727,10 @@ def run(
     # approved with: the hook is not picked (or swapped) a second time.
     if approved_storyboard is not None:
         hook_variant = approved_storyboard.hook_variant
+        if approved_storyboard.opening_edited:
+            # The person rewrote or replaced the opening before approving
+            # (migration 0058): it is neither arm, so no arm is credited.
+            hook_variant = ""
     else:
         hook_variant = _pick_hook(channel_id)
         alt_opening = getattr(script, "hook_ab", "").strip()

@@ -15,8 +15,10 @@ export const dynamic = "force-dynamic";
  * waiting (migration 0057). The only thing on the storyboard screen that
  * spends: it places the render's credit hold and starts the render.
  *
- * POST `{ max_credits }`: the price the person saw on the button. The price is
- * computed here, on the server, from the storyboard's own length (the stored
+ * POST `{ max_credits, revision }`: the price the person saw on the button,
+ * and (once migration 0058 is applied) the revision of the storyboard it was
+ * shown for — a storyboard edited since is `stale_revision` (409), nothing held.
+ * The price is computed here, on the server, from the storyboard's own length (the stored
  * duration_s, never anything the browser sends) exactly as Run now prices a
  * run; a higher price now is `price_changed` (409) and nothing is held. For a
  * paid render the confirmed price is required — no price, no spend.
@@ -44,7 +46,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   if (!isStoryboardId(id)) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  let body: { max_credits?: unknown } = {};
+  let body: { max_credits?: unknown; revision?: unknown } = {};
   try {
     const parsed = await request.json();
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) body = parsed as typeof body;
@@ -56,6 +58,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (mc != null && !(typeof mc === "number" && Number.isFinite(mc) && mc >= 0))
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   const maxCredits = typeof mc === "number" ? mc : null;
+  const rv = body.revision;
+  if (rv != null && !(typeof rv === "number" && Number.isInteger(rv) && rv >= 0))
+    return NextResponse.json({ error: "bad_request" }, { status: 400 });
+  const revision = typeof rv === "number" ? rv : null;
 
   const supabase = await createClient();
   if (!supabase) return NextResponse.json({ error: "not_configured" }, { status: 503 });
@@ -69,6 +75,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error }, { status: access.status });
   }
   if (sb.status !== "ready") return NextResponse.json({ error: "storyboard_not_ready" }, { status: 409 });
+  // An editable storyboard (0058) is approved only as the revision the person
+  // saw — the price below is for THAT content, and the database refuses the
+  // press if an edit landed in between (approve_storyboard_at).
+  const editable = typeof sb.revision === "number";
+  if (editable && revision !== sb.revision)
+    return NextResponse.json({ error: "stale_revision", revision: sb.revision }, { status: 409 });
 
   const backend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND });
   if (backend === "actions" && !isGithubConfigured)
@@ -91,11 +103,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // "included" is only ever the operator's own organization; the database
   // refuses an unpaid approval for any other (price_required).
 
-  const { data, error } = await supabase.rpc("approve_storyboard", {
-    p_storyboard: id,
-    p_amount: amount,
-    p_backend: backend,
-  });
+  const { data, error } = editable
+    ? await supabase.rpc("approve_storyboard_at", {
+        p_storyboard: id,
+        p_revision: revision,
+        p_amount: amount,
+        p_backend: backend,
+      })
+    : await supabase.rpc("approve_storyboard", {
+        p_storyboard: id,
+        p_amount: amount,
+        p_backend: backend,
+      });
   if (error) {
     const mapped = mapStoryboardError(error);
     return NextResponse.json(mapped.body, { status: mapped.status });
@@ -132,6 +151,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       backend,
       duration_s: sb.durationS,
       scenes: sb.scenes.length,
+      ...(editable ? { revision: sb.revision } : {}),
       ...(res.render_job_id ? { job_id: res.render_job_id } : {}),
       ...(creditRef ? { credit_ref: creditRef, credits_reserved: held } : {}),
     },
