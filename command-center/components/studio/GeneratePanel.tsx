@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import type { CreativeError } from "@/lib/creative/operations";
+import { SourcePicker } from "@/components/studio/SourcePicker";
+import { UPSCALE_FACTORS, type CreativeError } from "@/lib/creative/operations";
 import {
   ASPECT_RATIOS,
   PROMPT_MAX,
@@ -13,15 +14,19 @@ import {
   apiErrorMessage,
   asCreativeError,
   buildParams,
+  canQuote,
   errorAction,
   generateLabel,
   modelsFor,
+  needsSource,
   newIdempotencyKey,
+  promptRule,
   type AspectRatio,
   type QuoteState,
   type StudioCapability,
   type StudioModel,
   type StudioPrefill,
+  type UpscaleFactor,
   type VideoDuration,
 } from "@/lib/creative/studio";
 
@@ -37,7 +42,8 @@ const chip = (on: boolean) =>
 const label = "text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]";
 
 /**
- * Make one image, video or voice (migration 0036). The database prices it
+ * Make one image, video or voice (migration 0036), or start from a library
+ * picture: edit, animate, upscale, remove the background (0046). The database prices it
  * (/api/creative/quote, debounced while typing); the price is on the button,
  * and pressing it sends exactly that price as `max_credits` — a higher price
  * is refused by the database, never charged. One idempotency key per press.
@@ -64,6 +70,8 @@ export function GeneratePanel({
   const [aspect, setAspect] = useState<AspectRatio>(initial?.aspect ?? "16:9");
   const [duration, setDuration] = useState<VideoDuration>(initial?.duration ?? 5);
   const [model, setModel] = useState(initial?.model ?? "");
+  const [sourceId, setSourceId] = useState<string | null>(initial?.sourceId ?? null);
+  const [factor, setFactor] = useState<UpscaleFactor>(initial?.factor ?? 2);
   const [quote, setQuote] = useState<QuoteState>({ status: "idle" });
   const [requote, setRequote] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -72,15 +80,17 @@ export function GeneratePanel({
   const available = modelsFor(models, capability);
   // The picked model if it can make this kind, else the first that can.
   const effectiveModel = available.some((m) => m.id === model) ? model : (available[0]?.id ?? "");
+  const form = { capability, prompt, aspect, duration, sourceId, factor };
   const params = useMemo(
-    () => buildParams({ capability, prompt, aspect, duration }),
-    [capability, prompt, aspect, duration],
+    () => buildParams({ capability, prompt, aspect, duration, sourceId, factor }),
+    [capability, prompt, aspect, duration, sourceId, factor],
   );
   const paramsKey = JSON.stringify(params);
-  const hasPrompt = prompt.trim().length > 0;
+  // A price is asked for only once the form is complete (the picture, the words).
+  const ready = canQuote(form);
 
   useEffect(() => {
-    if (!hasPrompt || !effectiveModel) {
+    if (!ready || !effectiveModel) {
       setQuote({ status: "idle" });
       return;
     }
@@ -106,12 +116,12 @@ export function GeneratePanel({
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [orgId, capability, effectiveModel, paramsKey, hasPrompt, requote]);
+  }, [orgId, capability, effectiveModel, paramsKey, ready, requote]);
 
   const edited = () => setNotice(null);
 
   async function generate() {
-    if (quote.status !== "ready" || submitting || !effectiveModel || !hasPrompt) return;
+    if (quote.status !== "ready" || submitting || !effectiveModel || !ready) return;
     setSubmitting(true);
     setNotice(null);
     try {
@@ -144,9 +154,17 @@ export function GeneratePanel({
     }
   }
 
-  const disabled = submitting || quote.status !== "ready" || !hasPrompt || !effectiveModel;
+  const disabled = submitting || quote.status !== "ready" || !ready || !effectiveModel;
   const errorCode = notice?.kind === "error" ? notice.code : quote.status === "error" ? quote.code : null;
   const isVoice = capability === "tts";
+  const sourced = needsSource(capability);
+  const words = promptRule(capability);
+  const pick = (c: StudioCapability) => () => {
+    setCapability(c);
+    edited();
+  };
+  const makeKinds = STUDIO_CAPABILITIES.filter((c) => !needsSource(c));
+  const pictureTools = STUDIO_CAPABILITIES.filter((c) => needsSource(c));
 
   return (
     <section className="panel flex flex-col gap-4 p-4" aria-labelledby="gen-title">
@@ -157,40 +175,66 @@ export function GeneratePanel({
         <p className="text-[12px] text-[var(--color-muted)]">{t.gen.subtitle}</p>
       </div>
 
-      <div className="flex flex-wrap gap-2" role="group" aria-label={t.gen.kindLabel}>
-        {STUDIO_CAPABILITIES.map((c) => (
-          <button
-            key={c}
-            type="button"
-            aria-pressed={capability === c}
-            onClick={() => {
-              setCapability(c);
-              edited();
-            }}
-            className={chip(capability === c)}
-          >
-            {t.gen.kinds[c]}
-          </button>
-        ))}
+      <div className="flex flex-col gap-1">
+        <span className={label}>{t.gen.kindLabel}</span>
+        <div className="flex flex-wrap gap-2" role="group" aria-label={t.gen.kindLabel}>
+          {makeKinds.map((c) => (
+            <button key={c} type="button" aria-pressed={capability === c} onClick={pick(c)} className={chip(capability === c)}>
+              {t.gen.kinds[c]}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <label className="flex flex-col gap-1">
-        <span className={label}>{isVoice ? t.gen.voiceTextLabel : t.gen.promptLabel}</span>
-        <textarea
-          value={prompt}
-          onChange={(e) => {
-            setPrompt(e.target.value);
-            edited();
-          }}
-          rows={isVoice ? 5 : 3}
-          maxLength={PROMPT_MAX}
-          autoFocus={initial !== null}
-          placeholder={t.gen.promptPh[capability]}
-          className="w-full resize-y rounded-[14px] border border-[var(--color-border)] bg-transparent p-3 text-[16px] leading-relaxed outline-none transition-colors placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[14px]"
-        />
-      </label>
+      <div className="flex flex-col gap-1">
+        <span className={label}>{t.gen.toolsLabel}</span>
+        <div className="flex flex-wrap gap-2" role="group" aria-label={t.gen.toolsLabel}>
+          {pictureTools.map((c) => (
+            <button key={c} type="button" aria-pressed={capability === c} onClick={pick(c)} className={chip(capability === c)}>
+              {t.gen.kinds[c]}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      {!isVoice && (
+      {sourced && (
+        <div className="flex flex-col gap-1">
+          <span className={label}>{t.gen.sourceLabel}</span>
+          <SourcePicker
+            orgId={orgId}
+            value={sourceId}
+            onChange={(id) => {
+              setSourceId(id);
+              edited();
+            }}
+            libraryHref={path("/library")}
+          />
+          <span className="text-[12px] text-[var(--color-muted)]">{t.gen.keepsShape}</span>
+        </div>
+      )}
+
+      {words !== "none" && (
+        <label className="flex flex-col gap-1">
+          <span className={label}>
+            {isVoice ? t.gen.voiceTextLabel : t.gen.promptLabel}
+            {words === "optional" && <span className="normal-case tracking-normal"> · {t.gen.optional}</span>}
+          </span>
+          <textarea
+            value={prompt}
+            onChange={(e) => {
+              setPrompt(e.target.value);
+              edited();
+            }}
+            rows={isVoice ? 5 : 3}
+            maxLength={PROMPT_MAX}
+            autoFocus={initial !== null}
+            placeholder={t.gen.promptPh[capability]}
+            className="w-full resize-y rounded-[14px] border border-[var(--color-border)] bg-transparent p-3 text-[16px] leading-relaxed outline-none transition-colors placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[14px]"
+          />
+        </label>
+      )}
+
+      {(capability === "t2i" || capability === "t2v") && (
         <div className="flex flex-col gap-1">
           <span className={label}>{t.gen.aspectLabel}</span>
           <div className="flex flex-wrap gap-2" role="group" aria-label={t.gen.aspectLabel}>
@@ -212,7 +256,7 @@ export function GeneratePanel({
         </div>
       )}
 
-      {capability === "t2v" && (
+      {(capability === "t2v" || capability === "i2v") && (
         <div className="flex flex-col gap-1">
           <span className={label}>{t.gen.durationLabel}</span>
           <div className="flex flex-wrap gap-2" role="group" aria-label={t.gen.durationLabel}>
@@ -228,6 +272,28 @@ export function GeneratePanel({
                 className={chip(duration === d)}
               >
                 {fmt(t.gen.seconds, { n: d })}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {capability === "upscale" && (
+        <div className="flex flex-col gap-1">
+          <span className={label}>{t.gen.factorLabel}</span>
+          <div className="flex flex-wrap gap-2" role="group" aria-label={t.gen.factorLabel}>
+            {UPSCALE_FACTORS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={factor === f}
+                onClick={() => {
+                  setFactor(f);
+                  edited();
+                }}
+                className={chip(factor === f)}
+              >
+                {fmt(t.gen.factor, { n: f })}
               </button>
             ))}
           </div>

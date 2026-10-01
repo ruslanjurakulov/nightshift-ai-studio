@@ -10,8 +10,19 @@ import type { StudioModel, StudioPrefill } from "@/lib/creative/studio";
  * "Try again" on a card refills the panel (a fresh mount with the job's
  * settings) and scrolls to it — it never starts a generation by itself.
  */
-export function GenerateSection({ orgId, models }: { orgId: string; models: StudioModel[] }) {
-  const [prefill, setPrefill] = useState<{ nonce: number; value: StudioPrefill } | null>(null);
+export function GenerateSection({
+  orgId,
+  models,
+  initial = null,
+}: {
+  orgId: string;
+  models: StudioModel[];
+  /** From the Library's "Use in Studio" link; fills the form only. */
+  initial?: StudioPrefill | null;
+}) {
+  const [prefill, setPrefill] = useState<{ nonce: number; value: StudioPrefill } | null>(
+    initial ? { nonce: 0, value: initial } : null,
+  );
   const [refreshKey, setRefreshKey] = useState(0);
   const top = useRef<HTMLDivElement>(null);
 

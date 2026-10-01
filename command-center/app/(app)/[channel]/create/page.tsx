@@ -12,11 +12,16 @@ import { readConnectedAccounts } from "@/lib/connectedAccounts";
 import { getOrgContext } from "@/lib/orgs-server";
 import { loadStudioModels } from "@/lib/server/creative";
 import { GenerateSection } from "@/components/studio/GenerateSection";
+import { prefillFromQuery } from "@/lib/creative/studio";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function CreatePage() {
+export default async function CreatePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const { t } = await getDictionary();
   const { selection, channels } = await getChannelContext();
@@ -37,11 +42,15 @@ export default async function CreatePage() {
   const org = await getOrgContext();
   const genOrgId = org.supported && org.current ? org.current.id : null;
   const models = genOrgId ? await loadStudioModels() : [];
+  // "Use in Studio" from the Library opens a picture tool with the picture
+  // chosen. It only fills the form: nothing is priced or spent until pressed.
+  const q = await searchParams;
+  const initial = prefillFromQuery(q.tool, q.source);
 
   return (
     <div className="rhythm stagger-enter">
       <PageHeader icon="studio" title={t.create.title} subtitle={t.create.subtitle} />
-      {genOrgId && <GenerateSection orgId={genOrgId} models={models} />}
+      {genOrgId && <GenerateSection orgId={genOrgId} models={models} initial={initial} />}
       <CreateStudio
         channelId={scopedChannel?.channel_id ?? null}
         githubConfigured={isRunNowConfigured}
