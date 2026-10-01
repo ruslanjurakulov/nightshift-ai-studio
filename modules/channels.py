@@ -424,6 +424,61 @@ class CredentialRef:
         )
 
 
+#: Channel DNA (migration 0056) — the shapes the database's check constraints allow.
+DNA_FORMATS = ("long", "shorts")
+DNA_ASPECTS = ("16:9", "9:16", "1:1")
+DNA_TONE_MAX = 200
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+@dataclass(frozen=True)
+class ChannelDNA:
+    """The parts of a channel's DNA (migration 0056) that are not already
+    AgentConfig fields. Its narrator voice and language ARE AgentConfig's
+    (``elevenlabs_voice_id``, ``language``) — the Command Center writes the
+    same keys, so a scheduled run, a Run now and the Studio all start from one
+    value.
+
+    Read from the ``channels`` row's own columns, never from agent_config, and
+    never written back by the pipeline (not in ``to_dict``: the mirror must
+    not send columns a database without 0056 does not have).
+
+    What a run does with it: the tone goes into the script prompt
+    (script_engine). The style kit, format and aspect pre-fill the Command
+    Center's forms; the video pipeline renders exactly as before — a Shorts
+    format here never starts a second upload (that stays agent_config.shorts,
+    opted into separately, because it spends YouTube quota).
+    """
+
+    tone: str = ""
+    format: str = ""
+    aspect: str = ""
+    style_kit_id: str = ""
+
+    @staticmethod
+    def from_row(d: dict | None) -> "ChannelDNA":
+        d = d or {}
+
+        def pick(key: str, allowed: tuple) -> str:
+            v = d.get(key)
+            return v if isinstance(v, str) and v in allowed else ""
+
+        tone = d.get("dna_tone")
+        # The database already holds it to one clean line; a channels.json row
+        # is not held by anything, so the same rule is applied here — a line
+        # break would let a tone open a new instruction in the prompt.
+        tone = _CONTROL_RE.sub("", tone).strip()[:DNA_TONE_MAX] if isinstance(tone, str) else ""
+        kit = d.get("default_style_kit_id")
+        kit = kit.lower() if isinstance(kit, str) and _UUID_RE.match(kit.lower()) else ""
+        return ChannelDNA(
+            tone=tone,
+            format=pick("dna_format", DNA_FORMATS),
+            aspect=pick("dna_aspect", DNA_ASPECTS),
+            style_kit_id=kit,
+        )
+
+
 @dataclass(frozen=True)
 class ChannelContext:
     """One channel, fully resolved. Flows through the pipeline as an argument.
@@ -447,6 +502,9 @@ class ChannelContext:
     # own, which is what every channel was then. Not in to_dict(): the writers
     # that mirror a channel set org_id themselves (supabase_sync).
     org_id: str = DEFAULT_ORG_ID
+    # Channel DNA (migration 0056): tone, format, aspect, default style kit.
+    # Not in to_dict(), for the same reason as org_id.
+    dna: ChannelDNA = field(default_factory=ChannelDNA)
 
     @property
     def is_operators(self) -> bool:
@@ -524,6 +582,7 @@ class ChannelContext:
             created_at=d.get("created_at") or "",
             updated_at=d.get("updated_at") or "",
             org_id=str(d.get("org_id") or DEFAULT_ORG_ID),
+            dna=ChannelDNA.from_row(d),
         )
 
 
