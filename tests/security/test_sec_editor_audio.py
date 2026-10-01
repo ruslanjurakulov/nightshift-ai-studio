@@ -63,3 +63,26 @@ def test_another_orgs_song_reads_like_a_made_up_one_on_save_too(conn, sc):
                         [PROJECT["b"], json.dumps(doc(VIDEO["b"], audio="99999999-9999-4999-8999-999999999999"))])
     assert (not hers.ok) and hers.sqlstate == "NS400" and "invalid_asset" in (hers.error or ""), hers
     assert (hers.sqlstate, hers.error) == (made_up.sqlstate, made_up.error)
+
+
+def test_a_ducked_document_is_stored_unchanged_and_still_guards_the_files(conn, sc):
+    """Music ducking adds ``role`` and ``duck`` to an A track and changes no
+    SQL: the database stores the document as it is and still refuses another
+    organization's file anywhere in it."""
+    from sec_editor_0054 import AUDIO, VIDEO, doc
+
+    def ducked(video: str, music: str) -> dict:
+        d = doc(video, audio=music)
+        d["tracks"][-1]["duck"] = {"amount_db": 12, "attack_s": 0.3, "release_s": 0.8}
+        d["tracks"].append({"id": "a2", "kind": "A", "role": "speech", "clips": [
+            {"id": "v2", "asset_id": music, "start_s": 1, "in_s": 0, "out_s": 3}]})
+        return d
+
+    mine = ducked(VIDEO["b"], AUDIO["b"])
+    with acting(conn, sc.bob.actor) as s:
+        ok = s.run(CREATE, [sc.bob.org, "Ducked", json.dumps(mine)])
+        hers = s.run(CREATE, [sc.bob.org, "Ducked", json.dumps(ducked(VIDEO["b"], AUDIO["a"]))])
+        stored = s.value("select doc from public.editor_projects where id = %s", [ok.rows[0][0]]) if ok.ok else None
+    assert ok.ok, ok
+    assert stored == mine
+    assert (not hers.ok) and hers.sqlstate == "NS400" and "invalid_asset" in (hers.error or ""), hers
