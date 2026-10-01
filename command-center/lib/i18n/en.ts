@@ -3100,4 +3100,22 @@ export const en = {
     orgLimit: "Organization limit, $",
     save: "Save",
   },
+  studioTemplates: {
+    title: "Start from a template",
+    hint: "Pick one to fill the form — replace the [brackets], check the price, then generate.",
+    use: "Use",
+    items: {
+      yt_thumbnail: { title: "YouTube thumbnail", who: "For a long video's cover" },
+      shorts_cover: { title: "Shorts cover", who: "Vertical, for Shorts and Reels" },
+      story_scene: { title: "Story scene", who: "Faceless and narrated channels" },
+      product_shot: { title: "Product photo", who: "Shops and reviews" },
+      broll: { title: "B-roll clip", who: "Five seconds of scenery" },
+      shorts_clip: { title: "Vertical clip", who: "A moving shot for Shorts" },
+      voice_intro: { title: "Channel intro voice", who: "A spoken opening line" },
+      new_background: { title: "New background", who: "Same subject, new place" },
+      animate_photo: { title: "Bring a photo to life", who: "A still becomes a short clip" },
+      sharpen: { title: "Sharper, larger", who: "Twice the size, for a thumbnail" },
+      cutout: { title: "Cut out the subject", who: "Transparent background" },
+    },
+  },
 };

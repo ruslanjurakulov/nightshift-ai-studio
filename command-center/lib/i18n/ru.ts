@@ -3093,4 +3093,22 @@ export const ru: Dictionary = {
     orgLimit: "Лимит организации, $",
     save: "Сохранить",
   },
+  studioTemplates: {
+    title: "Начать с шаблона",
+    hint: "Выберите шаблон — форма заполнится. Замените [скобки], проверьте цену и создайте.",
+    use: "Выбрать",
+    items: {
+      yt_thumbnail: { title: "Обложка YouTube", who: "Для длинного видео" },
+      shorts_cover: { title: "Обложка Shorts", who: "Вертикальная, для Shorts и Reels" },
+      story_scene: { title: "Сцена истории", who: "Для каналов без лица с озвучкой" },
+      product_shot: { title: "Фото товара", who: "Магазины и обзоры" },
+      broll: { title: "Фоновый клип", who: "Пять секунд пейзажа" },
+      shorts_clip: { title: "Вертикальный клип", who: "Динамичный кадр для Shorts" },
+      voice_intro: { title: "Голос для вступления", who: "Первая фраза ролика" },
+      new_background: { title: "Новый фон", who: "Тот же объект, новое место" },
+      animate_photo: { title: "Оживить фото", who: "Снимок становится коротким клипом" },
+      sharpen: { title: "Чётче и крупнее", who: "Вдвое больше, для обложки" },
+      cutout: { title: "Вырезать объект", who: "Прозрачный фон" },
+    },
+  },
 };
