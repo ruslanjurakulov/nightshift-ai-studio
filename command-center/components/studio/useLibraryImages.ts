@@ -12,6 +12,13 @@ export interface PickerImage {
   viewUrl?: string | null;
 }
 
+/** Any library item's preview, by id: what a result card draws. */
+export interface LibraryPreview {
+  kind: string;
+  thumbUrl: string | null;
+  viewUrl: string | null;
+}
+
 export type LibraryLoadState = "loading" | "ready" | "failed" | "unavailable";
 
 /**
@@ -28,6 +35,7 @@ export type LibraryLoadState = "loading" | "ready" | "failed" | "unavailable";
 export function useLibraryImages(orgId: string, { enabled = true, key = "" }: { enabled?: boolean; key?: string } = {}) {
   const [state, setState] = useState<LibraryLoadState>("loading");
   const [images, setImages] = useState<PickerImage[]>([]);
+  const [previews, setPreviews] = useState<Map<string, LibraryPreview>>(() => new Map());
 
   const load = useCallback(async () => {
     setState("loading");
@@ -46,8 +54,12 @@ export function useLibraryImages(orgId: string, { enabled = true, key = "" }: { 
         setState("failed");
         return;
       }
+      const assets = data.assets ?? [];
+      setPreviews(
+        new Map(assets.map((a: LibraryAsset) => [a.id, { kind: a.kind, thumbUrl: a.thumbUrl ?? null, viewUrl: a.viewUrl ?? null }])),
+      );
       setImages(
-        (data.assets ?? [])
+        assets
           .filter((a: LibraryAsset) => a.kind === "image")
           .map((a: LibraryAsset) => ({ id: a.id, thumbUrl: a.thumbUrl ?? a.viewUrl, name: a.name, viewUrl: a.viewUrl })),
       );
@@ -61,5 +73,5 @@ export function useLibraryImages(orgId: string, { enabled = true, key = "" }: { 
     if (enabled) void load();
   }, [load, enabled, key]);
 
-  return { state, images, reload: load };
+  return { state, images, previews, reload: load };
 }

@@ -9,13 +9,26 @@ import { useI18n } from "@/lib/i18n/context";
  * arrow keys all work, and a screen reader hears a slider with a percentage.
  * The checkerboard shows where a background was removed.
  */
-export function BeforeAfter({ before, after, alt = "" }: { before: string; after: string; alt?: string }) {
+export function BeforeAfter({
+  before,
+  after,
+  alt = "",
+  bare = false,
+}: {
+  before: string;
+  after: string;
+  alt?: string;
+  /** Inside a result card: the card draws the edge, so no frame or width cap of its own. */
+  bare?: boolean;
+}) {
   const { t } = useI18n();
   const [pos, setPos] = useState(50);
 
   return (
     <div
-      className="relative aspect-[4/3] w-full max-w-md overflow-hidden rounded-xl border border-[var(--color-border)] focus-within:ring-2 focus-within:ring-[var(--color-primary)]"
+      className={`relative aspect-[4/3] w-full overflow-hidden focus-within:ring-2 focus-within:ring-inset focus-within:ring-[var(--color-primary)] ${
+        bare ? "" : "max-w-md rounded-xl border border-[var(--color-border)]"
+      }`}
       style={{
         backgroundColor: "var(--color-panel-2)",
         backgroundImage:

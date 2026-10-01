@@ -22,6 +22,12 @@ const TOKEN_ONLY = [
   "components/intelligence/AdvisoryPanel.tsx",
   "components/social/SocialAccountsPanel.tsx",
   "components/alerts/SendTestAlert.tsx",
+  "components/studio/GenerateSection.tsx",
+  "components/studio/GeneratePanel.tsx",
+  "components/studio/ModelSheet.tsx",
+  "components/studio/TierMarks.tsx",
+  "components/studio/JobFeed.tsx",
+  "components/studio/TemplateGallery.tsx",
 ];
 
 // Tailwind palette colours (text-rose-300, bg-white/10, border-sky-400/60 ...).

@@ -46,6 +46,7 @@ export default async function CreatePage({
   // chosen. It only fills the form: nothing is priced or spent until pressed.
   const q = await searchParams;
   const initial = prefillFromQuery(q.tool, q.source);
+  const operator = await isOperator();
 
   return (
     <div className="rhythm stagger-enter">
@@ -58,6 +59,8 @@ export default async function CreatePage({
           // The channel's look (0047) is the starting style; the panel uses it
           // only if it is one of the organization's kits as loaded.
           defaultStyleKitId={typeof scopedChannel?.default_style_kit_id === "string" ? scopedChannel.default_style_kit_id : null}
+          // The platform operator has no phone tab bar to dock Generate above.
+          bottomBar={!operator}
         />
       )}
       <CreateStudio
@@ -66,7 +69,7 @@ export default async function CreatePage({
         backend={runBackend}
         agentConfig={scopedChannel?.agent_config ?? null}
         canRun={canRun}
-        operator={await isOperator()}
+        operator={operator}
         targets={targets}
       />
     </div>

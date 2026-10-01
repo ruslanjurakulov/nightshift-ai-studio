@@ -61,6 +61,35 @@ export interface StudioModel {
   displayName: string;
   capabilities: string[];
   beta: boolean;
+  /**
+   * The registry's own 1–5 marks (spec.quality_tier / spec.speed_tier, the
+   * public half sellable_models() returns). Absent or null when the registry
+   * gives none: the sheet then shows no mark rather than a guessed one.
+   */
+  qualityTier?: number | null;
+  speedTier?: number | null;
+}
+
+const tier = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 5 ? v : null);
+
+/**
+ * Adds the registry's speed and quality marks (sellable_models() rows) to the
+ * models the Studio already offers. It never adds a model: what may be picked
+ * is still coerceModels' answer; a row without a mark leaves it unmarked.
+ */
+export function withTiers(models: StudioModel[], sellable: unknown): StudioModel[] {
+  if (!Array.isArray(sellable)) return models;
+  const marks = new Map<string, { q: number | null; s: number | null }>();
+  for (const r of sellable) {
+    if (!r || typeof r !== "object") continue;
+    const row = r as Record<string, unknown>;
+    const spec = row.spec && typeof row.spec === "object" && !Array.isArray(row.spec) ? (row.spec as Record<string, unknown>) : {};
+    if (typeof row.id === "string") marks.set(row.id, { q: tier(spec.quality_tier), s: tier(spec.speed_tier) });
+  }
+  return models.map((m) => {
+    const k = marks.get(m.id);
+    return k ? { ...m, qualityTier: k.q, speedTier: k.s } : m;
+  });
 }
 
 /** model_registry rows -> what can be picked: beta/ga AND verified, nothing else. */
@@ -152,6 +181,43 @@ export function newIdempotencyKey(): string {
   const id = c?.randomUUID ? c.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
   return `studio:${id}`;
 }
+
+/** What the person can do next when Generate cannot be pressed (null: it can, or it is busy). */
+export type BlockedReason = "no_model" | "need_picture" | "need_words";
+
+export function blockedReason(form: StudioForm, hasModel: boolean): BlockedReason | null {
+  if (!hasModel) return "no_model";
+  if (needsSource(form.capability) && !isUuid(form.sourceId)) return "need_picture";
+  if (promptRule(form.capability) === "required" && !form.prompt.trim()) return "need_words";
+  return null;
+}
+
+/**
+ * Kinds whose price does not depend on the words (0046's creative_quantity:
+ * one picture, or seconds of video). For these the model sheet can ask the
+ * database for each model's price before anything is typed — the words are
+ * a stand-in that the price never reads. Speech is priced by its characters,
+ * so it waits for the real words. Must follow creative_quantity if it changes.
+ */
+export const WORDS_FREE_PRICE: readonly StudioCapability[] = ["t2i", "t2v", "edit", "i2v", "upscale", "remove_bg"];
+const PRICE_STAND_IN = "price check";
+
+/**
+ * The params the model sheet prices each model with: the form's own when it
+ * is complete, else (for a kind priced without words) the same settings with
+ * a stand-in description. null = no honest price can be asked for yet (no
+ * picture picked, or speech without its words). Only ever sent to
+ * /api/creative/quote — never to create.
+ */
+export function sheetQuoteParams(form: StudioForm): ReturnType<typeof buildParams> | null {
+  if (canQuote(form)) return buildParams(form);
+  if (needsSource(form.capability) && !isUuid(form.sourceId)) return null;
+  if (!WORDS_FREE_PRICE.includes(form.capability)) return null;
+  return buildParams({ ...form, prompt: PRICE_STAND_IN });
+}
+
+/** The most models the sheet prices at once: each is one quote call. */
+export const SHEET_PRICE_MAX = 8;
 
 // ── the button and the errors ──────────────────────────────────────────────
 
@@ -334,6 +400,33 @@ export function compareSources(job: Pick<StudioJob, "status" | "capability" | "p
   const before = job.params.source_asset_id;
   const after = job.result_asset_ids[0];
   return isUuid(before) && isUuid(after) ? { before, after } : null;
+}
+
+/** Kinds whose result is a picture another tool can start from. */
+const PICTURE_RESULTS = ["t2i", "edit", "upscale", "remove_bg"] as const;
+
+/** "Use as picture": the finished job's first result, when it is a library picture; else null. */
+export function sourceFromJob(job: Pick<StudioJob, "status" | "capability" | "result_asset_ids">): string | null {
+  if (job.status !== "completed") return null;
+  if (!(PICTURE_RESULTS as readonly string[]).includes(job.capability)) return null;
+  const id = job.result_asset_ids[0];
+  return isUuid(id) ? id : null;
+}
+
+/** What a finished job made, for its card: a picture, a clip or a voice. */
+export function outputKind(capability: string): "image" | "video" | "audio" {
+  if (capability === "t2v" || capability === "i2v") return "video";
+  if (capability === "tts" || capability === "sfx" || capability === "music") return "audio";
+  return "image";
+}
+
+/** The card's shape: the shape that was asked for, else square (a picture tool keeps its own). */
+export function cardAspect(job: Pick<StudioJob, "capability" | "params">): string {
+  if (outputKind(job.capability) === "audio") return "16 / 7";
+  const a = job.params.aspect_ratio;
+  if (a === "16:9") return "16 / 9";
+  if (a === "9:16") return "9 / 16";
+  return "1 / 1";
 }
 
 /** What "Try again" puts back into the panel. It spends nothing by itself. */

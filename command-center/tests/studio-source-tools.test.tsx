@@ -182,7 +182,7 @@ describe("prefill", () => {
 describe("GeneratePanel picture tools", () => {
   it("prices an upscale only after a picture is picked, with that picture and factor", async () => {
     render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} />));
-    fireEvent.click(screen.getByRole("button", { name: t.gen.kinds.upscale }));
+    fireEvent.click(screen.getByRole("tab", { name: t.gen.tabs.upscale }));
 
     const grid = await screen.findByRole("radiogroup", { name: t.gen.sourceLabel });
     // Images only: the video in the library is not offered.
@@ -201,13 +201,13 @@ describe("GeneratePanel picture tools", () => {
 
   it("background removal asks for no words", () => {
     render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} />));
-    fireEvent.click(screen.getByRole("button", { name: t.gen.kinds.remove_bg }));
+    fireEvent.click(screen.getByRole("tab", { name: t.gen.tabs.remove_bg }));
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
   it("opens with the Library's picture chosen and spends nothing by itself", async () => {
     render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} initial={prefillFromQuery("i2v", PIC)} />));
-    expect(screen.getByRole("button", { name: t.gen.kinds.i2v }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("tab", { name: t.gen.tabs.i2v }).getAttribute("aria-selected")).toBe("true");
     await waitFor(() => expect(quotes.at(-1)?.params).toEqual({ source_asset_id: PIC, duration_s: 5 }), { timeout: 2000 });
     expect(fetchMock.mock.calls.some(([u]) => u === "/api/creative/jobs")).toBe(false);
   });
@@ -217,7 +217,7 @@ describe("GeneratePanel picture tools", () => {
       url.startsWith("/api/media") ? json({ ...libraryBody, assets: [] }) : json({}, 404),
     );
     render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} />));
-    fireEvent.click(screen.getByRole("button", { name: t.gen.kinds.edit }));
+    fireEvent.click(screen.getByRole("tab", { name: t.gen.tabs.edit }));
     const link = await screen.findByRole("link", { name: t.gen.sourceOpenLibrary });
     expect(link.getAttribute("href")).toBe("/chronos/library");
   });

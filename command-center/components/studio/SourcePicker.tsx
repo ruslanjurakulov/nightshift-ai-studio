@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ImageOff } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
@@ -18,21 +18,32 @@ export function SourcePicker({
   value,
   onChange,
   libraryHref,
+  compact = false,
 }: {
   orgId: string;
   value: string | null;
   onChange: (id: string) => void;
   libraryHref: string;
+  /** In the Studio's narrow composer column: four across at every width. */
+  compact?: boolean;
 }) {
   const { t } = useI18n();
   const g = t.gen;
   const { state, images, reload } = useLibraryImages(orgId);
   const [browsing, setBrowsing] = useState(false);
   const chosen = value ? images.find((i) => i.id === value) : undefined;
+  // A picture handed in from a result that finished after the library was
+  // read ("Use as picture"): read the library once more to show it.
+  const reread = useRef<string | null>(null);
+  useEffect(() => {
+    if (!value || state !== "ready" || chosen || reread.current === value) return;
+    reread.current = value;
+    void reload();
+  }, [value, state, chosen, reload]);
 
   if (value && !browsing) {
     return (
-      <div className="flex items-center gap-3">
+      <div className={compact ? "studio-field flex items-center gap-3 p-2" : "flex items-center gap-3"}>
         <div className="relative size-20 shrink-0 overflow-hidden rounded-xl border-2 border-[var(--color-primary)] bg-[var(--color-panel-2)]">
           {chosen?.thumbUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -62,7 +73,7 @@ export function SourcePicker({
       <span className="text-[12px] text-[var(--color-muted)]">{g.sourcePick}</span>
 
       {state === "loading" && (
-        <div className="grid grid-cols-4 gap-2 sm:grid-cols-6" aria-busy="true" aria-label={g.sourceLoading}>
+        <div className={`grid grid-cols-4 gap-2${compact ? "" : " sm:grid-cols-6"}`} aria-busy="true" aria-label={g.sourceLoading}>
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="aspect-square animate-pulse rounded-lg bg-[var(--color-panel-2)]" />
           ))}
@@ -92,7 +103,9 @@ export function SourcePicker({
       )}
 
       {state === "ready" && images.length > 0 && (
-        <ul className="grid max-h-[260px] grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-6" role="radiogroup" aria-label={g.sourceLabel}>
+        <ul
+          className={`grid max-h-[260px] grid-cols-4 gap-2 overflow-y-auto${compact ? "" : " sm:grid-cols-6"}`}
+          role="radiogroup" aria-label={g.sourceLabel}>
           {images.map((img) => {
             const on = img.id === value;
             return (
