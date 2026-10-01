@@ -978,19 +978,25 @@ SOURCE_SUFFIX: Dict[str, str] = {"image/png": ".png", "image/jpeg": ".jpg", "ima
 SOURCE_MAX_BYTES = 64 * 1024 * 1024
 
 
+_COPY_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+
+
 class SourceUnavailable(Exception):
     """The source image cannot be read. The message names no path."""
 
 
 def copy_source(media_root: Path, asset_id, mime: str, variants: Sequence[str], dest_dir: Path,
-                *, limit: int = SOURCE_MAX_BYTES) -> Path:
-    """Copy an asset's picture to ``dest_dir/source<.ext>`` for a provider call.
+                *, limit: int = SOURCE_MAX_BYTES, name: str = "source") -> Path:
+    """Copy an asset's picture to ``dest_dir/<name><.ext>`` for a provider call
+    (``source``; style references, 0048, are ``ref_<n>``).
 
     The path is built from the asset id alone (never a row's storage_key or a
     name); a symlink anywhere on the way is refused, and the file is opened
     with O_NOFOLLOW. The copy gives the adapters a suffix that matches the
     type the database recorded (``original`` has none)."""
     aid = canonical_id(asset_id)
+    if not _COPY_NAME_RE.match(name or ""):
+        raise ValueError("not a plain copy name")
     if mime in HEIF_MIMES:
         if "display" not in (variants or ()):
             raise SourceUnavailable("the photo has no display copy")
@@ -1007,7 +1013,7 @@ def copy_source(media_root: Path, asset_id, mime: str, variants: Sequence[str], 
         raise SourceUnavailable("the source image is not on this worker's media volume")
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / f"source{suffix}"
+    dest = dest_dir / f"{name}{suffix}"
     dest.unlink(missing_ok=True)
     fd = os.open(src, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
     n = 0

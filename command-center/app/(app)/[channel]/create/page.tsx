@@ -50,7 +50,16 @@ export default async function CreatePage({
   return (
     <div className="rhythm stagger-enter">
       <PageHeader icon="studio" title={t.create.title} subtitle={t.create.subtitle} />
-      {genOrgId && <GenerateSection orgId={genOrgId} models={models} initial={initial} />}
+      {genOrgId && (
+        <GenerateSection
+          orgId={genOrgId}
+          models={models}
+          initial={initial}
+          // The channel's look (0047) is the starting style; the panel uses it
+          // only if it is one of the organization's kits as loaded.
+          defaultStyleKitId={typeof scopedChannel?.default_style_kit_id === "string" ? scopedChannel.default_style_kit_id : null}
+        />
+      )}
       <CreateStudio
         channelId={scopedChannel?.channel_id ?? null}
         githubConfigured={isRunNowConfigured}
