@@ -14,6 +14,12 @@ Environment (the worker's env file plus the compose service's own values):
   NIGHTSHIFT_WORKER_ID                 optional; defaults to host-pid
   NIGHTSHIFT_WORKER_VERSION            optional; a build label shown next to the status
 
+Editor exports (migration 0054, ``modules/editor_export.py``): a second
+thread renders saved editor projects with the ffmpeg engine, one at a time,
+and puts each video in the organization's library. It is free (no credits,
+no provider) and never publishes. It has its own Supabase session and never
+blocks upload checking; before 0054 is applied it simply finds nothing.
+
 Exits 2 with the remedy when something it needs is missing, rather than
 claiming tickets it could only reject. The one exception is pillow-heif (HEIC
 photos, migration 0044): without it the worker logs a warning at startup and
@@ -47,7 +53,7 @@ from typing import Callable, List, Optional
 REPO_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_DIR))
 
-from modules import media_library  # noqa: E402
+from modules import editor_export, media_library  # noqa: E402
 from modules.worker_status import WorkerStatusReporter  # noqa: E402
 
 logger = logging.getLogger("media_worker")
@@ -195,6 +201,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
     logger.info("media worker %s started (poll %ss)", args.worker_id, args.poll_seconds)
+    exports: Optional[threading.Thread] = None
+    if not args.once:
+        # Its own MediaStore (and so its own HTTP session): requests' Session
+        # is not shared across threads.
+        export_service = editor_export.ExportService(
+            media_library.MediaStore(url, key), media_root=media_root, worker_id=args.worker_id, tools=tools)
+        exports = threading.Thread(target=editor_export.serve, args=(export_service, stop, args.poll_seconds),
+                                   name="editor-exports", daemon=True)
+        exports.start()
     if reporter is not None:
         reporter.start_heartbeat()
     try:
@@ -211,6 +226,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             reporter.close("failed", f"The media worker crashed ({type(e).__name__}) and will be restarted; "
                                      "the reason is in the server's container logs.")
         raise
+    if exports is not None:
+        # An export in progress is left to its heartbeat: the database hands it
+        # out again once it goes stale, so a stop never loses it.
+        exports.join(timeout=5)
     if reporter is not None:
         reporter.close("stopped")
     logger.info("media worker stopped")

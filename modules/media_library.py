@@ -758,6 +758,28 @@ class MediaStore:
     def mark_purged(self, asset_id: str) -> None:
         self._rpc("mark_asset_purged", {"p_asset": canonical_id(asset_id)})
 
+    # ── editor exports (migration 0054) ──────────────────────────────────────
+
+    def claim_export(self, worker_id: str) -> Optional[dict]:
+        rows = self._rpc("claim_editor_export", {"p_worker": worker_id})
+        if isinstance(rows, dict):
+            rows = [rows]
+        return rows[0] if rows else None
+
+    def export_assets(self, export_id: str) -> List[dict]:
+        rows = self._rpc("editor_export_assets", {"p_export": canonical_id(export_id)})
+        return list(rows or [])
+
+    def export_heartbeat(self, export_id: str, worker_id: str) -> bool:
+        return bool(self._rpc("editor_export_heartbeat",
+                              {"p_export": canonical_id(export_id), "p_worker": worker_id}))
+
+    def finish_export(self, export_id: str, worker_id: str, asset_id: Optional[str],
+                      reason: Optional[str]) -> Optional[str]:
+        return self._rpc("finish_editor_export", {
+            "p_export": canonical_id(export_id), "p_worker": worker_id,
+            "p_asset": canonical_id(asset_id) if asset_id else None, "p_reason": reason})
+
 
 # ── one ticket ───────────────────────────────────────────────────────────────
 
@@ -1067,15 +1089,24 @@ def copy_source(media_root: Path, asset_id, mime: str, variants: Sequence[str], 
     return dest
 
 
+#: Who made a stored file (media_assets.source): a creative job's provider
+#: output, or one of our own renders (an editor export, migration 0054).
+STORED_SOURCES = ("generated", "render")
+
+
 def store_generated(path: Path, *, asset_id, org_id: str, store: MediaStore, media_root: Path,
                     tools: Optional[Tools], provenance: Mapping, expect_kind: Optional[str] = None,
-                    parent_asset_id: Optional[str] = None,
+                    parent_asset_id: Optional[str] = None, source: str = "generated",
+                    project_id: Optional[str] = None, original_name: Optional[str] = None,
                     runner: Callable[..., int] = run_tool, prober: Callable[..., Probe] = run_probe) -> dict:
-    """Put one generated file into the library as ``asset_id`` (source
-    'generated', the job's organization) the way an upload is stored: the type
-    sniffed from the content, ffprobed when ffprobe is here, a thumbnail /
-    proxy when ffmpeg is, files under media/<aa>/<uuid>/, then register_asset.
-    A retry with the same id rebuilds the same files and gets the same row."""
+    """Put one generated file into the library as ``asset_id`` (``source``
+    'generated' for a creative job, 'render' for an editor export; the job's
+    organization) the way an upload is stored: the type sniffed from the
+    content, ffprobed when ffprobe is here, a thumbnail / proxy when ffmpeg
+    is, files under media/<aa>/<uuid>/, then register_asset. A retry with the
+    same id rebuilds the same files and gets the same row."""
+    if source not in STORED_SOURCES:
+        raise ValueError("not a stored-file source")
     aid = canonical_id(asset_id)
     src = Path(path)
     if not src.is_file() or src.is_symlink() or src.stat().st_size <= 0:
@@ -1125,9 +1156,12 @@ def store_generated(path: Path, *, asset_id, org_id: str, store: MediaStore, med
         raise
     out = store.register(
         asset_id=aid, org=org_id, kind=info.kind, mime=info.mime, bytes=nbytes, sha256=digest,
-        source="generated", width=info.width, height=info.height, duration_s=info.duration,
+        source=source, width=info.width, height=info.height, duration_s=info.duration,
         provenance=dict(provenance), derived_bytes=derived, variants=variants,
         parent_asset_id=parent_asset_id,
+        # Only when set: a creative job's call stays exactly what it was.
+        **({"project_id": canonical_id(project_id)} if project_id else {}),
+        **({"original_name": original_name} if original_name else {}),
     )
     if not out or out.get("id") != aid:
         raise StoreUnavailable("register_asset did not record the asset")

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nightshift.local/schemas/timeline.schema.json",
   "title": "Nightshift Creative OS timeline v1",
-  "description": "A studio timeline (modules/timeline.py), rendered by the ffmpeg engine through modules/timeline_render.py. Assets are referenced by id only; a resolver turns ids into files and refuses any the caller may not use. The hand-written validator in modules/timeline.py is the twin of this schema and also checks what JSON Schema cannot: out_s > in_s, end_s > start_s, unique ids, no overlapping clips on a track, at most one V track, at most 64 audio clips and 5000 clips in all, fades that fit inside their clip, and a total length of at most 4 hours. tests/test_timeline.py keeps the two in sync.",
+  "description": "A studio timeline (modules/timeline.py), rendered by the ffmpeg engine through modules/timeline_render.py. Assets are referenced by id only; a resolver turns ids into files and refuses any the caller may not use. The hand-written validator in modules/timeline.py is the twin of this schema and also checks what JSON Schema cannot: out_s > in_s, speed 0.5-2 (a clip lasts (out_s - in_s) / speed), end_s > start_s, unique ids, no overlapping clips on a track, at most one V track, at most 64 audio clips and 5000 clips in all, fades that fit inside their clip, and a total length of at most 4 hours. tests/test_timeline.py keeps the two in sync.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -189,7 +189,7 @@
         },
         "out_s": {
           "$ref": "#/$defs/seconds",
-          "description": "Source time the clip ends at (trim out); must be greater than in_s. The clip lasts out_s - in_s."
+          "description": "Source time the clip ends at (trim out); must be greater than in_s. The clip lasts (out_s - in_s) / speed on the timeline."
         },
         "fit": {
           "enum": [
@@ -209,6 +209,18 @@
         },
         "transition": {
           "$ref": "#/$defs/transition"
+        },
+        "speed": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2.0,
+          "default": 1,
+          "description": "Playback speed. in_s/out_s stay source times; the clip lasts (out_s - in_s) / speed. Its own sound (audio: true) keeps its pitch."
+        },
+        "audio": {
+          "type": "boolean",
+          "default": false,
+          "description": "Play the video's own sound, trimmed and sped like the picture. Off by default so older documents render as before; a source with no sound is silent."
         }
       }
     },

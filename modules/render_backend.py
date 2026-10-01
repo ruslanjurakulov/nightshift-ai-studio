@@ -229,7 +229,21 @@ def segment_commands(
     seek = ["-ss", f"{seg.in_s:.3f}"] if seg.in_s > 0 else []
     fit = _scale_crop if seg.fit == FIT_COVER else _scale_pad
     return [[ffmpeg, "-y", "-stream_loop", "-1", *seek, "-i", seg.path, *length, "-an",
-             "-vf", fit(width, height, fps) + fades, *common, str(out_path)]]
+             "-vf", speed_filter(seg.speed) + fit(width, height, fps) + fades, *common,
+             str(out_path)]]
+
+
+def speed_filter(speed: float) -> str:
+    """``setpts=...,`` that plays a video ``speed`` times faster ('' at 1, so a
+    pipeline segment's filter is unchanged). It runs before the fit's
+    ``fps=``: the retimed stream is resampled to the output rate (frames
+    dropped when faster, repeated when slower), so ``-frames:v`` still cuts
+    the segment to exactly its frames. STARTPTS: after an input seek the first
+    frame's timestamp is not always 0, and dividing an offset would shift the
+    cut."""
+    if speed == 1.0:
+        return ""
+    return f"setpts=(PTS-STARTPTS)/{float(speed):.3f},"
 
 
 def _normalize_segment(

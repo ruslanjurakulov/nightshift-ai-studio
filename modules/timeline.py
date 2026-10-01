@@ -15,7 +15,8 @@ not a project dependency — tests keep the two in sync)::
       captions?: { style?: {...}, cues: [ { id, start_s, end_s, text } ] } }
 
     V clip: { id, asset_id, start_s, in_s, out_s, fit?, fade_in_s?, fade_out_s?,
-              transition?: { type: "cut"|"dip_to_black", duration_s } }
+              transition?: { type: "cut"|"dip_to_black", duration_s },
+              speed?: 0.5..2, audio?: bool }
     A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s? }
     T clip: { id, start_s, end_s, text, font?, size?, color?, outline_color?,
               outline_width?, bold?, x?, y?, anchor?, fade_in_s?, fade_out_s? }
@@ -35,6 +36,15 @@ Rules this module keeps:
 * **Times are seconds, normalised to milliseconds**, and the render cuts on
   the frame grid (``round(t * fps)``), so the same document always renders
   the same frames.
+* **Speed changes how long a clip lasts, not what it shows.** ``in_s`` and
+  ``out_s`` are SOURCE times; a V clip at ``speed`` 2 plays that range in
+  half the time, so its end on the timeline is
+  ``start_s + (out_s - in_s) / speed``. The range 0.5-2 is what one ffmpeg
+  ``atempo`` stage keeps in tune, so a sped-up clip's own sound never needs
+  a chain of filters to stay intelligible.
+* **A video clip's own sound is opt-in** (``audio: true``) so documents
+  written before it render exactly as they did. It follows the clip's trim
+  and speed; a source with no sound track is silent, never an error.
 """
 
 from __future__ import annotations
@@ -85,6 +95,9 @@ FONTS = ("DejaVu Sans", "DejaVu Serif", "Liberation Sans", "Liberation Serif")
 GAIN_DB_MIN, GAIN_DB_MAX = -60.0, 12.0
 SIZE_MIN, SIZE_MAX = 8, 512
 OUTLINE_MAX = 20.0
+#: Per-clip playback speed. One atempo stage covers exactly this range
+#: (render_spec.SPEED_MIN/MAX are the same numbers; a test pins them).
+SPEED_MIN, SPEED_MAX = 0.5, 2.0
 
 ASSET_VIDEO, ASSET_IMAGE, ASSET_AUDIO = "video", "image", "audio"
 #: Which asset kinds a clip on each track kind may use.
@@ -103,7 +116,7 @@ _DOC_KEYS = _DOC_REQUIRED + ("captions",)
 _TRACK_REQUIRED = ("id", "kind", "clips")
 _TRACK_KEYS = _TRACK_REQUIRED + ("name",)
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
-_V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition")
+_V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio")
 _A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s")
 _T_REQUIRED = ("id", "start_s", "end_s", "text")
 _TEXT_STYLE_KEYS = ("font", "size", "color", "outline_color", "outline_width", "bold")
@@ -121,7 +134,7 @@ CAPTION_STYLE_DEFAULTS = {"font": "DejaVu Sans", "size": 56, "color": "#FFFFFF",
                           "outline_color": "#000000", "outline_width": 3.0, "bold": True,
                           "y": 0.9}
 V_DEFAULTS = {"fit": "contain", "fade_in_s": 0.0, "fade_out_s": 0.0,
-              "transition": {"type": "cut", "duration_s": 0.0}}
+              "transition": {"type": "cut", "duration_s": 0.0}, "speed": 1.0, "audio": False}
 A_DEFAULTS = {"gain_db": 0.0, "fade_in_s": 0.0, "fade_out_s": 0.0}
 
 
@@ -137,11 +150,14 @@ class TimelineError(ValueError):
 class ResolvedAsset:
     """What the resolver knows about one asset: its kind (video, image,
     audio), the ABSOLUTE local file path the renderer reads (never a URL), and
-    its duration (None for a still, or unknown)."""
+    its duration (None for a still, or unknown). ``has_audio`` says whether a
+    video carries a sound track (None = not known, treated as silent: an
+    input with no audio stream would fail the whole mix)."""
     asset_id: str
     kind: str
     path: str
     duration_s: Optional[float] = None
+    has_audio: Optional[bool] = None
 
 
 #: asset_id → ResolvedAsset, or None when the asset does not exist or the
@@ -286,7 +302,10 @@ def validate(doc: Any) -> List[str]:
         problems.append("timeline: only one video (V) track is supported — overlapping "
                         "video (picture-in-picture) is not available yet")
     counted = [t for t in tracks if isinstance(t, dict) and isinstance(t.get("clips"), list)]
+    # A video clip that plays its own sound is one more audio input too.
     n_audio = sum(len(t["clips"]) for t in counted if t.get("kind") == KIND_A)
+    n_audio += sum(1 for t in counted if t.get("kind") == KIND_V
+                   for c in t["clips"] if isinstance(c, dict) and c.get("audio") is True)
     if n_audio > MAX_AUDIO_CLIPS:
         problems.append(f"timeline: at most {MAX_AUDIO_CLIPS} audio clips in one timeline "
                         f"(got {n_audio}) — join short pieces into one file")
@@ -327,10 +346,17 @@ def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
         _num_in(clip, k, 0, MAX_DURATION_S, where, problems)
     for k in ("fade_in_s", "fade_out_s"):
         _num_in(clip, k, 0, MAX_DURATION_S, where, problems)
+    speed = 1.0
+    if kind == KIND_V and "speed" in clip:
+        _num_in(clip, "speed", SPEED_MIN, SPEED_MAX, where, problems)
+        speed = clip["speed"] if (_is_num(clip["speed"]) and SPEED_MIN <= clip["speed"] <= SPEED_MAX) else None
+    if kind == KIND_V and "audio" in clip and not isinstance(clip["audio"], bool):
+        problems.append(f"{where}: audio must be true or false")
     ins, outs = clip.get("in_s"), clip.get("out_s")
-    if _is_num(ins) and _is_num(outs):
-        length = _ms(outs) - _ms(ins)
-        if length <= 0:
+    if _is_num(ins) and _is_num(outs) and speed:
+        # How long the clip lasts ON THE TIMELINE: the source range at its speed.
+        length = _ms((_ms(outs) - _ms(ins)) / speed)
+        if _ms(outs) - _ms(ins) <= 0:
             problems.append(f"{where}: out_s ({outs}) must be greater than in_s ({ins})")
         elif fps and round(length * fps) < 1:
             problems.append(f"{where}: shorter than one frame at {fps} fps")
@@ -403,11 +429,18 @@ def _validate_captions(captions, problems, claim) -> None:
 
 # ── inspection (on a structurally valid document) ───────────────────────────
 
+def clip_speed(clip: dict) -> float:
+    """A media clip's playback speed (1 when it has none)."""
+    v = clip.get("speed", 1.0)
+    return float(v) if _is_num(v) and v > 0 else 1.0
+
+
 def clip_end_s(clip: dict) -> float:
-    """Where a clip ends on the timeline, in seconds (ms-rounded)."""
+    """Where a clip ends on the timeline, in seconds (ms-rounded): a text's
+    ``end_s``, or a media clip's start plus its source range at its speed."""
     if "end_s" in clip:
         return _ms(clip["end_s"])
-    return _ms(_ms(clip["start_s"]) + _ms(clip["out_s"]) - _ms(clip["in_s"]))
+    return _ms(_ms(clip["start_s"]) + (_ms(clip["out_s"]) - _ms(clip["in_s"])) / clip_speed(clip))
 
 
 def _spans(doc: dict):
@@ -531,6 +564,7 @@ def normalise(doc: dict) -> dict:
                 if kind == KIND_V:
                     c["transition"] = {"type": c["transition"]["type"],
                                        "duration_s": _ms(c["transition"]["duration_s"])}
+                    c["speed"] = _ms(c["speed"])
                 else:
                     c["gain_db"] = _ms(c["gain_db"])
             t["clips"].append(c)
@@ -586,7 +620,9 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
     ``at_s``: the first part keeps the id, its fade-in and transition; the
     second (``new_id``) continues from the same source point with the fade-out.
     The timeline's length and every other clip are unchanged; for a video,
-    a split on the frame grid plays the same source frames as before."""
+    a split on the frame grid plays the same source frames as before. Both
+    halves keep the clip's speed and sound: ``at_s`` is timeline time, so the
+    source cut is ``in_s + (at_s - start_s) * speed``."""
     out = copy.deepcopy(doc)
     for track in out.get("tracks") or []:
         for i, clip in enumerate(track.get("clips") or []):
@@ -599,7 +635,9 @@ def split_clip(doc: dict, clip_id: str, at_s: float, new_id: str) -> dict:
             if not start < at < end:
                 raise TimelineError([f"split point {at} s is not inside clip {clip_id!r} "
                                      f"({start}-{end} s)"])
-            cut = _ms(_ms(clip["in_s"]) + at - start)
+            cut = _ms(_ms(clip["in_s"]) + (at - start) * clip_speed(clip))
+            if not _ms(clip["in_s"]) < cut < _ms(clip["out_s"]):
+                raise TimelineError([f"split point {at} s is too close to an end of clip {clip_id!r}"])
             second = copy.deepcopy(clip)
             second.update(id=new_id, start_s=at, in_s=cut, fade_in_s=0.0)
             second.pop("transition", None)

@@ -61,6 +61,7 @@ export const SECTIONS = [
   "videos",
   "studio",
   "library",
+  "editor",
   "pipeline",
   "analytics",
   "channels",

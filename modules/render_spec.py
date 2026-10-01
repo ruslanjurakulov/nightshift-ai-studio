@@ -46,6 +46,11 @@ against the argv captured from the code before this extension):
     then ``amix``-ed without normalisation and cut to the video's length.
   * ``RenderSpec.overlays`` — text, written by ``ass_captions`` to one ASS
     file the backend burns in with the same ``subtitles`` filter.
+  * ``Segment.speed`` / ``AudioTrack.speed`` — play a source faster or
+    slower (0.5-2). The picture is retimed with ``setpts`` before it is
+    fitted and resampled to the output rate; the sound with one ``atempo``
+    stage, which keeps its pitch. Text never reaches a filter graph: it goes
+    into the ASS file, escaped by ``ass_captions.escape_text``.
 """
 
 from __future__ import annotations
@@ -75,6 +80,15 @@ FITS = (FIT_CONTAIN, FIT_COVER)
 ANCHORS = ("top-left", "top", "top-right", "left", "center", "right",
            "bottom-left", "bottom", "bottom-right")
 
+#: Playback speed bounds. ffmpeg's atempo takes 0.5-100 per stage, but below
+#: 0.5 it needs chained stages and above 2 speech stops being followable;
+#: modules/timeline.py offers exactly this range.
+SPEED_MIN, SPEED_MAX = 0.5, 2.0
+
+
+def _speed_ok(v) -> bool:
+    return _finite(v) and SPEED_MIN <= v <= SPEED_MAX
+
 
 def _finite(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
@@ -94,8 +108,11 @@ class Segment:
 
     The rest are timeline options whose defaults are the original behaviour:
     ``in_s`` seeks that far into a video source (trim), ``fit`` chooses
-    letterbox (contain) or crop (cover) for a video, and ``fade_in_s`` /
-    ``fade_out_s`` fade the picture from / to black inside the segment."""
+    letterbox (contain) or crop (cover) for a video, ``fade_in_s`` /
+    ``fade_out_s`` fade the picture from / to black inside the segment, and
+    ``speed`` plays a video source that much faster (``duration`` stays the
+    segment's length in the OUTPUT; it shows ``duration * speed`` seconds of
+    the source from ``in_s``)."""
     duration: float
     path: Optional[str] = None
     kind: str = KIND_VIDEO
@@ -103,6 +120,7 @@ class Segment:
     fit: str = FIT_CONTAIN
     fade_in_s: float = 0.0
     fade_out_s: float = 0.0
+    speed: float = 1.0
 
     def to_dict(self) -> dict:
         d = {"duration": self.duration, "path": self.path, "kind": self.kind}
@@ -110,6 +128,7 @@ class Segment:
         _put_if(d, "fit", self.fit, FIT_CONTAIN)
         _put_if(d, "fade_in_s", self.fade_in_s, 0.0)
         _put_if(d, "fade_out_s", self.fade_out_s, 0.0)
+        _put_if(d, "speed", self.speed, 1.0)
         return d
 
     @staticmethod
@@ -122,6 +141,7 @@ class Segment:
             fit=str(d.get("fit") or FIT_CONTAIN),
             fade_in_s=float(d.get("fade_in_s") or 0.0),
             fade_out_s=float(d.get("fade_out_s") or 0.0),
+            speed=float(d.get("speed") or 1.0),
         )
 
 
@@ -129,7 +149,9 @@ class Segment:
 class AudioTrack:
     """One audio file placed on the output timeline: ``duration_s`` seconds of
     the source from ``in_s``, starting at ``start_s`` of the video, at
-    ``gain_db``, with linear fades inside that span."""
+    ``gain_db``, with linear fades inside that span. At ``speed`` the source
+    range plays in ``duration_s / speed`` seconds (pitch kept); the fades are
+    measured on the output, after the speed change."""
     path: str
     duration_s: float
     start_s: float = 0.0
@@ -137,11 +159,19 @@ class AudioTrack:
     gain_db: float = 0.0
     fade_in_s: float = 0.0
     fade_out_s: float = 0.0
+    speed: float = 1.0
+
+    @property
+    def output_s(self) -> float:
+        """How long the track sounds in the output."""
+        return self.duration_s / self.speed if self.speed else self.duration_s
 
     def to_dict(self) -> dict:
-        return {"path": self.path, "duration_s": self.duration_s, "start_s": self.start_s,
-                "in_s": self.in_s, "gain_db": self.gain_db, "fade_in_s": self.fade_in_s,
-                "fade_out_s": self.fade_out_s}
+        d = {"path": self.path, "duration_s": self.duration_s, "start_s": self.start_s,
+             "in_s": self.in_s, "gain_db": self.gain_db, "fade_in_s": self.fade_in_s,
+             "fade_out_s": self.fade_out_s}
+        _put_if(d, "speed", self.speed, 1.0)
+        return d
 
     @staticmethod
     def from_dict(d: dict) -> "AudioTrack":
@@ -153,6 +183,7 @@ class AudioTrack:
             gain_db=float(d.get("gain_db") or 0.0),
             fade_in_s=float(d.get("fade_in_s") or 0.0),
             fade_out_s=float(d.get("fade_out_s") or 0.0),
+            speed=float(d.get("speed") or 1.0),
         )
 
 
@@ -306,6 +337,9 @@ def validate(spec: RenderSpec) -> List[str]:
             v = getattr(seg, name)
             if not _finite(v) or v < 0:
                 problems.append(f"segment {i} has a negative or non-finite {name} {v}")
+        if not _speed_ok(seg.speed):
+            problems.append(f"segment {i} speed must be from {SPEED_MIN:g} to {SPEED_MAX:g} "
+                            f"(got {seg.speed})")
         if (_finite(seg.fade_in_s) and _finite(seg.fade_out_s)
                 and seg.fade_in_s + seg.fade_out_s > seg.duration + 1e-9):
             problems.append(f"segment {i} fades ({seg.fade_in_s} + {seg.fade_out_s} s) "
@@ -316,7 +350,7 @@ def validate(spec: RenderSpec) -> List[str]:
     for i, t in enumerate(spec.audio_tracks):
         if not t.path:
             problems.append(f"audio track {i} has no path")
-        nums = ("duration_s", "start_s", "in_s", "gain_db", "fade_in_s", "fade_out_s")
+        nums = ("duration_s", "start_s", "in_s", "gain_db", "fade_in_s", "fade_out_s", "speed")
         if not all(_finite(getattr(t, n)) for n in nums):
             problems.append(f"audio track {i} has a non-finite number")
             continue
@@ -324,7 +358,10 @@ def validate(spec: RenderSpec) -> List[str]:
             problems.append(f"audio track {i} has non-positive duration {t.duration_s}")
         if t.start_s < 0 or t.in_s < 0 or t.fade_in_s < 0 or t.fade_out_s < 0:
             problems.append(f"audio track {i} has a negative start, in point or fade")
-        if t.fade_in_s + t.fade_out_s > t.duration_s + 1e-9:
+        if not _speed_ok(t.speed):
+            problems.append(f"audio track {i} speed must be from {SPEED_MIN:g} to {SPEED_MAX:g}")
+            continue
+        if t.fade_in_s + t.fade_out_s > t.output_s + 1e-9:
             problems.append(f"audio track {i} fades are longer than the track")
     for i, o in enumerate(spec.overlays):
         if not str(o.text or "").strip():
@@ -413,19 +450,22 @@ def _t(x: float) -> str:
 
 def audio_track_filter(track: AudioTrack, input_index: int, label: str) -> str:
     """The filter chain placing one audio track: cut ``duration_s`` from
-    ``in_s``, one sample format for every input (so amix never guesses),
-    gain, fades inside the span, then delay to ``start_s``."""
+    ``in_s``, change its tempo when it has a speed (one ``atempo`` stage,
+    pitch kept), one sample format for every input (so amix never guesses),
+    gain, fades inside the span it sounds for, then delay to ``start_s``."""
     chain = [
         f"atrim=start={_t(track.in_s)}:duration={_t(track.duration_s)}",
         "asetpts=PTS-STARTPTS",
-        "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo",
     ]
+    if track.speed != 1.0:
+        chain.append(f"atempo={_t(track.speed)}")
+    chain.append("aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo")
     if track.gain_db:
         chain.append(f"volume={_t(track.gain_db)}dB")
     if track.fade_in_s > 0:
         chain.append(f"afade=t=in:st=0:d={_t(track.fade_in_s)}")
     if track.fade_out_s > 0:
-        chain.append(f"afade=t=out:st={_t(track.duration_s - track.fade_out_s)}"
+        chain.append(f"afade=t=out:st={_t(track.output_s - track.fade_out_s)}"
                      f":d={_t(track.fade_out_s)}")
     delay_ms = int(round(track.start_s * 1000))
     if delay_ms > 0:
