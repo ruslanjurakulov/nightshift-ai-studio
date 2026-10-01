@@ -50,17 +50,24 @@ UPSCALE = "upscale"  # image → the same image, 2x / 4x the pixels (CapabilityR
 REMOVE_BG = "remove_bg"  # image → the subject on a transparent background
 VOICE_CHANGE = "voice_change"  # speech (audio / video) → the same performance in another voice
 DUB = "dub"          # speech (audio / video) → the dubbed speech in a target language
-CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB)
+DESCRIBE = "describe"  # image → text: a generation prompt for that picture (0055)
+CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, DESCRIBE)
 OUTPUT_OF = {T2I: "image", EDIT: "image", T2V: "video", I2V: "video", TTS: "audio", SFX: "audio",
-             UPSCALE: "image", REMOVE_BG: "image", VOICE_CHANGE: "audio", DUB: "audio"}
+             UPSCALE: "image", REMOVE_BG: "image", VOICE_CHANGE: "audio", DUB: "audio", DESCRIBE: "text"}
 #: Capabilities whose input is an image (CapabilityRequest.input_images).
-IMAGE_INPUT = frozenset({EDIT, I2V, UPSCALE, REMOVE_BG})
+IMAGE_INPUT = frozenset({EDIT, I2V, UPSCALE, REMOVE_BG, DESCRIBE})
+#: Capabilities whose output is text kept on the job row, never a file in the
+#: library (0055's CHECK refuses assets on such a job).
+TEXT_OUTPUT = frozenset({DESCRIBE})
+#: The languages a description is written in (0055's allow-list).
+DESCRIBE_LANGUAGES = ("en", "ru", "uz")
 #: Capabilities whose input is a recording — audio or video with speech
 #: (CapabilityRequest.input_media, migration 0050). Never mixed with images.
 MEDIA_INPUT = frozenset({VOICE_CHANGE, DUB})
 #: Capabilities where the prompt is optional (i2v, upscale) or absent
 #: (remove_bg, and the voice tools: the recording is the whole input).
-PROMPT_OPTIONAL = frozenset({I2V, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB})
+#: describe sends no prompt of the person's: the adapter writes the request.
+PROMPT_OPTIONAL = frozenset({I2V, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, DESCRIBE})
 
 # ── task states ──────────────────────────────────────────────────────────────
 PENDING = "pending"
@@ -183,6 +190,9 @@ class CapabilityRequest:
     #: The language a dub is made in (``dub`` only): a base BCP-47 tag the
     #: registry entry lists in ``languages``.
     target_language: Optional[str] = None
+    #: The language a description is written in (``describe`` only, 0055):
+    #: one of DESCRIBE_LANGUAGES; None = English.
+    output_language: Optional[str] = None
 
 
 @dataclass
@@ -222,7 +232,8 @@ class PollResult:
 
 
 _EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp",
-        "video/mp4": ".mp4", "audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/flac": ".flac"}
+        "video/mp4": ".mp4", "audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/flac": ".flac",
+        "text/plain": ".txt"}
 
 
 def image_mime(path: str) -> str:

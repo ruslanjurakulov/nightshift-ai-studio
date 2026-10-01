@@ -353,7 +353,8 @@ describe("the dialog's links go to pages that exist", () => {
 describe("the voice tools in the customer sidebar", () => {
   it("lists Change voice and Dub / translate in the Create group, each opening its tool", () => {
     const tools = CUSTOMER_SIDEBAR.tools.map((t) => t.tool);
-    expect(tools.slice(-2)).toEqual(["voice_change", "dub"]);
+    // The voice tools follow the picture tools; Describe (0055) comes last.
+    expect(tools.slice(-3)).toEqual(["voice_change", "dub", "describe"]);
     expect(CUSTOMER_SIDEBAR.tools.find((t) => t.tool === "voice_change")?.href).toBe("/create?tool=voice_change");
     expect(CUSTOMER_SIDEBAR.tools.find((t) => t.tool === "dub")?.href).toBe("/create?tool=dub");
     expect(en.gen.kinds.voice_change).toBe("Change voice");

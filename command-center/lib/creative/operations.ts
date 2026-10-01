@@ -30,9 +30,10 @@ export interface CreativeResult {
 }
 
 /**
- * Capabilities 0036 / 0046 / 0050 accept. edit…remove_bg start from a picture
- * in the organization's media library (`params.source_asset_id`, migration
- * 0046); voice_change and dub start from a recording there (0050).
+ * Capabilities 0036 / 0046 / 0050 / 0055 accept. edit…remove_bg start from a
+ * picture in the organization's media library (`params.source_asset_id`,
+ * migration 0046); voice_change and dub start from a recording there (0050);
+ * describe reads a picture there and answers with text (0055).
  */
 export const CREATIVE_CAPABILITIES = [
   "t2i",
@@ -46,6 +47,7 @@ export const CREATIVE_CAPABILITIES = [
   "remove_bg",
   "voice_change",
   "dub",
+  "describe",
 ] as const;
 export type CreativeCapability = (typeof CREATIVE_CAPABILITIES)[number];
 
@@ -55,7 +57,14 @@ export type CreativeCapability = (typeof CREATIVE_CAPABILITIES)[number];
  * provider takes — is decided by the database (0046's
  * creative_source_problem), never here: this only checks the id's shape.
  */
-export const SOURCE_CAPABILITIES = ["edit", "i2v", "upscale", "remove_bg"] as const satisfies readonly CreativeCapability[];
+export const SOURCE_CAPABILITIES = ["edit", "i2v", "upscale", "remove_bg", "describe"] as const satisfies readonly CreativeCapability[];
+
+/**
+ * 0055's explicit allow-list for a description's `language` (optional; absent
+ * = English). Only describe takes it.
+ */
+export const DESCRIBE_LANGUAGES = ["en", "ru", "uz"] as const;
+export type DescribeLanguage = (typeof DESCRIBE_LANGUAGES)[number];
 
 /**
  * The capabilities whose input is a library RECORDING — an audio or video
@@ -96,6 +105,7 @@ export const PARAM_KEYS = [
   "factor",
   "style_kit_id",
   "target_language",
+  "language",
 ] as const;
 
 /** Codes the routes answer with. Each has a sentence in lib/i18n `creative.errors`. */
@@ -277,6 +287,10 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: `target_language must be one of ${DUB_LANGUAGES.join(", ")}` }) };
   if (capability !== "dub" && params.target_language !== undefined)
     return { ok: false, result: fail(400, "invalid_params", { detail: `target_language does not apply to ${capability}` }) };
+  if (capability === "describe" && params.language !== undefined && !(DESCRIBE_LANGUAGES as readonly unknown[]).includes(params.language))
+    return { ok: false, result: fail(400, "invalid_params", { detail: `language must be one of ${DESCRIBE_LANGUAGES.join(", ")}` }) };
+  if (capability !== "describe" && params.language !== undefined)
+    return { ok: false, result: fail(400, "invalid_params", { detail: `language does not apply to ${capability}` }) };
   if (recorded && params.duration_s !== undefined)
     // The length is the recording's own, measured by the database — never sent.
     return { ok: false, result: fail(400, "invalid_params", { detail: `duration_s does not apply to ${capability}` }) };

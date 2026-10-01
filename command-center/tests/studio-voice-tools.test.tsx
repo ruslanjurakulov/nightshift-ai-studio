@@ -220,7 +220,8 @@ describe("params (0050's rules)", () => {
 
   it("the sidebar's list is unchanged; the composer adds the voice tools after the picture tools", () => {
     expect([...STUDIO_CAPABILITIES]).toEqual(["t2i", "t2v", "tts", "edit", "i2v", "upscale", "remove_bg"]);
-    expect([...COMPOSER_CAPABILITIES]).toEqual([...STUDIO_CAPABILITIES, "voice_change", "dub"]);
+    // Describe (0055) reads a picture rather than making one: it comes last.
+    expect([...COMPOSER_CAPABILITIES]).toEqual([...STUDIO_CAPABILITIES, "voice_change", "dub", "describe"]);
     // The Library's "Use in Studio" picture links never offer a voice tool for a picture.
     expect(SOURCE_CAPABILITIES as readonly string[]).not.toContain("voice_change");
   });
@@ -252,10 +253,12 @@ describe("pinned to 0050", () => {
   });
 
   it("every capability and param key the code sends is one 0050 accepts", () => {
+    // Added later by 0055 (describe) and pinned against it in studio-describe.test.tsx.
+    const later = ["describe", "language"];
     const supported = fn("creative_capability_supported");
-    for (const c of CREATIVE_CAPABILITIES) expect(supported, c).toContain(`'${c}'`);
+    for (const c of CREATIVE_CAPABILITIES.filter((c) => !later.includes(c))) expect(supported, c).toContain(`'${c}'`);
     const params = fn("creative_params_problem");
-    for (const k of PARAM_KEYS) expect(params, k).toContain(`'${k}'`);
+    for (const k of PARAM_KEYS.filter((k) => !later.includes(k))) expect(params, k).toContain(`'${k}'`);
     for (const c of MEDIA_SOURCE_CAPABILITIES) expect(CAPABILITIES as readonly string[]).toContain(c);
   });
 

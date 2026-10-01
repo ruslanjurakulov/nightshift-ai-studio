@@ -149,8 +149,8 @@ describe("tool tabs", () => {
     expect(document.activeElement).toBe(video);
 
     fireEvent.keyDown(video, { key: "End" });
-    expect(screen.getByRole("tab", { name: t.gen.tabs.dub }).getAttribute("aria-selected")).toBe("true");
-    fireEvent.keyDown(screen.getByRole("tab", { name: t.gen.tabs.dub }), { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: t.gen.tabs.describe }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(screen.getByRole("tab", { name: t.gen.tabs.describe }), { key: "ArrowRight" });
     expect(screen.getByRole("tab", { name: t.gen.tabs.t2i }).getAttribute("aria-selected")).toBe("true");
   });
 

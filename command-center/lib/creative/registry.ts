@@ -14,7 +14,7 @@ import { isMissingFunction } from "@/lib/orgs";
  * shown with a guessed price (CLAUDE.md #5).
  */
 
-export const CAPABILITIES = ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub"] as const;
+export const CAPABILITIES = ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "describe"] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export type Surface = "web" | "api" | "mcp";
 
@@ -36,7 +36,8 @@ export interface Attribution {
 }
 
 export interface PublicSpec {
-  output: "image" | "video" | "audio";
+  /** "text" for a model that reads a picture and writes about it (describe, 0055). */
+  output: "image" | "video" | "audio" | "text";
   imageRefsMax: number;
   aspectRatios: string[];
   aspectRatiosByCapability: Partial<Record<Capability, string[]>>;
@@ -91,7 +92,7 @@ function coerceSpec(v: unknown): PublicSpec | null {
   if (!isObj(v)) return null;
   const output = v.output;
   const unit = v.unit;
-  if (output !== "image" && output !== "video" && output !== "audio") return null;
+  if (output !== "image" && output !== "video" && output !== "audio" && output !== "text") return null;
   if (unit !== "image" && unit !== "second" && unit !== "character" && unit !== "request") return null;
   const limits = isObj(v.limits) ? v.limits : {};
   const maxPromptChars = posInt(limits.max_prompt_chars);

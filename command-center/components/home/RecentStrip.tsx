@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Clapperboard, ImagePlus, Mic, Scissors, Wand2, ZoomIn, type LucideIcon } from "lucide-react";
+import { Clapperboard, ImagePlus, Mic, ScanText, Scissors, Wand2, ZoomIn, type LucideIcon } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { useLibraryImages } from "@/components/studio/useLibraryImages";
 import { useI18n } from "@/lib/i18n/context";
@@ -20,6 +20,7 @@ export const KIND_ICON: Record<string, LucideIcon> = {
   edit: Wand2,
   upscale: ZoomIn,
   remove_bg: Scissors,
+  describe: ScanText,
 };
 
 /**

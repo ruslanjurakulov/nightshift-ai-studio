@@ -19,7 +19,8 @@ job folder), the capability layer knows vendors (``CapabilityRequest``,
 * input images are the local files the worker resolved from the media
   library (``GenerationRequest.input_files``) — never a URL from a job row;
   for the voice tools (0050) that one file is a recording and goes to the
-  adapter as ``input_media``, never as a picture;
+  adapter as ``input_media``, never as a picture; for ``describe`` (0055) it
+  is the one picture read, and the answer comes back as one text output;
 * style / character reference pictures (0048,
   ``GenerationRequest.reference_files``) follow them only for a capability
   the adapter lists in ``reference_capabilities``, and only as many as the
@@ -106,6 +107,8 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         input_images=() if recording else tuple(str(f) for f in (*request.input_files, *request.reference_files)),
         input_media=tuple(str(f) for f in request.input_files) if recording else (),
         target_language=_str(p.get("target_language")),
+        # describe (0055): the language the description is written in.
+        output_language=_str(p.get("language")),
     )
 
 
@@ -196,7 +199,10 @@ class RegistryAdapter:
         else:
             qty = {"second": _int(p.get("duration_s")),
                    "character": len(str(p.get("prompt") or "")),
-                   "image": n_files}.get(unit)
+                   "image": n_files,
+                   # One call per job (a description): the provider bills its
+                   # tokens, which this platform does not measure, so USD stays None.
+                   "request": 1}.get(unit)
         return ProviderUsage(provider=self.entry.provider, vendor_model=self._vendor_model(request.capability),
                              unit=unit, quantity=float(qty) if qty is not None else None, route="exact")
 

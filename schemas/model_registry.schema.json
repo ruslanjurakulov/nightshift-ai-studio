@@ -13,7 +13,7 @@
     "models": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/model"}}
   },
   "$defs": {
-    "capability": {"enum": ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub"]},
+    "capability": {"enum": ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "describe"]},
     "language": {"type": "string", "pattern": "^[a-z]{2,3}$"},
     "aspect": {"type": "string", "pattern": "^[0-9]{1,2}:[0-9]{1,2}$"},
     "resolution": {"type": "string", "pattern": "^([0-9]{3,4}p|4k)$"},
@@ -39,7 +39,7 @@
           "additionalProperties": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"}
         },
         "capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/capability"}},
-        "output": {"enum": ["image", "video", "audio"]},
+        "output": {"enum": ["image", "video", "audio", "text"]},
         "inputs": {
           "type": "object",
           "required": ["image_refs_max"],

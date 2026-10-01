@@ -17,6 +17,7 @@ import { UPSCALE_FACTORS, type CreativeError } from "@/lib/creative/operations";
 import {
   ASPECT_RATIOS,
   COMPOSER_CAPABILITIES,
+  DESCRIBE_LANGUAGES,
   DUB_LANGUAGES,
   PROMPT_MAX,
   STUDIO_VOICES,
@@ -26,6 +27,7 @@ import {
   blockedReason,
   buildParams,
   canQuote,
+  defaultDescribeLanguage,
   errorAction,
   generateLabel,
   modelsFor,
@@ -36,6 +38,7 @@ import {
   sheetQuoteParams,
   takesStyle,
   type AspectRatio,
+  type DescribeLanguage,
   type DubLanguage,
   type QuoteState,
   type StudioCapability,
@@ -63,6 +66,10 @@ const RECORDING_MAX_SECONDS: Record<"voice_change" | "dub", number> = { voice_ch
  * — a higher price is refused by the database, never charged. One idempotency
  * key per press. Nothing else here spends: switching tools, opening the model
  * sheet (which asks each model's price) and picking a picture only fill the form.
+ *
+ * Describe (0055) reads a library picture and writes a prompt for it: the
+ * same priced press ("Describe · N credits"), and the answer is text in the
+ * results — "Make similar" there only fills this form again.
  *
  * Images and videos can take one of the organization's style kits (0048),
  * the channel's default kit picked to start with; a style adds no credits.
@@ -116,6 +123,10 @@ export function GeneratePanel({
   // Speech and a voice change speak in a voice the person picks; a dub in a language they pick. None is defaulted.
   const [voiceId, setVoiceId] = useState<string | null>(initial?.voiceId ?? null);
   const [targetLanguage, setTargetLanguage] = useState<DubLanguage | null>(initial?.targetLanguage ?? null);
+  // A description is written in the language the app is read in, unless the person picks another.
+  const [describeLanguage, setDescribeLanguage] = useState<DescribeLanguage>(
+    initial?.describeLanguage ?? defaultDescribeLanguage(locale),
+  );
   const styles = useStyleKits(orgId);
   const [quote, setQuote] = useState<QuoteState>({ status: "idle" });
   const [requote, setRequote] = useState(0);
@@ -134,10 +145,11 @@ export function GeneratePanel({
   // Only a kit the organization has (as loaded) is ever sent: a stale default
   // or a deleted kit reads as "None" rather than as a refusal at the price.
   const effectiveStyle = styles.state === "ready" && styles.kits.some((k) => k.id === styleKitId) ? styleKitId : null;
-  const form = { capability, prompt, aspect, duration, sourceId, factor, styleKitId: effectiveStyle, voiceId, targetLanguage };
+  const form = { capability, prompt, aspect, duration, sourceId, factor, styleKitId: effectiveStyle, voiceId, targetLanguage, describeLanguage };
   const params = useMemo(
-    () => buildParams({ capability, prompt, aspect, duration, sourceId, factor, styleKitId: effectiveStyle, voiceId, targetLanguage }),
-    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle, voiceId, targetLanguage],
+    () =>
+      buildParams({ capability, prompt, aspect, duration, sourceId, factor, styleKitId: effectiveStyle, voiceId, targetLanguage, describeLanguage }),
+    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle, voiceId, targetLanguage, describeLanguage],
   );
   const paramsKey = JSON.stringify(params);
   // A price is asked for only once the form is complete (the picture, the words).
@@ -401,7 +413,35 @@ export function GeneratePanel({
               }}
               libraryHref={path("/library")}
             />
-            <span className="text-[12px] text-[var(--color-muted)]">{t.gen.keepsShape}</span>
+            <span className="text-[12px] text-[var(--color-muted)]">
+              {capability === "describe" ? t.gen.describeNote : t.gen.keepsShape}
+            </span>
+          </div>
+        )}
+
+        {capability === "describe" && (
+          <div className="flex flex-col gap-2">
+            <span className="studio-label" id="gen-describe-lang">
+              {t.gen.describeLanguageLabel}
+            </span>
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="gen-describe-lang">
+              <Languages aria-hidden className="size-3.5 text-[var(--color-muted)]" />
+              {DESCRIBE_LANGUAGES.map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  lang={l}
+                  aria-pressed={describeLanguage === l}
+                  onClick={() => {
+                    setDescribeLanguage(l);
+                    edited();
+                  }}
+                  className="studio-chip"
+                >
+                  {t.gen.languages[l]}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -577,7 +617,7 @@ export function GeneratePanel({
           className="studio-cta"
         >
           <Sparkles aria-hidden className={`size-4${quote.status === "quoting" || submitting ? " pulse" : ""}`} />
-          <span>{submitting ? t.gen.starting : generateLabel(t, quote, locale)}</span>
+          <span>{submitting ? t.gen.starting : generateLabel(t, quote, locale, capability)}</span>
         </button>
         <p id="gen-status" className="min-h-[18px] text-center text-[12px]" aria-live="polite">
           {notice?.kind === "ok" ? (

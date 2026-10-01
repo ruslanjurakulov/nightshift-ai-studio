@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { AudioLines, ExternalLink, FolderOpen, ImagePlus, Play, Sparkles, TriangleAlert } from "lucide-react";
+import { AudioLines, Check, Copy, ExternalLink, FolderOpen, ImagePlus, Play, ScanText, Sparkles, TriangleAlert } from "lucide-react";
 import { StatusPill } from "@/components/ui";
 import { BeforeAfter } from "@/components/studio/BeforeAfter";
 import { TOOL_ICONS } from "@/components/studio/toolIcons";
@@ -18,6 +18,7 @@ import {
   coerceJobs,
   compareSources,
   creditsLine,
+  describeResult,
   failureReason,
   isActiveStatus,
   isDubLanguage,
@@ -28,6 +29,7 @@ import {
   prefillFromJob,
   readDismissed,
   resultHref,
+  similarPrefill,
   sourceFromJob,
   statusView,
   truncate,
@@ -50,7 +52,9 @@ const FEED_SHOWN = 20;
  * some job has a result): its own thumbnail, or — for an edit, upscale or
  * background removal — against its source picture (before / after). "Use as
  * picture" hands a finished picture to the composer; like "Try again" it only
- * fills the form.
+ * fills the form. So does "Describe" (the composer on Describe, with that
+ * picture) and, on a finished description, "Make similar" (the image form with
+ * its text and the picture's shape); "Copy" puts the text on the clipboard.
  */
 export function JobFeed({
   orgId,
@@ -58,6 +62,8 @@ export function JobFeed({
   refreshKey = 0,
   onRetry,
   onUseAsSource,
+  onDescribe,
+  onMakeSimilar,
 }: {
   orgId: string;
   models?: StudioModel[];
@@ -66,6 +72,10 @@ export function JobFeed({
   onRetry?: (prefill: StudioPrefill) => void;
   /** A finished picture's library id, for the composer's picture tools. */
   onUseAsSource?: (assetId: string) => void;
+  /** A finished picture's library id, for the composer's Describe (fills it; the press there is priced). */
+  onDescribe?: (assetId: string) => void;
+  /** A description's text into the image form (fills it; nothing is made from here). */
+  onMakeSimilar?: (prefill: StudioPrefill) => void;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
@@ -74,7 +84,19 @@ export function JobFeed({
   const [dismissed, setDismissed] = useState<string[]>([]);
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<{ id: string; code: CreativeError } | null>(null);
+  const [copied, setCopied] = useState<{ id: string; ok: boolean } | null>(null);
   const seq = useRef(0);
+
+  async function copy(id: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied({ id, ok: true });
+    } catch {
+      // No clipboard (an insecure origin, a denied permission): the text is
+      // on the card, selectable, and the message says so.
+      setCopied({ id, ok: false });
+    }
+  }
 
   const load = useCallback(async () => {
     const mine = ++seq.current;
@@ -142,7 +164,13 @@ export function JobFeed({
   );
   // The library is read only when a card has something in it to draw.
   const results = shown.flatMap((j) => (j.status === "completed" && j.result_asset_ids[0] ? [j.result_asset_ids[0]] : []));
-  const libraryKey = [...[...pairs.values()].map((p) => p.after), ...results].join(",");
+  // A description is drawn over the picture it describes.
+  const described = shown.flatMap((j) =>
+    j.capability === "describe" && !isUnsuccessful(j.status) && typeof j.params.source_asset_id === "string"
+      ? [j.params.source_asset_id]
+      : [],
+  );
+  const libraryKey = [...[...pairs.values()].map((p) => p.after), ...results, ...described].join(",");
   const library = useLibraryImages(orgId, { enabled: libraryKey !== "", key: libraryKey });
   const pictures = new Map(library.images.map((i) => [i.id, i.viewUrl ?? i.thumbUrl]));
   const chip = "studio-chip tap";
@@ -195,6 +223,12 @@ export function JobFeed({
                 const href = done ? resultHref(job) : null;
                 const retry = isUnsuccessful(job.status) ? prefillFromJob(job) : null;
                 const asSource = done && onUseAsSource ? sourceFromJob(job) : null;
+                const toDescribe = done && onDescribe ? sourceFromJob(job) : null;
+                const description = describeResult(job);
+                const describedPic =
+                  job.capability === "describe" && typeof job.params.source_asset_id === "string"
+                    ? library.previews.get(job.params.source_asset_id)
+                    : undefined;
                 const pair = pairs.get(job.id);
                 const before = pair ? pictures.get(pair.before) : null;
                 const after = pair ? pictures.get(pair.after) : null;
@@ -204,7 +238,17 @@ export function JobFeed({
                 const Icon = isStudioCapability(job.capability) ? TOOL_ICONS[job.capability] : Sparkles;
 
                 let media: ReactNode;
-                if (before && after) {
+                if (kind === "text" && (describedPic?.thumbUrl || describedPic?.viewUrl)) {
+                  media = (
+                    // eslint-disable-next-line @next/next/no-img-element -- signed, short-lived library links
+                    <img
+                      src={(describedPic.thumbUrl ?? describedPic.viewUrl) as string}
+                      alt={t.gen.describedPicture}
+                      loading="lazy"
+                      className={`h-full w-full object-cover${isActiveStatus(job.status) ? " opacity-60" : ""}`}
+                    />
+                  );
+                } else if (before && after) {
                   media = <BeforeAfter bare before={before} after={after} alt={kindLabel(t, job.capability)} />;
                 } else if (done && kind === "image" && (preview?.thumbUrl || preview?.viewUrl || href)) {
                   media = (
@@ -239,6 +283,8 @@ export function JobFeed({
                         <Sparkles aria-hidden className="pulse size-6 text-[var(--color-primary)]" strokeWidth={1.5} />
                       ) : kind === "audio" ? (
                         <AudioLines aria-hidden className="size-7" strokeWidth={1.5} />
+                      ) : kind === "text" ? (
+                        <ScanText aria-hidden className="size-7" strokeWidth={1.5} />
                       ) : (
                         <Icon aria-hidden className="size-6" strokeWidth={1.5} />
                       )}
@@ -257,8 +303,19 @@ export function JobFeed({
                       style={before && after ? undefined : { aspectRatio: cardAspect(job) }}
                     >
                       {media}
-                      {done && (
+                      {done && kind !== "text" && (
                         <div className="studio-card-actions absolute bottom-2 right-2 z-10 flex gap-1.5">
+                          {toDescribe && (
+                            <button
+                              type="button"
+                              className={onMedia}
+                              aria-label={t.gen.describeAction}
+                              title={t.gen.describeAction}
+                              onClick={() => onDescribe?.(toDescribe)}
+                            >
+                              <ScanText aria-hidden className="size-4" />
+                            </button>
+                          )}
                           {asSource && (
                             <button
                               type="button"
@@ -291,6 +348,48 @@ export function JobFeed({
                         </span>
                       </div>
                       {prompt && <p className="studio-clamp-2 break-words text-[13px] leading-snug text-[var(--color-fg)]">{truncate(prompt)}</p>}
+                      {description && (
+                        <div className="flex flex-col gap-2">
+                          <p className="sr-only">{t.gen.descriptionLabel}</p>
+                          <p
+                            lang={description.language}
+                            className="select-text whitespace-pre-wrap break-words rounded-[10px] bg-[var(--studio-field)] p-2.5 text-[13px] leading-relaxed text-[var(--color-fg)]"
+                            data-testid="describe-text"
+                          >
+                            {description.text}
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <button type="button" className={`${chip} gap-1.5`} onClick={() => void copy(job.id, description.text)}>
+                              {copied?.id === job.id && copied.ok ? (
+                                <Check aria-hidden className="size-3.5" />
+                              ) : (
+                                <Copy aria-hidden className="size-3.5" />
+                              )}
+                              {copied?.id === job.id && copied.ok ? t.gen.copied : t.gen.copy}
+                            </button>
+                            {onMakeSimilar && (
+                              <button
+                                type="button"
+                                className={`${chip} gap-1.5`}
+                                title={t.gen.makeSimilarHint}
+                                aria-describedby={`similar-hint-${job.id}`}
+                                onClick={() => onMakeSimilar(similarPrefill(description))}
+                              >
+                                <Sparkles aria-hidden className="size-3.5" />
+                                {t.gen.makeSimilar}
+                              </button>
+                            )}
+                          </div>
+                          <span id={`similar-hint-${job.id}`} className="sr-only">
+                            {t.gen.makeSimilarHint}
+                          </span>
+                          <p className="min-h-[1em] text-[12px]" aria-live="polite">
+                            {copied?.id === job.id && !copied.ok && (
+                              <span className="text-[var(--color-warn)]">{t.gen.copyFailed}</span>
+                            )}
+                          </p>
+                        </div>
+                      )}
                       {job.capability === "dub" && isDubLanguage(job.params.target_language) && (
                         <p className="text-[13px] leading-snug text-[var(--color-fg)]" lang={job.params.target_language}>
                           → {t.gen.languages[job.params.target_language]}

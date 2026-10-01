@@ -10,6 +10,8 @@ import {
   CREATIVE_ERRORS,
   type CreativeCapability,
   type CreativeError,
+  DESCRIBE_LANGUAGES,
+  type DescribeLanguage,
   DUB_LANGUAGES,
   type DubLanguage,
   MEDIA_SOURCE_CAPABILITIES,
@@ -39,8 +41,15 @@ export const STUDIO_CAPABILITIES = ["t2i", "t2v", "tts", "edit", "i2v", "upscale
  */
 export const VOICE_TOOLS = ["voice_change", "dub"] as const satisfies readonly CreativeCapability[];
 
+/**
+ * The tools that READ something rather than make it (migration 0055): describe
+ * a library picture as a prompt. The answer is text on the job — "Make
+ * similar" then fills the image form with it; it never generates by itself.
+ */
+export const READ_TOOLS = ["describe"] as const satisfies readonly CreativeCapability[];
+
 /** Everything the composer can make, in the order it shows the tools (the rest wait for their own UI). */
-export const COMPOSER_CAPABILITIES = [...STUDIO_CAPABILITIES, ...VOICE_TOOLS] as const;
+export const COMPOSER_CAPABILITIES = [...STUDIO_CAPABILITIES, ...VOICE_TOOLS, ...READ_TOOLS] as const;
 export type StudioCapability = (typeof COMPOSER_CAPABILITIES)[number];
 
 /** The tools that start from a picture in the library (migration 0046). */
@@ -66,6 +75,17 @@ export function isDubLanguage(v: unknown): v is DubLanguage {
   return typeof v === "string" && (DUB_LANGUAGES as readonly string[]).includes(v);
 }
 
+export { DESCRIBE_LANGUAGES, type DescribeLanguage };
+
+export function isDescribeLanguage(v: unknown): v is DescribeLanguage {
+  return typeof v === "string" && (DESCRIBE_LANGUAGES as readonly string[]).includes(v);
+}
+
+/** The language a description starts in: the one the person reads the app in, else English. */
+export function defaultDescribeLanguage(locale: unknown): DescribeLanguage {
+  return isDescribeLanguage(locale) ? locale : "en";
+}
+
 export function isVoiceId(v: unknown): v is string {
   return typeof v === "string" && VOICE_ID_RE.test(v);
 }
@@ -75,9 +95,9 @@ export function takesStyle(c: string): boolean {
   return (STYLE_CAPABILITIES as readonly string[]).includes(c);
 }
 
-/** 0046 / 0050: the prompt is required for these, optional for i2v / upscale, refused for remove_bg and the voice tools. */
+/** 0046 / 0050 / 0055: the prompt is required for these, optional for i2v / upscale, refused for remove_bg, the voice tools and describe. */
 export function promptRule(c: StudioCapability): "required" | "optional" | "none" {
-  if (c === "remove_bg" || needsRecording(c)) return "none";
+  if (c === "remove_bg" || c === "describe" || needsRecording(c)) return "none";
   if (c === "i2v" || c === "upscale") return "optional";
   return "required";
 }
@@ -180,6 +200,8 @@ export interface StudioForm {
   voiceId?: string | null;
   /** The language a dub is made in (0050). */
   targetLanguage?: DubLanguage | null;
+  /** The language a description is written in (0055); absent = English. */
+  describeLanguage?: DescribeLanguage | null;
 }
 
 type ParamKey = (typeof PARAM_KEYS)[number];
@@ -212,6 +234,11 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
       return { ...(prompt ? { prompt } : {}), source_asset_id: source, factor: form.factor ?? 2 };
     case "remove_bg":
       return { source_asset_id: source };
+    case "describe":
+      // The picture is the whole input: no words, no shape (0055 refuses them).
+      return isDescribeLanguage(form.describeLanguage)
+        ? { source_asset_id: source, language: form.describeLanguage }
+        : { source_asset_id: source };
     case "voice_change":
       // The length (and so the price) is the recording's own: never sent.
       return { source_asset_id: source, voice_id: form.voiceId ?? "" };
@@ -272,6 +299,7 @@ export const WORDS_FREE_PRICE: readonly StudioCapability[] = [
   "remove_bg",
   "voice_change",
   "dub",
+  "describe",
 ];
 const PRICE_STAND_IN = "price check";
 
@@ -310,11 +338,16 @@ export type QuoteState =
   | { status: "ready"; credits: number }
   | { status: "error"; code: CreativeError };
 
-/** Price on the button: "Generate · N credits" once the database has priced it. */
-export function generateLabel(t: Dictionary, quote: QuoteState, locale = "en"): string {
+/**
+ * Price on the button: "Generate · N credits" once the database has priced it
+ * ("Describe · N credits" for a description: the press pays for text, not a picture).
+ */
+export function generateLabel(t: Dictionary, quote: QuoteState, locale = "en", capability?: string): string {
   if (quote.status === "quoting") return t.gen.quoting;
-  if (quote.status === "ready") return fmt(t.gen.generatePriced, { n: formatCredits(quote.credits, locale) });
-  return t.gen.generate;
+  const reads = capability === "describe";
+  if (quote.status === "ready")
+    return fmt(reads ? t.gen.describePriced : t.gen.generatePriced, { n: formatCredits(quote.credits, locale) });
+  return reads ? t.gen.describe : t.gen.generate;
 }
 
 export function asCreativeError(code: unknown): CreativeError {
@@ -501,8 +534,73 @@ export function sourceFromJob(job: Pick<StudioJob, "status" | "capability" | "re
   return isUuid(id) ? id : null;
 }
 
-/** What a finished job made, for its card: a picture, a clip or a voice. */
-export function outputKind(capability: string): "image" | "video" | "audio" {
+// ── descriptions (0055) ────────────────────────────────────────────────────
+
+export interface DescribeResult {
+  text: string;
+  language: DescribeLanguage;
+  /** The picture's pixel size as the library recorded it, when known. */
+  width: number | null;
+  height: number | null;
+}
+
+/** A finished description: its text (never more than 0055 allows) and the picture's size; else null. */
+export function describeResult(job: Pick<StudioJob, "status" | "capability" | "result">): DescribeResult | null {
+  if (job.status !== "completed" || job.capability !== "describe" || !job.result) return null;
+  const r = job.result;
+  const text = typeof r.text === "string" ? r.text.trim().slice(0, DESCRIBE_MAX) : "";
+  if (!text) return null;
+  const px = (v: unknown) => (typeof v === "number" && Number.isInteger(v) && v > 0 ? v : null);
+  return {
+    text,
+    language: isDescribeLanguage(r.language) ? r.language : "en",
+    width: px(r.width),
+    height: px(r.height),
+  };
+}
+
+/** 0055's longest description. */
+export const DESCRIBE_MAX = 600;
+
+/**
+ * The composer's shape nearest to a picture's own; the form's usual 16:9 when
+ * the size is not known (the person sees it picked and can change it).
+ */
+export function nearestAspect(width: number | null, height: number | null): AspectRatio {
+  if (!width || !height) return "16:9";
+  const r = Math.log(width / height);
+  const options: [AspectRatio, number][] = [
+    ["16:9", Math.log(16 / 9)],
+    ["9:16", Math.log(9 / 16)],
+    ["1:1", 0],
+  ];
+  return options.reduce((best, o) => (Math.abs(o[1] - r) < Math.abs(best[1] - r) ? o : best))[0];
+}
+
+/**
+ * "Make similar": the image form with the description as its words and the
+ * picture's shape. It FILLS the form only — the person still reads the price
+ * on Generate and presses it; nothing is made from here.
+ */
+export function similarPrefill(d: Pick<DescribeResult, "text" | "width" | "height">): StudioPrefill {
+  return {
+    capability: "t2i",
+    model: "",
+    prompt: d.text.slice(0, PROMPT_MAX),
+    aspect: nearestAspect(d.width, d.height),
+    duration: 5,
+  };
+}
+
+/** "Describe" from a finished picture: the composer on describe with that picture; priced there, never started here. */
+export function describePrefill(assetId: string, language: DescribeLanguage): StudioPrefill | null {
+  if (!isUuid(assetId)) return null;
+  return { capability: "describe", model: "", prompt: "", aspect: "16:9", duration: 5, sourceId: assetId, factor: 2, describeLanguage: language };
+}
+
+/** What a finished job made, for its card: a picture, a clip, a voice or (a description) text. */
+export function outputKind(capability: string): "image" | "video" | "audio" | "text" {
+  if (capability === "describe") return "text";
   if (capability === "t2v" || capability === "i2v") return "video";
   if (capability === "tts" || capability === "sfx" || capability === "music" || needsRecording(capability)) return "audio";
   return "image";
@@ -510,7 +608,8 @@ export function outputKind(capability: string): "image" | "video" | "audio" {
 
 /** The card's shape: the shape that was asked for, else square (a picture tool keeps its own). */
 export function cardAspect(job: Pick<StudioJob, "capability" | "params">): string {
-  if (outputKind(job.capability) === "audio") return "16 / 7";
+  const kind = outputKind(job.capability);
+  if (kind === "audio" || kind === "text") return "16 / 7";
   const a = job.params.aspect_ratio;
   if (a === "16:9") return "16 / 9";
   if (a === "9:16") return "9 / 16";
@@ -532,6 +631,8 @@ export interface StudioPrefill {
   voiceId?: string | null;
   /** A dub's language (0050), when the job had an offered one. */
   targetLanguage?: DubLanguage | null;
+  /** A description's language (0055), when the job named an offered one. */
+  describeLanguage?: DescribeLanguage | null;
 }
 
 function asFactor(v: unknown): UpscaleFactor {
@@ -553,6 +654,7 @@ export function prefillFromJob(job: StudioJob): StudioPrefill | null {
       ? { sourceId: isUuid(p.source_asset_id) ? p.source_asset_id : null, factor: asFactor(p.factor) }
       : {}),
     ...(takesStyle(job.capability) ? { styleKitId: isUuid(p.style_kit_id) ? p.style_kit_id : null } : {}),
+    ...(job.capability === "describe" ? { describeLanguage: isDescribeLanguage(p.language) ? p.language : "en" } : {}),
     ...(job.capability === "tts" ? { voiceId: isVoiceId(p.voice_id) ? p.voice_id : null } : {}),
     ...(needsRecording(job.capability)
       ? {

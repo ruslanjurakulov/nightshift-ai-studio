@@ -475,6 +475,60 @@
       }
     },
     {
+      "id": "gemini-3.6-flash",
+      "display_name": "Gemini 3.6 Flash",
+      "provider": "google",
+      "adapter": "image.gemini_describe",
+      "vendor_model": "gemini-3.6-flash",
+      "capabilities": [
+        "describe"
+      ],
+      "output": "text",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://ai.google.dev/gemini-api/docs/image-understanding",
+        "checked_at": "2026-10-01",
+        "source": "vendor_docs_search",
+        "evidence": "ai.google.dev image-understanding and api/generate-content pages, read 2026-10-01: inlineData (mimeType, data) parts, systemInstruction, generationConfig.maxOutputTokens, PNG/JPEG/WebP/HEIC, 20 MB per request",
+        "note": "the same text model and generateContent call the pipeline already uses (config.GEMINI_MODEL, modules/video_critic.py sends it pictures)"
+      },
+      "pricing": {
+        "unit": "request",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "billed per input and output token; no per-request figure, so none is claimed"
+      },
+      "credit_unit": "model_gemini_3_6_flash_request",
+      "entitlement": null,
+      "terms_gate": null,
+      "terms_notes": [
+        "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 4
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "describe",
+        "prompt": "describe the probe frame",
+        "input_image": "generated"
+      }
+    },
+    {
       "id": "flux-2-pro",
       "display_name": "FLUX.2 Pro",
       "provider": "bfl",

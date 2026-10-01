@@ -4,7 +4,8 @@ import { useRef, useState, type CSSProperties } from "react";
 import { GeneratePanel } from "@/components/studio/GeneratePanel";
 import { JobFeed } from "@/components/studio/JobFeed";
 import { TemplateGallery } from "@/components/studio/TemplateGallery";
-import type { StudioModel, StudioPrefill } from "@/lib/creative/studio";
+import { useI18n } from "@/lib/i18n/context";
+import { defaultDescribeLanguage, describePrefill, type StudioModel, type StudioPrefill } from "@/lib/creative/studio";
 import type { UpsellCatalog } from "@/lib/upsell";
 
 /**
@@ -15,7 +16,9 @@ import type { UpsellCatalog } from "@/lib/upsell";
  *
  * "Try again" and a template refill the composer (a fresh mount with those
  * settings); "Use as picture" hands a finished picture to it without clearing
- * the words. None of them starts a generation: only Generate does.
+ * the words. "Describe" on a finished picture opens the composer on Describe
+ * with that picture, and "Make similar" on a description opens it on Image with
+ * the text. None of them starts a generation: only the priced press does.
  */
 export function GenerateSection({
   orgId,
@@ -41,6 +44,7 @@ export function GenerateSection({
   );
   const [sourceRequest, setSourceRequest] = useState<{ nonce: number; id: string } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const { locale } = useI18n();
   const top = useRef<HTMLDivElement>(null);
 
   const toComposer = () => top.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
@@ -55,6 +59,11 @@ export function GenerateSection({
   const pickAsSource = (id: string) => {
     setSourceRequest((r) => ({ nonce: (r?.nonce ?? 0) + 1, id }));
     toComposer();
+  };
+
+  const describe = (id: string) => {
+    const value = describePrefill(id, defaultDescribeLanguage(locale));
+    if (value) fill(value);
   };
 
   const dock = { "--studio-dock-offset": bottomBar ? "60px" : "0px" } as CSSProperties;
@@ -79,7 +88,15 @@ export function GenerateSection({
       </div>
       <div className="flex min-w-0 flex-col gap-6" data-testid="gen-canvas">
         <TemplateGallery onPick={fill} />
-        <JobFeed orgId={orgId} models={models} refreshKey={refreshKey} onRetry={fill} onUseAsSource={pickAsSource} />
+        <JobFeed
+          orgId={orgId}
+          models={models}
+          refreshKey={refreshKey}
+          onRetry={fill}
+          onUseAsSource={pickAsSource}
+          onDescribe={describe}
+          onMakeSimilar={fill}
+        />
       </div>
     </div>
   );

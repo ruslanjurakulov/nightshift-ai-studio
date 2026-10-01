@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from modules.capabilities import ADAPTERS
 from modules.capabilities.base import (
+    DESCRIBE,
     DUB,
     IMAGE_INPUT,
     MEDIA_INPUT,
@@ -260,6 +261,8 @@ class ModelEntry:
             out.append(f"{self.id} does not dub into {request.target_language or '(no language)'}")
         if cap != DUB and request.target_language is not None:
             out.append(f"a target language does not apply to {cap}")
+        if cap != DESCRIBE and request.output_language is not None:
+            out.append(f"an output language does not apply to {cap}")
         return out
 
     def probe_request(self, *, voice_id: Optional[str] = None,
@@ -280,7 +283,8 @@ class ModelEntry:
         if speech:
             media = (generated_speech or "<speech>.mp3",)
         cap = p["capability"]
-        return CapabilityRequest(capability=cap, prompt="" if speech else p["prompt"],
+        # A description takes no words of ours either: the picture is the input.
+        return CapabilityRequest(capability=cap, prompt="" if speech or cap == DESCRIBE else p["prompt"],
                                  aspect_ratio=p.get("aspect_ratio"), resolution=p.get("resolution"),
                                  image_size=p.get("image_size"), duration_s=p.get("duration_s"),
                                  voice_id=None if cap == DUB else voice_id, input_images=tuple(images),
