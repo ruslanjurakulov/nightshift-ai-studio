@@ -17,6 +17,7 @@ import { prefillFromQuery } from "@/lib/creative/studio";
 import { runPrefillFromQuery, runnableChannels, toolPrefill } from "@/lib/home";
 import { AssistantPlanner } from "@/components/assistant/AssistantPlanner";
 import { channelDnaForCreate } from "@/lib/server/channel-dna";
+import { parseStyleId } from "@/lib/style-kits";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -60,6 +61,13 @@ export default async function CreatePage({
   // Fills the form; Create still shows the price and asks before it runs.
   const runInitial = runPrefillFromQuery(q);
   const operator = await isOperator();
+  // "Use in Studio" from the Style Library (/create?tool=t2i&style=<kit>) picks that
+  // kit as the starting style — fills the chip, nothing more. The panel keeps it only
+  // if it is one of the organization's kits as loaded, so a stale or foreign id reads
+  // as "None". Without it, the channel's own default look starts the form.
+  const askedStyle = typeof q.style === "string" ? parseStyleId(q.style) : null;
+  const startStyleKitId =
+    askedStyle ?? (typeof scopedChannel?.default_style_kit_id === "string" ? scopedChannel.default_style_kit_id : null);
 
   const run = (
     <CreateStudio
@@ -107,13 +115,13 @@ export default async function CreatePage({
           key the panel would keep the tool it already had. */}
       {genOrgId && (
         <GenerateSection
-          key={`${initial?.capability ?? ""}:${initial?.sourceId ?? ""}`}
+          key={`${initial?.capability ?? ""}:${initial?.sourceId ?? ""}:${askedStyle ?? ""}`}
           orgId={genOrgId}
           models={models}
           initial={initial}
           // The channel's look (0047) is the starting style; the panel uses it
           // only if it is one of the organization's kits as loaded.
-          defaultStyleKitId={typeof scopedChannel?.default_style_kit_id === "string" ? scopedChannel.default_style_kit_id : null}
+          defaultStyleKitId={startStyleKitId}
           dna={dna.studio}
           // The platform operator has no phone tab bar to dock Generate above.
           bottomBar={!operator}
