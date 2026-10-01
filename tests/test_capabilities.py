@@ -204,13 +204,26 @@ class NoKeyAnywhereTests(unittest.TestCase):
 
     def test_every_adapter_scrubs_an_echoed_key(self):
         echo = FakeResp(401, f'{{"error": "bad key {SECRET} / {ACCESS} / {SK} Bearer {SECRET}"}}')
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        local = Path(tmp.name) / "a.png"
+        local.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
+        clip = Path(tmp.name) / "clip.mp4"
+        clip.write_bytes(b"\x00\x00\x00\x18ftypisom" + b"\x00" * 1024)
         for key, cls in ADAPTERS.items():
             entry = next(e for e in reg.load().values() if e.adapter == key)
-            req = entry.probe_request(voice_id="A" * 20, generated_image=None)
-            if req.input_images:
-                req = CapabilityRequest(req.capability, req.prompt, aspect_ratio=req.aspect_ratio,
-                                        duration_s=req.duration_s, input_images=("https://x.test/a.png",))
+            req = entry.probe_request(voice_id="A" * 20, generated_image=None, generated_video=str(clip))
             a = build_adapter(key, env=ENV, session=FakeSession([("POST", "", echo), ("GET", "", echo)]))
+            if req.input_images:
+                # A local copy (what the worker hands over), or a URL for the
+                # vendors that only fetch one: either way the call is made.
+                first = CapabilityRequest(req.capability, req.prompt, aspect_ratio=req.aspect_ratio,
+                                          duration_s=req.duration_s, input_images=(str(local),))
+                url = CapabilityRequest(req.capability, req.prompt, aspect_ratio=req.aspect_ratio,
+                                        duration_s=req.duration_s, input_images=("https://x.test/a.png",))
+                req = url if any("https URL" in p for p in a.problems(first, entry)) else first
+            if hasattr(a, "fps_of"):
+                a.fps_of = lambda _path: 24.0
             with self.assertRaises(AdapterError) as cm:
                 a.submit(req, entry.vendor_model)
             logging.getLogger("test").error("adapter failed: %s", cm.exception)

@@ -32,7 +32,7 @@ import { GenerateSection } from "@/components/studio/GenerateSection";
 import { pricedIds } from "@/components/studio/useModelPrices";
 import {
   SHEET_PRICE_MAX,
-  COMPOSER_CAPABILITIES,
+  PANEL_CAPABILITIES,
   blockedReason,
   sheetQuoteParams,
   sourceFromJob,
@@ -136,7 +136,7 @@ describe("tool tabs", () => {
     render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} />));
     const list = screen.getByRole("tablist", { name: t.gen.kindLabel });
     const tabs = within(list).getAllByRole("tab");
-    expect(tabs.map((x) => x.textContent)).toEqual(COMPOSER_CAPABILITIES.map((c) => t.gen.tabs[c]));
+    expect(tabs.map((x) => x.textContent)).toEqual(PANEL_CAPABILITIES.map((c) => t.gen.tabs[c]));
     expect(tabs.filter((x) => x.getAttribute("tabindex") === "0")).toHaveLength(1);
 
     const image = screen.getByRole("tab", { name: t.gen.tabs.t2i });
@@ -149,14 +149,15 @@ describe("tool tabs", () => {
     expect(document.activeElement).toBe(video);
 
     fireEvent.keyDown(video, { key: "End" });
-    expect(screen.getByRole("tab", { name: t.gen.tabs.describe }).getAttribute("aria-selected")).toBe("true");
-    fireEvent.keyDown(screen.getByRole("tab", { name: t.gen.tabs.describe }), { key: "ArrowRight" });
+    const last = t.gen.tabs[PANEL_CAPABILITIES[PANEL_CAPABILITIES.length - 1]];
+    expect(screen.getByRole("tab", { name: last }).getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(screen.getByRole("tab", { name: last }), { key: "ArrowRight" });
     expect(screen.getByRole("tab", { name: t.gen.tabs.t2i }).getAttribute("aria-selected")).toBe("true");
   });
 
   it("every language names every tab", () => {
     for (const d of Object.values(dictionaries)) {
-      for (const c of COMPOSER_CAPABILITIES) expect(d.gen.tabs[c].trim()).not.toBe("");
+      for (const c of PANEL_CAPABILITIES) expect(d.gen.tabs[c].trim()).not.toBe("");
     }
   });
 

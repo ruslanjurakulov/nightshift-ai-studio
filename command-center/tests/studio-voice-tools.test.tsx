@@ -252,13 +252,13 @@ describe("pinned to 0050", () => {
     expect(fn("creative_params_problem")).toContain(`not in (${DUB_LANGUAGES.map((l) => `'${l}'`).join(", ")})`);
   });
 
-  it("every capability and param key the code sends is one 0050 accepts", () => {
-    // Added later by 0055 (describe) and pinned against it in studio-describe.test.tsx.
-    const later = ["describe", "language"];
+  it("every capability and param key the code sends is one 0050 accepts (0052's own are pinned to 0052)", () => {
+    // 0052's and 0055's own are pinned to 0052 / 0055 (studio-video-tools, studio-describe).
+    const later: readonly string[] = ["video_upscale", "target_resolution", "end_asset_id", "describe", "language"];
     const supported = fn("creative_capability_supported");
-    for (const c of CREATIVE_CAPABILITIES.filter((c) => !later.includes(c))) expect(supported, c).toContain(`'${c}'`);
+    for (const c of CREATIVE_CAPABILITIES) if (!later.includes(c)) expect(supported, c).toContain(`'${c}'`);
     const params = fn("creative_params_problem");
-    for (const k of PARAM_KEYS.filter((k) => !later.includes(k))) expect(params, k).toContain(`'${k}'`);
+    for (const k of PARAM_KEYS) if (!later.includes(k)) expect(params, k).toContain(`'${k}'`);
     for (const c of MEDIA_SOURCE_CAPABILITIES) expect(CAPABILITIES as readonly string[]).toContain(c);
   });
 

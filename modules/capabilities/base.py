@@ -50,10 +50,13 @@ UPSCALE = "upscale"  # image → the same image, 2x / 4x the pixels (CapabilityR
 REMOVE_BG = "remove_bg"  # image → the subject on a transparent background
 VOICE_CHANGE = "voice_change"  # speech (audio / video) → the same performance in another voice
 DUB = "dub"          # speech (audio / video) → the dubbed speech in a target language
+#: a video → the same video at a higher resolution (0052; CapabilityRequest.upscale_target)
+VIDEO_UPSCALE = "video_upscale"
 DESCRIBE = "describe"  # image → text: a generation prompt for that picture (0055)
-CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, DESCRIBE)
+CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE)
 OUTPUT_OF = {T2I: "image", EDIT: "image", T2V: "video", I2V: "video", TTS: "audio", SFX: "audio",
-             UPSCALE: "image", REMOVE_BG: "image", VOICE_CHANGE: "audio", DUB: "audio", DESCRIBE: "text"}
+             UPSCALE: "image", REMOVE_BG: "image", VOICE_CHANGE: "audio", DUB: "audio",
+             VIDEO_UPSCALE: "video", DESCRIBE: "text"}
 #: Capabilities whose input is an image (CapabilityRequest.input_images).
 IMAGE_INPUT = frozenset({EDIT, I2V, UPSCALE, REMOVE_BG, DESCRIBE})
 #: Capabilities whose output is text kept on the job row, never a file in the
@@ -64,10 +67,15 @@ DESCRIBE_LANGUAGES = ("en", "ru", "uz")
 #: Capabilities whose input is a recording — audio or video with speech
 #: (CapabilityRequest.input_media, migration 0050). Never mixed with images.
 MEDIA_INPUT = frozenset({VOICE_CHANGE, DUB})
+#: Capabilities whose input is a video file (0052) — also carried in
+#: CapabilityRequest.input_media, never as a picture, never with speech rules.
+VIDEO_INPUT = frozenset({VIDEO_UPSCALE})
+#: Everything that starts from a media file rather than a picture.
+FILE_INPUT = MEDIA_INPUT | VIDEO_INPUT
 #: Capabilities where the prompt is optional (i2v, upscale) or absent
-#: (remove_bg, and the voice tools: the recording is the whole input).
+#: (remove_bg, the voice tools and the video upscale: the file is the whole input).
 #: describe sends no prompt of the person's: the adapter writes the request.
-PROMPT_OPTIONAL = frozenset({I2V, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, DESCRIBE})
+PROMPT_OPTIONAL = frozenset({I2V, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE})
 
 # ── task states ──────────────────────────────────────────────────────────────
 PENDING = "pending"
@@ -190,6 +198,14 @@ class CapabilityRequest:
     #: The language a dub is made in (``dub`` only): a base BCP-47 tag the
     #: registry entry lists in ``languages``.
     target_language: Optional[str] = None
+    #: The picture the clip must END on (``i2v`` only, 0052): a local path
+    #: the worker copied from the library, never a URL from a job row. Only
+    #: for a registry entry with ``end_frame``; the first frame stays
+    #: ``input_images[0]``.
+    end_image: Optional[str] = None
+    #: The output resolution of a ``video_upscale`` (0052): one of the
+    #: entry's ``upscale_targets`` — the vendor takes a target, not a factor.
+    upscale_target: Optional[str] = None
     #: The language a description is written in (``describe`` only, 0055):
     #: one of DESCRIBE_LANGUAGES; None = English.
     output_language: Optional[str] = None
@@ -286,6 +302,11 @@ class HttpAdapter:
     #: take several images for that capability: an adapter that would drop
     #: them, or read them as a first frame, must never receive them.
     reference_capabilities: Sequence[str] = ()
+    #: Capabilities for which this adapter sends ``CapabilityRequest.end_image``
+    #: as the clip's last frame (0052). An adapter that would drop it — and
+    #: so deliver a clip that does not end where the person asked — never
+    #: receives one: the registry refuses ``end_frame`` on any other adapter.
+    end_frame_capabilities: Sequence[str] = ()
     timeout = 60
 
     def __init__(self, *, env: Optional[Mapping[str, str]] = None, session=None):
@@ -327,6 +348,8 @@ class HttpAdapter:
         out: List[str] = []
         if request.capability not in self.capabilities:
             out.append(f"adapter {self.key} cannot do {request.capability}")
+        if request.end_image and request.capability not in self.end_frame_capabilities:
+            out.append(f"adapter {self.key} cannot end a clip on a chosen frame")
         out.extend(entry.problems(request))
         return out
 

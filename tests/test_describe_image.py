@@ -297,5 +297,40 @@ class Worker(Tmp):
         self.assertEqual(q.finished["result"]["text"], "A field of tulips. Visit now.")
 
 
+# ── 0055 is built on 0052 ────────────────────────────────────────────────────
+
+class BuiltOnTheVideoTools(unittest.TestCase):
+    """``create or replace`` keeps the LAST definition: a 0055 written on older
+    bodies would silently remove 0052's video_upscale and i2v end frame. Every
+    function both files replace must keep every literal 0052's body has."""
+
+    MIGRATIONS = Path(__file__).resolve().parent.parent / "supabase" / "migrations"
+
+    @staticmethod
+    def bodies(text):
+        import re
+        return {m.group(1): m.group(0) for m in
+                re.finditer(r"create or replace function public\.(\w+)\(.*?\n\$\$;\n", text, re.S)}
+
+    def test_every_function_0055_replaces_keeps_all_of_0052(self):
+        import re
+        old = self.bodies((self.MIGRATIONS / "0052_video_tools.sql").read_text())
+        new = self.bodies((self.MIGRATIONS / "0055_describe_image.sql").read_text())
+        shared = set(old) & set(new)
+        self.assertTrue({"creative_params_problem", "creative_source_problem", "sellable_models",
+                         "creative_capability_supported"} <= shared)
+        for name in shared:
+            # Comments carry apostrophes ("the source's shape"): strip them, then
+            # read the SQL string literals ('' is an escaped quote inside one).
+            code = re.sub(r"--[^\n]*", "", old[name])
+            for literal in set(re.findall(r"'(?:[^']|'')*'", code)):
+                self.assertIn(literal, new[name], f"{name} lost {literal} from 0052")
+
+    def test_0055_needs_0052_first(self):
+        text = (self.MIGRATIONS / "0055_describe_image.sql").read_text()
+        self.assertIn("creative_picture_problem(uuid, uuid, text)') is null", text)
+        self.assertIn("'video_upscale','describe'", text)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -19,8 +19,13 @@ job folder), the capability layer knows vendors (``CapabilityRequest``,
 * input images are the local files the worker resolved from the media
   library (``GenerationRequest.input_files``) — never a URL from a job row;
   for the voice tools (0050) that one file is a recording and goes to the
-  adapter as ``input_media``, never as a picture; for ``describe`` (0055) it
-  is the one picture read, and the answer comes back as one text output;
+  adapter as ``input_media``, never as a picture; so is the video a video
+  upscale (0052) starts from; for ``describe`` (0055) it is the one picture
+  read, and the answer comes back as one text output;
+* an i2v's end frame (0052, ``GenerationRequest.end_file``) goes as
+  ``end_image`` only to a model whose registry entry has ``end_frame`` — a
+  model that would drop it fails the job before any call instead of
+  delivering a clip that ends somewhere else;
 * style / character reference pictures (0048,
   ``GenerationRequest.reference_files``) follow them only for a capability
   the adapter lists in ``reference_capabilities``, and only as many as the
@@ -48,8 +53,10 @@ from modules.creative_style import StyleSupport
 from modules.capabilities import build_adapter
 from modules.capabilities.base import (
     FAILED,
+    FILE_INPUT,
     MEDIA_INPUT,
     PENDING,
+    VIDEO_INPUT,
     SUCCEEDED,
     AdapterError,
     CapabilityRequest,
@@ -91,7 +98,8 @@ def _str(v) -> Optional[str]:
 def capability_request(request: GenerationRequest) -> CapabilityRequest:
     """The job's validated params (0036/0046) in the capability layer's terms."""
     p: Mapping = request.params or {}
-    recording = request.capability in MEDIA_INPUT
+    # A recording (0050) or a video (0052): a file, never a picture.
+    recording = request.capability in FILE_INPUT
     return CapabilityRequest(
         capability=request.capability,
         # The worker's prompt when it appended a style guide (0048), else the stored one.
@@ -107,6 +115,8 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         input_images=() if recording else tuple(str(f) for f in (*request.input_files, *request.reference_files)),
         input_media=tuple(str(f) for f in request.input_files) if recording else (),
         target_language=_str(p.get("target_language")),
+        end_image=str(request.end_file) if request.end_file is not None else None,
+        upscale_target=_str(p.get("target_resolution")),
         # describe (0055): the language the description is written in.
         output_language=_str(p.get("language")),
     )
@@ -148,6 +158,9 @@ class RegistryAdapter:
                 cap not in getattr(self.adapter, "reference_capabilities", ())
                 or len(request.input_files) + len(request.reference_files) > self.entry.image_refs_max):
             raise CreativeAdapterError("bad_request", f"{self.entry.id} cannot take these reference pictures")
+        # The job asked for an end frame: it is sent, or nothing is.
+        if request.params.get("end_asset_id") and (request.end_file is None or not self.entry.end_frame):
+            raise CreativeAdapterError("bad_request", f"{self.entry.id} cannot end this clip on the chosen picture")
         req = capability_request(request)
         problems = self.adapter.problems(req, self.entry)
         if problems:
@@ -193,8 +206,8 @@ class RegistryAdapter:
         the registry's prices are unconfirmed, and unknown is never 0."""
         unit = self.entry.raw.get("pricing", {}).get("unit")
         p = request.params or {}
-        if request.capability in MEDIA_INPUT:
-            # The recording's seconds, as the database measured and priced them.
+        if request.capability in MEDIA_INPUT or request.capability in VIDEO_INPUT:
+            # The recording's (or video's) seconds, as the database measured and priced them.
             qty = request.quantity if unit == "second" else None
         else:
             qty = {"second": _int(p.get("duration_s")),

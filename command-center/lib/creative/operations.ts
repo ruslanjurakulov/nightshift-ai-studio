@@ -47,6 +47,7 @@ export const CREATIVE_CAPABILITIES = [
   "remove_bg",
   "voice_change",
   "dub",
+  "video_upscale",
   "describe",
 ] as const;
 export type CreativeCapability = (typeof CREATIVE_CAPABILITIES)[number];
@@ -74,6 +75,22 @@ export type DescribeLanguage = (typeof DESCRIBE_LANGUAGES)[number];
  * the quantity (the recording's seconds), never this code or the browser.
  */
 export const MEDIA_SOURCE_CAPABILITIES = ["voice_change", "dub"] as const satisfies readonly CreativeCapability[];
+
+/**
+ * The capabilities whose input is a library VIDEO (migration 0052). Whether it
+ * may be used — the SAME organization's, live, a type the provider takes, of
+ * a measured length within the model's limit — is decided by the database;
+ * so is the quantity (the video's seconds), never this code or the browser.
+ */
+export const VIDEO_SOURCE_CAPABILITIES = ["video_upscale"] as const satisfies readonly CreativeCapability[];
+
+/**
+ * 0052's explicit allow-list for a video upscale's `target_resolution` (the
+ * model must list it too, spec.upscale_targets). The provider takes a target
+ * size, not a factor.
+ */
+export const UPSCALE_TARGETS = ["720p", "1k", "2k", "4k"] as const;
+export type UpscaleTarget = (typeof UPSCALE_TARGETS)[number];
 
 /** 0050's explicit allow-list for a dub's `target_language` (the model must list it too). */
 export const DUB_LANGUAGES = ["uz", "ru", "en"] as const;
@@ -105,6 +122,8 @@ export const PARAM_KEYS = [
   "factor",
   "style_kit_id",
   "target_language",
+  "target_resolution",
+  "end_asset_id",
   "language",
 ] as const;
 
@@ -267,12 +286,13 @@ export function parseGenerationInput(
   if (JSON.stringify(params).length > MAX_PARAMS_BYTES)
     return { ok: false, result: fail(400, "invalid_params", { detail: "params are too large" }) };
   const recorded = (MEDIA_SOURCE_CAPABILITIES as readonly string[]).includes(capability);
-  const sourced = recorded || (SOURCE_CAPABILITIES as readonly string[]).includes(capability);
+  const filmed = (VIDEO_SOURCE_CAPABILITIES as readonly string[]).includes(capability);
+  const sourced = recorded || filmed || (SOURCE_CAPABILITIES as readonly string[]).includes(capability);
   if (sourced && !isUuid(params.source_asset_id))
     return {
       ok: false,
       result: fail(400, "invalid_params", {
-        detail: `source_asset_id (${recorded ? "an audio or video file" : "an image"} in the media library) is required for ${capability}`,
+        detail: `source_asset_id (${recorded ? "an audio or video file" : filmed ? "a video" : "an image"} in the media library) is required for ${capability}`,
       }),
     };
   if (!sourced && params.source_asset_id !== undefined)
@@ -291,9 +311,19 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: `language must be one of ${DESCRIBE_LANGUAGES.join(", ")}` }) };
   if (capability !== "describe" && params.language !== undefined)
     return { ok: false, result: fail(400, "invalid_params", { detail: `language does not apply to ${capability}` }) };
-  if (recorded && params.duration_s !== undefined)
-    // The length is the recording's own, measured by the database — never sent.
+  if ((recorded || filmed) && params.duration_s !== undefined)
+    // The length is the file's own, measured by the database — never sent.
     return { ok: false, result: fail(400, "invalid_params", { detail: `duration_s does not apply to ${capability}` }) };
+  if (filmed && !(UPSCALE_TARGETS as readonly unknown[]).includes(params.target_resolution))
+    return { ok: false, result: fail(400, "invalid_params", { detail: `target_resolution must be one of ${UPSCALE_TARGETS.join(", ")}` }) };
+  if (!filmed && params.target_resolution !== undefined)
+    return { ok: false, result: fail(400, "invalid_params", { detail: `target_resolution does not apply to ${capability}` }) };
+  if (params.end_asset_id !== undefined) {
+    if (capability !== "i2v")
+      return { ok: false, result: fail(400, "invalid_params", { detail: `end_asset_id does not apply to ${capability}` }) };
+    if (!isUuid(params.end_asset_id))
+      return { ok: false, result: fail(400, "invalid_params", { detail: "end_asset_id must be the id of an image in the media library" }) };
+  }
   if (params.style_kit_id !== undefined) {
     if (!(STYLE_CAPABILITIES as readonly string[]).includes(capability))
       return { ok: false, result: fail(400, "invalid_params", { detail: `style_kit_id does not apply to ${capability}` }) };

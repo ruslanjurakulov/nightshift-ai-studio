@@ -11,6 +11,10 @@ an id that does not exist, and nothing may be held. A finished description of
 one organization must never be readable by a member of another — viewers
 included — nor by anon. And a description is never a library asset.
 
+0055 is built on 0052 (video_upscale, the i2v end frame): the same functions
+are replaced, so the lab also proves that applying 0055 after 0052 keeps
+both video tools quoting exactly as 0052 made them.
+
 Runs in its own scratch database (it commits), like the 0046 and 0050 labs.
 """
 import json
@@ -54,7 +58,23 @@ def db():
              "credit_unit": unit, "entitlement": None,
              "spec": {"vendor_model": "acme-" + m, "output": "text"}}
             for m, cap, unit in MODELS]
+    # 0052's video tools, to prove 0055 did not take them away.
+    rows += [
+        {"id": "vup", "display_name": "vup", "provider": "acme", "adapter": "video.acme_up",
+         "capabilities": ["video_upscale"], "credit_unit": "model_vup_second", "entitlement": "any",
+         "spec": {"vendor_model": "acme-vup", "output": "video", "upscale_targets": ["4k"],
+                  "limits": {"max_source_seconds": 30}}},
+        {"id": "i2v-end", "display_name": "i2v-end", "provider": "acme", "adapter": "video.acme",
+         "capabilities": ["i2v"], "credit_unit": "model_i2v_end_second", "entitlement": "any",
+         "spec": {"vendor_model": "acme-i2v-end", "output": "video", "end_frame": True}},
+    ]
     d.su("select public.sync_model_registry(%s::jsonb)", [json.dumps(rows)])
+    for m, cap, adapter in [("vup", "video_upscale", "video.acme_up"), ("i2v-end", "i2v", "video.acme")]:
+        d.su("select public.record_model_probe(%s, %s, %s, %s, true, null, null, 10, 100, 'security-lab')",
+             [m, adapter, "acme-" + m, cap])
+        d.su("update public.model_registry set availability='beta' where id=%s", [m])
+    d.su("insert into public.credit_prices (unit, credits_per_unit, margin) values ('model_vup_second', 1, 0), "
+         "('model_i2v_end_second', 2, 0) on conflict (unit) do update set credits_per_unit = excluded.credits_per_unit")
     for m, cap, _u in MODELS:
         d.su("select public.record_model_probe(%s, 'image.acme_describe', %s, %s, true, null, null, 10, 100, "
              "'security-lab')", [m, "acme-" + m, cap])
@@ -73,6 +93,7 @@ def db():
         "a_mp3": pic(d, ORG_A, "audio", "audio/mpeg"),
         "a_deleted": pic(d, ORG_A, "image", "image/jpeg"),
         "b_png": pic(d, ORG_B, "image", "image/png"),
+        "a_mp4": pic(d, ORG_A, "video", "video/mp4", width=640, height=360),
     }
     d.act("authenticated", UA, "select public.soft_delete_asset(%s)", [d.assets["a_deleted"]])
     try:
@@ -87,7 +108,8 @@ def pic(d, org, kind, mime, *, width=64, height=64, nbytes=1000):
     d.act("service_role", None,
           "select public.register_asset(%s, %s, %s, %s, %s, %s, 'generated', p_width => %s, p_height => %s, "
           "p_duration_s => %s::numeric, p_provenance => '{\"job_id\":\"seed\"}'::jsonb)",
-          [aid, org, kind, mime, nbytes, uuid.uuid4().hex * 2, width, height, 5 if kind == "audio" else None])
+          [aid, org, kind, mime, nbytes, uuid.uuid4().hex * 2, width, height,
+           12.2 if kind == "video" else 5 if kind == "audio" else None])
     return aid
 
 
@@ -332,3 +354,33 @@ def test_no_browser_reaches_the_internal_or_worker_side(db, role, uid, query):
     with pytest.raises(psycopg.Error) as e:
         db.act(role, uid, query, {"job": job, "asset": db.assets["a_png"], "org": ORG_A})
     assert e.value.sqlstate == "42501"
+
+
+# ── 0052's video tools survive 0055 ─────────────────────────────────────────
+
+def test_video_upscale_still_quotes_after_0055(db):
+    q = db.act("authenticated", UA, "select public.quote_creative_job(%s,'video_upscale','vup',%s::jsonb)",
+               [ORG_A, json.dumps({"source_asset_id": db.assets["a_mp4"], "target_resolution": "4k"})])[0][0]
+    # The video's measured 12.2 s, rounded up, at 1 credit a second.
+    assert (q["capability"], q["quantity"], q["credits"]) == ("video_upscale", 13, 13)
+    st, word, detail = err(lambda: db.act(
+        "authenticated", UA, "select public.quote_creative_job(%s,'video_upscale','vup',%s::jsonb)",
+        [ORG_A, json.dumps({"source_asset_id": db.assets["a_mp4"], "target_resolution": "4k", "language": "en"})]))
+    assert (st, word) == ("NS400", "invalid_params") and "language does not apply" in detail
+
+
+def test_the_i2v_end_frame_still_quotes_after_0055(db):
+    params = {"source_asset_id": db.assets["a_png"], "duration_s": 5, "end_asset_id": db.assets["a_jpg"]}
+    q = db.act("authenticated", UA, "select public.quote_creative_job(%s,'i2v','i2v-end',%s::jsonb)",
+               [ORG_A, json.dumps(params)])[0][0]
+    assert (q["quantity"], q["credits"]) == (5, 10)
+    st, word, detail = err(lambda: db.act(
+        "authenticated", UA, "select public.quote_creative_job(%s,'i2v','i2v-end',%s::jsonb)",
+        [ORG_A, json.dumps({**params, "end_asset_id": db.assets["b_png"]})]))
+    assert (st, word) == ("NS400", "source_unavailable") and "end_asset_id names no image" in detail
+
+
+def test_describe_refuses_0052s_keys(db):
+    for extra in ({"target_resolution": "4k"}, {"end_asset_id": db.assets["a_jpg"]}):
+        st, word, detail = err(lambda: quote(db, UA, ORG_A, src(db.assets["a_png"], **extra)))
+        assert (st, word) == ("NS400", "invalid_params") and "does not apply" in detail, extra

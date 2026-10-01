@@ -32,11 +32,15 @@ from modules.capabilities import ADAPTERS
 from modules.capabilities.base import (
     DESCRIBE,
     DUB,
+    FILE_INPUT,
+    I2V,
     IMAGE_INPUT,
     MEDIA_INPUT,
     OUTPUT_OF,
     PROMPT_OPTIONAL,
     UPSCALE,
+    VIDEO_INPUT,
+    VIDEO_UPSCALE,
     CapabilityRequest,
 )
 
@@ -202,6 +206,13 @@ class ModelEntry:
     upscale_factors: Tuple[int, ...]
     #: Languages a dub is made in (empty unless it lists dub; 0050).
     languages: Tuple[str, ...]
+    #: Output resolutions a video upscale is sold at (empty unless it lists
+    #: video_upscale; 0052). The vendor takes a target, not a factor.
+    upscale_targets: Tuple[str, ...]
+    #: The model can end an i2v clip on a chosen picture (0052).
+    end_frame: bool
+    #: The longest source a file tool takes, in seconds (limits.max_source_seconds).
+    max_source_seconds: Optional[int]
     audio_out: bool
     is_async: bool
     api_documented_url: str
@@ -255,8 +266,16 @@ class ModelEntry:
             out.append(f"{self.id} takes at most {self.image_refs_max} input image(s)")
         if cap in MEDIA_INPUT and not request.input_media:
             out.append(f"{cap} needs a recording")
-        if cap not in MEDIA_INPUT and request.input_media:
+        if cap in VIDEO_INPUT and not request.input_media:
+            out.append(f"{cap} needs a video")
+        if cap not in FILE_INPUT and request.input_media:
             out.append(f"a recording does not apply to {cap}")
+        if request.end_image and (cap != I2V or not self.end_frame):
+            out.append(f"{self.id} cannot end a clip on a chosen frame")
+        if cap == VIDEO_UPSCALE and request.upscale_target not in self.upscale_targets:
+            out.append(f"{self.id} does not upscale a video to {request.upscale_target or '(no target)'}")
+        if cap != VIDEO_UPSCALE and request.upscale_target is not None:
+            out.append(f"an upscale target does not apply to {cap}")
         if cap == DUB and request.target_language not in self.languages:
             out.append(f"{self.id} does not dub into {request.target_language or '(no language)'}")
         if cap != DUB and request.target_language is not None:
@@ -267,13 +286,18 @@ class ModelEntry:
 
     def probe_request(self, *, voice_id: Optional[str] = None,
                       generated_image: Optional[str] = None,
-                      generated_speech: Optional[str] = None) -> CapabilityRequest:
+                      generated_speech: Optional[str] = None,
+                      generated_end_image: Optional[str] = None,
+                      generated_video: Optional[str] = None) -> CapabilityRequest:
         """The cheapest real request this model is probed with (registry ``probe``).
 
         A voice tool's probe (``input_audio: "speech"``) starts from a short
         clip of the probe's ``prompt`` spoken by TTS (tools/probe_models.py
         makes it): the prompt is the words of that clip, not part of the
-        request — and a dub needs no voice (its speakers keep their own)."""
+        request — and a dub needs no voice (its speakers keep their own).
+        A video upscale's probe (``input_video``) starts from a short test
+        pattern ffmpeg draws; an end-frame probe (``end_frame``) ends on a
+        second drawn picture, so what is sold is what was proven (0052)."""
         p = self.raw["probe"]
         images: Sequence[str] = ()
         media: Sequence[str] = ()
@@ -282,14 +306,19 @@ class ModelEntry:
         speech = p.get("input_audio") == "speech"
         if speech:
             media = (generated_speech or "<speech>.mp3",)
+        if p.get("input_video") == "generated":
+            media = (generated_video or "<video>.mp4",)
+        end = (generated_end_image or "<generated end>") if p.get("end_frame") == "generated" else None
         cap = p["capability"]
         # A description takes no words of ours either: the picture is the input.
-        return CapabilityRequest(capability=cap, prompt="" if speech or cap == DESCRIBE else p["prompt"],
+        return CapabilityRequest(capability=cap, prompt="" if speech or cap in VIDEO_INPUT or cap == DESCRIBE
+                                 else p["prompt"],
                                  aspect_ratio=p.get("aspect_ratio"), resolution=p.get("resolution"),
                                  image_size=p.get("image_size"), duration_s=p.get("duration_s"),
                                  voice_id=None if cap == DUB else voice_id, input_images=tuple(images),
                                  scale=p.get("factor"), input_media=tuple(media),
-                                 target_language=p.get("target_language"))
+                                 target_language=p.get("target_language"), end_image=end,
+                                 upscale_target=p.get("upscale_target"))
 
 
 def _entry(m: Mapping) -> ModelEntry:
@@ -303,6 +332,9 @@ def _entry(m: Mapping) -> ModelEntry:
         resolutions=tuple(m["resolutions"]), durations_s=tuple(m["durations_s"]),
         upscale_factors=tuple(m.get("upscale_factors") or ()),
         languages=tuple(m.get("languages") or ()),
+        upscale_targets=tuple(m.get("upscale_targets") or ()),
+        end_frame=bool(m.get("end_frame")),
+        max_source_seconds=m["limits"].get("max_source_seconds"),
         audio_out=bool(m["audio_out"]), is_async=bool(m["async"]),
         api_documented_url=m["api_documented"]["url"], doc_source=m["api_documented"]["source"],
         credit_unit=m["credit_unit"], entitlement=m["entitlement"], terms_gate=m["terms_gate"],
@@ -348,6 +380,25 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
         if (DUB in caps) != bool(m.get("languages")):
             # 0050 sells a dub only into a language the model lists.
             errors.append(_err(mid, "languages is required with dub and only with it"))
+        if (VIDEO_UPSCALE in caps) != bool(m.get("upscale_targets")):
+            # 0052 sells a video upscale only at a target the model lists.
+            errors.append(_err(mid, "upscale_targets is required with video_upscale and only with it"))
+        if VIDEO_UPSCALE in caps and not m["limits"].get("max_source_seconds"):
+            # 0052 prices the source's seconds: a model without a documented
+            # longest input would be sold a length the vendor refuses.
+            errors.append(_err(mid, "video_upscale needs limits.max_source_seconds"))
+        if any(c in VIDEO_INPUT for c in caps) and any(c not in VIDEO_INPUT for c in caps):
+            errors.append(_err(mid, "a video tool model lists only video tools"))
+        if m.get("end_frame"):
+            if I2V not in caps:
+                errors.append(_err(mid, "end_frame is for a model that animates a picture (i2v)"))
+            elif cls is not None and I2V not in cls.end_frame_capabilities:
+                # The adapter would drop the picture: the clip would not end where asked.
+                errors.append(_err(mid, f"adapter {m['adapter']} does not send an end frame"))
+        if m["probe"].get("end_frame") and not m.get("end_frame"):
+            errors.append(_err(mid, "only a model with end_frame is probed with one"))
+        if (m["probe"].get("input_video") == "generated") != (m["probe"]["capability"] in VIDEO_INPUT):
+            errors.append(_err(mid, "a video tool is probed from a drawn video (probe.input_video), and only a video tool"))
         probe_speech = m["probe"].get("input_audio") == "speech"
         if probe_speech != (m["probe"]["capability"] in MEDIA_INPUT):
             errors.append(_err(mid, "a voice tool is probed from speech (probe.input_audio), and only a voice tool"))
@@ -367,7 +418,8 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
         if m["credit_unit"] != credit_unit_for(mid, pricing["unit"]):
             errors.append(_err(mid, f"credit_unit must be {credit_unit_for(mid, pricing['unit'])}"))
         if variants:
-            allowed = m["resolutions"] if variants["by"] == "resolution" else (m.get("image_sizes") or [])
+            allowed = {"resolution": m["resolutions"], "image_size": m.get("image_sizes") or [],
+                       "upscale_target": m.get("upscale_targets") or []}[variants["by"]]
             if any(k not in allowed for k in variants["prices"]):
                 errors.append(_err(mid, f"price variants must be listed {variants['by']}s"))
             units += [credit_unit_for(mid, pricing["unit"], k) for k in variants["prices"]]
@@ -386,7 +438,9 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
         elif cls is not None:
             entry = _entry(m)
             req = entry.probe_request(voice_id="A" * 20, generated_image="https://probe.invalid/x.png",
-                                      generated_speech="probe_speech.mp3")
+                                      generated_speech="probe_speech.mp3",
+                                      generated_end_image="https://probe.invalid/end.png",
+                                      generated_video="probe_video.mp4")
             problems = [p for p in cls(env={}).problems(req, entry) if "https URL" not in p]
             if problems:
                 errors.append(_err(mid, "probe request is not servable: " + "; ".join(problems)))

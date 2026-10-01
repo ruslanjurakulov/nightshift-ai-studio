@@ -354,6 +354,9 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     # voice tools (0050): a recording's length prices the job; read inside
     # creative_price only, never through the API
     "creative_source_seconds": SERVICE,
+    # video tools (0052): the picture rules for a first or an end frame,
+    # read inside creative_source_problem only
+    "creative_picture_problem": SERVICE,
     # style inputs (0048): the kit check is internal; the worker reads the
     # style of a job it holds (its kit and @characters, in the job's org)
     "creative_style_problem": SERVICE,

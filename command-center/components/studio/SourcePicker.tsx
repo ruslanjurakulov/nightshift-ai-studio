@@ -15,8 +15,10 @@ export function clipLength(seconds: number | null): string | null {
 
 /**
  * Pick the ONE library picture an edit, animation, upscale or background
- * removal starts from — or, with `media="recording"`, the ONE audio or video
- * file a voice change or a dub starts from (migration 0050). Once picked it
+ * removal starts from (or an animation ends on) — or, with
+ * `media="recording"`, the ONE audio or video file a voice change or a dub
+ * starts from (migration 0050), or with `media="video"` the ONE video a video
+ * upscale starts from (0052). Once picked it
  * shows large with "Change"; the list comes back only when asked. The pick is
  * only an id: the database refuses (source_unavailable) one that is not a
  * live file of the right kind of this organization when it prices the job,
@@ -30,6 +32,7 @@ export function SourcePicker({
   compact = false,
   media = "picture",
   maxSeconds = null,
+  label,
 }: {
   orgId: string;
   value: string | null;
@@ -37,17 +40,20 @@ export function SourcePicker({
   libraryHref: string;
   /** In the Studio's narrow composer column: four across at every width. */
   compact?: boolean;
-  /** What the tool starts from: a picture (0046) or a recording (0050). */
-  media?: "picture" | "recording";
-  /** A recording tool's longest clip, to grey out longer ones (the database still decides). */
+  /** What the tool starts from: a picture (0046), a recording (0050) or a video (0052). */
+  media?: "picture" | "recording" | "video";
+  /** A recording or video tool's longest clip, to grey out longer ones (the database still decides). */
   maxSeconds?: number | null;
+  /** The list's accessible name when a form has two pickers (an animation's end frame). */
+  label?: string;
 }) {
   const { t } = useI18n();
   const g = t.gen;
   const { state, images, recordings, reload } = useLibraryImages(orgId);
   const [browsing, setBrowsing] = useState(false);
   const chosen = value && media === "picture" ? images.find((i) => i.id === value) : undefined;
-  const chosenRec = value && media === "recording" ? recordings.find((r) => r.id === value) : undefined;
+  const files = media === "video" ? recordings.filter((r) => r.kind === "video") : recordings;
+  const chosenRec = value && media !== "picture" ? files.find((r) => r.id === value) : undefined;
   // A picture handed in from a result that finished after the library was
   // read ("Use as picture"): read the library once more to show it.
   const reread = useRef<string | null>(null);
@@ -58,11 +64,12 @@ export function SourcePicker({
     void reload();
   }, [value, state, found, reload]);
 
-  if (media === "recording") {
+  if (media !== "picture") {
     return (
       <RecordingPicker
         state={state}
-        recordings={recordings}
+        recordings={files}
+        video={media === "video"}
         value={value}
         chosen={chosenRec}
         browsing={browsing}
@@ -139,7 +146,7 @@ export function SourcePicker({
       {state === "ready" && images.length > 0 && (
         <ul
           className={`grid max-h-[260px] grid-cols-4 gap-2 overflow-y-auto${compact ? "" : " sm:grid-cols-6"}`}
-          role="radiogroup" aria-label={g.sourceLabel}>
+          role="radiogroup" aria-label={label ?? g.sourceLabel}>
           {images.map((img) => {
             const on = img.id === value;
             return (
@@ -196,6 +203,7 @@ function RecordingIcon({ r, size = "size-10" }: { r: PickerRecording | undefined
 function RecordingPicker({
   state,
   recordings,
+  video,
   value,
   chosen,
   browsing,
@@ -207,6 +215,8 @@ function RecordingPicker({
 }: {
   state: "loading" | "ready" | "failed" | "unavailable";
   recordings: PickerRecording[];
+  /** Videos only (0052's upscale): its own words, and limits in seconds. */
+  video: boolean;
   value: string | null;
   chosen: PickerRecording | undefined;
   browsing: boolean;
@@ -219,6 +229,12 @@ function RecordingPicker({
   const { t, fmt } = useI18n();
   const g = t.gen;
   const kindName = (r: PickerRecording | undefined) => (r?.kind === "video" ? g.recordingVideo : g.recordingAudio);
+  const copy = video
+    ? { label: g.videoLabel, pick: g.videoPick, empty: g.videoEmpty, chosen: g.videoChosen, change: g.videoChange }
+    : { label: g.recordingLabel, pick: g.recordingPick, empty: g.recordingEmpty, chosen: g.recordingChosen, change: g.recordingChange };
+  // A video tool's limit is seconds long (0052); a voice tool's is minutes.
+  const tooLongText = (max: number) =>
+    video ? fmt(g.videoTooLong, { n: max }) : fmt(g.recordingTooLong, { n: Math.round(max / 60) });
 
   if (value && !browsing) {
     const len = clipLength(chosen?.durationS ?? null);
@@ -226,7 +242,7 @@ function RecordingPicker({
       <div className="studio-field flex items-center gap-3 p-2">
         <RecordingIcon r={chosen} size="size-14" />
         <div className="flex min-w-0 flex-col gap-1.5">
-          <span className="truncate text-[13px]">{chosen?.name ?? g.recordingChosen}</span>
+          <span className="truncate text-[13px]">{chosen?.name ?? copy.chosen}</span>
           {chosen && (
             <span className="text-[12px] text-[var(--color-muted)]">
               {kindName(chosen)}
@@ -234,7 +250,7 @@ function RecordingPicker({
             </span>
           )}
           <button type="button" onClick={() => setBrowsing(true)} className="btn-sky is-quiet pill w-fit px-3 py-1.5 text-[12px]">
-            {g.recordingChange}
+            {copy.change}
           </button>
         </div>
       </div>
@@ -243,7 +259,7 @@ function RecordingPicker({
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-[12px] text-[var(--color-muted)]">{g.recordingPick}</span>
+      <span className="text-[12px] text-[var(--color-muted)]">{copy.pick}</span>
 
       {state === "loading" && (
         <div className="flex flex-col gap-2" aria-busy="true" aria-label={g.sourceLoading}>
@@ -268,7 +284,7 @@ function RecordingPicker({
 
       {state === "ready" && recordings.length === 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">
-          <span>{g.recordingEmpty}</span>
+          <span>{copy.empty}</span>
           <Link href={libraryHref} className="btn-sky is-quiet pill px-3 py-1.5 text-[12px]">
             {g.sourceOpenLibrary}
           </Link>
@@ -276,13 +292,13 @@ function RecordingPicker({
       )}
 
       {state === "ready" && recordings.length > 0 && (
-        <ul className="flex max-h-[260px] flex-col gap-1.5 overflow-y-auto" role="radiogroup" aria-label={g.recordingLabel}>
+        <ul className="flex max-h-[260px] flex-col gap-1.5 overflow-y-auto" role="radiogroup" aria-label={copy.label}>
           {recordings.map((r) => {
             const on = r.id === value;
             const len = clipLength(r.durationS);
             const tooLong = maxSeconds !== null && r.durationS !== null && r.durationS > maxSeconds;
             const unknown = r.durationS === null;
-            const note = tooLong ? fmt(g.recordingTooLong, { n: Math.round((maxSeconds ?? 0) / 60) }) : unknown ? g.recordingNoLength : null;
+            const note = tooLong ? tooLongText(maxSeconds ?? 0) : unknown ? g.recordingNoLength : null;
             return (
               <li key={r.id}>
                 <button

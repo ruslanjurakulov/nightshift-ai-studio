@@ -19,6 +19,9 @@ import {
   SOURCE_CAPABILITIES,
   STYLE_CAPABILITIES,
   UPSCALE_FACTORS,
+  UPSCALE_TARGETS,
+  type UpscaleTarget,
+  VIDEO_SOURCE_CAPABILITIES,
   VOICE_ID_RE,
   isUuid,
 } from "@/lib/creative/operations";
@@ -48,9 +51,19 @@ export const VOICE_TOOLS = ["voice_change", "dub"] as const satisfies readonly C
  */
 export const READ_TOOLS = ["describe"] as const satisfies readonly CreativeCapability[];
 
-/** Everything the composer can make, in the order it shows the tools (the rest wait for their own UI). */
+/** The sidebar's tools in the composer's order: what lib/navigation's STUDIO_TOOLS mirrors. */
 export const COMPOSER_CAPABILITIES = [...STUDIO_CAPABILITIES, ...VOICE_TOOLS, ...READ_TOOLS] as const;
-export type StudioCapability = (typeof COMPOSER_CAPABILITIES)[number];
+
+/**
+ * The video tools (migration 0052): upscale a library video. They live in the
+ * composer's tool rows after the voice tools; the sidebar does not link them
+ * yet (that list is lib/navigation's, held in step with COMPOSER_CAPABILITIES).
+ */
+export const VIDEO_TOOLS = ["video_upscale"] as const satisfies readonly CreativeCapability[];
+
+/** Everything the composer can make, in the order its tabs show the tools (the rest wait for their own UI). */
+export const PANEL_CAPABILITIES = [...COMPOSER_CAPABILITIES, ...VIDEO_TOOLS] as const;
+export type StudioCapability = (typeof PANEL_CAPABILITIES)[number];
 
 /** The tools that start from a picture in the library (migration 0046). */
 export type SourceCapability = (typeof SOURCE_CAPABILITIES)[number];
@@ -65,6 +78,19 @@ export type RecordingCapability = (typeof MEDIA_SOURCE_CAPABILITIES)[number];
 
 export function needsRecording(c: string): c is RecordingCapability {
   return (MEDIA_SOURCE_CAPABILITIES as readonly string[]).includes(c);
+}
+
+/** The tools that start from a video in the library (migration 0052). */
+export type VideoCapability = (typeof VIDEO_SOURCE_CAPABILITIES)[number];
+
+export function needsVideo(c: string): c is VideoCapability {
+  return (VIDEO_SOURCE_CAPABILITIES as readonly string[]).includes(c);
+}
+
+export { UPSCALE_TARGETS, type UpscaleTarget };
+
+export function isUpscaleTarget(v: unknown): v is UpscaleTarget {
+  return typeof v === "string" && (UPSCALE_TARGETS as readonly string[]).includes(v);
 }
 
 /** The voices offered for a voice change: the same list the Create page offers for narration. */
@@ -95,9 +121,9 @@ export function takesStyle(c: string): boolean {
   return (STYLE_CAPABILITIES as readonly string[]).includes(c);
 }
 
-/** 0046 / 0050 / 0055: the prompt is required for these, optional for i2v / upscale, refused for remove_bg, the voice tools and describe. */
+/** 0046 / 0050 / 0052 / 0055: the prompt is required for these, optional for i2v / upscale, refused for remove_bg, the voice and video tools and describe. */
 export function promptRule(c: StudioCapability): "required" | "optional" | "none" {
-  if (c === "remove_bg" || c === "describe" || needsRecording(c)) return "none";
+  if (c === "remove_bg" || c === "describe" || needsRecording(c) || needsVideo(c)) return "none";
   if (c === "i2v" || c === "upscale") return "optional";
   return "required";
 }
@@ -110,7 +136,7 @@ export type VideoDuration = (typeof VIDEO_DURATIONS)[number];
 export const PROMPT_MAX = 4000;
 
 export function isStudioCapability(v: unknown): v is StudioCapability {
-  return typeof v === "string" && (COMPOSER_CAPABILITIES as readonly string[]).includes(v);
+  return typeof v === "string" && (PANEL_CAPABILITIES as readonly string[]).includes(v);
 }
 
 // ── models (0035: members read sellable rows' public columns) ──────────────
@@ -127,6 +153,12 @@ export interface StudioModel {
    */
   qualityTier?: number | null;
   speedTier?: number | null;
+  /** 0052: the model can end an animated picture on a chosen one (spec.end_frame). */
+  endFrame?: boolean;
+  /** 0052: the sizes the model upscales a video to (spec.upscale_targets). */
+  upscaleTargets?: UpscaleTarget[];
+  /** 0052: the longest source it takes, in seconds (spec.limits.max_source_seconds); null = not stated. */
+  maxSourceSeconds?: number | null;
   /**
    * The plan entitlement the model needs (0035: `paid`, `any`, `key` or
    * `key:value`), from sellable_models(); null = none, absent = not read. Only
@@ -139,22 +171,39 @@ const tier = (v: unknown): number | null => (typeof v === "number" && Number.isI
 
 /**
  * Adds the registry's speed and quality marks (sellable_models() rows) to the
- * models the Studio already offers. It never adds a model: what may be picked
- * is still coerceModels' answer; a row without a mark leaves it unmarked.
+ * models the Studio already offers — and, from the same public spec, what a
+ * model's video tools take (0052: an end frame, upscale sizes, the longest
+ * source). It never adds a model: what may be picked is still coerceModels'
+ * answer; a row without a mark leaves it unmarked, and a model the sellable
+ * rows do not describe offers no end frame and no size (the database would
+ * refuse them anyway).
  */
 export function withTiers(models: StudioModel[], sellable: unknown): StudioModel[] {
   if (!Array.isArray(sellable)) return models;
-  const marks = new Map<string, { q: number | null; s: number | null; e: string | null }>();
+  type Marks = Pick<StudioModel, "qualityTier" | "speedTier" | "entitlement" | "endFrame" | "upscaleTargets" | "maxSourceSeconds">;
+  const marks = new Map<string, Marks>();
   for (const r of sellable) {
     if (!r || typeof r !== "object") continue;
     const row = r as Record<string, unknown>;
     const spec = row.spec && typeof row.spec === "object" && !Array.isArray(row.spec) ? (row.spec as Record<string, unknown>) : {};
-    const e = typeof row.entitlement === "string" && row.entitlement ? row.entitlement : null;
-    if (typeof row.id === "string") marks.set(row.id, { q: tier(spec.quality_tier), s: tier(spec.speed_tier), e });
+    const limits = spec.limits && typeof spec.limits === "object" && !Array.isArray(spec.limits) ? (spec.limits as Record<string, unknown>) : {};
+    const longest = limits.max_source_seconds;
+    if (typeof row.id !== "string") continue;
+    const targets = Array.isArray(spec.upscale_targets) ? spec.upscale_targets.filter(isUpscaleTarget) : [];
+    // Only what the spec states: a model that says nothing about the video
+    // tools carries nothing for them (absent reads as "no").
+    marks.set(row.id, {
+      qualityTier: tier(spec.quality_tier),
+      speedTier: tier(spec.speed_tier),
+      entitlement: typeof row.entitlement === "string" && row.entitlement ? row.entitlement : null,
+      ...(spec.end_frame === true ? { endFrame: true } : {}),
+      ...(targets.length ? { upscaleTargets: targets } : {}),
+      ...(typeof longest === "number" && Number.isInteger(longest) && longest > 0 ? { maxSourceSeconds: longest } : {}),
+    });
   }
   return models.map((m) => {
     const k = marks.get(m.id);
-    return k ? { ...m, qualityTier: k.q, speedTier: k.s, entitlement: k.e } : m;
+    return k ? { ...m, ...k } : m;
   });
 }
 
@@ -200,6 +249,10 @@ export interface StudioForm {
   voiceId?: string | null;
   /** The language a dub is made in (0050). */
   targetLanguage?: DubLanguage | null;
+  /** The picture an animation ends on (0052); only sent for a model that takes one. */
+  endFrameId?: string | null;
+  /** The size a video upscale makes (0052). */
+  target?: UpscaleTarget | null;
   /** The language a description is written in (0055); absent = English. */
   describeLanguage?: DescribeLanguage | null;
 }
@@ -229,7 +282,13 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
     case "edit":
       return { prompt, source_asset_id: source };
     case "i2v":
-      return { ...(prompt ? { prompt } : {}), source_asset_id: source, duration_s: form.duration };
+      // "No end frame" is the key left out, never sent empty.
+      return {
+        ...(prompt ? { prompt } : {}),
+        source_asset_id: source,
+        duration_s: form.duration,
+        ...(isUuid(form.endFrameId) ? { end_asset_id: form.endFrameId } : {}),
+      };
     case "upscale":
       return { ...(prompt ? { prompt } : {}), source_asset_id: source, factor: form.factor ?? 2 };
     case "remove_bg":
@@ -244,6 +303,9 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
       return { source_asset_id: source, voice_id: form.voiceId ?? "" };
     case "dub":
       return { source_asset_id: source, target_language: form.targetLanguage ?? "" };
+    case "video_upscale":
+      // The length (and so the price) is the video's own: never sent.
+      return { source_asset_id: source, target_resolution: form.target ?? "" };
     default:
       // Speech: the words are the prompt (the price counts their characters)
       // and the voice is the one picked — the speech provider needs one.
@@ -267,12 +329,22 @@ export function newIdempotencyKey(): string {
 }
 
 /** What the person can do next when Generate cannot be pressed (null: it can, or it is busy). */
-export type BlockedReason = "no_model" | "need_picture" | "need_recording" | "need_voice" | "need_language" | "need_words";
+export type BlockedReason =
+  | "no_model"
+  | "need_picture"
+  | "need_recording"
+  | "need_video"
+  | "need_target"
+  | "need_voice"
+  | "need_language"
+  | "need_words";
 
 export function blockedReason(form: StudioForm, hasModel: boolean): BlockedReason | null {
   if (!hasModel) return "no_model";
   if (needsSource(form.capability) && !isUuid(form.sourceId)) return "need_picture";
   if (needsRecording(form.capability) && !isUuid(form.sourceId)) return "need_recording";
+  if (needsVideo(form.capability) && !isUuid(form.sourceId)) return "need_video";
+  if (form.capability === "video_upscale" && !isUpscaleTarget(form.target)) return "need_target";
   if (form.capability === "voice_change" && !isVoiceId(form.voiceId)) return "need_voice";
   if (form.capability === "dub" && !isDubLanguage(form.targetLanguage)) return "need_language";
   if (promptRule(form.capability) === "required" && !form.prompt.trim()) return "need_words";
@@ -299,6 +371,7 @@ export const WORDS_FREE_PRICE: readonly StudioCapability[] = [
   "remove_bg",
   "voice_change",
   "dub",
+  "video_upscale",
   "describe",
 ];
 const PRICE_STAND_IN = "price check";
@@ -317,7 +390,10 @@ export function sheetQuoteParams(form: StudioForm): ReturnType<typeof buildParam
   if (form.capability === "tts" && form.prompt.trim()) {
     return buildParams({ ...form, voiceId: isVoiceId(form.voiceId) ? form.voiceId : (STUDIO_VOICES[0]?.id ?? null) });
   }
-  if ((needsSource(form.capability) || needsRecording(form.capability)) && !isUuid(form.sourceId)) return null;
+  if ((needsSource(form.capability) || needsRecording(form.capability) || needsVideo(form.capability)) && !isUuid(form.sourceId))
+    return null;
+  // A video upscale is priced per size: no stand-in size is ever asked about.
+  if (form.capability === "video_upscale" && !isUpscaleTarget(form.target)) return null;
   if (!WORDS_FREE_PRICE.includes(form.capability)) return null;
   return buildParams({
     ...form,
@@ -601,7 +677,7 @@ export function describePrefill(assetId: string, language: DescribeLanguage): St
 /** What a finished job made, for its card: a picture, a clip, a voice or (a description) text. */
 export function outputKind(capability: string): "image" | "video" | "audio" | "text" {
   if (capability === "describe") return "text";
-  if (capability === "t2v" || capability === "i2v") return "video";
+  if (capability === "t2v" || capability === "i2v" || needsVideo(capability)) return "video";
   if (capability === "tts" || capability === "sfx" || capability === "music" || needsRecording(capability)) return "audio";
   return "image";
 }
@@ -631,6 +707,10 @@ export interface StudioPrefill {
   voiceId?: string | null;
   /** A dub's language (0050), when the job had an offered one. */
   targetLanguage?: DubLanguage | null;
+  /** An animation's end frame (0052), when the job had one. */
+  endFrameId?: string | null;
+  /** A video upscale's size (0052), when the job had an offered one. */
+  target?: UpscaleTarget | null;
   /** A description's language (0055), when the job named an offered one. */
   describeLanguage?: DescribeLanguage | null;
 }
@@ -654,6 +734,13 @@ export function prefillFromJob(job: StudioJob): StudioPrefill | null {
       ? { sourceId: isUuid(p.source_asset_id) ? p.source_asset_id : null, factor: asFactor(p.factor) }
       : {}),
     ...(takesStyle(job.capability) ? { styleKitId: isUuid(p.style_kit_id) ? p.style_kit_id : null } : {}),
+    ...(job.capability === "i2v" && isUuid(p.end_asset_id) ? { endFrameId: p.end_asset_id } : {}),
+    ...(needsVideo(job.capability)
+      ? {
+          sourceId: isUuid(p.source_asset_id) ? p.source_asset_id : null,
+          target: isUpscaleTarget(p.target_resolution) ? p.target_resolution : null,
+        }
+      : {}),
     ...(job.capability === "describe" ? { describeLanguage: isDescribeLanguage(p.language) ? p.language : "en" } : {}),
     ...(job.capability === "tts" ? { voiceId: isVoiceId(p.voice_id) ? p.voice_id : null } : {}),
     ...(needsRecording(job.capability)
@@ -684,7 +771,7 @@ export function prefillFromQuery(tool: unknown, source: unknown): StudioPrefill 
     if (source === undefined) return { ...base, sourceId: null, factor: 2 };
     return isUuid(source) ? { ...base, sourceId: source, factor: 2 } : null;
   }
-  if (needsRecording(tool)) {
+  if (needsRecording(tool) || needsVideo(tool)) {
     if (source === undefined) return { ...base, sourceId: null };
     return isUuid(source) ? { ...base, sourceId: source } : null;
   }
