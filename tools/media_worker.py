@@ -132,7 +132,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--poll-seconds", type=float, default=DEFAULT_POLL_SECONDS)
     args = parser.parse_args(argv)
     if args.probe:
-        return probe()
+        try:
+            return probe()
+        except Exception as exc:  # the class name only: the deploy log is public
+            print(f"probe: failed error={type(exc).__name__}", flush=True)
+            return 0
 
     logging.basicConfig(level=logging.INFO, stream=sys.stdout,
                         format="%(asctime)s media_worker %(levelname)s %(message)s")

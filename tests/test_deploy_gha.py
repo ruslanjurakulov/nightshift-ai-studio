@@ -822,6 +822,11 @@ class RemoteDeployWorkerTests(_RemoteDeployFixture):
         self.assertEqual(len(runs), 1)
         self.assertTrue(runs[0].endswith("run --rm --no-deps -T media-worker python tools/media_worker.py --probe"))
 
+    def test_a_probe_that_prints_nothing_is_reported_with_its_exit_code_only(self):
+        proc = self.deploy(self.worker_payload())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("probe: no result exit=0 error=none", proc.stdout)
+
     def test_switching_the_worker_off_removes_it_and_its_keys(self):
         self.assertEqual(self.deploy(self.worker_payload()).returncode, 0)
         self.assertTrue(self.worker_env_file.exists())

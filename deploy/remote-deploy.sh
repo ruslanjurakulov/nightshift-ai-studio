@@ -322,8 +322,14 @@ main() {
     # probe in its own configuration (same uid, env file, volumes): yes/no
     # checks and one HTTP status, nothing else. Only "probe:" lines are kept
     # (the output is public), and a probe that fails never fails the deploy.
-    compose run --rm --no-deps -T media-worker python tools/media_worker.py --probe 2>/dev/null \
-      | grep '^probe: ' || true
+    # No "probe:" line at all means the run itself failed: say so with the exit
+    # code and, if there is one, only the name of the exception class.
+    probe_out="$(compose run --rm --no-deps -T media-worker python tools/media_worker.py --probe 2>&1)" \
+      && probe_rc=0 || probe_rc=$?
+    if ! printf '%s\n' "$probe_out" | grep '^probe: '; then
+      probe_err="$(printf '%s\n' "$probe_out" | grep -oE '^[A-Za-z_.]*(Error|Exception)\b' | tail -n 1 || true)"
+      echo "probe: no result exit=${probe_rc} error=${probe_err:-none}"
+    fi
     # The creative worker (0036) is started by hand, never by a deploy; one
     # that is already running is moved onto the image just built.
     if [[ -n "$(compose ps -q creative-worker 2>/dev/null)" ]]; then
