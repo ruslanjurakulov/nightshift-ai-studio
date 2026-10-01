@@ -226,7 +226,9 @@ def test_refusals(db):
     assert "invalid_params" in msg
     st, msg = err(lambda: create(db, UA, ORG_A, cap="t2v", model="vid-y", params={"prompt": "x", "duration_s": 61}))
     assert "invalid_params" in msg
-    st, msg = err(lambda: create(db, UA, ORG_A, cap="i2v"))
+    # 0046 made i2v (and edit, upscale, remove_bg) real; a capability nobody
+    # built is still refused outright.
+    st, msg = err(lambda: create(db, UA, ORG_A, cap="v2v"))
     assert "capability_not_supported" in msg
     st, msg = err(lambda: db.act("authenticated", UA, "select public.create_creative_job(%s,'t2i','img-x','{\"prompt\":\"x\"}','auto')", [ORG_A]))
     assert "mode_not_supported" in msg

@@ -1,0 +1,181 @@
+"""The creative worker's adapter resolver: registry model id -> an adapter of
+the capability layer, in the shape :mod:`modules.creative_worker` calls.
+
+    NIGHTSHIFT_CREATIVE_ADAPTERS=modules.creative_adapters:resolve
+
+The two halves were built separately: the worker knows jobs (``submit`` a
+:class:`~modules.creative_worker.GenerationRequest`, ``poll`` a task id into a
+job folder), the capability layer knows vendors (``CapabilityRequest``,
+``ProviderTask``, ``PollResult``, ``fetch``). This module is only the seam:
+
+* EXACT: the job's ``requested_model`` is looked up in
+  ``schemas/model_registry.json`` and its own adapter is built — never another
+  model's, never a fallback;
+* a capability the model's adapter cannot serve (``remove_bg`` today: no
+  wired vendor documents it) fails with ``capability_not_supported`` BEFORE
+  any call, so the worker releases the hold — there is no fake result;
+* the request is checked by the adapter and the registry entry
+  (``problems``) before the paid call: a refusal is ``bad_request``, free;
+* input images are the local files the worker resolved from the media
+  library (``GenerationRequest.input_files``) — never a URL from a job row;
+* synchronous vendors (the image APIs) finish inside ``submit``: their
+  outputs are kept in this process under a ``sync:<uuid>`` task id and
+  written out by the first ``poll``. A worker that restarts in between has
+  lost them; that job fails (``output_lost``) and its hold is released — the
+  platform may have paid, the customer does not.
+
+Keys stay in the adapters (worker env only); nothing here logs a prompt, a
+key or a vendor body.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import threading
+import uuid
+from pathlib import Path
+from typing import Dict, List, Mapping, Optional
+
+from modules import model_registry
+from modules.capabilities import build_adapter
+from modules.capabilities.base import (
+    FAILED,
+    PENDING,
+    SUCCEEDED,
+    AdapterError,
+    CapabilityRequest,
+    Output,
+    PollResult,
+    ProviderTask,
+)
+from modules.creative_worker import (
+    FAILED as JOB_FAILED,
+    PENDING as JOB_PENDING,
+    SUCCEEDED as JOB_SUCCEEDED,
+    GenerationRequest,
+    ProviderPoll,
+    ProviderUsage,
+)
+
+SYNC_PREFIX = "sync:"
+#: Finished synchronous outputs kept for their first poll (a few per thread).
+MAX_SYNC_HELD = 64
+
+
+class CreativeAdapterError(Exception):
+    """A refusal the worker stores as the job's error: ``code`` + ``message``."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(f"{code}: {message}")
+        self.code = code
+        self.message = message
+
+
+def _int(v) -> Optional[int]:
+    return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and float(v).is_integer() else None
+
+
+def _str(v) -> Optional[str]:
+    return v if isinstance(v, str) and v else None
+
+
+def capability_request(request: GenerationRequest) -> CapabilityRequest:
+    """The job's validated params (0036/0046) in the capability layer's terms."""
+    p: Mapping = request.params or {}
+    return CapabilityRequest(
+        capability=request.capability,
+        prompt=str(p.get("prompt") or ""),
+        negative_prompt=str(p.get("negative_prompt") or ""),
+        aspect_ratio=_str(p.get("aspect_ratio")),
+        resolution=_str(p.get("resolution")),
+        duration_s=_int(p.get("duration_s")),
+        voice_id=_str(p.get("voice_id")),
+        scale=_int(p.get("factor")),
+        # An opaque per-organization id for the vendors that ask for one.
+        end_user=hashlib.sha256(f"nightshift-org:{request.org_id}".encode()).hexdigest()[:32],
+        input_images=tuple(str(f) for f in request.input_files),
+    )
+
+
+class RegistryAdapter:
+    """One registry model's adapter, as the creative worker calls it."""
+
+    def __init__(self, entry, adapter, *, sync_store: Optional[Dict[str, List[Output]]] = None,
+                 lock: Optional[threading.Lock] = None):
+        self.entry = entry
+        self.adapter = adapter
+        self._held = sync_store if sync_store is not None else _SYNC_HELD
+        self._lock = lock or _SYNC_LOCK
+
+    def _vendor_model(self, capability: str) -> str:
+        return self.entry.vendor_model_for(capability)
+
+    def submit(self, request: GenerationRequest) -> str:
+        cap = request.capability
+        if cap not in self.adapter.capabilities or cap not in self.entry.capabilities:
+            raise CreativeAdapterError(
+                "capability_not_supported",
+                f"{self.entry.id} cannot do {cap} on this deployment; nothing was charged")
+        req = capability_request(request)
+        problems = self.adapter.problems(req, self.entry)
+        if problems:
+            raise CreativeAdapterError("bad_request", "; ".join(problems)[:500])
+        task: ProviderTask = self.adapter.submit(req, self._vendor_model(cap))
+        if task.task_id:
+            return str(task.task_id)
+        if not task.outputs:
+            raise CreativeAdapterError("bad_response", "the provider answered without a task or an output")
+        key = SYNC_PREFIX + uuid.uuid4().hex
+        with self._lock:
+            while len(self._held) >= MAX_SYNC_HELD:
+                self._held.pop(next(iter(self._held)))
+            self._held[key] = list(task.outputs)
+        return key
+
+    def poll(self, task_id: str, request: GenerationRequest, out_dir: Path) -> ProviderPoll:
+        cap = request.capability
+        if task_id.startswith(SYNC_PREFIX):
+            with self._lock:
+                outputs = self._held.get(task_id)
+            if outputs is None:
+                return ProviderPoll(JOB_FAILED, error_code="output_lost",
+                                    error="the worker restarted before it stored the provider's result")
+            result = PollResult(SUCCEEDED, outputs)
+        else:
+            result = self.adapter.poll(ProviderTask(self.adapter.key, self._vendor_model(cap), task_id))
+        if result.state == PENDING:
+            return ProviderPoll(JOB_PENDING)
+        if result.state == FAILED:
+            err = result.error or AdapterError("bad_response", "the provider failed the task without a reason")
+            return ProviderPoll(JOB_FAILED, error_code=err.code, error=err.message)
+        # A failed download raises (retried by the worker with the same task);
+        # held synchronous outputs are dropped only once they are on disk.
+        files = self.adapter.fetch(result, out_dir, stem="output")
+        if task_id.startswith(SYNC_PREFIX):
+            with self._lock:
+                self._held.pop(task_id, None)
+        return ProviderPoll(JOB_SUCCEEDED, files=list(files), usage=self.usage(request, len(files)))
+
+    def usage(self, request: GenerationRequest, n_files: int) -> ProviderUsage:
+        """What the provider charged in its own unit (0037). USD stays None:
+        the registry's prices are unconfirmed, and unknown is never 0."""
+        unit = self.entry.raw.get("pricing", {}).get("unit")
+        p = request.params or {}
+        qty = {"second": _int(p.get("duration_s")),
+               "character": len(str(p.get("prompt") or "")),
+               "image": n_files}.get(unit)
+        return ProviderUsage(provider=self.entry.provider, vendor_model=self._vendor_model(request.capability),
+                             unit=unit, quantity=float(qty) if qty is not None else None, route="exact")
+
+
+_SYNC_HELD: Dict[str, List[Output]] = {}
+_SYNC_LOCK = threading.Lock()
+
+
+def resolve(model_id: str, *, env=None) -> Optional[RegistryAdapter]:
+    """The adapter for ``model_id`` (registry file), or None when the file does
+    not know it — the worker then fails the job with ``adapter_missing``."""
+    entry = model_registry.get(str(model_id or ""))
+    if entry is None:
+        return None
+    return RegistryAdapter(entry, build_adapter(entry.adapter, env=env))

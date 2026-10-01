@@ -65,7 +65,7 @@ describe("parseGenerationInput", () => {
   it("needs an organization and a known capability", () => {
     const a = parseGenerationInput(body, null, { requirePrice: true });
     expect(a.ok || a.result.body.error).toBe("org_required");
-    const b = parseGenerationInput({ ...body, capability: "i2v" }, ORG, { requirePrice: true });
+    const b = parseGenerationInput({ ...body, capability: "v2v" }, ORG, { requirePrice: true });
     expect(b.ok || b.result.body.error).toBe("capability_not_supported");
   });
 

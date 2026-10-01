@@ -20,6 +20,8 @@ name: Deploy web
 # While the variable NIGHTSHIFT_WORKER is `on`, the same run also deploys the
 # pipeline worker next to it, with its own env file built from the repository's
 # Actions secrets (step "Build the worker env"; docs/DEPLOY_AX42.md, g).
+# While NIGHTSHIFT_CREATIVE_WORKER is `on` as well, it also starts the creative
+# worker (creative_jobs, migration 0036); otherwise that one is removed.
 
 
 on:
@@ -270,6 +272,13 @@ jobs:
           WORKERENV_NIGHTSHIFT_AVATAR_ENABLED: ${{ vars.NIGHTSHIFT_AVATAR_ENABLED }}
           WORKERENV_HIGGSFIELD_AVATAR_ENDPOINT: ${{ vars.HIGGSFIELD_AVATAR_ENDPOINT }}
           WORKERENV_NIGHTSHIFT_CREDITS_ENFORCE: ${{ vars.NIGHTSHIFT_CREDITS_ENFORCE }}
+          # The creative worker's switch: `on` = remote-deploy.sh starts or
+          # recreates creative-worker, anything else = it is removed. A word,
+          # not a secret; it rides in the worker section because the creative
+          # worker shares the worker's env file (so it needs NIGHTSHIFT_WORKER
+          # on too), and a server still on the previous remote-deploy.sh
+          # accepts it as a key of .env.worker.example at the deployed commit.
+          WORKERENV_NIGHTSHIFT_CREATIVE_WORKER: ${{ vars.NIGHTSHIFT_CREATIVE_WORKER }}
         run: python3 deploy/build-worker-env.py "$PAYLOAD"
 
       - name: Deploy over SSH

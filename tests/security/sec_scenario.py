@@ -338,6 +338,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     sec_plans_0034.seed(conn, sc)
     for t in sc.tenants():
         _seed_render_job(conn, t)
+    # Style kits and characters (0047): tests/security/sec_style_0047.py.
+    import sec_style_0047
+    sec_style_0047.seed(conn, sc)
     # A pending invite into org A, addressed to Ivan's email, not yet accepted.
     with acting(conn, sc.alice.actor, commit=True) as s:
         s.value("select public.invite_org_member(%s, %s, 'viewer')", [sc.alice.org, sc.invitee.email])

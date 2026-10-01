@@ -14,7 +14,7 @@ import { isMissingFunction } from "@/lib/orgs";
  * shown with a guessed price (CLAUDE.md #5).
  */
 
-export const CAPABILITIES = ["t2i", "edit", "t2v", "i2v", "tts", "sfx"] as const;
+export const CAPABILITIES = ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg"] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export type Surface = "web" | "api" | "mcp";
 
@@ -43,6 +43,8 @@ export interface PublicSpec {
   imageSizes: string[];
   resolutions: string[];
   durationsS: number[];
+  /** Upscale factors the model is sold for (0046); empty unless it can upscale. */
+  upscaleFactors: number[];
   audioOut: boolean;
   isAsync: boolean;
   /** What credits_per_unit counts: an image, a second, a character, a request. */
@@ -114,6 +116,9 @@ function coerceSpec(v: unknown): PublicSpec | null {
     imageSizes: strings(v.image_sizes),
     resolutions: strings(v.resolutions),
     durationsS: Array.isArray(v.durations_s) ? v.durations_s.filter((d): d is number => posInt(d) !== null) : [],
+    upscaleFactors: Array.isArray(v.upscale_factors)
+      ? v.upscale_factors.filter((f): f is number => f === 2 || f === 4)
+      : [],
     audioOut: v.audio_out === true,
     isAsync: v.async === true,
     unit,

@@ -970,6 +970,128 @@ def purge_deleted(store: MediaStore, media_root: Path, *, limit: int = 50) -> in
     return n
 
 
+# ── the creative worker's side (migration 0046) ──────────────────────────────
+
+#: Image types a provider takes as an input, and the file suffix the adapters
+#: read the type from. A HEIC / HEIF photo is read from its JPEG display copy.
+SOURCE_SUFFIX: Dict[str, str] = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
+SOURCE_MAX_BYTES = 64 * 1024 * 1024
+
+
+class SourceUnavailable(Exception):
+    """The source image cannot be read. The message names no path."""
+
+
+def copy_source(media_root: Path, asset_id, mime: str, variants: Sequence[str], dest_dir: Path,
+                *, limit: int = SOURCE_MAX_BYTES) -> Path:
+    """Copy an asset's picture to ``dest_dir/source<.ext>`` for a provider call.
+
+    The path is built from the asset id alone (never a row's storage_key or a
+    name); a symlink anywhere on the way is refused, and the file is opened
+    with O_NOFOLLOW. The copy gives the adapters a suffix that matches the
+    type the database recorded (``original`` has none)."""
+    aid = canonical_id(asset_id)
+    if mime in HEIF_MIMES:
+        if "display" not in (variants or ()):
+            raise SourceUnavailable("the photo has no display copy")
+        variant, suffix = "display", ".jpg"
+    elif mime in SOURCE_SUFFIX:
+        variant, suffix = "original", SOURCE_SUFFIX[mime]
+    else:
+        raise SourceUnavailable("this image type cannot be a source")
+    src = asset_file(media_root, aid, variant)
+    for p in (src.parent.parent, src.parent, src):
+        if p.is_symlink():
+            raise SourceUnavailable("the source image is not a plain file")
+    if not src.is_file():
+        raise SourceUnavailable("the source image is not on this worker's media volume")
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / f"source{suffix}"
+    dest.unlink(missing_ok=True)
+    fd = os.open(src, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    n = 0
+    with os.fdopen(fd, "rb") as fin, open(dest, "xb") as fout:
+        while True:
+            chunk = fin.read(COPY_CHUNK)
+            if not chunk:
+                break
+            n += len(chunk)
+            if n > limit:
+                raise SourceUnavailable("the source image is too large")
+            fout.write(chunk)
+    if n == 0:
+        raise SourceUnavailable("the source image is empty")
+    return dest
+
+
+def store_generated(path: Path, *, asset_id, org_id: str, store: MediaStore, media_root: Path,
+                    tools: Optional[Tools], provenance: Mapping, expect_kind: Optional[str] = None,
+                    parent_asset_id: Optional[str] = None,
+                    runner: Callable[..., int] = run_tool, prober: Callable[..., Probe] = run_probe) -> dict:
+    """Put one generated file into the library as ``asset_id`` (source
+    'generated', the job's organization) the way an upload is stored: the type
+    sniffed from the content, ffprobed when ffprobe is here, a thumbnail /
+    proxy when ffmpeg is, files under media/<aa>/<uuid>/, then register_asset.
+    A retry with the same id rebuilds the same files and gets the same row."""
+    aid = canonical_id(asset_id)
+    src = Path(path)
+    if not src.is_file() or src.is_symlink() or src.stat().st_size <= 0:
+        raise IngestReject("file_missing", "the generated file is missing")
+    with open(src, "rb") as f:
+        sniffed = sniff(f.read(4096))
+    kind = ALLOWED_MIME.get(sniffed or "")
+    if kind is None or kind == "caption" or sniffed in HEIF_MIMES:
+        raise IngestReject("unsupported_type", "the provider's output is not an accepted image, video or audio file")
+    if expect_kind and kind != expect_kind:
+        raise IngestReject("type_mismatch", f"expected {expect_kind}, the provider sent {kind}")
+    info = prober(tools.ffprobe, src, sniffed) if tools else Probe(kind, sniffed, None, None, None)
+    final = asset_dir(media_root, aid)
+    work = final.with_name(f".{aid}.part")
+    work.parent.mkdir(parents=True, exist_ok=True)
+    os.chmod(work.parent, 0o755)
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(mode=0o755)
+    beat = lambda: None  # noqa: E731 — the creative job's own heartbeat thread runs meanwhile
+    try:
+        nbytes, digest = copy_and_hash(src, work / VARIANT_FILES["original"], src.stat().st_size)
+        variants: List[str] = []
+        if tools and info.kind in ("image", "video"):
+            thumb = work / VARIANT_FILES["thumb"]
+            code = runner(thumbnail_command(tools.ffmpeg, work / "original", thumb, info.mime, info.duration),
+                          beat, timeout_s=THUMB_TIMEOUT_S)
+            if code == 0 and thumb.is_file() and thumb.stat().st_size > 0:
+                variants.append("thumb")
+        if tools and info.kind == "video":
+            proxy = work / VARIANT_FILES["proxy"]
+            code = runner(proxy_command(tools.ffmpeg, work / "original", proxy, info.mime), beat,
+                          timeout_s=PROXY_TIMEOUT_S)
+            if code == 0 and proxy.is_file() and proxy.stat().st_size > 0:
+                variants.append("proxy")
+        derived = 0
+        for f in work.iterdir():
+            os.chmod(f, 0o644)  # the web container reads these as another user
+            if f.name in {VARIANT_FILES[v] for v in variants}:
+                derived += f.stat().st_size
+            elif f.name != VARIANT_FILES["original"]:
+                f.unlink()  # a failed derivation leaves nothing half-made
+        if final.exists() and not final.is_symlink():
+            shutil.rmtree(final)
+        os.replace(work, final)
+    except BaseException:
+        shutil.rmtree(work, ignore_errors=True)
+        raise
+    out = store.register(
+        asset_id=aid, org=org_id, kind=info.kind, mime=info.mime, bytes=nbytes, sha256=digest,
+        source="generated", width=info.width, height=info.height, duration_s=info.duration,
+        provenance=dict(provenance), derived_bytes=derived, variants=variants,
+        parent_asset_id=parent_asset_id,
+    )
+    if not out or out.get("id") != aid:
+        raise StoreUnavailable("register_asset did not record the asset")
+    return out
+
+
 class MediaService:
     """What tools/media_worker.py runs in a loop."""
 
@@ -1016,4 +1138,5 @@ __all__ = [
     "Tools", "VARIANT_FILES", "asset_dir", "asset_file", "canonical_id", "check_declared", "decode_heic",
     "find_tools", "gc_staging", "heic_available", "heif_has_image_item", "ingest", "interpret_probe",
     "process_ticket", "purge_deleted", "sniff", "staged_path", "storage_key",
+    "SourceUnavailable", "copy_source", "store_generated",
 ]

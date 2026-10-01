@@ -275,10 +275,11 @@ FAKE_DOCKER = textwrap.dedent(
     # Records every call; answers the few questions remote-deploy.sh asks.
     printf '%s\\n' "$*" >>"$FAKE_DOCKER_LOG"
     case "$*" in
+      *" up "*creative-worker) exit "${FAKE_CREATIVE_UP_RC:-0}" ;;
       *" up "*worker) exit "${FAKE_WORKER_UP_RC:-0}" ;;
       *" up "*) exit "${FAKE_UP_RC:-0}" ;;
       *" ps -q web") echo cid123 ;;
-      *" ps -q worker"|*" ps -q media-worker") echo cidw ;;
+      *" ps -q worker"|*" ps -q media-worker"|*" ps -q creative-worker") echo cidw ;;
       inspect*) echo "${FAKE_HEALTH:-healthy}" ;;
       *" logs "*) echo "${FAKE_LOG_TEXT:-}" ;;
     esac
@@ -866,6 +867,75 @@ class RemoteDeployWorkerTests(_RemoteDeployFixture):
         proc = self.deploy(self.worker_payload(), FAKE_WORKER_UP_RC="1")
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("the worker did not start", proc.stderr)
+
+
+@unittest.skipUnless(shutil.which("bash") and shutil.which("git") and shutil.which("flock"), "bash, git, flock needed")
+class RemoteDeployCreativeWorkerTests(_RemoteDeployFixture):
+    """The creative worker's switch: the worker-section line NIGHTSHIFT_CREATIVE_WORKER."""
+
+    worker_payload = RemoteDeployWorkerTests.worker_payload
+
+    def creative_calls(self):
+        return [c for c in self.docker_calls() if c.endswith("creative-worker")]
+
+    def test_on_starts_it_after_the_worker_and_prints_its_state_as_numbers(self):
+        proc = self.deploy(self.worker_payload(NIGHTSHIFT_CREATIVE_WORKER="on"))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        calls = self.docker_calls()
+        worker_up = [i for i, c in enumerate(calls) if c.endswith("up -d --build --no-deps worker")]
+        creative_up = [i for i, c in enumerate(calls) if c.endswith("up -d --no-deps creative-worker")]
+        self.assertEqual(len(creative_up), 1)
+        self.assertLess(worker_up[0], creative_up[0])
+        self.assertFalse(any("rm --stop --force creative-worker" in c for c in calls))
+        state = [c for c in calls if c.startswith("inspect -f creative-worker after 0s:")]
+        self.assertEqual(len(state), 1, calls)
+        self.assertIn("state={{.State.Status}} exit={{.State.ExitCode}} restarts={{.RestartCount}}", state[0])
+        self.assertIn("creative-worker log hints:", proc.stdout)
+        self.assertIn("creative-worker on", proc.stdout)
+        # The switch is a key of the worker file, never of the dashboard's.
+        self.assertIn("NIGHTSHIFT_CREATIVE_WORKER=on\n", self.worker_env_file.read_text())
+        self.assertNotIn("NIGHTSHIFT_CREATIVE_WORKER", self.env_file.read_text())
+
+    def test_anything_but_on_stops_and_removes_it(self):
+        for value in ("", "off", "On", "yes", "on "):
+            with self.subTest(value=value):
+                self.docker_log.unlink(missing_ok=True)
+                proc = self.deploy(self.worker_payload(NIGHTSHIFT_CREATIVE_WORKER=value))
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertEqual(
+                    [c for c in self.creative_calls() if " up " in f" {c} "], [], "started although not 'on'"
+                )
+                self.assertTrue(any(c.endswith("rm --stop --force creative-worker") for c in self.docker_calls()))
+                self.assertIn("creative-worker is off", proc.stdout)
+                self.assertFalse(any(c.startswith("inspect -f creative-worker") for c in self.docker_calls()))
+                self.assertNotIn("creative-worker log hints", proc.stdout)
+
+    def test_never_without_the_worker(self):
+        # No worker section, so no switch line either: the creative worker goes too.
+        proc = self.deploy(self.payload())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual([c for c in self.creative_calls() if " up " in f" {c} "], [])
+        self.assertTrue(any(c.endswith("rm --stop --force creative-worker") for c in self.docker_calls()))
+        self.assertIn("creative-worker off", proc.stdout)
+
+    def test_the_switch_in_the_web_section_is_refused(self):
+        self.assertRefused(
+            self.deploy(self.payload(NIGHTSHIFT_CREATIVE_WORKER="on")),
+            "NIGHTSHIFT_CREATIVE_WORKER is not a key in deploy/.env.web.example",
+        )
+
+    def test_its_log_hints_name_known_phrases_and_never_the_log_text(self):
+        text = f"Traceback (most recent call last): KeyError {self.SECRET} /app/media/x"
+        proc = self.deploy(self.worker_payload(NIGHTSHIFT_CREATIVE_WORKER="on"), FAKE_LOG_TEXT=text)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("creative-worker log hints: Traceback", proc.stdout)
+        self.assertNotIn("/app/media", proc.stdout)
+        self.assertTrue(any("--tail 200 creative-worker" in c for c in self.docker_calls()))
+
+    def test_a_creative_worker_that_fails_to_start_fails_the_deploy(self):
+        proc = self.deploy(self.worker_payload(NIGHTSHIFT_CREATIVE_WORKER="on"), FAKE_CREATIVE_UP_RC="1")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("the creative worker did not start", proc.stderr)
 
 
 if __name__ == "__main__":
