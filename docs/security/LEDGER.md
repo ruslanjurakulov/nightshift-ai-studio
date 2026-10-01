@@ -75,3 +75,13 @@ Recorded so these are not re-reported.
   verified** for this ledger: the real Supabase Storage bucket policies live in the project and not in
   migrations, so only the modelled ones are tested; route authorization was reviewed by reading, with
   no vitest route tests.
+- **BR-A-SUMMARY (lane A, money: credits, creative jobs, storyboards, editor exports, public API, payments,
+  2026-10-01):** no findings. Attacks as customer, viewer, cross-org owner, revoked or other-org API key
+  and anon were all refused. 64 passing regression tests are in `tests/security/test_sec_breach_money.py`
+  (branch `claude/breach-money`). Two notes, no rows:
+  (1) one person with several real mailboxes can still collect several welcome grants. 0042 already
+  folds gmail dot and +tag aliases, so this is signup-level abuse that a migration cannot fix. Accepted
+  risk; revisit if abuse shows up in the margin report.
+  (2) Fixture gap: the lab scenario seeds no `video_minute` or `job_minimum` prices, so Run-now and
+  storyboard floor checks do nothing in the lab. `test_sec_creative_credits` and
+  `test_sec_web_api_hardening` cover them separately. Seed those prices in a future scenario pass.
