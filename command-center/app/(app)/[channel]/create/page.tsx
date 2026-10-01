@@ -13,6 +13,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { loadStudioModels } from "@/lib/server/creative";
 import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery } from "@/lib/creative/studio";
+import { runPrefillFromQuery, toolPrefill } from "@/lib/home";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -46,12 +47,32 @@ export default async function CreatePage({
   // chosen, and a sidebar tool row opens that tool. Either only fills the
   // form: nothing is priced or spent until Generate is pressed.
   const q = await searchParams;
-  const initial = prefillFromQuery(q.tool, q.source);
+  // Home's quick tools open a tool with no picture yet (/create?tool=t2i).
+  const initial = prefillFromQuery(q.tool, q.source) ?? toolPrefill(q.tool);
+  // Home's composer: topic, length and language for the channel run below.
+  // Fills the form; Create still shows the price and asks before it runs.
+  const runInitial = runPrefillFromQuery(q);
   const operator = await isOperator();
 
+  const run = (
+    <CreateStudio
+      channelId={scopedChannel?.channel_id ?? null}
+      githubConfigured={isRunNowConfigured}
+      backend={runBackend}
+      agentConfig={scopedChannel?.agent_config ?? null}
+      canRun={canRun}
+      operator={operator}
+      targets={targets}
+      initial={runInitial}
+    />
+  );
+
+  // Arriving from Home with a topic, the run form comes first: that is what
+  // was asked for, and its price is the next thing to read.
   return (
     <div className="rhythm stagger-enter">
       <PageHeader icon="studio" title={t.create.title} subtitle={t.create.subtitle} />
+      {runInitial && run}
       {/* Keyed by the link's tool and picture: moving between the sidebar's
           tool rows is a client navigation to the same page, and without a new
           key the panel would keep the tool it already had. */}
@@ -68,15 +89,7 @@ export default async function CreatePage({
           bottomBar={!operator}
         />
       )}
-      <CreateStudio
-        channelId={scopedChannel?.channel_id ?? null}
-        githubConfigured={isRunNowConfigured}
-        backend={runBackend}
-        agentConfig={scopedChannel?.agent_config ?? null}
-        canRun={canRun}
-        operator={operator}
-        targets={targets}
-      />
+      {!runInitial && run}
     </div>
   );
 }

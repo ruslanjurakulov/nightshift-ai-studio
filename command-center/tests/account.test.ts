@@ -146,19 +146,29 @@ describe("appRedirect", () => {
     expect(appRedirect({ ...base, path: "/all-channels/accounts", honestSlug: "all-channels", operator: true })).toBeNull();
   });
 
-  it("sends a customer on an operator-only screen to that channel's Studio, dropping the query", () => {
+  it("sends a customer on an operator-only screen to that channel's Home, dropping the query", () => {
     expect(
       appRedirect({ ...base, selection: "default", path: "/chronos/members", search: "?x=1", honestSlug: "chronos", operator: false }),
-    ).toBe("/chronos/create");
+    ).toBe("/chronos/home");
     expect(appRedirect({ ...base, path: "/all-channels/accounts", honestSlug: "all-channels", operator: false })).toBe(
-      "/chronos/create",
+      "/chronos/home",
     );
   });
 
-  it("starts the operator on the Command Center and a customer in Studio", () => {
+  it("starts the operator on the Command Center (unchanged) and a customer on Home", () => {
     expect(landingSection(true)).toBe("command-center");
-    expect(landingSection(false)).toBe("create");
+    expect(landingSection(false)).toBe("home");
     expect(sectionAllowed(landingSection(false), false)).toBe(true);
+    // Home is a customer screen, not an operator-only one, and a known section.
+    expect(isOperatorOnlySection("home")).toBe(false);
+    expect(isSection("home")).toBe(true);
+  });
+
+  it("opens Home from the hub's rail entry, as the hub's first tab, without changing the operator's rail", () => {
+    expect(CUSTOMER_RAIL.find((i) => i.key === "hub")?.href).toBe("/home");
+    expect(SECTION_TABS.hub[0]).toEqual({ href: "/home", key: "home" });
+    expect(tabsFor("home")?.rail).toBe("hub");
+    expect(keys(true)).not.toContain("home" as never);
   });
 
   it("still rewrites a channel id to its name, for everyone", () => {

@@ -7,7 +7,7 @@ import { landingSection } from "@/lib/navigation";
 /**
  * A channel on its own names no screen — it names a lens. Landing on one sends
  * you to where you start in that channel: the operator's Command Center, a
- * customer's Studio (lib/navigation landingSection).
+ * customer's Home (lib/navigation landingSection).
  *
  * The bare every-channel segment is where a sign-in with no remembered channel
  * lands (middleware.ts). It opens the first channel rather than the roll-up —
