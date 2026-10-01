@@ -152,6 +152,23 @@ export const siteEn = {
     sizesBody: "Prices are published here before checkout opens. Nothing can be bought until then.",
     cta: "See full pricing",
   },
+  pricingPage: {
+    mathSlug: "Credits math",
+    mathTitle: "How a price becomes a charge.",
+    mathLead: "The same four steps for a video run and a Studio generation. Nothing here is a rate; the rates are shown in the app before every run.",
+    rows: [
+      { id: "quote", word: "Quote", formula: "quote = length × per-minute rate, at least the minimum per run", body: "Shown on the key before anything starts. A Studio generation carries its own price the same way." },
+      { id: "hold", word: "Hold", formula: "hold = quote", body: "Set aside from your balance when the run starts, so it is not spent on anything else meanwhile." },
+      { id: "charge", word: "Charge", formula: "charge ≤ hold", body: "What the run actually used, once it finishes — never more than the hold." },
+      { id: "return", word: "Return", formula: "return = hold − charge;  failed → return = hold", body: "Comes straight back to your balance, with no request. Every step is in your credit history." },
+    ],
+    sizesTitle: "Pack sizes",
+    sizesNote: "These are the packs the checkout will sell. Their prices are published here before it opens.",
+    termsSlug: "Terms",
+    creditSlug: "What a credit buys",
+    paySlug: "Payments",
+    faqSlug: "Questions",
+  },
   final: {
     title: "Put your channel’s next video on the rundown.",
     lead: "Start free. See the price before every run, and approve every video before it airs.",

@@ -13,6 +13,9 @@
    - motion once: the waiting lamp breathes. Nothing else moves, and under
      prefers-reduced-motion the lamp stays lit and still (globals.css). */
 
+/* Layered as components, so a Tailwind utility on an element (mt-8, max-w-…)
+   still wins over these defaults. */
+@layer components {
 .st {
   --st-max: 1240px;
   --st-gutter: 16px;
@@ -262,9 +265,6 @@ html:has(.st) { scroll-padding-top: 80px; }
 .st-header-tools { display: flex; align-items: center; gap: 8px; }
 .st-header-desk { display: none; align-items: center; gap: 8px; }
 @media (min-width: 1024px) { .st-header-desk { display: flex; } }
-/* The shared theme and language keys are pills app-wide; on the public
-   frame they are keys, like every other control here. */
-.st .btn-sky.pill { border-radius: var(--ns-r-key); }
 .st-signin {
   display: inline-flex;
   align-items: center;
@@ -862,7 +862,7 @@ html:has(.st) { scroll-padding-top: 80px; }
   border-bottom: 1px solid var(--ns-rule);
 }
 @media (min-width: 720px) {
-  .st-formula > div { grid-template-columns: 180px minmax(0, 1fr); align-items: baseline; }
+  .st-formula > div { grid-template-columns: 112px minmax(0, 1fr); align-items: baseline; }
 }
 .st-formula dt { font-family: var(--font-display); font-size: 20px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
 .st-formula dd { margin: 0; }
@@ -872,7 +872,7 @@ html:has(.st) { scroll-padding-top: 80px; }
   font-family: var(--font-mono);
   font-variation-settings: "wdth" 87.5;
   font-size: 14px;
-  color: var(--ns-amber-ink);
+  color: var(--ns-text);
 }
 
 /* ── FAQ ─────────────────────────────────────────────────────────────── */
@@ -1147,3 +1147,45 @@ html:has(.st) { scroll-padding-top: 80px; }
   font-size: 15px;
 }
 .st-way-list li[data-kind="not"] { color: var(--ns-text-dim); }
+
+/* Plans: one rack, columns split by hairlines (not four floating cards). */
+.st-plans {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  background: var(--ns-console);
+  border: 1px solid var(--ns-rule);
+  border-radius: var(--ns-r-panel);
+  overflow: hidden;
+}
+@media (min-width: 640px) { .st-plans { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .st-plans[data-cols="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1200px) { .st-plans[data-cols="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.st-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px;
+  border-bottom: 1px solid var(--ns-rule);
+}
+@media (min-width: 640px) { .st-plan { border-right: 1px solid var(--ns-rule); } }
+.st-plan:last-child { border-right: 0; }
+.st-price-row > div { min-width: 0; }
+
+}
+
+/* The shared theme and language keys are pills app-wide; on the public
+   frame they are keys, like every other control here. */
+.st .btn-sky.pill { border-radius: var(--ns-r-key); }
+
+/* globals.css sets letter-spacing on bare h1/h2/h3 outside any layer, which
+   would beat the layered classes above; the headings that are engraving get
+   their tracking back here. */
+h1.st-h1, :is(h1, h2).st-h1-page { letter-spacing: -0.006em; }
+h2.st-h2 { letter-spacing: -0.008em; }
+:is(h2, h3).st-h3 { letter-spacing: 0; }
+h3.st-step-title { letter-spacing: 0.04em; }
+:is(h2, h3).st-price-name { letter-spacing: 0.1em; }
+:is(h2, h3).st-kicker { letter-spacing: 0.14em; }
+.st-footer h2 { letter-spacing: 0.14em; }

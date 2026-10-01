@@ -27,7 +27,7 @@ export function PlanCompare({ matrix, titleId }: { matrix: Matrix; titleId: stri
       role="region"
       aria-labelledby={titleId}
       tabIndex={0}
-      className="overflow-x-auto rounded-[22px] border border-[var(--color-border)] bg-[var(--color-panel)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)]"
+      className="st-panel overflow-x-auto"
     >
       <table className="w-full min-w-[34rem] border-collapse text-left text-[14px]">
         <thead>
@@ -36,7 +36,7 @@ export function PlanCompare({ matrix, titleId }: { matrix: Matrix; titleId: stri
               {t.pricing.compareFeature}
             </th>
             {matrix.columns.map((c) => (
-              <th key={c.id} scope="col" className="px-5 py-4 text-[14px] font-semibold">
+              <th key={c.id} scope="col" className="st-price-name px-5 py-4">
                 {c.name}
               </th>
             ))}
@@ -48,7 +48,7 @@ export function PlanCompare({ matrix, titleId }: { matrix: Matrix; titleId: stri
               {t.pricing.compareCredits}
             </th>
             {matrix.columns.map((c) => (
-              <td key={c.id} className="mono px-5 py-4 text-[13px]">
+              <td key={c.id} className="st-num px-5 py-4 text-[13px]">
                 {c.isDefault
                   ? fmt(p.freeCredits, { n: formatCredits(WELCOME_CREDITS, locale) })
                   : fmt(p.monthlyCredits, { n: formatCredits(c.monthlyCredits, locale) })}

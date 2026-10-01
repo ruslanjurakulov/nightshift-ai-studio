@@ -145,6 +145,23 @@ export const siteUz: SiteDictionary = {
     sizesBody: "Narxlar toʻlov ochilishidan oldin shu yerda eʼlon qilinadi. Ungacha hech narsa sotib olib boʻlmaydi.",
     cta: "Barcha narxlar",
   },
+  pricingPage: {
+    mathSlug: "Kredit hisobi",
+    mathTitle: "Narx qanday qilib yechimga aylanadi.",
+    mathLead: "Video ishga tushirish va Studiya generatsiyasi uchun bir xil toʻrt qadam. Bu yerda tarif yoʻq; tariflar ilovada har bir ishga tushirishdan oldin koʻrsatiladi.",
+    rows: [
+      { id: "quote", word: "Narx", formula: "narx = uzunlik × daqiqa narxi, kamida bir ishga tushirish minimumi", body: "Boshlanishdan oldin tugmada koʻrinadi. Studiya generatsiyasi ham oʻz narxini xuddi shunday koʻrsatadi." },
+      { id: "hold", word: "Zaxira", formula: "zaxira = narx", body: "Ishga tushganda balansdan ajratib qoʻyiladi, shu orada boshqa narsaga sarflanmaydi." },
+      { id: "charge", word: "Yechim", formula: "yechim ≤ zaxira", body: "Tugagach, ishga tushirish aslida qancha sarflagani — hech qachon zaxiradan koʻp emas." },
+      { id: "return", word: "Qaytarish", formula: "qaytarish = zaxira − yechim;  nosozlik → qaytarish = zaxira", body: "Arizasiz darhol balansga qaytadi. Har bir qadam kredit tarixida koʻrinadi." },
+    ],
+    sizesTitle: "Paket hajmlari",
+    sizesNote: "Toʻlov aynan shu paketlarni sotadi. Ularning narxlari toʻlov ochilishidan oldin shu yerda eʼlon qilinadi.",
+    termsSlug: "Shartlar",
+    creditSlug: "Kredit nimaga yetadi",
+    paySlug: "Toʻlovlar",
+    faqSlug: "Savollar",
+  },
   final: {
     title: "Kanalingizning navbatdagi videosini efir rejasiga qoʻying.",
     lead: "Bepul boshlang. Har bir ishga tushirishdan oldin narxni koʻring, har bir videoni efirdan oldin tasdiqlang.",
