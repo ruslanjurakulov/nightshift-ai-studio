@@ -84,6 +84,18 @@ REQUIRED_KEYS=(DOMAIN ACME_EMAIL NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_A
 log() { printf '==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
+# Print which of a fixed list of phrases occur in $1 (comma separated, or
+# nothing). The words printed are the list's, so the text itself never leaks.
+hint_words() {
+  local text="$1" out="" w
+  for w in "unrecognized arguments" "usage:" "Traceback" "ModuleNotFoundError" "ImportError" \
+           "must be set" "must be absolute" "not a writable directory" "are required" "Permission denied" "No such file" \
+           "pillow-heif" "ConnectionError" "Timeout"; do
+    if printf '%s' "$text" | grep -qiF -- "$w"; then out="${out:+$out,}${w// /_}"; fi
+  done
+  printf '%s' "$out"
+}
+
 compose() {
   # WEB_ENV_FILE keeps the web container's env_file pointed at the same file
   # the interpolation reads, including under a test override; WORKER_ENV_FILE
@@ -329,7 +341,15 @@ main() {
     if ! printf '%s\n' "$probe_out" | grep '^probe: '; then
       probe_err="$(printf '%s\n' "$probe_out" | grep -oE '^[A-Za-z_.]*(Error|Exception)\b' | tail -n 1 || true)"
       echo "probe: no result exit=${probe_rc} error=${probe_err:-none}"
+      # Which known phrases appear in the output? The phrases come from this
+      # list, never from the output, so no value, path or message gets out.
+      probe_hints="$(hint_words "$probe_out")"
+      echo "probe: output_hints=${probe_hints:-none}"
     fi
+    # The same question for the media worker's own log: which known phrases
+    # does its recent output contain (why it exits with 2)?
+    media_log="$(compose logs --no-color --tail 200 media-worker 2>&1 || true)"
+    echo "media-worker log hints: $(hint_words "$media_log" || true)"
     # The creative worker (0036) is started by hand, never by a deploy; one
     # that is already running is moved onto the image just built.
     if [[ -n "$(compose ps -q creative-worker 2>/dev/null)" ]]; then

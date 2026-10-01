@@ -280,6 +280,7 @@ FAKE_DOCKER = textwrap.dedent(
       *" ps -q web") echo cid123 ;;
       *" ps -q worker"|*" ps -q media-worker") echo cidw ;;
       inspect*) echo "${FAKE_HEALTH:-healthy}" ;;
+      *" logs "*) echo "${FAKE_LOG_TEXT:-}" ;;
     esac
     exit 0
     """
@@ -812,8 +813,8 @@ class RemoteDeployWorkerTests(_RemoteDeployFixture):
         self.assertEqual(len(inspects), 2)
         self.assertTrue(any(c.startswith("inspect -f worker after") for c in inspects))
         self.assertTrue(any(c.startswith("inspect -f media-worker after") for c in inspects))
-        # Never the container's log text: this output is a public Actions log.
-        self.assertFalse([c for c in calls if " logs" in f" {c}"])
+        # Log text is only ever matched against a fixed phrase list, never printed.
+        self.assertTrue(all("--tail 200 media-worker" in c for c in calls if " logs" in f" {c}"))
 
     def test_the_media_worker_probe_runs_after_start_and_never_fails_the_deploy(self):
         proc = self.deploy(self.worker_payload())
@@ -826,6 +827,14 @@ class RemoteDeployWorkerTests(_RemoteDeployFixture):
         proc = self.deploy(self.worker_payload())
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("probe: no result exit=0 error=none", proc.stdout)
+
+    def test_log_hints_name_known_phrases_and_never_print_the_log_text(self):
+        text = f"2026 media_worker ERROR NIGHTSHIFT_MEDIA_DIR is not a writable directory: /app/{self.SECRET}"
+        proc = self.deploy(self.worker_payload(), FAKE_LOG_TEXT=text)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("media-worker log hints: not_a_writable_directory", proc.stdout)
+        self.assertNotIn(self.SECRET, proc.stdout + proc.stderr)
+        self.assertNotIn("/app/", proc.stdout)
 
     def test_switching_the_worker_off_removes_it_and_its_keys(self):
         self.assertEqual(self.deploy(self.worker_payload()).returncode, 0)
