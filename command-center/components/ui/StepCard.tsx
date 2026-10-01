@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { StatusLamp } from "@/components/ui/StatusLamp";
-import { Timecode } from "@/components/ui/Timecode";
+import { Timecode, type TimecodeFormat } from "@/components/ui/Timecode";
 
 /**
  * One step of a long make — script → characters → storyboard → render — as a
@@ -42,7 +42,11 @@ export function StepCard({
   totalLabel,
   unknownPrice,
   unit,
+  format = "credits",
+  priceWords,
+  totalWords,
   locale = "en",
+  testId,
   children,
   action,
 }: {
@@ -59,13 +63,19 @@ export function StepCard({
   /** What an unknown price reads as. */
   unknownPrice: string;
   unit?: string;
+  /** What the two figures count: credits (default), or a length (`duration`: running length of a plan). */
+  format?: TimecodeFormat;
+  /** A known state said in words instead of a figure ("not charged"); never a stand-in for an unknown. */
+  priceWords?: string;
+  totalWords?: string;
   locale?: string;
+  testId?: string;
   children?: ReactNode;
   action?: ReactNode;
 }) {
   const tone = state === "done" ? "ok" : state === "current" ? "run" : state === "blocked" ? "warn" : "idle";
   return (
-    <li className="ns-step" data-state={state} aria-current={state === "current" ? "step" : undefined}>
+    <li className="ns-step" data-state={state} data-testid={testId} aria-current={state === "current" ? "step" : undefined}>
       <span aria-hidden className="ns-step-no">
         {String(index).padStart(2, "0")}
       </span>
@@ -78,13 +88,13 @@ export function StepCard({
         <span>
           {priceLabel}{" "}
           <strong>
-            <Timecode value={price} locale={locale} unit={unit} unknown={unknownPrice} />
+            {priceWords ? <span>{priceWords}</span> : <Timecode value={price} format={format} locale={locale} unit={unit} unknown={unknownPrice} />}
           </strong>
         </span>
         <span>
           {totalLabel}{" "}
           <strong>
-            <Timecode value={total} locale={locale} unit={unit} unknown={unknownPrice} />
+            {totalWords ? <span>{totalWords}</span> : <Timecode value={total} format={format} locale={locale} unit={unit} unknown={unknownPrice} />}
           </strong>
         </span>
         {action && <span className="ml-auto">{action}</span>}

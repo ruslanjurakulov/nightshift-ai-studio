@@ -1513,7 +1513,8 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .ns-seg > button:hover { color: var(--color-fg); }
 .studio-seg > button[aria-pressed="true"],
 .ns-seg > button[aria-pressed="true"],
-.ns-seg > button[aria-checked="true"] {
+.ns-seg > button[aria-checked="true"],
+.ns-seg > button[aria-selected="true"] {
   color: var(--studio-cta-fg);
   background: var(--studio-cta-bg);
 }
@@ -1992,6 +1993,9 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   .ns-chip-row[data-wrap="true"] { flex-wrap: wrap; overflow: visible; }
 }
 .ns-chip > .ns-chip-count { color: var(--color-muted); }
+/* A readout chip is not a key: no hover, a normal-height line on a phone. */
+.ns-chip[data-plain="true"] { cursor: default; min-height: 28px; }
+.ns-chip[data-plain="true"]:hover { color: var(--color-muted); border-color: var(--color-border); }
 
 /* Panel: three roles — flat (a hairline rack face), sunken (a well for a
    field or a feed), lifted (the one thing on the screen). */
@@ -2029,7 +2033,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .ns-seg[data-size="lg"] > button { min-height: 36px; padding: 0 14px; font-size: var(--ns-t-ui); font-weight: 550; }
 @media (pointer: coarse), (max-width: 40rem) {
   .ns-seg > button,
-  .ns-chip,
+  .ns-chip:not([data-plain]),
   .ns-price-button[data-size="md"] { min-height: 44px; }
 }
 
@@ -2046,6 +2050,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   grid-template-columns: repeat(auto-fill, minmax(var(--tile-min, 160px), 1fr));
   gap: 3px;
   padding: 3px;
+  align-items: start;
   border-radius: var(--ns-r-frame);
   background: var(--ns-film);
 }
@@ -2063,6 +2068,13 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   overflow: hidden;
   border-radius: 1px;
   background: color-mix(in srgb, var(--ns-on-film) 8%, var(--ns-film));
+}
+/* The printed slip under a frame: solid paper, readable in both themes. */
+.ns-frame-body {
+  margin-top: 3px;
+  padding: 0.625rem 0.75rem 0.75rem;
+  background: var(--color-panel);
+  color: var(--color-fg);
 }
 .ns-frame[data-selected="true"] .ns-frame-media { outline: 2px solid var(--ns-amber); outline-offset: -2px; }
 .ns-edge {

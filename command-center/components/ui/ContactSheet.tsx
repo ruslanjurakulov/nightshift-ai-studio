@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, LiHTMLAttributes, ReactNode } from "react";
 
 /**
  * Results as a proof sheet (IDENTITY.md §Signature devices): frames on a
@@ -60,9 +60,11 @@ export function Frame({
   aspect,
   selected = false,
   caption,
+  body,
   children,
   className,
-}: {
+  ...rest
+}: Omit<LiHTMLAttributes<HTMLLIElement>, "children" | "className"> & {
   /** The frame's number on the sheet, if it has a real order. */
   number?: number | string | null;
   /** Facts for the edge print, e.g. ["16:9", "0:05", "12 cr"]; empty items are dropped. */
@@ -72,13 +74,15 @@ export function Frame({
   selected?: boolean;
   /** Under the picture, on the film: the frame's title or "for whom" line. */
   caption?: ReactNode;
+  /** Under the film: a printed slip with the frame's own controls and facts (solid, readable in both themes). */
+  body?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
   const facts = edge.filter((x): x is string => typeof x === "string" && x.length > 0);
   const printed = number !== undefined && number !== null && number !== "";
   return (
-    <li className={`ns-frame${className ? ` ${className}` : ""}`} data-selected={selected ? "true" : undefined}>
+    <li {...rest} className={`ns-frame${className ? ` ${className}` : ""}`} data-selected={selected ? "true" : undefined}>
       {(printed || facts.length > 0) && (
         <div className="ns-edge">
           {printed && <span className="ns-edge-no">{number}</span>}
@@ -92,6 +96,7 @@ export function Frame({
         {children}
       </div>
       {caption && <div className="px-1 pb-1.5 pt-1 text-[12px] leading-snug">{caption}</div>}
+      {body && <div className="ns-frame-body">{body}</div>}
     </li>
   );
 }

@@ -15,17 +15,29 @@ export function Chip({
   pressed,
   count,
   icon,
+  plain = false,
   children,
   className,
   type = "button",
   ...rest
 }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-pressed"> & {
   pressed?: boolean;
+  /** A readout, not a key: drawn as a chip but not a button (a count of what is attached). */
+  plain?: boolean;
   /** A real count beside the name (references attached, results in a filter). */
   count?: number | null;
   icon?: ReactNode;
   children: ReactNode;
 }) {
+  if (plain) {
+    return (
+      <span className={`ns-chip${className ? ` ${className}` : ""}`} data-plain="true">
+        {icon}
+        <span className="truncate">{children}</span>
+        {typeof count === "number" && Number.isFinite(count) && <span className="ns-chip-count ns-tc">{count}</span>}
+      </span>
+    );
+  }
   return (
     <button
       type={type}
