@@ -30,10 +30,23 @@ export interface CreativeResult {
 }
 
 /**
- * Capabilities 0036 / 0046 accept. The last four start from a picture in the
- * organization's media library (`params.source_asset_id`, migration 0046).
+ * Capabilities 0036 / 0046 / 0050 accept. edit…remove_bg start from a picture
+ * in the organization's media library (`params.source_asset_id`, migration
+ * 0046); voice_change and dub start from a recording there (0050).
  */
-export const CREATIVE_CAPABILITIES = ["t2i", "t2v", "tts", "sfx", "music", "edit", "i2v", "upscale", "remove_bg"] as const;
+export const CREATIVE_CAPABILITIES = [
+  "t2i",
+  "t2v",
+  "tts",
+  "sfx",
+  "music",
+  "edit",
+  "i2v",
+  "upscale",
+  "remove_bg",
+  "voice_change",
+  "dub",
+] as const;
 export type CreativeCapability = (typeof CREATIVE_CAPABILITIES)[number];
 
 /**
@@ -43,6 +56,22 @@ export type CreativeCapability = (typeof CREATIVE_CAPABILITIES)[number];
  * creative_source_problem), never here: this only checks the id's shape.
  */
 export const SOURCE_CAPABILITIES = ["edit", "i2v", "upscale", "remove_bg"] as const satisfies readonly CreativeCapability[];
+
+/**
+ * The capabilities whose input is a library RECORDING — an audio or video
+ * file (migration 0050). Whether it may be used — the SAME organization's,
+ * live, a type the voice provider takes, of a measured length within the
+ * tool's limit — is decided by the database (creative_source_problem); so is
+ * the quantity (the recording's seconds), never this code or the browser.
+ */
+export const MEDIA_SOURCE_CAPABILITIES = ["voice_change", "dub"] as const satisfies readonly CreativeCapability[];
+
+/** 0050's explicit allow-list for a dub's `target_language` (the model must list it too). */
+export const DUB_LANGUAGES = ["uz", "ru", "en"] as const;
+export type DubLanguage = (typeof DUB_LANGUAGES)[number];
+
+/** A voice of the account: 20 letters and digits (0050 requires exactly this for voice_change). */
+export const VOICE_ID_RE = /^[A-Za-z0-9]{20}$/;
 
 /**
  * The capabilities a style kit can steer (migration 0048: `params.style_kit_id`).
@@ -66,6 +95,7 @@ export const PARAM_KEYS = [
   "source_asset_id",
   "factor",
   "style_kit_id",
+  "target_language",
 ] as const;
 
 /** Codes the routes answer with. Each has a sentence in lib/i18n `creative.errors`. */
@@ -226,11 +256,14 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: `unknown parameter(s): ${badKeys.join(", ")}` }) };
   if (JSON.stringify(params).length > MAX_PARAMS_BYTES)
     return { ok: false, result: fail(400, "invalid_params", { detail: "params are too large" }) };
-  const sourced = (SOURCE_CAPABILITIES as readonly string[]).includes(capability);
+  const recorded = (MEDIA_SOURCE_CAPABILITIES as readonly string[]).includes(capability);
+  const sourced = recorded || (SOURCE_CAPABILITIES as readonly string[]).includes(capability);
   if (sourced && !isUuid(params.source_asset_id))
     return {
       ok: false,
-      result: fail(400, "invalid_params", { detail: `source_asset_id (an image in the media library) is required for ${capability}` }),
+      result: fail(400, "invalid_params", {
+        detail: `source_asset_id (${recorded ? "an audio or video file" : "an image"} in the media library) is required for ${capability}`,
+      }),
     };
   if (!sourced && params.source_asset_id !== undefined)
     return { ok: false, result: fail(400, "invalid_params", { detail: `source_asset_id does not apply to ${capability}` }) };
@@ -238,6 +271,15 @@ export function parseGenerationInput(
     return { ok: false, result: fail(400, "invalid_params", { detail: "factor must be 2 or 4" }) };
   if (capability !== "upscale" && params.factor !== undefined)
     return { ok: false, result: fail(400, "invalid_params", { detail: `factor does not apply to ${capability}` }) };
+  if (capability === "voice_change" && !(typeof params.voice_id === "string" && VOICE_ID_RE.test(params.voice_id)))
+    return { ok: false, result: fail(400, "invalid_params", { detail: "voice_id (a voice of the account) is required for voice_change" }) };
+  if (capability === "dub" && !(DUB_LANGUAGES as readonly unknown[]).includes(params.target_language))
+    return { ok: false, result: fail(400, "invalid_params", { detail: `target_language must be one of ${DUB_LANGUAGES.join(", ")}` }) };
+  if (capability !== "dub" && params.target_language !== undefined)
+    return { ok: false, result: fail(400, "invalid_params", { detail: `target_language does not apply to ${capability}` }) };
+  if (recorded && params.duration_s !== undefined)
+    // The length is the recording's own, measured by the database — never sent.
+    return { ok: false, result: fail(400, "invalid_params", { detail: `duration_s does not apply to ${capability}` }) };
   if (params.style_kit_id !== undefined) {
     if (!(STYLE_CAPABILITIES as readonly string[]).includes(capability))
       return { ok: false, result: fail(400, "invalid_params", { detail: `style_kit_id does not apply to ${capability}` }) };

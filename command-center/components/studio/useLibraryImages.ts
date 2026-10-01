@@ -12,6 +12,20 @@ export interface PickerImage {
   viewUrl?: string | null;
 }
 
+/**
+ * An audio or video file a voice tool can start from (migration 0050). The
+ * length is the one the media worker measured — shown, never sent: the
+ * database prices the job from its own copy of it.
+ */
+export interface PickerRecording {
+  id: string;
+  kind: "audio" | "video";
+  mime: string;
+  name: string | null;
+  durationS: number | null;
+  thumbUrl: string | null;
+}
+
 /** Any library item's preview, by id: what a result card draws. */
 export interface LibraryPreview {
   kind: string;
@@ -26,8 +40,8 @@ export type LibraryLoadState = "loading" | "ready" | "failed" | "unavailable";
  *
  * Reads GET /api/media (the library's own route, under the member's session —
  * RLS shows this organization's live assets and nothing else) and keeps the
- * images only. What is picked is only an id: the database checks it again
- * wherever it is used.
+ * images (and, for the voice tools, the audio and video files). What is
+ * picked is only an id: the database checks it again wherever it is used.
  *
  * `enabled: false` reads nothing (a feed with nothing to compare); a new
  * `key` reads again (a job just finished and its result is new).
@@ -35,6 +49,7 @@ export type LibraryLoadState = "loading" | "ready" | "failed" | "unavailable";
 export function useLibraryImages(orgId: string, { enabled = true, key = "" }: { enabled?: boolean; key?: string } = {}) {
   const [state, setState] = useState<LibraryLoadState>("loading");
   const [images, setImages] = useState<PickerImage[]>([]);
+  const [recordings, setRecordings] = useState<PickerRecording[]>([]);
   const [previews, setPreviews] = useState<Map<string, LibraryPreview>>(() => new Map());
 
   const load = useCallback(async () => {
@@ -63,6 +78,18 @@ export function useLibraryImages(orgId: string, { enabled = true, key = "" }: { 
           .filter((a: LibraryAsset) => a.kind === "image")
           .map((a: LibraryAsset) => ({ id: a.id, thumbUrl: a.thumbUrl ?? a.viewUrl, name: a.name, viewUrl: a.viewUrl })),
       );
+      setRecordings(
+        assets
+          .filter((a: LibraryAsset) => a.kind === "audio" || a.kind === "video")
+          .map((a: LibraryAsset) => ({
+            id: a.id,
+            kind: a.kind as "audio" | "video",
+            mime: a.mime,
+            name: a.name,
+            durationS: a.durationS,
+            thumbUrl: a.kind === "video" ? a.thumbUrl : null,
+          })),
+      );
       setState("ready");
     } catch {
       setState("failed");
@@ -73,5 +100,5 @@ export function useLibraryImages(orgId: string, { enabled = true, key = "" }: { 
     if (enabled) void load();
   }, [load, enabled, key]);
 
-  return { state, images, previews, reload: load };
+  return { state, images, recordings, previews, reload: load };
 }

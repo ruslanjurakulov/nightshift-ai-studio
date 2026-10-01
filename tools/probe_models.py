@@ -56,9 +56,11 @@ from modules.capabilities.base import (  # noqa: E402
     E_RATE_LIMITED,
     E_UNAVAILABLE,
     FAILED,
+    MEDIA_INPUT,
     SUCCEEDED,
     TTS,
     AdapterError,
+    CapabilityRequest,
     scrub,
 )
 from tools.queue_worker import secret_values  # noqa: E402
@@ -70,7 +72,12 @@ DEFAULT_TIMEOUT_S = 900
 POLL_EVERY_S = 10
 #: File signatures a real output starts with; a 200 with an HTML error page is not an image.
 _MAGIC = {".png": (b"\x89PNG",), ".jpg": (b"\xff\xd8",), ".webp": (b"RIFF",),
-          ".mp4": (b"ftyp",), ".mp3": (b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xf2")}
+          ".mp4": (b"ftyp",), ".mp3": (b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"),
+          ".flac": (b"fLaC",)}
+#: What a voice tool's probe starts from (registry probe.input_audio "speech"):
+#: the probe's words spoken by the cheapest TTS model, in the probe's voice.
+SPEECH_ADAPTER = "audio.elevenlabs_tts"
+SPEECH_MODEL = "eleven_flash_v2_5"
 
 
 class ScrubFilter(logging.Filter):
@@ -166,6 +173,16 @@ def probe_image(dest: Path) -> Path:
     return dest
 
 
+def probe_speech(entry, *, env: Mapping[str, str], voice_id: str, workdir: Path, session=None) -> Path:
+    """A few seconds of speech for a voice tool's probe: the registry probe's
+    words, spoken by TTS (one more small paid call). Nothing of anyone's."""
+    tts = build_adapter(SPEECH_ADAPTER, env=env, session=session)
+    task = tts.submit(CapabilityRequest(capability=TTS, prompt=entry.raw["probe"]["prompt"], voice_id=voice_id),
+                      SPEECH_MODEL)
+    (path,) = tts.fetch(tts.poll(task), workdir, stem="probe_speech")
+    return path
+
+
 def _looks_real(path: Path) -> bool:
     head = path.read_bytes()[:16]
     sigs = _MAGIC.get(path.suffix)
@@ -184,15 +201,22 @@ def run_probe(entry, *, env: Mapping[str, str], voice_id: Optional[str], workdir
     image = None
     if entry.raw["probe"].get("input_image") == "generated":
         image = str(probe_image(workdir / "probe_frame.png"))
+    speech_needed = entry.raw["probe"].get("input_audio") == "speech"
     request = entry.probe_request(voice_id=voice_id, generated_image=image)
     started = clock()
     task = None
     try:
         if not adapter.configured():
             raise AdapterError(E_NOT_CONFIGURED, f"no key for {entry.adapter} on this machine")
-        if request.capability == TTS and not voice_id:
+        if (request.capability == TTS or speech_needed) and not voice_id:
             # Our setup, not the vendor's answer: never guess a voice (CLAUDE.md ceiling).
             raise AdapterError(E_NOT_CONFIGURED, f"set --voice-id or {VOICE_ENV} to a voice from the account")
+        if speech_needed:
+            try:
+                speech = probe_speech(entry, env=env, voice_id=voice_id, workdir=workdir, session=session)
+            except AdapterError as e:
+                raise AdapterError(e.code, f"the probe's speech could not be made: {e.message}") from None
+            request = entry.probe_request(voice_id=voice_id, generated_image=image, generated_speech=str(speech))
         problems = adapter.problems(request, entry)
         if problems:
             return ProbeResult(entry.id, False, "bad_request", "; ".join(problems))
@@ -235,15 +259,17 @@ def describe(entry, env: Mapping[str, str], voice_id: Optional[str]) -> str:
     req = entry.probe_request(voice_id=voice_id, generated_image="<generated frame>")
     parts = [f"{entry.id:32} {entry.adapter:22} key={'yes' if adapter.configured() else 'NO'}",
              f"{req.capability} {entry.vendor_model_for(req.capability)}"]
-    for k in ("aspect_ratio", "resolution", "image_size", "duration_s"):
+    for k in ("aspect_ratio", "resolution", "image_size", "duration_s", "target_language"):
         v = getattr(req, k)
         if v is not None:
             parts.append(f"{k}={v}")
+    if req.capability in MEDIA_INPUT:
+        parts.append(f"(from speech made by {SPEECH_MODEL}: two paid calls)")
     if entry.terms_gate:
         parts.append(f"terms_gate={entry.terms_gate}")
     if entry.doc_source != "vendor_sdk":
         parts.append(f"docs={entry.doc_source}")
-    if req.capability == TTS and not voice_id:
+    if (req.capability == TTS or req.capability in MEDIA_INPUT) and not voice_id:
         parts.append(f"(needs --voice-id or {VOICE_ENV})")
     return "  ".join(parts)
 

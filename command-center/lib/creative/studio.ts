@@ -10,18 +10,36 @@ import {
   CREATIVE_ERRORS,
   type CreativeCapability,
   type CreativeError,
+  DUB_LANGUAGES,
+  type DubLanguage,
+  MEDIA_SOURCE_CAPABILITIES,
   PARAM_KEYS,
   SOURCE_CAPABILITIES,
   STYLE_CAPABILITIES,
   UPSCALE_FACTORS,
+  VOICE_ID_RE,
   isUuid,
 } from "@/lib/creative/operations";
+import { VOICES } from "@/lib/ttsModels";
 import { formatCredits } from "@/lib/credits";
 import { fmt, type Dictionary } from "@/lib/i18n";
 
-/** What the panel can make today (the rest wait for their own UI). */
+/**
+ * The tools the customer sidebar lists as direct links (lib/navigation's
+ * STUDIO_TOOLS mirrors this list; tests/navigation-shell holds them in step).
+ */
 export const STUDIO_CAPABILITIES = ["t2i", "t2v", "tts", "edit", "i2v", "upscale", "remove_bg"] as const satisfies readonly CreativeCapability[];
-export type StudioCapability = (typeof STUDIO_CAPABILITIES)[number];
+
+/**
+ * The voice tools (migration 0050): change the voice of a recording, or dub
+ * it into another language. They start from an audio or video file in the
+ * library and are offered in the composer's tool rows.
+ */
+export const VOICE_TOOLS = ["voice_change", "dub"] as const satisfies readonly CreativeCapability[];
+
+/** Everything the composer can make, in the order it shows the tools (the rest wait for their own UI). */
+export const COMPOSER_CAPABILITIES = [...STUDIO_CAPABILITIES, ...VOICE_TOOLS] as const;
+export type StudioCapability = (typeof COMPOSER_CAPABILITIES)[number];
 
 /** The tools that start from a picture in the library (migration 0046). */
 export type SourceCapability = (typeof SOURCE_CAPABILITIES)[number];
@@ -31,14 +49,33 @@ export function needsSource(c: string): c is SourceCapability {
   return (SOURCE_CAPABILITIES as readonly string[]).includes(c);
 }
 
+/** The tools that start from a recording (audio or video) in the library (migration 0050). */
+export type RecordingCapability = (typeof MEDIA_SOURCE_CAPABILITIES)[number];
+
+export function needsRecording(c: string): c is RecordingCapability {
+  return (MEDIA_SOURCE_CAPABILITIES as readonly string[]).includes(c);
+}
+
+/** The voices offered for a voice change: the same list the Create page offers for narration. */
+export const STUDIO_VOICES = VOICES;
+export { DUB_LANGUAGES, type DubLanguage };
+
+export function isDubLanguage(v: unknown): v is DubLanguage {
+  return typeof v === "string" && (DUB_LANGUAGES as readonly string[]).includes(v);
+}
+
+export function isVoiceId(v: unknown): v is string {
+  return typeof v === "string" && VOICE_ID_RE.test(v);
+}
+
 /** 0048: the kinds a style kit can steer (the picture tools that keep their input cannot). */
 export function takesStyle(c: string): boolean {
   return (STYLE_CAPABILITIES as readonly string[]).includes(c);
 }
 
-/** 0046: the prompt is required for these, optional for i2v / upscale, refused for remove_bg. */
+/** 0046 / 0050: the prompt is required for these, optional for i2v / upscale, refused for remove_bg and the voice tools. */
 export function promptRule(c: StudioCapability): "required" | "optional" | "none" {
-  if (c === "remove_bg") return "none";
+  if (c === "remove_bg" || needsRecording(c)) return "none";
   if (c === "i2v" || c === "upscale") return "optional";
   return "required";
 }
@@ -51,7 +88,7 @@ export type VideoDuration = (typeof VIDEO_DURATIONS)[number];
 export const PROMPT_MAX = 4000;
 
 export function isStudioCapability(v: unknown): v is StudioCapability {
-  return typeof v === "string" && (STUDIO_CAPABILITIES as readonly string[]).includes(v);
+  return typeof v === "string" && (COMPOSER_CAPABILITIES as readonly string[]).includes(v);
 }
 
 // ── models (0035: members read sellable rows' public columns) ──────────────
@@ -130,6 +167,10 @@ export interface StudioForm {
   factor?: UpscaleFactor;
   /** A style kit of the organization (0048); null / absent = no style. */
   styleKitId?: string | null;
+  /** The voice a voice change speaks in (0050): one of the account's voices, picked — never defaulted. */
+  voiceId?: string | null;
+  /** The language a dub is made in (0050). */
+  targetLanguage?: DubLanguage | null;
 }
 
 type ParamKey = (typeof PARAM_KEYS)[number];
@@ -162,17 +203,23 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
       return { ...(prompt ? { prompt } : {}), source_asset_id: source, factor: form.factor ?? 2 };
     case "remove_bg":
       return { source_asset_id: source };
+    case "voice_change":
+      // The length (and so the price) is the recording's own: never sent.
+      return { source_asset_id: source, voice_id: form.voiceId ?? "" };
+    case "dub":
+      return { source_asset_id: source, target_language: form.targetLanguage ?? "" };
     default:
       // Speech: the words are the prompt; the price counts their characters.
       return { prompt };
   }
 }
 
-/** Enough to ask for a price: the picture when the tool needs one, the words when they are required. */
+/**
+ * Enough to ask for a price: the picture or recording when the tool needs
+ * one, the voice / language a voice tool needs, the words when they are required.
+ */
 export function canQuote(form: StudioForm): boolean {
-  if (needsSource(form.capability) && !isUuid(form.sourceId)) return false;
-  if (promptRule(form.capability) === "required" && !form.prompt.trim()) return false;
-  return true;
+  return blockedReason(form, true) === null;
 }
 
 /** One key per click: a replayed click answers the first job instead of paying twice. */
@@ -183,23 +230,37 @@ export function newIdempotencyKey(): string {
 }
 
 /** What the person can do next when Generate cannot be pressed (null: it can, or it is busy). */
-export type BlockedReason = "no_model" | "need_picture" | "need_words";
+export type BlockedReason = "no_model" | "need_picture" | "need_recording" | "need_voice" | "need_language" | "need_words";
 
 export function blockedReason(form: StudioForm, hasModel: boolean): BlockedReason | null {
   if (!hasModel) return "no_model";
   if (needsSource(form.capability) && !isUuid(form.sourceId)) return "need_picture";
+  if (needsRecording(form.capability) && !isUuid(form.sourceId)) return "need_recording";
+  if (form.capability === "voice_change" && !isVoiceId(form.voiceId)) return "need_voice";
+  if (form.capability === "dub" && !isDubLanguage(form.targetLanguage)) return "need_language";
   if (promptRule(form.capability) === "required" && !form.prompt.trim()) return "need_words";
   return null;
 }
 
 /**
  * Kinds whose price does not depend on the words (0046's creative_quantity:
- * one picture, or seconds of video). For these the model sheet can ask the
- * database for each model's price before anything is typed — the words are
- * a stand-in that the price never reads. Speech is priced by its characters,
- * so it waits for the real words. Must follow creative_quantity if it changes.
+ * one picture, or seconds of video; 0050: the recording's seconds). For these
+ * the model sheet can ask the database for each model's price before
+ * anything is typed — the words, a voice tool's voice and a dub's language
+ * are stand-ins that the price never reads. Speech is priced by its
+ * characters, so it waits for the real words. Must follow creative_quantity
+ * (and 0050's creative_source_seconds) if they change.
  */
-export const WORDS_FREE_PRICE: readonly StudioCapability[] = ["t2i", "t2v", "edit", "i2v", "upscale", "remove_bg"];
+export const WORDS_FREE_PRICE: readonly StudioCapability[] = [
+  "t2i",
+  "t2v",
+  "edit",
+  "i2v",
+  "upscale",
+  "remove_bg",
+  "voice_change",
+  "dub",
+];
 const PRICE_STAND_IN = "price check";
 
 /**
@@ -211,9 +272,14 @@ const PRICE_STAND_IN = "price check";
  */
 export function sheetQuoteParams(form: StudioForm): ReturnType<typeof buildParams> | null {
   if (canQuote(form)) return buildParams(form);
-  if (needsSource(form.capability) && !isUuid(form.sourceId)) return null;
+  if ((needsSource(form.capability) || needsRecording(form.capability)) && !isUuid(form.sourceId)) return null;
   if (!WORDS_FREE_PRICE.includes(form.capability)) return null;
-  return buildParams({ ...form, prompt: PRICE_STAND_IN });
+  return buildParams({
+    ...form,
+    prompt: PRICE_STAND_IN,
+    voiceId: isVoiceId(form.voiceId) ? form.voiceId : (STUDIO_VOICES[0]?.id ?? null),
+    targetLanguage: isDubLanguage(form.targetLanguage) ? form.targetLanguage : DUB_LANGUAGES[0],
+  });
 }
 
 /** The most models the sheet prices at once: each is one quote call. */
@@ -416,7 +482,7 @@ export function sourceFromJob(job: Pick<StudioJob, "status" | "capability" | "re
 /** What a finished job made, for its card: a picture, a clip or a voice. */
 export function outputKind(capability: string): "image" | "video" | "audio" {
   if (capability === "t2v" || capability === "i2v") return "video";
-  if (capability === "tts" || capability === "sfx" || capability === "music") return "audio";
+  if (capability === "tts" || capability === "sfx" || capability === "music" || needsRecording(capability)) return "audio";
   return "image";
 }
 
@@ -440,6 +506,10 @@ export interface StudioPrefill {
   factor?: UpscaleFactor;
   /** Present only for the kinds a style can steer: the job's kit, or null for none. */
   styleKitId?: string | null;
+  /** A voice change's voice (0050), when the job had a valid one. */
+  voiceId?: string | null;
+  /** A dub's language (0050), when the job had an offered one. */
+  targetLanguage?: DubLanguage | null;
 }
 
 function asFactor(v: unknown): UpscaleFactor {
@@ -461,6 +531,13 @@ export function prefillFromJob(job: StudioJob): StudioPrefill | null {
       ? { sourceId: isUuid(p.source_asset_id) ? p.source_asset_id : null, factor: asFactor(p.factor) }
       : {}),
     ...(takesStyle(job.capability) ? { styleKitId: isUuid(p.style_kit_id) ? p.style_kit_id : null } : {}),
+    ...(needsRecording(job.capability)
+      ? {
+          sourceId: isUuid(p.source_asset_id) ? p.source_asset_id : null,
+          ...(job.capability === "voice_change" ? { voiceId: isVoiceId(p.voice_id) ? p.voice_id : null } : {}),
+          ...(job.capability === "dub" ? { targetLanguage: isDubLanguage(p.target_language) ? p.target_language : null } : {}),
+        }
+      : {}),
   };
 }
 
@@ -481,6 +558,10 @@ export function prefillFromQuery(tool: unknown, source: unknown): StudioPrefill 
   if (needsSource(tool)) {
     if (source === undefined) return { ...base, sourceId: null, factor: 2 };
     return isUuid(source) ? { ...base, sourceId: source, factor: 2 } : null;
+  }
+  if (needsRecording(tool)) {
+    if (source === undefined) return { ...base, sourceId: null };
+    return isUuid(source) ? { ...base, sourceId: source } : null;
   }
   return source === undefined ? base : null;
 }

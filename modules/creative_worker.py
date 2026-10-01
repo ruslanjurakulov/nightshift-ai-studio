@@ -46,6 +46,16 @@ by its id alone (``media_library.copy_source``). A source that cannot be read
 fails the job with ``source_unavailable`` and releases the hold. Nothing about
 the file's location is stored or logged.
 
+Recordings for the voice tools (migration 0050)
+-----------------------------------------------
+``voice_change`` and ``dub`` start from an audio or video file of the
+organization (``params.source_asset_id`` again). The same
+``creative_job_source`` answer names it, and it is copied by id like a
+picture — but only as a recording (``media_library.copy_source(media=True)``),
+so a picture tool can never be handed one, nor a voice tool a picture. The
+price was the recording's length as the DATABASE measured it (0050); the
+worker reports that same quantity as the provider's usage.
+
 Style kits and @characters (migration 0048)
 -------------------------------------------
 ``t2i``, ``t2v``, ``edit`` and ``i2v`` may name a style kit
@@ -107,13 +117,17 @@ DEFAULT_HEARTBEAT_SECONDS = 30.0
 MAX_ERROR_CHARS = 2000
 #: ``module:function`` of the adapter resolver the CLI loads.
 ADAPTERS_ENV = "NIGHTSHIFT_CREATIVE_ADAPTERS"
-#: Capabilities whose input is a library image (params.source_asset_id, 0046).
-SOURCE_CAPABILITIES = frozenset({"edit", "i2v", "upscale", "remove_bg"})
+#: Capabilities whose input is a library asset (params.source_asset_id): an
+#: image (0046) or, for the voice tools, a recording (0050).
+SOURCE_CAPABILITIES = frozenset({"edit", "i2v", "upscale", "remove_bg", "voice_change", "dub"})
+#: Of those, the ones whose input is a recording (audio or video, 0050).
+MEDIA_SOURCE_CAPABILITIES = frozenset({"voice_change", "dub"})
 #: Of those, the ones whose output is a new version of the input picture.
 VERSION_CAPABILITIES = frozenset({"edit", "upscale", "remove_bg"})
 #: What each capability produces (the library checks the provider's output).
 OUTPUT_KIND = {"t2i": "image", "edit": "image", "upscale": "image", "remove_bg": "image",
-               "t2v": "video", "i2v": "video", "tts": "audio", "sfx": "audio", "music": "audio"}
+               "t2v": "video", "i2v": "video", "tts": "audio", "sfx": "audio", "music": "audio",
+               "voice_change": "audio", "dub": "audio"}
 #: Library asset ids of a job's outputs are derived from the job id, so a
 #: retried store reuses the same rows instead of adding copies.
 ASSET_NS = uuid.UUID("5b0c1d1e-0046-4c2e-9a7e-c4ea71e0a55e")
@@ -142,6 +156,9 @@ class GenerationRequest:
     reference_files: Tuple[Path, ...] = ()
     #: What the style added, for the job's result (counts only).
     style: Optional[Mapping[str, Any]] = None
+    #: The quantity the DATABASE priced the job at (creative_jobs.quantity):
+    #: for the voice tools, the recording's seconds — never a client's number.
+    quantity: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -431,9 +448,13 @@ class CreativeWorker:
         self._check_hold(job)
 
         model = str(job.get("requested_model") or "")
+        try:
+            quantity = float(job["quantity"]) if job.get("quantity") is not None else None
+        except (TypeError, ValueError):
+            quantity = None
         request = GenerationRequest(job_id=job_id, org_id=str(job.get("org_id") or ""),
                                     capability=str(job.get("capability") or ""), model=model,
-                                    params=dict(job.get("params") or {}))
+                                    params=dict(job.get("params") or {}), quantity=quantity)
         # EXACT: the requested model's adapter, or nothing — never another model.
         adapter = self.resolve_adapter(model)
         if adapter is None:
@@ -462,28 +483,30 @@ class CreativeWorker:
         return self._poll(job, request, adapter, str(task_id), beat)
 
     def _source(self, request: GenerationRequest) -> Path:
-        """The job's input picture, copied into its folder. The database names
-        the asset (for this worker's job, in the job's organization); the path
-        comes from the asset id alone."""
+        """The job's input picture (or, for a voice tool, its recording),
+        copied into its folder. The database names the asset (for this
+        worker's job, in the job's organization); the path comes from the
+        asset id alone."""
         if self.media_root is None:
             raise _Refused("source_unavailable", "this worker cannot read the media library")
         info = self.queue.job_source(request.job_id, self.worker_id)
         if not isinstance(info, dict) or info.get("ok") is not True:
             problem = (info or {}).get("problem") if isinstance(info, dict) else None
-            raise _Refused("source_unavailable", str(problem or "the source image cannot be used"))
+            raise _Refused("source_unavailable", str(problem or "the source cannot be used"))
         try:
             aid = ml.canonical_id(str(info.get("asset_id") or "").lower())
         except ValueError:
-            raise _Refused("source_unavailable", "the source image cannot be used") from None
+            raise _Refused("source_unavailable", "the source cannot be used") from None
         if aid != str(request.params.get("source_asset_id") or "").lower():
-            raise _Refused("source_unavailable", "the source image cannot be used")
+            raise _Refused("source_unavailable", "the source cannot be used")
         try:
             return ml.copy_source(self.media_root, aid, str(info.get("mime") or ""),
-                                  list(info.get("variants") or ()), self.out_dir / request.job_id / "input")
+                                  list(info.get("variants") or ()), self.out_dir / request.job_id / "input",
+                                  media=request.capability in MEDIA_SOURCE_CAPABILITIES)
         except ml.SourceUnavailable as e:
             raise _Refused("source_unavailable", str(e)) from None
         except OSError as e:
-            raise _Refused("source_unavailable", f"the source image could not be read ({type(e).__name__})") from None
+            raise _Refused("source_unavailable", f"the source could not be read ({type(e).__name__})") from None
 
     def _style(self, request: GenerationRequest, adapter: CreativeAdapter) -> GenerationRequest:
         """The job's style kit and mentioned characters, applied to the request

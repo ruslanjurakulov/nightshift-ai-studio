@@ -29,7 +29,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from modules.capabilities import ADAPTERS
-from modules.capabilities.base import IMAGE_INPUT, OUTPUT_OF, PROMPT_OPTIONAL, UPSCALE, CapabilityRequest
+from modules.capabilities.base import (
+    DUB,
+    IMAGE_INPUT,
+    MEDIA_INPUT,
+    OUTPUT_OF,
+    PROMPT_OPTIONAL,
+    UPSCALE,
+    CapabilityRequest,
+)
 
 SCHEMAS = Path(__file__).resolve().parent.parent / "schemas"
 REGISTRY_PATH = SCHEMAS / "model_registry.json"
@@ -191,6 +199,8 @@ class ModelEntry:
     durations_s: Tuple[int, ...]
     #: Upscale factors the model is sold for (empty unless it lists upscale).
     upscale_factors: Tuple[int, ...]
+    #: Languages a dub is made in (empty unless it lists dub; 0050).
+    languages: Tuple[str, ...]
     audio_out: bool
     is_async: bool
     api_documented_url: str
@@ -242,19 +252,40 @@ class ModelEntry:
             out.append(f"an upscale factor does not apply to {cap}")
         if len(request.input_images) > self.image_refs_max:
             out.append(f"{self.id} takes at most {self.image_refs_max} input image(s)")
+        if cap in MEDIA_INPUT and not request.input_media:
+            out.append(f"{cap} needs a recording")
+        if cap not in MEDIA_INPUT and request.input_media:
+            out.append(f"a recording does not apply to {cap}")
+        if cap == DUB and request.target_language not in self.languages:
+            out.append(f"{self.id} does not dub into {request.target_language or '(no language)'}")
+        if cap != DUB and request.target_language is not None:
+            out.append(f"a target language does not apply to {cap}")
         return out
 
     def probe_request(self, *, voice_id: Optional[str] = None,
-                      generated_image: Optional[str] = None) -> CapabilityRequest:
-        """The cheapest real request this model is probed with (registry ``probe``)."""
+                      generated_image: Optional[str] = None,
+                      generated_speech: Optional[str] = None) -> CapabilityRequest:
+        """The cheapest real request this model is probed with (registry ``probe``).
+
+        A voice tool's probe (``input_audio: "speech"``) starts from a short
+        clip of the probe's ``prompt`` spoken by TTS (tools/probe_models.py
+        makes it): the prompt is the words of that clip, not part of the
+        request — and a dub needs no voice (its speakers keep their own)."""
         p = self.raw["probe"]
         images: Sequence[str] = ()
+        media: Sequence[str] = ()
         if p.get("input_image") == "generated":
             images = (generated_image or "<generated>",)
-        return CapabilityRequest(capability=p["capability"], prompt=p["prompt"],
+        speech = p.get("input_audio") == "speech"
+        if speech:
+            media = (generated_speech or "<speech>.mp3",)
+        cap = p["capability"]
+        return CapabilityRequest(capability=cap, prompt="" if speech else p["prompt"],
                                  aspect_ratio=p.get("aspect_ratio"), resolution=p.get("resolution"),
                                  image_size=p.get("image_size"), duration_s=p.get("duration_s"),
-                                 voice_id=voice_id, input_images=tuple(images), scale=p.get("factor"))
+                                 voice_id=None if cap == DUB else voice_id, input_images=tuple(images),
+                                 scale=p.get("factor"), input_media=tuple(media),
+                                 target_language=p.get("target_language"))
 
 
 def _entry(m: Mapping) -> ModelEntry:
@@ -267,6 +298,7 @@ def _entry(m: Mapping) -> ModelEntry:
         image_sizes=tuple(m.get("image_sizes") or ()),
         resolutions=tuple(m["resolutions"]), durations_s=tuple(m["durations_s"]),
         upscale_factors=tuple(m.get("upscale_factors") or ()),
+        languages=tuple(m.get("languages") or ()),
         audio_out=bool(m["audio_out"]), is_async=bool(m["async"]),
         api_documented_url=m["api_documented"]["url"], doc_source=m["api_documented"]["source"],
         credit_unit=m["credit_unit"], entitlement=m["entitlement"], terms_gate=m["terms_gate"],
@@ -309,6 +341,16 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
         if (UPSCALE in caps) != bool(m.get("upscale_factors")):
             # 0046 sells an upscale only at a factor the model lists.
             errors.append(_err(mid, "upscale_factors is required with upscale and only with it"))
+        if (DUB in caps) != bool(m.get("languages")):
+            # 0050 sells a dub only into a language the model lists.
+            errors.append(_err(mid, "languages is required with dub and only with it"))
+        probe_speech = m["probe"].get("input_audio") == "speech"
+        if probe_speech != (m["probe"]["capability"] in MEDIA_INPUT):
+            errors.append(_err(mid, "a voice tool is probed from speech (probe.input_audio), and only a voice tool"))
+        if any(c in MEDIA_INPUT for c in caps) and any(c not in MEDIA_INPUT for c in caps):
+            # One recording per job is the whole input; a model that also
+            # makes things from words would be probed for only one of them.
+            errors.append(_err(mid, "a voice tool model lists only voice tools"))
         if m.get("image_sizes") and m["output"] != "image":
             errors.append(_err(mid, "image_sizes is for image models"))
         pricing = m["pricing"]
@@ -339,7 +381,8 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             errors.append(_err(mid, "probe.capability must be one of the model's capabilities"))
         elif cls is not None:
             entry = _entry(m)
-            req = entry.probe_request(voice_id="A" * 20, generated_image="https://probe.invalid/x.png")
+            req = entry.probe_request(voice_id="A" * 20, generated_image="https://probe.invalid/x.png",
+                                      generated_speech="probe_speech.mp3")
             problems = [p for p in cls(env={}).problems(req, entry) if "https URL" not in p]
             if problems:
                 errors.append(_err(mid, "probe request is not servable: " + "; ".join(problems)))

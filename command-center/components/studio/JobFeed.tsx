@@ -20,6 +20,7 @@ import {
   creditsLine,
   failureReason,
   isActiveStatus,
+  isDubLanguage,
   isStudioCapability,
   isUnsuccessful,
   kindLabel,
@@ -290,6 +291,11 @@ export function JobFeed({
                         </span>
                       </div>
                       {prompt && <p className="studio-clamp-2 break-words text-[13px] leading-snug text-[var(--color-fg)]">{truncate(prompt)}</p>}
+                      {job.capability === "dub" && isDubLanguage(job.params.target_language) && (
+                        <p className="text-[13px] leading-snug text-[var(--color-fg)]" lang={job.params.target_language}>
+                          → {t.gen.languages[job.params.target_language]}
+                        </p>
+                      )}
                       <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[11px] text-[var(--color-muted)]">
                         <span className="min-w-0 truncate">{names.get(job.requested_model) ?? job.requested_model}</span>
                         <span aria-hidden>·</span>
