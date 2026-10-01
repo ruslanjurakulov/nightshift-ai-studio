@@ -1122,10 +1122,10 @@ export const en = {
   },
   margin: {
     title: "Margin",
-    subtitle: "What each generation cost at the provider next to what it earned, per model, capability and day. Platform operator only.",
+    subtitle: "What each generation cost at the provider next to what it earned, per model, capability and day.",
     notEnabled: "The margin report (migration 0063) is not applied on this deployment yet.",
     readFailed: "Couldn't read the margin report, so no figure is shown rather than one that could be wrong. Nothing was changed — retry in a moment.",
-    forbidden: "The margin report belongs to the platform operator. Only a platform owner or admin can open it.",
+    forbidden: "This page isn't available.",
     empty: "No generation finished in this period, so there is nothing to report yet.",
     periodLabel: "Period",
     period7: "7 days",

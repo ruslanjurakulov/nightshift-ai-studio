@@ -1116,10 +1116,10 @@ export const uz: Dictionary = {
   },
   margin: {
     title: "Marja",
-    subtitle: "Har bir generatsiya provayderda qancha turgani va qancha daromad keltirgani — model, imkoniyat va kun bo'yicha. Faqat platforma operatori uchun.",
+    subtitle: "Har bir generatsiya provayderda qancha turgani va qancha daromad keltirgani — model, imkoniyat va kun bo'yicha.",
     notEnabled: "Marja hisoboti (0063-migratsiya) bu joylashtirishda hali qo'llanmagan.",
     readFailed: "Marja hisobotini o'qib bo'lmadi, shuning uchun xato bo'lishi mumkin bo'lgan raqam o'rniga hech narsa ko'rsatilmaydi. Hech narsa o'zgarmadi — birozdan so'ng qayta urinib ko'ring.",
-    forbidden: "Marja hisoboti platforma operatoriga tegishli. Uni faqat platforma egasi yoki administratori ochishi mumkin.",
+    forbidden: "Bu sahifa mavjud emas.",
     empty: "Bu davrda birorta generatsiya tugamadi, hisobot beradigan narsa hali yo'q.",
     periodLabel: "Davr",
     period7: "7 kun",

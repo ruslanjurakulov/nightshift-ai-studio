@@ -77,6 +77,9 @@ describe("who may open it", () => {
     state.operator = false;
     const html = await page();
     expect(has(html, en.margin.forbidden)).toBe(true);
+    // not even the title or what the page is for
+    expect(html).not.toContain(en.margin.title);
+    expect(html).not.toContain(en.margin.subtitle);
     expect(state.calls.find((c) => c.fn === "operator_margin_report")).toBeUndefined();
     expect(html).not.toContain("m-paid");
   });
@@ -180,6 +183,14 @@ describe("states", () => {
 });
 
 describe("copy", () => {
+  it("the refusal and the subtitle use no role words and no hint of who may open it, in any language", () => {
+    const roleWords = /owner|admin|editor|viewer|operator|владел|админ|редактор|наблюдател|оператор|egasi|administrator|muharrir|operator/i;
+    for (const d of [en, ru, uz]) {
+      expect(d.margin.forbidden).not.toMatch(roleWords);
+      expect(d.margin.subtitle).not.toMatch(roleWords);
+    }
+  });
+
   it("is complete in English, Russian and Uzbek, with the same placeholders", () => {
     const keys = Object.keys(en.margin).sort();
     expect(Object.keys(ru.margin).sort()).toEqual(keys);

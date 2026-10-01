@@ -34,7 +34,14 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
     </div>
   );
 
-  if (!(await isOperator())) return note(t.margin.forbidden);
+  // A customer who types the URL learns nothing: no title, no description of
+  // what the page holds, no role words — only that it is not available.
+  const unavailable = (
+    <div className="rhythm">
+      <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.margin.forbidden}</div>
+    </div>
+  );
+  if (!(await isOperator())) return unavailable;
   const supabase = await createClient();
   if (!supabase) return <NotConfigured />;
 
@@ -44,7 +51,7 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
 
   if (error || !Array.isArray(data)) {
     if (error && isMissingFunction(error)) return note(t.margin.notEnabled);
-    if (error?.code === "42501") return note(t.margin.forbidden);
+    if (error?.code === "42501") return unavailable;
     return (
       <div className="rhythm">
         {header}
