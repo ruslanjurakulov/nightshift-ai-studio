@@ -259,6 +259,14 @@ davom etadi (pullik bosqichlar qayta to'lanmaydi).
 `NIGHTSHIFT_RUN_BACKEND` ni o'chiring → **Run workflow**. Worker konteyneri va
 `.env.worker` fayli serverdan o'chiriladi; "Run now" yana Actions'da ishlaydi.
 
+**Creative worker** (Command Center'dagi rasm/video/ovoz generatsiyalari,
+`0036` va `0046` qo'llangan bo'lsin): xuddi shu joyga
+`NIGHTSHIFT_CREATIVE_WORKER` = `on` → **Deploy web** → **Run workflow**. U
+faqat `NIGHTSHIFT_WORKER` ham `on` bo'lsa ishga tushadi (o'sha `.env.worker`
+faylini ishlatadi). Logda `creative-worker after 20s: state=running exit=0
+restarts=0 ...` qatori chiqadi. Boshqa har qanday qiymat (yoki o'chirilgan
+variable) → keyingi deployda creative worker to'xtatiladi va o'chiriladi.
+
 ---
 
 Quyidagi 0–13-bo'limlar — serverni noldan tayyorlash va **qo'lda** deploy

@@ -1,0 +1,122 @@
+name: Probe models
+
+# Verifies generative models before customers can pick them (migration 0035,
+# tools/probe_models.py). Copies the reviewed registry file into the database
+# (--sync), then makes each model's probe call with the repository's provider
+# keys and records the result through record_model_probe — exactly what the
+# tool does on the worker. A model that passes gets verified_at; it is still
+# NOT on sale until the owner sets it to beta/ga and it has a credit price.
+#
+# COSTS MONEY: every probe is one real, paid vendor call. It is the cheapest
+# call the tool knows — the registry entry's `probe` request: one 1:1 image,
+# a 4–6 s video at the lowest resolution the model takes (480p–768p), one
+# short sentence of speech, a 1 s sound effect. A model whose key is not set
+# is skipped and costs nothing. Probe one model by giving its id; leave it
+# empty for every model in schemas/model_registry.json.
+#
+# Manual only (Actions -> Probe models -> Run workflow), never on a push or a
+# pull request. This log is public: the tool runs with --brief, which prints
+# only "ok <id>", "failed <id> <error code>" or "skipped <id>". Keys travel in
+# step env only and are never echoed; error details go to the database
+# (model_probe_runs), not here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "One model id from schemas/model_registry.json (empty = every model; each probe is a paid call)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# One probe run at a time: two at once would pay for the same calls twice.
+concurrency:
+  group: probe-models
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    # Up to 10 minutes per video probe (--timeout 600), one after another.
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # The model id arrives through env, never pasted into the script, and is
+      # checked against a plain id pattern; the tool refuses an id that is not
+      # in the registry. Every key below is a repository secret already used by
+      # deploy_web.yml / daily_video.yml under the same name.
+      - name: Probe
+        env:
+          MODEL_ID: ${{ github.event.inputs.model }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VEO_API_KEY: ${{ secrets.VEO_API_KEY }}
+          BFL_API_KEY: ${{ secrets.BFL_API_KEY }}
+          IDEOGRAM_API_KEY: ${{ secrets.IDEOGRAM_API_KEY }}
+          KLING_API_KEY: ${{ secrets.KLING_API_KEY }}
+          KLING_ACCESS_KEY: ${{ secrets.KLING_ACCESS_KEY }}
+          KLING_SECRET_KEY: ${{ secrets.KLING_SECRET_KEY }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          RUNWAYML_API_SECRET: ${{ secrets.RUNWAYML_API_SECRET }}
+          LUMA_AGENTS_API_KEY: ${{ secrets.LUMA_AGENTS_API_KEY }}
+          SEEDANCE_API_KEY: ${{ secrets.SEEDANCE_API_KEY }}
+          WAN_API_KEY: ${{ secrets.WAN_API_KEY }}
+          WAN_WORKSPACE_ID: ${{ vars.WAN_WORKSPACE_ID }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          # The voice for the speech probes; without it they are skipped.
+          ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
+        run: |
+          set -eu
+          args=(--sync --brief --timeout 600 --by probe_models@github-actions)
+          if [[ -n "$MODEL_ID" ]]; then
+            if [[ ! "$MODEL_ID" =~ ^[a-z0-9][a-z0-9._-]{0,63}$ ]]; then
+              echo "::error::the model input must be one id from schemas/model_registry.json, like veo-3.1-lite"
+              exit 1
+            fi
+            args+=(--model "$MODEL_ID")
+            scope="one model"
+          else
+            args+=(--all)
+            scope="every model in the registry"
+          fi
+          out="$RUNNER_TEMP/probe.txt"
+          set +e
+          python tools/probe_models.py "${args[@]}" 2>&1 | tee "$out"
+          rc=${PIPESTATUS[0]}
+          set -e
+          ok=$(grep -c '^ok ' "$out" || true)
+          failed=$(grep -c '^failed ' "$out" || true)
+          skipped=$(grep -c '^skipped ' "$out" || true)
+          {
+            echo "### Probe models: $scope"
+            echo
+            echo "**Costs money:** each ok/failed line was one real, paid vendor call — the registry's"
+            echo "cheapest probe (one 1:1 image, a 4–6 s video at the lowest resolution, one short"
+            echo "sentence of speech, a 1 s sound effect). Skipped = no key, nothing was called."
+            echo
+            echo "ok: $ok · failed: $failed · skipped: $skipped"
+            echo
+            echo '```'
+            grep -E '^(ok|failed|skipped) |^synced [0-9]+ models' "$out" || true
+            echo '```'
+            echo
+            echo "A passing model is verified, not on sale: set it to beta/ga and give its credit unit a price."
+          } >>"$GITHUB_STEP_SUMMARY"
+          exit "$rc"
