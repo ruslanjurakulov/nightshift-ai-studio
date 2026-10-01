@@ -28,6 +28,9 @@ run by ``tools/media_worker.py``, then for each ticket:
    stored untouched;
 5. registers the row (``register_asset``, service role) or rejects the ticket
    with a reason word (``reject_media_upload``), then deletes the staged file.
+   The folder a file lands in (migration 0051) is NOT the worker's to say:
+   register_asset reads it from the ticket and re-checks it there (a folder
+   deleted meanwhile means All files), so nothing here passes one on.
 
 Deleted assets: ``soft_delete_asset`` (a member) hides the row; the worker
 removes ``media/<aa>/<uuid>/`` and ``mark_asset_purged`` gives the bytes back
@@ -861,6 +864,8 @@ def ingest(ticket: Mapping, *, store: MediaStore, staging_root: Path, media_root
         raise
 
     try:
+        # No org and no folder: both come from the ticket inside register_asset
+        # (0038, 0051), never from what a claimed row happened to carry.
         out = store.register(
             asset_id=aid, org=None, kind=info.kind, mime=info.mime, bytes=nbytes, sha256=digest,
             source="upload", width=info.width, height=info.height, duration_s=info.duration,
@@ -894,7 +899,7 @@ def process_ticket(ticket: Mapping, *, store: MediaStore, staging_root: Path, me
     try:
         out = ingest(ticket, store=store, staging_root=staging_root, media_root=media_root,
                      worker_id=worker_id, tools=tools, **kw)
-        logger.info("media upload %s: ingested as %s", tid, out.get("id"))
+        logger.info("media upload %s: ingested as %s (%s)", tid, out.get("id"), _placed(out))
         outcome = "ingested"
     except StoreUnavailable as e:
         # Nothing is decided: keep the staged file for the retry.
@@ -913,6 +918,18 @@ def process_ticket(ticket: Mapping, *, store: MediaStore, staging_root: Path, me
     except OSError:
         pass
     return outcome
+
+
+def _placed(out: Mapping) -> str:
+    """Where register_asset put the file, for the log: the folder id it
+    answered, or All files. Before 0051 the answer has no folder at all, and
+    the log says so rather than guessing All files."""
+    if "folder_id" not in out:
+        return "folder not reported"
+    try:
+        return f"in folder {canonical_id(out['folder_id'])}" if out["folder_id"] else "in All files"
+    except ValueError:
+        return "folder not reported"
 
 
 def _reject(store: MediaStore, tid: str, worker_id: str, reason: str, detail: Optional[str]) -> None:

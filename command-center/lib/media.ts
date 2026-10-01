@@ -129,9 +129,14 @@ export interface MediaUpload {
   bytes: number;
   assetId: string | null;
   createdAt: string | null;
+  /** The folder it will land in (migration 0051), or null: All files — and
+   *  always null before 0051, when no upload names a folder. */
+  folderId: string | null;
 }
 
 export const MEDIA_UPLOAD_COLUMNS = "id, original_name, status, reason, declared_bytes, received_bytes, asset_id, created_at";
+/** With the folder an upload was asked into (0051). */
+export const MEDIA_UPLOAD_FOLDER_COLUMNS = `${MEDIA_UPLOAD_COLUMNS}, folder_id`;
 
 function num(v: unknown): number | null {
   const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v;
@@ -189,6 +194,7 @@ export function coerceUploads(data: unknown): MediaUpload[] {
       bytes: num(r.received_bytes) ?? num(r.declared_bytes) ?? 0,
       assetId: parseMediaId(r.asset_id),
       createdAt: str(r.created_at),
+      folderId: parseMediaId(r.folder_id),
     });
   }
   return out;
@@ -284,6 +290,8 @@ export type MediaError =
   | "server_full"
   | "bad_request"
   | "not_available"
+  | "folder_not_found"
+  | "folder_forbidden"
   | "failed";
 
 /** A refusal from 0038's functions -> a word and an HTTP status. */
@@ -303,10 +311,13 @@ export function mapMediaError(error: { code?: string; message?: string; details?
       return { error: "too_many_uploads", status: 429 };
     case "NS507":
       return { error: /server_full/.test(error.details ?? "") ? "server_full" : "quota_exceeded", status: 507 };
+    // 0051: the folder an upload was asked into. Another organization's
+    // folder and a made-up id are the same word; a viewer may upload, but
+    // only to All files.
     case "42501":
-      return { error: "forbidden", status: 403 };
+      return /folder_forbidden/.test(error.details ?? "") ? { error: "folder_forbidden", status: 403 } : { error: "forbidden", status: 403 };
     case "P0002":
-      return { error: "not_found", status: 404 };
+      return /folder_not_found/.test(error.details ?? "") ? { error: "folder_not_found", status: 404 } : { error: "not_found", status: 404 };
     case "22023":
       return { error: "bad_request", status: 400 };
     case "PGRST202":

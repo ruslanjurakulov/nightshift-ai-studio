@@ -40,7 +40,7 @@ function asset(kind: MediaKind, name: string | null, createdAt: string | null): 
 
 function upload(name: string, createdAt: string | null, status: MediaUpload["status"] = "uploaded"): MediaUpload {
   n += 1;
-  return { id: `10000000-0000-4000-8000-${String(n).padStart(12, "0")}`, name, status, reason: null, bytes: 1, assetId: null, createdAt };
+  return { id: `10000000-0000-4000-8000-${String(n).padStart(12, "0")}`, name, status, reason: null, bytes: 1, assetId: null, createdAt, folderId: null };
 }
 
 const sunset = asset("image", "Sunset over Tashkent.PNG", "2026-09-03T10:00:00Z");
