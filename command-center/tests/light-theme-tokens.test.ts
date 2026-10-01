@@ -28,6 +28,9 @@ const TOKEN_ONLY = [
   "components/studio/TierMarks.tsx",
   "components/studio/JobFeed.tsx",
   "components/studio/TemplateGallery.tsx",
+  "components/editor/EditorHome.tsx",
+  "components/editor/TimelineEditor.tsx",
+  "components/editor/TimelineStrip.tsx",
 ];
 
 // Tailwind palette colours (text-rose-300, bg-white/10, border-sky-400/60 ...).

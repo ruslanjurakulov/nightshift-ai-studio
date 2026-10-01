@@ -104,6 +104,8 @@ describe("customer sidebar model", () => {
     expect(sidebarCurrent("/studio", null)).toBe("hub");
     expect(sidebarCurrent("/series", null)).toBe("hub");
     expect(sidebarCurrent("/library", null)).toBe("library");
+    expect(sidebarCurrent("/editor", null)).toBe("editor");
+    expect(sidebarCurrent("/editor/3f2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e", null)).toBe("editor");
     expect(sidebarCurrent("/videos/abc", null)).toBe("videos");
     expect(sidebarCurrent("/credits", null)).toBe("credits");
     expect(sidebarCurrent("/developers", null)).toBe("settings");
@@ -142,6 +144,7 @@ describe("customer sidebar (rendered)", () => {
       en.nav.hub,
       ...STUDIO_TOOLS.map((t) => en.gen.kinds[t]),
       en.nav.library,
+      en.nav.editor,
       en.nav.videos,
       en.nav.channels,
     ]);

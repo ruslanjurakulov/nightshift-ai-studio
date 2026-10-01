@@ -14,9 +14,14 @@ How a timeline maps onto the spec:
   ``dip_to_black`` transitions); every gap, and the tail up to the end of the
   timeline, becomes a black segment. ``frame_exact`` is on, so each segment is
   exactly its frames and the concatenation is exactly the timeline.
-* **Sound** — every A clip becomes an ``AudioTrack`` (trim, gain, fades,
-  start), mixed and cut to the picture's length. Video clips' own sound is
-  not used in v1: put it on an audio track.
+* **Speed** — a V clip's ``speed`` becomes the segment's (``setpts``): its
+  slot on the frame grid is already the sped-up length, and the source range
+  ``in_s``..``out_s`` fills it.
+* **Sound** — a V clip with ``audio: true`` whose source has a sound track
+  becomes an ``AudioTrack`` of that same file (same trim, start and speed,
+  ``atempo`` keeping the pitch), first; then every A clip (trim, gain, fades,
+  start). All are mixed and cut to the picture's length. A video clip without
+  ``audio`` is silent, as before.
 * **Text** — T clips in track order, then the captions on top, become text
   overlays burnt from one ASS file.
 
@@ -78,6 +83,7 @@ def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
                 fit=clip["fit"],
                 fade_in_s=fade_in,
                 fade_out_s=fade_out,
+                speed=clip["speed"] if asset.kind == tl.ASSET_VIDEO else 1.0,
             ))
             cursor = end
     if cursor < total_frames:
@@ -87,6 +93,22 @@ def _picture(doc: dict, assets: dict, total_frames: int) -> List[Segment]:
 
 def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
     tracks: List[AudioTrack] = []
+    for track in doc["tracks"]:
+        if track["kind"] != tl.KIND_V:
+            continue
+        for clip in track["clips"]:
+            asset = assets[clip["asset_id"]]
+            # Only a source KNOWN to carry sound: an input with no audio
+            # stream would make the whole mix fail, and a still has none.
+            if not clip["audio"] or asset.kind != tl.ASSET_VIDEO or asset.has_audio is not True:
+                continue
+            tracks.append(AudioTrack(
+                path=asset.path,
+                duration_s=round(clip["out_s"] - clip["in_s"], 3),
+                start_s=clip["start_s"],
+                in_s=clip["in_s"],
+                speed=clip["speed"],
+            ))
     for track in doc["tracks"]:
         if track["kind"] != tl.KIND_A:
             continue

@@ -63,6 +63,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/videos", key: "videos" },
       { href: "/studio", key: "studio" },
       { href: "/library", key: "library" },
+      { href: "/editor", key: "editor" },
       { href: "/pipeline", key: "pipeline" },
       { href: "/analytics", key: "analytics" },
     ],
@@ -140,6 +141,7 @@ export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "videos",
   "studio",
   "library",
+  "editor",
   "channels",
   "credits",
   "series",
@@ -176,6 +178,7 @@ export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly SectionI
     { href: CUSTOMER_HOME, key: "home" },
     { href: "/create", key: "create" },
     { href: "/library", key: "library" },
+    { href: "/editor", key: "editor" },
     { href: "/studio", key: "studio" },
     { href: "/series", key: "series" },
   ],
@@ -227,6 +230,7 @@ export const CUSTOMER_SIDEBAR: CustomerSidebar = {
   tools: STUDIO_TOOLS.map((tool) => ({ tool, href: toolHref(tool) })),
   work: [
     { href: "/library", key: "library" },
+    { href: "/editor", key: "editor" },
     { href: "/videos", key: "videos" },
     { href: "/channels", key: "channels" },
   ],
@@ -239,13 +243,14 @@ export const CUSTOMER_SIDEBAR: CustomerSidebar = {
 /**
  * Which sidebar row is the current place, from the section path (no channel,
  * e.g. "/create") and the `tool` query value. A tool row wins on /create when
- * the URL names one; Studio owns the rest of its tab group except Library,
- * which has its own row; Settings owns its tabs.
+ * the URL names one; Studio owns the rest of its tab group except Library
+ * and the Editor, which have their own rows; Settings owns its tabs.
  */
 export function sidebarCurrent(section: string, tool: string | null): string | null {
   const first = "/" + (section.split("/").filter(Boolean)[0] ?? "");
   if (first === "/create" && tool && (STUDIO_TOOLS as readonly string[]).includes(tool)) return `tool:${tool}`;
   if (first === "/library") return "library";
+  if (first === "/editor") return "editor";
   const group = tabsFor(first.slice(1))?.rail;
   if (group === "hub") return "hub";
   if (group === "settings") return "settings";
