@@ -531,6 +531,12 @@ class ScriptEngine:
                     "\nChannel visual style — every section's `keywords` must describe "
                     f"footage in this style:\n{agent.visual_style_prompt}\n"
                 )
+            # Channel DNA (migration 0056): the one line on how the channel
+            # sounds, set once and used by every run. A context built before
+            # the field existed (a test double) simply has none.
+            tone = getattr(getattr(channel, "dna", None), "tone", "")
+            if isinstance(tone, str) and tone:
+                prompt += f"\nChannel tone — write every line in this voice:\n{tone}\n"
             prompt += "\n"
 
         # Channel-lifecycle strategy note (modules/strategy.py). Appended, never

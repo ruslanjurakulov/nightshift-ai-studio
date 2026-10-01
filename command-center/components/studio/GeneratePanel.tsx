@@ -12,6 +12,8 @@ import { TOOL_ICONS } from "@/components/studio/toolIcons";
 import { useModelPrices } from "@/components/studio/useModelPrices";
 import { useStyleKits } from "@/components/studio/useStyleKits";
 import { PlanUpsellDialog } from "@/components/studio/PlanUpsellDialog";
+import { ChannelDnaHint } from "@/components/studio/ChannelDnaHint";
+import type { StudioDna } from "@/lib/channel-dna";
 import { isUpsellCode, refusalFrom, type Refusal, type UpsellCatalog } from "@/lib/upsell";
 import { UPSCALE_FACTORS, type CreativeError } from "@/lib/creative/operations";
 import {
@@ -85,6 +87,7 @@ export function GeneratePanel({
   models,
   initial = null,
   defaultStyleKitId = null,
+  dna = null,
   sourceRequest = null,
   plans,
   onCreated,
@@ -95,6 +98,8 @@ export function GeneratePanel({
   initial?: StudioPrefill | null;
   /** The open channel's default style kit (0047), picked to start with when it is one of the org's kits. */
   defaultStyleKitId?: string | null;
+  /** The open channel's DNA (0056): where a fresh form's aspect and speech voice start, and "Change"'s link. */
+  dna?: (StudioDna & { href: string }) | null;
   /**
    * "Use as picture" from a finished result: that picture becomes the source
    * (switching to Edit when the current tool takes none). A new nonce applies
@@ -116,7 +121,7 @@ export function GeneratePanel({
     initial?.capability ?? PANEL_CAPABILITIES.find((c) => modelsFor(models, c).length > 0) ?? "t2i",
   );
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
-  const [aspect, setAspect] = useState<AspectRatio>(initial?.aspect ?? "16:9");
+  const [aspect, setAspect] = useState<AspectRatio>(initial?.aspect ?? dna?.aspect ?? "16:9");
   const [duration, setDuration] = useState<VideoDuration>(initial?.duration ?? 5);
   const [model, setModel] = useState(initial?.model ?? "");
   const [sourceId, setSourceId] = useState<string | null>(initial?.sourceId ?? null);
@@ -125,8 +130,9 @@ export function GeneratePanel({
   const [styleKitId, setStyleKitId] = useState<string | null>(
     initial && "styleKitId" in initial ? (initial.styleKitId ?? null) : defaultStyleKitId,
   );
-  // Speech and a voice change speak in a voice the person picks; a dub in a language they pick. None is defaulted.
-  const [voiceId, setVoiceId] = useState<string | null>(initial?.voiceId ?? null);
+  // Speech and a voice change speak in a voice the person picks; a dub in a language they pick. Only the
+  // channel's own narrator voice (its DNA) is ever picked to start with — shown, and changeable.
+  const [voiceId, setVoiceId] = useState<string | null>(initial?.voiceId ?? dna?.voiceId ?? null);
   const [targetLanguage, setTargetLanguage] = useState<DubLanguage | null>(initial?.targetLanguage ?? null);
   // 0052: the picture an animation ends on (optional), and the size a video upscale makes.
   const [endFrameId, setEndFrameId] = useState<string | null>(initial?.endFrameId ?? null);
@@ -408,6 +414,8 @@ export function GeneratePanel({
           {MEDIA_TOOLS.map(tab)}
         </div>
       </div>
+
+      {dna && <ChannelDnaHint href={dna.href} />}
 
       <div role="tabpanel" id="gen-tabpanel" aria-labelledby={`gen-tab-${capability}`} className="flex flex-col gap-4">
         {/* The model: what will make it, how fast, how good — and a way to change it. */}

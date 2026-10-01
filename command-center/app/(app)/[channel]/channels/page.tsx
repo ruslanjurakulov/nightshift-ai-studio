@@ -26,6 +26,11 @@ import { fetchSocialAccounts } from "@/lib/server/social-accounts";
 import { isSocialConfigured } from "@/lib/server/social-oauth";
 import { isSocialPlatform, parseSocialResult } from "@/lib/social-accounts";
 import { SocialAccountsPanel } from "@/components/social/SocialAccountsPanel";
+import { ChannelDnaSection } from "@/components/channels/ChannelDnaSection";
+import { loadStyleContext } from "@/lib/server/style-kits";
+import { loadDnaCharacters } from "@/lib/server/channel-dna";
+import { dnaFromChannel } from "@/lib/channel-dna";
+import { atLeast } from "@/lib/auth/roles";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -89,6 +94,20 @@ export default async function ChannelsPage({
   // (migration 0028) — every organization, the operator's included.
   const orgId = org.supported && org.current ? org.current.id : null;
   const [social, orgRole] = await Promise.all([fetchSocialAccounts(orgId), role ?? resolveCurrentOrgRole()]);
+
+  // Channel DNA (0056): each channel's look and voice, with the organization's
+  // kits and characters (0047) to pick from. Read as the member (RLS); a
+  // workspace without 0047 or 0056 says so instead of showing empty pickers.
+  const [style, dnaChars] = await Promise.all([
+    orgId ? loadStyleContext(orgId) : Promise.resolve(null),
+    loadDnaCharacters(channels.map((c) => c.channel_id)),
+  ]);
+  const styleState = !style?.available ? "unavailable" : style.error ? "failed" : "ready";
+  const kitChoices = (style?.kits ?? []).map((k) => ({ id: k.id, name: k.name }));
+  const characterChoices = (style?.characters ?? []).map((c) => ({ id: c.id, name: c.name }));
+  // Who may edit a channel is the database's question (0018); this only hides
+  // the Edit button from someone it would refuse.
+  const canEditDna = atLeast(orgRole, "editor");
 
   return (
     <div className="rhythm stagger-enter">
@@ -170,6 +189,20 @@ export default async function ChannelsPage({
                         requiredScopes: YOUTUBE_OAUTH_SCOPES,
                       }
                     : undefined
+                }
+                dna={
+                  <ChannelDnaSection
+                    channelId={channel.channel_id}
+                    dna={dnaFromChannel(channel, dnaChars.byChannel.get(channel.channel_id) ?? [])}
+                    kits={kitChoices}
+                    characters={characterChoices}
+                    styleState={styleState}
+                    available={dnaChars.available}
+                    failed={dnaChars.failed}
+                    canEdit={canEditDna}
+                    standardVoice={channel.agent_config?.tts_provider === "edge"}
+                    studioHref={path("/studio")}
+                  />
                 }
               />
             ))}
