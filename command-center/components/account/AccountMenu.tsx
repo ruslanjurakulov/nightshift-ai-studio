@@ -12,6 +12,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import { formatCredits } from "@/lib/credits";
 import {
   coerceAccountSummary,
+  planName,
   type AccountPlan,
   type AccountSummary,
   type ConnectedAccount,
@@ -31,7 +32,18 @@ import {
  * the panel while it is open. Below `sm` it is a full-width sheet under the
  * header; above, a popover anchored to the button.
  */
-export function AccountMenu({ email }: { email: string | null }) {
+export function AccountMenu({
+  email,
+  variant = "button",
+  plan = null,
+}: {
+  email: string | null;
+  /** "card": the customer sidebar's user card (initial, email, plan), opening
+   *  upward from the foot of the sidebar. "button": the round avatar in the bar. */
+  variant?: "button" | "card";
+  /** The plan the layout read server-side, for the card's second line. */
+  plan?: AccountPlan | null;
+}) {
   const { t, locale, setLocale } = useI18n();
   const path = useChannelPath();
   const router = useRouter();
@@ -135,9 +147,38 @@ export function AccountMenu({ email }: { email: string | null }) {
   // that has no credit account. Anything else shows its numbers, or "—".
   const showCredits =
     state !== "ready" || (data?.plan.kind !== "exempt" && !(data?.plan.kind === "unknown" && !credits));
+  const card = variant === "card";
+  // The fresh read wins when it knows the plan; a failed one does not erase
+  // what the layout read moments ago.
+  const cardPlan = planName(data && data.plan.kind !== "unknown" ? data.plan : plan, t.account.planExempt);
 
   return (
     <div className="relative">
+      {card ? (
+        <button
+          ref={buttonRef}
+          type="button"
+          onClick={() => (open ? close() : setOpen(true))}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={open ? panelId : undefined}
+          aria-label={t.account.open}
+          title={shownEmail ?? undefined}
+          data-shell-usercard=""
+          className="flex w-full items-center gap-2.5 rounded-[12px] border border-[var(--shell-border)] bg-[var(--color-panel)] p-2 text-left transition-colors hover:bg-[var(--color-hover)] aria-expanded:bg-[var(--color-hover)]"
+        >
+          <span
+            aria-hidden
+            className="grid size-8 shrink-0 place-items-center rounded-full bg-[var(--color-accent-soft)] text-[13px] font-semibold text-[var(--color-primary)]"
+          >
+            {initial ?? <UserRound className="size-4" />}
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-[12.5px] font-medium text-[var(--color-fg)]">{shownEmail ?? dash}</span>
+            {cardPlan && <span className="truncate text-[11px] text-[var(--color-muted)]">{cardPlan}</span>}
+          </span>
+        </button>
+      ) : (
       <button
         ref={buttonRef}
         type="button"
@@ -157,6 +198,7 @@ export function AccountMenu({ email }: { email: string | null }) {
           <UserRound aria-hidden className="size-4" />
         )}
       </button>
+      )}
 
       {open && (
         <div
@@ -166,7 +208,7 @@ export function AccountMenu({ email }: { email: string | null }) {
           aria-modal="false"
           aria-labelledby={titleId}
           tabIndex={-1}
-          className="drawer-enter absolute right-0 top-full z-50 mt-3 flex max-h-[calc(100dvh-110px)] w-[min(360px,calc(100vw-24px))] flex-col gap-4 overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-[var(--shadow-elevated)] outline-none"
+          className={`${card ? "sheet-enter" : "drawer-enter"} absolute z-50 flex ${card ? "bottom-full left-0 mb-2 max-h-[calc(100dvh-96px)]" : "right-0 top-full mt-3 max-h-[calc(100dvh-110px)]"} w-[min(360px,calc(100vw-24px))] flex-col gap-4 overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-[var(--shadow-elevated)] outline-none`}
         >
           <header className="flex items-start gap-3">
             <span
