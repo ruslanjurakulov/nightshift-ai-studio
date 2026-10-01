@@ -403,3 +403,8 @@ sec_storyboard_0057.extend(TABLES, FUNCTIONS)
 import sec_storyboard_0058  # noqa: E402
 
 sec_storyboard_0058.extend(TABLES, FUNCTIONS)
+
+# Migration 0063 (operator margin report): tests/security/sec_margin_0063.py
+import sec_margin_0063  # noqa: E402
+
+sec_margin_0063.extend(TABLES, FUNCTIONS)
