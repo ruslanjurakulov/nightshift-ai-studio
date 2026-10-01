@@ -6,6 +6,7 @@ Evidence levels used below:
 
 - **seen**: the product owner sent screenshots of the real product.
 - **tool**: read from the product's own read-only MCP listing.
+- **browser**: read in the product owner's own logged-in browser by a read-only inspection (nothing created, bought or changed), 2026-10-01. Free plans only.
 - **search**: web-search snippets or third-party reviews; treat as unverified until a screenshot confirms it.
 
 The research environment could not open krea.ai, higgsfield.ai or magiclight.ai directly (network policy), so everything not marked **seen** needs a screenshot or a re-read from a session with those hosts allowed.
@@ -143,3 +144,41 @@ The research environment could not open krea.ai, higgsfield.ai or magiclight.ai 
 ## 7. Next verification step
 
 Re-read the public pages (pricing, docs, help centers, reviews) from a session whose network policy allows krea.ai, docs.krea.ai, higgsfield.ai, magiclight.ai, magiclight.app and trustpilot.com, and mark each **search** item here as confirmed or corrected.
+
+## 8. Browser inspection results (2026-10-01, free accounts, read-only)
+
+Nothing was generated, bought or changed. Screens that did not load fully are marked.
+
+### Krea (Free plan)
+
+- Pricing: Free 100 units a day; Basic $5/month billed yearly, 5,000 units; Pro $21 yearly, 20,000; Max $63 yearly, 60,000 (slider 40k to 100k); Business from 80k with a 50-seat workspace. Yearly billing is shown at 40% off. Confirms the earlier tool/search figures for Basic and Pro; Max and Business are corrected.
+- Image tool: model defaults to "Auto"; aspect ratio chip; earlier prompts shown below the input.
+- Model sheet (image): Fast models listed with the price in units next to each (Large 20, Medium 9, Turbo 2, Krea 1 at 6); a "compare models" mode and a search field. Rest of the sheet was not scrolled.
+- Video tool: the Generate button carries the price (578 for the selected model, 6 s, 16:9); the model sheet shows approximate prices per model (about 300 to 900).
+- Credit meter in the profile menu: "100 credits remaining, 100 per day", with Upgrade, Buy credits and Usage statistics.
+- Locked feature: opening "Train new LoRA" on Free shows an upgrade dialog (monthly/yearly toggle, three plan cards). Nothing was selected.
+- Assets page: empty on this account.
+
+### Higgsfield (Free plan, 10 credits)
+
+- Pricing: Basic $9/month yearly, 120 credits; Pro $23 yearly, from 600; Max $59 yearly, from 1,800. A banner promotes a time-limited "unlimited" offer for one image model (30% off). Below the cards: a per-model credit price table, business plans, and a "find the best plan" quiz. The page showed a skeleton for a long time before content.
+- Image create: the Generate button shows the price (6.5 credits for the selected model, High, 2K); settings sit in chips under the prompt.
+- Model sheet: house models plus third-party image models, with search.
+- Video create: tabs Create / Edit / Motion Control; Generate shows 60 credits for the default model; a "Change" control opens model and preset choice.
+- Credit meter: profile menu shows credits left and a "Go Premium" button.
+- Assets: image, video, audio and favourites all empty.
+
+### MagicLight (Free, 775 credits)
+
+- Home: story box, length buttons from "Auto" to 20 to 30 minutes, language and 16:9 ratio, niche cards (story, kids, bedtime, interview, short drama, religious, explainer, an AI-video mode). Sale banner at the top.
+- Model sheet (story): four text models.
+- Clicking the credit counter opens a card-binding offer ("bonus credits for the first linked card"). It was closed without any action. Product lesson: a credit counter that opens a payment offer is a trust risk; in Nightshift the counter opens the balance and history only.
+- Pricing (yearly, 50% off): Standard $7.50/month, 8,000 credits; Plus $14, 27,000; Pro $22, 47,000; Ultra $45, 150,000; Ultimate $75, 280,000. Matches the earlier search figures once yearly pricing is applied.
+- My Creations: one draft project; tabs for characters, styles, skills, voices, favourites; a creator payout counter.
+
+### What changes in our plan
+
+- Price on the Generate button is the shared rule in Krea and Higgsfield: confirmed, keep it.
+- Locked features open a plan dialog with a monthly/yearly toggle: confirmed.
+- Empty library states are plain; ours should offer the first action ("add a file") instead.
+- Still not seen: Higgsfield Shorts/Faceless flows, MagicLight create flow past step 1, mobile apps, cancellation flows.
