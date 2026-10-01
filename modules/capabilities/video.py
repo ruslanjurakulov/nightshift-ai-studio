@@ -1,4 +1,4 @@
-"""Video adapters: Veo, Kling, MiniMax Hailuo, Runway, Luma, Seedance, Wan.
+"""Video adapters: Veo, Kling, MiniMax Hailuo, Runway (+ its video upscaler), Luma, Seedance, Wan.
 
 All of these are asynchronous: ``submit`` starts a billable job and returns its
 task id, ``poll`` asks about that id and never re-submits, ``fetch`` downloads
@@ -19,8 +19,13 @@ import hashlib
 import hmac
 import json
 import re
+import shutil
+import subprocess
 import time
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+import requests
 
 from modules.capabilities.base import (
     E_AUTH,
@@ -37,6 +42,7 @@ from modules.capabilities.base import (
     PENDING,
     SUCCEEDED,
     T2V,
+    VIDEO_UPSCALE,
     AdapterError,
     CapabilityRequest,
     HttpAdapter,
@@ -44,6 +50,7 @@ from modules.capabilities.base import (
     PollResult,
     ProviderTask,
     b64_output,
+    classify_http,
     dig,
     host_is,
     image_b64,
@@ -87,6 +94,9 @@ class VeoAdapter(HttpAdapter):
     base_url_env = "VEO_BASE_URL"
     default_base_url = "https://generativelanguage.googleapis.com"
     capabilities = (T2V, I2V)
+    #: ``lastFrame`` — "the final image for an interpolation video", Veo 3.1,
+    #: 3.1 Fast and 3.1 Lite (ai.google.dev/gemini-api/docs/veo, 2026-10-01).
+    end_frame_capabilities = (I2V,)
     _OP = re.compile(r"^models/[A-Za-z0-9.-]+/operations/[A-Za-z0-9_-]+$")
 
     def auth_headers(self) -> Dict[str, str]:
@@ -98,6 +108,11 @@ class VeoAdapter(HttpAdapter):
         if request.capability == I2V and request.input_images:
             path = request.input_images[0]
             instance["image"] = {"bytesBase64Encoded": image_b64(path), "mimeType": image_mime(path)}
+            if request.end_image:
+                # google-genai sends GenerateVideosConfig.last_frame here, in
+                # the same Image shape as the first frame.
+                end = request.end_image
+                instance["lastFrame"] = {"bytesBase64Encoded": image_b64(end), "mimeType": image_mime(end)}
         params: dict = {"aspectRatio": request.aspect_ratio or "16:9"}
         if request.duration_s:
             params["durationSeconds"] = int(request.duration_s)
@@ -178,6 +193,10 @@ class KlingAdapter(HttpAdapter):
     base_url_env = "KLING_BASE_URL"
     default_base_url = "https://api-singapore.klingai.com"
     capabilities = (T2V, I2V)
+    #: ``image_tail`` on image2video. Kling's capability map: kling-v3 takes
+    #: first + last frame; kling-v2-6 only in 1080p silent (pro) mode, which
+    #: this adapter never sends — so only kling-v3's registry entry has it.
+    end_frame_capabilities = (I2V,)
     _TASK = re.compile(r"^(text2video|image2video)/[A-Za-z0-9_-]{1,128}$")
 
     def _pair(self) -> Tuple[str, str]:
@@ -263,6 +282,9 @@ class KlingAdapter(HttpAdapter):
             path = request.input_images[0]
             # Kling takes a URL or raw base64 (no data: prefix).
             body["image"] = path if is_url(path) else image_b64(path)
+            if request.end_image:
+                end = request.end_image
+                body["image_tail"] = end if is_url(end) else image_b64(end)
         else:
             body["aspect_ratio"] = request.aspect_ratio or "16:9"
         data = self._check(self.post(f"{self.base_url}/v1/videos/{kind}", body))
@@ -411,6 +433,129 @@ class RunwayAdapter(HttpAdapter):
         return PollResult(PENDING, progress=data.get("progress"))
 
 
+#: What Runway's video inputs document (docs.dev.runwayml.com/assets/inputs):
+#: the container's content type. The library copy's suffix says which it is.
+_RUNWAY_VIDEO_TYPES = {".mp4": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm",
+                       ".mkv": "video/x-matroska"}
+_RUNWAY_URI = re.compile(r"^runway://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]{1,4990}$")
+
+
+def video_fps(path: str, *, timeout: int = 30) -> Optional[float]:
+    """The first video stream's frame rate as ffprobe reads it, or None when
+    it cannot be read (no ffprobe, not a video, a 0/0 rate). Never a guess."""
+    exe = shutil.which("ffprobe")
+    if not exe:
+        return None
+    try:
+        out = subprocess.run([exe, "-v", "error", "-select_streams", "v:0", "-show_entries",
+                              "stream=avg_frame_rate,r_frame_rate", "-of", "json", str(path)],
+                             capture_output=True, timeout=timeout, check=False)
+        stream = (json.loads(out.stdout or b"{}").get("streams") or [{}])[0]
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        return None
+    for key in ("avg_frame_rate", "r_frame_rate"):
+        num, _, den = str(stream.get(key) or "").partition("/")
+        try:
+            rate = float(num) / float(den or 1)
+        except (ValueError, ZeroDivisionError):
+            continue
+        if rate > 0:
+            return rate
+    return None
+
+
+class RunwayVideoUpscaleAdapter(RunwayAdapter):
+    """``POST /v1/video_upscale`` (model ``magnific_video_upscaler_creative``,
+    ``videoUri``, ``resolution`` 720p | 1k | 2k | 4k) → ``id``; polled like
+    every Runway task at ``GET /v1/tasks/{id}``.
+
+    The library file reaches Runway as an ephemeral upload: ``POST
+    /v1/uploads {filename, type: "ephemeral"}`` answers a presigned
+    ``uploadUrl`` + form ``fields`` and a ``runwayUri``; the file is POSTed
+    there as multipart (WITHOUT our key — it is a storage host, not the API)
+    and the ``runway://`` URI is what the task names. Never a public URL of
+    ours: nothing of the organization's is exposed to fetch.
+
+    Runway bills this per OUTPUT FRAME (docs.dev.runwayml.com/guides/pricing):
+    the database prices it per second of source (0052), at a rate the owner
+    sets for a ceiling frame rate. A source above that ceiling would cost more
+    than it was priced at, so it is refused here before anything is uploaded
+    or spent; a frame rate that cannot be read is refused too (CLAUDE.md #5).
+    ``fpsBoost`` is never sent: it changes the frame count, and so the bill."""
+
+    key = "video.runway_upscale"
+    capabilities = (VIDEO_UPSCALE,)
+    end_frame_capabilities = ()
+    TARGETS = ("720p", "1k", "2k", "4k")
+    #: The per-second price assumes at most this many frames a second.
+    MAX_FPS = 60.0
+    #: Runway's ephemeral uploads: 512 bytes to 200 MB.
+    MIN_BYTES = 512
+    MAX_BYTES = 200 * 1024 * 1024
+    #: Replaced in tests; the worker image ships ffprobe (Dockerfile.worker).
+    fps_of = staticmethod(video_fps)
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        if request.upscale_target not in self.TARGETS:
+            out.append(f"Runway upscales a video to {', '.join(self.TARGETS)} only")
+        if request.input_images:
+            out.append("a video upscale takes a video, not a picture")
+        if len(request.input_media) != 1:
+            out.append("a video upscale takes exactly one video")
+        elif Path(request.input_media[0]).suffix.lower() not in _RUNWAY_VIDEO_TYPES:
+            out.append("Runway takes MP4, MOV, WebM or MKV video")
+        return out
+
+    def _upload(self, path: Path) -> str:
+        mime = _RUNWAY_VIDEO_TYPES[path.suffix.lower()]
+        ticket = self.post(f"{self.base_url}/v1/uploads", {"filename": path.name, "type": "ephemeral"},
+                           what="upload")
+        url, fields, uri = ticket.get("uploadUrl"), ticket.get("fields"), ticket.get("runwayUri")
+        if not is_url(url or "") or not isinstance(fields, dict) \
+                or not all(isinstance(k, str) and isinstance(v, str) for k, v in fields.items()) \
+                or not _RUNWAY_URI.fullmatch(str(uri or "")):
+            raise AdapterError(E_BAD_RESPONSE, "upload: Runway answered without a usable upload ticket")
+        try:
+            with open(path, "rb") as fh:
+                # No auth header: the presigned URL is the credential, and our
+                # key must never reach a storage host. No redirects either.
+                resp = self.session.request("POST", url, data=dict(fields), files={"file": (path.name, fh, mime)},
+                                            timeout=max(self.timeout, 300), allow_redirects=False)
+        except requests.RequestException as e:
+            raise AdapterError(E_UNAVAILABLE, f"upload: {type(e).__name__}") from None
+        status = getattr(resp, "status_code", 200)
+        if status >= 300:
+            # Runway: "If the upload fails, do not retry" — a new ticket is
+            # needed, so the job fails and its hold is released.
+            raise AdapterError(classify_http(status), f"upload: HTTP {status}", http_status=status)
+        return str(uri)
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        if request.upscale_target not in self.TARGETS or len(request.input_media) != 1:
+            raise AdapterError(E_BAD_REQUEST, "a video upscale needs one video and a target resolution")
+        path = Path(request.input_media[0])
+        if path.suffix.lower() not in _RUNWAY_VIDEO_TYPES:
+            raise AdapterError(E_BAD_REQUEST, "Runway takes MP4, MOV, WebM or MKV video")
+        size = path.stat().st_size
+        if not self.MIN_BYTES <= size <= self.MAX_BYTES:
+            raise AdapterError(E_BAD_REQUEST, "Runway takes videos from 512 bytes to 200 MB")
+        fps = self.fps_of(str(path))
+        if fps is None:
+            raise AdapterError(E_BAD_REQUEST, "the video's frame rate could not be read, so its upscale "
+                                              "cannot be priced; export it again as MP4")
+        if fps > self.MAX_FPS + 0.5:
+            raise AdapterError(E_BAD_REQUEST, f"this video runs at {fps:.0f} frames a second; the upscale "
+                                              f"takes up to {self.MAX_FPS:.0f}")
+        uri = self._upload(path)
+        data = self.post(f"{self.base_url}/v1/video_upscale",
+                         {"model": vendor_model, "videoUri": uri, "resolution": request.upscale_target})
+        if not data.get("id"):
+            raise AdapterError(E_BAD_RESPONSE, "no task id in the response")
+        return ProviderTask(self.key, vendor_model, _safe_id(data["id"]))
+
+
 # ── Luma (Agents API) ───────────────────────────────────────────────────────
 class LumaAdapter(HttpAdapter):
     """``POST /v1/generations`` with ``type: "video"`` and ``video: {duration,
@@ -428,11 +573,27 @@ class LumaAdapter(HttpAdapter):
     base_url_env = "LUMA_AGENTS_BASE_URL"
     default_base_url = "https://agents.lumalabs.ai/v1"
     capabilities = (T2V, I2V)
+    #: ``video.end_frame`` (docs.agents.lumalabs.ai guides/videos/generation).
+    end_frame_capabilities = (I2V,)
     _FAILURES = {"content_moderated": E_POLICY, "budget_exhausted": E_QUOTA,
                  "rate_limited": E_RATE_LIMITED, "invalid_request": E_BAD_REQUEST,
                  "image_too_large": E_BAD_REQUEST, "unsupported_format": E_BAD_REQUEST,
                  "corrupt_input": E_BAD_REQUEST, "output_not_found": E_UNAVAILABLE,
                  "generation_failed": E_UNAVAILABLE}
+    #: Luma's validation rules: start_frame / end_frame are "rejected with
+    #: duration: 10s" — a first frame included, so this holds for every i2v.
+    _FRAMED_DURATIONS = (5,)
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        if request.capability == I2V and request.duration_s is not None \
+                and request.duration_s not in self._FRAMED_DURATIONS:
+            out.append("Luma animates a picture into 5 s clips only")
+        return out
+
+    @staticmethod
+    def _frame(path: str) -> dict:
+        return {"url": path} if is_url(path) else {"data": image_b64(path), "media_type": image_mime(path)}
 
     def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
         self.require_key()
@@ -442,9 +603,9 @@ class LumaAdapter(HttpAdapter):
         if request.resolution:
             video["resolution"] = request.resolution
         if request.capability == I2V:
-            path = request.input_images[0]
-            video["start_frame"] = ({"url": path} if is_url(path)
-                                    else {"data": image_b64(path), "media_type": image_mime(path)})
+            video["start_frame"] = self._frame(request.input_images[0])
+            if request.end_image:
+                video["end_frame"] = self._frame(request.end_image)
         body: dict = {"model": vendor_model, "type": "video", "prompt": request.prompt.strip(),
                       "aspect_ratio": request.aspect_ratio or "16:9"}
         if video:
@@ -483,6 +644,9 @@ class SeedanceAdapter(HttpAdapter):
     base_url_env = "SEEDANCE_BASE_URL"
     default_base_url = "https://ark.ap-southeast.bytepluses.com"
     capabilities = (T2V, I2V)
+    #: Two ``image_url`` items with ``role`` first_frame / last_frame — Seedance
+    #: 1.5 pro and 1.0 pro (ModelArk video generation API, docs 1520757).
+    end_frame_capabilities = (I2V,)
     _CODES = {"AuthenticationError": E_AUTH, "AccessDenied": E_AUTH,
               "AccountOverdueError": E_QUOTA, "QuotaExceeded": E_QUOTA,
               "RateLimitExceeded": E_RATE_LIMITED, "InvalidParameter": E_BAD_REQUEST,
@@ -505,7 +669,15 @@ class SeedanceAdapter(HttpAdapter):
         self.require_key()
         content: list = [{"type": "text", "text": request.prompt.strip()}]
         if request.capability == I2V and request.input_images:
-            content.append({"type": "image_url", "image_url": {"url": _image_ref(request.input_images[0])}})
+            first = {"type": "image_url", "image_url": {"url": _image_ref(request.input_images[0])}}
+            if request.end_image:
+                # With two pictures the role is required on both; with one it
+                # is left out, as before (the vendor reads it as the first frame).
+                content += [dict(first, role="first_frame"),
+                            {"type": "image_url", "image_url": {"url": _image_ref(request.end_image)},
+                             "role": "last_frame"}]
+            else:
+                content.append(first)
         body: dict = {"model": vendor_model, "content": content,
                       "ratio": request.aspect_ratio or "16:9",
                       "duration": int(request.duration_s or 5)}
@@ -667,5 +839,5 @@ class FluxVideoAdapter(HttpAdapter):
         return PollResult(PENDING)
 
 
-ADAPTERS = (VeoAdapter, KlingAdapter, MiniMaxVideoAdapter, RunwayAdapter, LumaAdapter,
-            SeedanceAdapter, WanAdapter, FluxVideoAdapter)
+ADAPTERS = (VeoAdapter, KlingAdapter, MiniMaxVideoAdapter, RunwayAdapter, RunwayVideoUpscaleAdapter,
+            LumaAdapter, SeedanceAdapter, WanAdapter, FluxVideoAdapter)

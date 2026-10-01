@@ -34,7 +34,9 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import shutil
 import socket
+import subprocess
 import sys
 import tempfile
 import time
@@ -162,14 +164,39 @@ class ProbeResult:
         self.latency_ms, self.output_bytes, self.task_id = latency_ms, output_bytes, task_id
 
 
-def probe_image(dest: Path) -> Path:
-    """A plain generated frame for image-to-video probes: nothing of anyone's."""
+def probe_image(dest: Path, *, end: bool = False) -> Path:
+    """A plain generated frame for image-to-video probes: nothing of anyone's.
+    ``end`` draws the closing frame of an end-frame probe (0052): the same
+    gradients with the channels swapped, so the clip has somewhere to go."""
     from PIL import Image  # noqa: PLC0415
 
     size = (1280, 720)
     horizontal = Image.linear_gradient("L").rotate(90).resize(size)
     vertical = Image.linear_gradient("L").resize(size)
-    Image.merge("RGB", (horizontal, vertical, Image.new("L", size, 128))).save(dest, "PNG")
+    channels = (vertical, horizontal) if end else (horizontal, vertical)
+    Image.merge("RGB", (*channels, Image.new("L", size, 128))).save(dest, "PNG")
+    return dest
+
+
+#: A video upscale's probe source (0052): two seconds of ffmpeg's test pattern
+#: at 24 fps — nothing of anyone's, and the cheapest frame count to bill.
+PROBE_VIDEO_ARGS = ("-f", "lavfi", "-i", "testsrc2=size=640x360:rate=24", "-t", "2",
+                    "-pix_fmt", "yuv420p", "-c:v", "libx264", "-an")
+
+
+def probe_video(dest: Path, *, runner: Callable[..., "subprocess.CompletedProcess"] = None) -> Path:
+    """Draw the probe's source video. No ffmpeg here is our setup, not the
+    vendor's answer: the probe is skipped (not_configured), never faked."""
+    exe = shutil.which("ffmpeg")
+    if not exe:
+        raise AdapterError(E_NOT_CONFIGURED, "a video upscale probe needs ffmpeg on this machine")
+    run = runner or subprocess.run
+    try:
+        run([exe, "-y", "-v", "error", *PROBE_VIDEO_ARGS, str(dest)], capture_output=True, timeout=120, check=True)
+    except (OSError, subprocess.SubprocessError):
+        raise AdapterError(E_NOT_CONFIGURED, "ffmpeg could not draw the probe video") from None
+    if not dest.is_file() or dest.stat().st_size == 0:
+        raise AdapterError(E_NOT_CONFIGURED, "ffmpeg could not draw the probe video")
     return dest
 
 
@@ -198,16 +225,22 @@ def run_probe(entry, *, env: Mapping[str, str], voice_id: Optional[str], workdir
     """Make the entry's probe call and fetch its output. Never raises for a
     vendor failure: it becomes a typed ProbeResult."""
     adapter = build_adapter(entry.adapter, env=env, session=session)
-    image = None
+    image = end_image = video = None
     if entry.raw["probe"].get("input_image") == "generated":
         image = str(probe_image(workdir / "probe_frame.png"))
+    if entry.raw["probe"].get("end_frame") == "generated":
+        end_image = str(probe_image(workdir / "probe_end.png", end=True))
     speech_needed = entry.raw["probe"].get("input_audio") == "speech"
-    request = entry.probe_request(voice_id=voice_id, generated_image=image)
+    request = entry.probe_request(voice_id=voice_id, generated_image=image, generated_end_image=end_image)
     started = clock()
     task = None
     try:
         if not adapter.configured():
             raise AdapterError(E_NOT_CONFIGURED, f"no key for {entry.adapter} on this machine")
+        if entry.raw["probe"].get("input_video") == "generated":
+            video = str(probe_video(workdir / "probe_video.mp4"))
+            request = entry.probe_request(voice_id=voice_id, generated_image=image,
+                                          generated_end_image=end_image, generated_video=video)
         if (request.capability == TTS or speech_needed) and not voice_id:
             # Our setup, not the vendor's answer: never guess a voice (CLAUDE.md ceiling).
             raise AdapterError(E_NOT_CONFIGURED, f"set --voice-id or {VOICE_ENV} to a voice from the account")
@@ -216,7 +249,8 @@ def run_probe(entry, *, env: Mapping[str, str], voice_id: Optional[str], workdir
                 speech = probe_speech(entry, env=env, voice_id=voice_id, workdir=workdir, session=session)
             except AdapterError as e:
                 raise AdapterError(e.code, f"the probe's speech could not be made: {e.message}") from None
-            request = entry.probe_request(voice_id=voice_id, generated_image=image, generated_speech=str(speech))
+            request = entry.probe_request(voice_id=voice_id, generated_image=image, generated_speech=str(speech),
+                                          generated_end_image=end_image)
         problems = adapter.problems(request, entry)
         if problems:
             return ProbeResult(entry.id, False, "bad_request", "; ".join(problems))
@@ -259,12 +293,16 @@ def describe(entry, env: Mapping[str, str], voice_id: Optional[str]) -> str:
     req = entry.probe_request(voice_id=voice_id, generated_image="<generated frame>")
     parts = [f"{entry.id:32} {entry.adapter:22} key={'yes' if adapter.configured() else 'NO'}",
              f"{req.capability} {entry.vendor_model_for(req.capability)}"]
-    for k in ("aspect_ratio", "resolution", "image_size", "duration_s", "target_language"):
+    for k in ("aspect_ratio", "resolution", "image_size", "duration_s", "target_language", "upscale_target"):
         v = getattr(req, k)
         if v is not None:
             parts.append(f"{k}={v}")
     if req.capability in MEDIA_INPUT:
         parts.append(f"(from speech made by {SPEECH_MODEL}: two paid calls)")
+    if req.end_image:
+        parts.append("(ends on a second drawn frame)")
+    if entry.raw["probe"].get("input_video") == "generated":
+        parts.append("(from a 2 s test pattern drawn by ffmpeg)")
     if entry.terms_gate:
         parts.append(f"terms_gate={entry.terms_gate}")
     if entry.doc_source != "vendor_sdk":
