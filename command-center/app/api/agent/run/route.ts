@@ -6,7 +6,8 @@ import { logAudit } from "@/lib/server/audit";
 import { dispatchDailyVideo, isGithubConfigured } from "@/lib/server/github-secrets";
 import { isSupabaseConfigured } from "@/lib/config";
 import { buildRenderJobInsert, isRunConfigured, resolveRunBackend } from "@/lib/runBackend";
-import { creditsEnforced, reserveRunCredits } from "@/lib/server/credits";
+import { creditsEnforced, reserveRunCredits, runCreditRefFor } from "@/lib/server/credits";
+import { IDEMPOTENCY_KEY_RE } from "@/lib/creative/operations";
 import { isCreditExempt } from "@/lib/credits";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
 import { acceptedHint } from "@/lib/publish";
@@ -61,6 +62,14 @@ export const dynamic = "force-dynamic";
  * A queued paid run carries the length its hold was priced for
  * (params.duration, lib/credits.ts frozenRunDurationS) — never "the channel's
  * target", which the worker would read again at run time.
+ *
+ * Optional, for the Assistant's confirmed plan: `idempotency_key` makes the
+ * hold's reference stable for (user, channel, key) — a replayed step is
+ * refused by reserve_credits() as `run_already_started` (409) and nothing
+ * new is held or dispatched — and `max_credits` is the price the person
+ * confirmed: a higher estimate is `price_changed` (409), nothing held. Both
+ * act on the credit hold, so they apply where credits are enforced; without
+ * them the route behaves exactly as before.
  */
 
 export async function GET() {
@@ -94,6 +103,8 @@ export async function POST(request: Request) {
     tts_model?: unknown;
     voice_id?: unknown;
     publish_hint?: unknown;
+    idempotency_key?: unknown;
+    max_credits?: unknown;
   };
   try {
     body = await request.json();
@@ -103,6 +114,13 @@ export async function POST(request: Request) {
 
   const channelId = typeof body.channel_id === "string" ? body.channel_id.trim() : "";
   if (!channelId) return NextResponse.json({ error: "channel_required" }, { status: 400 });
+  const idemKey = typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "";
+  if (body.idempotency_key != null && !IDEMPOTENCY_KEY_RE.test(idemKey))
+    return NextResponse.json({ error: "invalid_idempotency_key" }, { status: 400 });
+  const mc = body.max_credits;
+  if (mc != null && !(typeof mc === "number" && Number.isFinite(mc) && mc >= 0))
+    return NextResponse.json({ error: "bad_request" }, { status: 400 });
+  const maxCredits = typeof mc === "number" ? mc : null;
   // Spending money to produce a video is an owner/admin action — in the
   // channel's organization. Only a channel of the organization being viewed:
   // the Actions dispatch has no database check of its own, and a platform
@@ -180,7 +198,11 @@ export async function POST(request: Request) {
   if (creditsEnforced) {
     const supabase = await createClient();
     if (!supabase) return NextResponse.json({ error: "credits_unavailable" }, { status: 503 });
-    const credit = await reserveRunCredits(supabase, channelId, duration, backend === "queue" ? "rj" : "gh");
+    const prefix = backend === "queue" ? "rj" : "gh";
+    const credit = await reserveRunCredits(supabase, channelId, duration, prefix, {
+      maxCredits,
+      creditRef: idemKey ? runCreditRefFor(prefix, user.id, channelId, idemKey) : null,
+    });
     if (!credit.ok) return NextResponse.json(credit.body, { status: credit.status });
     creditRef = credit.creditRef;
     creditsHeld = creditRef ? credit.estimate?.credits ?? null : null;
