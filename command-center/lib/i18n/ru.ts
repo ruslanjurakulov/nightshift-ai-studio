@@ -9,6 +9,9 @@ export const ru: Dictionary = {
     operations: "ОПЕРАЦИИ",
   },
   nav: {
+    hub: "Студия",
+    settings: "Настройки",
+    sections: "Разделы",
     more: "Ещё",
     gManage: "Управление",
     gIntel: "Интеллект",

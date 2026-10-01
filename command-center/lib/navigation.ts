@@ -11,7 +11,7 @@
 
 import type { Dictionary } from "@/lib/i18n";
 
-export type NavKey = Exclude<keyof Dictionary["nav"], "more" | "gManage" | "gIntel" | "gSystem" | "menu">;
+export type NavKey = Exclude<keyof Dictionary["nav"], "more" | "gManage" | "gIntel" | "gSystem" | "menu" | "sections">;
 export type NavGroupLabel = keyof Pick<Dictionary["nav"], "gManage" | "gIntel" | "gSystem">;
 export interface NavItem {
   href: string;
@@ -127,10 +127,48 @@ export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
  */
 export const RAIL_HIDDEN_KEYS: readonly NavKey[] = ["accounts", "members"];
 
-/** The rail for a viewer: the lean customer list, or the operator's console. */
+/**
+ * A customer's rail: five destinations, nothing else. Studio is where things
+ * are made (create, library, look, series); Settings holds the workspace
+ * (organization, developer keys, the setup checklist). Each of the two opens
+ * its first screen, and SECTION_TABS lays its other screens out as tabs —
+ * a short rail with the tools behind it, never a wall of tools.
+ */
+export const CUSTOMER_RAIL: readonly NavItem[] = [
+  { href: "/create", key: "hub" },
+  { href: "/videos", key: "videos" },
+  { href: "/channels", key: "channels" },
+  { href: "/credits", key: "credits" },
+  { href: "/organization", key: "settings" },
+];
+
+export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly NavItem[]>> = {
+  hub: [
+    { href: "/create", key: "create" },
+    { href: "/library", key: "library" },
+    { href: "/studio", key: "studio" },
+    { href: "/series", key: "series" },
+  ],
+  settings: [
+    { href: "/organization", key: "organization" },
+    { href: "/developers", key: "developers" },
+    { href: "/getting-started", key: "onboarding" },
+  ],
+};
+
+/** The tab group (and its rail entry) that `section` belongs to, if any. */
+export function tabsFor(section: string): { rail: "hub" | "settings"; items: readonly NavItem[] } | null {
+  const href = "/" + section;
+  for (const rail of ["hub", "settings"] as const) {
+    if (SECTION_TABS[rail].some((i) => i.href === href)) return { rail, items: SECTION_TABS[rail] };
+  }
+  return null;
+}
+
+/** The rail for a viewer: the five customer destinations, or the operator's console. */
 export function navGroupsFor(operator: boolean): NavGroup[] {
-  const keep = (item: NavItem) =>
-    !RAIL_HIDDEN_KEYS.includes(item.key) && (operator || CUSTOMER_NAV_KEYS.includes(item.key));
+  if (!operator) return [{ items: [...CUSTOMER_RAIL] }];
+  const keep = (item: NavItem) => !RAIL_HIDDEN_KEYS.includes(item.key);
   return NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter(keep) })).filter((g) => g.items.length > 0);
 }
 

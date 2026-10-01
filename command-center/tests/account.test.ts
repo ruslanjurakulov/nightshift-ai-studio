@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import { ALL_CHANNELS, SECTIONS, appRedirect, isSection } from "@/lib/channels";
 import {
   CUSTOMER_NAV_KEYS,
+  CUSTOMER_RAIL,
+  SECTION_TABS,
+  tabsFor,
   NAV_GROUPS,
   NAV_ITEMS,
   RAIL_HIDDEN_KEYS,
@@ -28,21 +31,22 @@ const { youtubeAccounts } = await import("@/lib/connectedAccounts");
 const keys = (operator: boolean) => navGroupsFor(operator).flatMap((g) => g.items.map((i) => i.key));
 
 describe("nav filtering by role", () => {
-  it("gives a customer exactly the lean workspace, in rail order", () => {
-    expect(keys(false)).toEqual([
-      "command",
-      "create",
-      "videos",
-      "studio",
-      "library",
-      "channels",
-      "credits",
-      "series",
-      "onboarding",
-      "organization",
-      "developers",
+  it("gives a customer exactly five destinations, in rail order", () => {
+    expect(keys(false)).toEqual(["hub", "videos", "channels", "credits", "settings"]);
+  });
+
+  it("puts every customer screen behind a rail entry or its tabs", () => {
+    const reachable = new Set<string>([
+      ...CUSTOMER_RAIL.map((i) => i.key),
+      ...SECTION_TABS.hub.map((i) => i.key),
+      ...SECTION_TABS.settings.map((i) => i.key),
     ]);
-    expect(new Set(keys(false))).toEqual(new Set(CUSTOMER_NAV_KEYS));
+    for (const k of CUSTOMER_NAV_KEYS) if (k !== "command") expect(reachable.has(k)).toBe(true);
+    expect(tabsFor("library")?.rail).toBe("hub");
+    expect(tabsFor("developers")?.rail).toBe("settings");
+    expect(tabsFor("videos")).toBeNull();
+    // Tabs never open an operator-only screen.
+    for (const g of Object.values(SECTION_TABS)) for (const i of g) expect(isOperatorOnlySection(i.href.slice(1))).toBe(false);
   });
 
   it("keeps the operator's console for a platform admin, minus All Accounts and Team", () => {
@@ -55,7 +59,7 @@ describe("nav filtering by role", () => {
 
   it("drops a group left empty instead of rendering a bare heading", () => {
     for (const g of navGroupsFor(false)) expect(g.items.length).toBeGreaterThan(0);
-    expect(navGroupsFor(false).map((g) => g.label)).toEqual([undefined, "gManage", "gSystem"]);
+    expect(navGroupsFor(false).map((g) => g.label)).toEqual([undefined]);
   });
 
   it("still lists All Accounts and Team for breadcrumbs and tab titles", () => {
