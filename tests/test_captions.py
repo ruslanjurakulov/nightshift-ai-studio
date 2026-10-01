@@ -438,8 +438,8 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
     bodies would silently remove describe, the voice tools, the video upscale
     or another change's lines. Every function it replaces must keep every
     literal of the latest body before it: the highest-numbered OTHER migration
-    that defines it (0060's once that change is in the tree; until then
-    0055's / 0052's, with 0060's own lines pinned by name below)."""
+    that defines it (0070's, built on 0060's, once those changes are in the tree; until
+    then 0055's / 0052's, with their own lines pinned by name below)."""
 
     REPLACED = ("sellable_models", "creative_capability_supported", "creative_params_problem",
                 "creative_source_problem", "creative_price")
@@ -468,11 +468,38 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         # 0060 (image quality) replaces these three; 0072 is built on its bodies.
         new = bodies((MIGRATIONS / "0072_captions.sql").read_text())
         self.assertIn("'quality must be one of low, medium, high'", new["creative_params_problem"])
-        self.assertIn("'language', 'quality') then", new["creative_params_problem"])
+        self.assertIn("'language', 'quality'", new["creative_params_problem"])
         self.assertIn("%s does not offer the %s quality", new["creative_price"])
         self.assertIn("'quality'", new["creative_price"])
         self.assertIn("'quality_tier', m.spec -> 'quality_tier'", new["sellable_models"])
         self.assertIn("is distinct from 'quality'", new["sellable_models"])
+
+    def test_the_video_price_variants_of_0070_are_kept(self):
+        # 0070 (video price variants) replaces the same three on top of 0060's;
+        # 0072 is built on its bodies, so a resolution / soundtrack priced model
+        # is quoted exactly as before.
+        new = bodies((MIGRATIONS / "0072_captions.sql").read_text())
+        self.assertIn("'audio must be true or false'", new["creative_params_problem"])
+        self.assertIn("'language', 'quality', 'audio') then", new["creative_params_problem"])
+        self.assertIn("'resolution_audio'", new["creative_price"])
+        self.assertIn("'default_resolution'", new["creative_price"])
+        self.assertIn("'default_resolution', m.spec -> 'default_resolution'", new["sellable_models"])
+        self.assertIn("'price_variants_by'", new["sellable_models"])
+
+    def test_it_refuses_to_apply_without_the_migrations_it_is_built_on(self):
+        text = (MIGRATIONS / "0072_captions.sql").read_text()
+        for needle in ("0072 needs 0060_image_quality.sql: apply it first",
+                       "0072 needs 0070_video_price_variants.sql: apply it first",
+                       "position('qualities' in pg_get_functiondef('public.sellable_models(text, text)'::regprocedure))",
+                       "position('audio must be true or false' in pg_get_functiondef('public.creative_params_problem(text, jsonb)'::regprocedure))"):
+            self.assertIn(needle, text)
+        self.assertLess(text.index("0072 needs 0070_video_price_variants.sql"), text.index("create or replace function"))
+
+    def test_the_latest_other_body_is_0070s_when_it_is_in_the_tree(self):
+        if not (MIGRATIONS / "0070_video_price_variants.sql").exists():
+            self.skipTest("0070 is not in this tree yet")
+        for name in ("sellable_models", "creative_params_problem", "creative_price"):
+            self.assertEqual(self.latest_other(name)[0], "0070_video_price_variants.sql", name)
 
     def test_a_later_migration_that_replaces_these_functions_must_know_captions(self):
         # Numbered after 0072 = applied after it: its bodies win, and a body
