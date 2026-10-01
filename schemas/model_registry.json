@@ -2038,6 +2038,177 @@
         "prompt": "a short door knock",
         "duration_s": 1
       }
+    },
+    {
+      "id": "elevenlabs-voice-changer",
+      "display_name": "ElevenLabs Voice Changer",
+      "provider": "elevenlabs",
+      "adapter": "audio.elevenlabs_sts",
+      "vendor_model": "eleven_multilingual_sts_v2",
+      "capabilities": [
+        "voice_change"
+      ],
+      "output": "audio",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://elevenlabs.io/docs/api-reference/speech-to-speech/convert",
+        "checked_at": "2026-10-01",
+        "source": "vendor_docs_search",
+        "evidence": "API reference: POST v1/speech-to-speech/{voice_id}, multipart audio + model_id, output_format query; capabilities page: eleven_multilingual_sts_v2, max 5 minutes per request",
+        "note": "input formats per help centre: MP3 M4A FLAC OGA OGG WAV MKV WEBM MP4 MOV; no file-size limit documented"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.002,
+        "source_url": "https://elevenlabs.io/pricing/api",
+        "as_of": "2026-10-01",
+        "confirmed": false,
+        "note": "$0.12 per minute of processed audio (pricing page extract); the docs also state 1,000 characters per minute on plans"
+      },
+      "credit_unit": "model_elevenlabs_voice_changer_second",
+      "entitlement": "models_audio:basic",
+      "terms_gate": "plan_required:scale",
+      "terms_notes": [
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 200,
+        "max_concurrent_per_org": 4
+      },
+      "quality_tier": 4,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "voice_change",
+        "prompt": "Hello from Nightshift.",
+        "input_audio": "speech"
+      }
+    },
+    {
+      "id": "elevenlabs-dubbing-v2",
+      "display_name": "ElevenLabs Dubbing v2",
+      "provider": "elevenlabs",
+      "adapter": "audio.elevenlabs_dub",
+      "vendor_model": "dubbing_v2",
+      "capabilities": [
+        "dub"
+      ],
+      "output": "audio",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "languages": [
+        "uz",
+        "ru",
+        "en"
+      ],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://elevenlabs.io/docs/api-reference/dubbing/create-project",
+        "checked_at": "2026-10-01",
+        "source": "vendor_docs_search",
+        "evidence": "API reference: POST v1/dubbing/project (file, model_id dubbing_v2, target_language) then GET v1/dubbing/project/{id}/language/{id} until completed; outputs.lossless_audio FLAC URL",
+        "note": "v2 is labelled alpha by the vendor; up to 3 GB per source via the API; 3 concurrent dubs per workspace"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.036667,
+        "source_url": "https://elevenlabs.io/pricing/api",
+        "as_of": "2026-10-01",
+        "confirmed": false,
+        "note": "$2.20 per minute of source per language (pricing page extract); the project charges one language at creation"
+      },
+      "credit_unit": "model_elevenlabs_dubbing_v2_second",
+      "entitlement": "models_audio:basic",
+      "terms_gate": "plan_required:scale",
+      "terms_notes": [
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 200,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 5,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "dub",
+        "prompt": "Hello from Nightshift.",
+        "input_audio": "speech",
+        "target_language": "ru"
+      }
+    },
+    {
+      "id": "elevenlabs-dubbing-v1",
+      "display_name": "ElevenLabs Dubbing v1",
+      "provider": "elevenlabs",
+      "adapter": "audio.elevenlabs_dub",
+      "vendor_model": "dubbing_v1",
+      "capabilities": [
+        "dub"
+      ],
+      "output": "audio",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "languages": [
+        "uz",
+        "ru",
+        "en"
+      ],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://elevenlabs.io/docs/api-reference/dubbing/create-project",
+        "checked_at": "2026-10-01",
+        "source": "vendor_docs_search",
+        "evidence": "API reference: POST v1/dubbing/project with model_id dubbing_v1 (Uzbek, Russian, English listed for v1), polled like v2",
+        "note": "v1 sources: up to 1 GB and 45 minutes; 3 concurrent dubs per workspace"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": 0.008333,
+        "source_url": "https://elevenlabs.io/pricing/api",
+        "as_of": "2026-10-01",
+        "confirmed": false,
+        "note": "$0.50 per minute without watermark (pricing page extract); whether a project-API v1 dub is watermarked is not documented"
+      },
+      "credit_unit": "model_elevenlabs_dubbing_v1_second",
+      "entitlement": "models_audio:basic",
+      "terms_gate": "plan_required:scale",
+      "terms_notes": [
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 200,
+        "max_concurrent_per_org": 1
+      },
+      "quality_tier": 4,
+      "speed_tier": 3,
+      "probe": {
+        "capability": "dub",
+        "prompt": "Hello from Nightshift.",
+        "input_audio": "speech",
+        "target_language": "ru"
+      }
     }
   ]
 }

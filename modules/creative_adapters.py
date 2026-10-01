@@ -18,6 +18,8 @@ job folder), the capability layer knows vendors (``CapabilityRequest``,
   (``problems``) before the paid call: a refusal is ``bad_request``, free;
 * input images are the local files the worker resolved from the media
   library (``GenerationRequest.input_files``) — never a URL from a job row;
+  for the voice tools (0050) that one file is a recording and goes to the
+  adapter as ``input_media``, never as a picture;
 * style / character reference pictures (0048,
   ``GenerationRequest.reference_files``) follow them only for a capability
   the adapter lists in ``reference_capabilities``, and only as many as the
@@ -45,6 +47,7 @@ from modules.creative_style import StyleSupport
 from modules.capabilities import build_adapter
 from modules.capabilities.base import (
     FAILED,
+    MEDIA_INPUT,
     PENDING,
     SUCCEEDED,
     AdapterError,
@@ -87,6 +90,7 @@ def _str(v) -> Optional[str]:
 def capability_request(request: GenerationRequest) -> CapabilityRequest:
     """The job's validated params (0036/0046) in the capability layer's terms."""
     p: Mapping = request.params or {}
+    recording = request.capability in MEDIA_INPUT
     return CapabilityRequest(
         capability=request.capability,
         # The worker's prompt when it appended a style guide (0048), else the stored one.
@@ -99,7 +103,9 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         scale=_int(p.get("factor")),
         # An opaque per-organization id for the vendors that ask for one.
         end_user=hashlib.sha256(f"nightshift-org:{request.org_id}".encode()).hexdigest()[:32],
-        input_images=tuple(str(f) for f in (*request.input_files, *request.reference_files)),
+        input_images=() if recording else tuple(str(f) for f in (*request.input_files, *request.reference_files)),
+        input_media=tuple(str(f) for f in request.input_files) if recording else (),
+        target_language=_str(p.get("target_language")),
     )
 
 
@@ -184,9 +190,13 @@ class RegistryAdapter:
         the registry's prices are unconfirmed, and unknown is never 0."""
         unit = self.entry.raw.get("pricing", {}).get("unit")
         p = request.params or {}
-        qty = {"second": _int(p.get("duration_s")),
-               "character": len(str(p.get("prompt") or "")),
-               "image": n_files}.get(unit)
+        if request.capability in MEDIA_INPUT:
+            # The recording's seconds, as the database measured and priced them.
+            qty = request.quantity if unit == "second" else None
+        else:
+            qty = {"second": _int(p.get("duration_s")),
+                   "character": len(str(p.get("prompt") or "")),
+                   "image": n_files}.get(unit)
         return ProviderUsage(provider=self.entry.provider, vendor_model=self._vendor_model(request.capability),
                              unit=unit, quantity=float(qty) if qty is not None else None, route="exact")
 

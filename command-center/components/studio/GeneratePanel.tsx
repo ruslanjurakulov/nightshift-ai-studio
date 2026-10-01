@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
-import { AtSign, Clock, Maximize2, RectangleHorizontal, Sparkles, type LucideIcon } from "lucide-react";
+import { AtSign, Clock, Languages, Maximize2, RectangleHorizontal, Sparkles, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { SourcePicker } from "@/components/studio/SourcePicker";
@@ -14,8 +14,10 @@ import { useStyleKits } from "@/components/studio/useStyleKits";
 import { UPSCALE_FACTORS, type CreativeError } from "@/lib/creative/operations";
 import {
   ASPECT_RATIOS,
+  COMPOSER_CAPABILITIES,
+  DUB_LANGUAGES,
   PROMPT_MAX,
-  STUDIO_CAPABILITIES,
+  STUDIO_VOICES,
   VIDEO_DURATIONS,
   apiErrorMessage,
   asCreativeError,
@@ -25,12 +27,14 @@ import {
   errorAction,
   generateLabel,
   modelsFor,
+  needsRecording,
   needsSource,
   newIdempotencyKey,
   promptRule,
   sheetQuoteParams,
   takesStyle,
   type AspectRatio,
+  type DubLanguage,
   type QuoteState,
   type StudioCapability,
   type StudioModel,
@@ -41,12 +45,17 @@ import {
 
 const QUOTE_DELAY_MS = 500;
 
-const MAKE_KINDS = STUDIO_CAPABILITIES.filter((c) => !needsSource(c));
-const PICTURE_TOOLS = STUDIO_CAPABILITIES.filter((c) => needsSource(c));
+const MAKE_KINDS = COMPOSER_CAPABILITIES.filter((c) => !needsSource(c) && !needsRecording(c));
+/** The picture tools (0046) and the voice tools (0050): each starts from something in the library. */
+const MEDIA_TOOLS = COMPOSER_CAPABILITIES.filter((c) => needsSource(c) || needsRecording(c));
+
+/** The longest recording each voice tool takes (0050's source check; the database still decides). */
+const RECORDING_MAX_SECONDS: Record<"voice_change" | "dub", number> = { voice_change: 300, dub: 1800 };
 
 /**
  * The Studio's composer. Make one image, video or voice (migration 0036), or
- * start from a library picture: edit, animate, upscale, cut out (0046). The
+ * start from a library picture: edit, animate, upscale, cut out (0046), or
+ * from a library recording: change its voice, or dub it (0050). The
  * database prices it (/api/creative/quote, debounced while typing); the price
  * is on the button, and pressing it sends exactly that price as `max_credits`
  * — a higher price is refused by the database, never charged. One idempotency
@@ -83,7 +92,7 @@ export function GeneratePanel({
   const path = useChannelPath();
 
   const [capability, setCapability] = useState<StudioCapability>(
-    initial?.capability ?? STUDIO_CAPABILITIES.find((c) => modelsFor(models, c).length > 0) ?? "t2i",
+    initial?.capability ?? COMPOSER_CAPABILITIES.find((c) => modelsFor(models, c).length > 0) ?? "t2i",
   );
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
   const [aspect, setAspect] = useState<AspectRatio>(initial?.aspect ?? "16:9");
@@ -95,6 +104,9 @@ export function GeneratePanel({
   const [styleKitId, setStyleKitId] = useState<string | null>(
     initial && "styleKitId" in initial ? (initial.styleKitId ?? null) : defaultStyleKitId,
   );
+  // A voice change speaks in a voice the person picks; a dub in a language they pick. Neither is defaulted.
+  const [voiceId, setVoiceId] = useState<string | null>(initial?.voiceId ?? null);
+  const [targetLanguage, setTargetLanguage] = useState<DubLanguage | null>(initial?.targetLanguage ?? null);
   const styles = useStyleKits(orgId);
   const [quote, setQuote] = useState<QuoteState>({ status: "idle" });
   const [requote, setRequote] = useState(0);
@@ -111,10 +123,10 @@ export function GeneratePanel({
   // Only a kit the organization has (as loaded) is ever sent: a stale default
   // or a deleted kit reads as "None" rather than as a refusal at the price.
   const effectiveStyle = styles.state === "ready" && styles.kits.some((k) => k.id === styleKitId) ? styleKitId : null;
-  const form = { capability, prompt, aspect, duration, sourceId, factor, styleKitId: effectiveStyle };
+  const form = { capability, prompt, aspect, duration, sourceId, factor, styleKitId: effectiveStyle, voiceId, targetLanguage };
   const params = useMemo(
-    () => buildParams({ capability, prompt, aspect, duration, sourceId, factor, styleKitId: effectiveStyle }),
-    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle],
+    () => buildParams({ capability, prompt, aspect, duration, sourceId, factor, styleKitId: effectiveStyle, voiceId, targetLanguage }),
+    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle, voiceId, targetLanguage],
   );
   const paramsKey = JSON.stringify(params);
   // A price is asked for only once the form is complete (the picture, the words).
@@ -211,19 +223,23 @@ export function GeneratePanel({
   const errorCode = notice?.kind === "error" ? notice.code : quote.status === "error" ? quote.code : null;
   const isVoice = capability === "tts";
   const sourced = needsSource(capability);
+  const recorded = needsRecording(capability);
   const words = promptRule(capability);
   const blocked = blockedReason(form, !!effectiveModel);
   const blockedText = blocked ? t.gen.blocked[blocked] : null;
 
   const pick = (c: StudioCapability) => {
+    // A picture and a recording are never the same id: switching between a
+    // picture tool and a voice tool starts the pick again.
+    if ((needsSource(c) && needsRecording(capability)) || (needsRecording(c) && needsSource(capability))) setSourceId(null);
     setCapability(c);
     edited();
   };
 
   // A tablist: ←/→ (and ↑/↓) move and choose, Home/End jump; one tab stop.
   function onTabKey(e: KeyboardEvent<HTMLButtonElement>, c: StudioCapability) {
-    const i = STUDIO_CAPABILITIES.indexOf(c);
-    const n = STUDIO_CAPABILITIES.length;
+    const i = COMPOSER_CAPABILITIES.indexOf(c);
+    const n = COMPOSER_CAPABILITIES.length;
     let to = -1;
     if (e.key === "ArrowRight" || e.key === "ArrowDown") to = (i + 1) % n;
     else if (e.key === "ArrowLeft" || e.key === "ArrowUp") to = (i - 1 + n) % n;
@@ -231,7 +247,7 @@ export function GeneratePanel({
     else if (e.key === "End") to = n - 1;
     if (to < 0) return;
     e.preventDefault();
-    const next = STUDIO_CAPABILITIES[to];
+    const next = COMPOSER_CAPABILITIES[to];
     pick(next);
     tabRefs.current[next]?.focus();
   }
@@ -315,8 +331,8 @@ export function GeneratePanel({
           {MAKE_KINDS.map(tab)}
         </div>
         <div role="presentation" className="mx-1 my-0.5 h-px bg-[var(--color-border)]" />
-        <div role="presentation" className="grid grid-cols-4 gap-1">
-          {PICTURE_TOOLS.map(tab)}
+        <div role="presentation" className="grid grid-cols-3 gap-1">
+          {MEDIA_TOOLS.map(tab)}
         </div>
       </div>
 
@@ -374,6 +390,75 @@ export function GeneratePanel({
               libraryHref={path("/library")}
             />
             <span className="text-[12px] text-[var(--color-muted)]">{t.gen.keepsShape}</span>
+          </div>
+        )}
+
+        {recorded && (
+          <div className="flex flex-col gap-2">
+            <span className="studio-label">{t.gen.recordingLabel}</span>
+            <SourcePicker
+              orgId={orgId}
+              value={sourceId}
+              compact
+              media="recording"
+              maxSeconds={RECORDING_MAX_SECONDS[capability as "voice_change" | "dub"]}
+              onChange={(id) => {
+                setSourceId(id);
+                edited();
+              }}
+              libraryHref={path("/library")}
+            />
+            <span className="text-[12px] text-[var(--color-muted)]">
+              {capability === "dub" ? t.gen.dubNote : t.gen.voiceChangeNote}
+            </span>
+          </div>
+        )}
+
+        {capability === "voice_change" && (
+          <div className="flex flex-col gap-2">
+            <label htmlFor="gen-voice" className="studio-label">
+              {t.gen.voiceLabel}
+            </label>
+            <select
+              id="gen-voice"
+              value={voiceId ?? ""}
+              onChange={(e) => {
+                setVoiceId(e.target.value || null);
+                edited();
+              }}
+              className="studio-field w-full px-3 py-2.5 text-[16px] text-[var(--color-fg)] outline-none sm:text-[14px]"
+            >
+              <option value="">{t.gen.voicePick}</option>
+              {STUDIO_VOICES.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name} — {v.style}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {capability === "dub" && (
+          <div className="flex flex-col gap-2">
+            <span className="studio-label">{t.gen.languageLabel}</span>
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t.gen.languageLabel}>
+              <Languages aria-hidden className="size-3.5 text-[var(--color-muted)]" />
+              {DUB_LANGUAGES.map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  lang={l}
+                  aria-pressed={targetLanguage === l}
+                  onClick={() => {
+                    setTargetLanguage(l);
+                    edited();
+                  }}
+                  className="studio-chip"
+                >
+                  {t.gen.languages[l]}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

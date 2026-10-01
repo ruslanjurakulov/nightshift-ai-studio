@@ -976,19 +976,32 @@ def purge_deleted(store: MediaStore, media_root: Path, *, limit: int = 50) -> in
 #: read the type from. A HEIC / HEIF photo is read from its JPEG display copy.
 SOURCE_SUFFIX: Dict[str, str] = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
 SOURCE_MAX_BYTES = 64 * 1024 * 1024
+#: Recordings a voice tool starts from (0050): audio or video, copied whole.
+#: Only ever read when the caller asks for a recording (``media=True``) — a
+#: picture tool or a style reference never receives one.
+MEDIA_SOURCE_SUFFIX: Dict[str, str] = {
+    "audio/mpeg": ".mp3", "audio/mp4": ".m4a", "audio/wav": ".wav", "audio/ogg": ".ogg",
+    "audio/flac": ".flac", "audio/aac": ".aac", "audio/webm": ".weba",
+    "video/mp4": ".mp4", "video/quicktime": ".mov", "video/webm": ".webm", "video/x-matroska": ".mkv",
+}
+#: 0050 refuses bigger recordings when the job is priced; this is the second line.
+MEDIA_SOURCE_MAX_BYTES = 512 * 1024 * 1024
 
 
 _COPY_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
 
 class SourceUnavailable(Exception):
-    """The source image cannot be read. The message names no path."""
+    """The source (a picture, or a voice tool's recording) cannot be read.
+    The message names no path."""
 
 
 def copy_source(media_root: Path, asset_id, mime: str, variants: Sequence[str], dest_dir: Path,
-                *, limit: int = SOURCE_MAX_BYTES, name: str = "source") -> Path:
+                *, limit: Optional[int] = None, name: str = "source", media: bool = False) -> Path:
     """Copy an asset's picture to ``dest_dir/<name><.ext>`` for a provider call
-    (``source``; style references, 0048, are ``ref_<n>``).
+    (``source``; style references, 0048, are ``ref_<n>``) — or, with
+    ``media=True``, a voice tool's recording (0050: audio or video, and
+    nothing else).
 
     The path is built from the asset id alone (never a row's storage_key or a
     name); a symlink anywhere on the way is refused, and the file is opened
@@ -997,7 +1010,13 @@ def copy_source(media_root: Path, asset_id, mime: str, variants: Sequence[str], 
     aid = canonical_id(asset_id)
     if not _COPY_NAME_RE.match(name or ""):
         raise ValueError("not a plain copy name")
-    if mime in HEIF_MIMES:
+    if limit is None:
+        limit = MEDIA_SOURCE_MAX_BYTES if media else SOURCE_MAX_BYTES
+    if media:
+        if mime not in MEDIA_SOURCE_SUFFIX:
+            raise SourceUnavailable("this file type cannot be a source for this tool")
+        variant, suffix = "original", MEDIA_SOURCE_SUFFIX[mime]
+    elif mime in HEIF_MIMES:
         if "display" not in (variants or ()):
             raise SourceUnavailable("the photo has no display copy")
         variant, suffix = "display", ".jpg"
@@ -1008,9 +1027,9 @@ def copy_source(media_root: Path, asset_id, mime: str, variants: Sequence[str], 
     src = asset_file(media_root, aid, variant)
     for p in (src.parent.parent, src.parent, src):
         if p.is_symlink():
-            raise SourceUnavailable("the source image is not a plain file")
+            raise SourceUnavailable("the source is not a plain file")
     if not src.is_file():
-        raise SourceUnavailable("the source image is not on this worker's media volume")
+        raise SourceUnavailable("the source is not on this worker's media volume")
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / f"{name}{suffix}"
@@ -1024,10 +1043,10 @@ def copy_source(media_root: Path, asset_id, mime: str, variants: Sequence[str], 
                 break
             n += len(chunk)
             if n > limit:
-                raise SourceUnavailable("the source image is too large")
+                raise SourceUnavailable("the source is too large")
             fout.write(chunk)
     if n == 0:
-        raise SourceUnavailable("the source image is empty")
+        raise SourceUnavailable("the source is empty")
     return dest
 
 
