@@ -256,6 +256,8 @@ export function TimelineEditor({
   const video = useRef<HTMLVideoElement>(null);
   const at = clipAt(model, Math.min(playhead, Math.max(0, picture - 0.001)));
   const src = at ? (assets[at.clip.asset_id]?.viewUrl ?? null) : null;
+  // A picture sent from the Library or Studio is a still: it is drawn, not played.
+  const still = at ? assets[at.clip.asset_id]?.kind === "image" : false;
   const shownClip = useRef<string | null>(null);
   const refreshed = useRef(false);
 
@@ -647,7 +649,20 @@ export function TimelineEditor({
               containerType: "inline-size",
             }}
           >
-            {src ? (
+            {src && still ? (
+              // eslint-disable-next-line @next/next/no-img-element -- a signed, short-lived library link
+              <img
+                src={src}
+                alt=""
+                className="size-full object-contain"
+                onError={() => {
+                  if (!refreshed.current) {
+                    refreshed.current = true;
+                    void refreshLinks();
+                  }
+                }}
+              />
+            ) : src ? (
               <video
                 ref={video}
                 src={src}

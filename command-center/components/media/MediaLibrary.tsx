@@ -932,6 +932,7 @@ export function MediaLibrary({
           deleting={deleting !== null}
           opener={opener}
           folderName={foldersOn ? folderName : undefined}
+          orgId={orgId}
         />
       )}
 

@@ -59,3 +59,34 @@ export function fetchProject(id: string): Promise<EditorResult<ProjectSnapshot>>
       : null,
   );
 }
+
+export interface ProjectChoice {
+  id: string;
+  title: string;
+}
+
+/** The projects of an organization a file can be sent to (read under the member's own session). */
+export function listProjects(orgId: string): Promise<EditorResult<ProjectChoice[]>> {
+  return call(`/api/editor/projects?org_id=${encodeURIComponent(orgId)}`, "GET", undefined, (b) =>
+    Array.isArray(b.projects)
+      ? (b.projects as unknown[]).flatMap((p) => {
+          const r = p as { id?: unknown; title?: unknown };
+          return typeof r.id === "string" && typeof r.title === "string" ? [{ id: r.id, title: r.title }] : [];
+        })
+      : null,
+  );
+}
+
+/**
+ * "Open in editor": send one library file to a new project (`target` = a
+ * title) or to an existing one (`target` = its id). Writes a document and
+ * nothing else — no export, no price, no publishing.
+ */
+export function sendAsset(
+  orgId: string,
+  assetId: string,
+  target: { project: string } | { title: string },
+): Promise<EditorResult<{ id: string }>> {
+  const body = "project" in target ? { org_id: orgId, asset_id: assetId, project_id: target.project } : { org_id: orgId, asset_id: assetId, title: target.title };
+  return call("/api/editor/send", "POST", body, (b) => (typeof b.id === "string" ? { id: b.id } : null));
+}
