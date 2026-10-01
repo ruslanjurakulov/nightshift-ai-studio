@@ -173,7 +173,8 @@ def test_two_admins_pressing_at_once_hold_once(conn, sc):
                     "returning 1", [unit, rate])
         with acting(conn, SERVICE, commit=True) as s:
             sid = str(insert(s, sc.bob.channel, "race-b").rows[0][0])
-    dsn = conn.info.dsn
+    # conn.info.dsn drops the password; rebuild from the admin DSN (as test_sec_run_billing does).
+    dsn = psycopg.conninfo.make_conninfo(sec_db.admin_dsn(), dbname=conn.info.dbname)
     barrier = threading.Barrier(2)
     results = []
 
