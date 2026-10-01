@@ -13,14 +13,15 @@ That is a resource-exhaustion DoS against the single-threaded media worker,
 reachable by any member who can upload a file. The expected secure behaviour
 is the same MAX_PIXELS cap the HEIC path already enforces.
 
-This test asserts the SECURE behaviour, so it is xfail(strict=True) while the
-hole is open: it will turn green the moment interpret_probe grows a total-pixel
-guard, and strict mode then flags the stale marker.
+This test asserts the SECURE behaviour, so it is @unittest.expectedFailure while the
+hole is open: the moment interpret_probe grows a total-pixel guard it becomes an
+"unexpected success", which unittest reports as a failure, forcing the fixer to
+remove the marker. (CI runs plain `unittest discover`, so no pytest here.)
 """
 
 from __future__ import annotations
 
-import pytest
+import unittest
 
 from modules import media_library as ml
 
@@ -29,26 +30,29 @@ def _img_probe(width: int, height: int) -> dict:
     return {"streams": [{"codec_type": "video", "width": width, "height": height}], "format": {}}
 
 
-def test_normal_image_is_accepted():
-    """A control: a sane picture goes through, so the bomb test below is
-    measuring the pixel cap, not a blanket rejection."""
-    p = ml.interpret_probe("image/png", _img_probe(1920, 1080))
-    assert (p.kind, p.width, p.height) == ("image", 1920, 1080)
+class MediaBombTests(unittest.TestCase):
+    def test_normal_image_is_accepted(self):
+        """A control: a sane picture goes through, so the bomb test below is
+        measuring the pixel cap, not a blanket rejection."""
+        p = ml.interpret_probe("image/png", _img_probe(1920, 1080))
+        self.assertEqual((p.kind, p.width, p.height), ("image", 1920, 1080))
+
+    def test_image_wider_than_max_side_is_already_refused(self):
+        """A control: the existing per-side cap works — the gap is total pixels."""
+        with self.assertRaises(ml.IngestReject) as e:
+            ml.interpret_probe("image/png", _img_probe(ml.MAX_SIDE + 1, 10))
+        self.assertEqual(e.exception.reason, "too_large_dimensions")
+
+    @unittest.expectedFailure  # BR-C-001 open: no total-pixel cap on raster images
+    def test_raster_megapixel_bomb_is_refused(self):
+        """A 16384x16384 PNG (268 MP) is under MAX_SIDE on each axis but is a
+        decompression bomb once ffmpeg decodes it for the thumbnail. interpret_probe
+        SHOULD refuse any image above MAX_PIXELS, exactly as the HEIC path does."""
+        big = ml.MAX_SIDE  # 16384 per side, each within the per-side cap
+        self.assertGreater(big * big, ml.MAX_PIXELS)  # 268 MP > 100 MP — a bomb
+        with self.assertRaises(ml.IngestReject):
+            ml.interpret_probe("image/png", _img_probe(big, big))
 
 
-def test_image_wider_than_max_side_is_already_refused():
-    """A control: the existing per-side cap works — the gap is total pixels."""
-    with pytest.raises(ml.IngestReject) as e:
-        ml.interpret_probe("image/png", _img_probe(ml.MAX_SIDE + 1, 10))
-    assert e.value.reason == "too_large_dimensions"
-
-
-@pytest.mark.xfail(strict=True, reason="BR-C-001 open: no total-pixel cap on raster images")
-def test_raster_megapixel_bomb_is_refused():
-    """A 16384x16384 PNG (268 MP) is under MAX_SIDE on each axis but is a
-    decompression bomb once ffmpeg decodes it for the thumbnail. interpret_probe
-    SHOULD refuse any image above MAX_PIXELS, exactly as the HEIC path does."""
-    big = ml.MAX_SIDE  # 16384 per side, each within the per-side cap
-    assert big * big > ml.MAX_PIXELS  # 268 MP > 100 MP — this is a bomb
-    with pytest.raises(ml.IngestReject):
-        ml.interpret_probe("image/png", _img_probe(big, big))
+if __name__ == "__main__":
+    unittest.main()
