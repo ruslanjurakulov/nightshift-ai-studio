@@ -9,6 +9,9 @@ import { CreateStudio } from "@/components/create/CreateStudio";
 import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { atLeast } from "@/lib/auth/roles";
 import { readConnectedAccounts } from "@/lib/connectedAccounts";
+import { getOrgContext } from "@/lib/orgs-server";
+import { loadStudioModels } from "@/lib/server/creative";
+import { GenerateSection } from "@/components/studio/GenerateSection";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -29,10 +32,16 @@ export default async function CreatePage() {
     name,
     connected,
   }));
+  // Make one image, video or voice (0036) for the open organization; without
+  // organizations (0018) or an open one there is nothing to bill, so neither shows.
+  const org = await getOrgContext();
+  const genOrgId = org.supported && org.current ? org.current.id : null;
+  const models = genOrgId ? await loadStudioModels() : [];
 
   return (
     <div className="rhythm stagger-enter">
       <PageHeader icon="studio" title={t.create.title} subtitle={t.create.subtitle} />
+      {genOrgId && <GenerateSection orgId={genOrgId} models={models} />}
       <CreateStudio
         channelId={scopedChannel?.channel_id ?? null}
         githubConfigured={isRunNowConfigured}
