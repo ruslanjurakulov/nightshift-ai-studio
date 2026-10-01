@@ -1,6 +1,6 @@
 import {
   TerminalSquare,
-  LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, Sparkles,
+  LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, CircleDot,
   Users, UserCircle, KeyRound, Bot, ListChecks,
   Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
   History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Settings, Cpu, Scissors,
@@ -14,10 +14,11 @@ import type { NavKey } from "@/lib/navigation";
  * same wherever it is listed.
  */
 export const ICONS: Record<NavKey, LucideIcon> = {
-  hub: Sparkles,
+  // The record key, not a sparkle: making something is a REC press (IDENTITY.md §Iconography).
+  hub: CircleDot,
   settings: Settings,
   command: LayoutDashboard,
-  create: Sparkles,
+  create: CircleDot,
   videos: Film,
   studio: Palette,
   library: Images,

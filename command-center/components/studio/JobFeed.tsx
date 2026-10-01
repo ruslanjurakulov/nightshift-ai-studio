@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { AudioLines, Check, Copy, ExternalLink, FolderOpen, ImagePlus, Play, ScanText, Sparkles, TriangleAlert } from "lucide-react";
-import { StatusPill } from "@/components/ui";
+import { AudioLines, Check, Clapperboard, Copy, CopyPlus, ExternalLink, FolderOpen, ImagePlus, Play, ScanText, TriangleAlert, type LucideIcon } from "lucide-react";
+import { StatusLamp } from "@/components/ui/StatusLamp";
 import { BeforeAfter } from "@/components/studio/BeforeAfter";
 import { TOOL_ICONS } from "@/components/studio/toolIcons";
 import { useLibraryImages } from "@/components/studio/useLibraryImages";
@@ -180,7 +180,7 @@ export function JobFeed({
   return (
     <section className="@container flex min-w-0 flex-col gap-3" aria-labelledby="gen-feed-title">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 id="gen-feed-title" className="text-[15px] font-semibold text-[var(--color-fg)]">
+        <h2 id="gen-feed-title" className="ns-eyebrow">
           {t.gen.feedTitle}
         </h2>
         {active && (
@@ -203,12 +203,12 @@ export function JobFeed({
             </div>
           )}
           {jobs !== null && shown.length === 0 && state === "ok" && (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-[20px] border border-dashed border-[var(--color-border)] bg-[var(--studio-canvas)] px-6 py-16 text-center">
+            <div className="flex flex-col items-center justify-center gap-3 rounded-[var(--ns-r-panel)] border border-dashed border-[var(--ns-rule-strong)] bg-[var(--studio-canvas)] px-6 py-16 text-center">
               <span
                 aria-hidden
-                className="grid size-12 place-items-center rounded-[14px] bg-[color-mix(in_srgb,var(--color-primary)_14%,transparent)] text-[var(--color-primary)]"
+                className="grid size-12 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] text-[var(--color-muted)]"
               >
-                <Sparkles className="size-6" strokeWidth={1.75} />
+                <Clapperboard className="size-6" strokeWidth={1.75} />
               </span>
               <p className="text-[15px] font-semibold text-[var(--color-fg)]">{t.gen.emptyTitle}</p>
               <p className="max-w-[44ch] text-[13px] text-[var(--color-muted)]">{t.gen.empty}</p>
@@ -235,7 +235,7 @@ export function JobFeed({
                 const kind = outputKind(job.capability);
                 const preview = done && job.result_asset_ids[0] ? library.previews.get(job.result_asset_ids[0]) : undefined;
                 const alt = prompt ? truncate(prompt, 80) : kindLabel(t, job.capability);
-                const Icon = isStudioCapability(job.capability) ? TOOL_ICONS[job.capability] : Sparkles;
+                const Icon: LucideIcon = isStudioCapability(job.capability) ? TOOL_ICONS[job.capability] : Clapperboard;
 
                 let media: ReactNode;
                 if (kind === "text" && (describedPic?.thumbUrl || describedPic?.viewUrl)) {
@@ -280,7 +280,7 @@ export function JobFeed({
                       {isUnsuccessful(job.status) ? (
                         <TriangleAlert aria-hidden className="size-6" strokeWidth={1.5} />
                       ) : isActiveStatus(job.status) ? (
-                        <Sparkles aria-hidden className="pulse size-6 text-[var(--color-primary)]" strokeWidth={1.5} />
+                        <span aria-hidden className="ns-lamp" data-tone="run" data-live="true" data-size="md" />
                       ) : kind === "audio" ? (
                         <AudioLines aria-hidden className="size-7" strokeWidth={1.5} />
                       ) : kind === "text" ? (
@@ -295,7 +295,7 @@ export function JobFeed({
                 return (
                   <li
                     key={job.id}
-                    className="studio-card mb-3 flex break-inside-avoid flex-col overflow-hidden rounded-[16px] border border-[var(--color-border)] bg-[var(--color-panel)]"
+                    className="studio-card mb-3 flex break-inside-avoid flex-col overflow-hidden rounded-[var(--ns-r-chip)] border border-[var(--color-border)] bg-[var(--color-panel)]"
                     data-status={job.status}
                   >
                     <div
@@ -344,7 +344,7 @@ export function JobFeed({
                       <div className="flex min-w-0 items-center gap-2">
                         <span className="min-w-0 truncate text-[12px] font-semibold text-[var(--color-fg)]">{kindLabel(t, job.capability)}</span>
                         <span className="ml-auto shrink-0">
-                          <StatusPill tone={sv.tone} label={sv.label} live={sv.live} />
+                          <StatusLamp tone={sv.tone} label={sv.label} live={sv.live} />
                         </span>
                       </div>
                       {prompt && <p className="studio-clamp-2 break-words text-[13px] leading-snug text-[var(--color-fg)]">{truncate(prompt)}</p>}
@@ -375,7 +375,7 @@ export function JobFeed({
                                 aria-describedby={`similar-hint-${job.id}`}
                                 onClick={() => onMakeSimilar(similarPrefill(description))}
                               >
-                                <Sparkles aria-hidden className="size-3.5" />
+                                <CopyPlus aria-hidden className="size-3.5" />
                                 {t.gen.makeSimilar}
                               </button>
                             )}

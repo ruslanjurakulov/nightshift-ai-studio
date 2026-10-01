@@ -387,6 +387,9 @@ h2, h3 {
   font-feature-settings: "tnum" 1, "zero" 1;
   font-variation-settings: "wdth" 87.5;
   letter-spacing: -0.01em;
+  /* Martian's x-height is tall; match it to the body face's so a figure set
+     at the same size as the words beside it does not shout over them. */
+  font-size-adjust: 0.5;
 }
 
 .glow-dot {
@@ -1176,6 +1179,10 @@ option {
 /* Inside the signed-in app the room is unlit: no footage, no washes behind
    the work. The public pages keep their backdrop. */
 .app-shell.atmos { background: var(--color-bg); }
+/* The customer bar's round controls (search, bell, language, theme) become
+   keys, so the bar is one row of the same hardware as the credit key. */
+.shell-topbar .pill,
+.shell-topbar .rounded-full { border-radius: var(--ns-r-key); }
 .app-shell .neural-video,
 .app-shell .neural-dim,
 .app-shell .veil-neural { display: none; }
@@ -1814,6 +1821,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 /* Timecode: the counter face for credits, prices, durations and frames. */
 .ns-tc {
   font-family: var(--font-mono);
+  font-size-adjust: 0.5;
   font-feature-settings: "tnum" 1, "zero" 1;
   font-variant-numeric: tabular-nums slashed-zero;
   font-variation-settings: "wdth" 87.5;
@@ -2134,4 +2142,27 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   background-repeat: repeat-x;
   background-position: 0 100%, 0 100%;
   border-bottom: 1px solid var(--tick);
+}
+
+/* The wordmark: the condensed face in capitals, as a console's maker's plate. */
+.ns-wordmark {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 760;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--color-fg);
+}
+
+/* The record dot on the Generate key: making something is a REC press, not a
+   sparkle. It pulses only while the price is being asked or the press is sent. */
+.ns-rec {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 28%, transparent);
 }

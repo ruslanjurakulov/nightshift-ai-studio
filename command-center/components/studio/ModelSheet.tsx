@@ -139,11 +139,11 @@ export function ModelSheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative flex max-h-[86dvh] w-full flex-col overflow-hidden rounded-t-[20px] border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] sm:max-h-[80vh] sm:max-w-[560px] sm:rounded-[20px]"
+        className="relative flex max-h-[86dvh] w-full flex-col overflow-hidden rounded-t-[var(--ns-r-sheet)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] sm:max-h-[80vh] sm:max-w-[560px] sm:rounded-[var(--ns-r-sheet)]"
       >
         <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] px-4 pb-3 pt-4 sm:px-6">
           <div className="flex min-w-0 flex-col gap-1">
-            <h2 id={titleId} className="text-[15px] font-semibold text-[var(--color-fg)]">
+            <h2 id={titleId} className="font-display text-[22px] font-bold uppercase leading-none tracking-[0.06em] text-[var(--color-fg)]">
               {g.sheetTitle}
             </h2>
             <p className="text-[12px] text-[var(--color-muted)]">{fmt(g.sheetFor, { kind: kindLabel(t, capability) })}</p>
@@ -207,9 +207,9 @@ export function ModelSheet({
                   onKeyDown={(e) => onListKey(e, i)}
                   onFocus={() => setActive(i)}
                   data-model={m.id}
-                  className={`group flex cursor-pointer items-center gap-3 rounded-[14px] border p-3 outline-none transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] ${
+                  className={`group flex cursor-pointer items-center gap-3 rounded-[var(--ns-r-key)] border p-3 outline-none transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] ${
                     on
-                      ? "border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_8%,transparent)]"
+                      ? "border-[var(--ns-amber-ink)] bg-[var(--ns-select)]"
                       : "border-[var(--color-border)] hover:bg-[var(--studio-field)]"
                   }`}
                 >
@@ -233,7 +233,7 @@ export function ModelSheet({
                     <TierMarks speed={m.speedTier ?? null} quality={m.qualityTier ?? null} />
                   </span>
                   <span
-                    className={`max-w-[44%] shrink-0 text-right text-[12px] ${price.tone === "fg" ? "mono font-semibold text-[var(--color-fg)]" : price.tone === "fail" ? "text-[var(--color-fail)]" : "text-[var(--color-muted)]"}`}
+                    className={`max-w-[44%] shrink-0 text-right text-[12px] ${price.tone === "fg" ? "ns-tc text-[14px] font-semibold text-[var(--color-fg)]" : price.tone === "fail" ? "text-[var(--color-fail)]" : "text-[var(--color-muted)]"}`}
                     data-price={m.id}
                   >
                     {price.text}
