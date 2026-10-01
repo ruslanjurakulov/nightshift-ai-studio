@@ -297,6 +297,8 @@ export const siteEn = {
     ],
   },
   auth: {
+    signInTitle: "Sign in",
+    signInSub: "Your channels, videos and credits are where you left them.",
     asideTitle: "Before you sign in, the house rules.",
     asideItems: ["The price is shown before every run.", "A failed run returns its credits.", "Nothing goes public without your approval."],
     asideLamp: "On air only when you say",

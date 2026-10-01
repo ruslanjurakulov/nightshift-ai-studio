@@ -21,19 +21,25 @@ export function ConfirmSignIn({ email, csrf, next }: { email: string; csrf: stri
           type="submit"
           name="action"
           value="continue"
-          className="cta-glass pill inline-flex items-center justify-center px-6 py-3 text-sm font-semibold"
+          className="st-key"
+          data-block="true"
         >
-          <span className="truncate">{fmt(s.confirmContinue, { email })}</span>
+          <span className="truncate normal-case tracking-normal">{fmt(s.confirmContinue, { email })}</span>
         </button>
         <button
           type="submit"
           name="action"
           value="cancel"
-          className="pill inline-flex items-center justify-center px-6 py-3 text-sm text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+          className="st-key"
+          data-tone="quiet"
+          data-block="true"
         >
           {s.confirmCancel}
         </button>
-        <p className="mt-2 text-[12px] font-light text-[var(--color-muted)]">{s.confirmWarning}</p>
+        <p className="st-alert mt-2" data-tone="warn">
+          <span aria-hidden className="ns-lamp mt-1.5" data-tone="warn" />
+          <span>{s.confirmWarning}</span>
+        </p>
       </form>
     </AuthShell>
   );

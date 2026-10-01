@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/config";
 import { useI18n } from "@/lib/i18n/context";
-import { AuthField, AuthShell } from "@/components/auth/AuthShell";
+import { AuthAlert, AuthField, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
 import { classifySignInError, isCallbackError, type CallbackError, type SignInOutcome } from "@/lib/signup";
 
 export default function LoginPage() {
@@ -54,9 +54,11 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthShell title={t.auth.signInTitle} subtitle={t.auth.signInSub}>
+    <AuthShell title={t.site.auth.signInTitle} subtitle={t.site.auth.signInSub}>
       {!isSupabaseConfigured && (
-        <p className="mt-5 text-[13px] font-light text-[var(--color-warn)]">{t.auth.notConfigured}</p>
+        <div className="mt-5">
+          <AuthAlert tone="warn">{t.auth.notConfigured}</AuthAlert>
+        </div>
       )}
 
       <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-4">
@@ -77,27 +79,17 @@ export default function LoginPage() {
           onChange={(e) => setPassword(e.target.value)}
         />
         {linkError && !error && (
-          <p role="alert" className="mono text-[11px] text-[var(--color-warn)]">
-            {linkError === "link_expired" ? t.signup.linkExpired : t.signup.linkInvalid}
-          </p>
+          <AuthAlert tone="warn">{linkError === "link_expired" ? t.signup.linkExpired : t.signup.linkInvalid}</AuthAlert>
         )}
         {error && (
-          <p role="alert" className="mono text-[11px] text-[var(--color-fail)]">
-            {error}
-          </p>
+          <AuthAlert tone="fail">{error}</AuthAlert>
         )}
-        <button
-          type="submit"
-          disabled={busy}
-          className="cta-glass pill mt-2 inline-flex items-center justify-center px-6 py-3 text-sm font-semibold disabled:opacity-50"
-        >
-          {busy ? t.auth.signingIn : t.auth.signIn}
-        </button>
+        <AuthSubmit busy={busy}>{busy ? t.auth.signingIn : t.auth.signIn}</AuthSubmit>
       </form>
 
-      <p className="mt-6 text-center text-[13px] font-light text-[var(--color-muted)]">
-        {t.signup.noAccount}{" "}
-        <Link href="/signup" className="text-[var(--color-primary)] underline-offset-4 hover:underline">
+      <p className="st-small mt-8 flex flex-wrap items-center gap-x-2 border-t border-[var(--ns-rule)] pt-5">
+        {t.signup.noAccount}
+        <Link href="/signup" className="st-link text-[14.5px]">
           {t.signup.createAccount}
         </Link>
       </p>

@@ -290,6 +290,8 @@ export const siteUz: SiteDictionary = {
     ],
   },
   auth: {
+    signInTitle: "Kirish",
+    signInSub: "Kanallaringiz, videolaringiz va kreditlaringiz qoldirgan joyingizda.",
     asideTitle: "Kirishdan oldin — uy qoidalari.",
     asideItems: ["Har bir ishga tushirishdan oldin narx koʻrinadi.", "Muvaffaqiyatsiz ishga tushirish kreditlarini qaytaradi.", "Tasdigʻingizsiz hech narsa ommaviy boʻlmaydi."],
     asideLamp: "Efirga — faqat siz aytganda",

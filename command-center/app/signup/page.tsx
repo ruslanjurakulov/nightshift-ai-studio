@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/config";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
-import { AuthField, AuthShell } from "@/components/auth/AuthShell";
+import { AuthAlert, AuthField, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
 import { AUTH_CALLBACK_PATH, WELCOME_PATH } from "@/lib/public-paths";
 import {
   PASSWORD_MAX,
@@ -95,15 +95,12 @@ export default function SignupPage() {
   if (sentTo) {
     return (
       <AuthShell title={t.signup.checkTitle}>
-        <p role="status" className="mt-4 text-[15px] font-light leading-relaxed">
+        <p role="status" className="st-body mt-4 text-[var(--ns-text)]">
           {fmt(t.signup.checkBody, { email: sentTo })}
         </p>
-        <p className="mt-3 text-[13px] font-light text-[var(--color-muted)]">{t.signup.checkHint}</p>
+        <p className="st-small mt-3">{t.signup.checkHint}</p>
         <div className="mt-8 flex flex-col gap-3">
-          <Link
-            href="/login"
-            className="cta-glass pill inline-flex items-center justify-center px-6 py-3 text-sm font-semibold"
-          >
+          <Link href="/login" className="st-key" data-block="true">
             {t.signup.signIn}
           </Link>
           <button
@@ -112,7 +109,7 @@ export default function SignupPage() {
               setSentTo(null);
               setBusy(false);
             }}
-            className="text-[13px] font-light text-[var(--color-muted)] underline-offset-4 hover:text-[var(--color-primary)] hover:underline"
+            className="st-link self-center text-[14px]"
           >
             {t.signup.useDifferent}
           </button>
@@ -126,7 +123,9 @@ export default function SignupPage() {
   return (
     <AuthShell title={t.signup.title} subtitle={t.signup.sub}>
       {!isSupabaseConfigured && (
-        <p className="mt-5 text-[13px] font-light text-[var(--color-warn)]">{t.auth.notConfigured}</p>
+        <div className="mt-5">
+          <AuthAlert tone="warn">{t.auth.notConfigured}</AuthAlert>
+        </div>
       )}
 
       <form onSubmit={onSubmit} noValidate className="mt-8 flex flex-col gap-4">
@@ -158,51 +157,47 @@ export default function SignupPage() {
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
         />
-        <label className="tap-row mt-1 flex items-start gap-3 text-[13px] font-light leading-snug text-[var(--color-muted)]">
+        <label className="mt-1 flex min-h-11 items-start gap-3 text-[14px] leading-snug text-[var(--ns-text-dim)]">
           <input
             type="checkbox"
             required
             checked={consent}
             onChange={(e) => setConsent(e.target.checked)}
-            className="mt-0.5 size-5 shrink-0 accent-[var(--color-primary)]"
+            className="mt-0.5 size-5 shrink-0 accent-[var(--ns-amber)]"
           />
           <span>
             {t.signup.consentPre}{" "}
-            <Link href="/terms" target="_blank" className="text-[var(--color-primary)] underline-offset-4 hover:underline">
+            <Link href="/terms" target="_blank" className="underline decoration-[var(--ns-rule-strong)] underline-offset-4 text-[var(--ns-text)] hover:text-[var(--ns-amber-ink)]">
               {t.signup.terms}
             </Link>{" "}
             {t.signup.consentAnd}{" "}
-            <Link href="/privacy" target="_blank" className="text-[var(--color-primary)] underline-offset-4 hover:underline">
+            <Link href="/privacy" target="_blank" className="underline decoration-[var(--ns-rule-strong)] underline-offset-4 text-[var(--ns-text)] hover:text-[var(--ns-amber-ink)]">
               {t.signup.privacy}
             </Link>
             {t.signup.consentPost}
           </span>
         </label>
         {shownProblem && (
-          <p role="alert" className="mono text-[11px] text-[var(--color-fail)]">
+          <AuthAlert tone="fail">
             {shownProblem}
             {problem === "already_registered" && (
               <>
                 {" "}
-                <Link href="/login" className="text-[var(--color-primary)] underline underline-offset-4">
+                <Link href="/login" className="underline underline-offset-4 text-[var(--ns-text)]">
                   {t.signup.signIn}
                 </Link>
               </>
             )}
-          </p>
+          </AuthAlert>
         )}
-        <button
-          type="submit"
-          disabled={busy || !isSupabaseConfigured}
-          className="cta-glass pill mt-2 inline-flex items-center justify-center px-6 py-3 text-sm font-semibold disabled:opacity-50"
-        >
+        <AuthSubmit busy={busy} disabled={!isSupabaseConfigured}>
           {busy ? t.signup.submitting : t.signup.submit}
-        </button>
+        </AuthSubmit>
       </form>
 
-      <p className="mt-6 text-center text-[13px] font-light text-[var(--color-muted)]">
-        {t.signup.haveAccount}{" "}
-        <Link href="/login" className="text-[var(--color-primary)] underline-offset-4 hover:underline">
+      <p className="st-small mt-8 flex flex-wrap items-center gap-x-2 border-t border-[var(--ns-rule)] pt-5">
+        {t.signup.haveAccount}
+        <Link href="/login" className="st-link text-[14.5px]">
           {t.signup.signIn}
         </Link>
       </p>

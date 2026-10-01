@@ -842,7 +842,7 @@ html:has(.st) { scroll-padding-top: 80px; }
   border-bottom: 1px solid var(--ns-rule);
 }
 .st-price-row:last-child { border-bottom: 0; }
-.st-price-row .st-price-name { font-family: var(--font-display); font-size: 15px; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ns-text-dim); }
+.st-price-name { font-family: var(--font-display); font-size: 15px; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ns-text-dim); }
 .st-price-row .st-price-credits { font-size: 26px; line-height: 1.1; }
 .st-price-row .st-price-credits small { margin-left: 6px; font-family: var(--font-sans); font-size: 14px; font-weight: 500; color: var(--ns-text-dim); letter-spacing: 0; }
 .st-price-row .st-price-money { grid-row: 1 / span 2; grid-column: 2; text-align: right; font-size: 20px; }
