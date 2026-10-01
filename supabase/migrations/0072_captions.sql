@@ -1,4 +1,4 @@
--- 0059_captions.sql — "Auto-captions": a recording the organization already
+-- 0072_captions.sql — "Auto-captions": a recording the organization already
 -- has in its media library -> a subtitle track (words with their own times),
 -- priced like any creative job and kept as DATA the editor turns into burned-in
 -- captions and the person exports as SRT or WebVTT (Creative OS plan §3.3 / PR 11).
@@ -60,18 +60,17 @@
 -- (sellable_models, creative_params_problem and creative_price: 0060's, the
 -- picture-quality change; creative_source_problem and
 -- creative_capability_supported: 0055's) with the captions lines added:
--- applying 0059 keeps the quality tiers, describe, the voice tools, the video
+-- applying 0072 keeps the quality tiers, describe, the voice tools, the video
 -- upscale and the i2v end frame exactly as they were (tests pin every string
 -- literal).
 --
--- ORDER. 0059 is numbered before 0060, but it contains 0060's bodies: apply
--- 0060, THEN 0059 (both are create-or-replace and idempotent, so applying
--- 0059 again after 0060 is safe). A database that applies 0060 after 0059
--- would end with 0060's functions, which do not know captions: sellable_models
--- refuses the capability (the editor then offers no captions) and a quote for
--- captions is refused 'invalid_params' — never a wrong price, nothing held.
--- tests/test_captions.py fails when a migration numbered above 0059 replaces
--- one of these functions without the captions lines.
+-- ORDER. 0072 applies after 0060 (the numbers say so) and contains 0060's
+-- bodies, so the quality tiers survive it. Any migration numbered above 0072
+-- that replaces one of these functions must carry the captions lines too, or
+-- its bodies would take the capability away again (sellable_models would
+-- refuse the capability, a captions quote would be refused 'invalid_params' —
+-- never a wrong price, nothing held). tests/test_captions.py fails when one
+-- does.
 --
 -- MONEY: UNCHANGED. 0036's hold / capture / release, untouched.
 --
@@ -84,7 +83,7 @@
 --   store_caption_track    service role only (the creative worker).
 --   anon: nothing.
 --
--- REQUIRES 0018, 0020, 0035, 0036, 0038, 0050, 0052 and 0055; apply it after 0060 (above).
+-- REQUIRES 0018, 0020, 0035, 0036, 0038, 0050, 0052, 0055 and 0060.
 -- Additive and idempotent: guarded creates, drop-then-add constraints,
 -- create-or-replace functions, drop-then-create policies, revoke-then-grant.
 
@@ -92,14 +91,14 @@ do $$
 begin
   if to_regprocedure('public.creative_source_seconds(uuid, jsonb)') is null
      or to_regprocedure('public.creative_picture_problem(uuid, uuid, text)') is null then
-    raise exception '0059 needs 0050 and 0052: apply 0050_voice_tools.sql and 0052_video_tools.sql first';
+    raise exception '0072 needs 0050 and 0052: apply 0050_voice_tools.sql and 0052_video_tools.sql first';
   end if;
   if to_regprocedure('public.creative_quantity(text, jsonb)') is null
      or not exists (select 1 from pg_constraint where conname = 'creative_jobs_describe_text_check') then
-    raise exception '0059 needs 0055_describe_image.sql: apply it first';
+    raise exception '0072 needs 0055_describe_image.sql: apply it first';
   end if;
   if to_regclass('public.media_assets') is null then
-    raise exception '0059 needs the media library: apply 0038_media_assets.sql first';
+    raise exception '0072 needs the media library: apply 0038_media_assets.sql first';
   end if;
 end $$;
 
@@ -206,7 +205,7 @@ create or replace function public.creative_params_problem(p_capability text, p_p
 declare
   k        text;
   timed    boolean := p_capability in ('t2v', 'sfx', 'music', 'i2v');
-  -- The voice tools and captions (0059): a recording is the whole input.
+  -- The voice tools and captions (0072): a recording is the whole input.
   voiced   boolean := p_capability in ('voice_change', 'dub', 'captions');
   -- The video tools (0052): a video is the whole input.
   filmed   boolean := p_capability = 'video_upscale';
@@ -367,7 +366,7 @@ begin
     return format('target_language does not apply to %s', p_capability);
   end if;
   if p_params ? 'language' then
-    -- describe (0055: absent = English) and captions (0059: the language
+    -- describe (0055: absent = English) and captions (0072: the language
     -- spoken in the recording; absent = the provider detects it). The
     -- explicit allow-list either way.
     if not (told or p_capability = 'captions') then
@@ -719,7 +718,7 @@ create index if not exists caption_tracks_org_asset_idx
   on public.caption_tracks (org_id, asset_id, created_at desc) where deleted_at is null;
 
 comment on table public.caption_tracks is
-  'Word-timed transcripts made by captions jobs (migration 0059). Written only by store_caption_track (service role); members read the tracks of completed jobs of their organization; deleted only through delete_caption_track.';
+  'Word-timed transcripts made by captions jobs (migration 0072). Written only by store_caption_track (service role); members read the tracks of completed jobs of their organization; deleted only through delete_caption_track.';
 
 -- Store the words of the job this worker holds, in the JOB's organization.
 -- Idempotent per job. The worker names no organization and no asset.

@@ -79,7 +79,7 @@ on the job row as ``result.text`` — never as a library asset (0055's CHECK
 refuses one). Nothing usable left fails the job (``bad_response``) and
 releases the hold: an empty answer is never charged.
 
-Captions (migration 0059)
+Captions (migration 0072)
 ------------------------
 ``captions`` starts from a recording of the organization like the voice tools
 (``params.source_asset_id``, copied by id as a recording) and produces DATA:
@@ -174,7 +174,7 @@ OUTPUT_KIND = {"t2i": "image", "edit": "image", "upscale": "image", "remove_bg":
                "voice_change": "audio", "dub": "audio", "video_upscale": "video", "describe": "text", "captions": "text"}
 #: Capabilities whose result is text on the job row, never a library asset (0055).
 TEXT_CAPABILITIES = frozenset({"describe"})
-#: Capabilities whose result is a caption track in its own table (0059), never a library asset.
+#: Capabilities whose result is a caption track in its own table (0072), never a library asset.
 CAPTION_CAPABILITIES = frozenset({"captions"})
 #: The largest provider answer read for a caption track (20 000 words fit well inside).
 CAPTIONS_MAX_BYTES = 8 * 1024 * 1024
@@ -216,7 +216,7 @@ class GenerationRequest:
     #: The source picture's pixel size as the library recorded it (width,
     #: height) — a description keeps it so "Make similar" can pick the shape.
     source_size: Optional[Tuple[int, int]] = None
-    #: The recording's length as the library measured it (captions, 0059): words
+    #: The recording's length as the library measured it (captions, 0072): words
     #: are kept inside it.
     source_duration_s: Optional[float] = None
 
@@ -341,7 +341,7 @@ class CreativeRest:
 
     def store_caption_track(self, job_id: str, worker_id: str, language: str, duration_s: float,
                             words: Sequence[Mapping[str, Any]]) -> Optional[str]:
-        """0059: the words of the captions job this worker holds; the track's id."""
+        """0072: the words of the captions job this worker holds; the track's id."""
         out = self._rpc("store_caption_track", {
             "p_job": job_id, "p_worker": worker_id, "p_language": language,
             "p_duration_s": duration_s, "p_words": list(words)})

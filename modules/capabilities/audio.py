@@ -11,7 +11,7 @@ The voice is never guessed: TTS and the voice changer need an explicit
 ``voice_id`` from the account's own list (CLAUDE.md ceiling — 20
 alphanumerics), and a request without one is refused before any call. A dub
 is made only in a language the registry entry lists (``languages``); there is
-no "nearest language". Captions (0059) are one synchronous speech-to-text
+no "nearest language". Captions (0072) are one synchronous speech-to-text
 call that answers with the words and their times; the adapter hands back the
 words as one ``application/json`` output and the worker cleans and stores them.
 """
@@ -284,7 +284,7 @@ class ElevenLabsDubbingAdapter(_ElevenLabs):
         raise AdapterError(E_BAD_RESPONSE, f"poll: unknown dub status {str(status)[:40]!r}")
 
 
-# ── captions (migration 0059) ───────────────────────────────────────────────
+# ── captions (migration 0072) ───────────────────────────────────────────────
 
 class ElevenLabsScribeAdapter(_ElevenLabs):
     """``POST /v1/speech-to-text`` (multipart ``file`` + ``model_id``, with

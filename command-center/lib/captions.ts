@@ -1,5 +1,5 @@
 /**
- * Auto-captions (migration 0059), the pure half — client-safe and unit-tested
+ * Auto-captions (migration 0072), the pure half — client-safe and unit-tested
  * (tests/captions.test.ts).
  *
  * What the database keeps is a TRACK: the words a provider heard, each with
@@ -39,7 +39,7 @@ export function defaultCaptionLanguage(locale: unknown): CaptionLanguage {
   return isCaptionLanguage(locale) ? locale : "en";
 }
 
-/** The longest recording captions take (0059's source check; the database still decides). */
+/** The longest recording captions take (0072's source check; the database still decides). */
 export const CAPTIONS_MAX_SECONDS = 1800;
 
 // ── the track the database kept ─────────────────────────────────────────────

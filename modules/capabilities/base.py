@@ -53,7 +53,7 @@ DUB = "dub"          # speech (audio / video) → the dubbed speech in a target 
 #: a video → the same video at a higher resolution (0052; CapabilityRequest.upscale_target)
 VIDEO_UPSCALE = "video_upscale"
 DESCRIBE = "describe"  # image → text: a generation prompt for that picture (0055)
-CAPTIONS = "captions"  # speech (audio / video) → the words with their times, for subtitles (0059)
+CAPTIONS = "captions"  # speech (audio / video) → the words with their times, for subtitles (0072)
 CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE,
                 CAPTIONS)
 OUTPUT_OF = {T2I: "image", EDIT: "image", T2V: "video", I2V: "video", TTS: "audio", SFX: "audio",
@@ -68,7 +68,7 @@ TEXT_OUTPUT = frozenset({DESCRIBE, CAPTIONS})
 DESCRIBE_LANGUAGES = ("en", "ru", "uz")
 #: Capabilities whose input is a recording — audio or video with speech
 #: (CapabilityRequest.input_media, migration 0050). Never mixed with images.
-#: Captions (0059) start from one too: the recording is the whole input.
+#: Captions (0072) start from one too: the recording is the whole input.
 MEDIA_INPUT = frozenset({VOICE_CHANGE, DUB, CAPTIONS})
 #: Capabilities whose input is a video file (0052) — also carried in
 #: CapabilityRequest.input_media, never as a picture, never with speech rules.
@@ -212,7 +212,7 @@ class CapabilityRequest:
     #: The language a description is written in (``describe`` only, 0055):
     #: one of DESCRIBE_LANGUAGES; None = English.
     output_language: Optional[str] = None
-    #: The language spoken in the recording (``captions`` only, 0059): one of
+    #: The language spoken in the recording (``captions`` only, 0072): one of
     #: the entry's ``languages``; None = the provider detects it.
     spoken_language: Optional[str] = None
 

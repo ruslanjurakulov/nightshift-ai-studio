@@ -3526,7 +3526,7 @@ export const en = {
     languages: { uz: "Uzbek", ru: "Russian", en: "English" },
     modelLabel: "Transcription",
     noModels: "Auto-captions are not available yet: no transcription is set up and priced on this deployment.",
-    notEnabled: "Auto-captions are not enabled on this deployment yet (migration 0059 has not been applied).",
+    notEnabled: "Auto-captions are not enabled on this deployment yet (migration 0072 has not been applied).",
     quoting: "Checking the price…",
     make: "Make transcript",
     makePriced: "Make transcript · {n} credits",

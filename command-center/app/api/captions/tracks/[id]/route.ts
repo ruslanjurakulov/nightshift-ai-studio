@@ -14,7 +14,7 @@ function missing(e: { code?: string; message?: string } | null | undefined): boo
 }
 
 /**
- * One transcript with its words (migration 0059). RLS: a member of the
+ * One transcript with its words (migration 0072). RLS: a member of the
  * organization reads it once the job that paid for it has completed; another
  * organization's track, an unfinished job's and a made-up id are the same 404.
  */

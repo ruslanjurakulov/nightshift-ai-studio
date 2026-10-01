@@ -1,4 +1,4 @@
-"""Auto-captions (migration 0059): a library recording -> a word-timed caption
+"""Auto-captions (migration 0072): a library recording -> a word-timed caption
 track, stored as data and never as a library asset.
 
 Everything is driven through fake sessions and a fake queue: no network, no
@@ -15,7 +15,7 @@ key, no paid call. What must hold:
 * every failure — no speech, a provider outage, a refused file, a track that
   cannot be stored — fails the job, so the database releases the hold;
   nothing empty is ever charged;
-* 0059 is built on 0055 / 0052: every string literal of every function it
+* 0072 is built on 0055 / 0052: every string literal of every function it
   replaces is kept.
 """
 
@@ -266,7 +266,7 @@ def captions_job(**over):
 
 
 class CaptionQueue(SourceQueue):
-    """SourceQueue plus 0059's store function."""
+    """SourceQueue plus 0072's store function."""
 
     def __init__(self, j, source=None, track="11111111-2222-4333-8444-555555555555"):
         super().__init__(j, source)
@@ -419,7 +419,7 @@ class Worker(Tmp):
         self.assertNotIn("captions", cw.VERSION_CAPABILITIES)
 
 
-# ── 0059 is built on 0055 / 0052 ─────────────────────────────────────────────
+# ── 0072 is built on 0055 / 0052 ─────────────────────────────────────────────
 
 def bodies(text):
     return {m.group(1): m.group(0) for m in
@@ -434,11 +434,11 @@ def literals(sql):
 
 
 class BuiltOnTheLatestBodies(unittest.TestCase):
-    """``create or replace`` keeps the LAST definition: a 0059 written on older
+    """``create or replace`` keeps the LAST definition: a 0072 written on older
     bodies would silently remove describe, the voice tools, the video upscale
     or another change's lines. Every function it replaces must keep every
     literal of the latest body before it: the highest-numbered OTHER migration
-    that defines it (0060's, once that change is in the tree; until then
+    that defines it (0060's once that change is in the tree; until then
     0055's / 0052's, with 0060's own lines pinned by name below)."""
 
     REPLACED = ("sellable_models", "creative_capability_supported", "creative_params_problem",
@@ -447,7 +447,7 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
     def latest_other(self, name):
         found = None
         for path in sorted(MIGRATIONS.glob("*.sql")):
-            if path.name.startswith("0059"):
+            if int(path.name[:4]) >= 72:
                 continue
             b = bodies(path.read_text())
             if name in b:
@@ -456,8 +456,8 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
             raise AssertionError(name)
         return found
 
-    def test_every_function_0059_replaces_keeps_every_literal_of_the_latest_other_body(self):
-        new = bodies((MIGRATIONS / "0059_captions.sql").read_text())
+    def test_every_function_0072_replaces_keeps_every_literal_of_the_latest_other_body(self):
+        new = bodies((MIGRATIONS / "0072_captions.sql").read_text())
         self.assertEqual(set(self.REPLACED), {n for n in new if n not in ("store_caption_track", "delete_caption_track")})
         for name in self.REPLACED:
             src, old = self.latest_other(name)
@@ -465,8 +465,8 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
                 self.assertIn(lit, new[name], f"{name} lost {lit} from {src}")
 
     def test_the_picture_quality_lines_of_0060_are_kept(self):
-        # 0060 (image quality) replaces these three; 0059 is built on its bodies.
-        new = bodies((MIGRATIONS / "0059_captions.sql").read_text())
+        # 0060 (image quality) replaces these three; 0072 is built on its bodies.
+        new = bodies((MIGRATIONS / "0072_captions.sql").read_text())
         self.assertIn("'quality must be one of low, medium, high'", new["creative_params_problem"])
         self.assertIn("'language', 'quality') then", new["creative_params_problem"])
         self.assertIn("%s does not offer the %s quality", new["creative_price"])
@@ -475,26 +475,18 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         self.assertIn("is distinct from 'quality'", new["sellable_models"])
 
     def test_a_later_migration_that_replaces_these_functions_must_know_captions(self):
-        # Numbered after 0059 = applied after it: its bodies win, and a body
+        # Numbered after 0072 = applied after it: its bodies win, and a body
         # without the captions lines would take the capability away again.
         for path in sorted(MIGRATIONS.glob("*.sql")):
-            if int(path.name[:4]) <= 59:
+            if int(path.name[:4]) <= 72:
                 continue
             for name, body in bodies(path.read_text()).items():
                 if name in ("sellable_models", "creative_capability_supported", "creative_params_problem",
                             "creative_source_problem", "creative_price"):
                     self.assertIn("'captions'", body, f"{path.name} replaces {name} without the captions lines")
 
-    def test_nothing_between_0055_and_0059_replaces_them(self):
-        for path in sorted(MIGRATIONS.glob("*.sql")):
-            number = int(path.name[:4])
-            if number <= 55 or number >= 59:
-                continue
-            hit = [n for n in bodies(path.read_text()) if n in self.REPLACED]
-            self.assertEqual(hit, [], f"{path.name} replaces {hit}: rebuild 0059 on it")
-
     def test_captions_are_added_to_every_list_that_names_the_recording_tools(self):
-        new = bodies((MIGRATIONS / "0059_captions.sql").read_text())
+        new = bodies((MIGRATIONS / "0072_captions.sql").read_text())
         for name in ("creative_capability_supported", "sellable_models"):
             self.assertIn("'describe', 'captions'", new[name], name)
         self.assertIn("'voice_change', 'dub', 'captions'", new["creative_params_problem"])
@@ -502,12 +494,12 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         self.assertIn("if cap in ('voice_change', 'dub', 'video_upscale', 'captions') then", new["creative_price"])
 
     def test_the_price_is_the_recordings_seconds_from_the_database_never_the_params(self):
-        price = bodies((MIGRATIONS / "0059_captions.sql").read_text())["creative_price"]
+        price = bodies((MIGRATIONS / "0072_captions.sql").read_text())["creative_price"]
         self.assertRegex(price, r"if cap in \('voice_change', 'dub', 'video_upscale', 'captions'\) then\s+[\s\S]*?qty := public\.creative_source_seconds\(p_org, p_params\)")
         self.assertIn("%s does not transcribe %s", price)
 
     def test_the_capability_check_and_the_track_table_are_in_the_migration(self):
-        text = (MIGRATIONS / "0059_captions.sql").read_text()
+        text = (MIGRATIONS / "0072_captions.sql").read_text()
         for needle in ("between 1 and 13", "creative_jobs_captions_check", "cardinality(result_asset_ids) = 0",
                        "create table if not exists public.caption_tracks", "alter table public.caption_tracks enable row level security",
                        "set search_path = public, pg_temp", "to service_role;", "-- Verify"):
@@ -517,7 +509,7 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         self.assertNotRegex(text, r"grant (insert|update|delete)[^;]*caption_tracks")
 
     def test_every_security_definer_function_pins_its_search_path(self):
-        new = bodies((MIGRATIONS / "0059_captions.sql").read_text())
+        new = bodies((MIGRATIONS / "0072_captions.sql").read_text())
         for name, body in new.items():
             if "security definer" in body:
                 self.assertIn("set search_path = public, pg_temp", body, name)

@@ -34,7 +34,7 @@ export interface CreativeResult {
  * picture in the organization's media library (`params.source_asset_id`,
  * migration 0046); voice_change and dub start from a recording there (0050);
  * describe reads a picture there and answers with text (0055); captions
- * transcribe a recording there into a word-timed caption track (0059).
+ * transcribe a recording there into a word-timed caption track (0072).
  */
 export const CREATIVE_CAPABILITIES = [
   "t2i",
@@ -79,7 +79,7 @@ export type DescribeLanguage = (typeof DESCRIBE_LANGUAGES)[number];
 export const MEDIA_SOURCE_CAPABILITIES = ["voice_change", "dub"] as const satisfies readonly CreativeCapability[];
 
 /**
- * Captions (0059) also start from a library recording, checked exactly like a
+ * Captions (0072) also start from a library recording, checked exactly like a
  * voice tool's (and at most 30 minutes) — but they are an editor tool, not a
  * Studio tab, so they are not in MEDIA_SOURCE_CAPABILITIES (which the Studio's
  * panel types are built from).
@@ -87,7 +87,7 @@ export const MEDIA_SOURCE_CAPABILITIES = ["voice_change", "dub"] as const satisf
 export const RECORDING_CAPABILITIES: readonly string[] = [...MEDIA_SOURCE_CAPABILITIES, "captions"];
 
 /**
- * 0059's explicit allow-list for the spoken `language` of a captions job
+ * 0072's explicit allow-list for the spoken `language` of a captions job
  * (optional; absent = the provider detects it). The model must list it too.
  */
 export const CAPTION_LANGUAGES = ["uz", "ru", "en"] as const;

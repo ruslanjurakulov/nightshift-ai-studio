@@ -22,7 +22,7 @@ job folder), the capability layer knows vendors (``CapabilityRequest``,
   adapter as ``input_media``, never as a picture; so is the video a video
   upscale (0052) starts from; for ``describe`` (0055) it is the one picture
   read, and the answer comes back as one text output; for ``captions``
-  (0059) it is the one recording, and the answer is one JSON output (the
+  (0072) it is the one recording, and the answer is one JSON output (the
   words and their times) the worker cleans and stores as a caption track;
 * an i2v's end frame (0052, ``GenerationRequest.end_file``) goes as
   ``end_image`` only to a model whose registry entry has ``end_frame`` — a
@@ -121,7 +121,7 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         upscale_target=_str(p.get("target_resolution")),
         # describe (0055): the language the description is written in.
         output_language=_str(p.get("language")) if request.capability == "describe" else None,
-        # captions (0059): the language spoken in the recording (absent = detected).
+        # captions (0072): the language spoken in the recording (absent = detected).
         spoken_language=_str(p.get("language")) if request.capability == "captions" else None,
     )
 

@@ -1,4 +1,4 @@
-"""The words a captions job (migration 0059) is allowed to keep.
+"""The words a captions job (migration 0072) is allowed to keep.
 
 A speech-to-text provider hears a recording the customer uploaded and answers
 with words and their times. Whatever was SAID in it is data from outside:
@@ -31,7 +31,7 @@ import re
 import unicodedata
 from typing import Any, Iterable, List, Mapping, Optional, Tuple
 
-#: 0059's bound on a track (store_caption_track).
+#: 0072's bound on a track (store_caption_track).
 MAX_WORDS = 20000
 MAX_WORD_CHARS = 80
 #: The shortest a word is shown for when the provider gave none (seconds).

@@ -1,5 +1,5 @@
 /**
- * Auto-captions (migration 0059), the pure half: a transcript's words become
+ * Auto-captions (migration 0072), the pure half: a transcript's words become
  * cues for a language and a look, are laid on the timeline through the clips'
  * own trims and speeds, become a document the renderer accepts, and download
  * as SRT / WebVTT. Nothing here prices, holds or spends — and the code's
@@ -531,8 +531,8 @@ describe("the request", () => {
     expect(parse(captionParams(A, null)).ok).toBe(true);
   });
 
-  // The shape checks here; prompt, voice_id and the rest of 0059's refusals are the database's (tests/security/test_sec_captions.py).
-  it("refuses what 0059 refuses", () => {
+  // The shape checks here; prompt, voice_id and the rest of 0072's refusals are the database's (tests/security/test_sec_captions.py).
+  it("refuses what 0072 refuses", () => {
     for (const params of [
       {},
       { source_asset_id: "https://evil.example/a.mp3" },
@@ -570,15 +570,15 @@ describe("the request", () => {
 
 // ── pinned to the database ───────────────────────────────────────────────────
 
-const SQL = readFileSync(join(__dirname, "..", "..", "supabase/migrations/0059_captions.sql"), "utf8");
+const SQL = readFileSync(join(__dirname, "..", "..", "supabase/migrations/0072_captions.sql"), "utf8");
 function fn(name: string): string {
   const m = new RegExp(`create or replace function public\\.${name}\\(([\\s\\S]*?)\\$\\$([\\s\\S]*?)\\$\\$;`).exec(SQL);
-  if (!m) throw new Error(`no ${name} in 0059`);
+  if (!m) throw new Error(`no ${name} in 0072`);
   return m[1] + m[2];
 }
 
-describe("pinned to 0059", () => {
-  it("every capability and param key the code sends is one 0059 accepts", () => {
+describe("pinned to 0072", () => {
+  it("every capability and param key the code sends is one 0072 accepts", () => {
     const supported = fn("creative_capability_supported");
     for (const c of CREATIVE_CAPABILITIES) expect(supported, c).toContain(`'${c}'`);
     const params = fn("creative_params_problem");

@@ -477,7 +477,7 @@ const num = (v: unknown): number | null => {
 };
 
 /**
- * Jobs of tools that live in the editor, not in the Studio (0059: captions —
+ * Jobs of tools that live in the editor, not in the Studio (0072: captions —
  * the result is a transcript the editor turns into captions, not a card).
  * The Studio's feed and Home's recent strip skip them.
  */
@@ -567,7 +567,7 @@ const REASON_GROUPS: Record<string, keyof Dictionary["gen"]["reasons"]> = {
   style_unavailable: "style",
   not_picked_up: "expired",
   cancelled: "cancelled",
-  // 0059: a recording with no speech, or too many words for one track.
+  // 0072: a recording with no speech, or too many words for one track.
   no_speech: "no_speech",
   too_many_words: "bad_request",
 };

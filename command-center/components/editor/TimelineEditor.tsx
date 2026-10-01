@@ -168,7 +168,7 @@ export function TimelineEditor({
   videos: readonly EditorAsset[];
   /** The library's audio files, for music and sound effects. */
   soundFiles?: readonly EditorAsset[];
-  /** The project's organization: auto-captions are priced and run in it (0059). */
+  /** The project's organization: auto-captions are priced and run in it (0072). */
   orgId?: string;
   /** The transcription models the member may be sold (empty: auto-captions are not offered). */
   captionModels?: readonly CaptionModelOption[];
@@ -1013,7 +1013,7 @@ export function TimelineEditor({
         </aside>
       </div>
 
-      {/* auto-captions: the transcript is the one paid step (0059); the rest is free */}
+      {/* auto-captions: the transcript is the one paid step (0072); the rest is free */}
       <CaptionsPanel
         orgId={orgId}
         projectTitle={title}

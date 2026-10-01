@@ -3519,7 +3519,7 @@ export const uz: Dictionary = {
     languages: { uz: "O'zbekcha", ru: "Ruscha", en: "Inglizcha" },
     modelLabel: "Matnga o'girish",
     noModels: "Avto-subtitrlar hozircha mavjud emas: bu joylashuvda matnga o'girish sozlanmagan va narxlanmagan.",
-    notEnabled: "Bu joylashuvda avto-subtitrlar hali yoqilmagan (0059 migratsiyasi qo'llanmagan).",
+    notEnabled: "Bu joylashuvda avto-subtitrlar hali yoqilmagan (0072 migratsiyasi qo'llanmagan).",
     quoting: "Narx tekshirilmoqda…",
     make: "Matn yaratish",
     makePriced: "Matn yaratish · {n} kredit",

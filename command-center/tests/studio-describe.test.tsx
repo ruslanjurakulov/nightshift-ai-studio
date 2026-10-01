@@ -215,7 +215,7 @@ describe("the request (0055's rules)", () => {
 describe("pinned to 0055", () => {
   it("every capability and param key the code sends is one 0055 accepts", () => {
     const supported = fn("creative_capability_supported");
-    // captions (0059) is pinned to 0059, which replaces these functions on top of 0055's.
+    // captions (0072) is pinned to 0072, which replaces these functions on top of 0055's.
     for (const c of CREATIVE_CAPABILITIES) if (c !== "captions") expect(supported, c).toContain(`'${c}'`);
     const params = fn("creative_params_problem");
     for (const k of PARAM_KEYS) expect(params, k).toContain(`'${k}'`);

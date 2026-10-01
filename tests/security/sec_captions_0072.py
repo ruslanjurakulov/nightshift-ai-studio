@@ -1,11 +1,11 @@
-"""Security-lab contract for migration 0059 (auto-captions).
+"""Security-lab contract for migration 0072 (auto-captions).
 
 Kept in its own module, like sec_editor_0054. Two hooks wire it in:
 
   * sec_expectations.py, at the bottom:
-        import sec_captions_0059; sec_captions_0059.extend(TABLES, FUNCTIONS)
+        import sec_captions_0072; sec_captions_0072.extend(TABLES, FUNCTIONS)
   * sec_scenario.build_scenario(), after the tenants are seeded:
-        sec_captions_0059.seed(conn, sc)
+        sec_captions_0072.seed(conn, sc)
 
 The seed writes each tenant's caption track the way production leaves one: a
 captions job that has COMPLETED (the track is visible only then) and the

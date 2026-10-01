@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * /api/captions/tracks and /api/captions/tracks/<id> (migration 0059).
+ * /api/captions/tracks and /api/captions/tracks/<id> (migration 0072).
  *
  * What would break without these: a route reading with anything but the
  * member's own session (the service key skips the RLS policy that hides a

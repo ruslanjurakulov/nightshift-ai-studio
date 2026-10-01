@@ -1,4 +1,4 @@
-"""Auto-captions (0059), attacked in a real database.
+"""Auto-captions (0072), attacked in a real database.
 
 captions name their input recording by a media asset id, like 0050's voice
 tools, and their result is DATA in a new table, public.caption_tracks. The
@@ -19,8 +19,8 @@ organization, and only well-formed words in time order; only an editor of the
 organization may hide it, and another organization's track reads exactly like
 a made-up one.
 
-0059 is built on 0055 / 0052 / 0050: the same functions are replaced, so the
-lab also proves that applying 0059 keeps describe, the voice tools and the
+0072 is built on 0055 / 0052 / 0050: the same functions are replaced, so the
+lab also proves that applying 0072 keeps describe, the voice tools and the
 video upscale quoting exactly as they did.
 
 Runs in its own scratch database (it commits), like the 0046, 0050 and 0055 labs.
@@ -73,7 +73,7 @@ def db():
              "credit_unit": unit, "entitlement": None,
              "spec": {"vendor_model": "acme-" + m, "output": "text", **extra}}
             for m, cap, unit, extra in MODELS]
-    # The earlier tools, to prove 0059 did not take them away.
+    # The earlier tools, to prove 0072 did not take them away.
     rows += [
         {"id": "seer", "display_name": "seer", "provider": "acme", "adapter": "image.acme_describe",
          "capabilities": ["describe"], "credit_unit": "model_seer_request", "entitlement": None,

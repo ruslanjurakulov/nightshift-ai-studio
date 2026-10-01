@@ -205,7 +205,7 @@ function download(name: string, mime: string, body: string): void {
 }
 
 /**
- * Auto-captions in the editor (migration 0059).
+ * Auto-captions in the editor (migration 0072).
  *
  *   1. pick a recording of the timeline and the language spoken in it;
  *   2. the database prices the transcript (/api/creative/quote); the price is

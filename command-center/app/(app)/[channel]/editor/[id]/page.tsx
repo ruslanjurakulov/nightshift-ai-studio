@@ -50,7 +50,7 @@ export default async function EditorProjectPage({
   const [videos, sounds, sellable] = await Promise.all([
     loadEditorVideos(project.value.orgId),
     loadEditorSounds(project.value.orgId),
-    // Auto-captions (0059): only a model the database would sell (verified,
+    // Auto-captions (0072): only a model the database would sell (verified,
     // priced, no open terms gate) is offered; none = the panel says so.
     loadSellableModels("captions"),
   ]);

@@ -6,13 +6,13 @@ import { TRACK_SUMMARY_COLUMNS, coerceTrackSummary } from "@/lib/captions";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** "This table does not exist": migration 0059 is not applied here. */
+/** "This table does not exist": migration 0072 is not applied here. */
 function isMissing(e: { code?: string; message?: string } | null | undefined): boolean {
   return Boolean(e && (e.code === "42P01" || e.code === "PGRST205" || /does not exist|could not find the table/i.test(e.message ?? "")));
 }
 
 /**
- * The transcripts already made from one recording (migration 0059), newest
+ * The transcripts already made from one recording (migration 0072), newest
  * first — GET `?asset_id=`. Read under the member's own session: RLS shows
  * only the tracks of COMPLETED jobs of their organization, so another
  * organization's recording id answers an empty list, exactly like a made-up

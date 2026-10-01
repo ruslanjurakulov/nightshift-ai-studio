@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Auto-captions in the editor (migration 0059), in a browser-like DOM.
+ * Auto-captions in the editor (migration 0072), in a browser-like DOM.
  *
  * The one paid step goes the same priced way as every creative tool: the
  * database quotes it (/api/creative/quote), the price is on the button, and

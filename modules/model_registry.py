@@ -283,7 +283,7 @@ class ModelEntry:
             out.append(f"a target language does not apply to {cap}")
         if cap != DESCRIBE and request.output_language is not None:
             out.append(f"an output language does not apply to {cap}")
-        # Captions (0059) sell a spoken language only when the model was proven for it.
+        # Captions (0072) sell a spoken language only when the model was proven for it.
         if cap == CAPTIONS and request.spoken_language is not None and request.spoken_language not in self.languages:
             out.append(f"{self.id} does not transcribe {request.spoken_language}")
         if cap != CAPTIONS and request.spoken_language is not None:
@@ -384,7 +384,7 @@ def _cross_errors(models: Sequence[Mapping]) -> List[str]:
             # 0046 sells an upscale only at a factor the model lists.
             errors.append(_err(mid, "upscale_factors is required with upscale and only with it"))
         if (DUB in caps or CAPTIONS in caps) != bool(m.get("languages")):
-            # 0050 sells a dub only into a language the model lists; 0059
+            # 0050 sells a dub only into a language the model lists; 0072
             # sells captions only in a spoken language it lists.
             errors.append(_err(mid, "languages is required with dub or captions and only with them"))
         if (VIDEO_UPSCALE in caps) != bool(m.get("upscale_targets")):
