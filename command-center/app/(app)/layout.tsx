@@ -22,7 +22,10 @@ import { ScrollToTop } from "@/components/navigation/ScrollToTop";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { isOperator } from "@/lib/auth/org-roles";
 import { readCreditAccount } from "@/lib/server/credits";
+import { planValue, readBillingSummary } from "@/lib/server/plans";
+import { accountPlan, type AccountPlan } from "@/lib/account";
 import type { CreditAccount } from "@/lib/credits";
+import { ShellProvider } from "@/components/shell/ShellContext";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const org = isSupabaseConfigured
@@ -70,13 +73,25 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Credits in the header, for an organization that pays. The operator's own
   // (default) organization is exempt and shows none; so does a database
   // without migration 0020 — never a made-up zero.
+  // The plan beside them (0034's billing_summary) names the plan on the
+  // sidebar's user card and in the credit menu; unreadable is unknown, and an
+  // unknown plan is left unnamed rather than called Free. Both reads are the
+  // member's own session (RLS), read-only.
   let credits: CreditAccount | null = null;
+  let plan: AccountPlan | null = null;
   if (org.supported && org.current && !org.current.is_default) {
     const supabase = await createClient();
     if (supabase) {
-      const res = await readCreditAccount(supabase, org.current.id).catch(() => null);
+      const orgId = org.current.id;
+      const [res, summary] = await Promise.all([
+        readCreditAccount(supabase, orgId).catch(() => null),
+        readBillingSummary(supabase, orgId).catch(() => ({ state: "failed" as const })),
+      ]);
       credits = res?.account ?? null;
+      plan = accountPlan(planValue(summary), false);
     }
+  } else if (org.supported && org.current?.is_default) {
+    plan = { kind: "exempt" };
   }
 
   // The breadcrumb names a channel the way the switcher does, by its name — the
@@ -85,29 +100,50 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     channels.map((c) => [channelSlug(c, channels), c.name || c.channel_id]),
   );
 
+  const header = (
+    <Header
+      channels={channels}
+      selection={selection}
+      orgs={org.orgs}
+      currentOrgId={org.current?.id ?? null}
+      credits={credits}
+      scope={scope}
+      email={email}
+      operator={operator}
+      plan={plan}
+    />
+  );
+
   return (
     <NavigationProvider channelNames={channelNames}>
-      <div className="atmos relative flex min-h-dvh flex-col">
-        <NeuralBackdrop dim />
-        <div className="relative z-10 flex min-h-dvh flex-col">
-          <Header
-            channels={channels}
-            selection={selection}
-            orgs={org.orgs}
-            currentOrgId={org.current?.id ?? null}
-            credits={credits}
-            scope={scope}
-            email={email}
-          />
-          <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-            <SideNav operator={operator} />
-            {/* A customer's phone has the bottom tab bar (SideNav): keep the page's end above it. */}
-            <main className={`pad-page min-w-0 flex-1${operator ? "" : " pb-24 lg:pb-0"}`}>{children}</main>
-          </div>
+      <ShellProvider operator={operator}>
+        <div className="app-shell atmos relative flex min-h-dvh flex-col">
+          <NeuralBackdrop dim />
+          {operator ? (
+            <div className="relative z-10 flex min-h-dvh flex-col">
+              {header}
+              <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+                <SideNav operator />
+                <main className="pad-page min-w-0 flex-1">{children}</main>
+              </div>
+            </div>
+          ) : (
+            // A customer's frame, as creative apps draw it: the sidebar full
+            // height on the left, the top bar and the page to its right. On a
+            // phone the sidebar gives way to the bottom tab bar, and the page
+            // keeps its end above it.
+            <div className="relative z-10 flex min-h-dvh">
+              <SideNav email={email} plan={plan} />
+              <div className="flex min-w-0 flex-1 flex-col">
+                {header}
+                <main className="pad-page min-w-0 flex-1 pb-24 lg:pb-10">{children}</main>
+              </div>
+            </div>
+          )}
+          <CommandPalette scope={scope} operator={operator} />
+          <ScrollToTop />
         </div>
-        <CommandPalette scope={scope} operator={operator} />
-        <ScrollToTop />
-      </div>
+      </ShellProvider>
     </NavigationProvider>
   );
 }

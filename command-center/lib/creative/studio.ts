@@ -372,13 +372,24 @@ export function prefillFromJob(job: StudioJob): StudioPrefill | null {
 }
 
 /**
- * "Use in Studio" from the Library: /create?tool=upscale&source=<id>. Only
- * the shape is checked here; whether the picture is this organization's and
- * usable is decided by the database when it is priced. Spends nothing.
+ * A link into the Studio with a tool chosen: "Use in Studio" from the Library
+ * (/create?tool=upscale&source=<id>) and the sidebar's tool rows
+ * (/create?tool=t2v). Only the shape is checked here; whether a picture is
+ * this organization's and usable is decided by the database when it is
+ * priced. It fills the form and nothing else: no price, no spend.
+ *
+ * A picture tool may come without a picture (the sidebar) — the panel then
+ * asks for one — but a source that is present must be a well-formed id. A
+ * text tool starts from words, so a source on it is a malformed link.
  */
 export function prefillFromQuery(tool: unknown, source: unknown): StudioPrefill | null {
-  if (typeof tool !== "string" || !needsSource(tool) || !isUuid(source)) return null;
-  return { capability: tool, model: "", prompt: "", aspect: "16:9", duration: 5, sourceId: source, factor: 2 };
+  if (!isStudioCapability(tool)) return null;
+  const base = { capability: tool, model: "", prompt: "", aspect: "16:9" as const, duration: 5 as const };
+  if (needsSource(tool)) {
+    if (source === undefined) return { ...base, sourceId: null, factor: 2 };
+    return isUuid(source) ? { ...base, sourceId: source, factor: 2 } : null;
+  }
+  return source === undefined ? base : null;
 }
 
 // ── dismissed failures (a per-viewer convenience; the job itself stays) ─────
