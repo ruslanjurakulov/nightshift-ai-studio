@@ -15,12 +15,13 @@ is the same MAX_PIXELS cap the HEIC path already enforces.
 
 Fixed: interpret_probe now refuses a JPEG/PNG/WebP/GIF above MAX_PIXELS with
 the same "too_large_dimensions" reason the HEIC path uses. The tests below pin
-the bomb, the exact boundary and every raster type.
+the bomb, the exact boundary and every raster type. (CI runs plain
+`unittest discover`, so no pytest here.)
 """
 
 from __future__ import annotations
 
-import pytest
+import unittest
 
 from modules import media_library as ml
 
@@ -29,55 +30,59 @@ def _img_probe(width: int, height: int) -> dict:
     return {"streams": [{"codec_type": "video", "width": width, "height": height}], "format": {}}
 
 
-def test_normal_image_is_accepted():
-    """A control: a sane picture goes through, so the bomb test below is
-    measuring the pixel cap, not a blanket rejection."""
-    p = ml.interpret_probe("image/png", _img_probe(1920, 1080))
-    assert (p.kind, p.width, p.height) == ("image", 1920, 1080)
-
-
-def test_image_wider_than_max_side_is_already_refused():
-    """A control: the existing per-side cap works — the gap is total pixels."""
-    with pytest.raises(ml.IngestReject) as e:
-        ml.interpret_probe("image/png", _img_probe(ml.MAX_SIDE + 1, 10))
-    assert e.value.reason == "too_large_dimensions"
-
-
-def test_raster_megapixel_bomb_is_refused():
-    """A 16384x16384 PNG (268 MP) is under MAX_SIDE on each axis but is a
-    decompression bomb once ffmpeg decodes it for the thumbnail. interpret_probe
-    SHOULD refuse any image above MAX_PIXELS, exactly as the HEIC path does."""
-    big = ml.MAX_SIDE  # 16384 per side, each within the per-side cap
-    assert big * big > ml.MAX_PIXELS  # 268 MP > 100 MP — this is a bomb
-    with pytest.raises(ml.IngestReject) as e:
-        ml.interpret_probe("image/png", _img_probe(big, big))
-    assert e.value.reason == "too_large_dimensions"
-
-
 RASTER_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif")
 
 
-@pytest.mark.parametrize("sniffed", RASTER_TYPES)
-@pytest.mark.parametrize("width,height", [(10_000, 10_000), (ml.MAX_SIDE, ml.MAX_PIXELS // ml.MAX_SIDE)])
-def test_raster_at_the_megapixel_cap_is_accepted(sniffed, width, height):
-    """Regression: the area cap is inclusive, exactly like the HEIC path."""
-    assert width * height <= ml.MAX_PIXELS
-    p = ml.interpret_probe(sniffed, _img_probe(width, height))
-    assert (p.kind, p.width, p.height) == ("image", width, height)
+class MediaBombTests(unittest.TestCase):
+    def test_normal_image_is_accepted(self):
+        """A control: a sane picture goes through, so the bomb test below is
+        measuring the pixel cap, not a blanket rejection."""
+        p = ml.interpret_probe("image/png", _img_probe(1920, 1080))
+        self.assertEqual((p.kind, p.width, p.height), ("image", 1920, 1080))
+
+    def test_image_wider_than_max_side_is_already_refused(self):
+        """A control: the existing per-side cap works — the gap is total pixels."""
+        with self.assertRaises(ml.IngestReject) as e:
+            ml.interpret_probe("image/png", _img_probe(ml.MAX_SIDE + 1, 10))
+        self.assertEqual(e.exception.reason, "too_large_dimensions")
+
+    def test_raster_megapixel_bomb_is_refused(self):
+        """A 16384x16384 PNG (268 MP) is under MAX_SIDE on each axis but is a
+        decompression bomb once ffmpeg decodes it for the thumbnail. interpret_probe
+        SHOULD refuse any image above MAX_PIXELS, exactly as the HEIC path does."""
+        big = ml.MAX_SIDE  # 16384 per side, each within the per-side cap
+        self.assertGreater(big * big, ml.MAX_PIXELS)  # 268 MP > 100 MP — a bomb
+        with self.assertRaises(ml.IngestReject) as e:
+            ml.interpret_probe("image/png", _img_probe(big, big))
+        self.assertEqual(e.exception.reason, "too_large_dimensions")
+
+    def test_raster_at_the_megapixel_cap_is_accepted(self):
+        """Regression: the area cap is inclusive, exactly like the HEIC path."""
+        for sniffed in RASTER_TYPES:
+            for width, height in ((10_000, 10_000), (ml.MAX_SIDE, ml.MAX_PIXELS // ml.MAX_SIDE)):
+                with self.subTest(sniffed=sniffed, width=width, height=height):
+                    self.assertLessEqual(width * height, ml.MAX_PIXELS)
+                    p = ml.interpret_probe(sniffed, _img_probe(width, height))
+                    self.assertEqual((p.kind, p.width, p.height), ("image", width, height))
+
+    def test_raster_over_the_megapixel_cap_is_refused(self):
+        """Regression: every raster type gets the area cap, with the reason word
+        the UI already translates."""
+        cases = (
+            (10_000, 10_001),                                   # just over 100 MP
+            (ml.MAX_SIDE, ml.MAX_PIXELS // ml.MAX_SIDE + 1),    # one side at the side cap
+            (ml.MAX_PIXELS // ml.MAX_SIDE + 1, ml.MAX_SIDE),    # either orientation
+            (ml.MAX_SIDE, ml.MAX_SIDE),                         # the 268 MP bomb
+        )
+        for sniffed in RASTER_TYPES:
+            for width, height in cases:
+                with self.subTest(sniffed=sniffed, width=width, height=height):
+                    self.assertGreater(width * height, ml.MAX_PIXELS)
+                    self.assertLessEqual(max(width, height), ml.MAX_SIDE)  # only the area cap catches it
+                    with self.assertRaises(ml.IngestReject) as e:
+                        ml.interpret_probe(sniffed, _img_probe(width, height))
+                    self.assertEqual(e.exception.reason, "too_large_dimensions")
 
 
-@pytest.mark.parametrize("sniffed", RASTER_TYPES)
-@pytest.mark.parametrize("width,height", [
-    (10_000, 10_001),                                   # just over 100 MP
-    (ml.MAX_SIDE, ml.MAX_PIXELS // ml.MAX_SIDE + 1),    # one side at the side cap
-    (ml.MAX_PIXELS // ml.MAX_SIDE + 1, ml.MAX_SIDE),    # either orientation
-    (ml.MAX_SIDE, ml.MAX_SIDE),                         # the 268 MP bomb
-])
-def test_raster_over_the_megapixel_cap_is_refused(sniffed, width, height):
-    """Regression: every raster type gets the area cap, with the reason word
-    the UI already translates."""
-    assert width * height > ml.MAX_PIXELS
-    assert max(width, height) <= ml.MAX_SIDE  # only the area cap can catch these
-    with pytest.raises(ml.IngestReject) as e:
-        ml.interpret_probe(sniffed, _img_probe(width, height))
-    assert e.value.reason == "too_large_dimensions"
+if __name__ == "__main__":
+    unittest.main()
