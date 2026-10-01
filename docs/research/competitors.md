@@ -182,3 +182,62 @@ Nothing was generated, bought or changed. Screens that did not load fully are ma
 - Locked features open a plan dialog with a monthly/yearly toggle: confirmed.
 - Empty library states (Higgsfield) are plain; ours should offer the first action ("add a file") instead. Asset pages can load slowly: show a loading state, never an empty one, until the list has arrived.
 - Still not seen: Higgsfield Shorts/Faceless flows, MagicLight create flow past step 1, mobile apps, cancellation flows.
+
+## 9. Full account tour (2026-10-01, 70 screenshots, free accounts, read-only)
+
+The owner's local browser session toured all three free accounts and sent an
+HTML report (screenshots kept privately, not in the repo: they show account
+details). Nothing was generated, bought, linked or changed. New facts beyond §8:
+
+### Krea
+- Free plan limits: 1 image job at a time, **0 video jobs at a time**, no
+  commercial licence, no credit packs (packs need Basic or above; packs of
+  2,000–50,000 units last 90 days). Train LoRA takes 50 images on Free.
+- Enhancer: images up to 22K, video up to 8K; inputs up to 75 MB / 15 s.
+  Image upscalers priced from about 200 to 250+ units, video upscalers from
+  about 500 to 650+.
+- More tools: Realtime Director, video lipsync (add face + add speech),
+  motion transfer (character + motion clip), 3D objects (image or text to
+  3D, mesh only), video restyle. A "studio" for one video model with camera
+  control and reference images.
+- Settings: usage statistics, billing history, API tokens; model access
+  control is Business only.
+
+### Higgsfield
+- Many "studios": Cinema (projects, saved elements, 1080p), Ads (set up a
+  brand), Marketing (avatar + product templates), 3D scenes, layered image
+  edit, a chat agent with projects/skills/connectors, audio (text to speech,
+  voice change, translate), effects (78 credits for one), contests,
+  community, academy, plugins for desktop editors.
+- Free accounts cannot buy credits at all ("upgrade plan to buy credits").
+- Pages are slow (10–15 s to content).
+
+### MagicLight
+- Formats with their own entry screens: story to video (3–30 min, up to
+  12,000 characters), kids story (1 min, 16:9 or 9:16), explainer (1–10 min),
+  short drama (dialogue scenes, up to 5 characters per shot), interview
+  (host + guest), music video. A template gallery with view counts.
+- Asset store: characters, visual styles, voice emotions, "skills", each with
+  a usage count; premium ("VIP") styles open the plan dialog.
+- Creator earnings page (payout method, leaderboard) and a "data analysis"
+  page that needs a connected YouTube channel.
+- Clicking the credit number opens a card-binding offer with a saved card
+  and a "confirm" button (see §8: we never do this).
+
+### Gaps for Nightshift (ranked by value for our users, cheapest first)
+1. Price per model inside the model picker (Krea shows units per model).
+2. A credit counter in the header/profile menu that opens the balance
+   (never a payment offer).
+3. Story-to-video format entry cards (story, kids, explainer, interview,
+   short drama) with length, style and language, feeding the existing
+   channel pipeline — the one place MagicLight is ahead and we already
+   have the engine (plus YouTube publishing through the approval gate,
+   which none of the three has).
+4. Voice tools beyond text to speech: voice change, translation/dubbing.
+5. Video upscale.
+6. Provider-dependent: lipsync, motion transfer, 3D, video restyle.
+
+### Open owner decision
+Free credits: a daily refill (Krea: 100 a day) or a one-time grant
+(MagicLight 775, Higgsfield 10). Packs stay buyable on the free plan in
+Nightshift either way.
