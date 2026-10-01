@@ -3,7 +3,7 @@ import { NotConfigured } from "@/components/NotConfigured";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
 import { getChannelContext } from "@/lib/channels-server";
-import { isScoped } from "@/lib/channels";
+import { channelSlug, isScoped } from "@/lib/channels";
 import { isRunNowConfigured, runBackend } from "@/lib/server/run-backend";
 import { CreateStudio } from "@/components/create/CreateStudio";
 import { isOperator, resolveCurrentOrgRole } from "@/lib/auth/org-roles";
@@ -14,7 +14,8 @@ import { loadStudioModels } from "@/lib/server/creative";
 import { loadUpsellCatalog } from "@/lib/server/upsell";
 import { GenerateSection } from "@/components/studio/GenerateSection";
 import { prefillFromQuery } from "@/lib/creative/studio";
-import { runPrefillFromQuery, toolPrefill } from "@/lib/home";
+import { runPrefillFromQuery, runnableChannels, toolPrefill } from "@/lib/home";
+import { AssistantPlanner } from "@/components/assistant/AssistantPlanner";
 import { channelDnaForCreate } from "@/lib/server/channel-dna";
 
 export const dynamic = "force-dynamic";
@@ -74,11 +75,32 @@ export default async function CreatePage({
     />
   );
 
+  // The Assistant: one goal → a priced plan → one confirm, built on the two
+  // halves of this page (Run now and the generate panel). Opened with a
+  // prefill (a tool, a picture, a topic), what was asked for comes first.
+  const assistant = (
+    <AssistantPlanner
+      orgId={genOrgId}
+      models={models}
+      channels={runnableChannels(channels).map((c) => ({
+        id: c.channel_id,
+        slug: channelSlug(c, channels),
+        name: c.name || c.channel_id,
+        language: typeof c.agent_config?.language === "string" ? c.agent_config.language : "",
+      }))}
+      currentSlug={scopedChannel ? channelSlug(scopedChannel, channels) : null}
+      canRun={canRun}
+      runConfigured={isRunNowConfigured}
+    />
+  );
+  const prefilled = !!runInitial || !!initial;
+
   // Arriving from Home with a topic, the run form comes first: that is what
   // was asked for, and its price is the next thing to read.
   return (
     <div className="rhythm stagger-enter">
       <PageHeader icon="studio" title={t.create.title} subtitle={t.create.subtitle} />
+      {!prefilled && assistant}
       {runInitial && run}
       {/* Keyed by the link's tool and picture: moving between the sidebar's
           tool rows is a client navigation to the same page, and without a new
@@ -99,6 +121,7 @@ export default async function CreatePage({
         />
       )}
       {!runInitial && run}
+      {prefilled && assistant}
     </div>
   );
 }
