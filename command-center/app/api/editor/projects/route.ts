@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/server/audit";
 import { readJsonBody, resolveMediaOrg } from "@/lib/server/media-folders";
-import { readEditorVideo } from "@/lib/server/editor";
+import { loadEditorProjects, readEditorVideo } from "@/lib/server/editor";
 import { parseMediaId } from "@/lib/media";
 import {
   mapEditorError,
@@ -72,4 +72,26 @@ export async function POST(request: Request) {
     detail: { org },
   });
   return NextResponse.json({ id }, { status: 201 });
+}
+
+/**
+ * The projects a file can be sent to: GET `?org_id=` (default: the current
+ * organization). Read under the caller's own session, so another
+ * organization's list is empty for someone who is not a member — a read
+ * failure is its own answer, never an empty list.
+ */
+export async function GET(request: Request) {
+  const user = await getUser();
+  if (!user)
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const asked = new URL(request.url).searchParams.get("org_id");
+  const { org, bad } = await resolveMediaOrg(asked);
+  if (bad) return NextResponse.json({ error: "bad_request" }, { status: 400 });
+  if (!org) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const read = await loadEditorProjects(org);
+  if (read.state === "not_available")
+    return NextResponse.json({ error: "not_available" }, { status: 503 });
+  if (read.state !== "ok")
+    return NextResponse.json({ error: "failed" }, { status: 502 });
+  return NextResponse.json({ projects: read.value });
 }
