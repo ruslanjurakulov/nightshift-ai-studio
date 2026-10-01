@@ -265,6 +265,31 @@ class MediaWorkerExitPaths(unittest.TestCase):
         out = scrub(f"oops {FAKE_KEY} oops")
         self.assertNotIn(FAKE_KEY, out)
 
+    def test_the_heic_warning_path_is_not_a_failure_and_changes_no_report(self):
+        # pillow-heif missing: a startup warning only; present: silence. Either way the
+        # worker boots, heartbeats and stops cleanly (0044 and 0045 together).
+        for available in (False, True):
+            FakeReporter.instances = []
+            handlers = {}
+
+            class Service:
+                def __init__(self, *a, **k):
+                    self.calls = 0
+
+                def run_once(self):
+                    self.calls += 1
+                    if self.calls == 2:
+                        handlers[signal.SIGTERM](signal.SIGTERM, None)
+                    return False
+
+            with mock.patch.object(media_worker.media_library, "heic_available", return_value=available), \
+                    mock.patch.object(media_worker.media_library, "MediaService", Service), \
+                    mock.patch.object(media_worker.signal, "signal", lambda n, h: handlers.__setitem__(n, h)):
+                code, out = self.run_main(self.env, argv=["--poll-seconds", "0.01"])
+            self.assertEqual(code, 0)
+            self.assertEqual("pillow-heif is not installed" in "\n".join(out), not available)
+            self.assertEqual([e[0] for e in FakeReporter.instances[0].events], ["starting", "heartbeat", "stopped"])
+
     def test_without_the_scrubber_the_detail_is_withheld_not_sent_raw(self):
         with mock.patch.object(media_worker, "make_scrubber", return_value=None):
             self.run_main({**self.env, "NIGHTSHIFT_MEDIA_DIR": ""})

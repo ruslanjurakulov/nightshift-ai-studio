@@ -4,23 +4,48 @@ What would break: a path built from anything but an id (traversal), a type
 taken from the extension or the declared MIME instead of the content (spoof),
 a playlist / concat script reaching ffmpeg's auto-detection, an oversize or
 empty staged file registered, a purge deleting a path the database supplied,
-or the Python allowlist drifting from the SQL one."""
+or the Python allowlist drifting from the SQL one.
+
+HEIC / HEIF (migration 0044) adds: the type read from the ISO-BMFF brand BEFORE
+the generic MP4 fallthrough, AVIF refused, a .heic name or a declared HEIF type
+that needs HEIF content, a header-size check before decoding, a child process
+for the decode, and a rejected ticket (never a ready asset) when it fails. The
+real-HEIC tests generate a file with pillow-heif and run it through the real
+worker code path; they are skipped, with the reason named, only when
+pillow-heif is not installed."""
 
 import hashlib
+import io
 import os
 import re
 import shutil
+import struct
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 import uuid
 from pathlib import Path
+from unittest import mock
 
 from modules import media_library as ml
 
+try:  # pillow-heif makes the real HEIC files below; the worker needs it too
+    import pillow_heif
+    from PIL import Image, ImageCms
+
+    pillow_heif.register_heif_opener()
+    HAVE_HEIF = True
+except Exception:  # pragma: no cover - depends on the machine
+    HAVE_HEIF = False
+NEEDS_HEIF = unittest.skipUnless(HAVE_HEIF, "pillow-heif is not installed (pip install pillow-heif): "
+                                            "the real-HEIC tests need it to generate and decode a photo")
+
 ROOT = Path(__file__).resolve().parent.parent
-SQL = (ROOT / "supabase" / "migrations" / "0038_media_assets.sql").read_text()
+SQL_0038 = (ROOT / "supabase" / "migrations" / "0038_media_assets.sql").read_text()
+SQL_0044 = (ROOT / "supabase" / "migrations" / "0044_media_heic.sql").read_text()
+SQL = SQL_0038
 
 HAVE_FFMPEG = bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
 
@@ -32,7 +57,9 @@ MOV = b"\x00\x00\x00\x14ftypqt  \x00\x00\x02\x00qt  " + b"\x00" * 16
 
 
 def fn_sql(name):
-    return SQL.split(f"function public.{name}(", 1)[1].split("$$;", 1)[0]
+    """The LATEST definition: 0044 redefines the type helpers, 0038 has the rest."""
+    src = SQL_0044 if f"function public.{name}(" in SQL_0044 else SQL_0038
+    return src.split(f"function public.{name}(", 1)[1].split("$$;", 1)[0]
 
 
 class Paths(unittest.TestCase):
@@ -53,7 +80,7 @@ class Paths(unittest.TestCase):
     def test_files_stay_inside_the_media_root(self):
         root = Path("/srv/media")
         aid = str(uuid.uuid4())
-        for variant in ("original", "thumb", "proxy"):
+        for variant in ("original", "thumb", "proxy", "display"):
             p = ml.asset_file(root, aid, variant)
             self.assertEqual(p.parent, root / aid[:2] / aid)
             self.assertEqual(os.path.commonpath([str(root), os.path.realpath(p)]), str(root))
@@ -86,8 +113,11 @@ class Allowlist(unittest.TestCase):
 
     def test_every_sniffable_media_type_has_a_forced_demuxer(self):
         for mime, kind in ml.ALLOWED_MIME.items():
-            if kind != "caption":
+            # HEIF is decoded by pillow-heif, never opened by ffmpeg: no demuxer on purpose.
+            if kind != "caption" and mime not in ml.HEIF_MIMES:
                 self.assertIn(mime, ml.DEMUXER, mime)
+        for mime in ml.HEIF_MIMES:
+            self.assertNotIn(mime, ml.DEMUXER)
 
 
 class Sniff(unittest.TestCase):
@@ -208,7 +238,7 @@ class FakeStore:
         self.purged.append(aid)
 
 
-class Ingest(unittest.TestCase):
+class IngestCase(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.staging = self.tmp / "staging"
@@ -241,6 +271,8 @@ class Ingest(unittest.TestCase):
         self.assertEqual(self.media_files(), [])
         self.assertFalse(ml.staged_path(self.staging, t["id"]).exists(), "staged file must be removed")
 
+
+class Ingest(IngestCase):
     def test_html_renamed_to_mp4_is_rejected_as_unsupported(self):
         t = self.ticket(b"<html><script>alert(document.cookie)</script></html>", mime="video/mp4", name="x.mp4")
         self.assert_rejected(t, "unsupported_type")
@@ -350,6 +382,405 @@ class Ingest(unittest.TestCase):
         self.assertEqual(self.run_ticket(t), "rejected")
         self.assertIn(self.store.rejected[-1][1], ("not_media", "no_video_stream", "decode_failed"))
         self.assertEqual(self.media_files(), [])
+
+
+# ── HEIC / HEIF (0044) ───────────────────────────────────────────────────────
+
+
+def box(kind: bytes, payload: bytes = b"") -> bytes:
+    return struct.pack(">I", 8 + len(payload)) + kind + payload
+
+
+def ftyp(major: bytes, *compat: bytes, minor: bytes = b"\x00\x00\x00\x00") -> bytes:
+    return box(b"ftyp", major + minor + b"".join(compat))
+
+
+def jpeg_markers(data: bytes) -> list:
+    """The marker bytes of a JPEG up to the start of the scan (APPn, DQT, ...)."""
+    assert data[:2] == b"\xff\xd8"
+    out, pos = [], 2
+    while pos + 4 <= len(data):
+        assert data[pos] == 0xFF, "not at a marker"
+        marker = data[pos + 1]
+        out.append(marker)
+        if marker == 0xDA:  # start of scan
+            break
+        pos += 2 + struct.unpack(">H", data[pos + 2:pos + 4])[0]
+    return out
+
+
+def heic_bytes(size=(400, 200), *, orientation=None, gps=False, icc=False, fmt="HEIF", quality=80) -> bytes:
+    """A real photo: a red field with a blue block at the top-left, written by
+    pillow-heif. orientation / gps / icc make it look like an iPhone's."""
+    im = Image.new("RGB", size, (200, 30, 30))
+    im.paste((0, 0, 255), (0, 0, size[0] // 4, size[1] // 4))
+    kw = {}
+    if orientation or gps:
+        ex = Image.Exif()
+        if orientation:
+            ex[274] = orientation
+        ex[0x010F] = "AcmePhone"
+        if gps:
+            g = ex.get_ifd(0x8825)
+            g[1], g[2], g[3], g[4] = "N", (41.0, 18.0, 30.0), "E", (69.0, 13.0, 40.0)
+        kw["exif"] = ex.tobytes()
+    if icc:
+        kw["icc_profile"] = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+    buf = io.BytesIO()
+    im.save(buf, format=fmt, quality=quality, **kw)
+    return buf.getvalue()
+
+
+def png_bytes(size=(32, 24)) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", size, (1, 2, 3)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def with_ispe(data: bytes, width: int, height: int) -> bytes:
+    """The same file claiming a different picture size in its header (a
+    decompression-bomb shaped file that is a few kB on disk)."""
+    i = data.find(b"ispe")
+    assert i > 0
+    out = bytearray(data)
+    out[i + 8:i + 16] = struct.pack(">II", width, height)
+    return bytes(out)
+
+
+class HeifSniff(unittest.TestCase):
+    def test_heic_family_by_brand_before_the_mp4_fallthrough(self):
+        for major in (b"heic", b"heix", b"hevc", b"hevx"):
+            self.assertEqual(ml.sniff(ftyp(major, b"mif1", major) + b"\x00" * 64), "image/heic", major)
+        # The iPhone's own layout: heic major, mif1 / heic / miaf compatible.
+        self.assertEqual(ml.sniff(ftyp(b"heic", b"mif1", b"heic", b"miaf")), "image/heic")
+        # A generic HEIF brand names HEVC as compatible: HEIF.
+        self.assertEqual(ml.sniff(ftyp(b"mif1", b"mif1", b"heic")), "image/heif")
+        self.assertEqual(ml.sniff(ftyp(b"msf1", b"msf1", b"hevc")), "image/heif")
+        # Before this change a HEIC read as video/mp4.
+        self.assertNotEqual(ml.sniff(ftyp(b"heic", b"mif1")), "video/mp4")
+
+    def test_avif_and_codec_less_heif_are_refused(self):
+        self.assertIsNone(ml.sniff(ftyp(b"avif", b"avif", b"mif1", b"miaf")))
+        self.assertIsNone(ml.sniff(ftyp(b"avis", b"avis", b"msf1")))
+        # AVIF listed as a compatible brand of an otherwise HEIC-looking file.
+        self.assertIsNone(ml.sniff(ftyp(b"heic", b"mif1", b"avif")))
+        # mif1 alone does not say HEVC (AVIF without its brand, JPEG, ...).
+        self.assertIsNone(ml.sniff(ftyp(b"mif1", b"mif1", b"miaf")))
+        self.assertIsNone(ml.sniff(ftyp(b"mif1")))
+
+    def test_video_and_audio_brands_are_unchanged(self):
+        self.assertEqual(ml.sniff(ftyp(b"isom", b"isom", b"iso2", b"avc1", b"mp41")), "video/mp4")
+        self.assertEqual(ml.sniff(ftyp(b"mp42", b"isom")), "video/mp4")
+        self.assertEqual(ml.sniff(ftyp(b"qt  ", b"qt  ")), "video/quicktime")
+        self.assertEqual(ml.sniff(ftyp(b"M4A ", b"M4A ", b"isom")), "audio/mp4")
+        # A video that merely lists heic as a compatible brand is still a video.
+        self.assertEqual(ml.sniff(ftyp(b"isom", b"isom", b"heic")), "video/mp4")
+
+    def test_ftyp_parsing_is_bounded(self):
+        # A box size larger than the head, or a lying small one, never reads past it.
+        self.assertEqual(ml.sniff(b"\xff\xff\xff\xffftypheic" + b"\x00" * 4 + b"mif1heic"), "image/heic")
+        self.assertEqual(ml.sniff(b"\x00\x00\x00\x08ftypheic" + b"\x00" * 8), "video/mp4")  # size < 16: no HEIF claim
+
+
+class HeifContainer(unittest.TestCase):
+    def check(self, data: bytes) -> bool:
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "x"
+            f.write_bytes(data)
+            return ml.heif_has_image_item(f)
+
+    def meta(self, handler=b"pict", pitm=True) -> bytes:
+        kids = box(b"hdlr", b"\x00" * 8 + handler + b"\x00" * 12) + (box(b"pitm", b"\x00" * 6) if pitm else b"")
+        return box(b"meta", b"\x00\x00\x00\x00" + kids)
+
+    def test_needs_a_picture_item(self):
+        head = ftyp(b"heic", b"mif1", b"heic")
+        self.assertTrue(self.check(head + self.meta() + box(b"mdat", b"\x00" * 100)))
+        self.assertFalse(self.check(head))  # a brand alone is not a picture
+        self.assertFalse(self.check(head + self.meta(b"vide")))
+        self.assertFalse(self.check(head + self.meta(pitm=False)))
+        self.assertFalse(self.check(head + box(b"mdat", b"\x00" * 100)))
+
+    def test_garbage_and_lying_boxes_are_false_not_errors(self):
+        head = ftyp(b"heic", b"mif1")
+        for tail in (b"", b"\x00", os.urandom(300), b"\xff\xff\xff\xffmeta" + b"\x00" * 40,
+                     b"\x00\x00\x00\x04meta", struct.pack(">I", 0) + b"free"):
+            self.assertFalse(self.check(head + tail), tail[:8])
+        # A huge meta is not read into memory.
+        self.assertFalse(self.check(head + struct.pack(">I", ml.HEIF_META_MAX_BYTES + 100) + b"meta"))
+
+    def test_box_walk_is_capped(self):
+        head = ftyp(b"heic", b"mif1")
+        self.assertFalse(self.check(head + box(b"free") * 200 + self.meta()))
+
+
+class HeifDeclared(unittest.TestCase):
+    def test_a_heic_name_or_type_requires_heif_content(self):
+        for sniffed, declared, name, reason in (
+            ("image/png", "image/png", "photo.heic", "extension_mismatch"),
+            ("image/jpeg", "image/jpeg", "IMG_0001.HEIC", "extension_mismatch"),
+            ("image/jpeg", "image/heic", "photo.jpg", "type_mismatch"),
+            ("image/png", "image/heif", "photo", "type_mismatch"),
+            ("image/webp", "image/png", "x.heif", "extension_mismatch"),
+        ):
+            with self.assertRaises(ml.IngestReject, msg=name) as e:
+                ml.check_declared(sniffed, declared, name)
+            self.assertEqual(e.exception.reason, reason, name)
+        # a video or audio is still refused by the kind rule, as before
+        with self.assertRaises(ml.IngestReject):
+            ml.check_declared("video/mp4", "image/heic", "clip.heic")
+
+    def test_heif_content_is_accepted_under_any_image_name(self):
+        ml.check_declared("image/heic", "image/heic", "IMG_0001.HEIC")
+        ml.check_declared("image/heic", "image/heif", "photo.heif")
+        ml.check_declared("image/heif", "image/heic", "photo.heic")
+        ml.check_declared("image/heic", "image/jpeg", "photo.jpg")  # converted name: the content decides
+        ml.check_declared("image/heic", "image/heic", "no-extension")
+        for name in ("clip.mp4", "voice.m4a", "photo.exe", "photo.svg"):
+            with self.assertRaises(ml.IngestReject, msg=name):
+                ml.check_declared("image/heic", "image/heic", name)
+        with self.assertRaises(ml.IngestReject):
+            ml.check_declared("image/heic", "video/mp4", "photo.heic")
+
+
+@NEEDS_HEIF
+class HeicIngest(IngestCase):
+    """Real HEIC files, decoded by the real worker code path (a child process)."""
+
+    def stored(self, reg):
+        return self.media / reg["asset_id"][:2] / reg["asset_id"]
+
+    def test_an_iphone_style_photo_is_stored_untouched_with_thumb_and_display(self):
+        data = heic_bytes((400, 200), orientation=6, gps=True, icc=True)
+        # The input really carries what must not leak: EXIF with GPS, and a profile.
+        probe = Image.open(io.BytesIO(data))
+        self.assertTrue(probe.info.get("exif"))
+        self.assertTrue(probe.getexif().get_ifd(0x8825))
+        t = self.ticket(data, mime="image/heic", name="../../DCIM/IMG_0001.HEIC")
+        self.assertEqual(self.run_ticket(t), "ingested")
+        reg = self.store.registered[-1]
+        folder = self.stored(reg)
+        self.assertEqual(sorted(p.name for p in folder.iterdir()), ["display.jpg", "original", "thumb.jpg"])
+        # The original is byte-copied; its hash is the file's.
+        self.assertEqual((folder / "original").read_bytes(), data)
+        self.assertEqual(reg["sha256"], hashlib.sha256(data).hexdigest())
+        self.assertEqual((reg["kind"], reg["mime"]), ("image", "image/heic"))
+        self.assertEqual(reg["variants"], ["thumb", "display"])
+        self.assertEqual(reg["derived_bytes"], (folder / "thumb.jpg").stat().st_size
+                         + (folder / "display.jpg").stat().st_size)
+        self.assertGreater(reg["derived_bytes"], 0)
+        # Orientation 6 is applied exactly once: 400x200 stored -> 200x400 shown.
+        self.assertEqual((reg["width"], reg["height"]), (200, 400))
+        for name, longest in (("display.jpg", 400), ("thumb.jpg", 400)):
+            raw = (folder / name).read_bytes()
+            im = Image.open(io.BytesIO(raw))
+            self.assertEqual((im.format, im.mode, im.size), ("JPEG", "RGB", (200, 400)), name)
+            self.assertLessEqual(max(im.size), longest)
+            # No EXIF, GPS, XMP or colour profile: no APPn segment except JFIF.
+            self.assertEqual([m for m in jpeg_markers(raw) if 0xE0 <= m <= 0xEF and m != 0xE0], [], name)
+            self.assertEqual(dict(im.getexif()), {}, name)
+            self.assertNotIn(b"Exif", raw)
+            self.assertNotIn(b"ICC_PROFILE", raw)
+            self.assertNotIn(b"ns.adobe.com", raw)
+            # The blue block (top-left of the stored picture) is at the top RIGHT after one
+            # clockwise turn, and the red field elsewhere: rotated once, not twice.
+            r, g, b = im.getpixel((190, 8))
+            self.assertGreater(b, 150, name)
+            self.assertLess(r, 100, name)
+            r, g, b = im.getpixel((8, 8))
+            self.assertGreater(r, 150, name)
+        self.assertFalse(ml.staged_path(self.staging, t["id"]).exists())
+        self.assertEqual(reg["upload_id"], t["id"])
+        self.assertIsNone(reg["org"])
+
+    def test_display_is_at_most_2048_and_thumb_at_most_480(self):
+        data = heic_bytes((3000, 1500), quality=40)
+        t = self.ticket(data, mime="image/heic", name="big.heic")
+        self.assertEqual(self.run_ticket(t), "ingested")
+        reg = self.store.registered[-1]
+        self.assertEqual((reg["width"], reg["height"]), (3000, 1500))  # the original's size
+        folder = self.stored(reg)
+        self.assertEqual(Image.open(folder / "display.jpg").size, (2048, 1024))
+        self.assertEqual(Image.open(folder / "thumb.jpg").size, (480, 240))
+
+    def test_heic_content_named_jpg_is_stored_as_heic(self):
+        data = heic_bytes((64, 48))
+        t = self.ticket(data, mime="image/jpeg", name="photo.jpg")
+        self.assertEqual(self.run_ticket(t), "ingested")
+        reg = self.store.registered[-1]
+        self.assertEqual((reg["mime"], reg["variants"]), ("image/heic", ["thumb", "display"]))
+        self.assertEqual((self.stored(reg) / "original").read_bytes(), data)
+
+    def test_a_heif_brand_file_is_typed_image_heif(self):
+        data = bytearray(heic_bytes((64, 48)))
+        # Re-brand as a generic HEIF file that lists HEVC as compatible (what some
+        # cameras write): the major brand mif1, the compatible list unchanged.
+        self.assertEqual(data[4:12], b"ftypheic")
+        data[8:12] = b"mif1"
+        t = self.ticket(bytes(data), mime="image/heif", name="photo.heif")
+        self.assertEqual(self.run_ticket(t), "ingested")
+        self.assertEqual(self.store.registered[-1]["mime"], "image/heif")
+
+    def test_a_tiled_grid_photo_like_an_iphones_is_decoded_whole(self):
+        # iPhones write big pictures as a grid of tiles; the decode must hand back the whole picture.
+        before = pillow_heif.options.GRID_TILE_SIZE
+        pillow_heif.options.GRID_TILE_SIZE = 512
+        try:
+            buf = io.BytesIO()
+            Image.linear_gradient("L").resize((2000, 1500)).convert("RGB").save(buf, format="HEIF", quality=60)
+        finally:
+            pillow_heif.options.GRID_TILE_SIZE = before
+        data = buf.getvalue()
+        self.assertIn(b"grid", data)
+        t = self.ticket(data, mime="image/heic", name="grid.heic")
+        self.assertEqual(self.run_ticket(t), "ingested")
+        reg = self.store.registered[-1]
+        self.assertEqual((reg["width"], reg["height"]), (2000, 1500))
+        folder = self.stored(reg)
+        self.assertEqual(Image.open(folder / "display.jpg").size, (2000, 1500))
+        # the gradient runs top to bottom: the tiles are in the right places
+        im = Image.open(folder / "display.jpg").convert("L")
+        self.assertLess(im.getpixel((1000, 20)), im.getpixel((1000, 1480)))
+        self.assertLess(im.getpixel((10, 700)), im.getpixel((10, 1400)))
+
+    def test_png_and_jpeg_renamed_heic_are_rejected(self):
+        self.assert_rejected(self.ticket(png_bytes(), mime="image/heic", name="photo.heic"), "type_mismatch")
+        self.assert_rejected(self.ticket(png_bytes(), mime="image/png", name="photo.heic"), "extension_mismatch")
+        buf = io.BytesIO()
+        Image.new("RGB", (8, 8)).save(buf, format="JPEG")
+        self.assert_rejected(self.ticket(buf.getvalue(), mime="image/jpeg", name="IMG_1.HEIC"),
+                             "extension_mismatch")
+
+    def test_avif_is_rejected_whatever_it_is_called(self):
+        try:
+            avif = heic_bytes((64, 48), fmt="AVIF")
+        except Exception as e:  # pragma: no cover - an AV1 encoder is not in every build
+            self.skipTest(f"this pillow-heif cannot write AVIF ({type(e).__name__})")
+        self.assertIn(b"avif", avif[:32])
+        for name, mime in (("a.avif", "image/avif"), ("a.heic", "image/heic"), ("a.jpg", "image/jpeg")):
+            self.assert_rejected(self.ticket(avif, mime=mime, name=name), "unsupported_type")
+
+    def test_oversized_pixel_dimensions_are_refused_before_decoding(self):
+        data = heic_bytes((400, 200))
+        for w, h in ((20000, 100), (100, 20000), (11000, 10000), (100000, 100000)):
+            t = self.ticket(with_ispe(data, w, h), mime="image/heic", name="bomb.heic")
+            self.assert_rejected(t, "too_large_dimensions")
+
+    def test_the_decoder_reads_the_size_first(self):
+        data = with_ispe(heic_bytes((400, 200)), 11000, 10000)
+        f = self.tmp / "bomb"
+        f.write_bytes(data)
+        out = self.tmp / "o"
+        out.mkdir()
+        t0 = time.monotonic()
+        with self.assertRaises(ml.IngestReject) as e:
+            ml.decode_heic(f, out, lambda: None)
+        self.assertEqual(e.exception.reason, "too_large_dimensions")
+        self.assertEqual(list(out.iterdir()), [])
+        self.assertLess(time.monotonic() - t0, 30)
+
+    def test_corrupt_pictures_are_rejected_never_stored(self):
+        data = heic_bytes((400, 200), quality=90)
+        cut = data[: len(data) - max(40, len(data) // 3)]  # the end of the picture data is missing
+        self.assertEqual(ml.sniff(cut[:4096]), "image/heic")
+        self.assertEqual(self.run_ticket(self.ticket(cut, mime="image/heic", name="cut.heic")), "rejected")
+        self.assertIn(self.store.rejected[-1][1], ("decode_failed", "not_media"))
+        # A good brand and nothing behind it.
+        t = self.ticket(ftyp(b"heic", b"mif1", b"heic") + os.urandom(2000), mime="image/heic", name="junk.heic")
+        self.assert_rejected(t, "not_media")
+        # Right container, wrong bytes where the picture is.
+        mdat = data.rfind(b"mdat")
+        scrambled = data[: mdat + 8] + os.urandom(len(data) - mdat - 8)
+        self.assertEqual(self.run_ticket(self.ticket(scrambled, mime="image/heic", name="x.heic")), "rejected")
+        self.assertEqual(self.store.registered, [])
+        self.assertEqual(self.media_files(), [])
+
+    def test_a_decode_that_takes_too_long_is_killed_and_rejected(self):
+        t = self.ticket(heic_bytes((64, 48)), mime="image/heic", name="slow.heic")
+        slow = lambda *a: ml.decode_heic(*a, timeout_s=0.05, beat_s=0.02)  # noqa: E731
+        self.assertEqual(self.run_ticket(t, decoder=slow), "rejected")
+        self.assertEqual(self.store.rejected[-1], (t["id"], "timeout"))
+        self.assertEqual(self.media_files(), [])
+
+    def test_the_child_has_a_memory_limit(self):
+        t = self.ticket(heic_bytes((2000, 1500)), mime="image/heic", name="x.heic")
+        tiny = lambda *a: ml.decode_heic(*a, mem_bytes=64 * 1024 * 1024)  # noqa: E731
+        self.assertEqual(self.run_ticket(t, decoder=tiny), "rejected")
+        self.assertEqual(self.store.rejected[-1], (t["id"], "decode_failed"))
+        self.assertEqual(self.media_files(), [])
+        # ... and the same file decodes under the real limit.
+        t = self.ticket(heic_bytes((2000, 1500)), mime="image/heic", name="x.heic")
+        self.assertEqual(self.run_ticket(t), "ingested")
+
+    def test_a_big_picture_hits_the_limit_while_decoding(self):
+        # The decoder loads fine under 300 MB; the 24 megapixels do not fit.
+        im = Image.linear_gradient("L").resize((6000, 4000)).convert("RGB")
+        buf = io.BytesIO()
+        im.save(buf, format="HEIF", quality=50)
+        f = self.tmp / "big.heic"
+        f.write_bytes(buf.getvalue())
+        out = self.tmp / "o"
+        out.mkdir()
+        with self.assertRaises(ml.IngestReject) as e:
+            ml.decode_heic(f, out, lambda: None, mem_bytes=300 * 1024 * 1024)
+        self.assertEqual(e.exception.reason, "decode_failed")
+        self.assertIn("memory", e.exception.detail)
+        self.assertEqual(list(out.iterdir()), [])
+        # The same picture is fine under the real limit.
+        self.assertEqual(ml.decode_heic(f, out, lambda: None), (6000, 4000))
+
+    def test_the_child_gets_an_argv_and_no_secrets(self):
+        os.environ["SUPABASE_SERVICE_KEY"] = "do-not-leak"
+        self.addCleanup(os.environ.pop, "SUPABASE_SERVICE_KEY", None)
+        seen = {}
+        real = subprocess.Popen
+
+        def spy(argv, **kw):
+            seen.update(argv=argv, kw=kw)
+            return real(argv, **kw)
+
+        t = self.ticket(heic_bytes((64, 48)), mime="image/heic", name="x.heic")
+        with mock.patch.object(ml.subprocess, "Popen", spy):
+            self.assertEqual(self.run_ticket(t), "ingested")
+        self.assertIsInstance(seen["argv"], list)
+        self.assertFalse(seen["kw"].get("shell"))
+        self.assertNotIn("SUPABASE_SERVICE_KEY", seen["kw"]["env"])
+        self.assertNotIn("do-not-leak", "".join(map(str, seen["kw"]["env"].values())))
+        self.assertTrue(seen["kw"]["start_new_session"])
+
+    def test_decode_is_refused_when_the_decoder_is_not_installed(self):
+        t = self.ticket(heic_bytes((64, 48)), mime="image/heic", name="x.heic")
+        with mock.patch.object(ml, "heic_available", lambda: False):
+            self.assertEqual(self.run_ticket(t), "rejected")
+        self.assertEqual(self.store.rejected[-1], (t["id"], "heic_unavailable"))
+        self.assertEqual(self.store.registered, [])
+        self.assertEqual(self.media_files(), [])
+        # Nothing else is affected: a caption still ingests.
+        cap = self.ticket(b"WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n", mime="text/vtt", name="c.vtt")
+        with mock.patch.object(ml, "heic_available", lambda: False):
+            self.assertEqual(self.run_ticket(cap), "ingested")
+
+    def test_a_missing_decoder_module_in_the_child_is_reported_as_unavailable(self):
+        f = self.tmp / "p.heic"
+        f.write_bytes(heic_bytes((64, 48)))
+        out = self.tmp / "o"
+        out.mkdir()
+        # -S drops site-packages, so pillow_heif cannot be found: the child's own
+        # answer for "not installed" (exit 4, reason unavailable), nothing written.
+        child = Path(ml.__file__).with_name("heic_decode.py")
+        proc = subprocess.run([sys.executable, "-S", str(child), str(f), str(out), str(2 ** 31), "60"],
+                              capture_output=True, text=True, timeout=60)
+        self.assertEqual(proc.returncode, 4, proc.stdout + proc.stderr)
+        self.assertIn('"reason":"unavailable"', proc.stdout)
+        self.assertEqual(list(out.iterdir()), [])
+
+    def test_heic_is_not_passed_to_ffprobe_or_ffmpeg(self):
+        def boom(*a, **k):
+            raise AssertionError("ffprobe / ffmpeg must not see a HEIC")
+
+        t = self.ticket(heic_bytes((64, 48)), mime="image/heic", name="x.heic")
+        self.assertEqual(self.run_ticket(t, prober=boom, runner=boom), "ingested")
+
 
 
 class RegisterFailure(unittest.TestCase):

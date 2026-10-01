@@ -9,6 +9,7 @@ import {
   PIPELINE_UNKNOWN,
   coerceAssets,
   coerceUploads,
+  isHeifMime,
   isVariant,
   parseMediaId,
   parsePipelineState,
@@ -53,7 +54,12 @@ export function mediaStagingDir(): string | null {
   return absDir(process.env.NIGHTSHIFT_MEDIA_STAGING_DIR);
 }
 
-const FILE_NAMES: Record<MediaVariant, string> = { original: "original", thumb: "thumb.jpg", proxy: "proxy.mp4" };
+const FILE_NAMES: Record<MediaVariant, string> = {
+  original: "original",
+  thumb: "thumb.jpg",
+  proxy: "proxy.mp4",
+  display: "display.jpg",
+};
 
 /** `<dir>/<aa>/<uuid>/<fixed name>` — the worker's layout (media_library.asset_file). */
 export function assetFilePath(dir: string | null | undefined, id: unknown, variant: unknown): string | null {
@@ -222,12 +228,20 @@ export async function receiveUpload(
 
 // ── the library, for the page and GET /api/media ───────────────────────────
 
-/** The URL a browser should load for an asset: the proxy for video, the
- *  original otherwise (captions are shown by name only). */
+/**
+ * The URL a browser should load for an asset: the proxy for video; for an image
+ * the `display` JPEG when there is one; the original otherwise (captions are
+ * shown by name only). A HEIC / HEIF original is NEVER offered to open: most
+ * browsers cannot show it, so without a display copy there is no link at all
+ * rather than one that downloads or shows a broken picture.
+ */
 export function withUrls(asset: MediaAsset, secret: Buffer | null, served: boolean, nowS?: number): LibraryAsset {
   if (!secret || !served) return { ...asset, thumbUrl: null, viewUrl: null };
   const thumbUrl = asset.variants.includes("thumb") ? signedMediaPath(secret, asset.id, "thumb", asset.mime, nowS) : null;
-  const viewVariant: MediaVariant = asset.kind === "video" && asset.variants.includes("proxy") ? "proxy" : "original";
+  let viewVariant: MediaVariant = "original";
+  if (asset.kind === "video" && asset.variants.includes("proxy")) viewVariant = "proxy";
+  else if (asset.kind === "image" && asset.variants.includes("display")) viewVariant = "display";
+  else if (isHeifMime(asset.mime)) return { ...asset, thumbUrl, viewUrl: null };
   const viewUrl = signedMediaPath(secret, asset.id, viewVariant, asset.mime, nowS);
   return { ...asset, thumbUrl, viewUrl };
 }

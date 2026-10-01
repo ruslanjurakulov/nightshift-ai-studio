@@ -42,6 +42,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --index-url https://download.pytorch.org/whl/cpu torch \
  && pip install -r requirements.txt
+# requirements.txt includes pillow-heif (HEIC photos in the media library, 0044):
+# its manylinux wheels bundle libheif, so no apt package is added for it. The
+# check below fails the build if the decoder cannot be imported.
+RUN python -c "import pillow_heif; print('pillow-heif', pillow_heif.__version__, 'libheif', pillow_heif.libheif_version())"
 
 COPY . .
 

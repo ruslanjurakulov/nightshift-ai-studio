@@ -64,3 +64,43 @@ describe("0038 tables", () => {
     expect(CODE).toContain("storage_key     text generated always as (substr(id::text, 1, 2) || '/' || id::text) stored");
   });
 });
+
+// ── 0044: HEIC / HEIF ───────────────────────────────────────────────────────
+
+const SQL44 = readFileSync(join(__dirname, "..", "..", "supabase/migrations/0044_media_heic.sql"), "utf8");
+const CODE44 = SQL44.split("\n")
+  .map((l) => l.split("--")[0])
+  .join("\n");
+
+describe("0044 (iPhone photos)", () => {
+  it("redefines only the type helpers and request_upload, with the privileges 0038 gave them", () => {
+    const fns = [...CODE44.matchAll(/create or replace function public\.(\w+)\(/g)].map((m) => m[1]).sort();
+    expect(fns).toEqual(["media_ext_mime", "media_mime_kind", "media_normalize_mime", "request_upload"]);
+    for (const fn of fns) {
+      expect(CODE44, fn).toMatch(new RegExp(`revoke all on function public\\.${fn}\\([^)]*\\) from public, anon, authenticated, service_role;`));
+      expect(CODE44, fn).toContain("set search_path = public, pg_temp");
+    }
+    const granted = [...CODE44.matchAll(/grant execute on function public\.(\w+)\([^)]*\) to ([a-z_, ]+);/g)].map((m) => [m[1], m[2]]);
+    expect(granted).toEqual([["request_upload", "authenticated"]]);
+  });
+
+  it("adds no table, policy or grant, and gives anon nothing", () => {
+    expect(CODE44).not.toMatch(/create (table|policy|index|trigger)/);
+    expect(CODE44).not.toMatch(/\bto anon\b/);
+    expect(CODE44).not.toMatch(/grant [^;]*\b(insert|update|delete|select)\b/);
+    expect(CODE44).toContain("apply 0038_media_assets.sql first");
+  });
+
+  it("keeps request_upload's member, quota and size checks", () => {
+    const body = CODE44.split("function public.request_upload(", 2)[1].split("$$;", 1)[0];
+    for (const needle of [
+      "not public.is_org_member(p_org)",
+      "p_bytes > cfg.max_upload_bytes",
+      "q := public.media_quota_lock(p_org);",
+      "if q.used_bytes + pending + p_bytes > lim then",
+      "public.media_mime_kind(ext_mime) <> kind_",
+    ]) {
+      expect(body, needle).toContain(needle);
+    }
+  });
+});

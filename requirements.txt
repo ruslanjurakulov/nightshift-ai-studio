@@ -17,6 +17,11 @@ pydub>=0.25.1
 # hard-fails on 3.11 ("No matching distribution found for audioop-lts").
 audioop-lts>=0.2.1; python_version >= "3.13"
 Pillow>=10.0.0
+# HEIC / HEIF photos in the media library (migration 0044): ffmpeg cannot decode
+# them. The manylinux wheels bundle libheif, so Dockerfile.worker needs no apt
+# package. Only the media worker uses it, in a child process
+# (modules/heic_decode.py); without it HEIC uploads are rejected, nothing else breaks.
+pillow-heif>=0.20.0,<2
 requests>=2.31.0
 python-dotenv>=1.0.0
 numpy>=1.24.0
