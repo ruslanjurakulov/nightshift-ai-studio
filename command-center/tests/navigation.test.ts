@@ -4,6 +4,7 @@ import {
   HOME,
   MAX_TRACKED,
   NAV_ITEMS,
+  SECTION_ITEMS,
   breadcrumbs,
   isHomePath,
   parentPath,
@@ -16,8 +17,14 @@ import {
 
 describe("navigation definitions", () => {
   it("lists every routed section, so no page is left without a breadcrumb label or tab title", () => {
-    const hrefs = new Set(NAV_ITEMS.map((i) => i.href.slice(1)));
+    const hrefs = new Set(SECTION_ITEMS.map((i) => i.href.slice(1)));
     for (const section of SECTIONS) expect(hrefs, section).toContain(section);
+  });
+
+  it("names Home in breadcrumbs and the tab title, though it has no rail icon", () => {
+    expect(breadcrumbs("/chronos/home")[2]).toEqual({ kind: "section", key: "home", href: "/chronos/home" });
+    expect(titleKey("/chronos/home")).toBe("home");
+    expect(NAV_ITEMS.some((i) => i.href === "/home")).toBe(false);
   });
 
   it("has no duplicate routes or keys, which would make two rail entries light up", () => {

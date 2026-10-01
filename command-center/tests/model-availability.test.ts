@@ -311,7 +311,7 @@ describe("Models section navigation", () => {
 
   it("bounces a customer who opens it by URL to their landing screen", () => {
     const channels = [{ id: "c1", slug: "mine", name: "Mine" }] as never;
-    expect(appRedirect({ path: "/mine/models", honestSlug: "mine", selection: "c1" as never, channels, operator: false })).toBe("/mine/create");
+    expect(appRedirect({ path: "/mine/models", honestSlug: "mine", selection: "c1" as never, channels, operator: false })).toBe("/mine/home");
     expect(appRedirect({ path: "/mine/models", honestSlug: "mine", selection: "c1" as never, channels, operator: true })).toBeNull();
   });
 });

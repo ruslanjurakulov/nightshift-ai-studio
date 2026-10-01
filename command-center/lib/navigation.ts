@@ -11,11 +11,21 @@
 
 import type { Dictionary } from "@/lib/i18n";
 
-export type NavKey = Exclude<keyof Dictionary["nav"], "more" | "gManage" | "gIntel" | "gSystem" | "menu" | "sections">;
+export type NavKey = Exclude<keyof Dictionary["nav"], "more" | "gManage" | "gIntel" | "gSystem" | "menu" | "sections" | "home">;
+/**
+ * A screen's name in breadcrumbs, tabs and the tab title. Wider than NavKey:
+ * Home is a tab of the hub and never a rail entry of its own, so it has no
+ * rail icon (SideNav's ICONS is keyed by NavKey alone).
+ */
+export type SectionKey = NavKey | "home";
 export type NavGroupLabel = keyof Pick<Dictionary["nav"], "gManage" | "gIntel" | "gSystem">;
 export interface NavItem {
   href: string;
   key: NavKey;
+}
+export interface SectionItem {
+  href: string;
+  key: SectionKey;
 }
 export interface NavGroup {
   label?: NavGroupLabel;
@@ -26,11 +36,18 @@ export interface NavGroup {
 export const HOME = "/command-center";
 
 /**
- * Where a viewer starts: the operator on the Command Center, a customer in
- * Studio — the first of their five destinations, where things are made.
+ * A customer's first screen after sign-in ("Bosh sahifa"): what to post next,
+ * the quick tools, their channels and what they made. A tab of the hub, not a
+ * rail entry — the hub's rail entry opens it.
+ */
+export const CUSTOMER_HOME = "/home";
+
+/**
+ * Where a viewer starts: the operator on the Command Center, a customer on
+ * Home — the first screen of their first destination, where things are made.
  */
 export function landingSection(operator: boolean): string {
-  return operator ? HOME.slice(1) : "create";
+  return operator ? HOME.slice(1) : CUSTOMER_HOME.slice(1);
 }
 
 /**
@@ -100,6 +117,9 @@ export const NAV_GROUPS: NavGroup[] = [
 
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
+/** Every named screen: the rail's, plus Home (a customer screen with no rail icon). */
+export const SECTION_ITEMS: readonly SectionItem[] = [{ href: CUSTOMER_HOME, key: "home" }, ...NAV_ITEMS];
+
 /**
  * The sections a customer's workspace is made of — everything a person who
  * signed up with an email needs to make and publish videos, buy credits and
@@ -144,15 +164,16 @@ export const RAIL_HIDDEN_KEYS: readonly NavKey[] = ["accounts", "members"];
  * a short rail with the tools behind it, never a wall of tools.
  */
 export const CUSTOMER_RAIL: readonly NavItem[] = [
-  { href: "/create", key: "hub" },
+  { href: CUSTOMER_HOME, key: "hub" },
   { href: "/videos", key: "videos" },
   { href: "/channels", key: "channels" },
   { href: "/credits", key: "credits" },
   { href: "/organization", key: "settings" },
 ];
 
-export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly NavItem[]>> = {
+export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly SectionItem[]>> = {
   hub: [
+    { href: CUSTOMER_HOME, key: "home" },
     { href: "/create", key: "create" },
     { href: "/library", key: "library" },
     { href: "/studio", key: "studio" },
@@ -199,7 +220,8 @@ export interface CustomerSidebar {
 }
 
 export const CUSTOMER_SIDEBAR: CustomerSidebar = {
-  home: { href: "/create", key: "hub" },
+  // Studio opens Home, the first tab of its group; the tools below go straight to /create.
+  home: { href: CUSTOMER_HOME, key: "hub" },
   tools: STUDIO_TOOLS.map((tool) => ({ tool, href: toolHref(tool) })),
   work: [
     { href: "/library", key: "library" },
@@ -232,7 +254,7 @@ export function sidebarCurrent(section: string, tool: string | null): string | n
 }
 
 /** The tab group (and its rail entry) that `section` belongs to, if any. */
-export function tabsFor(section: string): { rail: "hub" | "settings"; items: readonly NavItem[] } | null {
+export function tabsFor(section: string): { rail: "hub" | "settings"; items: readonly SectionItem[] } | null {
   const href = "/" + section;
   for (const rail of ["hub", "settings"] as const) {
     if (SECTION_TABS[rail].some((i) => i.href === href)) return { rail, items: SECTION_TABS[rail] };
@@ -248,9 +270,10 @@ export function navGroupsFor(operator: boolean): NavGroup[] {
 }
 
 /** Section paths (no leading slash) a customer may open. */
-export const CUSTOMER_SECTIONS: readonly string[] = NAV_ITEMS.filter((i) => CUSTOMER_NAV_KEYS.includes(i.key)).map(
-  (i) => i.href.slice(1),
-);
+export const CUSTOMER_SECTIONS: readonly string[] = [
+  CUSTOMER_HOME.slice(1),
+  ...NAV_ITEMS.filter((i) => CUSTOMER_NAV_KEYS.includes(i.key)).map((i) => i.href.slice(1)),
+];
 
 /**
  * Is `section` (the URL segment after the channel) a screen only the platform
@@ -259,7 +282,7 @@ export const CUSTOMER_SECTIONS: readonly string[] = NAV_ITEMS.filter((i) => CUST
  */
 export function isOperatorOnlySection(section: string): boolean {
   if (!section) return false;
-  const known = NAV_ITEMS.some((i) => i.href === "/" + section);
+  const known = SECTION_ITEMS.some((i) => i.href === "/" + section);
   return known && !CUSTOMER_SECTIONS.includes(section);
 }
 
@@ -284,7 +307,7 @@ export type Crumb =
   /** The channel the URL is about — context, not a destination. */
   | { kind: "channel"; slug: string }
   /** A section the sidebar knows, labelled from the sidebar's own key. */
-  | { kind: "section"; key: NavKey; href: string }
+  | { kind: "section"; key: SectionKey; href: string }
   /** A segment below a section (`/videos/<id>`, `/channels/new`), or a route
    *  the sidebar does not list. Labelled by the caller, which knows the words. */
   | { kind: "detail"; segment: string; parent: string | null; href: string };
@@ -305,7 +328,7 @@ export function breadcrumbs(pathname: string): Crumb[] {
 
   const sectionHref = "/" + segments[0];
   if (sectionHref === HOME) return crumbs;
-  const item = NAV_ITEMS.find((i) => i.href === sectionHref);
+  const item = SECTION_ITEMS.find((i) => i.href === sectionHref);
   if (item) crumbs.push({ kind: "section", key: item.key, href: at(item.href) });
   else crumbs.push({ kind: "detail", segment: segments[0], parent: null, href: at(sectionHref) });
 
@@ -402,7 +425,7 @@ export function restoreStack(stored: unknown, pathname: string, navigationType: 
  * The section a pathname's tab title names: the deepest crumb the sidebar
  * knows. `/c/videos/abc` is titled "Videos", which is truer than an id.
  */
-export function titleKey(pathname: string): NavKey | null {
+export function titleKey(pathname: string): SectionKey | null {
   const sections = breadcrumbs(pathname).filter((c): c is Extract<Crumb, { kind: "section" }> => c.kind === "section");
   return sections.length > 0 ? sections[sections.length - 1].key : null;
 }

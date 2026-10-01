@@ -18,6 +18,7 @@ const BACK_ID = "a:back";
 
 type NavKey = keyof Dictionary["nav"];
 const NAV: { href: string; key: NavKey; hotkey?: string }[] = [
+  { href: "/home", key: "home" },
   { href: "/command-center", key: "command", hotkey: "d" },
   { href: "/channels", key: "channels", hotkey: "h" },
   { href: "/videos", key: "videos", hotkey: "v" },
