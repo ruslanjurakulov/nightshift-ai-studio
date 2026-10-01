@@ -2056,10 +2056,12 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   grid-template-columns: repeat(auto-fill, minmax(var(--tile-min, 160px), 1fr));
   gap: 3px;
   padding: 3px;
-  align-items: start;
   border-radius: var(--ns-r-frame);
   background: var(--ns-film);
 }
+/* Frames of different shapes (a feed of 16:9, 1:1 and 9:16 results): each frame
+   keeps its own film, and the gaps between them show the page, not black. */
+.ns-sheet[data-ragged="true"] { gap: 8px; padding: 0; background: transparent; align-items: start; }
 .ns-frame {
   position: relative;
   display: flex;
@@ -2077,6 +2079,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 }
 /* The printed slip under a frame: solid paper, readable in both themes. */
 .ns-frame-body {
+  flex: 1 1 auto;
   margin-top: 3px;
   padding: 0.625rem 0.75rem 0.75rem;
   background: var(--color-panel);

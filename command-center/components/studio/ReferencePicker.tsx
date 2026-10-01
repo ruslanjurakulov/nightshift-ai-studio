@@ -147,7 +147,7 @@ export function ReferencePicker({
               const on = index >= 0;
               const disabled = !on && full;
               return (
-                <Frame key={img.id} aspect="1 / 1" selected={on} number={on ? index + 1 : null}>
+                <Frame key={img.id} aspect="1 / 1" selected={on} number={on ? index + 1 : null} strip>
                   <button
                     type="button"
                     onClick={() => toggle(img.id)}

@@ -199,7 +199,7 @@ export function JobFeed({
         <>
           {state === "failed" && <p className="text-[12px] text-[var(--color-warn)]">{t.gen.loadFailed}</p>}
           {jobs === null && (
-            <ContactSheet label={t.gen.feedLoading} min={200}>
+            <ContactSheet label={t.gen.feedLoading} min={200} ragged>
               {["16 / 9", "1 / 1", "9 / 16", "16 / 9"].map((a, i) => (
                 <Frame key={i} aspect={a} aria-busy="true">
                   <div className="skeleton h-full w-full rounded-none" />
@@ -220,7 +220,7 @@ export function JobFeed({
             </div>
           )}
           {shown.length > 0 && (
-            <ContactSheet label={t.gen.feedTitle} min={200}>
+            <ContactSheet label={t.gen.feedTitle} min={200} ragged>
               {shown.map((job) => {
                 const sv = statusView(t, job.status);
                 const prompt = typeof job.params.prompt === "string" ? job.params.prompt : "";

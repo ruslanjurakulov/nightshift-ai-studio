@@ -37,18 +37,21 @@ export function TileGrid({
 export function ContactSheet({
   min = 160,
   label,
+  ragged = false,
   children,
   className,
 }: {
   min?: number;
   /** What the sheet holds ("Results"); it is a list of frames. */
   label: string;
+  /** Frames of different shapes: each keeps its own film and the gaps show the page. */
+  ragged?: boolean;
   children: ReactNode;
   className?: string;
 }) {
   const style = { "--tile-min": `${min}px` } as CSSProperties;
   return (
-    <ul className={`ns-sheet${className ? ` ${className}` : ""}`} style={style} aria-label={label}>
+    <ul className={`ns-sheet${className ? ` ${className}` : ""}`} style={style} aria-label={label} data-ragged={ragged ? "true" : undefined}>
       {children}
     </ul>
   );
@@ -59,6 +62,7 @@ export function Frame({
   edge = [],
   aspect,
   selected = false,
+  strip = false,
   caption,
   body,
   children,
@@ -72,6 +76,8 @@ export function Frame({
   /** CSS aspect-ratio for the picture ("16 / 9"). */
   aspect?: string;
   selected?: boolean;
+  /** Keep the (empty) rebate strip when the frame has nothing to print, so frames in a row line up. */
+  strip?: boolean;
   /** Under the picture, on the film: the frame's title or "for whom" line. */
   caption?: ReactNode;
   /** Under the film: a printed slip with the frame's own controls and facts (solid, readable in both themes). */
@@ -83,7 +89,7 @@ export function Frame({
   const printed = number !== undefined && number !== null && number !== "";
   return (
     <li {...rest} className={`ns-frame${className ? ` ${className}` : ""}`} data-selected={selected ? "true" : undefined}>
-      {(printed || facts.length > 0) && (
+      {(printed || facts.length > 0 || strip) && (
         <div className="ns-edge">
           {printed && <span className="ns-edge-no">{number}</span>}
           {printed && <span aria-hidden>▸</span>}
