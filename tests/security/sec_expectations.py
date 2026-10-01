@@ -22,6 +22,8 @@ Table kinds
                keeps the isolation tests from passing vacuously).
 ``own_insert`` the tenant may insert a row into its own scope directly
                (an INSERT policy exists for the table).
+``operator_reads``  False for a person's private inbox: the platform admin does
+               not read it either (test_sec_notifications.py proves that).
 ``own_insert_setup``  SQL the tenant runs first, in the same transaction, for
                a table whose own-row insert needs something only the tenant
                can create (a render job needs its own fresh credit hold,
@@ -47,6 +49,10 @@ class Kind:
     # beyond the primary key and unique constraints (expression indexes).
     mutate: Tuple[str, ...] = ()
     own_insert_setup: Optional[str] = None
+    # False for a table that is one person's own inbox (notifications, 0064):
+    # not even a platform admin reads another person's rows, so the "operator
+    # still reads every tenant" check does not apply to it.
+    operator_reads: bool = True
 
 
 def Org(col="org_id", **kw) -> Kind:
@@ -403,3 +409,8 @@ sec_storyboard_0057.extend(TABLES, FUNCTIONS)
 import sec_storyboard_0058  # noqa: E402
 
 sec_storyboard_0058.extend(TABLES, FUNCTIONS)
+
+# Migration 0064 (in-app notifications): tests/security/sec_notify_0064.py
+import sec_notify_0064  # noqa: E402
+
+sec_notify_0064.extend(TABLES, FUNCTIONS)
