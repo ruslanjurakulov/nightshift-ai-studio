@@ -69,6 +69,7 @@ export const SECTIONS = [
   "portfolio",
   "providers",
   "models",
+  "margin",
   "billing",
   "credits",
   "series",
