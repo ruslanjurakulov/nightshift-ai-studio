@@ -11,6 +11,7 @@ import { SOURCE_CAPABILITIES } from "@/lib/creative/operations";
 import { formatDuration, formatMediaBytes, type LibraryAsset } from "@/lib/media";
 import { stepIndex } from "./libraryView";
 import { KIND_ICON } from "./kindIcon";
+import { SendToEditor, isSendKind } from "@/components/editor/SendToEditor";
 
 /** Keys inside these keep their own meaning (a video's arrows seek, a field's arrows move the caret). */
 function ownsArrows(target: EventTarget | null): boolean {
@@ -45,6 +46,7 @@ export function MediaViewer({
   deleting,
   opener,
   folderName,
+  orgId,
 }: {
   items: readonly LibraryAsset[];
   index: number;
@@ -55,6 +57,8 @@ export function MediaViewer({
   opener?: RefObject<HTMLElement | null>;
   /** The name of the folder a file is in (migration 0049); absent before folders exist. */
   folderName?: (id: string | null | undefined) => string | null;
+  /** The organization the files belong to: when given, a video, picture or sound can be sent to the editor. */
+  orgId?: string;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
@@ -63,10 +67,12 @@ export function MediaViewer({
   const box = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const [confirm, setConfirm] = useState(false);
+  // While the "open in editor" dialog is up it owns Escape and Tab.
+  const [sending, setSending] = useState(false);
   const touch = useRef<{ x: number; y: number } | null>(null);
   const asset = items[index];
 
-  useOverlay(true, { onClose, container: box, opener });
+  useOverlay(!sending, { onClose, container: box, opener });
 
   // A new file never inherits the last one's "delete?" question. And if the
   // arrow button that brought us here just disabled itself (first or last
@@ -262,6 +268,9 @@ export function MediaViewer({
             )}
 
             <div className="flex flex-col gap-2">
+              {orgId && isSendKind(asset.kind) && (
+                <SendToEditor key={asset.id} orgId={orgId} assetId={asset.id} kind={asset.kind} name={asset.name} onOpenChange={setSending} />
+              )}
               {asset.viewUrl && (
                 <a
                   href={asset.viewUrl}
