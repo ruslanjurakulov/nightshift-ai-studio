@@ -44,7 +44,7 @@ import {
   sectionAllowed,
   sidebarCurrent,
 } from "@/lib/navigation";
-import { STUDIO_CAPABILITIES, prefillFromQuery } from "@/lib/creative/studio";
+import { COMPOSER_CAPABILITIES, prefillFromQuery } from "@/lib/creative/studio";
 import { creditPillAmount, creditUnit } from "@/lib/credits";
 import { planName, type AccountPlan } from "@/lib/account";
 
@@ -74,8 +74,8 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("customer sidebar model", () => {
-  it("lists exactly the Studio's tools, in the Studio's order", () => {
-    expect([...STUDIO_TOOLS]).toEqual([...STUDIO_CAPABILITIES]);
+  it("lists exactly the Studio's tools, voice tools included, in the composer's order", () => {
+    expect([...STUDIO_TOOLS]).toEqual([...COMPOSER_CAPABILITIES]);
     expect(CUSTOMER_SIDEBAR.tools.map((t) => t.href)).toEqual(STUDIO_TOOLS.map((t) => `/create?tool=${t}`));
   });
 

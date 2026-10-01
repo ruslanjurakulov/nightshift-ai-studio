@@ -25,8 +25,10 @@ import { formatCredits } from "@/lib/credits";
 import { fmt, type Dictionary } from "@/lib/i18n";
 
 /**
- * The tools the customer sidebar lists as direct links (lib/navigation's
- * STUDIO_TOOLS mirrors this list; tests/navigation-shell holds them in step).
+ * The Studio's make-and-edit tools (templates and Home's quick tools start
+ * from these). The customer sidebar lists these and the voice tools below —
+ * lib/navigation's STUDIO_TOOLS mirrors COMPOSER_CAPABILITIES, and
+ * tests/navigation-shell holds the two in step.
  */
 export const STUDIO_CAPABILITIES = ["t2i", "t2v", "tts", "edit", "i2v", "upscale", "remove_bg"] as const satisfies readonly CreativeCapability[];
 
@@ -105,6 +107,12 @@ export interface StudioModel {
    */
   qualityTier?: number | null;
   speedTier?: number | null;
+  /**
+   * The plan entitlement the model needs (0035: `paid`, `any`, `key` or
+   * `key:value`), from sellable_models(); null = none, absent = not read. Only
+   * the plan dialog reads it, to name what would unlock a refused model.
+   */
+  entitlement?: string | null;
 }
 
 const tier = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 5 ? v : null);
@@ -116,16 +124,17 @@ const tier = (v: unknown): number | null => (typeof v === "number" && Number.isI
  */
 export function withTiers(models: StudioModel[], sellable: unknown): StudioModel[] {
   if (!Array.isArray(sellable)) return models;
-  const marks = new Map<string, { q: number | null; s: number | null }>();
+  const marks = new Map<string, { q: number | null; s: number | null; e: string | null }>();
   for (const r of sellable) {
     if (!r || typeof r !== "object") continue;
     const row = r as Record<string, unknown>;
     const spec = row.spec && typeof row.spec === "object" && !Array.isArray(row.spec) ? (row.spec as Record<string, unknown>) : {};
-    if (typeof row.id === "string") marks.set(row.id, { q: tier(spec.quality_tier), s: tier(spec.speed_tier) });
+    const e = typeof row.entitlement === "string" && row.entitlement ? row.entitlement : null;
+    if (typeof row.id === "string") marks.set(row.id, { q: tier(spec.quality_tier), s: tier(spec.speed_tier), e });
   }
   return models.map((m) => {
     const k = marks.get(m.id);
-    return k ? { ...m, qualityTier: k.q, speedTier: k.s } : m;
+    return k ? { ...m, qualityTier: k.q, speedTier: k.s, entitlement: k.e } : m;
   });
 }
 
@@ -311,10 +320,15 @@ export function apiErrorMessage(t: Dictionary, code: unknown): string {
   return t.creative.errors[asCreativeError(code)];
 }
 
-/** What the panel offers next to the message. */
-export function errorAction(code: unknown): "credits" | "requote" | null {
+/**
+ * What the panel offers next to the message: credits (the Credits page, and
+ * the plan dialog), plans (the plan dialog: a model the plan does not open,
+ * or every parallel run busy), or a fresh price.
+ */
+export function errorAction(code: unknown): "credits" | "plans" | "requote" | null {
   const c = asCreativeError(code);
   if (c === "insufficient_credits") return "credits";
+  if (c === "entitlement_required" || c === "run_limit_reached") return "plans";
   if (c === "price_changed") return "requote";
   return null;
 }
