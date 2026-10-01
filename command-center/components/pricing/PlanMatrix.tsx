@@ -6,8 +6,15 @@ import { Check, Minus } from "lucide-react";
 import { fmt } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n/context";
 import { formatCredits } from "@/lib/credits";
-import { packMinutes } from "@/lib/pricing";
-import { columnPrice, type EntitlementType, type EntitlementValue, type PlanMatrix as Matrix } from "@/lib/plans";
+import { packMinutes, WELCOME_CREDITS } from "@/lib/pricing";
+import {
+  columnPrice,
+  type EntitlementType,
+  type EntitlementValue,
+  type GenerationRates,
+  type PlanMatrix as Matrix,
+} from "@/lib/plans";
+import { Equivalents } from "@/components/credits/Equivalents";
 import { ensurePaddle, previewPrices } from "@/lib/paddle-client";
 
 type Dict = ReturnType<typeof useI18n>["t"];
@@ -28,15 +35,22 @@ export function entitlementText(key: string, type: EntitlementType, v: Entitleme
  * from Paddle's preview when Paddle sells the plan, else the owner's display
  * price; a plan with neither says its price is not published — never a number
  * made up here.
+ *
+ * Under the credits, "≈ N images · M videos" when today's prices could be
+ * read (signed-in only — credit_prices is not public); otherwise the older
+ * minutes-of-video line when only the per-minute rate is known, else nothing.
  */
 export function PlanMatrix({
   matrix,
   perMinute,
+  rates = null,
   signedIn,
   subscribeHref,
 }: {
   matrix: Matrix;
   perMinute: number | null;
+  /** Today's generation prices (lib/plans generationRates); null = unknown, no equivalents shown. */
+  rates?: GenerationRates | null;
   signedIn: boolean;
   subscribeHref: string;
 }) {
@@ -82,17 +96,17 @@ export function PlanMatrix({
           {t.pricing.sandbox}
         </span>
       )}
-      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <ul className={`grid gap-4 sm:grid-cols-2 ${matrix.columns.length >= 4 ? "xl:grid-cols-4" : "lg:grid-cols-3"}`}>
         {matrix.columns.map((col, i) => {
           const price = columnPrice(col, preview, loading);
-          const minutes = col.isDefault ? null : packMinutes(col.monthlyCredits, perMinute);
+          const minutes = col.isDefault || rates ? null : packMinutes(col.monthlyCredits, perMinute);
           return (
             <li
               key={col.id}
-              className="glass-card flex flex-col gap-5 rounded-[22px] border border-[var(--color-border)] p-6"
+              className="flex flex-col gap-5 rounded-[22px] border border-[var(--color-border)] bg-[var(--color-panel)] p-6"
             >
-              <div className="t-label">{col.name}</div>
-              <div>
+              <h3 className="text-[15px] font-semibold tracking-[-0.01em]">{col.name}</h3>
+              <div className="min-h-[2.25rem]">
                 {price.kind === "free" ? (
                   <div className="font-display text-[2rem] font-semibold leading-none tracking-[-0.02em]">{p.free}</div>
                 ) : price.kind === "preview" || price.kind === "display" ? (
@@ -110,48 +124,58 @@ export function PlanMatrix({
                   </div>
                 )}
               </div>
-              <div className="border-t border-[var(--color-border)] pt-4">
-                <div className="mono text-[20px] leading-none text-[var(--color-primary)]">
+              <div className="flex flex-col gap-2 rounded-2xl bg-[var(--studio-field)] p-4">
+                <div className="mono text-[17px] leading-tight text-[var(--color-primary)]">
                   {col.isDefault
-                    ? p.freeCredits
+                    ? fmt(p.freeCredits, { n: formatCredits(WELCOME_CREDITS, locale) })
                     : fmt(p.monthlyCredits, { n: formatCredits(col.monthlyCredits, locale) })}
                 </div>
+                <Equivalents credits={col.isDefault ? WELCOME_CREDITS : col.monthlyCredits} rates={rates} />
                 {minutes !== null && (
-                  <div className="mt-2 text-[12px] font-light text-[var(--color-muted)]">
+                  <div className="text-[12px] font-light text-[var(--color-muted)]">
                     {fmt(p.minutes, { m: formatCredits(minutes, locale) })}
                   </div>
                 )}
               </div>
-              <dl className="flex flex-col gap-2.5 text-[13px]">
-                {matrix.rows.map((row) => {
-                  const v = row.cells[i];
-                  const off = v === false || v === 0 || v === "none";
-                  return (
-                    <div key={row.key} className="flex items-start justify-between gap-3">
-                      <dt className="font-light text-[var(--color-muted)]">{rowLabel(row.key)}</dt>
-                      <dd className="flex items-center gap-1 text-right font-medium">
-                        {row.type === "bool" ? (
-                          off ? (
-                            <Minus className="size-4 text-[var(--color-muted)]" aria-label={p.no} />
-                          ) : (
-                            <Check className="size-4 text-[var(--color-ok)]" aria-label={p.yes} />
-                          )
-                        ) : (
-                          entitlementText(row.key, row.type, v, t)
-                        )}
-                      </dd>
-                    </div>
-                  );
-                })}
-              </dl>
-              {!col.isDefault && col.priceId && (
+              {matrix.rows.length > 0 && (
+                <div className="flex flex-col gap-2.5">
+                  <div className="t-label">{t.pricing.limitsLabel}</div>
+                  <dl className="flex flex-col gap-2.5 text-[13px]">
+                    {matrix.rows.map((row) => {
+                      const v = row.cells[i];
+                      const off = v === false || v === 0 || v === "none";
+                      return (
+                        <div key={row.key} className="flex items-start justify-between gap-3">
+                          <dt className="font-light text-[var(--color-muted)]">{rowLabel(row.key)}</dt>
+                          <dd className="flex items-center gap-1 text-right font-medium">
+                            {row.type === "bool" ? (
+                              off ? (
+                                <Minus className="size-4 text-[var(--color-muted)]" aria-label={p.no} />
+                              ) : (
+                                <Check className="size-4 text-[var(--color-ok)]" aria-label={p.yes} />
+                              )
+                            ) : (
+                              entitlementText(row.key, row.type, v, t)
+                            )}
+                          </dd>
+                        </div>
+                      );
+                    })}
+                  </dl>
+                </div>
+              )}
+              {!col.isDefault && col.priceId ? (
                 <Link
                   href={signedIn ? subscribeHref : "/signup"}
-                  className="btn-sky is-solid pill mt-auto self-start px-5 py-2.5 text-sm"
+                  className="btn-sky is-solid pill mt-auto min-h-11 justify-center px-5 text-sm"
                 >
                   {signedIn ? p.subscribe : p.subscribeSignedOut}
                 </Link>
-              )}
+              ) : col.isDefault && !signedIn ? (
+                <Link href="/signup" className="btn-sky ghost pill mt-auto min-h-11 justify-center px-5 text-sm">
+                  {t.pricing.ctaSignedOut}
+                </Link>
+              ) : null}
             </li>
           );
         })}

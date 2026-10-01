@@ -12,6 +12,7 @@ import { resolvePaddleConfig } from "@/lib/paddle";
 import { en } from "@/lib/i18n/en";
 import { ru } from "@/lib/i18n/ru";
 import { uz } from "@/lib/i18n/uz";
+import { PROVIDER_BRANDS } from "./helpers/brands";
 
 describe("output showcase", () => {
   it("ships empty, so the landing page renders no results section at all", () => {
@@ -81,28 +82,44 @@ describe("JSON-LD", () => {
 });
 
 describe("landing copy", () => {
-  it("keeps the same list lengths in every language, so no section renders half-translated", () => {
+  it("keeps the same lists and ids in every language, so no section renders half-translated", () => {
     for (const d of [ru, uz]) {
       const l = d.landing;
-      expect(l.mock.filters).toHaveLength(en.landing.mock.filters.length);
-      expect(l.mock.chips).toHaveLength(en.landing.mock.chips.length);
-      expect(l.promises.items).toHaveLength(en.landing.promises.items.length);
-      expect(l.how.steps).toHaveLength(en.landing.how.steps.length);
-      expect(l.features.items.map((i) => i.id)).toEqual(en.landing.features.items.map((i) => i.id));
-      expect(l.features.items.map((i) => i.points.length)).toEqual(en.landing.features.items.map((i) => i.points.length));
-      expect(l.why.rows).toHaveLength(en.landing.why.rows.length);
+      expect(l.mock.styles).toHaveLength(en.landing.mock.styles.length);
+      expect(Object.keys(l.flow)).toEqual(Object.keys(en.landing.flow));
+      expect(l.how.steps.map((s) => s.id)).toEqual(en.landing.how.steps.map((s) => s.id));
+      expect(Object.keys(l.make.formats)).toEqual(Object.keys(en.landing.make.formats));
+      expect(Object.keys(l.make.tools)).toEqual(Object.keys(en.landing.make.tools));
+      expect(l.why.items.map((i) => i.id)).toEqual(en.landing.why.items.map((i) => i.id));
       expect(d.pricing.terms).toHaveLength(en.pricing.terms.length);
       expect(d.pricing.faq.map((i) => i.id)).toEqual(en.pricing.faq.map((i) => i.id));
       expect(l.faq.items.map((i) => i.id)).toEqual(en.landing.faq.items.map((i) => i.id));
     }
   });
 
-  it("has three steps in How it works", () => {
-    expect(en.landing.how.steps).toHaveLength(3);
+  it("walks the video flow in the product's order, ending with your approval and YouTube", () => {
+    expect(en.landing.how.steps.map((s) => s.id)).toEqual(["channel", "topic", "script", "video", "approval", "youtube"]);
+  });
+
+  it("answers cancelling, refunds, unused credits and privacy before anyone buys", () => {
+    for (const d of [en, ru, uz]) {
+      const ids = d.landing.faq.items.map((i) => i.id);
+      for (const id of ["cancel", "refund", "unused", "data"]) expect(ids).toContain(id);
+    }
+  });
+
+  it("states the welcome grant through a placeholder, never a typed number", () => {
+    for (const d of [en, ru, uz]) {
+      expect(d.landing.hero.note).toContain("{n}");
+      expect(d.landing.hero.note).not.toMatch(/\d/);
+      expect(d.plans.freeCredits).toContain("{n}");
+      expect(d.plans.freeCredits).not.toMatch(/\d/);
+      expect(d.pricing.freeChip).toContain("{n}");
+    }
   });
 
   it("names no competitor or provider brand in public copy", () => {
-    const brands = /\b(?:krea|higgsfield|magiclight|kling|capcut|inshot|runway|midjourney|elevenlabs|veo|sora|pika)\b/i;
+    const brands = PROVIDER_BRANDS;
     for (const d of [en, ru, uz]) {
       expect(JSON.stringify(d.landing)).not.toMatch(brands);
       expect(JSON.stringify(d.pricing)).not.toMatch(brands);

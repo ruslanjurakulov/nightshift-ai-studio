@@ -6,11 +6,13 @@ import { SectionHead } from "@/components/landing/SectionHead";
 type FaqItem = { id: string; q: string; a: string };
 type FaqLink = { href: string; label: string } | null;
 
+const OPEN_ON_ARRIVAL = ["cancel", "refund"] as const;
+
 /** Answers that point somewhere carry the link beneath them. */
 function faqLink(id: string, f: Dictionary["landing"]["faq"]): FaqLink {
   if (id === "data") return { href: "/privacy", label: f.privacyLink };
-  if (id === "credits") return { href: "/pricing", label: f.pricingLink };
-  if (id === "cancel") return { href: "/terms#credits", label: f.termsLink };
+  if (id === "unused") return { href: "/pricing", label: f.pricingLink };
+  if (id === "cancel" || id === "refund") return { href: "/terms#credits", label: f.termsLink };
   return null;
 }
 
@@ -19,13 +21,22 @@ function faqLink(id: string, f: Dictionary["landing"]["faq"]): FaqLink {
  * script, and every answer is in the HTML for search engines. Shared by the
  * homepage FAQ and the Pricing page's questions.
  */
-export function FaqList({ items, linkFor }: { items: readonly FaqItem[]; linkFor?: (id: string) => FaqLink }) {
+export function FaqList({
+  items,
+  linkFor,
+  openIds = [],
+}: {
+  items: readonly FaqItem[];
+  linkFor?: (id: string) => FaqLink;
+  /** Answers shown open on arrival — the money terms a visitor should read before paying. */
+  openIds?: readonly string[];
+}) {
   return (
     <div className="border-b border-[var(--color-border)]">
       {items.map((item) => {
         const link = linkFor?.(item.id) ?? null;
         return (
-          <details key={item.id} className="lp-faq group border-t border-[var(--color-border)]">
+          <details key={item.id} open={openIds.includes(item.id)} className="lp-faq group border-t border-[var(--color-border)]">
             <summary className="flex min-h-14 cursor-pointer items-center justify-between gap-4 py-4 text-[16px] font-medium transition-colors hover:text-[var(--color-primary)]">
               <h3 className="font-sans">{item.q}</h3>
               <Plus className="lp-faq-icon size-4 shrink-0 text-[var(--color-primary)]" aria-hidden />
@@ -49,14 +60,19 @@ export function FaqList({ items, linkFor }: { items: readonly FaqItem[]; linkFor
   );
 }
 
-/** The homepage FAQ. Each answer describes what the code does today — no promised timings, no roadmap. */
+/**
+ * The homepage FAQ: the questions to settle before paying — cancelling,
+ * refunds, unused credits, privacy. Cancelling and refunds are open on
+ * arrival, so the terms are read before the buy button, not after. Each
+ * answer describes what the code does today — no promised timings, no roadmap.
+ */
 export function Faq({ t, hour }: { t: Dictionary; hour: string }) {
   const f = t.landing.faq;
   return (
     <section id="faq" aria-labelledby="faq-title" className="scroll-mt-24">
       <div className="grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
         <SectionHead hour={hour} eyebrow={f.eyebrow} title={f.title} id="faq-title" className="lg:sticky lg:top-28 lg:self-start" />
-        <FaqList items={f.items} linkFor={(id) => faqLink(id, f)} />
+        <FaqList items={f.items} linkFor={(id) => faqLink(id, f)} openIds={OPEN_ON_ARRIVAL} />
       </div>
     </section>
   );

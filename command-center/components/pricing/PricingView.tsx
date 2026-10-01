@@ -1,13 +1,14 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Check, Clock, Eye, Receipt, RotateCcw } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, Clock, Coins, Eye, Receipt, RotateCcw } from "lucide-react";
 import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
 import { formatCredits } from "@/lib/credits";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import { ALL_CHANNELS_SLUG } from "@/lib/channels";
-import type { CreditRates, Pricing } from "@/lib/pricing";
-import { plansOnSale, type PlanMatrix as Matrix } from "@/lib/plans";
+import { WELCOME_CREDITS, type CreditRates, type Pricing } from "@/lib/pricing";
+import { plansOnSale, type GenerationRates, type PlanMatrix as Matrix } from "@/lib/plans";
 import { PackCards } from "@/components/pricing/PackCards";
 import { PlanMatrix } from "@/components/pricing/PlanMatrix";
+import { PlanCompare } from "@/components/pricing/PlanCompare";
 import { ErrorState } from "@/components/ReadError";
 import { FaqList } from "@/components/landing/Faq";
 
@@ -17,13 +18,20 @@ const PADDLE_BUYER_TERMS = "https://www.paddle.com/legal/checkout-buyer-terms";
  * The public Pricing page. A Server Component; only the plan and pack cards
  * are client code, because Paddle's localized price preview runs in the browser.
  *
- * Read top to bottom it answers: what it costs (plans, then packs), what you
- * agree to (terms at a glance — renewal, cancelling, expiry, failures), what a
- * credit buys, who takes the money, and the questions people ask before paying.
+ * Read top to bottom it answers: what it costs (plan cards, then the plans
+ * side by side, then packs), what you agree to (terms at a glance — renewal,
+ * cancelling, expiry, failures), what a credit buys, who takes the money, and
+ * the questions people ask before paying.
  *
- * Nothing here is a number the code made up: pack prices come from Paddle or
- * the owner's env, rates from the live price list, and when there is neither
- * the page says so in words.
+ * Nothing here is a number the code made up: plan and pack prices come from
+ * Paddle or the owner's env, credits and limits from the plan catalog, the
+ * "≈ N images" equivalents from today's price list (signed-in only), the
+ * welcome grant from WELCOME_CREDITS, and when there is none of that the page
+ * says so in words. There is no Monthly / Yearly switch: the plan data holds
+ * monthly prices only, and a yearly discount nobody set would be invented.
+ *
+ * The seller is named once, in the Payments section's Merchant of Record
+ * sentence — the line Paddle's reviewers look for.
  */
 export function PricingView({
   t,
@@ -32,6 +40,7 @@ export function PricingView({
   signedIn,
   rates,
   ratesFailed = false,
+  generationRates = null,
   plans,
   plansFailed = false,
   packValidMonths,
@@ -44,6 +53,8 @@ export function PricingView({
   rates: CreditRates | null;
   /** The rates read itself failed (as opposed to "not published" / signed out): they are unknown. */
   ratesFailed?: boolean;
+  /** Today's generation prices for the "≈ N images" lines; null = not readable here (signed out, or failed). */
+  generationRates?: GenerationRates | null;
   /** The plan matrix (0034); null when the catalog is absent or could not be read. */
   plans: Matrix | null;
   /** The catalog read itself failed: the plans are unknown, not "none on sale". */
@@ -77,11 +88,27 @@ export function PricingView({
         <h1
           id="pricing-title"
           className="mt-5 font-display font-semibold tracking-[-0.03em]"
-          style={{ fontSize: "clamp(2.5rem, 6vw, 64px)", lineHeight: 1.04, textWrap: "balance" }}
+          style={{ fontSize: "clamp(2.25rem, 5vw, 56px)", lineHeight: 1.05, textWrap: "balance" }}
         >
           {p.title}
         </h1>
-        <p className="t-lead mt-6">{p.lead}</p>
+        <p className="mt-5 max-w-[60ch] text-[16.5px] font-light leading-relaxed text-[var(--color-muted)] sm:text-[18px]">{p.lead}</p>
+        <ul className="mt-6 flex flex-wrap gap-2">
+          <li className="pill inline-flex min-h-8 items-center gap-1.5 border border-[var(--color-primary)] bg-[var(--color-accent-soft)] px-3 text-[13px] text-[var(--color-fg)]">
+            <Coins className="size-3.5 text-[var(--color-primary)]" aria-hidden />
+            {fmt(p.freeChip, { n: formatCredits(WELCOME_CREDITS, locale) })}
+          </li>
+          <li className="pill inline-flex min-h-8 items-center gap-1.5 border border-[var(--color-border)] px-3 text-[13px] text-[var(--color-muted)]">
+            <RotateCcw className="size-3.5 text-[var(--color-ok)]" aria-hidden />
+            {p.how3Title}
+          </li>
+          {showPlans && (
+            <li className="pill inline-flex min-h-8 items-center gap-1.5 border border-[var(--color-border)] px-3 text-[13px] text-[var(--color-muted)]">
+              <Clock className="size-3.5" aria-hidden />
+              {p.noYearly}
+            </li>
+          )}
+        </ul>
         <div className="mt-8 flex flex-col gap-3 min-[420px]:flex-row min-[420px]:flex-wrap min-[420px]:items-center">
           <Link href={primary.href} className="btn-sky is-solid pill min-h-12 px-7 text-[15px]">
             {primary.label}
@@ -97,7 +124,7 @@ export function PricingView({
       {plansFailed && (
         <section id="plans" aria-labelledby="plans-title" className="flex scroll-mt-24 flex-col gap-6">
           <div className="max-w-3xl">
-            <h2 id="plans-title" className="t-section">
+            <h2 id="plans-title" className="lp-h2">
               {t.plans.matrixTitle}
             </h2>
           </div>
@@ -110,7 +137,7 @@ export function PricingView({
       {showPlans && plans && (
         <section id="plans" aria-labelledby="plans-title" className="flex scroll-mt-24 flex-col gap-6">
           <div className="max-w-3xl">
-            <h2 id="plans-title" className="t-section">
+            <h2 id="plans-title" className="lp-h2">
               {t.plans.matrixTitle}
             </h2>
             <p className="t-lead mt-3">{t.plans.matrixLead}</p>
@@ -118,22 +145,36 @@ export function PricingView({
           <PlanMatrix
             matrix={plans}
             perMinute={rates?.perMinute ?? null}
+            rates={generationRates}
             signedIn={signedIn}
             subscribeHref={`${credits}#plans`}
           />
           <ul className="flex max-w-3xl flex-col gap-2 text-[13px] font-light text-[var(--color-muted)]">
+            {generationRates ? <li>{t.creditsPage.eq.note}</li> : !signedIn && <li>{p.eqSignedOut}</li>}
             <li>{t.plans.expiresNote}</li>
             <li>{t.plans.spendOrder}</li>
             <li>{t.plans.apiNote}</li>
           </ul>
+
+          <div className="mt-8 flex flex-col gap-4">
+            <div className="max-w-3xl">
+              <h3 id="compare-title" className="text-[1.375rem] font-semibold tracking-[-0.02em]">
+                {p.compareTitle}
+              </h3>
+              <p className="mt-2 text-[14px] font-light text-[var(--color-muted)]">{p.compareLead}</p>
+            </div>
+            <PlanCompare matrix={plans} titleId="compare-title" />
+          </div>
         </section>
       )}
 
-      <section aria-labelledby="packs-title" className="flex flex-col gap-6">
-        <h2 id="packs-title" className={showPlans ? "t-section" : "sr-only"}>
-          {showPlans ? t.plans.topupsTitle : p.packsLabel}
-        </h2>
-        {showPlans && <p className="t-lead -mt-3 max-w-3xl">{t.plans.topupsLead}</p>}
+      <section id="packs" aria-labelledby="packs-title" className="flex scroll-mt-24 flex-col gap-6">
+        <div className="max-w-3xl">
+          <h2 id="packs-title" className="lp-h2">
+            {p.packsTitle}
+          </h2>
+          <p className="t-lead mt-3">{p.packsLead}</p>
+        </div>
         {pricing.source === "none" ? (
           <div className="glass-card flex flex-col gap-3 rounded-[22px] border border-dashed border-[var(--color-primary)] p-6 sm:p-10">
             <h3 className="text-[1.5rem] font-semibold tracking-[-0.02em]">{p.comingSoonTitle}</h3>
@@ -142,7 +183,12 @@ export function PricingView({
           </div>
         ) : (
           <>
-            <PackCards packs={pricing.packs} paddle={pricing.paddle} perMinute={rates?.perMinute ?? null} />
+            <PackCards
+              packs={pricing.packs}
+              paddle={pricing.paddle}
+              perMinute={rates?.perMinute ?? null}
+              rates={generationRates}
+            />
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="max-w-2xl text-[13px] font-light text-[var(--color-muted)]">
                 {pricing.source === "paddle" ? p.taxNote : p.checkoutClosed} {expiry}
@@ -187,7 +233,7 @@ export function PricingView({
 
       <section aria-labelledby="how-title" className="grid gap-10 lg:grid-cols-[1fr_20rem] lg:gap-14">
         <div>
-          <h2 id="how-title" className="t-section">
+          <h2 id="how-title" className="lp-h2">
             {p.howTitle}
           </h2>
           <p className="t-lead mt-4 max-w-2xl">{p.howLead}</p>
@@ -259,7 +305,7 @@ export function PricingView({
       </section>
 
       <section id="pricing-faq" aria-labelledby="pricing-faq-title" className="grid scroll-mt-24 gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
-        <h2 id="pricing-faq-title" className="t-section lg:sticky lg:top-28 lg:self-start">
+        <h2 id="pricing-faq-title" className="lp-h2 lg:sticky lg:top-28 lg:self-start">
           {p.faqTitle}
         </h2>
         <FaqList items={p.faq} linkFor={faqLink} />

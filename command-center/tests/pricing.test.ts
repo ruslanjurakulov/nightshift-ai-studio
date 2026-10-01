@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolvePaddleConfig, previewTotals, type PaddleEnv } from "@/lib/paddle";
 import { parsePrices } from "@/lib/credits";
@@ -8,6 +10,7 @@ import {
   packPrice,
   readDisplayPrice,
   resolvePricing,
+  WELCOME_CREDITS,
   type PricingEnv,
 } from "@/lib/pricing";
 import { en } from "@/lib/i18n/en";
@@ -169,5 +172,26 @@ describe("pricing strings", () => {
     expect(t.pricing.rateValue).toContain("{n}");
     expect(t.pricing.minutes).toContain("{m}");
     expect(t.pricing.expiryAfter).toContain("{m}");
+  });
+});
+
+describe("welcome credits", () => {
+  // The public pages promise this many credits on sign-up; the database trigger
+  // is what actually grants them. The newest migration that sets the amount wins.
+  it("matches the amount grant_welcome_credits() gives", () => {
+    const dir = path.join(__dirname, "..", "..", "supabase", "migrations");
+    const amounts = readdirSync(dir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .flatMap((f) => [...readFileSync(path.join(dir, f), "utf8").matchAll(/welcome_credits\s+constant\s+numeric\s*:=\s*(\d+)/g)].map((m) => Number(m[1])));
+    expect(amounts.length).toBeGreaterThan(0);
+    expect(WELCOME_CREDITS).toBe(amounts[amounts.length - 1]);
+  });
+
+  it("is named through a placeholder in every language's pricing copy", () => {
+    for (const t of [en, ru, uz]) {
+      expect(t.plans.freeCredits).toContain("{n}");
+      expect(t.pricing.freeChip).toContain("{n}");
+    }
   });
 });

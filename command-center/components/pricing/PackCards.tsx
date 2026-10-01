@@ -6,6 +6,8 @@ import { useI18n } from "@/lib/i18n/context";
 import { formatCredits } from "@/lib/credits";
 import { packMinutes, packPrice, type Pricing, type PricingPack } from "@/lib/pricing";
 import { ensurePaddle, previewPrices } from "@/lib/paddle-client";
+import type { GenerationRates } from "@/lib/plans";
+import { Equivalents } from "@/components/credits/Equivalents";
 
 /**
  * The three pack cards. When this deployment sells through Paddle, the prices
@@ -18,10 +20,13 @@ export function PackCards({
   packs,
   paddle,
   perMinute,
+  rates = null,
 }: {
   packs: PricingPack[];
   paddle: Pricing["paddle"];
   perMinute: number | null;
+  /** Today's generation prices; when known, "≈ N images · M videos" replaces the minutes line. */
+  rates?: GenerationRates | null;
 }) {
   const { t, locale } = useI18n();
   const p = t.pricing;
@@ -67,17 +72,18 @@ export function PackCards({
       <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {packs.map((pack) => {
           const price = packPrice(pack, preview, loading);
-          const minutes = packMinutes(pack.credits, perMinute);
+          const minutes = rates ? null : packMinutes(pack.credits, perMinute);
           return (
             <li
               key={pack.id}
-              className="glass-card flex flex-col gap-5 rounded-[22px] border border-[var(--color-border)] p-6 sm:p-7"
+              className="flex flex-col gap-5 rounded-[22px] border border-[var(--color-border)] bg-[var(--color-panel)] p-6 sm:p-7"
             >
-              <div className="t-label">{t.credits.buy.pack[pack.id]}</div>
+              <h3 className="text-[15px] font-semibold tracking-[-0.01em]">{t.credits.buy.pack[pack.id]}</h3>
               <div>
                 <div className="mono text-[28px] leading-none tracking-[-0.02em] text-[var(--color-primary)]">
                   {fmt(p.credits, { n: formatCredits(pack.credits, locale) })}
                 </div>
+                <Equivalents credits={pack.credits} rates={rates} className="mt-2" />
                 {minutes !== null && (
                   <div className="mt-2 text-[13px] font-light text-[var(--color-muted)]">
                     {fmt(p.minutes, { m: formatCredits(minutes, locale) })}
