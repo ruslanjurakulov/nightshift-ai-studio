@@ -33,7 +33,11 @@
 #      `web` to report healthy;
 #   6. then starts or updates the worker, or removes it when it is off. A
 #      worker in the middle of a video gets stop_grace_period to finish it; a
-#      run cut short is re-queued and resumed from its checkpoint.
+#      run cut short is re-queued and resumed from its checkpoint. The
+#      creative worker follows the worker-section line
+#      NIGHTSHIFT_CREATIVE_WORKER=on (the repository variable of that name):
+#      started or recreated when it says `on` and the worker is on, stopped
+#      and removed otherwise.
 #
 # It never prints a value — only key names, the commit, and container status.
 # Its output ends up in a PUBLIC Actions log, so that is not a style choice.
@@ -254,6 +258,15 @@ main() {
     check_section "$example" "$WORKER_TOKEN_KEY" "${WORKER_REQUIRED_KEYS[*]}" "${worker_lines[@]}"
     worker_keys=$nkeys
   fi
+  # The creative worker's switch is one of the worker keys (the repository
+  # variable NIGHTSHIFT_CREATIVE_WORKER): exactly `on` starts it, anything
+  # else (empty, off, a typo) leaves it off. No worker, no creative worker.
+  local creative=off
+  if [[ "$worker" == on ]]; then
+    for line in "${worker_lines[@]}"; do
+      if [[ "$line" == NIGHTSHIFT_CREATIVE_WORKER=on ]]; then creative=on; fi
+    done
+  fi
   if (( ${#problems[@]} > 0 )); then
     printf 'ERROR: the env sent by the workflow was refused; nothing was changed:\n' >&2
     printf '  - %s\n' "${problems[@]}" | sort >&2
@@ -318,13 +331,28 @@ main() {
     log "docker compose up -d --no-deps media-worker"
     compose up -d --no-deps media-worker \
       || die "the media worker did not start; on the server: dc logs --tail 100 media-worker"
-    compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' worker media-worker || true
+    # The creative worker (0036): switched by the repository variable
+    # NIGHTSHIFT_CREATIVE_WORKER, which travels as one line of the worker
+    # section (it shares the worker's env file, so it only exists while the
+    # worker is on). `on` starts it, or moves it onto the image just built;
+    # anything else stops and removes it.
+    local -a services=(worker media-worker)
+    if [[ "$creative" == on ]]; then
+      log "docker compose up -d --no-deps creative-worker"
+      compose up -d --no-deps creative-worker \
+        || die "the creative worker did not start; on the server: dc logs --tail 100 creative-worker"
+      services+=(creative-worker)
+    else
+      compose rm --stop --force creative-worker >/dev/null 2>&1 || true
+      log "creative-worker is off (GitHub variable NIGHTSHIFT_CREATIVE_WORKER is not 'on')"
+    fi
+    compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' "${services[@]}" || true
     # A container that dies right after start still reads "Up" in the line
     # above. Wait a moment, then print how each worker is doing: state, last
     # exit code, restart count, whether the kernel killed it for memory.
     # Numbers and a state word only, never log text: this output is public.
     if [[ "$WORKER_SETTLE_SECONDS" -gt 0 ]]; then sleep "$WORKER_SETTLE_SECONDS"; fi
-    for svc in worker media-worker; do
+    for svc in "${services[@]}"; do
       cid="$(compose ps -q "$svc" 2>/dev/null || true)"
       if [[ -n "$cid" ]]; then
         "$DOCKER" inspect -f "$svc after ${WORKER_SETTLE_SECONDS}s: state={{.State.Status}} exit={{.State.ExitCode}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}" "$cid" || true
@@ -350,12 +378,9 @@ main() {
     # does its recent output contain (why it exits with 2)?
     media_log="$(compose logs --no-color --tail 200 media-worker 2>&1 || true)"
     echo "media-worker log hints: $(hint_words "$media_log" || true)"
-    # The creative worker (0036) is started by hand, never by a deploy; one
-    # that is already running is moved onto the image just built.
-    if [[ -n "$(compose ps -q creative-worker 2>/dev/null)" ]]; then
-      log "docker compose up -d --no-deps creative-worker"
-      compose up -d --no-deps creative-worker \
-        || die "the creative worker did not restart; on the server: dc logs --tail 100 creative-worker"
+    if [[ "$creative" == on ]]; then
+      creative_log="$(compose logs --no-color --tail 200 creative-worker 2>&1 || true)"
+      echo "creative-worker log hints: $(hint_words "$creative_log" || true)"
     fi
   else
     # Off: no container, and no copy of the bot's keys left on the disk.
@@ -363,14 +388,14 @@ main() {
     compose rm --stop --force worker >/dev/null 2>&1 || true
     compose rm --stop --force creative-worker >/dev/null 2>&1 || true
     rm -f "$WORKER_ENV_FILE" "${WORKER_ENV_FILE}.prev"
-    log "worker is off (GitHub variable NIGHTSHIFT_WORKER is not 'on')"
+    log "worker is off (GitHub variable NIGHTSHIFT_WORKER is not 'on'); creative-worker is off with it"
   fi
 
   # Each build leaves the previous image dangling; a few of these a week fill
   # a disk. Only dangling images: nothing a container still uses.
   "$DOCKER" image prune -f >/dev/null 2>&1 || true
 
-  log "deployed $sha; web is healthy; worker $worker"
+  log "deployed $sha; web is healthy; worker $worker; creative-worker $creative"
 }
 
 main "$@"

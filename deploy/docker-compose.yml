@@ -215,11 +215,11 @@ services:
   # Runs creative_jobs — image / video / speech generations started from the
   # Command Center — in its own process, so a generation never waits behind a
   # pipeline render. Same image and env file as the pipeline worker (the
-  # provider keys and the Supabase service key live only there). Started by
-  # hand once 0036 is applied:
-  #   docker compose --profile worker -f deploy/docker-compose.yml up -d creative-worker
-  # A deploy recreates it only if it is already running, and removes it with
-  # the pipeline worker when the worker is switched off.
+  # provider keys and the Supabase service key live only there). Switched by
+  # the GitHub repository variable NIGHTSHIFT_CREATIVE_WORKER: `on` (with
+  # NIGHTSHIFT_WORKER on too) and every deploy starts it or recreates it on
+  # the new image; anything else and the deploy removes it
+  # (deploy/remote-deploy.sh). Turn it on once 0036 is applied.
   #
   # Migration 0046: it reads the source picture of an edit / image-to-video /
   # upscale / background-removal job from the media library, and adds every

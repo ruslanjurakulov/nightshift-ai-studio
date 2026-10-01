@@ -697,7 +697,10 @@ class HeicIngest(IngestCase):
 
     def test_a_decode_that_takes_too_long_is_killed_and_rejected(self):
         t = self.ticket(heic_bytes((64, 48)), mime="image/heic", name="slow.heic")
-        slow = lambda *a: ml.decode_heic(*a, timeout_s=0.05, beat_s=0.02)  # noqa: E731
+        # A limit no decode can meet: the first 1 ms wait ends before a child
+        # Python process can even start, so the timeout path is certain on any
+        # machine (a 50 ms limit lost the race on a fast CI runner).
+        slow = lambda *a: ml.decode_heic(*a, timeout_s=0.0, beat_s=0.001)  # noqa: E731
         self.assertEqual(self.run_ticket(t, decoder=slow), "rejected")
         self.assertEqual(self.store.rejected[-1], (t["id"], "timeout"))
         self.assertEqual(self.media_files(), [])

@@ -13,6 +13,10 @@ This is the admin-run tool that makes that call and records it:
     # probe two models for real and record the result (verified_at on success)
     python tools/probe_models.py --model veo-3.1-lite --model elevenlabs-flash-v2.5
 
+    # the same for a public log (.github/workflows/probe_models.yml): one line
+    # per model, "ok <id>", "failed <id> <error code>" or "skipped <id>"
+    python tools/probe_models.py --sync --all --brief
+
 Run it on the worker (the provider keys live in its env; docs/DEPLOY_AX42.md)
 with SUPABASE_URL and SUPABASE_SERVICE_KEY set. Each probe is the registry
 entry's ``probe`` request — the shortest, lowest-resolution call the model
@@ -42,8 +46,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from modules import model_registry  # noqa: E402
 from modules.capabilities import build_adapter  # noqa: E402
 from modules.capabilities.base import (  # noqa: E402
+    E_AUTH,
+    E_BAD_REQUEST,
     E_BAD_RESPONSE,
     E_NOT_CONFIGURED,
+    E_NOT_FOUND,
+    E_POLICY,
+    E_QUOTA,
+    E_RATE_LIMITED,
+    E_UNAVAILABLE,
     FAILED,
     SUCCEEDED,
     TTS,
@@ -76,9 +87,19 @@ class ScrubFilter(logging.Filter):
         return True
 
 
-def setup_logging(env: Mapping[str, str], stream=None) -> ScrubFilter:
+#: The only error words --brief prints: the adapters' typed codes and the
+#: tool's own. Anything else reads "other" — vendor text never reaches a public log.
+BRIEF_CODES = frozenset({
+    E_NOT_CONFIGURED, E_AUTH, E_QUOTA, E_RATE_LIMITED, E_BAD_REQUEST, E_POLICY,
+    E_NOT_FOUND, E_UNAVAILABLE, E_BAD_RESPONSE, "timeout"})
+
+
+def setup_logging(env: Mapping[str, str], stream=None, *, brief: bool = False) -> ScrubFilter:
     handler = logging.StreamHandler(stream or sys.stdout)
     handler.setFormatter(logging.Formatter("%(message)s"))
+    if brief:
+        # A public log: only this tool's own lines, never a library's.
+        handler.addFilter(lambda record: record.name == logger.name)
     filt = ScrubFilter(secret_values(env))
     handler.addFilter(filt)
     root = logging.getLogger()
@@ -240,8 +261,10 @@ def main(argv: Optional[Sequence[str]] = None, *, env: Optional[Mapping[str, str
     ap.add_argument("--by", default=f"probe_models@{socket.gethostname()[:60]}",
                     help="who ran the probe (stored as verified_by)")
     ap.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_S, help="seconds to wait per async probe")
+    ap.add_argument("--brief", action="store_true",
+                    help="for a public log: per model only 'ok/failed/skipped <id>' and a typed error code")
     args = ap.parse_args(argv)
-    setup_logging(env, stream)
+    setup_logging(env, stream, brief=args.brief)
 
     entries = select(model_registry.registry().values(), args.model, args.capability, args.all)
     if not entries and not args.sync:
@@ -275,14 +298,18 @@ def main(argv: Optional[Sequence[str]] = None, *, env: Optional[Mapping[str, str
                 res = run_probe(e, env=env, voice_id=voice, workdir=work, timeout_s=args.timeout)
                 if res.code == E_NOT_CONFIGURED:
                     # Not a vendor answer: nothing was called, nothing to record.
-                    logger.info(f"SKIP {e.id}: {res.message}")
+                    logger.info(f"skipped {e.id}" if args.brief else f"SKIP {e.id}: {res.message}")
                     continue
                 cap = e.raw["probe"]["capability"]
                 db.record(model=e.id, adapter=e.adapter, vendor_model=e.vendor_model_for(cap),
                           capability=cap, ok=res.ok, error_code=res.code,
                           error=res.message or None, latency_ms=res.latency_ms,
                           output_bytes=res.output_bytes, probed_by=args.by[:120])
-                if res.ok:
+                if args.brief:
+                    code = res.code if res.code in BRIEF_CODES else "other"
+                    logger.info(f"ok {e.id}" if res.ok else f"failed {e.id} {code}")
+                    failures += 0 if res.ok else 1
+                elif res.ok:
                     logger.info(f"OK   {e.id}: {res.output_bytes} bytes in {res.latency_ms} ms")
                 else:
                     failures += 1
@@ -291,6 +318,12 @@ def main(argv: Optional[Sequence[str]] = None, *, env: Optional[Mapping[str, str
         return 1 if failures else 0
     except RuntimeError as e:
         logger.error(str(e))
+        return 1
+    except Exception as e:  # noqa: BLE001
+        if not args.brief:
+            raise
+        # A traceback could quote a URL or a vendor reply: the class name only.
+        logger.error(f"stopped: {type(e).__name__}")
         return 1
 
 
