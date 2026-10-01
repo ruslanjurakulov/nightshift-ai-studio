@@ -8,6 +8,8 @@ export interface PickerImage {
   id: string;
   thumbUrl: string | null;
   name: string | null;
+  /** The full picture, when the host can serve it (before / after needs its detail). */
+  viewUrl?: string | null;
 }
 
 export type LibraryLoadState = "loading" | "ready" | "failed" | "unavailable";
@@ -19,8 +21,11 @@ export type LibraryLoadState = "loading" | "ready" | "failed" | "unavailable";
  * RLS shows this organization's live assets and nothing else) and keeps the
  * images only. What is picked is only an id: the database checks it again
  * wherever it is used.
+ *
+ * `enabled: false` reads nothing (a feed with nothing to compare); a new
+ * `key` reads again (a job just finished and its result is new).
  */
-export function useLibraryImages(orgId: string) {
+export function useLibraryImages(orgId: string, { enabled = true, key = "" }: { enabled?: boolean; key?: string } = {}) {
   const [state, setState] = useState<LibraryLoadState>("loading");
   const [images, setImages] = useState<PickerImage[]>([]);
 
@@ -44,7 +49,7 @@ export function useLibraryImages(orgId: string) {
       setImages(
         (data.assets ?? [])
           .filter((a: LibraryAsset) => a.kind === "image")
-          .map((a: LibraryAsset) => ({ id: a.id, thumbUrl: a.thumbUrl ?? a.viewUrl, name: a.name })),
+          .map((a: LibraryAsset) => ({ id: a.id, thumbUrl: a.thumbUrl ?? a.viewUrl, name: a.name, viewUrl: a.viewUrl })),
       );
       setState("ready");
     } catch {
@@ -53,8 +58,8 @@ export function useLibraryImages(orgId: string) {
   }, [orgId]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (enabled) void load();
+  }, [load, enabled, key]);
 
   return { state, images, reload: load };
 }

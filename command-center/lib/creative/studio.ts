@@ -305,6 +305,21 @@ export function resultHref(job: Pick<StudioJob, "result">): string | null {
   return null;
 }
 
+/** Tools whose result is the same picture changed: shown against it, before and after. */
+export const COMPARE_CAPABILITIES = ["edit", "upscale", "remove_bg"] as const;
+
+/** A finished picture job's source and first result, when both are known; else null. */
+export function compareSources(job: Pick<StudioJob, "status" | "capability" | "params" | "result_asset_ids">): {
+  before: string;
+  after: string;
+} | null {
+  if (job.status !== "completed") return null;
+  if (!(COMPARE_CAPABILITIES as readonly string[]).includes(job.capability)) return null;
+  const before = job.params.source_asset_id;
+  const after = job.result_asset_ids[0];
+  return isUuid(before) && isUuid(after) ? { before, after } : null;
+}
+
 /** What "Try again" puts back into the panel. It spends nothing by itself. */
 export interface StudioPrefill {
   capability: StudioCapability;
