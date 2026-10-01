@@ -62,9 +62,13 @@ const has = (html: string, text: string) => html.includes(esc(text));
 
 beforeEach(() => {
   state.locale = "en";
+  // The pages compute "Ns ago" from the clock at render time; freeze it at
+  // NOW (Date only, timers stay real) so a slow run cannot turn 7s into 8s.
+  vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
 });
 afterEach(() => {
   state.client = null;
+  vi.useRealTimers();
 });
 
 async function integrations(workers: StubResult): Promise<string> {
