@@ -68,10 +68,10 @@ describe("templates", () => {
     }
   });
 
-  it("text templates are ready to price; picture tools wait for a picture", () => {
+  it("image and video templates are ready to price; speech waits for a voice, picture tools for a picture", () => {
     for (const tpl of STUDIO_TEMPLATES) {
       const ready = canQuote(templatePrefill(tpl));
-      expect(ready).toBe(["t2i", "t2v", "tts"].includes(tpl.capability));
+      expect(ready).toBe(["t2i", "t2v"].includes(tpl.capability));
     }
   });
 

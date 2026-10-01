@@ -2445,6 +2445,7 @@ export const en = {
     recordingNoLength: "length not known yet",
     voiceChangeNote: "Up to 5 minutes. The words and delivery stay; the voice changes. The result is a new audio file in your Library.",
     dubNote: "Up to 30 minutes. The speech is translated and the speakers keep their voices. The result is the dubbed audio track, saved to your Library.",
+    ttsVoiceLabel: "Voice",
     voiceLabel: "New voice",
     voicePick: "Pick a voice",
     languageLabel: "Translate into",

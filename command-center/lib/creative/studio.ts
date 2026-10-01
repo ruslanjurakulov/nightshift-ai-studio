@@ -167,7 +167,7 @@ export interface StudioForm {
   factor?: UpscaleFactor;
   /** A style kit of the organization (0048); null / absent = no style. */
   styleKitId?: string | null;
-  /** The voice a voice change speaks in (0050): one of the account's voices, picked — never defaulted. */
+  /** The voice speech or a voice change speaks in: one of the account's voices, picked — never defaulted. */
   voiceId?: string | null;
   /** The language a dub is made in (0050). */
   targetLanguage?: DubLanguage | null;
@@ -209,8 +209,9 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
     case "dub":
       return { source_asset_id: source, target_language: form.targetLanguage ?? "" };
     default:
-      // Speech: the words are the prompt; the price counts their characters.
-      return { prompt };
+      // Speech: the words are the prompt (the price counts their characters)
+      // and the voice is the one picked — the speech provider needs one.
+      return isVoiceId(form.voiceId) ? { prompt, voice_id: form.voiceId } : { prompt };
   }
 }
 
@@ -239,6 +240,8 @@ export function blockedReason(form: StudioForm, hasModel: boolean): BlockedReaso
   if (form.capability === "voice_change" && !isVoiceId(form.voiceId)) return "need_voice";
   if (form.capability === "dub" && !isDubLanguage(form.targetLanguage)) return "need_language";
   if (promptRule(form.capability) === "required" && !form.prompt.trim()) return "need_words";
+  // Speech: the words first, then the voice that speaks them.
+  if (form.capability === "tts" && !isVoiceId(form.voiceId)) return "need_voice";
   return null;
 }
 
@@ -272,6 +275,11 @@ const PRICE_STAND_IN = "price check";
  */
 export function sheetQuoteParams(form: StudioForm): ReturnType<typeof buildParams> | null {
   if (canQuote(form)) return buildParams(form);
+  // Speech is priced by its words, not its voice: with the words typed, the
+  // sheet can show prices before a voice is picked.
+  if (form.capability === "tts" && form.prompt.trim()) {
+    return buildParams({ ...form, voiceId: isVoiceId(form.voiceId) ? form.voiceId : (STUDIO_VOICES[0]?.id ?? null) });
+  }
   if ((needsSource(form.capability) || needsRecording(form.capability)) && !isUuid(form.sourceId)) return null;
   if (!WORDS_FREE_PRICE.includes(form.capability)) return null;
   return buildParams({
@@ -531,6 +539,7 @@ export function prefillFromJob(job: StudioJob): StudioPrefill | null {
       ? { sourceId: isUuid(p.source_asset_id) ? p.source_asset_id : null, factor: asFactor(p.factor) }
       : {}),
     ...(takesStyle(job.capability) ? { styleKitId: isUuid(p.style_kit_id) ? p.style_kit_id : null } : {}),
+    ...(job.capability === "tts" ? { voiceId: isVoiceId(p.voice_id) ? p.voice_id : null } : {}),
     ...(needsRecording(job.capability)
       ? {
           sourceId: isUuid(p.source_asset_id) ? p.source_asset_id : null,
