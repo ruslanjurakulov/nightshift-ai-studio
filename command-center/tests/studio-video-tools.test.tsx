@@ -43,6 +43,7 @@ import {
 import { CAPABILITIES, coerceSellableModels } from "@/lib/creative/registry";
 import {
   COMPOSER_CAPABILITIES,
+  PANEL_CAPABILITIES,
   STUDIO_CAPABILITIES,
   blockedReason,
   buildParams,
@@ -220,9 +221,11 @@ describe("params (0052's rules)", () => {
     expect(prefillFromQuery("video_upscale", "https://evil.example/a.mp4")).toBeNull();
   });
 
-  it("the sidebar's list is unchanged; the composer adds the video tool last", () => {
+  it("the sidebar's list is unchanged; the composer's tabs add the video tool last", () => {
     expect([...STUDIO_CAPABILITIES]).toEqual(["t2i", "t2v", "tts", "edit", "i2v", "upscale", "remove_bg"]);
-    expect(COMPOSER_CAPABILITIES.at(-1)).toBe("video_upscale");
+    // lib/navigation mirrors COMPOSER_CAPABILITIES: the sidebar link is a separate change.
+    expect(COMPOSER_CAPABILITIES as readonly string[]).not.toContain("video_upscale");
+    expect([...PANEL_CAPABILITIES]).toEqual([...COMPOSER_CAPABILITIES, "video_upscale"]);
     // The Library's "Use in Studio" picture links never offer the video tool for a picture.
     expect(SOURCE_CAPABILITIES as readonly string[]).not.toContain("video_upscale");
   });

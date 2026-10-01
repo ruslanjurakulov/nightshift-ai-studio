@@ -42,15 +42,19 @@ export const STUDIO_CAPABILITIES = ["t2i", "t2v", "tts", "edit", "i2v", "upscale
  */
 export const VOICE_TOOLS = ["voice_change", "dub"] as const satisfies readonly CreativeCapability[];
 
+/** The sidebar's tools in the composer's order: what lib/navigation's STUDIO_TOOLS mirrors. */
+export const COMPOSER_CAPABILITIES = [...STUDIO_CAPABILITIES, ...VOICE_TOOLS] as const;
+
 /**
- * The video tools (migration 0052): upscale a library video. Like the voice
- * tools they live in the composer's tool rows, not the sidebar.
+ * The video tools (migration 0052): upscale a library video. They live in the
+ * composer's tool rows after the voice tools; the sidebar does not link them
+ * yet (that list is lib/navigation's, held in step with COMPOSER_CAPABILITIES).
  */
 export const VIDEO_TOOLS = ["video_upscale"] as const satisfies readonly CreativeCapability[];
 
-/** Everything the composer can make, in the order it shows the tools (the rest wait for their own UI). */
-export const COMPOSER_CAPABILITIES = [...STUDIO_CAPABILITIES, ...VOICE_TOOLS, ...VIDEO_TOOLS] as const;
-export type StudioCapability = (typeof COMPOSER_CAPABILITIES)[number];
+/** Everything the composer can make, in the order its tabs show the tools (the rest wait for their own UI). */
+export const PANEL_CAPABILITIES = [...COMPOSER_CAPABILITIES, ...VIDEO_TOOLS] as const;
+export type StudioCapability = (typeof PANEL_CAPABILITIES)[number];
 
 /** The tools that start from a picture in the library (migration 0046). */
 export type SourceCapability = (typeof SOURCE_CAPABILITIES)[number];
@@ -112,7 +116,7 @@ export type VideoDuration = (typeof VIDEO_DURATIONS)[number];
 export const PROMPT_MAX = 4000;
 
 export function isStudioCapability(v: unknown): v is StudioCapability {
-  return typeof v === "string" && (COMPOSER_CAPABILITIES as readonly string[]).includes(v);
+  return typeof v === "string" && (PANEL_CAPABILITIES as readonly string[]).includes(v);
 }
 
 // ── models (0035: members read sellable rows' public columns) ──────────────

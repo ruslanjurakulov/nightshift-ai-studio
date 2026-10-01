@@ -16,7 +16,7 @@ import { isUpsellCode, refusalFrom, type Refusal, type UpsellCatalog } from "@/l
 import { UPSCALE_FACTORS, type CreativeError } from "@/lib/creative/operations";
 import {
   ASPECT_RATIOS,
-  COMPOSER_CAPABILITIES,
+  PANEL_CAPABILITIES,
   DUB_LANGUAGES,
   PROMPT_MAX,
   STUDIO_VOICES,
@@ -52,9 +52,9 @@ const QUOTE_DELAY_MS = 500;
 /** What a tool starts from in the library: switching to a tool that starts from another kind starts the pick again. */
 const startsFrom = (c: StudioCapability) =>
   needsSource(c) ? "picture" : needsRecording(c) ? "recording" : needsVideo(c) ? "video" : null;
-const MAKE_KINDS = COMPOSER_CAPABILITIES.filter((c) => startsFrom(c) === null);
+const MAKE_KINDS = PANEL_CAPABILITIES.filter((c) => startsFrom(c) === null);
 /** The picture tools (0046), the voice tools (0050) and the video tools (0052): each starts from something in the library. */
-const MEDIA_TOOLS = COMPOSER_CAPABILITIES.filter((c) => startsFrom(c) !== null);
+const MEDIA_TOOLS = PANEL_CAPABILITIES.filter((c) => startsFrom(c) !== null);
 
 /** The longest recording each voice tool takes (0050's source check; the database still decides). */
 const RECORDING_MAX_SECONDS: Record<"voice_change" | "dub", number> = { voice_change: 300, dub: 1800 };
@@ -106,7 +106,7 @@ export function GeneratePanel({
   const path = useChannelPath();
 
   const [capability, setCapability] = useState<StudioCapability>(
-    initial?.capability ?? COMPOSER_CAPABILITIES.find((c) => modelsFor(models, c).length > 0) ?? "t2i",
+    initial?.capability ?? PANEL_CAPABILITIES.find((c) => modelsFor(models, c).length > 0) ?? "t2i",
   );
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
   const [aspect, setAspect] = useState<AspectRatio>(initial?.aspect ?? "16:9");
@@ -294,8 +294,8 @@ export function GeneratePanel({
 
   // A tablist: ←/→ (and ↑/↓) move and choose, Home/End jump; one tab stop.
   function onTabKey(e: KeyboardEvent<HTMLButtonElement>, c: StudioCapability) {
-    const i = COMPOSER_CAPABILITIES.indexOf(c);
-    const n = COMPOSER_CAPABILITIES.length;
+    const i = PANEL_CAPABILITIES.indexOf(c);
+    const n = PANEL_CAPABILITIES.length;
     let to = -1;
     if (e.key === "ArrowRight" || e.key === "ArrowDown") to = (i + 1) % n;
     else if (e.key === "ArrowLeft" || e.key === "ArrowUp") to = (i - 1 + n) % n;
@@ -303,7 +303,7 @@ export function GeneratePanel({
     else if (e.key === "End") to = n - 1;
     if (to < 0) return;
     e.preventDefault();
-    const next = COMPOSER_CAPABILITIES[to];
+    const next = PANEL_CAPABILITIES[to];
     pick(next);
     tabRefs.current[next]?.focus();
   }
