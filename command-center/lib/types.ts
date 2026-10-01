@@ -236,6 +236,12 @@ export interface ChannelAgentConfig {
    */
   require_two_person_publish?: boolean;
   /**
+   * Storyboard review (migration 0057): runs stop after the script and scene
+   * plan and wait for a person to approve the render at one price. Only an
+   * explicit true turns it on; absent/false keeps today's behaviour.
+   */
+  storyboard_review?: boolean;
+  /**
    * The channel's Character Bible / Elements Library: reusable characters,
    * locations and props kept consistent across videos (modules/elements.py).
    * The pipeline detects which appear in a scene and injects each one's

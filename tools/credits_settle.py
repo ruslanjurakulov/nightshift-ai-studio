@@ -20,6 +20,8 @@ dispatch input can never become part of a shell command:
     REQUESTED_CHANNEL                    the dispatch's `channel` input
     INPUT_DURATION                       the dispatch's `duration` input
     RUN_OUTCOME                          settle only: steps.<run>.outcome
+    RUN_PAUSED                           settle only: "true" when the run stopped
+                                         at its storyboard (released, never charged)
     GITHUB_ENV                           start writes CREDITS_* for settle
 
 ``start`` exits non-zero — and the run step is then skipped, having spent
@@ -122,6 +124,11 @@ def settle(env: Mapping[str, str], client, ledger=credits.local_run_entries) -> 
         return 0
     hold = credits.Hold(ref, env.get("CREDITS_ORG", ""), float(amount))
     outcome = env.get("RUN_OUTCOME", "").strip()
+    # A run that stopped at its storyboard (modules/storyboard_review) exits
+    # cleanly but produced no video: its hold is released in full, like a
+    # failed run. The render is paid by the hold placed at approval.
+    if env.get("RUN_PAUSED", "").strip().lower() == "true":
+        outcome = "paused"
     note = credits.settle_hold(client, hold, succeeded=outcome == "success",
                                channel_id=env.get("CHANNEL_ID", "").strip(),
                                since=env.get("CREDITS_SINCE", "").strip() or None, ledger=ledger)

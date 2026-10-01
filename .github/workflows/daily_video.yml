@@ -581,7 +581,18 @@ jobs:
           if [ -n "${INPUT_REPAIR_SCENES:-}" ]; then
             args+=(--repair-scenes "$INPUT_REPAIR_SCENES")
           fi
-          python main.py "${args[@]}"
+          # Exit 75: the run stopped at "Storyboard ready" (the channel reviews
+          # storyboards before rendering, modules/storyboard_review.py). Not a
+          # failure: the step succeeds, says so, and the settle step below
+          # releases the run's hold instead of charging it.
+          rc=0
+          python main.py "${args[@]}" || rc=$?
+          if [ "$rc" -eq 75 ]; then
+            echo "paused=true" >> "$GITHUB_OUTPUT"
+            echo "Storyboard ready — this run waits for approval in the Command Center."
+            exit 0
+          fi
+          exit "$rc"
 
       # Settle the hold claimed above: on success, charge what the run's cost
       # ledger says it consumed — never more than the hold, and the whole hold
@@ -595,6 +606,7 @@ jobs:
           CREDIT_REF: ${{ github.event.inputs.credit_ref }}
           CHANNEL_ID: ${{ matrix.channel_id }}
           RUN_OUTCOME: ${{ steps.run.outcome }}
+          RUN_PAUSED: ${{ steps.run.outputs.paused }}
         run: python tools/credits_settle.py settle
 
       - name: Upload video artifact

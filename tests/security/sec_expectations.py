@@ -380,3 +380,8 @@ sec_style_0047.extend(TABLES, FUNCTIONS)
 import sec_folders_0049  # noqa: E402
 
 sec_folders_0049.extend(TABLES, FUNCTIONS)
+
+# Migration 0057 (storyboard review): tests/security/sec_storyboard_0057.py
+import sec_storyboard_0057  # noqa: E402
+
+sec_storyboard_0057.extend(TABLES, FUNCTIONS)

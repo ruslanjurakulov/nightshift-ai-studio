@@ -99,6 +99,7 @@ from modules import log_redaction  # noqa: E402
 from modules import run_request  # noqa: E402
 from modules import social_publish  # noqa: E402
 from modules import paid_downloads  # noqa: E402
+from modules.storyboard_review import PAUSED_EXIT as STORYBOARD_PAUSED_EXIT  # noqa: E402
 
 logger = logging.getLogger("queue_worker")
 
@@ -610,7 +611,7 @@ class Worker:
 
     def process(self, job: Mapping) -> str:
         """Run one claimed job to an end state. Returns what happened:
-        succeeded | failed | released | lost."""
+        succeeded | failed | paused | released | lost."""
         job_id = job["id"]
         channel_id = str(job.get("channel_id") or "")
         logger.info("job %s: claimed (channel %s, kind %s, attempt %s/%s)", job_id, channel_id,
@@ -647,7 +648,11 @@ class Worker:
             return self._finish(job, "failed", f"credits: {e} (nothing was run)")
 
         outcome = self._execute(job, argv, run_env, channel_row)
-        if hold is not None and outcome in ("succeeded", "failed"):
+        # "paused": the run stopped at its storyboard (modules/storyboard_review)
+        # and waits for a person. Released in full like a failed run — planning
+        # is never charged on its own; the render is paid by the hold placed
+        # when the storyboard is approved.
+        if hold is not None and outcome in ("succeeded", "failed", "paused"):
             note = credit_rules.settle_hold(self.credits, hold, succeeded=outcome == "succeeded",
                                             channel_id=channel_id, since=run_started,
                                             ledger=self.ledger_reader)
@@ -729,6 +734,12 @@ class Worker:
                 return self._interrupted(job, how)
             if rc == 0:
                 return self._finish(job, "succeeded", None)
+            if rc == STORYBOARD_PAUSED_EXIT:
+                # The job did what it was asked: the run is planned and waits
+                # at "Storyboard ready". Not a failure, and not a finished
+                # video — the caller releases its hold.
+                self._finish(job, "succeeded", None)
+                return "paused"
             return self._finish(job, "failed",
                                 format_error(f"main.py exited with code {rc}", tail, self._secrets))
         finally:

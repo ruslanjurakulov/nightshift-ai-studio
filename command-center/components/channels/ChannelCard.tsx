@@ -53,6 +53,8 @@ export function ChannelCard({
   const [busy, setBusy] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
   const [auto, setAuto] = useState(Boolean(channel.auto_publish));
+  const [review, setReview] = useState(channel.agent_config?.storyboard_review === true);
+  const [reviewBusy, setReviewBusy] = useState(false);
 
   const agent = channel.agent_config ?? {};
   const schedule = channel.schedule_config ?? {};
@@ -93,6 +95,44 @@ export function ChannelCard({
       return;
     }
     setAuto(next);
+    startTransition(() => router.refresh());
+  }
+
+  /**
+   * Storyboard review, per channel (migration 0057). On: every run of this
+   * channel — scheduled ones too — stops after the script and scene plan and
+   * waits for a person to approve the render at one price. Off (the default):
+   * runs go straight to the render, exactly as before. Merged into the live
+   * agent_config so no other setting is overwritten (the Approvals page's
+   * pattern); an unreadable config is not merged into.
+   */
+  async function toggleReview() {
+    const supabase = createClient();
+    if (!supabase) return;
+    setReviewBusy(true);
+    setError(null);
+    const next = !review;
+    const { data: current, error: readErr } = await supabase
+      .from("channels")
+      .select("agent_config")
+      .eq("channel_id", channel.channel_id)
+      .maybeSingle();
+    if (readErr) {
+      setReviewBusy(false);
+      setError(readErr.message);
+      return;
+    }
+    const merged = { ...((current?.agent_config as Record<string, unknown> | null) ?? {}), storyboard_review: next };
+    const { error: err } = await supabase
+      .from("channels")
+      .update({ agent_config: merged, updated_at: new Date().toISOString() })
+      .eq("channel_id", channel.channel_id);
+    setReviewBusy(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    setReview(next);
     startTransition(() => router.refresh());
   }
 
@@ -186,6 +226,34 @@ export function ChannelCard({
           }}
         >
           {autoBusy ? t.channels.saving : auto ? t.channels.autoOn : t.channels.autoOff}
+        </button>
+      </div>
+
+      {/* Storyboard review. Off is the default; on adds a checkpoint before
+          the render is paid for — it never replaces the publish gate. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-4 py-3">
+        <div className="min-w-0">
+          <div className="text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+            {t.storyboardReview.toggleLabel}
+          </div>
+          <p className="m-0 mt-1 max-w-[52ch] text-[12px] leading-relaxed text-[var(--color-muted)]">
+            {review ? t.storyboardReview.toggleOnHint : t.storyboardReview.toggleOffHint}
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={review}
+          aria-label={t.storyboardReview.toggleLabel}
+          onClick={toggleReview}
+          disabled={reviewBusy || pending}
+          className="btn-sky pill shrink-0 px-4 py-2 text-[12px] disabled:opacity-50"
+          style={{
+            borderColor: review ? "var(--color-primary)" : "var(--color-border)",
+            color: review ? "var(--color-primary)" : "var(--color-muted)",
+          }}
+        >
+          {reviewBusy ? t.channels.saving : review ? t.storyboardReview.toggleOn : t.storyboardReview.toggleOff}
         </button>
       </div>
 

@@ -72,6 +72,7 @@ from modules.series import (
     resolve_series, style_keywords,
 )
 from modules.state_store import StateStore
+from modules import storyboard_review
 from modules import strategy
 from modules.subtitle_generator import SubtitleGenerator
 from modules.thumbnail_generator import ThumbnailGenerator
@@ -328,6 +329,19 @@ def slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:50]
 
 
+def _flush_costs(costs, slug: str | None = None) -> None:
+    """Record what a run that stops early consumed (the planning it paid for),
+    keyed by its slug. Never raises: the ledger is bookkeeping."""
+    try:
+        if slug:
+            costs.slug = slug
+        with StateStore() as store:
+            costs.flush(store, video_id=None)
+    except Exception as e:
+        logger.warning("Could not record costs (%s: %s) — the run itself is unaffected",
+                       type(e).__name__, e)
+
+
 def run(
     niche: str | None = None,
     topic: str | None = None,
@@ -526,6 +540,23 @@ def run(
         else:
             logger.info("Resume requested but no reusable script checkpoint found — running fresh")
 
+    # ── Resume from an approved storyboard (modules/storyboard_review.py)
+    # Approving a storyboard starts this same run again with --resume --topic.
+    # Its approved script — the scenes the person read and paid for — replaces
+    # whatever the checkpoint saved, and is written where --script-file reads
+    # it, so the planning stages are skipped exactly as on any resume. Found in
+    # Supabase, not on this machine's disk: the runner that resumes may not be
+    # the one that planned.
+    approved_storyboard = None
+    if resume and topic:
+        approved_storyboard = storyboard_review.approved_for_resume(channel_id, topic)
+        if approved_storyboard is not None:
+            script_file = str(approved_storyboard.script_path)
+            events.emit(events.RUN_RESUMED, agent="pipeline", status=events.STATUS_RUNNING,
+                        channel_id=channel_id,
+                        metadata={"slug": slugify(topic), "reused": "storyboard",
+                                  "storyboard_id": approved_storyboard.storyboard_id})
+
     # ── Stages 1-2: Topic and Script
     # A saved script skips both Gemini calls, so a crash in a later stage — or a
     # spent daily quota — does not mean paying for generation again.
@@ -661,16 +692,49 @@ def run(
     # chosen hook. "A", or a "B" with no alternate available, keeps the original
     # opening and records "A" — the readback is never credited to an experiment
     # that did not actually happen.
-    hook_variant = _pick_hook(channel_id)
-    alt_opening = getattr(script, "hook_ab", "").strip()
-    if hook_variant == "B" and alt_opening and script.sections:
-        script.sections[0].narration = alt_opening
-        script.sections[0].sfx_cues = script.sections[0].extract_sfx()
-        script.sections[0].music_cues = script.sections[0].extract_music()
-        script.sections[0].pauses = script.sections[0].extract_pauses()
-        logger.info("[channel: %s] Hook A/B: shipping the alternate opening (B)", channel_id)
+    # An approved storyboard's script already carries the opening it was
+    # approved with: the hook is not picked (or swapped) a second time.
+    if approved_storyboard is not None:
+        hook_variant = approved_storyboard.hook_variant
     else:
-        hook_variant = "A"
+        hook_variant = _pick_hook(channel_id)
+        alt_opening = getattr(script, "hook_ab", "").strip()
+        if hook_variant == "B" and alt_opening and script.sections:
+            script.sections[0].narration = alt_opening
+            script.sections[0].sfx_cues = script.sections[0].extract_sfx()
+            script.sections[0].music_cues = script.sections[0].extract_music()
+            script.sections[0].pauses = script.sections[0].extract_pauses()
+            logger.info("[channel: %s] Hook A/B: shipping the alternate opening (B)", channel_id)
+        else:
+            hook_variant = "A"
+
+    # ── Storyboard review (modules/storyboard_review.py, off unless the channel
+    # turned it on). The last point before the run pays for the scenes: the
+    # voice below, then generated footage and stills, then the render. With
+    # review on, the run stops here with its scene plan stored for a person,
+    # and exits with storyboard_review.PAUSED_EXIT — the runner then releases
+    # this run's credit hold. An approved storyboard was loaded above and goes
+    # straight on. Off and not a resume: no request, nothing changes.
+    try:
+        storyboard_review.checkpoint(ctx, slug=slug, topic=topic, script=script,
+                                     hook_variant=hook_variant, resume=resume,
+                                     approved=approved_storyboard)
+    except storyboard_review.StoryboardPaused as paused:
+        logger.info("[channel: %s] Storyboard %s (%s) — stopping before the render; nothing "
+                    "renders until it is approved", channel_id, paused.storyboard_id, paused.reason)
+        events.emit(events.STORYBOARD_READY if paused.reason == "ready" else events.STORYBOARD_STOPPED,
+                    agent="storyboard", status=events.STATUS_COMPLETED, channel_id=channel_id,
+                    metadata={"storyboard_id": paused.storyboard_id, "reason": paused.reason,
+                              "slug": slug, "scenes": len(script.sections)})
+        _flush_costs(costs, slug)
+        raise
+    except storyboard_review.StoryboardUnavailable as e:
+        logger.error("[channel: %s] Storyboard review is on, but the storyboard could not be "
+                     "stored or read: %s — the run stops before the render", channel_id, e)
+        events.emit(events.AGENT_FAILED, agent="storyboard", status=events.STATUS_FAILED,
+                    channel_id=channel_id, metadata={"error": str(e), "stage": "storyboard"})
+        _flush_costs(costs, slug)
+        raise
 
     # Per-section Pexels keywords — already inside the script JSON, no API call.
     keyword_map = ScriptEngine.extract_visual_keywords(script)
@@ -929,6 +993,8 @@ def run(
     # below succeeds, so a blocked or failed-upload run leaves an honest
     # "rendered", never a false "published".
     topic_mgr.mark_queue_entry_rendered()
+    # The approved storyboard (if this run rendered one) is now rendered.
+    storyboard_review.mark_rendered(approved_storyboard)
     # Advisory AI critic on rendered frames (modules/video_critic.py). Off unless
     # CHRONOS_AI_CRITIC is set; never blocks, never raises, skips at a met ceiling.
     video_critic.run(video_path, script=script, timeline=timeline, channel=ctx, costs=costs)
@@ -1389,16 +1455,25 @@ if __name__ == "__main__":
         sys.exit(scene_repair.cli(channel=args.channel, raw_scenes=args.repair_scenes,
                                   topic=args.topic))
     else:
-        run(
-            niche=args.niche,
-            topic=args.topic,
-            privacy=args.privacy,
-            skip_upload=args.no_upload,
-            script_file=args.script_file,
-            channel=args.channel,
-            series=args.series,
-            resume=args.resume,
-            duration=args.duration,
-            language=args.language,
-            visual_style=args.visual_style,
-        )
+        try:
+            run(
+                niche=args.niche,
+                topic=args.topic,
+                privacy=args.privacy,
+                skip_upload=args.no_upload,
+                script_file=args.script_file,
+                channel=args.channel,
+                series=args.series,
+                resume=args.resume,
+                duration=args.duration,
+                language=args.language,
+                visual_style=args.visual_style,
+            )
+        except storyboard_review.StoryboardPaused as paused:
+            # Not a failure and not a finished video: the run waits for a
+            # person. The runners read this exit code and release the run's
+            # credit hold instead of charging it (tools/queue_worker.py,
+            # tools/credits_settle.py).
+            print(f"\n⏸ Storyboard {paused.reason}: nothing renders until it is approved "
+                  f"in the Command Center (storyboard {paused.storyboard_id}).")
+            sys.exit(storyboard_review.PAUSED_EXIT)

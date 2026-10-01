@@ -249,6 +249,13 @@ class AgentConfig:
     # Stored in this same agent_config blob — no migration; the Command Center
     # (Approvals page) writes the same key.
     require_two_person_publish: bool = False
+    # Storyboard review (migration 0057, modules/storyboard_review.py). When
+    # true, a run stops after the script and scene plan — before the voice,
+    # generated footage and render are paid for — and waits for a person to
+    # approve the storyboard at one price. A scheduled run waits too; nothing
+    # renders on its own. OFF unless explicitly true, so existing channels and
+    # autopilot runs are unaffected. Stored in this same agent_config blob.
+    storyboard_review: bool = False
     # Character Bible / Elements Library (Nightshift blueprint): reusable
     # characters, locations and props this channel keeps consistent across
     # videos. Each entry is {kind, name, description, aliases:[...]}. Empty (the
@@ -277,6 +284,7 @@ class AgentConfig:
             "watch_next": self.watch_next,
             "remix_enabled": self.remix_enabled,
             "require_two_person_publish": self.require_two_person_publish,
+            "storyboard_review": self.storyboard_review,
             "elements": [dict(e) for e in self.elements],
         }
 
@@ -320,6 +328,8 @@ class AgentConfig:
             # Same opt-in convention: two-person publish is a stricter policy, so
             # absent → False and ONLY an explicit true turns it on.
             require_two_person_publish=(True if d.get("require_two_person_publish") is True else False),
+            # Opt-in like two-person publish: only an explicit true pauses runs.
+            storyboard_review=(True if d.get("storyboard_review") is True else False),
             elements=_clean_elements(d.get("elements")),
         )
 

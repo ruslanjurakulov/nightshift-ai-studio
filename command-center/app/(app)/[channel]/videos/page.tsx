@@ -11,6 +11,9 @@ import { getChannelScope } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { heldOnly, heldState, heldStateLabel, uploadedOnly } from "@/lib/heldVideos";
+import { listWaitingStoryboards } from "@/lib/server/storyboards";
+import { minutesLabel, type StoryboardView } from "@/lib/storyboardReview";
+import { fmt } from "@/lib/i18n";
 import Link from "next/link";
 import type { MetricsSnapshotRow, VideoRow } from "@/lib/types";
 
@@ -33,6 +36,8 @@ export default async function VideoLibrary() {
   let videos: VideoRow[] = [];
   let held: VideoRow[] = [];
   let snapshots: MetricsSnapshotRow[] = [];
+  // Runs stopped at "Storyboard ready" (0057). Null = the read failed.
+  let storyboards: StoryboardView[] | null = [];
   let dbError = false;
   // The KPIs: a count is a number only when the read behind it worked.
   let videosFailed = false;
@@ -41,14 +46,16 @@ export default async function VideoLibrary() {
     // The library is what reached YouTube; a held run (lib/heldVideos) has no
     // publish time, would sort FIRST in this descending order, and has no
     // metrics — it is listed on its own, below, never as a published video.
-    const [vid, heldFirst] = await Promise.all([
+    const [vid, heldFirst, waiting] = await Promise.all([
       uploadedOnly(scopeQuery(supabase.from("videos").select("*"), scope))
         .order("published_at", { ascending: false })
         .limit(100),
       heldOnly(scopeQuery(supabase.from("videos").select("*"), scope))
         .order("held_at", { ascending: false, nullsFirst: false })
         .limit(50),
+      listWaitingStoryboards(supabase, scope),
     ]);
+    storyboards = waiting;
     if (vid.error) {
       dbError = true;
       videosFailed = true;
@@ -113,6 +120,40 @@ export default async function VideoLibrary() {
           sub={videosFailed ? t.common.couldNotRead : t.videos.videosLive}
         />
       </div>
+
+      {storyboards === null ? (
+        <ErrorState message={t.storyboardReview.waitingReadErr} />
+      ) : (
+        storyboards.length > 0 && (
+          <Panel
+            title={t.storyboardReview.waitingTitle}
+            right={<span className="t-label">{num(storyboards.length)}</span>}
+          >
+            <p className="px-4 pt-3 text-[12px] leading-relaxed text-[var(--color-muted)]">
+              {t.storyboardReview.waitingNote}
+            </p>
+            <ul className="m-0 flex list-none flex-col p-0" data-testid="waiting-storyboards">
+              {storyboards.map((sb) => (
+                <li
+                  key={sb.id}
+                  className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)]/50 px-4 py-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm text-[var(--color-fg)]">{sb.title ?? sb.topic}</div>
+                    <div className="mt-0.5 text-[12px] text-[var(--color-muted)]">
+                      {fmt(t.storyboardReview.total, { n: sb.scenes.length, m: minutesLabel(sb.durationS) })}
+                      {sb.createdAt ? ` · ${relativeTime(sb.createdAt)}` : ""}
+                    </div>
+                  </div>
+                  <Link href={path(`/videos/storyboard/${sb.id}`)} className="btn-primary shrink-0">
+                    {t.storyboardReview.review}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        )
+      )}
 
       {held.length > 0 && (
         <Panel title={t.held.title} right={<span className="t-label">{num(held.length)}</span>}>

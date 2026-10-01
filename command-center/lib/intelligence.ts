@@ -207,7 +207,7 @@ export function dailyMission(
   };
 }
 
-export type NotificationKind = "published" | "error" | "learning" | "anomaly";
+export type NotificationKind = "published" | "error" | "learning" | "anomaly" | "storyboard";
 
 export interface Notification {
   id: string;
@@ -227,6 +227,10 @@ export function buildNotifications(events: SystemEventRow[], signals: FeedbackSi
   for (const e of events) {
     if (e.event === "video.published" || e.event === "upload.completed") {
       out.push({ id: `ev:${e.event_key}`, kind: "published", ts: e.ts, subject: e.video_id ?? e.event });
+    } else if (e.event === "storyboard.ready") {
+      // A run stopped before its render and waits for a person (migration 0057).
+      const slug = (e.metadata as { slug?: unknown } | null)?.slug;
+      out.push({ id: `ev:${e.event_key}`, kind: "storyboard", ts: e.ts, subject: typeof slug === "string" && slug ? slug : e.event });
     } else if (statusTone(e.status) === "fail" || e.event.endsWith(".failed")) {
       out.push({ id: `ev:${e.event_key}`, kind: "error", ts: e.ts, subject: `${e.agent ?? "system"} · ${e.event}` });
     }
