@@ -237,7 +237,9 @@ details). Nothing was generated, bought, linked or changed. New facts beyond §8
 5. Video upscale.
 6. Provider-dependent: lipsync, motion transfer, 3D, video restyle.
 
-### Open owner decision
-Free credits: a daily refill (Krea: 100 a day) or a one-time grant
-(MagicLight 775, Higgsfield 10). Packs stay buyable on the free plan in
-Nightshift either way.
+### Owner decision: free credits
+Free credits are a one-time grant on sign-up, never a daily refill
+(Krea refills 100 a day; MagicLight grants 775 once, Higgsfield 10).
+Nightshift already does this: `grant_welcome_credits` (0027) gives each new
+user 100 credits once, and the pricing page says so. Packs stay buyable on
+the free plan.

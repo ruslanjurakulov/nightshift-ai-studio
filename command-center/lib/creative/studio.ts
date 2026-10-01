@@ -25,8 +25,10 @@ import { formatCredits } from "@/lib/credits";
 import { fmt, type Dictionary } from "@/lib/i18n";
 
 /**
- * The tools the customer sidebar lists as direct links (lib/navigation's
- * STUDIO_TOOLS mirrors this list; tests/navigation-shell holds them in step).
+ * The Studio's make-and-edit tools (templates and Home's quick tools start
+ * from these). The customer sidebar lists these and the voice tools below —
+ * lib/navigation's STUDIO_TOOLS mirrors COMPOSER_CAPABILITIES, and
+ * tests/navigation-shell holds the two in step.
  */
 export const STUDIO_CAPABILITIES = ["t2i", "t2v", "tts", "edit", "i2v", "upscale", "remove_bg"] as const satisfies readonly CreativeCapability[];
 
@@ -105,6 +107,12 @@ export interface StudioModel {
    */
   qualityTier?: number | null;
   speedTier?: number | null;
+  /**
+   * The plan entitlement the model needs (0035: `paid`, `any`, `key` or
+   * `key:value`), from sellable_models(); null = none, absent = not read. Only
+   * the plan dialog reads it, to name what would unlock a refused model.
+   */
+  entitlement?: string | null;
 }
 
 const tier = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 5 ? v : null);
@@ -116,16 +124,17 @@ const tier = (v: unknown): number | null => (typeof v === "number" && Number.isI
  */
 export function withTiers(models: StudioModel[], sellable: unknown): StudioModel[] {
   if (!Array.isArray(sellable)) return models;
-  const marks = new Map<string, { q: number | null; s: number | null }>();
+  const marks = new Map<string, { q: number | null; s: number | null; e: string | null }>();
   for (const r of sellable) {
     if (!r || typeof r !== "object") continue;
     const row = r as Record<string, unknown>;
     const spec = row.spec && typeof row.spec === "object" && !Array.isArray(row.spec) ? (row.spec as Record<string, unknown>) : {};
-    if (typeof row.id === "string") marks.set(row.id, { q: tier(spec.quality_tier), s: tier(spec.speed_tier) });
+    const e = typeof row.entitlement === "string" && row.entitlement ? row.entitlement : null;
+    if (typeof row.id === "string") marks.set(row.id, { q: tier(spec.quality_tier), s: tier(spec.speed_tier), e });
   }
   return models.map((m) => {
     const k = marks.get(m.id);
-    return k ? { ...m, qualityTier: k.q, speedTier: k.s } : m;
+    return k ? { ...m, qualityTier: k.q, speedTier: k.s, entitlement: k.e } : m;
   });
 }
 
@@ -167,7 +176,7 @@ export interface StudioForm {
   factor?: UpscaleFactor;
   /** A style kit of the organization (0048); null / absent = no style. */
   styleKitId?: string | null;
-  /** The voice a voice change speaks in (0050): one of the account's voices, picked — never defaulted. */
+  /** The voice speech or a voice change speaks in: one of the account's voices, picked — never defaulted. */
   voiceId?: string | null;
   /** The language a dub is made in (0050). */
   targetLanguage?: DubLanguage | null;
@@ -209,8 +218,9 @@ function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>
     case "dub":
       return { source_asset_id: source, target_language: form.targetLanguage ?? "" };
     default:
-      // Speech: the words are the prompt; the price counts their characters.
-      return { prompt };
+      // Speech: the words are the prompt (the price counts their characters)
+      // and the voice is the one picked — the speech provider needs one.
+      return isVoiceId(form.voiceId) ? { prompt, voice_id: form.voiceId } : { prompt };
   }
 }
 
@@ -239,6 +249,8 @@ export function blockedReason(form: StudioForm, hasModel: boolean): BlockedReaso
   if (form.capability === "voice_change" && !isVoiceId(form.voiceId)) return "need_voice";
   if (form.capability === "dub" && !isDubLanguage(form.targetLanguage)) return "need_language";
   if (promptRule(form.capability) === "required" && !form.prompt.trim()) return "need_words";
+  // Speech: the words first, then the voice that speaks them.
+  if (form.capability === "tts" && !isVoiceId(form.voiceId)) return "need_voice";
   return null;
 }
 
@@ -272,6 +284,11 @@ const PRICE_STAND_IN = "price check";
  */
 export function sheetQuoteParams(form: StudioForm): ReturnType<typeof buildParams> | null {
   if (canQuote(form)) return buildParams(form);
+  // Speech is priced by its words, not its voice: with the words typed, the
+  // sheet can show prices before a voice is picked.
+  if (form.capability === "tts" && form.prompt.trim()) {
+    return buildParams({ ...form, voiceId: isVoiceId(form.voiceId) ? form.voiceId : (STUDIO_VOICES[0]?.id ?? null) });
+  }
   if ((needsSource(form.capability) || needsRecording(form.capability)) && !isUuid(form.sourceId)) return null;
   if (!WORDS_FREE_PRICE.includes(form.capability)) return null;
   return buildParams({
@@ -311,10 +328,15 @@ export function apiErrorMessage(t: Dictionary, code: unknown): string {
   return t.creative.errors[asCreativeError(code)];
 }
 
-/** What the panel offers next to the message. */
-export function errorAction(code: unknown): "credits" | "requote" | null {
+/**
+ * What the panel offers next to the message: credits (the Credits page, and
+ * the plan dialog), plans (the plan dialog: a model the plan does not open,
+ * or every parallel run busy), or a fresh price.
+ */
+export function errorAction(code: unknown): "credits" | "plans" | "requote" | null {
   const c = asCreativeError(code);
   if (c === "insufficient_credits") return "credits";
+  if (c === "entitlement_required" || c === "run_limit_reached") return "plans";
   if (c === "price_changed") return "requote";
   return null;
 }
@@ -531,6 +553,7 @@ export function prefillFromJob(job: StudioJob): StudioPrefill | null {
       ? { sourceId: isUuid(p.source_asset_id) ? p.source_asset_id : null, factor: asFactor(p.factor) }
       : {}),
     ...(takesStyle(job.capability) ? { styleKitId: isUuid(p.style_kit_id) ? p.style_kit_id : null } : {}),
+    ...(job.capability === "tts" ? { voiceId: isVoiceId(p.voice_id) ? p.voice_id : null } : {}),
     ...(needsRecording(job.capability)
       ? {
           sourceId: isUuid(p.source_asset_id) ? p.source_asset_id : null,
