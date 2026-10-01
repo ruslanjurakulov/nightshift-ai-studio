@@ -18,7 +18,8 @@ import { isUpsellCode, refusalFrom, type Refusal, type UpsellCatalog } from "@/l
 import { UPSCALE_FACTORS, type CreativeError } from "@/lib/creative/operations";
 import {
   ASPECT_RATIOS,
-  COMPOSER_CAPABILITIES,
+  DESCRIBE_LANGUAGES,
+  PANEL_CAPABILITIES,
   DUB_LANGUAGES,
   PROMPT_MAX,
   STUDIO_VOICES,
@@ -28,30 +29,37 @@ import {
   blockedReason,
   buildParams,
   canQuote,
+  defaultDescribeLanguage,
   errorAction,
   generateLabel,
   modelsFor,
   needsRecording,
   needsSource,
+  needsVideo,
   newIdempotencyKey,
   promptRule,
   sheetQuoteParams,
   takesStyle,
   type AspectRatio,
+  type DescribeLanguage,
   type DubLanguage,
   type QuoteState,
   type StudioCapability,
   type StudioModel,
   type StudioPrefill,
   type UpscaleFactor,
+  type UpscaleTarget,
   type VideoDuration,
 } from "@/lib/creative/studio";
 
 const QUOTE_DELAY_MS = 500;
 
-const MAKE_KINDS = COMPOSER_CAPABILITIES.filter((c) => !needsSource(c) && !needsRecording(c));
-/** The picture tools (0046) and the voice tools (0050): each starts from something in the library. */
-const MEDIA_TOOLS = COMPOSER_CAPABILITIES.filter((c) => needsSource(c) || needsRecording(c));
+/** What a tool starts from in the library: switching to a tool that starts from another kind starts the pick again. */
+const startsFrom = (c: StudioCapability) =>
+  needsSource(c) ? "picture" : needsRecording(c) ? "recording" : needsVideo(c) ? "video" : null;
+const MAKE_KINDS = PANEL_CAPABILITIES.filter((c) => startsFrom(c) === null);
+/** The picture tools (0046), the voice tools (0050) and the video tools (0052): each starts from something in the library. */
+const MEDIA_TOOLS = PANEL_CAPABILITIES.filter((c) => startsFrom(c) !== null);
 
 /** The longest recording each voice tool takes (0050's source check; the database still decides). */
 const RECORDING_MAX_SECONDS: Record<"voice_change" | "dub", number> = { voice_change: 300, dub: 1800 };
@@ -65,6 +73,10 @@ const RECORDING_MAX_SECONDS: Record<"voice_change" | "dub", number> = { voice_ch
  * — a higher price is refused by the database, never charged. One idempotency
  * key per press. Nothing else here spends: switching tools, opening the model
  * sheet (which asks each model's price) and picking a picture only fill the form.
+ *
+ * Describe (0055) reads a library picture and writes a prompt for it: the
+ * same priced press ("Describe · N credits"), and the answer is text in the
+ * results — "Make similar" there only fills this form again.
  *
  * Images and videos can take one of the organization's style kits (0048),
  * the channel's default kit picked to start with; a style adds no credits.
@@ -106,7 +118,7 @@ export function GeneratePanel({
   const path = useChannelPath();
 
   const [capability, setCapability] = useState<StudioCapability>(
-    initial?.capability ?? COMPOSER_CAPABILITIES.find((c) => modelsFor(models, c).length > 0) ?? "t2i",
+    initial?.capability ?? PANEL_CAPABILITIES.find((c) => modelsFor(models, c).length > 0) ?? "t2i",
   );
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
   const [aspect, setAspect] = useState<AspectRatio>(initial?.aspect ?? dna?.aspect ?? "16:9");
@@ -122,6 +134,14 @@ export function GeneratePanel({
   // channel's own narrator voice (its DNA) is ever picked to start with — shown, and changeable.
   const [voiceId, setVoiceId] = useState<string | null>(initial?.voiceId ?? dna?.voiceId ?? null);
   const [targetLanguage, setTargetLanguage] = useState<DubLanguage | null>(initial?.targetLanguage ?? null);
+  // 0052: the picture an animation ends on (optional), and the size a video upscale makes.
+  const [endFrameId, setEndFrameId] = useState<string | null>(initial?.endFrameId ?? null);
+  const [endOpen, setEndOpen] = useState(false);
+  const [target, setTarget] = useState<UpscaleTarget | null>(initial?.target ?? null);
+  // A description is written in the language the app is read in, unless the person picks another.
+  const [describeLanguage, setDescribeLanguage] = useState<DescribeLanguage>(
+    initial?.describeLanguage ?? defaultDescribeLanguage(locale),
+  );
   const styles = useStyleKits(orgId);
   const [quote, setQuote] = useState<QuoteState>({ status: "idle" });
   const [requote, setRequote] = useState(0);
@@ -140,10 +160,44 @@ export function GeneratePanel({
   // Only a kit the organization has (as loaded) is ever sent: a stale default
   // or a deleted kit reads as "None" rather than as a refusal at the price.
   const effectiveStyle = styles.state === "ready" && styles.kits.some((k) => k.id === styleKitId) ? styleKitId : null;
-  const form = { capability, prompt, aspect, duration, sourceId, factor, styleKitId: effectiveStyle, voiceId, targetLanguage };
+  // An end frame goes only to a model that ends a clip on it; another model
+  // keeps the pick but is never sent it (the database would refuse it).
+  const takesEnd = capability === "i2v" && current?.endFrame === true;
+  const effectiveEnd = takesEnd ? endFrameId : null;
+  // The size: the one picked if this model makes it, else the model's first.
+  const targets = current?.upscaleTargets ?? [];
+  const effectiveTarget = capability !== "video_upscale" ? null : target && targets.includes(target) ? target : (targets[0] ?? null);
+  const form = {
+    capability,
+    prompt,
+    aspect,
+    duration,
+    sourceId,
+    factor,
+    styleKitId: effectiveStyle,
+    voiceId,
+    targetLanguage,
+    endFrameId: effectiveEnd,
+    target: effectiveTarget,
+    describeLanguage,
+  };
   const params = useMemo(
-    () => buildParams({ capability, prompt, aspect, duration, sourceId, factor, styleKitId: effectiveStyle, voiceId, targetLanguage }),
-    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle, voiceId, targetLanguage],
+    () =>
+      buildParams({
+        capability,
+        prompt,
+        aspect,
+        duration,
+        sourceId,
+        factor,
+        styleKitId: effectiveStyle,
+        voiceId,
+        targetLanguage,
+        endFrameId: effectiveEnd,
+        target: effectiveTarget,
+        describeLanguage,
+      }),
+    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, describeLanguage],
   );
   const paramsKey = JSON.stringify(params);
   // A price is asked for only once the form is complete (the picture, the words).
@@ -242,22 +296,25 @@ export function GeneratePanel({
   const isVoice = capability === "tts";
   const sourced = needsSource(capability);
   const recorded = needsRecording(capability);
+  const filmed = needsVideo(capability);
   const words = promptRule(capability);
   const blocked = blockedReason(form, !!effectiveModel);
   const blockedText = blocked ? t.gen.blocked[blocked] : null;
 
   const pick = (c: StudioCapability) => {
-    // A picture and a recording are never the same id: switching between a
-    // picture tool and a voice tool starts the pick again.
-    if ((needsSource(c) && needsRecording(capability)) || (needsRecording(c) && needsSource(capability))) setSourceId(null);
+    // A picture, a recording and a video are never the same pick: switching
+    // to a tool that starts from another kind starts the pick again.
+    const from = startsFrom(c);
+    const was = startsFrom(capability);
+    if (from && was && from !== was) setSourceId(null);
     setCapability(c);
     edited();
   };
 
   // A tablist: ←/→ (and ↑/↓) move and choose, Home/End jump; one tab stop.
   function onTabKey(e: KeyboardEvent<HTMLButtonElement>, c: StudioCapability) {
-    const i = COMPOSER_CAPABILITIES.indexOf(c);
-    const n = COMPOSER_CAPABILITIES.length;
+    const i = PANEL_CAPABILITIES.indexOf(c);
+    const n = PANEL_CAPABILITIES.length;
     let to = -1;
     if (e.key === "ArrowRight" || e.key === "ArrowDown") to = (i + 1) % n;
     else if (e.key === "ArrowLeft" || e.key === "ArrowUp") to = (i - 1 + n) % n;
@@ -265,7 +322,7 @@ export function GeneratePanel({
     else if (e.key === "End") to = n - 1;
     if (to < 0) return;
     e.preventDefault();
-    const next = COMPOSER_CAPABILITIES[to];
+    const next = PANEL_CAPABILITIES[to];
     pick(next);
     tabRefs.current[next]?.focus();
   }
@@ -325,7 +382,8 @@ export function GeneratePanel({
     );
   }
 
-  const hasSettings = capability === "t2i" || capability === "t2v" || capability === "i2v" || capability === "upscale";
+  const hasSettings =
+    capability === "t2i" || capability === "t2v" || capability === "i2v" || capability === "upscale" || (filmed && targets.length > 0);
   const settings = hasSettings ? (
     <div className="flex flex-wrap items-center gap-2">
       {(capability === "t2i" || capability === "t2v") &&
@@ -334,6 +392,9 @@ export function GeneratePanel({
         seg(t.gen.durationLabel, Clock, VIDEO_DURATIONS, duration, setDuration, (d) => fmt(t.gen.seconds, { n: d }))}
       {capability === "upscale" &&
         seg(t.gen.factorLabel, Maximize2, UPSCALE_FACTORS, factor, setFactor, (f) => fmt(t.gen.factor, { n: f }))}
+      {filmed &&
+        effectiveTarget &&
+        seg(t.gen.targetLabel, Maximize2, targets, effectiveTarget, setTarget, (v) => v.replace(/k$/, "K"), true)}
     </div>
   ) : null;
   const ToolIcon = TOOL_ICONS[capability];
@@ -409,7 +470,93 @@ export function GeneratePanel({
               }}
               libraryHref={path("/library")}
             />
-            <span className="text-[12px] text-[var(--color-muted)]">{t.gen.keepsShape}</span>
+            <span className="text-[12px] text-[var(--color-muted)]">
+              {capability === "describe" ? t.gen.describeNote : t.gen.keepsShape}
+            </span>
+          </div>
+        )}
+
+        {capability === "describe" && (
+          <div className="flex flex-col gap-2">
+            <span className="studio-label" id="gen-describe-lang">
+              {t.gen.describeLanguageLabel}
+            </span>
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="gen-describe-lang">
+              <Languages aria-hidden className="size-3.5 text-[var(--color-muted)]" />
+              {DESCRIBE_LANGUAGES.map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  lang={l}
+                  aria-pressed={describeLanguage === l}
+                  onClick={() => {
+                    setDescribeLanguage(l);
+                    edited();
+                  }}
+                  className="studio-chip"
+                >
+                  {t.gen.languages[l]}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {takesEnd && (
+          <div className="flex flex-col gap-2" data-testid="gen-end-frame">
+            <span className="studio-label">
+              {t.gen.endFrameLabel} · {t.gen.optional}
+            </span>
+            {endFrameId || endOpen ? (
+              <>
+                <SourcePicker
+                  orgId={orgId}
+                  value={endFrameId}
+                  compact
+                  label={t.gen.endFrameLabel}
+                  onChange={(id) => {
+                    setEndFrameId(id);
+                    edited();
+                  }}
+                  libraryHref={path("/library")}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEndFrameId(null);
+                    setEndOpen(false);
+                    edited();
+                  }}
+                  className="btn-sky is-quiet pill w-fit px-3 py-1.5 text-[12px]"
+                >
+                  {t.gen.endFrameRemove}
+                </button>
+              </>
+            ) : (
+              <button type="button" onClick={() => setEndOpen(true)} className="studio-chip w-fit">
+                {t.gen.endFrameAdd}
+              </button>
+            )}
+            <span className="text-[12px] text-[var(--color-muted)]">{t.gen.endFrameNote}</span>
+          </div>
+        )}
+
+        {filmed && (
+          <div className="flex flex-col gap-2">
+            <span className="studio-label">{t.gen.videoLabel}</span>
+            <SourcePicker
+              orgId={orgId}
+              value={sourceId}
+              compact
+              media="video"
+              maxSeconds={current?.maxSourceSeconds ?? null}
+              onChange={(id) => {
+                setSourceId(id);
+                edited();
+              }}
+              libraryHref={path("/library")}
+            />
+            <span className="text-[12px] text-[var(--color-muted)]">{t.gen.videoUpscaleNote}</span>
           </div>
         )}
 
@@ -585,7 +732,7 @@ export function GeneratePanel({
           className="studio-cta"
         >
           <Sparkles aria-hidden className={`size-4${quote.status === "quoting" || submitting ? " pulse" : ""}`} />
-          <span>{submitting ? t.gen.starting : generateLabel(t, quote, locale)}</span>
+          <span>{submitting ? t.gen.starting : generateLabel(t, quote, locale, capability)}</span>
         </button>
         <p id="gen-status" className="min-h-[18px] text-center text-[12px]" aria-live="polite">
           {notice?.kind === "ok" ? (

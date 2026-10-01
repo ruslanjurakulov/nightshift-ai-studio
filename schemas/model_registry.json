@@ -475,6 +475,60 @@
       }
     },
     {
+      "id": "gemini-3.6-flash",
+      "display_name": "Gemini 3.6 Flash",
+      "provider": "google",
+      "adapter": "image.gemini_describe",
+      "vendor_model": "gemini-3.6-flash",
+      "capabilities": [
+        "describe"
+      ],
+      "output": "text",
+      "inputs": {
+        "image_refs_max": 1
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://ai.google.dev/gemini-api/docs/image-understanding",
+        "checked_at": "2026-10-01",
+        "source": "vendor_docs_search",
+        "evidence": "ai.google.dev image-understanding and api/generate-content pages, read 2026-10-01: inlineData (mimeType, data) parts, systemInstruction, generationConfig.maxOutputTokens, PNG/JPEG/WebP/HEIC, 20 MB per request",
+        "note": "the same text model and generateContent call the pipeline already uses (config.GEMINI_MODEL, modules/video_critic.py sends it pictures)"
+      },
+      "pricing": {
+        "unit": "request",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "billed per input and output token; no per-request figure, so none is claimed"
+      },
+      "credit_unit": "model_gemini_3_6_flash_request",
+      "entitlement": null,
+      "terms_gate": null,
+      "terms_notes": [
+        "Google Cloud Service Terms §20.d: not for a service directed to, or likely to be accessed by, people under 18",
+        "Google Cloud Service Terms §17.a: no use to develop a similar or competing product; needs a lawyer's reading before launch"
+      ],
+      "attribution": null,
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 4000,
+        "max_concurrent_per_org": 4
+      },
+      "quality_tier": 3,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "describe",
+        "prompt": "describe the probe frame",
+        "input_image": "generated"
+      }
+    },
+    {
       "id": "flux-2-pro",
       "display_name": "FLUX.2 Pro",
       "provider": "bfl",
@@ -858,6 +912,7 @@
         6,
         8
       ],
+      "end_frame": true,
       "audio_out": true,
       "async": true,
       "api_documented": {
@@ -898,11 +953,13 @@
       "quality_tier": 5,
       "speed_tier": 2,
       "probe": {
-        "capability": "t2v",
-        "prompt": "a paper boat drifting on a calm lake",
+        "capability": "i2v",
+        "prompt": "slow push in",
         "aspect_ratio": "16:9",
         "resolution": "720p",
-        "duration_s": 4
+        "duration_s": 4,
+        "input_image": "generated",
+        "end_frame": "generated"
       }
     },
     {
@@ -933,6 +990,7 @@
         6,
         8
       ],
+      "end_frame": true,
       "audio_out": true,
       "async": true,
       "api_documented": {
@@ -973,11 +1031,13 @@
       "quality_tier": 4,
       "speed_tier": 3,
       "probe": {
-        "capability": "t2v",
-        "prompt": "a paper boat drifting on a calm lake",
+        "capability": "i2v",
+        "prompt": "slow push in",
         "aspect_ratio": "16:9",
         "resolution": "720p",
-        "duration_s": 4
+        "duration_s": 4,
+        "input_image": "generated",
+        "end_frame": "generated"
       }
     },
     {
@@ -1007,6 +1067,7 @@
         6,
         8
       ],
+      "end_frame": true,
       "audio_out": true,
       "async": true,
       "api_documented": {
@@ -1046,11 +1107,13 @@
       "quality_tier": 3,
       "speed_tier": 4,
       "probe": {
-        "capability": "t2v",
-        "prompt": "a paper boat drifting on a calm lake",
+        "capability": "i2v",
+        "prompt": "slow push in",
         "aspect_ratio": "16:9",
         "resolution": "720p",
-        "duration_s": 4
+        "duration_s": 4,
+        "input_image": "generated",
+        "end_frame": "generated"
       }
     },
     {
@@ -1138,6 +1201,7 @@
         5,
         10
       ],
+      "end_frame": true,
       "audio_out": false,
       "async": true,
       "api_documented": {
@@ -1169,10 +1233,12 @@
       "quality_tier": 5,
       "speed_tier": 2,
       "probe": {
-        "capability": "t2v",
-        "prompt": "a paper boat drifting on a calm lake",
+        "capability": "i2v",
+        "prompt": "slow push in",
         "aspect_ratio": "16:9",
-        "duration_s": 5
+        "duration_s": 5,
+        "input_image": "generated",
+        "end_frame": "generated"
       }
     },
     {
@@ -1376,6 +1442,79 @@
       }
     },
     {
+      "id": "runway-video-upscale",
+      "display_name": "Runway Video Upscale",
+      "provider": "runway",
+      "adapter": "video.runway_upscale",
+      "vendor_model": "magnific_video_upscaler_creative",
+      "capabilities": [
+        "video_upscale"
+      ],
+      "output": "video",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "upscale_targets": [
+        "720p",
+        "1k",
+        "2k",
+        "4k"
+      ],
+      "audio_out": false,
+      "async": true,
+      "api_documented": {
+        "url": "https://docs.dev.runwayml.com/api/",
+        "checked_at": "2026-10-01",
+        "source": "vendor_docs_search",
+        "evidence": "Runway API reference (OpenAPI on docs.dev.runwayml.com/api, read 2026-10-01): POST /v1/video_upscale {model magnific_video_upscaler_creative, videoUri, resolution 720p|1k|2k|4k}, input max 30 s; POST /v1/uploads type=ephemeral (512 B-200 MB) -> runwayUri; GET /v1/tasks/{id}",
+        "note": "creativity, sharpen, smartGrain, flavor and fpsBoost are not sent: the vendor defaults apply and the frame count (the bill) never changes"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": "https://docs.dev.runwayml.com/guides/pricing",
+        "as_of": "2026-10-01",
+        "confirmed": false,
+        "note": "billed per OUTPUT FRAME: $0.007 (720p, 1k), $0.009 (2k), $0.012 (4k); the per-second figures assume the 60 fps ceiling the adapter enforces (a 30 fps source costs half)",
+        "variants": {
+          "by": "upscale_target",
+          "prices": {
+            "720p": 0.42,
+            "1k": 0.42,
+            "2k": 0.54,
+            "4k": 0.72
+          }
+        }
+      },
+      "credit_unit": "model_runway_video_upscale_second",
+      "entitlement": "models_video:premium",
+      "terms_gate": null,
+      "terms_notes": [
+        "Runway API terms: show 'Powered by Runway' linking runwayml.com where the feature appears; our user terms must protect Runway at least as much"
+      ],
+      "attribution": {
+        "text": "Powered by Runway",
+        "url": "https://runwayml.com"
+      },
+      "api_exposure": "any",
+      "limits": {
+        "max_prompt_chars": 1000,
+        "max_concurrent_per_org": 1,
+        "max_source_seconds": 30
+      },
+      "quality_tier": 4,
+      "speed_tier": 2,
+      "probe": {
+        "capability": "video_upscale",
+        "prompt": "a drawn test pattern",
+        "input_video": "generated",
+        "upscale_target": "720p"
+      }
+    },
+    {
       "id": "luma-ray-3.2",
       "display_name": "Luma Ray 3.2",
       "provider": "luma",
@@ -1408,6 +1547,7 @@
         5,
         10
       ],
+      "end_frame": true,
       "audio_out": false,
       "async": true,
       "api_documented": {
@@ -1439,11 +1579,13 @@
       "quality_tier": 5,
       "speed_tier": 3,
       "probe": {
-        "capability": "t2v",
-        "prompt": "a paper boat drifting on a calm lake",
+        "capability": "i2v",
+        "prompt": "slow push in",
         "aspect_ratio": "16:9",
         "resolution": "540p",
-        "duration_s": 5
+        "duration_s": 5,
+        "input_image": "generated",
+        "end_frame": "generated"
       }
     },
     {
@@ -1477,6 +1619,7 @@
         5,
         10
       ],
+      "end_frame": true,
       "audio_out": false,
       "async": true,
       "api_documented": {
@@ -1507,11 +1650,13 @@
       "quality_tier": 4,
       "speed_tier": 3,
       "probe": {
-        "capability": "t2v",
-        "prompt": "a paper boat drifting on a calm lake",
+        "capability": "i2v",
+        "prompt": "slow push in",
         "aspect_ratio": "16:9",
         "resolution": "480p",
-        "duration_s": 5
+        "duration_s": 5,
+        "input_image": "generated",
+        "end_frame": "generated"
       }
     },
     {
@@ -1545,6 +1690,7 @@
         5,
         10
       ],
+      "end_frame": true,
       "audio_out": true,
       "async": true,
       "api_documented": {
@@ -1573,11 +1719,13 @@
       "quality_tier": 4,
       "speed_tier": 3,
       "probe": {
-        "capability": "t2v",
-        "prompt": "a paper boat drifting on a calm lake",
+        "capability": "i2v",
+        "prompt": "slow push in",
         "aspect_ratio": "16:9",
         "resolution": "480p",
-        "duration_s": 5
+        "duration_s": 5,
+        "input_image": "generated",
+        "end_frame": "generated"
       }
     },
     {

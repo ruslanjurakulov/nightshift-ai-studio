@@ -56,6 +56,29 @@ so a picture tool can never be handed one, nor a voice tool a picture. The
 price was the recording's length as the DATABASE measured it (0050); the
 worker reports that same quantity as the provider's usage.
 
+Video tools (migration 0052)
+----------------------------
+``video_upscale`` starts from a VIDEO of the organization: copied by id like a
+recording, and refused unless the database's answer says it is a video — a
+recording tool's audio never reaches it. Its price was the video's length as
+the database measured it, reported back as the provider's usage. An ``i2v``
+may also name an END frame (``params.end_asset_id``): the same
+``creative_job_source`` answer re-checks it for the job's organization and it
+is copied by id like the first picture; an answer without it (a database
+without 0052) fails the job before any call — the clip is never made without
+the ending the person paid for.
+
+Describing a picture (migration 0055)
+-------------------------------------
+``describe`` starts from a picture of the organization like the picture tools
+(``params.source_asset_id``, the same ``creative_job_source`` answer, copied by
+id) and produces TEXT: a generation prompt for that picture. The adapter's one
+``text/plain`` output is read here, cleaned again (``modules/describe_text``:
+no instruction-like sentences, no addresses, at most 600 characters) and stored
+on the job row as ``result.text`` — never as a library asset (0055's CHECK
+refuses one). Nothing usable left fails the job (``bad_response``) and
+releases the hold: an empty answer is never charged.
+
 Style kits and @characters (migration 0048)
 -------------------------------------------
 ``t2i``, ``t2v``, ``edit`` and ``i2v`` may name a style kit
@@ -99,6 +122,7 @@ from typing import Any, Callable, List, Mapping, Optional, Protocol, Sequence, T
 from modules import creative_style as cs
 from modules import credits as credit_rules
 from modules import media_library as ml
+from modules.describe_text import clean_description
 
 logger = logging.getLogger("creative_worker")
 
@@ -119,15 +143,23 @@ MAX_ERROR_CHARS = 2000
 ADAPTERS_ENV = "NIGHTSHIFT_CREATIVE_ADAPTERS"
 #: Capabilities whose input is a library asset (params.source_asset_id): an
 #: image (0046) or, for the voice tools, a recording (0050).
-SOURCE_CAPABILITIES = frozenset({"edit", "i2v", "upscale", "remove_bg", "voice_change", "dub"})
-#: Of those, the ones whose input is a recording (audio or video, 0050).
-MEDIA_SOURCE_CAPABILITIES = frozenset({"voice_change", "dub"})
-#: Of those, the ones whose output is a new version of the input picture.
-VERSION_CAPABILITIES = frozenset({"edit", "upscale", "remove_bg"})
+SOURCE_CAPABILITIES = frozenset({"edit", "i2v", "upscale", "remove_bg", "voice_change", "dub", "video_upscale",
+                                 "describe"})
+#: Of those, the ones whose input is a file copied whole: a recording (audio
+#: or video, 0050) or a video (0052).
+MEDIA_SOURCE_CAPABILITIES = frozenset({"voice_change", "dub", "video_upscale"})
+#: Of those, the ones that take a VIDEO and nothing else (0052).
+VIDEO_SOURCE_CAPABILITIES = frozenset({"video_upscale"})
+#: Of those, the ones whose output is a new version of the input.
+VERSION_CAPABILITIES = frozenset({"edit", "upscale", "remove_bg", "video_upscale"})
 #: What each capability produces (the library checks the provider's output).
 OUTPUT_KIND = {"t2i": "image", "edit": "image", "upscale": "image", "remove_bg": "image",
                "t2v": "video", "i2v": "video", "tts": "audio", "sfx": "audio", "music": "audio",
-               "voice_change": "audio", "dub": "audio"}
+               "voice_change": "audio", "dub": "audio", "video_upscale": "video", "describe": "text"}
+#: Capabilities whose result is text on the job row, never a library asset (0055).
+TEXT_CAPABILITIES = frozenset({"describe"})
+#: The languages a description is written in (0055); absent = English.
+DESCRIBE_LANGUAGES = ("en", "ru", "uz")
 #: Library asset ids of a job's outputs are derived from the job id, so a
 #: retried store reuses the same rows instead of adding copies.
 ASSET_NS = uuid.UUID("5b0c1d1e-0046-4c2e-9a7e-c4ea71e0a55e")
@@ -159,6 +191,11 @@ class GenerationRequest:
     #: The quantity the DATABASE priced the job at (creative_jobs.quantity):
     #: for the voice tools, the recording's seconds — never a client's number.
     quantity: Optional[float] = None
+    #: The picture an i2v clip ends on (0052), a local copy; None = no end frame.
+    end_file: Optional[Path] = None
+    #: The source picture's pixel size as the library recorded it (width,
+    #: height) — a description keeps it so "Make similar" can pick the shape.
+    source_size: Optional[Tuple[int, int]] = None
 
 
 @dataclass(frozen=True)
@@ -321,6 +358,14 @@ def describe_files(files: Sequence[Path]) -> List[dict]:
     return out
 
 
+def _pixel_size(info: Mapping[str, Any]) -> Optional[Tuple[int, int]]:
+    """The source's (width, height) as the library recorded it, when both are
+    whole positive numbers; else None (a description then leaves the shape out)."""
+    w, h = info.get("width"), info.get("height")
+    ok = all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in (w, h))
+    return (int(w), int(h)) if ok else None
+
+
 class _Refused(Exception):
     """The job must end now, without a provider call; ``code`` is stored."""
 
@@ -464,7 +509,11 @@ class CreativeWorker:
         if not task_id:
             if request.capability in SOURCE_CAPABILITIES:
                 # Before 'submitting': a refusal here costs nobody anything.
-                request = replace(request, input_files=(self._source(request),))
+                info = self._source_answer(request)
+                request = replace(request, input_files=(self._source(request, info),),
+                                  source_size=_pixel_size(info))
+                if request.params.get("end_asset_id"):
+                    request = replace(request, end_file=self._end_frame(request, info))
             if cs.wants_style(request.capability, request.params):
                 request = self._style(request, adapter)
             if not self.queue.advance(job_id, self.worker_id, "submitting"):
@@ -482,23 +531,30 @@ class CreativeWorker:
                 return "left"
         return self._poll(job, request, adapter, str(task_id), beat)
 
-    def _source(self, request: GenerationRequest) -> Path:
-        """The job's input picture (or, for a voice tool, its recording),
-        copied into its folder. The database names the asset (for this
-        worker's job, in the job's organization); the path comes from the
-        asset id alone."""
+    def _source_answer(self, request: GenerationRequest) -> dict:
+        """The database's answer about the job's inputs (for this worker's
+        job, in the job's organization), re-checked right before the call."""
         if self.media_root is None:
             raise _Refused("source_unavailable", "this worker cannot read the media library")
         info = self.queue.job_source(request.job_id, self.worker_id)
         if not isinstance(info, dict) or info.get("ok") is not True:
             problem = (info or {}).get("problem") if isinstance(info, dict) else None
             raise _Refused("source_unavailable", str(problem or "the source cannot be used"))
+        return info
+
+    def _source(self, request: GenerationRequest, info: Mapping[str, Any]) -> Path:
+        """The job's input picture (or, for a voice tool, its recording; for a
+        video tool, its video), copied into its folder. The path comes from
+        the asset id alone."""
         try:
             aid = ml.canonical_id(str(info.get("asset_id") or "").lower())
         except ValueError:
             raise _Refused("source_unavailable", "the source cannot be used") from None
         if aid != str(request.params.get("source_asset_id") or "").lower():
             raise _Refused("source_unavailable", "the source cannot be used")
+        if request.capability in VIDEO_SOURCE_CAPABILITIES and (
+                info.get("kind") != "video" or not str(info.get("mime") or "").startswith("video/")):
+            raise _Refused("source_unavailable", "the source must be a video")
         try:
             return ml.copy_source(self.media_root, aid, str(info.get("mime") or ""),
                                   list(info.get("variants") or ()), self.out_dir / request.job_id / "input",
@@ -507,6 +563,26 @@ class CreativeWorker:
             raise _Refused("source_unavailable", str(e)) from None
         except OSError as e:
             raise _Refused("source_unavailable", f"the source could not be read ({type(e).__name__})") from None
+
+    def _end_frame(self, request: GenerationRequest, info: Mapping[str, Any]) -> Path:
+        """The picture an i2v ends on (0052), named by the same database
+        answer as the first frame and copied by its id like it."""
+        end = info.get("end_frame")
+        if request.capability != "i2v" or not isinstance(end, dict):
+            raise _Refused("source_unavailable", "the end frame cannot be used on this deployment yet")
+        try:
+            aid = ml.canonical_id(str(end.get("asset_id") or "").lower())
+        except ValueError:
+            raise _Refused("source_unavailable", "the end frame cannot be used") from None
+        if aid != str(request.params.get("end_asset_id") or "").lower():
+            raise _Refused("source_unavailable", "the end frame cannot be used")
+        try:
+            return ml.copy_source(self.media_root, aid, str(end.get("mime") or ""), list(end.get("variants") or ()),
+                                  self.out_dir / request.job_id / "input", name="end")
+        except ml.SourceUnavailable as e:
+            raise _Refused("source_unavailable", f"the end frame cannot be used: {e}") from None
+        except OSError as e:
+            raise _Refused("source_unavailable", f"the end frame could not be read ({type(e).__name__})") from None
 
     def _style(self, request: GenerationRequest, adapter: CreativeAdapter) -> GenerationRequest:
         """The job's style kit and mentioned characters, applied to the request
@@ -631,6 +707,8 @@ class CreativeWorker:
         if not files or not all(f.is_file() and f.stat().st_size > 0 for f in files):
             # Nothing usable came back: charging for it would be charging for nothing.
             raise _Refused("bad_response", "the provider reported success without an output file")
+        if request.capability in TEXT_CAPABILITIES:
+            return self._store_text(request, files, result)
         if not self.queue.advance(job_id, self.worker_id, "processing"):
             logger.warning("job %s: no longer this worker's; its outputs are not recorded here", job_id)
             return "left"
@@ -653,6 +731,34 @@ class CreativeWorker:
         status = (done or {}).get("status") if isinstance(done, dict) else None
         return f"completed:{len(described)}" if status in (None, "completed") else str(status)
 
+    def _store_text(self, request: GenerationRequest, files: Sequence[Path], result: ProviderPoll) -> str:
+        """A description: the text kept on the job row (module doc). The
+        provider's file is scratch; nothing goes to the library."""
+        job_id = request.job_id
+        try:
+            raw = Path(files[0]).read_bytes()[:64 * 1024].decode("utf-8", errors="replace")
+        except OSError as e:
+            raise _Refused("bad_response", f"the description could not be read ({type(e).__name__})") from None
+        text = clean_description(raw)
+        if not text:
+            raise _Refused("bad_response", "the provider returned no usable description")
+        if not self.queue.advance(job_id, self.worker_id, "processing"):
+            logger.warning("job %s: no longer this worker's; its description is not recorded here", job_id)
+            return "left"
+        lang = request.params.get("language")
+        out: dict = {"text": text, "language": lang if lang in DESCRIBE_LANGUAGES else "en", "storage": "job"}
+        if request.source_size:
+            out["width"], out["height"] = request.source_size
+        done = self.queue.finish(job_id, self.worker_id, True, result=out)
+        shutil.rmtree(self.out_dir / job_id, ignore_errors=True)
+        if result.usage is not None:
+            try:
+                self.queue.record_cost(job_id, result.usage)
+            except Exception as e:  # reporting only; the job is settled
+                logger.warning("job %s: provider cost not recorded (%s)", job_id, type(e).__name__)
+        status = (done or {}).get("status") if isinstance(done, dict) else None
+        return "completed:text" if status in (None, "completed") else str(status)
+
     def _to_library(self, request: GenerationRequest, files: Sequence[Path],
                     usage: Optional[ProviderUsage]) -> List[str]:
         """Each output as a library asset of the job's organization, attached
@@ -667,6 +773,9 @@ class CreativeWorker:
             provenance["provider"] = usage.provider
         if source:
             provenance["source_asset_id"] = source
+        end = str(request.params.get("end_asset_id") or "").lower()
+        if end and request.end_file is not None:
+            provenance["end_asset_id"] = end
         ids: List[str] = []
         try:
             for i, f in enumerate(files):

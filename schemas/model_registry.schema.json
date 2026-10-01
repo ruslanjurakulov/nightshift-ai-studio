@@ -13,7 +13,8 @@
     "models": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/model"}}
   },
   "$defs": {
-    "capability": {"enum": ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub"]},
+    "capability": {"enum": ["t2i", "edit", "t2v", "i2v", "tts", "sfx", "upscale", "remove_bg", "voice_change", "dub", "video_upscale", "describe"]},
+    "upscale_target": {"enum": ["720p", "1k", "2k", "4k"]},
     "language": {"type": "string", "pattern": "^[a-z]{2,3}$"},
     "aspect": {"type": "string", "pattern": "^[0-9]{1,2}:[0-9]{1,2}$"},
     "resolution": {"type": "string", "pattern": "^([0-9]{3,4}p|4k)$"},
@@ -39,7 +40,7 @@
           "additionalProperties": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"}
         },
         "capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/capability"}},
-        "output": {"enum": ["image", "video", "audio"]},
+        "output": {"enum": ["image", "video", "audio", "text"]},
         "inputs": {
           "type": "object",
           "required": ["image_refs_max"],
@@ -57,6 +58,8 @@
         "durations_s": {"type": "array", "uniqueItems": true, "items": {"type": "integer", "minimum": 1, "maximum": 120}},
         "upscale_factors": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": [2, 4]}},
         "languages": {"type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/language"}},
+        "upscale_targets": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/upscale_target"}},
+        "end_frame": {"type": "boolean"},
         "audio_out": {"type": "boolean"},
         "async": {"type": "boolean"},
         "api_documented": {
@@ -87,7 +90,7 @@
               "required": ["by", "prices"],
               "additionalProperties": false,
               "properties": {
-                "by": {"enum": ["resolution", "image_size"]},
+                "by": {"enum": ["resolution", "image_size", "upscale_target"]},
                 "prices": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/usd"}}
               }
             }
@@ -118,7 +121,8 @@
           "additionalProperties": false,
           "properties": {
             "max_prompt_chars": {"type": "integer", "minimum": 1, "maximum": 100000},
-            "max_concurrent_per_org": {"type": "integer", "minimum": 1, "maximum": 100}
+            "max_concurrent_per_org": {"type": "integer", "minimum": 1, "maximum": 100},
+            "max_source_seconds": {"type": "integer", "minimum": 1, "maximum": 1800}
           }
         },
         "quality_tier": {"type": "integer", "minimum": 1, "maximum": 5},
@@ -137,7 +141,10 @@
             "input_image": {"enum": ["generated"]},
             "input_audio": {"enum": ["speech"]},
             "target_language": {"$ref": "#/$defs/language"},
-            "factor": {"enum": [2, 4]}
+            "factor": {"enum": [2, 4]},
+            "input_video": {"enum": ["generated"]},
+            "end_frame": {"enum": ["generated"]},
+            "upscale_target": {"$ref": "#/$defs/upscale_target"}
           }
         }
       }
