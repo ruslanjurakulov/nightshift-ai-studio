@@ -51,18 +51,17 @@ export const VOICE_TOOLS = ["voice_change", "dub"] as const satisfies readonly C
  */
 export const READ_TOOLS = ["describe"] as const satisfies readonly CreativeCapability[];
 
-/** The sidebar's tools in the composer's order: what lib/navigation's STUDIO_TOOLS mirrors. */
-export const COMPOSER_CAPABILITIES = [...STUDIO_CAPABILITIES, ...VOICE_TOOLS, ...READ_TOOLS] as const;
-
 /**
  * The video tools (migration 0052): upscale a library video. They live in the
- * composer's tool rows after the voice tools; the sidebar does not link them
- * yet (that list is lib/navigation's, held in step with COMPOSER_CAPABILITIES).
+ * composer's tool rows after Describe.
  */
 export const VIDEO_TOOLS = ["video_upscale"] as const satisfies readonly CreativeCapability[];
 
-/** Everything the composer can make, in the order its tabs show the tools (the rest wait for their own UI). */
-export const PANEL_CAPABILITIES = [...COMPOSER_CAPABILITIES, ...VIDEO_TOOLS] as const;
+/** The sidebar's tools in the composer's order: what lib/navigation's STUDIO_TOOLS mirrors. */
+export const COMPOSER_CAPABILITIES = [...STUDIO_CAPABILITIES, ...VOICE_TOOLS, ...READ_TOOLS, ...VIDEO_TOOLS] as const;
+
+/** Everything the composer can make, in the order its tabs show the tools. */
+export const PANEL_CAPABILITIES = COMPOSER_CAPABILITIES;
 export type StudioCapability = (typeof PANEL_CAPABILITIES)[number];
 
 /** The tools that start from a picture in the library (migration 0046). */

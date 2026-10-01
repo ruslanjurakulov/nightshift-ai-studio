@@ -221,7 +221,7 @@ describe("params (0050's rules)", () => {
   it("the sidebar's list is unchanged; the composer adds the voice tools after the picture tools", () => {
     expect([...STUDIO_CAPABILITIES]).toEqual(["t2i", "t2v", "tts", "edit", "i2v", "upscale", "remove_bg"]);
     // Describe (0055) reads a picture rather than making one: it comes last.
-    expect([...COMPOSER_CAPABILITIES]).toEqual([...STUDIO_CAPABILITIES, "voice_change", "dub", "describe"]);
+    expect([...COMPOSER_CAPABILITIES]).toEqual([...STUDIO_CAPABILITIES, "voice_change", "dub", "describe", "video_upscale"]);
     // The Library's "Use in Studio" picture links never offer a voice tool for a picture.
     expect(SOURCE_CAPABILITIES as readonly string[]).not.toContain("voice_change");
   });

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { AudioLines, Clapperboard, Image as ImageIcon, Languages, Mic, Play, ScanText, Scissors, Wand2, ZoomIn, type LucideIcon } from "lucide-react";
+import { AudioLines, Clapperboard, Image as ImageIcon, Languages, Mic, MonitorUp, Play, ScanText, Scissors, Wand2, ZoomIn, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { CUSTOMER_SIDEBAR, sidebarCurrent, type NavItem, type StudioTool } from "@/lib/navigation";
@@ -22,6 +22,7 @@ const TOOL_ICONS: Record<StudioTool, LucideIcon> = {
   voice_change: AudioLines,
   dub: Languages,
   describe: ScanText,
+  video_upscale: MonitorUp,
 };
 
 /** The section path after the channel: "/chronos/create" → "/create". */

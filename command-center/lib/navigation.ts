@@ -192,11 +192,11 @@ export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly SectionI
 /**
  * The Studio's tools, in the order the customer sidebar lists them: the
  * make-and-edit tools, then the voice tools (change the voice of a recording,
- * dub it), then Describe (a picture -> a prompt for it). Mirrors COMPOSER_CAPABILITIES in lib/creative/studio.ts (kept out
+ * dub it), then Describe (a picture -> a prompt for it), then Upscale video. Mirrors COMPOSER_CAPABILITIES in lib/creative/studio.ts (kept out
  * of this pure module on purpose; tests/navigation-shell.test.ts holds the
  * two in step, and that every link is one prefillFromQuery accepts).
  */
-export const STUDIO_TOOLS = ["t2i", "t2v", "tts", "edit", "i2v", "upscale", "remove_bg", "voice_change", "dub", "describe"] as const;
+export const STUDIO_TOOLS = ["t2i", "t2v", "tts", "edit", "i2v", "upscale", "remove_bg", "voice_change", "dub", "describe", "video_upscale"] as const;
 export type StudioTool = (typeof STUDIO_TOOLS)[number];
 
 export interface ToolLink {
