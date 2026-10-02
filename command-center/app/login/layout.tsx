@@ -7,6 +7,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: { absolute: `${t.site.auth.signInTitle} · ${t.brand.name}` },
     description: t.site.auth.signInSub,
+    openGraph: { title: `${t.site.auth.signInTitle} · ${t.brand.name}`, description: t.site.auth.signInSub, images: [{ url: "/og.png", width: 1200, height: 630 }] },
   };
 }
 

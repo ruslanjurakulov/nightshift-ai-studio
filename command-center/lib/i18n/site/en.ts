@@ -304,6 +304,7 @@ export const siteEn = {
     asideLamp: "On air only when you say",
     back: "Back to the homepage",
     welcomeNote: "{n} free credits once, when you create an account.",
+    unavailable: "Sign-in is switched off on this server for now, so nothing you type here is sent anywhere. Please come back a little later.",
   },
   notFound: {
     meta: "Off air",

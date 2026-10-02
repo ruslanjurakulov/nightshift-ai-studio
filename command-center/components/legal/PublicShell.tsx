@@ -71,7 +71,7 @@ export function PublicShell({
                 {t.site.nav.signIn}
               </Link>
             </div>
-            <Link href="/signup" className="st-key" data-size="sm">
+            <Link href="/signup" className="st-key" data-size="sm" data-tone="quiet">
               {t.site.nav.start}
             </Link>
             <PublicMobileMenu

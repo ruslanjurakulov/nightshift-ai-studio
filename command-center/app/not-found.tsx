@@ -7,7 +7,7 @@ import { formatTimecode } from "@/components/ui/Timecode";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getDictionary();
-  return { title: `${t.site.notFound.meta} · ${t.brand.name}`, robots: { index: false } };
+  return { title: `${t.site.notFound.meta} · ${t.brand.name}`, description: t.site.notFound.body, robots: { index: false } };
 }
 
 /** 404, read as the monitor's frame counter: 00:00:04:04 at 25 fps. */

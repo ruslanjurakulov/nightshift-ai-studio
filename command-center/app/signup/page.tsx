@@ -124,7 +124,7 @@ export default function SignupPage() {
     <AuthShell title={t.signup.title} subtitle={t.signup.sub}>
       {!isSupabaseConfigured && (
         <div className="mt-5">
-          <AuthAlert tone="warn">{t.auth.notConfigured}</AuthAlert>
+          <AuthAlert tone="warn">{t.site.auth.unavailable}</AuthAlert>
         </div>
       )}
 

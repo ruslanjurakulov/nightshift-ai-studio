@@ -7,6 +7,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: { absolute: `${t.signup.title} · ${t.brand.name}` },
     description: t.signup.sub,
+    openGraph: { title: `${t.signup.title} · ${t.brand.name}`, description: t.signup.sub, images: [{ url: "/og.png", width: 1200, height: 630 }] },
   };
 }
 

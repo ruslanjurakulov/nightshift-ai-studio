@@ -8,7 +8,7 @@ import { NO_FLASH_SCRIPT } from "@/lib/theme";
 
 export const metadata: Metadata = {
   title: "Nightshift Command Center",
-  description: "Real-time monitoring & control plane for the Nightshift content-automation bot.",
+  description: "Nightshift makes finished YouTube videos for your channel, shows the price before every run, and waits for your approval before anything goes public.",
 };
 
 /** The browser chrome takes the page's ground: the light table, or the control room at night. */
@@ -24,21 +24,25 @@ export const viewport: Viewport = {
    Generate key), the normal width is the reading face — and Martian Mono,
    narrowed on its width axis, for every number that counts something.
    Cyrillic is loaded for Russian; Uzbek is Latin with ʻ (in latin). Served
-   from our own origin by next/font, so no request leaves for Google at run time. */
+   from our own origin by next/font, so no request leaves for Google at run time.
+   `subsets` only picks what is PRELOADED: every subset's @font-face (Cyrillic,
+   Latin Extended) stays in the CSS behind its unicode-range and loads when a
+   page uses it. Preloading Latin alone keeps the first paint to three font
+   files instead of nine. */
 const display = Sofia_Sans_Extra_Condensed({
-  subsets: ["latin", "latin-ext", "cyrillic"],
+  subsets: ["latin"],
   variable: "--font-ns-display",
   display: "swap",
   fallback: ["Arial Narrow", "Roboto Condensed", "sans-serif"],
 });
 const body = Sofia_Sans({
-  subsets: ["latin", "latin-ext", "cyrillic"],
+  subsets: ["latin"],
   variable: "--font-ns-body",
   display: "swap",
   fallback: ["Segoe UI", "Helvetica Neue", "Arial", "sans-serif"],
 });
 const mono = Martian_Mono({
-  subsets: ["latin", "latin-ext", "cyrillic"],
+  subsets: ["latin"],
   variable: "--font-ns-mono",
   display: "swap",
   axes: ["wdth"],

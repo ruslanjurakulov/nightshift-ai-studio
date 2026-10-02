@@ -77,6 +77,15 @@ export function AuthShell({
           <h1 className="st-h1-page">{title}</h1>
           {subtitle && <p className="st-body mt-4">{subtitle}</p>}
           {children}
+          {/* On a phone the house rules sit under the form instead of beside it. */}
+          <ul className="st-ledger mt-10 lg:hidden" aria-label={a.asideTitle}>
+            {a.asideItems.map((line) => (
+              <li key={line}>
+                <span aria-hidden className="ns-lamp" data-tone="ok" />
+                {line}
+              </li>
+            ))}
+          </ul>
         </div>
 
         <LegalFooter />

@@ -31,7 +31,7 @@ export default function LoginPage() {
     setLinkError(null);
     const supabase = createClient();
     if (!supabase) {
-      setError(t.auth.notConfiguredErr);
+      setError(t.site.auth.unavailable);
       return;
     }
     setBusy(true);
@@ -57,7 +57,7 @@ export default function LoginPage() {
     <AuthShell title={t.site.auth.signInTitle} subtitle={t.site.auth.signInSub}>
       {!isSupabaseConfigured && (
         <div className="mt-5">
-          <AuthAlert tone="warn">{t.auth.notConfigured}</AuthAlert>
+          <AuthAlert tone="warn">{t.site.auth.unavailable}</AuthAlert>
         </div>
       )}
 

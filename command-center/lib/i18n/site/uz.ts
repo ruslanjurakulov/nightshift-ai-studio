@@ -297,6 +297,7 @@ export const siteUz: SiteDictionary = {
     asideLamp: "Efirga — faqat siz aytganda",
     back: "Bosh sahifaga",
     welcomeNote: "Hisob yaratganingizda bir marta {n} bepul kredit.",
+    unavailable: "Bu serverda kirish hozircha oʻchirilgan, shuning uchun bu yerda yozganlaringiz hech qayerga yuborilmaydi. Birozdan keyin qaytib keling.",
   },
   notFound: {
     meta: "Signal yoʻq",
