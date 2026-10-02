@@ -78,6 +78,15 @@ jobs:
         if: ${{ !cancelled() }}
         run: npx vitest run
 
+      # BR-S-004/005: the tree had a critical dev advisory and two runtime ones
+      # that nobody saw because nothing looked. High and critical now fail the
+      # job (runtime and dev alike: a dev server is a target too). A new
+      # advisory can turn this red on an unrelated PR; that is the point, and
+      # the fix is its own small dependency PR.
+      - name: Dependency advisories
+        if: ${{ !cancelled() }}
+        run: npm audit --audit-level=high
+
       # Not redundant with the typecheck. A server/client boundary violation, a
       # bad route export, or a `"use client"` module importing something
       # server-only all satisfy `tsc` and fail here — which is a class of
