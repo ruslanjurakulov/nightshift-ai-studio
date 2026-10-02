@@ -32,6 +32,7 @@ import { dictionaries, type Locale } from "@/lib/i18n";
 import { SideNav } from "@/components/SideNav";
 import { Header } from "@/components/Header";
 import { SectionShell } from "@/components/SectionShell";
+import { SectionTabs } from "@/components/navigation/SectionTabs";
 import { CreditMenu } from "@/components/shell/CreditMenu";
 import { ShellProvider } from "@/components/shell/ShellContext";
 import {
@@ -182,6 +183,40 @@ describe("customer sidebar (rendered)", () => {
     expect(screen.queryByRole("link", { name: en.gen.kinds.t2i })).toBeNull();
     expect(screen.queryByRole("button", { name: en.account.open })).toBeNull();
     expect(screen.getByRole("link", { name: en.nav.pipeline })).toBeTruthy();
+  });
+});
+
+describe("Getting Started is the operator's", () => {
+  it("is not in a customer's sidebar, bottom bar or Settings tabs", () => {
+    pathname = "/chronos/organization";
+    render(
+      withI18n(
+        <ShellProvider operator={false}>
+          <SideNav email="me@example.com" plan={PLAN} />
+          <SectionTabs />
+        </ShellProvider>,
+      ),
+    );
+    expect(screen.queryByText(en.nav.onboarding)).toBeNull();
+    expect(document.querySelector('a[href$="/getting-started"]')).toBeNull();
+    // The tabs are still there, without it.
+    const tabs = screen.getByRole("navigation", { name: en.nav.sections });
+    expect(within(tabs).getAllByRole("link").map((a) => a.textContent)).toEqual([en.nav.organization, en.nav.developers]);
+  });
+
+  it("is still in the operator's console rail", () => {
+    pathname = "/chronos/command-center";
+    render(withI18n(<SideNav operator />));
+    const link = screen.getAllByRole("link", { name: en.nav.onboarding })[0];
+    expect(link.getAttribute("href")).toBe("/chronos/getting-started");
+  });
+
+  it("has no per-language customer text pointing at it", () => {
+    for (const loc of ["en", "ru", "uz"] as const) {
+      const d = dictionaries[loc];
+      expect(d.signup.nextHint, loc).not.toContain(d.nav.onboarding);
+      expect(d.signup.nextHint, loc).not.toMatch(/getting.?started/i);
+    }
   });
 });
 

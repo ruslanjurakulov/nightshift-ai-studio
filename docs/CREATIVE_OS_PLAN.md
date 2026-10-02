@@ -483,6 +483,14 @@ use; `model_registry.entitlement` names the plan entitlement a model needs.
   renders, not a browser compositor).
 - PR 11: Captions from existing Whisper path (`subtitle_generator.py`) as a
   priced AI op; manual caption editing free.
+  *Built (migration 0072):* the priced op is the `captions` capability — a
+  library recording in, a word-timed transcript out (`caption_tracks`), through
+  the registry's speech-to-text model rather than a worker-local Whisper (the
+  pipeline's own Whisper words are accepted by `modules/captions.py` as the
+  same shape, so timing that already exists is never paid for twice). Cues,
+  the four burned-in looks (`classic`, `bold`, `pop`, `clean`; en / ru / uz
+  line rules) and the SRT / WebVTT downloads are made in the browser, free
+  (`command-center/lib/captions.ts`, `components/editor/CaptionsPanel.tsx`).
 - PR 12: Export presets (9:16 / 16:9 / 1:1) + downloads via the 0030 pattern.
 - PR 13: Publish an export (D4): the export becomes a `videos` row, then the
   existing publish gate, approvals and `publish_requests` apply unchanged.

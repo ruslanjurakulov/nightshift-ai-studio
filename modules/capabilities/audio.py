@@ -1,5 +1,5 @@
 """Audio adapters: ElevenLabs text-to-speech, sound effects, the voice
-changer and dubbing.
+changer, dubbing and speech-to-text (captions).
 
 TTS, sound effects and the voice changer are synchronous and answer with the
 audio bytes, so ``submit`` finishes the job (paths and fields as in the
@@ -11,16 +11,21 @@ The voice is never guessed: TTS and the voice changer need an explicit
 ``voice_id`` from the account's own list (CLAUDE.md ceiling — 20
 alphanumerics), and a request without one is refused before any call. A dub
 is made only in a language the registry entry lists (``languages``); there is
-no "nearest language".
+no "nearest language". Captions (0072) are one synchronous speech-to-text
+call that answers with the words and their times; the adapter hands back the
+words as one ``application/json`` output and the worker cleans and stores them.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
+from modules import captions as caption_words
 from modules.capabilities.base import (
+    CAPTIONS,
     DUB,
     E_BAD_REQUEST,
     E_BAD_RESPONSE,
@@ -279,4 +284,61 @@ class ElevenLabsDubbingAdapter(_ElevenLabs):
         raise AdapterError(E_BAD_RESPONSE, f"poll: unknown dub status {str(status)[:40]!r}")
 
 
-ADAPTERS = (ElevenLabsTTSAdapter, ElevenLabsSFXAdapter, ElevenLabsVoiceChangerAdapter, ElevenLabsDubbingAdapter)
+# ── captions (migration 0072) ───────────────────────────────────────────────
+
+class ElevenLabsScribeAdapter(_ElevenLabs):
+    """``POST /v1/speech-to-text`` (multipart ``file`` + ``model_id``, with
+    ``timestamps_granularity=word``) — the vendor's speech-to-text. Synchronous:
+    the answer is ``{language_code, text, words: [{text, start, end, type}]}``.
+
+    Only words come back to the caller: no speaker labels and no audio-event
+    tags are asked for (``diarize`` and ``tag_audio_events`` are sent false),
+    and ``type`` other than ``word`` is dropped by
+    :func:`modules.captions.words_from_vendor`. The spoken language is sent
+    only when the person named one (``language_code``, an ISO 639-1 tag the
+    registry entry lists); otherwise the vendor detects it and the detected
+    language is stored with the track."""
+
+    key = "audio.elevenlabs_scribe"
+    capabilities = (CAPTIONS,)
+    #: A 30-minute recording is transcribed in one request.
+    timeout = 900
+
+    def problems(self, request: CapabilityRequest, entry) -> List[str]:
+        out = super().problems(request, entry)
+        out.extend(_one_recording(request, DUB_SUFFIXES))
+        if request.voice_id:
+            out.append("a voice does not apply to captions")
+        return out
+
+    def submit(self, request: CapabilityRequest, vendor_model: str) -> ProviderTask:
+        self.require_key()
+        bad = _one_recording(request, DUB_SUFFIXES)
+        lang = request.spoken_language
+        if lang is not None and not re.fullmatch(r"[a-z]{2}", lang):
+            bad.append("the spoken language must be a two-letter tag")
+        if bad:
+            raise AdapterError(E_BAD_REQUEST, "; ".join(bad))
+        name, mime = _recording(request.input_media[0])
+        form = {"model_id": vendor_model, "timestamps_granularity": "word",
+                "diarize": "false", "tag_audio_events": "false"}
+        if lang:
+            form["language_code"] = lang
+        with open(request.input_media[0], "rb") as fh:
+            body = self._call("POST", f"{self.base_url}/v1/speech-to-text", what="transcribe",
+                              files={"file": (name, fh, mime)}, data=form)
+        try:
+            language, words = caption_words.words_from_vendor(body)
+        except caption_words.CaptionsError as e:
+            raise AdapterError(E_BAD_RESPONSE, e.message) from None
+        # A recording with no speech answers with no words: the worker turns
+        # that into its own "no_speech" failure (and releases the hold) — it is
+        # neither a vendor fault nor a bad request.
+        payload = json.dumps(caption_words.track_json(lang or language, [
+            {"t": w.get("text"), "s": w.get("start"), "e": w.get("end")} for w in words]),
+            ensure_ascii=False).encode("utf-8")
+        return ProviderTask(self.key, vendor_model, None, outputs=[Output("application/json", data=payload)])
+
+
+ADAPTERS = (ElevenLabsTTSAdapter, ElevenLabsSFXAdapter, ElevenLabsVoiceChangerAdapter, ElevenLabsDubbingAdapter,
+            ElevenLabsScribeAdapter)

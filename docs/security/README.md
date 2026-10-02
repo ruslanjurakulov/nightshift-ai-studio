@@ -27,6 +27,7 @@ machine, one Markdown file per finding (or per small group):
 | `BR-C-NNN` | Breach lane C |
 | `BR-D-NNN` | Breach lane D (wave 3) |
 | `BR-E-NNN` | Breach lane E (wave 4) |
+| `BR-L-NNN` | Lens, the independent review (round 2 onward) |
 | `BR-S-NNN` | Sentinel's own static review (written straight to the ledger, not the inbox) |
 
 A finding file should contain:

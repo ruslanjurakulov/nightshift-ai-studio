@@ -47,6 +47,7 @@ from modules.render_spec import (
     RenderSpec,
     Segment,
     build_ffmpeg_command,
+    cap_inputs,
     concat_list_lines,
     segment_frames,
     validate,
@@ -234,7 +235,25 @@ def segment_commands(
     this backend always ran. ``frame_exact`` replaces ``-t``/``d=`` with
     ``-frames:v round(duration*fps)``: measured at 30 fps, a 1.067 s colour
     segment gave 33 frames and an input-seeked clip one frame short, which
-    would drift every later cut of a timeline off its audio."""
+    would drift every later cut of a timeline off its audio.
+
+    A timeline's commands (``frame_exact``, and every cross-fade) read library
+    media members uploaded, so each input is capped at DECODE_MAX_PIXELS and a
+    refused frame fails the run (BR-L-004): skipped, it would leave a short
+    clip, or under ``-stream_loop -1`` a clip whose every frame is refused
+    would loop until the export's time limit. The pipeline's commands are
+    unchanged."""
+    cmds = _segment_commands(ffmpeg, seg, out_path, width, height, fps,
+                             seed=seed, x264=x264, frame_exact=frame_exact)
+    if frame_exact or seg.xfade is not None:
+        return [cap_inputs(c, fail_on_error=True) for c in cmds]
+    return cmds
+
+
+def _segment_commands(
+    ffmpeg: str, seg: Segment, out_path: Path, width: int, height: int, fps: int,
+    *, seed: Optional[str] = None, x264: Sequence[str] = (), frame_exact: bool = False,
+) -> List[List[str]]:
     if seg.xfade is not None:
         return _xfade_commands(ffmpeg, seg, out_path, width, height, fps,
                                seed=seed, x264=x264)

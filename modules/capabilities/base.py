@@ -53,15 +53,17 @@ DUB = "dub"          # speech (audio / video) → the dubbed speech in a target 
 #: a video → the same video at a higher resolution (0052; CapabilityRequest.upscale_target)
 VIDEO_UPSCALE = "video_upscale"
 DESCRIBE = "describe"  # image → text: a generation prompt for that picture (0055)
-CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE)
+CAPTIONS = "captions"  # speech (audio / video) → the words with their times, for subtitles (0072)
+CAPABILITIES = (T2I, EDIT, T2V, I2V, TTS, SFX, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE,
+                CAPTIONS)
 OUTPUT_OF = {T2I: "image", EDIT: "image", T2V: "video", I2V: "video", TTS: "audio", SFX: "audio",
              UPSCALE: "image", REMOVE_BG: "image", VOICE_CHANGE: "audio", DUB: "audio",
-             VIDEO_UPSCALE: "video", DESCRIBE: "text"}
+             VIDEO_UPSCALE: "video", DESCRIBE: "text", CAPTIONS: "text"}
 #: Capabilities whose input is an image (CapabilityRequest.input_images).
 IMAGE_INPUT = frozenset({EDIT, I2V, UPSCALE, REMOVE_BG, DESCRIBE})
 #: Capabilities whose output is text kept on the job row, never a file in the
 #: library (0055's CHECK refuses assets on such a job).
-TEXT_OUTPUT = frozenset({DESCRIBE})
+TEXT_OUTPUT = frozenset({DESCRIBE, CAPTIONS})
 #: The languages a description is written in (0055's allow-list).
 DESCRIBE_LANGUAGES = ("en", "ru", "uz")
 #: The render quality an image model that bills by it is asked for (0060).
@@ -75,7 +77,8 @@ QUALITY_CAPABILITIES = frozenset({T2I, EDIT})
 VIDEO_VARIANT_CAPABILITIES = frozenset({T2V, I2V})
 #: Capabilities whose input is a recording — audio or video with speech
 #: (CapabilityRequest.input_media, migration 0050). Never mixed with images.
-MEDIA_INPUT = frozenset({VOICE_CHANGE, DUB})
+#: Captions (0072) start from one too: the recording is the whole input.
+MEDIA_INPUT = frozenset({VOICE_CHANGE, DUB, CAPTIONS})
 #: Capabilities whose input is a video file (0052) — also carried in
 #: CapabilityRequest.input_media, never as a picture, never with speech rules.
 VIDEO_INPUT = frozenset({VIDEO_UPSCALE})
@@ -84,7 +87,7 @@ FILE_INPUT = MEDIA_INPUT | VIDEO_INPUT
 #: Capabilities where the prompt is optional (i2v, upscale) or absent
 #: (remove_bg, the voice tools and the video upscale: the file is the whole input).
 #: describe sends no prompt of the person's: the adapter writes the request.
-PROMPT_OPTIONAL = frozenset({I2V, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE})
+PROMPT_OPTIONAL = frozenset({I2V, UPSCALE, REMOVE_BG, VOICE_CHANGE, DUB, VIDEO_UPSCALE, DESCRIBE, CAPTIONS})
 
 # ── task states ──────────────────────────────────────────────────────────────
 PENDING = "pending"
@@ -222,6 +225,9 @@ class CapabilityRequest:
     #: The language a description is written in (``describe`` only, 0055):
     #: one of DESCRIBE_LANGUAGES; None = English.
     output_language: Optional[str] = None
+    #: The language spoken in the recording (``captions`` only, 0072): one of
+    #: the entry's ``languages``; None = the provider detects it.
+    spoken_language: Optional[str] = None
 
 
 @dataclass
@@ -262,7 +268,7 @@ class PollResult:
 
 _EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp",
         "video/mp4": ".mp4", "audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/flac": ".flac",
-        "text/plain": ".txt"}
+        "text/plain": ".txt", "application/json": ".json"}
 
 
 def image_mime(path: str) -> str:
