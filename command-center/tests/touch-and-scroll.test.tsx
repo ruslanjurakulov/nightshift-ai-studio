@@ -58,8 +58,12 @@ describe("scrollable regions are keyboard-reachable and named", () => {
     );
     expect(boxes.length).toBeGreaterThan(0);
     for (const b of boxes) {
-      expect(b).toMatchObject({ tabindex: "0", role: "region", label: t.common.scrollTable });
+      expect(b).toMatchObject({ tabindex: "0", role: "region" });
+      expect(b.label?.endsWith(t.common.scrollTable)).toBe(true);
     }
+    // Named by its columns: two regions with the same name were axe landmark-unique on /privacy.
+    const privacy = scrollBoxes(renderToStaticMarkup(<LegalDocumentView doc={LEGAL_TEXTS[locale].privacy} t={t} locale={locale} />));
+    expect(new Set(privacy.map((b) => b.label)).size).toBe(privacy.length);
   });
 
   it("the not-configured badge may wrap: a nowrap badge made /privacy and /terms scroll sideways at 360px", () => {

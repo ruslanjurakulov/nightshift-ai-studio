@@ -2,20 +2,16 @@ import Link from "next/link";
 import type { Dictionary, Locale } from "@/lib/i18n";
 import type { LegalBlock, LegalDocument } from "@/lib/legal-docs";
 import { tokenizeInline, type LegalVar } from "@/lib/legal-docs/inline";
-import { CREDIT_EXPIRY_MONTHS, LEGAL, LEGAL_ENV_VARS, type LegalConfig } from "@/lib/legal";
+import { CREDIT_EXPIRY_MONTHS, LEGAL, missingLegalFields, type LegalConfig } from "@/lib/legal";
 
-/** An operator detail, or the marker saying which env var would supply it. */
+/** An operator detail, or a plain "not published yet" in the reader's
+ *  language. Never the env var behind it: these are public pages, and a
+ *  variable name is for whoever deploys the site (lib/legal.ts lists them),
+ *  not for the person reading the Terms. */
 function Var({ name, t }: { name: LegalVar; t: Dictionary }) {
   const value = LEGAL[name as keyof LegalConfig];
   if (value === null) {
-    return (
-      <span
-        className="mono break-words rounded-md border border-[var(--color-warn)] px-1.5 py-0.5 text-[0.8em] text-[var(--color-warn)]"
-        title={LEGAL_ENV_VARS[name]}
-      >
-        {t.legal.notConfigured} · {LEGAL_ENV_VARS[name]}
-      </span>
-    );
+    return <span className="italic text-[var(--color-muted)]">{t.legal.pending}</span>;
   }
   if (name === "contactEmail") {
     return (
@@ -109,7 +105,7 @@ function Block({ block, t }: { block: LegalBlock; t: Dictionary }) {
     <div
       tabIndex={0}
       role="region"
-      aria-label={t.common.scrollTable}
+      aria-label={`${block.table.head.join(" · ")} · ${t.common.scrollTable}`}
       className="scroll-focus overflow-x-auto rounded-xl border border-[var(--color-border)]"
     >
       <table className="w-full min-w-[34rem] border-collapse text-left text-[14px]">
@@ -162,16 +158,24 @@ export function LegalDocumentView({ doc, t, locale }: { doc: LegalDocument; t: D
         ))}
       </dl>
 
+      {missingLegalFields(LEGAL).length > 0 && (
+        <p className="mt-4 text-[13px] text-[var(--color-muted)]">{t.legal.pendingNote}</p>
+      )}
+
       {locale !== "en" && (
         <p className="mt-4 text-[13px] font-light text-[var(--color-muted)]">{t.legal.translationNote}</p>
       )}
 
       <nav aria-label={t.legal.contents} className="mt-10">
         <div className="t-label">{t.legal.contents}</div>
-        <ol className="mt-3 grid gap-1.5 text-[14px] sm:grid-cols-2">
+        {/* Each entry is a 44px row: the links were 17px tall, too small to tap. */}
+        <ol className="mt-3 grid gap-x-6 text-[14px] sm:grid-cols-2">
           {doc.sections.map((s) => (
             <li key={s.id}>
-              <a href={`#${s.id}`} className="text-[var(--color-muted)] transition-colors hover:text-[var(--color-primary)]">
+              <a
+                href={`#${s.id}`}
+                className="flex min-h-11 items-center border-b border-[var(--color-border)] text-[var(--color-muted)] transition-colors hover:text-[var(--color-primary)]"
+              >
                 {s.heading}
               </a>
             </li>

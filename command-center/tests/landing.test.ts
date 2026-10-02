@@ -9,7 +9,7 @@ import {
   softwareApplicationJsonLd,
   visibleShowcase,
 } from "@/lib/landing";
-import { displayPriceCents, publicCreditRates, resolvePricing, type PricingEnv } from "@/lib/pricing";
+import { displayPriceCents, displayPriceText, publicCreditRates, resolvePricing, type PricingEnv } from "@/lib/pricing";
 import { resolvePaddleConfig } from "@/lib/paddle";
 import { en } from "@/lib/i18n/en";
 import { ru } from "@/lib/i18n/ru";
@@ -143,7 +143,21 @@ describe("display price cents", () => {
   });
 });
 
-describe("public credit rates (0085)", () => {
+describe("display price text", () => {
+  it("writes a plain US-dollar price the way the page's language writes the figures beside it", () => {
+    // ru/uz cards mixed "$10" with "1,20 $" / "1,20 US$" (PIXEL-4 D7).
+    expect(displayPriceText("$10", "en")).toBe("$10");
+    expect(displayPriceText("$9.99", "en")).toBe("$9.99");
+    expect(displayPriceText("$10", "ru").replace(/\s/g, " ")).toBe("10 $");
+    expect(displayPriceText("$10", "uz").replace(/\s/g, " ")).toBe("10 US$");
+  });
+
+  it("prints anything else exactly as the owner typed it", () => {
+    for (const v of ["€9", "from $5", "10 USD / one-time"]) expect(displayPriceText(v, "ru")).toBe(v);
+  });
+});
+
+describe("public credit rates (0089)", () => {
   it("are the per-minute rate and the smallest hold, or nothing when the minute is unset or zero", () => {
     expect(publicCreditRates([{ unit: "video_minute", credits_per_unit: 60 }, { unit: "job_minimum", credits_per_unit: 30 }])).toEqual({
       perMinute: 60,
@@ -238,5 +252,14 @@ describe("landing copy", () => {
 
   it("no longer says access is by invitation — signup is open", () => {
     for (const d of [en, ru, uz]) expect(JSON.stringify(d.landing)).not.toMatch(/invitation|приглашени|taklif orqali/i);
+  });
+});
+
+describe("/pricing share text (PIXEL-4 D1)", () => {
+  it("names only what is on sale: no plans, monthly credits or cancelling, in any language", () => {
+    for (const d of [en, ru, uz]) {
+      expect(d.pricing.metaDescription).not.toMatch(/plan|monthly|cancel|тариф|месяц|отмен|tarif|oylik|bekor/i);
+      expect(d.pricing.metaDescription.length).toBeGreaterThan(60);
+    }
   });
 });

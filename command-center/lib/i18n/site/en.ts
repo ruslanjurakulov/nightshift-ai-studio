@@ -82,8 +82,8 @@ export const siteEn = {
     shotTag: "Screenshot",
     shotTitle: "Step 05, as the app shows it.",
     shotBody: "A finished video waits on its own page: the preview, the title it goes out under, private on YouTube, the publish check's verdict, and the keys. With auto-publish off, nothing goes public until someone presses Approve.",
-    shotCaption: "A real screen from the Command Center, with a sample channel and video.",
-    shotAlt: "Screenshot of the Command Center: the video “Why the Moon always shows us the same face” waiting for approval — private, auto-publish off, the publish gate passed every check — with the Approve and publish key.",
+    shotCaption: "A real screen from the app. Everything on it is sample data: the channel, the video, the balance and the account.",
+    shotAlt: "Screenshot of the Command Center: the video “Why the Moon always shows us the same face” waiting for approval — private, auto-publish off, the publish gate passed every check — with the Approve and publish key. Everything shown is sample data.",
     steps: [
       { id: "channel", title: "Channel", body: "Connect your YouTube channel through Google’s own consent screen. It runs only once YouTube confirms the channel is yours." },
       { id: "topic", title: "Topic", body: "Type a topic, a question or a short brief — or let the channel pick its next one from its niche." },
@@ -167,7 +167,8 @@ export const siteEn = {
     ctaNote: "Email sign-up, no card. You pay only when you buy a credit pack.",
     packsLead: "One-time payments that never renew.",
     card: "No. You create an account with your email and get the welcome credits once. You pay only when you buy a credit pack.",
-    unused: "Top-up credits follow the expiry shown on the Pricing page, and the ones that expire soonest are spent first.",
+    unusedNever: "Top-up credits do not expire. Credits held for a run go back to your balance if the run fails.",
+    unusedAfter: "Top-up credits stay usable for {m} months after you buy them, and the ones that expire soonest are spent first.",
   },
   anchor: {
     title: "What it costs",

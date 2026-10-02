@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { fmt } from "@/lib/i18n/core";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { formatCredits } from "@/lib/credits";
-import { packMinutes, packPrice, type Pricing, type PricingPack } from "@/lib/pricing";
+import { displayPriceText, packMinutes, packPrice, type Pricing, type PricingPack } from "@/lib/pricing";
 import { ensurePaddle, previewPrices } from "@/lib/paddle-client";
 import type { GenerationRates } from "@/lib/plans";
 import { Equivalents } from "@/components/credits/Equivalents";
@@ -84,7 +84,7 @@ export function PackCards({
               </div>
               {price.kind === "preview" || price.kind === "display" ? (
                 <span className="st-price-money">
-                  <span className="st-num block text-[24px]">{price.text}</span>
+                  <span className="st-num block text-[24px]">{price.kind === "display" ? displayPriceText(price.text, locale) : price.text}</span>
                   <span className="st-small block">{p.oneTime}</span>
                 </span>
               ) : (

@@ -3,6 +3,7 @@ import { ArrowRight, ArrowUpRight, Lock } from "lucide-react";
 import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
 import type { MoneyAnchor, PricingTeaser as PricingTeaserData, ShowcaseItem } from "@/lib/landing";
 import { WELCOME_CREDITS } from "@/lib/pricing";
+import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import { formatCredits } from "@/lib/credits";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
@@ -18,13 +19,22 @@ import reviewRuLight from "@/components/site/shots/review-ru-light.webp";
 import reviewRuDark from "@/components/site/shots/review-ru-dark.webp";
 import reviewUzLight from "@/components/site/shots/review-uz-light.webp";
 import reviewUzDark from "@/components/site/shots/review-uz-dark.webp";
+import reviewEnLightPhone from "@/components/site/shots/review-en-light-phone.webp";
+import reviewEnDarkPhone from "@/components/site/shots/review-en-dark-phone.webp";
+import reviewRuLightPhone from "@/components/site/shots/review-ru-light-phone.webp";
+import reviewRuDarkPhone from "@/components/site/shots/review-ru-dark-phone.webp";
+import reviewUzLightPhone from "@/components/site/shots/review-uz-light-phone.webp";
+import reviewUzDarkPhone from "@/components/site/shots/review-uz-dark-phone.webp";
 
+type Shot = { src: string; width: number; height: number };
 /** The video page of the real Command Center with a finished video waiting
- *  for approval — signed in, sample channel and video — in each language. */
-const REVIEW_SHOTS: Record<Locale, { light: { src: string; width: number; height: number }; dark: { src: string; width: number; height: number } }> = {
-  en: { light: reviewEnLight, dark: reviewEnDark },
-  ru: { light: reviewRuLight, dark: reviewRuDark },
-  uz: { light: reviewUzLight, dark: reviewUzDark },
+ *  for approval — signed in, every value sample data — in each language: the
+ *  desktop page, and the same panel as a phone shows it (a 1600px screen
+ *  shrunk to a phone's width was unreadable). */
+const REVIEW_SHOTS: Record<Locale, Record<"light" | "dark", { desk: Shot; phone: Shot }>> = {
+  en: { light: { desk: reviewEnLight, phone: reviewEnLightPhone }, dark: { desk: reviewEnDark, phone: reviewEnDarkPhone } },
+  ru: { light: { desk: reviewRuLight, phone: reviewRuLightPhone }, dark: { desk: reviewRuDark, phone: reviewRuDarkPhone } },
+  uz: { light: { desk: reviewUzLight, phone: reviewUzLightPhone }, dark: { desk: reviewUzDark, phone: reviewUzDarkPhone } },
 };
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
@@ -56,6 +66,7 @@ export function Landing({
   pricing,
   anchor,
   showcase,
+  expiryMonths = CREDIT_EXPIRY_MONTHS,
 }: {
   t: Dictionary;
   locale: Locale;
@@ -63,6 +74,8 @@ export function Landing({
   /** The money a visitor can know before signing up (lib/landing.ts moneyAnchor). */
   anchor: MoneyAnchor;
   showcase: ShowcaseItem[];
+  /** How long top-up credits last: the plan catalog's policy, else the env; null = they do not expire. */
+  expiryMonths?: number | null;
 }) {
   return (
     <div className="lp-root">
@@ -79,8 +92,8 @@ export function Landing({
         </div>
       )}
       <SolutionsTeaser t={t} />
-      <PricingTeaser t={t} locale={locale} teaser={pricing} anchor={anchor} />
-      <Faq t={t} plansOnSale={pricing.kind === "plans"} aside={<GoogleData t={t} />} />
+      <PricingTeaser t={t} locale={locale} teaser={pricing} anchor={anchor} expiryMonths={expiryMonths} />
+      <Faq t={t} plansOnSale={pricing.kind === "plans"} expiryMonths={expiryMonths} aside={<GoogleData t={t} />} />
       <FinalCta t={t} />
     </div>
   );
@@ -197,22 +210,26 @@ function How({ t, locale }: { t: Dictionary; locale: Locale }) {
           <p className="st-body mt-4">{h.shotBody}</p>
         </div>
         <figure className="st-shot">
-          {/* The real page, photographed: light and dark are separate captures,
-              and the one that does not match the theme is never shown (nor,
-              lazily, fetched). Served from /_next/static like any build asset. */}
-          {(["light", "dark"] as const).map((theme) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={theme}
-              src={shot[theme].src}
-              width={shot[theme].width}
-              height={shot[theme].height}
-              alt={h.shotAlt}
-              loading="lazy"
-              decoding="async"
-              data-shot-theme={theme}
-            />
-          ))}
+          {/* The real page, photographed: light and dark, desktop and phone are
+              separate captures; only the one matching the theme and the width is
+              shown (the others, lazy and display:none, are never fetched).
+              Served from /_next/static like any build asset. */}
+          {(["light", "dark"] as const).flatMap((theme) =>
+            (["desk", "phone"] as const).map((size) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={`${theme}-${size}`}
+                src={shot[theme][size].src}
+                width={shot[theme][size].width}
+                height={shot[theme][size].height}
+                alt={h.shotAlt}
+                loading="lazy"
+                decoding="async"
+                data-shot-theme={theme}
+                data-shot-size={size}
+              />
+            )),
+          )}
           <figcaption>
             <span className="st-tag">{h.shotTag}</span>
             {h.shotCaption}
@@ -316,9 +333,10 @@ function Desk({ t, locale }: { t: Dictionary; locale: Locale }) {
           </figure>
           <ul className="st-langs mt-10" aria-label={d.slug}>
             {d.languages.map((l, i) => (
+              // The page's own language reads in full ink, the other two dimmed;
+              // no lamp: a lit amber dot here meant nothing the page explained.
               <li key={l} lang={codes[i]} aria-current={codes[i] === locale ? "true" : undefined}>
                 {l}
-                {codes[i] === locale && <span aria-hidden className="ns-lamp" data-tone="run" data-size="md" />}
               </li>
             ))}
           </ul>

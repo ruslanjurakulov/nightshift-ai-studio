@@ -19,7 +19,7 @@
  * The credit rates (what a credit buys) are the platform's price list as
  * charged: credit_rates() (migration 0084) for a signed-in account, and for
  * anyone the two rates a visitor needs to read a price — per finished minute
- * and the smallest hold — through public_video_rates() (0085). Never the
+ * and the smallest hold — through public_video_rates() (0089). Never the
  * margin; see creditRates() and publicCreditRates().
  */
 
@@ -128,7 +128,7 @@ export function creditRates(prices: PriceMap): CreditRates {
 }
 
 /**
- * public_video_rates() rows (0085: video_minute and job_minimum, as charged)
+ * public_video_rates() rows (0089: video_minute and job_minimum, as charged)
  * -> the rates a signed-out page may show, or null when there is no positive
  * per-minute rate: an unset or zero rate is unpublished, never "free".
  */
@@ -149,6 +149,24 @@ export function displayPriceCents(text: string | null | undefined): number | nul
   if (!m) return null;
   const cents = Number(m[1].replace(/,/g, "")) * 100 + (m[2] ? Number(m[2]) : 0);
   return cents > 0 ? cents : null;
+}
+
+/**
+ * An owner's display price as this page's language writes US dollars: a plain
+ * US-dollar amount ("$10") goes through the same Intl formatter as every
+ * computed figure beside it, so one card never mixes "$10" with "1,20 $"
+ * (ru) or "1,20 US$" (uz). Whole dollars keep no cents. Anything else ("€9",
+ * "from $5") is printed exactly as the owner typed it.
+ */
+export function displayPriceText(text: string, locale: string): string {
+  const cents = displayPriceCents(text);
+  if (cents === null) return text;
+  return new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : locale, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
 }
 
 /**

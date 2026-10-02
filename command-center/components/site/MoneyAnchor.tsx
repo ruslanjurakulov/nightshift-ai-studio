@@ -2,7 +2,7 @@ import Link from "next/link";
 import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
 import { creditUnit, formatCredits } from "@/lib/credits";
 import { formatUsd } from "@/lib/api/pricing";
-import { WELCOME_CREDITS } from "@/lib/pricing";
+import { WELCOME_CREDITS, displayPriceText } from "@/lib/pricing";
 import type { MoneyAnchor as Anchor } from "@/lib/landing";
 
 /**
@@ -45,7 +45,7 @@ export function MoneyAnchor({
           <dd>
             {anchor.pack.kind === "priced" ? (
               <span className="st-anchor-money">
-                {fmt(a.packValue, { price: anchor.pack.price, n: formatCredits(anchor.pack.credits, locale) })}
+                {fmt(a.packValue, { price: displayPriceText(anchor.pack.price, locale), n: formatCredits(anchor.pack.credits, locale) })}
               </span>
             ) : anchor.pack.kind === "checkout" ? (
               <span className="st-anchor-none">{a.packCheckout}</span>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import type { Dictionary } from "@/lib/i18n";
+import { fmt, type Dictionary } from "@/lib/i18n";
 import { SectionHead } from "@/components/landing/SectionHead";
 
 type FaqItem = { id: string; q: string; a: string };
@@ -20,6 +20,8 @@ export function faqForSale<T extends FaqItem>(
   items: readonly T[],
   plansOnSale: boolean,
   packsOnly: Dictionary["site"]["packsOnly"],
+  /** This deployment's pack expiry: null = credits do not expire. */
+  expiryMonths: number | null,
 ): T[] {
   if (plansOnSale) return [...items];
   return items
@@ -28,7 +30,7 @@ export function faqForSale<T extends FaqItem>(
       item.id === "card"
         ? { ...item, a: packsOnly.card }
         : item.id === "unused" || item.id === "rollover"
-          ? { ...item, a: packsOnly.unused }
+          ? { ...item, a: expiryMonths === null ? packsOnly.unusedNever : fmt(packsOnly.unusedAfter, { m: expiryMonths }) }
           : item,
     );
 }
@@ -88,9 +90,20 @@ export function FaqList({
  * arrival, so the terms are read before the buy button, not after. Each
  * answer describes what the code does today — no promised timings, no roadmap.
  */
-export function Faq({ t, plansOnSale, aside }: { t: Dictionary; plansOnSale: boolean; aside?: React.ReactNode }) {
+export function Faq({
+  t,
+  plansOnSale,
+  expiryMonths,
+  aside,
+}: {
+  t: Dictionary;
+  plansOnSale: boolean;
+  /** The pack expiry, so the unused-credits answer says it outright. */
+  expiryMonths: number | null;
+  aside?: React.ReactNode;
+}) {
   const f = t.landing.faq;
-  const items = faqForSale(f.items, plansOnSale, t.site.packsOnly);
+  const items = faqForSale(f.items, plansOnSale, t.site.packsOnly, expiryMonths);
   return (
     <section id="faq" aria-labelledby="faq-title" className="st-section">
       <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">

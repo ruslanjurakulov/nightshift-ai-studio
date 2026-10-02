@@ -30,10 +30,22 @@ function Code({ children, name, labels }: { children: string; name: string; labe
 }
 
 /** A table that scrolls inside its own box on a phone instead of widening the page. */
-function Table({ children, name, labels }: { children: React.ReactNode; name: string; labels: ScrollLabels }) {
+function Table({
+  children,
+  name,
+  labels,
+  stack = false,
+}: {
+  children: React.ReactNode;
+  name: string;
+  labels: ScrollLabels;
+  /** On a phone, each row becomes its key cells on one line over its description
+   *  (a three-column table left the description a ~100px column). */
+  stack?: boolean;
+}) {
   return (
     <div tabIndex={0} role="region" aria-label={`${name} · ${labels.table}`} className="scroll-focus st-doc-table-wrap">
-      <table className="st-doc-table">
+      <table className="st-doc-table" data-stack={stack || undefined}>
         <caption className="sr-only">{name}</caption>
         {children}
       </table>
@@ -182,7 +194,7 @@ export function ApiDocs({ prices, origin, labels }: { prices: ApiPriceMap | null
       <Section id="start">
         <ol className="st-doc-steps">
           <li>
-            <span>The API opens to an organization that has bought a credit pack, or whose plan includes API access.</span>
+            <span>The API opens to an organization that has bought a credit pack, or that has API access switched on for it.</span>
           </li>
           <li>
             <span>
@@ -305,7 +317,7 @@ export function ApiDocs({ prices, origin, labels }: { prices: ApiPriceMap | null
         <p className="st-body">
           Base URL <code>{BASE}</code>. JSON in, JSON out. Money is in integer US cents.
         </p>
-        <Table name="Endpoints" labels={labels}>
+        <Table name="Endpoints" labels={labels} stack>
           <tbody>
             {ENDPOINTS.map(([m, path, what]) => (
               <tr key={m + path}>
@@ -402,7 +414,7 @@ curl ${BASE}/creative/jobs/JOB_ID -H "Authorization: Bearer $NIGHTSHIFT_API_KEY"
             answer and never pays twice. Idempotency keys belong to the API key that sent them.
           </li>
           <li>
-            Not enough credits is <code>402 insufficient_credits</code>; the plan&apos;s parallel-run limit is{" "}
+            Not enough credits is <code>402 insufficient_credits</code>; the limit on generations running at once is{" "}
             <code>429 run_limit_reached</code>; a key&apos;s own monthly credit ceiling is{" "}
             <code>402 key_credit_limit_reached</code>. Nothing is held in any of these cases.
           </li>
@@ -449,7 +461,7 @@ curl ${BASE}/creative/jobs/JOB_ID -H "Authorization: Bearer $NIGHTSHIFT_API_KEY"
         <Code name="An error answer" labels={labels}>{`{"error": {"type": "billing_error", "code": "insufficient_balance",
            "message": "Your API balance does not cover this video. Top up in the Developer console.",
            "request_id": "req_…", "price_cents": 360, "available_cents": 120}}`}</Code>
-        <Table name="Error codes" labels={labels}>
+        <Table name="Error codes" labels={labels} stack>
           <tbody>
             {ERRORS.map(([status, type, codes]) => (
               <tr key={status}>

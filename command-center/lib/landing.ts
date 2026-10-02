@@ -98,7 +98,7 @@ export function pricingTeaser(pricing: Pricing, plans: PlanMatrix | null = null)
  *   never used here: they are a fresh database's starting point, not a price.
  *
  * - site: what a video costs in the app, in credits per finished minute and
- *   the smallest hold, from the live list (public_video_rates(), 0085) — null
+ *   the smallest hold, from the live list (public_video_rates(), 0089) — null
  *   when it is not published or could not be read. With a priced pack whose
  *   price is a plain US-dollar amount, also that minute in dollars at that
  *   pack's price (rounded to the cent, shown as "≈"); any other display price

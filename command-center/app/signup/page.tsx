@@ -164,7 +164,7 @@ export default function SignupPage() {
               required
               checked={consent}
               onChange={(e) => setConsent(e.target.checked)}
-              className="mt-0.5 size-5 shrink-0 accent-[var(--ns-amber)]"
+              className="size-6 shrink-0 accent-[var(--ns-amber)]"
             />
             <span>
               {t.signup.consentPre}{" "}

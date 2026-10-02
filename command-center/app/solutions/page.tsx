@@ -55,8 +55,13 @@ export default async function SolutionsPage() {
                   <span className="st-kicker">{page.kicker}</span>
                   <h2 id={`way-${page.id}`} className="st-h3 text-[clamp(26px,2.4vw,34px)]">
                     <Link href={solutionHref(page.id)} className="st-way-title">
-                      {page.title}
-                      <ArrowRight aria-hidden />
+                      {/* The last word and the arrow never part: a title that
+                          filled its line left the arrow alone on the next. */}
+                      {page.title.split(" ").slice(0, -1).join(" ")}{" "}
+                      <span className="whitespace-nowrap">
+                        {page.title.split(" ").slice(-1)[0]}
+                        <ArrowRight aria-hidden />
+                      </span>
                     </Link>
                   </h2>
                   <p className="st-small max-w-[52ch]">{page.lead}</p>

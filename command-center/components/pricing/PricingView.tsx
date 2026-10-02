@@ -92,7 +92,7 @@ export function PricingView({
   const saleTerms = showPlans ? p.terms : p.terms.slice(2);
   const expiryAt = showPlans ? 3 : 1;
   const terms = [...saleTerms.slice(0, expiryAt), expiry, ...saleTerms.slice(expiryAt)];
-  const faq = faqForSale(p.faq, showPlans, t.site.packsOnly);
+  const faq = faqForSale(p.faq, showPlans, t.site.packsOnly, months);
   const faqLink = (id: string) => (id === "cancel" || id === "refund" ? { href: "/terms#credits", label: p.linkTerms } : null);
 
   const pp = t.site.pricingPage;
@@ -265,7 +265,17 @@ export function PricingView({
               <ArrowRight aria-hidden />
             </Link>
           </div>
-          <ul className="st-terms mt-10" style={{ "--rows": Math.ceil(terms.length / 2) } as React.CSSProperties}>
+          {/* Up to three terms sit side by side, one each; more fill two
+              newspaper columns. Either way no column ends with a hole. */}
+          <ul
+            className="st-terms mt-10"
+            style={
+              {
+                "--cols": terms.length <= 3 ? terms.length : 2,
+                "--rows": terms.length <= 3 ? 1 : Math.ceil(terms.length / 2),
+              } as React.CSSProperties
+            }
+          >
             {terms.map((line) => (
               <li key={line}>
                 <Check className="mt-1 size-4 shrink-0 text-[var(--ns-go)]" aria-hidden />

@@ -174,12 +174,19 @@ describe("public landing page", () => {
       const { container } = renderLanding({ kind: "announced" }, locale);
       const h = dictionaries[locale].site.how;
       const imgs = Array.from(container.querySelectorAll("figure.st-shot img"));
-      // A light and a dark capture, both described in the page's language.
-      expect(imgs.map((i) => i.getAttribute("data-shot-theme"))).toEqual(["light", "dark"]);
+      // Light and dark, desktop and phone captures, all described in the page's language.
+      expect(imgs.map((i) => `${i.getAttribute("data-shot-theme")}-${i.getAttribute("data-shot-size")}`)).toEqual([
+        "light-desk",
+        "light-phone",
+        "dark-desk",
+        "dark-phone",
+      ]);
       for (const img of imgs) expect(img.getAttribute("alt")).toBe(h.shotAlt);
       const caption = container.querySelector("figure.st-shot figcaption")?.textContent ?? "";
       expect(caption).toContain(h.shotTag);
       expect(caption).toContain(h.shotCaption);
+      // PIXEL-4 D4: the balance and the account on screen are sample data too, and the caption says so.
+      expect(h.shotCaption).toMatch(locale === "en" ? /sample data/ : locale === "ru" ? /пример/ : /namuna/);
       cleanup();
     }
   });

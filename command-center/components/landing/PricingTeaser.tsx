@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
-import type { Dictionary, Locale } from "@/lib/i18n";
+import { ArrowRight, Check } from "lucide-react";
+import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
 import { formatCredits } from "@/lib/credits";
 import { CREDIT_PACKS } from "@/lib/paddle";
 import type { MoneyAnchor as Anchor, PricingTeaser as PricingTeaserData } from "@/lib/landing";
 import { MoneyAnchor } from "@/components/site/MoneyAnchor";
+import { displayPriceText } from "@/lib/pricing";
 
 /**
  * How Nightshift charges, and what is on sale — from the same source /pricing
@@ -19,13 +20,24 @@ export function PricingTeaser({
   locale,
   teaser,
   anchor,
+  expiryMonths,
 }: {
   t: Dictionary;
   locale: Locale;
   teaser: PricingTeaserData;
   anchor: Anchor;
+  /** null = top-up credits do not expire. */
+  expiryMonths: number | null;
 }) {
   const p = t.site.pricingTeaser;
+  // The pack terms /pricing lists (one-time, expiry, failures returned), here
+  // under the packs: what a buyer needs next to the sizes, in the space the
+  // taller money column leaves. Plans have their own terms on /pricing.
+  const tp = t.pricing;
+  const packTerms =
+    teaser.kind === "plans"
+      ? []
+      : [tp.terms[2], expiryMonths === null ? tp.expiryNever : fmt(tp.expiryAfter, { m: expiryMonths }), tp.terms[3]];
 
   return (
     <section id="pricing" aria-labelledby="pricing-title" className="st-section">
@@ -49,6 +61,7 @@ export function PricingTeaser({
           ))}
         </ol>
 
+        <div className="st-pricing-side">
           <div className="st-panel st-pricing-packs">
             {teaser.kind === "plans" ? (
               <>
@@ -89,7 +102,7 @@ export function PricingTeaser({
                         </span>
                         {teaser.kind === "packs" &&
                           (pack.price ? (
-                            <span className="st-price-money st-num">{pack.price}</span>
+                            <span className="st-price-money st-num">{displayPriceText(pack.price, locale)}</span>
                           ) : (
                             <span className="st-price-pending">{p.atCheckout}</span>
                           ))}
@@ -106,6 +119,17 @@ export function PricingTeaser({
               </Link>
             </div>
           </div>
+          {packTerms.length > 0 && (
+            <ul className="st-teaser-terms" aria-label={t.site.pricingPage.termsSlug}>
+              {packTerms.map((line) => (
+                <li key={line}>
+                  <Check className="mt-1 size-4 shrink-0 text-[var(--ns-go)]" aria-hidden />
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </section>
   );
