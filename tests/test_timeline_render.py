@@ -83,8 +83,13 @@ def full_argv(spec):
 
 FIT_1080x1920 = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30"
 ENC = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "30"]
-#: Every timeline input is capped at the decoder (BR-L-004): media_library.MAX_PIXELS.
-CAP = ["-max_pixels", "100000000"]
+#: Every timeline input is capped at the decoder (BR-L-004), with two decoder
+#: threads (BR-L-007): a clip at the video cap (8192x4352, BR-L-010), any other
+#: input at the still cap (100 MP), each plus the decoder's row padding of
+#: 63 x 16384 px (BR-L-009). Filter graphs get two threads; no -xerror (BR-L-008).
+CLIP = ["-max_pixels", "36683776", "-threads", "2"]
+STILL = ["-max_pixels", "101032192", "-threads", "2"]
+TH = ["-filter_threads", "2", "-filter_complex_threads", "2"]
 KEN_BURNS_C2 = (
     "scale=1242:2208:force_original_aspect_ratio=increase:flags=lanczos,loop=loop=-1:size=1,"
     "settb=1/30,setpts=N,crop=w=1018:h=1811:x='clip(trunc(iw*(0.5+0.15-0.3*min(1,n/90.000000)))"
@@ -92,23 +97,23 @@ KEN_BURNS_C2 = (
 
 GOLDEN_SEGMENTS = [
     # c1: trimmed from 2.5 s, 3.5 s = 105 frames, cover-cropped, 0.5 s fade in.
-    [["ffmpeg", "-xerror", "-y", "-stream_loop", "-1", "-ss", "2.500", *CAP, "-i", "/media/a1.mp4",
+    [["ffmpeg", *TH, "-y", "-stream_loop", "-1", "-ss", "2.500", *CLIP, "-i", "/media/a1.mp4",
       "-frames:v", "105", "-an", "-vf",
       "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,"
       "fade=t=in:st=0:d=0.500", *ENC, "/w/seg_0000.mp4"]],
     # c2: still, 90 frames of Ken Burns (static hold as fallback); fades out
     # 0.3 s — half of c3's 0.6 s dip to black.
-    [["ffmpeg", "-xerror", "-y", *CAP, "-i", "/media/a2.png", "-frames:v", "90", "-vf",
+    [["ffmpeg", *TH, "-y", *STILL, "-i", "/media/a2.png", "-frames:v", "90", "-vf",
       KEN_BURNS_C2 + ",fade=t=out:st=2.700:d=0.300", *ENC, "/w/seg_0001.mp4"],
-     ["ffmpeg", "-xerror", "-y", "-loop", "1", *CAP, "-i", "/media/a2.png", "-frames:v", "90", "-vf",
+     ["ffmpeg", *TH, "-y", "-loop", "1", *STILL, "-i", "/media/a2.png", "-frames:v", "90", "-vf",
       FIT_1080x1920 + ",fade=t=out:st=2.700:d=0.300", *ENC, "/w/seg_0001.mp4"]],
     # c3: trimmed from 1.0 s, letterboxed, the other half of the dip, own fade out.
-    [["ffmpeg", "-xerror", "-y", "-stream_loop", "-1", "-ss", "1.000", *CAP, "-i", "/media/a3.mov",
+    [["ffmpeg", *TH, "-y", "-stream_loop", "-1", "-ss", "1.000", *CLIP, "-i", "/media/a3.mov",
       "-frames:v", "90", "-an", "-vf",
       FIT_1080x1920 + ",fade=t=in:st=0:d=0.300,fade=t=out:st=2.000:d=1.000",
       *ENC, "/w/seg_0002.mp4"]],
     # Tail: the music runs to 10.0 s, the picture to 9.5 s → 15 black frames.
-    [["ffmpeg", "-xerror", "-y", "-f", "lavfi", *CAP, "-i", "color=c=black:s=1080x1920:r=30", "-frames:v", "15",
+    [["ffmpeg", *TH, "-y", "-f", "lavfi", *STILL, "-i", "color=c=black:s=1080x1920:r=30", "-frames:v", "15",
       *ENC, "/w/seg_0003.mp4"]],
 ]
 
@@ -120,8 +125,8 @@ GOLDEN_CONCAT = [
 ]
 
 GOLDEN_FINAL = [
-    "ffmpeg", "-y", "-f", "concat", "-safe", "0", *CAP, "-i", "/w/concat.txt",
-    *CAP, "-i", "/media/music.mp3", *CAP, "-i", "/media/voice.wav",
+    "ffmpeg", *TH, "-y", "-f", "concat", "-safe", "0", *STILL, "-i", "/w/concat.txt",
+    *STILL, "-i", "/media/music.mp3", *STILL, "-i", "/media/voice.wav",
     "-filter_complex",
     "[0:v]subtitles='/w/overlays.ass'[vout];"
     "[1:a]atrim=start=30.000:duration=10.000,asetpts=PTS-STARTPTS,"
