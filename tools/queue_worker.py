@@ -59,6 +59,14 @@ jobs the worker also keeps ``download_masters`` in step with the masters under
 volume), and deletes expired files. A failed download is refunded by the
 database. Off when ``NIGHTSHIFT_DOWNLOADS_DIR`` is unset.
 
+Repurposing (migration 0080, ``modules/repurpose.py``): between render jobs the
+worker also claims at most one ``repurpose_requests`` row — up to five vertical
+clips a person picked from one finished master and priced — and cuts them from
+the MASTER file under ``output/`` (never the 480p review copy: a source below
+720 pixels is refused). Each made clip becomes its own held, private videos row;
+the database captures credits only for the clips that were made and releases the
+rest. It needs no render slot and no provider call, and nothing is uploaded.
+
 Comment inbox (migration 0081, ``modules/comment_replies.py``): between render
 jobs the worker also keeps each connected channel's recent comments in step
 (one channel per interval), writes a drafted reply for a comment a person
@@ -108,6 +116,7 @@ from modules import log_redaction  # noqa: E402
 from modules import run_request  # noqa: E402
 from modules import social_publish  # noqa: E402
 from modules import paid_downloads  # noqa: E402
+from modules import repurpose  # noqa: E402
 from modules.storyboard_review import PAUSED_EXIT as STORYBOARD_PAUSED_EXIT  # noqa: E402
 
 logger = logging.getLogger("queue_worker")
@@ -540,6 +549,7 @@ class Worker:
         publisher=None,
         downloads=None,
         comments=None,
+        repurposer=None,
     ):
         self.client = client
         self.worker_id = worker_id
@@ -574,6 +584,8 @@ class Worker:
         # paid for) and post (only what a person approved), between render
         # jobs. None = off.
         self.comments = comments
+        # Multi-clip repurposing (migration 0080): between render jobs.
+        self.repurposer = repurposer
         # The service-key credits client and where a finished run's ledger is
         # read from. None = the worker cannot tell who pays for a job, so it
         # runs none (migration 0041: no unpaid fallback).
@@ -610,7 +622,24 @@ class Worker:
             self._sweep_credit_holds()
             published = self._publish_one()
             published = self._download_one() or published
-            published = self._comments_one() or published
+    def _comments_one(self) -> bool:
+        """One round of the comment inbox between render jobs; never raises."""
+        if self.comments is None:
+            return False
+        try:
+            return bool(self.comments.run_once())
+        except Exception as e:
+            logger.warning("comment inbox handling failed (%s)", type(e).__name__)
+            return False
+
+    def _repurpose_one(self) -> bool:
+        """At most one repurpose request between render jobs; never raises."""
+        if self.repurposer is None:
+            return False
+        try:
+            return bool(self.repurposer.run_once())
+        except Exception as e:
+            logger.warning("repurpose request handling failed (%s)", type(e).__name__)
             job = self.client.claim(self.worker_id, self.stale_minutes)
             if job is None:
                 if once:
@@ -653,6 +682,14 @@ class Worker:
             return bool(self.comments.run_once())
         except Exception as e:
             logger.warning("comment inbox handling failed (%s)", type(e).__name__)
+    def _repurpose_one(self) -> bool:
+        """At most one repurpose request between render jobs; never raises."""
+        if self.repurposer is None:
+            return False
+        try:
+            return bool(self.repurposer.run_once())
+        except Exception as e:
+            logger.warning("repurpose request handling failed (%s)", type(e).__name__)
             return False
 
     def process(self, job: Mapping) -> str:
@@ -1057,7 +1094,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                         url, key, output_dir=REPO_DIR / "output", worker_id=args.worker_id,
                         youtube_credentials=lambda cid: youtube_publish_credentials(
                             cid, os.environ, token_client)),
-                    downloads=downloads, comments=comments)
+                    downloads=downloads, comments=comments,
+                    repurposer=repurpose.RepurposeService(url, key, output_dir=REPO_DIR / "output",
+                                                          worker_id=args.worker_id))
     worker.install_signal_handlers()
     logger.info("worker %s started (poll %ss, stale after %s min, stop grace %ss; a customer "
                 "organization's job runs only on its own open hold)",

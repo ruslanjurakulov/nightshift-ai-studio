@@ -372,6 +372,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Scene regeneration v2 (0076): tests/security/sec_scene_regen_0076.py.
     import sec_scene_regen_0076
     sec_scene_regen_0076.seed(conn, sc)
+    # Multi-clip repurposing (0080): tests/security/sec_repurpose_0080.py.
+    import sec_repurpose_0080
+    sec_repurpose_0080.seed(conn, sc)
     # The comment inbox (0081): tests/security/sec_inbox_0081.py — comments through the worker's function.
     import sec_inbox_0081
     sec_inbox_0081.seed(conn, sc)
