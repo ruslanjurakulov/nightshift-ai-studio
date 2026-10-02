@@ -505,6 +505,24 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         # …and the registry flag keeps working for every other model.
         self.assertIn("coalesce(m.spec ->> 'api_exposure', 'any') <> 'web_only'", body)
 
+    def test_it_does_not_replace_the_registry_guard_so_0070s_guard_stands(self):
+        # 0070 replaces model_registry_guard (on 0052's body, plus the quality /
+        # resolution / variant fields). 0072 must not replace it again from an
+        # older body; captions need no new field of their own: the spoken
+        # languages are spec.languages, which every guard since 0050 re-opens
+        # the proof for.
+        mine = bodies((MIGRATIONS / "0072_captions.sql").read_text())
+        self.assertNotIn("model_registry_guard", mine)
+        latest = None
+        for path in sorted(MIGRATIONS.glob("*.sql")):
+            if int(path.name[:4]) >= 72:
+                continue
+            b = bodies(path.read_text())
+            if "model_registry_guard" in b:
+                latest = (path.name, b["model_registry_guard"])
+        self.assertIsNotNone(latest)
+        self.assertIn("new.spec -> 'languages' is distinct from old.spec -> 'languages'", latest[1])
+
     def test_it_refuses_to_apply_without_the_migrations_it_is_built_on(self):
         text = (MIGRATIONS / "0072_captions.sql").read_text()
         for needle in ("0072 needs 0060_image_quality.sql: apply it first",
