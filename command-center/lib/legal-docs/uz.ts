@@ -327,7 +327,7 @@ export const uz: LegalTexts = {
         id: "liability",
         heading: "11. Javobgarlikni cheklash",
         body: [
-          "Qonun ruxsat bergan darajada biz bilvosita, tasodifiy, maxsus, oqibatli yoki jarima tarzidagi zararlar, shuningdek boy berilgan foyda, daromad, maʼlumotlar, obro' yoki kanal holati uchun javobgar emasmiz. Xizmat bilan bogʻliq har qanday daʼvo boʻyicha umumiy javobgarligimiz daʼvoga asos boʻlgan hodisadan oldingi oʻn ikki oy ichida Xizmat uchun bizga toʻlagan summangiz bilan cheklanadi. Ushbu Shartlardagi hech narsa qonun boʻyicha cheklab boʻlmaydigan javobgarlikni cheklamaydi.",
+          "Qonun ruxsat bergan darajada biz bilvosita, tasodifiy, maxsus, oqibatli yoki jarima tarzidagi zararlar, shuningdek boy berilgan foyda, daromad, maʼlumotlar, obroʻ yoki kanal holati uchun javobgar emasmiz. Xizmat bilan bogʻliq har qanday daʼvo boʻyicha umumiy javobgarligimiz daʼvoga asos boʻlgan hodisadan oldingi oʻn ikki oy ichida Xizmat uchun bizga toʻlagan summangiz bilan cheklanadi. Ushbu Shartlardagi hech narsa qonun boʻyicha cheklab boʻlmaydigan javobgarlikni cheklamaydi.",
         ],
       },
       {

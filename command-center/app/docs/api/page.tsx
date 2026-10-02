@@ -3,6 +3,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { readPublicApiPrices } from "@/lib/server/api-prices";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { ApiDocs } from "@/components/docs/ApiDocs";
+import { docsOrigin } from "@/lib/api/docs-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -17,23 +18,12 @@ export const metadata: Metadata = {
  * it cannot be read, the page says no price is published. The seeded
  * defaults never appear: they are not a price anyone set.
  */
-/** The origin examples are written against: this deployment's APP_ORIGIN
- *  (compose sets it from DOMAIN), else the production domain. */
-function siteOrigin(): string {
-  try {
-    const u = new URL(process.env.APP_ORIGIN?.trim() || "https://nightshift-ai.studio");
-    return u.protocol === "https:" || u.protocol === "http:" ? u.origin : "https://nightshift-ai.studio";
-  } catch {
-    return "https://nightshift-ai.studio";
-  }
-}
-
 export default async function ApiDocsPage() {
   const { t } = await getDictionary();
   const prices = await readPublicApiPrices();
   return (
     <PublicShell t={t} current="docs">
-      <ApiDocs prices={prices} origin={siteOrigin()} labels={{ table: t.common.scrollTable, code: t.common.scrollCode }} />
+      <ApiDocs prices={prices} origin={docsOrigin()} labels={{ table: t.common.scrollTable, code: t.common.scrollCode }} />
     </PublicShell>
   );
 }

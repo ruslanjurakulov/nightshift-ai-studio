@@ -54,7 +54,9 @@ function text(raw: string | undefined): string | null {
  *  trying to exercise their rights. */
 function email(raw: string | undefined): string | null {
   const v = text(raw);
-  return v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? v : null;
+  // `?` `&` would add live parameters to the mailto: link (BR-L-103: "?bcc=…&body=…"),
+  // and double quotes or angle brackets have no place in an address anyone types.
+  return v && /^[^\s@?&"<>]+@[^\s@?&"<>]+\.[^\s@?&"<>]+$/.test(v) ? v : null;
 }
 
 /** A real calendar date in YYYY-MM-DD. `2026-02-31` is rejected rather than

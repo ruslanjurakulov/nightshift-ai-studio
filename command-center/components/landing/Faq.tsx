@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { fmt, type Dictionary } from "@/lib/i18n";
+import type { PackExpiry } from "@/lib/plans";
 import { SectionHead } from "@/components/landing/SectionHead";
 
 type FaqItem = { id: string; q: string; a: string };
@@ -20,8 +21,8 @@ export function faqForSale<T extends FaqItem>(
   items: readonly T[],
   plansOnSale: boolean,
   packsOnly: Dictionary["site"]["packsOnly"],
-  /** This deployment's pack expiry: null = credits do not expire. */
-  expiryMonths: number | null,
+  /** This deployment's pack expiry (lib/plans.ts packExpiry). */
+  expiry: PackExpiry,
 ): T[] {
   if (plansOnSale) return [...items];
   return items
@@ -30,9 +31,23 @@ export function faqForSale<T extends FaqItem>(
       item.id === "card"
         ? { ...item, a: packsOnly.card }
         : item.id === "unused" || item.id === "rollover"
-          ? { ...item, a: expiryMonths === null ? packsOnly.unusedNever : fmt(packsOnly.unusedAfter, { m: expiryMonths }) }
+          ? { ...item, a: unusedAnswer(packsOnly, expiry) }
           : item,
     );
+}
+
+/** The unused-credits answer, as sure as the expiry is: an unknown term points to the Terms (BR-L-100). */
+function unusedAnswer(packsOnly: Dictionary["site"]["packsOnly"], expiry: PackExpiry): string {
+  if (expiry.kind === "never") return packsOnly.unusedNever;
+  if (expiry.kind === "months") return fmt(packsOnly.unusedAfter, { m: expiry.months });
+  return packsOnly.unusedUnknown;
+}
+
+/** The expiry line among the pack terms (/pricing and the landing). */
+export function expiryTerm(p: Dictionary["pricing"], expiry: PackExpiry): string {
+  if (expiry.kind === "never") return p.expiryNever;
+  if (expiry.kind === "months") return fmt(p.expiryAfter, { m: expiry.months });
+  return p.expiryUnknown;
 }
 
 /** Answers that point somewhere carry the link beneath them. */
@@ -93,17 +108,17 @@ export function FaqList({
 export function Faq({
   t,
   plansOnSale,
-  expiryMonths,
+  expiry,
   aside,
 }: {
   t: Dictionary;
   plansOnSale: boolean;
-  /** The pack expiry, so the unused-credits answer says it outright. */
-  expiryMonths: number | null;
+  /** The pack expiry, so the unused-credits answer says it as surely as it is known. */
+  expiry: PackExpiry;
   aside?: React.ReactNode;
 }) {
   const f = t.landing.faq;
-  const items = faqForSale(f.items, plansOnSale, t.site.packsOnly, expiryMonths);
+  const items = faqForSale(f.items, plansOnSale, t.site.packsOnly, expiry);
   return (
     <section id="faq" aria-labelledby="faq-title" className="st-section">
       <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">

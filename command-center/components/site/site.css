@@ -886,7 +886,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 }
 .st-sol-row:hover { background: var(--ns-hover); }
 .st-sol-row:hover .st-sol-arrow { color: var(--ns-amber-ink); transform: translateX(3px); }
-.st-sol-title { font-family: var(--font-display); font-size: clamp(24px, 2.6vw, 34px); font-weight: 700; line-height: 1.02; }
+.st-sol-title { font-family: var(--font-display); font-size: clamp(24px, 2.6vw, 34px); font-weight: 700; line-height: 1.02; text-wrap: balance; }
 .st-sol-row .st-small { grid-column: 1; }
 @media (min-width: 900px) { .st-sol-row .st-small { grid-column: 2; } }
 .st-sol-arrow {
@@ -1346,6 +1346,8 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   text-decoration-thickness: 1px;
   text-underline-offset: 6px;
 }
+/* Balanced lines: an unbalanced title left one word ("key.") alone on its last line. */
+.st-way-title { text-wrap: balance; }
 .st-way-title:hover { color: var(--ns-amber-ink); text-decoration-color: currentColor; }
 .st-way-title svg { display: inline; width: 22px; height: 22px; margin-left: 10px; vertical-align: -0.1em; }
 @media (min-width: 960px) {
@@ -1451,6 +1453,13 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   .st-how-shot { grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr); gap: 56px; align-items: center; }
 }
 .st-shot { margin: 0; }
+/* Two places, one shown: inside step 05 on a phone (one column, so the
+   screen comes before step 06), under the strip from 720px up. */
+.st-how-shot-inline { display: none; }
+@media (max-width: 719px) {
+  .st-how-shot-inline { display: flex; flex-direction: column; gap: 12px; width: 100%; margin-top: 12px; }
+  .st-how-shot { display: none; }
+}
 .st-shot img {
   display: block;
   width: 100%;

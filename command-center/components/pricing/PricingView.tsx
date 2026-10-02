@@ -5,12 +5,12 @@ import { formatCredits } from "@/lib/credits";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import { ALL_CHANNELS_SLUG } from "@/lib/channels";
 import type { CreditRates, Pricing } from "@/lib/pricing";
-import { plansOnSale, type GenerationRates, type PlanMatrix as Matrix } from "@/lib/plans";
+import { packExpiry, plansOnSale, type GenerationRates, type PackExpiry, type PlanMatrix as Matrix } from "@/lib/plans";
 import { PackCards } from "@/components/pricing/PackCards";
 import { PlanMatrix } from "@/components/pricing/PlanMatrix";
 import { PlanCompare } from "@/components/pricing/PlanCompare";
 import { ErrorState } from "@/components/ReadError";
-import { FaqList, faqForSale } from "@/components/landing/Faq";
+import { FaqList, expiryTerm, faqForSale } from "@/components/landing/Faq";
 import { Slug } from "@/components/site/Slug";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { CREDIT_PACKS } from "@/lib/paddle";
@@ -48,7 +48,7 @@ export function PricingView({
   generationRates = null,
   plans,
   plansFailed = false,
-  packValidMonths,
+  expiry,
   anchor,
 }: {
   t: Dictionary;
@@ -66,7 +66,8 @@ export function PricingView({
   /** The catalog read itself failed: the plans are unknown, not "none on sale". */
   plansFailed?: boolean;
   /** Top-up validity from the database (credit_lot_policies); undefined = not known, use the env. */
-  packValidMonths?: number | null;
+  /** How long top-up credits last (lib/plans.ts packExpiry); default: the env alone. */
+  expiry?: PackExpiry;
   /** What money a visitor can know before signing up (lib/landing.ts moneyAnchor);
    *  without it, only what `pricing` holds (no API price list). */
   anchor?: Anchor;
@@ -81,8 +82,8 @@ export function PricingView({
   const rateText = (n: number | null) => (n === null ? p.rateUnset : fmt(p.rateValue, { n: formatCredits(n, locale) }));
   // The database's own policy when it could be read (it is what expires the
   // credits); the operator's env otherwise.
-  const months = packValidMonths === undefined ? CREDIT_EXPIRY_MONTHS : packValidMonths;
-  const expiry = months === null ? p.expiryNever : fmt(p.expiryAfter, { m: months });
+  const expiryState: PackExpiry = expiry ?? packExpiry(null, CREDIT_EXPIRY_MONTHS);
+  const expiryLine = expiryTerm(p, expiryState);
   const showPlans = plans !== null && plansOnSale(plans);
   const credits = `/${ALL_CHANNELS_SLUG}/credits`;
   const primary = signedIn ? { href: credits, label: p.ctaSignedIn } : { href: "/signup", label: p.ctaSignedOut };
@@ -91,8 +92,8 @@ export function PricingView({
   // on sale they would describe something nobody can buy, so they go.
   const saleTerms = showPlans ? p.terms : p.terms.slice(2);
   const expiryAt = showPlans ? 3 : 1;
-  const terms = [...saleTerms.slice(0, expiryAt), expiry, ...saleTerms.slice(expiryAt)];
-  const faq = faqForSale(p.faq, showPlans, t.site.packsOnly, months);
+  const terms = [...saleTerms.slice(0, expiryAt), expiryLine, ...saleTerms.slice(expiryAt)];
+  const faq = faqForSale(p.faq, showPlans, t.site.packsOnly, expiryState);
   const faqLink = (id: string) => (id === "cancel" || id === "refund" ? { href: "/terms#credits", label: p.linkTerms } : null);
 
   const pp = t.site.pricingPage;
@@ -240,7 +241,7 @@ export function PricingView({
                 rates={generationRates}
               />
               <p className="st-small">
-                {pricing.source === "paddle" ? p.taxNote : p.checkoutClosed} {expiry}
+                {pricing.source === "paddle" ? p.taxNote : p.checkoutClosed} {expiryLine}
               </p>
               {pricing.source === "paddle" && (
                 <Link href={signedIn ? credits : "/login"} className="st-key self-start" data-tone="quiet">
