@@ -24,20 +24,33 @@ type Base = Omit<HTMLMotionProps<"div">, "initial" | "animate" | "exit" | "while
 export function Reveal({
   as = "div",
   trigger = "inView",
+  firstPaint = false,
   delay = 0,
   distance = DISTANCE.rise,
   children,
   ...rest
-}: Base & { as?: RevealTag; trigger?: RevealTrigger; delay?: number; distance?: number }) {
+}: Base & {
+  as?: RevealTag;
+  trigger?: RevealTrigger;
+  /**
+   * `mount` only: play on the server-rendered first paint too (the block is in
+   * the HTML at its start state until the engine has loaded). For the one
+   * orchestrated entrance a public page may have — and never on its LCP
+   * element or its primary action.
+   */
+  firstPaint?: boolean;
+  delay?: number;
+  distance?: number;
+}) {
   const reduced = useReducedMotionSafe();
   const fresh = useFreshMount();
   const Tag = tag(as);
   return (
     <Tag
       data-ns-motion=""
-      data-ns-reveal={trigger === "inView" ? "" : undefined}
+      data-ns-reveal={trigger === "inView" || firstPaint ? "" : undefined}
       {...rest}
-      {...revealProps(reduced, { trigger, delay, distance, enter: fresh })}
+      {...revealProps(reduced, { trigger, delay, distance, enter: fresh || firstPaint })}
     >
       {children}
     </Tag>
@@ -48,14 +61,15 @@ export function Reveal({
 export function Stagger({
   as = "div",
   trigger = "inView",
+  firstPaint = false,
   children,
   ...rest
-}: Base & { as?: RevealTag; trigger?: RevealTrigger }) {
+}: Base & { as?: RevealTag; trigger?: RevealTrigger; firstPaint?: boolean }) {
   const reduced = useReducedMotionSafe();
   const fresh = useFreshMount();
   const Tag = tag(as);
   return (
-    <Tag data-ns-motion="" {...rest} {...staggerGroupProps(reduced, { trigger, enter: fresh })}>
+    <Tag data-ns-motion="" {...rest} {...staggerGroupProps(reduced, { trigger, enter: fresh || firstPaint })}>
       {children}
     </Tag>
   );

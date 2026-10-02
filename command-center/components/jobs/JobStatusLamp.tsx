@@ -1,6 +1,6 @@
 "use client";
 
-import { StatusLamp } from "@/components/ui/StatusLamp";
+import { LiveLamp } from "@/components/motion/LiveLamp";
 import { useI18n } from "@/lib/i18n/context";
 
 export type JobStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -12,7 +12,11 @@ const MAP: Record<JobStatus, "run" | "ok" | "fail" | "idle"> = {
   FAILED: "fail",
 };
 
-/** A status lamp for a derived job, mapping the job status to a UI tone. */
+/**
+ * A status lamp for a derived job, mapping the job status to a UI tone. Live:
+ * when a job's state changes while the list is open, its lamp strikes once
+ * (components/motion/LiveLamp); at rest it is StatusLamp exactly.
+ */
 export function JobStatusLamp({ status }: { status: JobStatus }) {
   const { t } = useI18n();
   const label: Record<JobStatus, string> = {
@@ -21,5 +25,5 @@ export function JobStatusLamp({ status }: { status: JobStatus }) {
     COMPLETED: t.status.completed,
     FAILED: t.status.failed,
   };
-  return <StatusLamp tone={MAP[status]} label={label[status]} live={status === "RUNNING"} />;
+  return <LiveLamp tone={MAP[status]} label={label[status]} live={status === "RUNNING"} />;
 }
