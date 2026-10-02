@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
-import { AtSign, Clock, Languages, Maximize2, RectangleHorizontal, Sparkles, type LucideIcon } from "lucide-react";
+import { AtSign, Clock, Languages, Maximize2, RectangleHorizontal, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { formatCredits } from "@/lib/credits";
 import { useChannelPath } from "@/lib/channels-client";
@@ -14,6 +14,8 @@ import { useModelPrices, useSoundPrices, useTierPrices } from "@/components/stud
 import { useStyleKits } from "@/components/studio/useStyleKits";
 import { PlanUpsellDialog } from "@/components/studio/PlanUpsellDialog";
 import { ChannelDnaHint } from "@/components/studio/ChannelDnaHint";
+import { PriceButton } from "@/components/ui/PriceButton";
+import { creditUnit } from "@/lib/credits";
 import type { StudioDna } from "@/lib/channel-dna";
 import { isUpsellCode, refusalFrom, type Refusal, type UpsellCatalog } from "@/lib/upsell";
 import { UPSCALE_FACTORS, type CreativeError } from "@/lib/creative/operations";
@@ -46,6 +48,7 @@ import {
   takesQuality,
   takesSound,
   takesStyle,
+  tierQuoteParams,
   type AspectRatio,
   type DescribeLanguage,
   type DubLanguage,
@@ -283,7 +286,8 @@ export function GeneratePanel({
     capability,
     modelId: effectiveModel,
     tiers,
-    params: tiers.length ? sheetQuoteParams({ ...form, quality: null }) : null,
+    // Without the words: the tiers' prices do not depend on them, and typing must not re-ask or send them.
+    params: tiers.length ? tierQuoteParams(form) : null,
   });
   // The picked model's two soundtrack settings, each priced by the database for these settings.
   const soundChoice = takesSound(capability) && current?.soundChoice === true && effectiveSnd !== null;
@@ -479,7 +483,7 @@ export function GeneratePanel({
           <div className="studio-field flex items-center gap-3 p-3">
             <span
               aria-hidden
-              className="grid size-10 shrink-0 place-items-center rounded-[10px] bg-[color-mix(in_srgb,var(--color-primary)_14%,transparent)] text-[var(--color-primary)]"
+              className="grid size-10 shrink-0 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] text-[var(--ns-amber-ink)]"
             >
               <ToolIcon className="size-5" strokeWidth={1.75} />
             </span>
@@ -504,7 +508,7 @@ export function GeneratePanel({
               aria-label={t.gen.modelChangeLabel}
               ref={changeRef}
               onClick={() => setSheetOpen(true)}
-              className="tap press shrink-0 rounded-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)]"
+              className="tap press shrink-0 rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)]"
             >
               {t.gen.modelChange}
             </button>
@@ -833,6 +837,10 @@ export function GeneratePanel({
                     </Link>
                   </span>
                 )}
+                {/* The built-in library: opening it changes nothing here, adding a style is a click there. */}
+                <Link href={path("/styles")} className="tap-link self-start text-[12px] text-[var(--color-primary)] underline">
+                  {t.gen.styleBrowse}
+                </Link>
               </>
             )}
           </div>
@@ -840,18 +848,29 @@ export function GeneratePanel({
       </div>
 
       <div className="studio-dock flex flex-col gap-2" data-testid="gen-dock">
-        <button
+        {/* The price key (components/ui/PriceButton): the action and the
+            database's quote as two legends; its name is the same sentence. */}
+        <PriceButton
           ref={generateRef}
-          type="button"
           disabled={disabled}
           onClick={generate}
           aria-busy={submitting || quote.status === "quoting"}
           aria-describedby="gen-status"
-          className="studio-cta"
-        >
-          <Sparkles aria-hidden className={`size-4${quote.status === "quoting" || submitting ? " pulse" : ""}`} />
-          <span>{submitting ? t.gen.starting : generateLabel(t, quote, locale, capability)}</span>
-        </button>
+          aria-label={submitting ? t.gen.starting : generateLabel(t, quote, locale, capability)}
+          label={
+            submitting
+              ? t.gen.starting
+              : quote.status === "quoting"
+                ? t.gen.quoting
+                : capability === "describe"
+                  ? t.gen.describe
+                  : t.gen.generate
+          }
+          credits={!submitting && quote.status === "ready" ? quote.credits : null}
+          unit={quote.status === "ready" ? creditUnit(quote.credits, locale, t.shell.creditUnit) : undefined}
+          locale={locale}
+          icon={<span aria-hidden className={`ns-rec${quote.status === "quoting" || submitting ? " pulse" : ""}`} />}
+        />
         <p id="gen-status" className="min-h-[18px] text-center text-[12px]" aria-live="polite">
           {notice?.kind === "ok" ? (
             <span className="text-[var(--color-ok)]">{t.gen.started}</span>

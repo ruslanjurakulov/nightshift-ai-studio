@@ -27,7 +27,7 @@ function Meter({ icon, value, label }: { icon: "speed" | "quality"; value: numbe
         {[1, 2, 3, 4, 5].map((n) => (
           <span
             key={n}
-            className={`h-2 w-[5px] rounded-[1.5px] ${n <= value ? "bg-[var(--color-primary)]" : "bg-[var(--color-border)]"}`}
+            className={`h-2.5 w-[4px] rounded-[1px] ${n <= value ? "bg-[var(--ns-amber)]" : "bg-[var(--ns-lamp-off)]"}`}
           />
         ))}
       </span>

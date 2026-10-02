@@ -81,20 +81,32 @@ class WhatIsSent(Tmp):
         ra.submit(self.request("edit", {"prompt": "night", "source_asset_id": SRC, "quality": "high"}, [self.src]))
         self.assertEqual(sess.sent[0]["data"]["quality"], "high")
 
-    def test_a_job_that_names_no_tier_is_sent_medium_never_the_vendors_default(self):
-        # The quote prices an absent tier as medium; the worker must send what was priced.
-        for cap, route, files in (("t2i", "/images/generations", ()), ("edit", "/images/edits", (self.src,))):
-            ra, sess = self.adapter("openai-gpt-image-2", ("POST", route, 200, IMG))
-            params = {"prompt": "x", **({"source_asset_id": SRC} if cap == "edit" else {})}
-            ra.submit(self.request(cap, params, files))
-            sent = sess.sent[0]
-            self.assertEqual((sent["json"] if cap == "t2i" else sent["data"])["quality"], "medium", cap)
-
-    def test_every_openai_model_is_sent_a_tier(self):
+    def test_a_job_without_a_stored_tier_is_refused_before_any_call_never_given_a_default(self):
+        # The database writes the tier it priced into the job's params. A job
+        # without one was not priced by tier: any tier sent here (the vendor's
+        # own default, or one of ours) would bill what was not quoted.
         for model in OPENAI:
-            ra, sess = self.adapter(model, ("POST", "/images/generations", 200, IMG))
-            ra.submit(self.request("t2i", {"prompt": "x"}))
-            self.assertEqual(sess.sent[0]["json"]["quality"], "medium", model)
+            for cap, route, files in (("t2i", "/images/generations", ()), ("edit", "/images/edits", (self.src,))):
+                ra, sess = self.adapter(model, ("POST", route, 200, IMG))
+                params = {"prompt": "x", **({"source_asset_id": SRC} if cap == "edit" else {})}
+                with self.assertRaises(ca.CreativeAdapterError) as cm:
+                    ra.submit(self.request(cap, params, files))
+                self.assertEqual(cm.exception.code, "bad_request", (model, cap))
+                self.assertIn("no quality tier", cm.exception.message)
+                self.assertEqual(sess.sent, [], (model, cap))
+
+    def test_the_worker_sends_exactly_the_stored_tier_for_every_model(self):
+        for model in OPENAI:
+            for tier in ("low", "medium", "high"):
+                ra, sess = self.adapter(model, ("POST", "/images/generations", 200, IMG))
+                ra.submit(self.request("t2i", {"prompt": "x", "quality": tier}))
+                self.assertEqual(sess.sent[0]["json"]["quality"], tier, (model, tier))
+
+    def test_the_worker_has_no_default_tier_of_its_own(self):
+        import modules.capabilities.base as base
+        self.assertFalse(hasattr(base, "DEFAULT_IMAGE_QUALITY"))
+        seam = Path(ca.__file__).read_text().split("def capability_request")[1]
+        self.assertNotIn('"medium"', seam)
 
     def test_a_model_without_tiers_is_never_sent_the_field(self):
         ra, sess = self.adapter("gemini-3.1-flash-image", ("POST", ":generateContent", 200,
@@ -236,7 +248,8 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         raise AssertionError(name)
 
     def test_the_functions_replaced_are_the_ones_the_quote_runs(self):
-        self.assertEqual(sorted(bodies(self.SQL)), ["creative_params_problem", "creative_price", "sellable_models"])
+        self.assertEqual(sorted(bodies(self.SQL)),
+                         ["create_creative_job", "creative_params_problem", "creative_price", "sellable_models"])
 
     def test_every_literal_of_the_latest_bodies_survives(self):
         new = bodies(self.SQL)
@@ -247,6 +260,7 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
 
     def test_the_bodies_are_taken_from_the_files_that_last_defined_them(self):
         # If a later migration replaces one of these, 0060 must be rebuilt on it.
+        self.assertEqual(self.latest("create_creative_job")[0], "0036_creative_jobs.sql")
         self.assertEqual(self.latest("creative_price")[0], "0052_video_tools.sql")
         self.assertEqual(self.latest("creative_params_problem")[0], "0055_describe_image.sql")
         self.assertEqual(self.latest("sellable_models")[0], "0055_describe_image.sql")
@@ -267,11 +281,28 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         # unpriced is still a refusal, never a zero
         self.assertIn("perform public.creative_refuse('unpriced',", price)
 
+    def test_the_job_stores_the_tier_that_was_priced_and_nothing_else_changes(self):
+        create = bodies(self.SQL)["create_creative_job"]
+        self.assertIn("if q ? 'quality' then", create)
+        self.assertIn("jsonb_build_object('quality', q ->> 'quality')", create)
+        # stored params, but the idempotency hash still covers what the caller sent
+        self.assertIn("jparams, 'queued', 'credits', ref,", create)
+        self.assertIn("'params', coalesce(p_params, 'null'::jsonb)", create)
+        self.assertIn("price > p_max_credits", create)
+        self.assertIn("creative_platform_reserve(p_org, ref, price)", create)
+
+    def test_it_says_what_to_do_when_the_flat_prices_come_later(self):
+        self.assertIn("ORDER. If 0060 is applied BEFORE", self.SQL)
+        self.assertIn("no_flat_price_without_tier_rows", self.SQL)
+        self.assertIn("WORKER. A tiered model's job that carries no tier", self.SQL)
+
     def test_security_definer_functions_pin_their_search_path_and_are_revoked(self):
         for name, body in bodies(self.SQL).items():
             if "security definer" in body:
                 self.assertIn("set search_path = public, pg_temp", body, name)
         self.assertIn("revoke all on function public.creative_price(uuid, text, text, jsonb) from public, anon, authenticated, service_role;",
+                      self.SQL)
+        self.assertIn("grant execute on function public.create_creative_job(uuid, text, text, jsonb, text, text, numeric) to authenticated;",
                       self.SQL)
         self.assertIn("revoke all on function public.creative_params_problem(text, jsonb) from public, anon, authenticated, service_role;",
                       self.SQL)

@@ -68,9 +68,8 @@ export function Header({
           {/* The wordmark lives in the sidebar from `lg` up. */}
           <Link
             href={path("/create")}
-            className="tap-link font-display shrink-0 text-[17px] font-semibold tracking-[-0.02em] text-[var(--color-fg)] lg:hidden"
+            className="tap-link ns-wordmark shrink-0 lg:hidden"
           >
-            <span aria-hidden className="mr-2 inline-block size-2 rounded-full bg-[var(--color-primary)] align-middle" />
             {t.brand.name}
           </Link>
           {/* The organization and channel, when there is more than one to choose

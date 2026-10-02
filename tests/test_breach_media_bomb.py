@@ -13,10 +13,10 @@ That is a resource-exhaustion DoS against the single-threaded media worker,
 reachable by any member who can upload a file. The expected secure behaviour
 is the same MAX_PIXELS cap the HEIC path already enforces.
 
-This test asserts the SECURE behaviour, so it is @unittest.expectedFailure while the
-hole is open: the moment interpret_probe grows a total-pixel guard it becomes an
-"unexpected success", which unittest reports as a failure, forcing the fixer to
-remove the marker. (CI runs plain `unittest discover`, so no pytest here.)
+Fixed: interpret_probe now refuses a JPEG/PNG/WebP/GIF above MAX_PIXELS with
+the same "too_large_dimensions" reason the HEIC path uses. The tests below pin
+the bomb, the exact boundary and every raster type. (CI runs plain
+`unittest discover`, so no pytest here.)
 """
 
 from __future__ import annotations
@@ -28,6 +28,9 @@ from modules import media_library as ml
 
 def _img_probe(width: int, height: int) -> dict:
     return {"streams": [{"codec_type": "video", "width": width, "height": height}], "format": {}}
+
+
+RASTER_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif")
 
 
 class MediaBombTests(unittest.TestCase):
@@ -43,15 +46,42 @@ class MediaBombTests(unittest.TestCase):
             ml.interpret_probe("image/png", _img_probe(ml.MAX_SIDE + 1, 10))
         self.assertEqual(e.exception.reason, "too_large_dimensions")
 
-    @unittest.expectedFailure  # BR-C-001 open: no total-pixel cap on raster images
     def test_raster_megapixel_bomb_is_refused(self):
         """A 16384x16384 PNG (268 MP) is under MAX_SIDE on each axis but is a
         decompression bomb once ffmpeg decodes it for the thumbnail. interpret_probe
         SHOULD refuse any image above MAX_PIXELS, exactly as the HEIC path does."""
         big = ml.MAX_SIDE  # 16384 per side, each within the per-side cap
         self.assertGreater(big * big, ml.MAX_PIXELS)  # 268 MP > 100 MP — a bomb
-        with self.assertRaises(ml.IngestReject):
+        with self.assertRaises(ml.IngestReject) as e:
             ml.interpret_probe("image/png", _img_probe(big, big))
+        self.assertEqual(e.exception.reason, "too_large_dimensions")
+
+    def test_raster_at_the_megapixel_cap_is_accepted(self):
+        """Regression: the area cap is inclusive, exactly like the HEIC path."""
+        for sniffed in RASTER_TYPES:
+            for width, height in ((10_000, 10_000), (ml.MAX_SIDE, ml.MAX_PIXELS // ml.MAX_SIDE)):
+                with self.subTest(sniffed=sniffed, width=width, height=height):
+                    self.assertLessEqual(width * height, ml.MAX_PIXELS)
+                    p = ml.interpret_probe(sniffed, _img_probe(width, height))
+                    self.assertEqual((p.kind, p.width, p.height), ("image", width, height))
+
+    def test_raster_over_the_megapixel_cap_is_refused(self):
+        """Regression: every raster type gets the area cap, with the reason word
+        the UI already translates."""
+        cases = (
+            (10_000, 10_001),                                   # just over 100 MP
+            (ml.MAX_SIDE, ml.MAX_PIXELS // ml.MAX_SIDE + 1),    # one side at the side cap
+            (ml.MAX_PIXELS // ml.MAX_SIDE + 1, ml.MAX_SIDE),    # either orientation
+            (ml.MAX_SIDE, ml.MAX_SIDE),                         # the 268 MP bomb
+        )
+        for sniffed in RASTER_TYPES:
+            for width, height in cases:
+                with self.subTest(sniffed=sniffed, width=width, height=height):
+                    self.assertGreater(width * height, ml.MAX_PIXELS)
+                    self.assertLessEqual(max(width, height), ml.MAX_SIDE)  # only the area cap catches it
+                    with self.assertRaises(ml.IngestReject) as e:
+                        ml.interpret_probe(sniffed, _img_probe(width, height))
+                    self.assertEqual(e.exception.reason, "too_large_dimensions")
 
 
 if __name__ == "__main__":

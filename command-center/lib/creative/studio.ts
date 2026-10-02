@@ -481,6 +481,20 @@ export function sheetQuoteParams(form: StudioForm): ReturnType<typeof buildParam
   });
 }
 
+/**
+ * The params a model's quality tiers are priced with (0060): the form's own
+ * settings with a stand-in for the words, so the price check neither sends
+ * what the person is typing nor re-asks on every pause while they type (a
+ * picture's price never reads its words). null = no honest price can be asked
+ * for yet (not a tiered tool, or an edit without its picture). The tier itself
+ * is added per request, never kept here.
+ */
+export function tierQuoteParams(form: StudioForm): ReturnType<typeof buildParams> | null {
+  if (!takesQuality(form.capability)) return null;
+  if (needsSource(form.capability) && !isUuid(form.sourceId)) return null;
+  return buildParams({ ...form, prompt: PRICE_STAND_IN, quality: null });
+}
+
 /** The most models the sheet prices at once: each is one quote call. */
 export const SHEET_PRICE_MAX = 8;
 
