@@ -75,50 +75,52 @@ def commands(spec):
 FIT = "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30"
 PIN = ",settb=1/30,fps=30,format=yuv420p"
 ENC = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "30"]
+#: Every timeline input is capped at the decoder (BR-L-004): media_library.MAX_PIXELS.
+CAP = ["-max_pixels", "100000000"]
 PAN = ("scale=1472:828:force_original_aspect_ratio=increase:flags=lanczos,loop=loop=-1:size=1,"
        "settb=1/30,setpts=N,crop=w=1207:h=679:x='clip(trunc(iw*(0.5-0.15+0.3*min(1,n/60.000000)))"
        "-603,0,iw-ow)':y='(ih-oh)/2',scale=1280:720:flags=lanczos")
 
 GOLDEN_XFADE_SEGMENTS = [
     # c1 alone: frames 0-74.
-    [["ffmpeg", "-y", "-stream_loop", "-1", "-ss", "1.000", "-i", "/media/a.mp4", "-frames:v", "75",
+    [["ffmpeg", "-xerror", "-y", "-stream_loop", "-1", "-ss", "1.000", *CAP, "-i", "/media/a.mp4", "-frames:v", "75",
       "-an", "-vf", FIT, *ENC, "/w/seg_0000.mp4"]],
     # c1's last 15 frames dissolve into c2's first 15 (c2 at 2x).
-    [["ffmpeg", "-y", "-stream_loop", "-1", "-ss", "1.000", "-i", "/media/a.mp4",
-      "-stream_loop", "-1", "-i", "/media/b.mp4", "-filter_complex",
+    [["ffmpeg", "-xerror", "-y", "-stream_loop", "-1", "-ss", "1.000", *CAP, "-i", "/media/a.mp4",
+      "-stream_loop", "-1", *CAP, "-i", "/media/b.mp4", "-filter_complex",
       f"[0:v]{FIT},trim=start_frame=75,setpts=PTS-STARTPTS{PIN}[xa];"
       f"[1:v]setpts=(PTS-STARTPTS)/2.000,{FIT}{PIN}[xb];"
       "[xa][xb]xfade=transition=fade:duration=0.500000:offset=0[xv]",
       "-map", "[xv]", "-frames:v", "15", "-an", *ENC, "/w/seg_0001.mp4"]],
     # c2 alone: its frames 15-29.
-    [["ffmpeg", "-y", "-stream_loop", "-1", "-i", "/media/b.mp4", "-frames:v", "15", "-an", "-vf",
+    [["ffmpeg", "-xerror", "-y", "-stream_loop", "-1", *CAP, "-i", "/media/b.mp4", "-frames:v", "15", "-an", "-vf",
       f"setpts=(PTS-STARTPTS)/2.000,{FIT},trim=start_frame=15,setpts=PTS-STARTPTS", *ENC,
       "/w/seg_0002.mp4"]],
     # c2's last 30 frames dissolve into the still's first 30, the still
     # already making its move (held, as for any still, if the move fails).
-    [["ffmpeg", "-y", "-stream_loop", "-1", "-i", "/media/b.mp4", "-i", "/media/i.png",
+    [["ffmpeg", "-xerror", "-y", "-stream_loop", "-1", *CAP, "-i", "/media/b.mp4", *CAP, "-i", "/media/i.png",
       "-filter_complex",
       f"[0:v]setpts=(PTS-STARTPTS)/2.000,{FIT},trim=start_frame=30,setpts=PTS-STARTPTS{PIN}[xa];"
       f"[1:v]{PAN}{PIN}[xb];"
       "[xa][xb]xfade=transition=fade:duration=1.000000:offset=0[xv]",
       "-map", "[xv]", "-frames:v", "30", "-an", *ENC, "/w/seg_0003.mp4"],
-     ["ffmpeg", "-y", "-stream_loop", "-1", "-i", "/media/b.mp4", "-loop", "1", "-i", "/media/i.png",
+     ["ffmpeg", "-xerror", "-y", "-stream_loop", "-1", *CAP, "-i", "/media/b.mp4", "-loop", "1", *CAP, "-i", "/media/i.png",
       "-filter_complex",
       f"[0:v]setpts=(PTS-STARTPTS)/2.000,{FIT},trim=start_frame=30,setpts=PTS-STARTPTS{PIN}[xa];"
       f"[1:v]{FIT}{PIN}[xb];"
       "[xa][xb]xfade=transition=fade:duration=1.000000:offset=0[xv]",
       "-map", "[xv]", "-frames:v", "30", "-an", *ENC, "/w/seg_0003.mp4"]],
     # The still alone: the SAME move (same seed, same 60-frame span), cut at frame 30.
-    [["ffmpeg", "-y", "-i", "/media/i.png", "-frames:v", "30", "-vf",
+    [["ffmpeg", "-xerror", "-y", *CAP, "-i", "/media/i.png", "-frames:v", "30", "-vf",
       f"{PAN},trim=start_frame=30,setpts=PTS-STARTPTS", *ENC, "/w/seg_0004.mp4"],
-     ["ffmpeg", "-y", "-loop", "1", "-i", "/media/i.png", "-frames:v", "30", "-vf",
+     ["ffmpeg", "-xerror", "-y", "-loop", "1", *CAP, "-i", "/media/i.png", "-frames:v", "30", "-vf",
       f"{FIT},trim=start_frame=30,setpts=PTS-STARTPTS", *ENC, "/w/seg_0004.mp4"]],
 ]
 
 AF = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
 GOLDEN_XFADE_FINAL = [
-    "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "/w/concat.txt",
-    "-i", "/media/a.mp4", "-i", "/media/b.mp4", "-i", "/media/m.mp3",
+    "ffmpeg", "-y", "-f", "concat", "-safe", "0", *CAP, "-i", "/w/concat.txt",
+    *CAP, "-i", "/media/a.mp4", *CAP, "-i", "/media/b.mp4", *CAP, "-i", "/media/m.mp3",
     "-filter_complex",
     # c1's sound and c2's (2x, and fading out under the silent still) are
     # joined by acrossfade over the 0.5 s overlap, then placed at 0.

@@ -38,7 +38,7 @@ export function ErrorState({
     >
       <span
         aria-hidden
-        className="grid size-10 place-items-center rounded-xl border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-warn)]"
+        className="grid size-10 place-items-center rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-warn)]"
       >
         <AlertTriangle className="size-5" strokeWidth={1.5} />
       </span>
@@ -46,7 +46,7 @@ export function ErrorState({
       <p className="m-0 max-w-[52ch] text-[13px] font-light leading-relaxed text-[var(--color-muted)]">
         {message ?? t.common.readFailedBody}
       </p>
-      <button type="button" onClick={retry} disabled={pending} className="btn-sky pill px-4 py-1.5 text-[12px] disabled:opacity-40">
+      <button type="button" onClick={retry} disabled={pending} className="btn-sky rounded-[var(--ns-r-key)] px-4 py-1.5 text-[12px] disabled:opacity-40">
         {pending ? t.common.retrying : t.common.retry}
       </button>
     </div>

@@ -132,6 +132,11 @@ export const SECTION_ITEMS: readonly SectionItem[] = [{ href: CUSTOMER_HOME, key
  * console (providers, agents, the intelligence stack, logs, the platform team)
  * and is shown only to a platform owner/admin.
  *
+ * The setup checklist ("onboarding", /getting-started) is not here either: it
+ * is the platform operator's health check of the deployment, so it is not in a
+ * customer's rail, tabs or palette, and a customer who opens its URL is sent to
+ * Home like any other operator screen.
+ *
  * Two-person publish approval ("approvals") is not here: a self-serve workspace
  * has one person and no roles, so a second approver cannot exist. The screen
  * and the database rule stay for the operator (and a future Teams plan).
@@ -151,7 +156,6 @@ export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "channels",
   "credits",
   "series",
-  "onboarding",
   "organization",
   "developers",
 ];
@@ -167,7 +171,7 @@ export const RAIL_HIDDEN_KEYS: readonly NavKey[] = ["accounts", "members"];
 /**
  * A customer's rail: five destinations, nothing else. Studio is where things
  * are made (create, library, look, series); Settings holds the workspace
- * (organization, developer keys, the setup checklist). Each of the two opens
+ * (organization, developer keys). Each of the two opens
  * its first screen, and SECTION_TABS lays its other screens out as tabs —
  * a short rail with the tools behind it, never a wall of tools.
  */
@@ -193,7 +197,6 @@ export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly SectionI
   settings: [
     { href: "/organization", key: "organization" },
     { href: "/developers", key: "developers" },
-    { href: "/getting-started", key: "onboarding" },
   ],
 };
 

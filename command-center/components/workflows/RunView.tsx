@@ -83,8 +83,12 @@ export function RunView({
           <h2 className="m-0 text-[15px] font-semibold">{fmt(p.of, { name: run.workflow_name })}</h2>
           <span className="pill border border-[var(--color-border)] px-3 py-1 text-[12px]">{t.workflows.status[run.status]}</span>
         </div>
-        <p className="m-0 text-[13px] tabular-nums">{fmt(p.confirmed, { n: formatCredits(run.max_credits, locale) })}</p>
-        <p className="m-0 text-[13px] tabular-nums">{fmt(p.charged, { n: formatCredits(run.charged_credits, locale) })}</p>
+        <p className="m-0 text-[13px] tabular-nums">
+          {run.max_credits !== null ? fmt(p.confirmed, { n: formatCredits(run.max_credits, locale) }) : p.confirmedUnknown}
+        </p>
+        <p className="m-0 text-[13px] tabular-nums">
+          {run.charged_credits !== null ? fmt(p.charged, { n: formatCredits(run.charged_credits, locale) }) : p.chargedUnknown}
+        </p>
         {active ? (
           <p className="m-0 text-[12px] text-[var(--color-muted)]">
             {canAct ? p.keepOpen : p.viewOnly}
@@ -152,7 +156,7 @@ function StepRow({ step, toolLabels, libraryHref }: { step: RunStepView; toolLab
         <span className="text-[12px] text-[var(--color-muted)]">{word}</span>
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] tabular-nums text-[var(--color-muted)]">
-        <span>{fmt(p.quoted, { n: formatCredits(step.quoted_credits, locale) })}</span>
+        <span>{step.quoted_credits !== null ? fmt(p.quoted, { n: formatCredits(step.quoted_credits, locale) }) : p.quotedUnknown}</span>
         {step.status === "completed" && step.charged_credits !== null ? (
           <span>{fmt(p.chargedStep, { n: formatCredits(step.charged_credits, locale) })}</span>
         ) : null}

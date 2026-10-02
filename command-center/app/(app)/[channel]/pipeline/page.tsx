@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
-import { Panel, EmptyState, StatusPill } from "@/components/ui";
+import { Panel, EmptyState } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
 import { getChannelScope } from "@/lib/channels-server";
@@ -189,7 +190,7 @@ export default async function PipelinePage() {
                     <span className="mono text-[10px] text-[var(--color-muted)]">
                       {p.lastActivity ? relativeTime(p.lastActivity) : t.common.na}
                     </span>
-                    <StatusPill tone={OVERALL_TONE[p.overall]} label={overallLabel[p.overall]} live={p.overall === "RUNNING"} />
+                    <StatusLamp tone={OVERALL_TONE[p.overall]} label={overallLabel[p.overall]} live={p.overall === "RUNNING"} />
                   </div>
                 </div>
                 <div className="overflow-x-auto">
@@ -209,18 +210,10 @@ export default async function PipelinePage() {
         ) : (
           <ul className="divide-y divide-[var(--color-border)]">
             {passes.map((p) => {
-              const color =
-                p.tone === "ok"
-                  ? "var(--color-ok)"
-                  : p.tone === "fail"
-                    ? "var(--color-fail)"
-                    : p.tone === "run"
-                      ? "var(--color-primary)"
-                      : "var(--color-idle)";
               const stale = Date.now() - (storedMs(p.lastTs) ?? 0) > HEARTBEAT_MS;
               return (
                 <li key={p.event} className="row-sweep flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-[var(--color-panel-2)]">
-                  <span className="glow-dot size-1.5 shrink-0 rounded-full" style={{ color, background: color }} />
+                  <StatusLamp tone={p.tone} label={{ ok: t.status.ok, run: t.status.running, fail: t.status.failed, idle: t.status.idle }[p.tone]} hideLabel />
                   <span className="mono w-28 shrink-0 text-[11px] text-[var(--color-primary)]">
                     {p.agent ?? t.common.system}
                   </span>

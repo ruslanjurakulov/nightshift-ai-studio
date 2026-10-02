@@ -20,7 +20,7 @@ export function CustomizeButton() {
     <button
       type="button"
       onClick={toggle}
-      className="btn-sky pill h-9 px-4 text-[13px] font-normal"
+      className="btn-quiet text-[13px] font-normal"
     >
       {on ? t.ops.customizeDone : t.ops.customize}
     </button>

@@ -1081,14 +1081,14 @@ option {
 .scroll-focus:focus-visible { outline-offset: -2px; }
 
 /* ── Touch targets ──────────────────────────────────────────────────────────
-   One rule for "big enough for a thumb": 40px. It applies on any touch device
+   One rule for "big enough for a thumb": 44px. It applies on any touch device
    and on any phone-width viewport (a narrow desktop window has the same
    problem, and cannot be told apart by `pointer` alone). The shared controls
    below carry it already; anything else opts in:
-     .tap       a text control or pill        → min-height 40px
-     .tap-icon  an icon-only control          → 40 × 40px
+     .tap       a text control or pill        → min-height 44px
+     .tap-icon  an icon-only control          → 40 × 44px
      .tap-link  a standalone link on its own line (breadcrumb, footer link)
-                                              → a 40px-tall row, text unchanged
+                                              → a 44px-tall row, text unchanged
    Set on min-height/min-width, not height, so a control with a longer label
    still grows, and it sits outside Tailwind's layer so it wins over `h-8`.
    Above the breakpoint, on a mouse, nothing changes. */
@@ -1098,17 +1098,17 @@ option {
   .btn-sky,
   .cta-glass,
   .side-link,
-  .nav-link { min-height: 2.5rem; min-width: 2.5rem; }
+  .nav-link { min-height: 2.75rem; min-width: 2.75rem; }
   .sheet-close,
-  .nav-back { width: 2.5rem; height: 2.5rem; }
-  .tap-link { display: inline-flex; align-items: center; min-height: 2.5rem; }
+  .nav-back { width: 2.75rem; height: 2.75rem; }
+  .tap-link { display: inline-flex; align-items: center; min-height: 2.75rem; }
   /* Text fields and selects; a checkbox or radio is tapped through its label
      row (see .tap-row), and hidden inputs have no box. */
   :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="hidden"], [type="file"]), select) {
-    min-height: 2.5rem;
+    min-height: 2.75rem;
   }
   /* A label wrapping a checkbox or radio: the whole row is the target. */
-  .tap-row { display: flex; align-items: center; gap: 0.75rem; min-height: 2.5rem; }
+  .tap-row { display: flex; align-items: center; gap: 0.75rem; min-height: 2.75rem; }
 }
 
 /* Atmospheric backdrop — deep-space-inspired but restrained: two soft
@@ -1513,7 +1513,8 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .ns-seg > button:hover { color: var(--color-fg); }
 .studio-seg > button[aria-pressed="true"],
 .ns-seg > button[aria-pressed="true"],
-.ns-seg > button[aria-checked="true"] {
+.ns-seg > button[aria-checked="true"],
+.ns-seg > button[aria-selected="true"] {
   color: var(--studio-cta-fg);
   background: var(--studio-cta-bg);
 }
@@ -1594,10 +1595,8 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   padding: 12px;
   border: 1px solid var(--ns-rule-strong);
   border-radius: var(--ns-r-panel);
-  background: var(--studio-dock-bg);
+  background: var(--color-panel);
   box-shadow: var(--shadow-elevated);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
 }
 @media (min-width: 1024px) {
   .sb-dock { --sb-dock-offset: 0px; }
@@ -1992,6 +1991,14 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   .ns-chip-row[data-wrap="true"] { flex-wrap: wrap; overflow: visible; }
 }
 .ns-chip > .ns-chip-count { color: var(--color-muted); }
+/* A readout chip is not a key: no hover, a normal-height line on a phone. */
+.ns-chip[data-plain="true"] { cursor: default; min-height: 28px; }
+.ns-chip[data-plain="true"]:hover { color: var(--color-muted); border-color: var(--color-border); }
+.ns-chip[data-tone="lit"],
+.ns-chip[data-plain="true"][data-tone="lit"]:hover { color: var(--ns-amber-ink); border-color: var(--ns-amber-ink); }
+.ns-chip[data-tone="warn"],
+.ns-chip[data-plain="true"][data-tone="warn"]:hover { color: var(--ns-caution); border-color: var(--ns-caution); }
+.ns-chip[data-tone] > .ns-chip-count { color: inherit; }
 
 /* Panel: three roles — flat (a hairline rack face), sunken (a well for a
    field or a feed), lifted (the one thing on the screen). */
@@ -2002,6 +2009,9 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 }
 .ns-panel[data-tone="sunken"] { background: var(--ns-key); border-color: transparent; }
 .ns-panel[data-tone="lifted"] { border-color: var(--ns-rule-strong); box-shadow: var(--ns-lift); }
+/* A drop zone is a well with a dashed edge until something is in it. */
+.ns-panel.ns-dropzone { border: 1px dashed var(--ns-rule-strong); }
+.ns-panel.ns-dropzone-filled { border-style: solid; border-color: var(--color-border); }
 .ns-panel-head {
   display: flex;
   align-items: baseline;
@@ -2029,8 +2039,54 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .ns-seg[data-size="lg"] > button { min-height: 36px; padding: 0 14px; font-size: var(--ns-t-ui); font-weight: 550; }
 @media (pointer: coarse), (max-width: 40rem) {
   .ns-seg > button,
-  .ns-chip,
+  .ns-chip:not([data-plain]),
   .ns-price-button[data-size="md"] { min-height: 44px; }
+}
+
+/* A chip that is a radio's label (the editor's speed, transition and caption
+   position choices): the same key and pilot lamp as a toggle chip, lit when its
+   radio is on. The radio itself stays in the label, so a keyboard and a screen
+   reader still get a real radio group. */
+.ns-chip[data-radio] { cursor: pointer; }
+/* The same chip as a role="radio" button (the Home composer's length and language). */
+.ns-chip[role="radio"]::before {
+  content: "";
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--ns-lamp-off);
+}
+.ns-chip[role="radio"][aria-checked="true"] {
+  color: var(--color-fg);
+  border-color: var(--ns-amber-ink);
+  background: var(--ns-select);
+}
+.ns-chip[role="radio"][aria-checked="true"]::before {
+  background: var(--ns-amber);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ns-amber) 25%, transparent);
+}
+.ns-chip[data-radio]::before {
+  content: "";
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--ns-lamp-off);
+}
+.ns-chip[data-radio][data-on="true"] {
+  color: var(--color-fg);
+  border-color: var(--ns-amber-ink);
+  background: var(--ns-select);
+}
+.ns-chip[data-radio][data-on="true"]::before {
+  background: var(--ns-amber);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ns-amber) 25%, transparent);
+}
+.ns-chip[data-radio]:focus-within { outline: 2px solid var(--ns-cue); outline-offset: 2px; }
+.ns-chip[data-radio][data-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+@media (pointer: coarse), (max-width: 40rem) {
+  .ns-chip[data-radio] { min-height: 44px; }
 }
 
 /* Contact sheet: results as frames on a strip of film. Each frame has its
@@ -2049,6 +2105,9 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   border-radius: var(--ns-r-frame);
   background: var(--ns-film);
 }
+/* Frames of different shapes (a feed of 16:9, 1:1 and 9:16 results): each frame
+   keeps its own film, and the gaps between them show the page, not black. */
+.ns-sheet[data-ragged="true"] { gap: 8px; padding: 0; background: transparent; align-items: start; }
 .ns-frame {
   position: relative;
   display: flex;
@@ -2063,6 +2122,14 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   overflow: hidden;
   border-radius: 1px;
   background: color-mix(in srgb, var(--ns-on-film) 8%, var(--ns-film));
+}
+/* The printed slip under a frame: solid paper, readable in both themes. */
+.ns-frame-body {
+  flex: 1 1 auto;
+  margin-top: 3px;
+  padding: 0.625rem 0.75rem 0.75rem;
+  background: var(--color-panel);
+  color: var(--color-fg);
 }
 .ns-frame[data-selected="true"] .ns-frame-media { outline: 2px solid var(--ns-amber); outline-offset: -2px; }
 .ns-edge {
@@ -2138,7 +2205,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   background-image:
     linear-gradient(to right, var(--tick) 1px, transparent 1px),
     linear-gradient(to right, var(--ns-rule) 1px, transparent 1px);
-  background-size: var(--ruler-major, 80px) 10px, calc(var(--ruler-major, 80px) / 4) 5px;
+  background-size: var(--ruler-major, 80px) 10px, calc(var(--ruler-major, 80px) / var(--ruler-div, 4)) 5px;
   background-repeat: repeat-x;
   background-position: 0 100%, 0 100%;
   border-bottom: 1px solid var(--tick);

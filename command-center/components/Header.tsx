@@ -8,6 +8,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { NotificationsCenter } from "@/components/NotificationsCenter";
+import { NotificationBell } from "@/components/shell/NotificationBell";
 import { UtcClock } from "@/components/UtcClock";
 import { ChannelSwitcher } from "@/components/ChannelSwitcher";
 import { OrgSwitcher } from "@/components/org/OrgSwitcher";
@@ -94,7 +95,9 @@ export function Header({
               </button>
             </span>
             <CreditMenu account={credits} plan={plan} />
-            <NotificationsCenter scope={scope} />
+            {/* The customer's own, database-backed inbox (migration 0064); the
+                operator's bar below keeps the event-derived feed. */}
+            <NotificationBell orgId={currentOrgId} />
             <span className="hidden sm:contents">
               <LanguageSelector />
               <ThemeToggle />

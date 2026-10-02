@@ -13,6 +13,7 @@ import { TOOL_ICONS } from "@/components/studio/toolIcons";
 import { useModelPrices, useSoundPrices, useTierPrices } from "@/components/studio/useModelPrices";
 import { useStyleKits } from "@/components/studio/useStyleKits";
 import { PlanUpsellDialog } from "@/components/studio/PlanUpsellDialog";
+import { SegmentedSwitch } from "@/components/ui/SegmentedSwitch";
 import { ChannelDnaHint } from "@/components/studio/ChannelDnaHint";
 import { PriceButton } from "@/components/ui/PriceButton";
 import { creditUnit } from "@/lib/credits";
@@ -45,6 +46,7 @@ import {
   newIdempotencyKey,
   promptRule,
   sheetQuoteParams,
+  soundQuoteParams,
   takesQuality,
   takesSound,
   takesStyle,
@@ -295,7 +297,8 @@ export function GeneratePanel({
     orgId,
     capability,
     modelId: effectiveModel,
-    params: soundChoice ? sheetQuoteParams({ ...form, audio: null }) : null,
+    // Without the words, like the tiers: a clip's price never reads them, and typing must not re-ask or send them.
+    params: soundChoice ? soundQuoteParams(form) : null,
   });
   const soundText = (on: boolean): string => {
     const label = on ? t.gen.soundOn : t.gen.soundOff;
@@ -371,10 +374,11 @@ export function GeneratePanel({
     edited();
   };
 
-  // A tablist: ←/→ (and ↑/↓) move and choose, Home/End jump; one tab stop.
+  // The tool row is a tablist of its own under the mode switch: ←/→ (and
+  // ↑/↓) move and choose, Home/End jump; one tab stop.
   function onTabKey(e: KeyboardEvent<HTMLButtonElement>, c: StudioCapability) {
-    const i = PANEL_CAPABILITIES.indexOf(c);
-    const n = PANEL_CAPABILITIES.length;
+    const i = MEDIA_TOOLS.indexOf(c);
+    const n = MEDIA_TOOLS.length;
     let to = -1;
     if (e.key === "ArrowRight" || e.key === "ArrowDown") to = (i + 1) % n;
     else if (e.key === "ArrowLeft" || e.key === "ArrowUp") to = (i - 1 + n) % n;
@@ -382,7 +386,7 @@ export function GeneratePanel({
     else if (e.key === "End") to = n - 1;
     if (to < 0) return;
     e.preventDefault();
-    const next = PANEL_CAPABILITIES[to];
+    const next = MEDIA_TOOLS[to];
     pick(next);
     tabRefs.current[next]?.focus();
   }
@@ -401,7 +405,7 @@ export function GeneratePanel({
         id={`gen-tab-${c}`}
         aria-selected={on}
         aria-controls="gen-tabpanel"
-        tabIndex={on ? 0 : -1}
+        tabIndex={on || (!MEDIA_TOOLS.includes(capability) && c === MEDIA_TOOLS[0]) ? 0 : -1}
         onClick={() => pick(c)}
         onKeyDown={(e) => onTabKey(e, c)}
         className="studio-tab"
@@ -465,12 +469,23 @@ export function GeneratePanel({
         {t.gen.title}
       </h2>
 
-      <div role="tablist" aria-label={t.gen.kindLabel} className="flex flex-col gap-1">
-        <div role="presentation" className="grid grid-cols-3 gap-1">
-          {MAKE_KINDS.map(tab)}
-        </div>
-        <div role="presentation" className="mx-1 my-0.5 h-px bg-[var(--color-border)]" />
-        <div role="presentation" className="grid grid-cols-3 gap-1">
+      <div className="flex flex-col gap-2">
+        {/* The mode switch: what to make. The tools below it start from something in the library. */}
+        <SegmentedSwitch
+          semantics="tab"
+          label={t.gen.kindLabel}
+          idPrefix="gen-tab"
+          controls="gen-tabpanel"
+          size="lg"
+          className="w-full [&>button]:flex-1 [&>button]:justify-center"
+          value={MAKE_KINDS.includes(capability) ? capability : null}
+          onChange={pick}
+          options={MAKE_KINDS.map((c) => {
+            const Icon = TOOL_ICONS[c];
+            return { value: c, label: t.gen.tabs[c], icon: <Icon aria-hidden className="size-4" strokeWidth={1.75} /> };
+          })}
+        />
+        <div role="tablist" aria-label={t.gen.toolRowLabel} className="grid grid-cols-3 gap-1">
           {MEDIA_TOOLS.map(tab)}
         </div>
       </div>
@@ -494,7 +509,7 @@ export function GeneratePanel({
                   {current.displayName}
                 </span>
                 {current.beta && (
-                  <span className="shrink-0 rounded-full border border-[var(--color-border)] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
+                  <span className="shrink-0 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
                     {t.gen.beta}
                   </span>
                 )}
@@ -587,7 +602,7 @@ export function GeneratePanel({
                     setEndOpen(false);
                     edited();
                   }}
-                  className="btn-sky is-quiet pill w-fit px-3 py-1.5 text-[12px]"
+                  className="btn-quiet w-fit text-[12px]"
                 >
                   {t.gen.endFrameRemove}
                 </button>
@@ -790,7 +805,7 @@ export function GeneratePanel({
             {styles.state === "loading" ? (
               <div className="flex flex-wrap gap-2" aria-busy="true" aria-label={t.gen.styleLoading}>
                 {[0, 1, 2].map((i) => (
-                  <span key={i} className="skeleton h-8 w-20 rounded-full" />
+                  <span key={i} className="skeleton h-8 w-20 rounded-[var(--ns-r-key)]" />
                 ))}
               </div>
             ) : styles.state === "failed" ? (

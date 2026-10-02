@@ -33,6 +33,7 @@ import {
 } from "@/lib/creative/operations";
 import { VOICES } from "@/lib/ttsModels";
 import { formatCredits } from "@/lib/credits";
+import { formatTimecode } from "@/components/ui/Timecode";
 import { fmt } from "@/lib/i18n/core";
 import type { Dictionary } from "@/lib/i18n";
 
@@ -496,6 +497,20 @@ export function tierQuoteParams(form: StudioForm): ReturnType<typeof buildParams
   return buildParams({ ...form, prompt: PRICE_STAND_IN, quality: null });
 }
 
+/**
+ * The params a model's two soundtrack settings (0070) are priced with: the
+ * form's own settings with a stand-in for the words, like the tiers — a
+ * clip's price never reads its words, so the check neither sends what the
+ * person is typing nor re-asks on every pause. null = no honest price can be
+ * asked for yet (not a tool with a soundtrack, or a clip from a picture before
+ * the picture is picked). The setting itself is added per request.
+ */
+export function soundQuoteParams(form: StudioForm): ReturnType<typeof buildParams> | null {
+  if (!takesSound(form.capability)) return null;
+  if (needsSource(form.capability) && !isUuid(form.sourceId)) return null;
+  return buildParams({ ...form, prompt: PRICE_STAND_IN, audio: null });
+}
+
 /** The most models the sheet prices at once: each is one quote call. */
 export const SHEET_PRICE_MAX = 8;
 
@@ -570,6 +585,13 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+/**
+ * Jobs of tools that live in the editor, not in the Studio (0072: captions —
+ * the result is a transcript the editor turns into captions, not a card).
+ * The Studio's feed and Home's recent strip skip them.
+ */
+const EDITOR_ONLY_CAPABILITIES = ["captions"];
+
 export function coerceJobs(rows: unknown): StudioJob[] {
   if (!Array.isArray(rows)) return [];
   const out: StudioJob[] = [];
@@ -577,6 +599,7 @@ export function coerceJobs(rows: unknown): StudioJob[] {
     if (!r || typeof r !== "object") continue;
     const j = r as Record<string, unknown>;
     if (typeof j.id !== "string" || typeof j.status !== "string") continue;
+    if (typeof j.capability === "string" && EDITOR_ONLY_CAPABILITIES.includes(j.capability)) continue;
     const params = j.params && typeof j.params === "object" && !Array.isArray(j.params) ? (j.params as Record<string, unknown>) : {};
     const result = j.result && typeof j.result === "object" && !Array.isArray(j.result) ? (j.result as Record<string, unknown>) : null;
     out.push({
@@ -653,6 +676,9 @@ const REASON_GROUPS: Record<string, keyof Dictionary["gen"]["reasons"]> = {
   style_unavailable: "style",
   not_picked_up: "expired",
   cancelled: "cancelled",
+  // 0072: a recording with no speech, or too many words for one track.
+  no_speech: "no_speech",
+  too_many_words: "bad_request",
 };
 
 /** A finished job's error_code -> a plain sentence (internal codes never reach the screen). */
@@ -783,6 +809,26 @@ export function cardAspect(job: Pick<StudioJob, "capability" | "params">): strin
   if (a === "16:9") return "16 / 9";
   if (a === "9:16") return "9 / 16";
   return "1 / 1";
+}
+
+/**
+ * The edge print of a result's frame (IDENTITY.md §Signature devices): only
+ * facts the job itself carries — the shape it was asked for, a clip's length,
+ * the credits held or charged. Nothing is guessed: an unknown shape or length
+ * is left off, and a job that ended without a result prints no price.
+ */
+export function edgeFacts(t: Dictionary, job: StudioJob, locale = "en"): string[] {
+  const kind = outputKind(job.capability);
+  const facts: string[] = [];
+  const a = job.params.aspect_ratio;
+  if ((kind === "image" || kind === "video") && (a === "16:9" || a === "9:16" || a === "1:1")) facts.push(a);
+  const d = job.params.duration_s;
+  if (kind === "video" && typeof d === "number" && Number.isFinite(d) && d > 0) facts.push(formatTimecode(d, "duration"));
+  if (!isUnsuccessful(job.status)) {
+    const credits = job.status === "completed" ? (job.charged_credits ?? job.quoted_credits) : job.quoted_credits;
+    if (typeof credits === "number" && Number.isFinite(credits)) facts.push(`${formatCredits(credits, locale)} ${t.gen.crShort}`);
+  }
+  return facts;
 }
 
 /** What "Try again" puts back into the panel. It spends nothing by itself. */

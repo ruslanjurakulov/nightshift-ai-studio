@@ -2,6 +2,7 @@
 
 import { timeOfDay } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
+import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 
 export type StageState = "WAITING" | "COMPLETED" | "RUNNING" | "FAILED";
 
@@ -12,45 +13,43 @@ export interface StageView {
   ts: string | null;
 }
 
-const STATE_COLOR: Record<StageState, string> = {
-  WAITING: "var(--color-idle)",
-  COMPLETED: "var(--color-ok)",
-  RUNNING: "var(--color-primary)",
-  FAILED: "var(--color-fail)",
+const STATE_TONE: Record<StageState, LampTone> = {
+  WAITING: "idle",
+  COMPLETED: "ok",
+  RUNNING: "run",
+  FAILED: "fail",
 };
 
-/** One stage node + the connector line into the next stage. */
-function StageNode({ stage, last }: { stage: StageView; last: boolean }) {
-  const color = STATE_COLOR[stage.state];
+/** The state in words, from the legend's own copy. */
+function useStateWords(): Record<StageState, string> {
+  const { t } = useI18n();
+  return {
+    WAITING: t.pipeline.legendWaiting,
+    RUNNING: t.pipeline.legendRunning,
+    COMPLETED: t.pipeline.legendCompleted,
+    FAILED: t.pipeline.legendFailed,
+  };
+}
+
+/** One stage lamp + the rundown line into the next stage. The state word is read aloud; the lamp is never the only signal. */
+function StageNode({ stage, last, words }: { stage: StageView; last: boolean; words: Record<StageState, string> }) {
   const filled = stage.state !== "WAITING";
   return (
     <li className="flex min-w-0 flex-1 items-start">
       <div className="flex min-w-0 flex-col items-center gap-1">
-        <span
-          className={stage.state === "RUNNING" ? "glow-dot live-ring" : undefined}
-          style={{
-            width: 14,
-            height: 14,
-            borderRadius: 999,
-            background: filled ? color : "transparent",
-            border: `2px solid ${color}`,
-            color,
-            flexShrink: 0,
-            transition: "background 0.3s ease, border-color 0.3s ease",
-          }}
-        />
+        <StatusLamp tone={STATE_TONE[stage.state]} label={words[stage.state]} live={stage.state === "RUNNING"} hideLabel size="md" />
         <span className="mono text-center text-[10px] leading-tight" style={{ color: filled ? "var(--color-fg)" : "var(--color-muted)" }}>
           {stage.label}
         </span>
-        <span className="mono text-center text-[9px] text-[var(--color-muted)]">
+        <span className="ns-tc text-center text-[10px] text-[var(--color-muted)]">
           {stage.ts ? timeOfDay(stage.ts) : "—"}
         </span>
       </div>
       {!last && (
         <span
           aria-hidden
-          className="mt-[6px] h-[2px] flex-1"
-          style={{ background: filled ? color : "var(--color-border)", opacity: filled ? 0.6 : 1 }}
+          className="mt-[9px] h-px flex-1"
+          style={{ background: filled ? "var(--ns-rule-strong)" : "var(--color-border)" }}
         />
       )}
     </li>
@@ -58,38 +57,23 @@ function StageNode({ stage, last }: { stage: StageView; last: boolean }) {
 }
 
 export function StageStrip({ stages }: { stages: StageView[] }) {
+  const words = useStateWords();
   return (
     <ol className="flex items-start gap-1">
       {stages.map((s, i) => (
-        <StageNode key={s.key} stage={s} last={i === stages.length - 1} />
+        <StageNode key={s.key} stage={s} last={i === stages.length - 1} words={words} />
       ))}
     </ol>
   );
 }
 
 export function StageLegend() {
-  const { t } = useI18n();
-  const items: { state: StageState; label: string }[] = [
-    { state: "WAITING", label: t.pipeline.legendWaiting },
-    { state: "RUNNING", label: t.pipeline.legendRunning },
-    { state: "COMPLETED", label: t.pipeline.legendCompleted },
-    { state: "FAILED", label: t.pipeline.legendFailed },
-  ];
+  const words = useStateWords();
+  const order: StageState[] = ["WAITING", "RUNNING", "COMPLETED", "FAILED"];
   return (
-    <div className="flex flex-wrap items-center gap-4">
-      {items.map((it) => (
-        <span key={it.state} className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
-          <span
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: 999,
-              background: it.state === "WAITING" ? "transparent" : STATE_COLOR[it.state],
-              border: `2px solid ${STATE_COLOR[it.state]}`,
-            }}
-          />
-          {it.label}
-        </span>
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      {order.map((state) => (
+        <StatusLamp key={state} tone={STATE_TONE[state]} label={words[state]} />
       ))}
     </div>
   );
