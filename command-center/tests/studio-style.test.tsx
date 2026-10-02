@@ -246,6 +246,25 @@ describe("GeneratePanel Style chips", () => {
     expect(screen.getByRole("link", { name: t.gen.styleMake }).getAttribute("href")).toBe("/chronos/studio");
   });
 
+  it("offers the Style Library beside the chips — with kits and without — and a link changes nothing", async () => {
+    render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} />));
+    await styleGroup();
+    expect(screen.getByRole("link", { name: t.gen.styleBrowse }).getAttribute("href")).toBe("/chronos/styles");
+    cleanup();
+    kitsAnswer = () => json({ org: ORG, kits: [] });
+    render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} />));
+    await styleGroup();
+    expect(screen.getByRole("link", { name: t.gen.styleBrowse }).getAttribute("href")).toBe("/chronos/styles");
+  });
+
+  it("a style handed in from the Library only fills the chip: no job is started and nothing is charged until Generate", async () => {
+    render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} defaultStyleKitId={KIT2} />));
+    const group = await styleGroup();
+    expect(within(group).getByRole("button", { name: "Neon night" }).getAttribute("aria-pressed")).toBe("true");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/api/creative/jobs"))).toBe(false);
+  });
+
   it("a failed read says so and can be retried; it never reads as 'no kits'", async () => {
     kitsAnswer = () => json({ error: "read_failed" }, 502);
     render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} />));

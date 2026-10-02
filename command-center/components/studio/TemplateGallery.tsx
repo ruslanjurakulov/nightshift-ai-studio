@@ -2,7 +2,7 @@
 
 import { useI18n } from "@/lib/i18n/context";
 import { kindLabel, type StudioPrefill } from "@/lib/creative/studio";
-import { STUDIO_TEMPLATES, templateGradient, templatePrefill } from "@/lib/creative/templates";
+import { STUDIO_TEMPLATES, templatePrefill } from "@/lib/creative/templates";
 import { TOOL_ICONS } from "@/components/studio/toolIcons";
 
 /**
@@ -33,12 +33,11 @@ export function TemplateGallery({ onPick }: { onPick: (prefill: StudioPrefill) =
                 onClick={() => onPick(templatePrefill(tpl))}
                 aria-label={`${tt.use}: ${copy.title}`}
                 title={copy.who}
-                className="press flex h-14 w-[200px] items-center gap-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-panel)] p-2 pr-3 text-left transition-colors hover:border-[var(--color-primary)]"
+                className="press flex h-14 w-[200px] items-center gap-3 rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] p-2 pr-3 text-left transition-colors hover:border-[var(--color-primary)]"
               >
                 <span
                   aria-hidden
-                  className="grid size-10 shrink-0 place-items-center rounded-[10px] text-[var(--studio-on-media)]"
-                  style={{ background: templateGradient(tpl) }}
+                  className="grid size-10 shrink-0 place-items-center rounded-[var(--ns-r-frame)] bg-[var(--ns-film)] text-[var(--ns-edge-print)]"
                 >
                   <Icon className="size-[18px]" strokeWidth={1.75} />
                 </span>

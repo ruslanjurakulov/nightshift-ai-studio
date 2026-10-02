@@ -6,12 +6,20 @@
 -- price they confirm is the price OF THAT TIER.
 --
 --   quality   NEW param, t2i and edit only, optional: one of 'low', 'medium',
---             'high' (the explicit allow-list). Absent = 'medium' — in the
---             quote AND in the worker, so the tier priced is the tier sent.
+--             'high' (the explicit allow-list). Absent = 'medium' in the QUOTE only:
+--             the tier the quote priced is written into the job's params at
+--             create time (create_creative_job), and the worker sends EXACTLY
+--             that tier — it has no default of its own, so the registry file
+--             and the database copy can never disagree about what was priced.
 --
 -- WHAT IT CHANGES (create-or-replace; nothing dropped)
 --   creative_params_problem   0055's rules plus the quality key above. It is
 --                        refused for every other capability.
+--   create_creative_job  0036's body (signature unchanged), with one addition: when
+--                        the quote carries a quality, the job's params get
+--                        {"quality": <the tier priced>} — the hold's tier. The
+--                        request hash still covers what the caller sent, so a
+--                        replayed idempotency key is still a replay.
 --   creative_price       0052's quote, with:
 --       a quality the model does not list in spec.qualities is refused
 --       ('invalid_params'), never ignored — the vendor would bill its own
@@ -38,8 +46,22 @@
 -- The owner checks all three rows on the Credits page; `on conflict do
 -- nothing` means a row that exists is never overwritten.
 --
--- BUILT ON 0052 AND 0055. Every function replaced here is the LATEST body
--- (creative_price: 0052; creative_params_problem and sellable_models: 0055)
+-- ORDER. If 0060 is applied BEFORE a model's flat price exists, no tier rows
+-- are created and every tier of that model quotes 'unpriced' (the model is not
+-- listed): safe, never wrong. After the flat price is set, run the starting-
+-- price insert again (it is idempotent — the block under "Starting prices"
+-- below) or set the three tier rows on the Credits page. The Verify query
+-- lists the models that still lack tier rows.
+--
+-- WORKER. A tiered model's job that carries no tier (created before 0060, or
+-- by a database whose registry copy was not synced and so quoted a flat
+-- price) is refused before the provider call and its hold released: the
+-- worker never invents a tier for a price it did not quote. Sync the registry
+-- (tools/probe_models.py --sync) together with applying 0060.
+--
+-- BUILT ON 0036, 0052 AND 0055. Every function replaced here is the LATEST body
+-- (create_creative_job: 0036; creative_price: 0052; creative_params_problem
+-- and sellable_models: 0055)
 -- with the quality lines added, so video_upscale, the i2v end frame, describe
 -- and the style / source checks are exactly as they were
 -- (tests/test_image_quality.py pins every string literal).
@@ -326,6 +348,123 @@ begin
 end
 $$;
 
+-- 0036's create, storing the tier that was priced in the job's params (header).
+create or replace function public.create_creative_job(
+  p_org uuid,
+  p_capability text,
+  p_model text,
+  p_params jsonb default '{}'::jsonb,
+  p_mode text default 'exact',
+  p_idempotency_key text default null,
+  p_max_credits numeric default null
+) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  uid   uuid := auth.uid();
+  md    text := lower(btrim(coalesce(p_mode, 'exact')));
+  idem  text := nullif(btrim(coalesce(p_idempotency_key, '')), '');
+  hash_ text;
+  prior public.creative_jobs;
+  q     jsonb;
+  price numeric;
+  jid   uuid := gen_random_uuid();
+  ref   text;
+  res   jsonb;
+  j     public.creative_jobs;
+  jparams jsonb;
+begin
+  if uid is null or not public.is_org_member(p_org) then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  -- The exempt organization's generations are paid by the platform itself,
+  -- and every account that existed before 0018 is a member of it: only a
+  -- platform owner/admin may spend there (reserve_credits asks for its admins
+  -- too, before answering exempt).
+  if public.credits_exempt(p_org) and not public.is_platform_admin() then
+    raise exception 'forbidden' using errcode = '42501',
+      detail = 'generations in the operator''s organization are started by a platform admin';
+  end if;
+  if md not in ('exact', 'auto', 'cheap', 'fast', 'quality') then
+    perform public.creative_refuse('invalid_params', 'mode must be exact, auto, cheap, fast or quality');
+  end if;
+  -- Router modes need route_model() and failover, which are not built yet: a
+  -- job only ever runs the model the person picked.
+  if md <> 'exact' then
+    perform public.creative_refuse('mode_not_supported',
+      'only exact mode (the model you picked) is available on this deployment');
+  end if;
+  if idem is not null and idem !~ '^[A-Za-z0-9_:.-]{1,255}$' then
+    perform public.creative_refuse('invalid_idempotency_key',
+      'idempotency key: 1-255 characters of A-Z a-z 0-9 _ : . -');
+  end if;
+
+  -- The org's credit account, locked for the rest of this transaction: every
+  -- create (and reserve_credits itself) for this org queues behind it, so two
+  -- concurrent creates cannot both spend the same available credits, and a
+  -- replay of the same idempotency key finds the first one's committed row.
+  perform public.credit_account_lock(p_org);
+
+  hash_ := md5(jsonb_build_object('capability', lower(btrim(coalesce(p_capability, ''))),
+                                  'model', lower(btrim(coalesce(p_model, ''))),
+                                  'mode', md, 'params', coalesce(p_params, 'null'::jsonb))::text);
+  if idem is not null then
+    select * into prior from public.creative_jobs
+     where org_id = p_org and idempotency_key = idem;
+    if found then
+      if prior.request_hash is distinct from hash_ then
+        perform public.creative_refuse('idempotency_conflict',
+          'this idempotency key was used for a different request', 'NS409');
+      end if;
+      return jsonb_build_object('job', public.creative_job_json(prior), 'replay', true);
+    end if;
+  end if;
+
+  -- Holds of this org's jobs that nobody will run give their credits back
+  -- before this one is checked against the balance.
+  perform public.creative_expire_locked(p_org);
+
+  q := public.creative_price(p_org, p_capability, p_model, p_params);
+  price := (q ->> 'credits')::numeric;
+  if p_max_credits is not null and price > p_max_credits then
+    perform public.creative_refuse('price_changed',
+      format('price=%s confirmed=%s', price, p_max_credits), 'NS409');
+  end if;
+
+  -- The tier the quote priced is the tier the job carries (0060): stored in
+  -- the job's params so the worker sends EXACTLY it and never a default of its
+  -- own. Absent from the request = the quote's default, written down here.
+  jparams := p_params;
+  if q ? 'quality' then
+    jparams := coalesce(p_params, '{}'::jsonb) || jsonb_build_object('quality', q ->> 'quality');
+  end if;
+
+  ref := 'cj:' || jid::text;
+  if price > 0 then
+    -- NS402 'insufficient credits' (available=… needed=…) comes from here.
+    res := public.creative_platform_reserve(p_org, ref, price);
+    if coalesce((res ->> 'exempt')::boolean, false) then
+      ref := null;
+    end if;
+  else
+    ref := null;
+  end if;
+
+  insert into public.creative_jobs
+    (id, org_id, kind, capability, mode, requested_model, routed_model, params, status,
+     payer, credit_ref, credit_unit, quantity, quoted_credits, idempotency_key, request_hash,
+     requested_by, expires_at)
+  values
+    (jid, p_org, 'generate', q ->> 'capability', md, q ->> 'model', q ->> 'model',
+     jparams, 'queued', 'credits', ref, q ->> 'unit', (q ->> 'quantity')::numeric, price,
+     idem, hash_, uid, now() + interval '2 hours')
+  returning * into j;
+  perform public.creative_job_log(jid, p_org, 'created', 'queued',
+    jsonb_build_object('quoted_credits', price, 'held', ref is not null));
+
+  return jsonb_build_object('job', public.creative_job_json(j), 'replay', false);
+end
+$$;
+
 -- 0052's quote, with the quality tier: its allow-list against the model, its own
 -- price row, and the tier echoed in the answer. Every other line is 0052's.
 create or replace function public.creative_price(
@@ -510,7 +649,8 @@ end
 $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
--- Starting prices (never overwrites; derived from an existing flat price)
+-- Starting prices (never overwrites; derived from an existing flat price).
+-- Re-run this statement after setting a flat price that did not exist yet.
 -- ───────────────────────────────────────────────────────────────────────────
 
 insert into public.credit_prices (unit, credits_per_unit, margin, note)
@@ -534,6 +674,9 @@ revoke all on function public.sellable_models(text, text) from public, anon;
 grant execute on function public.sellable_models(text, text) to authenticated, service_role;
 
 revoke all on function public.creative_params_problem(text, jsonb) from public, anon, authenticated, service_role;
+-- create_creative_job keeps 0036's grant (signed-in members only; anon nothing), restated so it cannot drift.
+revoke all on function public.create_creative_job(uuid, text, text, jsonb, text, text, numeric) from public, anon, authenticated, service_role;
+grant execute on function public.create_creative_job(uuid, text, text, jsonb, text, text, numeric) to authenticated;
 revoke all on function public.creative_price(uuid, text, text, jsonb) from public, anon, authenticated, service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
@@ -558,6 +701,17 @@ revoke all on function public.creative_price(uuid, text, text, jsonb) from publi
 --                                        'model_openai_gpt_image_2_5_flare_image',
 --                                        'model_openai_gpt_image_2_5_sunburst_image']) as u,
 --                           unnest(array['low','medium','high']) as t)) as tier_rows_present,   -- 9 once the flat prices exist
+--   -- no model with a flat price lacks tier rows (else re-run the starting-price insert above)
+--   (select coalesce(array_agg(b.unit order by b.unit), '{}')
+--      from public.credit_prices b
+--     where b.unit in ('model_openai_gpt_image_2_image', 'model_openai_gpt_image_2_5_flare_image',
+--                      'model_openai_gpt_image_2_5_sunburst_image')
+--       and b.credits_per_unit > 0
+--       and exists (select 1 from unnest(array['low','medium','high']) t
+--                    where not exists (select 1 from public.credit_prices q where q.unit = b.unit || '_' || t))
+--   ) = '{}' as no_flat_price_without_tier_rows,
+--   pg_get_functiondef('public.create_creative_job(uuid,text,text,jsonb,text,text,numeric)'::regprocedure)
+--     like '%jsonb_build_object(''quality'', q ->> ''quality'')%' as job_stores_the_priced_tier,
 --   not has_function_privilege('authenticated', 'public.creative_price(uuid,text,text,jsonb)', 'EXECUTE')
 --     and not has_function_privilege('anon', 'public.creative_params_problem(text,jsonb)', 'EXECUTE')
 --     and has_function_privilege('authenticated', 'public.sellable_models(text,text)', 'EXECUTE')

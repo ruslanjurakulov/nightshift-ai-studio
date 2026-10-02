@@ -130,11 +130,15 @@ describe("the browser keeps nothing of a key", () => {
 
   it("lists keys by name, id and times — never the retired fragment or the hash", () => {
     const cols = API_KEY_LIST_COLUMNS.split(",");
-    expect(cols).toEqual(["id", "name", "monthly_limit_cents", "created_at", "last_used_at", "revoked_at"]);
+    // 0062 adds what a key may do; nothing of the key itself.
+    expect(cols).toEqual(["id", "name", "monthly_limit_cents", "created_at", "last_used_at", "revoked_at", "scopes", "rpm_limit", "creative_monthly_credits"]);
   });
 
   it("uses the console's only create path, and shows the whole key only in the new-key dialog", () => {
-    expect(CONSOLE).toContain('supabase.rpc("create_api_key", createKeyArgs(');
+    // 0062: the same database-minted key, with its scopes and limits chosen up front.
+    expect(CONSOLE).toContain('"create_scoped_api_key",');
+    expect(CONSOLE).toContain("createScopedKeyArgs(orgId, clean,");
+    expect(CONSOLE).not.toContain('supabase.rpc("create_api_key"');
     expect(CONSOLE).toContain(".select(API_KEY_LIST_COLUMNS)");
     // The whole key lives in `shown`: set once after a successful create, rendered once.
     expect(CONSOLE.match(/setShown\(key\)/g)).toHaveLength(1);
@@ -144,7 +148,17 @@ describe("the browser keeps nothing of a key", () => {
     // A key's row shows its name, id, dates and limit — nothing of the key.
     const row = CONSOLE.slice(CONSOLE.indexOf("{keys.map((k) => ("), CONSOLE.indexOf("</tbody>"));
     const fields = new Set([...row.matchAll(/\bk\.(\w+)/g)].map((m) => m[1]));
-    expect([...fields].sort()).toEqual(["created_at", "id", "last_used_at", "monthly_limit_cents", "name", "revoked_at"]);
+    expect([...fields].sort()).toEqual([
+      "created_at",
+      "creative_monthly_credits",
+      "id",
+      "last_used_at",
+      "monthly_limit_cents",
+      "name",
+      "revoked_at",
+      "rpm_limit",
+      "scopes",
+    ]);
     expect(row).not.toMatch(/shown|prefix/);
   });
 

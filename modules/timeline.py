@@ -17,6 +17,7 @@ not a project dependency — tests keep the two in sync)::
     V clip: { id, asset_id, start_s, in_s, out_s, fit?, fade_in_s?, fade_out_s?,
               transition?: { type: "cut"|"dip_to_black"|"crossfade", duration_s },
               speed?: 0.5..2, audio?: bool }
+    A track: { ..., role?: "music"|"speech", duck?: { amount_db, attack_s?, release_s? } }
     A clip: { id, asset_id, start_s, in_s, out_s, gain_db?, fade_in_s?, fade_out_s? }
     T clip: { id, start_s, end_s, text, font?, size?, color?, outline_color?,
               outline_width?, bold?, x?, y?, anchor?, fade_in_s?, fade_out_s? }
@@ -47,6 +48,15 @@ Rules this module keeps:
   ``start_s + (out_s - in_s) / speed``. The range 0.5-2 is what one ffmpeg
   ``atempo`` stage keeps in tune, so a sped-up clip's own sound never needs
   a chain of filters to stay intelligible.
+* **Ducking is a track option, not an effect on a clip.** An A track may carry
+  ``duck: {amount_db, attack_s?, release_s?}``: while speech plays, that
+  track's sound is lowered by ``amount_db`` (an exact amount, not a
+  compressor's ratio), reaching it ``attack_s`` before the speech starts and
+  coming back over ``release_s`` after it ends. Speech is every A track whose
+  ``role`` is ``"speech"`` and every video clip that plays its own sound.
+  The envelope comes from where those clips sit on the timeline, so the same
+  document always renders the same sound. A speech track cannot itself be
+  ducked, which keeps "who lowers whom" a one-way question.
 * **A video clip's own sound is opt-in** (``audio: true``) so documents
   written before it render exactly as they did. It follows the clip's trim
   and speed; a source with no sound track is silent, never an error.
@@ -104,6 +114,14 @@ ANCHORS = ("top-left", "top", "top-right", "left", "center", "right",
 #: A closed list on purpose: libass silently substitutes a missing family.
 FONTS = ("DejaVu Sans", "DejaVu Serif", "Liberation Sans", "Liberation Serif")
 GAIN_DB_MIN, GAIN_DB_MAX = -60.0, 12.0
+ROLES = ("music", "speech")
+#: Ducking limits. Under 1 dB nobody hears it; over 40 dB the track is gone,
+#: which is what the track's own gain is for. An attack under 50 ms is faster
+#: than the audio frames the volume filter re-evaluates at, so it would step.
+DUCK_DB_MIN, DUCK_DB_MAX = 1.0, 40.0
+DUCK_ATTACK_MIN_S, DUCK_ATTACK_MAX_S = 0.05, 2.0
+DUCK_RELEASE_MIN_S, DUCK_RELEASE_MAX_S = 0.1, 5.0
+DUCK_DEFAULTS = {"attack_s": 0.3, "release_s": 0.8}
 SIZE_MIN, SIZE_MAX = 8, 512
 OUTLINE_MAX = 20.0
 #: Per-clip playback speed. One atempo stage covers exactly this range
@@ -126,6 +144,9 @@ _DOC_REQUIRED = ("version", "width", "height", "fps", "tracks")
 _DOC_KEYS = _DOC_REQUIRED + ("captions",)
 _TRACK_REQUIRED = ("id", "kind", "clips")
 _TRACK_KEYS = _TRACK_REQUIRED + ("name",)
+_A_TRACK_KEYS = _TRACK_KEYS + ("role", "duck")
+_DUCK_REQUIRED = ("amount_db",)
+_DUCK_KEYS = _DUCK_REQUIRED + ("attack_s", "release_s")
 _MEDIA_REQUIRED = ("id", "asset_id", "start_s", "in_s", "out_s")
 _V_CLIP_KEYS = _MEDIA_REQUIRED + ("fit", "fade_in_s", "fade_out_s", "transition", "speed", "audio")
 _A_CLIP_KEYS = _MEDIA_REQUIRED + ("gain_db", "fade_in_s", "fade_out_s")
@@ -282,7 +303,9 @@ def validate(doc: Any) -> List[str]:
     v_tracks = 0
     for ti, track in enumerate(tracks):
         where = f"tracks[{ti}]"
-        if not _fields(track, _TRACK_KEYS, _TRACK_REQUIRED, where, problems):
+        is_audio = isinstance(track, dict) and track.get("kind") == KIND_A
+        if not _fields(track, _A_TRACK_KEYS if is_audio else _TRACK_KEYS, _TRACK_REQUIRED,
+                       where, problems):
             continue
         where = _where(track)
         claim(track.get("id"), where)
@@ -294,6 +317,8 @@ def validate(doc: Any) -> List[str]:
             v_tracks += 1
         if "name" in track and not (isinstance(track["name"], str) and len(track["name"]) <= 100):
             problems.append(f"{where}: name must be text of at most 100 characters")
+        if kind == KIND_A:
+            _validate_audio_track_options(track, where, problems)
         clips = track.get("clips")
         if not isinstance(clips, list):
             problems.append(f"{where}: clips must be a list")
@@ -343,6 +368,23 @@ def validate(doc: Any) -> List[str]:
     elif total > MAX_DURATION_S:
         problems.append(f"timeline: longer than {MAX_DURATION_S / 3600:g} hours ({total:.3f} s)")
     return problems
+
+
+def _validate_audio_track_options(track, where, problems) -> None:
+    """``role`` and ``duck`` of an A track (see the module docstring)."""
+    if "role" in track and track["role"] not in ROLES:
+        problems.append(f"{where}: role must be one of {list(ROLES)}")
+    if "duck" not in track:
+        return
+    duck = track["duck"]
+    dwhere = f"{where} duck"
+    if _fields(duck, _DUCK_KEYS, _DUCK_REQUIRED, dwhere, problems):
+        _num_in(duck, "amount_db", DUCK_DB_MIN, DUCK_DB_MAX, dwhere, problems)
+        _num_in(duck, "attack_s", DUCK_ATTACK_MIN_S, DUCK_ATTACK_MAX_S, dwhere, problems)
+        _num_in(duck, "release_s", DUCK_RELEASE_MIN_S, DUCK_RELEASE_MAX_S, dwhere, problems)
+    if track.get("role") == "speech":
+        problems.append(f"{where}: a speech track cannot be lowered under speech (remove duck "
+                        "or set role to music)")
 
 
 def _validate_media_clip(clip, kind, where, fps, problems, claim) -> None:
@@ -547,6 +589,37 @@ def gaps(doc: dict, track_id: Optional[str] = None) -> List[Tuple[str, float, fl
     return out
 
 
+def speech_spans(doc: dict, sounding: Optional[Callable[[dict], bool]] = None
+                 ) -> List[Tuple[float, float]]:
+    """``(start, end)`` of every stretch of speech on the timeline, sorted: the
+    clips of every A track whose role is ``speech``, and every V clip that
+    plays its own sound (``audio: true``). ``sounding`` narrows the V clips to
+    those whose source is known to carry sound (the render passes it; a
+    silent file has nothing to duck under)."""
+    out: List[Tuple[float, float]] = []
+    for track in doc.get("tracks") or []:
+        kind = track.get("kind")
+        for clip in track.get("clips") or []:
+            if kind == KIND_A and track.get("role") == "speech":
+                out.append((_ms(clip["start_s"]), clip_end_s(clip)))
+            elif kind == KIND_V and clip.get("audio") is True and (sounding is None or sounding(clip)):
+                out.append((_ms(clip["start_s"]), clip_end_s(clip)))
+    return sorted(out)
+
+
+def merge_spans(spans: List[Tuple[float, float]], gap_s: float) -> List[Tuple[float, float]]:
+    """Spans (sorted by start) joined when the silence between two is shorter
+    than ``gap_s``. Used with attack + release: a pause too short for the
+    music to come back up would only make it pump, so it stays down."""
+    out: List[List[float]] = []
+    for s, e in sorted(spans):
+        if out and s - out[-1][1] < gap_s:
+            out[-1][1] = max(out[-1][1], e)
+        else:
+            out.append([s, e])
+    return [(a, b) for a, b in out]
+
+
 def effective_fades(track: dict) -> Dict[str, Tuple[float, float]]:
     """clip id → (fade in, fade out) seconds for a V track after transitions:
     a ``dip_to_black`` of d seconds into clip B fades B in over d/2 and — when
@@ -638,6 +711,13 @@ def normalise(doc: dict) -> dict:
         t = {"id": track["id"], "kind": kind, "clips": []}
         if "name" in track:
             t["name"] = track["name"]
+        if kind == KIND_A:
+            if "role" in track:
+                t["role"] = track["role"]
+            if "duck" in track:
+                d = {**DUCK_DEFAULTS, **track["duck"]}
+                t["duck"] = {"amount_db": _ms(d["amount_db"]), "attack_s": _ms(d["attack_s"]),
+                             "release_s": _ms(d["release_s"])}
         for clip in track["clips"]:
             if kind == KIND_T:
                 c = {**copy.deepcopy(TEXT_DEFAULTS), **copy.deepcopy(clip)}

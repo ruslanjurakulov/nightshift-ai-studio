@@ -139,6 +139,10 @@ def drain(db):
         svc(db, "select public.finish_creative_job(%s,'drain',false,null,null,'test_drain','drained')", [jid])
 
 
+def unit_of(db, job):
+    return db.su("select credit_unit from public.creative_jobs where id=%s", [job["id"]])[0][0]
+
+
 def t2i(**extra):
     return {"prompt": "a red apple", **extra}
 
@@ -226,18 +230,25 @@ def test_a_model_that_lists_no_tiers_refuses_one_instead_of_ignoring_it(db):
     assert footprint(db, ORG_A) == before
 
 
+def _set_tiers(db, mid, tiers):
+    """Change the tiers a model lists and prove the new call again: what is sent changed, so the
+    registry guard re-opens the old proof (0070 extends it to ``qualities``)."""
+    db.su("update public.model_registry set spec = jsonb_set(spec, '{qualities}', %s::jsonb) where id = %s",
+          [json.dumps(tiers), mid])
+    db.su("select public.record_model_probe(%s, 'image.acme', 'acme-img', 't2i', true, null, null, 10, 100, 'security-lab')", [mid])
+    db.su("update public.model_registry set availability='beta' where id=%s", [mid])
+
+
 def test_a_tier_the_model_does_not_list_is_refused_even_when_a_price_row_exists(db):
     # A stray credit_prices row must not sell a tier the model never listed.
-    db.su("update public.model_registry set spec = jsonb_set(spec, '{qualities}', '[\"medium\",\"high\"]') "
-          "where id = 'qimg-none'")
+    _set_tiers(db, "qimg-none", ["medium", "high"])
     db.su("insert into public.credit_prices (unit, credits_per_unit, margin) values ('model_qimg_none_image_low', 1, 0)"
           " on conflict (unit) do nothing")
     try:
         st, word, detail = err(lambda: quote(db, UA, ORG_A, "t2i", "qimg-none", t2i(quality="low")))
         assert (st, word) == ("NS400", "invalid_params") and "does not offer" in detail
     finally:
-        db.su("update public.model_registry set spec = jsonb_set(spec, '{qualities}', '[\"low\",\"medium\",\"high\"]') "
-              "where id = 'qimg-none'")
+        _set_tiers(db, "qimg-none", ["low", "medium", "high"])
         db.su("delete from public.credit_prices where unit = 'model_qimg_none_image_low'")
 
 
@@ -254,10 +265,55 @@ def test_the_hold_is_the_tiers_price_and_the_confirmed_price_is_the_ceiling(db):
     drain(db)
 
 
-def test_a_job_that_names_no_tier_is_held_at_medium_and_stores_no_tier_it_was_not_given(db):
+def test_a_job_that_names_no_tier_is_held_at_medium_and_carries_the_tier_it_was_priced_at(db):
+    # The worker sends exactly params.quality and has no default: the database
+    # writes down the tier it priced, so the two can never disagree.
     drain(db)
     j = create(db, UA, ORG_A, "t2i", "qimg", t2i(), maxc=PRICES["medium"])["job"]
-    assert float(j["quoted_credits"]) == PRICES["medium"] and "quality" not in j["params"]
+    assert float(j["quoted_credits"]) == PRICES["medium"] and j["params"]["quality"] == "medium"
+    assert unit_of(db, j) == "model_qimg_image_medium"
+    drain(db)
+
+
+@pytest.mark.parametrize("tier", TIERS)
+def test_the_stored_tier_is_always_the_priced_one_and_the_rest_of_the_params_are_untouched(db, tier):
+    drain(db)
+    params = t2i(aspect_ratio="16:9", **({} if tier == "medium" else {"quality": tier}))
+    j = create(db, UA, ORG_A, "t2i", "qimg", params, maxc=PRICES[tier])["job"]
+    assert j["params"] == {**params, "quality": tier}
+    assert unit_of(db, j) == f"model_qimg_image_{tier}" and float(j["quoted_credits"]) == PRICES[tier]
+    drain(db)
+
+
+def test_an_edit_job_carries_its_priced_tier_too(db):
+    drain(db)
+    params = {"prompt": "x", "source_asset_id": db.assets["a_png"]}
+    j = create(db, UA, ORG_A, "edit", "qimg", params)["job"]
+    assert j["params"]["quality"] == "medium" and j["params"]["source_asset_id"] == db.assets["a_png"]
+    drain(db)
+
+
+def test_a_model_without_tiers_stores_no_tier(db):
+    drain(db)
+    j = create(db, UA, ORG_A, "t2i", "flat-img", t2i())["job"]
+    assert "quality" not in j["params"] and unit_of(db, j) == "model_flat_img_image"
+    drain(db)
+
+
+def test_a_replayed_key_is_still_a_replay_and_a_changed_tier_under_one_key_is_a_conflict(db):
+    drain(db)
+    key = "studio:" + uuid.uuid4().hex
+
+    def go(params):
+        return db.act("authenticated", UA,
+                      "select public.create_creative_job(%s,'t2i','qimg',%s::jsonb,'exact',%s::text,1000)",
+                      [ORG_A, json.dumps(params), key])[0][0]
+    first = go(t2i())                              # no tier named: priced and stored as medium
+    again = go(t2i())                              # same request, same key
+    assert again["replay"] is True and again["job"]["id"] == first["job"]["id"]
+    st, word, _ = err(lambda: go(t2i(quality="high")))
+    assert (st, word) == ("NS409", "idempotency_conflict")
+    assert db.su("select count(*) from public.credit_reservations where job_id=%s", ["cj:" + first["job"]["id"]]) == [(1,)]
     drain(db)
 
 

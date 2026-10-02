@@ -1,15 +1,5 @@
--- Nightshift price list, 2026-10-01 (Atlas). credits = quantity × credits_per_unit × (1 + margin).
--- credits_per_unit = the provider's list cost in credits at 1 credit ≈ $0.01 (packs; subscription
--- credits are $0.0072–0.0095, still above cost). margin 1.5 = 2.5× cost (≈60% gross on packs,
--- ≈45% on the Studio plan, after the 5% Paddle fee); margin 2.0 on cheap per-unit tools;
--- margin 0.5 on video upscale because its per-second cost assumes a 60 fps source (a 30 fps
--- source costs half, so the real markup there is 1.5–3×). Costs: official pricing pages read
--- 2026-10-01; "est." = computed or search-sourced, review when the first real jobs land
--- (creative_job_costs shows the real USD per job). NEVER overwrites a row you already set.
 insert into public.credit_prices (unit, credits_per_unit, margin, note) values
-  -- floor
   ('job_minimum', 1, 0, 'Smallest hold of any creative job (margin ignored).'),
-  -- pictures (per image; the Studio sends no size, so the vendor default is priced)
   ('model_openai_gpt_image_2_image',             25,   1.5, 'OpenAI list: default quality ≈ $0.21–0.25 per 1024px image (token-billed).'),
   ('model_openai_gpt_image_2_5_flare_image',     25,   1.5, 'OpenAI list: same token rate as gpt-image-2; default quality.'),
   ('model_openai_gpt_image_2_5_sunburst_image',  25,   1.5, 'OpenAI list: same token rate as gpt-image-2; default quality.'),
@@ -23,7 +13,6 @@ insert into public.credit_prices (unit, credits_per_unit, margin, note) values
   ('model_ideogram_3_image',                     6,    1.5, 'Ideogram API list: $0.06 per image (default speed).'),
   ('model_ideogram_4_image',                     8,    1.5, 'est.: no public figure found; set above 3.0. Review after the first jobs.'),
   ('model_ideogram_upscale_image',               6,    1.5, 'est.: Ideogram upscale ≈ $0.06 per image; 2x = 1 unit, 4x = 4 units.'),
-  -- video (per second; vendor default resolution/mode, see the adapter)
   ('model_veo_3_1_second',                       40,   1.5, 'Gemini API list: $0.40/s at 720p/1080p with audio.'),
   ('model_veo_3_1_fast_second',                  10,   1.5, 'Gemini API list: $0.10/s at 720p.'),
   ('model_veo_3_1_lite_second',                  5,    1.5, 'Gemini API list: $0.05/s at 720p.'),
@@ -38,13 +27,11 @@ insert into public.credit_prices (unit, credits_per_unit, margin, note) values
   ('model_wan_2_7_second',                       15,   1.5, 'est.: $9/min = $0.15/s (search extract).'),
   ('model_wan_3_0_second',                       10,   1.5, 'Alibaba list: $0.10/s at 720p.'),
   ('model_flux_3_video_second',                  17,   1.5, 'BFL list: from $0.17/s.'),
-  -- video upscale (per source second; cost assumes 60 fps, hence the lower margin)
   ('model_runway_video_upscale_second',          42,   0.5, 'Runway list: $0.007/frame → $0.42/s at 60 fps (base row; targets priced below).'),
   ('model_runway_video_upscale_second_720p',     42,   0.5, 'Runway list: $0.007/frame at 720p → $0.42/s at 60 fps.'),
   ('model_runway_video_upscale_second_1k',       42,   0.5, 'Runway list: $0.007/frame at 1k → $0.42/s at 60 fps.'),
   ('model_runway_video_upscale_second_2k',       54,   0.5, 'Runway list: $0.009/frame at 2k → $0.54/s at 60 fps.'),
   ('model_runway_video_upscale_second_4k',       72,   0.5, 'Runway list: $0.012/frame at 4k → $0.72/s at 60 fps.'),
-  -- voice (tts per character, tools per second)
   ('model_elevenlabs_v4_character',              0.008, 2.0, 'ElevenLabs API list: $0.08 per 1K chars (regular price; promo $0.022 until Oct 12).'),
   ('model_elevenlabs_v3_character',              0.008, 2.0, 'ElevenLabs API list: $0.08 per 1K chars.'),
   ('model_elevenlabs_multilingual_v2_character', 0.008, 2.0, 'ElevenLabs API list: $0.08 per 1K chars.'),
@@ -53,11 +40,9 @@ insert into public.credit_prices (unit, credits_per_unit, margin, note) values
   ('model_elevenlabs_voice_changer_second',      0.2,   2.0, 'ElevenLabs API list: $0.12 per minute of audio.'),
   ('model_elevenlabs_dubbing_v2_second',         3.67,  1.5, 'ElevenLabs API list: $2.20 per minute per language.'),
   ('model_elevenlabs_dubbing_v1_second',         0.84,  1.5, 'ElevenLabs API list: $0.50 per minute (no watermark).'),
-  -- describe a picture (per request)
   ('model_gemini_3_6_flash_request',             0.3,   2.0, 'est.: ≈1.5K input + 200 output tokens ≈ $0.003 per request; the job floor applies.')
 on conflict (unit) do nothing;
 
--- Check: every model unit (and its priced variants) with its price; 'UNPRICED' means a row is still missing.
 with u as (
   select m.id, m.credit_unit as unit from public.model_registry m
   union all

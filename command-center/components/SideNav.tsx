@@ -194,7 +194,7 @@ function BottomBar() {
   return (
     <nav
       aria-label={t.nav.menu}
-      className="shell-topbar fixed inset-x-0 bottom-0 z-40 border-b-0 border-t border-[var(--shell-border)] pb-[env(safe-area-inset-bottom)] lg:hidden"
+      className="ns-tabbar fixed inset-x-0 bottom-0 z-40 pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
       <ul className="mx-auto grid max-w-[520px] grid-cols-5 items-end px-2 pt-1">
         {ordered.map(({ href, key }) => {
@@ -203,25 +203,14 @@ function BottomBar() {
           const centre = key === "hub";
           return (
             <li key={key} className="flex justify-center">
-              <Link
-                href={path(href)}
-                aria-current={active ? "page" : undefined}
-                className={`flex min-h-12 min-w-14 flex-col items-center justify-end gap-1 rounded-[12px] pb-1.5 text-[11px] font-medium ${
-                  active ? "text-[var(--color-fg)]" : "text-[var(--color-muted)]"
-                }`}
-              >
+              <Link href={path(href)} aria-current={active ? "page" : undefined} className="ns-tab">
                 {centre ? (
-                  // Studio, raised where the thumb is: the one solid accent on the bar.
-                  <span className="-mt-4 inline-flex size-12 items-center justify-center rounded-[16px] bg-[var(--color-primary)] text-[var(--color-on-accent)] shadow-[var(--shadow-elevated)]">
+                  // Studio, standing proud of the bar where the thumb is: the lit key.
+                  <span className="ns-tab-create">
                     <Icon aria-hidden className="size-[22px]" strokeWidth={2.1} />
                   </span>
                 ) : (
-                  // The current tab sits on a soft pill, as phone tab bars mark it.
-                  <span
-                    className={`inline-flex h-7 w-12 items-center justify-center rounded-full transition-colors ${
-                      active ? "bg-[var(--color-active)] text-[var(--color-primary)]" : ""
-                    }`}
-                  >
+                  <span className="ns-tab-icon">
                     <Icon aria-hidden className="size-[19px]" strokeWidth={active ? 2.2 : 1.8} />
                   </span>
                 )}

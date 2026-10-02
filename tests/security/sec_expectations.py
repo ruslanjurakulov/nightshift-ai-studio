@@ -127,6 +127,7 @@ TABLES: Dict[str, Kind] = {
     "api_accounts": Org(),
     "api_settings": Org(),
     "api_keys": Org(),
+    "api_creative_jobs": Org(),
     "api_ledger": Org(),
     "api_requests": Org(),
     "api_holds": Org(),
@@ -276,6 +277,14 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "api_begin": SERVICE,
     "api_console": USER,
     "api_create_video": API,
+    "api_creative_create": API,
+    "api_creative_get": API,
+    "api_creative_job_json": SERVICE,
+    "api_creative_model_ok": SERVICE,
+    "api_creative_month_credits": SERVICE,
+    "api_creative_quote": API,
+    "api_creative_refusal": SERVICE,
+    "api_endpoint_scope": SERVICE,
     "api_err": SERVICE,
     "api_expire_holds_locked": SERVICE,
     "api_finish": SERVICE,
@@ -285,6 +294,7 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "api_hold_start": SERVICE,
     "api_idem_begin": SERVICE,
     "api_idem_end": SERVICE,
+    "api_legacy_scopes": SERVICE,
     "api_list_channels": API,
     "api_list_connected_accounts": API,
     "api_list_videos": API,
@@ -295,6 +305,7 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "api_refund_topup": SERVICE,
     "api_request_download": API,
     "api_request_publish": API,
+    "api_scopes_valid": SERVICE,
     "api_set_monthly_limit": USER,
     "api_settle_locked": SERVICE,
     "api_tier_for": SERVICE,
@@ -303,7 +314,9 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "api_video_json": SERVICE,
     "api_video_price": SERVICE,
     "create_api_key": USER,
+    "create_scoped_api_key": USER,
     "revoke_api_key": USER,
+    "set_api_key_access": USER,
     "set_api_key_limit": USER,
     # web/API hardening (0042)
     "take_web_rate": USER,
@@ -419,3 +432,8 @@ sec_captions_0072.extend(TABLES, FUNCTIONS)
 import sec_notify_0064  # noqa: E402
 
 sec_notify_0064.extend(TABLES, FUNCTIONS)
+
+# Migration 0065 (the Style Library's add function): tests/security/sec_style_0065.py
+import sec_style_0065  # noqa: E402
+
+sec_style_0065.extend(TABLES, FUNCTIONS)

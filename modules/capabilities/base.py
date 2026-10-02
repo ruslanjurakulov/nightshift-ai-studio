@@ -66,11 +66,11 @@ IMAGE_INPUT = frozenset({EDIT, I2V, UPSCALE, REMOVE_BG, DESCRIBE})
 TEXT_OUTPUT = frozenset({DESCRIBE, CAPTIONS})
 #: The languages a description is written in (0055's allow-list).
 DESCRIBE_LANGUAGES = ("en", "ru", "uz")
-#: The render quality an image model that bills by it is asked for (0060), and
-#: the one used when a job names none. Without the field OpenAI renders at its
-#: own default and bills accordingly — the reason this exists.
+#: The render quality an image model that bills by it is asked for (0060).
+#: Without the field OpenAI renders at its own default and bills accordingly —
+#: the reason this exists. The worker has NO default of its own: the database
+#: writes the tier it priced into the job's params, and exactly that is sent.
 IMAGE_QUALITIES = ("low", "medium", "high")
-DEFAULT_IMAGE_QUALITY = "medium"
 #: The capabilities a quality tier applies to.
 QUALITY_CAPABILITIES = frozenset({T2I, EDIT})
 #: The capabilities a video's resolution and soundtrack apply to (0070).

@@ -17,7 +17,9 @@ What must hold:
   variants only while one of its variants has a price;
 * 0070 is built on 0052 / 0055 / 0060: the per-target upscale price, the
   quality tier and the describe rules still answer exactly as before;
-* the hold is the quote of that variant and the confirmed price is the ceiling;
+* the hold is the quote of that variant and the confirmed price is the ceiling,
+  and the job carries the resolution and soundtrack it was priced at (the worker
+  sends exactly them and has no default of its own), 0060's stored tier kept;
 * the starting rows never overwrite a price the owner set.
 
 Runs in its own scratch database (it commits), like the 0060 lab.
@@ -291,10 +293,69 @@ def test_the_hold_is_the_variants_price_and_the_confirmed_price_is_the_ceiling(d
     drain(db)
 
 
-def test_a_job_that_names_nothing_is_held_at_the_pinned_defaults_and_stores_nothing_it_was_not_given(db):
+def unit_of(db, job):
+    return db.su("select credit_unit from public.creative_jobs where id=%s", [job["id"]])[0][0]
+
+
+@pytest.mark.parametrize("model,params,stored,unit,per_s", [
+    # The worker sends exactly params.resolution / params.audio and has no default of its own:
+    # the database writes down what it priced.
+    ("vseed", {}, {"resolution": "720p", "audio": False}, "model_vseed_second_720p_silent", 1),
+    ("vseed", {"audio": True}, {"resolution": "720p", "audio": True}, "model_vseed_second_720p_audio", 2),
+    ("vseed", {"resolution": "1080p", "audio": True}, {"resolution": "1080p", "audio": True},
+     "model_vseed_second_1080p_audio", 4),
+    ("vwan", {}, {"resolution": "720p"}, "model_vwan_second_720p", 3),
+    ("vwan", {"resolution": "1080p"}, {"resolution": "1080p"}, "model_vwan_second_1080p", 5),
+    ("vkling", {}, {"audio": False}, "model_vkling_second_silent", 2),
+    ("vkling", {"audio": True}, {"audio": True}, "model_vkling_second_audio", 3),
+])
+def test_the_job_carries_the_resolution_and_sound_it_was_priced_at(db, model, params, stored, unit, per_s):
     drain(db)
-    j = create(db, UA, ORG_A, "t2v", "vseed", t2v(), maxc=1 * SECONDS)["job"]
-    assert float(j["quoted_credits"]) == 1 * SECONDS and "audio" not in j["params"] and "resolution" not in j["params"]
+    j = create(db, UA, ORG_A, "t2v", model, t2v(**params), maxc=per_s * SECONDS)["job"]
+    assert float(j["quoted_credits"]) == per_s * SECONDS and unit_of(db, j) == unit
+    # the stored params are what the caller sent plus exactly the priced settings, nothing else changed
+    assert j["params"] == {**t2v(**params), **stored}
+    drain(db)
+
+
+@pytest.mark.parametrize("model", ["vveo", "vflat"])
+def test_a_model_priced_by_no_setting_stores_none(db, model):
+    drain(db)
+    j = create(db, UA, ORG_A, "t2v", model, t2v())["job"]
+    assert "resolution" not in j["params"] and "audio" not in j["params"]
+    assert unit_of(db, j) == f"model_{model}_second"
+    drain(db)
+
+
+def test_i2v_carries_its_priced_settings_too(db):
+    drain(db)
+    params = {"source_asset_id": db.assets["a_png"], "duration_s": SECONDS}
+    j = create(db, UA, ORG_A, "i2v", "vseed", params)["job"]
+    assert j["params"] == {**params, "resolution": "720p", "audio": False}
+    drain(db)
+
+
+def test_a_replayed_key_is_still_a_replay_and_a_changed_setting_under_one_key_is_a_conflict(db):
+    drain(db)
+    key = "studio:" + uuid.uuid4().hex
+
+    def go(params):
+        return db.act("authenticated", UA,
+                      "select public.create_creative_job(%s,'t2v','vseed',%s::jsonb,'exact',%s::text,1000)",
+                      [ORG_A, json.dumps(params), key])[0][0]
+    first = go(t2v())                                # nothing named: priced and stored as 720p silent
+    again = go(t2v())                                # same request, same key
+    assert again["replay"] is True and again["job"]["id"] == first["job"]["id"]
+    st, word, _ = err(lambda: go(t2v(audio=True)))
+    assert (st, word) == ("NS409", "idempotency_conflict")
+    assert db.su("select count(*) from public.credit_reservations where job_id=%s", ["cj:" + first["job"]["id"]]) == [(1,)]
+    drain(db)
+
+
+def test_the_quality_tier_is_still_stored_by_the_replaced_create(db):
+    drain(db)
+    j = create(db, UA, ORG_A, "t2i", "qimg", {"prompt": "x"})["job"]
+    assert j["params"]["quality"] == "medium" and unit_of(db, j) == "model_qimg_image_medium"
     drain(db)
 
 
@@ -401,3 +462,71 @@ def test_the_starting_rows_are_the_documented_prices_with_margin_1_5_and_never_o
     db.su(_seed_statement())
     assert db.su("select credits_per_unit::float from public.credit_prices where unit = 'model_wan_2_7_second_720p'") == [(7.0,)]
     db.su("delete from public.credit_prices where unit = any(%s)", [units])
+
+
+# ── what is sent changed: the proof is re-opened (model_registry_guard) ──────
+
+def _verified(db, mid, spec):
+    row = {"id": mid, "display_name": mid, "provider": "acme", "adapter": "video.acme", "capabilities": ["t2v"],
+           "credit_unit": f"model_{mid}_second", "entitlement": "any", "spec": spec}
+    db.su("select public.sync_model_registry(%s::jsonb)", [json.dumps([row])])
+    db.su("select public.record_model_probe(%s, 'video.acme', %s, 't2v', true, null, null, 10, 100, 'security-lab')",
+          [mid, spec["vendor_model"]])
+    db.su("update public.model_registry set availability='beta' where id=%s", [mid])
+    assert db.su("select verified_probe_id is not null from public.model_registry where id=%s", [mid])[0][0]
+
+
+def _state(db, mid):
+    return db.su("select verified_at is not null, verified_probe_id is not null, availability "
+                 "from public.model_registry where id=%s", [mid])[0]
+
+
+@pytest.mark.parametrize("name,change", [
+    ("res", "set spec = jsonb_set(spec, '{default_resolution}', '\"1080p\"')"),
+    ("res_dropped", "set spec = spec - 'default_resolution'"),
+    ("by", "set spec = jsonb_set(spec, '{pricing,variants,by}', '\"resolution_audio\"')"),
+    ("by_dropped", "set spec = spec #- '{pricing,variants}'"),
+    ("tiers", "set spec = jsonb_set(spec, '{qualities}', '[\"low\",\"high\"]')"),
+    ("tiers_added", "set spec = spec || '{\"qualities\":[\"low\"]}'::jsonb"),
+])
+def test_a_change_of_what_is_sent_reopens_the_proof(db, name, change):
+    mid = "g" + name.replace("_", "")
+    spec = _spec("resolution", {"720p": 0.1, "1080p": 0.2}, ["720p", "1080p"], "720p")
+    spec["qualities"] = ["low", "medium"]
+    _verified(db, mid, spec)
+    assert _state(db, mid)[:2] == (True, True)
+    db.su(f"update public.model_registry {change} where id=%s", [mid])
+    assert _state(db, mid) == (False, False, "hidden"), name
+
+
+@pytest.mark.parametrize("change", [
+    "set spec = jsonb_set(spec, '{pricing,variants,prices,720p}', '0.5')",       # a price is not a call
+    "set display_name = 'renamed'",
+    "set spec = jsonb_set(spec, '{pricing,note}', '\"read again\"')",
+])
+def test_a_change_that_does_not_alter_the_call_keeps_the_proof(db, change):
+    mid = f"k{abs(hash(change)) % 10**8}"
+    _verified(db, mid, _spec("resolution", {"720p": 0.1, "1080p": 0.2}, ["720p", "1080p"], "720p"))
+    db.su(f"update public.model_registry {change} where id=%s", [mid])
+    assert _state(db, mid) == (True, True, "beta")
+
+
+@pytest.mark.parametrize("name,change", [
+    ("endframe", "set spec = jsonb_set(spec, '{end_frame}', 'true')"),
+    ("factors", "set spec = jsonb_set(spec, '{upscale_factors}', '[2,4]')"),
+    ("vendor", "set spec = jsonb_set(spec, '{vendor_model}', '\"acme-vid-2\"')"),
+    ("languages", "set spec = jsonb_set(spec, '{languages}', '[\"en\"]')"),
+    ("targets", "set spec = jsonb_set(spec, '{upscale_targets}', '[\"4k\"]')"),
+])
+def test_the_guard_keeps_every_earlier_trigger(db, name, change):
+    mid = f"e{name}"
+    spec = _spec(None, None, ["720p"]) | {"end_frame": False, "upscale_factors": [2], "languages": ["ru"],
+                                           "upscale_targets": ["2k"]}
+    _verified(db, mid, spec)
+    db.su(f"update public.model_registry {change} where id=%s", [mid])
+    assert _state(db, mid) == (False, False, "hidden"), name
+
+
+def test_the_guard_is_closed_to_the_api(db):
+    assert db.su("select not has_function_privilege('authenticated','public.model_registry_guard()','EXECUTE')"
+                 " and not has_function_privilege('anon','public.model_registry_guard()','EXECUTE')")[0][0]

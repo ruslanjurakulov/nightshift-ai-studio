@@ -71,19 +71,13 @@ KLING = ("POST", "/v1/videos/text2video", 200, KLING_OK)
 # ── what is sent ─────────────────────────────────────────────────────────────
 
 class WhatIsSent(Tmp):
-    def test_seedance_with_no_settings_is_sent_720p_and_a_silent_clip(self):
-        ra, sess = self.adapter("seedance-1.5-pro", SEED)
-        ra.submit(self.request("t2v", {"prompt": "a boat", "duration_s": 5}))
-        body = sent_body(sess)
-        self.assertEqual(body["resolution"], "720p")
-        self.assertIs(body["generate_audio"], False)
-
-    def test_seedance_sends_the_resolution_and_sound_the_job_was_quoted(self):
-        ra, sess = self.adapter("seedance-1.5-pro", SEED)
-        ra.submit(self.request("t2v", {"prompt": "a boat", "duration_s": 5, "resolution": "1080p", "audio": True}))
-        body = sent_body(sess)
-        self.assertEqual(body["resolution"], "1080p")
-        self.assertIs(body["generate_audio"], True)
+    def test_seedance_is_sent_the_resolution_and_sound_the_job_was_priced_at(self):
+        for res, audio in (("720p", False), ("720p", True), ("1080p", True)):
+            ra, sess = self.adapter("seedance-1.5-pro", SEED)
+            ra.submit(self.request("t2v", {"prompt": "a boat", "duration_s": 5, "resolution": res, "audio": audio}))
+            body = sent_body(sess)
+            self.assertEqual(body["resolution"], res)
+            self.assertIs(body["generate_audio"], audio)
 
     def test_seedance_1_0_is_sent_a_resolution_but_no_sound_flag_it_never_priced(self):
         ra, sess = self.adapter("seedance-1.0-pro", SEED)
@@ -92,17 +86,43 @@ class WhatIsSent(Tmp):
         self.assertEqual(body["resolution"], "720p")
         self.assertNotIn("generate_audio", body)
 
-    def test_wan_is_sent_the_quoted_resolution_in_the_vendors_case(self):
-        for params, want in (({}, "720P"), ({"resolution": "1080p"}, "1080P")):
+    def test_wan_is_sent_the_priced_resolution_in_the_vendors_case(self):
+        for res, want in (("720p", "720P"), ("1080p", "1080P")):
             ra, sess = self.adapter("wan-2.7", WAN)
-            ra.submit(self.request("t2v", {"prompt": "a boat", "duration_s": 5, **params}))
+            ra.submit(self.request("t2v", {"prompt": "a boat", "duration_s": 5, "resolution": res}))
             self.assertEqual(sent_body(sess)["parameters"]["resolution"], want)
 
-    def test_kling_v3_is_sent_sound_off_unless_the_job_asked_for_it(self):
-        for params, want in (({}, "off"), ({"audio": False}, "off"), ({"audio": True}, "on")):
+    def test_kling_v3_is_sent_the_priced_sound_setting(self):
+        for audio, want in ((False, "off"), (True, "on")):
             ra, sess = self.adapter("kling-v3", KLING)
-            ra.submit(self.request("t2v", {"prompt": "a boat", "duration_s": 5, **params}))
-            self.assertEqual(sent_body(sess)["sound"], want, params)
+            ra.submit(self.request("t2v", {"prompt": "a boat", "duration_s": 5, "audio": audio}))
+            self.assertEqual(sent_body(sess)["sound"], want, audio)
+
+    def test_a_priced_setting_the_job_does_not_carry_is_refused_before_any_call_never_defaulted(self):
+        # The database writes the resolution and soundtrack it priced into the job's params.
+        # A job without them was not priced by setting: any setting sent here (the vendor's own
+        # default, or one of ours) would bill what was not quoted.
+        cases = (("seedance-1.5-pro", SEED, {}, "resolution or audio setting"),
+                 ("seedance-1.5-pro", SEED, {"resolution": "720p"}, "audio setting"),
+                 ("seedance-1.5-pro", SEED, {"audio": True}, "resolution"),
+                 ("wan-2.7", WAN, {}, "resolution"),
+                 ("kling-v3", KLING, {}, "audio setting"))
+        for model, route, extra, what in cases:
+            for cap in ("t2v", "i2v"):
+                if cap == "i2v":
+                    continue          # the same gate; i2v needs a first frame the fake session cannot serve
+                ra, sess = self.adapter(model, route)
+                with self.assertRaises(ca.CreativeAdapterError, msg=(model, extra)) as cm:
+                    ra.submit(self.request(cap, {"prompt": "a boat", "duration_s": 5, **extra}))
+                self.assertEqual(cm.exception.code, "bad_request")
+                self.assertIn(f"no {what}", cm.exception.message)
+                self.assertEqual(sess.sent, [], (model, extra))
+
+    def test_the_worker_has_no_default_of_its_own_for_a_priced_setting(self):
+        seam = Path(ca.__file__).read_text().split("def capability_request")[1]
+        self.assertNotIn("audio=False", seam)
+        self.assertNotIn("replace(req, resolution", seam)
+        self.assertNotIn("replace(req, audio", seam)
 
     def test_a_model_not_priced_by_sound_is_never_sent_a_flag_the_job_did_not_name(self):
         ra, sess = self.adapter("kling-v2.6", KLING)
@@ -138,6 +158,36 @@ class WhatIsSent(Tmp):
         self.assertIn("adapter video.wan does not send an audio flag",
                       build_adapter(entry.adapter, env=ENV, session=FakeSession([]))
                       .problems(CapabilityRequest("t2v", "x", audio=True), entry))
+
+
+# ── the worker: a job that was not priced by setting is failed (and released), never run ──
+
+class WorkerRefuses(unittest.TestCase):
+    def run_job(self, params, model="seedance-1.5-pro", route=SEED):
+        import tests.test_creative_worker as tcw
+        entry = reg.get(model)
+        sess = FakeSession([route])
+        ra = ca.RegistryAdapter(entry, build_adapter(entry.adapter, env=ENV, session=sess), sync_store={})
+        q = tcw.FakeQueue(tcw.job(capability="t2v", requested_model=model, routed_model=model, params=params))
+        with tempfile.TemporaryDirectory() as tmp:
+            w = cw.CreativeWorker(q, lambda m: ra, worker_id="w1", out_dir=Path(tmp), credits=tcw.FakeCredits(),
+                                  enforce=True, sleep=lambda s: None, heartbeat_seconds=0)
+            w.run_once()
+        return q, sess
+
+    def test_a_job_without_the_priced_settings_fails_before_the_call_so_the_hold_is_released(self):
+        for model, route in (("seedance-1.5-pro", SEED), ("wan-2.7", WAN), ("kling-v3", KLING)):
+            q, sess = self.run_job({"prompt": "a boat", "duration_s": 5}, model, route)
+            self.assertEqual(sess.sent, [], model)
+            self.assertIs(q.finished["ok"], False, model)       # finish(ok=False) is what releases the hold
+            self.assertEqual(q.finished["error_code"], "bad_request", model)
+            self.assertIsNone(q.finished["charge"], model)
+
+    def test_a_job_with_the_settings_the_database_wrote_is_submitted_exactly_as_priced(self):
+        q, sess = self.run_job({"prompt": "a boat", "duration_s": 5, "resolution": "1080p", "audio": True})
+        body = sent_body(sess)
+        self.assertEqual((body["resolution"], body["generate_audio"]), ("1080p", True))
+        self.assertIn(("advance", "submitted", "task-1"), q.calls)
 
 
 # ── the registry ─────────────────────────────────────────────────────────────
@@ -286,7 +336,9 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         raise AssertionError(name)
 
     def test_the_functions_replaced_are_the_ones_the_quote_runs(self):
-        self.assertEqual(sorted(bodies(self.SQL)), ["creative_params_problem", "creative_price", "sellable_models"])
+        self.assertEqual(sorted(bodies(self.SQL)),
+                         ["create_creative_job", "creative_params_problem", "creative_price", "model_registry_guard",
+                          "sellable_models"])
 
     def test_every_literal_of_the_latest_bodies_survives(self):
         new = bodies(self.SQL)
@@ -299,13 +351,55 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
         # If a later migration (below 0070) replaces one of these, 0070 must be rebuilt on it.
         for name in ("creative_price", "creative_params_problem", "sellable_models"):
             self.assertEqual(self.latest(name)[0], "0060_image_quality.sql", name)
+        self.assertEqual(self.latest("create_creative_job")[0], "0060_image_quality.sql")
+        self.assertEqual(self.latest("model_registry_guard")[0], "0052_video_tools.sql")
 
     def test_no_check_of_the_replaced_functions_is_dropped(self):
         new = bodies(self.SQL)
         for name in new:
             _, old = self.latest(name)
-            for stmt in ("perform public.creative_refuse", "return format(", "return '"):
+            for stmt in ("perform public.creative_refuse", "return format(", "return '", "raise exception"):
                 self.assertGreaterEqual(new[name].count(stmt), old.count(stmt), f"{name}: fewer {stmt}")
+
+    def test_the_job_stores_the_settings_that_were_priced_and_keeps_the_tier(self):
+        create = bodies(self.SQL)["create_creative_job"]
+        self.assertIn("jsonb_build_object('quality', q ->> 'quality')", create)       # 0060's, kept
+        self.assertIn("if q ? 'resolution' then", create)
+        self.assertIn("jsonb_build_object('resolution', q ->> 'resolution')", create)
+        self.assertIn("if q ? 'audio' then", create)
+        self.assertIn("jsonb_build_object('audio', (q ->> 'audio')::boolean)", create)
+        # stored params, but the idempotency hash still covers what the caller sent
+        self.assertIn("jparams, 'queued', 'credits', ref,", create)
+        self.assertIn("'params', coalesce(p_params, 'null'::jsonb)", create)
+        self.assertIn("price > p_max_credits", create)
+        self.assertIn("creative_platform_reserve(p_org, ref, price)", create)
+        self.assertIn("grant execute on function public.create_creative_job(uuid, text, text, jsonb, text, text, numeric) to authenticated;",
+                      self.SQL)
+        self.assertIn("THE WORKER HAS NO DEFAULT OF ITS OWN", self.SQL)
+
+    def test_the_guard_reopens_the_proof_for_what_is_now_sent_and_keeps_every_earlier_trigger(self):
+        guard = bodies(self.SQL)["model_registry_guard"]
+        for field in ("adapter", "capabilities", "spec -> 'vendor_model'", "spec -> 'vendor_model_by_capability'",
+                      "spec -> 'upscale_factors'", "spec -> 'languages'", "spec -> 'upscale_targets'",
+                      "spec -> 'end_frame'",
+                      # 0060 (never extended there) and 0070
+                      "spec -> 'qualities'", "spec -> 'default_resolution'",
+                      "spec -> 'pricing' -> 'variants' -> 'by'"):
+            self.assertIn(f"new.{field} is distinct from old.{field}", guard, field)
+        # A change that leaves the verification untouched must not lose it, and the proof is cleared whole.
+        for line in ("new.verified_at := null;", "new.verified_by := null;", "new.verified_probe_id := null;",
+                     "new.availability := 'hidden';"):
+            self.assertIn(line, guard)
+        self.assertIn("security definer set search_path = public, pg_temp", guard)
+        self.assertIn("revoke all on function public.model_registry_guard() from public, anon, authenticated;",
+                      self.SQL)
+
+    def test_every_spec_key_the_worker_sends_because_of_a_price_is_watched_by_the_guard(self):
+        # What the registry adds to a call because of how a model is priced: the guard must name each.
+        guard = bodies(self.SQL)["model_registry_guard"]
+        for key in ("qualities", "default_resolution"):
+            self.assertIn(f"'{key}'", guard)
+        self.assertIn("'variants' -> 'by'", guard)
 
     def test_the_quote_refuses_what_the_model_does_not_list_and_names_the_variant(self):
         price = bodies(self.SQL)["creative_price"]
