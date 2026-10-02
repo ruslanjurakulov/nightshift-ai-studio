@@ -9,7 +9,8 @@ import {
   SEARCH_HEADER,
   isSection,
 } from "@/lib/channels";
-import { gateDecision, isPublicApiPath, isSignedMediaPath } from "@/lib/public-paths";
+import { SIGNED_MEDIA_PREFIX, gateDecision, isPublicApiPath, isSignedMediaPath } from "@/lib/public-paths";
+import { buildCsp, cspHeaderName, cspMode, makeNonce, reportUri } from "@/lib/security/csp";
 
 /**
  * Which channel a URL is about, and where a URL that does not say lands.
@@ -48,13 +49,40 @@ function channelRedirect(request: NextRequest): URL | null {
 }
 
 /**
+ * Every response gets the Content-Security-Policy (lib/security/csp.ts), with
+ * a nonce minted for this request. The policy goes on the REQUEST too: that is
+ * where Next looks for the nonce to stamp on the scripts it renders, and every
+ * NextResponse.next({ request }) below forwards it. The signed media file
+ * route is left alone: it answers with its own, stricter policy
+ * (`default-src 'none'; sandbox`), and a second policy is not needed there.
+ */
+export async function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith(SIGNED_MEDIA_PREFIX)) return gate(request);
+  const header = cspHeaderName(cspMode(process.env.CSP_MODE));
+  if (!header) return gate(request);
+  const report = reportUri(process.env.CSP_REPORT_URI);
+  const policy = buildCsp({
+    nonce: makeNonce(),
+    supabaseUrl: SUPABASE_URL,
+    dev: process.env.NODE_ENV === "development",
+    reportUri: report,
+  });
+  request.headers.set(header, policy);
+  const response = await gate(request);
+  response.headers.set(header, policy);
+  if (report) response.headers.set("Reporting-Endpoints", `csp="${report}"`);
+  return response;
+}
+
+/**
  * Refreshes the Supabase auth session on every request and gates the app: an
  * unauthenticated visitor is sent to /login, except on the public landing,
  * Privacy, Terms and Pricing pages and the sign-up flow. When Supabase isn't configured we let requests
  * through so the pages can render the NOT CONFIGURED state.
  */
-export async function middleware(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.next();
+async function gate(request: NextRequest): Promise<NextResponse> {
+  // `{ request }` so the page still receives the CSP nonce set above.
+  if (!isSupabaseConfigured) return NextResponse.next({ request });
   // The public API authenticates its own bearer key (lib/public-paths.ts);
   // there is no session to refresh and nothing to redirect.
   if (isPublicApiPath(request.nextUrl.pathname)) return NextResponse.next();
