@@ -9,7 +9,10 @@ export const dynamic = "force-dynamic";
  * Carry a run on (migration 0073): settle the step that finished and, if it
  * completed, create and hold the next one — as an ordinary creative job capped
  * at that step's confirmed price, under the member's own session. A step that
- * failed fails the run: later steps are skipped and were never held. Safe to
+ * failed fails the run: later steps are skipped and were never held. A step
+ * that cannot start yet because everything the plan may run at once is busy,
+ * or credits are short, waits (0083): it holds nothing and the next call tries
+ * again, until a day after the price was confirmed. Safe to
  * call as often as the run page likes (each step's job has the idempotency key
  * `wf:<run id>:<step>`). While nobody has the run open nothing starts and
  * nothing is held.
