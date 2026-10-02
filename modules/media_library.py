@@ -139,7 +139,10 @@ PROXY_TIMEOUT_S = 2 * 3600
 #: Picture area cap: HEIC is checked on its header before decoding (0044);
 #: JPEG/PNG/WebP/GIF on the probed size (BR-C-001); every video stream of a
 #: video, cover art included (BR-D-001); the larger of the display and the
-#: coded frame (BR-E-001). 8K (7680x4320, 33 MP) is well under.
+#: coded frame (BR-E-001). 8K (7680x4320, 33 MP) is well under. The probe
+#: sees only the first frames, so ffmpeg's decoder is held to it too, on every
+#: frame (``decoder_cap``, BR-L-004; render_spec.DECODE_MAX_PIXELS, a test
+#: pins them equal).
 MAX_PIXELS = 100_000_000
 DISPLAY_SIDE = 2048
 HEIC_DECODE_TIMEOUT_S = 120
@@ -587,17 +590,31 @@ def _scale_short_side(limit: int) -> str:
     return (f"scale='if(gte(iw,ih),-2,min({limit},iw))':'if(gte(iw,ih),min({limit},ih),-2)'")
 
 
+def decoder_cap() -> List[str]:
+    """Input options that make ffmpeg's decoder refuse any frame above
+    MAX_PIXELS (BR-L-004). The probe checks judge the frame size ffprobe
+    reads from the first frames; H.264, HEVC, VP9 and AV1 can switch to a
+    bigger frame at any later keyframe, which only the decoder meets. Goes
+    right before each ``-i`` (input options apply to the next input only)."""
+    return ["-max_pixels", str(int(MAX_PIXELS))]
+
+
 def thumbnail_command(exe: str, src: Path, dst: Path, mime: str, duration: Optional[float]) -> List[str]:
+    # No -xerror: one frame comes out or none does, and none already fails
+    # the ingest (no thumbnail file).
     argv = [exe, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-protocol_whitelist", "file"]
     if ALLOWED_MIME.get(mime) == "video" and duration:
         argv += ["-ss", f"{min(1.0, duration / 10):.3f}"]
-    return argv + ["-f", DEMUXER[mime], "-i", str(src), "-frames:v", "1",
+    return argv + ["-f", DEMUXER[mime], *decoder_cap(), "-i", str(src), "-frames:v", "1",
                    "-vf", _scale_long_side(THUMB_SIDE), "-q:v", "4", "-f", "image2", str(dst)]
 
 
 def proxy_command(exe: str, src: Path, dst: Path, mime: str) -> List[str]:
-    return [exe, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-protocol_whitelist", "file",
-            "-f", DEMUXER[mime], "-i", str(src),
+    # -xerror: a frame the cap refuses is a decode error, and without it
+    # ffmpeg skips the frame and exits 0 with a proxy that is short.
+    return [exe, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-xerror",
+            "-protocol_whitelist", "file",
+            "-f", DEMUXER[mime], *decoder_cap(), "-i", str(src),
             "-map", "0:v:0", "-map", "0:a:0?",
             "-vf", _scale_short_side(PROXY_SHORT_SIDE),
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p",

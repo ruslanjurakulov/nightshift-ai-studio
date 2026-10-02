@@ -86,6 +86,28 @@ from typing import List, Optional, Tuple
 #: instead (render_backend.INTERMEDIATE_X264), so this is not paid twice.
 FINAL_X264: tuple = ("-preset", "medium", "-crf", "23")
 
+#: The largest frame, in pixels, ffmpeg may decode for a timeline (an editor
+#: export reads library media members uploaded). The same number as
+#: media_library.MAX_PIXELS (a test pins them equal): the upload probe only
+#: sees a video's first frames, and a stream can switch to a bigger frame at a
+#: later keyframe (BR-L-004), so the decoder itself refuses it.
+DECODE_MAX_PIXELS = 100_000_000
+
+
+def cap_inputs(cmd: List[str], *, fail_on_error: bool = False) -> List[str]:
+    """``cmd`` with ``-max_pixels DECODE_MAX_PIXELS`` before every ``-i``
+    (input options apply to the next input only) and, with
+    ``fail_on_error``, ``-xerror`` so a refused frame fails the run instead of
+    being skipped. Only timeline commands are capped: the pipeline's own
+    renders keep their byte-pinned argv (tests/test_render_spec_legacy.py)."""
+    cap = ["-max_pixels", str(int(DECODE_MAX_PIXELS))]
+    out: List[str] = [cmd[0], "-xerror"] if fail_on_error else [cmd[0]]
+    for tok in cmd[1:]:
+        if tok == "-i":
+            out += cap
+        out.append(tok)
+    return out
+
 KIND_VIDEO = "video"
 KIND_IMAGE = "image"
 KIND_COLOR = "color"   # a solid-colour placeholder segment (no source file)
@@ -560,7 +582,9 @@ def build_ffmpeg_command(spec: RenderSpec, concat_list_path: str,
     if spec.audio_path:
         cmd += ["-c:a", "aac", "-shortest"]
     cmd.append(spec.output_path)
-    return cmd
+    # A timeline with no audio track or overlay takes this path too: its
+    # inputs are the render's own intermediates, capped all the same.
+    return cap_inputs(cmd) if spec.frame_exact else cmd
 
 
 def _quote_filter_path(path: str) -> str:
@@ -712,5 +736,8 @@ def _timeline_command(spec: RenderSpec, concat_list_path: str,
     if labels:
         cmd += ["-c:a", "aac"]
     cmd.append(spec.output_path)
-    return cmd
+    # Audio tracks are read as [n:a] only, so no picture of theirs is decoded;
+    # the cap is there anyway, on every input. No -xerror: a damaged audio
+    # frame is skipped, as it always was.
+    return cap_inputs(cmd)
 
