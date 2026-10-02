@@ -460,3 +460,8 @@ sec_workflows_0073.extend(TABLES, FUNCTIONS)
 import sec_router_0075  # noqa: E402
 
 sec_router_0075.extend(TABLES, FUNCTIONS)
+
+# Migration 0081 (the comment inbox): tests/security/sec_inbox_0081.py
+import sec_inbox_0081  # noqa: E402
+
+sec_inbox_0081.extend(TABLES, FUNCTIONS)

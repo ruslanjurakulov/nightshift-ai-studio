@@ -123,7 +123,7 @@ end $$;
 create table if not exists public.inbox_comments (
   id                 uuid primary key default gen_random_uuid(),
   channel_id         text not null references public.channels (channel_id) on update cascade on delete cascade,
-  video_id           text not null check (video_id ~ '^[A-Za-z0-9_-]{6,64}$'),
+  video_id           text not null check (video_id ~ '^[A-Za-z0-9_-]{1,64}$'),
   youtube_comment_id text not null check (youtube_comment_id ~ '^[A-Za-z0-9_.-]{5,128}$'),
   -- A display name anyone chose: cleaned, 100 characters at most, shown as text.
   author_name        text check (author_name is null or char_length(author_name) between 1 and 100),
@@ -513,8 +513,8 @@ begin
     end if;
     perform public.creative_refuse('not_draftable', block);
   end if;
-  if (select count(*) from public.reply_drafts d
-       where d.channel_id = c.channel_id and d.created_at > now() - interval '24 hours')
+  if (select count(*) from public.reply_drafts x
+       where x.channel_id = c.channel_id and x.created_at > now() - interval '24 hours')
      >= public.inbox_daily_cap('draft') then
     perform public.creative_refuse('daily_limit', 'this channel has reached today''s limit of reply drafts', 'NS429');
   end if;
