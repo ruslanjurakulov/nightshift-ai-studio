@@ -14,7 +14,10 @@ Fallback order, per channel
    their channel expects that connection to be the one used.
 3. Otherwise the channel's own ``CHRONOS_YT_TOKEN_<REF>`` env var / GitHub
    secret, as before 0022 — so nothing changes for a channel nobody connected
-   through Vault, or for a deployment that has not applied 0022.
+   through Vault, or for a deployment that has not applied 0022. ONLY for the
+   operator's own channels: a customer organization's channel never reads the
+   environment (its row is written by its members, so it must not choose which
+   secret the worker reads: BR-G-002). Its only token is step 2.
 4. Otherwise no token: publishing and analytics are skipped for the run, as
    they are today for a channel with no secret. Never another channel's token.
 
@@ -219,9 +222,14 @@ def resolve_channel_token(
     client: Optional[VaultTokenClient] = None,
     is_default: bool = False,
     expected_youtube_channel_id: str = "",
+    allow_env: bool = True,
 ) -> ResolvedToken:
-    """This channel's token, by the fallback order in the module docstring."""
-    env_token = (env.get(env_name) or "").strip() if env_name else ""
+    """This channel's token, by the fallback order in the module docstring.
+
+    ``allow_env=False`` is a channel that is not the operator's: step 3 (the
+    environment) does not exist for it, whatever its row names, so the only
+    token it can ever get is its own Vault connection (BR-G-002)."""
+    env_token = (env.get(env_name) or "").strip() if (env_name and allow_env) else ""
 
     if not is_default and client is not None:
         try:
