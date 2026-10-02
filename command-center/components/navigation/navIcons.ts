@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, Sparkles,
   Users, UserCircle, KeyRound, Bot, ListChecks,
   Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
-  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Settings, Cpu, Scissors,
+  History, Plug, TriangleAlert, ScrollText, ShieldCheck, Building2, Lock, Rocket, PieChart, UserCheck, BellRing, ClipboardList, Wallet, Coins, Images, Settings, Cpu, Scissors, Waypoints,
   type LucideIcon,
 } from "lucide-react";
 import type { NavKey } from "@/lib/navigation";
@@ -22,6 +22,7 @@ export const ICONS: Record<NavKey, LucideIcon> = {
   studio: Palette,
   library: Images,
   editor: Scissors,
+  workflows: Waypoints,
   pipeline: Workflow,
   analytics: BarChart3,
   channels: Users,

@@ -62,6 +62,7 @@ export const SECTIONS = [
   "studio",
   "library",
   "editor",
+  "workflows",
   "pipeline",
   "analytics",
   "channels",
