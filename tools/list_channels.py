@@ -93,6 +93,7 @@ def _row(c) -> dict:
     It is a secret *name*, never a value: nothing secret is emitted here, and
     this output is printed into the workflow log.
     """
+    operators = bool(getattr(c, "is_operators", False))
     return {
         "channel_id": str(c.channel_id),
         "name": c.name,
@@ -101,8 +102,12 @@ def _row(c) -> dict:
         # Does the operator's own organization own it? Only these channels may
         # read a token from the worker's environment (BR-G-002); everyone
         # else's token is their own Vault connection.
-        "is_operators": bool(getattr(c, "is_operators", False)),
-        "token_secret": env_var_name(c),
+        "is_operators": operators,
+        # A secret name only for the operator's own channels. A customer
+        # channel's id can normalise to the name of an operator's secret
+        # (BR-L-080), so no name is ever emitted for it and the workflow's
+        # token step does not run for it.
+        "token_secret": env_var_name(c) if operators else "",
     }
 
 

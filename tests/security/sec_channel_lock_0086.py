@@ -29,5 +29,6 @@ def extend(tables: dict, functions: dict) -> None:
         "channel_verified_stamp": SERVICE,
         "channel_credential_build": SERVICE,
         "channel_may_stamp": SERVICE,
+        "channel_secret_name": SERVICE,
         "audit_action_allowed": SERVICE,
     })

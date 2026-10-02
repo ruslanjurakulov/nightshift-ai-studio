@@ -127,7 +127,7 @@ class ChannelLock(unittest.TestCase):
 
     def test_the_worker_matrix_row_carries_the_flag_the_worker_decides_by(self):
         root = MIGRATIONS.parents[1]
-        self.assertIn('"is_operators": bool(getattr(c, "is_operators", False)),',
+        self.assertIn('operators = bool(getattr(c, "is_operators", False))',
                       (root / "tools" / "list_channels.py").read_text(encoding="utf-8"))
         self.assertIn('allow_env=channel_row.get("is_operators") is True)',
                       (root / "tools" / "queue_worker.py").read_text(encoding="utf-8"))

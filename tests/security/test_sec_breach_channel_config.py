@@ -299,7 +299,9 @@ def test_a_taken_channel_id_gets_one_fixed_answer_whoever_holds_it(conn, sc):
 
 def test_a_channel_id_must_be_a_slug(conn, sc):
     with acting(conn, sc.alice.actor) as s:
-        for bad in ("Has Caps", "-lead", "x", "a" * 40, "under_score", "", "a/b"):
+        # Trailing and double hyphens normalise to another channel's secret name (BR-L-080).
+        for bad in ("Has Caps", "-lead", "x", "a" * 40, "under_score", "", "a/b", "extinct-world-", "extinct--world",
+                    "extinct-world--", "a-", "a--b"):
             out = s.run(CREATE, [bad, sc.alice.org, "x", "{}", None, False])
             assert not out.ok and out.sqlstate == "22023", (bad, out)
 
@@ -455,3 +457,71 @@ def test_status_pause_is_an_editors_activation_needs_a_confirmed_channel_and_a_v
             assert (out.ok, out.sqlstate, out.error) == (False, "42501", "channel not found or not yours"), out
             gone = s.run("select public.set_channel_status('no-such-channel', 'PAUSED')")
             assert (gone.ok, gone.sqlstate, gone.error) == (False, "42501", "channel not found or not yours")
+
+
+# ── BR-L-080: two channels never share a token-secret name ───────────────────
+
+CORPUS = ["extinct-world", "extinct-world-", "extinct--world", "-extinct-world", "Extinct World", "extinct_world",
+          "EXTINCT.WORLD", "a", "ab", "a-b-c", "a--b", "a_-_b", "  x  ", "ü-ber", "x" * 60, "", "9lives", "my.channel_1"]
+
+
+def test_BR_L_080_the_secret_name_is_the_same_function_in_sql_and_python(conn):
+    import sys
+    sys.path.insert(0, str(REPO))
+    from modules.channel_credentials import secret_name_for
+
+    with as_superuser(conn, commit=False) as su:
+        for key in CORPUS:
+            # (Non-ASCII letters: Python upper() and Postgres upper() both map to non-[A-Z0-9], which collapse.)
+            assert su.value("select public.channel_secret_name(%s)", [key]) == secret_name_for(key), repr(key)
+
+
+def test_BR_L_080_an_id_that_shares_a_secret_name_with_any_channel_is_refused(conn, sc):
+    with acting(conn, sc.operator) as s:
+        assert s.run(CREATE, ["w7-op-two", DEFAULT_ORG, "Op two", "{}",
+                              json.dumps({"ref": "w7_op_secret.x"}), False]).ok
+        become(s, sc.alice.actor)
+        for taken in ("w7-op-two", "w7-op-secret-x", "chan-b", sc.alice.channel):
+            out = s.run(CREATE, [taken, sc.alice.org, "x", "{}", None, False])
+            assert (out.ok, out.sqlstate, out.error) == (False, "23505", "that channel id is not available"), (taken, out)
+        # A different name is fine, and the slug rule stops the hyphen variants before they can collide.
+        assert s.run(CREATE, ["w7-op-secret", sc.alice.org, "x", "{}", None, False]).ok
+        for variant in ("w7-op-two-", "w7--op-two"):
+            out = s.run(CREATE, [variant, sc.alice.org, "x", "{}", None, False])
+            assert not out.ok and out.sqlstate == "22023", (variant, out)
+
+
+# ── hardening: the confirmation goes with the connection ─────────────────────
+
+def test_BR_L_081_activation_needs_a_live_connection_and_a_revoke_clears_the_stamp(conn, sc):
+    with org_members(conn, sc.alice.org) as (_su, m):
+        with acting(conn, m["admin"]) as s:
+            assert s.run(CREATE, ["w7-live", sc.alice.org, "x", "{}", None, False]).ok
+            # Confirmed by the platform but never connected: not activatable.
+            become(s, SERVICE)
+            assert s.run(CONFIRM, ["w7-live", json.dumps({"youtube_channel_id": "UClive"})]).ok
+            become(s, m["editor"])
+            out = s.run("select public.set_channel_status('w7-live', 'ACTIVE')")
+            assert not out.ok and out.sqlstate == "23514", out
+            # Connected: activatable.
+            become(s, m["admin"])
+            assert s.run("select public.store_channel_token(%s, %s, %s::jsonb)",
+                         ["w7-live", "1//" + "z" * 40,
+                          json.dumps({"youtube_channel_id": "UClive", "scopes": []})]).ok
+            become(s, m["editor"])
+            assert s.run("select public.set_channel_status('w7-live', 'ACTIVE')").ok
+            assert stored(s, "w7-live", "status") == "ACTIVE"
+            # Revoked: the stamp goes, the channel is paused, and it cannot be activated again.
+            become(s, m["admin"])
+            assert s.run("select public.revoke_channel_token('w7-live')").ok
+            assert stored(s, "w7-live", "status") == "PAUSED"
+            assert "verified_at" not in stored(s, "w7-live", "credential_ref")
+            become(s, m["editor"])
+            out = s.run("select public.set_channel_status('w7-live', 'ACTIVE')")
+            assert not out.ok and out.sqlstate == "23514", out
+
+
+def test_BR_L_081_the_operators_channels_are_not_held_to_a_connection(conn, sc):
+    with acting(conn, sc.operator) as s:
+        assert s.run(CREATE, ["w7-op-live", DEFAULT_ORG, "Op", "{}", json.dumps({"youtube_channel_id": "UCop"}), True]).ok
+        assert s.run("select public.set_channel_status('w7-op-live', 'ACTIVE')").ok
