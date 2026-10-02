@@ -38,6 +38,14 @@ import {
   MAX_EDITOR_TEXTS,
   MAX_TEXT,
   SOUND_FADE_MAX_S,
+  DUCK_ATTACK_MAX_S,
+  DUCK_ATTACK_MIN_S,
+  DUCK_DB_MAX,
+  DUCK_DEFAULT,
+  DUCK_RELEASE_MAX_S,
+  DUCK_RELEASE_MIN_S,
+  DUCK_UI_MAX_DB,
+  DUCK_UI_MIN_DB,
   XFADE_DEFAULT_S,
   XFADE_MIN_S,
   SPEEDS,
@@ -71,6 +79,7 @@ import {
   setSpeed,
   soundLength,
   soundWarnings,
+  speechSpans,
   splitClip,
   textWarnings,
   textsAt,
@@ -210,6 +219,7 @@ export function TimelineEditor({
   const active = exportActive(exports);
   const warnings = textWarnings(model);
   const soundWarns = soundWarnings(model);
+  const speech = useMemo(() => speechSpans(model), [model]);
 
   // ── history ────────────────────────────────────────────────────────────────
   const apply = useCallback(
@@ -739,6 +749,7 @@ export function TimelineEditor({
             assets={assets}
             playhead={playhead}
             playing={playing}
+            speech={speech}
           />
 
           {/* transport */}
@@ -955,6 +966,7 @@ export function TimelineEditor({
               name={assets[sound.asset_id]?.name ?? te.untitledSound}
               sourceS={srcLen(sound)}
               warning={soundWarns[sound.id] ?? null}
+              hasSpeech={speech.length > 0}
               onChange={(patch) =>
                 apply(updateSound(model, sound.id, patch, srcLen(sound)))
               }
@@ -1517,6 +1529,7 @@ function SoundInspector({
   name,
   sourceS,
   warning,
+  hasSpeech,
   onChange,
   onToPlayhead,
   onFit,
@@ -1526,6 +1539,8 @@ function SoundInspector({
   name: string;
   sourceS: number | null;
   warning: "past_end" | null;
+  /** Whether anything on the timeline is speech (what a duck lowers under). */
+  hasSpeech: boolean;
   onChange: (patch: Partial<Omit<SoundClip, "id" | "asset_id">>) => void;
   onToPlayhead: () => void;
   onFit: () => void;
@@ -1630,6 +1645,117 @@ function SoundInspector({
           onCommit={(v) => onChange({ fade_out_s: v })}
         />
       </div>
+      <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0">
+        <legend className="mb-1 p-0 text-[12px] text-[var(--color-muted)]">
+          {te.soundKind}
+        </legend>
+        <div className="flex gap-1.5">
+          {(["music", "speech"] as const).map((r) => {
+            const on = (sound.role ?? "music") === r;
+            return (
+              <button
+                key={r}
+                type="button"
+                aria-pressed={on}
+                onClick={() => {
+                  if (!on) onChange({ role: r });
+                }}
+                className={`btn-sky pill px-3 py-1.5 text-[12px] ${on ? "is-solid" : "is-quiet"}`}
+              >
+                {r === "music" ? te.roleMusic : te.roleSpeech}
+              </button>
+            );
+          })}
+        </div>
+        <p className="m-0 text-[11px] text-[var(--color-muted)]">
+          {sound.role === "speech" ? te.roleSpeechHint : te.roleMusicHint}
+        </p>
+      </fieldset>
+      {sound.role !== "speech" ? (
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 text-[12px]">
+            <input
+              type="checkbox"
+              checked={Boolean(sound.duck)}
+              onChange={(e) =>
+                onChange({ duck: e.target.checked ? DUCK_DEFAULT : undefined })
+              }
+              className="accent-[var(--color-primary)]"
+            />
+            {te.duckToggle}
+          </label>
+          {sound.duck ? (
+            <>
+              <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+                <span>
+                  {te.duckAmount} ·{" "}
+                  {fmt(te.soundVolumeValue, { db: -sound.duck.amount_db })}
+                </span>
+                <input
+                  type="range"
+                  min={Math.min(DUCK_UI_MIN_DB, sound.duck.amount_db)}
+                  max={Math.max(DUCK_UI_MAX_DB, sound.duck.amount_db)}
+                  step={1}
+                  value={sound.duck.amount_db}
+                  aria-valuetext={fmt(te.soundVolumeValue, {
+                    db: -sound.duck.amount_db,
+                  })}
+                  onChange={(e) =>
+                    onChange({
+                      duck: {
+                        ...(sound.duck ?? DUCK_DEFAULT),
+                        amount_db: Math.min(
+                          DUCK_DB_MAX,
+                          Number(e.target.value),
+                        ),
+                      },
+                    })
+                  }
+                  className="accent-[var(--color-primary)]"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <NumberField
+                  label={te.duckAttack}
+                  value={sound.duck.attack_s}
+                  min={DUCK_ATTACK_MIN_S}
+                  max={DUCK_ATTACK_MAX_S}
+                  step={0.05}
+                  onCommit={(v) =>
+                    onChange({
+                      duck: {
+                        ...(sound.duck ?? DUCK_DEFAULT),
+                        attack_s: v,
+                      },
+                    })
+                  }
+                />
+                <NumberField
+                  label={te.duckRelease}
+                  value={sound.duck.release_s}
+                  min={DUCK_RELEASE_MIN_S}
+                  max={DUCK_RELEASE_MAX_S}
+                  step={0.1}
+                  onCommit={(v) =>
+                    onChange({
+                      duck: {
+                        ...(sound.duck ?? DUCK_DEFAULT),
+                        release_s: v,
+                      },
+                    })
+                  }
+                />
+              </div>
+              <p
+                role={hasSpeech ? undefined : "status"}
+                className={`m-0 text-[11px] ${hasSpeech ? "text-[var(--color-muted)]" : "text-[var(--color-warn)]"}`}
+              >
+                {hasSpeech ? te.duckHint : te.duckNoSpeech}
+              </p>
+            </>
+          ) : null}
+        </div>
+      ) : null}
       <button
         type="button"
         onClick={onDelete}

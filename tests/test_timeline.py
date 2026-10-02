@@ -311,9 +311,20 @@ class SchemaTwinTestCase(unittest.TestCase):
                            ("text_clip", tl._T_CLIP_KEYS), ("cue", tl._CUE_KEYS),
                            ("transition", tl._TRANSITION_KEYS)):
             self.assertEqual(set(defs[name]["properties"]), set(keys), name)
-        for name in ("video_track", "audio_track", "text_track"):
-            self.assertEqual(set(defs[name]["properties"]), set(tl._TRACK_KEYS))
+        for name, keys in (("video_track", tl._TRACK_KEYS), ("audio_track", tl._A_TRACK_KEYS),
+                           ("text_track", tl._TRACK_KEYS)):
+            self.assertEqual(set(defs[name]["properties"]), set(keys), name)
             self.assertEqual(tuple(defs[name]["required"]), tl._TRACK_REQUIRED)
+        self.assertEqual(set(defs["duck"]["properties"]), set(tl._DUCK_KEYS))
+        self.assertEqual(tuple(defs["duck"]["required"]), tl._DUCK_REQUIRED)
+        self.assertEqual(defs["audio_track"]["properties"]["role"]["enum"], list(tl.ROLES))
+        for key, lo, hi in (("amount_db", tl.DUCK_DB_MIN, tl.DUCK_DB_MAX),
+                            ("attack_s", tl.DUCK_ATTACK_MIN_S, tl.DUCK_ATTACK_MAX_S),
+                            ("release_s", tl.DUCK_RELEASE_MIN_S, tl.DUCK_RELEASE_MAX_S)):
+            self.assertEqual((defs["duck"]["properties"][key]["minimum"],
+                              defs["duck"]["properties"][key]["maximum"]), (lo, hi), key)
+        self.assertEqual({k: defs["duck"]["properties"][k]["default"] for k in tl.DUCK_DEFAULTS},
+                         tl.DUCK_DEFAULTS)
         self.assertEqual(set(defs["captions"]["properties"]["style"]["properties"]),
                          set(tl._CAPTION_STYLE_KEYS))
         for name, req in (("video_clip", tl._MEDIA_REQUIRED), ("audio_clip", tl._MEDIA_REQUIRED),

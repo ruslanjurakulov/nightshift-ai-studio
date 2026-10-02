@@ -31,6 +31,14 @@ How a timeline maps onto the spec:
   ``atempo`` keeping the pitch), first; then every A clip (trim, gain, fades,
   start). All are mixed and cut to the picture's length. A video clip without
   ``audio`` is silent, as before.
+* **Ducking** — an A track with ``duck`` gets, on each of its clips, the
+  speech spans that can touch it (V clips whose source is KNOWN to carry
+  sound and play it, and every clip of an A track with ``role: "speech"``),
+  merged across pauses too short for the music to come back up; the backend
+  turns them into one ``volume`` envelope (``render_spec.duck_expression``).
+  Speech that is not there (a silent source) ducks nothing, and a clip no
+  speech can touch gets no envelope at all, so its argv is the one it had
+  before ducking existed.
 * **Text** — T clips in track order, then the captions on top, become text
   overlays burnt from one ASS file.
 
@@ -182,10 +190,26 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
                 fade_out_s=d_out if d_out > 0 and not sounding(i + 1) else 0.0,
                 crossfade_s=d_in if joined else 0.0,
             ))
+    def speaks(clip: dict) -> bool:
+        asset = assets[clip["asset_id"]]
+        return asset.kind == tl.ASSET_VIDEO and asset.has_audio is True
+
+    speech = tl.speech_spans(doc, speaks)
     for track in doc["tracks"]:
         if track["kind"] != tl.KIND_A:
             continue
+        duck = track.get("duck")
+        merged = (tl.merge_spans(speech, duck["attack_s"] + duck["release_s"])
+                  if duck and speech else [])
         for clip in track["clips"]:
+            extra = {}
+            if merged:
+                first, last = clip["start_s"], tl.clip_end_s(clip)
+                near = tuple((a, b) for a, b in merged
+                             if a - duck["attack_s"] < last and b + duck["release_s"] > first)
+                if near:
+                    extra = {"duck_db": duck["amount_db"], "duck_attack_s": duck["attack_s"],
+                             "duck_release_s": duck["release_s"], "duck_spans": near}
             tracks.append(AudioTrack(
                 path=assets[clip["asset_id"]].path,
                 duration_s=round(clip["out_s"] - clip["in_s"], 3),
@@ -194,6 +218,7 @@ def _sound(doc: dict, assets: dict) -> List[AudioTrack]:
                 gain_db=clip["gain_db"],
                 fade_in_s=clip["fade_in_s"],
                 fade_out_s=clip["fade_out_s"],
+                **extra,
             ))
     return tracks
 
