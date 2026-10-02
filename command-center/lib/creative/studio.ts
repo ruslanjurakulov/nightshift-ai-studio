@@ -569,6 +569,13 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+/**
+ * Jobs of tools that live in the editor, not in the Studio (0072: captions —
+ * the result is a transcript the editor turns into captions, not a card).
+ * The Studio's feed and Home's recent strip skip them.
+ */
+const EDITOR_ONLY_CAPABILITIES = ["captions"];
+
 export function coerceJobs(rows: unknown): StudioJob[] {
   if (!Array.isArray(rows)) return [];
   const out: StudioJob[] = [];
@@ -576,6 +583,7 @@ export function coerceJobs(rows: unknown): StudioJob[] {
     if (!r || typeof r !== "object") continue;
     const j = r as Record<string, unknown>;
     if (typeof j.id !== "string" || typeof j.status !== "string") continue;
+    if (typeof j.capability === "string" && EDITOR_ONLY_CAPABILITIES.includes(j.capability)) continue;
     const params = j.params && typeof j.params === "object" && !Array.isArray(j.params) ? (j.params as Record<string, unknown>) : {};
     const result = j.result && typeof j.result === "object" && !Array.isArray(j.result) ? (j.result as Record<string, unknown>) : null;
     out.push({
@@ -652,6 +660,9 @@ const REASON_GROUPS: Record<string, keyof Dictionary["gen"]["reasons"]> = {
   style_unavailable: "style",
   not_picked_up: "expired",
   cancelled: "cancelled",
+  // 0072: a recording with no speech, or too many words for one track.
+  no_speech: "no_speech",
+  too_many_words: "bad_request",
 };
 
 /** A finished job's error_code -> a plain sentence (internal codes never reach the screen). */

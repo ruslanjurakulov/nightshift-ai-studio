@@ -21,7 +21,9 @@ job folder), the capability layer knows vendors (``CapabilityRequest``,
   for the voice tools (0050) that one file is a recording and goes to the
   adapter as ``input_media``, never as a picture; so is the video a video
   upscale (0052) starts from; for ``describe`` (0055) it is the one picture
-  read, and the answer comes back as one text output;
+  read, and the answer comes back as one text output; for ``captions``
+  (0072) it is the one recording, and the answer is one JSON output (the
+  words and their times) the worker cleans and stores as a caption track;
 * an i2v's end frame (0052, ``GenerationRequest.end_file``) goes as
   ``end_image`` only to a model whose registry entry has ``end_frame`` — a
   model that would drop it fails the job before any call instead of
@@ -135,7 +137,9 @@ def capability_request(request: GenerationRequest) -> CapabilityRequest:
         end_image=str(request.end_file) if request.end_file is not None else None,
         upscale_target=_str(p.get("target_resolution")),
         # describe (0055): the language the description is written in.
-        output_language=_str(p.get("language")),
+        output_language=_str(p.get("language")) if request.capability == "describe" else None,
+        # captions (0072): the language spoken in the recording (absent = detected).
+        spoken_language=_str(p.get("language")) if request.capability == "captions" else None,
         # t2i / edit on a model that bills by quality (0060): the tier quoted.
         quality=_str(p.get("quality")),
         # t2v / i2v on a model that prices the soundtrack apart (0070).

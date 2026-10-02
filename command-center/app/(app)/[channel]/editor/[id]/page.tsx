@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { TimelineEditor } from "@/components/editor/TimelineEditor";
 import { getOrgContext } from "@/lib/orgs-server";
 import { getDictionary } from "@/lib/i18n/server";
+import { loadSellableModels } from "@/lib/creative/registry";
 import {
   loadEditorProject,
   loadEditorSounds,
@@ -46,10 +47,18 @@ export default async function EditorProjectPage({
   if (project.state === "not_found") notFound();
   if (project.state === "not_available") return note(t.editor.notEnabled);
   if (project.state !== "ok") return note(t.editor.readFailed);
-  const [videos, sounds] = await Promise.all([
+  const [videos, sounds, sellable] = await Promise.all([
     loadEditorVideos(project.value.orgId),
     loadEditorSounds(project.value.orgId),
+    // Auto-captions (0072): only a model the database would sell (verified,
+    // priced, no open terms gate) is offered; none = the panel says so.
+    loadSellableModels("captions"),
   ]);
+  const captionModels = sellable.models.map((m) => ({
+    id: m.id,
+    displayName: m.displayName,
+    languages: m.spec.languages,
+  }));
   const p = project.value;
 
   return (
@@ -64,6 +73,8 @@ export default async function EditorProjectPage({
         assets={p.assets}
         videos={videos.state === "ok" ? videos.value : []}
         soundFiles={sounds.state === "ok" ? sounds.value : []}
+        orgId={p.orgId}
+        captionModels={captionModels}
       />
     </div>
   );

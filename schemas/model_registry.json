@@ -571,6 +571,65 @@
       }
     },
     {
+      "id": "elevenlabs-scribe-v2",
+      "display_name": "ElevenLabs Scribe v2",
+      "provider": "elevenlabs",
+      "adapter": "audio.elevenlabs_scribe",
+      "vendor_model": "scribe_v2",
+      "capabilities": [
+        "captions"
+      ],
+      "output": "text",
+      "inputs": {
+        "image_refs_max": 0
+      },
+      "aspect_ratios": [],
+      "resolutions": [],
+      "durations_s": [],
+      "languages": [
+        "uz",
+        "ru",
+        "en"
+      ],
+      "audio_out": false,
+      "async": false,
+      "api_documented": {
+        "url": "https://elevenlabs.io/docs/api-reference/speech-to-text/convert",
+        "checked_at": "2026-10-01",
+        "source": "vendor_docs_search",
+        "evidence": "API reference: POST v1/speech-to-text, multipart file + model_id scribe_v2, timestamps_granularity word; answer {language_code, words[{text,start,end,type}]}",
+        "note": "capabilities page: Uzbek 'good' tier (10-20% word error), Russian and English 'excellent'; up to 3 GB and 10 hours per file"
+      },
+      "pricing": {
+        "unit": "second",
+        "provider_usd_per_unit": null,
+        "source_url": null,
+        "as_of": null,
+        "confirmed": false,
+        "note": "billed per hour of audio, rate by plan; no per-second figure was read from the pricing page, so none is claimed"
+      },
+      "credit_unit": "model_elevenlabs_scribe_v2_second",
+      "entitlement": null,
+      "terms_gate": "plan_required:scale",
+      "terms_notes": [
+        "ElevenLabs OEM Terms: offering the service to end users needs a Scale, Business or Enterprise plan, and end users must accept terms at least as restrictive"
+      ],
+      "attribution": null,
+      "api_exposure": "web_only",
+      "limits": {
+        "max_prompt_chars": 200,
+        "max_concurrent_per_org": 2,
+        "max_source_seconds": 1800
+      },
+      "quality_tier": 4,
+      "speed_tier": 4,
+      "probe": {
+        "capability": "captions",
+        "prompt": "Hello from Nightshift.",
+        "input_audio": "speech"
+      }
+    },
+    {
       "id": "flux-2-pro",
       "display_name": "FLUX.2 Pro",
       "provider": "bfl",

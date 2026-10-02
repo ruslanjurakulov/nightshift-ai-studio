@@ -356,6 +356,12 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Storyboards waiting for review (0057): tests/security/sec_storyboard_0057.py.
     import sec_storyboard_0057
     sec_storyboard_0057.seed(conn, sc)
+    # Auto-captions (0072): tests/security/sec_captions_0072.py — a completed job and its track per tenant.
+    import sec_captions_0072
+    sec_captions_0072.seed(conn, sc)
+    # Notifications (0064): tests/security/sec_notify_0064.py — raised by the real triggers.
+    import sec_notify_0064
+    sec_notify_0064.seed(conn, sc)
     # Workflow apps (0073): tests/security/sec_workflows_0073.py.
     import sec_workflows_0073
     sec_workflows_0073.seed(conn, sc)
