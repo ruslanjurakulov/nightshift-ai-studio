@@ -5,7 +5,8 @@ import type { NextConfig } from "next";
  * adds on the self-hosted box. Frame protection is enforced twice: the legacy
  * X-Frame-Options and a CSP that holds only `frame-ancestors 'none'`, which
  * restricts who may frame the app and nothing about what it loads, so it
- * cannot break a page. A full content CSP is BR-S-008 and is not set here.
+ * cannot break a page. The full content policy (BR-S-008) carries a nonce per
+ * response, so it is set in middleware.ts (lib/security/csp.ts), not here.
  */
 const PERMISSIONS_POLICY =
   // payment= is opened to Paddle's checkout frame only (the Buy credits

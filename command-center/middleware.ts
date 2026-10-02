@@ -11,12 +11,14 @@ import {
   isUnknownRootPath,
 } from "@/lib/channels";
 import {
+  SIGNED_MEDIA_PREFIX,
   gateDecision,
   isPublicApiPath,
   isPublicFontPath,
   isSignedMediaPath,
   isUnknownSolutionPath,
 } from "@/lib/public-paths";
+import { buildCsp, cspHeaderName, cspMode, makeNonce, reportUri } from "@/lib/security/csp";
 
 /** Next's own route for app/not-found.tsx (it is what an unmatched URL renders). */
 const NOT_FOUND_PATH = "/_not-found";
@@ -58,19 +60,46 @@ function channelRedirect(request: NextRequest): URL | null {
 }
 
 /**
+ * Every response gets the Content-Security-Policy (lib/security/csp.ts), with
+ * a nonce minted for this request. The policy goes on the REQUEST too: that is
+ * where Next looks for the nonce to stamp on the scripts it renders, and every
+ * NextResponse.next({ request }) below forwards it. The signed media file
+ * route is left alone: it answers with its own, stricter policy
+ * (`default-src 'none'; sandbox`), and a second policy is not needed there.
+ */
+export async function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith(SIGNED_MEDIA_PREFIX)) return gate(request);
+  const header = cspHeaderName(cspMode(process.env.CSP_MODE));
+  if (!header) return gate(request);
+  const report = reportUri(process.env.CSP_REPORT_URI);
+  const policy = buildCsp({
+    nonce: makeNonce(),
+    supabaseUrl: SUPABASE_URL,
+    dev: process.env.NODE_ENV === "development",
+    reportUri: report,
+  });
+  request.headers.set(header, policy);
+  const response = await gate(request);
+  response.headers.set(header, policy);
+  if (report) response.headers.set("Reporting-Endpoints", `csp="${report}"`);
+  return response;
+}
+
+/**
  * Refreshes the Supabase auth session on every request and gates the app: an
  * unauthenticated visitor is sent to /login, except on the public landing,
  * Privacy, Terms and Pricing pages and the sign-up flow. When Supabase isn't configured we let requests
  * through so the pages can render the NOT CONFIGURED state.
  */
+/** The public 404, rendered in place with its status. `request` carries the CSP nonce on. */
 function notFoundResponse(request: NextRequest): NextResponse {
-  return NextResponse.rewrite(new URL(NOT_FOUND_PATH, request.url), { status: 404 });
+  return NextResponse.rewrite(new URL(NOT_FOUND_PATH, request.url), { request, status: 404 });
 }
 
-export async function middleware(request: NextRequest) {
+async function gate(request: NextRequest): Promise<NextResponse> {
   // The public pages' two self-hosted font files, by exact name: static, public,
   // and on the critical path of a Russian page's first paint.
-  if (isPublicFontPath(request.nextUrl.pathname)) return NextResponse.next();
+  if (isPublicFontPath(request.nextUrl.pathname)) return NextResponse.next({ request });
   if (!isSupabaseConfigured) {
     // No backend, so no account and no app to show. A built site answers every
     // app URL with the public 404 — never the app's frame or its setup notice
@@ -84,7 +113,8 @@ export async function middleware(request: NextRequest) {
     ) {
       return notFoundResponse(request);
     }
-    return NextResponse.next();
+    // `{ request }` so the page still receives the CSP nonce set above.
+    return NextResponse.next({ request });
   }
   // The public API authenticates its own bearer key (lib/public-paths.ts);
   // there is no session to refresh and nothing to redirect.
@@ -157,11 +187,24 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Run on everything except Next internals, static files and the body of a
-  // media upload (PUT /api/media/uploads/<ticket>). Next buffers a request body
-  // in memory for middleware and silently truncates it at 10 MB
+  // Run on everything except Next internals, a few exact static files and the
+  // body of a media upload (PUT /api/media/uploads/<ticket>). Next buffers a
+  // request body in memory for middleware and silently truncates it at 10 MB
   // (experimental.middlewareClientMaxBodySize), so an upload that passed
   // through here would sit whole in RAM and arrive cut short. That route
   // checks the session itself.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/media/uploads/.+|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  //
+  // Every exclusion is ANCHORED (BR-H-001). A request this matcher skips gets
+  // no auth gate at all, and the router still resolves it as an app page when
+  // it can: an unanchored `favicon.ico` skipped `/favicon.icox/providers`, and
+  // `.*\.png$` skipped `/chronos/videos/x.png` — both rendered the console
+  // signed out. So Next's own prefixes end in a slash or at the end of the
+  // path, each static file is named exactly (dots escaped), and an upload is
+  // one segment. A new file under public/ must be named here
+  // (tests/middleware-matcher.test.ts fails until it is); until then it is
+  // gated, never the other way round. The public site's icon.svg and its two
+  // self-hosted font files (FONT_FILES in next.config.ts) are named the same way.
+  matcher: [
+    "/((?!_next/static/|_next/image$|favicon\\.ico$|icon\\.png$|icon\\.svg$|apple-icon\\.png$|og\\.png$|fonts/sofia-sans-cyrillic-v20\\.woff2$|fonts/sofia-sans-extra-condensed-cyrillic-v6\\.woff2$|api/media/uploads/[^/]+$).*)",
+  ],
 };

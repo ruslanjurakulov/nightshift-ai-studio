@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Martian_Mono, Sofia_Sans, Sofia_Sans_Extra_Condensed } from "next/font/google";
 import "./globals.css";
+// The motion kit's CSS half (reduced-motion and no-script guards, plate,
+// .ns-press) is global and tiny; the JavaScript half (MotionProvider) is
+// mounted only by layouts whose pages animate — see docs/design/MOTION.md §7.
+import "@/components/motion/motion.css";
 import { getLocale } from "@/lib/i18n/server";
 import { getDictionaryFor } from "@/lib/i18n";
 import { publicDictionary } from "@/lib/i18n/public";

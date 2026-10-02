@@ -230,8 +230,10 @@ def test_refusals(db):
     # built is still refused outright.
     st, msg = err(lambda: create(db, UA, ORG_A, cap="v2v"))
     assert "capability_not_supported" in msg
+    # 0075: a routed mode runs only the model and price its quote showed: a
+    # press without the confirmed price is refused before anything is held.
     st, msg = err(lambda: db.act("authenticated", UA, "select public.create_creative_job(%s,'t2i','img-x','{\"prompt\":\"x\"}','auto')", [ORG_A]))
-    assert "mode_not_supported" in msg
+    assert st == "NS400" and "invalid_params" in msg
     st, msg = err(lambda: create(db, UA, ORG_A, maxc=5))
     assert st == "NS409" and "price_changed" in msg
 

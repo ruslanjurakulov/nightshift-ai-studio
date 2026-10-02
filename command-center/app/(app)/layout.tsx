@@ -28,6 +28,7 @@ import type { CreditAccount } from "@/lib/credits";
 import { ShellProvider } from "@/components/shell/ShellContext";
 import { AppProviders } from "@/components/AppProviders";
 import { getLocale } from "@/lib/i18n/server";
+import { MotionProvider } from "@/components/motion/MotionProvider";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // No backend means no account and nothing to show. A built site then answers
@@ -35,6 +36,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // a visitor never meets setup copy, env-var names or the app's frame. Only
   // `next dev` keeps the setup notice (NotConfigured), for whoever is wiring it up.
   if (!isSupabaseConfigured && process.env.NODE_ENV === "production") notFound();
+  // Fail closed (BR-H-001). The middleware is the gate, but a request it never
+  // sees (a matcher exclusion, a misconfigured edge) must not render the app
+  // either: no session, no shell — before anything else is read or drawn. An
+  // unreachable auth server also lands here as "no user", so it fails closed.
+  const user = isSupabaseConfigured ? await getUser() : null;
+  if (isSupabaseConfigured && !user) redirect("/login");
 
   const org = isSupabaseConfigured
     ? await getOrgContext()
@@ -76,7 +83,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     });
     if (to) redirect(to);
   }
-  const email = isSupabaseConfigured ? ((await getUser())?.email ?? null) : null;
+  const email = user?.email ?? null;
 
   // Credits in the header, for an organization that pays. The operator's own
   // (default) organization is exempt and shows none; so does a database
@@ -124,6 +131,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AppProviders locale={await getLocale()}>
+      {/* The motion kit's engine for the signed-in app (docs/design/MOTION.md):
+          here rather than in the root layout, so the public pages do not carry
+          Motion's core until a page of theirs animates with it. */}
+      <MotionProvider>
       <NavigationProvider channelNames={channelNames}>
         <ShellProvider operator={operator}>
           <div className="app-shell atmos relative flex min-h-dvh flex-col">
@@ -154,6 +165,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </ShellProvider>
       </NavigationProvider>
+      </MotionProvider>
     </AppProviders>
   );
 }

@@ -8,6 +8,7 @@ import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/gith
 import { BillingBoard, type ProviderView, type RunwayView } from "@/components/billing/BillingBoard";
 import { UnitEconomicsCard } from "@/components/billing/UnitEconomicsCard";
 import { getChannelContext } from "@/lib/channels-server";
+import { guardOperatorPage } from "@/lib/auth/org-roles";
 import { channelInScope, channelName, inSelection, isScoped, orgWide, scopeQuery } from "@/lib/channels";
 import { unitEconomics, type DurationRow, type LedgerRow } from "@/lib/unitEconomics";
 import {
@@ -36,6 +37,9 @@ export const revalidate = 0;
  */
 export default async function BillingPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
+  // Reads the operator's key names with the server's GitHub token: signed out
+  // → /login, anyone else → 404, before any read (BR-H-001).
+  const mayReadGithub = await guardOperatorPage();
   const { t } = await getDictionary();
   const supabase = await createClient();
   const { channels, selection, scope } = await getChannelContext();
@@ -104,7 +108,7 @@ export default async function BillingPage() {
   const ueScope = isScoped(selection) ? channelName(channels, selection) : t.channels.allChannels;
 
   let configured = new Set<string>();
-  if (isGithubConfigured && operatorView) {
+  if (isGithubConfigured && operatorView && mayReadGithub) {
     try {
       configured = new Set(await listConfiguredSecretNames());
     } catch {

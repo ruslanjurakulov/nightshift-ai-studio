@@ -33,6 +33,8 @@ const ERROR_CODES = [
   "source_unavailable",
   "style_unavailable",
   "mode_not_supported",
+  "route_changed",
+  "no_model_available",
   "registry_missing",
   "forbidden",
   "invalid_body",
@@ -263,11 +265,15 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
         },
         CreativeQuoteRequest: {
           type: "object",
-          required: ["capability", "model", "params"],
+          required: ["capability", "params"],
           additionalProperties: false,
           properties: {
             capability: { type: "string", enum: [...CREATIVE_CAPABILITIES] },
-            model: { type: "string", description: "A model id the API sells for this capability (not every model the Studio offers is on the API)." },
+            model: {
+              type: "string",
+              description:
+                "A model id the API sells for this capability (not every model the Studio offers is on the API). Required for mode exact; not read for the other modes.",
+            },
             params: {
               type: "object",
               additionalProperties: false,
@@ -277,7 +283,15 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
                 "(for example an image quality tier it does not list) is refused with 400 invalid_params, or 422 unpriced when it has no price, before anything is held.",
               properties: Object.fromEntries(PARAM_KEYS.map((k) => [k, {}])),
             },
-            mode: { const: "exact", description: "Only exact: the model you named runs." },
+            mode: {
+              type: "string",
+              enum: ["exact", "auto", "cheap", "fast", "quality"],
+              default: "exact",
+              description:
+                "exact: the model you named runs, never another. auto / cheap / fast / quality: the API picks among the models it sells that are " +
+                "available, priced for these params and allowed by the plan (auto: the lowest price of the higher quality tiers; cheap: the lowest " +
+                "price; fast: the fastest; quality: the highest quality tier). The quote names the pick (routed_model) and why (route_reason).",
+            },
           },
         },
         CreativeCreateRequest: {
@@ -286,13 +300,17 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
           additionalProperties: false,
           properties: {
             capability: { type: "string", enum: [...CREATIVE_CAPABILITIES] },
-            model: { type: "string" },
+            model: { type: "string", description: "For mode exact, the model; for the other modes, the routed_model the quote named." },
             params: { type: "object", description: "As in the quote." },
-            mode: { const: "exact" },
+            mode: { type: "string", enum: ["exact", "auto", "cheap", "fast", "quality"], default: "exact" },
             max_credits: {
               type: "number",
               minimum: 0,
-              description: "The most credits you accept to be charged. A price above it is refused with 409 price_changed; nothing is held.",
+              description:
+                "The most credits you accept to be charged. A price above it is refused with 409 price_changed; nothing is held. The hold is the " +
+                "price at create time (the quote), never more, whatever max_credits says. For a routed mode a failover goes only to a compatible " +
+                "model costing no more than that quote, and the job is charged the price of the model that made it. A different pick than the " +
+                "quote's is refused with 409 route_changed: quote again.",
             },
           },
         },
@@ -310,6 +328,13 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
                 quantity: { type: "number" },
                 credits_per_unit: { type: "number", description: "Credits per unit of quantity, as charged." },
                 minimum: { type: "number" },
+                mode: { type: "string", description: "Routed modes only." },
+                routed_model: { type: "string", description: "Routed modes only: the model the API picked; send it back as model." },
+                route_reason: {
+                  type: "string",
+                  enum: ["cheapest", "fastest", "best_quality", "best_value", "best_available", "only_option"],
+                  description: "Routed modes only: why that model was picked.",
+                },
               },
             },
           },
@@ -334,6 +359,15 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
             updated_at: { type: "string", format: "date-time" },
             finished_at: { type: ["string", "null"], format: "date-time" },
             expires_at: { type: "string", format: "date-time", description: "A job no worker picks up by then expires and its hold is released." },
+            mode: { type: "string", enum: ["exact", "auto", "cheap", "fast", "quality"] },
+            routed_model: { type: "string", description: "The model that runs the job: the model you named (exact) or the quoted pick." },
+            fallback_from: { type: ["string", "null"], description: "Routed modes: the model the job moved away from when it was unavailable." },
+            fallback_reason: {
+              type: ["string", "null"],
+              enum: ["unavailable", null],
+              description: "Routed modes: set when the job moved to another model; always unavailable.",
+            },
+            route_reason: { type: ["string", "null"], description: "Routed modes: why the model was picked." },
           },
         },
         Download: {

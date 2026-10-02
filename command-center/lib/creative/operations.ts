@@ -193,6 +193,9 @@ export const CREATIVE_ERRORS = [
   "source_unavailable",
   "style_unavailable",
   "mode_not_supported",
+  // 0075: the automatic choice changed since the quote; nothing fits these settings.
+  "route_changed",
+  "no_model_available",
   "insufficient_credits",
   "run_limit_reached",
   "forbidden",
@@ -204,6 +207,12 @@ export type CreativeError = (typeof CREATIVE_ERRORS)[number];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MODEL_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+/** exact = the model the person picked; the others let the database pick (0075). */
+export const CREATIVE_MODES = ["exact", "auto", "cheap", "fast", "quality"] as const;
+export type CreativeMode = (typeof CREATIVE_MODES)[number];
+/** Why the router picked a model: a code the app words in en / ru / uz. */
+export const ROUTE_REASONS = ["cheapest", "fastest", "best_quality", "best_value", "best_available", "only_option"] as const;
+export type RouteReason = (typeof ROUTE_REASONS)[number];
 export const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9_:.-]{1,255}$/;
 const MAX_PARAMS_BYTES = 16_384;
 
@@ -248,11 +257,15 @@ const NS400: Partial<Record<string, { status: number; code: CreativeError }>> = 
   // another organization's kit reads exactly like a missing one.
   style_unavailable: { status: 422, code: "style_unavailable" },
   mode_not_supported: { status: 422, code: "mode_not_supported" },
+  // 0075: no available, priced model of this plan takes these settings.
+  no_model_available: { status: 422, code: "no_model_available" },
   invalid_params: { status: 400, code: "invalid_params" },
   invalid_idempotency_key: { status: 400, code: "invalid_idempotency_key" },
 };
 const NS409: Partial<Record<string, CreativeError>> = {
   price_changed: "price_changed",
+  // 0075: the router's pick changed since the quote (a price, a probe or a plan).
+  route_changed: "route_changed",
   idempotency_conflict: "idempotency_conflict",
   not_cancellable: "not_cancellable",
 };
@@ -322,8 +335,15 @@ export function parseGenerationInput(
   const capability = b.capability;
   if (typeof capability !== "string" || !(CREATIVE_CAPABILITIES as readonly string[]).includes(capability))
     return { ok: false, result: fail(422, "capability_not_supported") };
+  const mode = b.mode == null ? "exact" : typeof b.mode === "string" ? b.mode.trim().toLowerCase() : "";
+  if (!(CREATIVE_MODES as readonly string[]).includes(mode))
+    return { ok: false, result: fail(400, "invalid_params", { detail: "mode must be exact, auto, cheap, fast or quality" }) };
   const model = typeof b.model === "string" ? b.model.trim().toLowerCase() : "";
-  if (!MODEL_RE.test(model)) return { ok: false, result: fail(400, "invalid_params", { detail: "model is required" }) };
+  // A routed QUOTE names no model (the database picks one); a routed CREATE
+  // sends back the model and price its quote showed (0075). exact always names it.
+  const modelOptional = mode !== "exact" && !opts.requirePrice && (b.model == null || model === "");
+  if (!modelOptional && !MODEL_RE.test(model))
+    return { ok: false, result: fail(400, "invalid_params", { detail: "model is required" }) };
   const params = obj(b.params);
   if (!params) return { ok: false, result: fail(400, "invalid_params", { detail: "params must be an object" }) };
   const badKeys = Object.keys(params).filter((k) => !(PARAM_KEYS as readonly string[]).includes(k));
@@ -390,8 +410,6 @@ export function parseGenerationInput(
     if (!isUuid(params.style_kit_id))
       return { ok: false, result: fail(400, "invalid_params", { detail: "style_kit_id must be the id of a style kit" }) };
   }
-  const mode = b.mode == null ? "exact" : typeof b.mode === "string" ? b.mode.trim().toLowerCase() : "";
-  if (!mode) return { ok: false, result: fail(400, "invalid_params", { detail: "mode must be text" }) };
 
   const headerKey = opts.idempotencyHeader?.trim() || null;
   const bodyKey = typeof b.idempotency_key === "string" ? b.idempotency_key.trim() || null : null;
@@ -411,14 +429,30 @@ export function parseGenerationInput(
   };
 }
 
-/** The price of a generation, computed by the database. Nothing is held. */
+/**
+ * The price of a generation, computed by the database. Nothing is held.
+ * A routed mode (0075: auto / cheap / fast / quality) asks the database to
+ * pick the model: the answer names it (`routed_model`, `display_name`), says
+ * why (`route_reason`) and is that model's own quote.
+ */
 export async function quote(db: CreativeDb, input: GenerationInput): Promise<CreativeResult> {
-  const { data, error } = await db.rpc("quote_creative_job", {
-    p_org: input.orgId,
-    p_capability: input.capability,
-    p_model: input.model,
-    p_params: input.params,
-  });
+  const { data, error } =
+    input.mode === "exact"
+      ? await db.rpc("quote_creative_job", {
+          p_org: input.orgId,
+          p_capability: input.capability,
+          p_model: input.model,
+          p_params: input.params,
+        })
+      : await db.rpc("quote_creative_route", {
+          p_org: input.orgId,
+          p_capability: input.capability,
+          p_mode: input.mode,
+          p_params: input.params,
+        });
+  // A database without 0075 has no router: automatic choice is not available
+  // there yet (the existing sentence), never "generation is off".
+  if (error && input.mode !== "exact" && isCreativeMissing(error)) return fail(422, "mode_not_supported");
   if (error) return mapCreativeError(error);
   const q = obj(data);
   if (!q || typeof q.credits !== "number") return fail(502, "failed");
