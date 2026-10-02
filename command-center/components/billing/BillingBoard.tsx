@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
-import { StatCard, StatusPill } from "@/components/ui";
+import { StatCard } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
+import { Meter } from "@/components/ui/Meter";
 import { relativeTime } from "@/lib/format";
 import { planTopups, type ElevenLabsRunway } from "@/lib/billing";
 import { BulkPay, PayPanel } from "@/components/billing/TopupControls";
@@ -101,7 +103,7 @@ export function BillingBoard({
             type="button"
             onClick={doRefresh}
             disabled={!githubConfigured || refresh === "busy"}
-            className="btn-sky pill inline-flex w-fit items-center gap-2 px-4 py-2 text-[13px] disabled:opacity-40"
+            className="btn-quiet inline-flex w-fit items-center gap-2 px-4 py-2 text-[13px] disabled:opacity-40"
           >
             <RefreshCw className="size-3.5" aria-hidden />
             {refresh === "busy" ? t.billing.refreshing : t.billing.refresh}
@@ -139,8 +141,6 @@ function ElevenLabsPanel({ runway }: { runway: RunwayView | null }) {
       </div>
     );
   }
-  const pct =
-    runway.total && runway.total > 0 ? Math.max(0, Math.min(100, (runway.remainingCredits / runway.total) * 100)) : null;
   return (
     <div className="panel flex flex-col gap-3 p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -156,10 +156,15 @@ function ElevenLabsPanel({ runway }: { runway: RunwayView | null }) {
           ? fmt(t.billing.elevenVideos, { videos: n0(runway.minVideos), chars: n0(runway.perVideoChars) })
           : t.billing.elevenNoHistory}
       </p>
-      {pct !== null && (
-        <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--color-panel-2)]" aria-hidden>
-          <div className="h-full rounded-full bg-[var(--color-primary)]" style={{ width: `${pct}%` }} />
-        </div>
+      {runway.total !== null && runway.total > 0 && (
+        <Meter
+          value={runway.remainingCredits}
+          max={runway.total}
+          size="lg"
+          segments={24}
+          label={t.billing.elevenTitle}
+          valueText={fmt(t.billing.elevenCredits, { remaining: n0(runway.remainingCredits), total: n0(runway.total) })}
+        />
       )}
       <p className="mono text-[11px] text-[var(--color-muted)]">
         {runway.total !== null
@@ -212,7 +217,7 @@ function ProviderCard({ p, onSaved }: { p: ProviderView; onSaved: () => void }) 
     <div className="panel flex flex-col gap-3 p-4">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-[var(--color-fg)]">{p.name}</h3>
-        <StatusPill tone={p.keySet ? "ok" : "idle"} label={p.keySet ? t.billing.keySet : t.billing.keyMissing} />
+        <StatusLamp tone={p.keySet ? "ok" : "idle"} label={p.keySet ? t.billing.keySet : t.billing.keyMissing} />
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[12px]">
         <dt className="text-[var(--color-muted)]">{t.billing.balance}</dt>
@@ -243,13 +248,13 @@ function ProviderCard({ p, onSaved }: { p: ProviderView; onSaved: () => void }) 
               setState("idle");
             }}
             placeholder={t.billing.pricePlaceholder}
-            className="pill min-w-0 flex-1 border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 mono text-[12px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+            className="rounded-[var(--ns-r-key)] min-w-0 flex-1 border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 mono text-[12px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
           />
           <button
             type="button"
             onClick={save}
             disabled={state === "busy"}
-            className="btn-sky is-quiet pill px-3 py-1.5 text-[12px] disabled:opacity-40"
+            className="btn-quiet text-[12px] disabled:opacity-40"
           >
             {state === "ok" ? t.billing.saved : t.billing.save}
           </button>
@@ -261,7 +266,7 @@ function ProviderCard({ p, onSaved }: { p: ProviderView; onSaved: () => void }) 
           type="button"
           onClick={() => setPaying((v) => !v)}
           aria-expanded={paying}
-          className="cta-glass pill px-4 py-1.5 text-[12px] font-semibold"
+          className="btn-primary text-[12px] font-semibold"
         >
           {t.billing.pay}
         </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { StatusPill } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
 import { relativeTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
@@ -54,7 +54,7 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
             {fmt(t.agents.recentEvents, { n: agent.eventCount })}
           </div>
         </div>
-        <StatusPill tone={agent.tone} label={statusLabel} live={agent.status === "RUNNING"} />
+        <StatusLamp tone={agent.tone} label={statusLabel} live={agent.status === "RUNNING"} />
       </div>
 
       <div className="rounded-md border-l-2 px-3 py-2" style={{ borderColor: accent, background: "var(--color-panel-2)" }}>

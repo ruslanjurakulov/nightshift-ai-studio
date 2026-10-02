@@ -68,7 +68,7 @@ export function Widget({
               type="button"
               onClick={toggle}
               aria-pressed={visible}
-              className="btn-sky is-quiet pill tap-icon grid size-7 place-items-center"
+              className="tap-icon grid size-7 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] text-[var(--color-muted)] hover:text-[var(--color-fg)]"
             >
               {visible ? (
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-3.5">

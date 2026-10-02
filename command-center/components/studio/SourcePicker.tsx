@@ -109,7 +109,7 @@ export function SourcePicker({
   if (value && !browsing) {
     return (
       <div className={compact ? "studio-field flex items-center gap-3 p-2" : "flex items-center gap-3"}>
-        <div className="relative size-20 shrink-0 overflow-hidden rounded-xl border-2 border-[var(--color-primary)] bg-[var(--color-panel-2)]">
+        <div className="relative size-20 shrink-0 overflow-hidden rounded-[var(--ns-r-key)] border-2 border-[var(--color-primary)] bg-[var(--color-panel-2)]">
           {chosen?.thumbUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={chosen.thumbUrl} alt={chosen.name ?? g.sourceChosen} className="h-full w-full object-cover" />
@@ -124,7 +124,7 @@ export function SourcePicker({
           <button
             type="button"
             onClick={() => setBrowsing(true)}
-            className="btn-sky is-quiet pill w-fit px-3 py-1.5 text-[12px]"
+            className="btn-quiet w-fit text-[12px]"
           >
             {g.sourceChange}
           </button>
@@ -140,28 +140,28 @@ export function SourcePicker({
       {state === "loading" && (
         <div className={`grid grid-cols-4 gap-2${compact ? "" : " sm:grid-cols-6"}`} aria-busy="true" aria-label={g.sourceLoading}>
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="aspect-square animate-pulse rounded-lg bg-[var(--color-panel-2)]" />
+            <div key={i} className="aspect-square animate-pulse rounded-[var(--ns-r-key)] bg-[var(--color-panel-2)]" />
           ))}
         </div>
       )}
 
       {state === "failed" && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">
+        <div className="flex flex-wrap items-center gap-3 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">
           <span>{g.sourceFailed}</span>
-          <button type="button" onClick={() => void reload()} className="btn-sky is-quiet pill px-3 py-1.5 text-[12px]">
+          <button type="button" onClick={() => void reload()} className="btn-quiet text-[12px]">
             {g.sourceRetry}
           </button>
         </div>
       )}
 
       {state === "unavailable" && (
-        <p className="rounded-lg border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">{g.sourceUnavailable}</p>
+        <p className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">{g.sourceUnavailable}</p>
       )}
 
       {state === "ready" && images.length === 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">
+        <div className="flex flex-wrap items-center gap-3 rounded-[var(--ns-r-key)] border border-dashed border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">
           <span>{g.sourceEmpty}</span>
-          <Link href={libraryHref} className="btn-sky is-quiet pill px-3 py-1.5 text-[12px]">
+          <Link href={libraryHref} className="btn-quiet text-[12px]">
             {g.sourceOpenLibrary}
           </Link>
         </div>
@@ -184,7 +184,7 @@ export function SourcePicker({
                     onChange(img.id);
                     setBrowsing(false);
                   }}
-                  className="relative block aspect-square w-full overflow-hidden rounded-lg border bg-[var(--color-panel-2)]"
+                  className="relative block aspect-square w-full overflow-hidden rounded-[var(--ns-r-key)] border bg-[var(--color-panel-2)]"
                   style={{ borderColor: on ? "var(--color-primary)" : "var(--color-border)", borderWidth: on ? 2 : 1 }}
                 >
                   {img.thumbUrl ? (
@@ -211,7 +211,7 @@ function RecordingIcon({ r, size = "size-10" }: { r: PickerRecording | undefined
   return (
     <span
       aria-hidden
-      className={`relative grid ${size} shrink-0 place-items-center overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]`}
+      className={`relative grid ${size} shrink-0 place-items-center overflow-hidden rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]`}
     >
       {r?.thumbUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -273,7 +273,7 @@ function RecordingPicker({
               {len ? ` · ${len}` : ""}
             </span>
           )}
-          <button type="button" onClick={() => setBrowsing(true)} className="btn-sky is-quiet pill w-fit px-3 py-1.5 text-[12px]">
+          <button type="button" onClick={() => setBrowsing(true)} className="btn-quiet w-fit text-[12px]">
             {copy.change}
           </button>
         </div>
@@ -288,28 +288,28 @@ function RecordingPicker({
       {state === "loading" && (
         <div className="flex flex-col gap-2" aria-busy="true" aria-label={g.sourceLoading}>
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-12 animate-pulse rounded-lg bg-[var(--color-panel-2)]" />
+            <div key={i} className="h-12 animate-pulse rounded-[var(--ns-r-key)] bg-[var(--color-panel-2)]" />
           ))}
         </div>
       )}
 
       {state === "failed" && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">
+        <div className="flex flex-wrap items-center gap-3 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">
           <span>{g.sourceFailed}</span>
-          <button type="button" onClick={() => void reload()} className="btn-sky is-quiet pill px-3 py-1.5 text-[12px]">
+          <button type="button" onClick={() => void reload()} className="btn-quiet text-[12px]">
             {g.sourceRetry}
           </button>
         </div>
       )}
 
       {state === "unavailable" && (
-        <p className="rounded-lg border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">{g.sourceUnavailable}</p>
+        <p className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">{g.sourceUnavailable}</p>
       )}
 
       {state === "ready" && recordings.length === 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">
+        <div className="flex flex-wrap items-center gap-3 rounded-[var(--ns-r-key)] border border-dashed border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">
           <span>{copy.empty}</span>
-          <Link href={libraryHref} className="btn-sky is-quiet pill px-3 py-1.5 text-[12px]">
+          <Link href={libraryHref} className="btn-quiet text-[12px]">
             {g.sourceOpenLibrary}
           </Link>
         </div>
@@ -335,7 +335,7 @@ function RecordingPicker({
                     onChange(r.id);
                     setBrowsing(false);
                   }}
-                  className="flex w-full items-center gap-3 rounded-lg border bg-[var(--color-panel)] p-2 text-left disabled:cursor-not-allowed disabled:opacity-55"
+                  className="flex w-full items-center gap-3 rounded-[var(--ns-r-key)] border bg-[var(--color-panel)] p-2 text-left disabled:cursor-not-allowed disabled:opacity-55"
                   style={{ borderColor: on ? "var(--color-primary)" : "var(--color-border)", borderWidth: on ? 2 : 1 }}
                 >
                   <RecordingIcon r={r} />

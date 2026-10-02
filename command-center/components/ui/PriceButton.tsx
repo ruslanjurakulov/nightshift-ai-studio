@@ -25,6 +25,14 @@ export const PriceButton = forwardRef<
     credits?: number | null;
     /** The undiscounted price, struck through when higher than `credits`. */
     was?: number | null;
+    /**
+     * A price that is already text: a currency amount the billing provider
+     * quoted ("$12.00"). Drawn in the counter face as given, never parsed or
+     * computed. Empty or missing = no price legend. Ignored when `credits` is set.
+     */
+    priceText?: string | null;
+    /** The undiscounted `priceText`, struck through. Pass it only when it is real. */
+    wasText?: string | null;
     /** The word after the price, already pluralised ("credits"). */
     unit?: string;
     /** Screen-reader words before the struck price ("was"). */
@@ -36,12 +44,14 @@ export const PriceButton = forwardRef<
     size?: "lg" | "md";
   }
 >(function PriceButton(
-  { label, credits, was, unit, wasLabel, locale = "en", icon, disabledReason, size = "lg", className, disabled, type = "button", ...rest },
+  { label, credits, was, priceText, wasText, unit, wasLabel, locale = "en", icon, disabledReason, size = "lg", className, disabled, type = "button", ...rest },
   ref,
 ) {
   const reasonId = useId();
   const priced = typeof credits === "number" && Number.isFinite(credits);
   const struck = priced && typeof was === "number" && Number.isFinite(was) && was > (credits as number);
+  const quoted = !priced && typeof priceText === "string" && priceText.trim() !== "";
+  const struckText = quoted && typeof wasText === "string" && wasText.trim() !== "" && wasText !== priceText;
   const describedBy = [rest["aria-describedby"], disabledReason ? reasonId : null].filter(Boolean).join(" ") || undefined;
   const button = (
     <button
@@ -57,6 +67,17 @@ export const PriceButton = forwardRef<
         {icon}
         <span className="truncate">{label}</span>
       </span>
+      {quoted && (
+        <span className="ns-price-tag" data-testid="price-tag">
+          {struckText && (
+            <s className="ns-price-was ns-tc">
+              {wasLabel && <span className="sr-only">{wasLabel} </span>}
+              {wasText}
+            </s>
+          )}
+          <span className="ns-tc">{priceText}</span>
+        </span>
+      )}
       {priced && (
         <span className="ns-price-tag" data-testid="price-tag">
           {struck && (

@@ -57,8 +57,10 @@ describe("light theme: components use tokens, not raw colours", () => {
   });
 
   it("idle-coloured text uses --color-muted (idle stays for dots)", () => {
-    expect(read("components/ui.tsx")).toMatch(/idle: \{ fg: "var\(--color-idle\)", text: "var\(--color-muted\)"/);
-    expect(read("components/SystemStatus.tsx")).toMatch(/idle: "var\(--color-muted\)"/);
+    // the status mark is a lamp now: an idle state's word stays in muted text, only its ring is "idle"
+    const css = read("app/globals.css");
+    expect(css).toMatch(/\.ns-lamp-row\s*\{[^}]*color:\s*var\(--color-muted\)/);
+    expect(read("components/SystemStatus.tsx")).not.toContain("--color-idle");
     expect(read("components/autonomy/OperationsPanels.tsx")).not.toContain("--color-idle");
   });
 });

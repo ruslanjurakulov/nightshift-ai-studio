@@ -5,7 +5,9 @@ import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
-import { StatusPill } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
+import { StepCard, StepList, type StepState } from "@/components/ui/StepCard";
+import { creditUnit } from "@/lib/credits";
 import {
   MAX_NARRATION,
   MAX_SCENES,
@@ -126,11 +128,17 @@ export function StoryboardReview({
   /** For an approved storyboard: may it go back to waiting (its render failed)? */
   reopen?: ReopenState | null;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const ts = t.storyboardReview;
   const router = useRouter();
   const [status, setStatus] = useState<StoryboardStatus>(storyboard.status);
   const [price, setPrice] = useState<StoryboardQuote>(quote);
+  // What the approval held for the render (0057 credits_held): the stored row,
+  // or the approve answer; null = none on record, never shown as 0.
+  const [hold, setHold] = useState<{ credits: number | null; included: boolean }>({
+    credits: storyboard.creditsHeld,
+    included: false,
+  });
   const [saved, setSaved] = useState<Saved>({
     revision: typeof storyboard.revision === "number" ? storyboard.revision : null,
     scenes: storyboard.scenes,
@@ -171,6 +179,51 @@ export function StoryboardReview({
   const offerReopen = status === "approved" && canRun && reopen?.reopenable === true;
 
   const lengths = useMemo(() => draft.map((d) => unchangedScene(d, saved.scenes)?.durationS ?? null), [draft, saved]);
+  // The running length up to and including each scene; unknown from the first
+  // scene whose length the database has not measured yet, never a guess.
+  const running = useMemo(() => {
+    let sum: number | null = 0;
+    return lengths.map((l) => {
+      sum = sum !== null && l !== null ? sum + l : null;
+      return sum;
+    });
+  }, [lengths]);
+
+  // The make as a rundown: each scene is a step that costs nothing to read,
+  // then the render, whose price is the backend's one quote or nothing.
+  const sceneStep: { state: StepState; label: string } =
+    status === "ready"
+      ? { state: "next", label: ts.stepToReview }
+      : status === "approved" || status === "rendered"
+        ? { state: "done", label: ts.stepApproved }
+        : { state: "next", label: status === "discarded" ? ts.statusDiscarded : ts.statusUnknown };
+  const renderStep: { state: StepState; label: string } =
+    status === "ready"
+      ? { state: "blocked", label: ts.stepAwaiting }
+      : status === "approved"
+        ? { state: "current", label: ts.stepRendering }
+        : status === "rendered"
+          ? { state: "done", label: ts.statusRendered }
+          : { state: "next", label: status === "discarded" ? ts.stepNotRendered : ts.statusUnknown };
+  // The Render step's figure is the price of what would render, or what was
+  // held for it — never a quote for something else: while scenes are edited
+  // and unsaved, the saved scenes' quote is not this render's price; once
+  // approved, the hold on record is (not today's quote).
+  const decided = status === "approved" || status === "rendered";
+  const renderFigure: { credits: number | null; words?: string; label: string; unknown: string } = decided
+    ? hold.included
+      ? { credits: null, words: ts.priceIncluded, label: ts.stepHeld, unknown: ts.heldUnknown }
+      : { credits: hold.credits, label: ts.stepHeld, unknown: ts.heldUnknown }
+    : waiting && dirty
+      ? { credits: null, words: ts.renderOnSave, label: ts.stepPrice, unknown: ts.renderOnSave }
+      : waiting
+        ? {
+            credits: price.kind === "paid" ? price.credits : null,
+            words: price.kind === "included" ? ts.priceIncluded : undefined,
+            label: ts.stepPrice,
+            unknown: ts.priceUnknown,
+          }
+        : { credits: null, label: ts.stepPrice, unknown: ts.priceUnknown };
 
   function register(key: string) {
     return (el: HTMLElement | null) => {
@@ -305,6 +358,12 @@ export function StoryboardReview({
     const { ok, body } = await post("approve", payload);
     setBusy(null);
     if (ok) {
+      const reserved = body?.credits_reserved;
+      setHold({
+        credits: typeof reserved === "number" && Number.isFinite(reserved) ? reserved : null,
+        // Approved without a price (an operator channel): nothing was held, by design.
+        included: price.kind === "included",
+      });
       setStatus("approved");
       setNotice(ts.approvedNote);
       router.refresh();
@@ -381,7 +440,7 @@ export function StoryboardReview({
 
       <header className="panel flex flex-col gap-2 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <StatusPill tone={STATUS_TONE[status]} label={statusLabel} />
+          <StatusLamp tone={STATUS_TONE[status]} label={statusLabel} />
           <span className="text-[12px] text-[var(--color-muted)]">{total}</span>
         </div>
         <h2 className="m-0 text-[17px] font-semibold leading-snug text-[var(--color-fg)] [overflow-wrap:anywhere]">
@@ -418,7 +477,7 @@ export function StoryboardReview({
       {draft.length === 0 ? (
         <p className="panel m-0 p-4 text-[13px] text-[var(--color-muted)]">{ts.noScenes}</p>
       ) : (
-        <ol className="m-0 flex list-none flex-col gap-3 p-0" aria-label={ts.title}>
+        <StepList label={ts.title}>
           {draft.map((d, i) => {
             const n = i + 1;
             const len = lengths[i];
@@ -427,14 +486,24 @@ export function StoryboardReview({
             const visId = `${baseId}-v-${d.key}`;
             const probId = `${baseId}-p-${d.key}`;
             return (
-              <li key={d.key} className="panel flex flex-col gap-2 p-4" data-testid="storyboard-scene">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="m-0 text-[13px] font-semibold text-[var(--color-fg)]">{fmt(ts.scene, { n })}</h3>
-                  <span className="mono text-[11px] text-[var(--color-muted)]">
-                    <span className="sr-only">{ts.length}: </span>
-                    {len !== null ? fmt(ts.seconds, { n: len }) : ts.lengthOnSave}
-                  </span>
-                </div>
+              <StepCard
+                key={d.key}
+                testId="storyboard-scene"
+                index={n}
+                title={fmt(ts.scene, { n })}
+                state={sceneStep.state}
+                stateLabel={sceneStep.label}
+                format="duration"
+                price={len}
+                total={running[i]}
+                totalWords={running[i] === null ? ts.totalOnSave : undefined}
+                totalSpoken={running[i] !== null ? fmt(ts.seconds, { n: running[i] as number }) : undefined}
+                priceSpoken={len !== null ? fmt(ts.seconds, { n: len }) : undefined}
+                priceLabel={ts.length}
+                totalLabel={ts.stepLengthTotal}
+                unknownPrice={ts.lengthOnSave}
+                locale={locale}
+              >
                 {editable ? (
                   <>
                     <label
@@ -452,7 +521,7 @@ export function StoryboardReview({
                       onChange={(e) => update(d.key, { narration: e.target.value })}
                       aria-invalid={prob !== null && prob !== "terms"}
                       aria-describedby={prob ? probId : undefined}
-                      className="w-full rounded-[12px] border border-[var(--color-border)] bg-transparent px-3 py-2 text-[14px] leading-relaxed text-[var(--color-fg)] outline-none transition-colors focus:border-[var(--color-primary)] aria-[invalid=true]:border-[var(--color-fail)]"
+                      className="w-full rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] px-3 py-2 text-[14px] leading-relaxed text-[var(--color-fg)] outline-none transition-colors focus:border-[var(--color-primary)] aria-[invalid=true]:border-[var(--color-fail)]"
                     />
                     <label
                       htmlFor={visId}
@@ -469,7 +538,7 @@ export function StoryboardReview({
                       onChange={(e) => update(d.key, { visual: e.target.value })}
                       aria-invalid={prob === "terms"}
                       aria-describedby={prob ? probId : undefined}
-                      className="w-full rounded-[12px] border border-[var(--color-border)] bg-transparent px-3 py-2 text-[13px] leading-relaxed text-[var(--color-fg)] outline-none transition-colors placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] aria-[invalid=true]:border-[var(--color-fail)]"
+                      className="w-full rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] px-3 py-2 text-[13px] leading-relaxed text-[var(--color-fg)] outline-none transition-colors placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] aria-[invalid=true]:border-[var(--color-fail)]"
                     />
                     {prob && (
                       <p id={probId} className="m-0 text-[12px] text-[var(--color-fail)]">
@@ -525,10 +594,26 @@ export function StoryboardReview({
                     </div>
                   </>
                 )}
-              </li>
+              </StepCard>
             );
           })}
-        </ol>
+          <StepCard
+            testId="storyboard-render-step"
+            index={draft.length + 1}
+            title={ts.stepRender}
+            state={renderStep.state}
+            stateLabel={renderStep.label}
+            price={renderFigure.credits}
+            total={renderFigure.credits}
+            priceWords={renderFigure.words}
+            totalWords={renderFigure.words}
+            unit={renderFigure.credits !== null ? creditUnit(renderFigure.credits, locale, t.shell.creditUnit) : undefined}
+            priceLabel={renderFigure.label}
+            totalLabel={ts.stepCreditsTotal}
+            unknownPrice={renderFigure.unknown}
+            locale={locale}
+          />
+        </StepList>
       )}
 
       {editable && (

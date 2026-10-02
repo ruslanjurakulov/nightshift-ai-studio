@@ -25,6 +25,8 @@ import {
   Undo2,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
+import { Chip } from "@/components/ui/Chip";
+import { Timecode } from "@/components/ui/Timecode";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import {
@@ -113,9 +115,9 @@ const HISTORY = 100;
 const POLL_MS = 4000;
 
 const fieldClass =
-  "pill w-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
+  "rounded-[var(--ns-r-key)] w-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
 const quietBtn =
-  "btn-sky is-quiet pill inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px]";
+  "btn-quiet inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px]";
 
 /** Keys inside these keep their own meaning. */
 function typing(target: EventTarget | null): boolean {
@@ -611,7 +613,7 @@ export function TimelineEditor({
             type="button"
             onClick={() => void save()}
             disabled={!dirty || saving}
-            className="btn-sky ghost pill px-4 py-2 text-[13px]"
+            className="btn-quiet text-[13px]"
           >
             {saving ? te.saving : te.save}
           </button>
@@ -620,7 +622,7 @@ export function TimelineEditor({
             onClick={() => void startExport()}
             disabled={Boolean(exportBlocked) || starting}
             aria-describedby={exportBlocked ? `${ids}-export-why` : undefined}
-            className="btn-sky is-solid pill px-4 py-2 text-[13px]"
+            className="btn-primary text-[13px]"
           >
             {starting ? te.exporting : te.export}
           </button>
@@ -659,7 +661,7 @@ export function TimelineEditor({
         <div className="flex min-w-0 flex-col gap-3">
           {/* preview */}
           <div
-            className="relative mx-auto w-full overflow-hidden rounded-2xl border border-[var(--color-border)] bg-black"
+            className="relative mx-auto w-full overflow-hidden rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-black"
             style={{
               aspectRatio: `${model.width} / ${model.height}`,
               maxHeight: "60vh",
@@ -758,7 +760,7 @@ export function TimelineEditor({
               type="button"
               onClick={togglePlay}
               aria-label={playing ? te.pause : te.play}
-              className="btn-sky is-solid pill inline-flex size-10 items-center justify-center p-0"
+              className="btn-primary inline-flex size-11 items-center justify-center p-0"
             >
               {playing ? (
                 <Pause className="size-4" aria-hidden />
@@ -783,8 +785,10 @@ export function TimelineEditor({
               })}
               className="min-w-0 flex-1 accent-[var(--color-primary)]"
             />
-            <span className="shrink-0 text-[12px] tabular-nums text-[var(--color-muted)]">
-              {formatTime(playhead)} / {formatTime(total)}
+            {/* The master-control readout: frame-accurate timecode at the project's rate; the spoken form keeps tenths. */}
+            <span className="shrink-0 text-[12px] text-[var(--color-muted)]">
+              <Timecode value={playhead} format="frames" fps={model.fps} label={formatTime(playhead)} /> /{" "}
+              <Timecode value={total} format="frames" fps={model.fps} label={formatTime(total)} />
             </span>
           </div>
 
@@ -876,13 +880,13 @@ export function TimelineEditor({
                       <button
                         type="button"
                         onClick={() => onAddSound(a)}
-                        className="flex w-full min-w-0 items-center justify-between gap-2 rounded-xl border border-[var(--color-border)] p-2 text-left text-[12px]"
+                        className="flex w-full min-w-0 items-center justify-between gap-2 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-2 text-left text-[12px]"
                       >
                         <span className="truncate text-[var(--color-fg)]">
                           {a.name ?? te.untitledSound}
                         </span>
-                        <span className="shrink-0 tabular-nums text-[var(--color-muted)]">
-                          {formatTime(a.durationS ?? 0)}
+                        <span className="shrink-0 text-[var(--color-muted)]">
+                          <Timecode value={a.durationS} format="duration" />
                         </span>
                       </button>
                     </li>
@@ -929,13 +933,13 @@ export function TimelineEditor({
                       <button
                         type="button"
                         onClick={() => onAddVideo(v)}
-                        className="flex w-full min-w-0 flex-col gap-1 rounded-xl border border-[var(--color-border)] p-2 text-left text-[12px]"
+                        className="flex w-full min-w-0 flex-col gap-1 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-2 text-left text-[12px]"
                       >
                         <span className="truncate text-[var(--color-fg)]">
                           {v.name ?? te.untitledVideo}
                         </span>
                         <span className="text-[var(--color-muted)]">
-                          {formatTime(v.durationS ?? 0)}
+                          <Timecode value={v.durationS} format="duration" />
                         </span>
                       </button>
                     </li>
@@ -1071,7 +1075,12 @@ export function TimelineEditor({
                   </span>
                   <span className="text-[12px] text-[var(--color-muted)]">
                     {fmt(te.exportRev, { rev: x.rev })}
-                    {x.durationS ? ` · ${formatTime(x.durationS)}` : ""}
+                    {x.durationS ? (
+                      <>
+                        {" · "}
+                        <Timecode value={x.durationS} format="duration" />
+                      </>
+                    ) : null}
                     {x.createdAt ? ` · ${when(x.createdAt)}` : ""}
                   </span>
                   {x.status === "failed" ? (
@@ -1117,7 +1126,7 @@ export function TimelineEditor({
             <button
               type="button"
               onClick={() => void onDelete()}
-              className="btn-sky is-solid pill px-3 py-1.5 text-[12px]"
+              className="btn-primary text-[12px]"
             >
               {te.deleteYes}
             </button>
@@ -1268,11 +1277,9 @@ function ClipInspector({
           {SPEEDS.map((s) => (
             <label
               key={s}
-              className={`cursor-pointer rounded-full border px-2.5 py-1 text-[12px] focus-within:ring-2 focus-within:ring-[var(--color-primary)] ${
-                clip.speed === s
-                  ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
-                  : "border-[var(--color-border)] text-[var(--color-muted)]"
-              }`}
+              className="ns-chip"
+              data-radio=""
+              data-on={clip.speed === s ? "true" : undefined}
             >
               <input
                 type="radio"
@@ -1311,13 +1318,10 @@ function ClipInspector({
             return (
               <label
                 key={kind}
-                className={`rounded-full border px-2.5 py-1 text-[12px] focus-within:ring-2 focus-within:ring-[var(--color-primary)] ${
-                  disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-                } ${
-                  on
-                    ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
-                    : "border-[var(--color-border)] text-[var(--color-muted)]"
-                }`}
+                className="ns-chip"
+                data-radio=""
+                data-on={on ? "true" : undefined}
+                data-disabled={disabled ? "true" : undefined}
               >
                 <input
                   type="radio"
@@ -1443,7 +1447,7 @@ function TextInspector({
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => draft !== text.text && onChange({ text: draft })}
             aria-describedby={`${id}-count`}
-            className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
+            className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
           />
         </label>
         <span id={`${id}-count`} className="text-[11px]">
@@ -1493,11 +1497,9 @@ function TextInspector({
           {(Object.keys(TEXT_POSITIONS) as TextPosition[]).map((p) => (
             <label
               key={p}
-              className={`cursor-pointer rounded-full border px-2.5 py-1 text-[12px] focus-within:ring-2 focus-within:ring-[var(--color-primary)] ${
-                pos === p
-                  ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
-                  : "border-[var(--color-border)] text-[var(--color-muted)]"
-              }`}
+              className="ns-chip"
+              data-radio=""
+              data-on={pos === p ? "true" : undefined}
             >
               <input
                 type="radio"
@@ -1555,7 +1557,7 @@ function SoundInspector({
     <>
       <h2 className="m-0 text-[14px] font-semibold">{te.soundHeading}</h2>
       <p className="m-0 truncate text-[12px] text-[var(--color-muted)]">
-        {name} · {formatTime(len)}
+        {name} · <Timecode value={len} format="duration" label={formatTime(len)} />
       </p>
       {warning ? (
         <div role="status" className="flex flex-col gap-1.5">
@@ -1653,17 +1655,15 @@ function SoundInspector({
           {(["music", "speech"] as const).map((r) => {
             const on = (sound.role ?? "music") === r;
             return (
-              <button
+              <Chip
                 key={r}
-                type="button"
-                aria-pressed={on}
+                pressed={on}
                 onClick={() => {
                   if (!on) onChange({ role: r });
                 }}
-                className={`btn-sky pill px-3 py-1.5 text-[12px] ${on ? "is-solid" : "is-quiet"}`}
               >
                 {r === "music" ? te.roleMusic : te.roleSpeech}
-              </button>
+              </Chip>
             );
           })}
         </div>

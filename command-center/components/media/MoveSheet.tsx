@@ -57,7 +57,7 @@ export function MoveSheet({
   }
 
   const row = (key: string, on: boolean) =>
-    `press flex w-full items-center gap-3 rounded-2xl border px-3.5 py-3 text-left ${
+    `press flex w-full items-center gap-3 rounded-[var(--ns-r-key)] border px-3.5 py-3 text-left ${
       on
         ? "cursor-default border-[var(--color-border)] bg-[var(--color-panel-2)] opacity-70"
         : "border-[var(--color-border)] bg-[var(--color-panel)] hover:border-[var(--color-primary)]"
@@ -148,9 +148,9 @@ export function MoveSheet({
                 enterKeyHint="done"
                 placeholder={tf.namePlaceholder}
                 disabled={busy !== null}
-                className="min-w-0 flex-[1_1_12rem] rounded-xl border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2.5 text-[16px] text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[14px]"
+                className="min-w-0 flex-[1_1_12rem] rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2.5 text-[16px] text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[14px]"
               />
-              <button type="submit" disabled={!nameOk || busy !== null} className="btn-sky is-solid pill shrink-0 px-4 py-2 text-[13px] disabled:opacity-40">
+              <button type="submit" disabled={!nameOk || busy !== null} className="btn-primary shrink-0 text-[13px] disabled:opacity-40">
                 {busy === "new" ? tf.moving : tf.createAndMove}
               </button>
             </div>
@@ -165,7 +165,7 @@ export function MoveSheet({
               // After the input exists.
               setTimeout(() => nameInput.current?.focus(), 0);
             }}
-            className="press flex w-full items-center gap-3 rounded-2xl border border-dashed border-[var(--color-border)] px-3.5 py-3 text-left text-[14px] font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)]"
+            className="press flex w-full items-center gap-3 rounded-[var(--ns-r-key)] border border-dashed border-[var(--color-border)] px-3.5 py-3 text-left text-[14px] font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)]"
           >
             <FolderPlus className="size-5 shrink-0 text-[var(--color-muted)]" aria-hidden />
             {tf.newAndMove}

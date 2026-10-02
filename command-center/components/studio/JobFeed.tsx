@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowUpRight, AudioLines, Check, Clapperboard, Copy, CopyPlus, ExternalLink, FolderOpen, ImagePlus, Play, ScanText, TriangleAlert, type LucideIcon } from "lucide-react";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Timecode } from "@/components/ui/Timecode";
+import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
 import { BeforeAfter } from "@/components/studio/BeforeAfter";
 import { TOOL_ICONS } from "@/components/studio/toolIcons";
 import { SendToEditor, isSendKind } from "@/components/editor/SendToEditor";
@@ -22,6 +23,7 @@ import {
   compareSources,
   creditsLine,
   describeResult,
+  edgeFacts,
   failureReason,
   isActiveStatus,
   isDubLanguage,
@@ -225,8 +227,8 @@ export function JobFeed({
   const library = useLibraryImages(orgId, { enabled: libraryKey !== "", key: libraryKey });
   const pictures = new Map(library.images.map((i) => [i.id, i.viewUrl ?? i.thumbUrl]));
   const chip = "studio-chip tap";
-  // Round icon buttons on the picture: named for screen readers and on hover.
-  const onMedia = "studio-on-media tap-icon press grid size-9 place-items-center rounded-full";
+  // Square keys on the picture: named for screen readers and on hover; 44px on a phone.
+  const onMedia = "studio-on-media tap-icon press grid size-9 place-items-center rounded-[var(--ns-r-key)] max-sm:size-11";
 
   // The one shown large on a monitor or a light table: the one picked, else the newest.
   const featured = variant === "monitor" || variant === "table" ? (shown.find((j) => j.id === featuredId) ?? shown[0] ?? null) : null;
@@ -307,7 +309,7 @@ export function JobFeed({
         <>
           {/* eslint-disable-next-line @next/next/no-img-element -- see above */}
           <img src={preview.thumbUrl} alt={alt} loading="lazy" className="h-full w-full object-cover" />
-          <span aria-hidden className="studio-on-media absolute left-1/2 top-1/2 grid size-10 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full">
+          <span aria-hidden className="studio-on-media absolute left-1/2 top-1/2 grid size-10 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-[var(--ns-r-key)]">
             <Play className="size-4" />
           </span>
         </>
@@ -479,32 +481,34 @@ export function JobFeed({
     );
   }
 
+  /** A frame on the proof sheet (components/ui/ContactSheet): the picture on film, its facts printed on the edge. */
   function card(job: StudioJob): ReactNode {
     const sv = statusView(t, job.status);
     const { prompt, before, after } = look(job);
     return (
-      <li
+      <Frame
         key={job.id}
-        className="studio-card mb-3 flex break-inside-avoid flex-col overflow-hidden rounded-[var(--ns-r-chip)] border border-[var(--color-border)] bg-[var(--color-panel)]"
+        className="studio-card"
         data-status={job.status}
-      >
-        <div className="relative overflow-hidden bg-[var(--studio-field)]" style={before && after ? undefined : { aspectRatio: cardAspect(job) }}>
-          {media(job)}
-          {resultActions(job)}
-        </div>
-
-        <div className="flex flex-col gap-1.5 p-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="min-w-0 truncate text-[12px] font-semibold text-[var(--color-fg)]">{kindLabel(t, job.capability)}</span>
-            <span className="ml-auto shrink-0">
-              <StatusLamp tone={sv.tone} label={sv.label} live={sv.live} />
-            </span>
+        edge={edgeFacts(t, job, locale)}
+        aspect={before && after ? undefined : cardAspect(job)}
+        body={
+          <div className="flex flex-col gap-1.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 truncate text-[12px] font-semibold text-[var(--color-fg)]">{kindLabel(t, job.capability)}</span>
+              <span className="ml-auto shrink-0">
+                <StatusLamp tone={sv.tone} label={sv.label} live={sv.live} />
+              </span>
+            </div>
+            {prompt && <p className="studio-clamp-2 break-words text-[13px] leading-snug text-[var(--color-fg)]">{truncate(prompt)}</p>}
+            {descriptionBlock(job)}
+            {facts(job)}
           </div>
-          {prompt && <p className="studio-clamp-2 break-words text-[13px] leading-snug text-[var(--color-fg)]">{truncate(prompt)}</p>}
-          {descriptionBlock(job)}
-          {facts(job)}
-        </div>
-      </li>
+        }
+      >
+        {media(job)}
+        {resultActions(job)}
+      </Frame>
     );
   }
 
@@ -665,11 +669,13 @@ export function JobFeed({
                 ))}
               </div>
             ) : (
-              <div className="columns-2 gap-3 @lg:columns-3 @4xl:columns-4" aria-busy="true" aria-label={t.gen.feedLoading}>
+              <ContactSheet label={t.gen.feedLoading} min={200} ragged>
                 {["16 / 9", "1 / 1", "9 / 16", "16 / 9"].map((a, i) => (
-                  <div key={i} className="skeleton mb-3 w-full rounded-[var(--ns-r-chip)]" style={{ aspectRatio: a }} />
+                  <Frame key={i} aspect={a} aria-busy="true">
+                    <div className="skeleton h-full w-full rounded-none" />
+                  </Frame>
                 ))}
-              </div>
+              </ContactSheet>
             ))}
           {empty && (
             <div className="desk-empty" data-variant={variant}>
@@ -680,7 +686,11 @@ export function JobFeed({
               <p className="max-w-[52ch] text-[13px] text-[var(--color-muted)]">{emptyBody ?? t.gen.empty}</p>
             </div>
           )}
-          {shown.length > 0 && variant === "sheet" && <ul className="columns-2 gap-3 @lg:columns-3 @4xl:columns-4">{shown.map(card)}</ul>}
+          {shown.length > 0 && variant === "sheet" && (
+            <ContactSheet label={heading} min={200} ragged>
+              {shown.map(card)}
+            </ContactSheet>
+          )}
           {shown.length > 0 && variant === "monitor" && (
             <>
               {stage(featured)}
@@ -694,7 +704,11 @@ export function JobFeed({
           {shown.length > 0 && variant === "table" && (
             <>
               {stage(featured)}
-              {rest.length > 0 && <ul className="columns-2 gap-3 @lg:columns-3 @4xl:columns-4">{rest.map(card)}</ul>}
+              {rest.length > 0 && (
+                <ContactSheet label={heading} min={200} ragged>
+                  {rest.map(card)}
+                </ContactSheet>
+              )}
             </>
           )}
           {shown.length > 0 && variant === "takes" && <ol className="flex flex-col gap-2">{shown.map((j, i) => take(j, shown.length - i))}</ol>}

@@ -85,7 +85,7 @@ export function GrantCreditsForm({ orgId, orgName }: { orgId: string; orgName: s
           type="button"
           onClick={grant}
           disabled={busy || amount.trim() === ""}
-          className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
+          className="btn-primary text-[13px] disabled:opacity-40"
         >
           {busy ? t.credits.granting : t.credits.grant}
         </button>

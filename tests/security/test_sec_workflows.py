@@ -651,3 +651,205 @@ def test_a_member_cannot_make_a_step_start_from_a_file_it_did_not_make(db):
     assert err(lambda: db.save(o.editor, o.org, "Forged", INPUTS, [STEP_IMG, forged]))[0] == "NS400"
     forged = {**STEP_ANIMATE, "params": {"source_asset_id": {"$job": str(uuid.uuid4())}, "duration_s": 5}}
     assert err(lambda: db.save(o.editor, o.org, "Forged", INPUTS, [STEP_IMG, forged]))[0] == "NS400"
+
+
+# ── LENS-2 (BR-L-005, BR-L-006): a step's key, the lock order, the confirmer ──
+
+I2V_PRICE = "update public.credit_prices set credits_per_unit = %s where unit = 'model_vid_i2v_second'"
+
+
+def test_a_later_step_never_adopts_a_job_made_beforehand_under_its_key(db):
+    # BR-L-005: run ids and step params are readable by every member, and a key
+    # replay answers before the price check. A job planted under 'wf:<run>:1'
+    # (here while the price was higher) must not become step 2.
+    o = db.new_org()
+    wf, run, out = start_ok(db, o)
+    s0 = db.steps(run)[0][2]
+    db.worker(s0, charge=4)
+    made = db.su("select result_asset_ids[1]::text from public.creative_jobs where id = %s", [s0])[0][0]
+    db.su(I2V_PRICE, [3])
+    try:
+        planted = db.one("authenticated", o.owner,
+                         "select public.create_creative_job(%s, 'i2v', 'vid-i2v', %s::jsonb, 'exact', %s, 15)",
+                         [o.org, json.dumps({"source_asset_id": made, "duration_s": 5}), f"wf:{run}:1"])
+    finally:
+        db.su(I2V_PRICE, [2])
+    pj = planted["job"]["id"]
+    assert planted["replay"] is False
+    assert db.su("select quoted_credits from public.creative_jobs where id = %s", [pj])[0][0] == 15
+    out = db.advance(o.editor, run)
+    assert out["steps"][1]["job_id"] is None
+    assert out["steps"][1]["status"] == "failed" and out["steps"][1]["error_code"] == "idempotency_conflict"
+    assert [s["status"] for s in out["steps"]] == ["completed", "failed", "skipped"]
+    assert out["run"]["status"] == "failed" and out["run"]["charged_credits"] == 4
+    # The planted job is its maker's own: finished at its own price it never reaches the run,
+    # and the run can still be read, advanced and cancelled (no CHECK jam).
+    db.worker(pj, charge=15)
+    assert db.advance(o.editor, run)["run"]["charged_credits"] == 4
+    assert db.cancel(o.editor, run)["run"]["status"] == "failed"
+    assert db.su("select count(*) from public.workflow_run_steps where job_id = %s", [pj])[0][0] == 0
+
+
+def test_run_now_refuses_a_first_step_whose_key_was_taken_beforehand(db):
+    # The same for step 1: Run now raises the refusal and stores no run (nothing held by the run).
+    o = db.new_org()
+    wf = flow(db, o)
+    run = str(uuid.uuid4())
+    db.one("authenticated", o.owner,
+           "select public.create_creative_job(%s, 't2i', 'img-a', %s::jsonb, 'exact', %s, 4)",
+           [o.org, json.dumps({"prompt": VALUES["idea"]}), f"wf:{run}:0"])
+    assert err(lambda: db.start(o.editor, run, wf["id"], wf["version"], VALUES, TOTAL)) == (
+        "NS409", "idempotency_conflict")
+    assert db.su("select count(*) from public.workflow_runs where id = %s", [run])[0][0] == 0
+    assert db.holds(o.org) == (1, 4)  # only the planted job's own hold
+
+
+def _wait_for_lock_wait(db, fn_name, timeout=10.0):
+    import time
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        n = db.su("select count(*) from pg_stat_activity where wait_event_type = 'Lock' and query like %s",
+                  [f"%{fn_name}%"])[0][0]
+        if n:
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def _account_is_locked(db, org):
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        try:
+            c.execute("select 1 from public.credit_accounts where org_id = %s for update nowait", [org])
+            return False
+        except psycopg.errors.LockNotAvailable:
+            return True
+        finally:
+            c.rollback()
+
+
+@pytest.mark.parametrize("call", ["advance", "cancel"])
+def test_advance_and_cancel_take_the_account_before_the_run_as_run_now_does(db, call):
+    # BR-L-005 (lock order): Run now's replay takes the account, then the run. If advance or
+    # cancel took the run first and the account second, the two could deadlock. Hold the run
+    # row from outside: the call must already hold the account while it waits for the run.
+    o = db.new_org()
+    wf, run, out = start_ok(db, o)
+    db.worker(db.steps(run)[0][2], charge=4)
+    holder = psycopg.connect(db.dsn, autocommit=False)
+    holder.execute("select 1 from public.workflow_runs where id = %s for update", [run])
+    result, errors = [], []
+
+    def go():
+        try:
+            result.append(getattr(db, call)(o.editor, run))
+        except psycopg.Error as e:  # pragma: no cover - would be a bug
+            errors.append(e)
+
+    t = threading.Thread(target=go)
+    t.start()
+    try:
+        assert _wait_for_lock_wait(db, f"{call}_workflow_run"), "the call never waited for the run row"
+        assert _account_is_locked(db, o.org), "the call waits for the run without holding the account"
+    finally:
+        holder.rollback()
+        holder.close()
+        t.join(timeout=30)
+    assert not errors and len(result) == 1
+
+
+def test_run_now_replayed_while_the_page_advances_never_fails_the_run(db):
+    # The race itself (best effort: many rounds of a re-sent Run now against the page's advance).
+    for _ in range(8):
+        o = db.new_org()  # one run per organization: the plan's parallel-run limit is not under test
+        wf, run, _ = start_ok(db, o)
+        db.worker(db.steps(run)[0][2], charge=4)
+        errors = []
+        barrier = threading.Barrier(2)
+
+        def replay():
+            barrier.wait()
+            try:
+                db.start(o.editor, run, wf["id"], wf["version"], VALUES, TOTAL)
+            except psycopg.Error as e:
+                errors.append(e)
+
+        def advance():
+            barrier.wait()
+            try:
+                db.advance(o.editor, run)
+            except psycopg.Error as e:
+                errors.append(e)
+
+        ts = [threading.Thread(target=replay), threading.Thread(target=advance)]
+        [t.start() for t in ts]
+        [t.join(timeout=30) for t in ts]
+        assert not errors, [e.sqlstate for e in errors]
+        steps = db.steps(run)
+        assert [s[1] for s in steps] == ["completed", "running", "pending"], steps
+        assert db.su("select status from public.workflow_runs where id = %s", [run])[0][0] == "running"
+
+
+def test_a_transient_error_leaves_the_step_waiting_instead_of_failing_a_paid_run(db):
+    # BR-L-005 (handler): a deadlock victim or serialization failure (SQLSTATE class 40) while a
+    # step starts is raised, so nothing is committed and the next poll tries again. It must not
+    # turn into a failed step and a failed run after earlier steps were already charged.
+    o = db.new_org()
+    wf, run, out = start_ok(db, o)
+    db.worker(db.steps(run)[0][2], charge=4)
+    db.su("create or replace function public.lab_transient() returns trigger language plpgsql as $$ "
+          "begin raise exception 'lab: could not serialize access' using errcode = '40001'; end $$")
+    db.su("create trigger lab_transient before insert on public.creative_jobs "
+          "for each row execute function public.lab_transient()")
+    try:
+        assert err(lambda: db.advance(o.editor, run))[0] == "40001"
+    finally:
+        db.su("drop trigger lab_transient on public.creative_jobs")
+        db.su("drop function public.lab_transient()")
+    # The whole poll was rolled back (step 1's settling included): nothing failed, nothing new held.
+    assert [s[1] for s in db.steps(run)] == ["running", "pending", "pending"]
+    assert db.su("select status from public.workflow_runs where id = %s", [run])[0][0] == "running"
+    assert db.holds(o.org) == (0, 0) and db.jobs(o.org) == 1
+    out = db.advance(o.editor, run)
+    assert [s["status"] for s in out["steps"]] == ["completed", "running", "pending"]
+    assert db.holds(o.org) == (1, 10)
+
+
+@pytest.mark.parametrize("change", ["demoted", "removed"])
+def test_a_later_step_does_not_start_once_its_confirmer_may_no_longer_spend(db, change):
+    # BR-L-006: the confirmation belongs to the member who pressed Run now. Once they may no
+    # longer run things in this organization, a page someone else opens starts nothing more.
+    o = db.new_org()
+    wf, run, out = start_ok(db, o)  # confirmed by o.editor
+    db.worker(db.steps(run)[0][2], charge=4)
+    if change == "demoted":
+        db.su("update public.org_members set role = 'viewer' where org_id = %s and user_id = %s", [o.org, o.editor])
+    else:
+        db.su("delete from public.org_members where org_id = %s and user_id = %s", [o.org, o.editor])
+    out = db.advance(o.owner, run)
+    assert out["steps"][1]["job_id"] is None
+    assert out["steps"][1]["status"] == "failed" and out["steps"][1]["error_code"] == "confirmation_revoked"
+    assert out["run"]["status"] == "failed" and out["run"]["charged_credits"] == 4
+    assert db.holds(o.org) == (0, 0) and db.jobs(o.org) == 1
+
+
+def test_a_confirmer_who_may_still_spend_lets_another_member_carry_the_run_on(db):
+    o = db.new_org()
+    wf, run, out = start_ok(db, o)
+    db.worker(db.steps(run)[0][2], charge=4)
+    # Promoted, not demoted: still allowed.
+    db.su("update public.org_members set role = 'admin' where org_id = %s and user_id = %s", [o.org, o.editor])
+    out = db.advance(o.owner, run)
+    assert [s["status"] for s in out["steps"]] == ["completed", "running", "pending"]
+    assert db.holds(o.org) == (1, 10)
+
+
+def test_a_confirmer_in_another_organization_only_does_not_count(db):
+    # Membership elsewhere is not membership here: the check reads the run's own organization.
+    a, b = db.new_org(), db.new_org()
+    wf, run, out = start_ok(db, a)
+    db.worker(db.steps(run)[0][2], charge=4)
+    db.su("delete from public.org_members where org_id = %s and user_id = %s", [a.org, a.editor])
+    db.su("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, 'x@x.io', 'owner')",
+          [b.org, a.editor])
+    out = db.advance(a.owner, run)
+    assert out["steps"][1]["error_code"] == "confirmation_revoked" and db.jobs(a.org) == 1

@@ -228,7 +228,7 @@ export function PipelineRouting({
           aria-checked={autopilot}
           disabled={!githubConfigured || state === "saving"}
           onClick={toggleAutopilot}
-          className="btn-sky pill shrink-0 px-4 py-2 text-[12px] disabled:opacity-50"
+          className="btn-sky rounded-[var(--ns-r-key)] shrink-0 px-4 py-2 text-[12px] disabled:opacity-50"
           style={{
             borderColor: autopilot ? "var(--color-ok)" : "var(--color-border)",
             color: autopilot ? "var(--color-ok)" : "var(--color-muted)",

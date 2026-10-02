@@ -160,13 +160,13 @@ export function Storyboard({
           return (
           <li
             key={s.index}
-            className={`flex gap-3 rounded-[14px] border bg-[var(--color-panel-2)] p-3 ${
+            className={`flex gap-3 rounded-[var(--ns-r-panel)] border bg-[var(--color-panel-2)] p-3 ${
               worst ? "border-[var(--color-warn)]" : "border-[var(--color-border)]"
             }`}
           >
             <div className="flex shrink-0 flex-col items-center gap-1">
               <span
-                className="mono flex size-7 items-center justify-center rounded-full border border-[var(--color-border)] text-[12px] text-[var(--color-primary)]"
+                className="mono flex size-7 items-center justify-center rounded-[var(--ns-r-chip)] border border-[var(--color-border)] text-[12px] text-[var(--color-primary)]"
                 aria-hidden
               >
                 {s.index}
@@ -182,7 +182,7 @@ export function Storyboard({
                     {s.name ?? `${labels.scene} ${s.index}`}
                   </span>
                   {s.sceneType && (
-                    <span className="pill border border-[var(--color-border)] px-2 py-0.5 text-[9px] uppercase tracking-[0.14em] text-[var(--color-primary)]">
+                    <span className="rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-2 py-0.5 text-[9px] uppercase tracking-[0.14em] text-[var(--color-primary)]">
                       {s.sceneType}
                     </span>
                   )}
@@ -213,7 +213,7 @@ export function Storyboard({
                           {fmt(rl.perMin, { v: pointsText(r.dropPerMin) })}
                         </span>
                         {worst && (
-                          <span className="pill border border-[var(--color-warn)] px-2 py-0.5 text-[9px] uppercase tracking-[0.14em] text-[var(--color-warn)]">
+                          <span className="rounded-[var(--ns-r-chip)] border border-[var(--color-warn)] px-2 py-0.5 text-[9px] uppercase tracking-[0.14em] text-[var(--color-warn)]">
                             {fmt(rl.worst, { n: r.rank ?? "" })}
                           </span>
                         )}
@@ -223,9 +223,9 @@ export function Storyboard({
                     )}
                   </div>
                   {bar !== null && (
-                    <div className="h-1 w-full overflow-hidden rounded-full bg-[var(--color-border)]" aria-hidden>
+                    <div className="h-1 w-full overflow-hidden rounded-[var(--ns-r-frame)] bg-[var(--color-border)]" aria-hidden>
                       <div
-                        className="h-full rounded-full"
+                        className="h-full rounded-[var(--ns-r-frame)]"
                         style={{
                           width: `${bar}%`,
                           background: worst ? "var(--color-warn)" : "var(--color-muted)",
@@ -252,7 +252,7 @@ export function Storyboard({
                   {s.keywords.map((k) => (
                     <span
                       key={k}
-                      className="pill border border-[var(--color-border)] px-2 py-0.5 text-[11px] text-[var(--color-muted)]"
+                      className="rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-2 py-0.5 text-[11px] text-[var(--color-muted)]"
                     >
                       {k}
                     </span>
@@ -268,7 +268,7 @@ export function Storyboard({
                     {s.claims.map((c, i) => (
                       <li key={c.id || i} className="flex items-start gap-2 text-[12px] leading-snug">
                         <span
-                          className={`pill shrink-0 border border-[var(--color-border)] px-2 py-0.5 text-[9px] uppercase tracking-[0.12em] ${STATUS_TONE[c.status]}`}
+                          className={`rounded-[var(--ns-r-chip)] shrink-0 border border-[var(--color-border)] px-2 py-0.5 text-[9px] uppercase tracking-[0.12em] ${STATUS_TONE[c.status]}`}
                         >
                           {labels.claimStatus[c.status]}
                         </span>

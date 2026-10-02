@@ -26,6 +26,8 @@ import { FolderRail } from "./FolderRail";
 import { FolderMenu } from "./FolderMenu";
 import { DeleteFolderDialog, FolderNameDialog } from "./FolderDialogs";
 import { MoveSheet } from "./MoveSheet";
+import { Chip, ChipRow } from "@/components/ui/Chip";
+import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
 import { createFolder, deleteFolder, moveAssets, renameFolder } from "./folderApi";
 import {
   DEFAULT_VIEW,
@@ -62,10 +64,6 @@ type ErrorWord = keyof ReturnType<typeof useI18n>["t"]["media"]["errors"];
 
 /** Which folder dialog is open, if any. */
 type Dialog = { kind: "create" } | { kind: "rename" } | { kind: "delete" } | { kind: "move" } | null;
-
-/** The small chip laid over a thumbnail (kind, duration): legible on any picture, in both themes. */
-const BADGE =
-  "inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--color-panel)_86%,transparent)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-fg)] backdrop-blur-sm";
 
 /**
  * The library's interactive half: upload (ticket -> streamed PUT with
@@ -525,7 +523,7 @@ export function MediaLibrary({
     <label
       htmlFor={inputId}
       aria-disabled={busy}
-      className={`btn-sky is-solid pill inline-flex items-center gap-2 ${large ? "px-6 py-3 text-[14px]" : "px-5 py-2.5 text-[13px]"} ${
+      className={`btn-primary ${large ? "min-h-12 px-6" : "px-5"} ${
         busy ? "pointer-events-none opacity-40" : "cursor-pointer"
       }`}
     >
@@ -568,7 +566,7 @@ export function MediaLibrary({
             <span className="text-[13px]">{storageLine}</span>
             {usedPct !== null && (
               <div
-                className="h-1.5 w-56 max-w-full overflow-hidden rounded-full bg-[var(--color-panel-2)]"
+                className="h-1.5 w-56 max-w-full overflow-hidden rounded-[var(--ns-r-frame)] bg-[var(--color-panel-2)]"
                 role="progressbar"
                 aria-valuemin={0}
                 aria-valuemax={100}
@@ -597,7 +595,7 @@ export function MediaLibrary({
         <section className="panel flex flex-col items-center gap-5 px-6 py-14 text-center" data-library-empty>
           <span
             aria-hidden
-            className="grid size-14 place-items-center rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
+            className="grid size-14 place-items-center rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
           >
             <Images className="size-6" strokeWidth={1.5} />
           </span>
@@ -681,11 +679,11 @@ export function MediaLibrary({
                         type="button"
                         disabled={bulkBusy}
                         onClick={() => void removeSelected()}
-                        className="btn-sky is-solid pill px-4 py-2 text-[13px] disabled:opacity-40"
+                        className="btn-primary disabled:opacity-40"
                       >
                         {bulkBusy ? tm.deleting : fmt(tm.deleteSelected, { n: selected.size })}
                       </button>
-                      <button type="button" disabled={bulkBusy} onClick={() => setBulkConfirm(false)} className="btn-sky is-quiet pill px-4 py-2 text-[13px]">
+                      <button type="button" disabled={bulkBusy} onClick={() => setBulkConfirm(false)} className="btn-quiet">
                         {tm.cancel}
                       </button>
                     </>
@@ -700,7 +698,7 @@ export function MediaLibrary({
                             setNotice(null);
                             setDialog({ kind: "move" });
                           }}
-                          className="btn-sky is-solid pill inline-flex items-center gap-2 px-4 py-2 text-[13px] disabled:opacity-40"
+                          className="btn-primary disabled:opacity-40"
                         >
                           <FolderInput className="size-4" aria-hidden />
                           {tf.moveTo}
@@ -710,14 +708,14 @@ export function MediaLibrary({
                         type="button"
                         disabled={selected.size === 0}
                         onClick={() => setBulkConfirm(true)}
-                        className="btn-sky is-quiet pill px-4 py-2 text-[13px] hover:text-[var(--color-fail)]! disabled:opacity-40"
+                        className="btn-quiet hover:text-[var(--color-fail)]! disabled:opacity-40"
                       >
                         {fmt(tm.deleteSelected, { n: selected.size })}
                       </button>
                     </>
                   )}
                   {!bulkConfirm && (
-                    <button type="button" onClick={stopSelecting} className="btn-sky ghost pill px-4 py-2 text-[13px]">
+                    <button type="button" onClick={stopSelecting} className="btn-quiet">
                       {tm.selectDone}
                     </button>
                   )}
@@ -725,27 +723,13 @@ export function MediaLibrary({
               </div>
             ) : null}
 
-            <div role="group" aria-label={tm.filterLabel} className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
-              {LIBRARY_FILTERS.map((f) => {
-                const on = view.filter === f;
-                return (
-                  <button
-                    key={f}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => setFilter(f)}
-                    className={`press pill inline-flex shrink-0 items-center gap-2 border px-4 py-2 text-[13px] font-medium ${
-                      on
-                        ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-on-accent)]"
-                        : "border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-fg)] hover:border-[var(--color-primary)]"
-                    }`}
-                  >
-                    {tm.filters[f]}
-                    <span className={`mono text-[11px] ${on ? "opacity-80" : "text-[var(--color-muted)]"}`}>{counts[f]}</span>
-                  </button>
-                );
-              })}
-            </div>
+            <ChipRow label={tm.filterLabel}>
+              {LIBRARY_FILTERS.map((f) => (
+                <Chip key={f} pressed={view.filter === f} count={counts[f]} onClick={() => setFilter(f)}>
+                  {tm.filters[f]}
+                </Chip>
+              ))}
+            </ChipRow>
 
             <div className="flex flex-wrap items-center gap-2">
               <label className="relative min-w-0 flex-[1_1_12rem]">
@@ -761,7 +745,7 @@ export function MediaLibrary({
                   placeholder={tm.search}
                   enterKeyHint="search"
                   maxLength={SEARCH_MAX * 2}
-                  className="pill w-full border border-[var(--color-border)] bg-[var(--color-panel)] py-2 pl-9 pr-3 text-[16px] text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[13px]"
+                  className="min-h-9 w-full rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] py-2 pl-9 pr-3 text-[16px] max-sm:min-h-11 pointer-coarse:min-h-11 text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[13px]"
                 />
               </label>
               <label className="shrink-0">
@@ -769,7 +753,7 @@ export function MediaLibrary({
                 <select
                   value={view.sort}
                   onChange={(e) => setView((v) => ({ ...v, sort: e.target.value as LibrarySort }))}
-                  className="pill border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
+                  className="min-h-9 rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] px-3 py-2 text-[16px] max-sm:min-h-11 pointer-coarse:min-h-11 text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
                 >
                   <option value="newest">{tm.sortNewest}</option>
                   <option value="oldest">{tm.sortOldest}</option>
@@ -783,7 +767,7 @@ export function MediaLibrary({
                     setNotice(null);
                     setSelecting(true);
                   }}
-                  className="btn-sky is-quiet pill shrink-0 px-4 py-2 text-[13px]"
+                  className="btn-quiet shrink-0"
                 >
                   {tm.select}
                 </button>
@@ -805,7 +789,7 @@ export function MediaLibrary({
                 <p className="m-0 max-w-[46ch] text-[13px] leading-relaxed text-[var(--color-muted)]">
                   {canEditFolders ? tf.emptyFolder : tf.emptyFolderReadOnly}
                 </p>
-                <button type="button" onClick={() => chooseFolder(null)} className="btn-sky ghost pill px-4 py-2 text-[13px]">
+                <button type="button" onClick={() => chooseFolder(null)} className="btn-quiet">
                   {tf.allFiles}
                 </button>
               </div>
@@ -818,105 +802,99 @@ export function MediaLibrary({
               <div className="panel flex flex-col items-center gap-3 px-6 py-10 text-center" data-library-no-match>
                 <p className="m-0 text-[13px] text-[var(--color-muted)]">{switching ? tm.loading : tm.noMatches}</p>
                 {isNarrowed(view) && !switching && (
-                  <button type="button" onClick={() => setView(DEFAULT_VIEW)} className="btn-sky ghost pill px-4 py-2 text-[13px]">
+                  <button type="button" onClick={() => setView(DEFAULT_VIEW)} className="btn-quiet">
                     {tm.showAll}
                   </button>
                 )}
               </div>
             ) : (
-              <ul
-                className={`m-0 grid list-none grid-cols-2 gap-x-3 gap-y-4 p-0 transition-opacity sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 ${
-                  switching ? "opacity-60" : ""
-                }`}
-              >
-                {progress && (
-                  <li className="flex min-w-0 flex-col gap-1.5" data-upload-local>
-                    <div className="flex aspect-square flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[var(--color-primary)] bg-[var(--color-panel-2)] p-4 text-center">
-                      <Upload className="size-6 text-[var(--color-primary)]" strokeWidth={1.5} aria-hidden />
-                      <span className="text-[12px] text-[var(--color-fg)]">{fmt(tm.uploadingCard, { pct: progress.pct })}</span>
-                      <div
-                        className="h-1 w-full max-w-[8rem] overflow-hidden rounded-full bg-[var(--color-border)]"
-                        role="progressbar"
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={progress.pct}
-                        aria-label={progress.name}
-                      >
-                        <div className="h-full bg-[var(--color-primary)] transition-[width]" style={{ width: `${progress.pct}%` }} />
+              <div className={`transition-opacity ${switching ? "opacity-60" : ""}`}>
+                <ContactSheet label={tm.title} min={150}>
+                  {progress && (
+                    <Frame aspect="1 / 1" data-upload-local body={<span className="block truncate text-[13px]" title={progress.name}>{progress.name}</span>}>
+                      <div className="flex h-full w-full flex-col items-center justify-center gap-3 border border-dashed border-[var(--ns-amber)] p-4 text-center text-[var(--ns-on-film)]">
+                        <Upload className="size-6 text-[var(--ns-amber)]" strokeWidth={1.5} aria-hidden />
+                        <span className="text-[12px]">{fmt(tm.uploadingCard, { pct: progress.pct })}</span>
+                        <div
+                          className="h-1 w-full max-w-[8rem] overflow-hidden rounded-[1px] bg-[color-mix(in_srgb,var(--ns-on-film)_25%,transparent)]"
+                          role="progressbar"
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={progress.pct}
+                          aria-label={progress.name}
+                        >
+                          <div className="h-full bg-[var(--ns-amber)] transition-[width]" style={{ width: `${progress.pct}%` }} />
+                        </div>
                       </div>
-                    </div>
-                    <span className="truncate text-[13px]" title={progress.name}>
-                      {progress.name}
-                    </span>
-                  </li>
-                )}
-                {pending.map((u) => (
-                  <UploadCard key={u.id} upload={u} checkingDown={checkingDown} />
-                ))}
-                {shown.map((a) => {
-                  const Icon = KIND_ICON[a.kind];
-                  const name = a.name ?? tm.kinds[a.kind];
-                  const isSelected = selected.has(a.id);
-                  const duration = a.kind === "video" || a.kind === "audio" ? formatDuration(a.durationS) : "";
-                  // In All files a tile says which folder it is in (its size is in the viewer).
-                  const where = folder === null ? folderName(a.folderId) : null;
-                  const meta = [formatMediaBytes(a.bytes), a.createdAt ? dateFmt.format(new Date(a.createdAt)) : ""].filter(Boolean);
-                  return (
-                    <li key={a.id} className="min-w-0" data-asset-kind={a.kind}>
-                      <button
-                        type="button"
-                        ref={(el) => {
-                          if (el) tiles.current.set(a.id, el);
-                          else tiles.current.delete(a.id);
-                        }}
-                        onClick={(e) => (selecting ? toggleSelected(a.id) : openViewer(a, e.currentTarget))}
-                        aria-pressed={selecting ? isSelected : undefined}
-                        aria-label={fmt(selecting ? tm.selectItem : tm.openItem, { name })}
-                        className="press group flex w-full min-w-0 flex-col gap-1.5 rounded-2xl text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg)]"
+                    </Frame>
+                  )}
+                  {pending.map((u) => (
+                    <UploadCard key={u.id} upload={u} checkingDown={checkingDown} />
+                  ))}
+                  {shown.map((a) => {
+                    const Icon = KIND_ICON[a.kind];
+                    const name = a.name ?? tm.kinds[a.kind];
+                    const isSelected = selected.has(a.id);
+                    const duration = a.kind === "video" || a.kind === "audio" ? formatDuration(a.durationS) : "";
+                    // In All files a tile says which folder it is in.
+                    const where = folder === null ? folderName(a.folderId) : null;
+                    const date = a.createdAt ? dateFmt.format(new Date(a.createdAt)) : "";
+                    return (
+                      <Frame
+                        key={a.id}
+                        data-asset-kind={a.kind}
+                        aspect="1 / 1"
+                        selected={isSelected}
+                        edge={[tm.kinds[a.kind], duration, formatMediaBytes(a.bytes)]}
+                        body={
+                          <>
+                            <span className="block truncate text-[13px] text-[var(--color-fg)]" title={name}>
+                              {name}
+                            </span>
+                            <span className="block truncate text-[12px] text-[var(--color-muted)]">
+                              {[where, date].filter(Boolean).join(" · ")}
+                            </span>
+                          </>
+                        }
                       >
-                        <span
-                          className={`relative block aspect-square w-full overflow-hidden rounded-2xl border bg-[var(--color-panel-2)] transition-colors ${
-                            isSelected ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]" : "border-[var(--color-border)] group-hover:border-[var(--color-primary)]"
-                          }`}
+                        <button
+                          type="button"
+                          ref={(el) => {
+                            if (el) tiles.current.set(a.id, el);
+                            else tiles.current.delete(a.id);
+                          }}
+                          onClick={(e) => (selecting ? toggleSelected(a.id) : openViewer(a, e.currentTarget))}
+                          aria-pressed={selecting ? isSelected : undefined}
+                          aria-label={fmt(selecting ? tm.selectItem : tm.openItem, { name })}
+                          className="press absolute inset-0 block h-full w-full text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--ns-cue)]"
                         >
                           {a.thumbUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element -- a signed, short-lived same-origin link; next/image would re-host it
                             <img src={a.thumbUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
                           ) : (
-                            <span className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-[var(--color-muted)]">
+                            <span className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-[var(--ns-on-film)] opacity-70">
                               <Icon className="size-7" strokeWidth={1.25} aria-hidden />
                               <span className="text-[11px]">{tm.noPreview}</span>
                             </span>
                           )}
-                          <span className={`absolute left-2 top-2 ${BADGE}`}>
-                            <Icon className="size-3" aria-hidden />
-                            {tm.kinds[a.kind]}
-                          </span>
-                          {duration && <span className={`mono absolute bottom-2 right-2 ${BADGE}`}>{duration}</span>}
                           {selecting && (
                             <span
                               aria-hidden
-                              className={`absolute right-2 top-2 grid size-6 place-items-center rounded-full border-2 ${
+                              className={`absolute right-2 top-2 grid size-6 place-items-center rounded-[var(--ns-r-chip)] border-2 ${
                                 isSelected
-                                  ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-on-accent)]"
-                                  : "border-[var(--color-panel)] bg-[color-mix(in_srgb,var(--color-panel)_60%,transparent)]"
+                                  ? "border-[var(--ns-amber)] bg-[var(--ns-amber)] text-[var(--ns-film)]"
+                                  : "border-[var(--ns-on-film)] bg-[color-mix(in_srgb,var(--ns-film)_60%,transparent)]"
                               }`}
                             >
                               {isSelected && <Check className="size-3.5" strokeWidth={3} />}
                             </span>
                           )}
-                        </span>
-                        <span className="block truncate px-0.5 text-[13px] text-[var(--color-fg)]" title={name}>
-                          {name}
-                        </span>
-                        <span className="block truncate px-0.5 text-[12px] text-[var(--color-muted)]">
-                          {(where ? [where, meta[meta.length - 1]].filter(Boolean) : meta).join(" · ")}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+                        </button>
+                      </Frame>
+                    );
+                  })}
+                </ContactSheet>
+              </div>
             )}
           </section>
         </div>
@@ -986,28 +964,33 @@ function UploadCard({ upload: u, checkingDown }: { upload: MediaUpload; checking
   const failed = u.status === "rejected" || u.status === "expired";
   const paused = checkingDown && isWaitingForCheck(u);
   return (
-    <li className="flex min-w-0 flex-col gap-1.5" data-upload-status={paused ? "paused" : u.status}>
+    <Frame
+      aspect="1 / 1"
+      data-upload-status={paused ? "paused" : u.status}
+      edge={[formatMediaBytes(u.bytes)]}
+      body={
+        <span className="block truncate text-[13px]" title={u.name}>
+          {u.name}
+        </span>
+      }
+    >
       <div
-        className={`flex aspect-square flex-col items-center justify-center gap-2.5 rounded-2xl border border-dashed p-3 text-center ${
-          failed ? "border-[color-mix(in_srgb,var(--color-fail)_45%,var(--color-border))]" : "border-[var(--color-border)]"
-        } bg-[var(--color-panel-2)]`}
+        className={`flex h-full w-full flex-col items-center justify-center gap-2.5 border border-dashed p-3 text-center ${
+          failed ? "border-[var(--ns-tally)]" : "border-[color-mix(in_srgb,var(--ns-on-film)_40%,transparent)]"
+        }`}
       >
-        <Icon className={`size-6 ${failed ? "text-[var(--color-fail)]" : "text-[var(--color-muted)]"}`} strokeWidth={1.5} aria-hidden />
+        <Icon className={`size-6 ${failed ? "text-[var(--ns-tally)]" : "text-[var(--ns-on-film)]"}`} strokeWidth={1.5} aria-hidden />
         {paused ? (
           <StatusPill tone="warn" label={tm.status.paused} />
         ) : (
           <StatusPill tone={STATUS_TONE[u.status]} label={tm.status[u.status]} live={isUploadInFlight(u)} />
         )}
         {failed && (
-          <span className="line-clamp-4 text-[11px] leading-snug text-[var(--color-muted)]">
+          <span className="line-clamp-4 text-[11px] leading-snug text-[var(--ns-on-film)] opacity-80">
             {reason ? tm.reasons[reason] : tm.reasons.other}
           </span>
         )}
       </div>
-      <span className="block truncate px-0.5 text-[13px]" title={u.name}>
-        {u.name}
-      </span>
-      <span className="block px-0.5 text-[12px] text-[var(--color-muted)]">{formatMediaBytes(u.bytes)}</span>
-    </li>
+    </Frame>
   );
 }
