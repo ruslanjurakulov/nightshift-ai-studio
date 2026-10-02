@@ -29,7 +29,6 @@ import {
   discoverySpec,
   filtersFromQuery,
   fold,
-  frameAspect,
   fromAdminRow,
   fromSellableRow,
   inputKindsOf,
@@ -61,9 +60,12 @@ import {
   type Filters,
 } from "../lib/models-discovery";
 import { STUDIO_TOOLS } from "../lib/navigation";
+import { en } from "../lib/i18n/en";
+import { ru } from "../lib/i18n/ru";
+import { uz } from "../lib/i18n/uz";
 import { COMPOSER_CAPABILITIES, prefillFromQuery } from "../lib/creative/studio";
 import { CAPABILITIES } from "../lib/creative/registry";
-import { readCustomerModels, readOperatorModels } from "../lib/server/model-discovery";
+import { readCustomerModels, readOperatorModels, readPurchased } from "../lib/server/model-discovery";
 import { FAILED, supabaseStub, type StubResult } from "./helpers/supabaseStub";
 
 const ROOT = path.resolve(process.cwd(), "..");
@@ -163,6 +165,13 @@ describe("tasks", () => {
 
   it("keeps the registry's capability list in step with the server reader's", () => {
     expect([...REGISTRY_CAPABILITIES].sort()).toEqual([...CAPABILITIES].sort());
+  });
+
+  it("names the sfx task for what it makes — sound effects, not music — in all three languages", () => {
+    expect(en.modelDiscovery.tasks.sound).toBe("Sound effects");
+    expect(ru.modelDiscovery.tasks.sound).toBe("Звуковые эффекты");
+    expect(uz.modelDiscovery.tasks.sound).toBe("Tovush effektlari");
+    for (const d of [en, ru, uz]) expect(JSON.stringify(d.modelDiscovery.tasks)).not.toMatch(/music|музык|musiqa/i);
   });
 
   it("names a model's tasks in catalog order", () => {
@@ -499,13 +508,10 @@ describe("identity", () => {
     expect(providerName("newco")).toBe("newco");
   });
 
-  it("draws a frame in the model's own first shape, capped for tall ones", () => {
-    expect(frameAspect({ spec: discoverySpec(imageSpec) })).toBe("16 / 9");
-    expect(frameAspect({ spec: discoverySpec({ ...imageSpec, aspect_ratios: ["1:1", "21:9", "16:9"] }) })).toBe("21 / 9");
-    expect(frameAspect({ spec: discoverySpec(videoSpec) })).toBe("16 / 9");
-    expect(frameAspect({ spec: discoverySpec({ ...videoSpec, aspect_ratios: ["9:16"] }) })).toBe("9 / 16");
-    expect(frameAspect({ spec: discoverySpec({ output: "image" }) })).toBe("auto");
-    expect(frameAspect({ spec: discoverySpec(captionSpec) })).toBe("3 / 1");
+  it("prints the widest shape a model makes, and none when it lists none", () => {
+    expect(widestShape(discoverySpec(imageSpec))).toBe("16:9");
+    expect(widestShape(discoverySpec({ ...imageSpec, aspect_ratios: ["1:1", "21:9", "16:9"] }))).toBe("21:9");
+    expect(widestShape(discoverySpec({ ...videoSpec, aspect_ratios: ["9:16"] }))).toBe("9:16");
     expect(widestShape(discoverySpec({ aspect_ratios_by_capability: { t2v: ["9:16", "16:9"] } }))).toBe("16:9");
     expect(widestShape(discoverySpec({}))).toBeNull();
   });
@@ -538,6 +544,23 @@ describe("readCustomerModels", () => {
     expect(price.kind === "variants" && price.rows.find((r) => r.parts.join("_") === "1080p_audio")?.rate).toBeNull();
     expect(JSON.stringify(read)).not.toContain("secret note");
     expect(read.pricesRead).toBe(true);
+  });
+
+  it("blanks the provider and the raw entitlement before anything reaches a customer's browser", async () => {
+    const rows = [
+      sellable(),
+      sellable({ id: "img-z", provider: "openai", capabilities: ["t2i"], spec: imageSpec, entitlement: "models_image:premium" }),
+    ];
+    const db = supabaseStub((name) => (name === "sellable_models" ? { data: rows, error: null } : prices));
+    const read = await readCustomerModels(db as never);
+    expect(read.status).toBe("ok");
+    if (read.status !== "ok") return;
+    expect(read.models.map((m) => m.provider)).toEqual(["", ""]);
+    expect(read.models.every((m) => m.entitlement === null)).toBe(true);
+    const text = JSON.stringify(read);
+    for (const leak of ["bytedance", "openai", "models_image", "premium"]) expect(text).not.toContain(leak);
+    // The state the gate gave is kept: still not open, just without the key.
+    expect(read.models.find((m) => m.id === "img-z")?.reasons).toEqual([{ kind: "not_open", key: "", value: null }]);
   });
 
   it("drops a row the shared gate refuses (unverified, unpriced) even if the function returned it", async () => {
@@ -599,5 +622,77 @@ describe("readOperatorModels", () => {
   it("reports the database's refusal for a non-operator", async () => {
     const db = supabaseStub((name) => (name === "model_registry_admin" ? { data: null, error: { code: "42501" } } : { data: [], error: null }));
     expect((await readOperatorModels(db as never)).status).toBe("forbidden");
+  });
+});
+
+describe("readPurchased", () => {
+  // A scripted client that records every filter, so a read that ignores them fails.
+  function client(opts: { exempt?: unknown; exemptError?: boolean; rows?: unknown; error?: boolean }) {
+    const calls: { rpc: unknown[]; eq: [string, unknown][]; table: string | null } = { rpc: [], eq: [], table: null };
+    const q = {
+      select: () => q,
+      eq: (k: string, v: unknown) => {
+        calls.eq.push([k, v]);
+        return q;
+      },
+      limit: () => Promise.resolve(opts.error ? { data: null, error: { code: "XX000" } } : { data: opts.rows ?? [], error: null }),
+    };
+    return {
+      calls,
+      db: {
+        rpc: (fn: string, args: unknown) => {
+          calls.rpc.push([fn, args]);
+          return Promise.resolve(opts.exemptError ? { data: null, error: { code: "XX000" } } : { data: opts.exempt ?? false, error: null });
+        },
+        from: (t: string) => {
+          calls.table = t;
+          return q;
+        },
+      },
+    };
+  }
+
+  it("is true for an exempt organization, without reading its transactions", async () => {
+    const c = client({ exempt: true });
+    expect(await readPurchased(c.db as never, "org-1")).toBe(true);
+    expect(c.calls.rpc).toEqual([["credits_exempt", { p_org: "org-1" }]]);
+    expect(c.calls.table).toBeNull();
+  });
+
+  it("is true only when this organization has a purchase row, read with both filters", async () => {
+    const yes = client({ rows: [{ id: 7 }] });
+    expect(await readPurchased(yes.db as never, "org-1")).toBe(true);
+    expect(yes.calls.table).toBe("credit_transactions");
+    expect(yes.calls.eq).toEqual([
+      ["org_id", "org-1"],
+      ["kind", "purchase"],
+    ]);
+    expect(await readPurchased(client({ rows: [] }).db as never, "org-1")).toBe(false);
+  });
+
+  it("is unknown (null) when the read fails or there is no organization — never 'purchased'", async () => {
+    expect(await readPurchased(client({ error: true }).db as never, "org-1")).toBeNull();
+    expect(await readPurchased(client({ rows: "nope" }).db as never, "org-1")).toBeNull();
+    expect(await readPurchased(client({ rows: [{ id: 1 }] }).db as never, null)).toBeNull();
+    // A failed exemption check falls through to the purchase read, not to "exempt".
+    expect(await readPurchased(client({ exemptError: true, rows: [] }).db as never, "org-1")).toBe(false);
+  });
+
+  it("is asked only when a sellable model is behind `paid`, and decides its state", async () => {
+    const rows = [sellable({ entitlement: "paid" })];
+    const script = (purchases: unknown[]) =>
+      supabaseStub((name) =>
+        name === "sellable_models"
+          ? { data: rows, error: null }
+          : name === "credit_transactions"
+            ? { data: purchases, error: null }
+            : name === "credits_exempt"
+              ? { data: false, error: null }
+              : { data: [], error: null },
+      );
+    const bought = await readCustomerModels(script([{ id: 1 }]) as never, "org-1");
+    expect(bought.status === "ok" && bought.models[0].state).toBe("available");
+    const notYet = await readCustomerModels(script([]) as never, "org-1");
+    expect(notYet.status === "ok" && notYet.models[0].state).toBe("plan_gated");
   });
 });

@@ -784,22 +784,6 @@ export function widestShape(spec: Pick<DiscoverySpec, "aspectRatios" | "aspectRa
 }
 
 /**
- * The shape a tile is drawn in: the widest the model makes, so a sheet of
- * models reads their range at a glance (a 21:9 model's frame is wider than a
- * 16:9 one's) instead of a row of identical squares. A picture or clip model
- * that lists no shape gets no shape at all ("auto": as tall as its print); sound and
- * words have no picture, so they are a strip, like a soundtrack on film.
- */
-export function frameAspect(m: Pick<DiscoveryModel, "spec">): string {
-  if (m.spec.output !== "image" && m.spec.output !== "video") return "3 / 1";
-  const widest = widestShape(m.spec);
-  // No shape listed: no invented one either — the slate is as tall as its print.
-  if (!widest) return "auto";
-  const [w, h] = widest.split(":").map(Number);
-  return `${w} / ${h}`;
-}
-
-/**
  * The database's cap on any prompt (creative_params_problem, 0072: "prompt is
  * longer than 4000 characters"), whatever a model's own limit says.
  */

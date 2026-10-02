@@ -4292,7 +4292,7 @@ export const uz: Dictionary = {
   /** The Models screen: the catalog of models a person may use (components/models/ModelDiscovery). */
   modelDiscovery: {
     title: "Modellar",
-    subtitle: "Siz foydalana oladigan barcha modellar: nima yaratadi, nimani qabul qiladi, qaysi sozlamalarni taklif qiladi va kreditdagi narxi.",
+    subtitle: "Platformadagi barcha modellar: qaysilaridan ish maydoningiz foydalana oladi, har biri nima yaratadi va nimani qabul qiladi, sozlamalari va kreditdagi narxi.",
     subtitleOperator: "Butun reyestr katalog ko'rinishida va har bir modelni sotuvdan to'sib turgan sabablar. O'zgartirish — «Mavjudlik» bo'limida.",
     viewsLabel: "Modellar ko'rinishi",
     viewBrowse: "Katalog",
@@ -4343,6 +4343,8 @@ export const uz: Dictionary = {
     emptyCustomer: "Ish maydoningiz uchun hali birorta model ochilmagan. Ochilganda, u narxi bilan shu yerda ko'rinadi.",
     emptyOperator: "Reyestrda hali model yo'q. Ularni schemas/model_registry.json dan tools/probe_models.py --sync bilan sinxronlang.",
     emptyFiltered: "Bu filtrlarga mos model yo'q.",
+    notOpenGroup: "Hali ochiq emas",
+    notOpenHint: "Platformadagi, ish maydoningiz hali foydalana olmaydigan modellar. Sababini ko'rish uchun birini tanlang.",
     emptyTask: "Reyestrda hali buni qiladigan model yo'q.",
     emptyTaskCustomer: "Bu uchun ish maydoningizda hali birorta model ochiq emas.",
     skipToModels: "Modellarga o'tish",

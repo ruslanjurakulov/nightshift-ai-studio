@@ -4299,7 +4299,7 @@ export const en = {
   /** The Models screen: the catalog of models a person may use (components/models/ModelDiscovery). */
   modelDiscovery: {
     title: "Models",
-    subtitle: "Every model you can use: what it makes, what it takes, the settings it offers and its credit rate.",
+    subtitle: "Every model on the platform: which ones your workspace can use, what each makes and takes, its settings and its credit rate.",
     subtitleOperator: "The whole registry as a catalog, with what keeps each model off sale. Availability changes it.",
     viewsLabel: "Models view",
     viewBrowse: "Browse",
@@ -4350,6 +4350,8 @@ export const en = {
     emptyCustomer: "No model is open to your workspace yet. When one is, it shows here with its rate.",
     emptyOperator: "No models in the registry yet. Sync them from schemas/model_registry.json with tools/probe_models.py --sync.",
     emptyFiltered: "No model matches these filters.",
+    notOpenGroup: "Not open yet",
+    notOpenHint: "Models on the platform your workspace can’t use yet. Pick one to see why.",
     emptyTask: "No model in the registry does this yet.",
     emptyTaskCustomer: "No model for this is open to your workspace yet.",
     skipToModels: "Skip to the models",

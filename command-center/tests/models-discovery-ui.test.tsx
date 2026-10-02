@@ -279,3 +279,26 @@ describe("copy", () => {
     }
   });
 });
+
+describe("the not-open fold", () => {
+  it("leads a customer's catalog with what they can use and folds the rest, closed, under 'Not open yet'", () => {
+    mount();
+    const fold = screen.getByText(c.notOpenGroup).closest("details")!;
+    expect(fold.open).toBe(false);
+    expect(within(fold).getByRole("button", { name: "Details: Pic N" })).toBeTruthy();
+    expect(within(fold).queryByRole("button", { name: "Details: Vid A" })).toBeNull();
+    expect(document.body.textContent).toContain(c.notOpenHint);
+  });
+
+  it("opens the fold when nothing is open, and does not fold for the operator or an 'unavailable' filter", () => {
+    mount([basic]);
+    expect(screen.getByText(c.notOpenGroup).closest("details")!.open).toBe(true);
+    cleanup();
+    mount(undefined, true);
+    expect(screen.queryByText(c.notOpenGroup)).toBeNull();
+    cleanup();
+    mount(undefined, false, { state: "unavailable" });
+    expect(screen.queryByText(c.notOpenGroup)).toBeNull();
+    expect(screen.getByRole("button", { name: "Details: Pic N" })).toBeTruthy();
+  });
+});

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { ArrowRight, Search, SlidersHorizontal, TriangleAlert, X } from "lucide-react";
+import { ArrowRight, ChevronRight, Search, SlidersHorizontal, TriangleAlert, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { nextFocusIndex } from "@/lib/feedback";
@@ -19,7 +19,6 @@ import {
   NO_FILTERS,
   OUTPUT_KINDS,
   TASKS,
-  frameAspect,
   longestDuration,
   matchesFilters,
   promptLimit,
@@ -161,12 +160,54 @@ export function ModelDiscovery({
     }
   }
 
+  // A customer's catalog leads with what their workspace can use; the rest folds into "Not open yet"
+  // (unless they asked for unavailable models, or nothing is open). The operator sees everything in place.
+  const fold = !operator && filters.state === "all";
+  const closed = useMemo(() => (fold ? shown.filter((m) => !usable(m)) : []), [fold, shown]);
+  const open = useMemo(() => (fold ? shown.filter(usable) : shown), [fold, shown]);
+  const [closedOpen, setClosedOpen] = useState(
+    () => !operator && (!models.some(usable) || models.some((m) => m.id === initialModel && !usable(m))),
+  );
   const groups = useMemo(() => {
     const order: (OutputKind | null)[] = [...OUTPUT_KINDS, null];
     return order
-      .map((kind) => ({ kind, items: shown.filter((m) => m.spec.output === kind) }))
+      .map((kind) => ({ kind, items: open.filter((m) => m.spec.output === kind) }))
       .filter((g) => g.items.length > 0);
-  }, [shown]);
+  }, [open]);
+
+  function renderGroup(kind: OutputKind | null, items: DiscoveryModel[], title?: string) {
+    const name = title ?? (kind ? c.outputs[kind] : c.any);
+    return (
+      <section key={title ?? kind ?? "other"} aria-label={`${name} · ${items.length}`}>
+        {!title && (
+          <div className={styles.groupHead}>
+            <h2 className={styles.groupTitle}>{name}</h2>
+            <span className={styles.groupCount}>{items.length}</span>
+          </div>
+        )}
+        {/* Film is film in both themes: its print reads on the dark rebate. Every frame in a row is
+            the same height; each model's shapes are drawn in its framing guides and edge print. */}
+        <div data-theme-scope="dark">
+          <ContactSheet label={`${c.resultsLabel}: ${name}`} min={196}>
+            {items.map((m) => {
+              frameNo += 1;
+              return (
+                <ModelFrame
+                  key={m.id}
+                  model={m}
+                  number={frameNo}
+                  selected={m.id === picked}
+                  task={filters.task}
+                  showProvider={withProvider}
+                  onPick={(el) => pick(m.id, el)}
+                />
+              );
+            })}
+          </ContactSheet>
+        </div>
+      </section>
+    );
+  }
 
   const stateOptions = DISCOVERY_STATES.filter((s) => operator || models.some((m) => m.state === s));
   const taskHint = filters.task === "all" ? null : c.taskHints[filters.task];
@@ -263,38 +304,22 @@ export function ModelDiscovery({
               </button>
             </div>
           ) : (
-            groups.map((g) => {
-              const name = g.kind ? c.outputs[g.kind] : c.any;
-              const pictured = g.kind === "image" || g.kind === "video";
-              return (
-                <section key={g.kind ?? "other"} aria-label={`${name} · ${g.items.length}`}>
-                  <div className={styles.groupHead}>
-                    <h2 className={styles.groupTitle}>{name}</h2>
-                    <span className={styles.groupCount}>{g.items.length}</span>
-                  </div>
-                  {/* Film is film in both themes: its print reads on the dark rebate. Pictures and clips
-                      keep each model's own shape, so their frames are ragged, as on a real proof sheet. */}
-                  <div data-theme-scope="dark">
-                    <ContactSheet label={`${c.resultsLabel}: ${name}`} min={pictured ? 232 : 176} ragged={pictured}>
-                      {g.items.map((m) => {
-                        frameNo += 1;
-                        return (
-                          <ModelFrame
-                            key={m.id}
-                            model={m}
-                            number={frameNo}
-                            selected={m.id === picked}
-                            task={filters.task}
-                            showProvider={withProvider}
-                            onPick={(el) => pick(m.id, el)}
-                          />
-                        );
-                      })}
-                    </ContactSheet>
-                  </div>
-                </section>
-              );
-            })
+            <>
+              {groups.map((g) => renderGroup(g.kind, g.items))}
+              {closed.length > 0 && (
+                // What the database would refuse this workspace: listed, so nothing looks hidden, but
+                // folded below what can be used, so the page leads with what a person can make now.
+                <details className={styles.closed} open={closedOpen} onToggle={(e) => setClosedOpen(e.currentTarget.open)}>
+                  <summary className={styles.closedSummary}>
+                    <ChevronRight aria-hidden className={`${styles.chev} size-4`} />
+                    <span className={styles.groupTitle}>{c.notOpenGroup}</span>
+                    <span className={styles.groupCount}>{closed.length}</span>
+                    <span className={styles.closedHint}>{c.notOpenHint}</span>
+                  </summary>
+                  {renderGroup(null, closed, c.notOpenGroup)}
+                </details>
+              )}
+            </>
           )}
         </div>
 
@@ -401,8 +426,8 @@ function ModelFrame({
       <button
         type="button"
         className={styles.slate}
-        // Drawn in the widest shape the model makes, on the slate (not the frame): a long name grows it rather than being cut.
-        style={{ aspectRatio: frameAspect(m) }}
+        // Pictures and clips get room for their framing guides; sound and words are a strip.
+        data-pictured={m.spec.output === "image" || m.spec.output === "video" ? "true" : undefined}
         data-guides={ratios.length > 0 ? "true" : undefined}
         aria-pressed={selected}
         aria-label={fmt(c.open, { model: m.displayName })}

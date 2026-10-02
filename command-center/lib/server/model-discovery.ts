@@ -11,6 +11,7 @@ import {
   showsProvider,
   type DiscoveryModel,
   type PriceList,
+  type Reason,
 } from "@/lib/models-discovery";
 
 /**
@@ -69,6 +70,16 @@ export async function readPurchased(supabase: SupabaseClient, orgId: string | nu
   }
 }
 
+/** What a customer's browser receives: no provider (unless the owner turns it on), no raw entitlement key. */
+export function customerShape(m: DiscoveryModel): DiscoveryModel {
+  return {
+    ...m,
+    provider: showsProvider(false) ? m.provider : "",
+    entitlement: null,
+    reasons: m.reasons.map((r): Reason => (r.kind === "not_open" ? { kind: "not_open", key: "", value: null } : r)),
+  };
+}
+
 export async function readCustomerModels(supabase: SupabaseClient, orgId: string | null = null): Promise<DiscoveryRead> {
   try {
     const [sellable, prices] = await Promise.all([
@@ -91,8 +102,9 @@ export async function readCustomerModels(supabase: SupabaseClient, orgId: string
       .filter((r): r is Record<string, unknown> => !!r && typeof r === "object" && allowed.has(String((r as Record<string, unknown>).id)))
       .map((r) => fromSellableRow(r, prices, purchased))
       .filter((m): m is DiscoveryModel => m !== null)
-      // A customer is not shown who makes a model, so the name does not travel to their browser either.
-      .map((m) => (showsProvider(false) ? m : { ...m, provider: "" }));
+      // A customer is not shown who makes a model, so the name does not travel to their browser either;
+      // nor does the raw plan key (the state it decided is kept).
+      .map(customerShape);
     return { status: "ok", models, pricesRead: prices !== null, probesRead: false };
   } catch {
     return { status: "error" };
