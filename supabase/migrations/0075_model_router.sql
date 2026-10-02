@@ -372,7 +372,8 @@ begin
      where id = p_job;
     perform public.creative_job_log(p_job, j.org_id, 'rerouted', 'running',
       jsonb_build_object('from', j.routed_model, 'to', m, 'code', code, 'credits', price));
-    return jsonb_build_object('model', m, 'credits', price);
+    -- The worker sends exactly these params to the new model.
+    return jsonb_build_object('model', m, 'credits', price, 'params', jparams);
   end loop;
   return null;
 end

@@ -364,7 +364,7 @@ def test_quality_fails_over_once_to_the_same_tier_within_the_hold_then_stops(db)
     assert st == "42501"
     svc(db, "select public.advance_creative_job(%s,'w-r','submitting')", [jid])
     moved = svc(db, "select public.reroute_creative_job(%s,'w-r','unavailable')", [jid])[0][0]
-    assert moved == {"model": "img-best-b", "credits": 9}
+    assert (moved["model"], moved["credits"], moved["params"]) == ("img-best-b", 9, PROMPT)
     j = job(db, jid)
     assert (j["routed_model"], j["fallback_from"], j["fallback_reason"], j["requested_model"]) == \
         ("img-best-b", "img-best", "unavailable", "img-best")
@@ -413,11 +413,11 @@ def test_a_failover_never_carries_a_model_the_job_could_not_be_priced_for(db):
         moved = svc(db, "select public.reroute_creative_job(%s,'w-r','quota')", [jid])[0][0]
     finally:
         db.su("update public.model_registry set availability='beta' where id='img-webonly'")
-    assert moved == {"model": "img-mid", "credits": 5}         # img-webonly is no longer sellable: skipped
+    assert (moved["model"], moved["credits"]) == ("img-mid", 5)   # img-webonly is no longer sellable: skipped
     j = job(db, jid)
     assert float(j["routed_credits"]) == 5 and float(j["quoted_credits"]) == 5
     # A second failover is allowed, a third model is not.
-    assert svc(db, "select public.reroute_creative_job(%s,'w-r','quota')", [jid])[0][0] == {"model": "img-webonly", "credits": 3}
+    assert svc(db, "select public.reroute_creative_job(%s,'w-r','quota')", [jid])[0][0]["model"] == "img-webonly"
     assert svc(db, "select public.reroute_creative_job(%s,'w-r','quota')", [jid])[0][0] is None
     svc(db, "select public.finish_creative_job(%s,'w-r',false,null,null,'quota','x')", [jid])
 

@@ -84,6 +84,18 @@ class FakeQueue:
     def record_cost(self, job_id, usage):
         self.costs.append(usage)
 
+    def reroute(self, job_id, worker_id, code):
+        """0075's reroute_creative_job: the next model from `self.reroutes`,
+        with the database's refusals (exact, a stored task, not submitting)."""
+        self.calls.append(("reroute", code))
+        j = self.current
+        if j.get("mode") == "exact" or j.get("provider_task_id") or not getattr(self, "reroutes", None):
+            return None
+        nxt = self.reroutes.pop(0)
+        j["submit_started_at"] = None
+        j["fallback_from"], j["routed_model"] = j.get("routed_model"), nxt["model"]
+        return nxt
+
 
 class FakeAdapter:
     def __init__(self, polls=None, submit_error=None, task_id="task-1", usage=None):
@@ -237,8 +249,15 @@ class ExactModeNeverFailsOver(Base):
         self.assertEqual(self.resolved, ["img-x"])
         self.assertEqual(q.finished["error_code"], "adapter_missing")
 
-    def test_router_modes_are_refused_by_the_worker_too(self):
-        q = FakeQueue(job(mode="auto"))
+    def test_an_unknown_mode_is_refused_before_any_call(self):
+        q = FakeQueue(job(mode="turbo"))
+        a = FakeAdapter()
+        self.worker(q, a).run_once()
+        self.assertEqual(q.finished["error_code"], "mode_not_supported")
+        self.assertEqual(a.log, [])
+
+    def test_a_routed_job_without_its_routed_model_is_not_run(self):
+        q = FakeQueue(job(mode="auto", routed_model=None))
         a = FakeAdapter()
         self.worker(q, a).run_once()
         self.assertEqual(q.finished["error_code"], "mode_not_supported")
@@ -386,6 +405,145 @@ class Compose(unittest.TestCase):
         self.assertEqual(svc["cap_drop"], ["ALL"])
         self.assertIn("no-new-privileges:true", svc["security_opt"])
         self.assertEqual(svc["restart"], "unless-stopped")
+
+
+# ── routed modes (migration 0075) ───────────────────────────────────────────
+
+class Down(Exception):
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code
+        self.message = f"{code} at the vendor"
+
+
+class PerModel:
+    """One fake adapter per model: `fail` maps a model to the submit error it raises."""
+
+    def __init__(self, fail=None, missing=()):
+        self.fail = dict(fail or {})
+        self.missing = set(missing)
+        self.log = []
+
+    def resolve(self, model):
+        if model in self.missing:
+            return None
+        outer = self
+
+        class A(FakeAdapter):
+            def submit(self, request):
+                outer.log.append(("submit", request.model, dict(request.params)))
+                if model in outer.fail:
+                    raise Down(outer.fail[model])
+                return f"task-{model}"
+
+            def poll(self, task_id, request, out_dir):
+                outer.log.append(("poll", task_id))
+                return FakeAdapter().poll(task_id, request, out_dir)
+
+        return A()
+
+
+def routed(**over):
+    return job(**{"mode": "quality", "requested_model": "img-a", "routed_model": "img-a", **over})
+
+
+class RoutedModes(Base):
+    def go(self, q, models):
+        w = cw.CreativeWorker(q, models.resolve, worker_id="w1", out_dir=self.out, credits=FakeCredits(),
+                              enforce=True, sleep=lambda s: None, heartbeat_seconds=0)
+        w.run_once()
+        return w
+
+    def test_a_routed_job_runs_its_routed_model(self):
+        q = FakeQueue(routed(requested_model="img-a", routed_model="img-a"))
+        m = PerModel()
+        self.go(q, m)
+        self.assertEqual([x[:2] for x in m.log if x[0] == "submit"], [("submit", "img-a")])
+        self.assertTrue(q.finished["ok"])
+        self.assertIsNone(q.finished["charge"])     # the database charges the routed model's price
+
+    def test_a_refused_submit_moves_to_the_databases_next_model_with_its_priced_params(self):
+        q = FakeQueue(routed())
+        q.reroutes = [{"model": "img-b", "credits": 9, "params": {"prompt": "a cat", "quality": "medium"}}]
+        m = PerModel(fail={"img-a": "unavailable"})
+        self.go(q, m)
+        submits = [x for x in m.log if x[0] == "submit"]
+        self.assertEqual([x[1] for x in submits], ["img-a", "img-b"])
+        self.assertEqual(submits[1][2], {"prompt": "a cat", "quality": "medium"})
+        self.assertIn(("reroute", "unavailable"), q.calls)
+        # Two 'submitting' steps (the database cleared the first), one new task, polled.
+        steps = [c for c in q.calls if c[0] == "advance"]
+        self.assertEqual(steps[:3], [("advance", "submitting", None), ("advance", "submitting", None),
+                                     ("advance", "submitted", "task-img-b")])
+        self.assertTrue(q.finished["ok"])
+
+    def test_no_adapter_on_this_worker_is_a_failover_too(self):
+        q = FakeQueue(routed())
+        q.reroutes = [{"model": "img-b", "credits": 9, "params": {"prompt": "a cat"}}]
+        m = PerModel(missing={"img-a"})
+        self.go(q, m)
+        self.assertEqual([x[1] for x in m.log if x[0] == "submit"], ["img-b"])
+        self.assertEqual(q.calls.count(("reroute", "adapter_missing")), 1)
+        self.assertTrue(q.finished["ok"])
+
+    def test_exact_never_asks_for_another_model(self):
+        q = FakeQueue(job(requested_model="img-a", routed_model="img-a"))
+        q.reroutes = [{"model": "img-b", "credits": 6, "params": {"prompt": "a cat"}}]
+        m = PerModel(fail={"img-a": "unavailable"})
+        self.go(q, m)
+        self.assertEqual([x[1] for x in m.log if x[0] == "submit"], ["img-a"])
+        self.assertFalse(any(c[0] == "reroute" for c in q.calls))
+        self.assertEqual(q.finished["error_code"], "unavailable")
+
+    def test_a_refusal_of_the_request_itself_is_never_shopped_to_another_model(self):
+        for code in ("policy", "bad_request", "bad_response"):
+            with self.subTest(code=code):
+                q = FakeQueue(routed())
+                q.reroutes = [{"model": "img-b", "credits": 9, "params": {"prompt": "a cat"}}]
+                m = PerModel(fail={"img-a": code})
+                self.go(q, m)
+                self.assertEqual([x[1] for x in m.log if x[0] == "submit"], ["img-a"])
+                self.assertFalse(any(c[0] == "reroute" for c in q.calls))
+                self.assertEqual(q.finished["error_code"], code)
+
+    def test_no_compatible_model_fails_the_job_with_the_original_code(self):
+        q = FakeQueue(routed())
+        q.reroutes = []
+        m = PerModel(fail={"img-a": "quota"})
+        self.go(q, m)
+        self.assertEqual(q.finished["error_code"], "quota")
+        self.assertFalse(q.finished["ok"])
+
+    def test_at_most_two_failovers(self):
+        q = FakeQueue(routed())
+        q.reroutes = [{"model": f"img-{c}", "credits": 9, "params": {"prompt": "a cat"}} for c in "bcd"]
+        m = PerModel(fail={f"img-{c}": "unavailable" for c in "abcd"})
+        self.go(q, m)
+        self.assertEqual([x[1] for x in m.log if x[0] == "submit"], ["img-a", "img-b", "img-c"])
+        self.assertEqual(q.finished["error_code"], "unavailable")
+
+    def test_an_answer_without_the_priced_params_sends_nothing(self):
+        q = FakeQueue(routed())
+        q.reroutes = [{"model": "img-b", "credits": 9}]
+        m = PerModel(fail={"img-a": "unavailable"})
+        self.go(q, m)
+        self.assertEqual([x[1] for x in m.log if x[0] == "submit"], ["img-a"])
+        self.assertEqual(q.finished["error_code"], "unavailable")
+
+    def test_a_resumed_routed_job_polls_its_routed_models_task_and_never_moves(self):
+        q = FakeQueue(routed(routed_model="img-b", fallback_from="img-a", status="provider_pending",
+                             provider_task_id="task-img-b"))
+        q.reroutes = [{"model": "img-c", "credits": 9, "params": {"prompt": "a cat"}}]
+        m = PerModel()
+        self.go(q, m)
+        self.assertEqual(m.log[0], ("poll", "task-img-b"))
+        self.assertFalse(any(x[0] == "submit" for x in m.log))
+        self.assertFalse(any(c[0] == "reroute" for c in q.calls))
+
+    def test_the_failover_list_matches_the_database(self):
+        sql = (Path(__file__).resolve().parents[1] / "supabase" / "migrations" / "0075_model_router.sql").read_text()
+        listed = sql.split("if code not in (", 1)[1].split(")", 1)[0]
+        self.assertEqual({c.strip(" '\n") for c in listed.replace("\n", " ").split(",")}, set(cw.FAILOVER_CODES))
 
 
 if __name__ == "__main__":
