@@ -25,7 +25,10 @@ run by ``tools/media_worker.py``, then for each ticket:
    a JPEG thumbnail (images, video), a 480p H.264 proxy (video) that any
    browser can play, and — for a HEIC / HEIF — a JPEG ``display`` copy (long
    side <= 2048) because most browsers cannot show the original, which is
-   stored untouched;
+   stored untouched. Every ffmpeg that decodes the file runs under
+   ``ffmpeg_limits`` (an address-space limit, pinned thread counts, a frame
+   size cap in the decoder and a time limit proportionate to the declared
+   work), and a decode that met a bigger frame than declared is refused;
 5. registers the row (``register_asset``, service role) or rejects the ticket
    with a reason word (``reject_media_upload``), then deletes the staged file.
    The folder a file lands in (migration 0051) is NOT the worker's to say:
@@ -55,6 +58,8 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple
+
+from modules import ffmpeg_limits, render_spec
 
 logger = logging.getLogger(__name__)
 
@@ -139,11 +144,44 @@ PROXY_TIMEOUT_S = 2 * 3600
 #: Picture area cap: HEIC is checked on its header before decoding (0044);
 #: JPEG/PNG/WebP/GIF on the probed size (BR-C-001); every video stream of a
 #: video, cover art included (BR-D-001); the larger of the display and the
-#: coded frame (BR-E-001). 8K (7680x4320, 33 MP) is well under. The probe
-#: sees only the first frames, so ffmpeg's decoder is held to it too, on every
-#: frame (``decoder_cap``, BR-L-004; render_spec.DECODE_MAX_PIXELS, a test
-#: pins them equal).
+#: coded frame (BR-E-001). The probe sees only the first frames, so ffmpeg's
+#: decoder is held to it too, on every frame (``decoder_cap``, BR-L-004;
+#: render_spec.DECODE_MAX_PIXELS, a test pins them equal).
 MAX_PIXELS = 100_000_000
+#: The same cap for a video, lower (BR-L-010): a video decodes every frame,
+#: each holding reference frames, so its memory and time are a multiple of
+#: the frame. 8192x4352 is HEVC level 6's largest picture: 8K UHD (7680x4320)
+#: and 8K DCI (8192x4320) are accepted, as is the H.264 coded height of 8K
+#: DCI (4352), in either orientation. Phones and cameras record at most 8K.
+VIDEO_MAX_PIXELS = 8192 * 4352
+#: Decode budget of one video (BR-L-010): its frame area (the larger of the
+#: display and coded sizes) x frame rate x duration, in pixels. 10^12 is
+#: about 16 minutes of 8K at 30 fps, 33 minutes of 4K at 60, 67 of 4K at 30,
+#: 4.4 hours of 1080p at 30 and 10 hours of 720p at 30. Above it the proxy
+#: alone would need hours of the one-at-a-time media worker; refused before
+#: any decode with ``too_long``.
+DECODE_BUDGET_PX = 10 ** 12
+#: Frame rate assumed when the probe reads none, or an implausible one.
+ASSUMED_FPS = 60.0
+MAX_PLAUSIBLE_FPS = 240.0
+#: The proxy's time limit follows the decode work the probe declared, not a
+#: flat PROXY_TIMEOUT_S (which stays the ceiling): base + pixels / rate +
+#: bytes / rate, and never less than PROXY_S_PER_S per second of video.
+#: Measured with the bundled ffmpeg 7.0.2 and the proxy's own limits (two
+#: decoder threads), on ONE cpu: HEVC 10-bit decodes at 190-197 Mpx/s, H.264
+#: at 383 Mpx/s or more; CABAC at 20-40 Mbit/s is bound by bytes, about
+#: 5.6-5.8 MB/s. The rates below are less than half of every one of those
+#: (halved after Lens round 6, BR-L-016: the first margin was 1.34x for an
+#: honest HEVC 4K60 10-bit clip on one cpu). The floor is for a file whose
+#: FIRST frame is small: a meeting recording that starts at 320x180 and
+#: switches to 1080p declares almost no pixel work, and its proxy took
+#: 0.1585 s per second of video on one cpu (Lens). A crafted file that
+#: decodes slower than all of this is still stopped at its limit, and never
+#: later than PROXY_TIMEOUT_S.
+PROXY_TIMEOUT_BASE_S = 120.0
+PROXY_PX_PER_S = 75e6
+PROXY_BYTES_PER_S = 1.25e6
+PROXY_S_PER_S = 0.25
 DISPLAY_SIDE = 2048
 HEIC_DECODE_TIMEOUT_S = 120
 HEIC_DECODE_CPU_S = 90
@@ -430,6 +468,9 @@ class Probe:
     width: Optional[int]
     height: Optional[int]
     duration: Optional[float]
+    #: A video's decode work (``decode_work``): frame area (display or coded,
+    #: whichever is larger) x frame rate x duration. None for anything else.
+    work_px: Optional[float] = None
 
 
 def probe_command(exe: str, path: Path, mime: str) -> List[str]:
@@ -453,24 +494,28 @@ def _coded_side(v) -> int:
     return int(n) if n is not None and n > 0 else 0
 
 
-def _check_frame(s: Mapping, width: int, height: int) -> None:
+def _check_frame(s: Mapping, width: int, height: int, cap: Optional[int] = None) -> Tuple[int, int]:
     """Hold one picture stream to MAX_SIDE and MAX_PIXELS on the frame the
     decoder allocates, not only the one it displays (BR-E-001). ffprobe's
     ``width`` / ``height`` are the display size after the stream's crop
     window; libavcodec decodes the whole ``coded_width`` x ``coded_height``
     frame first, so a 64x64 display can hide a 16384x16384 coded frame. Cap the
-    larger of the two on each side; a coded size can only raise the size."""
+    larger of the two on each side; a coded size can only raise the size.
+    ``cap`` is the area cap (MAX_PIXELS for a still, VIDEO_MAX_PIXELS for a
+    video's streams). Returns the frame size it checked."""
+    cap = MAX_PIXELS if cap is None else cap
     w = max(width, _coded_side(s.get("coded_width")))
     h = max(height, _coded_side(s.get("coded_height")))
     what = f"{w}x{h}" if (w, h) == (width, height) else f"{width}x{height} (coded {w}x{h})"
     if max(w, h) > MAX_SIDE:
         raise IngestReject("too_large_dimensions", f"{what} is larger than {MAX_SIDE}px")
-    if w * h > MAX_PIXELS:
+    if w * h > cap:
         raise IngestReject("too_large_dimensions",
-                           f"{what} is more than {MAX_PIXELS // 1_000_000} megapixels")
+                           f"{what} is more than {cap / 1_000_000:g} megapixels")
+    return w, h
 
 
-def _check_every_picture(streams: Sequence[Mapping]) -> None:
+def _check_every_picture(streams: Sequence[Mapping], cap: Optional[int] = None) -> None:
     """Hold EVERY video stream to the frame caps, not only the one the probe
     records (BR-D-001). ffmpeg decodes others: the thumbnail (no ``-map``)
     takes the video stream with the largest area, and the proxy's ``-map
@@ -482,7 +527,7 @@ def _check_every_picture(streams: Sequence[Mapping]) -> None:
         w, h = int(_num(s.get("width")) or 0), int(_num(s.get("height")) or 0)
         if w <= 0 or h <= 0:
             raise IngestReject("not_media", "a picture stream has no frame size")
-        _check_frame(s, w, h)
+        _check_frame(s, w, h, cap)
 
 
 def interpret_probe(sniffed: str, data: Mapping) -> Probe:
@@ -539,14 +584,59 @@ def interpret_probe(sniffed: str, data: Mapping) -> Probe:
         if width <= 0 or height <= 0:
             raise IngestReject("not_media", "the video has no frame size")
         # The image branch's area cap (BR-C-001): the thumbnail and the proxy
-        # each decode a full frame (BR-D-001), at its coded size (BR-E-001).
-        _check_frame(v, width, height)
-        _check_every_picture(streams)
-        return Probe("video", mime, width, height, round(duration, 3))
+        # each decode a full frame (BR-D-001), at its coded size (BR-E-001);
+        # a video's cap is lower than a still's (BR-L-010).
+        w, h = _check_frame(v, width, height, VIDEO_MAX_PIXELS)
+        _check_every_picture(streams, VIDEO_MAX_PIXELS)
+        fps = frame_rate(v)
+        work = decode_work(w, h, fps, duration)
+        if work > DECODE_BUDGET_PX:
+            raise IngestReject("too_long", f"{w}x{h} at {fps:g} fps for {duration:.0f} s is more than "
+                                           f"the decode budget ({work:.3g} > {DECODE_BUDGET_PX:.0e} pixels)")
+        return Probe("video", mime, width, height, round(duration, 3), work)
 
     if not audio:
         raise IngestReject("no_audio_stream", "no sound in the audio file")
     return Probe("audio", mime, None, None, round(duration, 3))
+
+
+def _rate(v) -> Optional[float]:
+    """An ffprobe rate ("30000/1001", "25/1", "0/0") as a number, or None."""
+    num, _, den = str(v or "").partition("/")
+    a, b = _num(num), _num(den or "1")
+    if a is None or b is None or b == 0:
+        return None
+    r = a / b
+    return r if r > 0 else None
+
+
+def frame_rate(stream: Mapping) -> float:
+    """The frame rate a decode budget counts: the stream's average rate (for
+    MP4 / MOV the sample count over the duration), else its base rate, else
+    ASSUMED_FPS when neither is a plausible number. An understated rate only
+    shortens the file's own proxy time limit (``proxy_timeout_s``)."""
+    for key in ("avg_frame_rate", "r_frame_rate"):
+        r = _rate(stream.get(key))
+        if r is not None and r <= MAX_PLAUSIBLE_FPS:
+            return r
+    return ASSUMED_FPS
+
+
+def decode_work(width: int, height: int, fps: float, duration: float) -> float:
+    """Pixels a full decode of a video meets: area x frame rate x duration."""
+    return float(width) * float(height) * float(fps) * float(duration)
+
+
+def proxy_timeout_s(info: "Probe", nbytes: int) -> float:
+    """How long the proxy of this video may take: proportionate to the decode
+    work its probe declared and to its size on disk, never more than
+    PROXY_TIMEOUT_S (BR-L-010). A probe with no work recorded (a stand-in, an
+    older caller) gets the ceiling, as before."""
+    if info.work_px is None:
+        return float(PROXY_TIMEOUT_S)
+    work_s = float(info.work_px) / PROXY_PX_PER_S + max(0, int(nbytes)) / PROXY_BYTES_PER_S
+    floor_s = PROXY_S_PER_S * float(info.duration or 0.0)
+    return min(float(PROXY_TIMEOUT_S), PROXY_TIMEOUT_BASE_S + max(work_s, floor_s))
 
 
 def run_probe(exe: str, path: Path, sniffed: str, *, timeout_s: float = PROBE_TIMEOUT_S) -> Probe:
@@ -590,54 +680,103 @@ def _scale_short_side(limit: int) -> str:
     return (f"scale='if(gte(iw,ih),-2,min({limit},iw))':'if(gte(iw,ih),min({limit},ih),-2)'")
 
 
-def decoder_cap() -> List[str]:
-    """Input options that make ffmpeg's decoder refuse any frame above
-    MAX_PIXELS (BR-L-004). The probe checks judge the frame size ffprobe
-    reads from the first frames; H.264, HEVC, VP9 and AV1 can switch to a
-    bigger frame at any later keyframe, which only the decoder meets. Goes
-    right before each ``-i`` (input options apply to the next input only)."""
-    return ["-max_pixels", str(int(MAX_PIXELS))]
+def decoder_max_pixels(mime: str) -> int:
+    """The decoder's frame cap for this type: VIDEO_MAX_PIXELS for a video,
+    MAX_PIXELS for a still, each with the decoder's row padding added
+    (render_spec.decoder_max_pixels, BR-L-009) so that a frame the upload
+    check accepted is never refused by the decoder."""
+    cap = VIDEO_MAX_PIXELS if ALLOWED_MIME.get(mime) == "video" else MAX_PIXELS
+    return render_spec.decoder_max_pixels(cap, MAX_SIDE)
+
+
+def decoder_cap(mime: str) -> List[str]:
+    """Input options for the decoder of one member file: refuse any frame
+    above the cap (BR-L-004; H.264, HEVC, VP9 and AV1 can switch to a bigger
+    frame at any later keyframe, which only the decoder meets), and two
+    decoder threads (BR-L-007, BR-L-010). Goes right before each ``-i``
+    (input options apply to the next input only). A refused frame fails the
+    run: ``run_tool`` reads ffmpeg's stderr (ffmpeg_limits.REFUSAL_MARKERS);
+    ``-xerror`` is not used, it also refused damaged but playable files
+    (BR-L-008)."""
+    return ["-max_pixels", str(decoder_max_pixels(mime)), *ffmpeg_limits.decode_thread_options()]
 
 
 def thumbnail_command(exe: str, src: Path, dst: Path, mime: str, duration: Optional[float]) -> List[str]:
-    # No -xerror: one frame comes out or none does, and none already fails
-    # the ingest (no thumbnail file).
-    argv = [exe, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-protocol_whitelist", "file"]
+    argv = [exe, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", *ffmpeg_limits.thread_options(),
+            "-protocol_whitelist", "file"]
     if ALLOWED_MIME.get(mime) == "video" and duration:
         argv += ["-ss", f"{min(1.0, duration / 10):.3f}"]
-    return argv + ["-f", DEMUXER[mime], *decoder_cap(), "-i", str(src), "-frames:v", "1",
-                   "-vf", _scale_long_side(THUMB_SIDE), "-q:v", "4", "-f", "image2", str(dst)]
+    return argv + ["-f", DEMUXER[mime], *decoder_cap(mime), "-i", str(src), "-frames:v", "1",
+                   "-vf", _scale_long_side(THUMB_SIDE), "-q:v", "4",
+                   *ffmpeg_limits.encode_thread_options(ffmpeg_limits.DECODE_THREADS), "-f", "image2", str(dst)]
 
 
 def proxy_command(exe: str, src: Path, dst: Path, mime: str) -> List[str]:
-    # -xerror: a frame the cap refuses is a decode error, and without it
-    # ffmpeg skips the frame and exits 0 with a proxy that is short.
-    return [exe, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-xerror",
+    # The encoder's threads are pinned too (output -threads): left automatic,
+    # their count, and so the address space, grows with the host's cores.
+    return [exe, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", *ffmpeg_limits.thread_options(),
             "-protocol_whitelist", "file",
-            "-f", DEMUXER[mime], *decoder_cap(), "-i", str(src),
+            "-f", DEMUXER[mime], *decoder_cap(mime), "-i", str(src),
             "-map", "0:v:0", "-map", "0:a:0?",
             "-vf", _scale_short_side(PROXY_SHORT_SIDE),
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p",
+            *ffmpeg_limits.encode_thread_options(ffmpeg_limits.DECODE_THREADS),
             "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", "-f", "mp4", str(dst)]
 
 
+#: What ``run_tool`` returns for a run stopped at a refused frame (ffmpeg
+#: itself would have exited 0 with a short or empty output), or for a decode
+#: that needed more memory than its declared frame allows.
+REFUSED_EXIT = 254
+#: The most memory (peak RSS) a decode of a frame of N pixels may need:
+#: RSS_BASE_BYTES + RSS_PER_PIXEL x N. 160 bytes a pixel is a 16-bit 4:4:4
+#: frame (6 bytes) times 16 reference frames plus the frames in flight, with
+#: room to spare; the base is ffmpeg, the 480p encoder and the sound, with
+#: room for a recording whose size changes on the way (measured: 98 MB for a
+#: 720p proxy, 136 MB for a 64x64 clip). It is only a cheap early refusal
+#: for a SMALL declared frame that decoded big (Lens's crop-window file
+#: declares 64x64 and peaked at 1787 MB, BR-L-007); the guarantee is the
+#: address-space limit. A child reaches about 1.8 GB RSS under it, so from a
+#: declared frame of about 7-8 MP up (ordinary 4K included) this check can
+#: no longer refuse anything (Lens round 6, BR-L-015).
+RSS_BASE_BYTES = 512 * 1024 ** 2
+RSS_PER_PIXEL = 160
+
+
+def expected_rss_bytes(frame_px: Optional[float]) -> Optional[int]:
+    if not frame_px or frame_px <= 0:
+        return None
+    return int(RSS_BASE_BYTES + RSS_PER_PIXEL * float(frame_px))
+
+
 def run_tool(argv: Sequence[str], heartbeat: Callable[[], None], *, timeout_s: float,
-             beat_s: float = HEARTBEAT_S) -> int:
-    """Run ffmpeg, beating the ticket's heartbeat while it works."""
-    proc = subprocess.Popen(list(argv), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    started = time.monotonic()
-    while True:
-        try:
-            return proc.wait(timeout=beat_s)
-        except subprocess.TimeoutExpired:
-            if time.monotonic() - started > timeout_s:
-                proc.kill()
-                proc.wait()
-                raise IngestReject("timeout", "processing the file took too long") from None
-            try:
-                heartbeat()
-            except Exception:
-                pass
+             beat_s: float = HEARTBEAT_S, frame_px: Optional[float] = None) -> int:
+    """Run ffmpeg under ffmpeg_limits (an address-space limit, two threads),
+    beating the ticket's heartbeat while it works. Returns its exit status,
+    or REFUSED_EXIT when the decoder refused a frame (for its size, or for
+    want of memory under the limit) or, given the probed ``frame_px``, used
+    more memory than such a frame can need (``expected_rss_bytes``); raises
+    IngestReject('timeout') past ``timeout_s``. Callers treat any non-zero
+    status as ``decode_failed``."""
+    out = ffmpeg_limits.run(argv, timeout_s=timeout_s, heartbeat=heartbeat, beat_s=beat_s)
+    if out.timed_out:
+        raise IngestReject("timeout", "processing the file took too long")
+    if out.refused:
+        logger.info("ffmpeg refused a frame (over the size cap, or out of memory under the limit)")
+        return REFUSED_EXIT
+    bound = expected_rss_bytes(frame_px)
+    if bound is not None and out.peak_rss_bytes > bound:
+        logger.info("ffmpeg needed %d MB for a %.0f px frame (at most %d MB): a bigger frame than declared",
+                    out.peak_rss_bytes // 1048576, float(frame_px or 0), bound // 1048576)
+        return REFUSED_EXIT
+    return int(out.returncode if out.returncode is not None else -1)
+
+
+def frame_px(info: "Probe") -> Optional[float]:
+    """The probed frame area a decode of this file may count on."""
+    if info.width and info.height:
+        return float(info.width) * float(info.height)
+    return None
 
 
 # ── HEIC decoding: a child process with limits ───────────────────────────────
@@ -930,14 +1069,14 @@ def ingest(ticket: Mapping, *, store: MediaStore, staging_root: Path, media_root
         elif info.kind in ("image", "video"):
             thumb = work / VARIANT_FILES["thumb"]
             code = runner(thumbnail_command(tools.ffmpeg, work / "original", thumb, info.mime, info.duration),
-                          beat, timeout_s=THUMB_TIMEOUT_S)
+                          beat, timeout_s=THUMB_TIMEOUT_S, frame_px=frame_px(info))
             if code != 0 or not thumb.is_file() or thumb.stat().st_size <= 0:
                 raise IngestReject("decode_failed", "the picture could not be decoded")
             variants.append("thumb")
         if info.kind == "video":
             proxy = work / VARIANT_FILES["proxy"]
             code = runner(proxy_command(tools.ffmpeg, work / "original", proxy, info.mime), beat,
-                          timeout_s=PROXY_TIMEOUT_S)
+                          timeout_s=proxy_timeout_s(info, nbytes), frame_px=frame_px(info))
             if code != 0 or not proxy.is_file() or proxy.stat().st_size <= 0:
                 raise IngestReject("decode_failed", "the video could not be decoded")
             variants.append("proxy")
@@ -1199,13 +1338,13 @@ def store_generated(path: Path, *, asset_id, org_id: str, store: MediaStore, med
         if tools and info.kind in ("image", "video"):
             thumb = work / VARIANT_FILES["thumb"]
             code = runner(thumbnail_command(tools.ffmpeg, work / "original", thumb, info.mime, info.duration),
-                          beat, timeout_s=THUMB_TIMEOUT_S)
+                          beat, timeout_s=THUMB_TIMEOUT_S, frame_px=frame_px(info))
             if code == 0 and thumb.is_file() and thumb.stat().st_size > 0:
                 variants.append("thumb")
         if tools and info.kind == "video":
             proxy = work / VARIANT_FILES["proxy"]
             code = runner(proxy_command(tools.ffmpeg, work / "original", proxy, info.mime), beat,
-                          timeout_s=PROXY_TIMEOUT_S)
+                          timeout_s=proxy_timeout_s(info, nbytes), frame_px=frame_px(info))
             if code == 0 and proxy.is_file() and proxy.stat().st_size > 0:
                 variants.append("proxy")
         derived = 0

@@ -85,12 +85,14 @@ class VideoBombTests(unittest.TestCase):
         self.assertEqual(e.exception.reason, "too_large_dimensions")
 
     def test_video_at_or_under_the_megapixel_cap_stays_accepted(self):
-        """A control / forward-looking regression: a frame at or below MAX_PIXELS
-        must keep working after the cap is added, so the fix is an area cap and
-        not a lowered per-side limit. These are all <= 100 MP and within MAX_SIDE."""
-        for width, height in ((10_000, 10_000), (ml.MAX_SIDE, ml.MAX_PIXELS // ml.MAX_SIDE)):
+        """A control / forward-looking regression: a frame at or below the
+        video cap must keep working, so the fix is an area cap and not a
+        lowered per-side limit. The video cap is VIDEO_MAX_PIXELS (8192x4352,
+        BR-L-010), lower than a still's MAX_PIXELS; these are all within it
+        and within MAX_SIDE."""
+        for width, height in ((8192, 4352), (ml.MAX_SIDE, ml.VIDEO_MAX_PIXELS // ml.MAX_SIDE)):
             with self.subTest(width=width, height=height):
-                self.assertLessEqual(width * height, ml.MAX_PIXELS)
+                self.assertLessEqual(width * height, ml.VIDEO_MAX_PIXELS)
                 p = ml.interpret_probe("video/mp4", _video_probe(width, height))
                 self.assertEqual((p.kind, p.width, p.height), ("video", width, height))
 
@@ -98,18 +100,22 @@ class VideoBombTests(unittest.TestCase):
 
 VIDEO_TYPES = ("video/mp4", "video/quicktime", "video/webm", "video/x-matroska")
 #: Frames that must keep working: 1080p, 4K UHD, 8K UHD (33 MP), 8K DCI and
-#: portrait 8K, and the exact area cap in both orientations.
+#: portrait 8K, and the exact video area cap (VIDEO_MAX_PIXELS, 8192x4352,
+#: BR-L-010) in both orientations.
 AT_OR_UNDER_CAP = (
     (1920, 1080), (3840, 2160), (7680, 4320), (8192, 4320), (4320, 7680),
-    (10_000, 10_000),
-    (ml.MAX_SIDE, ml.MAX_PIXELS // ml.MAX_SIDE),
-    (ml.MAX_PIXELS // ml.MAX_SIDE, ml.MAX_SIDE),
+    (8192, 4352), (4352, 8192),
+    (ml.MAX_SIDE, ml.VIDEO_MAX_PIXELS // ml.MAX_SIDE),
+    (ml.VIDEO_MAX_PIXELS // ml.MAX_SIDE, ml.MAX_SIDE),
 )
-#: Each side within MAX_SIDE, so only the area cap catches these.
+#: Each side within MAX_SIDE, so only the area cap catches these: one row or
+#: column over the video cap, and the still cap's old boundary (a 100 MP
+#: video frame was accepted before BR-L-010).
 OVER_CAP = (
-    (10_000, 10_001), (10_001, 10_000),
-    (ml.MAX_SIDE, ml.MAX_PIXELS // ml.MAX_SIDE + 1),
-    (ml.MAX_PIXELS // ml.MAX_SIDE + 1, ml.MAX_SIDE),
+    (8192, 4353), (8193, 4352), (4353, 8192),
+    (ml.MAX_SIDE, ml.VIDEO_MAX_PIXELS // ml.MAX_SIDE + 1),
+    (ml.VIDEO_MAX_PIXELS // ml.MAX_SIDE + 1, ml.MAX_SIDE),
+    (10_000, 10_000), (10_000, 10_001), (10_001, 10_000),
     (ml.MAX_SIDE, ml.MAX_SIDE),
 )
 
@@ -142,7 +148,7 @@ class VideoAreaCapBoundaryTests(unittest.TestCase):
         for sniffed in VIDEO_TYPES:
             for width, height in AT_OR_UNDER_CAP:
                 with self.subTest(sniffed=sniffed, width=width, height=height):
-                    self.assertLessEqual(width * height, ml.MAX_PIXELS)
+                    self.assertLessEqual(width * height, ml.VIDEO_MAX_PIXELS)
                     p = ml.interpret_probe(sniffed, _video_probe(width, height))
                     self.assertEqual((p.kind, p.mime, p.width, p.height), ("video", sniffed, width, height))
 
@@ -150,7 +156,7 @@ class VideoAreaCapBoundaryTests(unittest.TestCase):
         for sniffed in VIDEO_TYPES:
             for width, height in OVER_CAP:
                 with self.subTest(sniffed=sniffed, width=width, height=height):
-                    self.assertGreater(width * height, ml.MAX_PIXELS)
+                    self.assertGreater(width * height, ml.VIDEO_MAX_PIXELS)
                     self.assertLessEqual(max(width, height), ml.MAX_SIDE)
                     self.assert_too_large(sniffed, _video_probe(width, height))
 
@@ -204,7 +210,7 @@ class EveryPictureStreamTests(unittest.TestCase):
         cases = (
             (_cover(3000, 3000), _v(7680, 4320), AUDIO),
             (_v(1920, 1080), _v(3840, 2160), AUDIO, AUDIO),
-            (_v(1280, 720), _v(ml.MAX_SIDE, ml.MAX_PIXELS // ml.MAX_SIDE)),
+            (_v(1280, 720), _v(ml.MAX_SIDE, ml.VIDEO_MAX_PIXELS // ml.MAX_SIDE)),
         )
         for streams in cases:
             with self.subTest(streams=streams):

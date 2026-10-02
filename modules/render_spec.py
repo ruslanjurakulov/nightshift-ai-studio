@@ -77,7 +77,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
+
+from modules import ffmpeg_limits
 
 #: The ONE quality encode of a render (the final pass). These are libx264's own
 #: defaults — what this backend always encoded with implicitly — spelled out so
@@ -86,27 +88,66 @@ from typing import List, Optional, Tuple
 #: instead (render_backend.INTERMEDIATE_X264), so this is not paid twice.
 FINAL_X264: tuple = ("-preset", "medium", "-crf", "23")
 
+
+def final_x264(spec: "RenderSpec") -> tuple:
+    """FINAL_X264 for this render. A timeline whose frame is larger than
+    2560x1440 also shortens libx264's lookahead to 20 frames (medium's is
+    40): at 4K the default does not fit the export's memory limit
+    (ffmpeg_limits.LARGE_OUTPUT_PX, BR-L-014). The pipeline's renders and
+    ordinary timelines keep exactly FINAL_X264."""
+    if spec.frame_exact and spec.width * spec.height > ffmpeg_limits.LARGE_OUTPUT_PX:
+        return FINAL_X264 + ("-rc-lookahead", "20")
+    return FINAL_X264
+
 #: The largest frame, in pixels, ffmpeg may decode for a timeline (an editor
-#: export reads library media members uploaded). The same number as
-#: media_library.MAX_PIXELS (a test pins them equal): the upload probe only
-#: sees a video's first frames, and a stream can switch to a bigger frame at a
-#: later keyframe (BR-L-004), so the decoder itself refuses it.
+#: export reads library media members uploaded): a still, and a video frame.
+#: The same numbers as media_library.MAX_PIXELS / VIDEO_MAX_PIXELS / MAX_SIDE
+#: (a test pins them equal): the upload probe only sees a video's first
+#: frames, and a stream can switch to a bigger frame at a later keyframe
+#: (BR-L-004), so the decoder itself refuses it.
 DECODE_MAX_PIXELS = 100_000_000
+DECODE_VIDEO_MAX_PIXELS = 8192 * 4352
+DECODE_MAX_SIDE = 16384
+#: libavcodec's ff_get_buffer checks ``FFALIGN(width, STRIDE_ALIGN) * height``
+#: against ``-max_pixels``; STRIDE_ALIGN is 64 on an AVX-512 build (the
+#: bundled ffmpeg 7.0.2), 32 or 16 on others.
+DECODE_ROW_ALIGN = 64
 
 
-def cap_inputs(cmd: List[str], *, fail_on_error: bool = False) -> List[str]:
-    """``cmd`` with ``-max_pixels DECODE_MAX_PIXELS`` before every ``-i``
-    (input options apply to the next input only) and, with
-    ``fail_on_error``, ``-xerror`` so a refused frame fails the run instead of
-    being skipped. Only timeline commands are capped: the pipeline's own
-    renders keep their byte-pinned argv (tests/test_render_spec_legacy.py)."""
-    cap = ["-max_pixels", str(int(DECODE_MAX_PIXELS))]
-    out: List[str] = [cmd[0], "-xerror"] if fail_on_error else [cmd[0]]
-    for tok in cmd[1:]:
+def decoder_max_pixels(pixels: int, max_side: int = DECODE_MAX_SIDE) -> int:
+    """The ``-max_pixels`` value that lets the decoder take every frame the
+    upload check accepts (BR-L-009). The check accepts ``w*h <= pixels`` with
+    ``h <= max_side``; the decoder counts the width rounded up to 64, at most
+    ``(w + 63) * h = w*h + 63*h``. Measured with the real cap: a 10000x10000
+    JPEG (the exact cap, accepted at upload) was refused by a bare
+    ``-max_pixels 100000000``, as 10048 x 10000. The headroom is at most
+    1 032 192 px (1 % of the still cap), and only ever that one row padding."""
+    return int(pixels) + (DECODE_ROW_ALIGN - 1) * int(max_side)
+
+
+def cap_inputs(cmd: List[str], *, video_inputs: Sequence[str] = (),
+               out_pixels: Optional[int] = None) -> List[str]:
+    """``cmd`` as an editor export runs it: before every ``-i``, the
+    decoder's frame cap (``-max_pixels``: the video cap for an input in
+    ``video_inputs``, the still cap for any other) and its thread count; the
+    filter graphs' thread counts after the program name, and the encoder's
+    before the output (ffmpeg_limits: the footprint must not grow with the
+    host's cores under the child's memory limit). A frame the cap
+    refuses is not skipped: ``render_backend._run`` reads ffmpeg's stderr and
+    fails the command (ffmpeg_limits.REFUSAL_MARKERS; ``-xerror`` is not used,
+    it also failed damaged-but-playable clips, BR-L-008). Only timeline
+    commands are capped: the pipeline's own renders keep their byte-pinned
+    argv (tests/test_render_spec_legacy.py)."""
+    videos = set(video_inputs)
+    out: List[str] = [cmd[0], *ffmpeg_limits.thread_options()]
+    for i, tok in enumerate(cmd[1:-1], start=1):
         if tok == "-i":
-            out += cap
+            src = cmd[i + 1]
+            cap = DECODE_VIDEO_MAX_PIXELS if src in videos else DECODE_MAX_PIXELS
+            out += ["-max_pixels", str(decoder_max_pixels(cap)), *ffmpeg_limits.decode_thread_options()]
         out.append(tok)
-    return out
+    # The encoder's threads, right before the output (the last argument).
+    return out + [*ffmpeg_limits.encode_thread_options(out_pixels=out_pixels), cmd[-1]]
 
 KIND_VIDEO = "video"
 KIND_IMAGE = "image"
@@ -578,13 +619,13 @@ def build_ffmpeg_command(spec: RenderSpec, concat_list_path: str,
     if spec.subtitle_path:
         subs = spec.subtitle_path.replace("'", r"'\''")
         cmd += ["-vf", f"subtitles='{subs}'"]
-    cmd += ["-r", str(spec.fps), "-c:v", "libx264", *FINAL_X264, "-pix_fmt", "yuv420p"]
+    cmd += ["-r", str(spec.fps), "-c:v", "libx264", *final_x264(spec), "-pix_fmt", "yuv420p"]
     if spec.audio_path:
         cmd += ["-c:a", "aac", "-shortest"]
     cmd.append(spec.output_path)
     # A timeline with no audio track or overlay takes this path too: its
     # inputs are the render's own intermediates, capped all the same.
-    return cap_inputs(cmd) if spec.frame_exact else cmd
+    return cap_inputs(cmd, out_pixels=spec.width * spec.height) if spec.frame_exact else cmd
 
 
 def _quote_filter_path(path: str) -> str:
@@ -732,12 +773,12 @@ def _timeline_command(spec: RenderSpec, concat_list_path: str,
     cmd += ["-map", video_out]
     if labels:
         cmd += ["-map", "[aout]"]
-    cmd += ["-r", str(spec.fps), "-c:v", "libx264", *FINAL_X264, "-pix_fmt", "yuv420p"]
+    cmd += ["-r", str(spec.fps), "-c:v", "libx264", *final_x264(spec), "-pix_fmt", "yuv420p"]
     if labels:
         cmd += ["-c:a", "aac"]
     cmd.append(spec.output_path)
     # Audio tracks are read as [n:a] only, so no picture of theirs is decoded;
     # the cap is there anyway, on every input. No -xerror: a damaged audio
     # frame is skipped, as it always was.
-    return cap_inputs(cmd)
+    return cap_inputs(cmd, out_pixels=spec.width * spec.height)
 

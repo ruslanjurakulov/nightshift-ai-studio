@@ -86,6 +86,12 @@ PRESETS: Dict[str, Tuple[int, int]] = {
 }
 FPS_VALUES = (24, 25, 30, 50, 60)
 MIN_SIDE, MAX_SIDE = 16, 4096
+#: The largest frame an export renders: 4K UHD in either orientation (a
+#: 4096-px side is fine on a narrower frame). Larger frames do not fit the
+#: export's per-process memory limit in libx264's final pass (BR-L-014:
+#: 4096x2304 needed 2212 MB, 4096x4096 3849 MB), and at 60 fps for the
+#: longest export they would pass the library's decode budget (BR-L-017).
+MAX_FRAME_PIXELS = 3840 * 2160
 
 #: Upper bounds that keep one document from tying up the render worker.
 MAX_DURATION_S = 4 * 3600.0
@@ -279,6 +285,10 @@ def validate(doc: Any) -> List[str]:
         if not (_is_int(v) and MIN_SIDE <= v <= MAX_SIDE and v % 2 == 0):
             problems.append(f"timeline: {k} must be an even integer from {MIN_SIDE} to "
                             f"{MAX_SIDE} (H.264 4:2:0 needs even sides; got {v!r})")
+    w, h = doc.get("width"), doc.get("height")
+    if _is_int(w) and _is_int(h) and w * h > MAX_FRAME_PIXELS:
+        problems.append(f"timeline: the frame is at most {MAX_FRAME_PIXELS} pixels (3840x2160 or "
+                        f"2160x3840; got {w}x{h})")
     fps = doc.get("fps")
     if fps not in FPS_VALUES or not _is_int(fps):
         problems.append(f"timeline: fps must be one of {list(FPS_VALUES)} (got {fps!r})")

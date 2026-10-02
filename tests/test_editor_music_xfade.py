@@ -19,7 +19,9 @@ What would break, by test:
 """
 
 import json
+import os
 import re
+import sys
 import subprocess
 import tempfile
 import time
@@ -27,7 +29,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from modules import editor_export, render_backend
+from modules import editor_export, ffmpeg_limits, render_backend
 from modules import media_library as ml
 from modules import render_spec as rs
 from modules import timeline as tl
@@ -75,52 +77,59 @@ def commands(spec):
 FIT = "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30"
 PIN = ",settb=1/30,fps=30,format=yuv420p"
 ENC = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "30"]
-#: Every timeline input is capped at the decoder (BR-L-004): media_library.MAX_PIXELS.
-CAP = ["-max_pixels", "100000000"]
+#: Every timeline input is capped at the decoder (BR-L-004), with two decoder
+#: threads (BR-L-007): a clip at the video cap (8192x4352, BR-L-010), any other
+#: input at the still cap (100 MP), each plus the decoder's row padding of
+#: 63 x 16384 px (BR-L-009). Filter graphs get two threads; no -xerror (BR-L-008).
+CLIP = ["-max_pixels", "36683776", "-threads", "2"]
+STILL = ["-max_pixels", "101032192", "-threads", "2"]
+TH = ["-filter_threads", "2", "-filter_complex_threads", "2"]
+#: The encoder's threads, before the output (BR-L-007).
+OUT = ["-threads", "4"]
 PAN = ("scale=1472:828:force_original_aspect_ratio=increase:flags=lanczos,loop=loop=-1:size=1,"
        "settb=1/30,setpts=N,crop=w=1207:h=679:x='clip(trunc(iw*(0.5-0.15+0.3*min(1,n/60.000000)))"
        "-603,0,iw-ow)':y='(ih-oh)/2',scale=1280:720:flags=lanczos")
 
 GOLDEN_XFADE_SEGMENTS = [
     # c1 alone: frames 0-74.
-    [["ffmpeg", "-xerror", "-y", "-stream_loop", "-1", "-ss", "1.000", *CAP, "-i", "/media/a.mp4", "-frames:v", "75",
-      "-an", "-vf", FIT, *ENC, "/w/seg_0000.mp4"]],
+    [["ffmpeg", *TH, "-y", "-stream_loop", "-1", "-ss", "1.000", *CLIP, "-i", "/media/a.mp4", "-frames:v", "75",
+      "-an", "-vf", FIT, *ENC, *OUT, "/w/seg_0000.mp4"]],
     # c1's last 15 frames dissolve into c2's first 15 (c2 at 2x).
-    [["ffmpeg", "-xerror", "-y", "-stream_loop", "-1", "-ss", "1.000", *CAP, "-i", "/media/a.mp4",
-      "-stream_loop", "-1", *CAP, "-i", "/media/b.mp4", "-filter_complex",
+    [["ffmpeg", *TH, "-y", "-stream_loop", "-1", "-ss", "1.000", *CLIP, "-i", "/media/a.mp4",
+      "-stream_loop", "-1", *CLIP, "-i", "/media/b.mp4", "-filter_complex",
       f"[0:v]{FIT},trim=start_frame=75,setpts=PTS-STARTPTS{PIN}[xa];"
       f"[1:v]setpts=(PTS-STARTPTS)/2.000,{FIT}{PIN}[xb];"
       "[xa][xb]xfade=transition=fade:duration=0.500000:offset=0[xv]",
-      "-map", "[xv]", "-frames:v", "15", "-an", *ENC, "/w/seg_0001.mp4"]],
+      "-map", "[xv]", "-frames:v", "15", "-an", *ENC, *OUT, "/w/seg_0001.mp4"]],
     # c2 alone: its frames 15-29.
-    [["ffmpeg", "-xerror", "-y", "-stream_loop", "-1", *CAP, "-i", "/media/b.mp4", "-frames:v", "15", "-an", "-vf",
+    [["ffmpeg", *TH, "-y", "-stream_loop", "-1", *CLIP, "-i", "/media/b.mp4", "-frames:v", "15", "-an", "-vf",
       f"setpts=(PTS-STARTPTS)/2.000,{FIT},trim=start_frame=15,setpts=PTS-STARTPTS", *ENC,
-      "/w/seg_0002.mp4"]],
+      *OUT, "/w/seg_0002.mp4"]],
     # c2's last 30 frames dissolve into the still's first 30, the still
     # already making its move (held, as for any still, if the move fails).
-    [["ffmpeg", "-xerror", "-y", "-stream_loop", "-1", *CAP, "-i", "/media/b.mp4", *CAP, "-i", "/media/i.png",
+    [["ffmpeg", *TH, "-y", "-stream_loop", "-1", *CLIP, "-i", "/media/b.mp4", *STILL, "-i", "/media/i.png",
       "-filter_complex",
       f"[0:v]setpts=(PTS-STARTPTS)/2.000,{FIT},trim=start_frame=30,setpts=PTS-STARTPTS{PIN}[xa];"
       f"[1:v]{PAN}{PIN}[xb];"
       "[xa][xb]xfade=transition=fade:duration=1.000000:offset=0[xv]",
-      "-map", "[xv]", "-frames:v", "30", "-an", *ENC, "/w/seg_0003.mp4"],
-     ["ffmpeg", "-xerror", "-y", "-stream_loop", "-1", *CAP, "-i", "/media/b.mp4", "-loop", "1", *CAP, "-i", "/media/i.png",
+      "-map", "[xv]", "-frames:v", "30", "-an", *ENC, *OUT, "/w/seg_0003.mp4"],
+     ["ffmpeg", *TH, "-y", "-stream_loop", "-1", *CLIP, "-i", "/media/b.mp4", "-loop", "1", *STILL, "-i", "/media/i.png",
       "-filter_complex",
       f"[0:v]setpts=(PTS-STARTPTS)/2.000,{FIT},trim=start_frame=30,setpts=PTS-STARTPTS{PIN}[xa];"
       f"[1:v]{FIT}{PIN}[xb];"
       "[xa][xb]xfade=transition=fade:duration=1.000000:offset=0[xv]",
-      "-map", "[xv]", "-frames:v", "30", "-an", *ENC, "/w/seg_0003.mp4"]],
+      "-map", "[xv]", "-frames:v", "30", "-an", *ENC, *OUT, "/w/seg_0003.mp4"]],
     # The still alone: the SAME move (same seed, same 60-frame span), cut at frame 30.
-    [["ffmpeg", "-xerror", "-y", *CAP, "-i", "/media/i.png", "-frames:v", "30", "-vf",
-      f"{PAN},trim=start_frame=30,setpts=PTS-STARTPTS", *ENC, "/w/seg_0004.mp4"],
-     ["ffmpeg", "-xerror", "-y", "-loop", "1", *CAP, "-i", "/media/i.png", "-frames:v", "30", "-vf",
-      f"{FIT},trim=start_frame=30,setpts=PTS-STARTPTS", *ENC, "/w/seg_0004.mp4"]],
+    [["ffmpeg", *TH, "-y", *STILL, "-i", "/media/i.png", "-frames:v", "30", "-vf",
+      f"{PAN},trim=start_frame=30,setpts=PTS-STARTPTS", *ENC, *OUT, "/w/seg_0004.mp4"],
+     ["ffmpeg", *TH, "-y", "-loop", "1", *STILL, "-i", "/media/i.png", "-frames:v", "30", "-vf",
+      f"{FIT},trim=start_frame=30,setpts=PTS-STARTPTS", *ENC, *OUT, "/w/seg_0004.mp4"]],
 ]
 
 AF = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
 GOLDEN_XFADE_FINAL = [
-    "ffmpeg", "-y", "-f", "concat", "-safe", "0", *CAP, "-i", "/w/concat.txt",
-    *CAP, "-i", "/media/a.mp4", *CAP, "-i", "/media/b.mp4", *CAP, "-i", "/media/m.mp3",
+    "ffmpeg", *TH, "-y", "-f", "concat", "-safe", "0", *STILL, "-i", "/w/concat.txt",
+    *STILL, "-i", "/media/a.mp4", *STILL, "-i", "/media/b.mp4", *STILL, "-i", "/media/m.mp3",
     "-filter_complex",
     # c1's sound and c2's (2x, and fading out under the silent still) are
     # joined by acrossfade over the 0.5 s overlap, then placed at 0.
@@ -133,7 +142,7 @@ GOLDEN_XFADE_FINAL = [
     "afade=t=in:st=0:d=1.000,afade=t=out:st=3.500:d=1.500,adelay=delays=500:all=1[a2];"
     "[a0][a2]amix=inputs=2:duration=longest:normalize=0,apad,atrim=end=5.500000[aout]",
     "-map", "0:v", "-map", "[aout]", "-r", "30", "-c:v", "libx264", "-preset", "medium",
-    "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "/out/x.mp4"]
+    "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", *OUT, "/out/x.mp4"]
 
 
 class CrossfadeDocumentTestCase(unittest.TestCase):
@@ -258,33 +267,28 @@ class CrossfadeRenderSpecTestCase(unittest.TestCase):
             tr.to_render_spec(d, ASSETS.get, "/out/x.mp4")
 
 
-class _FakeProc:
-    """A process that never finishes on its own, like a hung ffmpeg."""
-
-    def __init__(self, *a, **k):
-        self.killed = False
-        self.reaped = False
-        self.returncode = None
-        _FakeProc.last = self
-
-    def communicate(self, timeout=None):
-        if self.killed:
-            self.reaped = True
-            self.returncode = -9
-            return "", ""
-        raise subprocess.TimeoutExpired("ffmpeg", timeout)
-
-    def kill(self):
-        self.killed = True
-
-
 class DeadlineTestCase(unittest.TestCase):
     def test_a_hung_ffmpeg_is_killed_and_reaped_at_the_deadline(self):
-        with mock.patch.object(render_backend.subprocess, "Popen", _FakeProc):
+        # A real process that never finishes on its own, like a hung ffmpeg,
+        # run the way an export runs every command (ffmpeg_limits).
+        started = []
+        real = subprocess.Popen
+
+        def spy(*a, **k):
+            proc = real(*a, **k)
+            started.append(proc)
+            return proc
+
+        t0 = time.monotonic()
+        with mock.patch.object(ffmpeg_limits.subprocess, "Popen", spy):
             with self.assertRaises(render_backend.RenderTimeout):
-                render_backend._run(["ffmpeg", "-i", "x"], deadline=time.monotonic() + 0.01)
-        self.assertTrue(_FakeProc.last.killed)
-        self.assertTrue(_FakeProc.last.reaped)
+                render_backend._run([sys.executable, "-c", "import time; time.sleep(60)"],
+                                    deadline=time.monotonic() + 0.5)
+        self.assertLess(time.monotonic() - t0, 30)
+        self.assertEqual(len(started), 1)
+        self.assertIsNotNone(started[0].returncode, "the process must be reaped")
+        with self.assertRaises(ProcessLookupError):
+            os.kill(started[0].pid, 0)
 
     def test_past_the_deadline_nothing_is_started(self):
         with mock.patch.object(render_backend.subprocess, "Popen") as popen:
