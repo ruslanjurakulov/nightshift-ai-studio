@@ -71,6 +71,8 @@ DESCRIBE_LANGUAGES = ("en", "ru", "uz")
 IMAGE_QUALITIES = ("low", "medium", "high")
 #: The capabilities a quality tier applies to.
 QUALITY_CAPABILITIES = frozenset({T2I, EDIT})
+#: The capabilities a video's resolution and soundtrack apply to (0070).
+VIDEO_VARIANT_CAPABILITIES = frozenset({T2V, I2V})
 #: Capabilities whose input is a recording — audio or video with speech
 #: (CapabilityRequest.input_media, migration 0050). Never mixed with images.
 MEDIA_INPUT = frozenset({VOICE_CHANGE, DUB})
@@ -323,6 +325,14 @@ class HttpAdapter:
     #: default tier under a price quoted for another: the registry refuses
     #: ``qualities`` on any other adapter, and a request naming one is refused.
     quality_capabilities: Sequence[str] = ()
+    #: Capabilities for which this adapter sends ``CapabilityRequest.audio``
+    #: as the vendor's own sound flag (0070). Left unsent the vendor decides
+    #: (and bills) for itself: the registry refuses a model priced by audio on
+    #: any other adapter, and a request naming audio is refused.
+    audio_capabilities: Sequence[str] = ()
+    #: Capabilities for which this adapter always sends a resolution — the
+    #: request's, else the one the registry pins (``default_resolution``, 0070).
+    resolution_capabilities: Sequence[str] = ()
     timeout = 60
 
     def __init__(self, *, env: Optional[Mapping[str, str]] = None, session=None):
@@ -368,6 +378,8 @@ class HttpAdapter:
             out.append(f"adapter {self.key} cannot end a clip on a chosen frame")
         if request.quality and request.capability not in self.quality_capabilities:
             out.append(f"adapter {self.key} does not send a quality")
+        if request.audio is not None and request.capability not in self.audio_capabilities:
+            out.append(f"adapter {self.key} does not send an audio flag")
         out.extend(entry.problems(request))
         return out
 

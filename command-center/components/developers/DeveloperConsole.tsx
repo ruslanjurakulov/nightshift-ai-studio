@@ -10,7 +10,16 @@ import { ErrorState } from "@/components/ReadError";
 import { resolvedTheme } from "@/lib/theme";
 import { paddleLocale, type PaddleEnvironment } from "@/lib/paddle";
 import { ensurePaddle, type PaddleEventData } from "@/lib/paddle-client";
-import { API_KEY_LIST_COLUMNS, createKeyArgs, MAX_ACTIVE_KEYS, mintedKey } from "@/lib/api/keys";
+import { API_KEY_BASE_COLUMNS, API_KEY_LIST_COLUMNS, MAX_ACTIVE_KEYS, mintedKey } from "@/lib/api/keys";
+import {
+  API_SCOPES,
+  createScopedKeyArgs,
+  effectiveScopes,
+  LEGACY_SCOPES,
+  parseCreditLimit,
+  parseRpmLimit,
+  type ApiScope,
+} from "@/lib/api/scopes";
 import {
   API_TERMS_VERSION,
   API_TIERS,
@@ -58,6 +67,10 @@ interface KeyRow {
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;
+  /** null = made before generations existed (migration 0062). */
+  scopes: string[] | null;
+  rpm_limit: number | null;
+  creative_monthly_credits: number | null;
 }
 
 interface UsageDay {
@@ -279,6 +292,19 @@ function Overview({ info, locale }: { info: Console; locale: string }) {
   );
 }
 
+/** The words for a scope, from the dictionary (never inline: en, ru, uz). */
+function scopeLabel(d: Record<string, string>, scope: ApiScope): string {
+  const word: Record<ApiScope, string> = {
+    "account:read": d.scopeAccountRead,
+    "videos:read": d.scopeVideosRead,
+    "videos:write": d.scopeVideosWrite,
+    "creative:quote": d.scopeCreativeQuote,
+    "creative:create": d.scopeCreativeCreate,
+    "creative:read": d.scopeCreativeRead,
+  };
+  return word[scope];
+}
+
 export function Keys({ orgId, activated }: { orgId: string; activated: boolean }) {
   const { t, locale } = useI18n();
   const d = t.developers;
@@ -286,6 +312,11 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
   const [keysFailed, setKeysFailed] = useState(false);
   const [name, setName] = useState("");
   const [limitText, setLimitText] = useState("");
+  // New keys start with what every key could always do; spending credits on
+  // generations is something the admin ticks on purpose.
+  const [scopes, setScopes] = useState<ApiScope[]>([...LEGACY_SCOPES]);
+  const [rpmText, setRpmText] = useState("");
+  const [creditText, setCreditText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shown, setShown] = useState<string | null>(null);
@@ -294,10 +325,18 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
   const load = useCallback(async () => {
     const supabase = createClient();
     if (!supabase) return;
-    const { data, error: readErr } = await supabase.from("api_keys").select(API_KEY_LIST_COLUMNS).eq("org_id", orgId).order("created_at", { ascending: false });
+    let { data, error: readErr } = (await supabase.from("api_keys").select(API_KEY_LIST_COLUMNS).eq("org_id", orgId).order("created_at", { ascending: false })) as {
+      data: unknown;
+      error: { message?: string } | null;
+    };
+    // Before migration 0062 the scope columns do not exist: list the keys by
+    // what they always had (they read as made before generations) rather than fail.
+    if (readErr) {
+      ({ data, error: readErr } = await supabase.from("api_keys").select(API_KEY_BASE_COLUMNS).eq("org_id", orgId).order("created_at", { ascending: false }));
+    }
     // A failed read is not "no keys".
     setKeysFailed(Boolean(readErr));
-    setKeys(readErr ? null : ((data as KeyRow[] | null) ?? []));
+    setKeys(readErr ? null : ((data as Partial<KeyRow>[] | null) ?? []).map((k) => ({ scopes: null, rpm_limit: null, creative_monthly_credits: null, ...k }) as KeyRow));
   }, [orgId]);
 
   useEffect(() => {
@@ -315,9 +354,26 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
       setError(d.limitInvalid);
       return;
     }
+    const rpm = parseRpmLimit(rpmText);
+    if (!rpm.ok) {
+      setError(d.rpmInvalid);
+      return;
+    }
+    const credits = parseCreditLimit(creditText);
+    if (!credits.ok) {
+      setError(d.creditLimitInvalid);
+      return;
+    }
+    if (scopes.length === 0) {
+      setError(d.scopesRequired);
+      return;
+    }
     setBusy(true);
     setError(null);
-    const { data, error: e } = await supabase.rpc("create_api_key", createKeyArgs(orgId, clean, limit.cents));
+    const { data, error: e } = await supabase.rpc(
+      "create_scoped_api_key",
+      createScopedKeyArgs(orgId, clean, limit.cents, scopes, rpm.value, credits.value),
+    );
     setBusy(false);
     const key = e ? null : mintedKey(data);
     if (!key) {
@@ -329,6 +385,9 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
     setCopied(false);
     setName("");
     setLimitText("");
+    setRpmText("");
+    setCreditText("");
+    setScopes([...LEGACY_SCOPES]);
     await load();
   }
 
@@ -398,10 +457,34 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
             {d.keyLimit}
             <input className={input} value={limitText} inputMode="decimal" onChange={(e) => setLimitText(e.target.value)} />
           </label>
+        </div>
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1 text-[12px] text-[var(--color-muted)]">{d.keyScopes}</legend>
+          {API_SCOPES.map((scope) => (
+            <label key={scope} className="flex items-start gap-2 text-[13px]">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={scopes.includes(scope)}
+                onChange={(e) => setScopes((cur) => (e.target.checked ? [...cur, scope] : cur.filter((x) => x !== scope)))}
+              />
+              <span>{scopeLabel(d, scope)}</span>
+            </label>
+          ))}
+        </fieldset>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex min-w-0 flex-1 basis-56 flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+            {d.keyRpm}
+            <input className={input} value={rpmText} inputMode="numeric" onChange={(e) => setRpmText(e.target.value)} />
+          </label>
+          <label className="flex min-w-0 flex-1 basis-56 flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+            {d.keyCreditLimit}
+            <input className={input} value={creditText} inputMode="decimal" onChange={(e) => setCreditText(e.target.value)} />
+          </label>
           <button
             type="button"
             onClick={create}
-            disabled={busy || !name.trim() || active >= MAX_ACTIVE_KEYS}
+            disabled={busy || !name.trim() || scopes.length === 0 || active >= MAX_ACTIVE_KEYS}
             className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
           >
             {busy ? d.creating : d.create}
@@ -427,6 +510,9 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
                 <th className="py-1 pr-3">{d.created}</th>
                 <th className="py-1 pr-3">{d.lastUsed}</th>
                 <th className="py-1 pr-3">{d.keyLimitShort}</th>
+                <th className="py-1 pr-3">{d.keyAccess}</th>
+                <th className="py-1 pr-3">{d.keyRpmShort}</th>
+                <th className="py-1 pr-3">{d.keyCreditsShort}</th>
                 <th className="py-1" />
               </tr>
             </thead>
@@ -438,6 +524,11 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
                   <td className="py-2 pr-3">{new Date(k.created_at).toLocaleDateString(locale)}</td>
                   <td className="py-2 pr-3">{k.last_used_at ? new Date(k.last_used_at).toLocaleString(locale) : d.never}</td>
                   <td className="py-2 pr-3">{k.monthly_limit_cents === null ? d.noLimit : formatUsd(k.monthly_limit_cents, locale)}</td>
+                  <td className="py-2 pr-3 text-[12px]">
+                    {k.scopes === null ? d.keyAccessLegacy : effectiveScopes(k.scopes).map((x) => scopeLabel(d, x)).join(" · ")}
+                  </td>
+                  <td className="py-2 pr-3">{k.rpm_limit ?? d.noLimit}</td>
+                  <td className="py-2 pr-3">{k.creative_monthly_credits ?? d.noLimit}</td>
                   <td className="py-2 text-right">
                     {k.revoked_at ? (
                       <span className="text-[12px]">{d.revoked}</span>
