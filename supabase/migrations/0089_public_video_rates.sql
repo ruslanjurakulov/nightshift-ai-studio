@@ -1,4 +1,4 @@
--- 0085_public_video_rates.sql — the two credit rates a visitor needs to read a
+-- 0089_public_video_rates.sql — the two credit rates a visitor needs to read a
 -- price before signing up: credits per finished minute of video, and the
 -- smallest hold any run takes. Both AS CHARGED, readable by anyone.
 --
@@ -35,7 +35,7 @@
 do $$
 begin
   if to_regclass('public.credit_prices') is null then
-    raise exception '0085 needs 0020_credits.sql: apply it first';
+    raise exception '0089 needs 0020_credits.sql: apply it first';
   end if;
 end $$;
 
@@ -53,7 +53,7 @@ create or replace function public.public_video_rates()
 $$;
 
 comment on function public.public_video_rates() is
-  'The public price of a video (0085): video_minute and job_minimum only, credits per unit AS CHARGED (job_minimum flat). Never the margin, the base rate or the note. Anyone may read it.';
+  'The public price of a video (0089): video_minute and job_minimum only, credits per unit AS CHARGED (job_minimum flat). Never the margin, the base rate or the note. Anyone may read it.';
 
 revoke all on function public.public_video_rates() from public, anon, authenticated, service_role;
 grant execute on function public.public_video_rates() to anon, authenticated;

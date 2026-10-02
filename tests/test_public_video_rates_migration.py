@@ -1,4 +1,4 @@
-"""supabase/migrations/0085_public_video_rates.sql — the public price of a
+"""supabase/migrations/0089_public_video_rates.sql — the public price of a
 video in credits, for the signed-out price pages.
 
 SQL runs in tests/security (test_sec_public_video_rates.py, a real Postgres);
@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SQL = (ROOT / "supabase" / "migrations" / "0085_public_video_rates.sql").read_text()
+SQL = (ROOT / "supabase" / "migrations" / "0089_public_video_rates.sql").read_text()
 CODE = re.sub(r"--[^\n]*", "", SQL)
 
 

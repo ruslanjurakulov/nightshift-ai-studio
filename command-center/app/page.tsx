@@ -7,6 +7,7 @@ import { paddleClient, paddleConfig } from "@/lib/paddle";
 import { PLAN_ENV, planMatrix } from "@/lib/plans";
 import { planValue, readPlanCatalog } from "@/lib/server/plans";
 import { PRICING_ENV, resolvePricing } from "@/lib/pricing";
+import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import {
   SHOWCASE,
   jsonLdScript,
@@ -18,6 +19,7 @@ import {
   visibleShowcase,
 } from "@/lib/landing";
 import { readPublicApiPrices } from "@/lib/server/api-prices";
+import { PUBLIC_READ_TIMEOUT_MS } from "@/lib/server/public-read";
 import { readPublicCreditRates } from "@/lib/server/public-rates";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { Landing } from "@/components/landing/Landing";
@@ -55,11 +57,19 @@ export default async function Home() {
   // The same pricing source /pricing reads; the teaser only ever shows what it holds.
   // Plans (0034) come from the public price list in the database.
   const supabase = await createClient().catch(() => null);
-  // An unreadable catalog teases no plans (the pricing page itself says it could not read them).
-  const catalog = supabase ? planValue(await readPlanCatalog(supabase).catch(() => ({ state: "failed" as const }))) : null;
+  // The three public reads run together, each bounded (BR-L-047): a stalled
+  // backend costs this page one timeout, not three in a row.
+  const [catalogRead, apiPrices, siteRates] = await Promise.all([
+    // An unreadable catalog teases no plans (the pricing page itself says it could not read them).
+    supabase
+      ? readPlanCatalog(supabase, { signal: AbortSignal.timeout(PUBLIC_READ_TIMEOUT_MS) }).catch(() => ({ state: "failed" as const }))
+      : null,
+    readPublicApiPrices(),
+    readPublicCreditRates(),
+  ]);
+  const catalog = catalogRead ? planValue(catalogRead) : null;
   const resolved = resolvePricing(PRICING_ENV, paddleConfig);
   const pricing = pricingTeaser(resolved, planMatrix(catalog, PLAN_ENV, paddleClient));
-  const [apiPrices, siteRates] = await Promise.all([readPublicApiPrices(), readPublicCreditRates()]);
   const anchor = moneyAnchor(resolved, apiPrices, siteRates);
   const jsonLd = softwareApplicationJsonLd({
     name: t.brand.name,
@@ -70,7 +80,14 @@ export default async function Home() {
   return (
     <PublicShell t={t}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
-      <Landing t={t} locale={locale} pricing={pricing} anchor={anchor} showcase={visibleShowcase(SHOWCASE)} />
+      <Landing
+        t={t}
+        locale={locale}
+        pricing={pricing}
+        anchor={anchor}
+        showcase={visibleShowcase(SHOWCASE)}
+        expiryMonths={catalog?.packValidMonths === undefined ? CREDIT_EXPIRY_MONTHS : catalog.packValidMonths}
+      />
     </PublicShell>
   );
 }

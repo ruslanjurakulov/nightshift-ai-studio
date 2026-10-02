@@ -1,4 +1,4 @@
-"""0085: public_video_rates() hands anyone — signed in or not — the two credit
+"""0089: public_video_rates() hands anyone — signed in or not — the two credit
 rates a price page names (credits per finished minute, and the smallest hold),
 AS CHARGED, and nothing else from the operator's price list.
 
@@ -19,7 +19,7 @@ from decimal import Decimal
 
 from sec_db import ANON, acting, as_superuser
 
-PROBE_UNIT = "zz_0085_probe_usd"
+PROBE_UNIT = "zz_0089_probe_usd"
 MINUTE_BASE = Decimal("40")
 MINUTE_MARGIN = Decimal("0.5")  # charged: 60 credits a minute
 FLOOR = Decimal("30")
@@ -81,7 +81,7 @@ def test_the_result_has_no_base_rate_margin_or_note_column(conn, sc):
 def test_mutation_proof_without_the_unit_filter_the_probe_unit_leaks(conn, sc):
     """Put back a body that returns every unit, inside a rolled-back
     transaction: anon then reads the internal probe unit's charged rate. The
-    filter in 0085 is what keeps the first test from passing vacuously."""
+    filter in 0089 is what keeps the first test from passing vacuously."""
     before = _snapshot(conn)
     _seed(conn)
     try:
@@ -97,3 +97,20 @@ def test_mutation_proof_without_the_unit_filter_the_probe_unit_leaks(conn, sc):
         assert (PROBE_UNIT,) in leaked, leaked
     finally:
         _restore(conn, before)
+
+
+def test_the_file_replays_twice_and_keeps_its_grants(conn, sc):
+    """Additive and idempotent: applying 0089 again (twice, after every later
+    migration) leaves the same function and the same grants — the order a
+    hand-applied migration actually meets."""
+    from sec_db import MIGRATIONS
+    sql = (MIGRATIONS / "0089_public_video_rates.sql").read_text()
+    with as_superuser(conn, commit=False) as s:
+        for _ in range(2):
+            out = s.run(sql)
+            assert out.ok, out
+        result = s.value("select pg_get_function_result('public.public_video_rates()'::regprocedure)")
+        anon = s.value("select has_function_privilege('anon', 'public.public_video_rates()', 'EXECUTE')")
+        service = s.value("select has_function_privilege('service_role', 'public.public_video_rates()', 'EXECUTE')")
+    assert result == "TABLE(unit text, credits_per_unit numeric)", result
+    assert anon is True and service is False, (anon, service)

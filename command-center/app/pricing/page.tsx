@@ -10,6 +10,7 @@ import { generationRates, type GenerationRates, type PlanCatalog } from "@/lib/p
 import { readSellableModels } from "@/lib/creative/registry";
 import { moneyAnchor, runtimeSiteOrigin, shareMetadata } from "@/lib/landing";
 import { readPublicApiPrices } from "@/lib/server/api-prices";
+import { PUBLIC_READ_TIMEOUT_MS } from "@/lib/server/public-read";
 import { readPublicCreditRates } from "@/lib/server/public-rates";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { PricingView } from "@/components/pricing/PricingView";
@@ -44,7 +45,7 @@ export async function generateMetadata(): Promise<Metadata> {
  * Prices come only from Paddle's preview or the owner's display env
  * (lib/pricing.ts). The live credit rates come from credit_rates() (0084: the
  * rates as charged, never the margin) for a signed-in account, and from
- * public_video_rates() (0085: per minute and the smallest hold) for anyone
+ * public_video_rates() (0089: per minute and the smallest hold) for anyone
  * else; when neither is published the page says so rather than showing a
  * number it would have had to guess.
  */
@@ -53,11 +54,19 @@ export default async function PricingPage() {
   const pricing = resolvePricing(PRICING_ENV, paddleConfig);
   // The money a signed-out visitor can be shown: published pack prices, the
   // live API price list (public by 0031) and the two public credit rates
-  // (per minute and the smallest hold, 0085). Read alongside the rest.
+  // (per minute and the smallest hold, 0089). Read alongside the rest.
   const apiPricesRead = readPublicApiPrices();
   const publicRatesRead = readPublicCreditRates();
 
   const supabase = await createClient();
+  // The plan catalog is a public price list (0034): read signed in or out, and
+  // started now so it runs alongside the price reads (BR-L-047: one bounded
+  // wait on a stalled backend, not several in a row).
+  // `unsupported` (0034 not applied) offers no plans, as before; `failed` says
+  // the plans could not be read instead of silently showing none.
+  const catalogPending: Promise<PlanRead<PlanCatalog>> = supabase
+    ? readPlanCatalog(supabase, { signal: AbortSignal.timeout(PUBLIC_READ_TIMEOUT_MS) }).catch(() => ({ state: "failed" as const }))
+    : Promise.resolve({ state: "unsupported" as const });
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
   let rates: CreditRates | null = null;
   let ratesFailed = false;
@@ -78,12 +87,7 @@ export default async function PricingPage() {
   // money anchor read the public pair; unpublished stays null, never guessed.
   const publicRates = await publicRatesRead;
   if (!rates && !ratesFailed) rates = publicRates;
-  // The plan catalog is a public price list (0034): read signed in or out.
-  // `unsupported` (0034 not applied) offers no plans, as before; `failed` says
-  // the plans could not be read instead of silently showing none.
-  const catalogRead: PlanRead<PlanCatalog> = supabase
-    ? await readPlanCatalog(supabase).catch(() => ({ state: "failed" as const }))
-    : { state: "unsupported" };
+  const catalogRead = await catalogPending;
   const catalog = planValue(catalogRead);
   const plans = planMatrix(catalog, PLAN_ENV, paddleClient);
 
