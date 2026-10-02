@@ -12,6 +12,20 @@ import { Slug } from "@/components/site/Slug";
 import { Showcase } from "@/components/landing/Showcase";
 import { PricingTeaser } from "@/components/landing/PricingTeaser";
 import { Faq } from "@/components/landing/Faq";
+import reviewEnLight from "@/components/site/shots/review-en-light.webp";
+import reviewEnDark from "@/components/site/shots/review-en-dark.webp";
+import reviewRuLight from "@/components/site/shots/review-ru-light.webp";
+import reviewRuDark from "@/components/site/shots/review-ru-dark.webp";
+import reviewUzLight from "@/components/site/shots/review-uz-light.webp";
+import reviewUzDark from "@/components/site/shots/review-uz-dark.webp";
+
+/** The video page of the real Command Center with a finished video waiting
+ *  for approval — signed in, sample channel and video — in each language. */
+const REVIEW_SHOTS: Record<Locale, { light: { src: string; width: number; height: number }; dark: { src: string; width: number; height: number } }> = {
+  en: { light: reviewEnLight, dark: reviewEnDark },
+  ru: { light: reviewRuLight, dark: reviewRuDark },
+  uz: { light: reviewUzLight, dark: reviewUzDark },
+};
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 
@@ -54,7 +68,7 @@ export function Landing({
     <div className="lp-root">
       <Hero t={t} locale={locale} />
       <Rules t={t} />
-      <How t={t} />
+      <How t={t} locale={locale} />
       <Studio t={t} />
       <Desk t={t} locale={locale} />
       {showcase.length > 0 && (
@@ -137,36 +151,73 @@ function Rules({ t }: { t: Dictionary }) {
   );
 }
 
-function How({ t }: { t: Dictionary }) {
+/** Where each step stands on the rail: done, the one waiting for its person, not yet. */
+const HOW_STATE: Record<string, "done" | "yours" | "next"> = {
+  channel: "done",
+  topic: "done",
+  script: "done",
+  video: "done",
+  approval: "yours",
+  youtube: "next",
+};
+
+function How({ t, locale }: { t: Dictionary; locale: Locale }) {
   const h = t.site.how;
+  const shot = REVIEW_SHOTS[locale] ?? REVIEW_SHOTS.en;
   return (
-    // A band of its own: the one section on the console ground, without the
-    // slug and hairline the others open with — the rundown read as a strip.
-    <section id="how" aria-labelledby="how-title" className="st-section" data-band="true">
-      <div className="st-wrap">
+    // The one full-bleed band: a single heading line (no slug, no lede beside
+    // a big title — the formula every other section opens with), then the six
+    // steps as one strip ruled edge to edge with a rail on top, the way a
+    // rundown reads across a wall. Step 05 is then shown on the real screen.
+    <section id="how" aria-labelledby="how-title" className="st-section st-how" data-band="true">
+      <div className="st-wrap st-how-head">
         <p className="st-kicker">{h.slug}</p>
-        <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] lg:items-end">
-          <h2 id="how-title" className="st-h2">
-            {h.title}
-          </h2>
-          <p className="st-lead">{h.lead}</p>
+        <h2 id="how-title" className="st-how-title">
+          {h.title}
+        </h2>
+        <p className="st-small">{h.lead}</p>
+      </div>
+      <ol className="st-how-strip" aria-label={h.slug}>
+        {h.steps.map((s, i) => (
+          <li key={s.id} className="st-how-step" data-state={HOW_STATE[s.id] ?? "next"}>
+            <span aria-hidden className="st-how-rail" />
+            <span className="st-how-no st-num" aria-hidden>
+              {String(i + 1).padStart(2, "0")}
+            </span>
+            <h3 className="st-step-title">{s.title}</h3>
+            {s.id === "approval" && <StatusLamp tone="run" label={t.site.rundown.yours} />}
+            <p>{s.body}</p>
+          </li>
+        ))}
+      </ol>
+      <div className="st-wrap st-how-shot">
+        <div>
+          <p className="st-kicker">05 · {h.shotTag}</p>
+          <h3 className="st-h3 mt-4">{h.shotTitle}</h3>
+          <p className="st-body mt-4">{h.shotBody}</p>
         </div>
-        <ol className="st-steps" aria-label={h.slug}>
-          {h.steps.map((s, i) => (
-            <li key={s.id} className="st-step">
-              <span className="st-step-no st-num" aria-hidden>
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <h3 className="st-step-title">{s.title}</h3>
-              {s.id === "approval" && (
-                <span className="st-step-lamp">
-                  <StatusLamp tone="run" label={t.site.rundown.yours} />
-                </span>
-              )}
-              <p>{s.body}</p>
-            </li>
+        <figure className="st-shot">
+          {/* The real page, photographed: light and dark are separate captures,
+              and the one that does not match the theme is never shown (nor,
+              lazily, fetched). Served from /_next/static like any build asset. */}
+          {(["light", "dark"] as const).map((theme) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={theme}
+              src={shot[theme].src}
+              width={shot[theme].width}
+              height={shot[theme].height}
+              alt={h.shotAlt}
+              loading="lazy"
+              decoding="async"
+              data-shot-theme={theme}
+            />
           ))}
-        </ol>
+          <figcaption>
+            <span className="st-tag">{h.shotTag}</span>
+            {h.shotCaption}
+          </figcaption>
+        </figure>
       </div>
     </section>
   );

@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
-import { formatCredits } from "@/lib/credits";
+import { creditUnit, formatCredits } from "@/lib/credits";
 import { formatUsd } from "@/lib/api/pricing";
 import { WELCOME_CREDITS } from "@/lib/pricing";
 import type { MoneyAnchor as Anchor } from "@/lib/landing";
 
 /**
  * What a visitor can know about money before signing up (lib/landing.ts
- * moneyAnchor): the smallest pack's published price, a video's price through
- * the API from the live list, and the free grant. A price nobody published is
+ * moneyAnchor): the smallest pack's published price, what a video costs in the
+ * app in credits (and in dollars at that pack's price) and through the API,
+ * both from the live lists, and the free grant. A price nobody published is
  * said in words — never a zero, never a default.
  */
 export function MoneyAnchor({
@@ -31,6 +32,8 @@ export function MoneyAnchor({
   const a = t.site.anchor;
   const none = <span className="st-anchor-none">{a.none}</span>;
   const nothingOnSale = anchor.pack.kind === "none";
+  const credits = (n: number) => formatCredits(n, locale);
+  const unit = (n: number) => creditUnit(n, locale, t.shell.creditUnit);
   return (
     <div className={`st-anchor ${className}`}>
       <Heading id={titleId} className="st-kicker text-[var(--ns-text)]">
@@ -46,6 +49,30 @@ export function MoneyAnchor({
               </span>
             ) : anchor.pack.kind === "checkout" ? (
               <span className="st-anchor-none">{a.packCheckout}</span>
+            ) : (
+              none
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>{a.siteLabel}</dt>
+          <dd>
+            {anchor.site ? (
+              <>
+                <span className="st-anchor-money">
+                  {fmt(a.siteValue, { n: credits(anchor.site.perMinute), unit: unit(anchor.site.perMinute) })}
+                </span>
+                {anchor.site.minimum !== null && (
+                  <span className="st-anchor-sub">
+                    {fmt(a.siteMinimum, { n: credits(anchor.site.minimum), unit: unit(anchor.site.minimum) })}
+                  </span>
+                )}
+                {anchor.site.usd && (
+                  <span className="st-anchor-sub">
+                    {fmt(a.siteUsd, { usd: formatUsd(anchor.site.usd.cents, locale), pack: t.credits.buy.pack[anchor.site.usd.pack] })}
+                  </span>
+                )}
+              </>
             ) : (
               none
             )}

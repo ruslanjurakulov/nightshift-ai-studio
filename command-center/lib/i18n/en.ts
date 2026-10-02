@@ -3165,7 +3165,7 @@ export const en = {
     rateMinimum: "Minimum hold per run",
     rateValue: "{n} credits",
     rateUnset: "not set",
-    ratesSignedOut: "Signed-in accounts see the current per-minute rate and minimum here; every run's estimate is shown before it starts.",
+    ratesSignedOut: "No per-minute rate is published yet. Every run's estimate is shown before it starts.",
     ratesUnavailable: "The rates are not published on this deployment yet.",
     ratesReadFailed: "The current rates could not be read, so none are shown. Nothing was changed — retry in a moment.",
     ratesNote: "Rates are the platform's price list and may change; a run is never charged more than the hold taken when it started.",

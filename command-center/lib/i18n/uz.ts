@@ -3156,7 +3156,7 @@ export const uz: Dictionary = {
     rateMinimum: "Bitta ishga tushirish uchun minimal band",
     rateValue: "{n} kredit",
     rateUnset: "belgilanmagan",
-    ratesSignedOut: "Tizimga kirganlar bu yerda joriy daqiqalik stavka va minimumni ko'radi; har bir ishga tushirishning taxmini boshlanishidan oldin ko'rsatiladi.",
+    ratesSignedOut: "Daqiqalik stavka hali eʼlon qilinmagan. Har bir ishga tushirishning taxmini boshlanishidan oldin koʻrsatiladi.",
     ratesUnavailable: "Bu serverda stavkalar hali e'lon qilinmagan.",
     ratesReadFailed: "Joriy stavkalarni o'qib bo'lmadi, shuning uchun ular ko'rsatilmayapti. Hech narsa o'zgartirilmadi — birozdan so'ng qayta urinib ko'ring.",
     ratesNote: "Stavkalar — platformaning narxlar ro'yxati, ular o'zgarishi mumkin; ishga tushirish uchun u boshlanganda qo'yilgan banddan ko'p hech qachon yechilmaydi.",

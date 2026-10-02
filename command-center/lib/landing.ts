@@ -7,7 +7,7 @@
  */
 
 import { plansOnSale, type PlanMatrix } from "@/lib/plans";
-import type { Pricing } from "@/lib/pricing";
+import { displayPriceCents, type CreditRates, type Pricing } from "@/lib/pricing";
 import type { CreditPackId } from "@/lib/paddle";
 import type { ApiPriceMap } from "@/lib/api/pricing";
 
@@ -97,15 +97,27 @@ export function pricingTeaser(pricing: Pricing, plans: PlanMatrix | null = null)
  *   api_prices list — null when it could not be read. The seeded defaults are
  *   never used here: they are a fresh database's starting point, not a price.
  *
- * Nothing is derived: no credit's dollar value, no per-minute rate in credits
- * (that list is for signed-in accounts), no "from" computed across plans.
+ * - site: what a video costs in the app, in credits per finished minute and
+ *   the smallest hold, from the live list (public_video_rates(), 0085) — null
+ *   when it is not published or could not be read. With a priced pack whose
+ *   price is a plain US-dollar amount, also that minute in dollars at that
+ *   pack's price (rounded to the cent, shown as "≈"); any other display price
+ *   is never reinterpreted.
+ *
+ * Nothing else is derived: no "from" computed across plans, and no figure
+ * from a default.
  */
 export type MoneyAnchor = {
   pack: { kind: "priced"; id: CreditPackId; credits: number; price: string } | { kind: "checkout" } | { kind: "none" };
   api: { perMinuteCents: number; minimumCents: number | null } | null;
+  site: { perMinute: number; minimum: number | null; usd: { cents: number; pack: CreditPackId } | null } | null;
 };
 
-export function moneyAnchor(pricing: Pricing, apiPrices: ApiPriceMap | null): MoneyAnchor {
+export function moneyAnchor(
+  pricing: Pricing,
+  apiPrices: ApiPriceMap | null,
+  siteRates: CreditRates | null = null,
+): MoneyAnchor {
   const priced = pricing.packs
     .filter((p) => p.displayPrice !== null)
     .sort((a, b) => a.credits - b.credits)[0];
@@ -121,7 +133,16 @@ export function moneyAnchor(pricing: Pricing, apiPrices: ApiPriceMap | null): Mo
     typeof perMinute === "number" && perMinute > 0
       ? { perMinuteCents: perMinute, minimumCents: typeof minimum === "number" && minimum > 0 ? minimum : null }
       : null;
-  return { pack, api };
+  let site: MoneyAnchor["site"] = null;
+  if (siteRates && siteRates.perMinute !== null && siteRates.perMinute > 0) {
+    const packCents = pack.kind === "priced" ? displayPriceCents(pack.price) : null;
+    const usd =
+      pack.kind === "priced" && packCents !== null && pack.credits > 0
+        ? { cents: Math.max(1, Math.round((siteRates.perMinute * packCents) / pack.credits)), pack: pack.id }
+        : null;
+    site = { perMinute: siteRates.perMinute, minimum: siteRates.jobMinimum, usd };
+  }
+  return { pack, api, site };
 }
 
 // ── SEO ───────────────────────────────────────────────────────────────────────

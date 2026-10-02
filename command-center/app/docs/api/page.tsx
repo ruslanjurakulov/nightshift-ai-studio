@@ -14,8 +14,8 @@ export const metadata: Metadata = {
 /**
  * Public: the API reference (lib/public-paths.ts). The price table is the
  * live api_prices list (0031 lets anyone read it — it is a price list); when
- * it cannot be read, the page says it shows the default prices instead of
- * presenting them as current.
+ * it cannot be read, the page says no price is published. The seeded
+ * defaults never appear: they are not a price anyone set.
  */
 /** The origin examples are written against: this deployment's APP_ORIGIN
  *  (compose sets it from DOMAIN), else the production domain. */
@@ -32,7 +32,7 @@ export default async function ApiDocsPage() {
   const { t } = await getDictionary();
   const prices = await readPublicApiPrices();
   return (
-    <PublicShell t={t}>
+    <PublicShell t={t} current="docs">
       <ApiDocs prices={prices} origin={siteOrigin()} labels={{ table: t.common.scrollTable, code: t.common.scrollCode }} />
     </PublicShell>
   );

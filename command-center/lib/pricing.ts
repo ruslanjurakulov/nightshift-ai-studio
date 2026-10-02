@@ -17,12 +17,14 @@
  * invented or default number (CLAUDE.md rule 5).
  *
  * The credit rates (what a credit buys) are the platform's price list as
- * charged, credit_rates() (migration 0084), which only a signed-in account may
- * read (never the margin); for them see creditRates().
+ * charged: credit_rates() (migration 0084) for a signed-in account, and for
+ * anyone the two rates a visitor needs to read a price — per finished minute
+ * and the smallest hold — through public_video_rates() (0085). Never the
+ * margin; see creditRates() and publicCreditRates().
  */
 
 import { CREDIT_PACKS, type CreditPackId, type PaddleConfig, type PaddleEnvironment } from "@/lib/paddle";
-import { UNIT_JOB_MINIMUM, UNIT_VIDEO_MINUTE, roundUpCredits, type PriceMap } from "@/lib/credits";
+import { UNIT_JOB_MINIMUM, UNIT_VIDEO_MINUTE, parsePrices, roundUpCredits, type PriceMap } from "@/lib/credits";
 
 /** The public env this reads. Literal names only — see PRICING's reader. */
 export interface PricingEnv {
@@ -123,6 +125,30 @@ export function creditRates(prices: PriceMap): CreditRates {
     perMinute: minute ? roundUpCredits(minute.creditsPerUnit * (1 + minute.margin)) : null,
     jobMinimum: floor ? roundUpCredits(floor.creditsPerUnit) : null,
   };
+}
+
+/**
+ * public_video_rates() rows (0085: video_minute and job_minimum, as charged)
+ * -> the rates a signed-out page may show, or null when there is no positive
+ * per-minute rate: an unset or zero rate is unpublished, never "free".
+ */
+export function publicCreditRates(rows: unknown): CreditRates | null {
+  const r = creditRates(parsePrices(rows));
+  if (r.perMinute === null || !(r.perMinute > 0)) return null;
+  return { perMinute: r.perMinute, jobMinimum: r.jobMinimum !== null && r.jobMinimum > 0 ? r.jobMinimum : null };
+}
+
+/**
+ * An owner's display price in cents, when it is a plain US-dollar amount
+ * ("$10", "$9.99", "US$1,000") — else null. Only then may a page turn a credit
+ * rate into dollars; "€9", "10 USD/mo" or "from $5" are shown as written and
+ * never reinterpreted.
+ */
+export function displayPriceCents(text: string | null | undefined): number | null {
+  const m = /^(?:US)?\$\s?(\d{1,3}(?:,\d{3})+|\d{1,7})(?:\.(\d{2}))?$/.exec((text ?? "").trim());
+  if (!m) return null;
+  const cents = Number(m[1].replace(/,/g, "")) * 100 + (m[2] ? Number(m[2]) : 0);
+  return cents > 0 ? cents : null;
 }
 
 /**

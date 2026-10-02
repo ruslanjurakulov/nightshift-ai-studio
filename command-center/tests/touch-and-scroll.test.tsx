@@ -43,8 +43,12 @@ describe("scrollable regions are keyboard-reachable and named", () => {
     for (const b of boxes) {
       expect(b.tabindex).toBe("0");
       expect(b.role).toBe("region");
-      expect(b.label).toBe(b.tag === "PRE" ? t.common.scrollCode : t.common.scrollTable);
+      expect(b.label?.endsWith(b.tag === "PRE" ? t.common.scrollCode : t.common.scrollTable)).toBe(true);
     }
+    // Each region is named by what it holds: two regions called the same
+    // "Table (scrolls sideways)" were axe landmark-unique on every run.
+    const names = boxes.map((b) => b.label);
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it.each(LOCALES)("legal documents (%s): every table", (locale) => {

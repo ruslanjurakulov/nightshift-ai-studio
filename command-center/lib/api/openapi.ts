@@ -5,7 +5,7 @@
  * checks every documented path has a route.
  */
 
-import { API_TIERS, DEFAULT_API_PRICES, TOPUP_MAX_CENTS, TOPUP_MIN_CENTS } from "@/lib/api/pricing";
+import { API_TIERS, TOPUP_MAX_CENTS, TOPUP_MIN_CENTS } from "@/lib/api/pricing";
 import { IMAGE_PROVIDERS, VIDEO_PROVIDERS } from "@/lib/runBackend";
 import { API_SCOPES, KEY_RPM_MAX, LEGACY_SCOPES } from "@/lib/api/scopes";
 import { CREATIVE_CAPABILITIES, PARAM_KEYS } from "@/lib/creative/operations";
@@ -111,8 +111,11 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
       description:
         "Make, list and publish videos, and generate images, video and audio, programmatically. Videos are prepaid in US dollars, separate from site credits; " +
         "generations (/creative) are paid in the organization's credits, exactly like the Studio. " +
-        `Video: $${(DEFAULT_API_PRICES.video_minute / 100).toFixed(2)} per minute of requested length, at least ` +
-        `$${(DEFAULT_API_PRICES.job_minimum / 100).toFixed(2)} (default prices; the live list is on /docs/api).`,
+        // No figure here: this document is static, and the only price is the
+        // live api_prices list (/docs/api#pricing). A seeded default printed
+        // here would read as a price nobody set.
+        "A video is priced per minute of requested length, with a minimum per video, from the live price list on " +
+        "/docs/api#pricing; every POST /videos answer carries its price_cents.",
     },
     servers: [{ url: `${serverUrl.replace(/\/+$/, "")}/api/v1` }],
     security: [{ bearer: [] }],

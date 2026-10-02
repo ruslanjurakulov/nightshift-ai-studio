@@ -5,7 +5,6 @@ import { formatCredits } from "@/lib/credits";
 import { CREDIT_PACKS } from "@/lib/paddle";
 import type { MoneyAnchor as Anchor, PricingTeaser as PricingTeaserData } from "@/lib/landing";
 import { MoneyAnchor } from "@/components/site/MoneyAnchor";
-import { Slug } from "@/components/site/Slug";
 
 /**
  * How Nightshift charges, and what is on sale — from the same source /pricing
@@ -30,26 +29,27 @@ export function PricingTeaser({
 
   return (
     <section id="pricing" aria-labelledby="pricing-title" className="st-section">
-      <div className="st-wrap">
-        <Slug>{p.slug}</Slug>
-        <div className="mt-8 grid gap-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-14">
-          <div>
-            <h2 id="pricing-title" className="st-h2">
-              {p.title}
-            </h2>
-            <p className="st-lead mt-6">{teaser.kind === "plans" ? p.lead : p.leadNoPlans}</p>
-            <ol className="st-flow" aria-label={p.slug}>
-              {p.ledger.map((step) => (
-                <li key={step.id} data-id={step.id}>
-                  <b>{step.word}</b>
-                  <span>{step.body}</span>
-                </li>
-              ))}
-            </ol>
-          </div>
+      <div className="st-wrap st-pricing">
+        {/* Opens on the ledger, not a slug: the four words a credit goes
+            through, as wide as the page. In the document the heading still
+            comes first; on screen the ledger leads (CSS order). */}
+        <div className="st-pricing-words">
+          <h2 id="pricing-title" className="st-h2">
+            {p.title}
+          </h2>
+          <p className="st-lead mt-6">{teaser.kind === "plans" ? p.lead : p.leadNoPlans}</p>
+          <MoneyAnchor t={t} locale={locale} anchor={anchor} titleId="teaser-anchor-title" level={3} className="mt-10" />
+        </div>
+        <ol className="st-flow st-flow-lead" aria-label={p.slug}>
+          {p.ledger.map((step) => (
+            <li key={step.id} data-id={step.id}>
+              <b>{step.word}</b>
+              <span>{step.body}</span>
+            </li>
+          ))}
+        </ol>
 
-          <div className="st-panel self-start">
-            <MoneyAnchor t={t} locale={locale} anchor={anchor} titleId="teaser-anchor-title" level={3} className="p-4" />
+          <div className="st-panel st-pricing-packs">
             {teaser.kind === "plans" ? (
               <>
                 <h3 className="st-caption">{p.plansLabel}</h3>
@@ -106,7 +106,6 @@ export function PricingTeaser({
               </Link>
             </div>
           </div>
-        </div>
       </div>
     </section>
   );

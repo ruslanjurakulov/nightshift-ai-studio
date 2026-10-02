@@ -10,6 +10,7 @@ import { generationRates, type GenerationRates, type PlanCatalog } from "@/lib/p
 import { readSellableModels } from "@/lib/creative/registry";
 import { moneyAnchor, runtimeSiteOrigin, shareMetadata } from "@/lib/landing";
 import { readPublicApiPrices } from "@/lib/server/api-prices";
+import { readPublicCreditRates } from "@/lib/server/public-rates";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { PricingView } from "@/components/pricing/PricingView";
 
@@ -42,16 +43,19 @@ export async function generateMetadata(): Promise<Metadata> {
  *
  * Prices come only from Paddle's preview or the owner's display env
  * (lib/pricing.ts). The live credit rates come from credit_rates() (0084: the
- * rates as charged, never the margin), which only a signed-in account may
- * call: a signed-out visitor is told that,
- * rather than shown a number this page would have had to guess.
+ * rates as charged, never the margin) for a signed-in account, and from
+ * public_video_rates() (0085: per minute and the smallest hold) for anyone
+ * else; when neither is published the page says so rather than showing a
+ * number it would have had to guess.
  */
 export default async function PricingPage() {
   const { t, locale } = await getDictionary();
   const pricing = resolvePricing(PRICING_ENV, paddleConfig);
-  // The only money a signed-out visitor can be shown: published pack prices
-  // and the live API price list (public by 0031). Read alongside the rest.
+  // The money a signed-out visitor can be shown: published pack prices, the
+  // live API price list (public by 0031) and the two public credit rates
+  // (per minute and the smallest hold, 0085). Read alongside the rest.
   const apiPricesRead = readPublicApiPrices();
+  const publicRatesRead = readPublicCreditRates();
 
   const supabase = await createClient();
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
@@ -70,6 +74,10 @@ export default async function PricingPage() {
     }
     ratesFailed = res.failed;
   }
+  // Signed out (or before 0084), the rates panel, the pack minutes and the
+  // money anchor read the public pair; unpublished stays null, never guessed.
+  const publicRates = await publicRatesRead;
+  if (!rates && !ratesFailed) rates = publicRates;
   // The plan catalog is a public price list (0034): read signed in or out.
   // `unsupported` (0034 not applied) offers no plans, as before; `failed` says
   // the plans could not be read instead of silently showing none.
@@ -92,7 +100,7 @@ export default async function PricingPage() {
         plansFailed={catalogRead.state === "failed"}
         plans={plans}
         packValidMonths={catalog?.packValidMonths}
-        anchor={moneyAnchor(pricing, await apiPricesRead)}
+        anchor={moneyAnchor(pricing, await apiPricesRead, publicRates)}
       />
     </PublicShell>
   );

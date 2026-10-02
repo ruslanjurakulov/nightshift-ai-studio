@@ -18,6 +18,7 @@ import {
   visibleShowcase,
 } from "@/lib/landing";
 import { readPublicApiPrices } from "@/lib/server/api-prices";
+import { readPublicCreditRates } from "@/lib/server/public-rates";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { Landing } from "@/components/landing/Landing";
 
@@ -58,7 +59,8 @@ export default async function Home() {
   const catalog = supabase ? planValue(await readPlanCatalog(supabase).catch(() => ({ state: "failed" as const }))) : null;
   const resolved = resolvePricing(PRICING_ENV, paddleConfig);
   const pricing = pricingTeaser(resolved, planMatrix(catalog, PLAN_ENV, paddleClient));
-  const anchor = moneyAnchor(resolved, await readPublicApiPrices());
+  const [apiPrices, siteRates] = await Promise.all([readPublicApiPrices(), readPublicCreditRates()]);
+  const anchor = moneyAnchor(resolved, apiPrices, siteRates);
   const jsonLd = softwareApplicationJsonLd({
     name: t.brand.name,
     description: t.landing.meta.description,

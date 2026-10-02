@@ -30,7 +30,7 @@ afterEach(cleanup);
 /** Anything that reads as a money amount: a currency sign or code next to a digit. */
 const MONEY = /[$€£₽]\s?\d|\d\s?(?:USD|EUR|UZS|RUB|so'm|сум)\b/i;
 
-const NO_MONEY: MoneyAnchor = { pack: { kind: "none" }, api: null };
+const NO_MONEY: MoneyAnchor = { pack: { kind: "none" }, api: null, site: null };
 
 function renderLanding(teaser: PricingTeaser, locale: Locale = "en", anchor: MoneyAnchor = NO_MONEY) {
   const t = dictionaries[locale];
@@ -135,7 +135,8 @@ describe("public landing page", () => {
     const { container } = renderLanding({ kind: "announced" });
     const s = dictionaries.en.site;
     expect(container.textContent).not.toMatch(MONEY);
-    expect(screen.getAllByText(s.anchor.none).length).toBe(2);
+    // Pack, a video in the app, a video through the API: each said in words.
+    expect(screen.getAllByText(s.anchor.none).length).toBe(3);
     expect(container.textContent).toContain(s.anchor.noneNote);
     // The pack sizes are captioned as top-ups in plain sight, not only for screen readers.
     expect(screen.getByRole("heading", { level: 3, name: s.pricingTeaser.packsCaption })).toBeTruthy();
@@ -146,9 +147,14 @@ describe("public landing page", () => {
     const { container } = renderLanding({ kind: "packs", packs: [{ id: "starter", credits: 1000, price: "$10" }] }, "en", {
       pack: { kind: "priced", id: "starter", credits: 1000, price: "$10" },
       api: { perMinuteCents: 120, minimumCents: 60 },
+      site: { perMinute: 60, minimum: 30, usd: { cents: 60, pack: "starter" } },
     });
     const text = container.textContent ?? "";
     expect(text).toContain("$10 for 1,000 credits");
+    // What a video costs in the app, from the live list — and in dollars at the pack's price.
+    expect(text).toContain("60 credits a minute of finished video");
+    expect(text).toContain("at least 30 credits a run");
+    expect(text).toContain("≈ $0.60 a minute at the Starter price");
     expect(text).toContain("$1.20 a minute of video");
     expect(text).toContain("at least $0.60 a video");
     expect(screen.getByRole("link", { name: dictionaries.en.site.anchor.apiSource }).getAttribute("href")).toBe("/docs/api#pricing");
@@ -161,6 +167,21 @@ describe("public landing page", () => {
     });
     expect(container.textContent).toContain("$12");
     expect(container.textContent).toContain("Creator");
+  });
+
+  it("shows step 05 on a real screenshot, labelled as one, with sample data said plainly (PIXEL-3)", () => {
+    for (const locale of ["en", "ru", "uz"] as const) {
+      const { container } = renderLanding({ kind: "announced" }, locale);
+      const h = dictionaries[locale].site.how;
+      const imgs = Array.from(container.querySelectorAll("figure.st-shot img"));
+      // A light and a dark capture, both described in the page's language.
+      expect(imgs.map((i) => i.getAttribute("data-shot-theme"))).toEqual(["light", "dark"]);
+      for (const img of imgs) expect(img.getAttribute("alt")).toBe(h.shotAlt);
+      const caption = container.querySelector("figure.st-shot figcaption")?.textContent ?? "";
+      expect(caption).toContain(h.shotTag);
+      expect(caption).toContain(h.shotCaption);
+      cleanup();
+    }
   });
 
   it("renders in Russian and Uzbek from the language switch's dictionary", () => {

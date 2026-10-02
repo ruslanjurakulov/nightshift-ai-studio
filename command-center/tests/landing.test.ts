@@ -9,7 +9,7 @@ import {
   softwareApplicationJsonLd,
   visibleShowcase,
 } from "@/lib/landing";
-import { resolvePricing, type PricingEnv } from "@/lib/pricing";
+import { displayPriceCents, publicCreditRates, resolvePricing, type PricingEnv } from "@/lib/pricing";
 import { resolvePaddleConfig } from "@/lib/paddle";
 import { en } from "@/lib/i18n/en";
 import { ru } from "@/lib/i18n/ru";
@@ -85,7 +85,7 @@ describe("site origin", () => {
 
 describe("money anchor", () => {
   it("is words only when nothing is published and the API list is unreadable", () => {
-    expect(moneyAnchor(resolvePricing({}, null), null)).toEqual({ pack: { kind: "none" }, api: null });
+    expect(moneyAnchor(resolvePricing({}, null), null)).toEqual({ pack: { kind: "none" }, api: null, site: null });
   });
 
   it("names the smallest pack with a published price, as written", () => {
@@ -112,6 +112,47 @@ describe("money anchor", () => {
     expect(moneyAnchor(none, { video_minute: 120 }).api).toEqual({ perMinuteCents: 120, minimumCents: null });
     expect(moneyAnchor(none, { video_minute: 0, job_minimum: 60 }).api).toBeNull();
     expect(moneyAnchor(none, {}).api).toBeNull();
+  });
+
+  it("names a video's price in the app from the live credit rates, never a guess", () => {
+    const none = resolvePricing({}, null);
+    expect(moneyAnchor(none, null, null).site).toBeNull();
+    expect(moneyAnchor(none, null, { perMinute: 0, jobMinimum: 30 }).site).toBeNull();
+    // No priced pack: credits only, no dollar figure.
+    expect(moneyAnchor(none, null, { perMinute: 60, jobMinimum: 30 }).site).toEqual({ perMinute: 60, minimum: 30, usd: null });
+  });
+
+  it("turns the minute into dollars only at a plain US-dollar pack price", () => {
+    const rates = { perMinute: 60, jobMinimum: null };
+    const usd = (price: string) =>
+      moneyAnchor(resolvePricing({ NEXT_PUBLIC_PRICE_DISPLAY_STARTER: price }, null), null, rates).site?.usd ?? null;
+    expect(usd("$10")).toEqual({ cents: 60, pack: "starter" }); // 60 credits x $10 / 1,000
+    expect(usd("$9.99")).toEqual({ cents: 60, pack: "starter" }); // 59.94 cents, rounded
+    expect(usd("€9")).toBeNull();
+    expect(usd("from $10")).toBeNull();
+    expect(usd("10 USD / one-time")).toBeNull();
+  });
+});
+
+describe("display price cents", () => {
+  it("reads only a plain US-dollar amount", () => {
+    expect(displayPriceCents("$10")).toBe(1000);
+    expect(displayPriceCents("US$1,000.50")).toBe(100050);
+    expect(displayPriceCents("$ 45")).toBe(4500);
+    for (const v of ["€9", "$10/mo", "from $5", "$0", "", null, "$1,00"]) expect(displayPriceCents(v)).toBeNull();
+  });
+});
+
+describe("public credit rates (0085)", () => {
+  it("are the per-minute rate and the smallest hold, or nothing when the minute is unset or zero", () => {
+    expect(publicCreditRates([{ unit: "video_minute", credits_per_unit: 60 }, { unit: "job_minimum", credits_per_unit: 30 }])).toEqual({
+      perMinute: 60,
+      jobMinimum: 30,
+    });
+    expect(publicCreditRates([{ unit: "video_minute", credits_per_unit: "62.5" }])).toEqual({ perMinute: 62.5, jobMinimum: null });
+    expect(publicCreditRates([{ unit: "job_minimum", credits_per_unit: 30 }])).toBeNull();
+    expect(publicCreditRates([{ unit: "video_minute", credits_per_unit: 0 }])).toBeNull();
+    expect(publicCreditRates(null)).toBeNull();
   });
 });
 

@@ -1388,6 +1388,220 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 .st-plan:last-child { border-right: 0; }
 .st-price-row > div { min-width: 0; }
 
+/* ── How a video moves: one heading line, then a full-bleed strip ─────────
+   The only section that is not slug + big title + lede: its words fit one
+   line, and the steps run edge to edge with a rail on top — done, the one
+   waiting for its person (lit), not yet. Then step 05 on the real screen. */
+.st-how-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 20px; }
+.st-how-title {
+  font-family: var(--font-display);
+  font-size: clamp(26px, 2.6vw, 34px);
+  font-weight: 750;
+  line-height: 1.05;
+}
+.st-how-head .st-small { flex-basis: 100%; }
+@media (min-width: 1100px) { .st-how-head .st-small { flex-basis: auto; margin-left: auto; } }
+.st-how-strip {
+  list-style: none;
+  margin: 36px 0 0;
+  /* Ruled edge to edge; the cells line up with the page's content column. */
+  padding: 0 max(var(--st-gutter), calc((100% - var(--st-max)) / 2 + var(--st-gutter)));
+  display: grid;
+  border-block: 1px solid var(--ns-rule-strong);
+  background: var(--ns-ground);
+}
+@media (min-width: 720px) { .st-how-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; } }
+@media (min-width: 1100px) { .st-how-strip { grid-template-columns: repeat(6, minmax(0, 1fr)); column-gap: 0; } }
+.st-how-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 34px 0 26px;
+  border-bottom: 1px solid var(--ns-rule);
+}
+@media (min-width: 1100px) {
+  .st-how-step { padding: 34px 20px 30px; border-bottom: 0; border-left: 1px solid var(--ns-rule); }
+  .st-how-step:first-child { padding-left: 0; border-left: 0; }
+  .st-how-step:last-child { padding-right: 0; }
+}
+.st-how-step p { font-size: 14.5px; line-height: 1.55; color: var(--ns-text-dim); }
+/* The rail: a line across the top of each cell with the step's lamp on it. */
+.st-how-rail { position: absolute; top: 14px; left: 0; right: 0; height: 2px; background: var(--ns-rule); }
+.st-how-rail::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--ns-lamp-off);
+}
+@media (min-width: 1100px) { .st-how-step:not(:first-child) .st-how-rail::before { left: 20px; } }
+.st-how-step[data-state="done"] .st-how-rail { background: var(--ns-go); }
+.st-how-step[data-state="done"] .st-how-rail::before { background: var(--ns-go); }
+.st-how-step[data-state="yours"] .st-how-rail { background: linear-gradient(90deg, var(--ns-amber) 0 30%, var(--ns-rule) 30%); }
+.st-how-step[data-state="yours"] .st-how-rail::before { background: var(--ns-amber); box-shadow: 0 0 0 4px var(--ns-select); }
+.st-how-no { font-size: 13px; color: var(--ns-text-dim); }
+.st-how-shot { display: grid; gap: 32px; margin-top: 56px; }
+@media (min-width: 1024px) {
+  .st-how-shot { grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr); gap: 56px; align-items: center; }
+}
+.st-shot { margin: 0; }
+.st-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-panel);
+  box-shadow: var(--ns-lift);
+}
+/* Each theme sees its own capture; the other is display:none (and, being
+   lazy, never fetched). */
+.st-shot img[data-shot-theme="dark"] { display: none; }
+:root[data-theme="dark"] .st-shot img[data-shot-theme="light"] { display: none; }
+:root[data-theme="dark"] .st-shot img[data-shot-theme="dark"] { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .st-shot img[data-shot-theme="light"] { display: none; }
+  :root:not([data-theme="light"]) .st-shot img[data-shot-theme="dark"] { display: block; }
+}
+.st-shot figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; font-size: 13.5px; line-height: 1.45; color: var(--ns-text-dim); }
+
+/* ── Pricing on the landing: the ledger leads, as wide as the page ─────── */
+.st-pricing { display: grid; gap: 40px; }
+.st-flow-lead { order: -1; margin: 0; }
+@media (min-width: 1024px) {
+  .st-pricing { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 56px; align-items: start; }
+  .st-flow-lead { grid-column: 1 / -1; }
+}
+.st-flow-lead li { padding-top: 22px; padding-bottom: 6px; }
+.st-flow-lead b { font-size: clamp(30px, 4.6vw, 58px); line-height: 0.95; letter-spacing: 0.02em; }
+.st-flow-lead span { font-size: 15px; max-width: 26ch; }
+
+/* ── The API reference (/docs/api) ────────────────────────────────────────
+   A rundown sheet, not a card stack: the condensed title over a contents
+   list, then sections ruled edge to edge — number and title in the left
+   column (it stays in view on a wide screen), the text on the right. Tables
+   are ruled like the desk, code sits on the console ground. */
+.st-doc-hero {
+  display: grid;
+  gap: 40px;
+  padding-block: 48px 56px;
+}
+@media (min-width: 1024px) {
+  .st-doc-hero { grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr); gap: 72px; align-items: end; padding-block: 72px 80px; }
+}
+.st-doc-toc ol { list-style: none; margin: 14px 0 0; padding: 0; border-top: 1px solid var(--ns-rule-strong); }
+.st-doc-toc a {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  min-height: 44px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--ns-rule);
+  font-size: 15.5px;
+  font-weight: 600;
+}
+.st-doc-toc a:hover { color: var(--ns-amber-ink); }
+.st-doc-toc .st-num { font-size: 12px; font-weight: 400; color: var(--ns-text-dim); }
+.st-doc-sec { border-top: 1px solid var(--ns-rule); padding-block: 40px 48px; scroll-margin-top: 64px; }
+.st-doc-sec:nth-child(odd) { background: var(--ns-console); }
+.st-doc-grid { display: grid; gap: 20px; }
+@media (min-width: 1024px) {
+  .st-doc-grid { grid-template-columns: 15rem minmax(0, 1fr); gap: 56px; align-items: start; }
+}
+.st-doc-head { display: flex; flex-direction: column; gap: 6px; }
+.st-doc-no { font-size: 13px; color: var(--ns-text-dim); }
+.st-doc-h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 34px;
+  line-height: 1;
+  text-wrap: balance;
+}
+.st-doc-h3 {
+  margin-top: 12px;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.st-doc-body { display: flex; flex-direction: column; gap: 18px; min-width: 0; max-width: 62rem; }
+.st-doc-body .st-body { max-width: 72ch; }
+.st-doc-body code { font-family: var(--font-mono); font-size: 0.86em; overflow-wrap: anywhere; }
+.st-doc-body pre code { font-size: inherit; overflow-wrap: normal; }
+.st-doc-body b { color: var(--ns-text); font-weight: 650; }
+.st-doc-a {
+  display: inline-block;
+  min-width: 44px;
+  margin-block: -12px;
+  padding-block: 12px;
+  text-align: center;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.st-doc-steps { list-style: none; margin: 0; padding: 0; counter-reset: st-doc; border-top: 1px solid var(--ns-rule-strong); }
+.st-doc-steps li {
+  counter-increment: st-doc;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--ns-rule);
+  font-size: 15.5px;
+  line-height: 1.55;
+}
+.st-doc-steps li::before {
+  content: counter(st-doc, decimal-leading-zero);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding-top: 4px;
+  color: var(--ns-text-dim);
+}
+.st-doc-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ns-rule); }
+.st-doc-list li { padding: 13px 0; border-bottom: 1px solid var(--ns-rule); font-size: 15px; line-height: 1.6; color: var(--ns-text-dim); }
+.st-code {
+  overflow-x: auto;
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--ns-rule);
+  border-left: 2px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-frame);
+  background: var(--ns-ground);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+.st-doc-sec:nth-child(odd) .st-code { background: var(--ns-key); }
+.st-doc-table-wrap { overflow-x: auto; border-top: 1px solid var(--ns-rule-strong); }
+.st-doc-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+.st-doc-table th, .st-doc-table td { padding: 11px 16px 11px 0; border-bottom: 1px solid var(--ns-rule); text-align: left; vertical-align: baseline; }
+.st-doc-table td:last-child { color: var(--ns-text-dim); }
+.st-doc-table tbody th { font-weight: 650; white-space: nowrap; }
+.st-doc-table thead th {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ns-text-dim);
+  white-space: nowrap;
+}
+.st-doc-method {
+  width: 4.5rem;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.st-doc-method[data-method="GET"] { color: var(--ns-text-dim); }
+.st-doc-path { font-family: var(--font-mono); font-size: 13px; white-space: nowrap; }
+.st-doc-table .st-num { font-size: 0.92em; color: var(--ns-text); white-space: nowrap; }
+.st-doc-none { color: var(--ns-text-dim); }
+
 }
 
 /* The shared theme and language keys are pills app-wide; on the public
@@ -1410,3 +1624,5 @@ h3.st-step-title { letter-spacing: 0.04em; }
 h3.st-patch-name { letter-spacing: 0.05em; }
 h3.st-caption { letter-spacing: 0.14em; }
 .st-footer h2 { letter-spacing: 0.14em; }
+h2.st-doc-h2 { letter-spacing: -0.004em; }
+h3.st-doc-h3 { letter-spacing: 0.12em; }
