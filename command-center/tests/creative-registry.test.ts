@@ -14,8 +14,9 @@ const good = {
   verified_at: "2026-09-30T10:00:00Z",
   credit_unit: "model_veo_3_1_second",
   entitlement: "models_video:ultra",
+  // 0084's shape: the rate as charged, and no margin.
   credits_per_unit: "40",
-  margin: "0.5",
+  margin: null,
   spec: {
     output: "video",
     inputs: { image_refs_max: 1 },
@@ -51,6 +52,13 @@ describe("coerceSellableModels", () => {
     expect(m.creditsPerUnit).toBe(40);
     expect(m.spec.resolutions).toEqual(["720p", "1080p", "4k"]);
     expect(m.spec.maxPromptChars).toBe(2000);
+  });
+
+  it("never carries a margin: a database before 0084 has its margin folded into the rate", () => {
+    const [legacy] = coerceSellableModels([{ ...good, credits_per_unit: "40", margin: "0.5" }]);
+    expect(legacy.creditsPerUnit).toBe(60);
+    expect(legacy).not.toHaveProperty("margin");
+    expect(coerceSellableModels([{ ...good, margin: "-1" }])).toEqual([]);
   });
 
   it("never shows an unverified model, even if a function returned it", () => {

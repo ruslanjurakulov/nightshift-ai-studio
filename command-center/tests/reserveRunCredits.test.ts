@@ -37,7 +37,14 @@ function fakeSupabase(agentConfig: Record<string, unknown>, opts: { failing?: st
       resolve(failed ? { data: null, error: err } : { data: rows[table] ?? [], error: null });
     return b;
   };
-  return { client: { from, rpc } as never, rpc };
+  // The price list as charged (credit_rates(), 0084) answers from the same
+  // rows, outside the spy, so `rpc` still records only what the code holds.
+  const rates = async (fn: string, args: Record<string, unknown>) => {
+    if (fn !== "credit_rates") return rpc(fn, args);
+    const failed = opts.failing?.includes("credit_prices") ?? false;
+    return failed ? { data: null, error: { message: "boom", code: "XX000" } } : { data: rows.credit_prices ?? [], error: null };
+  };
+  return { client: { from, rpc: rates } as never, rpc };
 }
 
 describe("reserveRunCredits", () => {

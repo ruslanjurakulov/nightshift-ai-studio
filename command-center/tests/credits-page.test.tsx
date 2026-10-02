@@ -70,18 +70,18 @@ vi.mock("@/lib/orgs-server", () => ({
 const model = (over: Partial<PricedModel> & { spec?: Partial<PricedModel["spec"]> } = {}): PricedModel => ({
   capabilities: ["t2i"],
   entitlement: null,
-  creditsPerUnit: 4,
-  margin: 0.25,
+  // As charged (sellable_models() folds the margin in, 0084): 4 × 1.25.
+  creditsPerUnit: 5,
   ...over,
   spec: { unit: "image", durationsS: [], ...over.spec },
 });
 const video = (perSecond: number, durations: number[], over: Partial<PricedModel> = {}) =>
-  model({ capabilities: ["t2v"], creditsPerUnit: perSecond, margin: 0, spec: { unit: "second", durationsS: durations }, ...over });
+  model({ capabilities: ["t2v"], creditsPerUnit: perSecond, spec: { unit: "second", durationsS: durations }, ...over });
 
 describe("generationRates: priced like 0036's quote, from the registry only", () => {
   it("takes the cheapest image and the cheapest shortest clip", () => {
     const r = generationRates([model(), model({ creditsPerUnit: 10 }), video(2, [10, 5]), video(1, [8])], {});
-    expect(r.image).toBe(5); // 1 × 4 × 1.25
+    expect(r.image).toBe(5); // 1 × 5 (4 × 1.25 as charged)
     expect(r.shortVideo).toEqual({ credits: 8, seconds: 8 }); // 8 s × 1 beats 5 s × 2
     expect(r.videoMinute).toBeNull();
   });
@@ -89,7 +89,7 @@ describe("generationRates: priced like 0036's quote, from the registry only", ()
   it("raises a price to the job minimum and rounds up to the cent, as the database does", () => {
     const prices = parsePrices([{ unit: "job_minimum", credits_per_unit: 6, margin: 0 }]);
     expect(generationRates([model()], prices).image).toBe(6);
-    expect(generationRates([model({ creditsPerUnit: 0.333, margin: 0 })], {}).image).toBe(0.34);
+    expect(generationRates([model({ creditsPerUnit: 0.333 })], {}).image).toBe(0.34);
   });
 
   it("ignores models behind an entitlement or a first purchase: the equivalent must hold for everyone", () => {
@@ -378,5 +378,27 @@ describe("credits page: clear, honest, terms before buying", () => {
     expect(html).not.toContain("data-equivalents");
     expect(html).not.toContain("≈");
     expect(has(html, en.plans.subscribe)).toBe(true);
+  });
+
+  it("a member's page never reads the raw price list; the operator's editor does (0084, BR-G-001)", async () => {
+    const asked: string[] = [];
+    const tracking = (admin: boolean) =>
+      supabaseStub((name) => {
+        asked.push(name);
+        if (name === "is_platform_admin") return { data: admin, error: null };
+        if (name === "credit_prices") return { data: [{ unit: "usd", credits_per_unit: 100, margin: 2.5, note: "MARGINCANARY" }], error: null };
+        return name in TABLES ? { data: TABLES[name], error: null } : EMPTY;
+      });
+    state.client = tracking(false);
+    const member = renderToStaticMarkup(await load());
+    expect(asked).toContain("credit_rates");
+    expect(asked).not.toContain("credit_prices");
+    expect(member).not.toContain("+250%");
+    asked.length = 0;
+    state.client = tracking(true);
+    const operator = renderToStaticMarkup(await load());
+    expect(asked).toContain("credit_prices");
+    expect(has(operator, en.credits.pricesTitle)).toBe(true);
+    expect(operator).toContain("+250%"); // the margin, in the operator's editor only
   });
 });

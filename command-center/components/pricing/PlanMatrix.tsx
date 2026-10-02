@@ -37,7 +37,7 @@ export function entitlementText(key: string, type: EntitlementType, v: Entitleme
  * made up here.
  *
  * Under the credits, "≈ N images · M videos" when today's prices could be
- * read (signed-in only — credit_prices is not public); otherwise the older
+ * read (signed-in only — credit_rates() is not public); otherwise the older
  * minutes-of-video line when only the per-minute rate is known, else nothing.
  */
 export function PlanMatrix({
