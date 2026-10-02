@@ -30,6 +30,7 @@ const NAV: { href: string; key: NavKey; hotkey?: string }[] = [
   { href: "/measurement", key: "measure" },
   { href: "/portfolio", key: "portfolio" },
   { href: "/models", key: "models" },
+  { href: "/margin", key: "margin" },
   { href: "/billing", key: "billing" },
   { href: "/credits", key: "credits" },
   { href: "/feedback-loop", key: "feedback" },
