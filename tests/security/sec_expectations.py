@@ -417,7 +417,17 @@ import sec_storyboard_0058  # noqa: E402
 
 sec_storyboard_0058.extend(TABLES, FUNCTIONS)
 
+# Migration 0063 (operator margin report): tests/security/sec_margin_0063.py
+import sec_margin_0063  # noqa: E402
+
+sec_margin_0063.extend(TABLES, FUNCTIONS)
+
 # Migration 0065 (the Style Library's add function): tests/security/sec_style_0065.py
 import sec_style_0065  # noqa: E402
 
 sec_style_0065.extend(TABLES, FUNCTIONS)
+
+# Migration 0073 (workflow apps): tests/security/sec_workflows_0073.py
+import sec_workflows_0073  # noqa: E402
+
+sec_workflows_0073.extend(TABLES, FUNCTIONS)

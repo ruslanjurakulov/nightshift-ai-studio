@@ -137,7 +137,9 @@ PROBE_TIMEOUT_S = 60
 THUMB_TIMEOUT_S = 120
 PROXY_TIMEOUT_S = 2 * 3600
 #: Picture area cap: HEIC is checked on its header before decoding (0044);
-#: JPEG/PNG/WebP/GIF on the probed size (BR-C-001).
+#: JPEG/PNG/WebP/GIF on the probed size (BR-C-001); every video stream of a
+#: video, cover art included (BR-D-001); the larger of the display and the
+#: coded frame (BR-E-001). 8K (7680x4320, 33 MP) is well under.
 MAX_PIXELS = 100_000_000
 DISPLAY_SIDE = 2048
 HEIC_DECODE_TIMEOUT_S = 120
@@ -440,6 +442,46 @@ def _num(v) -> Optional[float]:
     return f if f == f and f not in (float("inf"), float("-inf")) else None
 
 
+def _coded_side(v) -> int:
+    """A ``coded_width`` / ``coded_height`` from ffprobe, or 0 when it is
+    missing, not a number or not positive. 0 means "absent": the caller then
+    falls back to the display size, never to something smaller."""
+    n = _num(v)
+    return int(n) if n is not None and n > 0 else 0
+
+
+def _check_frame(s: Mapping, width: int, height: int) -> None:
+    """Hold one picture stream to MAX_SIDE and MAX_PIXELS on the frame the
+    decoder allocates, not only the one it displays (BR-E-001). ffprobe's
+    ``width`` / ``height`` are the display size after the stream's crop
+    window; libavcodec decodes the whole ``coded_width`` x ``coded_height``
+    frame first, so a 64x64 display can hide a 16384x16384 coded frame. Cap the
+    larger of the two on each side; a coded size can only raise the size."""
+    w = max(width, _coded_side(s.get("coded_width")))
+    h = max(height, _coded_side(s.get("coded_height")))
+    what = f"{w}x{h}" if (w, h) == (width, height) else f"{width}x{height} (coded {w}x{h})"
+    if max(w, h) > MAX_SIDE:
+        raise IngestReject("too_large_dimensions", f"{what} is larger than {MAX_SIDE}px")
+    if w * h > MAX_PIXELS:
+        raise IngestReject("too_large_dimensions",
+                           f"{what} is more than {MAX_PIXELS // 1_000_000} megapixels")
+
+
+def _check_every_picture(streams: Sequence[Mapping]) -> None:
+    """Hold EVERY video stream to the frame caps, not only the one the probe
+    records (BR-D-001). ffmpeg decodes others: the thumbnail (no ``-map``)
+    takes the video stream with the largest area, and the proxy's ``-map
+    0:v:0`` takes the first video stream, cover art included. A small first
+    stream must not vouch for a huge second one."""
+    for s in streams:
+        if s.get("codec_type") != "video":
+            continue
+        w, h = int(_num(s.get("width")) or 0), int(_num(s.get("height")) or 0)
+        if w <= 0 or h <= 0:
+            raise IngestReject("not_media", "a picture stream has no frame size")
+        _check_frame(s, w, h)
+
+
 def interpret_probe(sniffed: str, data: Mapping) -> Probe:
     """Decide the final kind and type from what ffprobe found. Raises
     IngestReject when the streams do not make the file what it claims."""
@@ -459,13 +501,13 @@ def interpret_probe(sniffed: str, data: Mapping) -> Probe:
         width, height = int(_num(v.get("width")) or 0), int(_num(v.get("height")) or 0)
         if width <= 0 or height <= 0:
             raise IngestReject("not_media", "the image has no size")
-        if max(width, height) > MAX_SIDE:
-            raise IngestReject("too_large_dimensions", f"{width}x{height} is larger than {MAX_SIDE}px")
-        if width * height > MAX_PIXELS:
-            # Same area cap as the HEIC path: a small file can declare a huge
-            # bitmap that the thumbnail step would decode in full (BR-C-001).
-            raise IngestReject("too_large_dimensions",
-                               f"{width}x{height} is more than {MAX_PIXELS // 1_000_000} megapixels")
+        # Same area cap as the HEIC path: a small file can declare a huge
+        # bitmap that the thumbnail step would decode in full (BR-C-001), on
+        # the coded frame as well as the displayed one (BR-E-001).
+        _check_frame(v, width, height)
+        # The thumbnail (no ``-map``) decodes the largest video stream, so a
+        # second, bigger stream in an image-sniffed file is held to the caps too.
+        _check_every_picture(streams)
         return Probe("image", mime, width, height, None)
 
     # Containers that hold either: an mp4 / webm with sound only is audio.
@@ -493,8 +535,10 @@ def interpret_probe(sniffed: str, data: Mapping) -> Probe:
         width, height = int(_num(v.get("width")) or 0), int(_num(v.get("height")) or 0)
         if width <= 0 or height <= 0:
             raise IngestReject("not_media", "the video has no frame size")
-        if max(width, height) > MAX_SIDE:
-            raise IngestReject("too_large_dimensions", f"{width}x{height} is larger than {MAX_SIDE}px")
+        # The image branch's area cap (BR-C-001): the thumbnail and the proxy
+        # each decode a full frame (BR-D-001), at its coded size (BR-E-001).
+        _check_frame(v, width, height)
+        _check_every_picture(streams)
         return Probe("video", mime, width, height, round(duration, 3))
 
     if not audio:
