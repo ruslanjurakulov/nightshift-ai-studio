@@ -99,13 +99,13 @@ jobs:
       count: ${{ steps.pick.outputs.count }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Never pushes: keeps the job token out of .git/config (BR-S-001).
           persist-credentials: false
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
 
@@ -173,13 +173,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Never pushes: keeps the job token out of .git/config (BR-S-001).
           persist-credentials: false
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
 
@@ -232,7 +232,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Restore history state (chronos.db, topic_vectors.npz, topics.json, pipeline_runs.json)
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: history
           key: chronos-history-${{ github.run_number }}
@@ -254,7 +254,7 @@ jobs:
       # channel "news" can never match channel "news-2".
       - name: Restore run state (resume ledgers, this channel)
         id: runstate_restore
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .run_state
           key: chronos-runstate-v1.${{ matrix.channel_id }}.${{ github.run_number }}-${{ github.run_attempt }}
@@ -272,7 +272,7 @@ jobs:
       # a kit only ever fills in a run whose checkpoint is already restored.
       - name: Restore repair kit (repair runs only)
         if: github.event.inputs.repair_scenes != ''
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .repair_kit
           key: chronos-repairkit-v1.${{ matrix.channel_id }}.${{ github.run_number }}-${{ github.run_attempt }}
@@ -623,7 +623,7 @@ jobs:
 
       - name: Upload video artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: video-${{ matrix.channel_id }}-${{ github.run_number }}
           path: |
@@ -634,7 +634,7 @@ jobs:
 
       - name: Save history state
         if: always()
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: history
           key: chronos-history-${{ github.run_number }}-${{ matrix.channel_id }}
@@ -651,7 +651,7 @@ jobs:
 
       - name: Save run state (this channel)
         if: always() && steps.runstate_restore.outcome == 'success'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .run_state
           key: chronos-runstate-v1.${{ matrix.channel_id }}.${{ github.run_number }}-${{ github.run_attempt }}
@@ -669,7 +669,7 @@ jobs:
       - name: Save repair kit (opt-in)
         if: always() && (vars.CHRONOS_REPAIR_KIT == 'true' || vars.CHRONOS_REPAIR_KIT == '1') && steps.runstate_restore.outcome == 'success' && hashFiles('.repair_kit/manifest.json') != ''
         continue-on-error: true
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .repair_kit
           key: chronos-repairkit-v1.${{ matrix.channel_id }}.${{ github.run_number }}-${{ github.run_attempt }}
