@@ -200,6 +200,7 @@ export const siteEn = {
     title: "Three ways in. One price list, one approval gate.",
     lead: "Nightshift is one product. These pages show which part of it does the work you have in mind — and, just as plainly, what it will not do.",
     open: "Read more",
+    breadcrumb: "Where you are",
     whatLabel: "What it does",
     notLabel: "What it will not do",
     startLabel: "Where to start",

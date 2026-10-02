@@ -1178,6 +1178,10 @@ html:has(.st) { scroll-padding-top: 80px; }
 /* The shared theme and language keys are pills app-wide; on the public
    frame they are keys, like every other control here. */
 .st .btn-sky.pill { border-radius: var(--ns-r-key); }
+/* Touch targets on the public frame are at least 44 px (the shared keys and
+   the policy links are 40 px inside the app). */
+.st .btn-sky.pill { min-height: 44px; min-width: 44px; }
+.st .tap-link { min-height: 44px; }
 
 /* globals.css sets letter-spacing on bare h1/h2/h3 outside any layer, which
    would beat the layered classes above; the headings that are engraving get

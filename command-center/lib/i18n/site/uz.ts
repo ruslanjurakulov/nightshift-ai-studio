@@ -193,6 +193,7 @@ export const siteUz: SiteDictionary = {
     title: "Uch kirish. Bitta narxlar roʻyxati, bitta tasdiqlash darvozasi.",
     lead: "Nightshift — bitta mahsulot. Bu sahifalar uning qaysi qismi siz oʻylagan ishni bajarishini va xuddi shunday ochiq — nimani qilmasligini koʻrsatadi.",
     open: "Batafsil",
+    breadcrumb: "Siz qayerdasiz",
     whatLabel: "U nima qiladi",
     notLabel: "U nimani qilmaydi",
     startLabel: "Nimadan boshlash kerak",

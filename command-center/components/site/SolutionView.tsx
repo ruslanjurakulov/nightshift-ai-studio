@@ -24,7 +24,7 @@ export function SolutionView({ t, id, page }: { t: Dictionary; id: SolutionId; p
     <>
       <section aria-labelledby="solution-title" className="st-wrap st-hero">
         <div>
-          <nav aria-label={s.slug} className="st-kicker flex flex-wrap items-center gap-2">
+          <nav aria-label={s.breadcrumb} className="st-kicker flex flex-wrap items-center gap-2">
             <Link href="/solutions" className="underline decoration-[var(--ns-rule-strong)] underline-offset-4 hover:text-[var(--ns-text)]">
               {s.slug}
             </Link>
