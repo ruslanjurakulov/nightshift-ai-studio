@@ -41,7 +41,7 @@ import {
   type DbAnswer,
 } from "@/lib/creative/operations";
 import { quoteCreative, type ApiCaller, type Rpc } from "@/lib/api/operations";
-import { coerceJobs, errorAction, fellBackLine, jobModel, routedLine, routedPick, type StudioModel } from "@/lib/creative/studio";
+import { coerceJobs, errorAction, fellBackLine, jobModel, routedLine, routedPick, upscaleTargetsFor, type StudioModel } from "@/lib/creative/studio";
 
 const t = dictionaries.en;
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -312,5 +312,20 @@ describe("Auto in the composer", () => {
     render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} />));
     fireEvent.click(screen.getByRole("tab", { name: t.gen.tabs.tts }));
     expect(screen.queryByRole("button", { name: t.gen.router.autoLabel })).toBeNull();
+  });
+
+  it("video upscale under Auto offers every size a model makes, never only the hand-picked model's", () => {
+    const vids: StudioModel[] = [
+      { id: "up-a", displayName: "Up A", capabilities: ["video_upscale"], beta: false, upscaleTargets: ["1k", "2k"] },
+      { id: "up-b", displayName: "Up B", capabilities: ["video_upscale"], beta: false, upscaleTargets: ["4k", "2k"] },
+    ];
+    expect(upscaleTargetsFor(vids, vids[0], false)).toEqual(["1k", "2k"]);
+    expect(upscaleTargetsFor(vids, vids[0], true)).toEqual(["1k", "2k", "4k"]);
+    render(withI18n(<GeneratePanel orgId={ORG} models={vids} />));
+    fireEvent.click(screen.getByRole("tab", { name: t.gen.tabs.video_upscale }));
+    const sizes = () => within(screen.getByRole("group", { name: t.gen.targetLabel })).getAllByRole("button").map((b) => b.textContent);
+    expect(sizes()).toEqual(["1K", "2K"]);
+    fireEvent.click(screen.getByRole("button", { name: t.gen.router.autoLabel }));
+    expect(sizes()).toEqual(["1K", "2K", "4K"]);
   });
 });

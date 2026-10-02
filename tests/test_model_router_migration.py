@@ -27,7 +27,8 @@ REPLACED = {
     "api_creative_job_json": "0062_api_creative.sql",
     "api_creative_refusal": "0062_api_creative.sql",
 }
-NEW = ("route_model", "creative_route_quote", "quote_creative_route", "reroute_creative_job", "api_creative_quote")
+NEW = ("route_model", "creative_route_quote", "quote_creative_route", "reroute_creative_job", "api_creative_quote",
+       "creative_jobs_route_recorded")
 #: The one line of an old body 0075 changes, and what it became.
 SANCTIONED = {
     ("create_creative_job", "  if md <> 'exact' then"):
@@ -146,10 +147,14 @@ class TheRules(unittest.TestCase):
         self.assertIn("if nullif(btrim(coalesce(p_model, '')), '') is null or p_max_credits is null then", c)
         self.assertIn("if (rt ->> 'model') is distinct from lower(btrim(p_model)) then", c)
         self.assertIn("'route_changed'", c)
-        # The hold of a routed job is the confirmed price, cents down; exact is untouched.
-        self.assertIn("  if md <> 'exact' then\n    price := trunc(p_max_credits, 2);\n  end if;", c)
-        self.assertLess(c.index("format('price=%s confirmed=%s', price, p_max_credits)"),
-                        c.index("price := trunc(p_max_credits, 2);"))
+        # BR-L-020: the hold of a routed job is the pick's price, like exact —
+        # never the caller's max_credits (which only refuses a higher price).
+        self.assertNotIn("p_max_credits, 2", c)
+        self.assertIn("       set routed_credits = price,\n", c)
+        self.assertNotIn("p_max_credits, 2", self.new["api_creative_create"])
+        # BR-L-022: members read the reason and the surface; the candidates are the platform's.
+        self.assertIn("routing = jsonb_build_object('reason', rt ->> 'reason', 'surface', surf)\n", c)
+        self.assertIn("insert into public.creative_job_routes (job_id, quality_tier, candidates, tried)", c)
 
     def test_a_routed_job_is_charged_at_most_its_models_price(self):
         f = self.new["finish_creative_job"]
@@ -158,6 +163,17 @@ class TheRules(unittest.TestCase):
 
     def test_failover_never_for_exact_never_above_the_hold_never_after_a_task(self):
         r = self.new["reroute_creative_job"]
+        # BR-L-019: only codes that prove no vendor task exists; never 'unavailable'.
+        listed = r.split("if code not in (", 1)[1].split(")", 1)[0]
+        self.assertNotIn("'unavailable'", listed)
+        self.assertIn("'unreachable'", listed)
+        self.assertLess(r.index("if code not in ("), r.index("submit_started_at = null"))
+        self.assertEqual(r.count("submit_started_at = null"), 1)
+        # BR-L-024: the row describes the model that runs now.
+        self.assertIn("credit_unit = coalesce(q ->> 'unit', j.credit_unit),", r)
+        self.assertIn("quantity = coalesce((q ->> 'quantity')::numeric, j.quantity),", r)
+        self.assertIn("select * into rr from public.creative_job_routes where job_id = p_job for update;", r)
+        self.assertIn("update public.creative_job_routes r set tried = r.tried || to_jsonb(m) where r.job_id = p_job;", r)
         self.assertIn("if j.mode = 'exact' or j.routing is null then\n    return null;", r)
         self.assertIn("j.provider_task_id is not null then\n    return null;", r)
         self.assertIn("continue when price is null or price <= 0 or price > j.quoted_credits;", r)
@@ -169,10 +185,27 @@ class TheRules(unittest.TestCase):
         for code in ("'policy'", "'bad_request'", "'provider_timeout'"):
             self.assertNotIn(code, r.split("if code not in (", 1)[1].split(")", 1)[0])
 
-    def test_exact_can_never_carry_a_route(self):
+    def test_exact_can_never_carry_a_route_and_a_routed_job_must(self):
         self.assertIn("(mode <> 'exact' or (routing is null and routed_credits is null and fallback_from is null))",
                       self.text)
         self.assertIn("routed_credits <= quoted_credits", self.text)
+        t = self.new["creative_jobs_route_recorded"]
+        self.assertIn("if found and r.mode <> 'exact' and (r.routing is null or r.routed_credits is null) then", t)
+        self.assertIn("create constraint trigger creative_jobs_route_recorded\n"
+                      "  after insert or update of mode, routing, routed_credits on public.creative_jobs\n"
+                      "  deferrable initially deferred", self.text)
+
+    def test_the_candidates_are_the_platforms_only(self):
+        self.assertIn("alter table public.creative_job_routes enable row level security;", self.text)
+        self.assertIn("revoke all on table public.creative_job_routes from public, anon, authenticated, service_role;",
+                      self.text)
+        self.assertNotRegex(self.text, r"grant [^;]*on (table )?public\.creative_job_routes")
+        self.assertNotRegex(self.text, r"create policy[^;]*creative_job_routes")
+
+    def test_no_margin_on_the_routed_quote(self):
+        q = self.new["creative_route_quote"]
+        self.assertIn("return (q - 'margin' - 'credits_per_unit') || jsonb_build_object(", q)
+        self.assertNotIn("'margin'", self.new["api_creative_quote"].replace("- 'margin'", ""))
 
     def test_the_api_routes_among_its_own_models_and_names_no_provider(self):
         a = self.new["api_creative_create"]
@@ -186,6 +219,9 @@ class TheRules(unittest.TestCase):
         added = re.sub(r"--[^\n]*", "", self.new["api_creative_job_json"].split("-- 0075", 1)[1])
         self.assertNotIn("provider", added)
         self.assertNotIn("routing'", added)
+        # BR-L-021: a failover's reason is neutral on the API.
+        self.assertIn("'fallback_reason', case when j.fallback_reason is null then null else 'unavailable' end,", added)
+        self.assertNotIn("'fallback_reason', j.fallback_reason", added)
 
     def test_privileges(self):
         t = self.text

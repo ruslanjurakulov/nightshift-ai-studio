@@ -60,6 +60,7 @@ import {
   type QuoteState,
   routedLine,
   routedPick,
+  upscaleTargetsFor,
   type StudioCapability,
   type StudioModel,
   type StudioPrefill,
@@ -205,7 +206,8 @@ export function GeneratePanel({
   const takesEnd = !routed && capability === "i2v" && current?.endFrame === true;
   const effectiveEnd = takesEnd ? endFrameId : null;
   // The size: the one picked if this model makes it, else the model's first.
-  const targets = current?.upscaleTargets ?? [];
+  // Auto: the sizes any model of this kind makes, never the hand-picked one's.
+  const targets = upscaleTargetsFor(available, current, routed);
   const effectiveTarget = capability !== "video_upscale" ? null : target && targets.includes(target) ? target : (targets[0] ?? null);
   // A tier only for a picture tool on a model that sells tiers; another model never gets one.
   const effectiveQ = !routed && takesQuality(capability) ? effectiveQuality(current, quality) : null;

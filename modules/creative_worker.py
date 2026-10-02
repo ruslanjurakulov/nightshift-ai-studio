@@ -29,15 +29,26 @@ job with the provider's code. There is no second model, ever.
 
 Routed modes (migration 0075: auto / cheap / fast / quality) run the job's
 ``routed_model`` — the model the person's quote named and confirmed. Only
-when that model's side refuses the submit before any task exists (``FAILOVER_CODES``:
-unavailable, rate limited, the platform's vendor quota or key, no adapter on
-this worker) does the worker ask the DATABASE for the next compatible model
-(``reroute_creative_job``: same settings, of the same tier for quality, no
-dearer than the hold, at most ``MAX_FAILOVERS`` times). The database records
-``fallback_from`` / ``fallback_reason``; the worker submits a NEW task for the
-new model (a task id never crosses models). A refusal of the request itself
-(policy, bad request), a failure after the task exists, and no compatible
-model all fail the job and release its hold, as in exact mode.
+when the submit failed in a way that PROVES the vendor took nothing does the
+worker ask the DATABASE for the next compatible model (``reroute_creative_job``:
+same settings, of the same tier for quality, no dearer than the hold — the
+quoted price — at most ``MAX_FAILOVERS`` times). Proof (BR-L-019) is:
+
+* no adapter for the model on this worker, or no key for it (nothing sent);
+* the connection could not even be opened (sent to the database as
+  ``unreachable``);
+* the vendor refused the submit's first call outright: 401 / 403 (``auth``),
+  402 / quota (``quota``), 404 (``not_found``), 429 (``rate_limited``).
+
+A read timeout, a connection dropped after sending, any 5xx (502 / 504
+included) and an answer we could not read are NOT proof: the vendor may have
+accepted, and be billing, a task we never heard of. Such a job fails like
+exact mode (``unavailable``), its hold is released, its ``submit_started_at``
+stays set and it is never submitted again — to any model. The database keeps
+the same list and records ``fallback_from`` / ``fallback_reason``; the worker
+submits a NEW task for the new model (a task id never crosses models). A
+refusal of the request itself (policy, bad request), a failure after the task
+exists, and no compatible model all fail the job and release its hold.
 
 The adapter seam
 ----------------
@@ -162,11 +173,15 @@ FAILED = "failed"
 RETRYABLE_POLL_CODES = frozenset({"network", "provider_error", "rate_limited", "unavailable"})
 #: The routed modes (migration 0075); exact is never routed.
 ROUTED_MODES = frozenset({"auto", "cheap", "fast", "quality"})
-#: Submit refusals that are the MODEL's side, before any task exists: a routed
-#: job may move to the next compatible model (the database decides which).
-#: Never policy or bad_request (the request itself), never a timeout or a
-#: failure after the task id is stored. The database checks the same list.
-FAILOVER_CODES = frozenset({"unavailable", "rate_limited", "quota", "auth", "not_configured", "not_found",
+#: Submit failures that PROVE no vendor task exists (BR-L-019), as sent to
+#: ``reroute_creative_job``: a routed job may move to the next compatible
+#: model (the database decides which). ``unreachable`` is an ``unavailable``
+#: whose request never left this process. Never ``unavailable`` itself (a
+#: timeout or a 5xx: the vendor may be billing), never policy or bad_request
+#: (the request itself), never after the task id is stored. A code alone is
+#: not proof: the adapter's failure must also say ``not_accepted``. The
+#: database checks the same list.
+FAILOVER_CODES = frozenset({"unreachable", "rate_limited", "quota", "auth", "not_configured", "not_found",
                             "adapter_missing"})
 #: At most this many failovers per job (the database allows no more either).
 MAX_FAILOVERS = 2
@@ -440,12 +455,14 @@ def _duration_s(info: Mapping[str, Any]) -> Optional[float]:
 
 
 class _Refused(Exception):
-    """The job must end now, without a provider call; ``code`` is stored."""
+    """The job must end now, without a provider call; ``code`` is stored.
+    ``not_accepted``: the failure proves no vendor task exists (BR-L-019)."""
 
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, *, not_accepted: bool = False):
         super().__init__(message)
         self.code = code
         self.message = message
+        self.not_accepted = not_accepted
 
 
 class _Heartbeat:
@@ -601,7 +618,7 @@ class CreativeWorker:
                 # the DATABASE moved a routed job (below).
                 adapter = self.resolve_adapter(model)
                 if adapter is None:
-                    raise _Refused("adapter_missing", f"this worker has no adapter for {model}")
+                    raise _Refused("adapter_missing", f"this worker has no adapter for {model}", not_accepted=True)
                 request = replace(base, model=model)
                 if cs.wants_style(request.capability, request.params):
                     request = self._style(request, adapter)
@@ -611,10 +628,11 @@ class CreativeWorker:
                 try:
                     task_id = adapter.submit(request)
                 except Exception as e:
-                    raise _Refused(error_code_of(e), error_text_of(e)) from None
+                    raise _Refused(error_code_of(e), error_text_of(e),
+                                   not_accepted=getattr(e, "not_accepted", False) is True) from None
                 break
             except _Refused as r:
-                moved = self._failover(job_id, mode, r.code, failovers)
+                moved = self._failover(job_id, mode, r, failovers)
                 if moved is None:
                     raise
                 logger.info("job %s: %s answered %s; the database moved the job to %s", job_id, model, r.code,
@@ -628,11 +646,15 @@ class CreativeWorker:
             return "left"
         return self._poll(job, request, adapter, str(task_id), beat)
 
-    def _failover(self, job_id: str, mode: str, code: str, failovers: int) -> Optional[dict]:
-        """A routed job whose model refused the submit (FAILOVER_CODES): the
-        database's next compatible model and the params it priced, or None.
-        Exact never asks; nothing here picks a model."""
-        if mode not in ROUTED_MODES or code not in FAILOVER_CODES or failovers >= MAX_FAILOVERS:
+    def _failover(self, job_id: str, mode: str, refused: "_Refused", failovers: int) -> Optional[dict]:
+        """A routed job whose submit failed with PROOF that no vendor task
+        exists (``not_accepted`` and a FAILOVER_CODES code): the database's
+        next compatible model and the params it priced, or None. Exact never
+        asks; a timeout or a 5xx never asks; nothing here picks a model."""
+        if mode not in ROUTED_MODES or failovers >= MAX_FAILOVERS or not refused.not_accepted:
+            return None
+        code = "unreachable" if refused.code == "unavailable" else refused.code
+        if code not in FAILOVER_CODES:
             return None
         reroute = getattr(self.queue, "reroute", None)
         if not callable(reroute):

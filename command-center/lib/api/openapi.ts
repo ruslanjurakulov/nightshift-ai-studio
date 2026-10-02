@@ -304,9 +304,10 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
               type: "number",
               minimum: 0,
               description:
-                "The most credits you accept to be charged. A price above it is refused with 409 price_changed; nothing is held. For a routed mode " +
-                "it is held as confirmed, a failover goes only to a compatible model costing no more, and the job is charged the price of the model " +
-                "that made it. A different pick than the quote's is refused with 409 route_changed: quote again.",
+                "The most credits you accept to be charged. A price above it is refused with 409 price_changed; nothing is held. The hold is the " +
+                "price at create time (the quote), never more, whatever max_credits says. For a routed mode a failover goes only to a compatible " +
+                "model costing no more than that quote, and the job is charged the price of the model that made it. A different pick than the " +
+                "quote's is refused with 409 route_changed: quote again.",
             },
           },
         },
@@ -359,7 +360,11 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
             mode: { type: "string", enum: ["exact", "auto", "cheap", "fast", "quality"] },
             routed_model: { type: "string", description: "The model that runs the job: the model you named (exact) or the quoted pick." },
             fallback_from: { type: ["string", "null"], description: "Routed modes: the model the job moved away from when it was unavailable." },
-            fallback_reason: { type: ["string", "null"], description: "Routed modes: why it moved (an error code)." },
+            fallback_reason: {
+              type: ["string", "null"],
+              enum: ["unavailable", null],
+              description: "Routed modes: set when the job moved to another model; always unavailable.",
+            },
             route_reason: { type: ["string", "null"], description: "Routed modes: why the model was picked." },
           },
         },

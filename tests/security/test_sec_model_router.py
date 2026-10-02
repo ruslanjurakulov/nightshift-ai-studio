@@ -179,6 +179,10 @@ def set_price(db, m, c):
     db.su("update public.credit_prices set credits_per_unit=%s where unit=%s", [c, unit(m)])
 
 
+def tried(db, job_id):
+    return db.su("select tried from public.creative_job_routes where job_id=%s", [job_id])[0][0]
+
+
 # ── the pick ────────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("mode,model,reason,credits", [
@@ -243,7 +247,9 @@ def test_the_confirmed_quote_is_the_hold_and_the_job_says_how_it_was_picked(db):
     j = job(db, out["job"]["id"])
     assert (j["mode"], j["requested_model"], j["routed_model"]) == ("auto", "img-webonly", "img-webonly")
     assert (float(j["quoted_credits"]), float(j["routed_credits"])) == (3, 3)
-    assert j["routing"]["reason"] == "best_value" and j["routing"]["tried"] == ["img-webonly"]
+    # Members' column: the reason and the surface only (BR-L-022); the rest is the platform's.
+    assert j["routing"] == {"reason": "best_value", "surface": "web"}
+    assert tried(db, out["job"]["id"]) == ["img-webonly"]
     assert out["job"]["route_reason"] == "best_value" and float(out["job"]["routed_credits"]) == 3
     assert footprint(db, ORG_A)[1] == (before[1][0] + 1, before[1][1] + 3)
     drain(db)
@@ -284,7 +290,7 @@ def test_a_price_that_rose_or_a_pick_that_changed_after_the_quote_is_refused_nev
     assert footprint(db, ORG_A) == before
 
 
-def test_a_price_that_fell_holds_the_confirmed_price_and_charges_the_lower_one(db):
+def test_a_price_that_fell_holds_and_charges_the_lower_price(db):
     drain(db)
     q = rquote(db, UA, ORG_A, "cheap")
     try:
@@ -294,7 +300,8 @@ def test_a_price_that_fell_holds_the_confirmed_price_and_charges_the_lower_one(d
         set_price(db, "img-cheap", 2)
     jid = out["job"]["id"]
     j = job(db, jid)
-    assert (float(j["quoted_credits"]), float(j["routed_credits"])) == (2, 1.5)
+    # BR-L-020: the hold is the price at create, never the confirmed ceiling.
+    assert (float(j["quoted_credits"]), float(j["routed_credits"])) == (1.5, 1.5)
     bal = footprint(db, ORG_A)[2][0]
     _id, ref, org = claim(db, jid)
     svc(db, "select public.start_credit_reservation(%s,%s)", [ref, org])
@@ -305,7 +312,27 @@ def test_a_price_that_fell_holds_the_confirmed_price_and_charges_the_lower_one(d
     assert float(done["charged_credits"]) == 1.5
     assert footprint(db, ORG_A)[2][0] == pytest.approx(bal - 1.5)
     assert db.su("select status, amount::float, captured::float from public.credit_reservations where job_id=%s",
-                 [ref]) == [("captured", 2.0, 1.5)]
+                 [ref]) == [("captured", 1.5, 1.5)]
+
+
+def test_BR_L_020_a_generous_max_credits_holds_only_the_price_and_fails_over_no_dearer(db):
+    # A member's direct call (or an API key) confirming 500 for a pick priced 2.
+    drain(db)
+    before = footprint(db, ORG_A)
+    jid = create(db, UA, ORG_A, "cheap", "img-cheap", 500, idem="r-020-1")["job"]["id"]
+    j = job(db, jid)
+    assert (float(j["quoted_credits"]), float(j["routed_credits"])) == (2, 2)
+    assert footprint(db, ORG_A)[1] == (before[1][0] + 1, before[1][1] + 2)
+    claim(db, jid)
+    svc(db, "select public.advance_creative_job(%s,'w-r','submitting')", [jid])
+    # Every other candidate costs more than the quote: no failover, whatever was confirmed.
+    assert svc(db, "select public.reroute_creative_job(%s,'w-r','quota')", [jid])[0][0] is None
+    svc(db, "select public.finish_creative_job(%s,'w-r',false,null,null,'quota','x')", [jid])
+    # The API: the hold is the price too, and the key's monthly ceiling counts it.
+    made = api_create(db, "cheap", "img-cheap", 500, "api-r-020")
+    assert made["ok"] is True, made
+    assert float(made["data"]["quoted_credits"]) == 2
+    drain(db)
 
 
 def test_a_replay_of_the_same_press_is_the_same_job_and_one_hold(db):
@@ -331,7 +358,7 @@ def test_exact_is_never_routed_or_rerouted_whatever_fails(db):
     assert (j["routed_model"], j["routing"], j["routed_credits"]) == ("img-best", None, None)
     claim(db, jid)
     svc(db, "select public.advance_creative_job(%s,'w-r','submitting')", [jid])
-    for code in ("unavailable", "adapter_missing", "quota", "rate_limited"):
+    for code in ("unavailable", "unreachable", "adapter_missing", "quota", "rate_limited"):
         assert svc(db, "select public.reroute_creative_job(%s,'w-r',%s)", [jid, code])[0][0] is None
     assert job(db, jid)["routed_model"] == "img-best" and job(db, jid)["fallback_from"] is None
     svc(db, "select public.finish_creative_job(%s,'w-r',false,null,null,'unavailable','down')", [jid])
@@ -357,22 +384,22 @@ def test_quality_fails_over_once_to_the_same_tier_within_the_hold_then_stops(db)
     _id, ref, org = claim(db, jid)
     svc(db, "select public.start_credit_reservation(%s,%s)", [ref, org])
     # Not the worker holding the job, a code that is the request's own fault, a browser: nothing.
-    assert svc(db, "select public.reroute_creative_job(%s,'someone-else','unavailable')", [jid])[0][0] is None
-    for code in ("policy", "bad_request", "provider_timeout", "content_policy"):
+    assert svc(db, "select public.reroute_creative_job(%s,'someone-else','unreachable')", [jid])[0][0] is None
+    for code in ("policy", "bad_request", "provider_timeout", "content_policy", "unavailable", "bad_response"):
         assert svc(db, "select public.reroute_creative_job(%s,'w-r',%s)", [jid, code])[0][0] is None
-    st, _w, _d = err(lambda: db.act("authenticated", UA, "select public.reroute_creative_job(%s,'w-r','unavailable')", [jid]))
+    st, _w, _d = err(lambda: db.act("authenticated", UA, "select public.reroute_creative_job(%s,'w-r','unreachable')", [jid]))
     assert st == "42501"
     svc(db, "select public.advance_creative_job(%s,'w-r','submitting')", [jid])
-    moved = svc(db, "select public.reroute_creative_job(%s,'w-r','unavailable')", [jid])[0][0]
+    moved = svc(db, "select public.reroute_creative_job(%s,'w-r','unreachable')", [jid])[0][0]
     assert (moved["model"], moved["credits"], moved["params"]) == ("img-best-b", 9, PROMPT)
     j = job(db, jid)
     assert (j["routed_model"], j["fallback_from"], j["fallback_reason"], j["requested_model"]) == \
-        ("img-best-b", "img-best", "unavailable", "img-best")
-    assert j["routing"]["tried"] == ["img-best", "img-best-b"]
+        ("img-best-b", "img-best", "unreachable", "img-best")
+    assert tried(db, jid) == ["img-best", "img-best-b"]
     # The next submit is a new one: 'submitting' is allowed again, no task id carried.
     assert svc(db, "select public.advance_creative_job(%s,'w-r','submitting')", [jid])[0][0] is True
     # No third model of tier 5 within the hold: no failover, the job fails, the hold comes back in full.
-    assert svc(db, "select public.reroute_creative_job(%s,'w-r','unavailable')", [jid])[0][0] is None
+    assert svc(db, "select public.reroute_creative_job(%s,'w-r','unreachable')", [jid])[0][0] is None
     svc(db, "select public.finish_creative_job(%s,'w-r',false,null,null,'unavailable','down')", [jid])
     assert db.su("select status from public.credit_reservations where job_id=%s", [ref])[0][0] == "released"
 
@@ -385,15 +412,15 @@ def test_no_failover_above_the_hold_or_to_a_lower_tier_or_after_a_task_exists(db
     svc(db, "select public.advance_creative_job(%s,'w-r','submitting')", [jid])
     try:
         set_price(db, "img-best-b", 9.5)        # the only same-tier model now costs more than the hold
-        assert svc(db, "select public.reroute_creative_job(%s,'w-r','unavailable')", [jid])[0][0] is None
+        assert svc(db, "select public.reroute_creative_job(%s,'w-r','unreachable')", [jid])[0][0] is None
     finally:
         set_price(db, "img-best-b", 9)
     # Once the provider has a task, the job is that task's: never moved — even
     # if the row read 'running' again (the task id alone decides).
     svc(db, "select public.advance_creative_job(%s,'w-r','submitted','task-x')", [jid])
-    assert svc(db, "select public.reroute_creative_job(%s,'w-r','unavailable')", [jid])[0][0] is None
+    assert svc(db, "select public.reroute_creative_job(%s,'w-r','unreachable')", [jid])[0][0] is None
     db.su("update public.creative_jobs set status='running' where id=%s", [jid])
-    assert svc(db, "select public.reroute_creative_job(%s,'w-r','unavailable')", [jid])[0][0] is None
+    assert svc(db, "select public.reroute_creative_job(%s,'w-r','unreachable')", [jid])[0][0] is None
     assert job(db, jid)["routed_model"] == "img-best"
     svc(db, "select public.finish_creative_job(%s,'w-r',false,null,null,'unavailable','down')", [jid])
     # auto (img-webonly, tier 4, 3 credits): every other candidate is dearer or of a lower tier.
@@ -406,24 +433,82 @@ def test_no_failover_above_the_hold_or_to_a_lower_tier_or_after_a_task_exists(db
 
 
 def test_a_failover_never_carries_a_model_the_job_could_not_be_priced_for(db):
-    # cheap with a generous confirmed price (an API caller may confirm more):
-    # the next candidates by price are tried in order, each priced for the job.
+    # cheap: the next candidates by price are tried in order, each priced for
+    # the job now and no dearer than the hold (the quote, 2).
     drain(db)
-    jid = create(db, UA, ORG_A, "cheap", "img-cheap", 5, idem="r-fo-4")["job"]["id"]
-    assert float(job(db, jid)["quoted_credits"]) == 5 and float(job(db, jid)["routed_credits"]) == 2
+    jid = create(db, UA, ORG_A, "cheap", "img-cheap", 2, idem="r-fo-4")["job"]["id"]
     claim(db, jid)
+    set_price(db, "img-webonly", 2)
+    set_price(db, "img-mid", 1.5)
     db.su("update public.model_registry set availability='hidden' where id='img-webonly'")
     try:
         moved = svc(db, "select public.reroute_creative_job(%s,'w-r','quota')", [jid])[0][0]
+        assert (moved["model"], moved["credits"]) == ("img-mid", 1.5)   # img-webonly is no longer sellable: skipped
+        j = job(db, jid)
+        assert float(j["routed_credits"]) == 1.5 and float(j["quoted_credits"]) == 2
+        # BR-L-024: the row describes the model that runs now.
+        assert db.su("select credit_unit, quantity::float from public.creative_jobs where id=%s", [jid]) == \
+            [(unit("img-mid"), 1.0)]
+        db.su("update public.model_registry set availability='beta' where id='img-webonly'")
+        # A second failover is allowed, a third model is not.
+        assert svc(db, "select public.reroute_creative_job(%s,'w-r','quota')", [jid])[0][0]["model"] == "img-webonly"
+        assert db.su("select credit_unit from public.creative_jobs where id=%s", [jid])[0][0] == unit("img-webonly")
+        assert svc(db, "select public.reroute_creative_job(%s,'w-r','quota')", [jid])[0][0] is None
+        assert tried(db, jid) == ["img-cheap", "img-mid", "img-webonly"]
     finally:
         db.su("update public.model_registry set availability='beta' where id='img-webonly'")
-    assert (moved["model"], moved["credits"]) == ("img-mid", 5)   # img-webonly is no longer sellable: skipped
-    j = job(db, jid)
-    assert float(j["routed_credits"]) == 5 and float(j["quoted_credits"]) == 5
-    # A second failover is allowed, a third model is not.
-    assert svc(db, "select public.reroute_creative_job(%s,'w-r','quota')", [jid])[0][0]["model"] == "img-webonly"
-    assert svc(db, "select public.reroute_creative_job(%s,'w-r','quota')", [jid])[0][0] is None
+        set_price(db, "img-webonly", 3)
+        set_price(db, "img-mid", 5)
     svc(db, "select public.finish_creative_job(%s,'w-r',false,null,null,'quota','x')", [jid])
+
+
+def test_BR_L_019_an_ambiguous_submit_is_never_moved_and_keeps_its_guard(db):
+    # A read timeout, a dropped connection, a 5xx: the worker sends 'unavailable'
+    # and the database refuses to move the job or clear submit_started_at.
+    drain(db)
+    q = rquote(db, UA, ORG_A, "quality")
+    jid = create(db, UA, ORG_A, "quality", q["routed_model"], q["credits"], idem="r-019-1")["job"]["id"]
+    _id, ref, org = claim(db, jid)
+    svc(db, "select public.start_credit_reservation(%s,%s)", [ref, org])
+    assert svc(db, "select public.advance_creative_job(%s,'w-r','submitting')", [jid])[0][0] is True
+    started = db.su("select submit_started_at from public.creative_jobs where id=%s", [jid])[0][0]
+    assert started is not None
+    for code in ("unavailable", "provider_timeout", "bad_response", "provider_error", "submit_interrupted"):
+        assert svc(db, "select public.reroute_creative_job(%s,'w-r',%s)", [jid, code])[0][0] is None
+    assert db.su("select submit_started_at, routed_model from public.creative_jobs where id=%s", [jid]) == \
+        [(started, "img-best")]
+    # 0036's guard stands: a second submit is refused.
+    assert svc(db, "select public.advance_creative_job(%s,'w-r','submitting')", [jid])[0][0] is False
+    assert tried(db, jid) == ["img-best"]
+    svc(db, "select public.finish_creative_job(%s,'w-r',false,null,null,'unavailable','timeout')", [jid])
+    assert db.su("select status from public.credit_reservations where job_id=%s", [ref])[0][0] == "released"
+
+
+def test_ties_are_broken_by_the_model_id(db):
+    # img-best and img-best-b made equal on every key: the lower id wins, in every mode.
+    db.su("update public.model_registry set spec = jsonb_set(spec, '{speed_tier}', '2') where id='img-best-b'")
+    try:
+        assert route(db, ORG_A, "quality")["model"] == "img-best"
+        cands = route(db, ORG_A, "quality")["candidates"]
+        assert [c["model"] for c in cands[:2]] == ["img-best", "img-best-b"]
+        # Made the other way round: still decided by the id, not by the registry's row order.
+        db.su("update public.model_registry set spec = jsonb_set(spec, '{speed_tier}', '1') where id='img-best'")
+        assert route(db, ORG_A, "quality")["model"] == "img-best-b"
+        db.su("update public.model_registry set spec = jsonb_set(spec, '{speed_tier}', '1') where id='img-best-b'")
+        assert route(db, ORG_A, "quality")["model"] == "img-best"
+    finally:
+        db.su("update public.model_registry set spec = jsonb_set(spec, '{speed_tier}', '2') where id='img-best'")
+        db.su("update public.model_registry set spec = jsonb_set(spec, '{speed_tier}', '1') where id='img-best-b'")
+
+
+def test_BR_L_024_a_routed_job_cannot_lose_its_route_or_price(db):
+    drain(db)
+    jid = create(db, UA, ORG_A, "cheap", "img-cheap", 2, idem="r-024-1")["job"]["id"]
+    for change in ("routed_credits = null", "routing = null"):
+        with pytest.raises(psycopg.errors.CheckViolation):
+            db.su(f"update public.creative_jobs set {change} where id=%s", [jid])
+    assert float(job(db, jid)["routed_credits"]) == 2
+    drain(db)
 
 
 # ── nothing crosses an organization ─────────────────────────────────────────
@@ -440,6 +525,9 @@ def test_another_organization_cannot_quote_create_or_read_a_route(db):
     assert db.act("authenticated", UB, "select routing, routed_model from public.creative_jobs where id=%s", [jid]) == []
     assert db.act("authenticated", UA, "select routing ->> 'reason' from public.creative_jobs where id=%s",
                   [jid]) == [("best_value",)]
+    # BR-L-022: no member reads the candidates — not even of their own job.
+    assert db.act("authenticated", UA, "select routing from public.creative_jobs where id=%s", [jid])[0][0] == \
+        {"reason": "best_value", "surface": "web"}
     drain(db)
 
 
@@ -447,7 +535,10 @@ def test_another_organization_cannot_quote_create_or_read_a_route(db):
 def test_nobody_writes_the_route_or_calls_the_router_directly(db, role, uid):
     jid = db.su("select id::text from public.creative_jobs where org_id=%s limit 1", [ORG_A])[0][0]
     for q in ("update public.creative_jobs set routed_model='img-best', routed_credits=0 where id=%s",
-              "update public.creative_jobs set routing='{\"tried\":[]}'::jsonb where id=%s"):
+              "update public.creative_jobs set routing='{\"tried\":[]}'::jsonb where id=%s",
+              "select candidates from public.creative_job_routes where job_id=%s",
+              "update public.creative_job_routes set tried='[]'::jsonb where job_id=%s",
+              "delete from public.creative_job_routes where job_id=%s"):
         st, _w, _d = err(lambda q=q: db.act(role, uid, q, [jid]))
         assert st == "42501"
     for q, p in (("select public.route_model('t2i','{\"prompt\":\"x\"}'::jsonb,'auto',%s,'web')", [ORG_A]),
@@ -516,6 +607,8 @@ def test_the_api_routes_among_the_models_it_sells_and_names_no_provider(db):
     # img-webonly is the web's pick; the API never sells it.
     assert (quote["routed_model"], quote["route_reason"], quote["credits"]) == ("img-mid", "best_value", 5)
     assert not ({"display_name", "available", "provider", "candidates"} & set(quote))
+    # BR-L-023: the price, never the platform's economics.
+    assert not ({"margin", "credits_per_unit"} & set(quote)), quote
     made = api_create(db, "auto", "img-mid", 5, "api-r-1")
     assert made["ok"] is True and made["data"]["routed_model"] == "img-mid" and made["data"]["mode"] == "auto", made
     assert made["data"]["route_reason"] == "best_value" and "routing" not in made["data"]
@@ -537,3 +630,36 @@ def test_a_bad_key_routes_nothing(db):
     res = db.act("anon", None, "select public.api_creative_quote(%s,'t2i',null,%s::jsonb,'auto',null)",
                  ["0" * 64, json.dumps(PROMPT)])[0][0]
     assert res["ok"] is False and res["status"] in (401, 403), res
+
+
+def test_BR_L_023_no_routed_quote_carries_the_margin(db):
+    db.su("update public.credit_prices set margin = 0.75 where unit = %s", [unit("img-cheap")])
+    try:
+        web = rquote(db, UA, ORG_A, "fast")                  # img-cheap: the fastest, with a margin now
+        assert web["routed_model"] == "img-cheap" and web["credits"] == 3.5
+        api = api_quote(db, "fast")
+        assert api["ok"] is True and api["data"]["quote"]["routed_model"] == "img-cheap", api
+        for q in (web, api["data"]["quote"]):
+            assert not ({"margin", "credits_per_unit"} & set(q)), q
+    finally:
+        db.su("update public.credit_prices set margin = 0 where unit = %s", [unit("img-cheap")])
+
+
+def test_BR_L_021_an_api_caller_never_reads_the_platforms_vendor_account_state(db):
+    drain(db)
+    made = api_create(db, "cheap", "img-cheap", 2, "api-r-021")
+    assert made["ok"] is True, made
+    jid = made["data"]["id"]
+    claim(db, jid)
+    svc(db, "select public.advance_creative_job(%s,'w-r','submitting')", [jid])
+    set_price(db, "img-mid", 2)
+    try:
+        moved = svc(db, "select public.reroute_creative_job(%s,'w-r','auth')", [jid])[0][0]
+    finally:
+        set_price(db, "img-mid", 5)
+    assert moved["model"] == "img-mid"                       # img-webonly is not the API's
+    assert job(db, jid)["fallback_reason"] == "auth"        # the platform keeps the truth
+    out = db.su("select public.api_creative_job_json(j) from public.creative_jobs j where id=%s", [jid])[0][0]
+    assert (out["fallback_from"], out["fallback_reason"], out["routed_model"]) == ("img-cheap", "unavailable", "img-mid")
+    assert "auth" not in json.dumps(out)
+    svc(db, "select public.finish_creative_job(%s,'w-r',false,null,null,'auth','x')", [jid])

@@ -574,6 +574,21 @@ export function asCreativeError(code: unknown): CreativeError {
     : "failed";
 }
 
+/**
+ * The video-upscale sizes to offer. A picked model: its own. Auto: every size
+ * some model of this kind makes (in the fixed order) — never the hand-picked
+ * model's list, which Auto does not use; the database then picks among the
+ * models that make the chosen size (BR-L-024).
+ */
+export function upscaleTargetsFor(
+  available: readonly Pick<StudioModel, "upscaleTargets">[],
+  current: Pick<StudioModel, "upscaleTargets"> | null,
+  routed: boolean,
+): UpscaleTarget[] {
+  if (!routed) return current?.upscaleTargets ?? [];
+  return UPSCALE_TARGETS.filter((x) => available.some((m) => m.upscaleTargets?.includes(x)));
+}
+
 /** A route's error code -> the sentence the person reads (never the code itself). */
 export function apiErrorMessage(t: Dictionary, code: unknown): string {
   return t.creative.errors[asCreativeError(code)];
