@@ -166,7 +166,7 @@ class TheRequest(unittest.TestCase):
                env(SCENE_REGEN_SOURCE="stock"),  # stock naming a generator
                env(SCENE_REGEN_PROMPT="x" * 1001), env(SCENE_REGEN_PROMPT="a\nb"),
                env(SCENE_REGEN_EXPLICIT_STOCK="true")]  # an explicit stock choice that is not stock
-        # BR-L-025: what was priced must be handed over, well-formed.
+        # BR-L-030: what was priced must be handed over, well-formed.
         bad += [env(SCENE_REGEN_PREVIOUS_ASSETS=""), env(SCENE_REGEN_PREVIOUS_ASSETS="a,a"),
                 env(SCENE_REGEN_PREVIOUS_ASSETS="a b"), env(SCENE_REGEN_PREVIOUS_ASSETS=",".join("a%d" % i for i in range(9))),
                 env(SCENE_REGEN_GENERATED_CLIPS=""), env(SCENE_REGEN_GENERATED_CLIPS="x"),
@@ -280,7 +280,7 @@ class ProviderUnavailable(RunWithGeneratedScene):
 
 
 class TheSceneAsPriced(RunWithGeneratedScene):
-    """BR-L-025 / BR-L-030: the scene on disk must be exactly the priced one."""
+    """BR-L-030 / BR-L-035: the scene on disk must be exactly the priced one."""
 
     def snapshot(self):
         return (self.run_dir / "project.json").read_bytes(), (self.run_dir / "final_video.mp4").read_bytes()
@@ -354,7 +354,7 @@ class TheSceneAsPriced(RunWithGeneratedScene):
 
 
 class CrashPoints(RunWithGeneratedScene):
-    """BR-L-026: the cut and IR change only in the final swap, after the
+    """BR-L-031: the cut and IR change only in the final swap, after the
     approval is void and the result naming them is written; whatever point a
     run stops at, a failure leaves (or puts back) the previous take."""
 
@@ -471,7 +471,7 @@ class CrashPoints(RunWithGeneratedScene):
 
 
 class DiskGrowth(RunWithGeneratedScene):
-    """BR-L-027: bounded per run, for every org, and checked before spending."""
+    """BR-L-032: bounded per run, for every org, and checked before spending."""
 
     def make_take(self, n, *, ok=True, clip=False):
         rid = "%08d-0000-4000-8000-000000000000" % (n + 100)
@@ -779,7 +779,7 @@ class Worker(unittest.TestCase):
         self.assertEqual(self.finish(c), (False, "not_confirmed"))
         self.unchanged()
 
-    # BR-L-026: every point the run can stop at after the result is written.
+    # BR-L-031: every point the run can stop at after the result is written.
     def test_a_result_whose_cut_is_not_on_disk_is_not_charged(self):
         c = RegenCredits()
         self.run_job(c, FAKE_MODE="no_swap")

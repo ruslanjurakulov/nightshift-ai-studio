@@ -74,7 +74,7 @@ ENV_PROVIDER = "SCENE_REGEN_PROVIDER"
 ENV_MODEL = "SCENE_REGEN_MODEL"
 ENV_PROMPT = "SCENE_REGEN_PROMPT"
 ENV_EXPLICIT_STOCK = "SCENE_REGEN_EXPLICIT_STOCK"
-#: What was priced (BR-L-025): the scene's asset ids and its clip counts, as
+#: What was priced (BR-L-030): the scene's asset ids and its clip counts, as
 #: the database read them. The scene on disk must be exactly this.
 ENV_PREVIOUS_ASSETS = "SCENE_REGEN_PREVIOUS_ASSETS"
 ENV_GENERATED_CLIPS = "SCENE_REGEN_GENERATED_CLIPS"
@@ -86,7 +86,7 @@ REGEN_DIRNAME = "regenerations"
 RESULT_FILENAME = "result.json"
 PREVIOUS_PROJECT = "previous_project.json"
 PREVIOUS_VIDEO = "previous_final_video.mp4"
-#: How many takes per run keep their full previous master (BR-L-027). Older
+#: How many takes per run keep their full previous master (BR-L-032). Older
 #: takes keep their result and previous Video IR (asset ids), not the master.
 KEEP_TAKES = 5
 #: Free space a regeneration needs beyond two copies of the cut (the kept
@@ -210,7 +210,7 @@ _CHANGED = "open the video again for a new price (nothing was charged)"
 
 
 def verify_same_scene(project, req: RegenRequest) -> None:
-    """The scene on disk is EXACTLY the one that was priced (BR-L-025): the
+    """The scene on disk is EXACTLY the one that was priced (BR-L-030): the
     same asset ids in the same order, the same number of generated and stock
     clips, and every generated clip from the priced provider and model. The
     database's record of a run is best-effort and can lag the disk (a resume,
@@ -509,7 +509,7 @@ def commit_matches(run_dir: Path, result: Mapping) -> bool:
 
 
 def settle_outcome(output_dir: Path, slug: str, regen_id: str, *, exited_ok: bool) -> dict:
-    """The queue worker's verdict on a finished regeneration run (BR-L-026).
+    """The queue worker's verdict on a finished regeneration run (BR-L-031).
 
     Success needs all three: the run exited 0, its own result says ok, and the
     cut and Video IR on disk are byte for byte the ones that result names.
@@ -533,7 +533,7 @@ def settle_outcome(output_dir: Path, slug: str, regen_id: str, *, exited_ok: boo
 
 def check_disk(run_dir: Path, *, free_fn: Optional[Callable[[Path], int]] = None) -> None:
     """Room for the kept previous master and the new render, before anything
-    is spent (BR-L-027). One worker disk serves every tenant."""
+    is spent (BR-L-032). One worker disk serves every tenant."""
     run_dir = Path(run_dir)
     if free_fn is None:
         free_fn = lambda p: shutil.disk_usage(p).free  # noqa: E731
@@ -553,7 +553,7 @@ def check_disk(run_dir: Path, *, free_fn: Optional[Callable[[Path], int]] = None
 
 
 def prune_takes(run_dir: Path, *, keep: int = KEEP_TAKES, project=None) -> List[str]:
-    """Bound what regenerations keep on disk (BR-L-027), for every org: the
+    """Bound what regenerations keep on disk (BR-L-032), for every org: the
     newest ``keep`` takes keep their full previous master; older ones keep
     their result and previous Video IR (the asset ids) but not the master,
     and a failed one's own clips are removed. A file the current Video IR
@@ -670,7 +670,7 @@ def regenerate(plan, req: RegenRequest, *, client=None, fetcher=None, ledger=Non
                           "could not record the regeneration on the run checkpoint; nothing was re-rendered")
     cut_intervals = {i: scene_repair._cut_interval(s) for i, s in enumerate(plan.script.get("sections") or [])
                      if isinstance(s, Mapping)}
-    # BR-L-026: the new cut and IR are written beside the run's, under temp
+    # BR-L-031: the new cut and IR are written beside the run's, under temp
     # names. The run's own files change only in the swap at the very end,
     # after the approval is void and the result that names them is written.
     tmp_video, tmp_ir = temp_paths(plan.run_dir, req.regen_id)
@@ -883,7 +883,7 @@ def cli(*, channel: Optional[str], raw_scene: Optional[str], topic: Optional[str
 
 
 def _prune_after_failure(plan) -> None:
-    """Failed takes count toward the bound too (BR-L-027). This one is the
+    """Failed takes count toward the bound too (BR-L-032). This one is the
     newest, so it keeps its master for the worker's restore."""
     try:
         prune_takes(plan.run_dir, project=video_ir.load(plan.run_dir / video_ir.PROJECT_FILENAME))

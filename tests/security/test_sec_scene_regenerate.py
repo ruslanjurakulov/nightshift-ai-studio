@@ -200,7 +200,7 @@ def test_the_press_holds_exactly_the_quote_and_queues_one_repair_of_that_scene(c
             h, r, j = holds(o, sc.bob.org), regens(o, vid), jobs(o, vid)
             after = available(o, sc.bob.org)
     assert q.ok and float(q.rows[0][0]["credits"]) == GEN, q
-    # BR-L-031: what a member reads over PostgREST is display-safe — no
+    # BR-L-036: what a member reads over PostgREST is display-safe — no
     # generator, model or price-unit name, only the kind of source.
     body = q.rows[0][0]
     assert body["source_kind"] == "generated", body
@@ -262,7 +262,7 @@ def test_an_unset_price_is_unpriced_never_zero_and_cannot_be_pressed(conn, sc):
             assert holds(owner(s), sc.bob.org) == []
     body = q.rows[0][0]
     assert body["status"] == "unpriced" and body["credits"] is None, body
-    # BR-L-031: the missing unit is the owner's to read in the price list,
+    # BR-L-036: the missing unit is the owner's to read in the price list,
     # not named to a member (it would name the generator).
     assert "missing_unit" not in body and "kling" not in json.dumps(body), body
     assert not p.ok and p.sqlstate == "NS400" and "unpriced" in p.error, p
@@ -482,7 +482,7 @@ def test_a_browser_cannot_link_a_job_to_a_regeneration(conn, sc):
 
 
 def test_the_insert_policy_itself_refuses_a_browser_link_to_a_regeneration(conn, sc):
-    """BR-L-030: the payment guard (a BEFORE trigger) refuses the link first,
+    """BR-L-035: the payment guard (a BEFORE trigger) refuses the link first,
     so the test above cannot tell whether render_jobs_insert's own clause
     (`scene_regeneration_id is null`) is there. Here the guard is switched off
     inside the rolled-back world: the policy alone must still refuse the link,
