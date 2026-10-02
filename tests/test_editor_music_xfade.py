@@ -84,6 +84,8 @@ ENC = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "30"]
 CLIP = ["-max_pixels", "36683776", "-threads", "2"]
 STILL = ["-max_pixels", "101032192", "-threads", "2"]
 TH = ["-filter_threads", "2", "-filter_complex_threads", "2"]
+#: The encoder's threads, before the output (BR-L-007).
+OUT = ["-threads", "4"]
 PAN = ("scale=1472:828:force_original_aspect_ratio=increase:flags=lanczos,loop=loop=-1:size=1,"
        "settb=1/30,setpts=N,crop=w=1207:h=679:x='clip(trunc(iw*(0.5-0.15+0.3*min(1,n/60.000000)))"
        "-603,0,iw-ow)':y='(ih-oh)/2',scale=1280:720:flags=lanczos")
@@ -91,18 +93,18 @@ PAN = ("scale=1472:828:force_original_aspect_ratio=increase:flags=lanczos,loop=l
 GOLDEN_XFADE_SEGMENTS = [
     # c1 alone: frames 0-74.
     [["ffmpeg", *TH, "-y", "-stream_loop", "-1", "-ss", "1.000", *CLIP, "-i", "/media/a.mp4", "-frames:v", "75",
-      "-an", "-vf", FIT, *ENC, "/w/seg_0000.mp4"]],
+      "-an", "-vf", FIT, *ENC, *OUT, "/w/seg_0000.mp4"]],
     # c1's last 15 frames dissolve into c2's first 15 (c2 at 2x).
     [["ffmpeg", *TH, "-y", "-stream_loop", "-1", "-ss", "1.000", *CLIP, "-i", "/media/a.mp4",
       "-stream_loop", "-1", *CLIP, "-i", "/media/b.mp4", "-filter_complex",
       f"[0:v]{FIT},trim=start_frame=75,setpts=PTS-STARTPTS{PIN}[xa];"
       f"[1:v]setpts=(PTS-STARTPTS)/2.000,{FIT}{PIN}[xb];"
       "[xa][xb]xfade=transition=fade:duration=0.500000:offset=0[xv]",
-      "-map", "[xv]", "-frames:v", "15", "-an", *ENC, "/w/seg_0001.mp4"]],
+      "-map", "[xv]", "-frames:v", "15", "-an", *ENC, *OUT, "/w/seg_0001.mp4"]],
     # c2 alone: its frames 15-29.
     [["ffmpeg", *TH, "-y", "-stream_loop", "-1", *CLIP, "-i", "/media/b.mp4", "-frames:v", "15", "-an", "-vf",
       f"setpts=(PTS-STARTPTS)/2.000,{FIT},trim=start_frame=15,setpts=PTS-STARTPTS", *ENC,
-      "/w/seg_0002.mp4"]],
+      *OUT, "/w/seg_0002.mp4"]],
     # c2's last 30 frames dissolve into the still's first 30, the still
     # already making its move (held, as for any still, if the move fails).
     [["ffmpeg", *TH, "-y", "-stream_loop", "-1", *CLIP, "-i", "/media/b.mp4", *STILL, "-i", "/media/i.png",
@@ -110,18 +112,18 @@ GOLDEN_XFADE_SEGMENTS = [
       f"[0:v]setpts=(PTS-STARTPTS)/2.000,{FIT},trim=start_frame=30,setpts=PTS-STARTPTS{PIN}[xa];"
       f"[1:v]{PAN}{PIN}[xb];"
       "[xa][xb]xfade=transition=fade:duration=1.000000:offset=0[xv]",
-      "-map", "[xv]", "-frames:v", "30", "-an", *ENC, "/w/seg_0003.mp4"],
+      "-map", "[xv]", "-frames:v", "30", "-an", *ENC, *OUT, "/w/seg_0003.mp4"],
      ["ffmpeg", *TH, "-y", "-stream_loop", "-1", *CLIP, "-i", "/media/b.mp4", "-loop", "1", *STILL, "-i", "/media/i.png",
       "-filter_complex",
       f"[0:v]setpts=(PTS-STARTPTS)/2.000,{FIT},trim=start_frame=30,setpts=PTS-STARTPTS{PIN}[xa];"
       f"[1:v]{FIT}{PIN}[xb];"
       "[xa][xb]xfade=transition=fade:duration=1.000000:offset=0[xv]",
-      "-map", "[xv]", "-frames:v", "30", "-an", *ENC, "/w/seg_0003.mp4"]],
+      "-map", "[xv]", "-frames:v", "30", "-an", *ENC, *OUT, "/w/seg_0003.mp4"]],
     # The still alone: the SAME move (same seed, same 60-frame span), cut at frame 30.
     [["ffmpeg", *TH, "-y", *STILL, "-i", "/media/i.png", "-frames:v", "30", "-vf",
-      f"{PAN},trim=start_frame=30,setpts=PTS-STARTPTS", *ENC, "/w/seg_0004.mp4"],
+      f"{PAN},trim=start_frame=30,setpts=PTS-STARTPTS", *ENC, *OUT, "/w/seg_0004.mp4"],
      ["ffmpeg", *TH, "-y", "-loop", "1", *STILL, "-i", "/media/i.png", "-frames:v", "30", "-vf",
-      f"{FIT},trim=start_frame=30,setpts=PTS-STARTPTS", *ENC, "/w/seg_0004.mp4"]],
+      f"{FIT},trim=start_frame=30,setpts=PTS-STARTPTS", *ENC, *OUT, "/w/seg_0004.mp4"]],
 ]
 
 AF = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
@@ -140,7 +142,7 @@ GOLDEN_XFADE_FINAL = [
     "afade=t=in:st=0:d=1.000,afade=t=out:st=3.500:d=1.500,adelay=delays=500:all=1[a2];"
     "[a0][a2]amix=inputs=2:duration=longest:normalize=0,apad,atrim=end=5.500000[aout]",
     "-map", "0:v", "-map", "[aout]", "-r", "30", "-c:v", "libx264", "-preset", "medium",
-    "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "/out/x.mp4"]
+    "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", *OUT, "/out/x.mp4"]
 
 
 class CrossfadeDocumentTestCase(unittest.TestCase):

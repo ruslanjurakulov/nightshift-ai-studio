@@ -697,7 +697,8 @@ def thumbnail_command(exe: str, src: Path, dst: Path, mime: str, duration: Optio
     if ALLOWED_MIME.get(mime) == "video" and duration:
         argv += ["-ss", f"{min(1.0, duration / 10):.3f}"]
     return argv + ["-f", DEMUXER[mime], *decoder_cap(mime), "-i", str(src), "-frames:v", "1",
-                   "-vf", _scale_long_side(THUMB_SIDE), "-q:v", "4", "-f", "image2", str(dst)]
+                   "-vf", _scale_long_side(THUMB_SIDE), "-q:v", "4",
+                   *ffmpeg_limits.encode_thread_options(ffmpeg_limits.DECODE_THREADS), "-f", "image2", str(dst)]
 
 
 def proxy_command(exe: str, src: Path, dst: Path, mime: str) -> List[str]:
@@ -709,7 +710,7 @@ def proxy_command(exe: str, src: Path, dst: Path, mime: str) -> List[str]:
             "-map", "0:v:0", "-map", "0:a:0?",
             "-vf", _scale_short_side(PROXY_SHORT_SIDE),
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-pix_fmt", "yuv420p",
-            "-threads", str(ffmpeg_limits.DECODE_THREADS),
+            *ffmpeg_limits.encode_thread_options(ffmpeg_limits.DECODE_THREADS),
             "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", "-f", "mp4", str(dst)]
 
 

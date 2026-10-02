@@ -69,6 +69,13 @@ CHILD_MEM_BYTES = 2 * 1024 ** 3
 DECODE_THREADS = 2
 #: Filter-graph threads (``-filter_threads`` / ``-filter_complex_threads``).
 FILTER_THREADS = 2
+#: Encoder threads of an editor export's commands (output ``-threads``; the
+#: ingest's 480p proxy and thumbnail use DECODE_THREADS). Left automatic,
+#: libx264 starts 1.5 threads per core: forced to the counts of bigger hosts,
+#: a 1080p segment from an 8K H.264 clip failed the limit at 48 threads and
+#: one from a plain 720p clip at 96; at 4 threads an 8K DCI HEVC 10-bit
+#: segment needs 1368 MB and passes.
+ENCODE_THREADS = 4
 #: Added to the child's environment (see the module docstring).
 CHILD_ENV: Dict[str, str] = {"MALLOC_ARENA_MAX": "2"}
 #: What libavcodec logs, at ``-loglevel error``, when it decodes no picture
@@ -116,6 +123,11 @@ def thread_options() -> List[str]:
 def decode_thread_options() -> List[str]:
     """Input options: the decoder's thread count (before each ``-i``)."""
     return ["-threads", str(DECODE_THREADS)]
+
+
+def encode_thread_options(threads: Optional[int] = None) -> List[str]:
+    """Output options: the encoder's thread count (before the output)."""
+    return ["-threads", str(ENCODE_THREADS if threads is None else threads)]
 
 
 @dataclass(frozen=True)
@@ -246,5 +258,6 @@ def run(argv: Sequence[str], *, timeout_s: float, heartbeat: Optional[Callable[[
                    watch.tail.decode("utf-8", "replace"), child.maxrss_kb * 1024)
 
 
-__all__ = ["CHILD_ENV", "CHILD_MEM_BYTES", "DECODE_THREADS", "FILTER_THREADS", "Outcome", "REFUSAL_MARKERS",
-           "child_env", "decode_thread_options", "limited_argv", "run", "thread_options"]
+__all__ = ["CHILD_ENV", "CHILD_MEM_BYTES", "DECODE_THREADS", "ENCODE_THREADS", "FILTER_THREADS", "Outcome",
+           "REFUSAL_MARKERS", "child_env", "decode_thread_options", "encode_thread_options", "limited_argv", "run",
+           "thread_options"]

@@ -117,8 +117,10 @@ def decoder_max_pixels(pixels: int, max_side: int = DECODE_MAX_SIDE) -> int:
 def cap_inputs(cmd: List[str], *, video_inputs: Sequence[str] = ()) -> List[str]:
     """``cmd`` as an editor export runs it: before every ``-i``, the
     decoder's frame cap (``-max_pixels``: the video cap for an input in
-    ``video_inputs``, the still cap for any other) and its thread count, and
-    the filter graphs' thread counts after the program name. A frame the cap
+    ``video_inputs``, the still cap for any other) and its thread count; the
+    filter graphs' thread counts after the program name, and the encoder's
+    before the output (ffmpeg_limits: the footprint must not grow with the
+    host's cores under the child's memory limit). A frame the cap
     refuses is not skipped: ``render_backend._run`` reads ffmpeg's stderr and
     fails the command (ffmpeg_limits.REFUSAL_MARKERS; ``-xerror`` is not used,
     it also failed damaged-but-playable clips, BR-L-008). Only timeline
@@ -126,13 +128,14 @@ def cap_inputs(cmd: List[str], *, video_inputs: Sequence[str] = ()) -> List[str]
     argv (tests/test_render_spec_legacy.py)."""
     videos = set(video_inputs)
     out: List[str] = [cmd[0], *ffmpeg_limits.thread_options()]
-    for i, tok in enumerate(cmd[1:], start=1):
+    for i, tok in enumerate(cmd[1:-1], start=1):
         if tok == "-i":
-            src = cmd[i + 1] if i + 1 < len(cmd) else ""
+            src = cmd[i + 1]
             cap = DECODE_VIDEO_MAX_PIXELS if src in videos else DECODE_MAX_PIXELS
             out += ["-max_pixels", str(decoder_max_pixels(cap)), *ffmpeg_limits.decode_thread_options()]
         out.append(tok)
-    return out
+    # The encoder's threads, right before the output (the last argument).
+    return out + [*ffmpeg_limits.encode_thread_options(), cmd[-1]]
 
 KIND_VIDEO = "video"
 KIND_IMAGE = "image"

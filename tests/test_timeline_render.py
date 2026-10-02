@@ -90,6 +90,8 @@ ENC = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "30"]
 CLIP = ["-max_pixels", "36683776", "-threads", "2"]
 STILL = ["-max_pixels", "101032192", "-threads", "2"]
 TH = ["-filter_threads", "2", "-filter_complex_threads", "2"]
+#: The encoder's threads, before the output (BR-L-007).
+OUT = ["-threads", "4"]
 KEN_BURNS_C2 = (
     "scale=1242:2208:force_original_aspect_ratio=increase:flags=lanczos,loop=loop=-1:size=1,"
     "settb=1/30,setpts=N,crop=w=1018:h=1811:x='clip(trunc(iw*(0.5+0.15-0.3*min(1,n/90.000000)))"
@@ -100,21 +102,21 @@ GOLDEN_SEGMENTS = [
     [["ffmpeg", *TH, "-y", "-stream_loop", "-1", "-ss", "2.500", *CLIP, "-i", "/media/a1.mp4",
       "-frames:v", "105", "-an", "-vf",
       "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,"
-      "fade=t=in:st=0:d=0.500", *ENC, "/w/seg_0000.mp4"]],
+      "fade=t=in:st=0:d=0.500", *ENC, *OUT, "/w/seg_0000.mp4"]],
     # c2: still, 90 frames of Ken Burns (static hold as fallback); fades out
     # 0.3 s — half of c3's 0.6 s dip to black.
     [["ffmpeg", *TH, "-y", *STILL, "-i", "/media/a2.png", "-frames:v", "90", "-vf",
-      KEN_BURNS_C2 + ",fade=t=out:st=2.700:d=0.300", *ENC, "/w/seg_0001.mp4"],
+      KEN_BURNS_C2 + ",fade=t=out:st=2.700:d=0.300", *ENC, *OUT, "/w/seg_0001.mp4"],
      ["ffmpeg", *TH, "-y", "-loop", "1", *STILL, "-i", "/media/a2.png", "-frames:v", "90", "-vf",
-      FIT_1080x1920 + ",fade=t=out:st=2.700:d=0.300", *ENC, "/w/seg_0001.mp4"]],
+      FIT_1080x1920 + ",fade=t=out:st=2.700:d=0.300", *ENC, *OUT, "/w/seg_0001.mp4"]],
     # c3: trimmed from 1.0 s, letterboxed, the other half of the dip, own fade out.
     [["ffmpeg", *TH, "-y", "-stream_loop", "-1", "-ss", "1.000", *CLIP, "-i", "/media/a3.mov",
       "-frames:v", "90", "-an", "-vf",
       FIT_1080x1920 + ",fade=t=in:st=0:d=0.300,fade=t=out:st=2.000:d=1.000",
-      *ENC, "/w/seg_0002.mp4"]],
+      *ENC, *OUT, "/w/seg_0002.mp4"]],
     # Tail: the music runs to 10.0 s, the picture to 9.5 s → 15 black frames.
     [["ffmpeg", *TH, "-y", "-f", "lavfi", *STILL, "-i", "color=c=black:s=1080x1920:r=30", "-frames:v", "15",
-      *ENC, "/w/seg_0003.mp4"]],
+      *ENC, *OUT, "/w/seg_0003.mp4"]],
 ]
 
 GOLDEN_CONCAT = [
@@ -138,7 +140,7 @@ GOLDEN_FINAL = [
     "[a0][a1]amix=inputs=2:duration=longest:normalize=0,apad,atrim=end=10.000000[aout]",
     "-map", "[vout]", "-map", "[aout]",
     "-r", "30", "-c:v", "libx264", "-preset", "medium", "-crf", "23", "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "/out/timeline.mp4",
+    "-c:a", "aac", *OUT, "/out/timeline.mp4",
 ]
 
 GOLDEN_ASS_EVENTS = [
