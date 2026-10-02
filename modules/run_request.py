@@ -179,6 +179,54 @@ def build_run_env(params: Mapping, base_env: Mapping[str, str]) -> Dict[str, str
     return env
 
 
+# ── scene regeneration v2 (migration 0076) ──────────────────────────────────
+#: The terms of a priced scene regeneration, handed to main.py in its env —
+#: never argv, so a prompt is never parsed as a flag. modules/scene_regenerate
+#: validates them again (RegenRequest.from_env).
+REGEN_ENV = ("SCENE_REGEN_ID", "SCENE_REGEN_SOURCE", "SCENE_REGEN_PROVIDER", "SCENE_REGEN_MODEL",
+             "SCENE_REGEN_PROMPT", "SCENE_REGEN_EXPLICIT_STOCK")
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+
+
+def build_regenerate_args(channel_id: str, params: Mapping) -> List[str]:
+    """``main.py`` argv for a regeneration's repair job: always private, the
+    run named by its slug (params.topic), exactly one scene, never resume."""
+    slug = str(params.get("topic") or "")
+    scene = str(params.get("repair_scenes") or "")
+    if not _SLUG_RE.match(slug):
+        raise InvalidRunRequest("a scene regeneration names its run by slug (topic)")
+    if not re.fullmatch(r"s\d{3,4}", scene):
+        raise InvalidRunRequest("a scene regeneration names exactly one scene id")
+    if params.get("resume"):
+        raise InvalidRunRequest("a scene regeneration never resumes a run")
+    return ["--channel", channel_id, "--privacy", "private", "--topic", slug, "--regenerate-scene", scene]
+
+
+def build_regenerate_env(terms: Mapping, params: Mapping, base_env: Mapping[str, str]) -> Dict[str, str]:
+    """The run env for a regeneration: the base run env (private, no provider
+    switched on by a param) plus the frozen terms of the press. Refuses terms
+    that do not belong to this job."""
+    rid = str(terms.get("id") or "")
+    if not _UUID_RE.match(rid):
+        raise InvalidRunRequest("the scene regeneration has no valid id")
+    if terms.get("scene_id") != params.get("repair_scenes") or terms.get("slug") != params.get("topic"):
+        raise InvalidRunRequest("the scene regeneration's scene or run is not this job's")
+    env = build_run_env({}, base_env)
+    for key in REGEN_ENV:
+        env.pop(key, None)
+    env["SCENE_REGEN_ID"] = rid
+    env["SCENE_REGEN_SOURCE"] = str(terms.get("source_kind") or "")
+    if terms.get("provider"):
+        env["SCENE_REGEN_PROVIDER"] = str(terms["provider"])
+    if terms.get("model"):
+        env["SCENE_REGEN_MODEL"] = str(terms["model"])
+    if terms.get("prompt"):
+        env["SCENE_REGEN_PROMPT"] = str(terms["prompt"])
+    env["SCENE_REGEN_EXPLICIT_STOCK"] = "true" if terms.get("explicit_stock") is True else "false"
+    return env
+
+
 def plan_run(channel_id: str, kind: str, params: Optional[Mapping],
              base_env: Mapping[str, str]) -> Tuple[List[str], Dict[str, str], Dict]:
     """validate + args + env in one call: ``(argv, env, normalised_params)``."""

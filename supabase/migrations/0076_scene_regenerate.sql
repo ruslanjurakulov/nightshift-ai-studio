@@ -963,8 +963,12 @@ begin
     select s.* from public.scene_regenerations s
      where s.status in ('queued', 'running')
        and (s.created_at < now() - interval '26 hours'
+            -- The worker settles a regeneration right after its job ends;
+            -- 15 minutes of grace keep this sweep from racing that call.
             or not exists (select 1 from public.render_jobs j
-                            where j.id = s.render_job_id and j.status in ('queued', 'running')))
+                            where j.id = s.render_job_id
+                              and (j.status in ('queued', 'running')
+                                   or j.finished_at > now() - interval '15 minutes')))
      order by s.created_at
      for update skip locked
   loop

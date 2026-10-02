@@ -318,7 +318,7 @@ def test_a_lost_job_is_failed_and_released_by_the_sweep(conn, sc):
         before = available(su, sc.bob.org)
         with acting(conn, sc.bob.actor) as s:
             body = press(s, vid).rows[0][0]
-            owner(s).rows("update public.render_jobs set status = 'failed', finished_at = now() where id = %s "
+            owner(s).rows("update public.render_jobs set status = 'failed', finished_at = now() - interval '1 hour' where id = %s "
                           "returning 1", [body["render_job_id"]])
             become(s, SERVICE)
             n = s.value("select public.expire_scene_regenerations()")
@@ -362,7 +362,7 @@ def test_two_presses_at_once_hold_once_and_queue_one_job(conn, sc):
             assert len([h for h in holds(su, sc.bob.org, fresh=False) if h[2] == "open"]) == 1
     finally:
         with as_superuser(conn) as su:
-            su.rows("update public.render_jobs set status = 'cancelled', finished_at = now() "
+            su.rows("update public.render_jobs set status = 'cancelled', finished_at = now() - interval '1 hour' "
                     "where scene_regeneration_id in (select id from public.scene_regenerations where video_id = %s) "
                     "returning 1", [vid])
         with acting(conn, SERVICE, commit=True) as s:
