@@ -31,7 +31,7 @@ import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries } from "@/lib/i18n";
 import { GeneratePanel } from "@/components/studio/GeneratePanel";
 import { coerceSellableModels } from "@/lib/creative/registry";
-import { buildParams, effectiveSound, prefillFromJob, sheetQuoteParams, withTiers, type StudioForm, type StudioJob, type StudioModel } from "@/lib/creative/studio";
+import { buildParams, effectiveSound, prefillFromJob, sheetQuoteParams, soundQuoteParams, withTiers, type StudioForm, type StudioJob, type StudioModel } from "@/lib/creative/studio";
 
 const t = dictionaries.en;
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -240,6 +240,41 @@ describe("the sound toggle", () => {
     const sheet = quotes.filter((q) => q.params.prompt === "a paper boat");
     expect(sheet.find((q) => q.model === "sing")?.params.audio).toBe(true);
     expect(sheet.find((q) => q.model === "mute")?.params).not.toHaveProperty("audio");
+    expect(creates()).toHaveLength(0);
+  });
+});
+
+describe("the sound prices do not read the words (LENS-2 L2-05)", () => {
+  it("are asked with a stand-in for the words, never what is typed", () => {
+    expect(soundQuoteParams(form({ prompt: "my secret plan" }))).toEqual({ prompt: "price check", aspect_ratio: "16:9", duration_s: 5 });
+    expect(soundQuoteParams(form({ prompt: "x", audio: true }))).not.toHaveProperty("audio");
+    // A clip from a picture: no honest price before the picture is picked.
+    expect(soundQuoteParams(form({ capability: "i2v", prompt: "x", sourceId: null }))).toBeNull();
+    expect(soundQuoteParams(form({ capability: "i2v", prompt: "x", sourceId: PIC }))).toMatchObject({ source_asset_id: PIC, duration_s: 5 });
+    expect(JSON.stringify(soundQuoteParams(form({ capability: "i2v", prompt: "harbour", sourceId: PIC })))).not.toContain("harbour");
+    // Not a tool with a soundtrack: nothing to price.
+    expect(soundQuoteParams(form({ capability: "t2i", prompt: "x" }))).toBeNull();
+  });
+
+  it("typing does not ask the sound prices again, and they never carry the words", async () => {
+    render(withI18n(<GeneratePanel orgId={ORG} models={[SOUND]} initial={INITIAL} />));
+    await waitFor(() => expect(screen.getByTestId("gen-sound-on").textContent).toContain("6 credits"));
+    // "With sound" is asked only by the toggle's own price (the button asks silent, the picked setting).
+    const soundOnQuotes = () => quotes.filter((q) => q.params.audio === true);
+    expect(soundOnQuotes()).toHaveLength(1);
+    const area = document.getElementById("gen-prompt") as HTMLTextAreaElement;
+    for (const text of ["a", "a red", "a red kite over a quiet harbour"]) fireEvent.change(area, { target: { value: text } });
+    // The button's own price (the real words) is asked once the typing pauses.
+    await waitFor(() => expect(quotes.some((q) => q.params.prompt === "a red kite over a quiet harbour")).toBe(true));
+    await screen.findByRole("button", { name: /Generate · 3 credits/ });
+    await new Promise((r) => setTimeout(r, 900));
+    expect(soundOnQuotes()).toHaveLength(1);
+    expect(soundOnQuotes()[0].params.prompt).toBe("price check");
+    // Only the button's quote carries the words: no sound price does.
+    const worded = quotes.filter((q) => q.params.prompt !== "price check");
+    expect(worded.length).toBeGreaterThan(0);
+    expect(worded.every((q) => q.params.audio === false)).toBe(true);
+    expect(worded.filter((q) => q.params.prompt === "a red kite over a quiet harbour")).toHaveLength(1);
     expect(creates()).toHaveLength(0);
   });
 });

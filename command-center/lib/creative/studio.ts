@@ -495,6 +495,20 @@ export function tierQuoteParams(form: StudioForm): ReturnType<typeof buildParams
   return buildParams({ ...form, prompt: PRICE_STAND_IN, quality: null });
 }
 
+/**
+ * The params a model's two soundtrack settings (0070) are priced with: the
+ * form's own settings with a stand-in for the words, like the tiers — a
+ * clip's price never reads its words, so the check neither sends what the
+ * person is typing nor re-asks on every pause. null = no honest price can be
+ * asked for yet (not a tool with a soundtrack, or a clip from a picture before
+ * the picture is picked). The setting itself is added per request.
+ */
+export function soundQuoteParams(form: StudioForm): ReturnType<typeof buildParams> | null {
+  if (!takesSound(form.capability)) return null;
+  if (needsSource(form.capability) && !isUuid(form.sourceId)) return null;
+  return buildParams({ ...form, prompt: PRICE_STAND_IN, audio: null });
+}
+
 /** The most models the sheet prices at once: each is one quote call. */
 export const SHEET_PRICE_MAX = 8;
 
