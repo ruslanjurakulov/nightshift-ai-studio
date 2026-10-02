@@ -88,17 +88,21 @@ _REPLY_ID = re.compile(r"^[A-Za-z0-9_.-]{5,128}$")
 
 # Characters the database removes too (inbox_clean_text; the shared table is
 # tests/fixtures/inbox_cleaner_cases.txt): controls but newline, the C1 block,
-# soft hyphen and other invisible letters, zero-width and direction controls,
-# word joiner and the invisible operators, the Unicode tag block (a hidden-text
+# soft hyphen and other invisible letters (Khmer inherent vowels, Mongolian
+# variation selectors, Hangul fillers), zero-width and direction controls, word
+# joiner and the invisible operators, the Unicode tag plane (a hidden-text
 # channel for prompt injection), variation selectors (FE0E/FE0F stay: they pick
-# emoji or text style), the BOM and the filler characters.
+# emoji or text style), the BOM, the musical, Egyptian and Bamum format controls
+# and the filler characters (BR-L-120).
 _STRIP = re.compile(
     "["
-    "\x00-\x09\x0b-\x1f\x7f-\x9f\u00ad\u034f\u061c\u115f\u1160\u180e"
-    "\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0d\ufeff\uffa0\ufff9-\ufffb"
-    "\U000e0000-\U000e007f\U000e0100-\U000e01ef"
+    "\x00-\x09\x0b-\x1f\x7f-\x9f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f"
+    "\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0d\ufeff\uffa0\ufff0-\ufffb"
+    "\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff"
     "]"
 )
+# Blank-looking spaces read as an ordinary space: a reply of only these is empty.
+_SPACES = re.compile("[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]")
 
 
 def clean_text(value, limit: int) -> str:
@@ -106,7 +110,7 @@ def clean_text(value, limit: int) -> str:
     the database's ``inbox_clean_text`` (it cleans again; this keeps NUL out of
     the JSON it is sent in, which jsonb cannot hold)."""
     text = str(value or "").replace("\r\n", "\n")
-    return _STRIP.sub("", text).strip()[: max(limit, 0)]
+    return _STRIP.sub("", _SPACES.sub(" ", text)).strip()[: max(limit, 0)].strip()
 
 
 # ── the prompt ───────────────────────────────────────────────────────────────
@@ -338,6 +342,16 @@ class InboxStore:
 
     def quota_remaining(self) -> int:
         out = self.rpc("inbox_quota_remaining", {})
+        return int(out) if isinstance(out, int) and not isinstance(out, bool) else 0
+
+    def channel_quota_left(self, channel_id: str) -> int:
+        """What the worker may still spend on this channel: the platform's ceiling or its
+        organization's share of it, whichever is lower (0090, BR-L-121). Without 0090 the
+        platform's ceiling alone holds, as before."""
+        try:
+            out = self.rpc("inbox_channel_quota_left", {"p_channel": channel_id})
+        except NotInstalled:
+            return self.quota_remaining()
         return int(out) if isinstance(out, int) and not isinstance(out, bool) else 0
 
     def record_quota(self, channel_id: str, units: int):
@@ -679,7 +693,13 @@ class CommentInboxService:
         own = str(getattr(client, "target_channel_id", "") or "")
 
         if claim.get("reconcile"):
-            # An earlier attempt may have reached YouTube: look before sending.
+            # An earlier attempt may have reached YouTube: look before sending. Without the
+            # channel's own YouTube id there is no way to tell its reply from anyone else's, so
+            # nothing is sent (BR-L-123): the person is told to look, never a second reply.
+            if not own.strip():
+                done_fail("outcome_unknown", "an earlier attempt may have gone out and the channel could not be "
+                                             "identified to check; check the comment on YouTube before trying again")
+                return True
             try:
                 found, spent = find_existing_reply(service, parent, text, own, submitted_at=claim.get("submitted_at"))
                 units += spent
@@ -749,6 +769,10 @@ class CommentInboxService:
             return False
         channel_id = channels[self._rotation % len(channels)]
         self._rotation += 1
+        # One organization's share of that ceiling (BR-L-121): a channel whose organization has
+        # used its share waits for the next day; the others carry on.
+        if self.store.channel_quota_left(channel_id) < 20:
+            return False
         return self.sync_channel(channel_id) > 0
 
     def sync_channel(self, channel_id: str) -> int:
@@ -792,6 +816,9 @@ class CommentInboxService:
 
     def _sync_video(self, fetcher, channel_id: str, video_id: str) -> int:
         fetched = fetcher.fetch_inbox_comments(video_id, SYNC_PAGE)
+        # A comment that cleans to nothing (only invisible characters or blanks) is not a comment:
+        # it is neither classified (a paid call that could never be answered) nor stored (BR-L-124).
+        fetched = [c for c in (fetched or []) if clean_text(c.get("text"), 2000)]
         if not fetched:
             return 0
         need = set(self.store.to_classify(channel_id, [c["youtube_comment_id"] for c in fetched]))

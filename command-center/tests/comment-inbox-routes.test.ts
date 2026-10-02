@@ -231,6 +231,7 @@ describe("the approval route", () => {
       [{ code: "NS409", message: "channel_not_ready" }, 409, "channel_not_ready"],
       [{ code: "NS409", message: "not_approvable" }, 409, "not_approvable"],
       [{ code: "NS409", message: "already_replied" }, 409, "already_replied"],
+      [{ code: "NS409", message: "already_approved" }, 409, "already_approved"],
       [{ code: "42501", message: "forbidden" }, 403, "forbidden"],
       [{ code: "NS429", message: "daily_limit" }, 429, "daily_limit"],
     ] as [Err, number, string][]) {
