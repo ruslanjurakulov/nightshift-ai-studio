@@ -38,6 +38,7 @@ from typing import Dict, Iterable, List, Mapping, Optional, Sequence
 from urllib.parse import urljoin, urlparse
 
 import requests
+from urllib3 import exceptions as urllib3_exceptions
 
 # ── capabilities (the registry schema's enum mirrors this tuple) ────────────
 T2I = "t2i"          # text → image
@@ -117,19 +118,59 @@ _QUOTA_WORDS = ("insufficient", "balance", "quota", "credit", "billing", "exceed
                 "arrear")
 
 
+#: HTTP answers that PROVE the vendor refused the call outright (it did not
+#: take the request, so nothing is billed): a rejected key, an empty balance,
+#: an unknown model, slow down. Never a 5xx (a 502 / 504 from a gateway can
+#: stand in front of a vendor that already accepted and is billing the task).
+REFUSED_OUTRIGHT = frozenset({401, 402, 403, 404, 429})
+_REFUSED_CODES = frozenset({E_AUTH, E_QUOTA, E_RATE_LIMITED, E_NOT_FOUND})
+
+
 class AdapterError(Exception):
     """A typed failure. ``message`` is safe to store and show: adapters build it
-    from status codes and scrubbed vendor text only."""
+    from status codes and scrubbed vendor text only.
 
-    def __init__(self, code: str, message: str = "", *, http_status: Optional[int] = None):
+    ``not_accepted`` is True only when the failure PROVES the vendor did not
+    take the request: it never left this process (no key, no connection could
+    be opened) or the vendor refused it outright (``REFUSED_OUTRIGHT``). Every
+    other failure — a read timeout, a connection dropped after the request was
+    sent, any 5xx, an answer we could not read — leaves it False: the vendor
+    may have accepted, and be billing, a task we never heard of (BR-L-019)."""
+
+    def __init__(self, code: str, message: str = "", *, http_status: Optional[int] = None,
+                 not_accepted: bool = False):
         self.code = code if code in ERROR_CODES else E_UNAVAILABLE
         self.message = (message or self.code)[:500]
         self.http_status = http_status
+        self.not_accepted = bool(not_accepted)
         super().__init__(f"{self.code}: {self.message}")
 
     @property
     def retryable(self) -> bool:
         return self.code in RETRYABLE
+
+
+def never_sent(exc: BaseException) -> bool:
+    """True only when ``requests`` failed before the request could leave this
+    process: the connection was never opened (a connect timeout, a refused
+    connection, a name that does not resolve). A read timeout, a reset after
+    sending, a TLS or proxy failure and anything else is False: the request may
+    have reached the vendor."""
+    if isinstance(exc, (requests.exceptions.SSLError, requests.exceptions.ProxyError)):
+        return False
+    if isinstance(exc, requests.exceptions.ConnectTimeout):
+        return True
+    if type(exc) is requests.exceptions.ConnectionError:
+        inner = exc.args[0] if exc.args else None
+        if isinstance(inner, urllib3_exceptions.MaxRetryError):
+            inner = inner.reason
+        return isinstance(inner, urllib3_exceptions.NewConnectionError)
+    return False
+
+
+def refused_outright(status: int, code: str) -> bool:
+    """A vendor answer that proves the call was refused, not taken."""
+    return status in REFUSED_OUTRIGHT and code in _REFUSED_CODES
 
 
 def classify_http(status: int, text: str = "") -> str:
@@ -344,6 +385,9 @@ class HttpAdapter:
     def __init__(self, *, env: Optional[Mapping[str, str]] = None, session=None):
         self._env = env if env is not None else os.environ
         self.session = session if session is not None else requests.Session()
+        #: Calls that may have reached the vendor (``_call``); the creative bridge
+        #: resets it before a submit.
+        self.calls_sent = 0
         override = (self._env.get(self.base_url_env, "") if self.base_url_env else "").strip()
         # An override that is not https would send the key in clear text.
         self.base_url = (override if override.startswith("https://") else self.default_base_url).rstrip("/")
@@ -370,8 +414,10 @@ class HttpAdapter:
 
     def require_key(self) -> None:
         if not self.configured():
+            # Before any call: nothing reached the vendor.
             raise AdapterError(E_NOT_CONFIGURED,
-                               f"no API key on this worker (set {' or '.join(self.key_env)})")
+                               f"no API key on this worker (set {' or '.join(self.key_env)})",
+                               not_accepted=True)
 
     # -- request validation ---------------------------------------------------
     def problems(self, request: CapabilityRequest, entry) -> List[str]:
@@ -396,17 +442,21 @@ class HttpAdapter:
         h = dict(self.auth_headers())
         if headers:
             h.update(headers)
+        # Every call that may reach the vendor is counted (``calls_sent``): the
+        # creative bridge trusts a failure's proof only for a submit's first call.
+        self.calls_sent = getattr(self, "calls_sent", 0) + 1
         try:
             resp = self.session.request(method, url, json=json_body, params=params, headers=h,
                                         files=files, data=data, timeout=timeout or self.timeout)
         except requests.RequestException as e:
             # Only the exception's class: its text can carry the request.
-            raise AdapterError(E_UNAVAILABLE, f"{what}: {type(e).__name__}") from None
+            raise AdapterError(E_UNAVAILABLE, f"{what}: {type(e).__name__}", not_accepted=never_sent(e)) from None
         status = getattr(resp, "status_code", 200)
         if status >= 300:
             text = scrub(getattr(resp, "text", "") or "", self.secrets())
             code = self.vendor_error_code(status, text) or classify_http(status, text)
-            raise AdapterError(code, f"{what}: HTTP {status} {text[:300]}", http_status=status)
+            raise AdapterError(code, f"{what}: HTTP {status} {text[:300]}", http_status=status,
+                               not_accepted=refused_outright(status, code))
         if raw:
             return resp
         try:
