@@ -53,6 +53,7 @@ def extend(tables: dict, functions: dict) -> None:
         "dismiss_inbox_comment": USER,
         # The worker (service role).
         "store_inbox_comments": SERVICE,
+        "inbox_comments_to_classify": SERVICE,
         "claim_reply_draft": SERVICE,
         "store_reply_draft": SERVICE,
         "fail_reply_draft": SERVICE,

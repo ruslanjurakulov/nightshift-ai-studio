@@ -88,6 +88,12 @@ class CommentClassification:
     sentiment: str
     category: str
     flagged_injection_attempt: bool
+    # False only for the neutral sentinel: the model did not answer for this
+    # comment, so its sentiment/category are placeholders, not a measurement.
+    # The comment inbox never drafts a reply for an unclassified comment
+    # (a missed injection check is not a pass). Default True keeps every
+    # existing caller and constructor as it was.
+    classified: bool = True
 
 
 def _sentinel(comment_id: int) -> CommentClassification:
@@ -97,6 +103,7 @@ def _sentinel(comment_id: int) -> CommentClassification:
         sentiment=_SENTINEL_SENTIMENT,
         category=_SENTINEL_CATEGORY,
         flagged_injection_attempt=False,
+        classified=False,
     )
 
 

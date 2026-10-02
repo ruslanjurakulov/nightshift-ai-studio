@@ -59,6 +59,14 @@ jobs the worker also keeps ``download_masters`` in step with the masters under
 volume), and deletes expired files. A failed download is refunded by the
 database. Off when ``NIGHTSHIFT_DOWNLOADS_DIR`` is unset.
 
+Comment inbox (migration 0081, ``modules/comment_replies.py``): between render
+jobs the worker also keeps each connected channel's recent comments in step
+(one channel per interval), writes a drafted reply for a comment a person
+asked a draft for and paid for, and posts a reply ONLY after a person approved
+that exact text (``comments.insert`` through the channel's own token, once;
+a quota refusal is recorded as ``quota_exceeded``). Nothing replies on its own.
+Set ``NIGHTSHIFT_COMMENT_INBOX=off`` to switch the whole step off.
+
 Credits (migration 0020, ``modules/credits.py``): a job whose channel belongs
 to an organization other than the operator's own is paid for by the hold its
 ``credit_ref`` names (or, from the public API, its ``api_hold_ref``). The
@@ -94,6 +102,7 @@ REPO_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_DIR))
 
 from modules import channel_tokens  # noqa: E402
+from modules import comment_replies  # noqa: E402
 from modules import credits as credit_rules  # noqa: E402
 from modules import log_redaction  # noqa: E402
 from modules import run_request  # noqa: E402
@@ -509,6 +518,7 @@ class Worker:
         token_client=None,
         publisher=None,
         downloads=None,
+        comments=None,
     ):
         self.client = client
         self.worker_id = worker_id
@@ -539,6 +549,10 @@ class Worker:
         self.publisher = publisher
         # Paid 720p / 1080p downloads (migration 0030): between render jobs.
         self.downloads = downloads
+        # The comment inbox (migration 0081): fetch, draft (when asked and
+        # paid for) and post (only what a person approved), between render
+        # jobs. None = off.
+        self.comments = comments
         # The service-key credits client and where a finished run's ledger is
         # read from. None = the worker cannot tell who pays for a job, so it
         # runs none (migration 0041: no unpaid fallback).
@@ -575,6 +589,7 @@ class Worker:
             self._sweep_credit_holds()
             published = self._publish_one()
             published = self._download_one() or published
+            published = self._comments_one() or published
             job = self.client.claim(self.worker_id, self.stale_minutes)
             if job is None:
                 if once:
@@ -607,6 +622,16 @@ class Worker:
             return bool(self.downloads.run_once())
         except Exception as e:
             logger.warning("download request handling failed (%s)", type(e).__name__)
+            return False
+
+    def _comments_one(self) -> bool:
+        """One round of the comment inbox between render jobs; never raises."""
+        if self.comments is None:
+            return False
+        try:
+            return bool(self.comments.run_once())
+        except Exception as e:
+            logger.warning("comment inbox handling failed (%s)", type(e).__name__)
             return False
 
     def process(self, job: Mapping) -> str:
@@ -868,6 +893,32 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
+def _comment_inbox(url: str, key: str, worker_id: str,
+                   token_client: Optional["channel_tokens.VaultTokenClient"]) -> "comment_replies.CommentInboxService":
+    """The comment inbox (migration 0081) with its real clients: the channel's
+    own token (resolved as a render run resolves it), the pipeline's own
+    YouTube client for it, and the comment classifier. The model and the
+    YouTube client are imported when first used."""
+    def client_factory(token_json: str, ctx):
+        from modules.youtube_uploader import YouTubeUploader  # noqa: PLC0415 — google libs only when needed
+
+        return YouTubeUploader.from_token_json(token_json, ctx)
+
+    def classifier(comments: list) -> list:
+        from modules.comment_intelligence import classify_comments  # noqa: PLC0415
+
+        return classify_comments(comments)
+
+    return comment_replies.CommentInboxService(
+        comment_replies.InboxStore(url, key),
+        worker_id=worker_id,
+        credentials=lambda cid: youtube_publish_credentials(cid, os.environ, token_client),
+        client_factory=client_factory,
+        classifier=classifier,
+        sync_seconds=float(_int_env("NIGHTSHIFT_INBOX_SYNC_SECONDS", int(comment_replies.DEFAULT_SYNC_SECONDS))),
+    )
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Claim and run render_jobs (docs/WORKER_VPS.md)")
     parser.add_argument("--once", action="store_true", help="Claim at most one job, run it, and exit")
@@ -899,6 +950,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     downloads = (paid_downloads.DownloadService(url, key, output_dir=REPO_DIR / "output",
                                                 downloads_dir=Path(downloads_dir), worker_id=args.worker_id)
                  if downloads_dir and os.path.isabs(downloads_dir) else None)
+    comments = None
+    if os.environ.get("NIGHTSHIFT_COMMENT_INBOX", "on").strip().lower() not in ("off", "0", "false", "no"):
+        comments = _comment_inbox(url, key, args.worker_id, token_client)
     worker = Worker(QueueClient(url, key), worker_id=args.worker_id,
                     poll_seconds=args.poll_seconds, stale_minutes=args.stale_minutes,
                     grace_seconds=args.grace_seconds,
@@ -908,7 +962,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                         url, key, output_dir=REPO_DIR / "output", worker_id=args.worker_id,
                         youtube_credentials=lambda cid: youtube_publish_credentials(
                             cid, os.environ, token_client)),
-                    downloads=downloads)
+                    downloads=downloads, comments=comments)
     worker.install_signal_handlers()
     logger.info("worker %s started (poll %ss, stale after %s min, stop grace %ss; a customer "
                 "organization's job runs only on its own open hold)",

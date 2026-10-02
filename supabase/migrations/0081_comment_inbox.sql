@@ -53,7 +53,7 @@
 --   browser:  quote_reply_draft, request_reply_draft, edit_reply_draft,
 --             discard_reply_draft, approve_reply, retry_reply_post,
 --             dismiss_inbox_comment                          (authenticated)
---   worker:   store_inbox_comments, claim_reply_draft, store_reply_draft,
+--   worker:   store_inbox_comments, inbox_comments_to_classify, claim_reply_draft, store_reply_draft,
 --             fail_reply_draft, expire_reply_drafts, claim_reply_post,
 --             mark_reply_submitting, finish_reply_post         (service role)
 --   internal: inbox_clean_text, inbox_url_like, inbox_channel_ready,
@@ -880,6 +880,29 @@ begin
 end
 $$;
 
+-- Which of these fetched comment ids still need the classifier: not stored yet,
+-- or stored without a classification. The worker classifies only those (the
+-- model is not asked about a comment it already answered for).
+create or replace function public.inbox_comments_to_classify(p_channel text, p_ids text[])
+  returns text[]
+  language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  if not public.credits_trusted_caller() then
+    raise exception 'only the platform may ask this' using errcode = '42501';
+  end if;
+  if coalesce(cardinality(p_ids), 0) > 100 then
+    raise exception 'invalid_comments' using errcode = 'NS400', detail = 'at most 100 ids';
+  end if;
+  return coalesce((
+    select array_agg(q.i order by q.i)
+      from (select distinct x as i from unnest(coalesce(p_ids, '{}'::text[])) x
+             where x ~ '^[A-Za-z0-9_.-]{5,128}$'
+               and not exists (select 1 from public.inbox_comments c
+                                where c.channel_id = p_channel and c.youtube_comment_id = x
+                                  and c.category is not null)) q), '{}'::text[]);
+end
+$$;
+
 -- The worker takes the oldest pending draft (or one whose worker died) and
 -- gets the MINIMUM it needs: the cleaned comment, the video title, the
 -- channel's tone line and language. No id of another table, no credential.
@@ -1254,6 +1277,7 @@ grant execute on function public.retry_reply_post(uuid) to authenticated;
 grant execute on function public.dismiss_inbox_comment(uuid, boolean) to authenticated;
 
 revoke all on function public.store_inbox_comments(text, text, jsonb) from public, anon, authenticated, service_role;
+revoke all on function public.inbox_comments_to_classify(text, text[]) from public, anon, authenticated, service_role;
 revoke all on function public.claim_reply_draft(text) from public, anon, authenticated, service_role;
 revoke all on function public.store_reply_draft(uuid, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.fail_reply_draft(uuid, text, text) from public, anon, authenticated, service_role;
@@ -1262,6 +1286,7 @@ revoke all on function public.claim_reply_post(text) from public, anon, authenti
 revoke all on function public.mark_reply_submitting(uuid, text) from public, anon, authenticated, service_role;
 revoke all on function public.finish_reply_post(uuid, text, boolean, text, text, text, integer) from public, anon, authenticated, service_role;
 grant execute on function public.store_inbox_comments(text, text, jsonb) to service_role;
+grant execute on function public.inbox_comments_to_classify(text, text[]) to service_role;
 grant execute on function public.claim_reply_draft(text) to service_role;
 grant execute on function public.store_reply_draft(uuid, text, text) to service_role;
 grant execute on function public.fail_reply_draft(uuid, text, text) to service_role;

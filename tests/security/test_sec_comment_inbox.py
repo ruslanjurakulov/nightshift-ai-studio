@@ -414,6 +414,18 @@ def test_the_worker_cannot_store_a_comment_for_a_video_of_another_channel(db):
     assert db.one("select count(*) from public.inbox_comments where youtube_comment_id = 'UgxStolen00001'") == 0
 
 
+def test_only_unclassified_or_unknown_comments_go_to_the_classifier(db):
+    known = new_comment(db)
+    bare = new_comment(db, category=None)
+    yid = lambda c: db.one("select youtube_comment_id from public.inbox_comments where id = %s", [c])
+    ids = [yid(known), yid(bare), "UgxNeverSeen0001", "bad id!"]
+    out = db.svc("select public.inbox_comments_to_classify('chan-a', %s::text[])", [ids])
+    assert sorted(out) == sorted([yid(bare), "UgxNeverSeen0001"]), out
+    # Another channel's id list is answered for that channel only.
+    other = db.svc("select public.inbox_comments_to_classify('chan-b', %s::text[])", [[yid(known)]])
+    assert other == [yid(known)]
+
+
 def test_a_known_comment_keeps_its_text_and_only_gains_a_classification(db):
     cid = new_comment(db, category=None, text="original words")
     row = db.su("select category, body from public.inbox_comments where id = %s", [cid])[0]
@@ -668,6 +680,7 @@ def test_every_worker_function_is_closed_to_the_browsers_roles(db):
     some = str(uuid.uuid4())
     calls = [
         ("select public.store_inbox_comments('chan-a', 'vid-a', '[]'::jsonb)", None),
+        ("select public.inbox_comments_to_classify('chan-a', '{}'::text[])", None),
         ("select public.claim_reply_draft('w')", None),
         (f"select public.store_reply_draft('{some}', 'w', 'x')", None),
         (f"select public.fail_reply_draft('{some}', 'w', 'x')", None),
