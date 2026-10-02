@@ -442,15 +442,16 @@ export interface PricedModel {
   capabilities: readonly string[];
   /** The model's plan entitlement; null / "any" = usable without one. */
   entitlement: string | null;
+  /** Credits per unit as charged: the margin is already in it (sellable_models, 0084). */
   creditsPerUnit: number;
-  margin: number;
   spec: { unit: string; durationsS: readonly number[] };
 }
 
 /**
  * What the cheapest generally-usable generation of each kind costs right now,
  * priced the way migration 0036's creative_price() prices a quote:
- * ceil_cent(quantity × credits_per_unit × (1 + margin)), raised to the
+ * ceil_cent(quantity × credits_per_unit × (1 + margin)) — the model's rate as
+ * charged, which is what sellable_models() returns (0084) — raised to the
  * job_minimum when positive. Null when nothing of that kind is sellable and
  * priced — the page then leaves that equivalent out, never invents one.
  */
@@ -463,9 +464,9 @@ export interface GenerationRates {
   videoMinute: number | null;
 }
 
-function quoteLike(qty: number, m: Pick<PricedModel, "creditsPerUnit" | "margin">, minimum: number): number | null {
-  if (!(qty > 0) || !(m.creditsPerUnit > 0) || !(m.margin >= 0)) return null;
-  const price = roundUpCredits(Math.round(qty * m.creditsPerUnit * (1 + m.margin) * 1e6) / 1e6);
+function quoteLike(qty: number, m: Pick<PricedModel, "creditsPerUnit">, minimum: number): number | null {
+  if (!(qty > 0) || !(m.creditsPerUnit > 0)) return null;
+  const price = roundUpCredits(Math.round(qty * m.creditsPerUnit * 1e6) / 1e6);
   return price > 0 ? Math.max(price, minimum) : null;
 }
 

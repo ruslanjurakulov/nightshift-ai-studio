@@ -16,9 +16,9 @@
  * With neither, the page says pricing is not published yet. It never shows an
  * invented or default number (CLAUDE.md rule 5).
  *
- * The credit rates (what a credit buys) are the platform's price list,
- * credit_prices (migration 0020), which only a signed-in account may read; for
- * them see creditRates().
+ * The credit rates (what a credit buys) are the platform's price list as
+ * charged, credit_rates() (migration 0084), which only a signed-in account may
+ * read (never the margin); for them see creditRates().
  */
 
 import { CREDIT_PACKS, type CreditPackId, type PaddleConfig, type PaddleEnvironment } from "@/lib/paddle";

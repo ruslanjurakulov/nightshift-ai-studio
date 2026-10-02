@@ -122,7 +122,7 @@ function sellable(over: Record<string, unknown> = {}) {
     credit_unit: "model_vid_a_second",
     entitlement: null,
     credits_per_unit: 3,
-    margin: 1.5,
+    margin: null,
     spec: videoSpec,
     ...over,
   };
@@ -309,6 +309,9 @@ describe("availability", () => {
   it("falls back to the joined base rate for a flat model when the list was unreadable, never for variants", () => {
     const flat = fromSellableRow(sellable({ capabilities: ["tts"], spec: { output: "audio", unit: "character", limits: {} }, credits_per_unit: 0.02 }), null)!;
     expect(flat.price).toEqual({ kind: "flat", rate: 0.02 });
+    // A database before 0084 returns the base rate and its margin: the fallback is still the rate as charged.
+    const legacy = fromSellableRow(sellable({ capabilities: ["tts"], spec: { output: "audio", unit: "character", limits: {} }, credits_per_unit: 0.02, margin: 1.5 }), null)!;
+    expect(legacy.price).toEqual({ kind: "flat", rate: 0.05 });
     expect(fromSellableRow(sellable(), null)!.price).toEqual({ kind: "unread" });
   });
 

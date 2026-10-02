@@ -115,7 +115,9 @@ TABLES: Dict[str, Kind] = {
     "credit_transactions": Org(),
     "credit_reservations": Org(),
     "credit_refunds": Service(),
-    "credit_prices": Public(),
+    # 0084 (BR-G-001): the base rates, margins and notes are the operator's;
+    # members read the rates as charged through credit_rates().
+    "credit_prices": Platform(),
     "payment_events": Service(),
     # downloads and publishing
     "download_masters": Org(),
@@ -341,6 +343,8 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "media_uploads_sweep": SERVICE,
     # model registry (0035)
     "sellable_models": USER,
+    # the price list as charged, never the margin (0084)
+    "credit_rates": USER,
     "model_registry_admin": USER,
     "record_model_probe": SERVICE,
     "sync_model_registry": SERVICE,
