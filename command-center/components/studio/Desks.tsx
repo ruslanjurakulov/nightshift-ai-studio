@@ -1,13 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ArrowRight } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { DESKS, DESK_TOOLS, MEDIA_DESKS, deskHref, type Desk } from "@/lib/creative/desks";
+import { DESKS, DESK_TOOLS, MEDIA_DESKS, deskFor, deskHref, type Desk, type MediaDesk } from "@/lib/creative/desks";
+import { isActiveStatus, isStudioCapability, type StudioJob } from "@/lib/creative/studio";
+import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Meter } from "@/components/ui/Meter";
 import { Timecode } from "@/components/ui/Timecode";
+import { LocalTime } from "@/components/ui/LocalTime";
+import { formatNumber } from "@/lib/number-format";
 import { JobFeed } from "@/components/studio/JobFeed";
 import type { CreditAccount } from "@/lib/credits";
 import { DESK_ICONS } from "@/components/studio/deskIcons";
@@ -82,12 +86,18 @@ export function StudioOverview({
   const { t, locale, fmt } = useI18n();
   const path = useChannelPath();
   const bay = [...MEDIA_DESKS, "youtube"] as const;
-
-  const when = (iso: string | null) => {
-    if (!iso) return null;
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? null : d.toLocaleString(locale, { dateStyle: "short", timeStyle: "short" });
+  // What is working on each desk right now, from the same read as the list below (never guessed).
+  const [working, setWorking] = useState<Partial<Record<MediaDesk, number>> | null>(null);
+  const onJobs = (jobs: StudioJob[]) => {
+    const n: Partial<Record<MediaDesk, number>> = {};
+    for (const j of jobs) {
+      if (!isActiveStatus(j.status) || !isStudioCapability(j.capability)) continue;
+      const d = deskFor(j.capability);
+      n[d] = (n[d] ?? 0) + 1;
+    }
+    setWorking(n);
   };
+
 
   return (
     <div className="flex flex-col gap-8">
@@ -113,6 +123,11 @@ export function StudioOverview({
                   <span className="desk-bay-tools">
                     {tools ? tools.map((c) => t.desk.tools[c]).join(" · ") : t.desk.keySub.youtube}
                   </span>
+                  {d !== "youtube" && working && (working[d] ?? 0) > 0 && (
+                    <span className="desk-bay-live">
+                      <StatusLamp tone="run" live label={fmt(t.desk.workingNow, { n: working[d] ?? 0 })} />
+                    </span>
+                  )}
                   <span aria-hidden className="desk-bay-go">
                     <ArrowRight className="size-4" />
                   </span>
@@ -130,6 +145,7 @@ export function StudioOverview({
               orgId={orgId}
               variant="log"
               limit={8}
+              onLoaded={onJobs}
               title={t.desk.recentTitle}
               emptyTitle={t.desk.recentEmptyTitle}
               emptyBody={t.desk.recentEmpty}
@@ -161,8 +177,8 @@ export function StudioOverview({
                   size="lg"
                   label={t.desk.creditsTitle}
                   valueText={fmt(t.desk.creditsReading, {
-                    n: credits.account.available.toLocaleString(locale),
-                    h: credits.account.reserved.toLocaleString(locale),
+                    n: formatNumber(credits.account.available, locale, 2),
+                    h: formatNumber(credits.account.reserved, locale, 2),
                   })}
                 />
                 <p className="text-[12px] text-[var(--color-muted)]">
@@ -195,12 +211,11 @@ export function StudioOverview({
               projects.projects.length > 0 ? (
                 <ul className="flex flex-col">
                   {projects.projects.slice(0, 5).map((p) => {
-                    const edited = when(p.updatedAt);
                     return (
                       <li key={p.id}>
                         <Link href={path(`/editor/${p.id}`)} className="desk-project">
                           <span className="min-w-0 truncate text-[13px] font-semibold text-[var(--color-fg)]">{p.title}</span>
-                          {edited && <span className="shrink-0 text-[11px] text-[var(--color-muted)]">{edited}</span>}
+                          <LocalTime iso={p.updatedAt} locale={locale} className="shrink-0 text-[11px] text-[var(--color-muted)]" />
                         </Link>
                       </li>
                     );

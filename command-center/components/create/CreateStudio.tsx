@@ -179,6 +179,8 @@ export function CreateStudio({
   const selectClass =
     "studio-field min-h-[44px] w-full px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none sm:min-h-[40px] sm:text-[13px]";
 
+  const styleOf = (v: { id: string; style: string }) => (t.desk.voiceStyles as Record<string, string>)[v.id] ?? v.style;
+  // The channel's voice in words. The provider and the raw id are the operator's to see.
   const voiceChip =
     agentConfig?.tts_provider === "edge"
       ? `Edge · ${agentConfig?.edge_tts_voice || "—"}`
@@ -274,43 +276,47 @@ export function CreateStudio({
 
         {/* Per-run model routing: which model turns stills into b-roll, and which
             supplies the imagery. Empty = the repo's configured default. */}
-        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <label className="flex flex-col gap-1">
-            <span className="studio-label">{t.create.videoModel}</span>
-            <select value={videoProvider} onChange={(e) => setVideoProvider(e.target.value)} className={selectClass}>
-              <option value="">{t.create.optDefault}</option>
-              <option value="seedance">Seedance</option>
-              <option value="kling">Kling</option>
-              <option value="veo">Veo</option>
-              <option value="higgsfield">Higgsfield</option>
-              <option value="wan">Wan</option>
-              <option value="minimax">MiniMax</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="studio-label">{t.create.imageModel}</span>
-            <select value={imageProvider} onChange={(e) => setImageProvider(e.target.value)} className={selectClass}>
-              <option value="">{t.create.optDefault}</option>
-              <option value="pexels">Pexels (stock)</option>
-              {IMAGE_GENERATORS.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="studio-label">{t.create.voiceModel}</span>
-            <select value={ttsModel} onChange={(e) => setTtsModel(e.target.value)} className={selectClass}>
-              <option value="">{t.create.optDefault}</option>
-              {TTS_MODELS.map((m) => (
-                <option key={m} value={m}>
-                  {TTS_MODEL_LABELS[m]}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+        {/* Provider-level routing is the platform operator's: a customer's run uses the
+            channel's own setup, and customer screens never name a provider. */}
+        {operator && (
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <label className="flex flex-col gap-1">
+              <span className="studio-label">{t.create.videoModel}</span>
+              <select value={videoProvider} onChange={(e) => setVideoProvider(e.target.value)} className={selectClass}>
+                <option value="">{t.create.optDefault}</option>
+                <option value="seedance">Seedance</option>
+                <option value="kling">Kling</option>
+                <option value="veo">Veo</option>
+                <option value="higgsfield">Higgsfield</option>
+                <option value="wan">Wan</option>
+                <option value="minimax">MiniMax</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="studio-label">{t.create.imageModel}</span>
+              <select value={imageProvider} onChange={(e) => setImageProvider(e.target.value)} className={selectClass}>
+                <option value="">{t.create.optDefault}</option>
+                <option value="pexels">Pexels (stock)</option>
+                {IMAGE_GENERATORS.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="studio-label">{t.create.voiceModel}</span>
+              <select value={ttsModel} onChange={(e) => setTtsModel(e.target.value)} className={selectClass}>
+                <option value="">{t.create.optDefault}</option>
+                {TTS_MODELS.map((m) => (
+                  <option key={m} value={m}>
+                    {TTS_MODEL_LABELS[m]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
 
         {/* The narrator for this run only: the channel keeps its own voice.
             "Listen" plays the chosen voice (or the channel's) before running. */}
@@ -321,7 +327,7 @@ export function CreateStudio({
               <option value="">{t.create.voiceChannel}</option>
               {VOICES.map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.name} — {v.style}
+                  {v.name} — {styleOf(v)}
                 </option>
               ))}
               <option value={CUSTOM_VOICE}>{t.create.voiceCustom}</option>
@@ -349,7 +355,9 @@ export function CreateStudio({
           </div>
         </div>
 
-        {/* Models governed elsewhere — shown here, edited there. */}
+        {/* Models governed elsewhere — shown here, edited there. The provider and the
+            raw voice id are the platform operator's; a customer's run uses the channel's. */}
+        {operator && (
         <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
           <span className="text-[var(--color-muted)]">{t.create.models}:</span>
           <span className="rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-2.5 py-1 text-[var(--color-muted)]">
@@ -366,6 +374,7 @@ export function CreateStudio({
             </>
           )}
         </div>
+        )}
 
         {/* Create — asks once, because it spends money and can produce a video. */}
         <div className="mt-4 flex flex-wrap items-center gap-3">

@@ -440,7 +440,7 @@ export function GeneratePanel({
 
   function seg<T extends string | number>(
     groupLabel: string,
-    Icon: LucideIcon,
+    Icon: LucideIcon | null,
     values: readonly T[],
     value: T,
     set: (v: T) => void,
@@ -449,7 +449,7 @@ export function GeneratePanel({
   ) {
     return (
       <div className="studio-seg" role="group" aria-label={groupLabel}>
-        <Icon aria-hidden className="mx-1.5 size-3.5 text-[var(--color-muted)]" />
+        {Icon && <Icon aria-hidden className="mx-1.5 size-3.5 text-[var(--color-muted)]" />}
         {values.map((v) => (
           <button
             key={String(v)}
@@ -486,7 +486,7 @@ export function GeneratePanel({
   const settings = hasSettings ? (
     <div className="flex flex-wrap items-center gap-2">
       {(capability === "t2i" || capability === "t2v") &&
-        seg(t.gen.aspectLabel, RectangleHorizontal, ASPECT_RATIOS, aspect, setAspect, aspectText, true)}
+        seg(t.gen.aspectLabel, desk ? null : RectangleHorizontal, ASPECT_RATIOS, aspect, setAspect, aspectText, true)}
       {(capability === "t2v" || capability === "i2v") &&
         seg(t.gen.durationLabel, Clock, VIDEO_DURATIONS, duration, setDuration, durationText)}
       {capability === "upscale" &&
@@ -696,10 +696,27 @@ export function GeneratePanel({
     </div>
   ) : null;
 
+  // A voice's character in the reader's language (the list's own words are English).
+  const voiceStyle = (v: { id: string; style: string }) => (t.desk.voiceStyles as Record<string, string>)[v.id] ?? v.style;
   const pickVoice = (id: string | null) => {
     setVoiceId(id);
     edited();
   };
+  // The cast is a radio group: arrows move and pick, Home/End jump, one tab stop.
+  const castRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const castPicked = STUDIO_VOICES.some((v) => v.id === voiceId);
+  function onCastKey(e: KeyboardEvent<HTMLButtonElement>, i: number) {
+    const n = STUDIO_VOICES.length;
+    let to = -1;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") to = (i + 1) % n;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") to = (i - 1 + n) % n;
+    else if (e.key === "Home") to = 0;
+    else if (e.key === "End") to = n - 1;
+    if (to < 0) return;
+    e.preventDefault();
+    pickVoice(STUDIO_VOICES[to].id);
+    castRefs.current[to]?.focus();
+  }
   const voiceBlock =
     capability === "voice_change" || capability === "tts" ? (
       desk === "voice" ? (
@@ -709,21 +726,28 @@ export function GeneratePanel({
             {capability === "tts" ? t.gen.ttsVoiceLabel : t.gen.voiceLabel}
           </span>
           <div role="radiogroup" aria-labelledby="gen-voice-label" className="desk-cast" data-testid="gen-voice-cast">
-            {STUDIO_VOICES.map((v) => {
+            {STUDIO_VOICES.map((v, i) => {
               const on = voiceId === v.id;
+              // One tab stop: the picked voice, or the first when none is picked yet.
+              const stop = on || (!castPicked && i === 0);
               return (
                 <button
                   key={v.id}
+                  ref={(el) => {
+                    castRefs.current[i] = el;
+                  }}
                   type="button"
                   role="radio"
                   aria-checked={on}
+                  tabIndex={stop ? 0 : -1}
                   onClick={() => pickVoice(v.id)}
+                  onKeyDown={(e) => onCastKey(e, i)}
                   className="desk-cast-row"
                 >
                   <span aria-hidden className="ns-lamp" data-tone={on ? "run" : "off"} />
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate font-semibold text-[var(--color-fg)]">{v.name}</span>
-                    <span className="truncate text-[12px] text-[var(--color-muted)]">{v.style}</span>
+                    <span className="truncate text-[12px] text-[var(--color-muted)]">{voiceStyle(v)}</span>
                   </span>
                 </button>
               );
@@ -744,7 +768,7 @@ export function GeneratePanel({
             <option value="">{t.gen.voicePick}</option>
             {STUDIO_VOICES.map((v) => (
               <option key={v.id} value={v.id}>
-                {v.name} — {v.style}
+                {v.name} — {voiceStyle(v)}
               </option>
             ))}
           </select>

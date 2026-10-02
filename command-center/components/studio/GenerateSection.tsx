@@ -111,7 +111,6 @@ export function GenerateSection({
           {panel}
         </div>
         <div className="desk-layout-canvas flex min-w-0 flex-col gap-6" data-testid="gen-canvas">
-          <TemplateGallery onPick={fill} only={tools} />
           <JobFeed
             orgId={orgId}
             models={models}
@@ -128,6 +127,8 @@ export function GenerateSection({
             onDescribe={deskHas("describe") ? describe : undefined}
             onMakeSimilar={deskHas("t2i") ? fill : undefined}
           />
+          {/* Starting points come after the results: the monitor or the table is what the desk is for. */}
+          <TemplateGallery onPick={fill} only={tools} />
         </div>
       </div>
     );

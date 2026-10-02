@@ -134,7 +134,8 @@ export default async function CreatePage({
   return (
     <div className="rhythm stagger-enter">
       <PageHeader icon="studio" title={t.create.title} subtitle={t.desk.blurbs[desk]} />
-      <DeskBar current={desk} />
+      {/* On the overview the desks themselves are the way in; elsewhere this row switches between them. */}
+      {desk !== "overview" && <DeskBar current={desk} />}
       {desk === "overview" && <StudioOverview orgId={genOrgId} credits={credits} projects={projects} assistant={assistant} />}
       {isMediaDesk(desk) &&
         (genOrgId ? (

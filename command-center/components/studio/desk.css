@@ -14,6 +14,10 @@
   scrollbar-width: none;
 }
 .desk-bar::-webkit-scrollbar { display: none; }
+/* A phone shows that the row goes on: the last key fades into the edge. */
+@media (max-width: 639.98px) {
+  .desk-bar { -webkit-mask-image: linear-gradient(to right, #000 82%, transparent); mask-image: linear-gradient(to right, #000 82%, transparent); }
+}
 @media (min-width: 640px) {
   .desk-bar { margin-inline: 0; padding-inline: 0; overflow: visible; }
 }
@@ -252,16 +256,20 @@
 .desk-stage-screen > div { max-width: calc(62vh * 4 / 3); }
 .desk-stage-screen > img,
 .desk-stage-screen > video { max-height: 62vh; width: 100%; height: 100%; }
+/* The state over a picture: a solid film chip in both themes, its word in the
+   film's own light (the lamp carries the colour), so it reads at well over 4.5:1. */
 .desk-stage-tally {
   position: absolute;
   top: 10px;
   left: 10px;
   padding: 4px 8px;
   border-radius: var(--ns-r-chip);
-  background: var(--studio-media-chip);
-  color: var(--studio-on-media);
+  background: var(--ns-film);
+  color: var(--ns-on-film);
   pointer-events: none;
 }
+.desk-stage-tally .ns-lamp-label { color: var(--ns-on-film) !important; }
+.desk-stage-tally .ns-lamp { box-shadow: 0 0 0 2px var(--ns-film); }
 .desk-stage-actions {
   position: absolute;
   right: 10px;
@@ -312,7 +320,9 @@
   background: var(--ns-film);
   text-align: left;
 }
-.desk-strip-frame[aria-pressed="true"] { outline: 2px solid var(--ns-amber); outline-offset: 1px; }
+/* Picked: an amber border and inner line. The outline stays free for the
+   keyboard's focus ring, so focus and selection never look the same. */
+.desk-strip-frame[aria-pressed="true"] { border-color: var(--ns-amber); box-shadow: inset 0 0 0 2px var(--ns-amber); }
 .desk-strip-pic { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; color: var(--ns-on-film); }
 .desk-strip-frame > span:nth-child(2) > span:last-child { color: var(--ns-on-film); }
 
@@ -389,6 +399,7 @@
   text-transform: uppercase;
   color: var(--color-muted);
 }
+.desk-bay-live { font-size: var(--ns-t-small); }
 .desk-bay-go {
   position: absolute;
   right: 14px;
@@ -562,4 +573,15 @@ li:last-child > .desk-project { border-bottom: 0; }
   .desk-bay-top { justify-content: flex-start; gap: 10px; }
   .desk-bay-name { font-size: var(--ns-t-h3); }
   .desk-bay-go { top: 50%; bottom: auto; transform: translateY(-50%); width: 44px; height: 44px; }
+}
+
+/* Below lg the booth's and the bench's columns stack: they step aside
+   (display: contents) so the price key docks above the tab bar for the
+   whole desk, not only while its own column is on screen. */
+@media (max-width: 1023.98px) {
+  .desk-booth-script,
+  .desk-booth-cast,
+  .desk-bench-source,
+  .desk-bench-size,
+  .desk-bench-go { display: contents; }
 }

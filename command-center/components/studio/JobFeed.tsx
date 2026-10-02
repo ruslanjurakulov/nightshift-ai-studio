@@ -95,7 +95,10 @@ export function JobFeed({
   emptyTitle,
   emptyBody,
   limit = FEED_SHOWN,
+  onLoaded,
 }: {
+  /** Every read that succeeds hands its jobs up (the overview lights the desks that are working). */
+  onLoaded?: (jobs: StudioJob[]) => void;
   orgId: string;
   models?: StudioModel[];
   /** Bumped by the panel after a job is created: reload now. */
@@ -129,6 +132,9 @@ export function JobFeed({
   const [featuredId, setFeaturedId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const seq = useRef(0);
+  const capabilityKey = capabilities ? capabilities.join(",") : "";
+  const onLoadedRef = useRef(onLoaded);
+  onLoadedRef.current = onLoaded;
 
   async function copy(id: string, text: string) {
     try {
@@ -144,12 +150,16 @@ export function JobFeed({
   const load = useCallback(async () => {
     const mine = ++seq.current;
     try {
-      const res = await fetch(`/api/creative/jobs?org_id=${encodeURIComponent(orgId)}`, { cache: "no-store" });
+      // A desk asks the server for its own tools, so older work on it is not pushed out by other desks'.
+      const only = capabilityKey ? `&capability=${encodeURIComponent(capabilityKey)}` : "";
+      const res = await fetch(`/api/creative/jobs?org_id=${encodeURIComponent(orgId)}${only}`, { cache: "no-store" });
       const body = (await res.json().catch(() => ({}))) as { jobs?: unknown; error?: unknown };
       if (mine !== seq.current) return;
       if (res.ok) {
-        setJobs(coerceJobs(body.jobs));
+        const list = coerceJobs(body.jobs);
+        setJobs(list);
         setState("ok");
+        onLoadedRef.current?.(list);
       } else {
         setState(body.error === "creative_unavailable" ? "unavailable" : "failed");
         setJobs((j) => j ?? []);
@@ -159,7 +169,7 @@ export function JobFeed({
       setState("failed");
       setJobs((j) => j ?? []);
     }
-  }, [orgId]);
+  }, [orgId, capabilityKey]);
 
   useEffect(() => {
     setDismissed(readDismissed());

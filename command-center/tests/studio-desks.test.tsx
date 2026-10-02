@@ -41,6 +41,9 @@ import {
   pictureToolFor,
 } from "@/lib/creative/desks";
 import { PANEL_CAPABILITIES, STUDIO_VOICES, needsSource, type StudioModel } from "@/lib/creative/studio";
+import { listJobs, parseCapabilityFilter, type CreativeDb } from "@/lib/creative/operations";
+import { LocalTime, utcStamp } from "@/components/ui/LocalTime";
+import { renderToString } from "react-dom/server";
 
 const t = dictionaries.en;
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -237,6 +240,36 @@ describe("a desk's composer", () => {
     expect(creates()[0]).toMatchObject({ capability: "upscale", max_credits: 4, params: { source_asset_id: PIC, factor: 4 } });
   });
 
+  it("every press is its own request: a second press carries a new idempotency key", async () => {
+    render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} desk="video" />));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "a ferry at night" } });
+    const key = await screen.findByRole("button", { name: "Generate · 40 credits" }, { timeout: 2000 });
+    fireEvent.click(key);
+    await waitFor(() => expect(creates()).toHaveLength(1));
+    fireEvent.click(await screen.findByRole("button", { name: "Generate · 40 credits" }, { timeout: 2000 }));
+    await waitFor(() => expect(creates()).toHaveLength(2));
+    const [k1, k2] = creates().map((b) => b.idempotency_key);
+    expect(typeof k1).toBe("string");
+    expect(k2).not.toBe(k1);
+    expect(creates().map((b) => b.max_credits)).toEqual([40, 40]);
+  });
+
+  it("Voice: the cast is one tab stop; the arrow keys move and pick", () => {
+    render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} desk="voice" />));
+    const radios = within(screen.getByRole("radiogroup", { name: t.gen.ttsVoiceLabel })).getAllByRole("radio");
+    expect(radios.filter((r) => r.getAttribute("tabindex") === "0")).toHaveLength(1);
+    expect(radios[0].getAttribute("tabindex")).toBe("0");
+    fireEvent.keyDown(radios[0], { key: "ArrowDown" });
+    expect(radios[1].getAttribute("aria-checked")).toBe("true");
+    expect(document.activeElement).toBe(radios[1]);
+    expect(radios.filter((r) => r.getAttribute("tabindex") === "0")).toEqual([radios[1]]);
+    fireEvent.keyDown(radios[1], { key: "End" });
+    expect(radios.at(-1)?.getAttribute("aria-checked")).toBe("true");
+    // The voice's character is in the reader's language.
+    expect(radios[0].textContent).toContain(t.desk.voiceStyles[STUDIO_VOICES[0].id as keyof typeof t.desk.voiceStyles]);
+    expect(creates()).toHaveLength(0);
+  });
+
   it("sends the same create request on a desk as outside one, for the same form", async () => {
     const press = async (desk: "image" | null) => {
       const { unmount } = render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} desk={desk} />));
@@ -324,6 +357,28 @@ describe("a desk's results", () => {
     expect(creates()).toHaveLength(0);
   });
 
+  it("asks the server for the desk's own tools only", async () => {
+    render(withI18n(<JobFeed orgId={ORG} models={MODELS} capabilities={DESK_TOOLS.voice} variant="takes" />));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([u]) => String(u).startsWith("/api/creative/jobs"))).toBe(true));
+    const url = String(fetchMock.mock.calls.find(([u]) => String(u).startsWith("/api/creative/jobs"))?.[0]);
+    expect(url).toBe(`/api/creative/jobs?org_id=${ORG}&capability=${encodeURIComponent("tts,voice_change,dub")}`);
+  });
+
+  it("Try again and Use as picture on a desk only fill the form", async () => {
+    feed = [
+      job({ id: "f", capability: "t2i", status: "failed", error_code: "provider_timeout", params: { prompt: "a failed kite", aspect_ratio: "1:1" }, result_asset_ids: [] }),
+      job({ id: "d", capability: "t2i", params: { prompt: "a done kite", aspect_ratio: "1:1" } }),
+    ];
+    render(withI18n(<GenerateSection orgId={ORG} models={MODELS} desk="image" />));
+    fireEvent.click(await screen.findByRole("button", { name: t.gen.tryAgain }));
+    await waitFor(() => expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("a failed kite"));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: t.gen.useAsSource }).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByRole("button", { name: t.gen.useAsSource })[0]);
+    await waitFor(() => expect(document.getElementById("gen-tab-edit")?.getAttribute("aria-selected")).toBe("true"));
+    await new Promise((r) => setTimeout(r, 650));
+    expect(creates()).toHaveLength(0);
+  });
+
   it("the overview's log links each generation to its desk", async () => {
     feed = [job({ id: "a", capability: "upscale", params: { source_asset_id: PIC, factor: 2 } })];
     render(withI18n(<JobFeed orgId={ORG} variant="log" />));
@@ -379,3 +434,48 @@ describe("the desk switcher, the overview and the YouTube desk", () => {
     expect(screen.getByText("run form")).toBeTruthy();
   });
 });
+
+describe("the job list's tool filter (GET /api/creative/jobs?capability=)", () => {
+  it("accepts known tools only, and an empty filter means every tool", () => {
+    expect(parseCapabilityFilter(null)).toEqual({ ok: true, value: null });
+    expect(parseCapabilityFilter(" ")).toEqual({ ok: true, value: null });
+    expect(parseCapabilityFilter("t2v,i2v,t2v")).toEqual({ ok: true, value: ["t2v", "i2v"] });
+    expect(parseCapabilityFilter("t2v,drop table")).toEqual({ ok: false });
+    expect(parseCapabilityFilter(",,")).toEqual({ ok: false });
+  });
+
+  it("passes the tools to the read, and reads every tool without one", async () => {
+    const calls: unknown[][] = [];
+    const db: CreativeDb = {
+      rpc: async () => ({ data: null, error: null }),
+      readJob: async () => ({ data: null, error: null }),
+      listJobs: async (...args: unknown[]) => {
+        calls.push(args);
+        return { data: [], error: null };
+      },
+    } as unknown as CreativeDb;
+    await listJobs(db, ORG, 50, ["tts", "dub"]);
+    await listJobs(db, ORG);
+    expect(calls).toEqual([[ORG, 50, ["tts", "dub"]], [ORG, 50]]);
+  });
+});
+
+describe("times and numbers hydrate as they were rendered", () => {
+  it("a project's time is the UTC stamp on the server and in the first render", () => {
+    expect(utcStamp("2026-10-01T18:40:00Z")).toBe("2026-10-01 18:40 UTC");
+    expect(utcStamp("nope")).toBeNull();
+    const html = renderToString(<LocalTime iso="2026-10-01T18:40:00Z" locale="uz" />);
+    expect(html).toContain("2026-10-01 18:40 UTC");
+    expect(html).toContain('dateTime="2026-10-01T18:40:00Z"');
+  });
+
+  it("the Voice counter prints Uzbek grouping the same everywhere", () => {
+    const html = renderToString(
+      <I18nProvider locale="uz">
+        <GeneratePanel orgId={ORG} models={MODELS} desk="voice" />
+      </I18nProvider>,
+    );
+    expect(html).toContain("4\u00a0000");
+  });
+});
+

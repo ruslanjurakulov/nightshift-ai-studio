@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { CUSTOMER_SIDEBAR, sidebarCurrent, type NavItem } from "@/lib/navigation";
 import { DESKS, deskFromQuery, deskHref, type Desk } from "@/lib/creative/desks";
+import { runPrefillFromQuery } from "@/lib/home";
 import { DESK_ICONS } from "@/components/studio/deskIcons";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { ICONS } from "@/components/navigation/navIcons";
@@ -64,7 +65,9 @@ function CurrentRows() {
   const tool = q.get("tool");
   // On /create the row is the desk the page opens (lib/creative/desks), from the same query it reads.
   const onCreate = section === "/create" || section.startsWith("/create/");
-  const desk = onCreate ? deskFromQuery({ desk: q.get("desk"), tool, hasRunPrefill: !!(q.get("topic") || q.get("length") || q.get("lang")) }) : null;
+  // The same validated read the page makes (lib/home), so a junk ?lang= never lights the YouTube desk.
+  const hasRunPrefill = onCreate && !!runPrefillFromQuery({ topic: q.get("topic") ?? undefined, length: q.get("length") ?? undefined, lang: q.get("lang") ?? undefined });
+  const desk = onCreate ? deskFromQuery({ desk: q.get("desk"), tool, hasRunPrefill }) : null;
   const current = desk ? `desk:${desk}` : sidebarCurrent(section, tool);
   return <SidebarRows current={current} />;
 }
