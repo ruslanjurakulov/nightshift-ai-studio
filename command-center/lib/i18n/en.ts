@@ -3862,6 +3862,11 @@ export const en = {
       retry: "Refresh",
       failedBecause: "This step stopped: {why}",
       newRun: "Run it again",
+      waitingSlot: "Step {n} is waiting to start: everything your plan can run at once is busy. It starts by itself once that finishes, while this page is open.",
+      waitingCredits: "Step {n} is waiting for credits: fewer are available than its price. Add credits and it starts by itself, while this page is open.",
+      waitingUntil: "If it still cannot start by {when}, the run stops there and nothing more is charged.",
+      waitingUntilUnknown: "If it still cannot start within a day of the price being confirmed, the run stops there and nothing more is charged.",
+      stepWaiting: "Waiting to start: {why}. Nothing is held for it yet.",
     },
     status: {
       running: "Running",
@@ -3871,6 +3876,10 @@ export const en = {
       pending: "Waiting",
       skipped: "Not started",
       queued: "In the queue",
+    },
+    waitReasons: {
+      run_limit_reached: "everything your plan can run at once is busy",
+      insufficient_credits: "there are not enough credits for it right now",
     },
     stepErrors: {
       insufficient_credits: "there were not enough credits when this step was due",
