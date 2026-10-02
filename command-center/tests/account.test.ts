@@ -5,6 +5,7 @@ import { ALL_CHANNELS, SECTIONS, appRedirect, isSection } from "@/lib/channels";
 import {
   CUSTOMER_NAV_KEYS,
   CUSTOMER_RAIL,
+  CUSTOMER_SIDEBAR,
   SECTION_TABS,
   tabsFor,
   NAV_GROUPS,
@@ -74,7 +75,8 @@ describe("nav filtering by role", () => {
     expect(isOperatorOnlySection("members")).toBe(true);
     expect(isOperatorOnlySection("pipeline")).toBe(true);
     expect(isOperatorOnlySection("logs")).toBe(true);
-    for (const s of ["command-center", "create", "videos", "studio", "channels", "credits", "series", "getting-started", "organization"])
+    expect(isOperatorOnlySection("getting-started")).toBe(true);
+    for (const s of ["command-center", "create", "videos", "studio", "channels", "credits", "series", "organization"])
       expect(isOperatorOnlySection(s), s).toBe(false);
     // Not a section at all: left to 404 or the channel index, not bounced.
     expect(isOperatorOnlySection("")).toBe(false);
@@ -153,6 +155,35 @@ describe("appRedirect", () => {
     expect(appRedirect({ ...base, path: "/all-channels/accounts", honestSlug: "all-channels", operator: false })).toBe(
       "/chronos/home",
     );
+  });
+
+  it("keeps Getting Started away from a customer everywhere, and sends its URL to Home; the operator keeps it", () => {
+    // Not a customer section, rail entry, tab or sidebar row...
+    expect(CUSTOMER_NAV_KEYS).not.toContain("onboarding");
+    expect(CUSTOMER_RAIL.map((i) => i.key)).not.toContain("onboarding" as never);
+    for (const g of Object.values(SECTION_TABS)) expect(g.map((i) => i.key)).not.toContain("onboarding");
+    expect(tabsFor("getting-started")).toBeNull();
+    const sidebar = [...CUSTOMER_SIDEBAR.work, ...CUSTOMER_SIDEBAR.footer].map((i) => i.key);
+    expect(sidebar).not.toContain("onboarding");
+    expect(keys(false)).not.toContain("onboarding");
+    // ...and it is operator-only, so the layout's redirect covers it.
+    expect(isOperatorOnlySection("getting-started")).toBe(true);
+    expect(sectionAllowed("getting-started", false)).toBe(false);
+    expect(sectionAllowed("getting-started", true)).toBe(true);
+    expect(
+      appRedirect({ ...base, selection: "default", path: "/chronos/getting-started", honestSlug: "chronos", operator: false }),
+    ).toBe("/chronos/home");
+    expect(
+      appRedirect({ ...base, selection: "default", path: "/chronos/getting-started", search: "?x=1", honestSlug: "chronos", operator: false }),
+    ).toBe("/chronos/home");
+    expect(appRedirect({ ...base, path: "/all-channels/getting-started", honestSlug: "all-channels", operator: false })).toBe(
+      "/chronos/home",
+    );
+    // The operator stays on it, and still has it in the console rail.
+    expect(
+      appRedirect({ ...base, selection: "default", path: "/chronos/getting-started", honestSlug: "chronos", operator: true }),
+    ).toBeNull();
+    expect(keys(true)).toContain("onboarding");
   });
 
   it("starts the operator on the Command Center (unchanged) and a customer on Home", () => {
