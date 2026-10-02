@@ -10,7 +10,7 @@ import { SourcePicker } from "@/components/studio/SourcePicker";
 import { ModelSheet } from "@/components/studio/ModelSheet";
 import { TierMarks } from "@/components/studio/TierMarks";
 import { TOOL_ICONS } from "@/components/studio/toolIcons";
-import { useModelPrices, useTierPrices } from "@/components/studio/useModelPrices";
+import { useModelPrices, useSoundPrices, useTierPrices } from "@/components/studio/useModelPrices";
 import { useStyleKits } from "@/components/studio/useStyleKits";
 import { PlanUpsellDialog } from "@/components/studio/PlanUpsellDialog";
 import { ChannelDnaHint } from "@/components/studio/ChannelDnaHint";
@@ -35,6 +35,7 @@ import {
   canQuote,
   defaultDescribeLanguage,
   effectiveQuality,
+  effectiveSound,
   errorAction,
   generateLabel,
   modelsFor,
@@ -45,6 +46,7 @@ import {
   promptRule,
   sheetQuoteParams,
   takesQuality,
+  takesSound,
   takesStyle,
   tierQuoteParams,
   type AspectRatio,
@@ -152,6 +154,8 @@ export function GeneratePanel({
   );
   // 0060: the picture's render quality; null = not picked, so the model's default (medium) applies.
   const [quality, setQuality] = useState<ImageQuality | null>(initial?.quality ?? null);
+  // 0070: a clip's soundtrack; null = not picked, so the model's default (silent) applies.
+  const [sound, setSound] = useState<boolean | null>(initial?.audio ?? null);
   const styles = useStyleKits(orgId);
   const [quote, setQuote] = useState<QuoteState>({ status: "idle" });
   const [requote, setRequote] = useState(0);
@@ -179,6 +183,8 @@ export function GeneratePanel({
   const effectiveTarget = capability !== "video_upscale" ? null : target && targets.includes(target) ? target : (targets[0] ?? null);
   // A tier only for a picture tool on a model that sells tiers; another model never gets one.
   const effectiveQ = takesQuality(capability) ? effectiveQuality(current, quality) : null;
+  // A soundtrack choice only for a video tool on a model that sells it; another model never gets one.
+  const effectiveSnd = takesSound(capability) ? effectiveSound(current, sound) : null;
   const form = {
     capability,
     prompt,
@@ -193,6 +199,7 @@ export function GeneratePanel({
     target: effectiveTarget,
     describeLanguage,
     quality: effectiveQ,
+    audio: effectiveSnd,
   };
   const params = useMemo(
     () =>
@@ -210,8 +217,9 @@ export function GeneratePanel({
         target: effectiveTarget,
         describeLanguage,
         quality: effectiveQ,
+        audio: effectiveSnd,
       }),
-    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, describeLanguage, effectiveQ],
+    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, describeLanguage, effectiveQ, effectiveSnd],
   );
   const paramsKey = JSON.stringify(params);
   // A price is asked for only once the form is complete (the picture, the words).
@@ -267,6 +275,8 @@ export function GeneratePanel({
     selectedId: effectiveModel,
     params: sheetParams,
     // Each model is priced at ITS tier: a model without tiers is asked without one.
+    // Likewise its soundtrack: a model that offers no choice is asked without one.
+    soundFor: takesSound(capability) ? Object.fromEntries(available.map((m) => [m.id, effectiveSound(m, sound)])) : undefined,
     tierFor: takesQuality(capability) ? Object.fromEntries(available.map((m) => [m.id, effectiveQuality(m, quality)])) : undefined,
   });
   // The picked model's tiers, each priced by the database for these settings (never a tier's own number from here).
@@ -279,6 +289,22 @@ export function GeneratePanel({
     // Without the words: the tiers' prices do not depend on them, and typing must not re-ask or send them.
     params: tiers.length ? tierQuoteParams(form) : null,
   });
+  // The picked model's two soundtrack settings, each priced by the database for these settings.
+  const soundChoice = takesSound(capability) && current?.soundChoice === true && effectiveSnd !== null;
+  const soundPrices = useSoundPrices({
+    orgId,
+    capability,
+    modelId: effectiveModel,
+    params: soundChoice ? sheetQuoteParams({ ...form, audio: null }) : null,
+  });
+  const soundText = (on: boolean): string => {
+    const label = on ? t.gen.soundOn : t.gen.soundOff;
+    const p = on ? soundPrices.sound : soundPrices.silent;
+    if (!p) return label;
+    if (p.status === "quoting") return `${label} · …`;
+    if (p.status === "ready") return `${label} · ${fmt(t.gen.sheetCredits, { n: formatCredits(p.credits, locale) })}`;
+    return `${label} · ${p.code === "unpriced" ? t.gen.qualityUnpriced : "—"}`;
+  };
   const tierText = (q: ImageQuality): string => {
     const label = t.gen.qualities[q];
     const p = tierPrices[q];
@@ -724,6 +750,37 @@ export function GeneratePanel({
               })}
             </div>
             <span className="text-[12px] text-[var(--color-muted)]">{t.gen.qualityNote}</span>
+          </div>
+        )}
+
+        {soundChoice && (
+          <div className="flex flex-col gap-2" data-testid="gen-sound">
+            <span className="studio-label" id="gen-sound-label">
+              {t.gen.soundLabel}
+            </span>
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="gen-sound-label">
+              {([false, true] as const).map((on) => {
+                const p = on ? soundPrices.sound : soundPrices.silent;
+                return (
+                  <button
+                    key={String(on)}
+                    type="button"
+                    data-testid={on ? "gen-sound-on" : "gen-sound-off"}
+                    aria-pressed={effectiveSnd === on}
+                    // A setting with no price is not sold: it cannot be picked (never shown as free).
+                    disabled={p?.status === "error" && p.code === "unpriced"}
+                    onClick={() => {
+                      setSound(on);
+                      edited();
+                    }}
+                    className="studio-chip"
+                  >
+                    {soundText(on)}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-[12px] text-[var(--color-muted)]">{t.gen.soundNote}</span>
           </div>
         )}
 

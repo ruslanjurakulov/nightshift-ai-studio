@@ -58,6 +58,10 @@ export interface PublicSpec {
   /** The longest source a file tool takes, in seconds (0052); null = not stated. */
   maxSourceSeconds: number | null;
   audioOut: boolean;
+  /** 0070: the resolution a clip is made at when none is named (priced and sent); null = the model has none pinned. */
+  defaultResolution: string | null;
+  /** 0070: how the model's price varies (resolution, audio, resolution_audio, quality ...); null = one flat price. */
+  priceVariantsBy: string | null;
   isAsync: boolean;
   /** What credits_per_unit counts: an image, a second, a character, a request. */
   unit: "image" | "second" | "character" | "request";
@@ -137,6 +141,8 @@ function coerceSpec(v: unknown): PublicSpec | null {
     endFrame: v.end_frame === true,
     maxSourceSeconds: posInt(limits.max_source_seconds),
     audioOut: v.audio_out === true,
+    defaultResolution: typeof v.default_resolution === "string" && v.default_resolution ? v.default_resolution : null,
+    priceVariantsBy: typeof v.price_variants_by === "string" && v.price_variants_by ? v.price_variants_by : null,
     isAsync: v.async === true,
     unit,
     attribution,
