@@ -10,9 +10,18 @@ import { TOOL_ICONS } from "@/components/studio/toolIcons";
  * fills the composer (onPick); it never prices or starts anything by itself.
  * One scrolling row at every width: the results are the page, not this.
  */
-export function TemplateGallery({ onPick }: { onPick: (prefill: StudioPrefill) => void }) {
+export function TemplateGallery({
+  onPick,
+  only,
+}: {
+  onPick: (prefill: StudioPrefill) => void;
+  /** A desk's tools: only the templates that start one of them (none: nothing is drawn). */
+  only?: readonly string[];
+}) {
   const { t } = useI18n();
   const tt = t.studioTemplates;
+  const templates = only ? STUDIO_TEMPLATES.filter((tpl) => only.includes(tpl.capability)) : STUDIO_TEMPLATES;
+  if (templates.length === 0) return null;
 
   return (
     <section className="flex min-w-0 flex-col gap-2" aria-labelledby="tpl-title">
@@ -23,7 +32,7 @@ export function TemplateGallery({ onPick }: { onPick: (prefill: StudioPrefill) =
         <p className="hidden min-w-0 truncate text-[12px] text-[var(--color-muted)] sm:block">{tt.hint}</p>
       </div>
       <ul className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-2">
-        {STUDIO_TEMPLATES.map((tpl) => {
+        {templates.map((tpl) => {
           const Icon = TOOL_ICONS[tpl.capability];
           const copy = tt.items[tpl.id];
           return (

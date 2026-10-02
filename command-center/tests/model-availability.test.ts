@@ -102,7 +102,7 @@ vi.mock("@/lib/server/audit", () => ({ logAudit: async () => undefined }));
 
 const route = await import("../app/api/models/availability/route");
 const { MODEL_ID_RE, availabilityBlocker, coerceAdminModels, latestProbes, parseAvailabilityRequest } = await import("../lib/models-admin");
-const { CUSTOMER_SECTIONS, isOperatorOnlySection, navGroupsFor, sectionAllowed } = await import("../lib/navigation");
+const { CUSTOMER_SECTIONS, isOperatorOnlySection, navGroupsFor, sectionAllowed, tabsFor } = await import("../lib/navigation");
 const { appRedirect, isSection } = await import("../lib/channels");
 
 function customerAdmin() {
@@ -296,22 +296,26 @@ describe("models-admin helpers", () => {
 describe("Models section navigation", () => {
   const keys = (op: boolean) => navGroupsFor(op).flatMap((g) => g.items.map((i) => i.key));
 
-  it("is in the operator's rail and never in a customer's", () => {
+  // The catalog is for everyone who signs in (a customer reads sellable_models(),
+  // the operator the whole registry); the availability switches stay the
+  // operator's — the route's requireOperator and 0035's RLS decide that, not the rail.
+  it("is in the operator's rail, and a Studio tab (not a rail entry) for a customer", () => {
     expect(keys(true)).toContain("models");
     expect(keys(false)).not.toContain("models");
-    expect(CUSTOMER_SECTIONS).not.toContain("models");
+    expect(CUSTOMER_SECTIONS).toContain("models");
+    expect(tabsFor("models")?.rail).toBe("hub");
   });
 
-  it("is operator-only: sectionAllowed refuses it for customers", () => {
+  it("is a customer section: sectionAllowed lets both in", () => {
     expect(isSection("models")).toBe(true);
-    expect(isOperatorOnlySection("models")).toBe(true);
-    expect(sectionAllowed("models", false)).toBe(false);
+    expect(isOperatorOnlySection("models")).toBe(false);
+    expect(sectionAllowed("models", false)).toBe(true);
     expect(sectionAllowed("models", true)).toBe(true);
   });
 
-  it("bounces a customer who opens it by URL to their landing screen", () => {
+  it("does not bounce a customer who opens it by URL", () => {
     const channels = [{ id: "c1", slug: "mine", name: "Mine" }] as never;
-    expect(appRedirect({ path: "/mine/models", honestSlug: "mine", selection: "c1" as never, channels, operator: false })).toBe("/mine/home");
+    expect(appRedirect({ path: "/mine/models", honestSlug: "mine", selection: "c1" as never, channels, operator: false })).toBeNull();
     expect(appRedirect({ path: "/mine/models", honestSlug: "mine", selection: "c1" as never, channels, operator: true })).toBeNull();
   });
 });

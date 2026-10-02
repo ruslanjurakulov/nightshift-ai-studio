@@ -15,6 +15,7 @@
 import type { CreativeCapability } from "@/lib/creative/operations";
 import type { Dictionary } from "@/lib/i18n";
 import { atLeast, type Role } from "@/lib/auth/roles-shared";
+import { DEFAULT_ORG_ID } from "@/lib/orgs";
 
 /** What a workflow's steps are built from: the Studio's own tools that make a picture, a clip or a voice. */
 export const WORKFLOW_CAPABILITIES = ["t2i", "edit", "i2v", "upscale", "remove_bg", "t2v", "tts"] as const satisfies readonly CreativeCapability[];
@@ -232,10 +233,14 @@ function oneOf<T extends string>(v: unknown, list: readonly T[], fallback: T): T
   return typeof v === "string" && (list as readonly string[]).includes(v) ? (v as T) : fallback;
 }
 
-/** `{ run, steps }` as workflow_run_json answers it (the RLS reads give the same two halves). */
+/**
+ * `{ run, steps }` as workflow_run_json answers it (the RLS reads give the same
+ * two halves) — or a run already in this shape, its steps inside, which is what
+ * the run routes answer (`{ run: RunView }`) and the pages read back.
+ */
 export function coerceRun(data: unknown): RunView | null {
   const d = obj(data);
-  const r = obj(d?.run);
+  const r = obj(d?.run) ?? (d && typeof d.id === "string" ? d : null);
   if (!d || !r || typeof r.id !== "string" || typeof r.org_id !== "string" || typeof r.workflow_id !== "string") return null;
   const steps = (Array.isArray(d.steps) ? d.steps : []).flatMap((s): RunStepView[] => {
     const o = obj(s);
@@ -299,12 +304,58 @@ export function coerceRunSummary(row: unknown): RunSummary | null {
 /**
  * May the caller carry this run on (advance, stop, run again)? Their role in
  * the RUN's organization — not the organization being viewed — at editor or
- * above. Presentation only: the database re-checks every call, and a later
- * step also needs the member who confirmed the run to still be allowed (0074).
+ * above. In the operator's own organization (paid by the platform) the
+ * database also requires a platform owner/admin (start_workflow_run and
+ * advance_workflow_run, 0073/0074), so there `platformAdmin` must be true:
+ * otherwise the page would poll a refusal every few seconds (BR-L-013). An
+ * unknown platform role is passed as false. Presentation only: the database
+ * re-checks every call, and a later step also needs the member who confirmed
+ * the run to still be allowed (0074).
  */
-export function canCarryRun(orgs: readonly { id: string; role: Role }[], runOrgId: string): boolean {
+export function canCarryRun(
+  orgs: readonly { id: string; role: Role; is_default?: boolean }[],
+  runOrgId: string,
+  platformAdmin = false,
+): boolean {
   const mine = orgs.find((o) => o.id === runOrgId);
-  return mine ? atLeast(mine.role, "editor") : false;
+  if (!mine || !atLeast(mine.role, "editor")) return false;
+  const operatorOrg = mine.is_default === true || mine.id === DEFAULT_ORG_ID;
+  return operatorOrg ? platformAdmin === true : true;
+}
+
+/**
+ * Why a step that has not started is waiting (0083, BR-L-011): everything the
+ * plan may run at once is busy, or the balance is short for it. Both pass, so
+ * the run stays running, holds nothing for the step, and starts it on a later
+ * advance; a day after the price was confirmed it stops instead.
+ */
+export const WAIT_CODES = ["run_limit_reached", "insufficient_credits"] as const;
+export type WaitCode = (typeof WAIT_CODES)[number];
+
+export function stepWaitCode(step: Pick<RunStepView, "status" | "error_code">): WaitCode | null {
+  return step.status === "pending" && (WAIT_CODES as readonly string[]).includes(step.error_code ?? "")
+    ? (step.error_code as WaitCode)
+    : null;
+}
+
+/** The step a running run is waiting on, if any. */
+export function waitingStep(run: Pick<RunView, "status" | "steps">): (RunStepView & { wait: WaitCode }) | null {
+  if (run.status !== "running") return null;
+  for (const s of run.steps) {
+    const wait = stepWaitCode(s);
+    if (wait) return { ...s, wait };
+  }
+  return null;
+}
+
+/** How long a confirmed price may still start steps (0073's confirmation_expired). */
+export const CONFIRMATION_MS = 24 * 60 * 60 * 1000;
+
+/** When a waiting run stops if its step has not started: the confirmation plus a day. Null when not on record. */
+export function confirmationDeadline(run: Pick<RunView, "created_at">): Date | null {
+  if (!run.created_at) return null;
+  const t = Date.parse(run.created_at);
+  return Number.isFinite(t) ? new Date(t + CONFIRMATION_MS) : null;
 }
 
 export function isRunActive(run: Pick<RunView, "status"> | null | undefined): boolean {

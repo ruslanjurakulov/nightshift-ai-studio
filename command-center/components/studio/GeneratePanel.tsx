@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { AtSign, Clock, Languages, Maximize2, RectangleHorizontal, type LucideIcon } from "lucide-react";
+import { DESK_TOOLS, pictureToolFor, type MediaDesk } from "@/lib/creative/desks";
+import { Timecode } from "@/components/ui/Timecode";
 import { useI18n } from "@/lib/i18n/context";
 import { formatCredits } from "@/lib/credits";
 import { useChannelPath } from "@/lib/channels-client";
@@ -13,9 +15,9 @@ import { TOOL_ICONS } from "@/components/studio/toolIcons";
 import { useModelPrices, useSoundPrices, useTierPrices } from "@/components/studio/useModelPrices";
 import { useStyleKits } from "@/components/studio/useStyleKits";
 import { PlanUpsellDialog } from "@/components/studio/PlanUpsellDialog";
-import { SegmentedSwitch } from "@/components/ui/SegmentedSwitch";
 import { ChannelDnaHint } from "@/components/studio/ChannelDnaHint";
 import { PriceButton } from "@/components/ui/PriceButton";
+import { SegmentedSwitch } from "@/components/ui/SegmentedSwitch";
 import { creditUnit } from "@/lib/credits";
 import type { StudioDna } from "@/lib/channel-dna";
 import { isUpsellCode, refusalFrom, type Refusal, type UpsellCatalog } from "@/lib/upsell";
@@ -103,7 +105,15 @@ export function GeneratePanel({
   sourceRequest = null,
   plans,
   onCreated,
+  desk = null,
 }: {
+  /**
+   * The workspace this composer sits on (lib/creative/desks): it offers only
+   * that desk's tools and arranges the fields around the desk's job. Absent:
+   * every tool, in one column, as before. Prices, the hold and the create
+   * call are the same either way.
+   */
+  desk?: MediaDesk | null;
   orgId: string;
   models: StudioModel[];
   /** "Try again" from the feed, a template, or the Library link: fills the form; spends nothing by itself. */
@@ -128,9 +138,11 @@ export function GeneratePanel({
 }) {
   const { t, fmt, locale } = useI18n();
   const path = useChannelPath();
+  // The tools this composer offers: its desk's, or every one.
+  const tools: readonly StudioCapability[] = desk ? DESK_TOOLS[desk] : PANEL_CAPABILITIES;
 
   const [capability, setCapability] = useState<StudioCapability>(
-    initial?.capability ?? PANEL_CAPABILITIES.find((c) => modelsFor(models, c).length > 0) ?? "t2i",
+    initial?.capability ?? tools.find((c) => modelsFor(models, c).length > 0) ?? tools[0] ?? "t2i",
   );
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
   const [aspect, setAspect] = useState<AspectRatio>(initial?.aspect ?? dna?.aspect ?? "16:9");
@@ -263,9 +275,11 @@ export function GeneratePanel({
     if (!sourceRequest || sourceRequest.nonce === appliedSource.current) return;
     appliedSource.current = sourceRequest.nonce;
     setSourceId(sourceRequest.id);
-    setCapability((c) => (needsSource(c) ? c : "edit"));
+    // A tool that starts from a picture keeps it; otherwise this desk's first
+    // picture tool (Edit outside a desk, as before).
+    setCapability((c) => pictureToolFor(tools, c, needsSource));
     setNotice(null);
-  }, [sourceRequest]);
+  }, [sourceRequest, tools]);
 
   // The sheet's prices: the same settings, each model, only while it is open.
   const sheetParams = sheetOpen ? sheetQuoteParams(form) : null;
@@ -374,11 +388,12 @@ export function GeneratePanel({
     edited();
   };
 
-  // The tool row is a tablist of its own under the mode switch: ←/→ (and
-  // ↑/↓) move and choose, Home/End jump; one tab stop.
+  // A tablist: ←/→ (and ↑/↓) move and choose, Home/End jump; one tab stop.
+  // On a desk it is the desk's tools; outside one, the tool row under the mode switch.
+  const rowTools: readonly StudioCapability[] = desk ? tools : MEDIA_TOOLS;
   function onTabKey(e: KeyboardEvent<HTMLButtonElement>, c: StudioCapability) {
-    const i = MEDIA_TOOLS.indexOf(c);
-    const n = MEDIA_TOOLS.length;
+    const i = rowTools.indexOf(c);
+    const n = rowTools.length;
     let to = -1;
     if (e.key === "ArrowRight" || e.key === "ArrowDown") to = (i + 1) % n;
     else if (e.key === "ArrowLeft" || e.key === "ArrowUp") to = (i - 1 + n) % n;
@@ -386,7 +401,7 @@ export function GeneratePanel({
     else if (e.key === "End") to = n - 1;
     if (to < 0) return;
     e.preventDefault();
-    const next = MEDIA_TOOLS[to];
+    const next = rowTools[to];
     pick(next);
     tabRefs.current[next]?.focus();
   }
@@ -405,29 +420,36 @@ export function GeneratePanel({
         id={`gen-tab-${c}`}
         aria-selected={on}
         aria-controls="gen-tabpanel"
-        tabIndex={on || (!MEDIA_TOOLS.includes(capability) && c === MEDIA_TOOLS[0]) ? 0 : -1}
+        tabIndex={on || (!rowTools.includes(capability) && c === rowTools[0]) ? 0 : -1}
         onClick={() => pick(c)}
         onKeyDown={(e) => onTabKey(e, c)}
-        className="studio-tab"
+        className={desk ? "desk-tool" : "studio-tab"}
       >
-        <Icon aria-hidden className="size-[18px]" strokeWidth={1.75} />
-        <span className="max-w-full truncate">{t.gen.tabs[c]}</span>
+        <Icon aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
+        {desk ? (
+          <span className="flex min-w-0 flex-col text-left">
+            <span className="truncate">{t.desk.tools[c]}</span>
+            <span className="desk-tool-from truncate">{t.desk.toolFrom[c]}</span>
+          </span>
+        ) : (
+          <span className="max-w-full truncate">{t.gen.tabs[c]}</span>
+        )}
       </button>
     );
   };
 
   function seg<T extends string | number>(
     groupLabel: string,
-    Icon: LucideIcon,
+    Icon: LucideIcon | null,
     values: readonly T[],
     value: T,
     set: (v: T) => void,
-    text: (v: T) => string,
+    text: (v: T) => ReactNode,
     mono = false,
   ) {
     return (
       <div className="studio-seg" role="group" aria-label={groupLabel}>
-        <Icon aria-hidden className="mx-1.5 size-3.5 text-[var(--color-muted)]" />
+        {Icon && <Icon aria-hidden className="mx-1.5 size-3.5 text-[var(--color-muted)]" />}
         {values.map((v) => (
           <button
             key={String(v)}
@@ -448,12 +470,25 @@ export function GeneratePanel({
 
   const hasSettings =
     capability === "t2i" || capability === "t2v" || capability === "i2v" || capability === "upscale" || (filmed && targets.length > 0);
+  // On a desk the keys say more than the bare value: the shape drawn, the
+  // length as a counter. Same values, same buttons, same group names.
+  const aspectText = (a: AspectRatio): ReactNode =>
+    desk ? (
+      <span className="inline-flex items-center gap-1.5">
+        <span aria-hidden className="desk-shape" data-shape={a} />
+        {a}
+      </span>
+    ) : (
+      a
+    );
+  const durationText = (d: VideoDuration): ReactNode =>
+    desk ? <Timecode value={d} format="duration" label={fmt(t.gen.seconds, { n: d })} /> : fmt(t.gen.seconds, { n: d });
   const settings = hasSettings ? (
     <div className="flex flex-wrap items-center gap-2">
       {(capability === "t2i" || capability === "t2v") &&
-        seg(t.gen.aspectLabel, RectangleHorizontal, ASPECT_RATIOS, aspect, setAspect, (a) => a, true)}
+        seg(t.gen.aspectLabel, desk ? null : RectangleHorizontal, ASPECT_RATIOS, aspect, setAspect, aspectText, true)}
       {(capability === "t2v" || capability === "i2v") &&
-        seg(t.gen.durationLabel, Clock, VIDEO_DURATIONS, duration, setDuration, (d) => fmt(t.gen.seconds, { n: d }))}
+        seg(t.gen.durationLabel, Clock, VIDEO_DURATIONS, duration, setDuration, durationText)}
       {capability === "upscale" &&
         seg(t.gen.factorLabel, Maximize2, UPSCALE_FACTORS, factor, setFactor, (f) => fmt(t.gen.factor, { n: f }))}
       {filmed &&
@@ -463,467 +498,559 @@ export function GeneratePanel({
   ) : null;
   const ToolIcon = TOOL_ICONS[capability];
 
-  return (
-    <section className="studio-surface flex flex-col gap-4 p-4" aria-labelledby="gen-title">
-      <h2 id="gen-title" className="sr-only">
-        {t.gen.title}
-      </h2>
+  // ── the blocks: one of each field, arranged per desk below ─────────────────
 
+  const tabsBlock = desk ? (
+    <div role="tablist" aria-label={t.gen.kindLabel} className="desk-tools" data-count={tools.length}>
+      {tools.map(tab)}
+    </div>
+  ) : (
+    <div className="flex flex-col gap-2">
+      {/* The mode switch: what to make. The tools below it start from something in the library. */}
+      <SegmentedSwitch
+        semantics="tab"
+        label={t.gen.kindLabel}
+        idPrefix="gen-tab"
+        controls="gen-tabpanel"
+        size="lg"
+        className="w-full [&>button]:flex-1 [&>button]:justify-center"
+        value={MAKE_KINDS.includes(capability) ? capability : null}
+        onChange={pick}
+        options={MAKE_KINDS.map((c) => {
+          const Icon = TOOL_ICONS[c];
+          return { value: c, label: t.gen.tabs[c], icon: <Icon aria-hidden className="size-4" strokeWidth={1.75} /> };
+        })}
+      />
+      <div role="tablist" aria-label={t.gen.toolRowLabel} className="grid grid-cols-3 gap-1">
+        {MEDIA_TOOLS.map(tab)}
+      </div>
+    </div>
+  );
+
+  const dnaBlock = dna ? <ChannelDnaHint href={dna.href} /> : null;
+
+  // The model: what will make it, how fast, how good — and a way to change it.
+  const modelBlock = current ? (
+    <div className="studio-field flex items-center gap-3 p-3">
+      <span
+        aria-hidden
+        className="grid size-10 shrink-0 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] text-[var(--ns-amber-ink)]"
+      >
+        <ToolIcon className="size-5" strokeWidth={1.75} />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="studio-label">{t.gen.modelLabel}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-[14px] font-semibold text-[var(--color-fg)]" data-testid="gen-model-name">
+            {current.displayName}
+          </span>
+          {current.beta && (
+            <span className="shrink-0 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
+              {t.gen.beta}
+            </span>
+          )}
+        </span>
+        <TierMarks speed={current.speedTier ?? null} quality={current.qualityTier ?? null} />
+      </span>
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={sheetOpen}
+        aria-label={t.gen.modelChangeLabel}
+        ref={changeRef}
+        onClick={() => setSheetOpen(true)}
+        className="tap press shrink-0 rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)]"
+      >
+        {t.gen.modelChange}
+      </button>
+    </div>
+  ) : (
+    <p className="studio-field p-3 text-[13px] text-[var(--color-muted)]">{t.gen.noModels}</p>
+  );
+
+  // Image and Enhance lay the picture on the table, large; elsewhere it is a thumbnail.
+  const wellPicture = desk === "image" || desk === "enhance";
+  const sourceBlock = sourced ? (
+    <div className="flex flex-col gap-2">
+      <span className="studio-label">{desk === "video" ? t.desk.startFrame : t.gen.sourceLabel}</span>
+      <SourcePicker
+        orgId={orgId}
+        value={sourceId}
+        compact
+        well={wellPicture}
+        onChange={(id) => {
+          setSourceId(id);
+          edited();
+        }}
+        libraryHref={path("/library")}
+      />
+      <span className="text-[12px] text-[var(--color-muted)]">
+        {capability === "describe" ? t.gen.describeNote : t.gen.keepsShape}
+      </span>
+    </div>
+  ) : null;
+
+  const describeLangBlock =
+    capability === "describe" ? (
       <div className="flex flex-col gap-2">
-        {/* The mode switch: what to make. The tools below it start from something in the library. */}
-        <SegmentedSwitch
-          semantics="tab"
-          label={t.gen.kindLabel}
-          idPrefix="gen-tab"
-          controls="gen-tabpanel"
-          size="lg"
-          className="w-full [&>button]:flex-1 [&>button]:justify-center"
-          value={MAKE_KINDS.includes(capability) ? capability : null}
-          onChange={pick}
-          options={MAKE_KINDS.map((c) => {
-            const Icon = TOOL_ICONS[c];
-            return { value: c, label: t.gen.tabs[c], icon: <Icon aria-hidden className="size-4" strokeWidth={1.75} /> };
-          })}
-        />
-        <div role="tablist" aria-label={t.gen.toolRowLabel} className="grid grid-cols-3 gap-1">
-          {MEDIA_TOOLS.map(tab)}
+        <span className="studio-label" id="gen-describe-lang">
+          {t.gen.describeLanguageLabel}
+        </span>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="gen-describe-lang">
+          <Languages aria-hidden className="size-3.5 text-[var(--color-muted)]" />
+          {DESCRIBE_LANGUAGES.map((l) => (
+            <button
+              key={l}
+              type="button"
+              lang={l}
+              aria-pressed={describeLanguage === l}
+              onClick={() => {
+                setDescribeLanguage(l);
+                edited();
+              }}
+              className="studio-chip"
+            >
+              {t.gen.languages[l]}
+            </button>
+          ))}
         </div>
       </div>
+    ) : null;
 
-      {dna && <ChannelDnaHint href={dna.href} />}
+  const endFrameBlock = takesEnd ? (
+    <div className="flex flex-col gap-2" data-testid="gen-end-frame">
+      <span className="studio-label">
+        {t.gen.endFrameLabel} · {t.gen.optional}
+      </span>
+      {endFrameId || endOpen ? (
+        <>
+          <SourcePicker
+            orgId={orgId}
+            value={endFrameId}
+            compact
+            label={t.gen.endFrameLabel}
+            onChange={(id) => {
+              setEndFrameId(id);
+              edited();
+            }}
+            libraryHref={path("/library")}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setEndFrameId(null);
+              setEndOpen(false);
+              edited();
+            }}
+            className="btn-quiet w-fit text-[12px]"
+          >
+            {t.gen.endFrameRemove}
+          </button>
+        </>
+      ) : (
+        <button type="button" onClick={() => setEndOpen(true)} className="studio-chip w-fit">
+          {t.gen.endFrameAdd}
+        </button>
+      )}
+      <span className="text-[12px] text-[var(--color-muted)]">{t.gen.endFrameNote}</span>
+    </div>
+  ) : null;
 
-      <div role="tabpanel" id="gen-tabpanel" aria-labelledby={`gen-tab-${capability}`} className="flex flex-col gap-4">
-        {/* The model: what will make it, how fast, how good — and a way to change it. */}
-        {current ? (
-          <div className="studio-field flex items-center gap-3 p-3">
-            <span
-              aria-hidden
-              className="grid size-10 shrink-0 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] text-[var(--ns-amber-ink)]"
-            >
-              <ToolIcon className="size-5" strokeWidth={1.75} />
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col gap-1">
-              <span className="studio-label">{t.gen.modelLabel}</span>
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="truncate text-[14px] font-semibold text-[var(--color-fg)]" data-testid="gen-model-name">
-                  {current.displayName}
-                </span>
-                {current.beta && (
-                  <span className="shrink-0 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
-                    {t.gen.beta}
+  const videoSourceBlock = filmed ? (
+    <div className="flex flex-col gap-2">
+      <span className="studio-label">{t.gen.videoLabel}</span>
+      <SourcePicker
+        orgId={orgId}
+        value={sourceId}
+        compact
+        media="video"
+        maxSeconds={current?.maxSourceSeconds ?? null}
+        onChange={(id) => {
+          setSourceId(id);
+          edited();
+        }}
+        libraryHref={path("/library")}
+      />
+      <span className="text-[12px] text-[var(--color-muted)]">{t.gen.videoUpscaleNote}</span>
+    </div>
+  ) : null;
+
+  const recordingBlock = recorded ? (
+    <div className="flex flex-col gap-2">
+      <span className="studio-label">{t.gen.recordingLabel}</span>
+      <SourcePicker
+        orgId={orgId}
+        value={sourceId}
+        compact
+        media="recording"
+        maxSeconds={RECORDING_MAX_SECONDS[capability as "voice_change" | "dub"]}
+        onChange={(id) => {
+          setSourceId(id);
+          edited();
+        }}
+        libraryHref={path("/library")}
+      />
+      <span className="text-[12px] text-[var(--color-muted)]">
+        {capability === "dub" ? t.gen.dubNote : t.gen.voiceChangeNote}
+      </span>
+    </div>
+  ) : null;
+
+  // A voice's character in the reader's language (the list's own words are English).
+  const voiceStyle = (v: { id: string; style: string }) => (t.desk.voiceStyles as Record<string, string>)[v.id] ?? v.style;
+  const pickVoice = (id: string | null) => {
+    setVoiceId(id);
+    edited();
+  };
+  // The cast is a radio group: arrows move and pick, Home/End jump, one tab stop.
+  const castRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const castPicked = STUDIO_VOICES.some((v) => v.id === voiceId);
+  function onCastKey(e: KeyboardEvent<HTMLButtonElement>, i: number) {
+    const n = STUDIO_VOICES.length;
+    let to = -1;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") to = (i + 1) % n;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") to = (i - 1 + n) % n;
+    else if (e.key === "Home") to = 0;
+    else if (e.key === "End") to = n - 1;
+    if (to < 0) return;
+    e.preventDefault();
+    pickVoice(STUDIO_VOICES[to].id);
+    castRefs.current[to]?.focus();
+  }
+  const voiceBlock =
+    capability === "voice_change" || capability === "tts" ? (
+      desk === "voice" ? (
+        // The booth's cast: every voice as a row, one picked (the same ids the select offers).
+        <div className="flex flex-col gap-2">
+          <span className="studio-label" id="gen-voice-label">
+            {capability === "tts" ? t.gen.ttsVoiceLabel : t.gen.voiceLabel}
+          </span>
+          <div role="radiogroup" aria-labelledby="gen-voice-label" className="desk-cast" data-testid="gen-voice-cast">
+            {STUDIO_VOICES.map((v, i) => {
+              const on = voiceId === v.id;
+              // One tab stop: the picked voice, or the first when none is picked yet.
+              const stop = on || (!castPicked && i === 0);
+              return (
+                <button
+                  key={v.id}
+                  ref={(el) => {
+                    castRefs.current[i] = el;
+                  }}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  tabIndex={stop ? 0 : -1}
+                  onClick={() => pickVoice(v.id)}
+                  onKeyDown={(e) => onCastKey(e, i)}
+                  className="desk-cast-row"
+                >
+                  <span aria-hidden className="ns-lamp" data-tone={on ? "run" : "off"} />
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate font-semibold text-[var(--color-fg)]">{v.name}</span>
+                    <span className="truncate text-[12px] text-[var(--color-muted)]">{voiceStyle(v)}</span>
                   </span>
-                )}
-              </span>
-              <TierMarks speed={current.speedTier ?? null} quality={current.qualityTier ?? null} />
-            </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <label htmlFor="gen-voice" className="studio-label">
+            {capability === "tts" ? t.gen.ttsVoiceLabel : t.gen.voiceLabel}
+          </label>
+          <select
+            id="gen-voice"
+            value={voiceId ?? ""}
+            onChange={(e) => pickVoice(e.target.value || null)}
+            className="studio-field w-full px-3 py-2.5 text-[16px] text-[var(--color-fg)] outline-none sm:text-[14px]"
+          >
+            <option value="">{t.gen.voicePick}</option>
+            {STUDIO_VOICES.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name} — {voiceStyle(v)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )
+    ) : null;
+
+  const dubLangBlock =
+    capability === "dub" ? (
+      <div className="flex flex-col gap-2">
+        <span className="studio-label">{t.gen.languageLabel}</span>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t.gen.languageLabel}>
+          <Languages aria-hidden className="size-3.5 text-[var(--color-muted)]" />
+          {DUB_LANGUAGES.map((l) => (
             <button
+              key={l}
               type="button"
-              aria-haspopup="dialog"
-              aria-expanded={sheetOpen}
-              aria-label={t.gen.modelChangeLabel}
-              ref={changeRef}
-              onClick={() => setSheetOpen(true)}
-              className="tap press shrink-0 rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)]"
+              lang={l}
+              aria-pressed={targetLanguage === l}
+              onClick={() => {
+                setTargetLanguage(l);
+                edited();
+              }}
+              className="studio-chip"
             >
-              {t.gen.modelChange}
+              {t.gen.languages[l]}
+            </button>
+          ))}
+        </div>
+      </div>
+    ) : null;
+
+  // The words, with the settings that ride under them (or, on Enhance, set apart above).
+  const settingsInField = desk !== "enhance";
+  const promptBlock =
+    words !== "none" ? (
+      <div className="flex flex-col gap-2">
+        <label htmlFor="gen-prompt" className="studio-label">
+          {isVoice ? (desk === "voice" ? t.desk.script : t.gen.voiceTextLabel) : desk === "video" ? t.desk.shot : t.gen.promptLabel}
+          {words === "optional" && <span> · {t.gen.optional}</span>}
+        </label>
+        <div className="studio-field flex flex-col">
+          <textarea
+            id="gen-prompt"
+            value={prompt}
+            onChange={(e) => {
+              setPrompt(e.target.value);
+              edited();
+            }}
+            rows={isVoice ? (desk === "voice" ? 10 : 6) : 4}
+            maxLength={PROMPT_MAX}
+            autoFocus={initial !== null}
+            placeholder={t.gen.promptPh[capability]}
+            className={`${desk === "voice" && isVoice ? "desk-script " : ""}min-h-[104px] w-full resize-none bg-transparent px-3 pb-2 pt-3 text-[16px] leading-relaxed text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus-visible:outline-none sm:text-[14px]`}
+          />
+          {settings && settingsInField && <div className="px-2 pb-2">{settings}</div>}
+          {desk === "voice" && isVoice && (
+            // Speech is priced by its characters: the count is the meter that matters here.
+            <div className="flex items-center justify-between gap-2 px-3 pb-2 text-[12px] text-[var(--color-muted)]">
+              <span>{t.desk.scriptNote}</span>
+              <span data-testid="gen-char-count">
+                <Timecode value={prompt.length} format="count" locale={locale} label={fmt(t.desk.charCount, { n: prompt.length, max: PROMPT_MAX })} />
+                <span aria-hidden>
+                  {" / "}
+                  <Timecode value={PROMPT_MAX} format="count" locale={locale} />
+                </span>
+              </span>
+            </div>
+          )}
+        </div>
+        {takesStyle(capability) && (
+          <span className="flex items-start gap-1.5 text-[12px] text-[var(--color-muted)]">
+            <AtSign aria-hidden className="mt-[1px] size-3.5 shrink-0" />
+            {t.gen.mentionHint}
+          </span>
+        )}
+      </div>
+    ) : settingsInField ? (
+      settings
+    ) : null;
+
+  // Enhance: the size keys stand on their own, above everything but the picture.
+  const sizeBlock =
+    !settingsInField && settings ? (
+      <div className="flex flex-col gap-2">
+        <span className="studio-label">{capability === "upscale" ? t.gen.factorLabel : t.gen.targetLabel}</span>
+        <div className="desk-size">{settings}</div>
+      </div>
+    ) : null;
+
+  const qualityBlock =
+    tiers.length > 0 && effectiveQ ? (
+      <div className="flex flex-col gap-2" data-testid="gen-quality">
+        <span className="studio-label" id="gen-quality-label">
+          {t.gen.qualityLabel}
+        </span>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="gen-quality-label">
+          {IMAGE_QUALITIES.filter((q) => tiers.includes(q)).map((q) => {
+            const p = tierPrices[q];
+            return (
+              <button
+                key={q}
+                type="button"
+                data-testid={`gen-quality-${q}`}
+                aria-pressed={effectiveQ === q}
+                // A tier with no price is not sold: it cannot be picked (never shown as free).
+                disabled={p?.status === "error" && p.code === "unpriced"}
+                onClick={() => {
+                  setQuality(q);
+                  edited();
+                }}
+                className="studio-chip"
+              >
+                {tierText(q)}
+              </button>
+            );
+          })}
+        </div>
+        <span className="text-[12px] text-[var(--color-muted)]">{t.gen.qualityNote}</span>
+      </div>
+    ) : null;
+
+  const soundBlock = soundChoice ? (
+    <div className="flex flex-col gap-2" data-testid="gen-sound">
+      <span className="studio-label" id="gen-sound-label">
+        {t.gen.soundLabel}
+      </span>
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="gen-sound-label">
+        {([false, true] as const).map((on) => {
+          const p = on ? soundPrices.sound : soundPrices.silent;
+          return (
+            <button
+              key={String(on)}
+              type="button"
+              data-testid={on ? "gen-sound-on" : "gen-sound-off"}
+              aria-pressed={effectiveSnd === on}
+              // A setting with no price is not sold: it cannot be picked (never shown as free).
+              disabled={p?.status === "error" && p.code === "unpriced"}
+              onClick={() => {
+                setSound(on);
+                edited();
+              }}
+              className="studio-chip"
+            >
+              {soundText(on)}
+            </button>
+          );
+        })}
+      </div>
+      <span className="text-[12px] text-[var(--color-muted)]">{t.gen.soundNote}</span>
+    </div>
+  ) : null;
+
+  const styleBlock =
+    takesStyle(capability) && styles.state !== "unavailable" ? (
+      <div className="flex flex-col gap-2">
+        <span className="studio-label">{t.gen.styleLabel}</span>
+        {styles.state === "loading" ? (
+          <div className="flex flex-wrap gap-2" aria-busy="true" aria-label={t.gen.styleLoading}>
+            {[0, 1, 2].map((i) => (
+              <span key={i} className="skeleton h-8 w-20 rounded-[var(--ns-r-key)]" />
+            ))}
+          </div>
+        ) : styles.state === "failed" ? (
+          <div className="flex flex-wrap items-center gap-3 text-[13px] text-[var(--color-muted)]">
+            <span>{t.gen.styleFailed}</span>
+            <button type="button" onClick={() => void styles.reload()} className="studio-chip">
+              {t.gen.styleRetry}
             </button>
           </div>
         ) : (
-          <p className="studio-field p-3 text-[13px] text-[var(--color-muted)]">{t.gen.noModels}</p>
-        )}
-
-        {sourced && (
-          <div className="flex flex-col gap-2">
-            <span className="studio-label">{t.gen.sourceLabel}</span>
-            <SourcePicker
-              orgId={orgId}
-              value={sourceId}
-              compact
-              onChange={(id) => {
-                setSourceId(id);
-                edited();
-              }}
-              libraryHref={path("/library")}
-            />
-            <span className="text-[12px] text-[var(--color-muted)]">
-              {capability === "describe" ? t.gen.describeNote : t.gen.keepsShape}
-            </span>
-          </div>
-        )}
-
-        {capability === "describe" && (
-          <div className="flex flex-col gap-2">
-            <span className="studio-label" id="gen-describe-lang">
-              {t.gen.describeLanguageLabel}
-            </span>
-            <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="gen-describe-lang">
-              <Languages aria-hidden className="size-3.5 text-[var(--color-muted)]" />
-              {DESCRIBE_LANGUAGES.map((l) => (
-                <button
-                  key={l}
-                  type="button"
-                  lang={l}
-                  aria-pressed={describeLanguage === l}
-                  onClick={() => {
-                    setDescribeLanguage(l);
-                    edited();
-                  }}
-                  className="studio-chip"
-                >
-                  {t.gen.languages[l]}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {takesEnd && (
-          <div className="flex flex-col gap-2" data-testid="gen-end-frame">
-            <span className="studio-label">
-              {t.gen.endFrameLabel} · {t.gen.optional}
-            </span>
-            {endFrameId || endOpen ? (
-              <>
-                <SourcePicker
-                  orgId={orgId}
-                  value={endFrameId}
-                  compact
-                  label={t.gen.endFrameLabel}
-                  onChange={(id) => {
-                    setEndFrameId(id);
-                    edited();
-                  }}
-                  libraryHref={path("/library")}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEndFrameId(null);
-                    setEndOpen(false);
-                    edited();
-                  }}
-                  className="btn-quiet w-fit text-[12px]"
-                >
-                  {t.gen.endFrameRemove}
-                </button>
-              </>
-            ) : (
-              <button type="button" onClick={() => setEndOpen(true)} className="studio-chip w-fit">
-                {t.gen.endFrameAdd}
-              </button>
-            )}
-            <span className="text-[12px] text-[var(--color-muted)]">{t.gen.endFrameNote}</span>
-          </div>
-        )}
-
-        {filmed && (
-          <div className="flex flex-col gap-2">
-            <span className="studio-label">{t.gen.videoLabel}</span>
-            <SourcePicker
-              orgId={orgId}
-              value={sourceId}
-              compact
-              media="video"
-              maxSeconds={current?.maxSourceSeconds ?? null}
-              onChange={(id) => {
-                setSourceId(id);
-                edited();
-              }}
-              libraryHref={path("/library")}
-            />
-            <span className="text-[12px] text-[var(--color-muted)]">{t.gen.videoUpscaleNote}</span>
-          </div>
-        )}
-
-        {recorded && (
-          <div className="flex flex-col gap-2">
-            <span className="studio-label">{t.gen.recordingLabel}</span>
-            <SourcePicker
-              orgId={orgId}
-              value={sourceId}
-              compact
-              media="recording"
-              maxSeconds={RECORDING_MAX_SECONDS[capability as "voice_change" | "dub"]}
-              onChange={(id) => {
-                setSourceId(id);
-                edited();
-              }}
-              libraryHref={path("/library")}
-            />
-            <span className="text-[12px] text-[var(--color-muted)]">
-              {capability === "dub" ? t.gen.dubNote : t.gen.voiceChangeNote}
-            </span>
-          </div>
-        )}
-
-        {(capability === "voice_change" || capability === "tts") && (
-          <div className="flex flex-col gap-2">
-            <label htmlFor="gen-voice" className="studio-label">
-              {capability === "tts" ? t.gen.ttsVoiceLabel : t.gen.voiceLabel}
-            </label>
-            <select
-              id="gen-voice"
-              value={voiceId ?? ""}
-              onChange={(e) => {
-                setVoiceId(e.target.value || null);
-                edited();
-              }}
-              className="studio-field w-full px-3 py-2.5 text-[16px] text-[var(--color-fg)] outline-none sm:text-[14px]"
-            >
-              <option value="">{t.gen.voicePick}</option>
-              {STUDIO_VOICES.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name} — {v.style}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {capability === "dub" && (
-          <div className="flex flex-col gap-2">
-            <span className="studio-label">{t.gen.languageLabel}</span>
-            <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t.gen.languageLabel}>
-              <Languages aria-hidden className="size-3.5 text-[var(--color-muted)]" />
-              {DUB_LANGUAGES.map((l) => (
-                <button
-                  key={l}
-                  type="button"
-                  lang={l}
-                  aria-pressed={targetLanguage === l}
-                  onClick={() => {
-                    setTargetLanguage(l);
-                    edited();
-                  }}
-                  className="studio-chip"
-                >
-                  {t.gen.languages[l]}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {words !== "none" ? (
-          <div className="flex flex-col gap-2">
-            <label htmlFor="gen-prompt" className="studio-label">
-              {isVoice ? t.gen.voiceTextLabel : t.gen.promptLabel}
-              {words === "optional" && <span> · {t.gen.optional}</span>}
-            </label>
-            <div className="studio-field flex flex-col">
-              <textarea
-                id="gen-prompt"
-                value={prompt}
-                onChange={(e) => {
-                  setPrompt(e.target.value);
+          <>
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t.gen.styleLabel}>
+              <button
+                type="button"
+                aria-pressed={effectiveStyle === null}
+                onClick={() => {
+                  setStyleKitId(null);
                   edited();
                 }}
-                rows={isVoice ? 6 : 4}
-                maxLength={PROMPT_MAX}
-                autoFocus={initial !== null}
-                placeholder={t.gen.promptPh[capability]}
-                className="min-h-[104px] w-full resize-none bg-transparent px-3 pb-2 pt-3 text-[16px] leading-relaxed text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus-visible:outline-none sm:text-[14px]"
-              />
-              {settings && <div className="px-2 pb-2">{settings}</div>}
+                className="studio-chip"
+              >
+                {t.gen.styleNone}
+              </button>
+              {styles.kits.map((k) => (
+                <button
+                  key={k.id}
+                  type="button"
+                  aria-pressed={effectiveStyle === k.id}
+                  onClick={() => {
+                    setStyleKitId(k.id);
+                    edited();
+                  }}
+                  className="studio-chip"
+                >
+                  <span className="truncate">{k.name}</span>
+                </button>
+              ))}
             </div>
-            {takesStyle(capability) && (
-              <span className="flex items-start gap-1.5 text-[12px] text-[var(--color-muted)]">
-                <AtSign aria-hidden className="mt-[1px] size-3.5 shrink-0" />
-                {t.gen.mentionHint}
+            {styles.kits.length === 0 && (
+              <span className="text-[12px] text-[var(--color-muted)]">
+                {t.gen.styleEmpty}{" "}
+                <Link href={path("/studio")} className="tap-link text-[var(--color-primary)] underline">
+                  {t.gen.styleMake}
+                </Link>
               </span>
             )}
-          </div>
-        ) : (
-          settings
+            {/* The built-in library: opening it changes nothing here, adding a style is a click there. */}
+            <Link href={path("/styles")} className="tap-link self-start text-[12px] text-[var(--color-primary)] underline">
+              {t.gen.styleBrowse}
+            </Link>
+          </>
         )}
+      </div>
+    ) : null;
 
-        {tiers.length > 0 && effectiveQ && (
-          <div className="flex flex-col gap-2" data-testid="gen-quality">
-            <span className="studio-label" id="gen-quality-label">
-              {t.gen.qualityLabel}
-            </span>
-            <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="gen-quality-label">
-              {IMAGE_QUALITIES.filter((q) => tiers.includes(q)).map((q) => {
-                const p = tierPrices[q];
-                return (
-                  <button
-                    key={q}
-                    type="button"
-                    data-testid={`gen-quality-${q}`}
-                    aria-pressed={effectiveQ === q}
-                    // A tier with no price is not sold: it cannot be picked (never shown as free).
-                    disabled={p?.status === "error" && p.code === "unpriced"}
-                    onClick={() => {
-                      setQuality(q);
-                      edited();
-                    }}
-                    className="studio-chip"
-                  >
-                    {tierText(q)}
-                  </button>
-                );
-              })}
-            </div>
-            <span className="text-[12px] text-[var(--color-muted)]">{t.gen.qualityNote}</span>
-          </div>
-        )}
-
-        {soundChoice && (
-          <div className="flex flex-col gap-2" data-testid="gen-sound">
-            <span className="studio-label" id="gen-sound-label">
-              {t.gen.soundLabel}
-            </span>
-            <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="gen-sound-label">
-              {([false, true] as const).map((on) => {
-                const p = on ? soundPrices.sound : soundPrices.silent;
-                return (
-                  <button
-                    key={String(on)}
-                    type="button"
-                    data-testid={on ? "gen-sound-on" : "gen-sound-off"}
-                    aria-pressed={effectiveSnd === on}
-                    // A setting with no price is not sold: it cannot be picked (never shown as free).
-                    disabled={p?.status === "error" && p.code === "unpriced"}
-                    onClick={() => {
-                      setSound(on);
-                      edited();
-                    }}
-                    className="studio-chip"
-                  >
-                    {soundText(on)}
-                  </button>
-                );
-              })}
-            </div>
-            <span className="text-[12px] text-[var(--color-muted)]">{t.gen.soundNote}</span>
-          </div>
-        )}
-
-        {takesStyle(capability) && styles.state !== "unavailable" && (
-          <div className="flex flex-col gap-2">
-            <span className="studio-label">{t.gen.styleLabel}</span>
-            {styles.state === "loading" ? (
-              <div className="flex flex-wrap gap-2" aria-busy="true" aria-label={t.gen.styleLoading}>
-                {[0, 1, 2].map((i) => (
-                  <span key={i} className="skeleton h-8 w-20 rounded-[var(--ns-r-key)]" />
-                ))}
-              </div>
-            ) : styles.state === "failed" ? (
-              <div className="flex flex-wrap items-center gap-3 text-[13px] text-[var(--color-muted)]">
-                <span>{t.gen.styleFailed}</span>
-                <button type="button" onClick={() => void styles.reload()} className="studio-chip">
-                  {t.gen.styleRetry}
-                </button>
-              </div>
-            ) : (
+  const dockBlock = (
+    <div className="studio-dock flex flex-col gap-2" data-testid="gen-dock">
+      {/* The price key (components/ui/PriceButton): the action and the
+          database's quote as two legends; its name is the same sentence. */}
+      <PriceButton
+        ref={generateRef}
+        disabled={disabled}
+        onClick={generate}
+        aria-busy={submitting || quote.status === "quoting"}
+        aria-describedby="gen-status"
+        aria-label={submitting ? t.gen.starting : generateLabel(t, quote, locale, capability)}
+        label={
+          submitting
+            ? t.gen.starting
+            : quote.status === "quoting"
+              ? t.gen.quoting
+              : capability === "describe"
+                ? t.gen.describe
+                : t.gen.generate
+        }
+        credits={!submitting && quote.status === "ready" ? quote.credits : null}
+        unit={quote.status === "ready" ? creditUnit(quote.credits, locale, t.shell.creditUnit) : undefined}
+        locale={locale}
+        icon={<span aria-hidden className={`ns-rec${quote.status === "quoting" || submitting ? " pulse" : ""}`} />}
+      />
+      <p id="gen-status" className={`min-h-[18px] text-[12px]${desk ? "" : " text-center"}`} aria-live="polite">
+        {notice?.kind === "ok" ? (
+          <span className="text-[var(--color-ok)]">{t.gen.started}</span>
+        ) : errorCode ? (
+          <span className="text-[var(--color-fail)]">
+            {apiErrorMessage(t, errorCode)}
+            {errorAction(errorCode) === "credits" && (
               <>
-                <div className="flex flex-wrap gap-2" role="group" aria-label={t.gen.styleLabel}>
-                  <button
-                    type="button"
-                    aria-pressed={effectiveStyle === null}
-                    onClick={() => {
-                      setStyleKitId(null);
-                      edited();
-                    }}
-                    className="studio-chip"
-                  >
-                    {t.gen.styleNone}
-                  </button>
-                  {styles.kits.map((k) => (
-                    <button
-                      key={k.id}
-                      type="button"
-                      aria-pressed={effectiveStyle === k.id}
-                      onClick={() => {
-                        setStyleKitId(k.id);
-                        edited();
-                      }}
-                      className="studio-chip"
-                    >
-                      <span className="truncate">{k.name}</span>
-                    </button>
-                  ))}
-                </div>
-                {styles.kits.length === 0 && (
-                  <span className="text-[12px] text-[var(--color-muted)]">
-                    {t.gen.styleEmpty}{" "}
-                    <Link href={path("/studio")} className="tap-link text-[var(--color-primary)] underline">
-                      {t.gen.styleMake}
-                    </Link>
-                  </span>
-                )}
-                {/* The built-in library: opening it changes nothing here, adding a style is a click there. */}
-                <Link href={path("/styles")} className="tap-link self-start text-[12px] text-[var(--color-primary)] underline">
-                  {t.gen.styleBrowse}
+                {" "}
+                <Link href={path("/credits")} className="tap-link text-[var(--color-primary)] underline">
+                  {t.gen.addCredits}
                 </Link>
               </>
             )}
-          </div>
+            {plans && isUpsellCode(errorCode) && errorAction(errorCode) === "plans" && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  aria-haspopup="dialog"
+                  onClick={() =>
+                    setUpsell((u) => ({ refusal: u?.refusal.code === errorCode ? u.refusal : refusalFrom(errorCode, null), open: true }))
+                  }
+                  className="tap-link text-[var(--color-primary)] underline"
+                >
+                  {t.upsell.seePlans}
+                </button>
+              </>
+            )}
+          </span>
+        ) : blockedText ? (
+          <span className="text-[var(--color-muted)]">{blockedText}</span>
+        ) : (
+          <span className="text-[var(--color-muted)]">{t.gen.holdNote}</span>
         )}
-      </div>
+      </p>
+    </div>
+  );
 
-      <div className="studio-dock flex flex-col gap-2" data-testid="gen-dock">
-        {/* The price key (components/ui/PriceButton): the action and the
-            database's quote as two legends; its name is the same sentence. */}
-        <PriceButton
-          ref={generateRef}
-          disabled={disabled}
-          onClick={generate}
-          aria-busy={submitting || quote.status === "quoting"}
-          aria-describedby="gen-status"
-          aria-label={submitting ? t.gen.starting : generateLabel(t, quote, locale, capability)}
-          label={
-            submitting
-              ? t.gen.starting
-              : quote.status === "quoting"
-                ? t.gen.quoting
-                : capability === "describe"
-                  ? t.gen.describe
-                  : t.gen.generate
-          }
-          credits={!submitting && quote.status === "ready" ? quote.credits : null}
-          unit={quote.status === "ready" ? creditUnit(quote.credits, locale, t.shell.creditUnit) : undefined}
-          locale={locale}
-          icon={<span aria-hidden className={`ns-rec${quote.status === "quoting" || submitting ? " pulse" : ""}`} />}
-        />
-        <p id="gen-status" className="min-h-[18px] text-center text-[12px]" aria-live="polite">
-          {notice?.kind === "ok" ? (
-            <span className="text-[var(--color-ok)]">{t.gen.started}</span>
-          ) : errorCode ? (
-            <span className="text-[var(--color-fail)]">
-              {apiErrorMessage(t, errorCode)}
-              {errorAction(errorCode) === "credits" && (
-                <>
-                  {" "}
-                  <Link href={path("/credits")} className="tap-link text-[var(--color-primary)] underline">
-                    {t.gen.addCredits}
-                  </Link>
-                </>
-              )}
-              {plans && isUpsellCode(errorCode) && errorAction(errorCode) === "plans" && (
-                <>
-                  {" "}
-                  <button
-                    type="button"
-                    aria-haspopup="dialog"
-                    onClick={() =>
-                      setUpsell((u) => ({ refusal: u?.refusal.code === errorCode ? u.refusal : refusalFrom(errorCode, null), open: true }))
-                    }
-                    className="tap-link text-[var(--color-primary)] underline"
-                  >
-                    {t.upsell.seePlans}
-                  </button>
-                </>
-              )}
-            </span>
-          ) : blockedText ? (
-            <span className="text-[var(--color-muted)]">{blockedText}</span>
-          ) : (
-            <span className="text-[var(--color-muted)]">{t.gen.holdNote}</span>
-          )}
-        </p>
-      </div>
-
+  const dialogs = (
+    <>
       {sheetOpen && (
         <ModelSheet
           capability={capability}
@@ -950,6 +1077,164 @@ export function GeneratePanel({
           returnTo={generateRef}
         />
       )}
+    </>
+  );
+
+  const title = (
+    <h2 id="gen-title" className="sr-only">
+      {t.gen.title}
+    </h2>
+  );
+  const panel = (className: string, children: ReactNode) => (
+    <div role="tabpanel" id="gen-tabpanel" aria-labelledby={`gen-tab-${capability}`} className={className}>
+      {children}
+    </div>
+  );
+
+  // ── the arrangements ───────────────────────────────────────────────────────
+
+  if (desk === "video") {
+    // A column beside the monitor: the desk's two ways in, the frames side by
+    // side (start, and an end where the model takes one), the shot with its
+    // shape and length keys, then sound, look, model and the price key.
+    return (
+      <section className="studio-surface desk-composer" data-desk="video" aria-labelledby="gen-title">
+        {title}
+        {tabsBlock}
+        {dnaBlock}
+        {panel(
+          "flex flex-col gap-4",
+          <>
+            {(sourceBlock || endFrameBlock) && (
+              <div className="desk-frames">
+                {sourceBlock}
+                {endFrameBlock}
+              </div>
+            )}
+            {promptBlock}
+            {soundBlock}
+            {styleBlock}
+            {modelBlock}
+          </>,
+        )}
+        {dockBlock}
+        {dialogs}
+      </section>
+    );
+  }
+
+  if (desk === "voice") {
+    // The booth: the script (or the recording) on the left, the cast and the price key on the right.
+    return (
+      <section className="studio-surface desk-composer" data-desk="voice" aria-labelledby="gen-title">
+        {title}
+        <div className="desk-composer-head">
+          {tabsBlock}
+          {dnaBlock}
+        </div>
+        {panel(
+          "desk-booth",
+          <>
+            <div className="desk-booth-script">
+              {recordingBlock}
+              {promptBlock}
+            </div>
+            <div className="desk-booth-cast">
+              {voiceBlock}
+              {dubLangBlock}
+              {modelBlock}
+              {dockBlock}
+            </div>
+          </>,
+        )}
+        {dialogs}
+      </section>
+    );
+  }
+
+  if (desk === "enhance") {
+    // The loupe's control bar, across the top: the tools | the picture or
+    // video | the size (and, for a picture, what to keep sharp) | model and key.
+    return (
+      <section className="studio-surface desk-composer" data-desk="enhance" aria-labelledby="gen-title">
+        {title}
+        <div className="desk-bench">
+          <div className="desk-bench-tools">
+            {tabsBlock}
+            {dnaBlock}
+          </div>
+          {panel(
+            "desk-bench-panel",
+            <>
+              <div className="desk-bench-source">
+                {sourceBlock}
+                {videoSourceBlock}
+              </div>
+              <div className="desk-bench-size">
+                {sizeBlock}
+                {promptBlock}
+              </div>
+              <div className="desk-bench-go">
+                {modelBlock}
+                {dockBlock}
+              </div>
+            </>,
+          )}
+        </div>
+        {dialogs}
+      </section>
+    );
+  }
+
+  if (desk === "image") {
+    // A column beside the light table: the picture first (when the tool starts
+    // from one), then what to do with it, then the look, then the model.
+    return (
+      <section className="studio-surface desk-composer" data-desk="image" aria-labelledby="gen-title">
+        {title}
+        {tabsBlock}
+        {dnaBlock}
+        {panel(
+          "flex flex-col gap-4",
+          <>
+            {sourceBlock}
+            {describeLangBlock}
+            {promptBlock}
+            {styleBlock}
+            {qualityBlock}
+            {modelBlock}
+          </>,
+        )}
+        {dockBlock}
+        {dialogs}
+      </section>
+    );
+  }
+
+  return (
+    <section className="studio-surface flex flex-col gap-4 p-4" aria-labelledby="gen-title">
+      {title}
+      {tabsBlock}
+      {dnaBlock}
+      {panel(
+        "flex flex-col gap-4",
+        <>
+          {modelBlock}
+          {sourceBlock}
+          {describeLangBlock}
+          {endFrameBlock}
+          {videoSourceBlock}
+          {recordingBlock}
+          {voiceBlock}
+          {dubLangBlock}
+          {promptBlock}
+          {qualityBlock}
+          {soundBlock}
+          {styleBlock}
+        </>,
+      )}
+      {dockBlock}
+      {dialogs}
     </section>
   );
 }

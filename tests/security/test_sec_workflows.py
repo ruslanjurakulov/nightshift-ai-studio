@@ -501,15 +501,20 @@ def test_cancelling_stops_the_run_and_releases_the_step_not_yet_with_the_provide
     assert db.cancel(o.editor, run)["run"]["status"] == "cancelled"  # again: nothing changes
 
 
-def test_a_step_that_could_not_start_for_credits_fails_the_run_without_holding_the_rest(db):
+def test_a_step_that_could_not_start_for_credits_waits_without_holding_the_rest(db):
+    # BR-L-011: a balance short for the next step is not a refusal of a run already paid for
+    # in part. The step stays pending (the reason on record), nothing is held for it or for the
+    # steps after it, and the run carries on once credits are back (test_sec_workflows_wait.py).
     o = db.new_org(credits=17)
     wf, run, out = start_ok(db, o)
     db.worker(db.steps(run)[0][2], charge=4)
     # Another spend drains the account between steps.
     db.su("select public.reserve_credits(%s, 'drain-1', 12)", [o.org])
     out = db.advance(o.editor, run)
-    assert out["steps"][1]["error_code"] == "insufficient_credits" and out["run"]["status"] == "failed"
-    assert out["steps"][2]["job_id"] is None and db.jobs(o.org) == 1
+    assert out["steps"][1]["error_code"] == "insufficient_credits" and out["steps"][1]["status"] == "pending"
+    assert out["run"]["status"] == "running" and out["run"]["charged_credits"] == 4
+    assert out["steps"][1]["job_id"] is None and out["steps"][2]["job_id"] is None and db.jobs(o.org) == 1
+    assert db.holds(o.org) == (1, 12)  # only the other spend's own hold
 
 
 # ── other organizations ─────────────────────────────────────────────────────
