@@ -144,6 +144,33 @@ class MalformedJsonTests(unittest.TestCase):
         for r in results:
             self.assertEqual(r.sentiment, "neutral")
             self.assertFalse(r.flagged_injection_attempt)
+            # A placeholder is not a measurement: the comment inbox never drafts for it.
+            self.assertFalse(r.classified)
+
+    @patch("modules.comment_intelligence.make_client")
+    @patch("modules.comment_intelligence.generate_with_retry")
+    def test_a_partial_answer_is_not_a_verdict(self, mock_generate, mock_make_client):
+        # No category, an unknown category, no injection verdict or a non-boolean one: the
+        # model did not classify this comment, so it is unclassified (never "off_topic, clean").
+        answers = [
+            {"comment_id": 1},
+            {"comment_id": 2, "sentiment": "neutral", "category": "banana", "flagged_injection_attempt": False},
+            {"comment_id": 3, "sentiment": "neutral", "category": "praise"},
+            {"comment_id": 4, "sentiment": "neutral", "category": "praise", "flagged_injection_attempt": "false"},
+            {"comment_id": 5, "sentiment": "neutral", "category": "praise", "flagged_injection_attempt": False},
+        ]
+        mock_generate.return_value = _fake_response(json.dumps(answers))
+        got = {r.comment_id: r for r in classify_comments([{"id": i, "text": "x"} for i in range(1, 6)])}
+        self.assertEqual({i: got[i].classified for i in got}, {1: False, 2: False, 3: False, 4: False, 5: True})
+
+    @patch("modules.comment_intelligence.make_client")
+    @patch("modules.comment_intelligence.generate_with_retry")
+    def test_a_real_classification_is_marked_classified(self, mock_generate, mock_make_client):
+        mock_generate.return_value = _fake_response(json.dumps([
+            {"comment_id": 1, "sentiment": "positive", "category": "praise", "flagged_injection_attempt": False},
+        ]))
+        (r,) = classify_comments([{"id": 1, "text": "great"}])
+        self.assertTrue(r.classified)
 
 
 class PromptInjectionHarnessTests(unittest.TestCase):

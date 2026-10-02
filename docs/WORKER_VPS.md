@@ -131,7 +131,31 @@ GOOGLE_OAUTH_CLIENT_SECRET=
 # WORKER_POLL_SECONDS=15
 # WORKER_STALE_MINUTES=10
 # WORKER_STOP_GRACE_SECONDS=3300
+
+# Izohlar qutisi (migration 0081, modules/comment_replies.py). DEFAULT: O'CHIQ.
+# NIGHTSHIFT_COMMENT_INBOX=on           # faqat "on" bo'lsa ishlaydi (0081 qo'llanganidan keyin)
+# NIGHTSHIFT_INBOX_SYNC_SECONDS=300     # har oraliqda bitta kanal, navbat bilan
 ```
+
+**Izohlar qutisi (0081): sukut bo'yicha o'chiq.** `NIGHTSHIFT_COMMENT_INBOX=on`
+qo'yilgandagina worker render vazifalari orasida ulangan kanallarning oxirgi
+izohlarini o'qiydi (har oraliqda bitta kanal, 5 ta oxirgi ochiq video,
+taxminan 3-7 kvota birligi), yangilarini tasniflaydi (pullik model chaqiruvi),
+odam narx bilan so'ragan javob qoralamasini yozadi va **faqat odam tasdiqlagan
+matnni** `comments.insert` orqali kanalning o'z tokeni bilan, bir marta e'lon
+qiladi (50 kvota birligi; kvota tugasa `quota_exceeded` yoziladi, odam keyinroq
+qayta navbatga qo'yadi). Hech narsa o'zi javob bermaydi. Tartib: avval `0081`ni
+qo'llang, keyin workerni `on` bilan ishga tushiring, **eng oxirida** `credit_prices`
+ga `reply_draft` narxini qo'ying (narx bo'lmaguncha qoralama so'rash o'chiq).
+`0081` qo'llanmagan bo'lsa worker bir marta log yozadi va hech narsani o'qimaydi
+yoki tasniflamaydi. Butun quti uchun kunlik YouTube kvota chegarasi bor
+(`inbox_settings.daily_quota_ceiling`, sukut 2000 birlik; faqat platforma admini
+`set_inbox_quota_ceiling` bilan o'zgartiradi): chegaraga yetganda o'qish va
+javoblar to'xtaydi, yuklashlar uchun kvota qoladi. Token `youtube.force-ssl`
+ruxsatisiz bo'lsa yoki ulanish bekor qilingan bo'lsa, javob berilmaydi
+(`channel_not_ready`) va kanalni qayta ulash so'raladi. Mijoz tashkiloti kanali
+faqat Vault tokeni bilan javob beradi (muhit o'zgaruvchisidagi token faqat
+operatorning o'z kanallari uchun).
 
 Worker kanallarni bir-biridan ajratadi: har bir vazifa faqat **o'z kanalining**
 tokenini ko'radi (boshqa `CHRONOS_YT_TOKEN_*` lar `main.py` muhitidan olib

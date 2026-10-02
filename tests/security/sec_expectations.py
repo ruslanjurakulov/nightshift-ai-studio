@@ -483,3 +483,8 @@ sec_channel_lock_0086.extend(TABLES, FUNCTIONS)
 import sec_repurpose_0080  # noqa: E402
 
 sec_repurpose_0080.extend(TABLES, FUNCTIONS)
+
+# Migration 0081 (the comment inbox): tests/security/sec_inbox_0081.py
+import sec_inbox_0081  # noqa: E402
+
+sec_inbox_0081.extend(TABLES, FUNCTIONS)
