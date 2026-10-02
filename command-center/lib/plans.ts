@@ -52,6 +52,9 @@ export interface PlanCatalog {
   values: Record<string, Record<string, EntitlementValue>>;
   /** How long a top-up pack's credits last (credit_lot_policies); null = never expire, undefined = unknown. */
   packValidMonths?: number | null;
+  /** The policy could not be read (its query failed, or the pack row is malformed): the
+   *  expiry is UNKNOWN, never "do not expire" (BR-L-131). Absent when there is no policy table. */
+  packExpiryUnknown?: boolean;
 }
 
 const PLAN_ID_RE = /^[a-z][a-z0-9_]{1,30}$/;
@@ -135,13 +138,17 @@ export function coercePlanCatalog(
     if (v !== null) plan[key.key] = v;
   }
   let packValidMonths: number | null | undefined;
+  let packExpiryUnknown = false;
   for (const r of Array.isArray(policyRows) ? policyRows : []) {
     const o = (r ?? {}) as Record<string, unknown>;
     if (o.source !== "pack") continue;
     const m = num(o.valid_months);
     packValidMonths = o.valid_months === null ? null : m !== null && Number.isInteger(m) && m >= 1 && m <= 120 ? m : undefined;
+    // A pack row whose term is not a whole number of months in range says
+    // nothing usable: unknown, not "never" (BR-L-131).
+    packExpiryUnknown = packValidMonths === undefined;
   }
-  return { plans, keys, values, packValidMonths };
+  return packExpiryUnknown ? { plans, keys, values, packValidMonths, packExpiryUnknown } : { plans, keys, values, packValidMonths };
 }
 
 // ── this deployment's plan prices ────────────────────────────────────────────
@@ -622,9 +629,17 @@ export function balanceSplit(
 export type PackExpiry = { kind: "months"; months: number } | { kind: "never" } | { kind: "unknown" };
 
 export function packExpiry(
-  read: { state: "ok"; value: { packValidMonths?: number | null } } | { state: "unsupported" } | { state: "failed" } | null,
+  read:
+    | { state: "ok"; value: { packValidMonths?: number | null; packExpiryUnknown?: boolean } }
+    | { state: "unsupported" }
+    | { state: "failed" }
+    | null,
   envMonths: number | null,
 ): PackExpiry {
+  if (read?.state === "ok" && read.value.packExpiryUnknown) {
+    // The policy exists but could not be read: only the operator's env may speak (BR-L-131).
+    return envMonths !== null ? { kind: "months", months: envMonths } : { kind: "unknown" };
+  }
   if (read?.state === "ok" && read.value.packValidMonths !== undefined) {
     return read.value.packValidMonths === null ? { kind: "never" } : { kind: "months", months: read.value.packValidMonths };
   }

@@ -6,7 +6,6 @@
  */
 
 import { API_TIERS, TOPUP_MAX_CENTS, TOPUP_MIN_CENTS } from "@/lib/api/pricing";
-import { IMAGE_PROVIDERS, VIDEO_PROVIDERS } from "@/lib/runBackend";
 import { API_SCOPES, KEY_RPM_MAX, LEGACY_SCOPES } from "@/lib/api/scopes";
 import { CREATIVE_CAPABILITIES, PARAM_KEYS } from "@/lib/creative/operations";
 
@@ -201,8 +200,11 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
             duration: { type: "integer", minimum: 30, maximum: 3600, description: "Seconds. Defaults to the channel's target length; the price is based on it." },
             language: { type: "string", maxLength: 40 },
             visual_style: { type: "string", maxLength: 300 },
-            video_provider: { type: "string", enum: [...VIDEO_PROVIDERS] },
-            image_provider: { type: "string", enum: [...IMAGE_PROVIDERS] },
+            // No list of provider ids here: this document is public, and the
+            // public pages name no vendor (BR-L-133). The server still accepts
+            // only the providers it supports (parseCreateVideo).
+            video_provider: { type: "string", description: "A video provider this deployment supports; anything else is 400 invalid_params." },
+            image_provider: { type: "string", description: "An image provider this deployment supports; anything else is 400 invalid_params." },
           },
         },
         Job: {
@@ -441,7 +443,7 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
       },
       "/videos/{id}/downloads": {
         post: {
-          summary: "Order a 720p / 1080p download (site credit price x $0.015, charged when ready)",
+          summary: "Order a 720p / 1080p download (priced from the live list at /docs/api#pricing, charged when ready)",
           parameters: [pathId("id", "Video id"), idem],
           requestBody: { required: true, content: json({ type: "object", required: ["quality"], properties: { quality: { enum: ["720p", "1080p"] } } }) },
           responses: { "201": { description: "Queued", content: json(ref("Download")) }, "200": { description: "An existing download reused" }, ...errors(400, 401, 402, 403, 404, 422, 429, 503) },

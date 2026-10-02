@@ -25,6 +25,23 @@ export const SECURITY_HEADERS = [
 /** The public paths that are route handlers (files), not pages. */
 export const ROUTE_HANDLER_FILES = ["/robots.txt", "/sitemap.xml", "/docs/api/openapi.json"] as const;
 
+/** The public PAGES (lib/public-paths.ts SITEMAP_PATHS plus sign-in and sign-up;
+ *  tests/middleware-matcher.test.ts keeps the two lists equal). Literal here:
+ *  the config is compiled before the app's modules. */
+export const PUBLIC_PAGE_PATHS = [
+  "/",
+  "/pricing",
+  "/solutions",
+  "/solutions/youtube-channels",
+  "/solutions/creative-studio",
+  "/solutions/developers",
+  "/docs/api",
+  "/privacy",
+  "/terms",
+  "/login",
+  "/signup",
+] as const;
+
 /** Must equal PUBLIC_FONT_PATHS in lib/public-paths.ts (tests/security-headers.test.ts). */
 export const FONT_FILES = [
   "/fonts/sofia-sans-extra-condensed-cyrillic-v6.woff2",
@@ -107,6 +124,17 @@ const nextConfig: NextConfig = {
       // without the RSC header). A route handler has no RSC form: send it to
       // the file itself, before routing.
       ...ROUTE_HANDLER_FILES.map((path) => ({ source: `${path}.rsc`, destination: path, permanent: false })),
+      // BR-L-132: the same mismatch on the public PAGES — `/pricing.rsc` with
+      // an RSC header got the app layout's skeleton. A client navigation never
+      // asks for the `.rsc` suffix (it sends the RSC header to the page's own
+      // path), so the suffixed form goes to the page. The gate and the matcher
+      // are untouched (BR-H-001).
+      ...PUBLIC_PAGE_PATHS.map((path) => ({
+        source: path === "/" ? "/index.rsc" : `${path}.rsc`,
+        destination: path,
+        permanent: false,
+      })),
+      { source: "/.rsc", destination: "/", permanent: false },
     ];
   },
 };

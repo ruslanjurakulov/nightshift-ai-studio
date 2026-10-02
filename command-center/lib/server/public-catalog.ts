@@ -18,6 +18,6 @@ export async function readPublicPlanCatalog(): Promise<PlanRead<PlanCatalog>> {
     const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
     const r = await readPlanCatalog(client, { signal });
     return r.state === "failed" ? null : r;
-  });
+  }, (r) => r.state === "ok" && r.value.packExpiryUnknown === true);
   return read ?? { state: "failed" };
 }

@@ -26,7 +26,7 @@ export type LegalBlock =
    * (lib/legal.ts): `never` while no term is set — nothing in the Service
    * expires credits — and `after`, with `{months}` filled in, once one is.
    */
-  | { creditExpiry: { never: string; after: string } };
+  | { creditExpiry: { never: string; after: string; unknown: string } };
 
 export interface LegalSection {
   /** Stable anchor, identical across languages so a deep link survives a switch. */

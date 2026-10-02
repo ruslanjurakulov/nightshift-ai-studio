@@ -1450,7 +1450,9 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 .st-how-no { font-size: 13px; color: var(--ns-text-dim); }
 .st-how-shot { display: grid; gap: 32px; margin-top: 56px; }
 @media (min-width: 1024px) {
-  .st-how-shot { grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr); gap: 56px; align-items: center; }
+  /* The screen gets three quarters of the row (about 830px at 1440), so its
+     own small type — the hint under the keys — still reads (PIXEL-6 N5). */
+  .st-how-shot { grid-template-columns: minmax(0, 0.5fr) minmax(0, 1.5fr); gap: 48px; align-items: center; }
 }
 .st-shot { margin: 0; }
 /* Two places, one shown: inside step 05 on a phone (one column, so the

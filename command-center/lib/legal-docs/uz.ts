@@ -302,6 +302,7 @@ export const uz: LegalTexts = {
             creditExpiry: {
               never: "8.5. Amal qilish muddati. Kreditlarning muddati tugamaydi.",
               after: "8.5. Amal qilish muddati. Ishlatilmagan kreditlarning muddati sotib olingan kundan boshlab {months} oy oʻtgach tugaydi.",
+              unknown: "8.5. Amal qilish muddati. Toʻldirish kreditlari uchun sotib olish paytida paketlarga belgilangan muddat amal qiladi. Hozir uni bu sahifada koʻrsatib boʻlmadi; joriy muddatni bilish uchun bizga {contactEmail} manziliga yozing.",
             },
           },
           "8.6. Qaytarish. Sotuvchi Paddle boʻlgani uchun qaytarishni Paddle [Paddle xaridorlar shartlari](https://www.paddle.com/legal/checkout-buyer-terms) va amaldagi qonunchilik asosida amalga oshiradi, jumladan yashash joyingizda isteʼmolchi sifatida xariddan voz kechish huquqingiz boʻlsa, shu huquq asosida ham. Qaytarishni soʻrash uchun Paddle chekidagi havoladan foydalaning yoki {contactEmail} manziliga yozing — yordam beramiz.",
