@@ -8,6 +8,7 @@ import { HOME } from "@/lib/navigation";
 import { PageNav } from "@/components/navigation/PageNav";
 import { SectionTabs } from "@/components/navigation/SectionTabs";
 import { useShell } from "@/components/shell/ShellContext";
+import { PageTransition } from "@/components/motion/PageTransition";
 
 export { HOME };
 
@@ -18,8 +19,9 @@ export { HOME };
  * to go back to, so no close control.
  *
  * Every other section opened FROM it is presented the way the direction
- * presents its panel — a narrower surface centred over a dimmed ground, rising
- * into place, with the ✕ in its corner and a back arrow with breadcrumbs
+ * presents its panel — a narrower surface centred over a dimmed ground,
+ * arriving through <PageTransition> (after a click only; the first paint is
+ * never held back), with the ✕ in its corner and a back arrow with breadcrumbs
  * opposite it. Escape closes it too, because a panel that only closes by mouse
  * is half a panel.
  */
@@ -63,7 +65,7 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
   // you are; the back arrow and trail appear once you are inside a section.
   if (!operator) {
     return (
-      <div className="page-rise mx-auto w-full max-w-[1200px]">
+      <PageTransition className="mx-auto w-full max-w-[1200px]">
         {nested && (
           <div className="mb-4">
             <PageNav />
@@ -71,15 +73,15 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
         )}
         <SectionTabs />
         {children}
-      </div>
+      </PageTransition>
     );
   }
 
   if (isHome) {
     return (
-      <div className="page-rise">
+      <PageTransition>
         <div className="section-card">{children}</div>
-      </div>
+      </PageTransition>
     );
   }
 
@@ -95,7 +97,7 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
         onClick={() => router.push(home)}
         className="scrim-enter fixed inset-0 z-0 cursor-default bg-black/55 backdrop-blur-[2px]"
       />
-      <div className="page-rise relative z-10 mx-auto w-full max-w-[1100px]">
+      <PageTransition className="relative z-10 mx-auto w-full max-w-[1100px]">
         <div className="section-card relative">
           {/* The panel's own bar: where you are and the way back on the left,
               the ✕ on the right. In flow rather than pinned to the corners, so
@@ -115,7 +117,7 @@ export function SectionShell({ children }: { children: React.ReactNode }) {
           <SectionTabs />
           {children}
         </div>
-      </div>
+      </PageTransition>
     </>
   );
 }

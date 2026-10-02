@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import { useOverlay } from "@/components/a11y/useOverlay";
+import { Presence, PresenceItem } from "@/components/motion/Presence";
 import { formatCredits } from "@/lib/credits";
 import {
   INBOX_LIMIT,
@@ -188,17 +189,19 @@ export function NotificationBell({ orgId }: { orgId: string | null }) {
         )}
       </button>
 
+      <Presence>
       {open && (
         // Below sm the bar's own width is the only room there is, so the panel
         // is pinned to the screen's edges instead of anchored to the bell.
-        <div
+        <PresenceItem
+          kind="popover"
           ref={panelRef}
           id={panelId}
           role="dialog"
           aria-modal="false"
           aria-labelledby={titleId}
           tabIndex={-1}
-          className="drawer-enter fixed inset-x-3 top-full z-50 mt-3 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] outline-none sm:absolute sm:inset-x-auto sm:right-0 sm:w-96"
+          className="fixed inset-x-3 top-full z-50 mt-3 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] outline-none sm:absolute sm:inset-x-auto sm:right-0 sm:w-96"
         >
           <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2">
             <span id={titleId} className="text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--color-fg)]">
@@ -250,8 +253,9 @@ export function NotificationBell({ orgId }: { orgId: string | null }) {
               ))}
             </ul>
           )}
-        </div>
+        </PresenceItem>
       )}
+      </Presence>
     </div>
   );
 }
