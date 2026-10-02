@@ -64,7 +64,7 @@ describe("who carries a run on", () => {
   it("the run page reads it from the run's org_id", async () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync("app/(app)/[channel]/workflows/runs/[id]/page.tsx", "utf8");
-    expect(src).toMatch(/canCarryRun\(org\.orgs, read\.value\.org_id\)/);
+    expect(src).toMatch(/canCarryRun\(org\.orgs, read\.value\.org_id, platformAdmin\)/);
     expect(src).not.toMatch(/resolveCurrentOrgRole/);
   });
 });
