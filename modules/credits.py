@@ -311,6 +311,12 @@ class CreditsRest:
     def scene_regen_expire(self) -> Optional[float]:
         return _num(self._rpc("expire_scene_regenerations", {}))
 
+    def scene_regen_unsettled(self) -> List[dict]:
+        """Migration 0085: the regenerations the expiry sweep is about to
+        release (id, render_job_id, slug, status, created_at)."""
+        out = self._rpc("scene_regenerations_unsettled", {})
+        return [dict(r) for r in out if isinstance(r, dict)] if isinstance(out, list) else []
+
     def api_hold_start(self, hold_ref: str, job_id) -> Optional[float]:
         """Migration 0031: the API balance hold's amount (cents) when it is open
         and bound to exactly this job, else None."""

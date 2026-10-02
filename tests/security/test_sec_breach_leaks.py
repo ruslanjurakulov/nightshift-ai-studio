@@ -16,10 +16,13 @@ Open (xfail strict, flip when fixed):
     of the platform's vendor accounts) is also copied into
     ``creative_job_events.detail`` and read by every member. BR-L-032 is the same
     value on ``creative_jobs``; fixing that row alone leaves this copy.
-  * BR-G-006  ``scene_regenerations.error`` is readable by every member over
+
+Fixed (the marker is dropped, migration 0085, BR-L-040 = BR-G-006):
+  * BR-G-006  ``scene_regenerations.error`` was readable by every member over
     PostgREST, and the worker fills it with the refusal's raw text (the
-    platform's configured vendor model, key and error text). The Command Center
-    reads only ``error_code``.
+    platform's configured vendor model, key and error text). Members are now
+    granted every column but ``error`` and the raw text goes to a service-only
+    table. The Command Center reads only ``error_code``.
 """
 
 from __future__ import annotations
@@ -87,7 +90,6 @@ def test_BR_G_005_a_member_never_reads_the_platforms_vendor_account_state_in_the
 
 # ── BR-G-006 ────────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="BR-G-006 open: scene_regenerations.error (the worker's raw refusal text) is member-readable")
 def test_BR_G_006_a_member_cannot_read_the_raw_error_text_of_a_regeneration(conn, sc):
     with acting(conn, sc.alice.actor) as s:
         out = s.run("select error from public.scene_regenerations")

@@ -8,12 +8,14 @@ What held (a passing test, the control that keeps the open ones honest):
   * a channel with no Vault connection that names no other reference uses its OWN
     CHRONOS_YT_TOKEN_<ID> secret, and never the default channel's token.
 
+Fixed: BR-G-006 (= BR-L-040, migration 0085): the worker still hands the raw text of a
+regeneration's refusal to finish_scene_regeneration, which now keeps it off the row
+every member reads (RegenerationRefusalReachesMembers below pins the contract).
+
 Open (``expectedFailure``: an unexpected success fails the suite, which forces
 whoever closes the hole to drop the marker and update docs/security/LEDGER.md):
   * BR-G-002  a customer-organization channel publishes with whichever
     CHRONOS_YT_TOKEN_<REF> secret its member-writable ``credential_ref.ref`` names.
-  * BR-G-006  the worker copies the raw text of a regeneration's refusal (the
-    platform's vendor model, key and error text) onto a row every member reads.
   * BR-G-007  a run's directory and checkpoint are keyed by the topic slug alone,
     so two organizations that run one topic on one worker share them.
 """
@@ -75,9 +77,12 @@ class CustomerChannelCredentials(unittest.TestCase):
 
 
 class RegenerationRefusalReachesMembers(unittest.TestCase):
-    """finish_scene_regeneration stores ``error`` on scene_regenerations, a table
-    every member of the organization reads over PostgREST. What the worker puts
-    there is the module's raw refusal text."""
+    """BR-G-006 (= BR-L-040). finish_scene_regeneration used to store ``error``
+    on scene_regenerations, a table every member of the organization reads over
+    PostgREST. The worker still passes the module's raw refusal text, so the
+    contract is now the database's: migration 0085 keeps that text off the
+    member-readable row (tests/security/test_sec_scene_regen_followups.py and
+    test_sec_breach_leaks.py attack it in the lab)."""
 
     class Credits:
         def __init__(self):
@@ -99,17 +104,20 @@ class RegenerationRefusalReachesMembers(unittest.TestCase):
             sr.open_generator(req, get_client=lambda provider: Client())
         return str(raised.exception)
 
-    @unittest.expectedFailure
-    def test_BR_G_006_the_stored_error_does_not_describe_the_platforms_worker_configuration(self):
+    def test_BR_G_006_the_workers_text_goes_only_to_the_function_that_keeps_it_off_the_member_row(self):
         w = qw.Worker.__new__(qw.Worker)
         w._secrets = []
         w.credits = self.Credits()
         text = self.refusal()
         w._settle_regeneration({"id": 7}, "0b8f3c2e-5d4a-4e1f-9a7b-2c6d8e0f1a3b", ok=False,
                                code="model_changed", error=text)
-        stored = w.credits.finished[0]["error"] or ""
-        self.assertNotIn("kling-v2-5-internal", stored, "the platform's configured vendor model reached a member-readable row")
-        self.assertNotIn("this worker", stored)
+        sent = w.credits.finished[0]
+        self.assertEqual(sent["error_code"], "model_changed")
+        self.assertIn("kling-v2-5-internal", sent["error"] or "")
+        finish = Path(__file__).resolve().parent.parent / "supabase" / "migrations" / "0085_scene_regen_followups.sql"
+        body = finish.read_text().split("create or replace function public.finish_scene_regeneration(")[1].split("\n$$;")[0]
+        self.assertNotIn("error = left(p_error", body)
+        self.assertIn("insert into public.scene_regeneration_details", body)
 
 
 class OneTopicTwoOrganizations(unittest.TestCase):

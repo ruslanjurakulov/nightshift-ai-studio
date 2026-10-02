@@ -230,6 +230,45 @@ Operatorning o'z (standart) tashkiloti kanallari avvalgidek bandsiz ishlaydi.
 Navbat rejimida Command Center'da `NIGHTSHIFT_CREDITS_ENFORCE` o'chiq bo'lsa,
 mijoz tashkilotining "Run now"i rad etiladi (`credits_not_enforced`).
 
+## 5c. Sahnani qayta yaratish (0076 va 0085 migratsiyalari)
+
+Command Center'dagi "Regenerate scene" bosilishi navbatga `repair` vazifasini qo'yadi
+(`render_jobs.scene_regeneration_id` to'ldirilgan) va o'z kredit bandini ushlaydi.
+Worker uni `modules/scene_regenerate.py` bilan bajaradi va to'lovni bazadagi
+`start_scene_regeneration` / `finish_scene_regeneration` orqali hal qiladi.
+
+**Joriy etish tartibi (BR-L-045).** Avval worker kodini yangilang (4-bo'limdagi
+"Yangilash": `git pull`, image, qayta ishga tushirish). Keyin 0076, undan keyin 0085
+migratsiyasini qo'llang. Faqat shundan keyin `scene_regenerate` va
+`scene_regenerate_clip_<provider>` narxlarini qo'ying. Eski kodli worker
+regeneratsiya vazifasini oddiy repair deb oladi: bandni daqiqalik hisob bilan ochadi
+va generatsiya qilingan sahnaga stock qo'yadi. 0085 siz yangi worker ishlaydi, lekin
+tugallanmagan regeneratsiyalarni diskni tekshirmasdan bo'shatadi va logda
+`apply migration 0085` deb yozadi.
+
+**Yarim qolgan regeneratsiya (BR-L-042).** Worker ishga tushganda va har 10 daqiqada,
+bandlarni bo'shatishdan oldin, bazadagi `scene_regenerations_unsettled()` ro'yxatini
+o'qiydi va har bir qator uchun shu mashinadagi fayllarga qaraydi: yangi kesim joyida va
+natijadagi hash'ga mos bo'lsa — kvota ushlanadi, aks holda oldingi kesim (hash bo'yicha
+tekshirilgan nusxadan) qaytariladi va band bo'shatiladi. Bitta qatorni hal qilib
+bo'lmasa, bo'shatish keyingi davrga qoladi (28 soatdan eski qator to'sqinlik qilmaydi).
+Bu bitta worker va bitta disk uchun mo'ljallangan: `output/` papkasi umumiy bo'lmagan
+ikkita worker bir-birining fayllarini ko'rmaydi. 24 soatdan uzoq ishlagan va
+muvaffaqiyatli tugagan regeneratsiya uchun band allaqachon bo'shatilgan bo'ladi
+(`expire_credit_reservations`), shuning uchun u `succeeded` bo'ladi, lekin kvota ushlanmaydi.
+
+**Disk (BR-L-043).** Har bir bosish `output/<run>/regenerations/<id>/` ga oldingi
+master nusxasini (`previous_final_video.mp4`, hash'i `previous_take.json` da) va yangi
+klip fayllarini yozadi. Faqat oxirgi 5 ta takening master'i saqlanadi; muvaffaqiyatli
+takelarning klip fayllari (`s###_take_n.mp4`) va yuklangan stock klipler **o'chirilmaydi**,
+chunki oldingi Video IR ularga ishora qiladi. O'sish har bosishga klip hajmicha, faqat
+kreditlar bilan cheklangan; operatorning o'z tashkilotida u bepul va cheksiz.
+Boshlashdan oldin worker bo'sh joyni tekshiradi: kesimning 2 baravari + 256 MB
+(`CHRONOS_REGEN_MIN_FREE_MB` bilan o'zgaradi), yetmasa `disk_full` va hech narsa
+sarflanmaydi. Diskni kuzatib boring; kerak bo'lsa oxirgi 5 ta takedan eski
+`regenerations/<id>/*.mp4` fayllarini qo'lda o'chiring, lekin hozirgi yoki saqlangan
+`project.json` ishora qilayotgan faylni emas.
+
 ## 6. Orqaga qaytish (GitHub Actions)
 
 Vercel'da `NIGHTSHIFT_RUN_BACKEND` ni o'chiring (yoki `actions` qiling) va qayta
