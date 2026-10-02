@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import * as m from "motion/react-m";
+import { span as MSpan } from "motion/react-m";
 import { useReducedMotionSafe } from "./hooks";
 import { lampStrikeProps } from "@/lib/motion/presets";
 import type { LampTone } from "@/components/ui/StatusLamp";
@@ -45,7 +45,7 @@ export function LiveLamp({
   }
   return (
     <span className={`ns-lamp-row${className ? ` ${className}` : ""}`} data-tone={tone}>
-      <m.span
+      <MSpan
         key={strikes}
         aria-hidden
         data-ns-motion=""

@@ -11,7 +11,7 @@ import { navGroupsFor, tabsFor, type NavKey } from "@/lib/navigation";
 import { useOverlay } from "@/components/a11y/useOverlay";
 import { CustomerSidebar } from "@/components/shell/CustomerSidebar";
 import type { AccountPlan } from "@/lib/account";
-import * as m from "motion/react-m";
+import { nav as MNav } from "motion/react-m";
 import { Plate, SharedLayout } from "@/components/motion/SharedLayout";
 
 /**
@@ -197,7 +197,7 @@ function BottomBar() {
     <SharedLayout id="customer-tabbar">
       {/* layoutRoot: the bar is fixed to the viewport, so the tab plate measures
           against the bar, not against how far the page has scrolled. */}
-      <m.nav
+      <MNav
         layoutRoot
         aria-label={t.nav.menu}
         className="ns-tabbar fixed inset-x-0 bottom-0 z-40 pb-[env(safe-area-inset-bottom)] lg:hidden"
@@ -228,7 +228,7 @@ function BottomBar() {
             );
           })}
         </ul>
-      </m.nav>
+      </MNav>
     </SharedLayout>
   );
 }

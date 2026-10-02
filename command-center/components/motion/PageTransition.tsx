@@ -1,6 +1,6 @@
 "use client";
 
-import * as m from "motion/react-m";
+import { div as MDiv } from "motion/react-m";
 import { useFreshMount, useReducedMotionSafe } from "./hooks";
 import { pageEnterProps } from "@/lib/motion/presets";
 
@@ -22,8 +22,8 @@ export function PageTransition({ children, className }: { children: React.ReactN
   const reduced = useReducedMotionSafe();
   const fresh = useFreshMount();
   return (
-    <m.div data-ns-motion="" className={className} {...pageEnterProps(reduced, fresh)}>
+    <MDiv data-ns-motion="" className={className} {...pageEnterProps(reduced, fresh)}>
       {children}
-    </m.div>
+    </MDiv>
   );
 }

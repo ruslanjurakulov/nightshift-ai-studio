@@ -1,6 +1,6 @@
 "use client";
 
-import * as m from "motion/react-m";
+import { span as MSpan } from "motion/react-m";
 import { LayoutGroup, LazyMotion } from "motion/react";
 import { useReducedMotionSafe } from "./hooks";
 import { plateProps } from "@/lib/motion/presets";
@@ -35,5 +35,5 @@ export function SharedLayout({ id, children }: { id: string; children: React.Rea
  */
 export function Plate({ id, className = "" }: { id: string; className?: string }) {
   const reduced = useReducedMotionSafe();
-  return <m.span aria-hidden data-ns-motion="" className={`ns-plate ${className}`} {...plateProps(reduced, id)} />;
+  return <MSpan aria-hidden data-ns-motion="" className={`ns-plate ${className}`} {...plateProps(reduced, id)} />;
 }

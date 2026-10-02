@@ -10,7 +10,7 @@ import { CUSTOMER_SIDEBAR, sidebarCurrent, type NavItem, type StudioTool } from 
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { ICONS } from "@/components/navigation/navIcons";
 import type { AccountPlan } from "@/lib/account";
-import * as m from "motion/react-m";
+import { aside as MAside, nav as MNav } from "motion/react-m";
 import { Plate, SharedLayout } from "@/components/motion/SharedLayout";
 
 /** One lit plate for the whole sidebar: it slides from the row you left to the row you opened. */
@@ -63,7 +63,7 @@ export function CustomerSidebar({ email, plan }: { email: string | null; plan: A
     <SharedLayout id="customer-sidebar">
       {/* layoutRoot: the sidebar is pinned to the viewport (sticky), so the
           plate measures itself against the sidebar, not the scrolled page. */}
-      <m.aside layoutRoot className="shell-sidebar sticky top-0 z-30 hidden h-dvh w-[240px] shrink-0 flex-col lg:flex">
+      <MAside layoutRoot className="shell-sidebar sticky top-0 z-30 hidden h-dvh w-[240px] shrink-0 flex-col lg:flex">
         <div className="flex h-14 shrink-0 items-center px-5">
           <Link href={path(home.href)} className="ns-wordmark">
             {t.brand.name}
@@ -71,11 +71,11 @@ export function CustomerSidebar({ email, plan }: { email: string | null; plan: A
         </div>
 
         {/* layoutScroll: the rows scroll inside this box on a short window. */}
-        <m.nav layoutScroll aria-label={t.shell.primary} className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3">
+        <MNav layoutScroll aria-label={t.shell.primary} className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3">
           <Suspense fallback={<SidebarRows current={null} />}>
             <CurrentRows />
           </Suspense>
-        </m.nav>
+        </MNav>
 
         <div className="flex shrink-0 flex-col gap-0.5 border-t border-[var(--shell-border)] px-3 pb-3 pt-2">
           <FooterRows items={footer} />
@@ -83,7 +83,7 @@ export function CustomerSidebar({ email, plan }: { email: string | null; plan: A
             <AccountMenu email={email} variant="card" plan={plan} />
           </div>
         </div>
-      </m.aside>
+      </MAside>
     </SharedLayout>
   );
 }

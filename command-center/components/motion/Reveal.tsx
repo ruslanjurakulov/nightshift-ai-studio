@@ -1,21 +1,17 @@
 "use client";
 
-import * as m from "motion/react-m";
+import { span as MSpan } from "motion/react-m";
 import type { HTMLMotionProps } from "motion/react";
 import { useFreshMount, useReducedMotionSafe } from "./hooks";
 import { revealProps, staggerGroupProps, staggerItemProps, type RevealTrigger } from "@/lib/motion/presets";
 import { DISTANCE } from "@/lib/motion/tokens";
 
+import { mTag as tag, type MTag } from "./tags";
+
 /** The block elements the kit renders as; each is the `m.*` form of that tag. */
-export type RevealTag = "div" | "section" | "article" | "header" | "footer" | "ul" | "ol" | "li" | "p" | "span" | "h1" | "h2" | "h3";
+export type RevealTag = Exclude<MTag, "nav" | "aside">;
 
 type Base = Omit<HTMLMotionProps<"div">, "initial" | "animate" | "exit" | "whileInView" | "variants" | "transition">;
-
-// `m.section`, `m.li`… share one props shape for what the kit passes; the cast
-// keeps one component instead of thirteen.
-function tag(as: RevealTag) {
-  return m[as] as unknown as typeof m.div;
-}
 
 /**
  * A block that arrives once: in view (default) or when it mounts on the client.
@@ -117,7 +113,7 @@ export function RevealText({
       <span className="sr-only">{text}</span>
       <span aria-hidden>
         {words.map((word, i) => (
-          <m.span
+          <MSpan
             key={`${i}-${word}`}
             data-ns-motion=""
             data-ns-reveal=""
@@ -125,7 +121,7 @@ export function RevealText({
             {...staggerItemProps(false, i, { distance: DISTANCE.rise, step: 0.03 })}
           >
             {i < words.length - 1 ? `${word} ` : word}
-          </m.span>
+          </MSpan>
         ))}
       </span>
     </Tag>

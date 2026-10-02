@@ -1,9 +1,9 @@
 "use client";
 
-import * as m from "motion/react-m";
 import { AnimatePresence, useIsPresent, type HTMLMotionProps } from "motion/react";
 import { useReducedMotionSafe } from "./hooks";
 import { presenceProps, type PresenceKind } from "@/lib/motion/presets";
+import { mTag } from "./tags";
 
 /**
  * Mount/unmount with an exit: wrap the conditional in <Presence> and make the
@@ -45,7 +45,7 @@ export function PresenceItem({
 }) {
   const reduced = useReducedMotionSafe();
   const present = useIsPresent();
-  const Tag = m[as] as unknown as typeof m.div;
+  const Tag = mTag(as);
   return (
     <Tag data-ns-motion="" inert={!present || undefined} {...rest} {...presenceProps(reduced, kind)}>
       {children}
