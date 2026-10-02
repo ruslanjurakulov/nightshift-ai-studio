@@ -15,7 +15,6 @@ import { Faq } from "@/components/landing/Faq";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 
-
 /** Each rule's state, as the app would show it on its lamp. */
 const RULE_TONE: Record<string, LampTone> = { price: "ok", refund: "ok", approval: "run" };
 
@@ -229,7 +228,42 @@ function Desk({ t, locale }: { t: Dictionary; locale: Locale }) {
             {d.title}
           </h2>
           <p className="st-lead mt-6">{d.lead}</p>
-          <ul className="st-langs mt-8" aria-label={d.slug}>
+        </div>
+        <div className="st-desk-figure">
+          <figure className="st-panel">
+            <div className="st-panel-head">
+              <b aria-hidden>{d.cols.channel}</b>
+              <span className="st-tag">{d.tag}</span>
+            </div>
+            <div className="st-table-wrap">
+              <table className="st-table">
+                <caption className="sr-only">{d.figure}</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">{d.cols.channel}</th>
+                    <th scope="col">{d.cols.language}</th>
+                    <th scope="col" className="st-col-voice">
+                      {d.cols.voice}
+                    </th>
+                    <th scope="col">{d.cols.autopublish}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.rows.map((row) => (
+                    <tr key={row.name}>
+                      <td>{row.name}</td>
+                      <td>{row.language}</td>
+                      <td className="st-col-voice text-[var(--ns-text-dim)]">{row.voice}</td>
+                      <td>
+                        <StatusLamp tone="idle" label={d.off} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </figure>
+          <ul className="st-langs mt-10" aria-label={d.slug}>
             {d.languages.map((l, i) => (
               <li key={l} lang={codes[i]} aria-current={codes[i] === locale ? "true" : undefined}>
                 {l}
@@ -238,39 +272,6 @@ function Desk({ t, locale }: { t: Dictionary; locale: Locale }) {
             ))}
           </ul>
         </div>
-        <figure className="st-panel st-desk-figure">
-          <div className="st-panel-head">
-            <b aria-hidden>{d.cols.channel}</b>
-            <span className="st-tag">{d.tag}</span>
-          </div>
-          <div className="st-table-wrap">
-            <table className="st-table">
-              <caption className="sr-only">{d.figure}</caption>
-              <thead>
-                <tr>
-                  <th scope="col">{d.cols.channel}</th>
-                  <th scope="col">{d.cols.language}</th>
-                  <th scope="col" className="st-col-voice">
-                    {d.cols.voice}
-                  </th>
-                  <th scope="col">{d.cols.autopublish}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {d.rows.map((row) => (
-                  <tr key={row.name}>
-                    <td>{row.name}</td>
-                    <td>{row.language}</td>
-                    <td className="st-col-voice text-[var(--ns-text-dim)]">{row.voice}</td>
-                    <td>
-                      <StatusLamp tone="idle" label={d.off} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </figure>
       </div>
     </section>
   );

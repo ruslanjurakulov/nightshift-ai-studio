@@ -83,7 +83,7 @@ html:has(.st) { scroll-padding-top: 80px; }
 /* Desk: the picture first, the words beside it. */
 .st-desk { display: grid; gap: 40px; }
 @media (min-width: 1024px) {
-  .st-desk { grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 56px; align-items: center; }
+  .st-desk { grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 56px; align-items: start; }
   .st-desk-figure { order: -1; }
 }
 .st-data { padding-top: 28px; border-top: 1px solid var(--ns-rule); }
@@ -1338,9 +1338,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 .st-way-head { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .st-way > .st-way-list { grid-column: 2; }
 .st-way-title {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 12px;
+  display: inline-block;
   min-height: 44px;
   text-decoration: underline;
   text-decoration-color: var(--ns-rule-strong);
@@ -1348,7 +1346,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   text-underline-offset: 6px;
 }
 .st-way-title:hover { color: var(--ns-amber-ink); text-decoration-color: currentColor; }
-.st-way-title svg { width: 22px; height: 22px; flex-shrink: 0; align-self: center; }
+.st-way-title svg { display: inline; width: 22px; height: 22px; margin-left: 10px; vertical-align: -0.1em; }
 @media (min-width: 960px) {
   .st-way { grid-template-columns: 56px minmax(0, 1.1fr) minmax(0, 1fr); gap: 12px 48px; padding: 36px 0 40px; }
   .st-way > .st-way-list { grid-column: 3; align-self: start; }
