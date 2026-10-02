@@ -85,6 +85,7 @@ DEFAULT_SYNC_SECONDS = 300.0
 
 _CODE = re.compile(r"^[a-z_]{1,48}$")
 _REPLY_ID = re.compile(r"^[A-Za-z0-9_.-]{5,128}$")
+_CHANNEL_ID = re.compile(r"^UC[A-Za-z0-9_-]{22}$")  # a YouTube channel id
 
 # Characters the database removes too (inbox_clean_text; the shared table is
 # tests/fixtures/inbox_cleaner_cases.txt): controls but newline, the C1 block,
@@ -103,6 +104,11 @@ _STRIP = re.compile(
 )
 # Blank-looking spaces read as an ordinary space: a reply of only these is empty.
 _SPACES = re.compile("[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]")
+# The two selectors that pick emoji or text style stay after a character they can style, once:
+# a run reads as one, and one that follows nothing (the start, a space, a newline) is dropped, so a
+# reply of only those is empty and they are not a hidden channel (BR-L-143).
+_VS_RUN = re.compile("([\ufe0e\ufe0f])[\ufe0e\ufe0f]+")
+_VS_LOOSE = re.compile("(^|[ \n])[\ufe0e\ufe0f]")
 
 
 def clean_text(value, limit: int) -> str:
@@ -110,7 +116,9 @@ def clean_text(value, limit: int) -> str:
     the database's ``inbox_clean_text`` (it cleans again; this keeps NUL out of
     the JSON it is sent in, which jsonb cannot hold)."""
     text = str(value or "").replace("\r\n", "\n")
-    return _STRIP.sub("", _SPACES.sub(" ", text)).strip()[: max(limit, 0)].strip()
+    text = _STRIP.sub("", _SPACES.sub(" ", text))
+    text = _VS_LOOSE.sub(r"\1", _VS_RUN.sub(r"\1", text))
+    return text.strip()[: max(limit, 0)].strip()
 
 
 # ── the prompt ───────────────────────────────────────────────────────────────
@@ -490,6 +498,10 @@ def find_existing_reply(service, parent_id: str, text: str, own_channel_id: str,
     whatever its words. It fails CLOSED: when it reads ``max_pages`` pages, finds
     nothing and more pages remain, it raises ReconcileIncomplete and the caller
     sends nothing (BR-L-074). Raises whatever the API raises (the caller records it)."""
+    own_channel_id = str(own_channel_id or "").strip()
+    if not _CHANNEL_ID.fullmatch(own_channel_id):
+        # Without the channel's own id its reply cannot be told from anyone else's (BR-L-144).
+        raise ReconcileIncomplete(parent_id)
     want = _norm(text)
     since = _parse_time(submitted_at)
     since = since - timedelta(seconds=60) if since else None
@@ -690,13 +702,15 @@ class CommentInboxService:
             return True
         units += UNITS_LIST  # the channel check made while signing in
         service = client.service
-        own = str(getattr(client, "target_channel_id", "") or "")
+        # The one spelling that is compared everywhere (BR-L-144): stripped, and a YouTube channel id
+        # or nothing. A padded, lower-cased or made-up id never finds the reply, so it never sends.
+        own = str(getattr(client, "target_channel_id", "") or "").strip()
 
         if claim.get("reconcile"):
             # An earlier attempt may have reached YouTube: look before sending. Without the
             # channel's own YouTube id there is no way to tell its reply from anyone else's, so
             # nothing is sent (BR-L-123): the person is told to look, never a second reply.
-            if not own.strip():
+            if not _CHANNEL_ID.fullmatch(own):
                 done_fail("outcome_unknown", "an earlier attempt may have gone out and the channel could not be "
                                              "identified to check; check the comment on YouTube before trying again")
                 return True
@@ -830,6 +844,8 @@ class CommentInboxService:
                     verdicts[v.comment_id] = v
             except Exception as e:  # unclassified comments are simply not draftable yet
                 logger.info("comment inbox: classification failed (%s)", type(e).__name__)
+        # Comments really sent to the classifier in this visit (BR-L-142): only those can have used up a try.
+        sent = {c["youtube_comment_id"] for c in todo} if (todo and self.classifier is not None) else set()
         items = []
         for c in fetched:
             item = {
@@ -844,5 +860,7 @@ class CommentInboxService:
                 if getattr(v, "classified", True):
                     item["category"] = v.category
                     item["sentiment"] = v.sentiment
+            if "category" not in item and c["youtube_comment_id"] in sent:
+                item["attempted"] = True  # sent, and no usable answer came back
             items.append(item)
         return self.store.store_comments(channel_id, video_id, items)

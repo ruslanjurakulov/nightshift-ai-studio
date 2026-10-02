@@ -1,6 +1,7 @@
 -- 0090_inbox_followups.sql: the comment inbox's follow-ups after the independent
--- re-verification of 0081 (LENS-20, ledger BR-L-120 .. BR-L-128). Additive: three new
--- columns, one setting, three new functions, and eight of 0081's own functions replaced
+-- re-verification of 0081 (LENS-20, ledger BR-L-120 .. BR-L-128) and of this file's first
+-- version (LENS-22, BR-L-140 .. BR-L-144). Additive: four new columns, one setting, four new
+-- functions, and eight of 0081's own functions replaced
 -- on their LATEST bodies (0081's, nothing else replaced them) with only the lines named
 -- below changed (tests/test_comment_inbox_followups_migration.py pins every string
 -- literal of each replaced body against 0081's).
@@ -23,6 +24,18 @@
 --   BR-L-124  A comment the classifier cannot answer is tried at most three times
 --             (inbox_comments.classify_attempts); inbox_comments_to_classify stops offering
 --             it. (The worker also drops comments that clean to nothing before classifying.)
+--   BR-L-142  Only a try the worker really made counts (the item says "attempted": true), and
+--             three tries give the comment a day's rest (classify_attempted_at), after which it
+--             is tried again: a provider outage delays a comment, it does not strand it.
+--   BR-L-140  Replies come before reads inside a share (and inside the platform's day):
+--             inbox_channel_quota_left, the worker's read gate, leaves one reply's worth (60
+--             units) while a reply that the quota could let through is waiting, so reads can no
+--             longer keep the quota just under what one reply needs and starve the replies.
+--   BR-L-141  claim_reply_post works out the organizations whose share is used up once per call
+--             (one ledger look per organization with a waiting reply, not one per post), and
+--             looks at no more than 25 posts per call: linear in the waiting posts, not cubic.
+--   BR-L-143  U+FE0E / U+FE0F stay after a character they can style, once: a run of them reads as
+--             one and one that follows nothing is dropped, so a reply of only those is empty.
 --   BR-L-125  inbox_draft_block also finds an approved reply by (channel_id,
 --             youtube_comment_id), so a comment fetched again with a new row id is not
 --             offered a draft that could never be approved.
@@ -55,6 +68,7 @@ end $$;
 -- 1. Columns and the share setting ------------------------------------------------------
 
 alter table public.inbox_comments add column if not exists classify_attempts smallint not null default 0;
+alter table public.inbox_comments add column if not exists classify_attempted_at timestamptz;
 alter table public.reply_posts add column if not exists wait_reason text;
 alter table public.inbox_settings add column if not exists org_share_percent integer not null default 25;
 
@@ -83,10 +97,9 @@ comment on column public.inbox_settings.org_share_percent is
 
 -- What is left of an organization's share of the day's quota ceiling: the share of the
 -- ceiling minus what the organization's channels spent (replies and reads) in the rolling day.
-create or replace function public.inbox_org_quota_left(p_channel text) returns integer
+create or replace function public.inbox_org_left(p_org uuid) returns integer
   language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare
-  org     uuid := public.channel_org(p_channel);
   ceiling integer;
   share   integer;
   used    numeric;
@@ -97,16 +110,43 @@ begin
   select coalesce(sum(l.units), 0) into used
     from public.inbox_quota_ledger l
     join public.channels c on c.channel_id = l.channel_id
-   where c.org_id = org and l.at > now() - interval '24 hours';
+   where c.org_id = p_org and l.at > now() - interval '24 hours';
   return greatest(floor(ceiling * share / 100.0) - used, 0)::integer;
 end
 $$;
 
--- What the worker may still spend on this channel: the platform's ceiling or its
--- organization's share, whichever is lower.
-create or replace function public.inbox_channel_quota_left(p_channel text) returns integer
+create or replace function public.inbox_org_quota_left(p_channel text) returns integer
   language sql stable security definer set search_path = public, pg_temp as $$
-  select least(public.inbox_quota_remaining(), public.inbox_org_quota_left(p_channel))
+  select public.inbox_org_left(public.channel_org(p_channel))
+$$;
+
+-- What the worker's READS may still spend on this channel (BR-L-140): the platform's ceiling or
+-- the organization's share, whichever is lower, MINUS one reply's worth (60 units) for as long
+-- as a reply is waiting that the quota could let through. Replies come first: reads only use
+-- what is left after the replies waiting, so a reply is never starved by the reads that keep
+-- the day's quota just under what one reply needs.
+create or replace function public.inbox_channel_quota_left(p_channel text) returns integer
+  language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+  org      uuid := public.channel_org(p_channel);
+  plat     integer := public.inbox_quota_remaining();
+  orgleft  integer := public.inbox_org_left(public.channel_org(p_channel));
+begin
+  -- One of this organization's replies is waiting: its reads leave room for it.
+  if exists (select 1 from public.reply_posts x join public.channels c on c.channel_id = x.channel_id
+              where x.status = 'queued' and c.org_id = org) then
+    orgleft := greatest(orgleft - 60, 0);
+    plat := greatest(plat - 60, 0);
+  -- Another organization's reply that its own share would let through is waiting for the platform's day.
+  elsif exists (select 1
+                  from (select distinct c.org_id from public.reply_posts x
+                          join public.channels c on c.channel_id = x.channel_id
+                         where x.status = 'queued' and c.org_id is distinct from org) w
+                 where public.inbox_org_left(w.org_id) >= 60) then
+    plat := greatest(plat - 60, 0);
+  end if;
+  return least(plat, orgleft);
+end
 $$;
 
 -- A platform owner/admin sets one organization's share of the ceiling, in percent.
@@ -129,6 +169,7 @@ $$;
 create or replace function public.inbox_clean_text(p_text text, p_max integer) returns text
   language sql immutable set search_path = public, pg_temp as $$
   select btrim(left(btrim(
+           regexp_replace(regexp_replace(
            regexp_replace(
              regexp_replace(
                regexp_replace(replace(left(coalesce(p_text, ''), greatest(coalesce(p_max, 0), 0) * 4 + 16), E'\r\n', E'\n'),
@@ -149,7 +190,13 @@ create or replace function public.inbox_clean_text(p_text text, p_max integer) r
              -- injection; with the variation selectors supplement) and the unassigned
              -- default-ignorables U+FFF0-FFF8.
              '[' || chr(128) || '-' || chr(159) || chr(173) || chr(847) || chr(1564) || chr(4447) || '-' || chr(4448) || chr(6068) || chr(6069) || chr(6155) || '-' || chr(6159) || chr(8203) || '-' || chr(8207) || chr(8232) || '-' || chr(8238) || chr(8288) || '-' || chr(8303) || chr(10240) || chr(12644) || chr(65024) || '-' || chr(65037) || chr(65279) || chr(65440) || chr(65520) || '-' || chr(65531) || chr(78896) || '-' || chr(78911) || chr(113824) || '-' || chr(113827) || chr(119155) || '-' || chr(119162) || chr(917504) || '-' || chr(921599) || ']',
-             '', 'g')), greatest(coalesce(p_max, 0), 0)), E' \n')
+             '', 'g'),
+           -- The two selectors that pick emoji or text style (U+FE0E, U+FE0F) stay after a
+           -- character they can style, once: a run of them reads as one, and one that follows
+           -- nothing (the start, a space or a newline) is dropped, so a reply of only those is
+           -- empty and they are not a hidden channel (BR-L-143).
+           '([' || chr(65038) || chr(65039) || '])[' || chr(65038) || chr(65039) || ']+', E'\\1', 'g'),
+           '(^|[ \n])[' || chr(65038) || chr(65039) || ']', E'\\1', 'g')), greatest(coalesce(p_max, 0), 0)), E' \n')
 $$;
 
 create or replace function public.inbox_draft_block(p_comment uuid) returns text
@@ -461,7 +508,9 @@ begin
                 then e ->> 'category' end as category,
            case when (e ->> 'sentiment') in ('positive', 'negative', 'neutral', 'mixed')
                 then e ->> 'sentiment' end as sentiment,
-           coalesce((e ->> 'flagged') = 'true', false) as flagged
+           coalesce((e ->> 'flagged') = 'true', false) as flagged,
+           -- The worker says so when it really sent this comment to the classifier (BR-L-142).
+           coalesce((e ->> 'attempted') = 'true', false) as attempted
       from jsonb_array_elements(p_comments) e
      where jsonb_typeof(e) = 'object'
        and (e ->> 'youtube_comment_id') ~ '^[A-Za-z0-9_.-]{5,128}$'
@@ -469,24 +518,37 @@ begin
   ), ins as (
     insert into public.inbox_comments
       (channel_id, video_id, youtube_comment_id, author_name, body, published_at, category, sentiment, flagged_injection,
-       classify_attempts)
+       classify_attempts, classify_attempted_at)
     select p_channel, p_video, s.yid, s.author, s.body, s.published_at, s.category, s.sentiment, s.flagged,
-           case when s.category is null then 1 else 0 end
+           case when s.category is null and s.attempted then 1 else 0 end,
+           case when s.category is null and s.attempted then now() end
       from src s
      where char_length(s.body) >= 1
     on conflict (channel_id, youtube_comment_id) do update
        set category = coalesce(public.inbox_comments.category, excluded.category),
            sentiment = coalesce(public.inbox_comments.sentiment, excluded.sentiment),
            flagged_injection = public.inbox_comments.flagged_injection or excluded.flagged_injection,
-           -- Each visit that still has no answer for it is one more try, at most three (BR-L-124).
+           -- A try the classifier really made and did not answer is one more, at most three; three
+           -- tries in a row give it a day's rest and then it is tried again (BR-L-124, BR-L-142):
+           -- a provider outage delays a comment, it does not strand it.
            classify_attempts = case when public.inbox_comments.category is null and excluded.category is null
-                                    then least(public.inbox_comments.classify_attempts + 1, 3)
+                                         and (select s2.attempted from src s2 where s2.yid = excluded.youtube_comment_id)
+                                    then case when public.inbox_comments.classify_attempts >= 3
+                                               and public.inbox_comments.classify_attempted_at < now() - interval '24 hours'
+                                              then 1
+                                              else least(public.inbox_comments.classify_attempts + 1, 3) end
                                     else public.inbox_comments.classify_attempts end,
+           classify_attempted_at = case when public.inbox_comments.category is null and excluded.category is null
+                                             and (select s2.attempted from src s2 where s2.yid = excluded.youtube_comment_id)
+                                        then now()
+                                        else public.inbox_comments.classify_attempted_at end,
            updated_at = now()
      where (public.inbox_comments.category is null and excluded.category is not null)
         or (excluded.flagged_injection and not public.inbox_comments.flagged_injection)
         or (public.inbox_comments.category is null and excluded.category is null
-            and public.inbox_comments.classify_attempts < 3)
+            and (select s2.attempted from src s2 where s2.yid = excluded.youtube_comment_id)
+            and (public.inbox_comments.classify_attempts < 3
+                 or public.inbox_comments.classify_attempted_at < now() - interval '24 hours'))
     returning (xmax = 0) as inserted
   )
   select count(*) filter (where inserted) into n from ins;
@@ -519,16 +581,19 @@ begin
              where x ~ '^[A-Za-z0-9_.-]{5,128}$'
                and not exists (select 1 from public.inbox_comments c
                                 where c.channel_id = p_channel and c.youtube_comment_id = x
-                                  and (c.category is not null or c.classify_attempts >= 3))) q), '{}'::text[]);
+                                  and (c.category is not null
+                                       or (c.classify_attempts >= 3
+                                           and c.classify_attempted_at >= now() - interval '24 hours')))) q), '{}'::text[]);
 end
 $$;
 
 create or replace function public.claim_reply_post(p_worker text) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
-  p       public.reply_posts;
-  i       public.reply_intents;
-  skipped uuid[] := '{}';
+  p         public.reply_posts;
+  i         public.reply_intents;
+  exhausted uuid[];
+  tries     integer := 0;
 begin
   if not public.credits_trusted_caller() then
     raise exception 'only the platform may claim a reply' using errcode = '42501';
@@ -544,14 +609,35 @@ begin
      where status = 'queued' and wait_reason is distinct from 'quota';
     return null;
   end if;
+  -- One organization's share of the day's quota (BR-L-121): the organizations whose share is used
+  -- up, worked out ONCE per call (one look at the ledger per organization with a waiting reply,
+  -- not one per post: BR-L-141). Their posts wait, visibly, and the next organization's is looked at.
+  select coalesce(array_agg(w.org_id), '{}'::uuid[]) into exhausted
+    from (select distinct c.org_id
+            from public.reply_posts x join public.channels c on c.channel_id = x.channel_id
+           where x.status in ('queued', 'posting') and c.org_id is not null) w
+   where public.inbox_org_left(w.org_id) < 60;
+  if cardinality(exhausted) > 0 then
+    update public.reply_posts x set wait_reason = 'quota', updated_at = now()
+      from public.channels c
+     where c.channel_id = x.channel_id and c.org_id = any (exhausted)
+       and x.status = 'queued' and x.wait_reason is distinct from 'quota';
+  end if;
   loop
-    select * into p from public.reply_posts x
+    -- At most 25 posts are looked at per call (each one that fails its readiness check leaves the
+    -- queue, so the next call goes on): the work of one call is bounded.
+    tries := tries + 1;
+    if tries > 25 then
+      return null;
+    end if;
+    select x.* into p
+      from public.reply_posts x join public.channels c on c.channel_id = x.channel_id
      where (x.status = 'queued'
             or (x.status = 'posting' and x.claimed_at < now() - interval '15 minutes'))
-       and x.id <> all (skipped)
+       and not coalesce(c.org_id = any (exhausted), false)
      order by x.created_at
      limit 1
-     for update skip locked;
+     for update of x skip locked;
     if not found then
       return null;
     end if;
@@ -569,14 +655,6 @@ begin
         jsonb_build_object('code', 'channel_not_ready', 'attempts', p.attempts));
       continue;
     end if;
-    -- One organization's share of the day's quota (BR-L-121): when it is used up, this post waits
-    -- (visibly) and the next organization's post is looked at.
-    if public.inbox_org_quota_left(i.channel_id) < 60 then
-      update public.reply_posts set wait_reason = 'quota', updated_at = now()
-       where id = p.id and wait_reason is distinct from 'quota';
-      skipped := skipped || p.id;
-      continue;
-    end if;
     update public.reply_posts
        set status = 'posting', worker_id = p_worker, claimed_at = now(), attempts = attempts + 1,
            wait_reason = null, updated_at = now()
@@ -591,6 +669,7 @@ $$;
 
 -- 4. Privileges -----------------------------------------------------------------------------
 
+revoke all on function public.inbox_org_left(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.inbox_org_quota_left(text) from public, anon, authenticated, service_role;
 revoke all on function public.inbox_channel_quota_left(text) from public, anon, authenticated, service_role;
 grant execute on function public.inbox_channel_quota_left(text) to service_role;
@@ -605,9 +684,11 @@ grant execute on function public.set_inbox_org_share(integer) to authenticated;
 --     and not has_function_privilege('anon', 'public.set_inbox_org_share(integer)', 'EXECUTE')
 --     and has_function_privilege('service_role', 'public.inbox_channel_quota_left(text)', 'EXECUTE')
 --     and not has_function_privilege('authenticated', 'public.inbox_channel_quota_left(text)', 'EXECUTE')
---     and not has_function_privilege('authenticated', 'public.inbox_org_quota_left(text)', 'EXECUTE') as functions_scoped,
+--     and not has_function_privilege('authenticated', 'public.inbox_org_quota_left(text)', 'EXECUTE')
+--     and not has_function_privilege('authenticated', 'public.inbox_org_left(uuid)', 'EXECUTE')
+--     and not has_function_privilege('service_role', 'public.inbox_org_left(uuid)', 'EXECUTE') as functions_scoped,
 --   (select count(*) = 0 from pg_proc p
---     where p.proname in ('inbox_org_quota_left', 'inbox_channel_quota_left', 'set_inbox_org_share',
+--     where p.proname in ('inbox_org_left', 'inbox_org_quota_left', 'inbox_channel_quota_left', 'set_inbox_org_share',
 --                         'inbox_clean_text', 'inbox_draft_block', 'quote_reply_draft', 'request_reply_draft',
 --                         'approve_reply', 'store_inbox_comments', 'inbox_comments_to_classify', 'claim_reply_post')
 --       and p.prosecdef and not (p.proconfig::text like '%search_path%')) as definer_pinned,

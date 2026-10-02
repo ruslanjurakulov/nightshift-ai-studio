@@ -68,6 +68,7 @@ def extend(tables: dict, functions: dict) -> None:
         "inbox_quota_remaining": SERVICE,
         "inbox_channel_quota_left": SERVICE,  # 0090
         "inbox_org_quota_left": SERVICE,      # 0090
+        "inbox_org_left": SERVICE,            # 0090
         "claim_reply_post": SERVICE,
         "mark_reply_submitting": SERVICE,
         "finish_reply_post": SERVICE,

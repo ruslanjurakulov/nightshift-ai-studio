@@ -163,6 +163,10 @@ sukut 25 foiz; faqat platforma admini `set_inbox_org_share(foiz)` bilan 1..100
 oralig'ida o'zgartiradi): ulush tugasa, o'sha tashkilotning tasdiqlangan javobi
 `queued` holatida qoladi va kartada "kunlik kvota kutilmoqda" deb ko'rinadi,
 boshqa tashkilotlarning javoblari esa yuboriladi. Platforma chegarasi saqlanadi.
+Javoblar o'qishdan oldin turadi: kutayotgan javob bo'lsa, o'qish ulushdan bitta javob
+(60 birlik) qoldiradi, shuning uchun o'qishlar javobni och qoldirmaydi (javob ketmaguncha
+shu tashkilotning o'qishlari to'xtab turadi). Tasniflagich 3 marta javob bermagan izoh
+bir kunga dam oladi va keyin yana sinab ko'riladi.
 Chegara **yumshoq**: bir vaqtda ishlayotgan workerlar soniga qarab (har biri
 taxminan 57 birlikkacha) ozgina oshib ketishi mumkin; yuklashlar uchun qoldirilgan
 zaxira buni qoplaydi. Foydalanuvchiga ayting: javoblar kunlik kvota ruxsat

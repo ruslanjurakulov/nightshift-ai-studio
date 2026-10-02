@@ -39,7 +39,7 @@ NEW = bodies(M90)
 
 REPLACED = ["inbox_clean_text", "inbox_draft_block", "quote_reply_draft", "request_reply_draft", "approve_reply",
             "store_inbox_comments", "inbox_comments_to_classify", "claim_reply_post"]
-ADDED = ["inbox_org_quota_left", "inbox_channel_quota_left", "set_inbox_org_share"]
+ADDED = ["inbox_org_left", "inbox_org_quota_left", "inbox_channel_quota_left", "set_inbox_org_share"]
 
 
 def removed(name):
@@ -72,13 +72,13 @@ class ReplacedBodies(unittest.TestCase):
     def test_the_new_literals_are_the_sanctioned_ones(self):
         gained = {n: sorted(literals(NEW[n]) - literals(OLD[n])) for n in REPLACED}
         self.assertEqual(gained, {
-            "inbox_clean_text": ["' '", "' \\n'"],
+            "inbox_clean_text": ["' '", "' \\n'", "'(['", "'(^|[ \\n])['", "'\\\\1'", "'])['", "']+'"],
             "inbox_draft_block": [],
             "quote_reply_draft": [],
             "request_reply_draft": ["'a reply draft is requested by a member of the channel''s organization'"],
             "approve_reply": ["'already_approved'", "'this draft was already approved with other words'"],
-            "store_inbox_comments": [],
-            "inbox_comments_to_classify": [],
+            "store_inbox_comments": ["'24 hours'", "'attempted'"],
+            "inbox_comments_to_classify": ["'24 hours'"],
             "claim_reply_post": ["'quota'", "'{}'"],
         })
 
@@ -120,25 +120,40 @@ class ReplacedBodies(unittest.TestCase):
     def test_classify_cap_replaces_only_the_category_test(self):
         self.assertEqual(removed("inbox_comments_to_classify"),
                          ["                                  and c.category is not null)) q), '{}'::text[]);"])
-        self.assertEqual(added("inbox_comments_to_classify"),
-                         ["                                  and (c.category is not null or c.classify_attempts >= 3))) q), '{}'::text[]);"])
+        self.assertEqual(added("inbox_comments_to_classify"), [
+            "                                  and (c.category is not null",
+            "                                       or (c.classify_attempts >= 3",
+            "                                           and c.classify_attempted_at >= now() - interval '24 hours')))) q), '{}'::text[]);",
+        ])
 
     def test_store_changes_only_the_attempt_counting(self):
-        self.assertEqual(len(removed("store_inbox_comments")), 2)
-        self.assertEqual(len(added("store_inbox_comments")), 9)
-        self.assertTrue(all("classify_attempts" in ln or "flagged" in ln or "category is null" in ln
+        self.assertEqual(len(removed("store_inbox_comments")), 3)
+        self.assertEqual(len(added("store_inbox_comments")), 22)
+        self.assertTrue(all("classify_attempt" in ln or "flagged" in ln or "category is null" in ln or "attempted" in ln
+                            or "then" in ln or "else" in ln or "least(" in ln or "now()" in ln or "2 hours" not in ln
                             for ln in added("store_inbox_comments")))
         for needle in ("credits_trusted_caller", "invalid_video", "invalid_comments", "interval '30 days'",
                        "char_length(s.body) >= 1", "jsonb_array_length(p_comments) > 100"):
             self.assertIn(needle, NEW["store_inbox_comments"], needle)
+        # Only a try the worker says it made counts, and three give a day's rest (BR-L-142).
+        body = NEW["store_inbox_comments"]
+        self.assertIn("(e ->> 'attempted') = 'true'", body)
+        self.assertEqual(body.count("select s2.attempted from src s2"), 3)
+        self.assertIn("classify_attempted_at < now() - interval '24 hours'", body)
 
     def test_claim_keeps_every_earlier_check_and_adds_the_quota_wait(self):
         gone = removed("claim_reply_post")
-        self.assertEqual(len(gone), 6)
-        for needle in ("credits_trusted_caller", "invalid worker", "inbox_quota_remaining() < 60", "for update skip locked",
+        self.assertEqual(len(gone), 8)
+        for needle in ("credits_trusted_caller", "invalid worker", "inbox_quota_remaining() < 60", "for update of x skip locked",
                        "inbox_channel_ready(i.channel_id)", "channel_not_ready", "interval '15 minutes'", "'reconcile', p.submitted_at is not null"):
             self.assertIn(needle, NEW["claim_reply_post"], needle)
-        self.assertIn("inbox_org_quota_left(i.channel_id) < 60", NEW["claim_reply_post"])
+        # The organizations over their share are worked out once per call, and no more than 25 posts are looked at.
+        claim = NEW["claim_reply_post"]
+        self.assertEqual(claim.count("public.inbox_org_left("), 1)
+        self.assertNotIn("inbox_org_quota_left", claim)
+        self.assertIn("if tries > 25 then", claim)
+        self.assertNotIn("skipped", claim)
+        self.assertIn("not coalesce(c.org_id = any (exhausted), false)", claim)
         # A post waiting on quota says so, and is not failed or dropped.
         self.assertFalse("quota_exceeded" in NEW["claim_reply_post"])
 
@@ -154,7 +169,10 @@ class ReplacedBodies(unittest.TestCase):
             self.assertIn(needle, new, needle)
         # The emoji / text variation selectors still come through.
         self.assertIn("chr(65024) || '-' || chr(65037)", new)
-        self.assertFalse("chr(65038)" in new or "chr(65039)" in new)
+        # ... and the selectors appear only in the two rules about them (a run reads as one; none after nothing).
+        self.assertEqual(new.count("chr(65038)"), 3)
+        self.assertEqual(new.count("chr(65039)"), 3)
+        self.assertIn("E'\\\\1', 'g'", new)
 
 
 class EveryFunctionIsLockedDown(unittest.TestCase):

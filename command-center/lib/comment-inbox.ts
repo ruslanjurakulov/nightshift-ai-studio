@@ -78,6 +78,10 @@ export function cleanReply(raw: unknown): string {
         /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0d\ufeff\uffa0\ufff0-\ufffb\u{13430}-\u{1343f}\u{1bca0}-\u{1bca3}\u{1d173}-\u{1d17a}\u{e0000}-\u{e0fff}]/gu,
         "",
       )
+      // The emoji / text selectors (U+FE0E, U+FE0F) stay after a character they can style, once: a run
+      // reads as one, and one that follows nothing is dropped (the shared table: "empty", "collapse").
+      .replace(/([\ufe0e\ufe0f])[\ufe0e\ufe0f]+/g, "$1")
+      .replace(/(^|[ \n])[\ufe0e\ufe0f]/g, "$1")
       .trim()
       .slice(0, INBOX_LIMITS.replyMax)
       .trim()
