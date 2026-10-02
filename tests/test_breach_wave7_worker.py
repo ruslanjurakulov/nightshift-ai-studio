@@ -160,6 +160,17 @@ class HyphenCollidingIds(unittest.TestCase):
     IDS = ("extinct-world-", "extinct--world", "extinct-world--", "extinct-world")
     ENV = {OPERATORS_SECRET: OPERATORS_TOKEN, "YOUTUBE_TOKEN_JSON": '{"refresh_token": "default-token"}'}
 
+    def test_the_secret_name_function_answers_the_table_the_lab_holds_sql_to(self):
+        """BR-L-080: SQL's channel_secret_name (migration 0086, which create_channel
+        uses to refuse colliding ids) and secret_name_for are one function."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "security"))
+        from secret_name_corpus import EXPECTED
+
+        for key, want in EXPECTED.items():
+            self.assertEqual(channel_credentials.secret_name_for(key), want, repr(key))
+
     def test_the_matrix_row_and_the_queue_worker_hand_such_a_channel_nothing(self):
         for cid in self.IDS:
             c = customer_channel(cid)

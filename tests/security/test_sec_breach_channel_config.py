@@ -461,19 +461,17 @@ def test_status_pause_is_an_editors_activation_needs_a_confirmed_channel_and_a_v
 
 # ── BR-L-080: two channels never share a token-secret name ───────────────────
 
-CORPUS = ["extinct-world", "extinct-world-", "extinct--world", "-extinct-world", "Extinct World", "extinct_world",
-          "EXTINCT.WORLD", "a", "ab", "a-b-c", "a--b", "a_-_b", "  x  ", "ü-ber", "x" * 60, "", "9lives", "my.channel_1"]
-
-
 def test_BR_L_080_the_secret_name_is_the_same_function_in_sql_and_python(conn):
-    import sys
-    sys.path.insert(0, str(REPO))
-    from modules.channel_credentials import secret_name_for
+    """SQL's channel_secret_name answers the literal table that
+    tests/test_breach_wave7_worker.py (HyphenCollidingIds) holds Python's
+    secret_name_for to. (The lab's CI job installs no pipeline dependency, so it
+    cannot import the Python module: the shared table is the pin.)"""
+    from secret_name_corpus import EXPECTED
 
     with as_superuser(conn, commit=False) as su:
-        for key in CORPUS:
-            # (Non-ASCII letters: Python upper() and Postgres upper() both map to non-[A-Z0-9], which collapse.)
-            assert su.value("select public.channel_secret_name(%s)", [key]) == secret_name_for(key), repr(key)
+        for key, want in EXPECTED.items():
+            assert su.value("select public.channel_secret_name(%s)", [key]) == want, repr(key)
+        assert su.value("select public.channel_secret_name(null)") == "CHRONOS_YT_TOKEN_"
 
 
 def test_BR_L_080_an_id_that_shares_a_secret_name_with_any_channel_is_refused(conn, sc):
