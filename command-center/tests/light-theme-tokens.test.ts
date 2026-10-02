@@ -85,6 +85,72 @@ describe("light theme: globals.css defines the backdrop and CTA per theme", () =
     }
   });
 
+  // The identity layer (docs/design/IDENTITY.md): every --ns-* colour role is
+  // declared once per theme block plus once for the style guide's scoped dark
+  // specimen, which shares the data-theme=dark block — so three, like the rest.
+  const IDENTITY = [
+    "--ns-ground",
+    "--ns-console",
+    "--ns-key",
+    "--ns-key-hi",
+    "--ns-rule",
+    "--ns-rule-strong",
+    "--ns-text",
+    "--ns-text-dim",
+    "--ns-amber",
+    "--ns-amber-ink",
+    "--ns-on-amber",
+    "--ns-cta-bg",
+    "--ns-cta-fg",
+    "--ns-cta-price",
+    "--ns-tally",
+    "--ns-go",
+    "--ns-cue",
+    "--ns-caution",
+    "--ns-lamp-off",
+    "--ns-hover",
+    "--ns-select",
+    "--ns-scrim",
+    "--ns-lift",
+    "--ns-focus",
+  ];
+
+  it("declares every identity token in the light, prefers-dark and data-theme=dark blocks", () => {
+    for (const token of IDENTITY) {
+      expect(css.split(`${token}:`).length - 1, token).toBe(3);
+    }
+  });
+
+  it("remaps the older role names onto the identity, so screens adopt it unedited", () => {
+    for (const [old, ns] of [
+      ["--color-bg", "--ns-ground"],
+      ["--color-panel", "--ns-console"],
+      ["--color-fg", "--ns-text"],
+      ["--color-muted", "--ns-text-dim"],
+      ["--color-primary", "--ns-amber-ink"],
+      ["--studio-cta-bg", "--ns-cta-bg"],
+      ["--studio-cta-fg", "--ns-cta-fg"],
+      ["--shell-bg", "--ns-console"],
+    ]) {
+      expect(css.split(`${old}: var(${ns});`).length - 1, old).toBe(3);
+    }
+  });
+
+  it("lets a box carry its own theme (the style guide's side-by-side specimens)", () => {
+    expect(css).toMatch(/:root\[data-theme="light"\],\s*\[data-theme-scope="light"\] \{/);
+    expect(css).toMatch(/:root\[data-theme="dark"\],\s*\[data-theme-scope="dark"\] \{/);
+  });
+
+  it("the shared radius, motion and type-scale tokens exist once", () => {
+    for (const token of ["--ns-r-frame", "--ns-r-key", "--ns-r-panel", "--ns-r-sheet", "--ns-ease", "--ns-dur-2", "--ns-t-body"]) {
+      expect(css.split(`${token}:`).length - 1, token).toBe(1);
+    }
+  });
+
+  it("focus is the cue blue, never the amber that means selected", () => {
+    expect(css).toMatch(/:focus-visible \{\s*outline: 2px solid var\(--ns-focus\);/);
+  });
+
   it("hides the dark footage on the light theme and keeps it on dark", () => {
     expect(css).toMatch(/--backdrop-video-display: none;/);
     expect(css).toMatch(/--backdrop-video-display: block;/);

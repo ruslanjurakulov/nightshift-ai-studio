@@ -96,6 +96,9 @@ export const SECTIONS = [
   "errors",
   "logs",
   "integrations",
+  // The living style guide (docs/design/IDENTITY.md); the page itself 404s for
+  // anyone who is not the platform operator.
+  "design",
 ] as const;
 
 /** True when `segment` names a section rather than a channel. */

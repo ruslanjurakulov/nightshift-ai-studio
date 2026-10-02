@@ -79,6 +79,12 @@ on:
         required: false
         default: ""
 
+# Least privilege (BR-S-001): nothing in this workflow calls the GitHub API or
+# pushes, so the job token can only read the repository. The cache and
+# artifact actions authenticate with the runner's own token, not this one.
+permissions:
+  contents: read
+
 jobs:
   # ---------------------------------------------------------------------------
   # Which channels run this hour. Deliberately cheap: it installs two pure-Python
@@ -94,6 +100,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # Never pushes: keeps the job token out of .git/config (BR-S-001).
+          persist-credentials: false
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v7
@@ -165,6 +174,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # Never pushes: keeps the job token out of .git/config (BR-S-001).
+          persist-credentials: false
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v7

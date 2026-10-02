@@ -197,6 +197,10 @@ class KlingAdapter(HttpAdapter):
     #: first + last frame; kling-v2-6 only in 1080p silent (pro) mode, which
     #: this adapter never sends — so only kling-v3's registry entry has it.
     end_frame_capabilities = (I2V,)
+    #: ``sound`` on / off (kling-v2-6 and later). Sent only when the job names
+    #: audio (the registry pins it off for a model that is priced by it), so a
+    #: model that takes no such field is never sent one.
+    audio_capabilities = (T2V, I2V)
     _TASK = re.compile(r"^(text2video|image2video)/[A-Za-z0-9_-]{1,128}$")
 
     def _pair(self) -> Tuple[str, str]:
@@ -278,6 +282,9 @@ class KlingAdapter(HttpAdapter):
                       "duration": str(int(request.duration_s or 5)), "mode": "std"}
         if request.negative_prompt:
             body["negative_prompt"] = request.negative_prompt
+        if request.audio is not None:
+            # Priced apart (0070): the soundtrack is asked for, or refused, never left to the vendor.
+            body["sound"] = "on" if request.audio else "off"
         if kind == "image2video":
             path = request.input_images[0]
             # Kling takes a URL or raw base64 (no data: prefix).
@@ -647,6 +654,13 @@ class SeedanceAdapter(HttpAdapter):
     #: Two ``image_url`` items with ``role`` first_frame / last_frame — Seedance
     #: 1.5 pro and 1.0 pro (ModelArk video generation API, docs 1520757).
     end_frame_capabilities = (I2V,)
+    #: ``generate_audio`` (1.5 pro) and ``resolution`` are both sent: priced
+    #: apart (0070), neither is left to the vendor's default.
+    audio_capabilities = (T2V, I2V)
+    resolution_capabilities = (T2V, I2V)
+    #: The resolution sent when a job names none: the cheapest the models
+    #: price by, never the vendor's own default.
+    DEFAULT_RESOLUTION = "720p"
     _CODES = {"AuthenticationError": E_AUTH, "AccessDenied": E_AUTH,
               "AccountOverdueError": E_QUOTA, "QuotaExceeded": E_QUOTA,
               "RateLimitExceeded": E_RATE_LIMITED, "InvalidParameter": E_BAD_REQUEST,
@@ -681,8 +695,7 @@ class SeedanceAdapter(HttpAdapter):
         body: dict = {"model": vendor_model, "content": content,
                       "ratio": request.aspect_ratio or "16:9",
                       "duration": int(request.duration_s or 5)}
-        if request.resolution:
-            body["resolution"] = request.resolution
+        body["resolution"] = request.resolution or self.DEFAULT_RESOLUTION
         if request.audio is not None:
             body["generate_audio"] = bool(request.audio)
         data = self.post(f"{self.base_url}/api/v3/contents/generations/tasks", body)
@@ -726,6 +739,8 @@ class WanAdapter(HttpAdapter):
     base_url_env = "WAN_BASE_URL"
     default_base_url = "https://dashscope-intl.aliyuncs.com"
     capabilities = (T2V, I2V)
+    #: Always sent (720P when a job names none), so what is priced is what runs.
+    resolution_capabilities = (T2V, I2V)
     _CODES = {"InvalidApiKey": E_AUTH, "Arrearage": E_QUOTA, "DataInspectionFailed": E_POLICY,
               "InvalidParameter": E_BAD_REQUEST, "ModelNotFound": E_NOT_FOUND}
 
