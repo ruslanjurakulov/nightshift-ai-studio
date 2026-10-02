@@ -117,6 +117,31 @@ class SinglePageTests(unittest.TestCase):
         self.assertEqual(results, [])
 
 
+class InboxFetchTests(unittest.TestCase):
+    """The comment inbox (migration 0081) reads through an already-authorised service."""
+
+    def test_plain_fetch_keeps_exactly_its_three_keys(self):
+        fetcher, mock_list = make_fetcher_with_mock_service()
+        mock_list.side_effect = [execute_result(canned_page([("yt_aaa", "hi")]))]
+        self.assertEqual(set(fetcher.fetch_comments("V")[0]), {"id", "text", "youtube_comment_id"})
+
+    def test_inbox_fetch_adds_author_and_time_and_nothing_else(self):
+        fetcher, mock_list = make_fetcher_with_mock_service()
+        page = canned_page([("yt_aaa", "hi")])
+        page["items"][0]["snippet"]["topLevelComment"]["snippet"].update(
+            {"authorDisplayName": "Ann", "publishedAt": "2026-09-30T10:00:00Z", "authorChannelId": {"value": "UCsecret"}})
+        mock_list.side_effect = [execute_result(page)]
+        got = fetcher.fetch_inbox_comments("V")[0]
+        self.assertEqual(got, {"id": 0, "text": "hi", "youtube_comment_id": "yt_aaa",
+                               "author": "Ann", "published_at": "2026-09-30T10:00:00Z"})
+
+    def test_from_service_needs_no_token_file_or_consent_flow(self):
+        service = MagicMock()
+        fetcher = CommentFetcher.from_service(service)
+        self.assertIs(fetcher.youtube, service)
+        self.assertIsNone(fetcher.token_file)
+
+
 class PaginationTests(unittest.TestCase):
     def test_pagination_collects_across_pages_up_to_max_results(self):
         fetcher, mock_list = make_fetcher_with_mock_service()

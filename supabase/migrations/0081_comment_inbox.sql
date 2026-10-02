@@ -762,9 +762,9 @@ begin
 end
 $$;
 
--- Put a comment aside (and bring it back). A comment with an approved reply
--- cannot be put aside; one with a draft being written waits for it; a ready
--- draft is discarded with it.
+-- Put a comment aside (and bring it back). A comment whose reply is posted or
+-- waiting to be posted cannot be put aside; one with a draft being written
+-- waits for it; a ready draft is discarded with it.
 create or replace function public.dismiss_inbox_comment(p_comment uuid, p_dismissed boolean default true)
   returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
@@ -786,8 +786,13 @@ begin
     raise exception 'forbidden' using errcode = '42501';
   end if;
   select * into c from public.inbox_comments where id = p_comment for update;
-  if c.status = 'replied' or exists (select 1 from public.reply_intents i where i.comment_id = c.id) then
-    perform public.creative_refuse('already_replied', 'this comment already has an approved reply', 'NS409');
+  -- A reply that is posted, or on its way, stays. One whose posting failed for
+  -- good (the comment is gone, YouTube refused the text) can be put aside.
+  if c.status = 'replied' or exists (select 1 from public.reply_posts p where p.comment_id = c.id and p.status = 'posted') then
+    perform public.creative_refuse('already_replied', 'this comment already has a posted reply', 'NS409');
+  end if;
+  if exists (select 1 from public.reply_posts p where p.comment_id = c.id and p.status in ('queued', 'posting')) then
+    perform public.creative_refuse('in_progress', 'the reply is waiting to be posted', 'NS409');
   end if;
   if coalesce(p_dismissed, true) then
     if c.status = 'dismissed' then

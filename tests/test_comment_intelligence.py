@@ -144,6 +144,17 @@ class MalformedJsonTests(unittest.TestCase):
         for r in results:
             self.assertEqual(r.sentiment, "neutral")
             self.assertFalse(r.flagged_injection_attempt)
+            # A placeholder is not a measurement: the comment inbox never drafts for it.
+            self.assertFalse(r.classified)
+
+    @patch("modules.comment_intelligence.make_client")
+    @patch("modules.comment_intelligence.generate_with_retry")
+    def test_a_real_classification_is_marked_classified(self, mock_generate, mock_make_client):
+        mock_generate.return_value = _fake_response(json.dumps([
+            {"comment_id": 1, "sentiment": "positive", "category": "praise", "flagged_injection_attempt": False},
+        ]))
+        (r,) = classify_comments([{"id": 1, "text": "great"}])
+        self.assertTrue(r.classified)
 
 
 class PromptInjectionHarnessTests(unittest.TestCase):

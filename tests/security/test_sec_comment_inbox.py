@@ -774,10 +774,23 @@ def test_dismissing_a_comment_discards_its_ready_draft_and_never_an_answered_one
     state, msg = db.refused("authenticated", UA, "select public.request_reply_draft(%s, 3, %s)", [cid, key()])
     assert state == "NS400" and msg.startswith("not_draftable")
     assert db.user(UA, "select public.dismiss_inbox_comment(%s, false)", [cid])["status"] == "open"
-    # An approved reply cannot be put aside.
+    # A reply waiting to be posted, or posted, cannot be put aside.
     cid2, did2 = ready_draft(db)
-    db.user(UA, "select public.approve_reply(%s, 'Thanks!')", [did2])
+    out2 = db.user(UA, "select public.approve_reply(%s, 'Thanks!')", [did2])
     state, msg = db.refused("authenticated", UA, "select public.dismiss_inbox_comment(%s)", [cid2])
+    assert state == "NS409" and msg.startswith("in_progress")
+    claim2 = db.svc("select public.claim_reply_post(%s)", [WORKER])
+    db.svc("select public.finish_reply_post(%s, %s, true, 'UgxReply00090.1')", [claim2["post_id"], WORKER])
+    state, msg = db.refused("authenticated", UA, "select public.dismiss_inbox_comment(%s)", [cid2])
+    assert state == "NS409" and msg.startswith("already_replied")
+    # One whose posting failed for good can be put aside, and brought back; it never gets a second reply.
+    cid4, did4 = ready_draft(db)
+    db.user(UA, "select public.approve_reply(%s, 'Thanks!')", [did4])
+    claim4 = db.svc("select public.claim_reply_post(%s)", [WORKER])
+    db.svc("select public.finish_reply_post(%s, %s, false, null, 'comment_gone')", [claim4["post_id"], WORKER])
+    assert db.user(UA, "select public.dismiss_inbox_comment(%s)", [cid4])["status"] == "dismissed"
+    assert db.user(UA, "select public.dismiss_inbox_comment(%s, false)", [cid4])["status"] == "open"
+    state, msg = db.refused("authenticated", UA, "select public.request_reply_draft(%s, 3, %s)", [cid4, key()])
     assert state == "NS409" and msg.startswith("already_replied")
     # A draft being written holds the comment.
     set_price(db, 3)

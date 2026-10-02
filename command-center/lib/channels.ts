@@ -59,6 +59,7 @@ export const SECTIONS = [
   "home",
   "create",
   "videos",
+  "inbox",
   "studio",
   "styles",
   "library",
