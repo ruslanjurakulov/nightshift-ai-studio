@@ -136,7 +136,8 @@ STAGING_MAX_AGE_S = 26 * 3600
 PROBE_TIMEOUT_S = 60
 THUMB_TIMEOUT_S = 120
 PROXY_TIMEOUT_S = 2 * 3600
-#: HEIC decoding (0044): the picture is checked on its header first.
+#: Picture area cap: HEIC is checked on its header before decoding (0044);
+#: JPEG/PNG/WebP/GIF on the probed size (BR-C-001).
 MAX_PIXELS = 100_000_000
 DISPLAY_SIDE = 2048
 HEIC_DECODE_TIMEOUT_S = 120
@@ -460,6 +461,11 @@ def interpret_probe(sniffed: str, data: Mapping) -> Probe:
             raise IngestReject("not_media", "the image has no size")
         if max(width, height) > MAX_SIDE:
             raise IngestReject("too_large_dimensions", f"{width}x{height} is larger than {MAX_SIDE}px")
+        if width * height > MAX_PIXELS:
+            # Same area cap as the HEIC path: a small file can declare a huge
+            # bitmap that the thumbnail step would decode in full (BR-C-001).
+            raise IngestReject("too_large_dimensions",
+                               f"{width}x{height} is more than {MAX_PIXELS // 1_000_000} megapixels")
         return Probe("image", mime, width, height, None)
 
     # Containers that hold either: an mp4 / webm with sound only is audio.

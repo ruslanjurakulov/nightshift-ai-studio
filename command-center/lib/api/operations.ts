@@ -12,6 +12,7 @@
 import { VIDEO_PROVIDERS, IMAGE_PROVIDERS, type RunBackend } from "@/lib/runBackend";
 import { API_KEY_PREFIX, hashApiKey, parseBearer, sha256Hex } from "@/lib/api/keys";
 import { apiError, fromRpcResult, type ApiResult } from "@/lib/api/http";
+import { parseGenerationInput } from "@/lib/creative/operations";
 
 export type Rpc = (
   fn: string,
@@ -61,11 +62,11 @@ function isMissing(error: { code?: string; message?: string }): boolean {
   );
 }
 
-async function call(caller: ApiCaller, fn: string, args: Record<string, unknown>): Promise<ApiResult> {
+async function call(caller: ApiCaller, fn: string, args: Record<string, unknown>, migration = "0031"): Promise<ApiResult> {
   const { data, error } = await caller.rpc(fn, { p_key_hash: caller.keyHash, ...args, p_request_id: caller.requestId });
   if (error) {
     return isMissing(error)
-      ? apiError(503, "api_unavailable", "The API is not set up on this deployment yet (migration 0031).")
+      ? apiError(503, "api_unavailable", `The API is not set up on this deployment yet (migration ${migration}).`)
       : apiError(502, "upstream_error", "The database did not answer this request. Retry with backoff.");
   }
   return fromRpcResult(data);
@@ -309,4 +310,110 @@ export async function getDownload(caller: ApiCaller, id: string): Promise<ApiRes
     if (d.status === "ready") return { ...result, data: { ...d, file_url: `/api/v1/downloads/${id}/file` } };
   }
   return result;
+}
+
+// ── creative generations (0062) ────────────────────────────────────────────
+//
+// The same generation the Studio starts, with a key instead of a session. The
+// money is the organization's credits (not the USD API balance): the database
+// holds the quote with the UI's own create_creative_job, the worker captures
+// or releases it, and nothing here computes or moves a credit. The body is
+// shape-checked with the Studio's own parser (lib/creative/operations), so
+// the two doors accept exactly the same generations; what a request may NOT
+// carry is an organization (the key's is used) or an idempotency key in the
+// body (it is a header, required).
+
+const CREATIVE_BODY_FIELDS = ["capability", "model", "params", "mode", "max_credits"] as const;
+/** Any well-formed organization id: parseGenerationInput needs one and the API never uses it. */
+const NO_ORG = "00000000-0000-0000-0000-000000000000";
+
+const CREATIVE_MESSAGES: Record<string, string> = {
+  invalid_body: "Send a JSON object with capability, model, params and max_credits.",
+  capability_not_supported: "capability is not one this API can generate.",
+  invalid_params: "A parameter is missing or not accepted.",
+  invalid_idempotency_key: "Idempotency-Key: 1-255 characters of A-Z a-z 0-9 _ : . -",
+};
+
+export interface CreativeRequest {
+  capability: string;
+  model: string;
+  params: Record<string, unknown>;
+  mode: string;
+  maxCredits: number | null;
+}
+
+/** A quote / create body -> the request, or the 400 / 422. `max_credits` is required for create. */
+export function parseCreativeBody(
+  body: unknown,
+  opts: { requireMaxCredits: boolean },
+): { ok: true; request: CreativeRequest } | { ok: false; result: ApiResult } {
+  const b = obj(body);
+  if (!b) return { ok: false, result: bad("invalid_body", CREATIVE_MESSAGES.invalid_body) };
+  const unknown = Object.keys(b).filter((k) => !(CREATIVE_BODY_FIELDS as readonly string[]).includes(k));
+  if (unknown.length) return { ok: false, result: bad("unknown_parameter", `Unknown field(s): ${unknown.join(", ")}.`) };
+  if (opts.requireMaxCredits && b.max_credits == null)
+    return {
+      ok: false,
+      result: bad("max_credits_required", "max_credits is required: the most credits you accept to be charged for this generation (see the quote)."),
+    };
+  if (b.max_credits != null && !(typeof b.max_credits === "number" && Number.isFinite(b.max_credits) && b.max_credits >= 0))
+    return { ok: false, result: bad("max_credits_required", "max_credits must be a number of credits, 0 or more.") };
+  const parsed = parseGenerationInput({ ...b, org_id: NO_ORG }, NO_ORG, { requirePrice: opts.requireMaxCredits });
+  if (!parsed.ok) {
+    const code = String(parsed.result.body.error ?? "invalid_params");
+    const detail = typeof parsed.result.body.detail === "string" ? parsed.result.body.detail : undefined;
+    return {
+      ok: false,
+      result: apiError(parsed.result.status, code === "confirm_price" ? "max_credits_required" : code, detail ?? CREATIVE_MESSAGES[code] ?? "The request is not valid.", {
+        details: detail ? { detail } : undefined,
+      }),
+    };
+  }
+  const i = parsed.input;
+  return { ok: true, request: { capability: i.capability, model: i.model, params: i.params, mode: i.mode, maxCredits: i.maxCredits } };
+}
+
+/** POST /v1/creative/quote — the price in credits. Nothing is held or charged. */
+export async function quoteCreative(caller: ApiCaller, body: unknown): Promise<ApiResult> {
+  const parsed = parseCreativeBody(body, { requireMaxCredits: false });
+  if (!parsed.ok) return parsed.result;
+  const r = parsed.request;
+  return call(caller, "api_creative_quote", { p_capability: r.capability, p_model: r.model, p_params: r.params }, "0062");
+}
+
+/**
+ * POST /v1/creative/jobs — quote, hold and queue one generation. An
+ * Idempotency-Key header and max_credits are required: a retry never pays
+ * twice, and a price above max_credits is refused, not charged.
+ */
+export async function createCreative(caller: ApiCaller, body: unknown, idempotencyKey?: string | null): Promise<ApiResult> {
+  if (idempotencyKey == null || idempotencyKey.trim() === "")
+    return bad("idempotency_key_required", "Send an Idempotency-Key header: a generation spends credits, and a retry must not spend twice.");
+  const key = idempotencyKey.trim();
+  const badKey = checkIdempotencyKey(key);
+  if (badKey) return badKey;
+  const parsed = parseCreativeBody(body, { requireMaxCredits: true });
+  if (!parsed.ok) return parsed.result;
+  const r = parsed.request;
+  return call(caller, "api_creative_create", {
+    p_capability: r.capability,
+    p_model: r.model,
+    p_params: r.params,
+    p_mode: r.mode,
+    p_max_credits: r.maxCredits,
+    p_idem_key: key,
+    p_fingerprint: await fingerprint("creative.create", {
+      capability: r.capability,
+      model: r.model,
+      params: r.params,
+      mode: r.mode,
+      max_credits: r.maxCredits,
+    }),
+  }, "0062");
+}
+
+/** GET /v1/creative/jobs/{id} — a generation this key started. */
+export async function getCreativeJob(caller: ApiCaller, jobId: string): Promise<ApiResult> {
+  if (!UUID_RE.test(jobId)) return apiError(404, "job_not_found", "No generation with that id for this key.");
+  return call(caller, "api_creative_get", { p_job_id: jobId.toLowerCase() }, "0062");
 }

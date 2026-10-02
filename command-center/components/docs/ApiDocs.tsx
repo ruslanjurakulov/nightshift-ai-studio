@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { API_TIERS, DEFAULT_API_PRICES, formatUsd, type ApiPriceMap } from "@/lib/api/pricing";
 import { MAX_ACTIVE_KEYS } from "@/lib/api/keys";
+import { KEY_RPM_MAX, LEGACY_SCOPES } from "@/lib/api/scopes";
 
 /**
  * The API reference. A developer document, kept in English like the API's own
@@ -60,17 +61,29 @@ const ENDPOINTS: [string, string, string][] = [
   ["GET", "/downloads/{id}", "A download's status (file_url when ready)"],
   ["GET", "/downloads/{id}/file", "The MP4 of a ready download"],
   ["GET", "/jobs/{id}", "A video job's status and charge"],
+  ["POST", "/creative/quote", "The price of one generation, in credits (nothing is held)"],
+  ["POST", "/creative/jobs", "Start a generation (Idempotency-Key and max_credits required)"],
+  ["GET", "/creative/jobs/{id}", "A generation this key started: status, charge, result"],
+];
+
+const SCOPE_ROWS: [string, string][] = [
+  ["account:read", "GET /me needs none; /balance, /channels, /accounts"],
+  ["videos:read", "GET /videos, /videos/{id}, /jobs/{id}, /downloads/{id}"],
+  ["videos:write", "POST /videos, /videos/{id}/publish, /videos/{id}/downloads"],
+  ["creative:quote", "POST /creative/quote"],
+  ["creative:create", "POST /creative/jobs — spends credits"],
+  ["creative:read", "GET /creative/jobs/{id}"],
 ];
 
 const ERRORS: [number, string, string][] = [
-  [400, "invalid_request_error", "invalid_body, unknown_parameter, invalid_params, duration_required, targets_required"],
+  [400, "invalid_request_error", "invalid_body, unknown_parameter, invalid_params, duration_required, targets_required, max_credits_required, idempotency_key_required"],
   [401, "authentication_error", "invalid_api_key — missing, malformed, revoked or unknown"],
-  [402, "billing_error", "insufficient_balance, monthly_limit_reached, key_limit_reached"],
-  [403, "permission_error", "api_not_activated, key_owner_not_admin"],
+  [402, "billing_error", "insufficient_balance, monthly_limit_reached, key_limit_reached, insufficient_credits, key_credit_limit_reached"],
+  [403, "permission_error", "api_not_activated, key_owner_not_admin, insufficient_scope, entitlement_required, forbidden"],
   [404, "not_found_error", "channel_not_found, video_not_found, job_not_found, download_not_found, no_master"],
-  [409, "conflict_error", "channel_not_active, publish_refused, download_not_ready"],
-  [422, "idempotency_error", "idempotency_key_reused (409 idempotency_in_progress)"],
-  [429, "rate_limit_error", "rate_limit_exceeded, concurrency_limit_exceeded — honour Retry-After"],
+  [409, "conflict_error", "channel_not_active, publish_refused, download_not_ready, price_changed"],
+  [422, "idempotency_error", "idempotency_key_reused (409 idempotency_in_progress); also model_not_sellable, unpriced, source_unavailable, capability_not_supported"],
+  [429, "rate_limit_error", "rate_limit_exceeded, concurrency_limit_exceeded, run_limit_reached — honour Retry-After"],
   [503, "api_error", "queue_backend_required, downloads_unavailable, pricing_unavailable, api_unavailable"],
 ];
 
@@ -226,6 +239,76 @@ curl "${BASE}/videos?channel_id=my-channel&limit=5" -H "Authorization: Bearer $N
   -H "Content-Type: application/json" -d '{"quality": "1080p"}'
 curl ${BASE}/downloads/7 -H "Authorization: Bearer $NIGHTSHIFT_API_KEY"          # until status = ready
 curl -o video.mp4 ${BASE}/downloads/7/file -H "Authorization: Bearer $NIGHTSHIFT_API_KEY"`}</Code>
+      </Section>
+
+      <Section id="scopes" title="Key scopes and limits">
+        <P>
+          Every key has scopes, chosen when it is created in the Developer console; a call outside them is refused with{" "}
+          <code>403 insufficient_scope</code> (the body names <code>required_scope</code>), before anything is created
+          or charged. Keys made before generations existed hold only {LEGACY_SCOPES.join(", ")} and can never start a
+          generation. <code>GET /me</code> works with any valid key and lists the key&apos;s scopes.
+        </P>
+        <Table label={labels.table}>
+          <tbody className="divide-y divide-[var(--color-border)]">
+            {SCOPE_ROWS.map(([scope, what]) => (
+              <tr key={scope}>
+                <td className="mono py-2 pr-2">{scope}</td>
+                <td className="py-2 text-[var(--color-muted)]">{what}</td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+        <P>
+          A key can also carry its own requests-per-minute limit (1–{KEY_RPM_MAX}; it can only lower the usage
+          tier&apos;s, never raise it) and a monthly credit ceiling for generations. Give a
+          key only what its program needs — a key that only reads status cannot spend anything.
+        </P>
+      </Section>
+
+      <Section id="creative" title="Generations (images, video, audio)">
+        <P>
+          Generate with the same models, prices and checks as the Studio. Unlike videos, a generation is paid in the
+          organization&apos;s <b>credits</b>, not the USD API balance, and it is <b>the Studio&apos;s own job</b>: the
+          quote is held when you start it, the worker captures the charge when the provider succeeds, and the hold is
+          released if it fails, expires or is stopped. Quote first, then start with the price you accept:
+        </P>
+        <Code label={labels.code}>{`curl -X POST ${BASE}/creative/quote \
+  -H "Authorization: Bearer $NIGHTSHIFT_API_KEY" -H "Content-Type: application/json" \
+  -d '{"capability": "t2i", "model": "MODEL_ID", "params": {"prompt": "a lighthouse at dawn"}}'
+# 200 {"quote": {"credits": 6, "model": "MODEL_ID", "capability": "t2i", ...}}
+
+curl -X POST ${BASE}/creative/jobs \
+  -H "Authorization: Bearer $NIGHTSHIFT_API_KEY" -H "Content-Type: application/json" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -d '{"capability": "t2i", "model": "MODEL_ID", "params": {"prompt": "a lighthouse at dawn"}, "max_credits": 6}'
+# 201 {"id": "…", "status": "queued", "quoted_credits": 6, "charged_credits": null, ...}
+
+curl ${BASE}/creative/jobs/JOB_ID -H "Authorization: Bearer $NIGHTSHIFT_API_KEY"   # until status = completed`}</Code>
+        <ul className="list-disc space-y-1 pl-5 text-[14px] text-[var(--color-muted)]">
+          <li>
+            <b>max_credits</b> and an <b>Idempotency-Key</b> are required. A price above <code>max_credits</code> is{" "}
+            <code>409 price_changed</code> and nothing is held; a retry with the same key and body returns the first
+            answer and never pays twice. Idempotency keys belong to the API key that sent them.
+          </li>
+          <li>
+            Not enough credits is <code>402 insufficient_credits</code>; the plan&apos;s parallel-run limit is{" "}
+            <code>429 run_limit_reached</code>; a key&apos;s own monthly credit ceiling is{" "}
+            <code>402 key_credit_limit_reached</code>. Nothing is held in any of these cases.
+          </li>
+          <li>
+            Only models the API may sell are accepted: a model whose vendor does not allow third-party API use, or one
+            that is unverified or unpriced, is <code>422 model_not_sellable</code>.
+          </li>
+          <li>
+            Input pictures (<code>source_asset_id</code>) must be in your organization&apos;s media library; another
+            organization&apos;s id answers exactly like one that does not exist (<code>422 source_unavailable</code>).
+          </li>
+          <li>
+            A key reads only the generations it started. Outputs are saved to your media library
+            (<code>result_asset_ids</code>); a status of <code>completed</code> with <code>charged_credits</code> is the
+            final charge, <code>failed</code> means everything was released.
+          </li>
+        </ul>
       </Section>
 
       <Section id="mcp" title="MCP server (AI assistants)">

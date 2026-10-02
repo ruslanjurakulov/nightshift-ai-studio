@@ -60,6 +60,7 @@ export const SECTIONS = [
   "create",
   "videos",
   "studio",
+  "styles",
   "library",
   "editor",
   "pipeline",
