@@ -18,6 +18,7 @@
  *   - Holds are rounded UP to the cent, as the database rounds them.
  */
 
+import { formatNumber } from "@/lib/number-format";
 import { percentile } from "@/lib/billing";
 import { DEFAULT_ORG_ID } from "@/lib/orgs";
 import type { VideoEconomics } from "@/lib/unitEconomics";
@@ -315,7 +316,8 @@ export function parsePriceInput(
 /** Credits for display: up to two decimals, no trailing zeros. */
 export function formatCredits(n: number | null | undefined, locale = "en"): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return "—";
-  return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(n);
+  // By table, not by the runtime's ICU: the server and the browser must print the same text (lib/number-format.ts).
+  return formatNumber(n, locale, 2);
 }
 
 /**

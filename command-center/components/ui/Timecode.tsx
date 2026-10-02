@@ -1,4 +1,5 @@
 import { formatCredits } from "@/lib/credits";
+import { formatNumber } from "@/lib/number-format";
 
 /**
  * The counter face (IDENTITY.md §Signature devices): credits, prices,
@@ -69,7 +70,7 @@ export function formatTimecode(
 ): string {
   if (!Number.isFinite(value)) return "—";
   if (format === "credits") return formatCredits(value, locale);
-  if (format === "count") return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(Math.round(value));
+  if (format === "count") return formatNumber(Math.round(value), locale, 0);
   const sign = value < 0 ? "-" : "";
   const abs = Math.abs(value);
   if (format === "frames") {

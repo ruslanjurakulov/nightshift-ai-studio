@@ -20,8 +20,8 @@ export interface CreativeDb {
   rpc(fn: string, args: Record<string, unknown>): Promise<DbAnswer>;
   /** One creative_jobs row by id, read through RLS (members of its org). */
   readJob(id: string): Promise<DbAnswer>;
-  /** The newest creative_jobs rows of one org, read through RLS. */
-  listJobs(orgId: string, limit: number): Promise<DbAnswer>;
+  /** The newest creative_jobs rows of one org, read through RLS; only these tools' when `capabilities` is given. */
+  listJobs(orgId: string, limit: number, capabilities?: readonly CreativeCapability[]): Promise<DbAnswer>;
 }
 
 export interface CreativeResult {
@@ -458,9 +458,29 @@ export async function getJob(db: CreativeDb, id: string): Promise<CreativeResult
   return { status: 200, body: { job: data } };
 }
 
-export async function listJobs(db: CreativeDb, orgId: string | null, limit = 50): Promise<CreativeResult> {
+/**
+ * `capability=t2v,i2v` (a Studio desk's tools): which tools' jobs to list.
+ * Absent or empty: every tool. Anything that is not a known tool is refused
+ * rather than dropped, so a desk never reads "nothing here" because of a typo.
+ */
+export function parseCapabilityFilter(raw: string | null | undefined): { ok: true; value: CreativeCapability[] | null } | { ok: false } {
+  if (raw === null || raw === undefined || raw.trim() === "") return { ok: true, value: null };
+  const parts = raw.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0 || parts.length > CREATIVE_CAPABILITIES.length) return { ok: false };
+  const known = parts.filter((p): p is CreativeCapability => (CREATIVE_CAPABILITIES as readonly string[]).includes(p));
+  if (known.length !== parts.length) return { ok: false };
+  return { ok: true, value: [...new Set(known)] };
+}
+
+export async function listJobs(
+  db: CreativeDb,
+  orgId: string | null,
+  limit = 50,
+  capabilities: readonly CreativeCapability[] | null = null,
+): Promise<CreativeResult> {
   if (!isUuid(orgId)) return fail(400, "org_required");
-  const { data, error } = await db.listJobs(orgId, Math.max(1, Math.min(100, Math.trunc(limit) || 50)));
+  const n = Math.max(1, Math.min(100, Math.trunc(limit) || 50));
+  const { data, error } = capabilities && capabilities.length > 0 ? await db.listJobs(orgId, n, capabilities) : await db.listJobs(orgId, n);
   if (error) return isCreativeMissing(error) ? fail(503, "creative_unavailable") : fail(502, "failed");
   return { status: 200, body: { jobs: Array.isArray(data) ? data : [] } };
 }

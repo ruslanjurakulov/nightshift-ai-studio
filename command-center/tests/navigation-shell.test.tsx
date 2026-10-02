@@ -46,6 +46,7 @@ import {
   sidebarCurrent,
 } from "@/lib/navigation";
 import { COMPOSER_CAPABILITIES, prefillFromQuery } from "@/lib/creative/studio";
+import { DESKS } from "@/lib/creative/desks";
 import { creditPillAmount, creditUnit } from "@/lib/credits";
 import { planName, type AccountPlan } from "@/lib/account";
 
@@ -138,13 +139,13 @@ describe("prefillFromQuery from a sidebar link", () => {
 });
 
 describe("customer sidebar (rendered)", () => {
-  it("shows Studio, the Create group of tools, Your work, and the account foot", () => {
+  it("shows Studio, the Create group of desks, Your work, and the account foot", () => {
     render(withI18n(<SideNav email="me@example.com" plan={PLAN} />));
     const nav = screen.getByRole("navigation", { name: en.shell.primary });
     const links = within(nav).getAllByRole("link");
     expect(links.map((a) => a.textContent)).toEqual([
       en.nav.hub,
-      ...STUDIO_TOOLS.map((t) => en.gen.kinds[t]),
+      ...DESKS.map((d) => en.desk.names[d]),
       en.nav.styles,
       en.nav.library,
       en.nav.editor,
@@ -153,7 +154,8 @@ describe("customer sidebar (rendered)", () => {
     ]);
     expect(within(nav).getByRole("heading", { name: en.shell.gCreate })).toBeTruthy();
     expect(within(nav).getByRole("heading", { name: en.shell.gWork })).toBeTruthy();
-    expect(within(nav).getByRole("link", { name: en.gen.kinds.t2v }).getAttribute("href")).toBe("/chronos/create?tool=t2v");
+    expect(within(nav).getByRole("link", { name: en.desk.names.video }).getAttribute("href")).toBe("/chronos/create?desk=video");
+    expect(within(nav).getByRole("link", { name: en.desk.names.overview }).getAttribute("href")).toBe("/chronos/create");
 
     const aside = nav.closest("aside") as HTMLElement;
     expect(within(aside).getByRole("link", { name: en.shell.plansCredits }).getAttribute("href")).toBe("/chronos/credits");
@@ -163,11 +165,12 @@ describe("customer sidebar (rendered)", () => {
     expect(card.textContent).toContain("Creator");
   });
 
-  it("marks the tool in the URL as the current page", () => {
+  it("marks the desk the URL opens as the current page: a tool's desk, or the desk named", () => {
     search = "tool=upscale";
     render(withI18n(<SideNav email={null} plan={null} />));
     const nav = screen.getByRole("navigation", { name: en.shell.primary });
-    expect(within(nav).getByRole("link", { name: en.gen.kinds.upscale }).getAttribute("aria-current")).toBe("page");
+    expect(within(nav).getByRole("link", { name: en.desk.names.enhance }).getAttribute("aria-current")).toBe("page");
+    expect(within(nav).getByRole("link", { name: en.desk.names.video }).getAttribute("aria-current")).toBeNull();
     expect(within(nav).getByRole("link", { name: en.nav.hub }).getAttribute("aria-current")).toBeNull();
   });
 

@@ -447,14 +447,24 @@ _RUNWAY_VIDEO_TYPES = {".mp4": "video/mp4", ".mov": "video/quicktime", ".webm": 
 _RUNWAY_URI = re.compile(r"^runway://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]{1,4990}$")
 
 
+#: The demuxer forced for a source's extension (the upscale's accepted types).
+_FPS_DEMUXERS = {".mp4": "mov", ".mov": "mov", ".webm": "matroska", ".mkv": "matroska"}
+
+
 def video_fps(path: str, *, timeout: int = 30) -> Optional[float]:
     """The first video stream's frame rate as ffprobe reads it, or None when
     it cannot be read (no ffprobe, not a video, a 0/0 rate). Never a guess."""
     exe = shutil.which("ffprobe")
     if not exe:
         return None
+    # The file is a member's library copy: only the file protocol, and the
+    # demuxer its type names (as the media library's own probe does), so a
+    # playlist or concat script cannot make ffprobe open anything else.
+    demuxer = _FPS_DEMUXERS.get(Path(str(path)).suffix.lower())
+    forced = ["-f", demuxer] if demuxer else []
     try:
-        out = subprocess.run([exe, "-v", "error", "-select_streams", "v:0", "-show_entries",
+        out = subprocess.run([exe, "-v", "error", "-protocol_whitelist", "file", *forced,
+                              "-select_streams", "v:0", "-show_entries",
                               "stream=avg_frame_rate,r_frame_rate", "-of", "json", str(path)],
                              capture_output=True, timeout=timeout, check=False)
         stream = (json.loads(out.stdout or b"{}").get("streams") or [{}])[0]
