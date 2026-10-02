@@ -65,6 +65,8 @@ const nextConfig: NextConfig = {
       // them. It gets the non-overlapping headers from the next rule.
       { source: "/((?!api/media/file/).*)", headers: SECURITY_HEADERS },
       { source: "/api/media/file/:path*", headers: MEDIA_FILE_HEADERS },
+      // The self-hosted font files carry their version in their name.
+      { source: "/fonts/:file", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
       // Last, so its stricter Referrer-Policy wins over the rule above.
       {
         source: "/auth/:path*",

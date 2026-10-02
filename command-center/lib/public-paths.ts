@@ -59,6 +59,22 @@ export function isSignedMediaPath(pathname: string): boolean {
   return /^\/api\/media\/file\/[0-9a-f-]{36}\/(original|thumb|proxy)$/.test(pathname);
 }
 
+/**
+ * The Cyrillic faces of the public pages, self-hosted from public/fonts so a
+ * Russian page can preload them by a stable name (components/site/fonts.ts).
+ * Static OFL font files, listed one by one and matched exactly: the gate lets
+ * them through before any session work, like the signed media files, so a
+ * font never waits on an auth round trip. Nothing else under /fonts is public.
+ */
+export const PUBLIC_FONT_PATHS = [
+  "/fonts/sofia-sans-extra-condensed-cyrillic-v6.woff2",
+  "/fonts/sofia-sans-cyrillic-v20.woff2",
+] as const;
+
+export function isPublicFontPath(pathname: string): boolean {
+  return (PUBLIC_FONT_PATHS as readonly string[]).includes(pathname);
+}
+
 /** Served as-is to anyone, signed in or not, without channel resolution. */
 export const ALWAYS_PUBLIC_PATHS = [...LEGAL_PATHS, ...INFO_PATHS, ...SOLUTION_PATHS] as const;
 

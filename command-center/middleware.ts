@@ -10,7 +10,7 @@ import {
   isSection,
   isUnknownRootPath,
 } from "@/lib/channels";
-import { gateDecision, isPublicApiPath, isSignedMediaPath } from "@/lib/public-paths";
+import { gateDecision, isPublicApiPath, isPublicFontPath, isSignedMediaPath } from "@/lib/public-paths";
 
 /** Next's own route for app/not-found.tsx (it is what an unmatched URL renders). */
 const NOT_FOUND_PATH = "/_not-found";
@@ -62,6 +62,9 @@ function notFoundResponse(request: NextRequest): NextResponse {
 }
 
 export async function middleware(request: NextRequest) {
+  // The public pages' two self-hosted font files, by exact name: static, public,
+  // and on the critical path of a Russian page's first paint.
+  if (isPublicFontPath(request.nextUrl.pathname)) return NextResponse.next();
   if (!isSupabaseConfigured) {
     // No backend, so no account and no app to show. A built site answers every
     // app URL with the public 404 — never the app's frame or its setup notice

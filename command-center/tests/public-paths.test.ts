@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { gateDecision, isPublicPath } from "@/lib/public-paths";
+import { gateDecision, isPublicFontPath, isPublicPath } from "@/lib/public-paths";
 import { isValidChannelId } from "@/lib/channels";
 
 // The middleware only asks Supabase one question — who is signed in — so the
@@ -252,6 +252,25 @@ describe("gateDecision", () => {
       expect(gateDecision(path, false)).toBe("to-login");
     }
   });
+});
+
+describe("the public pages' font files", () => {
+  it.each(["/fonts/sofia-sans-extra-condensed-cyrillic-v6.woff2", "/fonts/sofia-sans-cyrillic-v20.woff2"])(
+    "serves %s to anyone, without a sign-in redirect",
+    async (path) => {
+      const { redirect, res } = await visit(path, false);
+      expect(redirect).toBeNull();
+      expect(res.status).toBe(200);
+      expect(res.headers.get("x-middleware-rewrite")).toBeNull();
+    },
+  );
+
+  it.each(["/fonts", "/fonts/other.woff2", "/fonts/sofia-sans-cyrillic-v20.woff2/x", "/fonts/../videos", "/chronos/fonts/sofia-sans-cyrillic-v20.woff2"])(
+    "matches exactly: %s is not public",
+    (path) => {
+      expect(isPublicFontPath(path)).toBe(false);
+    },
+  );
 });
 
 describe("channel ids", () => {

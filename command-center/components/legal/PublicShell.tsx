@@ -5,6 +5,8 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { PublicMobileMenu } from "@/components/legal/PublicMobileMenu";
 import { BrandMark } from "@/components/site/BrandMark";
+import { preloadSiteFonts } from "@/components/site/fonts";
+import { getLocale } from "@/lib/i18n/server";
 import "@/components/site/site.css";
 
 /** Which top-level page the visitor is on, for the nav's lit item. */
@@ -33,7 +35,7 @@ export function publicNavLinks(t: Dictionary): { href: string; label: string; se
  * sticks; on a phone the links fold into a menu while Start free stays in the
  * bar — the one action the pages exist to offer is never behind a tap.
  */
-export function PublicShell({
+export async function PublicShell({
   t,
   current = null,
   children,
@@ -43,6 +45,7 @@ export function PublicShell({
   children: React.ReactNode;
 }) {
   const links = publicNavLinks(t);
+  preloadSiteFonts(await getLocale());
   return (
     <div className="st relative flex min-h-dvh flex-col">
       <a href="#main" className="st-skip">

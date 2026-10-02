@@ -10,6 +10,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { LegalFooter } from "@/components/legal/LegalFooter";
 import { BrandMark } from "@/components/site/BrandMark";
+import { preloadSiteFonts } from "@/components/site/fonts";
 import "@/components/site/site.css";
 
 /**
@@ -33,6 +34,7 @@ export function AuthShell({
 }) {
   const { t, locale } = usePublicI18n();
   const a = t.site.auth;
+  preloadSiteFonts(locale);
   const asideTitle = mode === "signup" ? a.asideTitleSignup : a.asideTitle;
   return (
     <div className="st st-auth">
