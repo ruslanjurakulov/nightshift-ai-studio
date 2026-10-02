@@ -17,7 +17,9 @@ What must hold:
   variants only while one of its variants has a price;
 * 0070 is built on 0052 / 0055 / 0060: the per-target upscale price, the
   quality tier and the describe rules still answer exactly as before;
-* the hold is the quote of that variant and the confirmed price is the ceiling;
+* the hold is the quote of that variant and the confirmed price is the ceiling,
+  and the job carries the resolution and soundtrack it was priced at (the worker
+  sends exactly them and has no default of its own), 0060's stored tier kept;
 * the starting rows never overwrite a price the owner set.
 
 Runs in its own scratch database (it commits), like the 0060 lab.
@@ -291,10 +293,69 @@ def test_the_hold_is_the_variants_price_and_the_confirmed_price_is_the_ceiling(d
     drain(db)
 
 
-def test_a_job_that_names_nothing_is_held_at_the_pinned_defaults_and_stores_nothing_it_was_not_given(db):
+def unit_of(db, job):
+    return db.su("select credit_unit from public.creative_jobs where id=%s", [job["id"]])[0][0]
+
+
+@pytest.mark.parametrize("model,params,stored,unit,per_s", [
+    # The worker sends exactly params.resolution / params.audio and has no default of its own:
+    # the database writes down what it priced.
+    ("vseed", {}, {"resolution": "720p", "audio": False}, "model_vseed_second_720p_silent", 1),
+    ("vseed", {"audio": True}, {"resolution": "720p", "audio": True}, "model_vseed_second_720p_audio", 2),
+    ("vseed", {"resolution": "1080p", "audio": True}, {"resolution": "1080p", "audio": True},
+     "model_vseed_second_1080p_audio", 4),
+    ("vwan", {}, {"resolution": "720p"}, "model_vwan_second_720p", 3),
+    ("vwan", {"resolution": "1080p"}, {"resolution": "1080p"}, "model_vwan_second_1080p", 5),
+    ("vkling", {}, {"audio": False}, "model_vkling_second_silent", 2),
+    ("vkling", {"audio": True}, {"audio": True}, "model_vkling_second_audio", 3),
+])
+def test_the_job_carries_the_resolution_and_sound_it_was_priced_at(db, model, params, stored, unit, per_s):
     drain(db)
-    j = create(db, UA, ORG_A, "t2v", "vseed", t2v(), maxc=1 * SECONDS)["job"]
-    assert float(j["quoted_credits"]) == 1 * SECONDS and "audio" not in j["params"] and "resolution" not in j["params"]
+    j = create(db, UA, ORG_A, "t2v", model, t2v(**params), maxc=per_s * SECONDS)["job"]
+    assert float(j["quoted_credits"]) == per_s * SECONDS and unit_of(db, j) == unit
+    # the stored params are what the caller sent plus exactly the priced settings, nothing else changed
+    assert j["params"] == {**t2v(**params), **stored}
+    drain(db)
+
+
+@pytest.mark.parametrize("model", ["vveo", "vflat"])
+def test_a_model_priced_by_no_setting_stores_none(db, model):
+    drain(db)
+    j = create(db, UA, ORG_A, "t2v", model, t2v())["job"]
+    assert "resolution" not in j["params"] and "audio" not in j["params"]
+    assert unit_of(db, j) == f"model_{model}_second"
+    drain(db)
+
+
+def test_i2v_carries_its_priced_settings_too(db):
+    drain(db)
+    params = {"source_asset_id": db.assets["a_png"], "duration_s": SECONDS}
+    j = create(db, UA, ORG_A, "i2v", "vseed", params)["job"]
+    assert j["params"] == {**params, "resolution": "720p", "audio": False}
+    drain(db)
+
+
+def test_a_replayed_key_is_still_a_replay_and_a_changed_setting_under_one_key_is_a_conflict(db):
+    drain(db)
+    key = "studio:" + uuid.uuid4().hex
+
+    def go(params):
+        return db.act("authenticated", UA,
+                      "select public.create_creative_job(%s,'t2v','vseed',%s::jsonb,'exact',%s::text,1000)",
+                      [ORG_A, json.dumps(params), key])[0][0]
+    first = go(t2v())                                # nothing named: priced and stored as 720p silent
+    again = go(t2v())                                # same request, same key
+    assert again["replay"] is True and again["job"]["id"] == first["job"]["id"]
+    st, word, _ = err(lambda: go(t2v(audio=True)))
+    assert (st, word) == ("NS409", "idempotency_conflict")
+    assert db.su("select count(*) from public.credit_reservations where job_id=%s", ["cj:" + first["job"]["id"]]) == [(1,)]
+    drain(db)
+
+
+def test_the_quality_tier_is_still_stored_by_the_replaced_create(db):
+    drain(db)
+    j = create(db, UA, ORG_A, "t2i", "qimg", {"prompt": "x"})["job"]
+    assert j["params"]["quality"] == "medium" and unit_of(db, j) == "model_qimg_image_medium"
     drain(db)
 
 

@@ -34,9 +34,11 @@ job folder), the capability layer knows vendors (``CapabilityRequest``,
   before 0060, or priced flat by a database whose registry copy was not
   synced) fails before the call and its hold is released, because sending
   any tier would bill something the customer was not quoted;
-* a video model priced by resolution or soundtrack (0070) is always sent
-  both: the job's, else the registry's ``default_resolution`` and a silent
-  clip — the same defaults the quote used, never the vendor's;
+* a video model priced by resolution or soundtrack (0070) is likewise sent
+  EXACTLY the resolution and soundtrack the job was priced at
+  (``params.resolution`` / ``params.audio``, written by the database at create
+  time): this process has no default of its own, and a job of such a model
+  without them fails before the call and its hold is released;
 * style / character reference pictures (0048,
   ``GenerationRequest.reference_files``) follow them only for a capability
   the adapter lists in ``reference_capabilities``, and only as many as the
@@ -193,12 +195,18 @@ class RegistryAdapter:
                 f"this job carries no quality tier for {self.entry.id}, so it cannot be billed as quoted; "
                 "nothing was charged — start it again")
         if cap in VIDEO_VARIANT_CAPABILITIES:
-            # What the quote priced is what is sent (0070): the resolution the
-            # registry pins and a silent clip, never the vendor's own defaults.
-            if self.entry.default_resolution and req.resolution is None:
-                req = replace(req, resolution=self.entry.default_resolution)
-            if self.entry.priced_by_audio and req.audio is None:
-                req = replace(req, audio=False)
+            # What the quote priced is what is sent (0070): the resolution and
+            # the soundtrack the database wrote into the job. A priced variant
+            # that is missing is never made up here — sending the vendor's (or
+            # our) own setting would bill something nobody quoted.
+            missing = [name for name, absent in (
+                ("resolution", bool(self.entry.default_resolution) and req.resolution is None),
+                ("audio setting", self.entry.priced_by_audio and req.audio is None)) if absent]
+            if missing:
+                raise CreativeAdapterError(
+                    "bad_request",
+                    f"this job carries no {' or '.join(missing)} for {self.entry.id}, so it cannot be billed as quoted; "
+                    "nothing was charged — start it again")
         problems = self.adapter.problems(req, self.entry)
         if problems:
             raise CreativeAdapterError("bad_request", "; ".join(problems)[:500])
