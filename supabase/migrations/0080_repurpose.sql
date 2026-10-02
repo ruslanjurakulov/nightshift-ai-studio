@@ -60,6 +60,15 @@
 --           the worker, one that changed since the quote, a worker that died.
 --           A failed clip is never charged.
 --
+-- WHAT BOUNDS IT
+--   One request at a time per video (a unique index). At most 20 clips made
+--   from one master in all (reason clip_limit): every clip is a file on the
+--   worker's disk that nothing prunes, so the number a video can accumulate is
+--   a database rule, and a press by the operator's own organization (which pays
+--   nothing) is bounded the same way. A master with a scene regeneration
+--   queued or running (0076, if applied) is refused (master_changing): its cut
+--   is about to change, and the worker would only find it moved.
+--
 -- WHAT A CLIP NEVER DOES
 --   Every clip is its own videos row, written by the worker's settle function
 --   only: held, private and ungated — publish_state 'held', published_at and
@@ -98,7 +107,8 @@
 --
 -- REQUIRES 0003 (videos.video_format, parent_video_id), 0013 (videos.manifest),
 -- 0016 (videos.publish_state), 0018 (organizations), 0020 (credits). Optional:
--- 0030 (download_masters: a master recorded below 720 pixels is refused).
+-- 0030 (download_masters: a master recorded below 720 pixels is refused) and
+-- 0076 (a master with a scene regeneration in progress is refused).
 -- Additive and idempotent: guarded creates, create-or-replace functions,
 -- drop-then-create policies, triggers and constraints. Nothing is dropped and
 -- no existing function, policy or constraint is replaced.
@@ -475,6 +485,7 @@ create or replace function public.repurpose_master_state(v public.videos) return
   language plpgsql stable set search_path = public, pg_temp as $$
 declare
   v_side integer;
+  v_busy boolean;
 begin
   if coalesce(v.video_format, 'long') <> 'long' or v.parent_video_id is not null
      or coalesce(v.hold_detail ->> 'reason', '') = 'repurposed_clip' then
@@ -504,6 +515,21 @@ begin
     if v_side is not null and v_side < 720 then
       return 'master_too_small';
     end if;
+  end if;
+  -- 0076, when applied: a scene of this master is being regenerated, so its
+  -- cut is about to change. Dynamic, so this compiles without 0076.
+  if to_regclass('public.scene_regenerations') is not null then
+    execute 'select exists (select 1 from public.scene_regenerations '
+            'where video_id = $1 and status in (''queued'', ''running''))'
+       into v_busy using v.video_id;
+    if v_busy then
+      return 'master_changing';
+    end if;
+  end if;
+  -- Every clip is a file on the worker's disk: a master keeps at most 20.
+  if (select count(*) from public.repurpose_clips c
+       where c.master_id = v.video_id and c.status = 'rendered') >= 20 then
+    return 'clip_limit';
   end if;
   return null;
 end

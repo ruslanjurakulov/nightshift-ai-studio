@@ -545,6 +545,8 @@ export const en = {
       no_run: "This video has no run to cut from.",
       no_master: "The full-quality video isn't on file for this one, so clips can't be cut.",
       master_too_small: "Only a small review copy of this video is on file, and clips are never cut from it.",
+      master_changing: "A scene of this video is being regenerated. Make clips once it has finished.",
+      clip_limit: "This video already has 20 clips. That is the most that can be kept for one video.",
       in_progress: "Clips of this video are already being made. Wait for them to finish.",
       unknown: "Clips can't be made from this video right now.",
     },

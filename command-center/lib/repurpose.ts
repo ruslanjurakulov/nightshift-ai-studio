@@ -33,6 +33,8 @@ export const MIN_CLIP_SECONDS = 15;
 export const MAX_CLIP_SECONDS = 60;
 export const MAX_CLIPS = 5;
 export const MAX_CLIP_SCENES = 12;
+/** Clips made from one master in all (the database's clip_limit). */
+export const MAX_CLIPS_PER_MASTER = 20;
 export const AUDIO_SLACK_S = 0.5;
 export const EDGE_SLACK_S = 0.001;
 
@@ -361,13 +363,16 @@ export type UnavailableReason =
   | "no_run"
   | "no_master"
   | "master_too_small"
+  | "master_changing"
+  | "clip_limit"
   | "in_progress"
   | "unknown";
 
 const REASONS: readonly string[] = [
   "invalid_clips", "no_manifest", "scene_ids_not_unique", "scene_not_found", "invalid_range", "too_many_scenes",
   "scene_timing_unknown", "clip_too_short", "clip_too_long", "beyond_audio", "clips_overlap", "is_a_clip",
-  "gate_blocked", "rejected", "no_run", "no_master", "master_too_small", "in_progress",
+  "gate_blocked", "rejected", "no_run", "no_master", "master_too_small", "master_changing", "clip_limit",
+  "in_progress",
 ];
 
 export interface RepurposeQuote {

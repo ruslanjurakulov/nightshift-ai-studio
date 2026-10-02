@@ -6,6 +6,7 @@ import {
   CLIP_COLUMNS,
   MAX_CLIPS,
   MAX_CLIP_SCENES,
+  MAX_CLIPS_PER_MASTER,
   MAX_CLIP_SECONDS,
   MIN_CLIP_SECONDS,
   REQUEST_COLUMNS,
@@ -176,7 +177,7 @@ describe("windows are whole scenes", () => {
   });
 
   it("the limits are the Shorts window and the database's", () => {
-    expect([MIN_CLIP_SECONDS, MAX_CLIP_SECONDS, MAX_CLIPS, MAX_CLIP_SCENES, AUDIO_SLACK_S]).toEqual([15, 60, 5, 12, 0.5]);
+    expect([MIN_CLIP_SECONDS, MAX_CLIP_SECONDS, MAX_CLIPS, MAX_CLIP_SCENES, AUDIO_SLACK_S, MAX_CLIPS_PER_MASTER]).toEqual([15, 60, 5, 12, 0.5, 20]);
   });
 
   it("two picked clips that share a scene are caught before the press", () => {
@@ -258,6 +259,14 @@ describe("the quote", () => {
       expect(q.status).toBe("unavailable");
       expect(q.reason).toBe("unknown");
       expect(canPress(q)).toBe(false);
+    }
+  });
+
+  it("a master being regenerated, or with its twenty clips, is unavailable with its own sentence", () => {
+    for (const reason of ["master_changing", "clip_limit"] as const) {
+      const q = parseQuote({ status: "unavailable", reason, may_start: true });
+      expect(q.reason).toBe(reason);
+      expect(reasonText(q.reason, en.repurpose)).not.toBe(en.repurpose.reasons.unknown);
     }
   });
 
@@ -397,7 +406,7 @@ describe("the words", () => {
   });
 
   it("every reason the database can give has a sentence in every language", () => {
-    const reasons = ["invalid_clips", "no_manifest", "scene_ids_not_unique", "scene_not_found", "invalid_range", "too_many_scenes", "scene_timing_unknown", "clip_too_short", "clip_too_long", "beyond_audio", "clips_overlap", "is_a_clip", "gate_blocked", "rejected", "no_run", "no_master", "master_too_small", "in_progress", "unknown"];
+    const reasons = ["invalid_clips", "no_manifest", "scene_ids_not_unique", "scene_not_found", "invalid_range", "too_many_scenes", "scene_timing_unknown", "clip_too_short", "clip_too_long", "beyond_audio", "clips_overlap", "is_a_clip", "gate_blocked", "rejected", "no_run", "no_master", "master_too_small", "master_changing", "clip_limit", "in_progress", "unknown"];
     for (const s of Object.values(sections)) {
       for (const r of reasons) expect((s.reasons as Record<string, string>)[r], r).toBeTruthy();
     }

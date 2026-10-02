@@ -539,6 +539,8 @@ export const uz: Dictionary = {
       no_run: "Bu videoda kesish mumkin bo'lgan ishga tushirish yo'q.",
       no_master: "Bu video uchun to'liq sifatli nusxa yo'q, shuning uchun klipllarni kesib bo'lmaydi.",
       master_too_small: "Bu video uchun faqat kichik ko'rish nusxasi bor, klipllar undan hech qachon kesilmaydi.",
+      master_changing: "Bu videoning sahnasi qayta yaratilmoqda. Tugagach klipllar yarating.",
+      clip_limit: "Bu videoda allaqachon 20 ta klip bor. Bitta video uchun saqlanadigan eng ko'p son shu.",
       in_progress: "Bu videoning klipllari allaqachon yaratilmoqda. Tugashini kuting.",
       unknown: "Hozir bu videodan klip yaratib bo'lmaydi.",
     },

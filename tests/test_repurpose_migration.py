@@ -278,8 +278,17 @@ class AMadeClip(unittest.TestCase):
     def test_a_clip_is_never_repurposed_again_and_a_blocked_master_is_refused(self):
         text = body("repurpose_master_state")
         for needle in ("return 'is_a_clip';", "return 'gate_blocked';", "return 'rejected';", "return 'no_manifest';",
-                       "return 'no_master';", "return 'no_run';", "return 'master_too_small';"):
+                       "return 'no_master';", "return 'no_run';", "return 'master_too_small';",
+                       "return 'master_changing';", "return 'clip_limit';"):
             self.assertIn(needle, text)
+        # 0076 is optional: its table is looked up dynamically, so this compiles without it
+        self.assertIn("if to_regclass('public.scene_regenerations') is not null then", text)
+        self.assertIn("execute 'select exists (select 1 from public.scene_regenerations '", text)
+        self.assertNotIn("public.scene_regenerations;", text)
+
+    def test_a_master_keeps_at_most_the_clips_python_says(self):
+        self.assertIn("c.status = 'rendered') >= 20 then", body("repurpose_master_state"))
+        self.assertEqual(repurpose.MAX_CLIPS_PER_MASTER, 20)
 
     def test_the_header_names_what_a_clip_never_does(self):
         self.assertIn("Nothing here uploads, publishes or changes", SQL)

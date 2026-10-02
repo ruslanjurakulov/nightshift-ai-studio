@@ -79,6 +79,9 @@ MIN_CLIP_SECONDS = 15.0
 MAX_CLIP_SECONDS = 60.0
 MAX_CLIPS = 5
 MAX_CLIP_SCENES = 12
+#: Clips made from one master in all (every clip is a file on the worker's
+#: disk that nothing prunes). The database enforces it (reason clip_limit).
+MAX_CLIPS_PER_MASTER = 20
 #: A window may end this far past the narration audio's measured length.
 AUDIO_SLACK_S = 0.5
 #: Two scenes may overlap by this much at their shared edge.
@@ -659,7 +662,7 @@ class RepurposeService:
 
 
 __all__ = [
-    "AUDIO_SLACK_S", "ClipStop", "MAX_CLIPS", "MAX_CLIP_SCENES", "MAX_CLIP_SECONDS", "MIN_CLIP_SECONDS",
+    "AUDIO_SLACK_S", "ClipStop", "MAX_CLIPS", "MAX_CLIPS_PER_MASTER", "MAX_CLIP_SCENES", "MAX_CLIP_SECONDS", "MIN_CLIP_SECONDS",
     "MIN_SOURCE_SIDE", "Proposal", "Proposals", "RepurposeService", "RepurposeStore", "Window",
     "candidate_windows", "check_master", "check_window", "clip_captions", "clip_title", "plan_clips",
     "process_request", "propose",

@@ -554,6 +554,59 @@ def test_a_master_recorded_as_a_480p_review_copy_is_never_a_source(conn, sc):
     assert hd.rows[0][0]["status"] == "priced", hd
 
 
+def test_a_master_whose_scene_is_being_regenerated_is_unavailable_until_it_ends(conn, sc):
+    with world(conn, sc.bob) as (su, vid):
+        row = su.value(
+            "insert into public.scene_regenerations (org_id, channel_id, video_id, slug, scene_id, requested_source, "
+            "source_kind, stock_assets, previous_asset_ids, idempotency_key, request_hash) values "
+            "(%s, %s, %s, %s, 's001', 'same', 'stock', 2, '{a_1,a_2}', 'regen-key-12345', %s) returning id",
+            [sc.bob.org, sc.bob.channel, vid, f"master-{sc.bob.key}", "0" * 32])
+        with acting(conn, sc.bob.actor) as s:
+            busy_q, busy_p = quote(s, vid), press(s, vid, max_credits=1000)
+            assert holds(owner(s), sc.bob.org) == []
+        su.rows("update public.scene_regenerations set status = 'failed', finished_at = now() where id = %s "
+                "returning 1", [row])
+        with acting(conn, sc.bob.actor) as s:
+            done_q = quote(s, vid)
+    assert busy_q.rows[0][0]["status"] == "unavailable" and busy_q.rows[0][0]["reason"] == "master_changing", busy_q
+    assert not busy_p.ok and busy_p.sqlstate == "NS400" and "clips_unavailable" in busy_p.error, busy_p
+    assert done_q.rows[0][0]["status"] == "priced", done_q
+
+
+def _made_clips(su, sc, vid, n, *, tag="a"):
+    """n clips already made from the master (rows only the database owner could write)."""
+    left, k = n, 0
+    while left > 0:
+        k += 1
+        rid = su.value("insert into public.repurpose_requests (org_id, channel_id, video_id, slug, clip_count, status, "
+                       "finished_at, idempotency_key, request_hash) values (%s, %s, %s, 'master-x', %s, 'succeeded', "
+                       "now(), %s, %s) returning id",
+                       [sc.bob.org, sc.bob.channel, vid, min(left, 5), f"made-{tag}-{k}-1234", "0" * 32])
+        for o in range(1, min(left, 5) + 1):
+            su.rows("insert into public.repurpose_clips (request_id, org_id, channel_id, master_id, ordinal, "
+                    "first_scene, last_scene, scene_ids, start_s, end_s, duration_s, status, finished_at, "
+                    "clip_video_id, local_path, width, height, bytes, sha256) values "
+                    "(%s, %s, %s, %s, %s, 's000', 's000', '{s000}', 0, 20, 20, 'rendered', now(), %s, %s, 1080, 1920, "
+                    "1000, %s) returning 1",
+                    [rid, sc.bob.org, sc.bob.channel, vid, o, f"run-{tag}{k:02d}{o:02d}{uuid.uuid4().hex[:12]}",
+                     f"output/master-x/repurpose/{k:08x}/clip-{o:02d}.mp4", "ab" * 32])
+        left -= min(left, 5)
+
+
+def test_a_master_keeps_at_most_twenty_clips(conn, sc):
+    with world(conn, sc.bob) as (su, vid):
+        _made_clips(su, sc, vid, 19)
+        with acting(conn, sc.bob.actor) as s:
+            nineteen = quote(s, vid)
+        _made_clips(su, sc, vid, 1, tag="b")
+        with acting(conn, sc.bob.actor) as s:
+            twenty_q, twenty_p = quote(s, vid), press(s, vid, max_credits=1000)
+            assert holds(owner(s), sc.bob.org) == []
+    assert nineteen.rows[0][0]["status"] == "priced", nineteen
+    assert twenty_q.rows[0][0]["status"] == "unavailable" and twenty_q.rows[0][0]["reason"] == "clip_limit", twenty_q
+    assert not twenty_p.ok and twenty_p.sqlstate == "NS400" and "clips_unavailable" in twenty_p.error, twenty_p
+
+
 def test_two_presses_at_once_hold_once(conn, sc):
     """Two sessions press for the same video concurrently with different keys:
     one wins, the other waits and is refused as in progress before anything is
