@@ -59,7 +59,7 @@ export function RegenerateSceneButton({
   // One key per intended press: a press that never reached the server is
   // retried with the same key; anything that changes the request gets a new one.
   const keyRef = useRef<string | null>(null);
-  // Latest request wins (BR-L-034): a slower answer for the other source
+  // Latest request wins (BR-L-037): a slower answer for the other source
   // must never put its price on the button.
   const seqRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);

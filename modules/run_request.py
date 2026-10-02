@@ -226,7 +226,7 @@ def build_regenerate_env(terms: Mapping, params: Mapping, base_env: Mapping[str,
     if terms.get("prompt"):
         env["SCENE_REGEN_PROMPT"] = str(terms["prompt"])
     env["SCENE_REGEN_EXPLICIT_STOCK"] = "true" if terms.get("explicit_stock") is True else "false"
-    # What was priced (BR-L-030): the run refuses a scene on disk that is not
+    # What was priced (BR-L-033): the run refuses a scene on disk that is not
     # exactly this, before anything is spent.
     ids = terms.get("previous_asset_ids")
     if not isinstance(ids, list) or not ids or len(ids) > 8 \

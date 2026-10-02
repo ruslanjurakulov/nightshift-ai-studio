@@ -169,7 +169,7 @@ class TheSourceAndTheGates(unittest.TestCase):
         self.assertIn("raise exception 'published'", self.b["request_scene_regenerate"])
 
     def test_the_quote_and_its_refusals_name_no_generator_or_price_unit(self):
-        # BR-L-036: viewers read the quote over PostgREST; the UI shows only
+        # BR-L-039: viewers read the quote over PostgREST; the UI shows only
         # the kind of source, so nothing more is returned.
         quote = self.b["quote_scene_regenerate"]
         for leak in ("'provider'", "'model'", "'missing_unit'", "'clip_unit'"):
@@ -178,7 +178,7 @@ class TheSourceAndTheGates(unittest.TestCase):
         self.assertNotIn("missing_unit", self.b["request_scene_regenerate"])
 
     def test_the_worker_hands_over_what_was_priced(self):
-        # BR-L-030: the run checks the scene on disk against these.
+        # BR-L-033: the run checks the scene on disk against these.
         start = self.b["start_scene_regeneration"]
         for field in ("'previous_asset_ids'", "'generated_clips'", "'stock_assets'"):
             self.assertIn(field, start)
