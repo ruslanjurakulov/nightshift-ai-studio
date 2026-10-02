@@ -11,6 +11,8 @@ import { navGroupsFor, tabsFor, type NavKey } from "@/lib/navigation";
 import { useOverlay } from "@/components/a11y/useOverlay";
 import { CustomerSidebar } from "@/components/shell/CustomerSidebar";
 import type { AccountPlan } from "@/lib/account";
+import { nav as MNav } from "motion/react-m";
+import { Plate, SharedLayout } from "@/components/motion/SharedLayout";
 
 /**
  * The app's primary navigation, as a left rail — icon + label, grouped.
@@ -192,34 +194,41 @@ function BottomBar() {
   const items = navGroupsFor(false)[0]?.items ?? [];
   const ordered = BOTTOM_ORDER.map((k) => items.find((i) => i.key === k)).filter((i) => i !== undefined);
   return (
-    <nav
-      aria-label={t.nav.menu}
-      className="ns-tabbar fixed inset-x-0 bottom-0 z-40 pb-[env(safe-area-inset-bottom)] lg:hidden"
-    >
-      <ul className="mx-auto grid max-w-[520px] grid-cols-5 items-end px-2 pt-1">
-        {ordered.map(({ href, key }) => {
-          const active = isActive(href, key);
-          const Icon = ICONS[key];
-          const centre = key === "hub";
-          return (
-            <li key={key} className="flex justify-center">
-              <Link href={path(href)} aria-current={active ? "page" : undefined} className="ns-tab">
-                {centre ? (
-                  // Studio, standing proud of the bar where the thumb is: the lit key.
-                  <span className="ns-tab-create">
-                    <Icon aria-hidden className="size-[22px]" strokeWidth={2.1} />
-                  </span>
-                ) : (
-                  <span className="ns-tab-icon">
-                    <Icon aria-hidden className="size-[19px]" strokeWidth={active ? 2.2 : 1.8} />
-                  </span>
-                )}
-                <span className="truncate">{t.nav[key]}</span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+    <SharedLayout id="customer-tabbar">
+      {/* layoutRoot: the bar is fixed to the viewport, so the tab plate measures
+          against the bar, not against how far the page has scrolled. */}
+      <MNav
+        layoutRoot
+        aria-label={t.nav.menu}
+        className="ns-tabbar fixed inset-x-0 bottom-0 z-40 pb-[env(safe-area-inset-bottom)] lg:hidden"
+      >
+        <ul className="mx-auto grid max-w-[520px] grid-cols-5 items-end px-2 pt-1">
+          {ordered.map(({ href, key }) => {
+            const active = isActive(href, key);
+            const Icon = ICONS[key];
+            const centre = key === "hub";
+            return (
+              <li key={key} className="flex justify-center">
+                <Link href={path(href)} aria-current={active ? "page" : undefined} className="ns-tab">
+                  {centre ? (
+                    // Studio, standing proud of the bar where the thumb is: the lit key.
+                    <span className="ns-tab-create">
+                      <Icon aria-hidden className="size-[22px]" strokeWidth={2.1} />
+                    </span>
+                  ) : (
+                    // The selection tint is one plate that slides to the tab you tap.
+                    <span className={active ? "ns-tab-icon ns-plate-host" : "ns-tab-icon"}>
+                      {active && <Plate id="tab-current" className="is-tab" />}
+                      <Icon aria-hidden className="size-[19px]" strokeWidth={active ? 2.2 : 1.8} />
+                    </span>
+                  )}
+                  <span className="truncate">{t.nav[key]}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </MNav>
+    </SharedLayout>
   );
 }

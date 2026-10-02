@@ -196,6 +196,10 @@ def _seed_tenant(conn: psycopg.Connection, t: Tenant) -> None:
             "returning id", [org, uid]))
         s.rows("insert into public.creative_job_events (job_id, org_id, event, status) values (%s, %s, 'created', 'queued') returning 1",
                [t.creative_job, org])
+        # 0075: the router's working state of a job (platform only, BR-L-022).
+        s.rows("insert into public.creative_job_routes (job_id, quality_tier, candidates, tried) "
+               "values (%s, 4, '[{\"model\": \"img-x\", \"credits\": 6}]', '[\"img-x\"]') returning 1",
+               [t.creative_job])
         # 0062: the key that started that generation (the API reads only its own).
         s.rows("insert into public.api_creative_jobs (job_id, key_id, org_id) values (%s, %s, %s) returning 1",
                [t.creative_job, t.api_key_id, org])

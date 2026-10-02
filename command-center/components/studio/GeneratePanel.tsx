@@ -58,6 +58,9 @@ import {
   type DubLanguage,
   type ImageQuality,
   type QuoteState,
+  routedLine,
+  routedPick,
+  upscaleTargetsFor,
   type StudioCapability,
   type StudioModel,
   type StudioPrefill,
@@ -148,6 +151,9 @@ export function GeneratePanel({
   const [aspect, setAspect] = useState<AspectRatio>(initial?.aspect ?? dna?.aspect ?? "16:9");
   const [duration, setDuration] = useState<VideoDuration>(initial?.duration ?? 5);
   const [model, setModel] = useState(initial?.model ?? "");
+  // 0075: "Auto" lets the database pick the model (mode auto). The quote names
+  // the pick and its price; the press sends both back. Off = the picked model, exactly.
+  const [auto, setAuto] = useState(false);
   const [sourceId, setSourceId] = useState<string | null>(initial?.sourceId ?? null);
   const [factor, setFactor] = useState<UpscaleFactor>(initial?.factor ?? 2);
   // A retried job keeps its own choice (even "none"); a fresh form starts from the channel's look.
@@ -182,23 +188,31 @@ export function GeneratePanel({
   const tabRefs = useRef<Partial<Record<StudioCapability, HTMLButtonElement | null>>>({});
 
   const available = modelsFor(models, capability);
+  // Auto is offered where there is a choice to make.
+  const autoOffered = available.length > 1;
+  const routed = auto && autoOffered;
   // The picked model if it can make this kind, else the first that can.
   const effectiveModel = available.some((m) => m.id === model) ? model : (available[0]?.id ?? "");
   const current = available.find((m) => m.id === effectiveModel) ?? null;
+  // Model ids -> the names the picker shows, for Auto's pick.
+  const modelNames = useMemo(() => new Map(models.map((m) => [m.id, m.displayName])), [models]);
   // Only a kit the organization has (as loaded) is ever sent: a stale default
   // or a deleted kit reads as "None" rather than as a refusal at the price.
   const effectiveStyle = styles.state === "ready" && styles.kits.some((k) => k.id === styleKitId) ? styleKitId : null;
   // An end frame goes only to a model that ends a clip on it; another model
   // keeps the pick but is never sent it (the database would refuse it).
-  const takesEnd = capability === "i2v" && current?.endFrame === true;
+  // Auto: the model is not known before the quote, so no model's own option
+  // (an end frame, a tier, a soundtrack choice) is offered or sent.
+  const takesEnd = !routed && capability === "i2v" && current?.endFrame === true;
   const effectiveEnd = takesEnd ? endFrameId : null;
   // The size: the one picked if this model makes it, else the model's first.
-  const targets = current?.upscaleTargets ?? [];
+  // Auto: the sizes any model of this kind makes, never the hand-picked one's.
+  const targets = upscaleTargetsFor(available, current, routed);
   const effectiveTarget = capability !== "video_upscale" ? null : target && targets.includes(target) ? target : (targets[0] ?? null);
   // A tier only for a picture tool on a model that sells tiers; another model never gets one.
-  const effectiveQ = takesQuality(capability) ? effectiveQuality(current, quality) : null;
+  const effectiveQ = !routed && takesQuality(capability) ? effectiveQuality(current, quality) : null;
   // A soundtrack choice only for a video tool on a model that sells it; another model never gets one.
-  const effectiveSnd = takesSound(capability) ? effectiveSound(current, sound) : null;
+  const effectiveSnd = !routed && takesSound(capability) ? effectiveSound(current, sound) : null;
   const form = {
     capability,
     prompt,
@@ -240,7 +254,7 @@ export function GeneratePanel({
   const ready = canQuote(form);
 
   useEffect(() => {
-    if (!ready || !effectiveModel) {
+    if (!ready || (!routed && !effectiveModel)) {
       setQuote({ status: "idle" });
       return;
     }
@@ -251,13 +265,19 @@ export function GeneratePanel({
         const res = await fetch("/api/creative/quote", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ org_id: orgId, capability, model: effectiveModel, params: JSON.parse(paramsKey) }),
+          body: JSON.stringify(
+            routed
+              ? { org_id: orgId, capability, mode: "auto", params: JSON.parse(paramsKey) }
+              : { org_id: orgId, capability, model: effectiveModel, params: JSON.parse(paramsKey) },
+          ),
           signal: ctrl.signal,
         });
-        const body = (await res.json().catch(() => ({}))) as { quote?: { credits?: unknown }; error?: unknown };
+        const body = (await res.json().catch(() => ({}))) as { quote?: Record<string, unknown>; error?: unknown };
         const credits = body.quote?.credits;
-        if (res.ok && typeof credits === "number" && Number.isFinite(credits)) setQuote({ status: "ready", credits });
-        else setQuote({ status: "error", code: asCreativeError(body.error) });
+        const pick = routed ? routedPick(body.quote, modelNames) : null;
+        if (res.ok && typeof credits === "number" && Number.isFinite(credits) && (!routed || pick))
+          setQuote(pick ? { status: "ready", credits, routed: pick } : { status: "ready", credits });
+        else setQuote({ status: "error", code: res.ok ? "failed" : asCreativeError(body.error) });
       } catch {
         if (!ctrl.signal.aborted) setQuote({ status: "error", code: "failed" });
       }
@@ -266,7 +286,7 @@ export function GeneratePanel({
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [orgId, capability, effectiveModel, paramsKey, ready, requote]);
+  }, [orgId, capability, effectiveModel, paramsKey, ready, requote, routed, modelNames]);
 
   // "Use as picture": applied once per request, never on the mount that a
   // template or Try again caused (that request was already used or cleared).
@@ -334,7 +354,10 @@ export function GeneratePanel({
   const edited = () => setNotice(null);
 
   async function generate() {
-    if (quote.status !== "ready" || submitting || !effectiveModel || !ready) return;
+    if (quote.status !== "ready" || submitting || !ready) return;
+    // Auto sends back the model its quote named; otherwise the picked model.
+    const pressModel = routed ? quote.routed?.model : effectiveModel;
+    if (!pressModel) return;
     setSubmitting(true);
     setNotice(null);
     try {
@@ -344,7 +367,8 @@ export function GeneratePanel({
         body: JSON.stringify({
           org_id: orgId,
           capability,
-          model: effectiveModel,
+          model: pressModel,
+          ...(routed ? { mode: "auto" } : {}),
           params,
           idempotency_key: newIdempotencyKey(),
           // The price the person saw on the button: the ceiling, never more.
@@ -358,7 +382,7 @@ export function GeneratePanel({
       } else {
         const code = asCreativeError(body.error);
         setNotice({ kind: "error", code });
-        if (code === "price_changed") setRequote((n) => n + 1);
+        if (code === "price_changed" || code === "route_changed") setRequote((n) => n + 1);
         if (plans && isUpsellCode(code)) setUpsell({ refusal: refusalFrom(code, body), open: true });
       }
     } catch {
@@ -368,7 +392,8 @@ export function GeneratePanel({
     }
   }
 
-  const disabled = submitting || quote.status !== "ready" || !ready || !effectiveModel;
+  const disabled =
+    submitting || quote.status !== "ready" || !ready || (routed ? !quote.routed : !effectiveModel);
   const errorCode = notice?.kind === "error" ? notice.code : quote.status === "error" ? quote.code : null;
   const isVoice = capability === "tts";
   const sourced = needsSource(capability);
@@ -529,6 +554,8 @@ export function GeneratePanel({
 
   const dnaBlock = dna ? <ChannelDnaHint href={dna.href} /> : null;
 
+  // Auto's quote, in words: "Auto picked X for N credits" and why.
+  const autoLine = routed && quote.status === "ready" && quote.routed ? routedLine(t, quote.routed, quote.credits, locale) : null;
   // The model: what will make it, how fast, how good — and a way to change it.
   const modelBlock = current ? (
     <div className="studio-field flex items-center gap-3 p-3">
@@ -540,18 +567,44 @@ export function GeneratePanel({
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="studio-label">{t.gen.modelLabel}</span>
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-[14px] font-semibold text-[var(--color-fg)]" data-testid="gen-model-name">
-            {current.displayName}
-          </span>
-          {current.beta && (
-            <span className="shrink-0 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
-              {t.gen.beta}
+        {routed ? (
+          // Auto's pick, named with its price (it wraps on a phone: never cut).
+          <span className="flex min-w-0 flex-col gap-0.5" aria-live="polite" data-testid="gen-auto-pick">
+            <span className="text-[14px] font-semibold leading-snug text-[var(--color-fg)] [overflow-wrap:anywhere]">
+              {autoLine ? autoLine.picked : quote.status === "quoting" ? t.gen.router.picking : t.gen.router.auto}
             </span>
-          )}
-        </span>
-        <TierMarks speed={current.speedTier ?? null} quality={current.qualityTier ?? null} />
+            {autoLine?.why && <span className="text-[12px] text-[var(--color-muted)]">{autoLine.why}</span>}
+          </span>
+        ) : (
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-[14px] font-semibold text-[var(--color-fg)]" data-testid="gen-model-name">
+              {current.displayName}
+            </span>
+            {current.beta && (
+              <span className="shrink-0 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
+                {t.gen.beta}
+              </span>
+            )}
+          </span>
+        )}
+        {!routed && <TierMarks speed={current.speedTier ?? null} quality={current.qualityTier ?? null} />}
       </span>
+      {autoOffered && (
+        <button
+          type="button"
+          aria-pressed={routed}
+          aria-label={t.gen.router.autoLabel}
+          title={routed ? t.gen.router.autoOff : t.gen.router.autoLabel}
+          data-testid="gen-auto"
+          onClick={() => {
+            setAuto((a) => !a);
+            edited();
+          }}
+          className="studio-chip tap press shrink-0 font-medium"
+        >
+          {t.gen.router.auto}
+        </button>
+      )}
       <button
         type="button"
         aria-haspopup="dialog"
@@ -1043,7 +1096,7 @@ export function GeneratePanel({
         ) : blockedText ? (
           <span className="text-[var(--color-muted)]">{blockedText}</span>
         ) : (
-          <span className="text-[var(--color-muted)]">{t.gen.holdNote}</span>
+          <span className="text-[var(--color-muted)]">{routed ? t.gen.router.note : t.gen.holdNote}</span>
         )}
       </p>
     </div>
@@ -1060,6 +1113,8 @@ export function GeneratePanel({
           priceHint={sheetParams ? null : blockedText}
           onSelect={(id) => {
             setModel(id);
+            // A model picked by hand is the model: Auto is off.
+            setAuto(false);
             edited();
             setSheetOpen(false);
           }}

@@ -160,6 +160,10 @@ TABLES: Dict[str, Kind] = {
     "creative_jobs": Org(),
     "creative_job_events": Org(),
     "creative_job_costs": Platform(),
+    # Model Router (0075, BR-L-022): a routed job's ranked candidates and tried
+    # models. No API role at all (not even the service key): only the definer
+    # functions create_creative_job / reroute_creative_job touch it.
+    "creative_job_routes": Service(),
     # worker status (0045): the operator's view of the workers; written only by report_worker_status()
     "worker_status": Platform(),
 }
@@ -451,6 +455,11 @@ sec_style_0065.extend(TABLES, FUNCTIONS)
 import sec_workflows_0073  # noqa: E402
 
 sec_workflows_0073.extend(TABLES, FUNCTIONS)
+
+# Migration 0075 (Model Router v1): tests/security/sec_router_0075.py
+import sec_router_0075  # noqa: E402
+
+sec_router_0075.extend(TABLES, FUNCTIONS)
 
 # Migration 0076 (scene regeneration v2): tests/security/sec_scene_regen_0076.py
 import sec_scene_regen_0076  # noqa: E402

@@ -444,8 +444,12 @@ def test_a_job_row_is_never_linked_to_a_key_of_another_org(db):
 def test_the_status_shows_the_job_and_nothing_internal(db):
     drain(db)
     job = create(db, "a_full", idem=uniq())["data"]
+    # 0075 adds how the model was chosen (model ids and reason codes only):
+    # still no worker, provider task, route, candidate list or params.
     assert set(job) == {"id", "capability", "model", "status", "quoted_credits", "charged_credits", "error_code", "error",
-                        "result", "result_asset_ids", "created_at", "updated_at", "finished_at", "expires_at"}, set(job)
+                        "result", "result_asset_ids", "created_at", "updated_at", "finished_at", "expires_at",
+                        "mode", "routed_model", "fallback_from", "fallback_reason", "route_reason"}, set(job)
+    assert (job["mode"], job["routed_model"], job["fallback_from"], job["route_reason"]) == ("exact", "img-api", None, None)
     assert job["status"] == "queued" and job["quoted_credits"] == PRICE and job["charged_credits"] is None
     drain(db)
 
@@ -632,10 +636,14 @@ def test_a_replay_is_not_counted_against_the_ceiling_again(db):
     drain(db)
 
 
-def test_only_exact_mode_and_known_params_are_accepted(db):
+def test_a_routed_mode_runs_only_its_quoted_pick_and_known_params_are_accepted(db):
     before = footprint(db, ORG_A)
+    # 0075: auto picks among the API's models (img-q here); a press naming
+    # another model is refused for a new quote, never run in its place.
     res = create(db, "a_full", mode="auto", idem=uniq())
-    assert res["status"] == 422 and code(res) == "mode_not_supported", res
+    assert res["status"] == 409 and code(res) == "route_changed", res
+    res = create(db, "a_full", mode="turbo", idem=uniq())
+    assert res["status"] == 400 and code(res) == "invalid_params", res
     res = create(db, "a_full", params={"prompt": "x", "org_id": ORG_B}, idem=uniq())
     assert res["status"] == 400 and code(res) == "invalid_params", res
     assert footprint(db, ORG_A) == before
