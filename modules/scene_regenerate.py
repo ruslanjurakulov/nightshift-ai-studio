@@ -24,11 +24,16 @@ has claimed the hold. This module carries them out:
    them (``scene_repair.fetch_replacements``), excluding every clip the run
    already has. An optional prompt edit replaces the clip prompt (generated)
    or leads the search terms (stock).
-3. **The previous take is kept.** Before the cut changes, the previous
-   ``project.json`` and ``final_video.mp4`` are kept under
-   ``regenerations/<id>/``; the old scene's asset files are never deleted. The
-   new cut replaces the old one only once it has rendered (the assembly writes
-   atomically); a failure leaves the run exactly as it was.
+3. **The previous take is kept, and the cut changes last.** The previous
+   ``project.json`` and ``final_video.mp4`` are copied under
+   ``regenerations/<id>/``; the old scene's asset files are never deleted
+   (only the masters of takes older than the last :data:`KEEP_TAKES` are).
+   The new cut and IR are rendered beside the run under temp names; then the
+   approval is voided, then the result naming the new files' hashes is
+   written, and only then are the two files renamed into place. The worker
+   charges only when the files on disk match that result
+   (:func:`settle_outcome`) and otherwise puts the previous take back, so a
+   failure always leaves the run as it was.
 4. **Hold for review.** Like a repair, it never uploads, publishes or changes
    privacy; it voids the approval of the previous cut
    (``scene_repair.invalidate_approvals`` + the checkpoint's repair time) and
@@ -69,12 +74,24 @@ ENV_PROVIDER = "SCENE_REGEN_PROVIDER"
 ENV_MODEL = "SCENE_REGEN_MODEL"
 ENV_PROMPT = "SCENE_REGEN_PROMPT"
 ENV_EXPLICIT_STOCK = "SCENE_REGEN_EXPLICIT_STOCK"
-ENV_KEYS = (ENV_ID, ENV_SOURCE, ENV_PROVIDER, ENV_MODEL, ENV_PROMPT, ENV_EXPLICIT_STOCK)
+#: What was priced (BR-L-025): the scene's asset ids and its clip counts, as
+#: the database read them. The scene on disk must be exactly this.
+ENV_PREVIOUS_ASSETS = "SCENE_REGEN_PREVIOUS_ASSETS"
+ENV_GENERATED_CLIPS = "SCENE_REGEN_GENERATED_CLIPS"
+ENV_STOCK_ASSETS = "SCENE_REGEN_STOCK_ASSETS"
+ENV_KEYS = (ENV_ID, ENV_SOURCE, ENV_PROVIDER, ENV_MODEL, ENV_PROMPT, ENV_EXPLICIT_STOCK,
+            ENV_PREVIOUS_ASSETS, ENV_GENERATED_CLIPS, ENV_STOCK_ASSETS)
 
 REGEN_DIRNAME = "regenerations"
 RESULT_FILENAME = "result.json"
 PREVIOUS_PROJECT = "previous_project.json"
 PREVIOUS_VIDEO = "previous_final_video.mp4"
+#: How many takes per run keep their full previous master (BR-L-027). Older
+#: takes keep their result and previous Video IR (asset ids), not the master.
+KEEP_TAKES = 5
+#: Free space a regeneration needs beyond two copies of the cut (the kept
+#: previous master and the new render) before anything is spent.
+MIN_FREE_MARGIN_BYTES = 256 * 1024 * 1024
 
 SOURCE_GENERATED = "generated"
 SOURCE_STOCK = "stock"
@@ -86,6 +103,7 @@ MAX_GENERATED_CLIPS = 8
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
 _CODE_RE = re.compile(r"^[a-z][a-z0-9_]{0,47}$")
+_ASSET_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
@@ -121,6 +139,9 @@ class RegenRequest:
     model: Optional[str] = None
     prompt: Optional[str] = None
     explicit_stock: bool = False
+    previous_asset_ids: Tuple[str, ...] = ()
+    generated_clips: int = 0
+    stock_assets: int = 0
 
     @staticmethod
     def from_env(scene_id: str, env: Mapping[str, str]) -> "RegenRequest":
@@ -148,8 +169,23 @@ class RegenRequest:
         explicit = str(env.get(ENV_EXPLICIT_STOCK) or "").strip().lower() == "true"
         if explicit and kind != SOURCE_STOCK:
             raise RegenRequestError("an explicit stock choice is a stock regeneration")
+        raw_ids = str(env.get(ENV_PREVIOUS_ASSETS) or "").strip()
+        ids = tuple(raw_ids.split(",")) if raw_ids else ()
+        if not ids or len(ids) > MAX_GENERATED_CLIPS or len(set(ids)) != len(ids) \
+                or not all(_ASSET_ID_RE.match(i) for i in ids):
+            raise RegenRequestError(f"{ENV_PREVIOUS_ASSETS} must list the priced scene's asset ids")
+        counts = []
+        for key in (ENV_GENERATED_CLIPS, ENV_STOCK_ASSETS):
+            raw = str(env.get(key) or "").strip()
+            if not re.fullmatch(r"[0-9]", raw):
+                raise RegenRequestError(f"{key} must be the priced clip count")
+            counts.append(int(raw))
+        gen, stock = counts
+        if gen + stock > len(ids) or (kind == SOURCE_GENERATED and gen == 0):
+            raise RegenRequestError("the priced clip counts do not fit the priced scene")
         return RegenRequest(regen_id=rid, scene_id=scene_id, source_kind=kind, provider=provider,
-                            model=model, prompt=prompt, explicit_stock=explicit)
+                            model=model, prompt=prompt, explicit_stock=explicit,
+                            previous_asset_ids=ids, generated_clips=gen, stock_assets=stock)
 
 
 def parse_scene(raw: Optional[str]) -> str:
@@ -170,27 +206,49 @@ def scene_assets(project, scene_id: str) -> List:
     return [project.asset(aid) for aid in scene.asset_ids]
 
 
+_CHANGED = "open the video again for a new price (nothing was charged)"
+
+
 def verify_same_scene(project, req: RegenRequest) -> None:
-    """The scene on disk is the one that was priced. A generated scene's clips
-    all name the recorded provider and model; anything else (the run was
-    repaired since, or the IR differs from the one the database read) is
-    unavailable — never "close enough"."""
+    """The scene on disk is EXACTLY the one that was priced (BR-L-025): the
+    same asset ids in the same order, the same number of generated and stock
+    clips, and every generated clip from the priced provider and model. The
+    database's record of a run is best-effort and can lag the disk (a resume,
+    a CLI repair, an outage), so "close enough" is not checked here — any
+    difference is ``scene_changed``: nothing runs, the hold is released.
+
+    A scene priced as stock must have no generated clip on disk unless the
+    person chose stock explicitly; otherwise a generated scene would be
+    replaced by stock without anyone choosing it (CLAUDE.md rule 4)."""
+    scene = project.scene(req.scene_id)
+    ids = tuple(scene.asset_ids)
+    if ids != tuple(req.previous_asset_ids):
+        raise RegenUnavailable("scene_changed",
+                               f"scene {req.scene_id} on this machine is not the scene that was priced; {_CHANGED}")
     assets = scene_assets(project, req.scene_id)
     if not assets or any(a is None for a in assets):
         raise RegenUnavailable("scene_changed", f"scene {req.scene_id} has no footage recorded on this machine")
-    if req.source_kind != SOURCE_GENERATED:
-        return
-    generated = [a for a in assets if a.source == video_ir.SOURCE_GENERATED]
-    if not generated:
-        raise RegenUnavailable("scene_changed", f"scene {req.scene_id} has no generated clip on this machine")
-    for a in generated:
-        if (a.provider or "").strip().lower() != req.provider or (a.model or "") != req.model:
-            raise RegenUnavailable(
-                "scene_changed",
-                f"scene {req.scene_id} on this machine was not made with the generator that was priced; "
-                "open the video again for a new price")
-    if len(generated) > MAX_GENERATED_CLIPS:
+    if len(assets) > MAX_GENERATED_CLIPS:
         raise RegenUnavailable("too_many_assets", f"scene {req.scene_id} has more than {MAX_GENERATED_CLIPS} clips")
+    generated = [a for a in assets if a.source == video_ir.SOURCE_GENERATED]
+    stock = [a for a in assets if a.source == video_ir.SOURCE_STOCK]
+    if req.explicit_stock:
+        # The person chose stock for the whole scene; the ids above are the
+        # scene that choice was priced for.
+        return
+    if len(generated) != req.generated_clips or len(stock) != req.stock_assets \
+            or len(generated) + len(stock) != len(assets):
+        raise RegenUnavailable(
+            "scene_changed",
+            f"scene {req.scene_id} on this machine has {len(generated)} generated and {len(stock)} stock "
+            f"clip(s), but {req.generated_clips} and {req.stock_assets} were priced; {_CHANGED}")
+    if req.source_kind == SOURCE_GENERATED:
+        for a in generated:
+            if (a.provider or "").strip().lower() != req.provider or (a.model or "") != req.model:
+                raise RegenUnavailable(
+                    "scene_changed",
+                    f"scene {req.scene_id} on this machine was not made with the generator that was priced; "
+                    f"{_CHANGED}")
 
 
 def configured_model(client) -> str:
@@ -379,14 +437,163 @@ def _keep(src: Path, dest: Path) -> Optional[str]:
     return dest.name
 
 
-def write_result(out_dir: Path, body: Mapping) -> None:
+def write_result(out_dir: Path, body: Mapping, *, strict: bool = False) -> None:
+    """Atomically. ``strict`` raises an OSError instead of logging it — the
+    success result is written BEFORE the cut changes, and a cut must never
+    change without a result saying so."""
     try:
         out_dir.mkdir(parents=True, exist_ok=True)
         tmp = out_dir / (RESULT_FILENAME + ".tmp")
         tmp.write_text(json.dumps(dict(body), indent=2), encoding="utf-8")
         os.replace(tmp, out_dir / RESULT_FILENAME)
     except OSError as e:
+        if strict:
+            raise
         logger.warning("Regeneration: could not write its result (%s)", e)
+
+
+def temp_paths(run_dir: Path, regen_id: str) -> Tuple[Path, Path]:
+    """Where the new cut and Video IR are written before the swap: beside the
+    run's own files (same filesystem, so the swap is a rename; same folder,
+    so the scene render cache is the run's)."""
+    return (Path(run_dir) / f".regen-{regen_id}.{scene_repair.FINAL_VIDEO}",
+            Path(run_dir) / f".regen-{regen_id}.{video_ir.PROJECT_FILENAME}")
+
+
+def _discard(*paths: Path) -> None:
+    for p in paths:
+        try:
+            Path(p).unlink()
+        except OSError:
+            pass
+
+
+def _replace_from(src: Path, dest: Path) -> None:
+    """``dest`` becomes a copy of ``src``, atomically (copy then rename)."""
+    tmp = dest.with_name(dest.name + ".restore")
+    shutil.copy2(src, tmp)
+    os.replace(tmp, dest)
+
+
+def restore_previous_take(run_dir: Path, regen_id: str) -> List[str]:
+    """Put the previous take back wherever the cut or Video IR differ from it
+    (a swap that did not finish, or a run that died after it). Returns what
+    was restored. Never raises; the leftover temp files are removed."""
+    run_dir = Path(run_dir)
+    kept = regen_dir(run_dir, regen_id)
+    restored = []
+    for name, target in ((PREVIOUS_PROJECT, run_dir / video_ir.PROJECT_FILENAME),
+                         (PREVIOUS_VIDEO, run_dir / scene_repair.FINAL_VIDEO)):
+        prev = kept / name
+        try:
+            if prev.is_file() and not prev.is_symlink() and \
+                    video_ir.file_sha256(prev) != video_ir.file_sha256(target):
+                _replace_from(prev, target)
+                restored.append(target.name)
+        except OSError as e:
+            logger.error("Regeneration %s: could not restore %s (%s)", regen_id, target.name, e)
+    _discard(*temp_paths(run_dir, regen_id))
+    if restored:
+        logger.warning("Regeneration %s: the previous take was put back (%s)", regen_id, ", ".join(restored))
+    return restored
+
+
+def commit_matches(run_dir: Path, result: Mapping) -> bool:
+    """Is the cut on disk exactly the one this result says it made?"""
+    run_dir = Path(run_dir)
+    want_video, want_ir = result.get("new_video_sha256"), result.get("new_project_sha256")
+    if not (isinstance(want_video, str) and isinstance(want_ir, str) and want_video and want_ir):
+        return False
+    return (video_ir.file_sha256(run_dir / scene_repair.FINAL_VIDEO) == want_video
+            and video_ir.file_sha256(run_dir / video_ir.PROJECT_FILENAME) == want_ir)
+
+
+def settle_outcome(output_dir: Path, slug: str, regen_id: str, *, exited_ok: bool) -> dict:
+    """The queue worker's verdict on a finished regeneration run (BR-L-026).
+
+    Success needs all three: the run exited 0, its own result says ok, and the
+    cut and Video IR on disk are byte for byte the ones that result names.
+    Anything else is a failure, and the previous take is put back first — so a
+    failure (released, nothing charged) always means the scene is unchanged,
+    whatever point the run died at. Returns ``{ok, code, error, result}``."""
+    result = read_result(output_dir, slug, regen_id) or {}
+    run_dir = Path(output_dir) / slug
+    if exited_ok and result.get("ok") is True and run_dir.is_dir() and commit_matches(run_dir, result):
+        _discard(*temp_paths(run_dir, regen_id))
+        return {"ok": True, "code": None, "error": None, "result": result}
+    if run_dir.is_dir() and re.match(r"^[a-z0-9][a-z0-9-]{0,63}$", slug or "") and _UUID_RE.match(regen_id or ""):
+        restore_previous_take(run_dir, regen_id)
+    if result.get("ok") is True:
+        code = "not_confirmed"
+    else:
+        code = str(result.get("error_code") or ("not_confirmed" if exited_ok else "failed"))
+    return {"ok": False, "code": code if _CODE_RE.match(code) else "failed",
+            "error": result.get("error") if result.get("ok") is not True else None, "result": result}
+
+
+def check_disk(run_dir: Path, *, free_fn: Optional[Callable[[Path], int]] = None) -> None:
+    """Room for the kept previous master and the new render, before anything
+    is spent (BR-L-027). One worker disk serves every tenant."""
+    run_dir = Path(run_dir)
+    if free_fn is None:
+        free_fn = lambda p: shutil.disk_usage(p).free  # noqa: E731
+    try:
+        cut = (run_dir / scene_repair.FINAL_VIDEO).stat().st_size
+    except OSError:
+        cut = 0
+    margin = MIN_FREE_MARGIN_BYTES
+    raw = os.environ.get("CHRONOS_REGEN_MIN_FREE_MB", "").strip()
+    if raw.isdigit():
+        margin = int(raw) * 1024 * 1024
+    need = 2 * cut + margin
+    if free_fn(run_dir) < need:
+        raise RegenUnavailable("disk_full", f"the worker has less than {need // (1024 * 1024)} MB free for this "
+                                            "regeneration. Free space on the worker, then press Regenerate again "
+                                            "(nothing was charged).")
+
+
+def prune_takes(run_dir: Path, *, keep: int = KEEP_TAKES, project=None) -> List[str]:
+    """Bound what regenerations keep on disk (BR-L-027), for every org: the
+    newest ``keep`` takes keep their full previous master; older ones keep
+    their result and previous Video IR (the asset ids) but not the master,
+    and a failed one's own clips are removed. A file the current Video IR
+    uses is never removed. Returns the removed paths (relative). Never raises."""
+    run_dir = Path(run_dir)
+    root = run_dir / REGEN_DIRNAME
+    removed: List[str] = []
+    try:
+        dirs = [d for d in root.iterdir() if d.is_dir() and not d.is_symlink() and _UUID_RE.match(d.name)]
+    except OSError:
+        return removed
+    in_use = set()
+    if project is not None:
+        for a in project.assets:
+            try:
+                in_use.add(Path(a.path).resolve())
+            except (OSError, TypeError, ValueError):
+                pass
+
+    def stamp(d: Path) -> float:
+        try:
+            return (d / RESULT_FILENAME).stat().st_mtime
+        except OSError:
+            return d.stat().st_mtime
+
+    for d in sorted(dirs, key=stamp, reverse=True)[keep:]:
+        body = read_result(run_dir.parent, run_dir.name, d.name) or {}
+        victims = [d / PREVIOUS_VIDEO]
+        if body.get("ok") is not True:
+            victims += [p for p in d.glob("*.mp4") if p.name != PREVIOUS_VIDEO]
+        for p in victims:
+            try:
+                if p.is_file() and not p.is_symlink() and p.resolve() not in in_use:
+                    p.unlink()
+                    removed.append(str(p.relative_to(run_dir)))
+            except OSError as e:
+                logger.warning("Regeneration: could not prune %s (%s)", p.name, e)
+    if removed:
+        logger.info("Regeneration: pruned %d file(s) of takes older than the last %d", len(removed), keep)
+    return removed
 
 
 @dataclass
@@ -402,6 +609,8 @@ class RegenResult:
     qc: Optional[dict] = None
     approvals: Optional[dict] = None
     regenerated_at: str = ""
+    new_video_sha256: Optional[str] = None
+    new_project_sha256: Optional[str] = None
 
     def to_metadata(self) -> dict:
         """Ids, codes and counts only — no paths outside the run, no prompt."""
@@ -409,7 +618,8 @@ class RegenResult:
                 "source_kind": self.source_kind, "explicit_stock": self.explicit_stock,
                 "previous_asset_ids": self.previous_asset_ids, "new_asset_ids": self.new_asset_ids,
                 "previous_take": self.previous_take, "qc": self.qc, "approvals": self.approvals,
-                "gate": "not_evaluated", "published": False, "regenerated_at": self.regenerated_at}
+                "gate": "not_evaluated", "published": False, "regenerated_at": self.regenerated_at,
+                "new_video_sha256": self.new_video_sha256, "new_project_sha256": self.new_project_sha256}
 
 
 def regenerate(plan, req: RegenRequest, *, client=None, fetcher=None, ledger=None,
@@ -417,7 +627,7 @@ def regenerate(plan, req: RegenRequest, *, client=None, fetcher=None, ledger=Non
                sync=None, root: Optional[Path] = None) -> RegenResult:
     """Carry out a regeneration the preflight approved. Raises RegenFailed /
     RegenUnavailable; on any raise the run's cut and Video IR are unchanged."""
-    from modules import run_checkpoint, scene_render
+    from modules import run_checkpoint
 
     project = plan.project
     out_dir = regen_dir(plan.run_dir, req.regen_id)
@@ -460,18 +670,32 @@ def regenerate(plan, req: RegenRequest, *, client=None, fetcher=None, ledger=Non
                           "could not record the regeneration on the run checkpoint; nothing was re-rendered")
     cut_intervals = {i: scene_repair._cut_interval(s) for i, s in enumerate(plan.script.get("sections") or [])
                      if isinstance(s, Mapping)}
+    # BR-L-026: the new cut and IR are written beside the run's, under temp
+    # names. The run's own files change only in the swap at the very end,
+    # after the approval is void and the result that names them is written.
+    tmp_video, tmp_ir = temp_paths(plan.run_dir, req.regen_id)
+    _discard(tmp_video, tmp_ir)
+    try:
+        return _render_and_commit(plan, req, updated, clips, searches, previous_ids, previous_take,
+                                  video_path, ir_path, tmp_video, tmp_ir, out_dir, cut_intervals,
+                                  render_fn=render_fn, qc_fn=qc_fn, sync=sync, root=root)
+    except BaseException:
+        _discard(tmp_video, tmp_ir)
+        raise
+
+
+def _render_and_commit(plan, req, updated, clips, searches, previous_ids, previous_take, video_path, ir_path,
+                       tmp_video, tmp_ir, out_dir, cut_intervals, *, render_fn, qc_fn, sync, root):
+    from modules import run_checkpoint, scene_render
+
     started = time.monotonic()
     try:
-        rendered = (render_fn or scene_render.render_project)(updated, video_path, cut_intervals=cut_intervals)
+        rendered = (render_fn or scene_render.render_project)(updated, tmp_video, cut_intervals=cut_intervals)
     except Exception as e:
-        # The previous final_video.mp4 is untouched: assembly writes atomically.
         raise RegenFailed("render_failed", f"scene render failed ({type(e).__name__}: {e})"[:400])
     render_seconds = time.monotonic() - started
-    if req.scene_id not in list(rendered.cache_misses):
+    if req.scene_id not in list(rendered.cache_misses) or not tmp_video.is_file():
         raise RegenFailed("render_failed", f"scene {req.scene_id} was not re-rendered")
-
-    # Only now, with a new cut on disk, does the IR change on disk.
-    video_ir.save(updated, ir_path)
 
     qc_meta = None
     try:
@@ -479,7 +703,7 @@ def regenerate(plan, req: RegenRequest, *, client=None, fetcher=None, ledger=Non
             from modules import video_qc
 
             qc_fn = video_qc.run
-        report = qc_fn(video_path, audio_path=updated.audio.path,
+        report = qc_fn(tmp_video, audio_path=updated.audio.path,
                        timeline=scene_repair.timeline_from_project(updated))
         to_meta = getattr(report, "to_metadata", None)
         qc_meta = to_meta() if callable(to_meta) else None
@@ -487,16 +711,45 @@ def regenerate(plan, req: RegenRequest, *, client=None, fetcher=None, ledger=Non
         logger.warning("Regeneration: QC did not run (%s: %s)", type(e).__name__, e)
         qc_meta = {"not_run": type(e).__name__}
 
+    video_ir.save(updated, tmp_ir)
+
+    # 1. Void the approval of the previous cut BEFORE the cut changes. If
+    #    Supabase holds rows for this run and they could not be reset, the
+    #    swap does not happen: an approved state never meets a new cut.
+    approvals = scene_repair.invalidate_approvals(plan.channel_id, plan.slug, (req.scene_id,), sync=sync)
+    if approvals.get("error") or (approvals.get("video_rows") and not approvals.get("videos_reset")):
+        raise RegenFailed("approval_not_voided",
+                          "the approval of the previous cut could not be voided, so the new cut was not put in "
+                          "place; the previous take is unchanged")
+
+    # 2. The result that names the new cut, written before the swap. The
+    #    worker charges only if the files on disk are exactly these.
     at = datetime.now(timezone.utc).isoformat()
     result = RegenResult(
         regen_id=req.regen_id, scene_id=req.scene_id, video_path=video_path, source_kind=req.source_kind,
         explicit_stock=req.explicit_stock, previous_asset_ids=previous_ids,
         new_asset_ids=list(updated.scene(req.scene_id).asset_ids), previous_take=previous_take,
-        qc=qc_meta, regenerated_at=at)
-    result.approvals = scene_repair.invalidate_approvals(plan.channel_id, plan.slug, (req.scene_id,), sync=sync)
-    write_result(out_dir, result.to_metadata())
+        qc=qc_meta, approvals=approvals, regenerated_at=at,
+        new_video_sha256=video_ir.file_sha256(tmp_video), new_project_sha256=video_ir.file_sha256(tmp_ir))
+    try:
+        write_result(out_dir, result.to_metadata(), strict=True)
+    except OSError as e:
+        raise RegenFailed("result_unwritable", f"could not write the regeneration's result ({e}); "
+                                               "the new cut was not put in place")
+
+    # 3. The swap: the IR, then the cut. If it does not finish, the previous
+    #    take goes back (and the worker would do the same).
+    try:
+        os.replace(tmp_ir, ir_path)
+        os.replace(tmp_video, video_path)
+    except OSError as e:
+        restore_previous_take(plan.run_dir, req.regen_id)
+        raise RegenFailed("swap_failed", f"the new cut could not be put in place ({e}); the previous take was "
+                                         "kept")
+
     run_checkpoint.record_stage(plan.slug, scene_repair.STAGE_REPAIR, root=root,
                                 artifacts={"video": str(video_path), "report": str(out_dir / RESULT_FILENAME)})
+    prune_takes(plan.run_dir, project=updated)
     _record_costs(plan, searches, render_seconds,
                   sum(1 for c in clips if c.source == SOURCE_GENERATED))
     return result
@@ -569,6 +822,7 @@ def cli(*, channel: Optional[str], raw_scene: Optional[str], topic: Optional[str
             raise RegenUnavailable("scene_changed", str(e)) from None
         out_dir = regen_dir(plan.run_dir, req.regen_id)
         verify_same_scene(plan.project, req)
+        check_disk(plan.run_dir, free_fn=inject.pop("disk_free", None))
         if check_tools:
             _check_tools(req, plan)
         if req.source_kind == SOURCE_GENERATED and inject.get("client") is None:
@@ -603,8 +857,10 @@ def cli(*, channel: Optional[str], raw_scene: Optional[str], topic: Optional[str
         events.emit(events.REPAIR_FAILED, agent="scene_regenerate", status=events.STATUS_FAILED,
                     channel_id=channel_id, metadata={"stage": "regenerate", "slug": plan.slug,
                                                      "code": e.code, "regeneration_id": req.regen_id})
+        _prune_after_failure(plan)
         return fail(e.code, str(e), EXIT_UNAVAILABLE if isinstance(e, RegenUnavailable) else EXIT_FAILED)
     except Exception as e:
+        _prune_after_failure(plan)
         reason = f"{type(e).__name__}: {e}"[:400]
         logger.error("Regeneration failed: %s", reason)
         events.emit(events.REPAIR_FAILED, agent="scene_regenerate", status=events.STATUS_FAILED,
@@ -624,6 +880,15 @@ def cli(*, channel: Optional[str], raw_scene: Optional[str], topic: Optional[str
     print(f"\n⏸ Regenerated {req.scene_id} — the new cut is held for review (previous approval "
           f"invalidated, previous take kept, nothing uploaded): {result.video_path}")
     return EXIT_OK
+
+
+def _prune_after_failure(plan) -> None:
+    """Failed takes count toward the bound too (BR-L-027). This one is the
+    newest, so it keeps its master for the worker's restore."""
+    try:
+        prune_takes(plan.run_dir, project=video_ir.load(plan.run_dir / video_ir.PROJECT_FILENAME))
+    except Exception as e:  # never in the way of reporting the failure
+        logger.warning("Regeneration: could not prune old takes (%s)", type(e).__name__)
 
 
 def read_result(output_dir: Path, slug: str, regen_id: str) -> Optional[dict]:

@@ -722,14 +722,14 @@ class Worker:
 
         outcome = self._execute(job, argv, run_env, channel_row)
         if outcome in ("succeeded", "failed"):
-            result = scene_regenerate.read_result(self.output_dir, str(terms.get("slug") or ""), regen_id) or {}
-            # Charged only when the run says, in its own result, that the new
-            # take is in place. A clean exit without one is not a success.
-            ok = outcome == "succeeded" and result.get("ok") is True
-            code = None if ok else str(result.get("error_code") or
-                                       ("not_confirmed" if outcome == "succeeded" else "failed"))
-            self._settle_regeneration(job, regen_id, ok=ok, code=code, error=result.get("error"),
-                                      result=regeneration_summary(result))
+            # Charged only when the run exited 0, its own result says the new
+            # take is in place, AND the cut on disk is byte for byte the one
+            # that result names. Otherwise the previous take is put back
+            # first, so "failed, nothing charged" always means "unchanged".
+            verdict = scene_regenerate.settle_outcome(self.output_dir, str(terms.get("slug") or ""), regen_id,
+                                                      exited_ok=outcome == "succeeded")
+            self._settle_regeneration(job, regen_id, ok=verdict["ok"], code=verdict["code"],
+                                      error=verdict["error"], result=regeneration_summary(verdict["result"]))
         # "released" (re-queued) keeps its hold and its provider tasks for the
         # next attempt; "lost" belongs to whoever took the job.
         return outcome

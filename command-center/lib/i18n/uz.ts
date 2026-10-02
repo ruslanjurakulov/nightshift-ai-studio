@@ -4451,6 +4451,10 @@ export const uz: Dictionary = {
       hold_not_open: "Kredit bandi allaqachon yopilgan edi.",
       job_ended: "Vazifa sahna tayyor bo'lishidan oldin tugadi.",
       not_confirmed: "Yangi dublni tasdiqlab bo'lmadi.",
+      approval_not_voided: "Oldingi tasdiqni bekor qilib bo'lmadi, shuning uchun yangi variant o'rnatilmadi.",
+      result_unwritable: "Natijani saqlab bo'lmadi, shuning uchun yangi variant o'rnatilmadi.",
+      swap_failed: "Yangi variantni o'rnatib bo'lmadi.",
+      disk_full: "Hozir yangi dubl uchun bo'sh joy yetarli emas.",
       failed: "Nimadir noto'g'ri ketdi.",
     },
     reasons: {

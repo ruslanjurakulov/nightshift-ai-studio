@@ -200,6 +200,12 @@ def test_the_press_holds_exactly_the_quote_and_queues_one_repair_of_that_scene(c
             h, r, j = holds(o, sc.bob.org), regens(o, vid), jobs(o, vid)
             after = available(o, sc.bob.org)
     assert q.ok and float(q.rows[0][0]["credits"]) == GEN, q
+    # BR-L-031: what a member reads over PostgREST is display-safe — no
+    # generator, model or price-unit name, only the kind of source.
+    body = q.rows[0][0]
+    assert body["source_kind"] == "generated", body
+    assert not {"provider", "model", "missing_unit", "unit", "clip_unit"} & set(body), body
+    assert "kling" not in json.dumps(body), body
     assert p.ok, p
     assert len(h) == 1 and float(h[0][1]) == GEN and h[0][2] == "open", h
     assert float(before) - float(after) == GEN
@@ -256,8 +262,11 @@ def test_an_unset_price_is_unpriced_never_zero_and_cannot_be_pressed(conn, sc):
             assert holds(owner(s), sc.bob.org) == []
     body = q.rows[0][0]
     assert body["status"] == "unpriced" and body["credits"] is None, body
-    assert body["missing_unit"] == "scene_regenerate_clip_kling", body
+    # BR-L-031: the missing unit is the owner's to read in the price list,
+    # not named to a member (it would name the generator).
+    assert "missing_unit" not in body and "kling" not in json.dumps(body), body
     assert not p.ok and p.sqlstate == "NS400" and "unpriced" in p.error, p
+    assert "kling" not in str(p.error) and "kling" not in str(getattr(p, "detail", "") or ""), p
     # The stock scene needs only the base unit: priced, at least job_minimum.
     assert stock.rows[0][0]["status"] == "priced", stock
 
@@ -470,6 +479,29 @@ def test_a_browser_cannot_link_a_job_to_a_regeneration(conn, sc):
     assert not daily.ok and daily.sqlstate == "42501", daily
     assert not repair.ok and repair.sqlstate == "42501", repair
     assert not relink.ok or relink.rowcount == 0, relink
+
+
+def test_the_insert_policy_itself_refuses_a_browser_link_to_a_regeneration(conn, sc):
+    """BR-L-030: the payment guard (a BEFORE trigger) refuses the link first,
+    so the test above cannot tell whether render_jobs_insert's own clause
+    (`scene_regeneration_id is null`) is there. Here the guard is switched off
+    inside the rolled-back world: the policy alone must still refuse the link,
+    and the same insert without the link must pass it (the clause is the reason)."""
+    with world(conn, sc.bob) as (su, vid):
+        with acting(conn, sc.bob.actor) as s:
+            rid = press(s, vid).rows[0][0]["id"]
+        su.run("alter table public.render_jobs disable trigger render_jobs_payment_guard")
+        with acting(conn, sc.bob.actor) as s:
+            linked = s.run("insert into public.render_jobs (channel_id, kind, params, requested_by, "
+                           "scene_regeneration_id) values (%s, 'daily', '{}'::jsonb, auth.uid(), %s)",
+                           [sc.bob.channel, rid])
+        with acting(conn, sc.bob.actor) as s:
+            plain = s.run("insert into public.render_jobs (channel_id, kind, params, requested_by) "
+                          "values (%s, 'daily', '{}'::jsonb, auth.uid())", [sc.bob.channel])
+        su.run("alter table public.render_jobs enable trigger render_jobs_payment_guard")
+    assert not linked.ok and linked.sqlstate == "42501", linked
+    assert "row-level security" in str(linked.error), linked
+    assert plain.ok, plain
 
 
 def test_the_service_key_cannot_pay_a_regeneration_job_with_another_hold(conn, sc):

@@ -480,8 +480,10 @@ begin
     return out_ || jsonb_build_object('status', 'unavailable', 'reason', plan ->> 'reason',
                                       'had_generated', coalesce((plan ->> 'had_generated')::boolean, false));
   end if;
+  -- Display-safe fields only: which generator or price unit applies is the
+  -- platform's business, not something a viewer reads over PostgREST.
   out_ := out_ || jsonb_build_object(
-    'source_kind', plan ->> 'source_kind', 'provider', plan -> 'provider', 'model', plan -> 'model',
+    'source_kind', plan ->> 'source_kind',
     'generated', plan -> 'generated', 'stock', plan -> 'stock',
     'explicit_stock', plan -> 'explicit_stock');
   if v_exempt then
@@ -489,8 +491,7 @@ begin
     return out_ || jsonb_build_object('status', 'included');
   end if;
   price := public.scene_regen_price(plan);
-  return out_ || jsonb_build_object('status', price ->> 'status', 'credits', price -> 'credits',
-                                    'missing_unit', price -> 'missing_unit');
+  return out_ || jsonb_build_object('status', price ->> 'status', 'credits', price -> 'credits');
 end
 $$;
 
@@ -578,7 +579,7 @@ begin
   if not v_exempt then
     price := public.scene_regen_price(plan);
     if price ->> 'status' <> 'priced' then
-      raise exception 'unpriced' using errcode = 'NS400', detail = price ->> 'missing_unit';
+      raise exception 'unpriced' using errcode = 'NS400';
     end if;
     v_price := (price ->> 'credits')::numeric;
     -- The press carries the price the person saw; without one nothing is spent.
@@ -778,13 +779,6 @@ create trigger render_jobs_payment_guard
 -- ───────────────────────────────────────────────────────────────────────────
 -- 2. Update: a job's paid terms are what was inserted
 -- ───────────────────────────────────────────────────────────────────────────
--- Only the worker (service key) and claim_render_job update jobs, and only
-
-drop trigger if exists render_jobs_payment_guard on public.render_jobs;
-create trigger render_jobs_payment_guard
-  before insert on public.render_jobs
-  for each row execute function public.render_jobs_payment_guard();
-
 -- 0041's, with the regeneration link frozen too: a queued repair stays the
 -- job of the regeneration that paid for it.
 create or replace function public.render_jobs_terms_frozen() returns trigger

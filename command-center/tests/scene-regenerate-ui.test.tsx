@@ -102,6 +102,34 @@ describe("RegenerateSceneButton", () => {
     expect(b.body?.idempotency_key).not.toBe(a.body?.idempotency_key);
   });
 
+  it("a slow answer for another source never labels the button (latest request wins)", async () => {
+    let releaseStock: (() => void) | null = null;
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if ((init?.method ?? "GET") === "GET" && url.includes("source=stock")) {
+        await new Promise<void>((r) => (releaseStock = r));
+      }
+      return realFetch(url, init);
+    });
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: t.action }));
+    fireEvent.click(await screen.findByLabelText(t.stockChoice));
+    await waitFor(() => expect(releaseStock).not.toBeNull());
+    // No price is shown or pressable while the new one is on its way.
+    expect(screen.queryByRole("button", { name: fmt(t.priceButton, { credits: "10" }) })).toBeNull();
+    // The person gives up on stock: closes and reopens (the scene's own source).
+    fireEvent.click(screen.getByRole("button", { name: t.close }));
+    fireEvent.click(screen.getByRole("button", { name: t.action }));
+    await screen.findByRole("button", { name: fmt(t.priceButton, { credits: "10" }) });
+    // Now the stale stock answer arrives.
+    releaseStock!();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByRole("button", { name: fmt(t.priceButton, { credits: "5" }) })).toBeNull();
+    const confirm = screen.getByRole("button", { name: fmt(t.priceButton, { credits: "10" }) });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toMatchObject({ source: "same", max_credits: 10 }));
+  });
+
   it("someone who may not start paid work sees the price but no button", async () => {
     quotes.same = { status: "priced", credits: 10, may_start: false, source_kind: "generated" };
     mount();

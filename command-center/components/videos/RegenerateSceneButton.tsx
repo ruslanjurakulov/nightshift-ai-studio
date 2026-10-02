@@ -59,29 +59,38 @@ export function RegenerateSceneButton({
   // One key per intended press: a press that never reached the server is
   // retried with the same key; anything that changes the request gets a new one.
   const keyRef = useRef<string | null>(null);
+  // Latest request wins (BR-L-029): a slower answer for the other source
+  // must never put its price on the button.
+  const seqRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   const inProgress = latest?.status === "queued" || latest?.status === "running";
   const base = `/api/videos/${encodeURIComponent(videoId)}/scenes/${encodeURIComponent(sceneId)}/regenerate`;
 
   const loadQuote = useCallback(
     async (src: RegenSource) => {
+      const seq = ++seqRef.current;
+      abortRef.current?.abort();
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
       setLoading(true);
+      setQuote(null);
       setQuoteFailed(false);
       try {
-        const res = await fetch(`${base}?source=${src}`, { cache: "no-store" });
+        const res = await fetch(`${base}?source=${src}`, { cache: "no-store", signal: ctrl.signal });
         const body = (await res.json().catch(() => null)) as { quote?: unknown; queue?: boolean } | null;
+        if (seq !== seqRef.current) return;
         if (!res.ok || !body) {
-          setQuote(null);
           setQuoteFailed(true);
         } else {
           setQuote(parseQuote(body.quote));
           setQueue(body.queue !== false);
         }
       } catch {
-        setQuote(null);
+        if (seq !== seqRef.current) return;
         setQuoteFailed(true);
       } finally {
-        setLoading(false);
+        if (seq === seqRef.current) setLoading(false);
       }
     },
     [base],
@@ -90,6 +99,15 @@ export function RegenerateSceneButton({
   useEffect(() => {
     if (open) void loadQuote(source);
   }, [open, source, loadQuote]);
+
+  // A closed panel, or a gone component, takes no late answer.
+  useEffect(() => {
+    if (!open) {
+      seqRef.current += 1;
+      abortRef.current?.abort();
+    }
+  }, [open]);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   function freshKey() {
     keyRef.current = newIdempotencyKey();
@@ -104,7 +122,7 @@ export function RegenerateSceneButton({
   }
 
   async function press() {
-    if (!quote || !canPress(quote) || busy) return;
+    if (!quote || !canPress(quote) || busy || loading) return;
     if (!keyRef.current) freshKey();
     setBusy(true);
     setError(null);
@@ -193,7 +211,7 @@ export function RegenerateSceneButton({
                   <input
                     type="checkbox"
                     checked={source === "stock"}
-                    disabled={busy}
+                    disabled={busy || loading}
                     onChange={(e) => {
                       setSource(e.target.checked ? "stock" : "same");
                       setError(null);
@@ -246,7 +264,7 @@ export function RegenerateSceneButton({
             {quote && canPress(quote) && queue && !loading && (
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || loading}
                 onClick={press}
                 className="btn-sky is-solid pill px-3 py-1 text-[11px] disabled:opacity-40"
               >

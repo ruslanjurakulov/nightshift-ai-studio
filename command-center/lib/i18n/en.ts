@@ -4458,6 +4458,10 @@ export const en = {
       hold_not_open: "The credit hold was no longer open.",
       job_ended: "The job ended before the scene was finished.",
       not_confirmed: "The new take could not be confirmed.",
+      approval_not_voided: "The previous approval could not be cleared, so the new cut was not put in place.",
+      result_unwritable: "The result could not be saved, so the new cut was not put in place.",
+      swap_failed: "The new cut could not be put in place.",
+      disk_full: "There is not enough free space to make a new take right now.",
       failed: "Something went wrong.",
     },
     reasons: {

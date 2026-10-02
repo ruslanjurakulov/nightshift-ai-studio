@@ -168,6 +168,21 @@ class TheSourceAndTheGates(unittest.TestCase):
         self.assertIn("'reason', 'published'", self.b["quote_scene_regenerate"])
         self.assertIn("raise exception 'published'", self.b["request_scene_regenerate"])
 
+    def test_the_quote_and_its_refusals_name_no_generator_or_price_unit(self):
+        # BR-L-031: viewers read the quote over PostgREST; the UI shows only
+        # the kind of source, so nothing more is returned.
+        quote = self.b["quote_scene_regenerate"]
+        for leak in ("'provider'", "'model'", "'missing_unit'", "'clip_unit'"):
+            self.assertNotIn(leak, quote)
+        self.assertIn("raise exception 'unpriced' using errcode = 'NS400';", self.b["request_scene_regenerate"])
+        self.assertNotIn("missing_unit", self.b["request_scene_regenerate"])
+
+    def test_the_worker_hands_over_what_was_priced(self):
+        # BR-L-025: the run checks the scene on disk against these.
+        start = self.b["start_scene_regeneration"]
+        for field in ("'previous_asset_ids'", "'generated_clips'", "'stock_assets'"):
+            self.assertIn(field, start)
+
     def test_who_may_press_is_the_run_now_rule(self):
         self.assertIn("accessible_channel_ids('admin')", self.b["request_scene_regenerate"])
         self.assertIn("accessible_channel_ids('viewer')", self.b["quote_scene_regenerate"])
@@ -207,6 +222,10 @@ class Privileges(unittest.TestCase):
         self.assertIn("alter table public.scene_regenerations enable row level security;", SQL)
         self.assertIn("revoke all on public.scene_regenerations from public, anon, authenticated, service_role;", SQL)
         self.assertIn("grant select on public.scene_regenerations to authenticated, service_role;", SQL)
+
+    def test_each_trigger_is_created_once(self):
+        for trig in re.findall(r"create trigger (\w+)", SQL):
+            self.assertEqual(SQL.count(f"create trigger {trig}\n"), 1, trig)
 
     def test_additive_only(self):
         self.assertNotRegex(code(SQL), r"\bdrop (table|column|function)\b")

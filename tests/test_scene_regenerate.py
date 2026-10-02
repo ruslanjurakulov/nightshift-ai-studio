@@ -23,7 +23,9 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from modules import provider_tasks, run_request, scene_render, scene_regenerate, scene_repair, video_ir
@@ -68,9 +70,15 @@ class FakeGenerator:
         return provider_tasks.TaskOutcome(provider_tasks.OUTCOME_SUCCEEDED, Path(out_path))
 
 
+#: Stands for "the ids the database priced" until a test on a real run fills
+#: them in from the scene on disk (RunWithGeneratedScene.cli).
+PRICED = "a_priced"
+
+
 def env(**kw):
     out = {"SCENE_REGEN_ID": RID, "SCENE_REGEN_SOURCE": "generated", "SCENE_REGEN_PROVIDER": PROVIDER,
-           "SCENE_REGEN_MODEL": MODEL}
+           "SCENE_REGEN_MODEL": MODEL, "SCENE_REGEN_PREVIOUS_ASSETS": PRICED,
+           "SCENE_REGEN_GENERATED_CLIPS": "1", "SCENE_REGEN_STOCK_ASSETS": "0"}
     out.update({k: v for k, v in kw.items() if v is not None})
     return {k: v for k, v in out.items() if v != ""}
 
@@ -109,9 +117,29 @@ class RunWithGeneratedScene(Base):
         e.start()
         self.addCleanup(e.stop)
 
-    def cli(self, environ, client=None, get_client=None, scene="s001"):
+    def priced(self, environ, scene):
+        """The terms the database would hand over for ``scene`` of the run
+        as it is on disk now (unless the test set them on purpose)."""
+        environ = dict(environ)
+        if environ.get("SCENE_REGEN_PREVIOUS_ASSETS") == PRICED:
+            p = video_ir.load(self.run_dir / "project.json")
+            ids = p.scene(scene).asset_ids
+            assets = [p.asset(a) for a in ids]
+            gen = sum(1 for a in assets if a.source == "generated")
+            stock = sum(1 for a in assets if a.source == "stock")
+            explicit = environ.get("SCENE_REGEN_EXPLICIT_STOCK") == "true"
+            environ["SCENE_REGEN_PREVIOUS_ASSETS"] = ",".join(ids)
+            if environ.get("SCENE_REGEN_SOURCE") == "generated":
+                environ["SCENE_REGEN_GENERATED_CLIPS"], environ["SCENE_REGEN_STOCK_ASSETS"] = str(gen), str(stock)
+            else:
+                environ["SCENE_REGEN_GENERATED_CLIPS"] = "0"
+                environ["SCENE_REGEN_STOCK_ASSETS"] = str(len(ids) if explicit else stock)
+        return environ
+
+    def cli(self, environ, client=None, get_client=None, scene="s001", **extra):
+        environ = self.priced(environ, scene)
         inject = {"check_tools": False, "fetcher": self.fetcher, "render_fn": self.render_fn,
-                  "qc_fn": self.qc_fn, "sync": self.sync}
+                  "qc_fn": self.qc_fn, "sync": self.sync, **extra}
         if client is not None:
             inject["client"] = client
         if get_client is not None:
@@ -138,6 +166,12 @@ class TheRequest(unittest.TestCase):
                env(SCENE_REGEN_SOURCE="stock"),  # stock naming a generator
                env(SCENE_REGEN_PROMPT="x" * 1001), env(SCENE_REGEN_PROMPT="a\nb"),
                env(SCENE_REGEN_EXPLICIT_STOCK="true")]  # an explicit stock choice that is not stock
+        # BR-L-025: what was priced must be handed over, well-formed.
+        bad += [env(SCENE_REGEN_PREVIOUS_ASSETS=""), env(SCENE_REGEN_PREVIOUS_ASSETS="a,a"),
+                env(SCENE_REGEN_PREVIOUS_ASSETS="a b"), env(SCENE_REGEN_PREVIOUS_ASSETS=",".join("a%d" % i for i in range(9))),
+                env(SCENE_REGEN_GENERATED_CLIPS=""), env(SCENE_REGEN_GENERATED_CLIPS="x"),
+                env(SCENE_REGEN_GENERATED_CLIPS="0"),  # a generated scene priced with no clip
+                env(SCENE_REGEN_GENERATED_CLIPS="2")]  # more clips than assets
         for e in bad:
             with self.subTest(e=e), self.assertRaises(scene_regenerate.RegenRequestError):
                 scene_regenerate.RegenRequest.from_env("s001", e)
@@ -245,6 +279,251 @@ class ProviderUnavailable(RunWithGeneratedScene):
         self.assertEqual(self.result()["error_code"], "scene_changed")
 
 
+class TheSceneAsPriced(RunWithGeneratedScene):
+    """BR-L-025 / BR-L-030: the scene on disk must be exactly the priced one."""
+
+    def snapshot(self):
+        return (self.run_dir / "project.json").read_bytes(), (self.run_dir / "final_video.mp4").read_bytes()
+
+    def assertRefused(self, code, snap, gen=None):
+        self.assertEqual(code, scene_regenerate.EXIT_UNAVAILABLE)
+        self.assertEqual(self.result()["error_code"], "scene_changed")
+        self.assertEqual(self.snapshot(), snap)
+        self.assertEqual(self.fetcher.searches_made, 0, "stock was searched for a scene that was not priced")
+        self.assertEqual(self.renderer.calls, [])
+        if gen is not None:
+            self.assertEqual(gen.submits, [], "a clip was paid for a scene that was not priced")
+
+    def rewrite_s001(self, *, model=MODEL, extra_generated=False):
+        p = video_ir.load(self.run_dir / "project.json")
+        assets = [a for a in p.assets]
+        old = p.asset(p.scene("s001").asset_ids[0])
+        assets = [replace(a, model=model) if a.id == old.id else a for a in assets]
+        ids = [old.id]
+        if extra_generated:
+            extra = self.run_dir / "media" / "generated" / "s001_1.mp4"
+            extra.write_bytes(b"second generated clip")
+            ref = AssetRef(id=video_ir.asset_id(str(extra)), kind="video", path=str(extra), source="generated",
+                           provider=PROVIDER, model=model, prompt="harbour at dawn",
+                           sha256=video_ir.file_sha256(extra))
+            assets.append(ref)
+            ids.append(ref.id)
+        scenes = tuple(replace(sc, asset_ids=tuple(ids)) if sc.id == "s001" else sc for sc in p.scenes)
+        video_ir.save(replace(p, scenes=scenes, assets=tuple(assets)), self.run_dir / "project.json")
+        return ids
+
+    def test_other_asset_ids_than_priced_are_refused(self):
+        snap, gen = self.snapshot(), FakeGenerator()
+        self.assertRefused(self.cli(env(SCENE_REGEN_PREVIOUS_ASSETS="a_somethingelse"), client=gen), snap, gen)
+
+    def test_more_generated_clips_on_disk_than_were_priced_are_refused(self):
+        ids = self.rewrite_s001(extra_generated=True)
+        snap, gen = self.snapshot(), FakeGenerator()
+        # The database saw both ids but priced one generated clip.
+        code = self.cli(env(SCENE_REGEN_PREVIOUS_ASSETS=",".join(ids), SCENE_REGEN_GENERATED_CLIPS="1",
+                            SCENE_REGEN_STOCK_ASSETS="0"), client=gen)
+        self.assertRefused(code, snap, gen)
+
+    def test_a_scene_priced_as_stock_that_is_generated_on_disk_never_gets_stock(self):
+        snap = self.snapshot()
+        gen_id = self.original.scene("s001").asset_ids[0]
+        code = self.cli(env(SCENE_REGEN_SOURCE="stock", SCENE_REGEN_PROVIDER="", SCENE_REGEN_MODEL="",
+                            SCENE_REGEN_PREVIOUS_ASSETS=gen_id, SCENE_REGEN_GENERATED_CLIPS="0",
+                            SCENE_REGEN_STOCK_ASSETS="1"))
+        self.assertRefused(code, snap)
+
+    def test_the_same_provider_with_another_model_on_disk_is_refused(self):
+        self.rewrite_s001(model="kling-v1-6")
+        snap, gen = self.snapshot(), FakeGenerator()
+        self.assertRefused(self.cli(env(), client=gen), snap, gen)
+
+    def test_verify_compares_the_model_not_only_the_provider(self):
+        project = self.original
+        gid = project.scene("s001").asset_ids[0]
+        req = scene_regenerate.RegenRequest.from_env("s001", env(SCENE_REGEN_PREVIOUS_ASSETS=gid))
+        scene_regenerate.verify_same_scene(project, req)  # as priced: passes
+        other = replace(project, assets=tuple(replace(a, model="kling-v1-6") if a.id == gid else a
+                                              for a in project.assets))
+        with self.assertRaises(scene_regenerate.RegenUnavailable) as cm:
+            scene_regenerate.verify_same_scene(other, req)
+        self.assertEqual(cm.exception.code, "scene_changed")
+        provider = replace(project, assets=tuple(replace(a, provider="veo") if a.id == gid else a
+                                                 for a in project.assets))
+        with self.assertRaises(scene_regenerate.RegenUnavailable):
+            scene_regenerate.verify_same_scene(provider, req)
+
+
+class CrashPoints(RunWithGeneratedScene):
+    """BR-L-026: the cut and IR change only in the final swap, after the
+    approval is void and the result naming them is written; whatever point a
+    run stops at, a failure leaves (or puts back) the previous take."""
+
+    def setUp(self):
+        super().setUp()
+        self.before = self.snapshot()
+
+    def snapshot(self):
+        return (self.run_dir / "project.json").read_bytes(), (self.run_dir / "final_video.mp4").read_bytes()
+
+    def assertUnchanged(self):
+        self.assertEqual(self.snapshot(), self.before)
+        self.assertEqual(sorted(p.name for p in self.run_dir.glob(".regen-*")), [], "temp files left behind")
+
+    def settle(self, exited_ok):
+        return scene_regenerate.settle_outcome(self.root, self.slug, RID, exited_ok=exited_ok)
+
+    def test_success_is_confirmed_by_the_files_on_disk(self):
+        self.assertEqual(self.cli(env(), client=FakeGenerator()), scene_regenerate.EXIT_OK)
+        self.assertNotEqual(self.snapshot(), self.before)
+        verdict = self.settle(True)
+        self.assertTrue(verdict["ok"], verdict)
+        self.assertEqual(sorted(p.name for p in self.run_dir.glob(".regen-*")), [])
+
+    def test_the_approval_is_void_before_the_cut_changes(self):
+        seen = []
+        sync = self.sync
+        real = sync.update
+
+        def update(table, filters, values):
+            seen.append(self.snapshot())
+            return real(table, filters, values)
+
+        sync.update = update
+        self.assertEqual(self.cli(env(), client=FakeGenerator()), scene_regenerate.EXIT_OK)
+        self.assertTrue(seen)
+        self.assertTrue(all(snap == self.before for snap in seen), "the cut changed before its approval was void")
+
+    def test_a_scene_that_did_not_re_render_changes_nothing(self):
+        def render(project, output_path, *, cut_intervals=None):
+            self.render_fn(project, output_path, cut_intervals=cut_intervals)
+            return SimpleNamespace(cache_misses=[])
+
+        code = self.cli(env(), client=FakeGenerator(), render_fn=render)
+        self.assertEqual(code, scene_regenerate.EXIT_FAILED)
+        self.assertEqual(self.result()["error_code"], "render_failed")
+        self.assertUnchanged()
+
+    def test_an_approval_that_cannot_be_voided_stops_before_the_swap(self):
+        self.sync.update = lambda *a, **k: False
+        code = self.cli(env(), client=FakeGenerator())
+        self.assertEqual(code, scene_regenerate.EXIT_FAILED)
+        self.assertEqual(self.result()["error_code"], "approval_not_voided")
+        self.assertUnchanged()
+        self.assertFalse(self.settle(False)["ok"])
+
+    def test_a_result_that_cannot_be_written_stops_before_the_swap(self):
+        real = scene_regenerate.write_result
+
+        def write(out_dir, body, *, strict=False):
+            if strict:
+                raise OSError("disk full")
+            return real(out_dir, body, strict=strict)
+
+        with mock.patch.object(scene_regenerate, "write_result", side_effect=write):
+            code = self.cli(env(), client=FakeGenerator())
+        self.assertEqual(code, scene_regenerate.EXIT_FAILED)
+        self.assertEqual(self.result()["error_code"], "result_unwritable")
+        self.assertUnchanged()
+
+    def swap_fails(self, exc):
+        real = os.replace
+        cut = self.run_dir / "final_video.mp4"
+
+        def fake(src, dst):
+            if Path(dst) == cut and Path(src).name.startswith(".regen-"):
+                raise exc
+            return real(src, dst)
+
+        return mock.patch("modules.scene_regenerate.os.replace", side_effect=fake)
+
+    def test_a_swap_that_fails_half_way_puts_the_previous_take_back(self):
+        with self.swap_fails(OSError("EIO")):
+            code = self.cli(env(), client=FakeGenerator())
+        self.assertEqual(code, scene_regenerate.EXIT_FAILED)
+        self.assertEqual(self.result()["error_code"], "swap_failed")
+        self.assertUnchanged()
+        self.assertFalse(self.settle(False)["ok"])
+
+    def test_a_run_killed_half_way_through_the_swap_is_put_back_by_the_worker(self):
+        with self.swap_fails(SystemExit(9)), self.assertRaises(SystemExit):
+            self.cli(env(), client=FakeGenerator())
+        self.assertNotEqual(self.snapshot(), self.before)   # the IR was swapped, the cut was not
+        self.assertTrue(self.result()["ok"])                 # and the result already said ok
+        verdict = self.settle(False)
+        self.assertFalse(verdict["ok"])
+        self.assertEqual(verdict["code"], "not_confirmed")
+        self.assertUnchanged()
+
+    def test_a_run_killed_after_the_swap_is_put_back_by_the_worker(self):
+        with mock.patch.object(scene_regenerate, "prune_takes", side_effect=SystemExit(9)), \
+                self.assertRaises(SystemExit):
+            self.cli(env(), client=FakeGenerator())
+        self.assertNotEqual(self.snapshot(), self.before)
+        self.assertFalse(self.settle(False)["ok"])
+        self.assertUnchanged()
+
+    def test_a_cut_changed_after_the_result_is_not_charged(self):
+        self.assertEqual(self.cli(env(), client=FakeGenerator()), scene_regenerate.EXIT_OK)
+        (self.run_dir / "final_video.mp4").write_bytes(b"something else")
+        verdict = self.settle(True)
+        self.assertEqual((verdict["ok"], verdict["code"]), (False, "not_confirmed"))
+        self.assertUnchanged()
+
+
+class DiskGrowth(RunWithGeneratedScene):
+    """BR-L-027: bounded per run, for every org, and checked before spending."""
+
+    def make_take(self, n, *, ok=True, clip=False):
+        rid = "%08d-0000-4000-8000-000000000000" % (n + 100)
+        d = scene_regenerate.regen_dir(self.run_dir, rid)
+        d.mkdir(parents=True)
+        (d / scene_regenerate.PREVIOUS_VIDEO).write_bytes(b"master %d" % n)
+        (d / scene_regenerate.PREVIOUS_PROJECT).write_text("{}")
+        if clip:
+            (d / "s001_take_0.mp4").write_bytes(b"clip %d" % n)
+        (d / scene_regenerate.RESULT_FILENAME).write_text(json.dumps({"ok": ok, "previous_asset_ids": ["a"]}))
+        os.utime(d / scene_regenerate.RESULT_FILENAME, (1_000_000 + n, 1_000_000 + n))
+        return d
+
+    def test_only_the_last_takes_keep_their_master(self):
+        takes = [self.make_take(n) for n in range(8)]
+        failed_old = self.make_take(-1, ok=False, clip=True)
+        in_use = self.make_take(-2, ok=False, clip=True)
+        project = replace(self.original, assets=self.original.assets + (
+            AssetRef(id="a_inuse", kind="video", path=str(in_use / "s001_take_0.mp4"), source="generated",
+                     provider=PROVIDER, model=MODEL),))
+        scene_regenerate.prune_takes(self.run_dir, keep=5, project=project)
+        kept = [d for d in takes if (d / scene_regenerate.PREVIOUS_VIDEO).exists()]
+        self.assertEqual(kept, takes[3:])
+        for d in takes + [failed_old]:
+            self.assertTrue((d / scene_regenerate.RESULT_FILENAME).exists(), "the asset ids were removed")
+            self.assertTrue((d / scene_regenerate.PREVIOUS_PROJECT).exists())
+        self.assertFalse((failed_old / "s001_take_0.mp4").exists())
+        self.assertTrue((in_use / "s001_take_0.mp4").exists(), "a clip the cut uses was removed")
+
+    def test_a_success_prunes_older_takes(self):
+        takes = [self.make_take(n) for n in range(6)]
+        self.assertEqual(self.cli(env(), client=FakeGenerator()), scene_regenerate.EXIT_OK)
+        kept = [d for d in takes if (d / scene_regenerate.PREVIOUS_VIDEO).exists()]
+        self.assertEqual(len(kept), scene_regenerate.KEEP_TAKES - 1)  # the new take is one of the five
+        self.assertTrue((scene_regenerate.regen_dir(self.run_dir, RID) / scene_regenerate.PREVIOUS_VIDEO).exists())
+
+    def test_a_failure_prunes_older_takes_but_keeps_its_own_master(self):
+        takes = [self.make_take(n) for n in range(6)]
+        code = self.cli(env(), client=FakeGenerator(outcome=provider_tasks.OUTCOME_FAILED))
+        self.assertEqual(code, scene_regenerate.EXIT_FAILED)
+        self.assertEqual(sum((d / scene_regenerate.PREVIOUS_VIDEO).exists() for d in takes),
+                         scene_regenerate.KEEP_TAKES - 1)
+
+    def test_too_little_free_space_stops_before_anything_is_spent(self):
+        gen = FakeGenerator()
+        code = self.cli(env(), client=gen, disk_free=lambda p: 1024)
+        self.assertEqual(code, scene_regenerate.EXIT_UNAVAILABLE)
+        self.assertEqual(self.result()["error_code"], "disk_full")
+        self.assertEqual(gen.submits, [])
+        self.assertEqual(self.renderer.calls, [])
+
+
 class ExplicitStock(RunWithGeneratedScene):
     def test_stock_only_when_chosen_and_recorded_as_stock(self):
         gen = FakeGenerator()
@@ -322,7 +601,8 @@ class RepairRefusesGeneratedScenes(RunWithGeneratedScene):
 
 class RunRequest(unittest.TestCase):
     TERMS = {"id": RID, "scene_id": "s001", "slug": "the-lost-city", "source_kind": "generated",
-             "provider": PROVIDER, "model": MODEL, "prompt": "--privacy public", "explicit_stock": False}
+             "provider": PROVIDER, "model": MODEL, "prompt": "--privacy public", "explicit_stock": False,
+             "previous_asset_ids": ["a_old"], "generated_clips": 1, "stock_assets": 0}
     PARAMS = {"topic": "the-lost-city", "repair_scenes": "s001"}
 
     def test_always_private_one_scene_never_resume(self):
@@ -342,6 +622,16 @@ class RunRequest(unittest.TestCase):
         self.assertEqual(e["YOUTUBE_PRIVACY"], "private")
         self.assertNotIn("CHRONOS_VIDEO_PROVIDER", e)
 
+    def test_what_was_priced_is_handed_to_the_run(self):
+        e = run_request.build_regenerate_env({**self.TERMS, "previous_asset_ids": ["a_1", "a_2"],
+                                              "generated_clips": 1, "stock_assets": 1}, self.PARAMS, {})
+        self.assertEqual((e["SCENE_REGEN_PREVIOUS_ASSETS"], e["SCENE_REGEN_GENERATED_CLIPS"],
+                          e["SCENE_REGEN_STOCK_ASSETS"]), ("a_1,a_2", "1", "1"))
+        for bad in ({"previous_asset_ids": []}, {"previous_asset_ids": ["a,b"]}, {"previous_asset_ids": None},
+                    {"generated_clips": None}, {"stock_assets": "1"}, {"generated_clips": True}):
+            with self.subTest(bad=bad), self.assertRaises(run_request.InvalidRunRequest):
+                run_request.build_regenerate_env({**self.TERMS, **bad}, self.PARAMS, {})
+
     def test_terms_of_another_job_are_refused(self):
         with self.assertRaises(run_request.InvalidRunRequest):
             run_request.build_regenerate_env({**self.TERMS, "scene_id": "s002"}, self.PARAMS, {})
@@ -352,23 +642,46 @@ class RunRequest(unittest.TestCase):
 # ── the worker ──────────────────────────────────────────────────────────────
 
 FAKE_MAIN = textwrap.dedent("""
-    import json, os, sys
+    # Behaves like main.py --regenerate-scene as far as the worker can see:
+    # keeps the previous take, writes the result naming the new files, swaps.
+    import hashlib, json, os, shutil, sys
     from pathlib import Path
     argv = sys.argv[1:]
-    Path("argv.out").write_text(json.dumps({"argv": argv, "id": os.environ.get("SCENE_REGEN_ID"),
-                                            "source": os.environ.get("SCENE_REGEN_SOURCE"),
-                                            "provider": os.environ.get("SCENE_REGEN_PROVIDER")}))
-    rc = int(os.environ.get("FAKE_RC", "0"))
+    E = os.environ
+    Path("argv.out").write_text(json.dumps({"argv": argv, "id": E.get("SCENE_REGEN_ID"),
+                                            "source": E.get("SCENE_REGEN_SOURCE"),
+                                            "provider": E.get("SCENE_REGEN_PROVIDER"),
+                                            "previous": E.get("SCENE_REGEN_PREVIOUS_ASSETS"),
+                                            "generated": E.get("SCENE_REGEN_GENERATED_CLIPS")}))
+    rc = int(E.get("FAKE_RC", "0"))
+    mode = E.get("FAKE_MODE", "")
     slug = argv[argv.index("--topic") + 1]
-    d = Path("output") / slug / "regenerations" / os.environ["SCENE_REGEN_ID"]
+    run = Path("output") / slug
+    d = run / "regenerations" / E["SCENE_REGEN_ID"]
     d.mkdir(parents=True, exist_ok=True)
-    body = {"ok": True, "new_asset_ids": ["a_new"], "previous_asset_ids": ["a_old"], "source_kind": "generated",
-            "previous_take": {"project": "previous_project.json"}, "qc": {"blocks": []}}
+    sha = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
     if rc:
-        body = {"ok": False, "error_code": "provider_unavailable", "error": "no key; nothing was charged"}
-    if os.environ.get("FAKE_NO_RESULT") != "1":
+        (d / "result.json").write_text(json.dumps(
+            {"ok": False, "error_code": "provider_unavailable", "error": "no key; nothing was charged"}))
+        sys.exit(rc)
+    shutil.copy2(run / "project.json", d / "previous_project.json")
+    shutil.copy2(run / "final_video.mp4", d / "previous_final_video.mp4")
+    tv, ti = run / ".new.mp4", run / ".new.json"
+    tv.write_bytes(b"NEW CUT"); ti.write_text('{"new": true}')
+    body = {"ok": True, "new_asset_ids": ["a_new"], "previous_asset_ids": ["a_old"], "source_kind": "generated",
+            "previous_take": {"project": "previous_project.json", "video": "previous_final_video.mp4"},
+            "qc": {"blocks": []}, "new_video_sha256": sha(tv), "new_project_sha256": sha(ti)}
+    if mode != "no_result":
         (d / "result.json").write_text(json.dumps(body))
-    sys.exit(rc)
+    if mode == "no_swap":
+        sys.exit(0)
+    os.replace(ti, run / "project.json")
+    if mode == "die_mid_swap":
+        os._exit(9)
+    os.replace(tv, run / "final_video.mp4")
+    if mode == "die_after_swap":
+        os._exit(9)
+    sys.exit(0)
 """)
 
 
@@ -408,6 +721,10 @@ class Worker(unittest.TestCase):
         self.repo = Path(self.tmp.name)
         (self.repo / "main.py").write_text(FAKE_MAIN)
         self.env = {"PATH": os.environ.get("PATH", "")}
+        self.run_dir = self.repo / "output" / "the-lost-city"
+        self.run_dir.mkdir(parents=True)
+        (self.run_dir / "project.json").write_text('{"old": true}')
+        (self.run_dir / "final_video.mp4").write_bytes(b"OLD CUT")
         self.sink = open(os.devnull, "w")
         self.addCleanup(self.sink.close)
 
@@ -436,6 +753,7 @@ class Worker(unittest.TestCase):
         self.assertEqual((a["id"], a["source"], a["provider"]), (RID, "generated", PROVIDER))
         (_, rid, jid, ok, code, _, result), = [x for x in c.calls if x[0] == "finish"]
         self.assertEqual((rid, jid, ok, code), (RID, 7, True, None))
+        self.assertEqual((self.run_dir / "final_video.mp4").read_bytes(), b"NEW CUT")
         self.assertEqual(result["new_asset_ids"], ["a_new"])
         self.assertTrue(result["previous_take_kept"])
 
@@ -447,11 +765,43 @@ class Worker(unittest.TestCase):
         self.assertEqual((ok, code), (False, "provider_unavailable"))
         self.assertIn("nothing was charged", error)
 
+    def unchanged(self):
+        self.assertEqual((self.run_dir / "project.json").read_text(), '{"old": true}')
+        self.assertEqual((self.run_dir / "final_video.mp4").read_bytes(), b"OLD CUT")
+
+    def finish(self, c):
+        (_, _, _, ok, code, _, _), = [x for x in c.calls if x[0] == "finish"]
+        return ok, code
+
     def test_a_clean_exit_without_a_result_is_not_charged(self):
         c = RegenCredits()
-        self.run_job(c, FAKE_NO_RESULT="1")
-        (_, _, _, ok, code, _, _), = [x for x in c.calls if x[0] == "finish"]
-        self.assertEqual((ok, code), (False, "not_confirmed"))
+        self.run_job(c, FAKE_MODE="no_result")
+        self.assertEqual(self.finish(c), (False, "not_confirmed"))
+        self.unchanged()
+
+    # BR-L-026: every point the run can stop at after the result is written.
+    def test_a_result_whose_cut_is_not_on_disk_is_not_charged(self):
+        c = RegenCredits()
+        self.run_job(c, FAKE_MODE="no_swap")
+        self.assertEqual(self.finish(c), (False, "not_confirmed"))
+        self.unchanged()
+
+    def test_a_run_that_died_half_way_through_the_swap_is_put_back_and_released(self):
+        c = RegenCredits()
+        self.run_job(c, FAKE_MODE="die_mid_swap")
+        self.assertEqual(self.finish(c)[0], False)
+        self.unchanged()
+
+    def test_a_run_that_died_after_the_swap_is_put_back_and_released(self):
+        c = RegenCredits()
+        self.run_job(c, FAKE_MODE="die_after_swap")
+        self.assertEqual(self.finish(c)[0], False)
+        self.unchanged()
+
+    def test_the_priced_scene_is_handed_to_the_run(self):
+        self.run_job(RegenCredits())
+        a = self.argv()
+        self.assertEqual((a["previous"], a["generated"]), ("a_old", "1"))
 
     def test_a_hold_that_is_not_open_runs_nothing(self):
         c = RegenCredits(terms=False)
