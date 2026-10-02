@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Martian_Mono, Sofia_Sans, Sofia_Sans_Extra_Condensed } from "next/font/google";
 import "./globals.css";
 import { getLocale } from "@/lib/i18n/server";
@@ -9,6 +9,14 @@ import { NO_FLASH_SCRIPT } from "@/lib/theme";
 export const metadata: Metadata = {
   title: "Nightshift Command Center",
   description: "Real-time monitoring & control plane for the Nightshift content-automation bot.",
+};
+
+/** The browser chrome takes the page's ground: the light table, or the control room at night. */
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#e4e7ec" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b0f16" },
+  ],
 };
 
 /* The identity's type (docs/design/IDENTITY.md §Type): one superfamily at two
