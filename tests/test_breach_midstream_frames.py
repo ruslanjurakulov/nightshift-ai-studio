@@ -11,18 +11,22 @@ decoding it yields 78 frames of 64x64 and then 3 of 4096x4096 (peak RSS
 128 MB vs 23 MB with the cap below).
 
 Fixed in the decoder itself, where every path meets the cap: every ffmpeg
-command that decodes library media passes ``-max_pixels <MAX_PIXELS>`` as an
-input option before each ``-i`` (the thumbnail and the proxy at ingest, and
-every command of an editor export), and ``-xerror`` where a refused frame must
-fail the job instead of yielding a short or looped output (the proxy, and an
-export's segment commands — a clip whose every frame is refused would
-otherwise loop under ``-stream_loop -1`` until the render's time limit). The
-probe checks stay as the early, friendly refusal.
+command that decodes library media passes ``-max_pixels`` as an input option
+before each ``-i`` (the thumbnail and the proxy at ingest, and every command
+of an editor export). A refused frame fails the job instead of yielding a
+short or looped output (a clip whose every frame is refused would otherwise
+loop under ``-stream_loop -1`` until the render's time limit): since Lens
+round 3 that is ffmpeg_limits reading stderr for the refusal, not ``-xerror``,
+which also failed damaged but playable files (BR-L-008). The cap is the video
+cap for a video and the still cap for a picture (BR-L-010), each with the
+decoder's row padding (BR-L-009). The probe checks stay as the early,
+friendly refusal.
 
-The real-ffmpeg tests lower the cap (MAX_PIXELS / DECODE_MAX_PIXELS) to
-100 000 px so a small, fast fixture (64x64 then 4096x4096) shows the refusal;
-the unit tests pin the real 100 MP value on every command. They skip when no
-ffmpeg is available. (CI runs ``unittest discover``, so no pytest here.)
+The real-ffmpeg tests lower the caps to 100 000 px (the decoder then refuses
+above 100 000 + 63 x 16384 px) so a small, fast fixture (64x64 then
+4096x4096) shows the refusal; the unit tests pin the real values on every
+command. They skip when no ffmpeg is available. (CI runs ``unittest
+discover``, so no pytest here.)
 """
 
 from __future__ import annotations
@@ -41,9 +45,11 @@ from modules import render_backend as rb
 from modules import render_spec as rs
 
 S = rs.Segment
-CAP = str(ml.MAX_PIXELS)
+#: The decoder caps: a still's and a video's area cap plus the row padding.
+CAP = str(ml.MAX_PIXELS + 63 * ml.MAX_SIDE)
+VIDEO_CAP = str(ml.VIDEO_MAX_PIXELS + 63 * ml.MAX_SIDE)
 #: A cap between the fixture's small frame (64x64 = 4 096 px) and its big one
-#: (4096x4096 = 16.8 MP), standing in for MAX_PIXELS in the real-ffmpeg tests.
+#: (4096x4096 = 16.8 MP), standing in for the caps in the real-ffmpeg tests.
 TEST_CAP = 100_000
 
 
@@ -58,16 +64,30 @@ def _input_options(argv: List[str]) -> List[List[str]]:
     return groups
 
 
+def _inputs(argv: List[str]) -> List[str]:
+    return [argv[i + 1] for i, tok in enumerate(argv) if tok == "-i"]
+
+
 class CapPinMixin:
-    def assertEveryInputCapped(self, argv: List[str], cap: str = CAP) -> None:
+    def assertEveryInputCapped(self, argv: List[str], cap=CAP) -> None:
+        """``cap``: the expected -max_pixels, or a function of the input."""
         groups = _input_options(argv)
         self.assertTrue(groups, f"no -i in {argv}")
-        for opts in groups:
+        for opts, src in zip(groups, _inputs(argv)):
+            want = cap(src) if callable(cap) else cap
             self.assertIn("-max_pixels", opts, f"an input has no -max_pixels: {argv}")
-            self.assertEqual(opts[opts.index("-max_pixels") + 1], cap, argv)
+            self.assertEqual(opts[opts.index("-max_pixels") + 1], want, argv)
+            self.assertIn("-threads", opts, f"an input has no decoder thread count: {argv}")
+            self.assertEqual(opts[opts.index("-threads") + 1], "2", argv)
 
-    def assertFailsOnDecodeError(self, argv: List[str]) -> None:
-        self.assertIn("-xerror", argv[:argv.index("-i")], argv)
+    def assertSkipsNoDamagedFrame(self, argv: List[str]) -> None:
+        # BR-L-008: -xerror failed damaged but playable files; a refused
+        # frame is caught from stderr instead (ffmpeg_limits).
+        self.assertNotIn("-xerror", argv)
+        head = argv[:argv.index("-i")]
+        for opt in ("-filter_threads", "-filter_complex_threads"):
+            self.assertIn(opt, head, argv)
+            self.assertEqual(head[head.index(opt) + 1], "2", argv)
 
 
 # ── every command pins the flag (pure, no ffmpeg) ───────────────────────────
@@ -75,7 +95,10 @@ class CapPinMixin:
 class IngestCommandCapTests(CapPinMixin, unittest.TestCase):
     def test_cap_is_the_probe_cap(self):
         self.assertEqual(ml.MAX_PIXELS, 100_000_000)
+        self.assertEqual(ml.VIDEO_MAX_PIXELS, 8192 * 4352)
         self.assertEqual(rs.DECODE_MAX_PIXELS, ml.MAX_PIXELS)
+        self.assertEqual(rs.DECODE_VIDEO_MAX_PIXELS, ml.VIDEO_MAX_PIXELS)
+        self.assertEqual(rs.DECODE_MAX_SIDE, ml.MAX_SIDE)
 
     def test_thumbnail_command_caps_the_decoder_for_every_picture_type(self):
         for mime, kind in ml.ALLOWED_MIME.items():
@@ -84,21 +107,25 @@ class IngestCommandCapTests(CapPinMixin, unittest.TestCase):
             with self.subTest(mime=mime):
                 argv = ml.thumbnail_command("ffmpeg", Path("/m/o"), Path("/m/t.jpg"), mime,
                                             5.0 if kind == "video" else None)
-                self.assertEveryInputCapped(argv)
+                self.assertEveryInputCapped(argv, VIDEO_CAP if kind == "video" else CAP)
+                self.assertSkipsNoDamagedFrame(argv)
 
-    def test_proxy_command_caps_the_decoder_and_fails_on_a_refused_frame(self):
+    def test_proxy_command_caps_the_decoder_and_skips_no_damaged_frame(self):
         for mime, kind in ml.ALLOWED_MIME.items():
             if kind != "video":
                 continue
             with self.subTest(mime=mime):
                 argv = ml.proxy_command("ffmpeg", Path("/m/o"), Path("/m/p.mp4"), mime)
-                self.assertEveryInputCapped(argv)
-                self.assertFailsOnDecodeError(argv)
+                self.assertEveryInputCapped(argv, VIDEO_CAP)
+                self.assertSkipsNoDamagedFrame(argv)
 
-    def test_the_cap_follows_max_pixels(self):
-        with mock.patch.object(ml, "MAX_PIXELS", 1234):
+    def test_the_cap_follows_the_area_caps(self):
+        with mock.patch.object(ml, "VIDEO_MAX_PIXELS", 1234):
             argv = ml.proxy_command("ffmpeg", Path("/m/o"), Path("/m/p.mp4"), "video/mp4")
-        self.assertEveryInputCapped(argv, "1234")
+        self.assertEveryInputCapped(argv, str(1234 + 63 * ml.MAX_SIDE))
+        with mock.patch.object(ml, "MAX_PIXELS", 1234):
+            argv = ml.thumbnail_command("ffmpeg", Path("/m/o"), Path("/m/t.jpg"), "image/png", None)
+        self.assertEveryInputCapped(argv, str(1234 + 63 * ml.MAX_SIDE))
 
 
 def _timeline_segments() -> List[rs.Segment]:
@@ -112,6 +139,11 @@ def _timeline_segments() -> List[rs.Segment]:
     ]
 
 
+def _cap_of(src: str) -> str:
+    """The decoder cap a timeline input gets: the video cap for a clip."""
+    return VIDEO_CAP if src.endswith(".mp4") and src.startswith("/m/") else CAP
+
+
 class EditorRenderCapTests(CapPinMixin, unittest.TestCase):
     def test_every_timeline_segment_command_caps_every_input(self):
         for seg in _timeline_segments():
@@ -120,8 +152,8 @@ class EditorRenderCapTests(CapPinMixin, unittest.TestCase):
                                            seed="s", x264=x264, frame_exact=True)
                 for cmd in cmds:
                     with self.subTest(kind=seg.kind, xfade=seg.xfade is not None, cmd=cmd):
-                        self.assertEveryInputCapped(cmd)
-                        self.assertFailsOnDecodeError(cmd)
+                        self.assertEveryInputCapped(cmd, _cap_of)
+                        self.assertSkipsNoDamagedFrame(cmd)
 
     def test_the_segments_the_export_actually_runs_are_capped(self):
         # Through _normalize_segment, as render() runs them, with a deadline
@@ -133,8 +165,8 @@ class EditorRenderCapTests(CapPinMixin, unittest.TestCase):
                                       seed="s", frame_exact=True, deadline=1e12)
             self.assertTrue(calls)
             for cmd in calls:
-                self.assertEveryInputCapped(cmd)
-                self.assertFailsOnDecodeError(cmd)
+                self.assertEveryInputCapped(cmd, _cap_of)
+                self.assertSkipsNoDamagedFrame(cmd)
 
     def test_timeline_final_commands_cap_every_input(self):
         tracks = [rs.AudioTrack("/m/v.mp3", 2.0), rs.AudioTrack("/m/clip.mp4", 2.0, start_s=1.0)]
@@ -156,7 +188,8 @@ class EditorRenderCapTests(CapPinMixin, unittest.TestCase):
         # argv (tests/test_render_spec_legacy.py); they read no library media.
         cmd = rb.segment_commands("ffmpeg", S(2.0, "/m/a.mp4"), Path("/t/seg.mp4"), 1920, 1080, 30)[0]
         self.assertNotIn("-max_pixels", cmd)
-        self.assertNotIn("-xerror", cmd)
+        self.assertNotIn("-threads", cmd)
+        self.assertNotIn("-filter_threads", cmd)
         spec = rs.RenderSpec("/o.mp4", segments=[S(2.0, "/m/a.mp4")], audio_path="/m/v.wav")
         self.assertNotIn("-max_pixels", rs.build_ffmpeg_command(spec, "/t/list.txt"))
 
@@ -210,7 +243,8 @@ class MidStreamFrameSwitchTests(unittest.TestCase):
                             str(tmp / dst)]).returncode != 0:
                 cls._dir.cleanup()
                 raise unittest.SkipTest("this ffmpeg cannot mux the fixture")
-        if _run(base + ["-f", "lavfi", "-i", "testsrc=s=512x512:d=1", "-frames:v", "1",
+        # 2048x2048 (4.2 MP): over the test cap plus the decoder's row padding.
+        if _run(base + ["-f", "lavfi", "-i", "testsrc=s=2048x2048:d=1", "-frames:v", "1",
                         str(tmp / "pic.jpg")]).returncode != 0:
             cls._dir.cleanup()
             raise unittest.SkipTest("this ffmpeg cannot write a JPEG")
@@ -246,14 +280,14 @@ class MidStreamFrameSwitchTests(unittest.TestCase):
 
     def test_ingest_proxy_fails_instead_of_decoding_the_big_frames(self):
         proxy = self.work / "proxy.mp4"
-        with mock.patch.object(ml, "MAX_PIXELS", TEST_CAP):
+        with mock.patch.object(ml, "VIDEO_MAX_PIXELS", TEST_CAP):
             argv = ml.proxy_command(self.exe, self.tmp / "mixed.mp4", proxy, "video/mp4")
         code = ml.run_tool(argv, lambda: None, timeout_s=300)
         self.assertNotEqual(code, 0, "the proxy must fail, not come out short")
 
     def test_ingest_proxy_of_a_clean_video_still_works_under_the_cap(self):
         proxy = self.work / "proxy.mp4"
-        with mock.patch.object(ml, "MAX_PIXELS", TEST_CAP):
+        with mock.patch.object(ml, "VIDEO_MAX_PIXELS", TEST_CAP):
             argv = ml.proxy_command(self.exe, self.tmp / "small.mp4", proxy, "video/mp4")
         self.assertEqual(ml.run_tool(argv, lambda: None, timeout_s=300), 0)
         self.assertGreater(proxy.stat().st_size, 0)
@@ -283,7 +317,7 @@ class MidStreamFrameSwitchTests(unittest.TestCase):
             probe = ml.run_probe
         else:
             probe = lambda exe, path, sniffed: ml.Probe("video", "video/mp4", 64, 64, 8.1)  # noqa: E731
-        with mock.patch.object(ml, "MAX_PIXELS", TEST_CAP):
+        with mock.patch.object(ml, "VIDEO_MAX_PIXELS", TEST_CAP):
             with self.assertRaises(ml.IngestReject) as e:
                 ml.ingest(ticket, store=Store(), staging_root=staging, media_root=media,
                           worker_id="w", tools=ml.Tools(ffprobe=ffprobe or "ffprobe", ffmpeg=self.exe),
@@ -300,17 +334,17 @@ class MidStreamFrameSwitchTests(unittest.TestCase):
 
     def test_editor_export_segment_fails_on_the_big_frames(self):
         seg = S(1.0, str(self.tmp / "mixed.mp4"), in_s=7.5)
-        with mock.patch.object(rs, "DECODE_MAX_PIXELS", TEST_CAP, create=True):
-            with self.assertRaises(rb.RenderBackendError):
+        with mock.patch.object(rs, "DECODE_VIDEO_MAX_PIXELS", TEST_CAP):
+            with self.assertRaises(rb.RenderRefused):
                 rb._normalize_segment(self.exe, seg, self.work / "seg.mp4", 64, 64, 10,
                                       frame_exact=True, deadline=_deadline(120))
 
     def test_editor_export_of_a_clean_clip_still_loops_under_the_cap(self):
-        # -xerror with -stream_loop -1: a slot longer than its clip loops the
-        # clip, as before, without a spurious error at the loop point.
+        # Under -stream_loop -1 a slot longer than its clip loops the clip,
+        # as before, without a spurious refusal at the loop point.
         seg = S(10.0, str(self.tmp / "small.mp4"))
         out = self.work / "seg.mp4"
-        with mock.patch.object(rs, "DECODE_MAX_PIXELS", TEST_CAP, create=True):
+        with mock.patch.object(rs, "DECODE_VIDEO_MAX_PIXELS", TEST_CAP):
             rb._normalize_segment(self.exe, seg, out, 64, 64, 10, frame_exact=True,
                                   deadline=_deadline(120))
         self.assertGreater(out.stat().st_size, 0)

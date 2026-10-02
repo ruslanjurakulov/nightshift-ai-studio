@@ -144,14 +144,17 @@ class CodedFrameBoundaryTests(_Refuses):
     branches of interpret_probe."""
 
     def test_coded_area_at_the_cap_is_accepted_and_one_row_over_is_refused(self):
-        side = 10_000  # 10_000 x 10_000 is exactly MAX_PIXELS
-        self.assertEqual(side * side, ml.MAX_PIXELS)
+        # A video's cap is VIDEO_MAX_PIXELS, 8192 x 4352 (BR-L-010).
+        cw, ch = 8192, 4352
+        self.assertEqual(cw * ch, ml.VIDEO_MAX_PIXELS)
         for sniffed in VIDEO_TYPES:
             with self.subTest(sniffed=sniffed):
-                p = ml.interpret_probe(sniffed, _probe(_s(100, 100, side, side)))
+                p = ml.interpret_probe(sniffed, _probe(_s(100, 100, cw, ch)))
                 self.assertEqual((p.kind, p.width, p.height), ("video", 100, 100))
-                self.assert_too_large(sniffed, _probe(_s(100, 100, side, side + 1)))
-                self.assert_too_large(sniffed, _probe(_s(100, 100, side + 1, side)))
+                self.assert_too_large(sniffed, _probe(_s(100, 100, cw, ch + 1)))
+                self.assert_too_large(sniffed, _probe(_s(100, 100, cw + 1, ch)))
+        side = 10_000  # 10_000 x 10_000 is exactly MAX_PIXELS, a still's cap
+        self.assertEqual(side * side, ml.MAX_PIXELS)
         for sniffed in IMAGE_TYPES:
             with self.subTest(sniffed=sniffed):
                 p = ml.interpret_probe(sniffed, _image(_s(100, 100, side, side)))
