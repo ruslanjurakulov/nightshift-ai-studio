@@ -196,7 +196,7 @@ describe("public pricing page", () => {
   it("has its headings, the terms and the questions", () => {
     const t = dictionaries.en;
     renderPricing({ pricing: none });
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(t.pricing.title);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(t.site.pricingPage.h1);
     for (const title of [t.pricing.termsTitle, t.pricing.howTitle, t.pricing.paymentsTitle, t.pricing.faqTitle]) {
       expect(screen.getByRole("heading", { level: 2, name: title })).toBeTruthy();
     }

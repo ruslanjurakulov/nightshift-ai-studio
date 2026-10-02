@@ -67,8 +67,7 @@ export function Landing({
       )}
       <SolutionsTeaser t={t} />
       <PricingTeaser t={t} locale={locale} teaser={pricing} anchor={anchor} />
-      <Faq t={t} plansOnSale={pricing.kind === "plans"} />
-      <GoogleData t={t} />
+      <Faq t={t} plansOnSale={pricing.kind === "plans"} aside={<GoogleData t={t} />} />
       <FinalCta t={t} />
     </div>
   );
@@ -142,10 +141,12 @@ function Rules({ t }: { t: Dictionary }) {
 function How({ t }: { t: Dictionary }) {
   const h = t.site.how;
   return (
-    <section id="how" aria-labelledby="how-title" className="st-section">
+    // A band of its own: the one section on the console ground, without the
+    // slug and hairline the others open with — the rundown read as a strip.
+    <section id="how" aria-labelledby="how-title" className="st-section" data-band="true">
       <div className="st-wrap">
-        <Slug>{h.slug}</Slug>
-        <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] lg:items-end">
+        <p className="st-kicker">{h.slug}</p>
+        <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] lg:items-end">
           <h2 id="how-title" className="st-h2">
             {h.title}
           </h2>
@@ -217,48 +218,18 @@ function Desk({ t, locale }: { t: Dictionary; locale: Locale }) {
   const d = t.site.desk;
   const codes = ["uz", "ru", "en"] as const;
   return (
+    // The one section that opens with its picture: on a wide screen the desk
+    // sits on the left (CSS order), the words and the three languages beside
+    // it. In the document the heading still comes first.
     <section id="channels" aria-labelledby="desk-title" className="st-section">
-      <div className="st-wrap">
-        <Slug>{d.slug}</Slug>
-        <h2 id="desk-title" className="st-h2 mt-8">
-          {d.title}
-        </h2>
-        <p className="st-lead mt-6">{d.lead}</p>
-        <div className="st-split">
-          <figure className="st-panel">
-            <div className="st-panel-head">
-              <b aria-hidden>{d.cols.channel}</b>
-              <span className="st-tag">{d.tag}</span>
-            </div>
-            <div className="st-table-wrap">
-              <table className="st-table">
-                <caption className="sr-only">{d.figure}</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">{d.cols.channel}</th>
-                    <th scope="col">{d.cols.language}</th>
-                    <th scope="col" className="st-col-voice">
-                      {d.cols.voice}
-                    </th>
-                    <th scope="col">{d.cols.autopublish}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.rows.map((row) => (
-                    <tr key={row.name}>
-                      <td>{row.name}</td>
-                      <td>{row.language}</td>
-                      <td className="st-col-voice text-[var(--ns-text-dim)]">{row.voice}</td>
-                      <td>
-                        <StatusLamp tone="idle" label={d.off} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </figure>
-          <ul className="st-langs" aria-label={d.slug}>
+      <div className="st-wrap st-desk">
+        <div className="st-desk-words">
+          <p className="st-kicker">{d.slug}</p>
+          <h2 id="desk-title" className="st-h2 mt-5">
+            {d.title}
+          </h2>
+          <p className="st-lead mt-6">{d.lead}</p>
+          <ul className="st-langs mt-8" aria-label={d.slug}>
             {d.languages.map((l, i) => (
               <li key={l} lang={codes[i]} aria-current={codes[i] === locale ? "true" : undefined}>
                 {l}
@@ -267,6 +238,39 @@ function Desk({ t, locale }: { t: Dictionary; locale: Locale }) {
             ))}
           </ul>
         </div>
+        <figure className="st-panel st-desk-figure">
+          <div className="st-panel-head">
+            <b aria-hidden>{d.cols.channel}</b>
+            <span className="st-tag">{d.tag}</span>
+          </div>
+          <div className="st-table-wrap">
+            <table className="st-table">
+              <caption className="sr-only">{d.figure}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">{d.cols.channel}</th>
+                  <th scope="col">{d.cols.language}</th>
+                  <th scope="col" className="st-col-voice">
+                    {d.cols.voice}
+                  </th>
+                  <th scope="col">{d.cols.autopublish}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.rows.map((row) => (
+                  <tr key={row.name}>
+                    <td>{row.name}</td>
+                    <td>{row.language}</td>
+                    <td className="st-col-voice text-[var(--ns-text-dim)]">{row.voice}</td>
+                    <td>
+                      <StatusLamp tone="idle" label={d.off} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </figure>
       </div>
     </section>
   );
@@ -315,33 +319,31 @@ export function SolutionRows({ pages }: { pages: Dictionary["site"]["solutions"]
   );
 }
 
+/** The Google data statement OAuth reviewers read: it sits in the FAQ's left
+ *  column, under the questions' title, rather than as a section of its own. */
 function GoogleData({ t }: { t: Dictionary }) {
   const d = t.landing.data;
   return (
-    <section id="google-data" aria-labelledby="data-title" className="st-section">
-      <div className="st-wrap grid gap-6 lg:grid-cols-[minmax(0,0.6fr)_minmax(0,1fr)] lg:gap-14">
-        <div className="flex items-start gap-4">
-          <span className="grid size-11 shrink-0 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)]">
-            <Lock className="size-5" aria-hidden />
-          </span>
-          <h2 id="data-title" className="st-h3 pt-2">
-            {d.title}
-          </h2>
-        </div>
-        <div>
-          <p className="st-body">{d.body}</p>
-          <div className="mt-5 flex flex-wrap gap-x-6">
-            <Link href="/privacy" className="st-link">
-              {d.privacy}
-            </Link>
-            <a href={GOOGLE_PERMISSIONS} target="_blank" rel="noopener noreferrer" className="st-link">
-              {d.revoke}
-              <ArrowUpRight aria-hidden />
-            </a>
-          </div>
-        </div>
+    <aside id="google-data" aria-labelledby="data-title" className="st-data">
+      <div className="flex items-start gap-4">
+        <span className="grid size-11 shrink-0 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)]">
+          <Lock className="size-5" aria-hidden />
+        </span>
+        <h2 id="data-title" className="st-h3 pt-2">
+          {d.title}
+        </h2>
       </div>
-    </section>
+      <p className="st-body mt-4">{d.body}</p>
+      <div className="mt-3 flex flex-wrap gap-x-6">
+        <Link href="/privacy" className="st-link">
+          {d.privacy}
+        </Link>
+        <a href={GOOGLE_PERMISSIONS} target="_blank" rel="noopener noreferrer" className="st-link">
+          {d.revoke}
+          <ArrowUpRight aria-hidden />
+        </a>
+      </div>
+    </aside>
   );
 }
 

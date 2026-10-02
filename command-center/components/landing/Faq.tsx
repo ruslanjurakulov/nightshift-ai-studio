@@ -88,13 +88,18 @@ export function FaqList({
  * arrival, so the terms are read before the buy button, not after. Each
  * answer describes what the code does today — no promised timings, no roadmap.
  */
-export function Faq({ t, plansOnSale }: { t: Dictionary; plansOnSale: boolean }) {
+export function Faq({ t, plansOnSale, aside }: { t: Dictionary; plansOnSale: boolean; aside?: React.ReactNode }) {
   const f = t.landing.faq;
   const items = faqForSale(f.items, plansOnSale, t.site.packsOnly);
   return (
     <section id="faq" aria-labelledby="faq-title" className="st-section">
       <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
-        <SectionHead eyebrow={f.eyebrow} title={f.title} id="faq-title" className="lg:sticky lg:top-28 lg:self-start" />
+        {/* The left column carries the title and whatever the page puts under
+            it (the landing: its Google data statement), so it is never empty. */}
+        <div className="flex flex-col gap-12">
+          <SectionHead eyebrow={f.eyebrow} title={f.title} id="faq-title" />
+          {aside}
+        </div>
         <FaqList items={items} linkFor={(id) => faqLink(id, f)} openIds={plansOnSale ? OPEN_ON_ARRIVAL : OPEN_ON_ARRIVAL_PACKS} />
       </div>
     </section>

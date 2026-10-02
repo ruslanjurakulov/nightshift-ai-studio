@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Check, Clock, Eye, Receipt, RotateCcw } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check } from "lucide-react";
 import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
 import { formatCredits } from "@/lib/credits";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
@@ -73,10 +73,10 @@ export function PricingView({
 }) {
   const p = t.pricing;
   const steps = [
-    { icon: Clock, title: p.how1Title, body: p.how1Body },
-    { icon: Receipt, title: p.how2Title, body: p.how2Body },
-    { icon: RotateCcw, title: p.how3Title, body: p.how3Body },
-    { icon: Eye, title: p.how4Title, body: p.how4Body },
+    { title: p.how1Title, body: p.how1Body },
+    { title: p.how2Title, body: p.how2Body },
+    { title: p.how3Title, body: p.how3Body },
+    { title: p.how4Title, body: p.how4Body },
   ];
   const rateText = (n: number | null) => (n === null ? p.rateUnset : fmt(p.rateValue, { n: formatCredits(n, locale) }));
   // The database's own policy when it could be read (it is what expires the
@@ -103,7 +103,7 @@ export function PricingView({
         <div>
           <p className="st-kicker">{showPlans ? p.eyebrow : pp.eyebrowNoPlans}</p>
           <h1 id="pricing-title" className="st-h1 mt-5">
-            {p.title}
+            {pp.h1}
           </h1>
           {/* "Pick a monthly plan" only when there is a plan to pick. */}
           <p className="st-lead mt-7">{showPlans ? p.lead : pp.leadNoPlans}</p>
@@ -253,20 +253,21 @@ export function PricingView({
       </section>
 
       <section id="terms" aria-labelledby="terms-title" className="st-section">
-        <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-14">
-          <div>
-            <Slug>{pp.termsSlug}</Slug>
-            <h2 id="terms-title" className="st-h2 mt-8">
+        {/* Title and link in one row over a full-width ruled list: no empty column. */}
+        <div className="st-wrap">
+          <Slug>{pp.termsSlug}</Slug>
+          <div className="mt-8 flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
+            <h2 id="terms-title" className="st-h2">
               {p.termsTitle}
             </h2>
-            <Link href="/terms#credits" className="st-link mt-5">
+            <Link href="/terms#credits" className="st-link">
               {p.linkTerms}
               <ArrowRight aria-hidden />
             </Link>
           </div>
-          <ul className="flex flex-col border-t border-[var(--ns-rule-strong)]">
+          <ul className="st-terms mt-10" style={{ "--rows": Math.ceil(terms.length / 2) } as React.CSSProperties}>
             {terms.map((line) => (
-              <li key={line} className="flex items-start gap-4 border-b border-[var(--ns-rule)] py-4 text-[16px] leading-relaxed">
+              <li key={line}>
                 <Check className="mt-1 size-4 shrink-0 text-[var(--ns-go)]" aria-hidden />
                 <span>{line}</span>
               </li>
@@ -283,11 +284,16 @@ export function PricingView({
               {p.howTitle}
             </h2>
             <p className="st-lead mt-5">{p.howLead}</p>
-            <ol className="mt-10 grid gap-x-10 sm:grid-cols-2">
-              {steps.map(({ icon: Icon, title, body }) => (
-                <li key={title} className="flex flex-col gap-3 border-t border-[var(--ns-rule)] py-6">
-                  <Icon className="size-5 text-[var(--ns-text-dim)]" aria-hidden />
-                  <h3 className="st-h3">{title}</h3>
+            {/* A ruled, numbered list like the rest of the site, not an icon grid. */}
+            <ol className="st-ruled mt-10">
+              {steps.map(({ title, body }, i) => (
+                <li key={title}>
+                  <h3 className="st-h3">
+                    <span className="st-num mr-3 text-[13px] font-normal text-[var(--ns-text-dim)]" aria-hidden>
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    {title}
+                  </h3>
                   <p className="st-body">{body}</p>
                 </li>
               ))}

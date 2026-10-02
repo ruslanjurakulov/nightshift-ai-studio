@@ -45,14 +45,22 @@ export default async function SolutionsPage() {
         </h1>
         <p className="st-lead mt-7">{s.lead}</p>
         <ul className="st-ways">
-          {s.pages.map((page) =>
+          {s.pages.map((page, i) =>
             isSolutionId(page.id) ? (
               <li key={page.id} className="st-way" aria-labelledby={`way-${page.id}`}>
-                <span className="st-kicker">{page.kicker}</span>
-                <h2 id={`way-${page.id}`} className="st-h3 text-[clamp(26px,2.4vw,32px)]">
-                  {page.title}
-                </h2>
-                <p className="st-small">{page.lead}</p>
+                <span className="st-way-no st-num" aria-hidden>
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <div className="st-way-head">
+                  <span className="st-kicker">{page.kicker}</span>
+                  <h2 id={`way-${page.id}`} className="st-h3 text-[clamp(26px,2.4vw,34px)]">
+                    <Link href={solutionHref(page.id)} className="st-way-title">
+                      {page.title}
+                      <ArrowRight aria-hidden />
+                    </Link>
+                  </h2>
+                  <p className="st-small max-w-[52ch]">{page.lead}</p>
+                </div>
                 <ul className="st-way-list" aria-label={s.whatLabel}>
                   {page.what.slice(0, 3).map((w) => (
                     <li key={w.title}>
@@ -68,11 +76,6 @@ export default async function SolutionsPage() {
                     </span>
                   </li>
                 </ul>
-                <Link href={solutionHref(page.id)} className="st-key self-start" data-tone="quiet" data-size="sm">
-                  {s.open}
-                  <span className="sr-only">: {page.nav}</span>
-                  <ArrowRight aria-hidden />
-                </Link>
               </li>
             ) : null,
           )}

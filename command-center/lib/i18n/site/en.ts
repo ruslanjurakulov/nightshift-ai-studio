@@ -179,6 +179,7 @@ export const siteEn = {
     freeValue: "{n} credits, once. No card.",
   },
   pricingPage: {
+    h1: "Priced before it runs.",
     eyebrowNoPlans: "Credits and top-ups",
     mathSlug: "Credits math",
     mathTitle: "How a price becomes a charge.",
@@ -236,6 +237,21 @@ export const siteEn = {
     cta: "Start free",
     secondary: "See pricing",
     pictures: {
+      signoff: {
+        figure: "Illustration of one finished video on a channel that asks for two approvals: it waits on YouTube as private, the publish check has passed, your approval is in, and the second sign-off is still to come.",
+        title: "Publish desk",
+        channel: "Your channel",
+        tag: "Illustration",
+        video: "Why the Silk Road ran through Samarkand",
+        private: "Private on YouTube",
+        check: "Publish check",
+        checkState: "Passed",
+        first: "Your approval",
+        firstState: "Approved",
+        second: "Second sign-off",
+        secondState: "Waiting",
+        air: "It goes public only when both are in.",
+      },
       composer: {
         figure: "Illustration of the Studio composer: a description, the 16:9 shape selected, one of your style kits, and the Generate key that carries its price.",
         title: "Studio",

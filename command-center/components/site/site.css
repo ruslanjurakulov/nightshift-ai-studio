@@ -77,6 +77,16 @@ html:has(.st) { scroll-padding-top: 80px; }
   border-top: 1px solid var(--ns-rule);
 }
 .st-section[data-flush="top"] { border-top: 0; }
+/* The band: one section on the console ground, ruled top and bottom. */
+.st-section[data-band="true"] { background: var(--ns-console); border-bottom: 1px solid var(--ns-rule); }
+.st-section[data-band="true"] + .st-section { border-top: 0; }
+/* Desk: the picture first, the words beside it. */
+.st-desk { display: grid; gap: 40px; }
+@media (min-width: 1024px) {
+  .st-desk { grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 56px; align-items: center; }
+  .st-desk-figure { order: -1; }
+}
+.st-data { padding-top: 28px; border-top: 1px solid var(--ns-rule); }
 .st-section[data-size="sm"] { padding-block: calc(var(--st-section) * 0.62); }
 
 /* ── Type ─────────────────────────────────────────────────────────────── */
@@ -471,35 +481,32 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(46px, 6vw, 86px); }
   padding: 14px 16px 16px;
 }
 .st-monitor-keys { display: flex; gap: 8px; margin-left: auto; }
-/* Drawn keys inside an illustration: they look like the app's, but the
-   picture is one image to assistive tech and nothing in it is pressable. */
+/* What the person does next, inside an illustration: written as labels, not
+   drawn as keys — nothing in a picture should look pressable. The page's own
+   CTA is the only key in view. */
 .st-fake-key {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
-  padding: 0 14px;
-  border-radius: var(--ns-r-key);
   font-family: var(--font-display);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 750;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  border: 1px solid var(--ns-rule-strong);
-  color: var(--ns-text);
+  color: var(--ns-text-dim);
 }
-/* The drawn "lit" key is outlined with a lamp, never filled: the page's own
-   CTA is the only filled key in any view. */
-.st-fake-key[data-lit="true"] { border-color: var(--ns-amber-ink); color: var(--ns-text); }
+.st-fake-key[data-lit="true"] { color: var(--ns-amber-ink); }
 .st-fake-key[data-lit="true"]::before {
   content: "";
   width: 8px;
   height: 8px;
   border-radius: 999px;
   background: var(--ns-amber);
-  box-shadow: 0 0 0 3px var(--ns-select);
 }
-.st-fake-key svg { width: 15px; height: 15px; }
+.st-fake-key svg { width: 14px; height: 14px; }
+.st-monitor-keys { gap: 20px; }
+/* Status words on the public pages read at 12.5px, not the app's 11px. */
+.st .ns-lamp-row { font-size: 12.5px; }
 
 /* ── Rules: three columns split by hairlines, not three cards ─────────── */
 .st-rules {
@@ -598,6 +605,12 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 @media (min-width: 900px) {
   .st-ruled > li { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: baseline; }
 }
+.st-terms { list-style: none; margin-left: 0; margin-right: 0; padding: 0; display: grid; border-top: 1px solid var(--ns-rule-strong); }
+/* Two newspaper columns filled top to bottom: any count reads as a list. */
+@media (min-width: 900px) {
+  .st-terms { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows, 3), auto); grid-auto-flow: column; column-gap: 48px; align-content: start; }
+}
+.st-terms li { display: flex; align-items: flex-start; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--ns-rule); font-size: 16px; line-height: 1.6; }
 .st-step p { grid-column: 2; font-size: 14.5px; line-height: 1.55; color: var(--ns-text-dim); }
 @media (min-width: 1100px) { .st-step p { grid-column: 1; } }
 .st-step-lamp { grid-column: 2; margin-top: 2px; }
@@ -635,7 +648,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   grid-column: 3;
   grid-row: 1;
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1212,6 +1225,28 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 }
 
 /* Drawn copies of the Studio's segmented keys and style chip (illustrations only). */
+/* The publish desk (SignOffPicture): the video's own frame, then its gates. */
+.st-signoff-frame { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: var(--ns-r-frame); border: 3px solid var(--ns-film); background: var(--ns-film); }
+.st-signoff-frame .st-clip-pic { position: absolute; inset: 0; }
+.st-signoff-private {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  padding: 3px 8px;
+  border-radius: var(--ns-r-chip);
+  background: var(--ns-film);
+  color: var(--ns-on-film);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.st-signoff-title { font-size: 16px; font-weight: 600; line-height: 1.35; }
+.st-signoff-gates { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ns-rule); }
+.st-signoff-gates li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 46px; border-bottom: 1px solid var(--ns-rule); }
+.st-signoff-gates li[data-tone="run"] { margin-inline: -16px; padding-inline: 16px; background: var(--ns-select); }
+.st-signoff-name { font-family: var(--font-display); font-size: 17px; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; }
 .st-fake-generate {
   display: flex;
   align-items: stretch;
@@ -1286,23 +1321,37 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   list-style: none;
   margin: 48px 0 0;
   padding: 0;
-  display: grid;
   border-top: 1px solid var(--ns-rule-strong);
+  counter-reset: way;
 }
-@media (min-width: 960px) { .st-ways { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+/* Each way in is one ruled strip across the page — number, who it is for and
+   what it is, then what it does and the one thing it will not — read top to
+   bottom like the rundown, not three cards side by side. */
 .st-way {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 12px 16px;
   padding: 28px 0 32px;
   border-bottom: 1px solid var(--ns-rule);
 }
+.st-way-no { padding-top: 4px; font-size: 13px; color: var(--ns-text-dim); }
+.st-way-head { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.st-way > .st-way-list { grid-column: 2; }
+.st-way-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+  min-height: 44px;
+  text-decoration: underline;
+  text-decoration-color: var(--ns-rule-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 6px;
+}
+.st-way-title:hover { color: var(--ns-amber-ink); text-decoration-color: currentColor; }
+.st-way-title svg { width: 22px; height: 22px; flex-shrink: 0; align-self: center; }
 @media (min-width: 960px) {
-  /* One object, not three cards: the columns share rows, so the titles,
-     leads and lists line up across the rack. */
-  .st-way { display: grid; grid-row: span 5; grid-template-rows: subgrid; align-content: start; padding: 28px 28px 8px; border-bottom: 0; border-left: 1px solid var(--ns-rule); }
-  .st-way:first-child { padding-left: 0; border-left: 0; }
-  .st-way:last-child { padding-right: 0; }
+  .st-way { grid-template-columns: 56px minmax(0, 1.1fr) minmax(0, 1fr); gap: 12px 48px; padding: 36px 0 40px; }
+  .st-way > .st-way-list { grid-column: 3; align-self: start; }
 }
 .st-way-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ns-rule); }
 .st-way-list li {

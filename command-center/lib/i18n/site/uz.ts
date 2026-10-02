@@ -170,6 +170,7 @@ export const siteUz: SiteDictionary = {
     freeValue: "{n} kredit, bir marta. Kartasiz.",
   },
   pricingPage: {
+    h1: "Narx — ishga tushishdan oldin.",
     eyebrowNoPlans: "Kreditlar va toʻldirishlar",
     mathSlug: "Kredit hisobi",
     mathTitle: "Narx qanday qilib yechimga aylanadi.",
@@ -227,6 +228,21 @@ export const siteUz: SiteDictionary = {
     cta: "Bepul boshlash",
     secondary: "Narxlarni koʻrish",
     pictures: {
+      signoff: {
+        figure: "Tasvir: ikki tasdiq talab qiladigan kanaldagi tayyor video. U YouTube’da shaxsiy holda kutmoqda, nashr tekshiruvi oʻtgan, sizning tasdigʻingiz bor, ikkinchisi hali kutilmoqda.",
+        title: "Nashr pulti",
+        channel: "Kanalingiz",
+        tag: "Tasvir",
+        video: "Buyuk Ipak yoʻli nega Samarqanddan oʻtgan",
+        private: "YouTube’da shaxsiy",
+        check: "Nashr tekshiruvi",
+        checkState: "Oʻtdi",
+        first: "Sizning tasdigʻingiz",
+        firstState: "Tasdiqlandi",
+        second: "Ikkinchi tasdiq",
+        secondState: "Kutilmoqda",
+        air: "Ikkalasi ham boʻlgandagina efirga chiqadi.",
+      },
       composer: {
         figure: "Studiya konstruktori rasmi: tavsif, tanlangan 16:9 shakli, uslublaringizdan biri va narxi ustida koʻrsatilgan «Yaratish» tugmasi.",
         title: "Studiya",

@@ -1,4 +1,6 @@
+import { Lock } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
+import { StatusLamp } from "@/components/ui/StatusLamp";
 import { ASPECT_RATIOS } from "@/lib/creative/studio";
 
 /**
@@ -79,6 +81,52 @@ export function ApiPicture({ t }: { t: Dictionary }) {
           </li>
         ))}
       </ul>
+    </figure>
+  );
+}
+
+/**
+ * For channel operators: one finished video at the publish desk of a channel
+ * that asks for two approvals — the frame of the video itself, private on
+ * YouTube, and the three gates it passes before it airs. A different picture
+ * from the landing's rundown: this is the last step up close, not the whole
+ * run. One image to assistive tech; nothing in it can be pressed.
+ */
+export function SignOffPicture({ t }: { t: Dictionary }) {
+  const s = t.site.solutions.pictures.signoff;
+  const gates = [
+    { id: "check", name: s.check, state: s.checkState, tone: "ok" as const },
+    { id: "first", name: s.first, state: s.firstState, tone: "ok" as const },
+    { id: "second", name: s.second, state: s.secondState, tone: "run" as const },
+  ];
+  return (
+    <figure role="img" aria-label={s.figure} className="st-monitor">
+      <div className="st-monitor-head">
+        <div className="st-monitor-title">
+          <b>{s.title}</b>
+          <span>{s.channel}</span>
+        </div>
+        <span className="st-tag">{s.tag}</span>
+      </div>
+      <div className="flex flex-col gap-4 p-4">
+        <div className="st-signoff-frame">
+          <div className="st-clip-pic st-scene-b" />
+          <span className="st-signoff-private">{s.private}</span>
+        </div>
+        <p className="st-signoff-title">{s.video}</p>
+        <ol className="st-signoff-gates">
+          {gates.map((g) => (
+            <li key={g.id} data-tone={g.tone}>
+              <span className="st-signoff-name">{g.name}</span>
+              <StatusLamp tone={g.tone} label={g.state} live={g.tone === "run"} />
+            </li>
+          ))}
+        </ol>
+        <p className="flex items-center gap-2 text-[13.5px] text-[var(--ns-text-dim)]">
+          <Lock className="size-4 shrink-0" aria-hidden />
+          {s.air}
+        </p>
+      </div>
     </figure>
   );
 }

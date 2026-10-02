@@ -3,8 +3,7 @@ import { ArrowRight, X } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import type { SolutionId } from "@/lib/solutions";
 import { Slug } from "@/components/site/Slug";
-import { Rundown } from "@/components/site/Rundown";
-import { ApiPicture, ComposerPicture } from "@/components/site/SolutionPictures";
+import { ApiPicture, ComposerPicture, SignOffPicture } from "@/components/site/SolutionPictures";
 import { SolutionRows } from "@/components/landing/Landing";
 
 type Page = Dictionary["site"]["solutions"]["pages"][number];
@@ -54,7 +53,7 @@ export function SolutionView({ t, id, page }: { t: Dictionary; id: SolutionId; p
             )}
           </div>
         </div>
-        {id === "youtube-channels" ? <Rundown t={t} /> : id === "creative-studio" ? <ComposerPicture t={t} /> : <ApiPicture t={t} />}
+        {id === "youtube-channels" ? <SignOffPicture t={t} /> : id === "creative-studio" ? <ComposerPicture t={t} /> : <ApiPicture t={t} />}
       </section>
 
       <section aria-labelledby="what-title" className="st-section" data-size="sm">
