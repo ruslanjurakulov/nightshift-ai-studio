@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import { CheckCircle2, Info, X, XCircle, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { makeToast, toastReducer, type Toast, type ToastInput, type ToastVariant } from "@/lib/toast";
+import { Presence, PresenceItem } from "@/components/motion/Presence";
 
 type Notify = (message: string, opts?: { title?: string; duration?: number }) => void;
 
@@ -78,9 +79,13 @@ function ToastViewport({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id:
       className="pointer-events-none fixed inset-x-0 bottom-0 z-[120] flex justify-center p-4 sm:inset-x-auto sm:right-0 sm:justify-end"
     >
       <ol aria-live="polite" aria-relevant="additions" className="m-0 flex w-full max-w-sm list-none flex-col gap-2 p-0">
-        {toasts.map((toast) => (
-          <ToastItem key={toast.id} toast={toast} onDismiss={onDismiss} dismissLabel={t.ux.dismiss} />
-        ))}
+        {/* popLayout: a dismissed toast leaves the flow at once, so the
+            others close the gap instead of jumping when it has faded. */}
+        <Presence mode="popLayout">
+          {toasts.map((toast) => (
+            <ToastItem key={toast.id} toast={toast} onDismiss={onDismiss} dismissLabel={t.ux.dismiss} />
+          ))}
+        </Presence>
       </ol>
     </section>
   );
@@ -112,12 +117,14 @@ function ToastItem({
   }, [held, onDismiss, toast.id]);
 
   return (
-    <li
+    <PresenceItem
+      as="li"
+      kind="toast"
       onMouseEnter={() => setHeld(true)}
       onMouseLeave={() => setHeld(false)}
       onFocus={() => setHeld(true)}
       onBlur={() => setHeld(false)}
-      className="reveal pointer-events-auto flex items-start gap-3 rounded-xl border bg-[var(--color-panel)] p-3 shadow-[var(--shadow-elevated)]"
+      className="pointer-events-auto flex items-start gap-3 rounded-xl border bg-[var(--color-panel)] p-3 shadow-[var(--shadow-elevated)]"
       style={{ borderColor: `color-mix(in srgb, ${color} 45%, var(--color-border))` }}
     >
       <Icon aria-hidden className="mt-0.5 size-4 shrink-0" style={{ color }} strokeWidth={2} />
@@ -133,6 +140,6 @@ function ToastItem({
       >
         <X aria-hidden className="size-3.5" />
       </button>
-    </li>
+    </PresenceItem>
   );
 }

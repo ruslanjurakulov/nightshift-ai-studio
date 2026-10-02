@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import { useOverlay } from "@/components/a11y/useOverlay";
+import { Presence, PresenceItem } from "@/components/motion/Presence";
 import { creditPillAmount, creditUnit, formatCredits, type CreditAccount } from "@/lib/credits";
 import { planName, type AccountPlan } from "@/lib/account";
 import { Meter } from "@/components/ui/Meter";
@@ -87,15 +88,17 @@ export function CreditMenu({ account, plan = null }: { account: CreditAccount | 
         <span className="hidden text-[12px] text-[var(--color-muted)] sm:inline">{unit}</span>
       </button>
 
+      <Presence>
       {open && (
-        <div
+        <PresenceItem
+          kind="popover"
           ref={panelRef}
           id={panelId}
           role="dialog"
           aria-modal="false"
           aria-labelledby={titleId}
           tabIndex={-1}
-          className="shell-popover sheet-enter fixed inset-x-3 top-16 z-50 flex flex-col gap-3 p-3 outline-none sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[288px]"
+          className="shell-popover fixed inset-x-3 top-16 z-50 flex flex-col gap-3 p-3 outline-none sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[288px]"
         >
           <div className="flex flex-col gap-2 rounded-[var(--ns-r-key)] bg-[var(--color-panel-2)] p-3">
             <h2 id={titleId} className="ns-eyebrow">
@@ -142,8 +145,9 @@ export function CreditMenu({ account, plan = null }: { account: CreditAccount | 
               <ArrowUpRight aria-hidden className="size-3.5 opacity-60" />
             </Link>
           </div>
-        </div>
+        </PresenceItem>
       )}
+      </Presence>
     </div>
   );
 }

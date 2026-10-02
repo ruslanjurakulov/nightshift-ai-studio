@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { Martian_Mono, Sofia_Sans, Sofia_Sans_Extra_Condensed } from "next/font/google";
 import "./globals.css";
+import "@/components/motion/motion.css";
 import { getLocale } from "@/lib/i18n/server";
 import { I18nProvider } from "@/lib/i18n/context";
 import { ToastProvider } from "@/components/feedback/ToastProvider";
 import { NO_FLASH_SCRIPT } from "@/lib/theme";
+import { MotionProvider } from "@/components/motion/MotionProvider";
 
 export const metadata: Metadata = {
   title: "Nightshift Command Center",
@@ -49,7 +51,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body>
         <I18nProvider locale={locale}>
-          <ToastProvider>{children}</ToastProvider>
+          <MotionProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </MotionProvider>
         </I18nProvider>
       </body>
     </html>

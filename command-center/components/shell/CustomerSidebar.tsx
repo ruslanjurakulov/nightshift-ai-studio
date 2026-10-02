@@ -10,6 +10,16 @@ import { CUSTOMER_SIDEBAR, sidebarCurrent, type NavItem, type StudioTool } from 
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { ICONS } from "@/components/navigation/navIcons";
 import type { AccountPlan } from "@/lib/account";
+import * as m from "motion/react-m";
+import { Plate, SharedLayout } from "@/components/motion/SharedLayout";
+
+/** One lit plate for the whole sidebar: it slides from the row you left to the row you opened. */
+const PLATE = "sidebar-current";
+
+/** The row's link classes; the current row hosts the plate. */
+function rowClass(current: boolean): string {
+  return current ? "shell-link ns-plate-host" : "shell-link";
+}
 
 const TOOL_ICONS: Record<StudioTool, LucideIcon> = {
   t2i: ImageIcon,
@@ -37,6 +47,10 @@ function useSection(): string {
  * Settings and the user card (which opens the account panel). Below `lg` it is
  * not rendered — the phone has the bottom bar.
  *
+ * The current row is lit by one plate that slides along the rail to the row
+ * you open (components/motion/SharedLayout); reduced motion, it is simply
+ * drawn there.
+ *
  * Presentation only: every destination is a customer section, and the layout
  * and RLS decide what anyone may open.
  */
@@ -46,26 +60,31 @@ export function CustomerSidebar({ email, plan }: { email: string | null; plan: A
   const { home, footer } = CUSTOMER_SIDEBAR;
 
   return (
-    <aside className="shell-sidebar sticky top-0 z-30 hidden h-dvh w-[240px] shrink-0 flex-col lg:flex">
-      <div className="flex h-14 shrink-0 items-center px-5">
-        <Link href={path(home.href)} className="ns-wordmark">
-          {t.brand.name}
-        </Link>
-      </div>
-
-      <nav aria-label={t.shell.primary} className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3">
-        <Suspense fallback={<SidebarRows current={null} />}>
-          <CurrentRows />
-        </Suspense>
-      </nav>
-
-      <div className="flex shrink-0 flex-col gap-0.5 border-t border-[var(--shell-border)] px-3 pb-3 pt-2">
-        <FooterRows items={footer} />
-        <div className="pt-2">
-          <AccountMenu email={email} variant="card" plan={plan} />
+    <SharedLayout id="customer-sidebar">
+      {/* layoutRoot: the sidebar is pinned to the viewport (sticky), so the
+          plate measures itself against the sidebar, not the scrolled page. */}
+      <m.aside layoutRoot className="shell-sidebar sticky top-0 z-30 hidden h-dvh w-[240px] shrink-0 flex-col lg:flex">
+        <div className="flex h-14 shrink-0 items-center px-5">
+          <Link href={path(home.href)} className="ns-wordmark">
+            {t.brand.name}
+          </Link>
         </div>
-      </div>
-    </aside>
+
+        {/* layoutScroll: the rows scroll inside this box on a short window. */}
+        <m.nav layoutScroll aria-label={t.shell.primary} className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3">
+          <Suspense fallback={<SidebarRows current={null} />}>
+            <CurrentRows />
+          </Suspense>
+        </m.nav>
+
+        <div className="flex shrink-0 flex-col gap-0.5 border-t border-[var(--shell-border)] px-3 pb-3 pt-2">
+          <FooterRows items={footer} />
+          <div className="pt-2">
+            <AccountMenu email={email} variant="card" plan={plan} />
+          </div>
+        </div>
+      </m.aside>
+    </SharedLayout>
   );
 }
 
@@ -85,7 +104,8 @@ function SidebarRows({ current }: { current: string | null }) {
     <>
       <ul className="flex flex-col gap-0.5 pt-1">
         <li>
-          <Link href={path(home.href)} aria-current={current === "hub" ? "page" : undefined} className="shell-link">
+          <Link href={path(home.href)} aria-current={current === "hub" ? "page" : undefined} className={rowClass(current === "hub")}>
+            {current === "hub" && <Plate id={PLATE} />}
             <HomeIcon aria-hidden className="shell-icon size-[18px]" strokeWidth={1.9} />
             <span className="truncate">{t.nav[home.key]}</span>
           </Link>
@@ -96,9 +116,11 @@ function SidebarRows({ current }: { current: string | null }) {
       <ul className="flex flex-col gap-0.5">
         {tools.map(({ tool, href }) => {
           const Icon = TOOL_ICONS[tool];
+          const on = current === `tool:${tool}`;
           return (
             <li key={tool}>
-              <Link href={path(href)} aria-current={current === `tool:${tool}` ? "page" : undefined} className="shell-link">
+              <Link href={path(href)} aria-current={on ? "page" : undefined} className={rowClass(on)}>
+                {on && <Plate id={PLATE} />}
                 <span aria-hidden className="shell-tile" style={{ background: `var(--tool-${tool})` }}>
                   <Icon className="size-3.5" strokeWidth={2.1} />
                 </span>
@@ -149,9 +171,11 @@ function Row({ item, current }: { item: NavItem; current: string | null }) {
   const Icon = ICONS[item.key];
   // "Credits" in the rail, "Plans & credits" here: the page holds both.
   const label = item.key === "credits" ? t.shell.plansCredits : t.nav[item.key];
+  const on = current === item.key;
   return (
     <li>
-      <Link href={path(item.href)} aria-current={current === item.key ? "page" : undefined} className="shell-link">
+      <Link href={path(item.href)} aria-current={on ? "page" : undefined} className={rowClass(on)}>
+        {on && <Plate id={PLATE} />}
         <Icon aria-hidden className="shell-icon size-[18px]" strokeWidth={1.9} />
         <span className="truncate">{label}</span>
       </Link>
