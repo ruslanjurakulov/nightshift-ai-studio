@@ -8,11 +8,11 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import {
-  formatTime,
   parseTitle,
   type EditorAsset,
   type EditorError,
 } from "@/lib/editor";
+import { Timecode } from "@/components/ui/Timecode";
 import { createProject } from "./editorApi";
 
 export interface ProjectRow {
@@ -156,7 +156,7 @@ export function EditorHome({
                       {v.name ?? te.untitledVideo}
                     </span>
                     <span className="text-[var(--color-muted)]">
-                      {formatTime(v.durationS ?? 0)}
+                      <Timecode value={v.durationS} format="duration" />
                     </span>
                   </label>
                 ))}

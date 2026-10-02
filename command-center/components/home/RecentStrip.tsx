@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Clapperboard, ImagePlus, Mic, ScanText, Scissors, Wand2, ZoomIn, type LucideIcon } from "lucide-react";
-import { StatusPill } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
 import { useLibraryImages } from "@/components/studio/useLibraryImages";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
@@ -93,7 +93,7 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
             <p className="text-[14px] font-medium text-[var(--color-fg)]">{t.home.recentEmptyTitle}</p>
             <p className="text-[13px] text-[var(--color-muted)]">{t.home.recentEmptyBody}</p>
           </div>
-          <Link href={path(toolHref("t2i"))} className="btn-quiet inline-flex min-h-10 items-center px-4 text-[13px]">
+          <Link href={path(toolHref("t2i"))} className="btn-quiet text-[13px]">
             {t.home.recentEmptyCta}
           </Link>
         </div>
@@ -122,7 +122,7 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
                   </div>
                   <div className="flex flex-1 flex-col gap-1.5 p-2.5">
                     <span className="truncate text-[12px] font-medium text-[var(--color-fg)]">{kindLabel(t, job.capability)}</span>
-                    <StatusPill tone={sv.tone} label={sv.label} live={sv.live} />
+                    <StatusLamp tone={sv.tone} label={sv.label} live={sv.live} />
                     {prompt && <p className="line-clamp-2 text-[12px] leading-snug text-[var(--color-muted)]">{truncate(prompt, 80)}</p>}
                   </div>
                 </Link>

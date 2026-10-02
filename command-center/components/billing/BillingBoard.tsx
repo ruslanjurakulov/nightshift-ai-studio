@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
-import { StatCard, StatusPill } from "@/components/ui";
+import { StatCard } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
+import { Meter } from "@/components/ui/Meter";
 import { relativeTime } from "@/lib/format";
 import { planTopups, type ElevenLabsRunway } from "@/lib/billing";
 import { BulkPay, PayPanel } from "@/components/billing/TopupControls";
@@ -139,8 +141,6 @@ function ElevenLabsPanel({ runway }: { runway: RunwayView | null }) {
       </div>
     );
   }
-  const pct =
-    runway.total && runway.total > 0 ? Math.max(0, Math.min(100, (runway.remainingCredits / runway.total) * 100)) : null;
   return (
     <div className="panel flex flex-col gap-3 p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -156,10 +156,15 @@ function ElevenLabsPanel({ runway }: { runway: RunwayView | null }) {
           ? fmt(t.billing.elevenVideos, { videos: n0(runway.minVideos), chars: n0(runway.perVideoChars) })
           : t.billing.elevenNoHistory}
       </p>
-      {pct !== null && (
-        <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--color-panel-2)]" aria-hidden>
-          <div className="h-full rounded-full bg-[var(--color-primary)]" style={{ width: `${pct}%` }} />
-        </div>
+      {runway.total !== null && runway.total > 0 && (
+        <Meter
+          value={runway.remainingCredits}
+          max={runway.total}
+          size="lg"
+          segments={24}
+          label={t.billing.elevenTitle}
+          valueText={fmt(t.billing.elevenCredits, { remaining: n0(runway.remainingCredits), total: n0(runway.total) })}
+        />
       )}
       <p className="mono text-[11px] text-[var(--color-muted)]">
         {runway.total !== null
@@ -212,7 +217,7 @@ function ProviderCard({ p, onSaved }: { p: ProviderView; onSaved: () => void }) 
     <div className="panel flex flex-col gap-3 p-4">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-[var(--color-fg)]">{p.name}</h3>
-        <StatusPill tone={p.keySet ? "ok" : "idle"} label={p.keySet ? t.billing.keySet : t.billing.keyMissing} />
+        <StatusLamp tone={p.keySet ? "ok" : "idle"} label={p.keySet ? t.billing.keySet : t.billing.keyMissing} />
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[12px]">
         <dt className="text-[var(--color-muted)]">{t.billing.balance}</dt>

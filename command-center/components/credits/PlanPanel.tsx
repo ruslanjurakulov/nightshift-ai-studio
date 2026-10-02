@@ -6,7 +6,6 @@ import Link from "next/link";
 import { Check, ExternalLink } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
-import { formatCredits } from "@/lib/credits";
 import { resolvedTheme } from "@/lib/theme";
 import { checkoutCustomData, paddleLocale } from "@/lib/paddle";
 import { columnPrice, type BillingSummary, type GenerationRates, type PlanMatrix, type SubscribeAccess } from "@/lib/plans";

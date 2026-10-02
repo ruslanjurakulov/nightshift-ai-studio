@@ -2043,6 +2043,52 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   .ns-price-button[data-size="md"] { min-height: 44px; }
 }
 
+/* A chip that is a radio's label (the editor's speed, transition and caption
+   position choices): the same key and pilot lamp as a toggle chip, lit when its
+   radio is on. The radio itself stays in the label, so a keyboard and a screen
+   reader still get a real radio group. */
+.ns-chip[data-radio] { cursor: pointer; }
+/* The same chip as a role="radio" button (the Home composer's length and language). */
+.ns-chip[role="radio"]::before {
+  content: "";
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--ns-lamp-off);
+}
+.ns-chip[role="radio"][aria-checked="true"] {
+  color: var(--color-fg);
+  border-color: var(--ns-amber-ink);
+  background: var(--ns-select);
+}
+.ns-chip[role="radio"][aria-checked="true"]::before {
+  background: var(--ns-amber);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ns-amber) 25%, transparent);
+}
+.ns-chip[data-radio]::before {
+  content: "";
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--ns-lamp-off);
+}
+.ns-chip[data-radio][data-on="true"] {
+  color: var(--color-fg);
+  border-color: var(--ns-amber-ink);
+  background: var(--ns-select);
+}
+.ns-chip[data-radio][data-on="true"]::before {
+  background: var(--ns-amber);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ns-amber) 25%, transparent);
+}
+.ns-chip[data-radio]:focus-within { outline: 2px solid var(--ns-cue); outline-offset: 2px; }
+.ns-chip[data-radio][data-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+@media (pointer: coarse), (max-width: 40rem) {
+  .ns-chip[data-radio] { min-height: 44px; }
+}
+
 /* Contact sheet: results as frames on a strip of film. Each frame has its
    rebate (the black edge) with the edge print — the frame's own facts, set
    in amber the way film stock prints its frame numbers. */
@@ -2159,7 +2205,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   background-image:
     linear-gradient(to right, var(--tick) 1px, transparent 1px),
     linear-gradient(to right, var(--ns-rule) 1px, transparent 1px);
-  background-size: var(--ruler-major, 80px) 10px, calc(var(--ruler-major, 80px) / 4) 5px;
+  background-size: var(--ruler-major, 80px) 10px, calc(var(--ruler-major, 80px) / var(--ruler-div, 4)) 5px;
   background-repeat: repeat-x;
   background-position: 0 100%, 0 100%;
   border-bottom: 1px solid var(--tick);

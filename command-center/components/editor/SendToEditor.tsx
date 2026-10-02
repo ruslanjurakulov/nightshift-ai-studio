@@ -70,7 +70,7 @@ export function SendToEditor({
         onClick={() => setOpen(true)}
         aria-label={variant === "icon" ? ts.action : undefined}
         title={variant === "icon" ? ts.action : undefined}
-        className={className ?? (variant === "icon" ? "grid size-9 place-items-center rounded-full" : "btn-quiet text-[13px]")}
+        className={className ?? (variant === "icon" ? "tap-icon grid size-9 place-items-center rounded-[var(--ns-r-key)]" : "btn-quiet text-[13px]")}
         data-testid="open-in-editor"
       >
         <Clapperboard aria-hidden className="size-4" />

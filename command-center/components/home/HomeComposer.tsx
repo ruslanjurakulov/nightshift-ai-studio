@@ -73,16 +73,9 @@ export const HomeComposer = forwardRef<ComposerHandle, { channels: ComposerChann
       ? runHandoffHref(channel.slug, { topic, seconds: lengthSeconds(length), language })
       : path("/channels/new");
 
-    const chip = (on: boolean) =>
-      `rounded-[var(--ns-r-key)] inline-flex min-h-9 items-center px-3 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] ${
-        on
-          ? "bg-[var(--color-fg)] font-medium text-[var(--color-bg)]"
-          : "border border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-fg)]"
-      }`;
-
     return (
       <div className="flex flex-col gap-3">
-        <div className="rounded-[var(--ns-r-sheet)] border border-[var(--color-border)] bg-[var(--color-panel)] p-3 shadow-[var(--shadow-panel)] transition-colors focus-within:border-[color-mix(in_srgb,var(--color-primary)_60%,var(--color-border))] sm:p-4">
+        <div className="ns-panel p-3 sm:p-4" data-tone="lifted">
           <label htmlFor="home-topic" className="sr-only">
             {t.home.promptLabel}
           </label>
@@ -113,7 +106,7 @@ export const HomeComposer = forwardRef<ComposerHandle, { channels: ComposerChann
                 role="radio"
                 aria-checked={length === l.id}
                 onClick={() => setLength(l.id)}
-                className={chip(length === l.id)}
+                className="ns-chip"
               >
                 {t.home.lengths[l.id]}
               </button>
@@ -130,7 +123,7 @@ export const HomeComposer = forwardRef<ComposerHandle, { channels: ComposerChann
                   aria-checked={language === l.value}
                   lang={l.id}
                   onClick={() => setLanguage(l.value)}
-                  className={chip(language === l.value)}
+                  className="ns-chip"
                 >
                   {l.label}
                 </button>
@@ -142,7 +135,7 @@ export const HomeComposer = forwardRef<ComposerHandle, { channels: ComposerChann
                 <select
                   value={slug}
                   onChange={(e) => setSlug(e.target.value)}
-                  className="rounded-[var(--ns-r-key)] min-h-9 w-full max-w-full truncate border border-[var(--color-border)] bg-transparent px-3 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:w-auto sm:max-w-[14rem]"
+                  className="rounded-[var(--ns-r-key)] min-h-11 w-full max-w-full truncate border border-[var(--color-border)] bg-transparent px-3 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:w-auto sm:max-w-[14rem]"
                 >
                   {channels.map((c) => (
                     <option key={c.slug} value={c.slug}>
@@ -154,7 +147,7 @@ export const HomeComposer = forwardRef<ComposerHandle, { channels: ComposerChann
             )}
             <Link
               href={href}
-              className="btn-primary inline-flex min-h-11 items-center justify-center gap-2 px-5 text-[14px] font-semibold sm:ml-auto"
+              className="btn-primary sm:ml-auto"
             >
               {channel ? (
                 <>
