@@ -145,6 +145,30 @@ export function parsePrices(rows: unknown): PriceMap {
   return out;
 }
 
+/** Flat floors: charged at credits_per_unit, their margin ignored (0020, 0030). */
+const FLAT_UNITS: readonly string[] = [UNIT_JOB_MINIMUM, "download_minimum"];
+
+/**
+ * The price list as a member is charged (what credit_rates() returns, 0084):
+ * each rate with its margin folded in, the margin itself 0 and no note. Used
+ * on the base list a database before 0084 hands out, so nothing past this
+ * point ever holds the platform's margin; every charge works out the same.
+ */
+export function chargedPrices(prices: PriceMap): PriceMap {
+  const out: PriceMap = {};
+  for (const p of Object.values(prices)) {
+    const flat = FLAT_UNITS.includes(p.unit);
+    out[p.unit] = {
+      unit: p.unit,
+      creditsPerUnit: flat ? p.creditsPerUnit : p.creditsPerUnit * (1 + p.margin),
+      margin: 0,
+      note: null,
+      updatedAt: p.updatedAt,
+    };
+  }
+  return out;
+}
+
 function charge(p: CreditPrice, quantity: number): number {
   return quantity * p.creditsPerUnit * (1 + p.margin);
 }

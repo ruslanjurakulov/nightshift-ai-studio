@@ -38,6 +38,8 @@ function setup(over: Record<string, StubResult> = {}) {
     credit_accounts: ACCOUNT,
     ...over,
   };
+  // The price list as charged (credit_rates(), 0084) answers what the table would.
+  tables.credit_rates = over.credit_rates ?? tables.credit_prices;
   h.client = supabaseStub((name) => tables[name] ?? EMPTY);
 }
 

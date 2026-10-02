@@ -9,7 +9,7 @@ import { isOperator } from "@/lib/auth/org-roles";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { isMissingFunction } from "@/lib/orgs";
-import { readCreditPrices } from "@/lib/server/credits";
+import { readCreditPriceList } from "@/lib/server/credits";
 import { readCustomerModels, readOperatorModels } from "@/lib/server/model-discovery";
 import { coerceAdminModels, latestProbes } from "@/lib/models-admin";
 import { filtersFromQuery } from "@/lib/models-discovery";
@@ -92,7 +92,8 @@ export default async function ModelsPage({
         .select("model_id,ok,error_code,capability,created_at")
         .order("created_at", { ascending: false })
         .limit(2000),
-      readCreditPrices(supabase),
+      // The operator's own list (base rates); 0084 shows it to no one else.
+      readCreditPriceList(supabase),
     ]);
     if (registry.error) {
       if (isMissingFunction(registry.error)) return note(t.models.notEnabled);
