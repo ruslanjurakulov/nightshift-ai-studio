@@ -14,6 +14,7 @@
  */
 import type { CreativeCapability } from "@/lib/creative/operations";
 import type { Dictionary } from "@/lib/i18n";
+import { atLeast, type Role } from "@/lib/auth/roles-shared";
 
 /** What a workflow's steps are built from: the Studio's own tools that make a picture, a clip or a voice. */
 export const WORKFLOW_CAPABILITIES = ["t2i", "edit", "i2v", "upscale", "remove_bg", "t2v", "tts"] as const satisfies readonly CreativeCapability[];
@@ -202,7 +203,8 @@ export interface RunStepView {
   capability: string;
   model: string;
   status: StepStatus;
-  quoted_credits: number;
+  /** null = not on record: said in words, never shown as 0. */
+  quoted_credits: number | null;
   charged_credits: number | null;
   job_id: string | null;
   job_status: string | null;
@@ -217,8 +219,9 @@ export interface RunView {
   workflow_id: string;
   workflow_name: string;
   status: RunStatus;
-  max_credits: number;
-  charged_credits: number;
+  /** null = not on record: said in words, never shown as 0 (CLAUDE.md #5). */
+  max_credits: number | null;
+  charged_credits: number | null;
   error_code: string | null;
   created_at: string | null;
   finished_at: string | null;
@@ -243,7 +246,7 @@ export function coerceRun(data: unknown): RunView | null {
         capability: str(o.capability) ?? "",
         model: str(o.model) ?? "",
         status: oneOf(o.status, STEP_STATUSES, "pending"),
-        quoted_credits: num(o.quoted_credits) ?? 0,
+        quoted_credits: num(o.quoted_credits),
         charged_credits: num(o.charged_credits),
         job_id: str(o.job_id),
         job_status: str(o.job_status),
@@ -259,13 +262,49 @@ export function coerceRun(data: unknown): RunView | null {
     workflow_id: r.workflow_id,
     workflow_name: str(r.workflow_name) ?? "",
     status: oneOf(r.status, RUN_STATUSES, "running"),
-    max_credits: num(r.max_credits) ?? 0,
-    charged_credits: num(r.charged_credits) ?? 0,
+    max_credits: num(r.max_credits),
+    charged_credits: num(r.charged_credits),
     error_code: str(r.error_code),
     created_at: str(r.created_at),
     finished_at: str(r.finished_at),
     steps: steps.sort((a, b) => a.step_index - b.step_index),
   };
+}
+
+/** One row of the recent runs list. Amounts the database did not give stay null, never 0. */
+export interface RunSummary {
+  id: string;
+  workflow_id: string;
+  workflow_name: string;
+  status: string;
+  max_credits: number | null;
+  charged_credits: number | null;
+  created_at: string | null;
+}
+
+export function coerceRunSummary(row: unknown): RunSummary | null {
+  const r = obj(row);
+  if (!r || typeof r.id !== "string" || typeof r.workflow_id !== "string") return null;
+  return {
+    id: r.id,
+    workflow_id: r.workflow_id,
+    workflow_name: str(r.workflow_name) ?? "",
+    status: str(r.status) ?? "running",
+    max_credits: num(r.max_credits),
+    charged_credits: num(r.charged_credits),
+    created_at: str(r.created_at),
+  };
+}
+
+/**
+ * May the caller carry this run on (advance, stop, run again)? Their role in
+ * the RUN's organization — not the organization being viewed — at editor or
+ * above. Presentation only: the database re-checks every call, and a later
+ * step also needs the member who confirmed the run to still be allowed (0074).
+ */
+export function canCarryRun(orgs: readonly { id: string; role: Role }[], runOrgId: string): boolean {
+  const mine = orgs.find((o) => o.id === runOrgId);
+  return mine ? atLeast(mine.role, "editor") : false;
 }
 
 export function isRunActive(run: Pick<RunView, "status"> | null | undefined): boolean {
