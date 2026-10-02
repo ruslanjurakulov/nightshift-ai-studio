@@ -39,6 +39,12 @@ nofollow, nocache">`; the same build without the flag answers 404 on all
 three; `/atelier`, `/atelier/d`, `/atelier/a/x` 404 either way; `sitemap.xml`
 and `robots.txt` contain no `atelier`.
 
+Deploy plumbing: the repo's own tests require every env var the app reads to be in
+`deploy/.env.web.example` and mapped in `.github/workflows/deploy_web.yml`, so
+`ATELIER_CONCEPTS=` (empty, with a "leave empty on every real deploy" note) and
+`WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}` are added. Empty is off;
+no repository variable by that name exists unless the owner creates one.
+
 Cost of the prototype to production: one extra 7.6 kB route chunk that only
 `/atelier/*` loads, and one `conceptDecision()` call at the top of the
 middleware (a string split and compare).

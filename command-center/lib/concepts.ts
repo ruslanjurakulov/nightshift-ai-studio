@@ -39,8 +39,11 @@ export function isConceptVariant(value: string): value is ConceptVariant {
 export const CONCEPT_PATHS: readonly string[] = CONCEPT_VARIANTS.map((v) => `${CONCEPT_ROOT}/${v}`);
 
 /** On only for the literal "1". "true", "yes", " 1" and the empty string are off. */
-export function conceptsEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return env[CONCEPT_FLAG] === "1";
+export function conceptsEnabled(env?: Record<string, string | undefined>): boolean {
+  // A literal read of the variable's name, because the deploy template test
+  // scans for those; an injected map is for tests.
+  const value = env ? env[CONCEPT_FLAG] : process.env.ATELIER_CONCEPTS;
+  return value === "1";
 }
 
 /** Is this path inside the concept namespace at all (case-insensitive, any depth)? */
