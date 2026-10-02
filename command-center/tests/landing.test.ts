@@ -3,6 +3,7 @@ import {
   SHOWCASE,
   jsonLdScript,
   pricingTeaser,
+  moneyAnchor,
   shareMetadata,
   siteOrigin,
   softwareApplicationJsonLd,
@@ -80,6 +81,38 @@ describe("site origin", () => {
       expect(siteOrigin({ APP_ORIGIN: v })).toBeNull();
     }
     expect(siteOrigin({ VERCEL_PROJECT_PRODUCTION_URL: "localhost:3000" })).toBeNull();
+  });
+});
+
+describe("money anchor", () => {
+  it("is words only when nothing is published and the API list is unreadable", () => {
+    expect(moneyAnchor(resolvePricing({}, null), null)).toEqual({ pack: { kind: "none" }, api: null });
+  });
+
+  it("names the smallest pack with a published price, as written", () => {
+    const pricing = resolvePricing(
+      { NEXT_PUBLIC_PRICE_DISPLAY_STUDIO: "$160", NEXT_PUBLIC_PRICE_DISPLAY_CREATOR: "$45" },
+      null,
+    );
+    const a = moneyAnchor(pricing, null);
+    expect(a.pack).toEqual({ kind: "priced", id: "creator", credits: 5000, price: "$45" });
+  });
+
+  it("says the price is at checkout when Paddle sells without a display price", () => {
+    const paddle = resolvePaddleConfig({
+      NEXT_PUBLIC_PADDLE_CLIENT_TOKEN: "test_0123456789abcdef0123",
+      NEXT_PUBLIC_PADDLE_ENV: "sandbox",
+      NEXT_PUBLIC_PADDLE_PRICE_STARTER: "pri_01starter0000000000000000",
+    });
+    expect(moneyAnchor(resolvePricing({}, paddle), null).pack).toEqual({ kind: "checkout" });
+  });
+
+  it("takes the API's video price from the live list only, and never a zero", () => {
+    const none = resolvePricing({}, null);
+    expect(moneyAnchor(none, { video_minute: 120, job_minimum: 60 }).api).toEqual({ perMinuteCents: 120, minimumCents: 60 });
+    expect(moneyAnchor(none, { video_minute: 120 }).api).toEqual({ perMinuteCents: 120, minimumCents: null });
+    expect(moneyAnchor(none, { video_minute: 0, job_minimum: 60 }).api).toBeNull();
+    expect(moneyAnchor(none, {}).api).toBeNull();
   });
 });
 

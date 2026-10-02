@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import { createClient } from "@supabase/supabase-js";
 import { getDictionary } from "@/lib/i18n/server";
-import { SUPABASE_ANON_KEY, SUPABASE_URL, isSupabaseConfigured } from "@/lib/config";
-import { parseApiPrices, type ApiPriceMap } from "@/lib/api/pricing";
+import { readPublicApiPrices } from "@/lib/server/api-prices";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { ApiDocs } from "@/components/docs/ApiDocs";
 
@@ -32,16 +30,7 @@ function siteOrigin(): string {
 
 export default async function ApiDocsPage() {
   const { t } = await getDictionary();
-  let prices: ApiPriceMap | null = null;
-  if (isSupabaseConfigured) {
-    try {
-      const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
-      const { data, error } = await client.from("api_prices").select("unit,cents");
-      if (!error) prices = parseApiPrices(data);
-    } catch {
-      prices = null;
-    }
-  }
+  const prices = await readPublicApiPrices();
   return (
     <PublicShell t={t}>
       <ApiDocs prices={prices} origin={siteOrigin()} labels={{ table: t.common.scrollTable, code: t.common.scrollCode }} />

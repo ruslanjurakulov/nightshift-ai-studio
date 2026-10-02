@@ -20,7 +20,7 @@ import { dictionaries, fmt, type Locale } from "@/lib/i18n";
 import { Landing } from "@/components/landing/Landing";
 import { PricingView } from "@/components/pricing/PricingView";
 import { PublicFooter } from "@/components/legal/PublicFooter";
-import type { PricingTeaser } from "@/lib/landing";
+import type { MoneyAnchor, PricingTeaser } from "@/lib/landing";
 import { WELCOME_CREDITS, resolvePricing, type Pricing } from "@/lib/pricing";
 import { coercePlanCatalog, creditEquivalents, planMatrix, type GenerationRates } from "@/lib/plans";
 import { PROVIDER_BRANDS } from "./helpers/brands";
@@ -30,9 +30,11 @@ afterEach(cleanup);
 /** Anything that reads as a money amount: a currency sign or code next to a digit. */
 const MONEY = /[$€£₽]\s?\d|\d\s?(?:USD|EUR|UZS|RUB|so'm|сум)\b/i;
 
-function renderLanding(teaser: PricingTeaser, locale: Locale = "en") {
+const NO_MONEY: MoneyAnchor = { pack: { kind: "none" }, api: null };
+
+function renderLanding(teaser: PricingTeaser, locale: Locale = "en", anchor: MoneyAnchor = NO_MONEY) {
   const t = dictionaries[locale];
-  return render(<Landing t={t} locale={locale} pricing={teaser} showcase={[]} />);
+  return render(<Landing t={t} locale={locale} pricing={teaser} anchor={anchor} showcase={[]} />);
 }
 
 function renderPricing(props: Partial<React.ComponentProps<typeof PricingView>> & { pricing: Pricing }, locale: Locale = "en") {
@@ -126,10 +128,27 @@ describe("public landing page", () => {
     for (const a of secondary) expect(a.getAttribute("href")).toBe("/pricing");
   });
 
-  it("prints no price when none is configured", () => {
+  it("prints no price when none is configured, and says so in words", () => {
     const { container } = renderLanding({ kind: "announced" });
+    const s = dictionaries.en.site;
     expect(container.textContent).not.toMatch(MONEY);
-    expect(container.textContent).toContain(dictionaries.en.landing.pricing.announcedTitle);
+    expect(screen.getAllByText(s.anchor.none).length).toBe(2);
+    expect(container.textContent).toContain(s.anchor.noneNote);
+    // The pack sizes are captioned as top-ups in plain sight, not only for screen readers.
+    expect(screen.getByRole("heading", { level: 3, name: s.pricingTeaser.packsCaption })).toBeTruthy();
+    expect(container.textContent).toContain(s.pricingTeaser.leadNoPlans);
+  });
+
+  it("anchors the money before sign-up with the live API price list and a published pack price", () => {
+    const { container } = renderLanding({ kind: "packs", packs: [{ id: "starter", credits: 1000, price: "$10" }] }, "en", {
+      pack: { kind: "priced", id: "starter", credits: 1000, price: "$10" },
+      api: { perMinuteCents: 120, minimumCents: 60 },
+    });
+    const text = container.textContent ?? "";
+    expect(text).toContain("$10 for 1,000 credits");
+    expect(text).toContain("$1.20 a minute of video");
+    expect(text).toContain("at least $0.60 a video");
+    expect(screen.getByRole("link", { name: dictionaries.en.site.anchor.apiSource }).getAttribute("href")).toBe("/docs/api#pricing");
   });
 
   it("prints exactly the price the data holds", () => {
@@ -195,6 +214,18 @@ describe("public pricing page", () => {
     const { container } = renderPricing({ pricing: none });
     expect(container.textContent).not.toMatch(MONEY);
     expect(container.textContent).toContain(dictionaries.en.pricing.comingSoonTitle);
+    expect(screen.getByRole("heading", { level: 2, name: dictionaries.en.site.anchor.title })).toBeTruthy();
+  });
+
+  it("does not ask the visitor to pick a monthly plan when none is on sale", () => {
+    const t = dictionaries.en;
+    const { container } = renderPricing({ pricing: none });
+    expect(container.textContent).not.toContain(t.pricing.lead);
+    expect(container.textContent).toContain(t.site.pricingPage.leadNoPlans);
+    cleanup();
+    const plans = planMatrix(catalog(), { NEXT_PUBLIC_PLAN_DISPLAY_CREATOR: "$12" } as never, null);
+    const withPlans = renderPricing({ pricing: none, plans });
+    expect(withPlans.container.textContent).toContain(t.pricing.lead);
   });
 
   it("shows plan and pack prices only from the data it is given", () => {
@@ -205,7 +236,7 @@ describe("public pricing page", () => {
     expect(text).toContain("$12");
     expect(text).toContain("$5");
     // Nothing else that looks like money.
-    expect(text.replace("$12", "").replace("$5", "")).not.toMatch(MONEY);
+    expect(text.replaceAll("$12", "").replaceAll("$5", "")).not.toMatch(MONEY);
     // Monthly credits come from the catalog, formatted.
     expect(text).toContain("1,500");
   });

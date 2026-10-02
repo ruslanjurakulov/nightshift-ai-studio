@@ -15,7 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
-import type { PricingTeaser as PricingTeaserData, ShowcaseItem } from "@/lib/landing";
+import type { MoneyAnchor, PricingTeaser as PricingTeaserData, ShowcaseItem } from "@/lib/landing";
 import { WELCOME_CREDITS } from "@/lib/pricing";
 import { formatCredits } from "@/lib/credits";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
@@ -66,11 +66,14 @@ export function Landing({
   t,
   locale,
   pricing,
+  anchor,
   showcase,
 }: {
   t: Dictionary;
   locale: Locale;
   pricing: PricingTeaserData;
+  /** The money a visitor can know before signing up (lib/landing.ts moneyAnchor). */
+  anchor: MoneyAnchor;
   showcase: ShowcaseItem[];
 }) {
   return (
@@ -88,7 +91,7 @@ export function Landing({
         </div>
       )}
       <SolutionsTeaser t={t} />
-      <PricingTeaser t={t} locale={locale} teaser={pricing} />
+      <PricingTeaser t={t} locale={locale} teaser={pricing} anchor={anchor} />
       <Faq t={t} />
       <GoogleData t={t} />
       <FinalCta t={t} />

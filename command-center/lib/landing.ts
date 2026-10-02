@@ -9,6 +9,7 @@
 import { plansOnSale, type PlanMatrix } from "@/lib/plans";
 import type { Pricing } from "@/lib/pricing";
 import type { CreditPackId } from "@/lib/paddle";
+import type { ApiPriceMap } from "@/lib/api/pricing";
 
 // ── Output showcase ───────────────────────────────────────────────────────────
 
@@ -81,6 +82,46 @@ export function pricingTeaser(pricing: Pricing, plans: PlanMatrix | null = null)
     kind: "packs",
     packs: pricing.packs.map((p) => ({ id: p.id, credits: p.credits, price: p.displayPrice })),
   };
+}
+
+// ── Money anchor ─────────────────────────────────────────────────────────────
+
+/**
+ * The money a visitor can know before signing up, and only that.
+ *
+ * - pack: the smallest top-up pack with a published price (the owner's display
+ *   price — the same text /pricing shows); "checkout" when Paddle sells packs
+ *   but no display price is set (its preview runs in the browser on /pricing);
+ *   "none" when nothing is on sale.
+ * - api: what a video costs through the API, in US cents, from the live
+ *   api_prices list — null when it could not be read. The seeded defaults are
+ *   never used here: they are a fresh database's starting point, not a price.
+ *
+ * Nothing is derived: no credit's dollar value, no per-minute rate in credits
+ * (that list is for signed-in accounts), no "from" computed across plans.
+ */
+export type MoneyAnchor = {
+  pack: { kind: "priced"; id: CreditPackId; credits: number; price: string } | { kind: "checkout" } | { kind: "none" };
+  api: { perMinuteCents: number; minimumCents: number | null } | null;
+};
+
+export function moneyAnchor(pricing: Pricing, apiPrices: ApiPriceMap | null): MoneyAnchor {
+  const priced = pricing.packs
+    .filter((p) => p.displayPrice !== null)
+    .sort((a, b) => a.credits - b.credits)[0];
+  const pack: MoneyAnchor["pack"] = priced?.displayPrice
+    ? { kind: "priced", id: priced.id, credits: priced.credits, price: priced.displayPrice }
+    : pricing.source === "paddle" && pricing.packs.length > 0
+      ? { kind: "checkout" }
+      : { kind: "none" };
+  const perMinute = apiPrices?.video_minute;
+  const minimum = apiPrices?.job_minimum;
+  // A zero per-minute price is not a price someone set for a video; read it as unpublished.
+  const api =
+    typeof perMinute === "number" && perMinute > 0
+      ? { perMinuteCents: perMinute, minimumCents: typeof minimum === "number" && minimum > 0 ? minimum : null }
+      : null;
+  return { pack, api };
 }
 
 // ── SEO ───────────────────────────────────────────────────────────────────────

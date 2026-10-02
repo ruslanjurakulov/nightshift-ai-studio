@@ -14,6 +14,8 @@ import { FaqList } from "@/components/landing/Faq";
 import { Slug } from "@/components/site/Slug";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { CREDIT_PACKS } from "@/lib/paddle";
+import { moneyAnchor, type MoneyAnchor as Anchor } from "@/lib/landing";
+import { MoneyAnchor } from "@/components/site/MoneyAnchor";
 
 const PADDLE_BUYER_TERMS = "https://www.paddle.com/legal/checkout-buyer-terms";
 
@@ -47,6 +49,7 @@ export function PricingView({
   plans,
   plansFailed = false,
   packValidMonths,
+  anchor,
 }: {
   t: Dictionary;
   locale: Locale;
@@ -64,6 +67,9 @@ export function PricingView({
   plansFailed?: boolean;
   /** Top-up validity from the database (credit_lot_policies); undefined = not known, use the env. */
   packValidMonths?: number | null;
+  /** What money a visitor can know before signing up (lib/landing.ts moneyAnchor);
+   *  without it, only what `pricing` holds (no API price list). */
+  anchor?: Anchor;
 }) {
   const p = t.pricing;
   const steps = [
@@ -94,23 +100,10 @@ export function PricingView({
           <h1 id="pricing-title" className="st-h1 mt-5">
             {p.title}
           </h1>
-          <p className="st-lead mt-7">{p.lead}</p>
-          <ul className="mt-7 flex flex-col border-t border-[var(--ns-rule)]">
-            <li className="flex min-h-11 items-center gap-3 border-b border-[var(--ns-rule)] py-2 text-[15px]">
-              <span aria-hidden className="ns-lamp" data-tone="ok" />
-              {fmt(p.freeChip, { n: formatCredits(WELCOME_CREDITS, locale) })}
-            </li>
-            <li className="flex min-h-11 items-center gap-3 border-b border-[var(--ns-rule)] py-2 text-[15px]">
-              <span aria-hidden className="ns-lamp" data-tone="ok" />
-              {p.how3Title}
-            </li>
-            {showPlans && (
-              <li className="flex min-h-11 items-center gap-3 border-b border-[var(--ns-rule)] py-2 text-[15px]">
-                <span aria-hidden className="ns-lamp" data-tone="ok" />
-                {p.noYearly}
-              </li>
-            )}
-          </ul>
+          {/* "Pick a monthly plan" only when there is a plan to pick. */}
+          <p className="st-lead mt-7">{showPlans ? p.lead : pp.leadNoPlans}</p>
+          <MoneyAnchor t={t} locale={locale} anchor={anchor ?? moneyAnchor(pricing, null)} titleId="anchor-title" className="mt-8" />
+          {showPlans && <p className="st-small mt-3">{p.noYearly}</p>}
           <div className="st-hero-actions">
             <Link href={primary.href} className="st-key">
               {primary.label}

@@ -848,6 +848,50 @@ html:has(.st) { scroll-padding-top: 80px; }
 .st-price-row .st-price-money { grid-row: 1 / span 2; grid-column: 2; text-align: right; font-size: 20px; }
 .st-price-row .st-price-pending { grid-row: 1 / span 2; grid-column: 2; text-align: right; font-size: 13.5px; color: var(--ns-text-dim); max-width: 16ch; }
 
+/* What it costs: the money a visitor can know before signing up. */
+.st-anchor dl { margin: 12px 0 0; border-top: 1px solid var(--ns-rule-strong); }
+.st-anchor dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px 20px;
+  min-height: 44px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--ns-rule);
+}
+@media (min-width: 560px) {
+  .st-anchor dl > div { grid-template-columns: minmax(0, 12.5rem) minmax(0, 1fr); align-items: baseline; }
+}
+.st-anchor dt { display: flex; flex-direction: column; align-items: flex-start; font-size: 14px; line-height: 1.35; color: var(--ns-text-dim); }
+.st-anchor dd { margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.st-anchor-money { font-size: 16.5px; line-height: 1.35; color: var(--ns-text); }
+.st-anchor-none { font-size: 15px; line-height: 1.4; color: var(--ns-text); }
+.st-anchor-sub { font-size: 13.5px; line-height: 1.4; color: var(--ns-text-dim); }
+.st-anchor-src {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-block: -12px -14px;
+  font-size: 12.5px;
+  color: var(--ns-text-dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ns-rule-strong);
+}
+.st-anchor-src:hover { color: var(--ns-text); }
+.st-panel .st-anchor dl > div:last-child { border-bottom: 0; }
+/* A panel's own caption between its blocks: the name of the list below it. */
+.st-caption {
+  padding: 10px 16px;
+  border-block: 1px solid var(--ns-rule);
+  background: var(--ns-key);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ns-text);
+}
+
 .st-formula {
   display: grid;
   gap: 0;

@@ -10,12 +10,14 @@ import { PRICING_ENV, resolvePricing } from "@/lib/pricing";
 import {
   SHOWCASE,
   jsonLdScript,
+  moneyAnchor,
   pricingTeaser,
   runtimeSiteOrigin,
   shareMetadata,
   softwareApplicationJsonLd,
   visibleShowcase,
 } from "@/lib/landing";
+import { readPublicApiPrices } from "@/lib/server/api-prices";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { Landing } from "@/components/landing/Landing";
 
@@ -54,7 +56,9 @@ export default async function Home() {
   const supabase = await createClient().catch(() => null);
   // An unreadable catalog teases no plans (the pricing page itself says it could not read them).
   const catalog = supabase ? planValue(await readPlanCatalog(supabase).catch(() => ({ state: "failed" as const }))) : null;
-  const pricing = pricingTeaser(resolvePricing(PRICING_ENV, paddleConfig), planMatrix(catalog, PLAN_ENV, paddleClient));
+  const resolved = resolvePricing(PRICING_ENV, paddleConfig);
+  const pricing = pricingTeaser(resolved, planMatrix(catalog, PLAN_ENV, paddleClient));
+  const anchor = moneyAnchor(resolved, await readPublicApiPrices());
   const jsonLd = softwareApplicationJsonLd({
     name: t.brand.name,
     description: t.landing.meta.description,
@@ -64,7 +68,7 @@ export default async function Home() {
   return (
     <PublicShell t={t}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
-      <Landing t={t} locale={locale} pricing={pricing} showcase={visibleShowcase(SHOWCASE)} />
+      <Landing t={t} locale={locale} pricing={pricing} anchor={anchor} showcase={visibleShowcase(SHOWCASE)} />
     </PublicShell>
   );
 }

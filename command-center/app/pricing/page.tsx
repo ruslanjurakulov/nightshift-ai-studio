@@ -8,7 +8,8 @@ import { PLAN_ENV, planMatrix } from "@/lib/plans";
 import { planValue, readPlanCatalog, type PlanRead } from "@/lib/server/plans";
 import { generationRates, type GenerationRates, type PlanCatalog } from "@/lib/plans";
 import { readSellableModels } from "@/lib/creative/registry";
-import { runtimeSiteOrigin, shareMetadata } from "@/lib/landing";
+import { moneyAnchor, runtimeSiteOrigin, shareMetadata } from "@/lib/landing";
+import { readPublicApiPrices } from "@/lib/server/api-prices";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { PricingView } from "@/components/pricing/PricingView";
 
@@ -47,6 +48,9 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function PricingPage() {
   const { t, locale } = await getDictionary();
   const pricing = resolvePricing(PRICING_ENV, paddleConfig);
+  // The only money a signed-out visitor can be shown: published pack prices
+  // and the live API price list (public by 0031). Read alongside the rest.
+  const apiPricesRead = readPublicApiPrices();
 
   const supabase = await createClient();
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
@@ -87,6 +91,7 @@ export default async function PricingPage() {
         plansFailed={catalogRead.state === "failed"}
         plans={plans}
         packValidMonths={catalog?.packValidMonths}
+        anchor={moneyAnchor(pricing, await apiPricesRead)}
       />
     </PublicShell>
   );
