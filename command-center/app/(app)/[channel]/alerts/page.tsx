@@ -7,6 +7,7 @@ import { getChannelScope } from "@/lib/channels-server";
 import { orgWide, scopeQuery } from "@/lib/channels";
 import { isSupabaseConfigured } from "@/lib/config";
 import { resolveRole, atLeast } from "@/lib/auth/roles";
+import { guardOperatorPage } from "@/lib/auth/org-roles";
 import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/github-secrets";
 import { readVariables } from "@/lib/server/github-variables";
 import { ALERT_SECRET_NAMES, deriveAlertConfig } from "@/lib/server/alerts";
@@ -35,6 +36,10 @@ const SEVERITY_TONE: Record<AlertEventRow["severity"], "idle" | "warn" | "fail">
  */
 export default async function AlertsPage() {
   if (!isSupabaseConfigured) return <NotConfigured />;
+  // Reads the alert channels and ALERT_EMAIL_* addresses with the server's
+  // GitHub token: signed out → /login, anyone else → 404, before any read
+  // (BR-H-001).
+  const mayReadGithub = await guardOperatorPage();
   const { t } = await getDictionary();
   const role = await resolveRole();
   const isAdmin = atLeast(role, "admin");
@@ -43,7 +48,7 @@ export default async function AlertsPage() {
   // means we cannot see any config yet — the page still renders and explains.
   let slackConfigured = false;
   let emailConfigured = false;
-  if (isGithubConfigured) {
+  if (isGithubConfigured && mayReadGithub) {
     let secretNames: string[] = [];
     let variables: Record<string, string> = {};
     try {

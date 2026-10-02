@@ -11,6 +11,7 @@ import {
 import { readVariables } from "@/lib/server/github-variables";
 import { isGoogleOAuthConfigured } from "@/lib/server/google-oauth";
 import { getDictionary } from "@/lib/i18n/server";
+import { guardOperatorPage } from "@/lib/auth/org-roles";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { PageHeader } from "@/components/PageHeader";
 import { Panel, StatusPill } from "@/components/ui";
@@ -45,6 +46,10 @@ async function tableCount(
  * signal is genuinely true, and each item links to the page that fixes it.
  */
 export default async function GettingStartedPage() {
+  // The deployment's health check reads provider key names and routing with
+  // the server's GitHub token: signed out → /login, anyone else → 404, before
+  // any read (BR-H-001).
+  const mayReadGithub = await guardOperatorPage();
   const { t } = await getDictionary();
   const path = await getChannelPath();
   const s = t.onboarding;
@@ -55,7 +60,7 @@ export default async function GettingStartedPage() {
 
   let providerKeySet = false;
   let routingSet = false;
-  if (isGithubConfigured) {
+  if (isGithubConfigured && mayReadGithub) {
     try {
       const configured = await listConfiguredSecretNames();
       providerKeySet = configured.length > 0;
