@@ -19,15 +19,16 @@ platform-only economics". Before 0084 three paths reached ``margin``:
   2. ``public.sellable_models()`` (latest body migration 0072) returned
      ``cp.margin`` as a column to the ``authenticated`` role.
 
-  3. ``public.quote_creative_job()`` (0036) returned creative_price's jsonb,
-     with a ``margin`` key and the base ``credits_per_unit`` — free to call for
-     any model, and the public API's creative quote is the same jsonb.
+  3. every creative quote: ``creative_price()`` (latest body 0072) built a
+     jsonb with a ``margin`` key and the base ``credits_per_unit``, and
+     ``quote_creative_job()`` (and through it the public API's quote) handed it
+     to the member as is — free to call for any model.
 
 0084: the table is read by a platform owner/admin only (RLS by person — a
 column grant cannot tell the operator from a member, both are
 ``authenticated``); members read the rates AS CHARGED through
-``credit_rates()``; sellable_models() and the quote name the charged rate and
-never the margin. These tests assert the secure behaviour; the mutation
+``credit_rates()``; sellable_models() and creative_price() (so every quote)
+name the charged rate and never the margin. These tests assert the secure behaviour; the mutation
 proofs at the end put each pre-0084 body back (inside a rolled-back
 transaction, from the migration files themselves) and show the same reads
 leak again, so the tests cannot pass vacuously. A positive control confirms
@@ -232,12 +233,12 @@ def test_mutation_0072s_catalog_hands_the_margin_back(conn, sc):
         _clear_margins(conn)
 
 
-def test_mutation_0036s_quote_hands_the_margin_back(conn, sc):
+def test_mutation_0072s_price_hands_the_margin_back_in_the_quote(conn, sc):
     _seed_margins(conn)
     try:
         with conn.transaction(force_rollback=True):
             with as_superuser(conn, commit=True) as su:
-                assert su.run(_function_sql("0036_creative_jobs.sql", "quote_creative_job")).ok
+                assert su.run(_function_sql("0072_captions.sql", "creative_price")).ok
             out = _member_quote(conn, sc)
             assert out.ok, out
             q = out.rows[0][0]
