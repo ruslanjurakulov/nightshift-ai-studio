@@ -236,21 +236,32 @@ describe("the (app) layout sends a signed-out visitor to /login itself", () => {
     expect(shell.sideNav).toHaveLength(0);
   });
 
+  /** The `operator` prop of the ShellProvider, wherever the layout nests it. */
+  function shellOperatorProp(node: unknown): boolean | undefined {
+    if (!node || typeof node !== "object") return undefined;
+    const el = node as { props?: { operator?: boolean; children?: unknown } };
+    if (typeof el.props?.operator === "boolean") return el.props.operator;
+    const kids = el.props?.children;
+    for (const k of Array.isArray(kids) ? kids : [kids]) {
+      const found = shellOperatorProp(k);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+
   it("a customer gets the customer's frame, not the operator console", async () => {
     customerAdmin();
     const tree = (await AppLayout({ children: null })) as ReactElement;
     expect(tree).toBeTruthy();
     expect(JSON.stringify(tree.props)).not.toContain('"operator":true');
     // The ShellProvider is told who is looking.
-    const shellProvider = (tree.props as { children: ReactElement }).children;
-    expect((shellProvider.props as { operator: boolean }).operator).toBe(false);
+    expect(shellOperatorProp(tree)).toBe(false);
   });
 
   it("the operator still gets the console", async () => {
     operator();
     const tree = (await AppLayout({ children: null })) as ReactElement;
-    const shellProvider = (tree.props as { children: ReactElement }).children;
-    expect((shellProvider.props as { operator: boolean }).operator).toBe(true);
+    expect(shellOperatorProp(tree)).toBe(true);
   });
 
   it("Supabase not configured: renders, as before (nothing to sign in to)", async () => {
