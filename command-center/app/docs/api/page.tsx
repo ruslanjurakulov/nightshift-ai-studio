@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import { createClient } from "@supabase/supabase-js";
 import { getDictionary } from "@/lib/i18n/server";
-import { SUPABASE_ANON_KEY, SUPABASE_URL, isSupabaseConfigured } from "@/lib/config";
-import { parseApiPrices, type ApiPriceMap } from "@/lib/api/pricing";
+import { readPublicApiPrices } from "@/lib/server/api-prices";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { ApiDocs } from "@/components/docs/ApiDocs";
 
@@ -16,8 +14,8 @@ export const metadata: Metadata = {
 /**
  * Public: the API reference (lib/public-paths.ts). The price table is the
  * live api_prices list (0031 lets anyone read it — it is a price list); when
- * it cannot be read, the page says it shows the default prices instead of
- * presenting them as current.
+ * it cannot be read, the page says no price is published. The seeded
+ * defaults never appear: they are not a price anyone set.
  */
 /** The origin examples are written against: this deployment's APP_ORIGIN
  *  (compose sets it from DOMAIN), else the production domain. */
@@ -32,18 +30,9 @@ function siteOrigin(): string {
 
 export default async function ApiDocsPage() {
   const { t } = await getDictionary();
-  let prices: ApiPriceMap | null = null;
-  if (isSupabaseConfigured) {
-    try {
-      const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
-      const { data, error } = await client.from("api_prices").select("unit,cents");
-      if (!error) prices = parseApiPrices(data);
-    } catch {
-      prices = null;
-    }
-  }
+  const prices = await readPublicApiPrices();
   return (
-    <PublicShell t={t}>
+    <PublicShell t={t} current="docs">
       <ApiDocs prices={prices} origin={siteOrigin()} labels={{ table: t.common.scrollTable, code: t.common.scrollCode }} />
     </PublicShell>
   );

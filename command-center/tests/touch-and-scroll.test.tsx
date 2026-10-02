@@ -43,8 +43,12 @@ describe("scrollable regions are keyboard-reachable and named", () => {
     for (const b of boxes) {
       expect(b.tabindex).toBe("0");
       expect(b.role).toBe("region");
-      expect(b.label).toBe(b.tag === "PRE" ? t.common.scrollCode : t.common.scrollTable);
+      expect(b.label?.endsWith(b.tag === "PRE" ? t.common.scrollCode : t.common.scrollTable)).toBe(true);
     }
+    // Each region is named by what it holds: two regions called the same
+    // "Table (scrolls sideways)" were axe landmark-unique on every run.
+    const names = boxes.map((b) => b.label);
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it.each(LOCALES)("legal documents (%s): every table", (locale) => {
@@ -54,8 +58,12 @@ describe("scrollable regions are keyboard-reachable and named", () => {
     );
     expect(boxes.length).toBeGreaterThan(0);
     for (const b of boxes) {
-      expect(b).toMatchObject({ tabindex: "0", role: "region", label: t.common.scrollTable });
+      expect(b).toMatchObject({ tabindex: "0", role: "region" });
+      expect(b.label?.endsWith(t.common.scrollTable)).toBe(true);
     }
+    // Named by its columns: two regions with the same name were axe landmark-unique on /privacy.
+    const privacy = scrollBoxes(renderToStaticMarkup(<LegalDocumentView doc={LEGAL_TEXTS[locale].privacy} t={t} locale={locale} />));
+    expect(new Set(privacy.map((b) => b.label)).size).toBe(privacy.length);
   });
 
   it("the not-configured badge may wrap: a nowrap badge made /privacy and /terms scroll sideways at 360px", () => {

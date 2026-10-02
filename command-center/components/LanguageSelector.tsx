@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useI18n } from "@/lib/i18n/context";
-import { LOCALES, type Locale } from "@/lib/i18n";
+import { usePublicI18n } from "@/lib/i18n/public-context";
+import { LOCALES, type Locale } from "@/lib/i18n/core";
 
 /** Compact language menu (EN / RU / UZ) for the header. Switching updates the
  *  whole UI instantly (client) and refreshes Server Components in the new
  *  language via the provider. */
 export function LanguageSelector() {
-  const { locale, setLocale, t } = useI18n();
+  const { locale, setLocale, t } = usePublicI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 

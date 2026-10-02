@@ -1,16 +1,21 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Check, Clock, Coins, Eye, Receipt, RotateCcw } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check } from "lucide-react";
 import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
 import { formatCredits } from "@/lib/credits";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import { ALL_CHANNELS_SLUG } from "@/lib/channels";
-import { WELCOME_CREDITS, type CreditRates, type Pricing } from "@/lib/pricing";
+import type { CreditRates, Pricing } from "@/lib/pricing";
 import { plansOnSale, type GenerationRates, type PlanMatrix as Matrix } from "@/lib/plans";
 import { PackCards } from "@/components/pricing/PackCards";
 import { PlanMatrix } from "@/components/pricing/PlanMatrix";
 import { PlanCompare } from "@/components/pricing/PlanCompare";
 import { ErrorState } from "@/components/ReadError";
-import { FaqList } from "@/components/landing/Faq";
+import { FaqList, faqForSale } from "@/components/landing/Faq";
+import { Slug } from "@/components/site/Slug";
+import { StatusLamp } from "@/components/ui/StatusLamp";
+import { CREDIT_PACKS } from "@/lib/paddle";
+import { moneyAnchor, type MoneyAnchor as Anchor } from "@/lib/landing";
+import { MoneyAnchor } from "@/components/site/MoneyAnchor";
 
 const PADDLE_BUYER_TERMS = "https://www.paddle.com/legal/checkout-buyer-terms";
 
@@ -44,6 +49,7 @@ export function PricingView({
   plans,
   plansFailed = false,
   packValidMonths,
+  anchor,
 }: {
   t: Dictionary;
   locale: Locale;
@@ -61,13 +67,16 @@ export function PricingView({
   plansFailed?: boolean;
   /** Top-up validity from the database (credit_lot_policies); undefined = not known, use the env. */
   packValidMonths?: number | null;
+  /** What money a visitor can know before signing up (lib/landing.ts moneyAnchor);
+   *  without it, only what `pricing` holds (no API price list). */
+  anchor?: Anchor;
 }) {
   const p = t.pricing;
   const steps = [
-    { icon: Clock, title: p.how1Title, body: p.how1Body },
-    { icon: Receipt, title: p.how2Title, body: p.how2Body },
-    { icon: RotateCcw, title: p.how3Title, body: p.how3Body },
-    { icon: Eye, title: p.how4Title, body: p.how4Body },
+    { title: p.how1Title, body: p.how1Body },
+    { title: p.how2Title, body: p.how2Body },
+    { title: p.how3Title, body: p.how3Body },
+    { title: p.how4Title, body: p.how4Body },
   ];
   const rateText = (n: number | null) => (n === null ? p.rateUnset : fmt(p.rateValue, { n: formatCredits(n, locale) }));
   // The database's own policy when it could be read (it is what expires the
@@ -78,258 +87,312 @@ export function PricingView({
   const credits = `/${ALL_CHANNELS_SLUG}/credits`;
   const primary = signedIn ? { href: credits, label: p.ctaSignedIn } : { href: "/signup", label: p.ctaSignedOut };
   // The expiry line is this deployment's own policy, so it sits among the terms.
-  const terms = [...p.terms.slice(0, 3), expiry, ...p.terms.slice(3)];
+  // p.terms opens with the two plan lines (renewal, cancelling); with no plan
+  // on sale they would describe something nobody can buy, so they go.
+  const saleTerms = showPlans ? p.terms : p.terms.slice(2);
+  const expiryAt = showPlans ? 3 : 1;
+  const terms = [...saleTerms.slice(0, expiryAt), expiry, ...saleTerms.slice(expiryAt)];
+  const faq = faqForSale(p.faq, showPlans, t.site.packsOnly, months);
   const faqLink = (id: string) => (id === "cancel" || id === "refund" ? { href: "/terms#credits", label: p.linkTerms } : null);
 
+  const pp = t.site.pricingPage;
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-20 px-4 pb-20 pt-10 sm:px-6 sm:pt-16 lg:gap-28">
-      <section aria-labelledby="pricing-title" className="page-rise max-w-3xl">
-        <div className="t-label text-[var(--color-primary)]">{p.eyebrow}</div>
-        <h1
-          id="pricing-title"
-          className="mt-5 font-display font-semibold tracking-[-0.03em]"
-          style={{ fontSize: "clamp(2.25rem, 5vw, 56px)", lineHeight: 1.05, textWrap: "balance" }}
-        >
-          {p.title}
-        </h1>
-        <p className="mt-5 max-w-[60ch] text-[16.5px] font-light leading-relaxed text-[var(--color-muted)] sm:text-[18px]">{p.lead}</p>
-        <ul className="mt-6 flex flex-wrap gap-2">
-          <li className="pill inline-flex min-h-8 items-center gap-1.5 border border-[var(--color-primary)] bg-[var(--color-accent-soft)] px-3 text-[13px] text-[var(--color-fg)]">
-            <Coins className="size-3.5 text-[var(--color-primary)]" aria-hidden />
-            {fmt(p.freeChip, { n: formatCredits(WELCOME_CREDITS, locale) })}
-          </li>
-          <li className="pill inline-flex min-h-8 items-center gap-1.5 border border-[var(--color-border)] px-3 text-[13px] text-[var(--color-muted)]">
-            <RotateCcw className="size-3.5 text-[var(--color-ok)]" aria-hidden />
-            {p.how3Title}
-          </li>
-          {showPlans && (
-            <li className="pill inline-flex min-h-8 items-center gap-1.5 border border-[var(--color-border)] px-3 text-[13px] text-[var(--color-muted)]">
-              <Clock className="size-3.5" aria-hidden />
-              {p.noYearly}
-            </li>
-          )}
-        </ul>
-        <div className="mt-8 flex flex-col gap-3 min-[420px]:flex-row min-[420px]:flex-wrap min-[420px]:items-center">
-          <Link href={primary.href} className="btn-sky is-solid pill min-h-12 px-7 text-[15px]">
-            {primary.label}
-            <ArrowRight className="btn-arrow size-4" aria-hidden />
-          </Link>
-          <a href="#terms" className="btn-sky ghost pill min-h-12 px-7 text-[15px]">
-            {p.termsTitle}
-          </a>
+    <div>
+      <section aria-labelledby="pricing-title" className="st-wrap st-hero">
+        <div>
+          <p className="st-kicker">{showPlans ? p.eyebrow : pp.eyebrowNoPlans}</p>
+          <h1 id="pricing-title" className="st-h1 mt-5">
+            {pp.h1}
+          </h1>
+          {/* "Pick a monthly plan" only when there is a plan to pick. */}
+          <p className="st-lead mt-7">{showPlans ? p.lead : pp.leadNoPlans}</p>
+          <MoneyAnchor t={t} locale={locale} anchor={anchor ?? moneyAnchor(pricing, null)} titleId="anchor-title" className="mt-8" />
+          {showPlans && <p className="st-small mt-3">{p.noYearly}</p>}
+          <div className="st-hero-actions">
+            <Link href={primary.href} className="st-key">
+              {primary.label}
+              <ArrowRight aria-hidden />
+            </Link>
+            <a href="#terms" className="st-link">
+              {p.termsTitle}
+            </a>
+          </div>
+          {!signedIn && <p className="st-small mt-4">{showPlans ? p.ctaNote : t.site.packsOnly.ctaNote}</p>}
         </div>
-        {!signedIn && <p className="mt-4 text-[13px] font-light text-[var(--color-muted)]">{p.ctaNote}</p>}
+
+        <section aria-labelledby="math-title" className="st-monitor self-start">
+          <div className="st-monitor-head">
+            <div className="st-monitor-title">
+              <b>{pp.mathSlug}</b>
+            </div>
+          </div>
+          <div className="px-4 pb-2 pt-4">
+            <h2 id="math-title" className="st-h3">
+              {pp.mathTitle}
+            </h2>
+            <p className="st-small mt-2">{pp.mathLead}</p>
+          </div>
+          <dl className="st-formula mx-4 mb-4 mt-3">
+            {pp.rows.map((row) => (
+              <div key={row.id}>
+                <dt className={row.id === "return" ? "text-[var(--ns-go)]" : undefined}>{row.word}</dt>
+                <dd>
+                  {/* One equation per line: "failed → return = hold" never breaks mid-way. */}
+                  <code>
+                    {row.formula.split(/;\s*/).map((clause) => (
+                      <span key={clause} className="st-formula-clause">
+                        {clause}
+                      </span>
+                    ))}
+                  </code>
+                  <p className="st-small">{row.body}</p>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
       </section>
 
       {plansFailed && (
-        <section id="plans" aria-labelledby="plans-title" className="flex scroll-mt-24 flex-col gap-6">
-          <div className="max-w-3xl">
-            <h2 id="plans-title" className="lp-h2">
+        <section id="plans" aria-labelledby="plans-title" className="st-section">
+          <div className="st-wrap">
+            <h2 id="plans-title" className="st-h2">
               {t.plans.matrixTitle}
             </h2>
-          </div>
-          <div className="panel">
-            <ErrorState compact message={t.plans.readFailed} />
+            <div className="st-panel mt-8">
+              <ErrorState compact message={t.plans.readFailed} />
+            </div>
           </div>
         </section>
       )}
 
       {showPlans && plans && (
-        <section id="plans" aria-labelledby="plans-title" className="flex scroll-mt-24 flex-col gap-6">
-          <div className="max-w-3xl">
-            <h2 id="plans-title" className="lp-h2">
-              {t.plans.matrixTitle}
-            </h2>
-            <p className="t-lead mt-3">{t.plans.matrixLead}</p>
-          </div>
-          <PlanMatrix
-            matrix={plans}
-            perMinute={rates?.perMinute ?? null}
-            rates={generationRates}
-            signedIn={signedIn}
-            subscribeHref={`${credits}#plans`}
-          />
-          <ul className="flex max-w-3xl flex-col gap-2 text-[13px] font-light text-[var(--color-muted)]">
-            {generationRates ? <li>{t.creditsPage.eq.note}</li> : !signedIn && <li>{p.eqSignedOut}</li>}
-            <li>{t.plans.expiresNote}</li>
-            <li>{t.plans.spendOrder}</li>
-            <li>{t.plans.apiNote}</li>
-          </ul>
-
-          <div className="mt-8 flex flex-col gap-4">
-            <div className="max-w-3xl">
-              <h3 id="compare-title" className="text-[1.375rem] font-semibold tracking-[-0.02em]">
-                {p.compareTitle}
-              </h3>
-              <p className="mt-2 text-[14px] font-light text-[var(--color-muted)]">{p.compareLead}</p>
+        <section id="plans" aria-labelledby="plans-title" className="st-section">
+          <div className="st-wrap flex flex-col gap-8">
+            <div>
+              <h2 id="plans-title" className="st-h2">
+                {t.plans.matrixTitle}
+              </h2>
+              <p className="st-lead mt-5">{t.plans.matrixLead}</p>
             </div>
-            <PlanCompare matrix={plans} titleId="compare-title" />
+            <PlanMatrix
+              matrix={plans}
+              perMinute={rates?.perMinute ?? null}
+              rates={generationRates}
+              signedIn={signedIn}
+              subscribeHref={`${credits}#plans`}
+            />
+            <ul className="flex max-w-3xl flex-col gap-2 text-[14px] text-[var(--ns-text-dim)]">
+              {generationRates ? <li>{t.creditsPage.eq.note}</li> : !signedIn && <li>{p.eqSignedOut}</li>}
+              <li>{t.plans.expiresNote}</li>
+              <li>{t.plans.spendOrder}</li>
+              <li>{t.plans.apiNote}</li>
+            </ul>
+
+            <div className="mt-6 flex flex-col gap-5">
+              <div>
+                <h3 id="compare-title" className="st-h3">
+                  {p.compareTitle}
+                </h3>
+                <p className="st-small mt-2">{p.compareLead}</p>
+              </div>
+              <PlanCompare matrix={plans} titleId="compare-title" />
+            </div>
           </div>
         </section>
       )}
 
-      <section id="packs" aria-labelledby="packs-title" className="flex scroll-mt-24 flex-col gap-6">
-        <div className="max-w-3xl">
-          <h2 id="packs-title" className="lp-h2">
-            {p.packsTitle}
-          </h2>
-          <p className="t-lead mt-3">{p.packsLead}</p>
-        </div>
-        {pricing.source === "none" ? (
-          <div className="glass-card flex flex-col gap-3 rounded-[22px] border border-dashed border-[var(--color-primary)] p-6 sm:p-10">
-            <h3 className="text-[1.5rem] font-semibold tracking-[-0.02em]">{p.comingSoonTitle}</h3>
-            <p className="t-lead">{p.comingSoonBody}</p>
-            <p className="mono text-[12px] text-[var(--color-muted)]">{p.comingSoonOperator}</p>
+      <section id="packs" aria-labelledby="packs-title" className="st-section">
+        <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-14">
+          <div>
+            <h2 id="packs-title" className="st-h2">
+              {p.packsTitle}
+            </h2>
+            <p className="st-lead mt-5">{showPlans ? p.packsLead : t.site.packsOnly.packsLead}</p>
           </div>
-        ) : (
-          <>
-            <PackCards
-              packs={pricing.packs}
-              paddle={pricing.paddle}
-              perMinute={rates?.perMinute ?? null}
-              rates={generationRates}
-            />
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="max-w-2xl text-[13px] font-light text-[var(--color-muted)]">
+          {pricing.source === "none" ? (
+            <div className="st-panel self-start">
+              <div className="st-panel-head">
+                <h3 className="st-kicker text-[var(--ns-text)]">{p.comingSoonTitle}</h3>
+                <StatusLamp tone="idle" label={pp.sizesTitle} />
+              </div>
+              <p className="st-small px-4 pt-4">{p.comingSoonBody}</p>
+              <ul className="st-price-rows" aria-label={pp.sizesTitle}>
+                {CREDIT_PACKS.map((pack) => (
+                  <li key={pack.id} className="st-price-row">
+                    <span className="st-price-name">{t.credits.buy.pack[pack.id]}</span>
+                    <span className="st-price-credits st-num">
+                      {formatCredits(pack.credits, locale)}
+                      <small>{t.site.pricingTeaser.credits}</small>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="st-small border-t border-[var(--ns-rule)] px-4 py-3">{pp.sizesNote}</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <PackCards
+                packs={pricing.packs}
+                paddle={pricing.paddle}
+                perMinute={rates?.perMinute ?? null}
+                rates={generationRates}
+              />
+              <p className="st-small">
                 {pricing.source === "paddle" ? p.taxNote : p.checkoutClosed} {expiry}
               </p>
               {pricing.source === "paddle" && (
-                <Link
-                  href={signedIn ? credits : "/login"}
-                  className="btn-sky is-solid pill self-start px-6 py-3 text-sm sm:self-auto"
-                >
+                <Link href={signedIn ? credits : "/login"} className="st-key self-start" data-tone="quiet">
                   {signedIn ? p.buySignedIn : p.buySignedOut}
                 </Link>
               )}
             </div>
-          </>
-        )}
+          )}
+        </div>
       </section>
 
-      <section
-        id="terms"
-        aria-labelledby="terms-title"
-        className="glass-card scroll-mt-24 rounded-[22px] border border-[var(--color-border)] p-6 sm:p-10"
-      >
-        <h2 id="terms-title" className="text-[1.625rem] font-semibold tracking-[-0.02em]">
-          {p.termsTitle}
-        </h2>
-        <ul className="mt-6 grid gap-x-10 gap-y-4 md:grid-cols-2">
-          {terms.map((line) => (
-            <li key={line} className="flex items-start gap-3 text-[15px] leading-relaxed">
-              <Check className="mt-1 size-4 shrink-0 text-[var(--color-primary)]" aria-hidden />
-              <span>{line}</span>
-            </li>
-          ))}
-        </ul>
-        <Link
-          href="/terms#credits"
-          className="mt-6 inline-flex min-h-11 items-center gap-1.5 text-[14px] text-[var(--color-primary)] underline-offset-4 hover:underline"
-        >
-          {p.linkTerms}
-          <ArrowRight className="size-3.5" aria-hidden />
-        </Link>
-      </section>
-
-      <section aria-labelledby="how-title" className="grid gap-10 lg:grid-cols-[1fr_20rem] lg:gap-14">
-        <div>
-          <h2 id="how-title" className="lp-h2">
-            {p.howTitle}
-          </h2>
-          <p className="t-lead mt-4 max-w-2xl">{p.howLead}</p>
-          <ol className="mt-10 grid gap-x-8 gap-y-10 sm:grid-cols-2">
-            {steps.map(({ icon: Icon, title, body }) => (
-              <li key={title} className="flex flex-col gap-3 border-t border-[var(--color-border)] pt-5">
-                <Icon className="size-5 text-[var(--color-primary)]" aria-hidden />
-                <h3 className="t-panel">{title}</h3>
-                <p className="text-[14px] font-light leading-relaxed text-[var(--color-muted)]">{body}</p>
+      <section id="terms" aria-labelledby="terms-title" className="st-section">
+        {/* Title and link in one row over a full-width ruled list: no empty column. */}
+        <div className="st-wrap">
+          <Slug>{pp.termsSlug}</Slug>
+          <div className="mt-8 flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
+            <h2 id="terms-title" className="st-h2">
+              {p.termsTitle}
+            </h2>
+            <Link href="/terms#credits" className="st-link">
+              {p.linkTerms}
+              <ArrowRight aria-hidden />
+            </Link>
+          </div>
+          {/* Up to three terms sit side by side, one each; more fill two
+              newspaper columns. Either way no column ends with a hole. */}
+          <ul
+            className="st-terms mt-10"
+            style={
+              {
+                "--cols": terms.length <= 3 ? terms.length : 2,
+                "--rows": terms.length <= 3 ? 1 : Math.ceil(terms.length / 2),
+              } as React.CSSProperties
+            }
+          >
+            {terms.map((line) => (
+              <li key={line}>
+                <Check className="mt-1 size-4 shrink-0 text-[var(--ns-go)]" aria-hidden />
+                <span>{line}</span>
               </li>
             ))}
-          </ol>
-        </div>
-
-        <aside aria-labelledby="rates-title" className="panel flex h-fit flex-col gap-4 p-6">
-          <h3 id="rates-title" className="t-label">
-            {p.ratesTitle}
-          </h3>
-          {rates ? (
-            <dl className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1">
-                <dt className="text-[13px] font-light text-[var(--color-muted)]">{p.ratePerMinute}</dt>
-                <dd className="mono text-[18px]">{rateText(rates.perMinute)}</dd>
-              </div>
-              <div className="flex flex-col gap-1">
-                <dt className="text-[13px] font-light text-[var(--color-muted)]">{p.rateMinimum}</dt>
-                <dd className="mono text-[18px]">{rateText(rates.jobMinimum)}</dd>
-              </div>
-            </dl>
-          ) : ratesFailed ? (
-            <ErrorState compact message={p.ratesReadFailed} />
-          ) : (
-            <p className="text-[14px] font-light leading-relaxed text-[var(--color-muted)]">
-              {signedIn ? p.ratesUnavailable : p.ratesSignedOut}
-            </p>
-          )}
-          <p className="border-t border-[var(--color-border)] pt-4 text-[12px] font-light leading-relaxed text-[var(--color-muted)]">
-            {p.ratesNote}
-          </p>
-        </aside>
-      </section>
-
-      <section
-        aria-labelledby="payments-title"
-        className="glass-card flex flex-col gap-5 rounded-[22px] border border-[var(--color-border)] p-6 sm:p-10"
-      >
-        <h2 id="payments-title" className="text-[1.625rem] font-semibold tracking-[-0.02em]">
-          {p.paymentsTitle}
-        </h2>
-        <p className="t-lead">{p.paymentsBody}</p>
-        <p className="t-lead">{p.refundsBody}</p>
-        <div className="mt-2 flex flex-wrap gap-3">
-          <Link href="/terms#credits" className="btn-sky pill px-5 py-2.5 text-sm">
-            {p.linkTerms}
-          </Link>
-          <a
-            href={PADDLE_BUYER_TERMS}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-sky ghost pill px-5 py-2.5 text-sm"
-          >
-            {p.linkBuyerTerms}
-            <ArrowUpRight className="size-3.5" aria-hidden />
-          </a>
-          <Link href="/privacy#processors" className="btn-sky ghost pill px-5 py-2.5 text-sm">
-            {p.linkPrivacy}
-          </Link>
+          </ul>
         </div>
       </section>
 
-      <section id="pricing-faq" aria-labelledby="pricing-faq-title" className="grid scroll-mt-24 gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
-        <h2 id="pricing-faq-title" className="lp-h2 lg:sticky lg:top-28 lg:self-start">
-          {p.faqTitle}
-        </h2>
-        <FaqList items={p.faq} linkFor={faqLink} />
+      <section aria-labelledby="how-title" className="st-section">
+        <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-14">
+          <div>
+            <Slug>{pp.creditSlug}</Slug>
+            <h2 id="how-title" className="st-h2 mt-8">
+              {p.howTitle}
+            </h2>
+            <p className="st-lead mt-5">{p.howLead}</p>
+            {/* A ruled, numbered list like the rest of the site, not an icon grid. */}
+            <ol className="st-ruled mt-10">
+              {steps.map(({ title, body }, i) => (
+                <li key={title}>
+                  <h3 className="st-h3">
+                    <span className="st-num mr-3 text-[13px] font-normal text-[var(--ns-text-dim)]" aria-hidden>
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    {title}
+                  </h3>
+                  <p className="st-body">{body}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <aside aria-labelledby="rates-title" className="st-panel h-fit">
+            <div className="st-panel-head">
+              <h3 id="rates-title" className="st-kicker text-[var(--ns-text)]">
+                {p.ratesTitle}
+              </h3>
+            </div>
+            <div className="flex flex-col gap-4 p-4">
+              {rates ? (
+                <dl className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-1">
+                    <dt className="st-small">{p.ratePerMinute}</dt>
+                    <dd className="st-num text-[20px]">{rateText(rates.perMinute)}</dd>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <dt className="st-small">{p.rateMinimum}</dt>
+                    <dd className="st-num text-[20px]">{rateText(rates.jobMinimum)}</dd>
+                  </div>
+                </dl>
+              ) : ratesFailed ? (
+                <ErrorState compact message={p.ratesReadFailed} />
+              ) : (
+                <p className="st-small">{signedIn ? p.ratesUnavailable : p.ratesSignedOut}</p>
+              )}
+              <p className="st-small border-t border-[var(--ns-rule)] pt-4 text-[12.5px]">{p.ratesNote}</p>
+            </div>
+          </aside>
+        </div>
       </section>
 
-      <section
-        aria-labelledby="pricing-final-title"
-        className="lp-horizon relative overflow-hidden rounded-[28px] border border-[var(--color-border)] px-5 py-14 text-center sm:px-12 sm:py-20"
-      >
-        <h2
-          id="pricing-final-title"
-          className="mx-auto max-w-2xl font-display font-semibold tracking-[-0.03em]"
-          style={{ fontSize: "clamp(1.75rem, 4vw, 44px)", lineHeight: 1.08, textWrap: "balance" }}
-        >
-          {p.finalTitle}
-        </h2>
-        <p className="t-lead mx-auto mt-4">{p.finalLead}</p>
-        <div className="mt-8 flex justify-center">
-          <Link href={primary.href} className="btn-sky is-solid pill min-h-12 px-7 text-[15px]">
-            {primary.label}
-            <ArrowRight className="btn-arrow size-4" aria-hidden />
-          </Link>
+      <section aria-labelledby="payments-title" className="st-section">
+        <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-14">
+          <div>
+            <Slug>{pp.paySlug}</Slug>
+            <h2 id="payments-title" className="st-h2 mt-8">
+              {p.paymentsTitle}
+            </h2>
+          </div>
+          <div className="flex flex-col gap-4">
+            <p className="st-body">{p.paymentsBody}</p>
+            <p className="st-body">{p.refundsBody}</p>
+            <div className="flex flex-wrap gap-x-6">
+              <Link href="/terms#credits" className="st-link">
+                {p.linkTerms}
+              </Link>
+              <a href={PADDLE_BUYER_TERMS} target="_blank" rel="noopener noreferrer" className="st-link">
+                {p.linkBuyerTerms}
+                <ArrowUpRight aria-hidden />
+              </a>
+              <Link href="/privacy#processors" className="st-link">
+                {p.linkPrivacy}
+              </Link>
+            </div>
+          </div>
         </div>
-        <span className="lp-horizon-line absolute inset-x-[12%] bottom-0 h-px" aria-hidden />
+      </section>
+
+      <section id="pricing-faq" aria-labelledby="pricing-faq-title" className="st-section">
+        <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
+          <div className="lg:sticky lg:top-28 lg:self-start">
+            <Slug>{pp.faqSlug}</Slug>
+            <h2 id="pricing-faq-title" className="st-h2 mt-8">
+              {p.faqTitle}
+            </h2>
+          </div>
+          <FaqList items={faq} linkFor={faqLink} />
+        </div>
+      </section>
+
+      <section aria-labelledby="pricing-final-title" className="st-section">
+        <div className="st-wrap grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:items-end">
+          <h2 id="pricing-final-title" className="st-h1-page">
+            {p.finalTitle}
+          </h2>
+          <div>
+            <p className="st-lead">{p.finalLead}</p>
+            <div className="st-hero-actions mt-7">
+              <Link href={primary.href} className="st-key">
+                {primary.label}
+                <ArrowRight aria-hidden />
+              </Link>
+            </div>
+          </div>
+        </div>
       </section>
     </div>
   );

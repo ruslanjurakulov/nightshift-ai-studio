@@ -22,6 +22,11 @@ vi.mock("@/lib/i18n/context", async () => {
   const { dictionaries, fmt } = await import("../lib/i18n");
   return { useI18n: () => ({ t: dictionaries[state.locale], locale: state.locale, fmt, setLocale: () => {} }) };
 });
+// Shared components on the public pages read the public slice the same way.
+vi.mock("@/lib/i18n/public-context", async () => {
+  const { dictionaries, fmt } = await import("../lib/i18n");
+  return { usePublicI18n: () => ({ t: dictionaries[state.locale], locale: state.locale, fmt, setLocale: () => {} }) };
+});
 
 const { StyleSections } = await import("../components/studio/StyleSections");
 

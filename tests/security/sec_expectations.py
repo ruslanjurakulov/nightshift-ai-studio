@@ -196,6 +196,9 @@ USER = (False, True)
 API = (True, False)
 HELPER_ANON = (True, True)
 HELPER = (False, True)
+# PRICE_LIST: a price list anyone may read, signed in or not (it names what a
+#          member is already charged, never the margin): 0089.
+PRICE_LIST = (True, True)
 
 FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     # tenancy and roles (0007, 0018)
@@ -349,6 +352,8 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "sellable_models": USER,
     # the price list as charged, never the margin (0084)
     "credit_rates": USER,
+    # what a video costs in credits, for the public price pages (0089)
+    "public_video_rates": PRICE_LIST,
     "model_registry_admin": USER,
     "record_model_probe": SERVICE,
     "sync_model_registry": SERVICE,

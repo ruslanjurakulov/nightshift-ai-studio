@@ -28,6 +28,12 @@ SKIP_DIRS = {"node_modules", ".next", "tests", "out", "build"}
 # Set by the Dockerfile itself (build or runtime); not something an operator sets.
 BUILD_ONLY = {"NEXT_OUTPUT", "NODE_ENV"}
 
+# Set by the hosting platform on its own deploys, never by an operator; the
+# self-hosted box sets APP_ORIGIN instead, which the code reads first
+# (command-center/lib/landing.ts siteOrigin), so an unset value here is the
+# intended state, not a gap.
+PLATFORM_PROVIDED = {"VERCEL_PROJECT_PRODUCTION_URL"}
+
 DOT_ACCESS = re.compile(r"process\.env\.([A-Z][A-Z0-9_]*)")
 BRACKET_ACCESS = re.compile(r"""process\.env\[\s*["']([A-Z][A-Z0-9_]*)["']\s*\]""")
 ANY_ACCESS = re.compile(r"process\.env\b")
@@ -77,7 +83,7 @@ class EnvTemplateTests(unittest.TestCase):
         names, unreadable = referenced_env_vars()
         self.assertFalse(unreadable, f"process.env read by a non-literal name in: {unreadable}")
         self.assertIn("NEXT_PUBLIC_SUPABASE_URL", names)  # the scan itself works
-        provided = set(example_keys()) | compose_environment_keys() | BUILD_ONLY
+        provided = set(example_keys()) | compose_environment_keys() | BUILD_ONLY | PLATFORM_PROVIDED
         missing = sorted(names - provided)
         self.assertEqual(missing, [], f"add to deploy/.env.web.example: {missing}")
 

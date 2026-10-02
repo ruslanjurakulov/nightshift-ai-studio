@@ -15,8 +15,8 @@ A row is never deleted. It moves to `fixed` or `wontfix` with a reason.
 | critical | 0 | 0 | 0 |
 | high | 1 | 2 | 0 |
 | medium | 4 | 9 | 0 |
-| low | 9 | 27 | 1 |
-| info | 4 | 5 | 1 |
+| low | 9 | 28 | 1 |
+| info | 6 | 5 | 2 |
 
 ## Findings
 
@@ -85,6 +85,10 @@ A row is never deleted. It moves to `fixed` or `wontfix` with a reason.
 | BR-L-064 | info | Migrations | Re-applying 0076 alone silently reopens BR-L-040 and BR-L-044 (0085 must be re-applied after it); in-order replay is idempotent | open | Lens-15: 0076 alone changes 31 snapshot entries; re-applying 0085 restores the exact state. | 0076 restores its table-wide grant and function bodies. | #371 | Documented in the migration header. | |
 | BR-L-065 | info | Scene regeneration | When the previous take cannot be restored (no recorded hash, or a damaged copy) the hold is still released and the new or half-swapped cut stays on disk | open | Lens-15, from the code. | Fail-safe for money, not for the files. | #371 | Documented. | |
 | BR-L-066 | info | Tests | Several guards of #371 are not individually tested (an unmatched `queued` row in reconcile, the credits_trusted_caller check) and the rewritten BR-G-006 worker test is a weaker pin | open | Lens-15 mutation run: 12 of 15 Python and 13 of 14 SQL mutations killed. | Test gaps. | #371 | Follow-up tests. | |
+| BR-L-089 | low | Public site / availability | `/`, `/pricing` and `/docs/api` awaited untimed, uncached backend reads (the public price lists, the plan catalog) on every request, so a stalled backend held the front door and each anonymous hit became fresh backend calls | fixed | Lens round 13 (LENS-13-publicsite.md, filed there as BR-L-047, an ID #370 also took): with the Supabase URL on a socket that accepts and never answers, the three pages hung past 25 s while `/solutions`, `/login` and `/privacy` answered in under 60 ms. | Per-request reads on `force-dynamic` pages with no AbortSignal and no cache. | #351 | `command-center/tests/public-read.test.ts` (1.5 s abort and settle, 60 s good / 10 s failed cache, one read shared in flight); `lib/server/public-read.ts`; the plan catalog read takes the same abort and each page starts its reads together. Measured against the same never-answering socket: every page under 1.7 s, cold. |
+| BR-L-090 | info | Middleware / no-backend build | In a production build with no backend, `/api/*` is exempt from the public 404, so a prefix of a real route (`/api/credits`) is guarded only by the app layout's `notFound()`; an RSC prefetch of it returns the `(app)/[channel]` loading skeleton (no data, no env names) | open | Lens round 13 (filed there as BR-L-048): `RSC: 1` + `Next-Router-Prefetch: 1` on `/api/credits` gave 200 `text/x-component` with the skeleton; a plain GET is 404. | The exemption lets route handlers answer for themselves; a non-handler `/api` path then resolves as a channel page. | #351 | Not fixed here: not a regression (main served the setup notice there), nothing is exposed, and the backend build redirects to `/login`. Suggested: 404 any `/api/` path that is not a route handler. |
+| BR-L-091 | info | Middleware / behaviour | Signed out, a one-segment `/<channel>` URL answers the public 404 instead of the sign-in form, and there is no return-to path after sign-in | wontfix | Lens round 13 (filed there as BR-L-049). | `isUnknownRootPath` treats every one-segment path that is not a section or reserved word alike, so the 404 says nothing about which channels exist. | #351 | By design (uniform; leaks nothing). `/<channel>/<section>` still goes to `/login`. Owner note: a bookmarked `/chronos` needs signing in first. |
+| BR-L-092 | info | API prices (0031) | `api_prices.note` is anon-readable and its seeded text says "(2x site retail)"; with 0089 and the display pack prices a visitor can relate the API price to the site's retail rate | open | Lens round 13 (filed there as BR-L-050). | A seed note written for the operator, on a table anyone may read. | — | Not the margin or a cost (two public prices). The site, `/docs/api` and the new code select only `unit,cents`. Suggested: clear or reword the note in a later migration. |
 
 ## Static review: checked and clean (2026-10-01)
 

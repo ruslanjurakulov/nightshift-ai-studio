@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { gateDecision, isPublicPath } from "@/lib/public-paths";
+import { gateDecision, isPublicFontPath, isPublicPath, isUnknownSolutionPath } from "@/lib/public-paths";
 import { isValidChannelId } from "@/lib/channels";
 
 // The middleware only asks Supabase one question — who is signed in — so the
@@ -50,7 +50,7 @@ describe("signed-out visitors (what Google's reviewer sees)", () => {
 
   // Exact matching, as for the legal pages: /signup/x would be the "x" screen
   // of a channel called "signup", and /auth/anything else is not the callback.
-  it.each(["/signup/x", "/signup/videos", "/signupx", "/auth", "/auth/callback/x", "/auth/other", "/welcome"])(
+  it.each(["/signup/x", "/signup/videos", "/auth", "/auth/callback/x", "/auth/other", "/welcome"])(
     "are sent to /login from %s",
     async (path) => {
       expect((await visit(path, false)).redirect).toBe("/login");
@@ -70,12 +70,62 @@ describe("signed-out visitors (what Google's reviewer sees)", () => {
 
   // Prefix matching would have published a channel's screens: the router reads
   // /privacy/videos as the Videos page of a channel whose segment is "privacy".
-  it.each(["/privacy/videos", "/terms/command-center", "/privacy-policy", "/termsx", "/pricing/credits", "/pricing-old"])(
+  it.each(["/privacy/videos", "/terms/command-center", "/pricing/credits"])(
     "do not get %s just because it starts like a public page",
     async (path) => {
       expect((await visit(path, false)).redirect).toBe("/login");
     },
   );
+
+  // …and a one-segment look-alike is not a page at all: it gets the 404.
+  it.each(["/signupx", "/privacy-policy", "/termsx", "/pricing-old"])(
+    "do not get %s just because it starts like a public page (404)",
+    async (path) => {
+      const { redirect, res } = await visit(path, false);
+      expect(redirect).toBeNull();
+      expect(res.status).toBe(404);
+      expect(new URL(res.headers.get("x-middleware-rewrite") ?? "").pathname).toBe("/_not-found");
+    },
+  );
+});
+
+describe("signed-out visitors on a URL that is not a page", () => {
+  // A mistyped or invented URL is the 404 — never the app's frame, never a
+  // sign-in form for something that was never there.
+  it.each(["/blog", "/about", "/contact", "/no-such-page-xyz", "/blog/", "/chronos", "/x"])(
+    "get the 404 for %s, served by the not-found page alone",
+    async (path) => {
+      const { redirect, res } = await visit(path, false);
+      expect(redirect).toBeNull();
+      expect(res.status).toBe(404);
+      expect(new URL(res.headers.get("x-middleware-rewrite") ?? "").pathname).toBe("/_not-found");
+      // Nothing about a channel is handed inward: no app layout resolves it.
+      expect(res.headers.get("x-middleware-request-x-nightshift-channel")).toBeNull();
+    },
+  );
+
+  // Uniform on purpose: a real channel's segment and an invented one get the
+  // same answer, so the 404 says nothing about which channels exist.
+  it("answer a real channel's bare segment exactly like an invented one", async () => {
+    const real = await visit("/chronos", false);
+    const invented = await visit("/zz-not-a-channel", false);
+    expect(real.res.status).toBe(invented.res.status);
+    expect(real.res.headers.get("x-middleware-rewrite")).toBe(invented.res.headers.get("x-middleware-rewrite"));
+  });
+
+  it.each(["/xyz/videos", "/chronos/videos", "/all-channels", "/videos", "/welcome", "/auth", "/docs", "/api", "/api/agent/run"])(
+    "are still sent to /login from the app-shaped or reserved URL %s",
+    async (path) => {
+      expect((await visit(path, false)).redirect).toBe("/login");
+    },
+  );
+
+  it("does not change what a signed-in user gets for an unknown segment", async () => {
+    const { redirect, res } = await visit("/blog", true);
+    expect(res.status).not.toBe(404);
+    expect(redirect).toBeNull();
+    expect(res.headers.get("x-middleware-rewrite")).toBeNull();
+  });
 });
 
 describe("signed-in users keep today's behaviour", () => {
@@ -204,8 +254,52 @@ describe("gateDecision", () => {
   });
 });
 
+describe("a mistyped solution link", () => {
+  it.each(["/solutions/nope", "/solutions/youtube", "/solutions/youtube-channels/x", "/solutions/nope/"])(
+    "is the 404 for a signed-out visitor at %s, not a sign-in form",
+    async (path) => {
+      const { redirect, res } = await visit(path, false);
+      expect(redirect).toBeNull();
+      expect(res.status).toBe(404);
+      expect(new URL(res.headers.get("x-middleware-rewrite") ?? "").pathname).toBe("/_not-found");
+    },
+  );
+
+  it.each(["/solutions", "/solutions/youtube-channels", "/solutions/creative-studio", "/solutions/developers"])(
+    "leaves the real page %s public",
+    async (path) => {
+      const { redirect, res } = await visit(path, false);
+      expect(redirect).toBeNull();
+      expect(res.headers.get("x-middleware-rewrite")).toBeNull();
+    },
+  );
+
+  it("is not a 404 rule for anything outside /solutions", () => {
+    for (const p of ["/solution/x", "/solutionsx/y", "/chronos/solutions/x", "/pricing/credits"]) expect(isUnknownSolutionPath(p)).toBe(false);
+  });
+});
+
+describe("the public pages' font files", () => {
+  it.each(["/fonts/sofia-sans-extra-condensed-cyrillic-v6.woff2", "/fonts/sofia-sans-cyrillic-v20.woff2"])(
+    "serves %s to anyone, without a sign-in redirect",
+    async (path) => {
+      const { redirect, res } = await visit(path, false);
+      expect(redirect).toBeNull();
+      expect(res.status).toBe(200);
+      expect(res.headers.get("x-middleware-rewrite")).toBeNull();
+    },
+  );
+
+  it.each(["/fonts", "/fonts/other.woff2", "/fonts/sofia-sans-cyrillic-v20.woff2/x", "/fonts/../videos", "/chronos/fonts/sofia-sans-cyrillic-v20.woff2"])(
+    "matches exactly: %s is not public",
+    (path) => {
+      expect(isPublicFontPath(path)).toBe(false);
+    },
+  );
+});
+
 describe("channel ids", () => {
-  it.each(["privacy", "terms", "pricing", "login", "api", "signup", "auth", "welcome"])(
+  it.each(["privacy", "terms", "pricing", "login", "api", "signup", "auth", "welcome", "solutions", "docs", "fonts"])(
     "cannot be %s, which would be shadowed by a page at the root",
     (id) => {
       expect(isValidChannelId(id)).toBe(false);

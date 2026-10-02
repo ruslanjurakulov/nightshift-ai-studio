@@ -30,6 +30,12 @@ vi.mock("@/lib/i18n/context", async () => {
   const { fmt } = await import("../lib/i18n");
   return { useI18n: () => ({ t: en, locale: "en", fmt, setLocale: () => {} }) };
 });
+// Shared components on the public pages read the public slice the same way.
+vi.mock("@/lib/i18n/public-context", async () => {
+  const { en } = await import("../lib/i18n/en");
+  const { fmt } = await import("../lib/i18n");
+  return { usePublicI18n: () => ({ t: en, locale: "en", fmt, setLocale: () => {} }) };
+});
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }), usePathname: () => "/chronos/models" }));
 vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (s: string) => `/chronos${s}` }));
 vi.mock("@/lib/channels-server", () => ({ getChannelContext: async () => ({ slug: "chronos" }) }));

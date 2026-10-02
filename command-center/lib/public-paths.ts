@@ -1,3 +1,5 @@
+import { SOLUTIONS_PATH, SOLUTION_IDS, solutionHref } from "@/lib/solutions";
+
 /**
  * Which URLs a signed-out visitor may see, and what the auth gate does with
  * every other one.
@@ -23,6 +25,13 @@ export const LEGAL_PATHS = ["/privacy", "/terms"] as const;
  *  out, and a signed-in user sees the same page (plus the live credit rates).
  *  The API reference and its OpenAPI spec are read before anyone has a key. */
 export const INFO_PATHS = ["/pricing", "/docs/api", "/docs/api/openapi.json"] as const;
+
+/** Always public: the crawler files (app/robots.ts, app/sitemap.ts). */
+export const CRAWLER_PATHS = ["/robots.txt", "/sitemap.xml"] as const;
+
+/** Always public: what the product does, by who it is for (lib/solutions.ts).
+ *  Listed one by one — the index and each page — never as a prefix. */
+export const SOLUTION_PATHS = [SOLUTIONS_PATH, ...SOLUTION_IDS.map(solutionHref)] as const;
 
 /**
  * The public API (migration 0031). Its callers are programs holding an API
@@ -53,8 +62,40 @@ export function isSignedMediaPath(pathname: string): boolean {
   return /^\/api\/media\/file\/[0-9a-f-]{36}\/(original|thumb|proxy)$/.test(pathname);
 }
 
+/**
+ * The Cyrillic faces of the public pages, self-hosted from public/fonts so a
+ * Russian page can preload them by a stable name (components/site/fonts.ts).
+ * Static OFL font files, listed one by one and matched exactly: the gate lets
+ * them through before any session work, like the signed media files, so a
+ * font never waits on an auth round trip. Nothing else under /fonts is public.
+ */
+export const PUBLIC_FONT_PATHS = [
+  "/fonts/sofia-sans-extra-condensed-cyrillic-v6.woff2",
+  "/fonts/sofia-sans-cyrillic-v20.woff2",
+] as const;
+
+export function isPublicFontPath(pathname: string): boolean {
+  return (PUBLIC_FONT_PATHS as readonly string[]).includes(pathname);
+}
+
+/**
+ * A URL under /solutions that is not one of the listed pages: a mistyped
+ * solution link. Nothing in the app lives there (`solutions` is a reserved
+ * segment, so no channel can), so a signed-out visitor gets the 404 rather
+ * than a sign-in form (middleware.ts). It opens nothing: the rewrite serves
+ * only the not-found page.
+ */
+export function isUnknownSolutionPath(pathname: string): boolean {
+  const p = normalize(pathname);
+  return p.startsWith(SOLUTIONS_PATH + "/") && !(SOLUTION_PATHS as readonly string[]).includes(p);
+}
+
 /** Served as-is to anyone, signed in or not, without channel resolution. */
-export const ALWAYS_PUBLIC_PATHS = [...LEGAL_PATHS, ...INFO_PATHS] as const;
+export const ALWAYS_PUBLIC_PATHS = [...LEGAL_PATHS, ...INFO_PATHS, ...SOLUTION_PATHS, ...CRAWLER_PATHS] as const;
+
+/** The pages the sitemap lists: every public page a visitor reads, not the
+ *  sign-in flow, the machine-readable spec or the crawler files. */
+export const SITEMAP_PATHS = ["/", "/pricing", ...SOLUTION_PATHS, "/docs/api", "/privacy", "/terms"] as const;
 
 /** Create an account. Like /login, only for someone signed out: a signed-in
  *  user asking for it is sent on to their app. */
@@ -90,8 +131,11 @@ export const RESERVED_ROOT_SEGMENTS = [
   "privacy",
   "terms",
   "pricing",
+  "solutions",
   "api",
   "docs",
+  // The self-hosted font files live under /fonts (PUBLIC_FONT_PATHS).
+  "fonts",
 ] as const;
 
 /** Next's router treats `/terms/` as `/terms`; the gate must agree with it. */

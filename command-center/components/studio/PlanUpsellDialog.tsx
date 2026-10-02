@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useId, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { ArrowUpRight, Lock, X } from "lucide-react";
@@ -84,7 +84,10 @@ export function PlanUpsellDialog({
   const modelName = model?.name || u.modelFallback;
   const title = view.reason === "credits" ? u.titleCredits : view.reason === "run_limit" ? u.titleRunLimit : u.titleModel;
 
-  useEffect(() => {
+  // A layout effect, not a passive one: focus lands on the dialog in the same
+  // commit that shows it, so there is no frame (and, on a slow machine, no
+  // keystroke) in which focus is still on the composer behind the modal.
+  useLayoutEffect(() => {
     opener.current = returnTo?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     // The first focus is the primary action when there is one, else Close:
     // nothing is pressed by opening, so landing on a link is safe.

@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { AlertTriangle, RotateCcw } from "lucide-react";
-import { useI18n } from "@/lib/i18n/context";
-import { fmt } from "@/lib/i18n";
+import { usePublicI18n } from "@/lib/i18n/public-context";
+import { fmt } from "@/lib/i18n/core";
 import { safeDigest } from "@/lib/feedback";
 
 /**
@@ -22,7 +22,7 @@ export function ErrorScreen({
   reset: () => void;
   homeHref: string;
 }) {
-  const { t } = useI18n();
+  const { t } = usePublicI18n();
   const digest = safeDigest(error.digest);
 
   useEffect(() => {

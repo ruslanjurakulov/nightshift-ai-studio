@@ -108,6 +108,26 @@ export function isSection(segment: string): boolean {
   return (SECTIONS as readonly string[]).includes(segment);
 }
 
+/**
+ * A one-segment URL that cannot be anything a signed-out visitor might be sent
+ * to sign in for: not a section (an old `/videos` link), not the every-channel
+ * segment, not a page reserved at the root (`/welcome`, `/auth`, `/docs`…).
+ *
+ * For a signed-out visitor `/blog` and `/chronos` look the same — a channel the
+ * gate cannot see without a session — so both get the 404 rather than a sign-in
+ * form, uniformly, which also says nothing about which channels exist. Deeper
+ * app URLs (`/chronos/videos`) still go to /login. This never opens anything:
+ * the 404 is the only page such a request can reach (middleware.ts).
+ */
+export function isUnknownRootPath(pathname: string): boolean {
+  const trimmed = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  const segments = trimmed.split("/").slice(1);
+  if (segments.length !== 1) return false;
+  const [segment] = segments;
+  if (!segment || segment === ALL_CHANNELS_SLUG || isSection(segment)) return false;
+  return !(RESERVED_ROOT_SEGMENTS as readonly string[]).includes(segment);
+}
+
 /** URL segment → selection. */
 export function slugToSelection(slug: string): ChannelSelection {
   return slug === ALL_CHANNELS_SLUG ? ALL_CHANNELS : slug;
