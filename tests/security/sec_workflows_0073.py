@@ -58,6 +58,8 @@ def extend(tables: dict, functions: dict) -> None:
         "workflow_quote_steps": SERVICE,
         "workflow_run_json": SERVICE,
         "workflow_advance_locked": SERVICE,
+        # 0074 (LENS-2, BR-L-006): may a run's confirmer still spend? Internal.
+        "workflow_confirmer_may_spend": SERVICE,
     })
 
 
