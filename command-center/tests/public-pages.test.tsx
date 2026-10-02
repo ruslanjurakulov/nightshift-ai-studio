@@ -113,9 +113,9 @@ describe("public landing page", () => {
     expect(screen.getByText(fmt(dictionaries.en.site.hero.note, { n: WELCOME_CREDITS }))).toBeTruthy();
   });
 
-  it("opens the cancelling and refund answers before anyone buys", () => {
+  it("opens the cancelling and refund answers before anyone buys, when a plan is on sale", () => {
     const t = dictionaries.en;
-    const { container } = renderLanding({ kind: "announced" });
+    const { container } = renderLanding({ kind: "plans", plans: [{ id: "creator", name: "Creator", credits: 1500, price: "$12" }] });
     const open = [...container.querySelectorAll("details[open] h3")].map((h) => h.textContent);
     const q = (id: string) => t.landing.faq.items.find((i) => i.id === id)!.q;
     expect(open).toEqual([q("cancel"), q("refund")]);
@@ -200,8 +200,9 @@ describe("public pricing page", () => {
     for (const title of [t.pricing.termsTitle, t.pricing.howTitle, t.pricing.paymentsTitle, t.pricing.faqTitle]) {
       expect(screen.getByRole("heading", { level: 2, name: title })).toBeTruthy();
     }
-    for (const line of t.pricing.terms) expect(screen.getByText(line)).toBeTruthy();
-    for (const q of t.pricing.faq) expect(screen.getByRole("heading", { level: 3, name: q.q })).toBeTruthy();
+    // Packs only: the two plan lines (renewal, cancelling) are not shown.
+    for (const line of t.pricing.terms.slice(2)) expect(screen.getByText(line)).toBeTruthy();
+    for (const q of t.pricing.faq.filter((x) => x.id !== "cancel")) expect(screen.getByRole("heading", { level: 3, name: q.q })).toBeTruthy();
   });
 
   it("sends a signed-out visitor to sign-up, and a signed-in one to Credits", () => {
@@ -218,6 +219,29 @@ describe("public pricing page", () => {
     expect(container.textContent).not.toMatch(MONEY);
     expect(container.textContent).toContain(dictionaries.en.pricing.comingSoonTitle);
     expect(screen.getByRole("heading", { level: 2, name: dictionaries.en.site.anchor.title })).toBeTruthy();
+  });
+
+  it.each(["en", "ru", "uz"] as const)("says nothing about plans when only packs are on sale (%s)", (locale) => {
+    const t = dictionaries[locale];
+    const { container } = renderPricing({ pricing: none }, locale);
+    const text = container.textContent ?? "";
+    for (const planLine of [t.pricing.terms[0], t.pricing.terms[1], t.pricing.ctaNote, t.pricing.packsLead]) expect(text).not.toContain(planLine);
+    expect(screen.queryByRole("heading", { level: 3, name: t.pricing.faq.find((q) => q.id === "cancel")!.q })).toBeNull();
+    expect(text).toContain(t.site.packsOnly.packsLead);
+    cleanup();
+    // …and the landing's questions open on refunds and unused credits, not on cancelling a plan.
+    const landing = renderLanding({ kind: "announced" }, locale);
+    expect(landing.container.textContent).not.toContain(t.landing.faq.items.find((q) => q.id === "cancel")!.q);
+    const open = [...landing.container.querySelectorAll("#faq details[open] h3")].map((h) => h.textContent);
+    expect(open).toEqual(t.landing.faq.items.filter((q) => q.id === "refund" || q.id === "unused").map((q) => q.q));
+  });
+
+  it("keeps the plan terms when a plan is on sale", () => {
+    const t = dictionaries.en;
+    const plans = planMatrix(catalog(), { NEXT_PUBLIC_PLAN_DISPLAY_CREATOR: "$12" } as never, null);
+    const { container } = renderPricing({ pricing: none, plans });
+    expect(container.textContent).toContain(t.pricing.terms[0]);
+    expect(screen.getByRole("heading", { level: 3, name: t.pricing.faq.find((q) => q.id === "cancel")!.q })).toBeTruthy();
   });
 
   it("does not ask the visitor to pick a monthly plan when none is on sale", () => {

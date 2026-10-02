@@ -7,6 +7,31 @@ type FaqItem = { id: string; q: string; a: string };
 type FaqLink = { href: string; label: string } | null;
 
 const OPEN_ON_ARRIVAL = ["cancel", "refund"] as const;
+/** With packs only, there is no plan to cancel: refunds and unused credits are the money terms. */
+const OPEN_ON_ARRIVAL_PACKS = ["refund", "unused"] as const;
+
+/**
+ * The money questions as they apply to what is on sale. With no monthly plan
+ * on sale the plan question goes, and the answers that mention plans take
+ * their packs-only wording (t.site.packsOnly) — never a sentence about a plan
+ * that does not exist.
+ */
+export function faqForSale<T extends FaqItem>(
+  items: readonly T[],
+  plansOnSale: boolean,
+  packsOnly: Dictionary["site"]["packsOnly"],
+): T[] {
+  if (plansOnSale) return [...items];
+  return items
+    .filter((item) => item.id !== "cancel")
+    .map((item) =>
+      item.id === "card"
+        ? { ...item, a: packsOnly.card }
+        : item.id === "unused" || item.id === "rollover"
+          ? { ...item, a: packsOnly.unused }
+          : item,
+    );
+}
 
 /** Answers that point somewhere carry the link beneath them. */
 function faqLink(id: string, f: Dictionary["landing"]["faq"]): FaqLink {
@@ -63,13 +88,14 @@ export function FaqList({
  * arrival, so the terms are read before the buy button, not after. Each
  * answer describes what the code does today — no promised timings, no roadmap.
  */
-export function Faq({ t }: { t: Dictionary; hour?: string }) {
+export function Faq({ t, plansOnSale }: { t: Dictionary; plansOnSale: boolean }) {
   const f = t.landing.faq;
+  const items = faqForSale(f.items, plansOnSale, t.site.packsOnly);
   return (
     <section id="faq" aria-labelledby="faq-title" className="st-section">
       <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
         <SectionHead eyebrow={f.eyebrow} title={f.title} id="faq-title" className="lg:sticky lg:top-28 lg:self-start" />
-        <FaqList items={f.items} linkFor={(id) => faqLink(id, f)} openIds={OPEN_ON_ARRIVAL} />
+        <FaqList items={items} linkFor={(id) => faqLink(id, f)} openIds={plansOnSale ? OPEN_ON_ARRIVAL : OPEN_ON_ARRIVAL_PACKS} />
       </div>
     </section>
   );

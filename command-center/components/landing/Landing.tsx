@@ -67,7 +67,7 @@ export function Landing({
       )}
       <SolutionsTeaser t={t} />
       <PricingTeaser t={t} locale={locale} teaser={pricing} anchor={anchor} />
-      <Faq t={t} />
+      <Faq t={t} plansOnSale={pricing.kind === "plans"} />
       <GoogleData t={t} />
       <FinalCta t={t} />
     </div>

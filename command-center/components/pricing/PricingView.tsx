@@ -10,7 +10,7 @@ import { PackCards } from "@/components/pricing/PackCards";
 import { PlanMatrix } from "@/components/pricing/PlanMatrix";
 import { PlanCompare } from "@/components/pricing/PlanCompare";
 import { ErrorState } from "@/components/ReadError";
-import { FaqList } from "@/components/landing/Faq";
+import { FaqList, faqForSale } from "@/components/landing/Faq";
 import { Slug } from "@/components/site/Slug";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { CREDIT_PACKS } from "@/lib/paddle";
@@ -87,7 +87,12 @@ export function PricingView({
   const credits = `/${ALL_CHANNELS_SLUG}/credits`;
   const primary = signedIn ? { href: credits, label: p.ctaSignedIn } : { href: "/signup", label: p.ctaSignedOut };
   // The expiry line is this deployment's own policy, so it sits among the terms.
-  const terms = [...p.terms.slice(0, 3), expiry, ...p.terms.slice(3)];
+  // p.terms opens with the two plan lines (renewal, cancelling); with no plan
+  // on sale they would describe something nobody can buy, so they go.
+  const saleTerms = showPlans ? p.terms : p.terms.slice(2);
+  const expiryAt = showPlans ? 3 : 1;
+  const terms = [...saleTerms.slice(0, expiryAt), expiry, ...saleTerms.slice(expiryAt)];
+  const faq = faqForSale(p.faq, showPlans, t.site.packsOnly);
   const faqLink = (id: string) => (id === "cancel" || id === "refund" ? { href: "/terms#credits", label: p.linkTerms } : null);
 
   const pp = t.site.pricingPage;
@@ -113,7 +118,7 @@ export function PricingView({
               {p.termsTitle}
             </a>
           </div>
-          {!signedIn && <p className="st-small mt-4">{p.ctaNote}</p>}
+          {!signedIn && <p className="st-small mt-4">{showPlans ? p.ctaNote : t.site.packsOnly.ctaNote}</p>}
         </div>
 
         <section aria-labelledby="math-title" className="st-monitor self-start">
@@ -204,7 +209,7 @@ export function PricingView({
             <h2 id="packs-title" className="st-h2">
               {p.packsTitle}
             </h2>
-            <p className="st-lead mt-5">{p.packsLead}</p>
+            <p className="st-lead mt-5">{showPlans ? p.packsLead : t.site.packsOnly.packsLead}</p>
           </div>
           {pricing.source === "none" ? (
             <div className="st-panel self-start">
@@ -353,7 +358,7 @@ export function PricingView({
               {p.faqTitle}
             </h2>
           </div>
-          <FaqList items={p.faq} linkFor={faqLink} />
+          <FaqList items={faq} linkFor={faqLink} />
         </div>
       </section>
 

@@ -156,6 +156,14 @@ export const siteEn = {
     leadNoPlans: "Nightshift runs on credits. You top up with one-time packs, and every run shows its price in credits before it starts.",
     cta: "See full pricing",
   },
+  /** Copy for a site that sells top-up packs only (no monthly plan on sale):
+   *  the plan sentences are swapped for these, never shown about plans that do not exist. */
+  packsOnly: {
+    ctaNote: "Email sign-up, no card. You pay only when you buy a credit pack.",
+    packsLead: "One-time payments that never renew.",
+    card: "No. You create an account with your email and get the welcome credits once. You pay only when you buy a credit pack.",
+    unused: "Top-up credits follow the expiry shown on the Pricing page, and the ones that expire soonest are spent first.",
+  },
   anchor: {
     title: "What it costs",
     packLabel: "Smallest top-up pack",

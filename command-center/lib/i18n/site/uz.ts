@@ -149,6 +149,12 @@ export const siteUz: SiteDictionary = {
     leadNoPlans: "Nightshift kreditlarda ishlaydi. Balans bir martalik paketlar bilan toʻldiriladi, har bir ishga tushirish narxi esa boshlanishdan oldin kreditlarda koʻrinadi.",
     cta: "Barcha narxlar",
   },
+  packsOnly: {
+    ctaNote: "Email orqali roʻyxatdan oʻtish, kartasiz. Faqat kredit paketini sotib olganingizda toʻlaysiz.",
+    packsLead: "Yangilanmaydigan bir martalik toʻlovlar.",
+    card: "Yoʻq. Akkaunt email orqali ochiladi va xush kelibsiz kreditlari bir marta beriladi. Faqat kredit paketini sotib olganingizda toʻlaysiz.",
+    unused: "Toʻldirish kreditlari Narxlar sahifasida koʻrsatilgan muddatda tugaydi, va avval muddati oldinroq tugaydiganlari sarflanadi.",
+  },
   anchor: {
     title: "Narxi qancha",
     packLabel: "Eng kichik toʻldirish paketi",
