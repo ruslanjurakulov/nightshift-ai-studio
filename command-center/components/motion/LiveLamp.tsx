@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { span as MSpan } from "motion/react-m";
-import { useReducedMotionSafe } from "./hooks";
+import { useStill } from "./hooks";
 import { lampStrikeProps } from "@/lib/motion/presets";
 import type { LampTone } from "@/components/ui/StatusLamp";
 
@@ -33,7 +33,7 @@ export function LiveLamp({
   size?: "sm" | "md";
   className?: string;
 }) {
-  const reduced = useReducedMotionSafe();
+  const still = useStill();
   // Counting changes during render (React's "adjust state when a prop
   // changes" pattern) keys the lamp, so each change remounts it and plays the
   // strike from its start — even when a new change interrupts the last one.
@@ -53,7 +53,7 @@ export function LiveLamp({
         data-tone={tone}
         data-live={live ? "true" : undefined}
         data-size={size}
-        {...lampStrikeProps(reduced, strikes > 0)}
+        {...lampStrikeProps(still, strikes > 0)}
       />
       <span className={hideLabel ? "sr-only" : "ns-lamp-label"}>{label}</span>
     </span>

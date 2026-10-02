@@ -1,7 +1,7 @@
 "use client";
 
 import { div as MDiv } from "motion/react-m";
-import { useFreshMount, useReducedMotionSafe } from "./hooks";
+import { useFreshMount, useStill } from "./hooks";
 import { loadingGraceProps } from "@/lib/motion/presets";
 
 /**
@@ -16,10 +16,10 @@ import { loadingGraceProps } from "@/lib/motion/presets";
  * no delay, no fade.
  */
 export function LoadingGrace({ children, className }: { children: React.ReactNode; className?: string }) {
-  const reduced = useReducedMotionSafe();
+  const still = useStill();
   const fresh = useFreshMount();
   return (
-    <MDiv data-ns-motion="" className={className} {...(fresh ? loadingGraceProps(reduced) : {})}>
+    <MDiv data-ns-motion="" className={className} {...(fresh ? loadingGraceProps(still) : {})}>
       {children}
     </MDiv>
   );

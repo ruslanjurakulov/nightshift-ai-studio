@@ -57,6 +57,20 @@ make a reduced-motion reader wait.
   with `!important` under the media query, so even the frame before hydration
   or a stale inline style cannot move. `[data-ns-reveal]` is also shown under
   `@media (scripting: none)`.
+- **No engine means no motion.** The kit animates only when Motion's engine
+  (the feature chunk `MotionProvider` fetches after hydration) is actually
+  there (`components/motion/engine.ts`, `useStill()`):
+  - Outside any `MotionProvider`, every kit element renders at rest.
+  - Something that mounts on the client before the chunk has arrived renders
+    at rest too, instead of waiting at opacity 0.
+  - If the chunk fails to load (one retry, then a 4 s timeout), the kit stops
+    animating for the rest of the page. `<html data-ns-motion-engine="failed">`
+    makes `motion.css` pin every `[data-ns-motion]` element at rest, so a
+    server-rendered start state is shown rather than left invisible.
+
+  A failed engine therefore looks exactly like reduced motion: never a blank
+  page, never an invisible dialog holding focus. The layout chunk (the
+  plate's slide) failing costs only the slide.
 - **Exits never trap focus:** a leaving `PresenceItem` is `inert`, and
   `useOverlay` returns focus to the opener when focus is still inside an
   overlay that is animating out.
@@ -65,7 +79,7 @@ make a reduced-motion reader wait.
 
 | Piece | Use | Reduced motion |
 | :-- | :-- | :-- |
-| `MotionProvider` (`app/(app)/layout.tsx`; a public layout adds its own when a page there animates) | `LazyMotion strict` with the `domAnimation` features fetched after hydration; `MotionConfig reducedMotion="user"`. Kit elements outside any provider render static. | — |
+| `MotionProvider` (`app/(app)/layout.tsx`; a public layout adds its own when a page there animates) | `LazyMotion strict` with the `domAnimation` features fetched after hydration; `MotionConfig reducedMotion="user"`. Kit elements outside any provider, or under one whose engine failed to load, render at rest (no start state, no animation). | — |
 | `Reveal` | One block arriving: `trigger="inView"` (once, 20 % visible) or `"mount"`. | rendered in place |
 | `Stagger` + `StaggerItem index` | A group printing in reading order. | in place |
 | `RevealText` | A heading below the fold, word by word; sr-only full sentence. Never the LCP heading. | plain text |
@@ -74,7 +88,6 @@ make a reduced-motion reader wait.
 | `PageTransition` | For a route `template.tsx`: client navigations rise 8 px and fade in 320 ms. Enter only (the App Router unmounts the old screen first). Children stay Server Components and keep streaming. | nothing |
 | `LoadingGrace` | Holds a skeleton back 150 ms after a click so fast routes never flash it. Opacity only, space reserved. | no delay |
 | `LiveLamp` | `StatusLamp` for a state that changes while watched: strikes once on change. Identical markup at rest. | instant |
-| `ScrollScene` | Public marketing pages only: GSAP pinned/scrubbed scene, dynamically imported (§6). | never loads GSAP |
 | `pressProps`, `.ns-press` | A key that gives 3 % when pressed. | no movement |
 
 ## 4. Where it runs now
@@ -97,7 +110,9 @@ design-adopt-c Studio workspaces, model-discovery):
   `<Presence mode="popLayout">` around the list and `PresenceItem as="li"
   kind="toast"` per toast.
 - **Route loading** (`PageSkeleton`): `LoadingGrace`.
-- **Job list lamps** (`JobStatusLamp`): `LiveLamp`.
+- `LiveLamp` is built and tested but not applied. The jobs list has no live
+  source (it is a server page with no refresh), so a lamp there never changes
+  while watched. Apply it with the Studio feed's live status (§5.2).
 
 Measured in Chromium (tools/visual-qa probes): a sidebar click mounts one
 template wrapper that rises and fades in ~330 ms while the plate travels on
@@ -167,41 +182,39 @@ while the night's clock scrubs from 22:00 to 07:00 and each stage's row
 prints and its lamp lights. Desktop only (≥ 768 px), below the first
 viewport, static and complete without it.
 
-```tsx
-"use client";
-import { ScrollScene } from "@/components/motion/ScrollScene";
+GSAP is not a dependency today (§6). When a scene like this is approved:
 
-export function HowScene({ children }: { children: React.ReactNode }) {
-  return (
-    <ScrollScene
-      aria-labelledby="how-title"
-      className="st-section"
-      length={1.5}
-      build={(tl, q) => {
-        q("[data-step]").forEach((step, i) => {
-          tl.from(step, { opacity: 0, y: 16, duration: 1 }, i * 0.8);
-        });
-        tl.from(q("[data-clock-hand]"), { rotation: -120, transformOrigin: "50% 100%", duration: q("[data-step]").length * 0.8 }, 0);
-      }}
-    >
-      {children}
-    </ScrollScene>
-  );
-}
-```
+- Add `gsap` at an exact version.
+- Build a small `ScrollScene` client component that `import()`s `gsap` and
+  `gsap/ScrollTrigger` inside an effect, and only when all of these hold:
+  - not reduced motion;
+  - `matchMedia("(min-width: 768px)")` matches;
+  - the engine has not failed.
+
+  React to that media query changing, too.
+- Run the timeline in a `gsap.context()` scoped to the scene root, with
+  `ctx.revert()` on unmount.
+- Make the timeline: `scrollTrigger: { trigger, start: "top top", end:
+  "+=150%", pin: true, scrub: 0.4 }`, transforms and opacity only.
+- Render the static, complete scene as the children.
+- Pin a test that GSAP is reached only through that dynamic import.
 
 Do not use two libraries for one interaction: a reveal, a stagger or a
 hover is Motion or CSS; GSAP only for the pinned, scrubbed sequence.
 
 ## 6. GSAP — evaluation and owner note
 
-**Verdict:** not needed for the product. Motion covers every UI need
-(presence, layout, gestures, in-view, scroll-linked values via `useScroll`).
-GSAP + ScrollTrigger is justified only for a pinned, scrubbed multi-step
-marketing scene; `ScrollScene` is ready for that and nothing renders one
-today, so no route ships GSAP. When a page does, GSAP is a separate chunk
-(**~44 kB gz** for `gsap` + `ScrollTrigger`, measured with esbuild) fetched
-only on that route, only on screens ≥ 768 px, and never for reduced motion.
+**Verdict:** not needed for the product, and **not installed**. Motion covers
+every UI need: presence, layout, gestures, in-view, and scroll-linked values
+via `useScroll`. GSAP + ScrollTrigger is justified only for a pinned,
+scrubbed, multi-step marketing scene. No page has one, so there is no `gsap`
+dependency and no `ScrollScene`; §5.3 says how to add both when a scene is
+approved.
+
+What it would cost: **~44 kB gz** for `gsap` + `ScrollTrigger` (measured with
+esbuild), as a separate chunk fetched only by that route and only on screens
+≥ 768 px, never under reduced motion. A test fails if anything imports
+`gsap`.
 
 **Licence (read 2026-10-02 at gsap.com/standard-license; npm `gsap@3.15.0`
 declares "Standard 'no charge' license").** GSAP is owned by Webflow and is
@@ -227,10 +240,10 @@ get written confirmation from Webflow first.
 `gsap-scrolltrigger`, `gsap-performance`, `gsap-frameworks`. Followed: client
 only, `gsap.context()` scoped to the scene root and `ctx.revert()` on unmount
 (no `@gsap/react` dependency needed), transforms/opacity only, `pinSpacing`
-left on, `scrub` small. Not followed: their default to "recommend GSAP for
+left on, `scrub` small (to be applied when a scene is built). Not followed: their default to "recommend GSAP for
 React animation" and for parallax (Motion is our default; parallax is banned
-by default). They say nothing about `prefers-reduced-motion`; `ScrollScene`
-handles it by never loading GSAP. One example in `gsap-scrolltrigger` has a
+by default). They say nothing about `prefers-reduced-motion`; the §5.3 pattern handles
+it by never loading GSAP. One example in `gsap-scrolltrigger` has a
 typo (`Max.max`), so do not paste from it blindly.
 
 ## 7. Bundle cost (next build, gzip -9, measured against origin/main)
@@ -249,7 +262,7 @@ First-load JavaScript per route, every chunk the route's entries list
 | `AnimatePresence`, `LayoutGroup`, kit components | first load, signed-in routes | ~7 kB |
 | `domAnimation` features | after hydration, async | 15.7 kB |
 | `domMax` layout features (the plate) | after hydration, async, customer shell | 13.8 kB |
-| GSAP + ScrollTrigger | only a route that renders `ScrollScene` (none now) | ~44 kB |
+| GSAP + ScrollTrigger | not installed (§6); would be a per-route async chunk | ~44 kB |
 
 Two findings worth knowing before adding Motion anywhere else:
 

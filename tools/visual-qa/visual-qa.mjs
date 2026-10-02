@@ -39,7 +39,7 @@
  */
 import { createRequire } from "node:module";
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -89,7 +89,16 @@ function loadPlaywright() {
 
 function chromiumPath() {
   for (const p of [process.env.VISUAL_QA_CHROMIUM, "/opt/pw-browsers/chromium"]) {
-    if (p && existsSync(p)) return p;
+    // Only an executable file: on some machines that path is a browsers
+    // directory, which Playwright finds by itself via PLAYWRIGHT_BROWSERS_PATH.
+    try {
+      if (p && statSync(p).isFile()) {
+        accessSync(p, constants.X_OK);
+        return p;
+      }
+    } catch {
+      // not usable: try the next one
+    }
   }
   return undefined; // Playwright's own download
 }

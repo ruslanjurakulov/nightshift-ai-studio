@@ -2,7 +2,7 @@
 
 import { span as MSpan } from "motion/react-m";
 import type { HTMLMotionProps } from "motion/react";
-import { useFreshMount, useReducedMotionSafe } from "./hooks";
+import { useFreshMount, useStill } from "./hooks";
 import { revealProps, staggerGroupProps, staggerItemProps, type RevealTrigger } from "@/lib/motion/presets";
 import { DISTANCE } from "@/lib/motion/tokens";
 
@@ -42,7 +42,7 @@ export function Reveal({
   delay?: number;
   distance?: number;
 }) {
-  const reduced = useReducedMotionSafe();
+  const still = useStill();
   const fresh = useFreshMount();
   const Tag = tag(as);
   return (
@@ -50,7 +50,7 @@ export function Reveal({
       data-ns-motion=""
       data-ns-reveal={trigger === "inView" || firstPaint ? "" : undefined}
       {...rest}
-      {...revealProps(reduced, { trigger, delay, distance, enter: fresh || firstPaint })}
+      {...revealProps(still, { trigger, delay, distance, enter: fresh || firstPaint })}
     >
       {children}
     </Tag>
@@ -65,11 +65,11 @@ export function Stagger({
   children,
   ...rest
 }: Base & { as?: RevealTag; trigger?: RevealTrigger; firstPaint?: boolean }) {
-  const reduced = useReducedMotionSafe();
+  const still = useStill();
   const fresh = useFreshMount();
   const Tag = tag(as);
   return (
-    <Tag data-ns-motion="" {...rest} {...staggerGroupProps(reduced, { trigger, enter: fresh || firstPaint })}>
+    <Tag data-ns-motion="" {...rest} {...staggerGroupProps(still, { trigger, enter: fresh || firstPaint })}>
       {children}
     </Tag>
   );
@@ -82,10 +82,10 @@ export function StaggerItem({
   children,
   ...rest
 }: Base & { as?: RevealTag; index: number; distance?: number }) {
-  const reduced = useReducedMotionSafe();
+  const still = useStill();
   const Tag = tag(as);
   return (
-    <Tag data-ns-motion="" data-ns-reveal="" {...rest} {...staggerItemProps(reduced, index, { distance })}>
+    <Tag data-ns-motion="" data-ns-reveal="" {...rest} {...staggerItemProps(still, index, { distance })}>
       {children}
     </Tag>
   );
@@ -111,11 +111,11 @@ export function RevealText({
   trigger?: RevealTrigger;
   className?: string;
 }) {
-  const reduced = useReducedMotionSafe();
+  const still = useStill();
   const fresh = useFreshMount();
   const words = text.split(/\s+/).filter(Boolean);
   const Tag = tag(as);
-  if (reduced) {
+  if (still) {
     return (
       <Tag data-ns-motion="" className={className}>
         {text}

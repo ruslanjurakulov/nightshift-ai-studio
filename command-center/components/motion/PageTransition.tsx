@@ -1,7 +1,7 @@
 "use client";
 
 import { div as MDiv } from "motion/react-m";
-import { useFreshMount, useReducedMotionSafe } from "./hooks";
+import { useFreshMount, useStill } from "./hooks";
 import { pageEnterProps } from "@/lib/motion/presets";
 
 /**
@@ -16,13 +16,14 @@ import { pageEnterProps } from "@/lib/motion/presets";
  *   so nothing around it shifts (no CLS).
  * - Children stay Server Components and keep streaming: this is a client
  *   boundary that only wraps what it is handed.
- * - Reduced motion: no props at all; the screen is simply there.
+ * - Reduced motion, no engine (yet) or a failed one: no props at all; the
+ *   screen is simply there.
  */
 export function PageTransition({ children, className }: { children: React.ReactNode; className?: string }) {
-  const reduced = useReducedMotionSafe();
+  const still = useStill();
   const fresh = useFreshMount();
   return (
-    <MDiv data-ns-motion="" className={className} {...pageEnterProps(reduced, fresh)}>
+    <MDiv data-ns-motion="" className={className} {...pageEnterProps(still, fresh)}>
       {children}
     </MDiv>
   );

@@ -14,6 +14,14 @@
   }
 }
 
+/* The animation engine failed to load (components/motion/engine.ts): the same
+   still screen as reduced motion, so nothing drawn at its start state is left
+   invisible. */
+html[data-ns-motion-engine="failed"] [data-ns-motion] {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
 /* No scripting (a crawler, a blocked bundle): in-view reveals start hidden in
    the HTML, so show them; nothing would ever reveal them. */
 @media (scripting: none) {

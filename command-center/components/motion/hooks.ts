@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
+import { useMotionEngine } from "./engine";
 
 const QUERY = "(prefers-reduced-motion: reduce)";
 
@@ -46,4 +47,19 @@ export function useFreshMount(): boolean {
   const client = useSyncExternalStore(noopSubscribe, () => true, () => false);
   const [fresh] = useState(client);
   return fresh;
+}
+
+/**
+ * Should this kit element be drawn at rest, with no animation at all? Yes when
+ * the reader asked for less motion, when there is no <MotionProvider> above
+ * it, when the engine failed to load, and when the element mounts on the
+ * client before the engine has arrived (it would otherwise sit at its start
+ * state, invisible, until the bundle lands). Server-rendered start states may
+ * wait for a pending engine: if it then fails, motion.css shows them.
+ */
+export function useStill(): boolean {
+  const reduced = useReducedMotionSafe();
+  const engine = useMotionEngine();
+  const fresh = useFreshMount();
+  return reduced || engine === "absent" || engine === "failed" || (engine === "pending" && fresh);
 }

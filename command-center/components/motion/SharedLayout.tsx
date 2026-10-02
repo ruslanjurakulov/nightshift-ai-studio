@@ -2,12 +2,16 @@
 
 import { span as MSpan } from "motion/react-m";
 import { LayoutGroup, LazyMotion } from "motion/react";
-import { useReducedMotionSafe } from "./hooks";
+import { useStill } from "./hooks";
+import { loadMotionFeatures } from "./engine";
 import { plateProps } from "@/lib/motion/presets";
 
 // Layout projection (shared `layoutId`) is the heavier feature set; it is
 // fetched only when a <SharedLayout> mounts, never in the first-load bundle.
-const loadLayout = () => import("@/lib/motion/features-max").then((mod) => mod.default);
+// Its failure only costs the plate's slide (the plate is still drawn), so it
+// does not mark the whole engine failed.
+const loadLayout = () =>
+  loadMotionFeatures(() => import("@/lib/motion/features-max").then((mod) => mod.default), { tracked: false });
 
 /**
  * A scope for shared-layout transitions: one selection plate that travels
@@ -34,6 +38,6 @@ export function SharedLayout({ id, children }: { id: string; children: React.Rea
  * plate to measure where it is.
  */
 export function Plate({ id, className = "" }: { id: string; className?: string }) {
-  const reduced = useReducedMotionSafe();
-  return <MSpan aria-hidden data-ns-motion="" className={`ns-plate ${className}`} {...plateProps(reduced, id)} />;
+  const still = useStill();
+  return <MSpan aria-hidden data-ns-motion="" className={`ns-plate ${className}`} {...plateProps(still, id)} />;
 }

@@ -5,7 +5,7 @@ import { act, useRef, useState } from "react";
 import { renderToString } from "react-dom/server";
 import { hydrateRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { DISTANCE, DURATION, EASE, PRESS_SCALE, SPRING, STAGGER, staggerDelay } from "../lib/motion/tokens";
 import {
   hasMotion,
@@ -29,6 +29,8 @@ import { Plate } from "../components/motion/SharedLayout";
 import { LoadingGrace } from "../components/motion/LoadingGrace";
 import { StatusLamp } from "../components/ui/StatusLamp";
 import { useOverlay } from "../components/a11y/useOverlay";
+import { MotionEngineContext, loadMotionFeatures, resetMotionEngineForTests, useMotionEngine } from "../components/motion/engine";
+import { MotionProvider } from "../components/motion/MotionProvider";
 
 /**
  * The motion kit's contract (docs/design/MOTION.md). What would break without
@@ -44,6 +46,7 @@ const ROOT = process.cwd();
 let reduce = false;
 beforeEach(() => {
   reduce = false;
+  resetMotionEngineForTests("pending");
   window.matchMedia = ((q: string) => ({
     matches: q.includes("prefers-reduced-motion: reduce") ? reduce : false,
     media: q,
@@ -52,6 +55,15 @@ beforeEach(() => {
   })) as never;
 });
 afterEach(cleanup);
+
+/** The kit as it runs in the app: under a provider whose engine has loaded. */
+function Engine({ children }: { children: React.ReactNode }) {
+  return <MotionEngineContext.Provider value={true}>{children}</MotionEngineContext.Provider>;
+}
+function renderReady(ui: React.ReactElement) {
+  resetMotionEngineForTests("ready");
+  return render(<Engine>{ui}</Engine>);
+}
 
 /** Every key any preset animates, through variants and keyframes. */
 function animatedKeys(bits: MotionBits): Set<string> {
@@ -242,14 +254,14 @@ describe("components under reduced motion", () => {
 
 describe("components with motion", () => {
   it("an in-view reveal starts hidden in the markup and is marked for the no-script rule", () => {
-    render(<Reveal data-testid="r">x</Reveal>);
+    renderReady(<Reveal data-testid="r">x</Reveal>);
     const el = screen.getByTestId("r");
     expect(el.getAttribute("style")).toMatch(/opacity:\s*0/);
     expect(el.hasAttribute("data-ns-reveal")).toBe(true);
   });
 
   it("RevealText keeps one readable sentence for assistive technology", () => {
-    render(<RevealText as="h2" text="Proofs print in order" />);
+    renderReady(<RevealText as="h2" text="Proofs print in order" />);
     const h = screen.getByRole("heading", { level: 2 });
     expect(h.querySelector(".sr-only")?.textContent).toBe("Proofs print in order");
     expect(h.querySelector('[aria-hidden="true"]')?.querySelectorAll("span").length).toBe(4);
@@ -269,16 +281,18 @@ describe("components with motion", () => {
     const plain = renderToString(<Reveal trigger="mount">a</Reveal>);
     expect(plain).not.toMatch(/opacity:\s*0/);
     const hero = renderToString(
-      <Reveal trigger="mount" firstPaint>
-        a
-      </Reveal>,
+      <Engine>
+        <Reveal trigger="mount" firstPaint>
+          a
+        </Reveal>
+      </Engine>,
     );
     expect(hero).toMatch(/opacity:\s*0/);
     expect(hero).toContain("data-ns-reveal"); // shown anyway without script
   });
 
   it("a PageTransition mounted by a client navigation starts from its rise", () => {
-    render(
+    renderReady(
       <PageTransition>
         <h1>Title</h1>
       </PageTransition>,
@@ -298,7 +312,8 @@ describe("LiveLamp", () => {
   });
 
   it("strikes (remounts the lamp) when the state changes, not on first render", () => {
-    const { rerender, container } = render(<LiveLamp tone="run" label="Running" live />);
+    resetMotionEngineForTests("ready");
+    const { rerender, container } = render(<LiveLamp tone="run" label="Running" live />, { wrapper: Engine });
     const first = container.querySelector(".ns-lamp")!;
     expect(first.getAttribute("style") ?? "").not.toMatch(/scale|opacity/);
     rerender(<LiveLamp tone="ok" label="Done" />);
@@ -336,6 +351,11 @@ describe("motion.css", () => {
       /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\[data-ns-motion\]\s*\{\s*opacity:\s*1 !important;\s*transform:\s*none !important;/,
     );
   });
+  it("holds every kit element at rest when the engine failed to load", () => {
+    expect(css).toMatch(
+      /html\[data-ns-motion-engine="failed"\] \[data-ns-motion\]\s*\{\s*opacity:\s*1 !important;\s*transform:\s*none !important;/,
+    );
+  });
   it("shows in-view reveals when there is no script", () => {
     expect(css).toMatch(/@media \(scripting: none\)\s*\{\s*\[data-ns-reveal\]\s*\{\s*opacity:\s*1 !important;/);
   });
@@ -369,59 +389,142 @@ describe("bundle discipline", () => {
     }
   });
 
-  it("keeps GSAP behind a dynamic import, in ScrollScene only", () => {
+  it("ships no GSAP: nothing imports it and it is not a dependency (MOTION.md §6)", () => {
     for (const f of SOURCES) {
       const src = readFileSync(f, "utf8");
       const rel = path.relative(ROOT, f);
-      const valueImport = /^import\s+(?!type\b)[^;]*from\s*["']gsap/m.test(src);
-      expect({ rel, valueImport }).toEqual({ rel, valueImport: false });
-      if (/import\(["']gsap/.test(src)) expect(rel).toBe(path.join("components", "motion", "ScrollScene.tsx"));
+      expect({ rel, gsap: /from\s*["']gsap|import\(["']gsap/.test(src) }).toEqual({ rel, gsap: false });
     }
+    const pkg = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
+    expect(pkg.dependencies.gsap).toBeUndefined();
+  });
+
+  it("pins Motion to an exact version", () => {
+    const pkg = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
+    expect(pkg.dependencies.motion).toMatch(/^\d+\.\d+\.\d+$/);
   });
 });
 
-describe("ScrollScene", () => {
-  it("never downloads GSAP under reduced motion or on a narrow screen, and builds once otherwise", async () => {
-    const registerPlugin = vi.fn();
-    const revert = vi.fn();
-    const timeline = vi.fn(() => ({}));
-    vi.doMock("gsap", () => ({
-      gsap: { registerPlugin, timeline, context: (fn: () => void) => (fn(), { revert }), utils: { selector: () => () => [] } },
-    }));
-    vi.doMock("gsap/ScrollTrigger", () => ({ ScrollTrigger: {} }));
-    const { ScrollScene } = await import("../components/motion/ScrollScene");
-    const build = vi.fn();
+describe("no engine, or a failed one, is the same as reduced motion", () => {
+  function State() {
+    return <span data-testid="engine">{useMotionEngine()}</span>;
+  }
 
-    reduce = true;
-    Object.defineProperty(window, "innerWidth", { value: 1440, configurable: true });
-    const a = render(<ScrollScene build={build}>static scene</ScrollScene>);
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 20));
-    });
-    expect(registerPlugin).not.toHaveBeenCalled();
-    a.unmount();
+  it("outside any <MotionProvider> the kit renders at rest (never stuck at opacity 0)", () => {
+    render(
+      <>
+        <Reveal data-testid="in-view">a</Reveal>
+        <Reveal trigger="mount" data-testid="mount">
+          b
+        </Reveal>
+        <PageTransition>
+          <p data-testid="page">c</p>
+        </PageTransition>
+        <Presence>
+          <PresenceItem kind="popover" data-testid="pop">
+            d
+          </PresenceItem>
+        </Presence>
+        <State />
+      </>,
+    );
+    expect(screen.getByTestId("engine").textContent).toBe("absent");
+    for (const el of [screen.getByTestId("in-view"), screen.getByTestId("mount"), screen.getByTestId("page").parentElement!, screen.getByTestId("pop")]) {
+      expect(el.getAttribute("style") ?? "").not.toMatch(/opacity|transform/);
+    }
+  });
 
-    reduce = false;
-    Object.defineProperty(window, "innerWidth", { value: 390, configurable: true });
-    const b = render(<ScrollScene build={build}>static scene</ScrollScene>);
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 20));
-    });
-    expect(registerPlugin).not.toHaveBeenCalled();
-    b.unmount();
+  it("a client mount while the engine is still loading is drawn at rest", () => {
+    render(
+      <PageTransition>
+        <p data-testid="page">c</p>
+      </PageTransition>,
+      { wrapper: Engine },
+    );
+    expect(screen.getByTestId("page").parentElement!.getAttribute("style") ?? "").not.toMatch(/opacity/);
+  });
 
-    Object.defineProperty(window, "innerWidth", { value: 1440, configurable: true });
-    const c = render(<ScrollScene build={build}>static scene</ScrollScene>);
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 20));
+  it("a failed import is retried once, then the kit stops animating and the page is told", async () => {
+    const importer = vi.fn(() => Promise.reject(new Error("ChunkLoadError")));
+    const features = await loadMotionFeatures(importer);
+    expect(features).toEqual({});
+    expect(importer).toHaveBeenCalledTimes(2);
+    expect(document.documentElement.getAttribute("data-ns-motion-engine")).toBe("failed");
+    render(<State />, { wrapper: Engine });
+    expect(screen.getByTestId("engine").textContent).toBe("failed");
+  });
+
+  it("an import that hangs counts as failed after the timeout, and a late arrival does not revive it", async () => {
+    let resolve: (v: object) => void = () => {};
+    const features = loadMotionFeatures(() => new Promise<object>((r) => (resolve = r)), { timeoutMs: 20 });
+    expect(await features).toEqual({});
+    resolve({ late: true });
+    await new Promise((r) => setTimeout(r, 5));
+    // A provider mounted later (another layout) loading fine must not revive
+    // animation on a page whose elements are already pinned at rest.
+    expect(await loadMotionFeatures(() => Promise.resolve({ ok: true }))).toEqual({ ok: true });
+    render(<State />, { wrapper: Engine });
+    expect(screen.getByTestId("engine").textContent).toBe("failed");
+  });
+
+  it("an optional bundle (the plate's layout features) failing does not stop the rest", async () => {
+    await loadMotionFeatures(() => Promise.reject(new Error("x")), { tracked: false });
+    render(<State />, { wrapper: Engine });
+    expect(screen.getByTestId("engine").textContent).toBe("pending");
+    expect(document.documentElement.hasAttribute("data-ns-motion-engine")).toBe(false);
+  });
+
+  it("with the real provider and a feature chunk that cannot load, navigation and dialogs render visible", async () => {
+    vi.resetModules();
+    vi.doMock("../lib/motion/features", () => {
+      throw new Error("ChunkLoadError: Loading chunk 3366 failed");
     });
-    expect(registerPlugin).toHaveBeenCalledTimes(1);
-    expect(build).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("static scene")).toBeTruthy();
-    c.unmount();
-    expect(revert).toHaveBeenCalledTimes(1);
-    vi.doUnmock("gsap");
-    vi.doUnmock("gsap/ScrollTrigger");
+    const engine = await import("../components/motion/engine");
+    engine.resetMotionEngineForTests("pending");
+    const { MotionProvider: Provider } = await import("../components/motion/MotionProvider");
+    const { PageTransition: Page } = await import("../components/motion/PageTransition");
+    const { Presence: Pres, PresenceItem: Item } = await import("../components/motion/Presence");
+    function Shell({ open }: { open: boolean }) {
+      return (
+        <Provider>
+          <Page>
+            <p data-testid="page">content</p>
+          </Page>
+          <Pres>{open && <Item kind="popover" role="dialog" aria-label="Credits" data-testid="dialog">menu</Item>}</Pres>
+        </Provider>
+      );
+    }
+    const { rerender } = render(<Shell open={false} />);
+    await waitFor(() => expect(document.documentElement.getAttribute("data-ns-motion-engine")).toBe("failed"));
+    rerender(<Shell open />);
+    const dialog = screen.getByTestId("dialog");
+    expect(dialog.getAttribute("style") ?? "").not.toMatch(/opacity|transform/);
+    expect(screen.getByTestId("page").parentElement!.getAttribute("style") ?? "").not.toMatch(/opacity|transform/);
+    vi.doUnmock("../lib/motion/features");
+    vi.resetModules();
+  });
+});
+
+describe("a leaving PresenceItem", () => {
+  it("is inert from the first frame of its exit until it is gone", async () => {
+    function Harness({ open }: { open: boolean }) {
+      return (
+        <MotionProvider>
+          <Presence>{open && <PresenceItem kind="popover" data-testid="panel">menu</PresenceItem>}</Presence>
+        </MotionProvider>
+      );
+    }
+    const { rerender } = render(<Harness open={false} />);
+    // Wait for the real engine (domAnimation) to load in this environment.
+    await waitFor(() => {
+      rerender(<Harness open />);
+      expect(screen.getByTestId("panel").getAttribute("style") ?? "").toMatch(/opacity/);
+    });
+    expect(screen.getByTestId("panel").hasAttribute("inert")).toBe(false);
+    rerender(<Harness open={false} />);
+    const leaving = screen.getByTestId("panel");
+    expect(leaving.hasAttribute("inert")).toBe(true);
+    await waitFor(() => expect(screen.queryByTestId("panel")).toBeNull(), { timeout: 3000 });
   });
 });
 

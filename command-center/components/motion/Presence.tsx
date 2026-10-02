@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, useIsPresent, type HTMLMotionProps } from "motion/react";
-import { useReducedMotionSafe } from "./hooks";
+import { useStill } from "./hooks";
 import { presenceProps, type PresenceKind } from "@/lib/motion/presets";
 import { mTag } from "./tags";
 
@@ -32,7 +32,7 @@ type ItemTag = "div" | "li" | "section" | "aside";
  * or toast comes up from its edge, `fade` only fades. While it leaves it is
  * `inert`: no clicks, no focus, out of the accessibility tree, so a closing
  * dialog never holds focus or catches a click meant for what is under it.
- * Reduced motion: it appears and disappears at once.
+ * Reduced motion, or no engine: it appears and disappears at once.
  */
 export function PresenceItem({
   kind = "fade",
@@ -43,11 +43,11 @@ export function PresenceItem({
   kind?: PresenceKind;
   as?: ItemTag;
 }) {
-  const reduced = useReducedMotionSafe();
+  const still = useStill();
   const present = useIsPresent();
   const Tag = mTag(as);
   return (
-    <Tag data-ns-motion="" inert={!present || undefined} {...rest} {...presenceProps(reduced, kind)}>
+    <Tag data-ns-motion="" inert={!present || undefined} {...rest} {...presenceProps(still, kind)}>
       {children}
     </Tag>
   );
