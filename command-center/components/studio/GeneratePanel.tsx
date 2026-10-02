@@ -835,6 +835,10 @@ export function GeneratePanel({
                     </Link>
                   </span>
                 )}
+                {/* The built-in library: opening it changes nothing here, adding a style is a click there. */}
+                <Link href={path("/styles")} className="tap-link self-start text-[12px] text-[var(--color-primary)] underline">
+                  {t.gen.styleBrowse}
+                </Link>
               </>
             )}
           </div>

@@ -403,3 +403,8 @@ sec_storyboard_0057.extend(TABLES, FUNCTIONS)
 import sec_storyboard_0058  # noqa: E402
 
 sec_storyboard_0058.extend(TABLES, FUNCTIONS)
+
+# Migration 0065 (the Style Library's add function): tests/security/sec_style_0065.py
+import sec_style_0065  # noqa: E402
+
+sec_style_0065.extend(TABLES, FUNCTIONS)
