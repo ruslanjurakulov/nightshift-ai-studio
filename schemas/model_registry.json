@@ -27,6 +27,11 @@
         "3:4"
       ],
       "resolutions": [],
+      "qualities": [
+        "low",
+        "medium",
+        "high"
+      ],
       "durations_s": [],
       "audio_out": false,
       "async": false,
@@ -42,6 +47,14 @@
         "source_url": null,
         "as_of": null,
         "confirmed": false,
+        "variants": {
+          "by": "quality",
+          "prices": {
+            "low": null,
+            "medium": null,
+            "high": null
+          }
+        },
         "note": "billed per token ($30 per 1M image output tokens per a search extract; another extract said $15); no per-image figure"
       },
       "credit_unit": "model_openai_gpt_image_2_image",
@@ -59,7 +72,8 @@
       "probe": {
         "capability": "t2i",
         "prompt": "a red apple on a white table",
-        "aspect_ratio": "1:1"
+        "aspect_ratio": "1:1",
+        "quality": "low"
       }
     },
     {
@@ -86,6 +100,11 @@
         "3:4"
       ],
       "resolutions": [],
+      "qualities": [
+        "low",
+        "medium",
+        "high"
+      ],
       "durations_s": [],
       "audio_out": false,
       "async": false,
@@ -101,6 +120,14 @@
         "source_url": null,
         "as_of": null,
         "confirmed": false,
+        "variants": {
+          "by": "quality",
+          "prices": {
+            "low": null,
+            "medium": null,
+            "high": null
+          }
+        },
         "note": "billed per token ($30 per 1M image output tokens, search extract); no per-image figure"
       },
       "credit_unit": "model_openai_gpt_image_2_5_flare_image",
@@ -118,7 +145,8 @@
       "probe": {
         "capability": "t2i",
         "prompt": "a red apple on a white table",
-        "aspect_ratio": "1:1"
+        "aspect_ratio": "1:1",
+        "quality": "low"
       }
     },
     {
@@ -145,6 +173,11 @@
         "3:4"
       ],
       "resolutions": [],
+      "qualities": [
+        "low",
+        "medium",
+        "high"
+      ],
       "durations_s": [],
       "audio_out": false,
       "async": false,
@@ -160,6 +193,14 @@
         "source_url": null,
         "as_of": null,
         "confirmed": false,
+        "variants": {
+          "by": "quality",
+          "prices": {
+            "low": null,
+            "medium": null,
+            "high": null
+          }
+        },
         "note": "billed per token ($30 per 1M image output tokens, search extract); no per-image figure"
       },
       "credit_unit": "model_openai_gpt_image_2_5_sunburst_image",
@@ -177,7 +218,8 @@
       "probe": {
         "capability": "t2i",
         "prompt": "a red apple on a white table",
-        "aspect_ratio": "1:1"
+        "aspect_ratio": "1:1",
+        "quality": "low"
       }
     },
     {
@@ -1202,7 +1244,7 @@
         10
       ],
       "end_frame": true,
-      "audio_out": false,
+      "audio_out": true,
       "async": true,
       "api_documented": {
         "url": "https://kling.ai/document-api/apiReference/model/textToVideo",
@@ -1213,10 +1255,18 @@
       },
       "pricing": {
         "unit": "second",
-        "provider_usd_per_unit": null,
-        "source_url": null,
-        "as_of": null,
-        "confirmed": false
+        "provider_usd_per_unit": 0.084,
+        "source_url": "https://kling.ai/dev/pricing",
+        "as_of": "2026-10-01",
+        "confirmed": false,
+        "variants": {
+          "by": "audio",
+          "prices": {
+            "silent": 0.084,
+            "audio": 0.126
+          }
+        },
+        "note": "720p (std mode): no audio $0.084/s, with audio $0.126/s; read 2026-10-01. The adapter sends sound on/off."
       },
       "credit_unit": "model_kling_v3_second",
       "entitlement": "models_video:ultra",
@@ -1686,6 +1736,7 @@
         "720p",
         "1080p"
       ],
+      "default_resolution": "720p",
       "durations_s": [
         5,
         10
@@ -1701,10 +1752,22 @@
       },
       "pricing": {
         "unit": "second",
-        "provider_usd_per_unit": null,
-        "source_url": null,
-        "as_of": null,
-        "confirmed": false
+        "provider_usd_per_unit": 0.026,
+        "source_url": "https://docs.byteplus.com/en/docs/ModelArk/2168087",
+        "as_of": "2026-10-01",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution_audio",
+          "prices": {
+            "480p_silent": null,
+            "480p_audio": null,
+            "720p_silent": 0.026,
+            "720p_audio": 0.052,
+            "1080p_silent": null,
+            "1080p_audio": 0.116
+          }
+        },
+        "note": "BytePlus list read 2026-10-01: 720p with audio $0.26 per 5 s, silent $0.026/s, 1080p with audio $0.116/s. null = no price read, so not sold."
       },
       "credit_unit": "model_seedance_1_5_pro_second",
       "entitlement": "models_video:premium",
@@ -1756,6 +1819,7 @@
         "720p",
         "1080p"
       ],
+      "default_resolution": "720p",
       "durations_s": [
         5,
         10
@@ -1771,10 +1835,18 @@
       },
       "pricing": {
         "unit": "second",
-        "provider_usd_per_unit": null,
-        "source_url": null,
-        "as_of": null,
-        "confirmed": false
+        "provider_usd_per_unit": 0.1,
+        "source_url": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        "as_of": "2026-10-01",
+        "confirmed": false,
+        "variants": {
+          "by": "resolution",
+          "prices": {
+            "720p": 0.1,
+            "1080p": 0.15
+          }
+        },
+        "note": "Alibaba international list read 2026-10-01: 720P $0.10/s, 1080P $0.15/s."
       },
       "credit_unit": "model_wan_2_7_second",
       "entitlement": "models_video:premium",

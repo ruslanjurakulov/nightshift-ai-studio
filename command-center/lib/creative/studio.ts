@@ -12,10 +12,15 @@ import {
   type CreativeError,
   DESCRIBE_LANGUAGES,
   type DescribeLanguage,
+  DEFAULT_IMAGE_QUALITY,
+  AUDIO_CAPABILITIES,
   DUB_LANGUAGES,
   type DubLanguage,
+  IMAGE_QUALITIES,
+  type ImageQuality,
   MEDIA_SOURCE_CAPABILITIES,
   PARAM_KEYS,
+  QUALITY_CAPABILITIES,
   SOURCE_CAPABILITIES,
   STYLE_CAPABILITIES,
   UPSCALE_FACTORS,
@@ -23,6 +28,7 @@ import {
   type UpscaleTarget,
   VIDEO_SOURCE_CAPABILITIES,
   VOICE_ID_RE,
+  isImageQuality,
   isUuid,
 } from "@/lib/creative/operations";
 import { VOICES } from "@/lib/ttsModels";
@@ -115,6 +121,45 @@ export function isVoiceId(v: unknown): v is string {
   return typeof v === "string" && VOICE_ID_RE.test(v);
 }
 
+export { IMAGE_QUALITIES, type ImageQuality, isImageQuality };
+
+/** 0060: the picture tools that are sold by quality tier (when the model lists tiers). */
+export function takesQuality(c: string): boolean {
+  return (QUALITY_CAPABILITIES as readonly string[]).includes(c);
+}
+
+/**
+ * The tier a model is asked for: the one picked if this model sells it, else
+ * medium (the tier the database prices and the worker sends when none is
+ * named), else the model's first. null = the model has no tiers, so none is
+ * sent (the database refuses a tier a model does not list).
+ */
+export function effectiveQuality(
+  model: Pick<StudioModel, "qualities"> | null | undefined,
+  picked: ImageQuality | null | undefined,
+): ImageQuality | null {
+  const offered = model?.qualities ?? [];
+  if (offered.length === 0) return null;
+  if (picked && offered.includes(picked)) return picked;
+  return offered.includes(DEFAULT_IMAGE_QUALITY) ? DEFAULT_IMAGE_QUALITY : offered[0];
+}
+
+/** 0070: the video tools whose clip may be made with or without a soundtrack (when the model prices it apart). */
+export function takesSound(c: string): boolean {
+  return (AUDIO_CAPABILITIES as readonly string[]).includes(c);
+}
+
+/**
+ * The soundtrack a model is asked for: the one picked if this model sells the
+ * choice, else silent (what the database prices and the worker sends when none
+ * is named). null = the model offers no choice, so none is sent (the database
+ * refuses audio on a model that does not price it).
+ */
+export function effectiveSound(model: Pick<StudioModel, "soundChoice"> | null | undefined, picked: boolean | null | undefined): boolean | null {
+  if (!model?.soundChoice) return null;
+  return picked === true;
+}
+
 /** 0048: the kinds a style kit can steer (the picture tools that keep their input cannot). */
 export function takesStyle(c: string): boolean {
   return (STYLE_CAPABILITIES as readonly string[]).includes(c);
@@ -159,6 +204,18 @@ export interface StudioModel {
   /** 0052: the longest source it takes, in seconds (spec.limits.max_source_seconds); null = not stated. */
   maxSourceSeconds?: number | null;
   /**
+   * 0060: the render qualities the model is sold by (spec.qualities), cheapest
+   * first; absent = it has no tiers. Prices per tier are never kept here: each
+   * is asked of /api/creative/quote (the database).
+   */
+  qualities?: ImageQuality[];
+  /**
+   * 0070: the clip may be made with or without sound, each priced apart
+   * (spec.audio_out and spec.pricing.variants.by audio / resolution_audio).
+   * Absent = no choice. What each costs is asked of /api/creative/quote.
+   */
+  soundChoice?: boolean;
+  /**
    * The plan entitlement the model needs (0035: `paid`, `any`, `key` or
    * `key:value`), from sellable_models(); null = none, absent = not read. Only
    * the plan dialog reads it, to name what would unlock a refused model.
@@ -179,7 +236,7 @@ const tier = (v: unknown): number | null => (typeof v === "number" && Number.isI
  */
 export function withTiers(models: StudioModel[], sellable: unknown): StudioModel[] {
   if (!Array.isArray(sellable)) return models;
-  type Marks = Pick<StudioModel, "qualityTier" | "speedTier" | "entitlement" | "endFrame" | "upscaleTargets" | "maxSourceSeconds">;
+  type Marks = Pick<StudioModel, "qualityTier" | "speedTier" | "entitlement" | "endFrame" | "upscaleTargets" | "maxSourceSeconds" | "qualities" | "soundChoice">;
   const marks = new Map<string, Marks>();
   for (const r of sellable) {
     if (!r || typeof r !== "object") continue;
@@ -189,6 +246,8 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
     const longest = limits.max_source_seconds;
     if (typeof row.id !== "string") continue;
     const targets = Array.isArray(spec.upscale_targets) ? spec.upscale_targets.filter(isUpscaleTarget) : [];
+    // In the canonical order, so the selector reads low, medium, high whatever the row's order.
+    const tiers = Array.isArray(spec.qualities) ? IMAGE_QUALITIES.filter((q) => (spec.qualities as unknown[]).includes(q)) : [];
     // Only what the spec states: a model that says nothing about the video
     // tools carries nothing for them (absent reads as "no").
     marks.set(row.id, {
@@ -197,6 +256,10 @@ export function withTiers(models: StudioModel[], sellable: unknown): StudioModel
       entitlement: typeof row.entitlement === "string" && row.entitlement ? row.entitlement : null,
       ...(spec.end_frame === true ? { endFrame: true } : {}),
       ...(targets.length ? { upscaleTargets: targets } : {}),
+      ...(tiers.length ? { qualities: tiers } : {}),
+      ...(spec.audio_out === true && (spec.price_variants_by === "audio" || spec.price_variants_by === "resolution_audio")
+        ? { soundChoice: true }
+        : {}),
       ...(typeof longest === "number" && Number.isInteger(longest) && longest > 0 ? { maxSourceSeconds: longest } : {}),
     });
   }
@@ -254,6 +317,18 @@ export interface StudioForm {
   target?: UpscaleTarget | null;
   /** The language a description is written in (0055); absent = English. */
   describeLanguage?: DescribeLanguage | null;
+  /**
+   * The picture's render quality (0060): only sent for a picture tool whose
+   * model sells tiers (the panel passes the model's effective tier, else
+   * null). null / absent = the key is left out.
+   */
+  quality?: ImageQuality | null;
+  /**
+   * The clip's soundtrack (0070): only sent for a video tool whose model sells
+   * the choice (the panel passes the model's effective setting, else null).
+   * null / absent = the key is left out (silent).
+   */
+  audio?: boolean | null;
 }
 
 type ParamKey = (typeof PARAM_KEYS)[number];
@@ -265,9 +340,13 @@ type ParamKey = (typeof PARAM_KEYS)[number];
  * blank; "no style" is the key left out, never sent empty. @names stay in the
  * prompt as typed — the worker resolves them.
  */
-export function buildParams(form: StudioForm): Partial<Record<ParamKey, string | number>> {
+export function buildParams(form: StudioForm): Partial<Record<ParamKey, string | number | boolean>> {
   const base = baseParams(form);
-  return takesStyle(form.capability) && isUuid(form.styleKitId) ? { ...base, style_kit_id: form.styleKitId } : base;
+  const styled = takesStyle(form.capability) && isUuid(form.styleKitId) ? { ...base, style_kit_id: form.styleKitId } : base;
+  // A tier only for the picture tools, and never an unnamed one (the database refuses a tier on any other tool).
+  const tiered = takesQuality(form.capability) && isImageQuality(form.quality) ? { ...styled, quality: form.quality } : styled;
+  // The soundtrack only for the video tools, and only a real choice (the database refuses it on any other tool).
+  return takesSound(form.capability) && typeof form.audio === "boolean" ? { ...tiered, audio: form.audio } : tiered;
 }
 
 function baseParams(form: StudioForm): Partial<Record<ParamKey, string | number>> {
@@ -400,6 +479,20 @@ export function sheetQuoteParams(form: StudioForm): ReturnType<typeof buildParam
     voiceId: isVoiceId(form.voiceId) ? form.voiceId : (STUDIO_VOICES[0]?.id ?? null),
     targetLanguage: isDubLanguage(form.targetLanguage) ? form.targetLanguage : DUB_LANGUAGES[0],
   });
+}
+
+/**
+ * The params a model's quality tiers are priced with (0060): the form's own
+ * settings with a stand-in for the words, so the price check neither sends
+ * what the person is typing nor re-asks on every pause while they type (a
+ * picture's price never reads its words). null = no honest price can be asked
+ * for yet (not a tiered tool, or an edit without its picture). The tier itself
+ * is added per request, never kept here.
+ */
+export function tierQuoteParams(form: StudioForm): ReturnType<typeof buildParams> | null {
+  if (!takesQuality(form.capability)) return null;
+  if (needsSource(form.capability) && !isUuid(form.sourceId)) return null;
+  return buildParams({ ...form, prompt: PRICE_STAND_IN, quality: null });
 }
 
 /** The most models the sheet prices at once: each is one quote call. */
@@ -710,6 +803,10 @@ export interface StudioPrefill {
   endFrameId?: string | null;
   /** A video upscale's size (0052), when the job had an offered one. */
   target?: UpscaleTarget | null;
+  /** A picture's render quality (0060), when the job named one. */
+  quality?: ImageQuality | null;
+  /** A clip's soundtrack (0070), when the job named one. */
+  audio?: boolean | null;
   /** A description's language (0055), when the job named an offered one. */
   describeLanguage?: DescribeLanguage | null;
 }
@@ -740,6 +837,8 @@ export function prefillFromJob(job: StudioJob): StudioPrefill | null {
           target: isUpscaleTarget(p.target_resolution) ? p.target_resolution : null,
         }
       : {}),
+    ...(takesQuality(job.capability) && isImageQuality(p.quality) ? { quality: p.quality } : {}),
+    ...(takesSound(job.capability) && typeof p.audio === "boolean" ? { audio: p.audio } : {}),
     ...(job.capability === "describe" ? { describeLanguage: isDescribeLanguage(p.language) ? p.language : "en" } : {}),
     ...(job.capability === "tts" ? { voiceId: isVoiceId(p.voice_id) ? p.voice_id : null } : {}),
     ...(needsRecording(job.capability)
