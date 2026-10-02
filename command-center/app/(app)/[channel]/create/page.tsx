@@ -19,6 +19,7 @@ import { AssistantPlanner } from "@/components/assistant/AssistantPlanner";
 import { channelDnaForCreate } from "@/lib/server/channel-dna";
 import { startStyleKitId } from "@/lib/styles/add";
 import { parseStyleId } from "@/lib/style-kits";
+import { prefillModel } from "@/lib/models-discovery";
 import { deskFromQuery, isMediaDesk } from "@/lib/creative/desks";
 import { DeskBar, StudioOverview, YouTubeDesk, type CreditsReading, type ProjectsReading } from "@/components/studio/Desks";
 import { createClient } from "@/lib/supabase/server";
@@ -62,7 +63,9 @@ export default async function CreatePage({
   // Home's quick tools open a tool with no picture yet (/create?tool=t2i).
   // Channel DNA (0056): the scoped channel's look and voice start both forms.
   const dna = await channelDnaForCreate(scopedChannel);
-  const initial = dna.withStudio(prefillFromQuery(q.tool, q.source) ?? toolPrefill(q.tool));
+  // "Use in Studio" from the Models catalog (/create?tool=t2v&model=<id>) also picks
+  // that model — shape-checked here; the panel keeps it only if it offers it for the tool.
+  const initial = prefillModel(dna.withStudio(prefillFromQuery(q.tool, q.source) ?? toolPrefill(q.tool)), q.model);
   // Home's composer: topic, length and language for the channel run below.
   // Fills the form; Create still shows the price and asks before it runs.
   const runInitial = runPrefillFromQuery(q);
@@ -143,7 +146,7 @@ export default async function CreatePage({
           // sidebar's rows is a client navigation to the same page, and without a
           // new key the panel would keep the tool it already had.
           <GenerateSection
-            key={`${desk}:${initial?.capability ?? ""}:${initial?.sourceId ?? ""}:${askedStyle ?? ""}`}
+            key={`${desk}:${initial?.capability ?? ""}:${initial?.sourceId ?? ""}:${askedStyle ?? ""}:${initial?.model ?? ""}`}
             desk={desk}
             orgId={genOrgId}
             models={models}
