@@ -6,16 +6,10 @@ import type { ChannelScope } from "@/lib/channels";
 import { statusTone, timeOfDay } from "@/lib/format";
 import { categorize, type EventCategory } from "@/lib/intelligence";
 import type { SystemEventRow } from "@/lib/types";
-import { StatusPill } from "@/components/ui";
+import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
+import { Chip, ChipRow } from "@/components/ui/Chip";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
-
-const TONE_COLOR: Record<string, string> = {
-  ok: "var(--color-ok)",
-  run: "var(--color-primary)",
-  fail: "var(--color-fail)",
-  idle: "var(--color-idle)",
-};
 
 type Filter = "all" | EventCategory;
 const FILTERS: { key: Filter; label: keyof Dictionary["ops"] }[] = [
@@ -56,29 +50,16 @@ export function ActivityFeed({
         <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
           {fmt(t.feed.events, { n: shown.length })}
         </span>
-        <StatusPill tone={live ? "run" : "idle"} label={live ? t.status.live : t.status.polled} live={live} />
+        <StatusLamp tone={live ? "run" : "idle"} label={live ? t.status.live : t.status.polled} live={live} />
       </div>
 
-      <div className="flex flex-wrap gap-1 border-b border-[var(--color-border)] px-3 py-1.5">
-        {FILTERS.map((f) => {
-          const on = filter === f.key;
-          return (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => setFilter(f.key)}
-              className="btn-sky is-quiet pill border-transparent px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.22em]"
-              style={{
-                background: on ? "var(--color-panel-2)" : "transparent",
-                color: on ? "var(--color-primary)" : "var(--color-muted)",
-                border: on ? "1px solid var(--color-primary-dim)" : "1px solid transparent",
-              }}
-            >
-              {String(t.ops[f.label])}
-            </button>
-          );
-        })}
-      </div>
+      <ChipRow label={fmt(t.feed.events, { n: shown.length })} wrap className="border-b border-[var(--color-border)] px-3 py-2">
+        {FILTERS.map((f) => (
+          <Chip key={f.key} pressed={filter === f.key} onClick={() => setFilter(f.key)}>
+            {String(t.ops[f.label])}
+          </Chip>
+        ))}
+      </ChipRow>
 
       <ol className="min-h-0 flex-1 divide-y divide-[var(--color-border)] overflow-y-auto">
         {shown.length === 0 && (
@@ -92,10 +73,7 @@ export function ActivityFeed({
               className={`flex items-center gap-3 px-4 py-2 text-sm${freshKey === e.event_key ? " row-enter" : ""}`}
             >
               <span className="mono w-16 shrink-0 text-[10px] text-[var(--color-muted)]">{timeOfDay(e.ts)}</span>
-              <span
-                className="glow-dot size-1.5 shrink-0 rounded-full"
-                style={{ color: TONE_COLOR[tone], background: TONE_COLOR[tone] }}
-              />
+              <StatusLamp tone={tone as LampTone} label={{ ok: t.status.ok, run: t.status.running, fail: t.status.failed, idle: t.status.idle }[tone]} hideLabel />
               <span className="mono shrink-0 text-[11px] text-[var(--color-primary)]">{e.agent ?? t.common.system}</span>
               <span className="truncate text-[var(--color-fg)]">{e.event}</span>
             </li>

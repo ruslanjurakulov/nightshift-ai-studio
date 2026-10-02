@@ -76,7 +76,7 @@ export function GenerateSection({
     <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(340px,384px)_minmax(0,1fr)]" style={dock}>
       <div
         ref={top}
-        className="scroll-mt-24 lg:sticky lg:top-[96px] lg:max-h-[calc(100dvh-112px)] lg:overflow-y-auto lg:rounded-[20px]"
+        className="scroll-mt-24 lg:sticky lg:top-[96px] lg:max-h-[calc(100dvh-112px)] lg:overflow-y-auto lg:rounded-[var(--ns-r-sheet)]"
         data-testid="gen-composer"
       >
         <GeneratePanel

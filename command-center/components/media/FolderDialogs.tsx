@@ -92,7 +92,7 @@ export function FolderNameDialog({
           placeholder={tf.namePlaceholder}
           aria-invalid={error !== null || length > FOLDER_NAME_MAX}
           aria-describedby={`${hintId}${error ? ` ${errorId}` : ""}`}
-          className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2.5 text-[16px] text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[14px]"
+          className="w-full rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2.5 text-[16px] text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[14px]"
         />
         <span
           id={hintId}
@@ -107,14 +107,14 @@ export function FolderNameDialog({
         )}
       </form>
       <div className="flex flex-wrap items-center justify-end gap-2 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
-        <button type="button" onClick={onClose} disabled={busy} className="btn-sky is-quiet pill px-4 py-2 text-[13px]">
+        <button type="button" onClick={onClose} disabled={busy} className="btn-quiet text-[13px]">
           {tf.cancel}
         </button>
         <button
           type="submit"
           form={`${inputId}-form`}
           disabled={!valid || busy}
-          className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
+          className="btn-primary text-[13px] disabled:opacity-40"
         >
           {mode === "create" ? (busy ? tf.creating : tf.create) : busy ? tf.saving : tf.save}
         </button>
@@ -169,14 +169,14 @@ export function DeleteFolderDialog({
               {tf.errors[error]}
             </p>
           )}
-          <button ref={cancel} type="button" onClick={onClose} disabled={busy} className="btn-sky is-quiet pill px-4 py-2 text-[13px]">
+          <button ref={cancel} type="button" onClick={onClose} disabled={busy} className="btn-quiet text-[13px]">
             {tf.cancel}
           </button>
           <button
             type="button"
             onClick={() => void confirm()}
             disabled={busy}
-            className="pill border border-[var(--color-fail)] bg-[var(--color-fail)] px-5 py-2 text-[13px] font-semibold text-[var(--color-on-accent)] disabled:opacity-40"
+            className="btn-quiet border-[var(--color-fail)] bg-[var(--color-fail)] font-semibold text-[var(--color-on-accent)] hover:bg-[var(--color-fail)] disabled:opacity-40"
           >
             {busy ? tf.deleting : tf.delete}
           </button>

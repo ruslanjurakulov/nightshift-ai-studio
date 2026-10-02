@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { SoundWave } from "./SoundWave";
+import { Timecode } from "@/components/ui/Timecode";
 import {
   clipEnd,
   clipLength,
@@ -33,6 +34,34 @@ export function textLanes(
     lane.set(t.id, i);
   }
   return lane;
+}
+
+/**
+ * Where the ruler's ticks fall: a whole number of seconds apart, as many as
+ * leave each label about 56px of room, so every tick is a real position on the
+ * timeline (IDENTITY.md: a ruler is never decoration). `div` is how many
+ * minor ticks sit between two labelled ones, each also on a whole or
+ * quarter second. Pure; tested directly.
+ */
+export function rulerTicks(total: number, widthPx: number): { step: number; div: number; marks: number[] } | null {
+  if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(widthPx) || widthPx <= 0) return null;
+  const pxPerS = widthPx / total;
+  const STEPS: [number, number][] = [
+    [1, 4],
+    [2, 4],
+    [5, 5],
+    [10, 5],
+    [15, 5],
+    [30, 6],
+    [60, 6],
+    [120, 4],
+    [300, 5],
+    [600, 5],
+  ];
+  const [step, div] = STEPS.find(([s]) => s * pxPerS >= 56) ?? STEPS[STEPS.length - 1];
+  const marks: number[] = [];
+  for (let m = 0; m <= total + 1e-9; m += step) marks.push(m);
+  return { step, div, marks };
 }
 
 const soundSpan = (x: SoundClip) => ({
@@ -99,6 +128,20 @@ export function TimelineStrip({
   const sLanes = textLanes(sounds.map(soundSpan));
   const sLaneCount = Math.max(1, ...[...sLanes.values()].map((l) => l + 1));
   const frame = 1 / fps;
+  // The strip's own width decides the label spacing; a server render and a test
+  // (no ResizeObserver) use a phone-sized default.
+  const [width, setWidth] = useState(320);
+  useEffect(() => {
+    const el = strip.current;
+    if (!el) return;
+    const read = () => setWidth(el.getBoundingClientRect().width || 320);
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const ticks = rulerTicks(total, width);
 
   function onHandleKey(
     e: KeyboardEvent<HTMLElement>,
@@ -159,6 +202,24 @@ export function TimelineStrip({
         className="relative flex flex-col gap-1.5"
         style={{ minWidth: `max(100%, ${clips.length * 44}px)` }}
       >
+        {ticks && (
+          // Seconds ticks under which the lanes sit: the same scale as the clips below.
+          <div
+            aria-hidden
+            className="ns-ruler"
+            style={{ height: 24, "--ruler-major": `${(ticks.step / span) * 100}%`, "--ruler-div": ticks.div } as CSSProperties}
+          >
+            {ticks.marks.map((m) => (
+              <span
+                key={m}
+                className="absolute top-0 whitespace-nowrap pl-1 text-[10px] leading-[12px] text-[var(--color-muted)]"
+                style={{ left: pct(m) }}
+              >
+                <Timecode value={m} format="duration" />
+              </span>
+            ))}
+          </div>
+        )}
         <div
           className="relative h-14 w-full"
           aria-label={te.clipsTrack}
@@ -191,7 +252,7 @@ export function TimelineStrip({
                       ? `${label}, ${fmt(te.clipCrossfade, { s: x })}`
                       : label
                   }
-                  className={`relative flex size-full min-w-0 flex-col justify-between overflow-hidden rounded-lg border px-1.5 py-1 text-left text-[11px] ${
+                  className={`relative flex size-full min-w-0 flex-col justify-between overflow-hidden rounded-[var(--ns-r-key)] border px-1.5 py-1 text-left text-[11px] ${
                     on
                       ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                       : "border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
@@ -236,12 +297,12 @@ export function TimelineStrip({
                         onPointerMove={onHandleMove}
                         onPointerUp={onHandleUp}
                         onPointerCancel={onHandleUp}
-                        className={`absolute top-0 z-10 flex h-full w-3 cursor-ew-resize touch-none items-center justify-center rounded-md bg-[var(--color-primary)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-fg)] ${
+                        className={`absolute top-0 z-10 flex h-full w-3 cursor-ew-resize touch-none items-center justify-center rounded-[var(--ns-r-chip)] bg-[var(--color-primary)] outline-none after:absolute after:inset-y-0 after:-inset-x-4 after:content-[''] focus-visible:ring-2 focus-visible:ring-[var(--color-fg)] ${
                           edge === "in" ? "left-0" : "right-0"
                         }`}
                       >
                         <span
-                          className="h-5 w-0.5 rounded bg-[var(--color-on-accent)]"
+                          className="h-5 w-0.5 rounded-[1px] bg-[var(--color-on-accent)]"
                           aria-hidden
                         />
                       </span>
@@ -289,7 +350,7 @@ export function TimelineStrip({
                         ? `, ${fmt(te.duckLabel, { db: x.duck.amount_db })}`
                         : "")
                     }
-                    className={`relative size-full overflow-hidden truncate rounded-md border px-1.5 text-left text-[11px] ${
+                    className={`relative size-full overflow-hidden truncate rounded-[var(--ns-r-chip)] border px-1.5 text-left text-[11px] ${
                       on
                         ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                         : "border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
@@ -337,7 +398,7 @@ export function TimelineStrip({
                     from: formatTime(x.start_s),
                     to: formatTime(x.end_s),
                   })}
-                  className={`size-full truncate rounded-md border px-1.5 text-left text-[11px] ${
+                  className={`size-full truncate rounded-[var(--ns-r-chip)] border px-1.5 text-left text-[11px] ${
                     on
                       ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                       : "border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-muted)]"

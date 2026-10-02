@@ -78,16 +78,16 @@ describe("scrollable regions are keyboard-reachable and named", () => {
 describe("touch-target utility in globals.css", () => {
   const block = css.slice(css.indexOf("Touch targets"));
 
-  it("applies on touch devices and on phone-width viewports, at 40px", () => {
+  it("applies on touch devices and on phone-width viewports, at 44px", () => {
     expect(block).toMatch(/@media \(pointer: coarse\), \(max-width: 40rem\)/);
-    expect(block).toMatch(/\.tap-icon,[\s\S]*?\{ min-height: 2\.5rem; min-width: 2\.5rem; \}/);
-    expect(block).toMatch(/\.tap-link \{[^}]*min-height: 2\.5rem/);
+    expect(block).toMatch(/\.tap-icon,[\s\S]*?\{ min-height: 2\.75rem; min-width: 2\.75rem; \}/);
+    expect(block).toMatch(/\.tap-link \{[^}]*min-height: 2\.75rem/);
     expect(block).toMatch(/\.btn-sky,/);
-    expect(block).toMatch(/\.sheet-close,\s*\.nav-back \{ width: 2\.5rem; height: 2\.5rem; \}/);
+    expect(block).toMatch(/\.sheet-close,\s*\.nav-back \{ width: 2\.75rem; height: 2\.75rem; \}/);
   });
 
   it("covers text fields and selects but not checkboxes (their label row is the target)", () => {
     expect(block).toMatch(/input:not\(\[type="checkbox"\]/);
-    expect(block).toMatch(/\.tap-row \{[^}]*min-height: 2\.5rem/);
+    expect(block).toMatch(/\.tap-row \{[^}]*min-height: 2\.75rem/);
   });
 });
