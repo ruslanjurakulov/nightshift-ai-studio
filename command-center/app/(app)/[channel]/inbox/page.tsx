@@ -17,6 +17,7 @@ import {
   INBOX_LIMITS,
   INTENT_COLUMNS,
   POST_COLUMNS,
+  POST_COLUMNS_0081,
   buildItems,
   parseComments,
   parseDrafts,
@@ -57,7 +58,7 @@ export default async function InboxPage() {
   const comments = parseComments(res.data);
   const ids = comments.map((c) => c.id);
 
-  const [drafts, intents, posts, videos] = ids.length
+  const [drafts, intents, firstPosts, videos] = ids.length
     ? await Promise.all([
         supabase.from("reply_drafts").select(DRAFT_COLUMNS).in("comment_id", ids).order("created_at", { ascending: false }).limit(400),
         supabase.from("reply_intents").select(INTENT_COLUMNS).in("comment_id", ids).limit(400),
@@ -65,6 +66,11 @@ export default async function InboxPage() {
         supabase.from("videos").select("video_id,title").in("video_id", [...new Set(comments.map((c) => c.videoId))].slice(0, 100)),
       ])
     : [null, null, null, null];
+  // 0090's wait_reason column is not there yet (0081 alone): read the posts without it.
+  let posts: { data: unknown; error: { code?: string; message?: string } | null } | null = firstPosts;
+  if (posts?.error && isMissingRelation(posts.error)) {
+    posts = await supabase.from("reply_posts").select(POST_COLUMNS_0081).in("comment_id", ids).limit(400);
+  }
   // A read that failed is unknown: the page says so rather than showing comments with no state.
   if (drafts?.error || intents?.error || posts?.error) {
     return (

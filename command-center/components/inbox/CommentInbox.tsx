@@ -346,7 +346,7 @@ function Card({
           </p>
           {intent.approvedBy && <p className="m-0 text-[11px] text-[var(--color-muted)] [overflow-wrap:anywhere]">{fmt(t.inbox.posted.approvedBy, { who: intent.approvedBy })}</p>}
           <p role="status" className="m-0 text-[12px] text-[var(--color-muted)]">
-            {state === "posted" ? t.inbox.posted.done : state === "posting" ? t.inbox.posted.waiting : `${t.inbox.posted.notPosted} ${failureText(post?.errorCode ?? null, t.inbox)}`}
+            {state === "posted" ? t.inbox.posted.done : state === "posting" ? (post?.waitReason === "quota" ? t.inbox.posted.waitingQuota : t.inbox.posted.waiting) : `${t.inbox.posted.notPosted} ${failureText(post?.errorCode ?? null, t.inbox)}`}
           </p>
         </div>
       )}

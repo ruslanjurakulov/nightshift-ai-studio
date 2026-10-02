@@ -55,6 +55,7 @@ def extend(tables: dict, functions: dict) -> None:
         "retry_reply_post": USER,
         "dismiss_inbox_comment": USER,
         "set_inbox_quota_ceiling": USER,
+        "set_inbox_org_share": USER,          # 0090 (BR-L-121): a platform admin only
         # The worker (service role).
         "store_inbox_comments": SERVICE,
         "inbox_comments_to_classify": SERVICE,
@@ -65,6 +66,9 @@ def extend(tables: dict, functions: dict) -> None:
         "purge_revoked_inbox": SERVICE,
         "record_inbox_quota": SERVICE,
         "inbox_quota_remaining": SERVICE,
+        "inbox_channel_quota_left": SERVICE,  # 0090
+        "inbox_org_quota_left": SERVICE,      # 0090
+        "inbox_org_left": SERVICE,            # 0090
         "claim_reply_post": SERVICE,
         "mark_reply_submitting": SERVICE,
         "finish_reply_post": SERVICE,

@@ -157,6 +157,24 @@ ruxsatisiz bo'lsa yoki ulanish bekor qilingan bo'lsa, javob berilmaydi
 faqat Vault tokeni bilan javob beradi (muhit o'zgaruvchisidagi token faqat
 operatorning o'z kanallari uchun).
 
+**Izohlar qutisi, 0090 (keyin qo'llanadi, 0081 dan keyin).** Bitta tashkilot kunlik
+chegaraning faqat o'z ulushini ishlata oladi (`inbox_settings.org_share_percent`,
+sukut 25 foiz; faqat platforma admini `set_inbox_org_share(foiz)` bilan 1..100
+oralig'ida o'zgartiradi): ulush tugasa, o'sha tashkilotning tasdiqlangan javobi
+`queued` holatida qoladi va kartada "kunlik kvota kutilmoqda" deb ko'rinadi,
+boshqa tashkilotlarning javoblari esa yuboriladi. Platforma chegarasi saqlanadi.
+Javoblar o'qishdan oldin turadi: kutayotgan javob bo'lsa, o'qish ulushdan bitta javob
+(60 birlik) qoldiradi, shuning uchun o'qishlar javobni och qoldirmaydi (javob ketmaguncha
+shu tashkilotning o'qishlari to'xtab turadi). Tasniflagich 3 marta javob bermagan izoh
+bir kunga dam oladi va keyin yana sinab ko'riladi.
+Chegara **yumshoq**: bir vaqtda ishlayotgan workerlar soniga qarab (har biri
+taxminan 57 birlikkacha) ozgina oshib ketishi mumkin; yuklashlar uchun qoldirilgan
+zaxira buni qoplaydi. Foydalanuvchiga ayting: javoblar kunlik kvota ruxsat
+berganda e'lon qilinadi. `0081` ni yolg'iz qayta qo'llash 0090 almashtirgan sakkiz
+funksiyani eski holiga qaytaradi: undan keyin `0090` ni qayta qo'llang. `0090`
+qo'llanmaguncha worker faqat platforma chegarasi bilan ishlaydi, sahifa esa
+kutish sababini ko'rsatmaydi.
+
 Worker kanallarni bir-biridan ajratadi: har bir vazifa faqat **o'z kanalining**
 tokenini ko'radi (boshqa `CHRONOS_YT_TOKEN_*` lar `main.py` muhitidan olib
 tashlanadi), token fayllari vazifa uchun yoziladi va vazifa tugashi bilan
