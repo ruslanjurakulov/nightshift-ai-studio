@@ -295,6 +295,22 @@ class CreditsRest:
         Returns the credits expired."""
         return _num(self._rpc("expire_credit_lots", {}))
 
+    # Migration 0076: a scene regeneration's hold is claimed and settled by
+    # the database, with its status, in one transaction each.
+    def scene_regen_start(self, regen_id: str, job_id) -> Optional[dict]:
+        out = self._rpc("start_scene_regeneration", {"p_id": regen_id, "p_job": int(job_id)})
+        return out if isinstance(out, dict) else None
+
+    def scene_regen_finish(self, regen_id: str, job_id, *, ok: bool, error_code: Optional[str] = None,
+                           error: Optional[str] = None, result: Optional[dict] = None) -> Optional[dict]:
+        out = self._rpc("finish_scene_regeneration", {
+            "p_id": regen_id, "p_job": int(job_id), "p_ok": bool(ok), "p_error_code": error_code,
+            "p_error": (error or None) and str(error)[:500], "p_result": result})
+        return out if isinstance(out, dict) else None
+
+    def scene_regen_expire(self) -> Optional[float]:
+        return _num(self._rpc("expire_scene_regenerations", {}))
+
     def api_hold_start(self, hold_ref: str, job_id) -> Optional[float]:
         """Migration 0031: the API balance hold's amount (cents) when it is open
         and bound to exactly this job, else None."""
