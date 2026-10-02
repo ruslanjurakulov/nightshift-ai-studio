@@ -83,6 +83,8 @@ def full_argv(spec):
 
 FIT_1080x1920 = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,fps=30"
 ENC = ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "30"]
+#: Every timeline input is capped at the decoder (BR-L-004): media_library.MAX_PIXELS.
+CAP = ["-max_pixels", "100000000"]
 KEN_BURNS_C2 = (
     "scale=1242:2208:force_original_aspect_ratio=increase:flags=lanczos,loop=loop=-1:size=1,"
     "settb=1/30,setpts=N,crop=w=1018:h=1811:x='clip(trunc(iw*(0.5+0.15-0.3*min(1,n/90.000000)))"
@@ -90,23 +92,23 @@ KEN_BURNS_C2 = (
 
 GOLDEN_SEGMENTS = [
     # c1: trimmed from 2.5 s, 3.5 s = 105 frames, cover-cropped, 0.5 s fade in.
-    [["ffmpeg", "-y", "-stream_loop", "-1", "-ss", "2.500", "-i", "/media/a1.mp4",
+    [["ffmpeg", "-xerror", "-y", "-stream_loop", "-1", "-ss", "2.500", *CAP, "-i", "/media/a1.mp4",
       "-frames:v", "105", "-an", "-vf",
       "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,"
       "fade=t=in:st=0:d=0.500", *ENC, "/w/seg_0000.mp4"]],
     # c2: still, 90 frames of Ken Burns (static hold as fallback); fades out
     # 0.3 s — half of c3's 0.6 s dip to black.
-    [["ffmpeg", "-y", "-i", "/media/a2.png", "-frames:v", "90", "-vf",
+    [["ffmpeg", "-xerror", "-y", *CAP, "-i", "/media/a2.png", "-frames:v", "90", "-vf",
       KEN_BURNS_C2 + ",fade=t=out:st=2.700:d=0.300", *ENC, "/w/seg_0001.mp4"],
-     ["ffmpeg", "-y", "-loop", "1", "-i", "/media/a2.png", "-frames:v", "90", "-vf",
+     ["ffmpeg", "-xerror", "-y", "-loop", "1", *CAP, "-i", "/media/a2.png", "-frames:v", "90", "-vf",
       FIT_1080x1920 + ",fade=t=out:st=2.700:d=0.300", *ENC, "/w/seg_0001.mp4"]],
     # c3: trimmed from 1.0 s, letterboxed, the other half of the dip, own fade out.
-    [["ffmpeg", "-y", "-stream_loop", "-1", "-ss", "1.000", "-i", "/media/a3.mov",
+    [["ffmpeg", "-xerror", "-y", "-stream_loop", "-1", "-ss", "1.000", *CAP, "-i", "/media/a3.mov",
       "-frames:v", "90", "-an", "-vf",
       FIT_1080x1920 + ",fade=t=in:st=0:d=0.300,fade=t=out:st=2.000:d=1.000",
       *ENC, "/w/seg_0002.mp4"]],
     # Tail: the music runs to 10.0 s, the picture to 9.5 s → 15 black frames.
-    [["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=black:s=1080x1920:r=30", "-frames:v", "15",
+    [["ffmpeg", "-xerror", "-y", "-f", "lavfi", *CAP, "-i", "color=c=black:s=1080x1920:r=30", "-frames:v", "15",
       *ENC, "/w/seg_0003.mp4"]],
 ]
 
@@ -118,8 +120,8 @@ GOLDEN_CONCAT = [
 ]
 
 GOLDEN_FINAL = [
-    "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", "/w/concat.txt",
-    "-i", "/media/music.mp3", "-i", "/media/voice.wav",
+    "ffmpeg", "-y", "-f", "concat", "-safe", "0", *CAP, "-i", "/w/concat.txt",
+    *CAP, "-i", "/media/music.mp3", *CAP, "-i", "/media/voice.wav",
     "-filter_complex",
     "[0:v]subtitles='/w/overlays.ass'[vout];"
     "[1:a]atrim=start=30.000:duration=10.000,asetpts=PTS-STARTPTS,"
