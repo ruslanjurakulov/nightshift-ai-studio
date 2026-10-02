@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auditInbox, callInbox, jsonBody } from "@/lib/server/comment-inbox";
+import { callInbox, jsonBody } from "@/lib/server/comment-inbox";
 import { isUuid } from "@/lib/comment-inbox";
 
 export const runtime = "nodejs";
@@ -20,7 +20,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ com
   const dismissed = body.dismissed !== false;
   const out = await callInbox("dismiss_inbox_comment", { p_comment: comment, p_dismissed: dismissed });
   if (!out.ok) return out.response;
-  const res = (out.data ?? {}) as { status?: string; already?: boolean };
-  if (!res.already) await auditInbox(dismissed ? "inbox.comment.dismiss" : "inbox.comment.restore", "inbox_comments", comment);
+  const res = (out.data ?? {}) as { status?: string };
+  // No app_audit_log line: the database already records who set the comment aside, or put it
+  // back, in the append-only inbox_events (comment_dismissed / comment_restored), and the
+  // audit-action allow-list (0087) names only the inbox actions that spend, speak or edit.
   return NextResponse.json({ ok: true, status: res.status ?? null });
 }

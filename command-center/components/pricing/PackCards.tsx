@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fmt } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n/context";
+import { fmt } from "@/lib/i18n/core";
+import { usePublicI18n } from "@/lib/i18n/public-context";
 import { formatCredits } from "@/lib/credits";
-import { packMinutes, packPrice, type Pricing, type PricingPack } from "@/lib/pricing";
+import { displayPriceText, packMinutes, packPrice, type Pricing, type PricingPack } from "@/lib/pricing";
 import { ensurePaddle, previewPrices } from "@/lib/paddle-client";
 import type { GenerationRates } from "@/lib/plans";
 import { Equivalents } from "@/components/credits/Equivalents";
@@ -28,7 +28,7 @@ export function PackCards({
   /** Today's generation prices; when known, "≈ N images · M videos" replaces the minutes line. */
   rates?: GenerationRates | null;
 }) {
-  const { t, locale } = useI18n();
+  const { t, locale } = usePublicI18n();
   const p = t.pricing;
   const [preview, setPreview] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(Boolean(paddle));
@@ -62,44 +62,37 @@ export function PackCards({
   return (
     <div className="flex flex-col gap-3">
       {environment === "sandbox" && (
-        <span
-          className="mono pill self-start border border-[var(--color-warn)] px-2.5 py-0.5 text-[10px] uppercase tracking-[0.14em]"
-          style={{ color: "var(--color-warn)" }}
-        >
+        <span className="st-tag self-start" style={{ color: "var(--ns-caution)", borderColor: "currentColor" }}>
           {p.sandbox}
         </span>
       )}
-      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className="st-panel st-price-rows">
         {packs.map((pack) => {
           const price = packPrice(pack, preview, loading);
           const minutes = rates ? null : packMinutes(pack.credits, perMinute);
           return (
-            <li
-              key={pack.id}
-              className="flex flex-col gap-5 rounded-[22px] border border-[var(--color-border)] bg-[var(--color-panel)] p-6 sm:p-7"
-            >
-              <h3 className="text-[15px] font-semibold tracking-[-0.01em]">{t.credits.buy.pack[pack.id]}</h3>
+            <li key={pack.id} className="st-price-row">
+              <h3 className="st-price-name">{t.credits.buy.pack[pack.id]}</h3>
               <div>
-                <div className="mono text-[28px] leading-none tracking-[-0.02em] text-[var(--color-primary)]">
-                  {fmt(p.credits, { n: formatCredits(pack.credits, locale) })}
-                </div>
-                <Equivalents credits={pack.credits} rates={rates} className="mt-2" />
-                {minutes !== null && (
-                  <div className="mt-2 text-[13px] font-light text-[var(--color-muted)]">
-                    {fmt(p.minutes, { m: formatCredits(minutes, locale) })}
-                  </div>
-                )}
+                <span className="st-price-credits st-num">
+                  {formatCredits(pack.credits, locale)}
+                  <small>{t.site.pricingTeaser.credits}</small>
+                </span>
+                <span className="sr-only">{fmt(p.credits, { n: formatCredits(pack.credits, locale) })}</span>
+                <Equivalents credits={pack.credits} rates={rates} className="mt-1" />
+                {minutes !== null && <div className="st-small mt-1">{fmt(p.minutes, { m: formatCredits(minutes, locale) })}</div>}
               </div>
-              <div className="mt-auto border-t border-[var(--color-border)] pt-5">
-                {price.kind === "preview" || price.kind === "display" ? (
-                  <div className="font-display text-[2rem] font-semibold leading-none tracking-[-0.02em]">{price.text}</div>
-                ) : (
-                  <div className="text-[15px] font-medium text-[var(--color-muted)]" aria-live="polite">
-                    {price.kind === "pending" ? p.priceLoading : p.priceAtCheckout}
-                  </div>
-                )}
-                <div className="mt-2 text-[12px] font-light text-[var(--color-muted)]">{p.oneTime}</div>
-              </div>
+              {price.kind === "preview" || price.kind === "display" ? (
+                <span className="st-price-money">
+                  <span className="st-num block text-[24px]">{price.kind === "display" ? displayPriceText(price.text, locale) : price.text}</span>
+                  <span className="st-small block">{p.oneTime}</span>
+                </span>
+              ) : (
+                <span className="st-price-pending" aria-live="polite">
+                  {price.kind === "pending" ? p.priceLoading : p.priceAtCheckout}
+                  <span className="block">{p.oneTime}</span>
+                </span>
+              )}
             </li>
           );
         })}

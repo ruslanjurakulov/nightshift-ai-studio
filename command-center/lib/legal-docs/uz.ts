@@ -5,197 +5,197 @@ export const uz: LegalTexts = {
   privacy: {
     title: "Maxfiylik siyosati",
     summary:
-      "Nightshift qanday ma'lumot to'playdi, Google va YouTube ma'lumotlaringiz bilan nima qiladi, ularni kim qayta ishlaydi, qancha saqlanadi va qanday o'chiriladi.",
+      "Nightshift qanday maʼlumot toʻplaydi, Google va YouTube maʼlumotlaringiz bilan nima qiladi, ularni kim qayta ishlaydi, qancha saqlanadi va qanday oʻchiriladi.",
     sections: [
       {
         id: "who-we-are",
         heading: "1. Biz kimmiz",
         body: [
-          "Nightshift («Xizmat») — videoni avtomatik ishlab chiqarish vositasi: shu domendagi veb-panel va foydalanuvchilar ulagan YouTube kanallari uchun mavzuni o'rganadigan, ssenariy yozadigan, ovozlashtiradigan, render qiladigan va yuklaydigan konveyer. Xizmat operatori — {legalName} («biz»), {country}. Aloqa: {contactEmail}.",
-          "Ushbu siyosat Xizmat qanday ma'lumot to'plashi, undan qanday foydalanishi va kimga uzatishi hamda sizda qanday tanlov borligini tushuntiradi. U shu sayt va siz nomingizdan ishlaydigan avtomatik konveyerga taalluqli.",
+          "Nightshift («Xizmat») — videoni avtomatik ishlab chiqarish vositasi: shu domendagi veb-panel va foydalanuvchilar ulagan YouTube kanallari uchun mavzuni oʻrganadigan, ssenariy yozadigan, ovozlashtiradigan, render qiladigan va yuklaydigan konveyer. Xizmat operatori — {legalName} («biz»), {country}. Aloqa: {contactEmail}.",
+          "Ushbu siyosat Xizmat qanday maʼlumot toʻplashi, undan qanday foydalanishi va kimga uzatishi hamda sizda qanday tanlov borligini tushuntiradi. U shu sayt va siz nomingizdan ishlaydigan avtomatik konveyerga taalluqli.",
         ],
       },
       {
         id: "information-we-collect",
-        heading: "2. Biz to'playdigan ma'lumotlar",
+        heading: "2. Biz toʻplaydigan maʼlumotlar",
         body: [
           {
             list: [
-              "Akkaunt ma'lumotlari: elektron pochta manzilingiz va parolingiz — ularni autentifikatsiya provayderimiz (Supabase Auth) boshqaradi. Biz parolingizni hech qachon ochiq ko'rinishda ko'rmaymiz va saqlamaymiz.",
-              "Siz kiritgan sozlamalar: kanal nomlari, nisha, til, ovoz va uslub tanlovi, jadvallar, seriyalar, jamoa a'zolari va rollar, shuningdek tekshiruvdagi qarorlaringiz (masalan, videoni tasdiqlash) — ular foydalanuvchi identifikatoringiz bilan audit jurnaliga yoziladi.",
-              "Siz kiritgan uchinchi tomon xizmatlarining API kalitlari: ular serverimizga kelgan zahoti shifrlanadi, konveyerning shifrlangan sirlar omboriga (GitHub Actions secrets) yoziladi va tashlab yuboriladi. Ular hech qachon ma'lumotlar bazamizda saqlanmaydi, sizga qayta ko'rsatilmaydi va jurnallarga yozilmaydi.",
-              "Siz ruxsat bergan Google foydalanuvchi ma'lumotlari — 3-bo'limga qarang.",
-              "Texnik ma'lumotlar: hosting va ma'lumotlar bazasi provayderlarimiz Xizmatni ishlatish va himoya qilish uchun standart so'rov jurnallarini (IP manzil, brauzer turi, so'rov vaqti) yuritadi. Biz analitika, reklama yoki kuzatuv vositalaridan foydalanmaymiz.",
+              "Akkaunt maʼlumotlari: elektron pochta manzilingiz va parolingiz — ularni autentifikatsiya provayderimiz (Supabase Auth) boshqaradi. Biz parolingizni hech qachon ochiq koʻrinishda koʻrmaymiz va saqlamaymiz.",
+              "Siz kiritgan sozlamalar: kanal nomlari, nisha, til, ovoz va uslub tanlovi, jadvallar, seriyalar, jamoa aʼzolari va rollar, shuningdek tekshiruvdagi qarorlaringiz (masalan, videoni tasdiqlash) — ular foydalanuvchi identifikatoringiz bilan audit jurnaliga yoziladi.",
+              "Siz kiritgan uchinchi tomon xizmatlarining API kalitlari: ular serverimizga kelgan zahoti shifrlanadi, konveyerning shifrlangan sirlar omboriga (GitHub Actions secrets) yoziladi va tashlab yuboriladi. Ular hech qachon maʼlumotlar bazamizda saqlanmaydi, sizga qayta koʻrsatilmaydi va jurnallarga yozilmaydi.",
+              "Siz ruxsat bergan Google foydalanuvchi maʼlumotlari — 3-boʻlimga qarang.",
+              "Texnik maʼlumotlar: hosting va maʼlumotlar bazasi provayderlarimiz Xizmatni ishlatish va himoya qilish uchun standart soʻrov jurnallarini (IP manzil, brauzer turi, soʻrov vaqti) yuritadi. Biz analitika, reklama yoki kuzatuv vositalaridan foydalanmaymiz.",
             ],
           },
         ],
       },
       {
         id: "google-user-data",
-        heading: "3. Qaysi Google ma'lumotlariga kiramiz",
+        heading: "3. Qaysi Google maʼlumotlariga kiramiz",
         body: [
-          "YouTube kanalini ulaganingizda Google'ning o'z rozilik oynasiga o'tasiz: u yerda Google akkauntini tanlaysiz va aynan nima so'ralayotganini ko'rasiz. Biz quyidagi OAuth ruxsat doiralarini (scope) so'raymiz va har biridan faqat ko'rsatilgan maqsadda foydalanamiz:",
+          "YouTube kanalini ulaganingizda Google’ning oʻz rozilik oynasiga oʻtasiz: u yerda Google akkauntini tanlaysiz va aynan nima soʻralayotganini koʻrasiz. Biz quyidagi OAuth ruxsat doiralarini (scope) soʻraymiz va har biridan faqat koʻrsatilgan maqsadda foydalanamiz:",
           {
             table: {
               head: ["Ruxsat doirasi", "Nightshift u bilan nima qiladi"],
               rows: [
                 [
                   "`youtube.upload`",
-                  "Nightshift kanalingiz uchun tayyorlagan videolarni yuklaydi va ularning muqovasini (thumbnail) o'rnatadi. Agar shu kanal uchun boshqacha tanlamagan bo'lsangiz — masalan, sukut bo'yicha o'chiq avto-nashrni yoqmagan bo'lsangiz — yuklangan videolar yopiq (private) bo'ladi.",
+                  "Nightshift kanalingiz uchun tayyorlagan videolarni yuklaydi va ularning muqovasini (thumbnail) oʻrnatadi. Agar shu kanal uchun boshqacha tanlamagan boʻlsangiz — masalan, sukut boʻyicha oʻchiq avto-nashrni yoqmagan boʻlsangiz — yuklangan videolar yopiq (private) boʻladi.",
                 ],
                 [
                   "`youtube.readonly`",
-                  "Qaysi kanalni ulaganingizni tasdiqlash uchun kanal identifikatsiyasini (ID va nom) o'qiydi; bir video ikki marta yuklanmasligi uchun kanalning so'nggi yuklamalari ro'yxatini (ID va nomlar) oladi; panel uchun videolaringizning asosiy ma'lumotlari va ochiq statistikasini o'qiydi.",
+                  "Qaysi kanalni ulaganingizni tasdiqlash uchun kanal identifikatsiyasini (ID va nom) oʻqiydi; bir video ikki marta yuklanmasligi uchun kanalning soʻnggi yuklamalari roʻyxatini (ID va nomlar) oladi; panel uchun videolaringizning asosiy maʼlumotlari va ochiq statistikasini oʻqiydi.",
                 ],
                 [
                   "`youtube.force-ssl`",
-                  "Nightshift yuklagan videolarga subtitr yo'lagini qo'shadi; nashr qilingan videoni seriya pleylistiga qo'shadi; Nightshift nashr qilgan video ostida kanal nomidan bitta izoh (tomoshabinlarga savol) qoldiradi; auditoriya so'rayotgan mavzularni topish uchun kanal videolaridagi izohlarni o'qiydi. Texnik jihatdan bu ruxsat videolarni tahrirlash va o'chirishga ham imkon beradi — Nightshift hech narsani o'chirmaydi va mavjud videolaringiz, pleylistlaringiz yoki izohlaringizni tahrirlamaydi; u faqat shu yerda sanab o'tilganlarni qo'shadi.",
+                  "Nightshift yuklagan videolarga subtitr yoʻlagini qoʻshadi; nashr qilingan videoni seriya pleylistiga qoʻshadi; Nightshift nashr qilgan video ostida kanal nomidan bitta izoh (tomoshabinlarga savol) qoldiradi; auditoriya soʻrayotgan mavzularni topish uchun kanal videolaridagi izohlarni oʻqiydi. Texnik jihatdan bu ruxsat videolarni tahrirlash va oʻchirishga ham imkon beradi — Nightshift hech narsani oʻchirmaydi va mavjud videolaringiz, pleylistlaringiz yoki izohlaringizni tahrirlamaydi; u faqat shu yerda sanab oʻtilganlarni qoʻshadi.",
                 ],
                 [
                   "`yt-analytics.readonly`",
-                  "Kanalingiz videolari bo'yicha YouTube Analytics hisobotlarini o'qiydi: ko'rishlar, tomosha vaqti, o'rtacha ko'rish davomiyligi va foizi, layklar, izohlar, ulashishlar, qo'shilgan va ketgan obunachilar, ko'rsatilishlar, CTR va auditoriyani ushlab qolish. Bu ko'rsatkichlar panelingizda ko'rsatiladi va keyingi videolar uchun yaxshiroq mavzu tanlashda ishlatiladi.",
+                  "Kanalingiz videolari boʻyicha YouTube Analytics hisobotlarini oʻqiydi: koʻrishlar, tomosha vaqti, oʻrtacha koʻrish davomiyligi va foizi, layklar, izohlar, ulashishlar, qoʻshilgan va ketgan obunachilar, koʻrsatilishlar, CTR va auditoriyani ushlab qolish. Bu koʻrsatkichlar panelingizda koʻrsatiladi va keyingi videolar uchun yaxshiroq mavzu tanlashda ishlatiladi.",
                 ],
                 [
                   "`yt-analytics-monetary.readonly` (ixtiyoriy)",
-                  "Faqat operator daromad hisobini aniq yoqqan bo'lsa so'raladi. Panel uchun videolaringizning taxminiy daromadini o'qiydi. Aks holda so'ralmaydi.",
+                  "Faqat operator daromad hisobini aniq yoqqan boʻlsa soʻraladi. Panel uchun videolaringizning taxminiy daromadini oʻqiydi. Aks holda soʻralmaydi.",
                 ],
               ],
             },
           },
-          "Biz Gmail, Google Drive, kontaktlar yoki boshqa Google xizmatlariga ruxsat so'ramaymiz va YouTube'dagi ko'rish tarixingiz, obunalaringiz yoki shaxsiy xabarlaringizni o'qimaymiz.",
+          "Biz Gmail, Google Drive, kontaktlar yoki boshqa Google xizmatlariga ruxsat soʻramaymiz va YouTube’dagi koʻrish tarixingiz, obunalaringiz yoki shaxsiy xabarlaringizni oʻqimaymiz.",
         ],
       },
       {
         id: "how-we-use-google-data",
-        heading: "4. Google ma'lumotlaridan qanday foydalanamiz",
+        heading: "4. Google maʼlumotlaridan qanday foydalanamiz",
         body: [
-          "Google foydalanuvchi ma'lumotlari faqat Xizmatda siz ko'radigan funksiyalarni taqdim etish va yaxshilash uchun ishlatiladi: videolaringizni yuklash va subtitrlash, ularni pleylistlarga qo'shish, jalb qiluvchi izohni joylash, takroriy yuklashning oldini olish, kanal natijalarini panelda ko'rsatish va nima yaxshi ishlagani hamda auditoriya nimani so'rayotganiga qarab keyingi mavzularni tanlash.",
-          "Bu xulosalar uchun videolaringizdagi izohlar matni va video ko'rsatkichlari kanalingiz uchun tasniflash va umumlashtirish maqsadida matn uchun sun'iy intellekt provayderimizga (Google Gemini API) yuborilishi mumkin. Biz izoh matnini emas, natijani saqlaymiz — masalan, auditoriya so'ragan mavzu va u necha marta so'ralgani.",
+          "Google foydalanuvchi maʼlumotlari faqat Xizmatda siz koʻradigan funksiyalarni taqdim etish va yaxshilash uchun ishlatiladi: videolaringizni yuklash va subtitrlash, ularni pleylistlarga qoʻshish, jalb qiluvchi izohni joylash, takroriy yuklashning oldini olish, kanal natijalarini panelda koʻrsatish va nima yaxshi ishlagani hamda auditoriya nimani soʻrayotganiga qarab keyingi mavzularni tanlash.",
+          "Bu xulosalar uchun videolaringizdagi izohlar matni va video koʻrsatkichlari kanalingiz uchun tasniflash va umumlashtirish maqsadida matn uchun sunʼiy intellekt provayderimizga (Google Gemini API) yuborilishi mumkin. Biz izoh matnini emas, natijani saqlaymiz — masalan, auditoriya soʻragan mavzu va u necha marta soʻralgani.",
         ],
       },
       {
         id: "limited-use",
         heading: "5. Cheklangan foydalanish (Limited Use)",
         body: [
-          "Nightshift'ning Google API'dan olingan ma'lumotlardan foydalanishi va ularni boshqa ilovaga uzatishi [Google API xizmatlari foydalanuvchi ma'lumotlari siyosati](https://developers.google.com/terms/api-services-user-data-policy)ga, jumladan Cheklangan foydalanish (Limited Use) talablariga amal qiladi. Xususan:",
+          "Nightshift’ning Google API’dan olingan maʼlumotlardan foydalanishi va ularni boshqa ilovaga uzatishi [Google API xizmatlari foydalanuvchi maʼlumotlari siyosati](https://developers.google.com/terms/api-services-user-data-policy)ga, jumladan Cheklangan foydalanish (Limited Use) talablariga amal qiladi. Xususan:",
           {
             list: [
-              "Google foydalanuvchi ma'lumotlaridan faqat yuqorida tavsiflangan, foydalanuvchiga ko'rinadigan funksiyalarni taqdim etish yoki yaxshilash uchun foydalanamiz;",
-              "ularni boshqalarga faqat shu funksiyalar uchun zarur hajmda (7-bo'limdagi qayta ishlovchilarga), qonunga rioya qilish uchun yoki sizni xabardor qilgan holda qo'shilish, sotib olinish yoki aktivlar sotilishi doirasida uzatamiz;",
-              "ulardan reklama, jumladan shaxsiylashtirilgan yoki retargeting reklamasi ko'rsatish uchun foydalanmaymiz va uzatmaymiz;",
+              "Google foydalanuvchi maʼlumotlaridan faqat yuqorida tavsiflangan, foydalanuvchiga koʻrinadigan funksiyalarni taqdim etish yoki yaxshilash uchun foydalanamiz;",
+              "ularni boshqalarga faqat shu funksiyalar uchun zarur hajmda (7-boʻlimdagi qayta ishlovchilarga), qonunga rioya qilish uchun yoki sizni xabardor qilgan holda qoʻshilish, sotib olinish yoki aktivlar sotilishi doirasida uzatamiz;",
+              "ulardan reklama, jumladan shaxsiylashtirilgan yoki retargeting reklamasi koʻrsatish uchun foydalanmaymiz va uzatmaymiz;",
               "ularni sotmaymiz va kreditga layoqatni aniqlash yoki kredit berish uchun ishlatmaymiz;",
-              "odamlarga ularni o'qishga ruxsat bermaymiz — faqat siz aniq ma'lumotlar uchun ochiq rozilik bergan bo'lsangiz, xavfsizlik uchun (masalan, suiiste'molni tekshirish) zarur bo'lsa, qonunga rioya qilish uchun kerak bo'lsa yoki ma'lumotlar ichki ishlar uchun jamlangan va anonimlashtirilgan bo'lsa bundan mustasno;",
-              "ulardan umumiy maqsadli sun'iy intellekt yoki mashinaviy o'qitish modellarini ishlab chiqish, yaxshilash yoki o'qitish uchun foydalanmaymiz.",
+              "odamlarga ularni oʻqishga ruxsat bermaymiz — faqat siz aniq maʼlumotlar uchun ochiq rozilik bergan boʻlsangiz, xavfsizlik uchun (masalan, suiisteʼmolni tekshirish) zarur boʻlsa, qonunga rioya qilish uchun kerak boʻlsa yoki maʼlumotlar ichki ishlar uchun jamlangan va anonimlashtirilgan boʻlsa bundan mustasno;",
+              "ulardan umumiy maqsadli sunʼiy intellekt yoki mashinaviy oʻqitish modellarini ishlab chiqish, yaxshilash yoki oʻqitish uchun foydalanmaymiz.",
             ],
           },
         ],
       },
       {
         id: "tokens",
-        heading: "6. Google'ga kirish huquqingiz qanday saqlanadi",
+        heading: "6. Google’ga kirish huquqingiz qanday saqlanadi",
         body: [
-          "Siz rozilik berganingizdan so'ng Google serverimizga kirish tokeni va yangilash tokenini qaytaradi. Ular qayerda saqlanishi kanal kimniki ekaniga bog'liq:",
+          "Siz rozilik berganingizdan soʻng Google serverimizga kirish tokeni va yangilash tokenini qaytaradi. Ular qayerda saqlanishi kanal kimniki ekaniga bogʻliq:",
           {
             list: [
-              "Biz boshqaradigan kanallar (o'z tashkilotimiz): token darhol shifrlanadi (konveyer repozitoriysining ochiq kaliti bilan muhrlanadi) va faqat konveyer ishga tushganda o'qiy oladigan shifrlangan GitHub Actions siri sifatida saqlanadi.",
-              "Tashkilotingiz ulagan kanallar: faqat yangilash tokeni saqlanadi, Supabase Vault'da shifrlangan holda. Boshqaruv paneli uni saqlashi yoki o'chirishi mumkin, lekin hech qachon qayta o'qiy olmaydi — na siz uchun, na tashkilotingizdagi boshqa birov uchun; uni faqat bizning konveyerimiz, faqat serverdagi kalit bilan, shu kanal uchun ishga tushirish davomida o'qiydi va xotirada yoki faqat konveyer o'qiy oladigan, ishga tushirish tugashi bilan o'chiriladigan faylda saqlaydi. Kanalni uzganingizda saqlangan token yo'q qilinadi.",
+              "Biz boshqaradigan kanallar (oʻz tashkilotimiz): token darhol shifrlanadi (konveyer repozitoriysining ochiq kaliti bilan muhrlanadi) va faqat konveyer ishga tushganda oʻqiy oladigan shifrlangan GitHub Actions siri sifatida saqlanadi.",
+              "Tashkilotingiz ulagan kanallar: faqat yangilash tokeni saqlanadi, Supabase Vault’da shifrlangan holda. Boshqaruv paneli uni saqlashi yoki oʻchirishi mumkin, lekin hech qachon qayta oʻqiy olmaydi — na siz uchun, na tashkilotingizdagi boshqa birov uchun; uni faqat bizning konveyerimiz, faqat serverdagi kalit bilan, shu kanal uchun ishga tushirish davomida oʻqiydi va xotirada yoki faqat konveyer oʻqiy oladigan, ishga tushirish tugashi bilan oʻchiriladigan faylda saqlaydi. Kanalni uzganingizda saqlangan token yoʻq qilinadi.",
             ],
           },
-          "Har ikki holatda ham tokenlar hech qachon brauzeringizga yuborilmaydi va jurnalga yozilmaydi. Panel faqat maxfiy bo'lmagan ulanish ma'lumotlarini ko'rsatadi: qaysi YouTube kanali ulangan, qachon va kim tomonidan, qanday ruxsatlar berilgan. OAuth mijozimizning hisob ma'lumotlari faqat server konfiguratsiyasida saqlanadi.",
-          "Ulanish vaqtida qisqa muddatli http-only cookie (10 daqiqa) jarayonni saytlararo so'rovni qalbakilashtirishdan himoya qiladi.",
+          "Har ikki holatda ham tokenlar hech qachon brauzeringizga yuborilmaydi va jurnalga yozilmaydi. Panel faqat maxfiy boʻlmagan ulanish maʼlumotlarini koʻrsatadi: qaysi YouTube kanali ulangan, qachon va kim tomonidan, qanday ruxsatlar berilgan. OAuth mijozimizning hisob maʼlumotlari faqat server konfiguratsiyasida saqlanadi.",
+          "Ulanish vaqtida qisqa muddatli http-only cookie (10 daqiqa) jarayonni saytlararo soʻrovni qalbakilashtirishdan himoya qiladi.",
         ],
       },
       {
         id: "processors",
-        heading: "7. Xizmat ko'rsatuvchilar",
+        heading: "7. Xizmat koʻrsatuvchilar",
         body: [
-          "Xizmatni ishlatish uchun quyidagi provayderlardan foydalanamiz. Har biri faqat o'z vazifasi uchun kerakli narsani oladi.",
+          "Xizmatni ishlatish uchun quyidagi provayderlardan foydalanamiz. Har biri faqat oʻz vazifasi uchun kerakli narsani oladi.",
           {
             table: {
-              head: ["Provayder", "Maqsad", "Qanday ma'lumot oladi"],
+              head: ["Provayder", "Maqsad", "Qanday maʼlumot oladi"],
               rows: [
-                ["Supabase", "Ma'lumotlar bazasi, kirish va fayl saqlash", "Akkaunt ma'lumotlari, sozlamalar, video yozuvlari (YouTube video ID, nom, maxfiylik), ko'rsatkichlar, tekshiruv uchun video nusxalari; tashkilotingiz ulagan kanallar uchun shifrlangan Google yangilash tokeni (Supabase Vault)"],
-                ["Vercel", "Ushbu saytni hosting qilish (Yevropa Ittifoqi mintaqasi)", "Veb-so'rovlar va so'rov jurnallari"],
+                ["Supabase", "Maʼlumotlar bazasi, kirish va fayl saqlash", "Akkaunt maʼlumotlari, sozlamalar, video yozuvlari (YouTube video ID, nom, maxfiylik), koʻrsatkichlar, tekshiruv uchun video nusxalari; tashkilotingiz ulagan kanallar uchun shifrlangan Google yangilash tokeni (Supabase Vault)"],
+                ["Vercel", "Ushbu saytni hosting qilish (Yevropa Ittifoqi mintaqasi)", "Veb-soʻrovlar va soʻrov jurnallari"],
                 ["GitHub (Actions)", "Video konveyerini ishga tushirish; shifrlangan sirlar ombori", "Shifrlangan Google tokenlari va API kalitlari; konveyer jurnallari va natija fayllari"],
-                ["Google — YouTube Data va Analytics API", "3-bo'limda tavsiflangan kanalingiz bilan amallar", "Videolaringiz, subtitrlar, muqovalar va yuqorida tavsiflangan so'rovlar"],
-                ["Google — Gemini API", "Tadqiqot, ssenariy yozish, faktlarni tekshirish, izohlar va ko'rsatkichlarni tahlil qilish", "Mavzular, ssenariylar, izohlar matni va videolaringiz ko'rsatkichlari"],
+                ["Google — YouTube Data va Analytics API", "3-boʻlimda tavsiflangan kanalingiz bilan amallar", "Videolaringiz, subtitrlar, muqovalar va yuqorida tavsiflangan soʻrovlar"],
+                ["Google — Gemini API", "Tadqiqot, ssenariy yozish, faktlarni tekshirish, izohlar va koʻrsatkichlarni tahlil qilish", "Mavzular, ssenariylar, izohlar matni va videolaringiz koʻrsatkichlari"],
                 ["ElevenLabs; Microsoft Edge nutq sintezi", "Ovozlashtirish — kanal sozlamasiga qarab", "Ssenariy matni"],
-                ["Pexels, Pixabay", "Stok video va rasmlar", "Ssenariydan olingan qidiruv so'zlari"],
-                ["Ixtiyoriy media generatorlari, faqat operator yoqqan bo'lsa: Google Veo, Google Gemini (rasm), OpenAI (GPT Image), Black Forest Labs (FLUX), Ideogram, fal.ai, Leonardo.Ai, Higgsfield, Kling, MiniMax, Seedance (ByteDance), Wan (Alibaba Cloud)", "Rasm va video kliplar generatsiyasi", "Ssenariydan olingan promptlar"],
-                ["vidIQ (ixtiyoriy)", "Kalit so'z va sarlavha tadqiqoti", "Mavzu kalit so'zlari va sarlavha qoralamalari"],
+                ["Pexels, Pixabay", "Stok video va rasmlar", "Ssenariydan olingan qidiruv soʻzlari"],
+                ["Ixtiyoriy media generatorlari, faqat operator yoqqan boʻlsa: Google Veo, Google Gemini (rasm), OpenAI (GPT Image), Black Forest Labs (FLUX), Ideogram, fal.ai, Leonardo.Ai, Higgsfield, Kling, MiniMax, Seedance (ByteDance), Wan (Alibaba Cloud)", "Rasm va video kliplar generatsiyasi", "Ssenariydan olingan promptlar"],
+                ["vidIQ (ixtiyoriy)", "Kalit soʻz va sarlavha tadqiqoti", "Mavzu kalit soʻzlari va sarlavha qoralamalari"],
                 ["Telegram, Slack (ixtiyoriy)", "Operatorga bildirishnomalar", "Ishga tushirish holati, video nomlari va havolalari"],
-                ["Google Fonts, Amazon CloudFront", "Ushbu sahifalardagi shriftlar va fon mediasi", "Har qanday veb-so'rovdagi kabi IP manzilingiz va brauzer ma'lumotlari"],
-                ["Paddle (Paddle.com)", "Kredit xaridlari bo'yicha onlayn qayta sotuvchimiz va sotuvchi (Merchant of Record): to'lov oynasi, to'lovni qayta ishlash, soliq, cheklar va qaytarish", "Paddle to'lov oynasiga kiritadigan to'lov va hisob-kitob ma'lumotlaringiz — ularni Paddle o'zi qayta ishlaydi; bizdan — to'lov oynasini to'ldirish uchun akkauntingiz emaili hamda tashkilotingiz va akkauntingiz identifikatorlari"],
+                ["Google Fonts, Amazon CloudFront", "Ushbu sahifalardagi shriftlar va fon mediasi", "Har qanday veb-soʻrovdagi kabi IP manzilingiz va brauzer maʼlumotlari"],
+                ["Paddle (Paddle.com)", "Kredit xaridlari boʻyicha onlayn qayta sotuvchimiz va sotuvchi (Merchant of Record): toʻlov oynasi, toʻlovni qayta ishlash, soliq, cheklar va qaytarish", "Paddle toʻlov oynasiga kiritadigan toʻlov va hisob-kitob maʼlumotlaringiz — ularni Paddle oʻzi qayta ishlaydi; bizdan — toʻlov oynasini toʻldirish uchun akkauntingiz emaili hamda tashkilotingiz va akkauntingiz identifikatorlari"],
               ],
             },
           },
-          "Google foydalanuvchi ma'lumotlarini faqat ushbu ro'yxatdagi Supabase, GitHub, Google va bildirishnoma xizmatlari oladi va faqat yuqoridagi maqsadlarda. Biz shaxsiy ma'lumotlarni hech kimga sotmaymiz.",
-          "To'lovlar. Kreditlar onlayn qayta sotuvchimiz va sotuvchi (Merchant of Record) bo'lgan Paddle orqali sotiladi: kredit sotib olayotganda to'lov va hisob-kitob ma'lumotlaringizni Paddle'ning o'z to'lov oynasiga kiritasiz va Paddle ularni sotuvchi sifatida [Paddle maxfiylik bildirishnomasi](https://www.paddle.com/legal/privacy) asosida qayta ishlaydi. Biz karta ma'lumotlaringizni yoki hisob-kitob manzilingizni hech qachon olmaymiz va saqlamaymiz. Paddle bizga faqat xaridni hisobga qo'shish va qaytarishda uni bekor qilish uchun kerakli narsani yuboradi: tranzaksiya va qaytarish identifikatorlari, to'langan summa va valyuta, sotib olingan kreditlar hamda xarid qaysi tashkilot (va ma'lum bo'lsa, qaysi foydalanuvchi) uchun qilingani. Bu yozuvlarni tashkilotingizning kredit tarixi bilan birga uning akkaunti mavjud ekan saqlaymiz yoki soliq yoxud buxgalteriya qonunchiligi talab qilsa, undan uzoqroq.",
+          "Google foydalanuvchi maʼlumotlarini faqat ushbu roʻyxatdagi Supabase, GitHub, Google va bildirishnoma xizmatlari oladi va faqat yuqoridagi maqsadlarda. Biz shaxsiy maʼlumotlarni hech kimga sotmaymiz.",
+          "Toʻlovlar. Kreditlar onlayn qayta sotuvchimiz va sotuvchi (Merchant of Record) boʻlgan Paddle orqali sotiladi: kredit sotib olayotganda toʻlov va hisob-kitob maʼlumotlaringizni Paddle’ning oʻz toʻlov oynasiga kiritasiz va Paddle ularni sotuvchi sifatida [Paddle maxfiylik bildirishnomasi](https://www.paddle.com/legal/privacy) asosida qayta ishlaydi. Biz karta maʼlumotlaringizni yoki hisob-kitob manzilingizni hech qachon olmaymiz va saqlamaymiz. Paddle bizga faqat xaridni hisobga qoʻshish va qaytarishda uni bekor qilish uchun kerakli narsani yuboradi: tranzaksiya va qaytarish identifikatorlari, toʻlangan summa va valyuta, sotib olingan kreditlar hamda xarid qaysi tashkilot (va maʼlum boʻlsa, qaysi foydalanuvchi) uchun qilingani. Bu yozuvlarni tashkilotingizning kredit tarixi bilan birga uning akkaunti mavjud ekan saqlaymiz yoki soliq yoxud buxgalteriya qonunchiligi talab qilsa, undan uzoqroq.",
         ],
       },
       {
         id: "retention",
-        heading: "8. Saqlash va o'chirish",
+        heading: "8. Saqlash va oʻchirish",
         body: [
           {
             list: [
-              "Google tokenlari kanalingiz ulangan ekan saqlanadi. Ruxsatni bekor qilgan zahotingiz ular ishlamay qoladi, kanalni uzsangiz yoki so'rasangiz, biz ularni o'chiramiz.",
-              "Omborimizdagi tekshiruv uchun video nusxalari har bir kanal uchun oxirgi beshta bilan cheklangan; eskilari avtomatik o'chiriladi.",
-              "Konveyer natijalari (tayyor video, muqovalar va ishga tushirish jurnali) GitHub Actions'da 7 kun saqlanadi, so'ng avtomatik o'chiriladi.",
-              "Akkaunt ma'lumotlari, sozlamalar, video yozuvlari va ko'rsatkichlar akkauntingiz faol ekan saqlanadi va tasdiqlangan o'chirish so'rovidan keyin 30 kun ichida o'chiriladi.",
-              "Tasdiqlashlar va boshqa qarorlar bo'yicha audit yozuvlari akkaunt mavjud ekan saqlanadi, chunki ular kanal bilan bog'liq amalga kim ruxsat berganini qayd etadi.",
+              "Google tokenlari kanalingiz ulangan ekan saqlanadi. Ruxsatni bekor qilgan zahotingiz ular ishlamay qoladi, kanalni uzsangiz yoki soʻrasangiz, biz ularni oʻchiramiz.",
+              "Omborimizdagi tekshiruv uchun video nusxalari har bir kanal uchun oxirgi beshta bilan cheklangan; eskilari avtomatik oʻchiriladi.",
+              "Konveyer natijalari (tayyor video, muqovalar va ishga tushirish jurnali) GitHub Actions’da 7 kun saqlanadi, soʻng avtomatik oʻchiriladi.",
+              "Akkaunt maʼlumotlari, sozlamalar, video yozuvlari va koʻrsatkichlar akkauntingiz faol ekan saqlanadi va tasdiqlangan oʻchirish soʻrovidan keyin 30 kun ichida oʻchiriladi.",
+              "Tasdiqlashlar va boshqa qarorlar boʻyicha audit yozuvlari akkaunt mavjud ekan saqlanadi, chunki ular kanal bilan bogʻliq amalga kim ruxsat berganini qayd etadi.",
             ],
           },
-          "Nightshift'ning Google akkauntingizga kirish huquqini istalgan vaqtda [https://myaccount.google.com/permissions](https://myaccount.google.com/permissions) sahifasida bekor qilishingiz mumkin. Akkauntingizni va bizdagi ma'lumotlarni o'chirish uchun {contactEmail} manziliga yozing.",
+          "Nightshift’ning Google akkauntingizga kirish huquqini istalgan vaqtda [https://myaccount.google.com/permissions](https://myaccount.google.com/permissions) sahifasida bekor qilishingiz mumkin. Akkauntingizni va bizdagi maʼlumotlarni oʻchirish uchun {contactEmail} manziliga yozing.",
         ],
       },
       {
         id: "cookies",
         heading: "9. Cookie va mahalliy xotira",
         body: [
-          "Biz faqat Xizmat ishlashi uchun kerakli narsalardan foydalanamiz: kirish seansi cookie'lari (Supabase), tanlangan tilni eslab qoluvchi cookie, oxirgi ko'rilgan kanalni eslab qoluvchi cookie, YouTube ulanayotganda ishlatiladigan 10 daqiqalik cookie va brauzeringizning mahalliy xotirasidagi mavzu (tema) tanlovi. Reklama yoki analitika cookie'laridan foydalanmaymiz.",
+          "Biz faqat Xizmat ishlashi uchun kerakli narsalardan foydalanamiz: kirish seansi cookieʼlari (Supabase), tanlangan tilni eslab qoluvchi cookie, oxirgi koʻrilgan kanalni eslab qoluvchi cookie, YouTube ulanayotganda ishlatiladigan 10 daqiqalik cookie va brauzeringizning mahalliy xotirasidagi mavzu (tema) tanlovi. Reklama yoki analitika cookieʼlaridan foydalanmaymiz.",
         ],
       },
       {
         id: "security",
         heading: "10. Xavfsizlik",
         body: [
-          "Trafik uzatishda shifrlanadi (HTTPS). Ma'lumotlar bazasiga kirish har bir foydalanuvchi uchun qator darajasidagi xavfsizlik (RLS) bilan cheklangan, sayt faqat cheklangan ochiq kalitdan foydalanadi, sirlar esa saqlashdan oldin shifrlanadi. Hech bir tizim mutlaqo xavfsiz emas; ma'lumotlaringizga tegishli sizib chiqish haqida bilsak, qonun talab qilganidek sizni xabardor qilamiz.",
+          "Trafik uzatishda shifrlanadi (HTTPS). Maʼlumotlar bazasiga kirish har bir foydalanuvchi uchun qator darajasidagi xavfsizlik (RLS) bilan cheklangan, sayt faqat cheklangan ochiq kalitdan foydalanadi, sirlar esa saqlashdan oldin shifrlanadi. Hech bir tizim mutlaqo xavfsiz emas; maʼlumotlaringizga tegishli sizib chiqish haqida bilsak, qonun talab qilganidek sizni xabardor qilamiz.",
         ],
       },
       {
         id: "your-rights",
         heading: "11. Tanlovingiz va huquqlaringiz",
         body: [
-          "Kanalni uzishingiz, Google ruxsatini bekor qilishingiz hamda {contactEmail} manziliga yozib, shaxsiy ma'lumotlaringizga kirish, ularni tuzatish, eksport qilish yoki o'chirishni so'rashingiz mumkin. Yashash joyingizga qarab mahalliy qonun bo'yicha qo'shimcha huquqlaringiz, jumladan ma'lumotlarni himoya qilish organiga shikoyat qilish huquqingiz bo'lishi mumkin.",
+          "Kanalni uzishingiz, Google ruxsatini bekor qilishingiz hamda {contactEmail} manziliga yozib, shaxsiy maʼlumotlaringizga kirish, ularni tuzatish, eksport qilish yoki oʻchirishni soʻrashingiz mumkin. Yashash joyingizga qarab mahalliy qonun boʻyicha qoʻshimcha huquqlaringiz, jumladan maʼlumotlarni himoya qilish organiga shikoyat qilish huquqingiz boʻlishi mumkin.",
         ],
       },
       {
         id: "transfers",
         heading: "12. Xalqaro uzatish",
         body: [
-          "Provayderlarimiz Yevropa Ittifoqi, AQSh va boshqa mamlakatlarda ishlaydi, shuning uchun ma'lumotlaringiz mamlakatingizdan tashqarida qayta ishlanishi mumkin. Qonun talab qilgan joyda biz provayderlarning standart shartnomaviy kafolatlariga tayanamiz.",
+          "Provayderlarimiz Yevropa Ittifoqi, AQSh va boshqa mamlakatlarda ishlaydi, shuning uchun maʼlumotlaringiz mamlakatingizdan tashqarida qayta ishlanishi mumkin. Qonun talab qilgan joyda biz provayderlarning standart shartnomaviy kafolatlariga tayanamiz.",
         ],
       },
       {
         id: "children",
         heading: "13. Bolalar",
         body: [
-          "Xizmat bolalarga mo'ljallanmagan va undan 13 yoshdan kichiklar yoki o'z mamlakatida YouTube kanalni boshqarish uchun talab qiladigan eng kam yoshga yetmaganlar foydalana olmaydi.",
+          "Xizmat bolalarga moʻljallanmagan va undan 13 yoshdan kichiklar yoki oʻz mamlakatida YouTube kanalni boshqarish uchun talab qiladigan eng kam yoshga yetmaganlar foydalana olmaydi.",
         ],
       },
       {
         id: "google-and-youtube",
         heading: "14. YouTube va Google",
         body: [
-          "Nightshift YouTube API xizmatlaridan foydalanadi. YouTube kanalini ulash orqali siz [YouTube foydalanish shartlari](https://www.youtube.com/t/terms)ga rioya qilishga rozilik bildirasiz. Google ma'lumotlaringizni qanday qayta ishlashi [Google maxfiylik siyosati](https://policies.google.com/privacy) bilan tartibga solinadi.",
+          "Nightshift YouTube API xizmatlaridan foydalanadi. YouTube kanalini ulash orqali siz [YouTube foydalanish shartlari](https://www.youtube.com/t/terms)ga rioya qilishga rozilik bildirasiz. Google maʼlumotlaringizni qanday qayta ishlashi [Google maxfiylik siyosati](https://policies.google.com/privacy) bilan tartibga solinadi.",
         ],
       },
       {
         id: "changes",
-        heading: "15. Siyosatdagi o'zgarishlar",
+        heading: "15. Siyosatdagi oʻzgarishlar",
         body: [
-          "Har qanday o'zgarishni shu sahifada e'lon qilamiz va kuchga kirish sanasini ({effectiveDate}) yangilaymiz. Agar o'zgarish Google ma'lumotlaridan foydalanishimizga jiddiy ta'sir qilsa, Xizmatda xabar beramiz va kerak bo'lsa, qayta rozilik so'raymiz.",
+          "Har qanday oʻzgarishni shu sahifada eʼlon qilamiz va kuchga kirish sanasini ({effectiveDate}) yangilaymiz. Agar oʻzgarish Google maʼlumotlaridan foydalanishimizga jiddiy taʼsir qilsa, Xizmatda xabar beramiz va kerak boʻlsa, qayta rozilik soʻraymiz.",
         ],
       },
       {
@@ -208,51 +208,51 @@ export const uz: LegalTexts = {
   terms: {
     title: "Foydalanish shartlari",
     summary:
-      "Nightshift'dan foydalanish qoidalari: kanal va kontent uchun javobgarligingiz, nimalar taqiqlangan, oldindan to'langan kreditlar, to'lov va qaytarish qanday ishlashi hamda javobgarligimiz chegaralari.",
+      "Nightshift’dan foydalanish qoidalari: kanal va kontent uchun javobgarligingiz, nimalar taqiqlangan, oldindan toʻlangan kreditlar, toʻlov va qaytarish qanday ishlashi hamda javobgarligimiz chegaralari.",
     sections: [
       {
         id: "agreement",
         heading: "1. Kelishuv",
         body: [
-          "Ushbu Shartlar siz bilan {legalName} («biz»), {country} o'rtasidagi kelishuv bo'lib, Nightshift'dan («Xizmat») foydalanishingizni tartibga soladi. Xizmatga kirish yoki undan foydalanish orqali siz ularni qabul qilasiz. Agar Xizmatdan tashkilot nomidan foydalansangiz, uni ushbu Shartlar bilan majburlash huquqingiz borligini tasdiqlaysiz. [Maxfiylik siyosati](/privacy)miz ma'lumotlaringiz bilan qanday ishlashimizni tushuntiradi.",
+          "Ushbu Shartlar siz bilan {legalName} («biz»), {country} oʻrtasidagi kelishuv boʻlib, Nightshift’dan («Xizmat») foydalanishingizni tartibga soladi. Xizmatga kirish yoki undan foydalanish orqali siz ularni qabul qilasiz. Agar Xizmatdan tashkilot nomidan foydalansangiz, uni ushbu Shartlar bilan majburlash huquqingiz borligini tasdiqlaysiz. [Maxfiylik siyosati](/privacy)miz maʼlumotlaringiz bilan qanday ishlashimizni tushuntiradi.",
         ],
       },
       {
         id: "service",
         heading: "2. Xizmat",
         body: [
-          "Nightshift siz boshqaradigan YouTube kanallari uchun video tayyorlashga yordam beradi: mavzularni o'rganadi, ssenariy yozadi va tekshiradi, ovozlashtiradi, render qiladi, videolarni kanalingizga yuklaydi va ularning natijalarini ko'rsatadi. Funksiyalar o'zgarishi mumkin, Xizmatning ayrim qismlari sinov versiyasi sifatida taqdim etilishi mumkin.",
+          "Nightshift siz boshqaradigan YouTube kanallari uchun video tayyorlashga yordam beradi: mavzularni oʻrganadi, ssenariy yozadi va tekshiradi, ovozlashtiradi, render qiladi, videolarni kanalingizga yuklaydi va ularning natijalarini koʻrsatadi. Funksiyalar oʻzgarishi mumkin, Xizmatning ayrim qismlari sinov versiyasi sifatida taqdim etilishi mumkin.",
         ],
       },
       {
         id: "accounts",
         heading: "3. Akkauntlar",
         body: [
-          "Hozircha kirish taklif orqali beriladi. Kirish ma'lumotlaringizni xavfsiz saqlang va ruxsatsiz foydalanishdan shubhalansangiz, darhol {contactEmail} manziliga xabar bering. Akkauntingizdagi harakatlar, jumladan siz taklif qilgan jamoa a'zolarining harakatlari uchun siz javobgarsiz.",
+          "Hozircha kirish taklif orqali beriladi. Kirish maʼlumotlaringizni xavfsiz saqlang va ruxsatsiz foydalanishdan shubhalansangiz, darhol {contactEmail} manziliga xabar bering. Akkauntingizdagi harakatlar, jumladan siz taklif qilgan jamoa aʼzolarining harakatlari uchun siz javobgarsiz.",
         ],
       },
       {
         id: "youtube",
         heading: "4. YouTube kanalingiz va Google akkauntingiz",
         body: [
-          "Faqat o'zingizga tegishli yoki boshqarishga vakolatingiz bor kanallarni ulashingiz mumkin. Kanalni ulash orqali siz Nightshift'ga Maxfiylik siyosatida tavsiflanganidek, Google rozilik oynasida bergan ruxsatlaringiz doirasida u bilan ishlashga ruxsat berasiz. Kanalingiz uchun javobgarlik o'zingizda qoladi va siz [YouTube foydalanish shartlari](https://www.youtube.com/t/terms) hamda YouTube'ning [Hamjamiyat qoidalari](https://www.youtube.com/howyoutubeworks/policies/community-guidelines/)ga rioya qilishingiz shart. Google ma'lumotlaringizni qanday qayta ishlashi [Google maxfiylik siyosati](https://policies.google.com/privacy) bilan tartibga solinadi.",
-          "Ruxsatni istalgan vaqtda [https://myaccount.google.com/permissions](https://myaccount.google.com/permissions) sahifasida bekor qilishingiz mumkin; shundan so'ng Xizmat o'sha kanal bilan ishlashni to'xtatadi.",
+          "Faqat oʻzingizga tegishli yoki boshqarishga vakolatingiz bor kanallarni ulashingiz mumkin. Kanalni ulash orqali siz Nightshift’ga Maxfiylik siyosatida tavsiflanganidek, Google rozilik oynasida bergan ruxsatlaringiz doirasida u bilan ishlashga ruxsat berasiz. Kanalingiz uchun javobgarlik oʻzingizda qoladi va siz [YouTube foydalanish shartlari](https://www.youtube.com/t/terms) hamda YouTube’ning [Hamjamiyat qoidalari](https://www.youtube.com/howyoutubeworks/policies/community-guidelines/)ga rioya qilishingiz shart. Google maʼlumotlaringizni qanday qayta ishlashi [Google maxfiylik siyosati](https://policies.google.com/privacy) bilan tartibga solinadi.",
+          "Ruxsatni istalgan vaqtda [https://myaccount.google.com/permissions](https://myaccount.google.com/permissions) sahifasida bekor qilishingiz mumkin; shundan soʻng Xizmat oʻsha kanal bilan ishlashni toʻxtatadi.",
         ],
       },
       {
         id: "content",
         heading: "5. Kontentingiz va javobgarligingiz",
         body: [
-          "Kanalingiz uchun yaratilgan kontent sizga tegishli va u uchun siz javobgarsiz — akkauntingizdan yuklangan hamma narsa, uni o'zingiz tekshirganmisiz yoki siz tanlagan sozlamalar bo'yicha Xizmatga nashr qilishga ruxsat berganmisiz, bundan qat'i nazar. Xususan, siz quyidagilar uchun javobgarsiz:",
+          "Kanalingiz uchun yaratilgan kontent sizga tegishli va u uchun siz javobgarsiz — akkauntingizdan yuklangan hamma narsa, uni oʻzingiz tekshirganmisiz yoki siz tanlagan sozlamalar boʻyicha Xizmatga nashr qilishga ruxsat berganmisiz, bundan qatʼi nazar. Xususan, siz quyidagilar uchun javobgarsiz:",
           {
             list: [
               "videolaringizdagi mavzular, ssenariylar, ovozlar, videomateriallar, musiqa, logotiplar va boshqa materiallarga huquqingiz borligi;",
-              "faktlarni tekshirish: generatsiya qilingan ssenariy va xulosalarda xato bo'lishi mumkin, faktlarni tekshirish bu xavfni kamaytiradi, lekin yo'qotmaydi;",
-              "YouTube yoki qonun talab qilgan joyda o'zgartirilgan yoki sintetik kontentni belgilash;",
-              "kanalingizning YouTube'dagi holati, jumladan ogohlantirishlar (strike), monetizatsiya qarorlari va bloklanishlar.",
+              "faktlarni tekshirish: generatsiya qilingan ssenariy va xulosalarda xato boʻlishi mumkin, faktlarni tekshirish bu xavfni kamaytiradi, lekin yoʻqotmaydi;",
+              "YouTube yoki qonun talab qilgan joyda oʻzgartirilgan yoki sintetik kontentni belgilash;",
+              "kanalingizning YouTube’dagi holati, jumladan ogohlantirishlar (strike), monetizatsiya qarorlari va bloklanishlar.",
             ],
           },
-          "Siz bizga kontentingizni faqat siz uchun Xizmatni ishlatish maqsadida qayta ishlash bo'yicha cheklangan litsenziya berasiz.",
+          "Siz bizga kontentingizni faqat siz uchun Xizmatni ishlatish maqsadida qayta ishlash boʻyicha cheklangan litsenziya berasiz.",
         ],
       },
       {
@@ -262,11 +262,11 @@ export const uz: LegalTexts = {
           "Xizmatdan quyidagilar uchun foydalanish taqiqlanadi:",
           {
             list: [
-              "spam yoki asosan YouTube tizimlarini aldash uchun yaratilgan ommaviy, takroriy yoki past qiymatli kontentni, yoxud YouTube'ning [spam, aldov va firibgarlik qoidalari](https://support.google.com/youtube/answer/2801973)ni buzadigan har qanday narsani nashr qilish;",
-              "tomoshabinlarni chalg'itish — jumladan videoni noto'g'ri aks ettiruvchi klikbeyt sarlavha yoki muqovalar, o'zgani o'zini ko'rsatish yoki fakt sifatida taqdim etilgan to'qima da'volar;",
-              "noqonuniy, boshqalarning huquqini buzadigan, ta'qib qiladigan yoki nafratga undaydigan, voyaga yetmaganlarni jinsiylashtiradigan yoki YouTube Hamjamiyat qoidalarini buzadigan kontentni nashr qilish;",
-              "boshqarishga vakolatingiz bo'lmagan kanallarni boshqarish yoki YouTube cheklovi yoxud bloklanishini chetlab o'tish uchun kanal yaratish va yuritish;",
-              "YouTube API kvotalari yoki cheklovlarini chetlab o'tish, boshqa foydalanuvchilar ma'lumotlariga kirish, Xizmatni tekshirib ko'rish yoki ishini buzish, qonun ruxsat bergan holatlardan tashqari uni teskari muhandislik qilish;",
+              "spam yoki asosan YouTube tizimlarini aldash uchun yaratilgan ommaviy, takroriy yoki past qiymatli kontentni, yoxud YouTube’ning [spam, aldov va firibgarlik qoidalari](https://support.google.com/youtube/answer/2801973)ni buzadigan har qanday narsani nashr qilish;",
+              "tomoshabinlarni chalgʻitish — jumladan videoni notoʻgʻri aks ettiruvchi klikbeyt sarlavha yoki muqovalar, oʻzgani oʻzini koʻrsatish yoki fakt sifatida taqdim etilgan toʻqima daʼvolar;",
+              "noqonuniy, boshqalarning huquqini buzadigan, taʼqib qiladigan yoki nafratga undaydigan, voyaga yetmaganlarni jinsiylashtiradigan yoki YouTube Hamjamiyat qoidalarini buzadigan kontentni nashr qilish;",
+              "boshqarishga vakolatingiz boʻlmagan kanallarni boshqarish yoki YouTube cheklovi yoxud bloklanishini chetlab oʻtish uchun kanal yaratish va yuritish;",
+              "YouTube API kvotalari yoki cheklovlarini chetlab oʻtish, boshqa foydalanuvchilar maʼlumotlariga kirish, Xizmatni tekshirib koʻrish yoki ishini buzish, qonun ruxsat bergan holatlardan tashqari uni teskari muhandislik qilish;",
               "yozma ruxsatimizsiz Xizmatga kirish huquqini qayta sotish yoki boshqalarga berish.",
             ],
           },
@@ -276,86 +276,86 @@ export const uz: LegalTexts = {
         id: "third-parties",
         heading: "7. Uchinchi tomon xizmatlari",
         body: [
-          "Xizmat Maxfiylik siyosatida sanab o'tilgan uchinchi tomon provayderlariga tayanadi. O'z API kalitlaringizni bersangiz, bu provayderlardan foydalanishingiz ularning shartlari va tariflariga bo'ysunadi, ularning mavjudligi yoki natijalari uchun biz javobgar emasmiz.",
+          "Xizmat Maxfiylik siyosatida sanab oʻtilgan uchinchi tomon provayderlariga tayanadi. Oʻz API kalitlaringizni bersangiz, bu provayderlardan foydalanishingiz ularning shartlari va tariflariga boʻysunadi, ularning mavjudligi yoki natijalari uchun biz javobgar emasmiz.",
         ],
       },
       {
         id: "credits",
-        heading: "8. Oldindan to'langan kreditlar, to'lov va qaytarish",
+        heading: "8. Oldindan toʻlangan kreditlar, toʻlov va qaytarish",
         body: [
           {
-            note: "Bu bo'lim oldindan to'langan kreditlar Xizmatda hozir qanday ishlashini tavsiflaydi. U malakali yurist ko'rib chiqishini kutmoqda; har qanday o'zgarish shu sahifada yangi kuchga kirish sanasi bilan e'lon qilinadi.",
+            note: "Bu boʻlim oldindan toʻlangan kreditlar Xizmatda hozir qanday ishlashini tavsiflaydi. U malakali yurist koʻrib chiqishini kutmoqda; har qanday oʻzgarish shu sahifada yangi kuchga kirish sanasi bilan eʼlon qilinadi.",
           },
-          "8.1. Nima sotib olasiz. Xizmatdan foydalanishning bir qismi oldindan to'langan kreditlar bilan to'lanadi. Ular [Narxlar](/pricing) sahifasida ko'rsatilgan narxlarda, yakuniy ko'rinishda esa to'lashdan oldin to'lov oynasida ko'rsatilgan narxda ikki xil sotiladi: (a) oylik tariflar — siz bekor qilmaguningizcha har oy avtomatik yangilanadigan obuna; u har bir to'langan davr uchun belgilangan miqdorda kredit beradi; bu kreditlar faqat shu davr ichida ishlatiladi va uning oxirida yonadi, keyingi davrga o'tmaydi; obunani istalgan vaqtda bekor qilish mumkin, shundan keyin tarif allaqachon to'langan davr oxirigacha qo'shimcha to'lovsiz amal qiladi; va (b) kredit paketlari — yangilanmaydigan bir martalik to'lovlar. Kreditlar siz ular uchun sotib olgan tashkilot balansiga qo'shiladi va faqat Xizmatda, faqat shu tashkilot tomonidan ishlatilishi mumkin. Tarif kreditlari paket kreditlaridan oldin, muddati tezroq tugaydiganlari esa birinchi sarflanadi.",
-          "8.2. Kimdan sotib olasiz. Buyurtma jarayonini bizning onlayn qayta sotuvchimiz (reseller) Paddle.com («Paddle») amalga oshiradi. Paddle barcha buyurtmalarimiz bo'yicha sotuvchi (Merchant of Record) hisoblanadi: kreditlarni siz Paddle'dan [Paddle xaridorlar shartlari](https://www.paddle.com/legal/checkout-buyer-terms) asosida sotib olasiz. Paddle to'lovni qayta ishlaydi, amaldagi soliqlarni (QQS yoki savdo solig'i) hisoblaydi va undiradi, chek yoki hisob-faktura beradi hamda to'lov bo'yicha savollar va qaytarish so'rovlarini ko'rib chiqadi. To'lov ma'lumotlaringizni Paddle [Paddle maxfiylik bildirishnomasi](https://www.paddle.com/legal/privacy) asosida qayta ishlaydi; biz karta ma'lumotlaringizni hech qachon olmaymiz va saqlamaymiz.",
+          "8.1. Nima sotib olasiz. Xizmatdan foydalanishning bir qismi oldindan toʻlangan kreditlar bilan toʻlanadi. Ular [Narxlar](/pricing) sahifasida koʻrsatilgan narxlarda, yakuniy koʻrinishda esa toʻlashdan oldin toʻlov oynasida koʻrsatilgan narxda ikki xil sotiladi: (a) oylik tariflar — siz bekor qilmaguningizcha har oy avtomatik yangilanadigan obuna; u har bir toʻlangan davr uchun belgilangan miqdorda kredit beradi; bu kreditlar faqat shu davr ichida ishlatiladi va uning oxirida yonadi, keyingi davrga oʻtmaydi; obunani istalgan vaqtda bekor qilish mumkin, shundan keyin tarif allaqachon toʻlangan davr oxirigacha qoʻshimcha toʻlovsiz amal qiladi; va (b) kredit paketlari — yangilanmaydigan bir martalik toʻlovlar. Kreditlar siz ular uchun sotib olgan tashkilot balansiga qoʻshiladi va faqat Xizmatda, faqat shu tashkilot tomonidan ishlatilishi mumkin. Tarif kreditlari paket kreditlaridan oldin, muddati tezroq tugaydiganlari esa birinchi sarflanadi.",
+          "8.2. Kimdan sotib olasiz. Buyurtma jarayonini bizning onlayn qayta sotuvchimiz (reseller) Paddle.com («Paddle») amalga oshiradi. Paddle barcha buyurtmalarimiz boʻyicha sotuvchi (Merchant of Record) hisoblanadi: kreditlarni siz Paddle’dan [Paddle xaridorlar shartlari](https://www.paddle.com/legal/checkout-buyer-terms) asosida sotib olasiz. Paddle toʻlovni qayta ishlaydi, amaldagi soliqlarni (QQS yoki savdo soligʻi) hisoblaydi va undiradi, chek yoki hisob-faktura beradi hamda toʻlov boʻyicha savollar va qaytarish soʻrovlarini koʻrib chiqadi. Toʻlov maʼlumotlaringizni Paddle [Paddle maxfiylik bildirishnomasi](https://www.paddle.com/legal/privacy) asosida qayta ishlaydi; biz karta maʼlumotlaringizni hech qachon olmaymiz va saqlamaymiz.",
           "8.3. Kreditlar qanday sarflanadi. Kreditlar Xizmat tashkilotingiz kanallaridan biri uchun video tayyorlaganda sarflanadi:",
           {
             list: [
-              "Ishga tushirishdan oldin taxminiy miqdordagi kredit band qilinadi. Taxmin — so'ralgan video uzunligining amaldagi daqiqalik stavkaga ko'paytmasi, daqiqalik stavka qo'llanilmasa — kanalingizning so'nggi ishga tushirishlari narxiga asoslangan hisob; u hech qachon bitta ishga tushirish uchun belgilangan minimumdan kam bo'lmaydi. Taxmin ishga tushirishdan oldin Xizmatda ko'rsatiladi va mavjud kreditlaringiz (balans minus allaqachon band qilinganlar) uni qoplamasa, ishga tushirish boshlanmaydi.",
-              "Ishga tushirish tugagach, u haqiqatda ishlatgan resurslar uchun kreditlar amaldagi stavkalar bo'yicha yechiladi — lekin hech qachon banddan ko'p emas. Bandning ishlatilmagan qismi shu zahoti mavjud kreditlaringizga qaytariladi. Ishga tushirish ishlatgan resurslarning hammasini o'lchab va narxlab bo'lmasa, band to'liq yechiladi.",
-              "Ishga tushirish muvaffaqiyatsiz tugasa yoki oxiriga yetmasa, band to'liq qaytariladi va hech narsa yechilmaydi. Hech qachon boshlanmagan yoki natijasini xabar qilmagan ishga tushirishning bandi avtomatik qaytariladi.",
+              "Ishga tushirishdan oldin taxminiy miqdordagi kredit band qilinadi. Taxmin — soʻralgan video uzunligining amaldagi daqiqalik stavkaga koʻpaytmasi, daqiqalik stavka qoʻllanilmasa — kanalingizning soʻnggi ishga tushirishlari narxiga asoslangan hisob; u hech qachon bitta ishga tushirish uchun belgilangan minimumdan kam boʻlmaydi. Taxmin ishga tushirishdan oldin Xizmatda koʻrsatiladi va mavjud kreditlaringiz (balans minus allaqachon band qilinganlar) uni qoplamasa, ishga tushirish boshlanmaydi.",
+              "Ishga tushirish tugagach, u haqiqatda ishlatgan resurslar uchun kreditlar amaldagi stavkalar boʻyicha yechiladi — lekin hech qachon banddan koʻp emas. Bandning ishlatilmagan qismi shu zahoti mavjud kreditlaringizga qaytariladi. Ishga tushirish ishlatgan resurslarning hammasini oʻlchab va narxlab boʻlmasa, band toʻliq yechiladi.",
+              "Ishga tushirish muvaffaqiyatsiz tugasa yoki oxiriga yetmasa, band toʻliq qaytariladi va hech narsa yechilmaydi. Hech qachon boshlanmagan yoki natijasini xabar qilmagan ishga tushirishning bandi avtomatik qaytariladi.",
               "Har bir band, yechish va qaytarish Xizmatdagi tashkilotingizning kredit tarixiga yoziladi.",
             ],
           },
-          "8.4. Kreditlarning tabiati. Kreditlar — Xizmatdan foydalanish uchun oldindan to'langan huquq, pul yoki depozit emas: ularning pul qiymati yo'q, ularga foiz hisoblanmaydi, ularni pulga almashtirib (8.6-bo'limdagi qaytarishdan tashqari), boshqa tashkilotga o'tkazib yoki qayta sotib bo'lmaydi.",
+          "8.4. Kreditlarning tabiati. Kreditlar — Xizmatdan foydalanish uchun oldindan toʻlangan huquq, pul yoki depozit emas: ularning pul qiymati yoʻq, ularga foiz hisoblanmaydi, ularni pulga almashtirib (8.6-boʻlimdagi qaytarishdan tashqari), boshqa tashkilotga oʻtkazib yoki qayta sotib boʻlmaydi.",
           {
             creditExpiry: {
               never: "8.5. Amal qilish muddati. Kreditlarning muddati tugamaydi.",
-              after: "8.5. Amal qilish muddati. Ishlatilmagan kreditlarning muddati sotib olingan kundan boshlab {months} oy o'tgach tugaydi.",
+              after: "8.5. Amal qilish muddati. Ishlatilmagan kreditlarning muddati sotib olingan kundan boshlab {months} oy oʻtgach tugaydi.",
             },
           },
-          "8.6. Qaytarish. Sotuvchi Paddle bo'lgani uchun qaytarishni Paddle [Paddle xaridorlar shartlari](https://www.paddle.com/legal/checkout-buyer-terms) va amaldagi qonunchilik asosida amalga oshiradi, jumladan yashash joyingizda iste'molchi sifatida xariddan voz kechish huquqingiz bo'lsa, shu huquq asosida ham. Qaytarishni so'rash uchun Paddle chekidagi havoladan foydalaning yoki {contactEmail} manziliga yozing — yordam beramiz.",
-          "8.7. Qaytarish va chargeback kreditlarni olib qo'yadi. Xarid qaytarilsa yoki bank orqali e'tiroz qilinsa (chargeback), u qo'shgan kreditlar tashkilot balansidan olinadi: to'liq qaytarishda — hammasi, qisman qaytarishda — qaytarilgan summaga mutanosib qismi. Faqat mavjud kreditlarni olish mumkin: allaqachon sarflangan yoki ishlab turgan ishga tushirish uchun band qilinganlarini olib bo'lmaydi. Chargeback'dan keyin sarflangan, lekin to'lanmagan kreditlar qolsa, tashkilotning pullik funksiyalardan foydalanishini to'xtatib turishimiz mumkin.",
-          "8.8. Narxlarning o'zgarishi. Kredit paketlari narxlarini va kreditlar sarflanish stavkalarini o'zgartirishimiz mumkin. O'zgarish balansingizdagi kreditlarni hech qachon kamaytirmaydi va ishga tushirish uchun u boshlanganda qo'yilgan banddan ko'p hech qachon yechilmaydi.",
+          "8.6. Qaytarish. Sotuvchi Paddle boʻlgani uchun qaytarishni Paddle [Paddle xaridorlar shartlari](https://www.paddle.com/legal/checkout-buyer-terms) va amaldagi qonunchilik asosida amalga oshiradi, jumladan yashash joyingizda isteʼmolchi sifatida xariddan voz kechish huquqingiz boʻlsa, shu huquq asosida ham. Qaytarishni soʻrash uchun Paddle chekidagi havoladan foydalaning yoki {contactEmail} manziliga yozing — yordam beramiz.",
+          "8.7. Qaytarish va chargeback kreditlarni olib qoʻyadi. Xarid qaytarilsa yoki bank orqali eʼtiroz qilinsa (chargeback), u qoʻshgan kreditlar tashkilot balansidan olinadi: toʻliq qaytarishda — hammasi, qisman qaytarishda — qaytarilgan summaga mutanosib qismi. Faqat mavjud kreditlarni olish mumkin: allaqachon sarflangan yoki ishlab turgan ishga tushirish uchun band qilinganlarini olib boʻlmaydi. Chargeback’dan keyin sarflangan, lekin toʻlanmagan kreditlar qolsa, tashkilotning pullik funksiyalardan foydalanishini toʻxtatib turishimiz mumkin.",
+          "8.8. Narxlarning oʻzgarishi. Kredit paketlari narxlarini va kreditlar sarflanish stavkalarini oʻzgartirishimiz mumkin. Oʻzgarish balansingizdagi kreditlarni hech qachon kamaytirmaydi va ishga tushirish uchun u boshlanganda qoʻyilgan banddan koʻp hech qachon yechilmaydi.",
         ],
       },
       {
         id: "ip",
         heading: "9. Bizning intellektual mulkimiz",
         body: [
-          "Xizmat, uning dasturiy ta'minoti va brendi bizga yoki litsenziarlarimizga tegishli. Ushbu Shartlar akkauntingiz faol ekan Xizmatdan foydalanish uchun sizga shaxsiy, eksklyuziv bo'lmagan va boshqaga o'tkazilmaydigan huquq beradi. Bizga fikr-mulohaza yuborsangiz, undan sizning oldingizda majburiyatsiz foydalanishimiz mumkin.",
+          "Xizmat, uning dasturiy taʼminoti va brendi bizga yoki litsenziarlarimizga tegishli. Ushbu Shartlar akkauntingiz faol ekan Xizmatdan foydalanish uchun sizga shaxsiy, eksklyuziv boʻlmagan va boshqaga oʻtkazilmaydigan huquq beradi. Bizga fikr-mulohaza yuborsangiz, undan sizning oldingizda majburiyatsiz foydalanishimiz mumkin.",
         ],
       },
       {
         id: "disclaimers",
         heading: "10. Kafolatlardan voz kechish",
         body: [
-          "Xizmat «boricha» va «mavjud bo'lganicha» taqdim etiladi. Qonun ruxsat bergan darajada biz barcha nazarda tutilgan kafolatlardan voz kechamiz. Biz ko'rishlar, obunachilar, daromad, monetizatsiya tasdiqlanishi yoki YouTube biror video yoki kanalni cheklamasligi, monetizatsiyadan chiqarmasligi yoxud o'chirmasligini kafolatlamaymiz.",
+          "Xizmat «boricha» va «mavjud boʻlganicha» taqdim etiladi. Qonun ruxsat bergan darajada biz barcha nazarda tutilgan kafolatlardan voz kechamiz. Biz koʻrishlar, obunachilar, daromad, monetizatsiya tasdiqlanishi yoki YouTube biror video yoki kanalni cheklamasligi, monetizatsiyadan chiqarmasligi yoxud oʻchirmasligini kafolatlamaymiz.",
         ],
       },
       {
         id: "liability",
         heading: "11. Javobgarlikni cheklash",
         body: [
-          "Qonun ruxsat bergan darajada biz bilvosita, tasodifiy, maxsus, oqibatli yoki jarima tarzidagi zararlar, shuningdek boy berilgan foyda, daromad, ma'lumotlar, obro' yoki kanal holati uchun javobgar emasmiz. Xizmat bilan bog'liq har qanday da'vo bo'yicha umumiy javobgarligimiz da'voga asos bo'lgan hodisadan oldingi o'n ikki oy ichida Xizmat uchun bizga to'lagan summangiz bilan cheklanadi. Ushbu Shartlardagi hech narsa qonun bo'yicha cheklab bo'lmaydigan javobgarlikni cheklamaydi.",
+          "Qonun ruxsat bergan darajada biz bilvosita, tasodifiy, maxsus, oqibatli yoki jarima tarzidagi zararlar, shuningdek boy berilgan foyda, daromad, maʼlumotlar, obro' yoki kanal holati uchun javobgar emasmiz. Xizmat bilan bogʻliq har qanday daʼvo boʻyicha umumiy javobgarligimiz daʼvoga asos boʻlgan hodisadan oldingi oʻn ikki oy ichida Xizmat uchun bizga toʻlagan summangiz bilan cheklanadi. Ushbu Shartlardagi hech narsa qonun boʻyicha cheklab boʻlmaydigan javobgarlikni cheklamaydi.",
         ],
       },
       {
         id: "indemnity",
         heading: "12. Zararni qoplash",
         body: [
-          "Kontentingiz, kanalingiz yoki ushbu Shartlar yoxud qonunni buzganingiz sababli uchinchi shaxslar qo'ygan da'volar bo'yicha zararni siz qoplaysiz.",
+          "Kontentingiz, kanalingiz yoki ushbu Shartlar yoxud qonunni buzganingiz sababli uchinchi shaxslar qoʻygan daʼvolar boʻyicha zararni siz qoplaysiz.",
         ],
       },
       {
         id: "termination",
-        heading: "13. To'xtatib turish va tugatish",
+        heading: "13. Toʻxtatib turish va tugatish",
         body: [
-          "Xizmatdan foydalanishni istalgan vaqtda to'xtatishingiz, kanallaringizni uzishingiz va Google ruxsatini bekor qilishingiz mumkin. Agar siz ushbu Shartlarni buzsangiz, foydalanishingiz YouTube yoki Google qoidalariga (jumladan bizning ularga rioya qilishimizga) xavf tug'dirsa yoki qonun talab qilsa, kirishingizni to'xtatib turishimiz yoki tugatishimiz mumkin; oqilona bo'lsa, oldindan xabar beramiz. Kirish tugagach, Xizmat kanallaringiz bilan ishlashni to'xtatadi, saqlangan Google tokenlaringiz o'chiriladi, ma'lumotlaringiz esa Maxfiylik siyosatida tavsiflanganidek o'chiriladi. 5, 9, 10, 11, 12 va 15-bo'limlar tugatishdan keyin ham amal qiladi.",
+          "Xizmatdan foydalanishni istalgan vaqtda toʻxtatishingiz, kanallaringizni uzishingiz va Google ruxsatini bekor qilishingiz mumkin. Agar siz ushbu Shartlarni buzsangiz, foydalanishingiz YouTube yoki Google qoidalariga (jumladan bizning ularga rioya qilishimizga) xavf tugʻdirsa yoki qonun talab qilsa, kirishingizni toʻxtatib turishimiz yoki tugatishimiz mumkin; oqilona boʻlsa, oldindan xabar beramiz. Kirish tugagach, Xizmat kanallaringiz bilan ishlashni toʻxtatadi, saqlangan Google tokenlaringiz oʻchiriladi, maʼlumotlaringiz esa Maxfiylik siyosatida tavsiflanganidek oʻchiriladi. 5, 9, 10, 11, 12 va 15-boʻlimlar tugatishdan keyin ham amal qiladi.",
         ],
       },
       {
         id: "changes",
-        heading: "14. Shartlardagi o'zgarishlar",
+        heading: "14. Shartlardagi oʻzgarishlar",
         body: [
-          "Ushbu Shartlarni yangilashimiz mumkin. Yangi versiyani shu sahifada yangi kuchga kirish sanasi ({effectiveDate}) bilan e'lon qilamiz va jiddiy o'zgarishlar haqida Xizmatda xabar beramiz. O'zgarish kuchga kirgandan keyin Xizmatdan foydalanishda davom etsangiz, uni qabul qilgan bo'lasiz.",
+          "Ushbu Shartlarni yangilashimiz mumkin. Yangi versiyani shu sahifada yangi kuchga kirish sanasi ({effectiveDate}) bilan eʼlon qilamiz va jiddiy oʻzgarishlar haqida Xizmatda xabar beramiz. Oʻzgarish kuchga kirgandan keyin Xizmatdan foydalanishda davom etsangiz, uni qabul qilgan boʻlasiz.",
         ],
       },
       {
         id: "law",
         heading: "15. Amaldagi huquq",
         body: [
-          "Ushbu Shartlar {country} qonunchiligi bilan tartibga solinadi; bu yashash joyingizdagi iste'molchilar huquqlarining majburiy himoyasiga ta'sir qilmaydi.",
+          "Ushbu Shartlar {country} qonunchiligi bilan tartibga solinadi; bu yashash joyingizdagi isteʼmolchilar huquqlarining majburiy himoyasiga taʼsir qilmaydi.",
         ],
       },
       {

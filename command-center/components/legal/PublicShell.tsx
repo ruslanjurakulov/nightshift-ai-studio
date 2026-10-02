@@ -4,77 +4,89 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { PublicMobileMenu } from "@/components/legal/PublicMobileMenu";
+import { BrandMark } from "@/components/site/BrandMark";
+import { preloadSiteFonts } from "@/components/site/fonts";
+import { DEFAULT_LOCALE, LOCALES, dictionaries } from "@/lib/i18n";
+import "@/components/site/site.css";
+
+/** Which top-level page the visitor is on, for the nav's lit item. */
+export type PublicSection = "home" | "solutions" | "pricing" | "docs" | "legal" | null;
 
 /** The public pages' navigation. Hash targets are absolute ("/#how") so they
  *  work from Pricing or Privacy as well as from the homepage itself. */
-export function publicNavLinks(t: Dictionary): { href: string; label: string }[] {
-  const n = t.landing.nav;
+export function publicNavLinks(t: Dictionary): { href: string; label: string; section: PublicSection }[] {
+  const n = t.site.nav;
   return [
-    { href: "/#product", label: n.product },
-    { href: "/#how", label: n.how },
-    { href: "/#why", label: n.why },
-    { href: "/pricing", label: n.pricing },
+    { href: "/#how", label: n.how, section: null },
+    { href: "/#studio", label: n.studio, section: null },
+    { href: "/solutions", label: n.solutions, section: "solutions" },
+    { href: "/pricing", label: n.pricing, section: "pricing" },
+    { href: "/docs/api", label: n.api, section: "docs" },
   ];
 }
 
 /**
  * The frame shared by the pages a signed-out visitor can open — landing,
- * Pricing, Privacy, Terms. It deliberately uses none of the app shell (side nav,
- * channel switcher), which reads Supabase and would have nothing to show.
+ * Solutions, Pricing, the API reference, Privacy, Terms and the 404. It uses
+ * none of the app shell (side nav, channel switcher), which reads Supabase and
+ * would have nothing to show.
  *
- * The header sticks, and on a phone collapses its links into a menu while
- * keeping the primary sign-up button in view — the one action the
- * page exists to offer should never be behind a tap.
- *
- * The backdrop is the token-driven `atmos` wash and grid rather than the login
- * page's video, so the public pages stay light to load and follow the theme.
+ * The header is a solid rack face (no glass, IDENTITY.md §Elevation) that
+ * sticks; on a phone the links fold into a menu while Start free stays in the
+ * bar — the one action the pages exist to offer is never behind a tap.
  */
-export function PublicShell({ t, children }: { t: Dictionary; children: React.ReactNode }) {
+export function PublicShell({
+  t,
+  current = null,
+  children,
+}: {
+  t: Dictionary;
+  current?: PublicSection;
+  children: React.ReactNode;
+}) {
   const links = publicNavLinks(t);
+  // The page's language is the dictionary it was handed (server-side lookup, no request read).
+  preloadSiteFonts(LOCALES.find((l) => dictionaries[l.code] === t)?.code ?? DEFAULT_LOCALE);
   return (
-    <div className="atmos relative flex min-h-dvh flex-col">
-      <a
-        href="#main"
-        className="sr-only z-50 rounded-full bg-[var(--color-primary)] px-4 py-2 text-sm text-[var(--color-on-accent)] focus:not-sr-only focus:absolute focus:left-3 focus:top-3"
-      >
+    <div className="st relative flex min-h-dvh flex-col">
+      <a href="#main" className="st-skip">
         {t.landing.nav.skip}
       </a>
-      <div className="grid-bg pointer-events-none absolute inset-0 opacity-70" aria-hidden />
-      <header className="sticky top-0 z-40 border-b border-[color-mix(in_srgb,var(--color-border)_70%,transparent)] bg-[color-mix(in_srgb,var(--color-bg)_78%,transparent)] backdrop-blur-md">
-        <div className="relative mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-          <Link
-            href="/"
-            className="tap-link font-display text-xl font-semibold tracking-[-0.02em] text-[var(--color-primary)]"
-            style={{ textShadow: "0 0 28px var(--glow-primary)" }}
-          >
+      <header className="st-header">
+        <div className="st-wrap st-header-row relative">
+          <Link href="/" className="st-brand">
+            <BrandMark />
             {t.brand.name}
           </Link>
 
-          <nav aria-label={t.landing.nav.label} className="hidden items-center gap-1 lg:flex">
+          <nav aria-label={t.landing.nav.label} className="st-nav">
             {links.map((l) => (
-              <Link key={l.href} href={l.href} className="nav-link text-[14px]">
+              <Link key={l.href} href={l.href} aria-current={l.section && l.section === current ? "page" : undefined}>
                 {l.label}
               </Link>
             ))}
           </nav>
 
-          <div className="flex items-center gap-2">
-            <div className="hidden items-center gap-2 lg:flex">
+          <div className="st-header-tools">
+            <div className="st-header-desk">
               <LanguageSelector />
               <ThemeToggle />
-              <Link href="/login" className="btn-sky ghost pill min-h-10 px-4 text-sm">
-                {t.auth.signIn}
+              <Link href="/login" className="st-signin">
+                {t.site.nav.signIn}
               </Link>
             </div>
-            <Link href="/signup" className="btn-sky is-solid pill min-h-11 px-4 text-sm sm:px-5">
-              {t.landing.nav.start}
+            <Link href="/signup" className="st-key" data-size="sm" data-tone="quiet">
+              {t.site.nav.start}
             </Link>
-            <PublicMobileMenu links={links} signInLabel={t.auth.signIn} />
+            <PublicMobileMenu
+              links={links.map((l) => ({ href: l.href, label: l.label, current: Boolean(l.section && l.section === current) }))}
+              signInLabel={t.site.nav.signIn}
+            />
           </div>
         </div>
       </header>
       {/* The one main landmark of every public page; the pages render sections inside it. */}
-      <main id="main" tabIndex={-1} className="relative z-10 flex-1 focus:outline-none">
+      <main id="main" tabIndex={-1} className="relative flex-1 focus:outline-none">
         {children}
       </main>
       <PublicFooter t={t} />

@@ -1,12 +1,39 @@
 import Link from "next/link";
-import { ArrowRight, Plus } from "lucide-react";
-import type { Dictionary } from "@/lib/i18n";
+import { ArrowRight } from "lucide-react";
+import { fmt, type Dictionary } from "@/lib/i18n";
 import { SectionHead } from "@/components/landing/SectionHead";
 
 type FaqItem = { id: string; q: string; a: string };
 type FaqLink = { href: string; label: string } | null;
 
 const OPEN_ON_ARRIVAL = ["cancel", "refund"] as const;
+/** With packs only, there is no plan to cancel: refunds and unused credits are the money terms. */
+const OPEN_ON_ARRIVAL_PACKS = ["refund", "unused"] as const;
+
+/**
+ * The money questions as they apply to what is on sale. With no monthly plan
+ * on sale the plan question goes, and the answers that mention plans take
+ * their packs-only wording (t.site.packsOnly) — never a sentence about a plan
+ * that does not exist.
+ */
+export function faqForSale<T extends FaqItem>(
+  items: readonly T[],
+  plansOnSale: boolean,
+  packsOnly: Dictionary["site"]["packsOnly"],
+  /** This deployment's pack expiry: null = credits do not expire. */
+  expiryMonths: number | null,
+): T[] {
+  if (plansOnSale) return [...items];
+  return items
+    .filter((item) => item.id !== "cancel")
+    .map((item) =>
+      item.id === "card"
+        ? { ...item, a: packsOnly.card }
+        : item.id === "unused" || item.id === "rollover"
+          ? { ...item, a: expiryMonths === null ? packsOnly.unusedNever : fmt(packsOnly.unusedAfter, { m: expiryMonths }) }
+          : item,
+    );
+}
 
 /** Answers that point somewhere carry the link beneath them. */
 function faqLink(id: string, f: Dictionary["landing"]["faq"]): FaqLink {
@@ -32,24 +59,21 @@ export function FaqList({
   openIds?: readonly string[];
 }) {
   return (
-    <div className="border-b border-[var(--color-border)]">
+    <div className="st-faq">
       {items.map((item) => {
         const link = linkFor?.(item.id) ?? null;
         return (
-          <details key={item.id} open={openIds.includes(item.id)} className="lp-faq group border-t border-[var(--color-border)]">
-            <summary className="flex min-h-14 cursor-pointer items-center justify-between gap-4 py-4 text-[16px] font-medium transition-colors hover:text-[var(--color-primary)]">
-              <h3 className="font-sans">{item.q}</h3>
-              <Plus className="lp-faq-icon size-4 shrink-0 text-[var(--color-primary)]" aria-hidden />
+          <details key={item.id} open={openIds.includes(item.id)}>
+            <summary>
+              <h3>{item.q}</h3>
+              <span className="st-faq-mark" aria-hidden />
             </summary>
-            <div className="pb-6 pr-8">
-              <p className="text-[15px] font-light leading-relaxed text-[var(--color-muted)]">{item.a}</p>
+            <div className="st-faq-body">
+              <p className="st-body">{item.a}</p>
               {link && (
-                <Link
-                  href={link.href}
-                  className="mt-3 inline-flex min-h-11 items-center gap-1.5 text-[14px] text-[var(--color-primary)] underline-offset-4 hover:underline"
-                >
+                <Link href={link.href} className="st-link mt-2">
                   {link.label}
-                  <ArrowRight className="size-3.5" aria-hidden />
+                  <ArrowRight aria-hidden />
                 </Link>
               )}
             </div>
@@ -66,13 +90,30 @@ export function FaqList({
  * arrival, so the terms are read before the buy button, not after. Each
  * answer describes what the code does today — no promised timings, no roadmap.
  */
-export function Faq({ t, hour }: { t: Dictionary; hour: string }) {
+export function Faq({
+  t,
+  plansOnSale,
+  expiryMonths,
+  aside,
+}: {
+  t: Dictionary;
+  plansOnSale: boolean;
+  /** The pack expiry, so the unused-credits answer says it outright. */
+  expiryMonths: number | null;
+  aside?: React.ReactNode;
+}) {
   const f = t.landing.faq;
+  const items = faqForSale(f.items, plansOnSale, t.site.packsOnly, expiryMonths);
   return (
-    <section id="faq" aria-labelledby="faq-title" className="scroll-mt-24">
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
-        <SectionHead hour={hour} eyebrow={f.eyebrow} title={f.title} id="faq-title" className="lg:sticky lg:top-28 lg:self-start" />
-        <FaqList items={f.items} linkFor={(id) => faqLink(id, f)} openIds={OPEN_ON_ARRIVAL} />
+    <section id="faq" aria-labelledby="faq-title" className="st-section">
+      <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
+        {/* The left column carries the title and whatever the page puts under
+            it (the landing: its Google data statement), so it is never empty. */}
+        <div className="flex flex-col gap-12">
+          <SectionHead eyebrow={f.eyebrow} title={f.title} id="faq-title" />
+          {aside}
+        </div>
+        <FaqList items={items} linkFor={(id) => faqLink(id, f)} openIds={plansOnSale ? OPEN_ON_ARRIVAL : OPEN_ON_ARRIVAL_PACKS} />
       </div>
     </section>
   );

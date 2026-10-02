@@ -133,8 +133,16 @@ describe("BR-H-001: the matcher has no unanchored exclusion", () => {
     expect(runs(path)).toBe(true);
   });
 
-  it.each(HOSTILE)("signed out, %s is sent to /login", async (path) => {
+  it.each(HOSTILE)("signed out, %s is sent to /login or answered with the public 404", async (path) => {
     const res = await middleware(new NextRequest(`https://nightshift.test${path}`));
+    // A path that cannot be a channel URL (a dot in its first segment, an
+    // unknown root word) is answered with the public 404 instead of a sign-in
+    // form: a rewrite to the root not-found page, which runs no app layout and
+    // reads nothing. Either way the app is never rendered.
+    if (res.status === 404) {
+      expect(new URL(res.headers.get("x-middleware-rewrite") ?? "https://x/").pathname).toBe("/_not-found");
+      return;
+    }
     expect(res.status).toBe(307);
     // NextRequest keeps a trailing slash and a /_next/data/<build>/….json
     // wrapper on the redirect; either way the destination is the login page.

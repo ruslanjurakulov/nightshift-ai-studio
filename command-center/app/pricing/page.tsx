@@ -8,42 +8,33 @@ import { PLAN_ENV, planMatrix } from "@/lib/plans";
 import { planValue, readPlanCatalog, type PlanRead } from "@/lib/server/plans";
 import { generationRates, type GenerationRates, type PlanCatalog } from "@/lib/plans";
 import { readSellableModels } from "@/lib/creative/registry";
-import { siteOrigin } from "@/lib/landing";
+import { moneyAnchor, runtimeSiteOrigin, shareMetadata } from "@/lib/landing";
+import { readPublicApiPrices } from "@/lib/server/api-prices";
+import { PUBLIC_READ_TIMEOUT_MS } from "@/lib/server/public-read";
+import { readPublicCreditRates } from "@/lib/server/public-rates";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { PricingView } from "@/components/pricing/PricingView";
 
 // Who is asking decides the rates panel, so this is never a static page.
 export const dynamic = "force-dynamic";
 
-/** Served by app/og.png/route.tsx — the homepage's card, for the same brand. */
-const OG_IMAGE = { url: "/og.png", width: 1200, height: 630, type: "image/png" };
-
 /** Public: middleware lets this path through signed in or out (lib/public-paths.ts). */
 export async function generateMetadata(): Promise<Metadata> {
   const { t, locale } = await getDictionary();
   const title = `${t.pricing.title} · ${t.brand.name}`;
   const description = t.pricing.metaDescription;
-  // Read by literal name at request time, like the homepage; unset, no canonical.
-  const base = siteOrigin({ APP_ORIGIN: process.env.APP_ORIGIN });
   return {
-    ...(base ? { metadataBase: new URL(base), alternates: { canonical: "/pricing" } } : {}),
     title: { absolute: title },
     description,
-    openGraph: {
-      type: "website",
+    ...shareMetadata({
+      origin: runtimeSiteOrigin(),
+      path: "/pricing",
+      title,
+      description,
       siteName: t.brand.name,
-      title,
-      description,
-      locale: { en: "en_US", ru: "ru_RU", uz: "uz_UZ" }[locale],
-      images: [{ ...OG_IMAGE, alt: t.landing.meta.ogAlt }],
-      ...(base ? { url: "/pricing" } : {}),
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-      images: [{ url: OG_IMAGE.url, alt: t.landing.meta.ogAlt }],
-    },
+      imageAlt: t.landing.meta.ogAlt,
+      locale,
+    }),
   };
 }
 
@@ -53,15 +44,29 @@ export async function generateMetadata(): Promise<Metadata> {
  *
  * Prices come only from Paddle's preview or the owner's display env
  * (lib/pricing.ts). The live credit rates come from credit_rates() (0084: the
- * rates as charged, never the margin), which only a signed-in account may
- * call: a signed-out visitor is told that,
- * rather than shown a number this page would have had to guess.
+ * rates as charged, never the margin) for a signed-in account, and from
+ * public_video_rates() (0089: per minute and the smallest hold) for anyone
+ * else; when neither is published the page says so rather than showing a
+ * number it would have had to guess.
  */
 export default async function PricingPage() {
   const { t, locale } = await getDictionary();
   const pricing = resolvePricing(PRICING_ENV, paddleConfig);
+  // The money a signed-out visitor can be shown: published pack prices, the
+  // live API price list (public by 0031) and the two public credit rates
+  // (per minute and the smallest hold, 0089). Read alongside the rest.
+  const apiPricesRead = readPublicApiPrices();
+  const publicRatesRead = readPublicCreditRates();
 
   const supabase = await createClient();
+  // The plan catalog is a public price list (0034): read signed in or out, and
+  // started now so it runs alongside the price reads (BR-L-047: one bounded
+  // wait on a stalled backend, not several in a row).
+  // `unsupported` (0034 not applied) offers no plans, as before; `failed` says
+  // the plans could not be read instead of silently showing none.
+  const catalogPending: Promise<PlanRead<PlanCatalog>> = supabase
+    ? readPlanCatalog(supabase, { signal: AbortSignal.timeout(PUBLIC_READ_TIMEOUT_MS) }).catch(() => ({ state: "failed" as const }))
+    : Promise.resolve({ state: "unsupported" as const });
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
   let rates: CreditRates | null = null;
   let ratesFailed = false;
@@ -78,12 +83,11 @@ export default async function PricingPage() {
     }
     ratesFailed = res.failed;
   }
-  // The plan catalog is a public price list (0034): read signed in or out.
-  // `unsupported` (0034 not applied) offers no plans, as before; `failed` says
-  // the plans could not be read instead of silently showing none.
-  const catalogRead: PlanRead<PlanCatalog> = supabase
-    ? await readPlanCatalog(supabase).catch(() => ({ state: "failed" as const }))
-    : { state: "unsupported" };
+  // Signed out (or before 0084), the rates panel, the pack minutes and the
+  // money anchor read the public pair; unpublished stays null, never guessed.
+  const publicRates = await publicRatesRead;
+  if (!rates && !ratesFailed) rates = publicRates;
+  const catalogRead = await catalogPending;
   const catalog = planValue(catalogRead);
   const plans = planMatrix(catalog, PLAN_ENV, paddleClient);
 
@@ -100,6 +104,7 @@ export default async function PricingPage() {
         plansFailed={catalogRead.state === "failed"}
         plans={plans}
         packValidMonths={catalog?.packValidMonths}
+        anchor={moneyAnchor(pricing, await apiPricesRead, publicRates)}
       />
     </PublicShell>
   );

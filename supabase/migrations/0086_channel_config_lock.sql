@@ -27,8 +27,12 @@
 --   2. Four definer functions are the only way a browser changes them, each
 --      with search_path pinned, revoked from public/anon, granted explicitly:
 --        create_channel(...)         editor of the organization. Creates the
---                                    channel PAUSED. A taken channel id (any
---                                    organization's) answers one fixed error.
+--                                    channel PAUSED. An id is single-hyphen
+--                                    letters and digits, and it may not share
+--                                    a token-secret name (channel_secret_name:
+--                                    case and punctuation collapse) with any
+--                                    other channel's id or reference. A taken
+--                                    id answers one fixed error.
 --        set_channel_credential(...) writes credential_ref. The reference is
 --                                    the channel's own id for every
 --                                    organization but the operator's; the
@@ -204,6 +208,17 @@ revoke all on function public.channels_config_guard() from public, anon, authent
 -- 3. The credential (BR-G-002)
 -- ───────────────────────────────────────────────────────────────────────────
 
+-- The secret / env var name a token key becomes on the runner: non-alphanumerics
+-- collapse to '_', '_' is trimmed, upper case (modules/channel_credentials.py
+-- secret_name_for, the same function in Python: tests/security pins the two
+-- against each other over a corpus). Two ids with one name are one secret.
+create or replace function public.channel_secret_name(p_key text) returns text
+  language sql immutable set search_path = public, pg_temp as $$
+  select 'CHRONOS_YT_TOKEN_' || trim(both '_' from regexp_replace(upper(coalesce(p_key, '')), '[^A-Z0-9]+', '_', 'g'))
+$$;
+
+revoke all on function public.channel_secret_name(text) from public, anon, authenticated, service_role;
+
 -- The ISO-8601 stamp the Command Center and the worker already read, from the
 -- database's clock.
 create or replace function public.channel_verified_stamp() returns text
@@ -344,7 +359,10 @@ begin
   if p_org is null then
     raise exception 'an organization is required' using errcode = '22023';
   end if;
-  if coalesce(p_channel_id, '') !~ '^[a-z0-9][a-z0-9-]{1,38}$' then
+  -- Single hyphens between letters and digits only: 'extinct-world-' and
+  -- 'extinct--world' would otherwise normalise to the secret name of
+  -- 'extinct-world' (channel_secret_name).
+  if coalesce(p_channel_id, '') !~ '^[a-z0-9]+(-[a-z0-9]+)*$' or char_length(p_channel_id) not between 2 and 39 then
     raise exception 'a channel id is a lowercase slug of 2 to 39 characters' using errcode = '22023';
   end if;
   if coalesce(btrim(p_name), '') = '' or char_length(p_name) > 200 or char_length(coalesce(p_niche, '')) > 500 then
@@ -367,6 +385,21 @@ begin
   if p_credential is not null then
     built := public.channel_credential_build(p_channel_id, p_org, p_credential, stamp, '{}'::jsonb,
                                              public.channel_may_stamp(p_org));
+  end if;
+  -- No two channels share a token-secret name, whoever owns them (BR-L-080): an id
+  -- whose name equals another channel's id-derived OR reference-derived name (an
+  -- operator reference such as 'extinct_world') is refused with the same answer
+  -- as a taken id. Serialised, so two creates cannot both pass.
+  perform pg_advisory_xact_lock(hashtext('nightshift.channel_secret_name'));
+  -- The id `default` (and any id with its secret name) is the operator's legacy
+  -- channel, whose token is chosen by its id alone (BR-L-110): reserved whether or
+  -- not its row exists.
+  if public.channel_secret_name(p_channel_id) = public.channel_secret_name('default') or exists (
+    select 1 from public.channels c
+     where public.channel_secret_name(c.channel_id) = public.channel_secret_name(p_channel_id)
+        or public.channel_secret_name(nullif(c.credential_ref ->> 'ref', '')) = public.channel_secret_name(p_channel_id)
+  ) then
+    raise exception 'that channel id is not available' using errcode = '23505';
   end if;
   begin
     insert into public.channels
@@ -397,6 +430,14 @@ begin
   if st = 'ACTIVE' and ch.channel_id <> 'default' and coalesce(ch.credential_ref ->> 'verified_at', '') = '' then
     raise exception 'confirm this channel against YouTube before activating it' using errcode = '23514';
   end if;
+  -- A customer channel is active only with its Google connection in place at
+  -- this moment (its token is the Vault connection and nothing else).
+  if st = 'ACTIVE' and ch.org_id <> public.default_org_id() and not exists (
+    select 1 from public.channel_token_refs r
+     where r.channel_id = ch.channel_id and r.vault_secret_id is not null and r.revoked_at is null
+  ) then
+    raise exception 'connect this channel''s YouTube account before activating it' using errcode = '23514';
+  end if;
   update public.channels
      set status = st, updated_at = to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
    where channel_id = ch.channel_id;
@@ -424,8 +465,20 @@ grant execute on function public.set_channel_status(text, text) to authenticated
 create or replace function public.channel_stamp_from_connection() returns trigger
   language plpgsql security definer set search_path = public, pg_temp as $$
 begin
-  if new.vault_secret_id is null or new.revoked_at is not null
-     or coalesce(new.youtube_channel_id, '') = '' then
+  if new.vault_secret_id is null or new.revoked_at is not null then
+    -- The connection is gone (revoke_channel_token): the confirmation it gave
+    -- goes with it, and the channel stops being active. "Confirmed, ACTIVE, no
+    -- connection" cannot persist.
+    update public.channels c
+       set credential_ref = coalesce(c.credential_ref, '{}'::jsonb) - 'verified_at',
+           status = 'PAUSED',
+           updated_at = to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+     where c.channel_id = new.channel_id
+       and c.org_id <> public.default_org_id()
+       and coalesce(c.credential_ref ->> 'verified_at', '') <> '';
+    return new;
+  end if;
+  if coalesce(new.youtube_channel_id, '') = '' then
     return new;
   end if;
   update public.channels c
@@ -462,6 +515,19 @@ revoke all on function public.channel_controls_changed(jsonb, jsonb) from public
 --     has_function_privilege('authenticated', 'public.create_channel(text,uuid,text,text,jsonb,jsonb,jsonb,boolean)', 'EXECUTE')
 --      and not has_function_privilege('anon', 'public.create_channel(text,uuid,text,text,jsonb,jsonb,jsonb,boolean)', 'EXECUTE')
 --      as functions_granted_to_members_only;
+--
+-- Channels whose token-secret name equals another channel's (BR-L-080; derived
+-- from the id AND from the reference, the ways the runner builds a name). A
+-- customer channel here was reachable through an operator's secret before the
+-- worker change; rotate that operator token:
+--   with names as (
+--     select c.channel_id, c.org_id, 'id' as via, public.channel_secret_name(c.channel_id) as secret_name from public.channels c
+--     union all
+--     select c.channel_id, c.org_id, 'ref', public.channel_secret_name(c.credential_ref ->> 'ref')
+--       from public.channels c where coalesce(c.credential_ref ->> 'ref', '') <> '')
+--   select a.channel_id, a.org_id, a.via, b.channel_id as shares_with, b.via as other_via, a.secret_name
+--     from names a join names b on a.secret_name = b.secret_name and a.channel_id <> b.channel_id
+--    where a.org_id <> public.default_org_id();
 --
 -- Review the channels this migration cannot judge (it changes no row). Customer
 -- channels whose reference is not their own id (the worker ignores `ref` for

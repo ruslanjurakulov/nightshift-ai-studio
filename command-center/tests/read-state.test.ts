@@ -11,6 +11,8 @@ vi.mock("server-only", () => ({}));
 
 const ctx = vi.hoisted(() => ({ t: null as unknown }));
 vi.mock("@/lib/i18n/context", () => ({ useI18n: () => ({ t: ctx.t, locale: "en" }) }));
+// Shared components on the public pages read the public slice the same way.
+vi.mock("@/lib/i18n/public-context", () => ({ usePublicI18n: () => ({ t: ctx.t, locale: "en" }) }));
 const refresh = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 

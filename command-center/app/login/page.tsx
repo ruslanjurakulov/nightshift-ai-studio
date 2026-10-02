@@ -5,13 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/config";
-import { useI18n } from "@/lib/i18n/context";
-import { AuthField, AuthShell } from "@/components/auth/AuthShell";
+import { usePublicI18n } from "@/lib/i18n/public-context";
+import { AuthAlert, AuthField, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
 import { classifySignInError, isCallbackError, type CallbackError, type SignInOutcome } from "@/lib/signup";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { t } = useI18n();
+  const { t } = usePublicI18n();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -30,10 +30,9 @@ export default function LoginPage() {
     setError(null);
     setLinkError(null);
     const supabase = createClient();
-    if (!supabase) {
-      setError(t.auth.notConfiguredErr);
-      return;
-    }
+    // With sign-in switched off the form is disabled and the notice above it
+    // already says why; nothing is sent and nothing is repeated as an error.
+    if (!supabase) return;
     setBusy(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
@@ -54,50 +53,44 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthShell title={t.auth.signInTitle} subtitle={t.auth.signInSub}>
+    <AuthShell title={t.site.auth.signInTitle} subtitle={t.site.auth.signInSub}>
       {!isSupabaseConfigured && (
-        <p className="mt-5 text-[13px] font-light text-[var(--color-warn)]">{t.auth.notConfigured}</p>
+        <div className="mt-5">
+          <AuthAlert tone="warn">{t.site.auth.unavailable}</AuthAlert>
+        </div>
       )}
 
-      <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-4">
-        <AuthField
-          label={t.auth.email}
-          type="email"
-          autoComplete="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <AuthField
-          label={t.auth.password}
-          type="password"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        {linkError && !error && (
-          <p role="alert" className="mono text-[11px] text-[var(--color-warn)]">
-            {linkError === "link_expired" ? t.signup.linkExpired : t.signup.linkInvalid}
-          </p>
-        )}
-        {error && (
-          <p role="alert" className="mono text-[11px] text-[var(--color-fail)]">
-            {error}
-          </p>
-        )}
-        <button
-          type="submit"
-          disabled={busy}
-          className="cta-glass pill mt-2 inline-flex items-center justify-center px-6 py-3 text-sm font-semibold disabled:opacity-50"
-        >
-          {busy ? t.auth.signingIn : t.auth.signIn}
-        </button>
+      <form onSubmit={onSubmit} className="mt-8">
+        <fieldset disabled={!isSupabaseConfigured} className="st-fieldset">
+          <AuthField
+            label={t.auth.email}
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <AuthField
+            label={t.auth.password}
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          {linkError && !error && (
+            <AuthAlert tone="warn">{linkError === "link_expired" ? t.signup.linkExpired : t.signup.linkInvalid}</AuthAlert>
+          )}
+          {error && <AuthAlert tone="fail">{error}</AuthAlert>}
+          <AuthSubmit busy={busy} disabled={!isSupabaseConfigured}>
+            {busy ? t.auth.signingIn : t.auth.signIn}
+          </AuthSubmit>
+        </fieldset>
       </form>
 
-      <p className="mt-6 text-center text-[13px] font-light text-[var(--color-muted)]">
-        {t.signup.noAccount}{" "}
-        <Link href="/signup" className="text-[var(--color-primary)] underline-offset-4 hover:underline">
+      <p className="st-small mt-8 flex flex-wrap items-center gap-x-2 border-t border-[var(--ns-rule)] pt-5">
+        {t.signup.noAccount}
+        <Link href="/signup" className="st-link text-[14.5px]">
           {t.signup.createAccount}
         </Link>
       </p>

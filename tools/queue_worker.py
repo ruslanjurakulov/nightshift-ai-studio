@@ -110,7 +110,7 @@ from typing import Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 REPO_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_DIR))
 
-from modules import channel_tokens  # noqa: E402
+from modules import channel_credentials, channel_tokens  # noqa: E402
 from modules import comment_replies  # noqa: E402
 from modules import credits as credit_rules  # noqa: E402
 from modules import log_redaction  # noqa: E402
@@ -478,9 +478,10 @@ def prepare_credentials(channel_row: Mapping, env: Mapping[str, str], repo_dir: 
     ACTIVE Vault connection (migration 0022) when it has one, else — for the
     operator's own channels only — its own CHRONOS_YT_TOKEN_<REF> secret, as
     before (BR-G-002: another organization's channel never reads the
-    environment). Either way it reaches the run in memory, under that
-    channel's own env var name only — the run writes it to
-    a 0600 file that remove_credential_files deletes after the job. Raises
+    environment). An operator channel's token reaches the run in memory, under
+    its own env var name only (the run writes it to a 0600 file); another
+    organization's reaches it as the 0600 token file itself, and
+    remove_credential_files deletes either after the job. Raises
     ChannelTokenError when the Vault lookup failed and there is nothing to fall
     back to, so the job fails before the run spends anything."""
     child = {k: v for k, v in env.items()
@@ -494,23 +495,32 @@ def prepare_credentials(channel_row: Mapping, env: Mapping[str, str], repo_dir: 
         else:
             logger.info("channel %s: YOUTUBE_TOKEN_JSON is not set — publishing and analytics "
                         "will be skipped", cid)
+    elif channel_row.get("is_operators") is not True:
+        # Another organization's channel: its Vault token is handed over as the
+        # file its uploader reads (modules/channel_credentials.token_path), never
+        # as an environment variable the run could read under a name of the
+        # row's choosing or that collides with an operator's (BR-L-080). The
+        # file is removed after the job (remove_credential_files).
+        if resolved.found:
+            _write_private(Path(repo_dir) / channel_credentials.customer_token_filename(str(cid)),
+                           resolved.token_json)
+            logger.info("channel %s: its Vault connection is active — this channel publishes "
+                        "to its own account", cid)
+        else:
+            logger.info("channel %s: no Vault connection is active — publishing and analytics "
+                        "will be skipped", cid)
     else:
         name = str(channel_row.get("token_secret") or "")
         if not name.startswith(TOKEN_PREFIX):
             name = ""
         if resolved.found and name:
             child[name] = resolved.token_json
-            if resolved.source == channel_tokens.SOURCE_VAULT:
-                logger.info("channel %s: its Vault connection is active — this channel publishes "
-                            "to its own account", cid)
-            else:
-                logger.info("channel %s: %s is set — this channel publishes to its own account",
-                            cid, name)
+            logger.info("channel %s: %s is set — this channel publishes to its own account", cid, name)
         else:
             # Deliberately no fallback to the default channel's token: that
             # would upload this channel's video to somebody else's account.
-            logger.info("channel %s: %s is not set and no Vault connection is active — "
-                        "publishing and analytics will be skipped", cid, name or "its token")
+            logger.info("channel %s: %s is not set — publishing and analytics will be skipped",
+                        cid, name or "its token")
     secret = env.get("YOUTUBE_CLIENT_SECRET_JSON", "")
     if secret.strip():
         _write_private(Path(repo_dir) / "client_secret.json", secret)
@@ -930,7 +940,18 @@ class Worker:
                 return self._finish(job, "failed", f"channel token unavailable (nothing was run): {e}")
             # A Vault token was never in this worker's env, so the scrubber
             # built at start-up does not know it: add this run's credentials.
-            self._secrets = sorted(set(self._base_secrets) | set(secret_values(child_env)),
+            # A customer's token is a file, not an env var (BR-L-080): its strings
+            # are added from the file the run reads.
+            from_file: List[str] = []
+            if channel_row.get("is_operators") is not True and not channel_row.get("is_default"):
+                try:
+                    text = (Path(self.repo_dir) / channel_credentials.customer_token_filename(
+                        str(channel_row.get("channel_id")))).read_text(encoding="utf-8")
+                    from_file = channel_tokens.secret_strings(channel_tokens.ResolvedToken(
+                        channel_tokens.SOURCE_VAULT, text))
+                except OSError:
+                    pass
+            self._secrets = sorted(set(self._base_secrets) | set(secret_values(child_env)) | set(from_file),
                                    key=len, reverse=True)
             for cmd in self.prelude:
                 rc, tail, how = self._run(cmd, child_env, lost)

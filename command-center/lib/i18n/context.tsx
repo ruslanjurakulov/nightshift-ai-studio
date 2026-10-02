@@ -1,30 +1,18 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { useCallback, useContext, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  DEFAULT_LOCALE,
-  LOCALE_COOKIE,
-  dictionaries,
-  fmt,
-  type Dictionary,
-  type Locale,
-} from "./index";
-
-interface I18nValue {
-  locale: Locale;
-  t: Dictionary;
-  fmt: typeof fmt;
-  setLocale: (next: Locale) => void;
-}
-
-const I18nContext = createContext<I18nValue | null>(null);
+import { DEFAULT_LOCALE, dictionaries, fmt, type Dictionary, type Locale } from "./index";
+import { I18nContext, writeLocaleCookie, type I18nContextValue, type I18nValue } from "./public-context";
 
 /**
- * Client-side i18n. Seeded with the server-resolved locale so first paint
- * matches the server (no flash). Switching writes the cookie, updates client
- * components immediately from the in-memory dictionaries, and refreshes so
- * Server Components re-render in the new language too.
+ * Client-side i18n for the app. Seeded with the server-resolved locale so first
+ * paint matches the server (no flash). Switching writes the cookie, updates
+ * client components immediately from the in-memory dictionaries, and refreshes
+ * so Server Components re-render in the new language too.
+ *
+ * This module imports all three dictionaries, so only the app's layouts mount
+ * it; the public pages get the slice (PublicI18nProvider, ./public-context).
  */
 export function I18nProvider({ locale: initial, children }: { locale: Locale; children: React.ReactNode }) {
   const router = useRouter();
@@ -33,23 +21,25 @@ export function I18nProvider({ locale: initial, children }: { locale: Locale; ch
   const setLocale = useCallback(
     (next: Locale) => {
       setLocaleState(next);
-      // One year, path-wide. Server getLocale() reads this on the next request.
-      document.cookie = `${LOCALE_COOKIE}=${next}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
+      writeLocaleCookie(next);
       router.refresh();
     },
     [router],
   );
 
-  const value = useMemo<I18nValue>(
-    () => ({ locale, t: dictionaries[locale] ?? dictionaries[DEFAULT_LOCALE], fmt, setLocale }),
+  const value = useMemo<I18nContextValue>(
+    () => ({ locale, t: dictionaries[locale] ?? dictionaries[DEFAULT_LOCALE], fmt, setLocale, full: true }),
     [locale, setLocale],
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
-export function useI18n(): I18nValue {
+export function useI18n(): I18nValue<Dictionary> {
   const ctx = useContext(I18nContext);
   if (!ctx) throw new Error("useI18n must be used within I18nProvider");
+  // Under the public slice the full dictionary is not there: a component that
+  // needs it must sit under the app's I18nProvider (or use usePublicI18n).
+  if (!ctx.full) throw new Error("useI18n needs the app's I18nProvider; public pages use usePublicI18n");
   return ctx;
 }

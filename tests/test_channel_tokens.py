@@ -237,22 +237,22 @@ class PrivateFile(unittest.TestCase):
 
 FAKE_MAIN = textwrap.dedent("""
     import json, os, sys
-    name = "CHRONOS_YT_TOKEN_SHOP"
-    doc = os.environ.get(name, "")
+    # A customer channel's token reaches the run as the 0600 file the worker wrote
+    # (channel_credentials.customer_token_filename), never as an environment
+    # variable (BR-L-080); the report says which CHRONOS_YT_TOKEN_* the run saw.
+    path = "youtube_token__shop.json"
+    doc = open(path).read() if os.path.exists(path) else ""
     report = {"tokens": sorted(k for k in os.environ if k.startswith("CHRONOS_YT_TOKEN_")),
               "oauth_env": sorted(k for k in os.environ if k.startswith("GOOGLE_OAUTH_")),
-              "refresh": json.loads(doc).get("refresh_token") if doc else None}
-    # What materialize_token does with it: a 0600 file next to main.py.
-    fd = os.open("youtube_token_shop.json", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    os.write(fd, doc.encode())
-    os.close(fd)
-    report["mode"] = oct(os.stat("youtube_token_shop.json").st_mode & 0o777)
+              "refresh": json.loads(doc).get("refresh_token") if doc else None,
+              "mode": oct(os.stat(path).st_mode & 0o777) if doc else None}
     with open("report.out", "w") as fh:
         json.dump(report, fh)
     # A careless library printing the credential it was given:
     print("refreshing with " + (json.loads(doc).get("refresh_token") if doc else ""), flush=True)
     sys.exit(int(os.environ.get("FAKE_RC", "0")))
 """)
+
 
 
 class FakeQueue:
@@ -305,10 +305,10 @@ class WorkerWithVault(unittest.TestCase):
     def report(self):
         return json.loads((self.repo / "report.out").read_text())
 
-    def test_vault_token_reaches_only_this_run_in_memory_and_is_scrubbed(self):
+    def test_vault_token_reaches_only_this_run_as_its_own_file_and_is_scrubbed(self):
         q, w = self.run_worker(client(Resp(200, [vault_row()])))
         r = self.report()
-        self.assertEqual(r["tokens"], ["CHRONOS_YT_TOKEN_SHOP"])  # never another channel's
+        self.assertEqual(r["tokens"], [])  # no operator's token, and none under a name of the row's choosing
         self.assertEqual(r["refresh"], REFRESH)
         self.assertEqual(r["oauth_env"], [])  # the client pair travels in the document only
         self.assertEqual(r["mode"], "0o600")
@@ -317,6 +317,13 @@ class WorkerWithVault(unittest.TestCase):
         self.assertIn("refreshing with [redacted]", self.out.getvalue())
         self.assertFalse(list(self.repo.glob("youtube_token*.json")))  # deleted after the run
         self.assertNotIn(REFRESH, "".join(w._secrets))  # not kept for the next job
+
+    def test_BR_L_111_a_customers_token_is_scrubbed_from_the_file_even_when_nothing_else_names_it(self):
+        """The token travels as a file (BR-L-080), so the scrub list gets its strings from the file."""
+        plain = "plainvaulttokenvalue0123456789"
+        q, w = self.run_worker(client(Resp(200, [vault_row(refresh_token=plain)])))
+        self.assertNotIn(plain, self.out.getvalue())
+        self.assertIn("refreshing with [redacted]", self.out.getvalue())
 
     def test_failed_run_error_is_scrubbed_of_the_vault_token(self):
         self.env["FAKE_RC"] = "2"

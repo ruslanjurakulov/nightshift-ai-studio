@@ -1,72 +1,135 @@
 "use client";
 
-import { useI18n } from "@/lib/i18n/context";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { fmt } from "@/lib/i18n/core";
+import { usePublicI18n } from "@/lib/i18n/public-context";
+import { formatCredits } from "@/lib/credits";
+import { WELCOME_CREDITS } from "@/lib/pricing";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
-import { NeuralBackdrop } from "@/components/NeuralBackdrop";
 import { LegalFooter } from "@/components/legal/LegalFooter";
+import { BrandMark } from "@/components/site/BrandMark";
+import { preloadSiteFonts } from "@/components/site/fonts";
+import "@/components/site/site.css";
 
 /**
- * The frame around sign-in and sign-up: the Neural Pathway backdrop, the
- * language and theme controls, the brand, one card, and the legal footer —
- * both pages are where a new person first hands over data, so the policies are
- * linked from each.
+ * The frame around sign-in, sign-up and the email confirmation: on a wide
+ * screen a console panel with the three house rules beside the form, on a
+ * phone just the form. Both pages are where a new person first hands over
+ * data, so the policies are linked from each (LegalFooter), and the way back
+ * to the homepage is always in the top bar.
  */
 export function AuthShell({
   title,
   subtitle,
+  mode = "signin",
   children,
 }: {
   title: string;
   subtitle?: string;
+  /** Which form this frames, for the house rules' heading. */
+  mode?: "signin" | "signup";
   children: React.ReactNode;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = usePublicI18n();
+  const a = t.site.auth;
+  preloadSiteFonts(locale);
+  const asideTitle = mode === "signup" ? a.asideTitleSignup : a.asideTitle;
   return (
-    <main className="relative flex min-h-dvh flex-col items-center overflow-hidden bg-[var(--color-bg)]">
-      <NeuralBackdrop />
-
-      <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
-        <LanguageSelector />
-        <ThemeToggle />
-      </div>
-
-      <div className="relative z-10 flex w-full flex-1 items-center justify-center p-6">
-        <div className="glass-card sheet-enter stagger-enter relative z-10 w-full max-w-sm rounded-[22px] border border-[var(--color-border)] p-8">
-          <div
-            className="font-display text-2xl font-semibold tracking-[-0.02em] text-[var(--color-primary)]"
-            style={{ textShadow: "0 0 28px var(--glow-primary)" }}
-          >
-            {t.brand.name}
-          </div>
-          <div className="mt-1 text-[11px] font-light tracking-[0.14em] text-[var(--color-muted)]">
-            {t.brand.tagline}
-          </div>
-          <h1 className="mt-8 text-[28px] font-semibold leading-tight tracking-[-0.02em]">{title}</h1>
-          {subtitle && <p className="mt-3 text-[15px] font-light text-[var(--color-muted)]">{subtitle}</p>}
-          {children}
+    <div className="st st-auth">
+      <aside className="st-auth-aside" aria-label={asideTitle}>
+        <Link href="/" className="st-brand self-start">
+          <BrandMark />
+          {t.brand.name}
+        </Link>
+        <div className="flex flex-col gap-8">
+          <p className="st-h2 max-w-[16ch]">{asideTitle}</p>
+          <ul className="st-ledger max-w-[44ch]">
+            {a.asideItems.map((line) => (
+              <li key={line} className="text-[16px]">
+                <span aria-hidden className="ns-lamp" data-tone="ok" />
+                {line}
+              </li>
+            ))}
+          </ul>
         </div>
-      </div>
+        <div className="flex flex-col gap-3">
+          <span className="flex items-center gap-3 text-[15px]">
+            <span aria-hidden className="ns-lamp" data-tone="run" data-size="md" data-live="true" />
+            {a.asideLamp}
+          </span>
+          <span className="st-small">{fmt(a.welcomeNote, { n: formatCredits(WELCOME_CREDITS, locale) })}</span>
+        </div>
+      </aside>
 
-      <LegalFooter />
-    </main>
+      <main className="st-auth-main">
+        <div className="flex min-h-14 items-center justify-between gap-3">
+          <Link href="/" className="st-link text-[14px]">
+            <ArrowLeft aria-hidden />
+            <span className="max-[380px]:sr-only">{a.back}</span>
+          </Link>
+          <div className="flex items-center gap-2">
+            <LanguageSelector />
+            <ThemeToggle />
+          </div>
+        </div>
+
+        <div className="st-auth-form">
+          <Link href="/" className="st-brand mb-10 lg:hidden">
+            <BrandMark />
+            {t.brand.name}
+          </Link>
+          <h1 className="st-h1-page">{title}</h1>
+          {subtitle && <p className="st-body mt-4">{subtitle}</p>}
+          {children}
+          {/* On a phone the house rules sit under the form instead of beside it. */}
+          <ul className="st-ledger mt-10 lg:hidden" aria-label={asideTitle}>
+            {a.asideItems.map((line) => (
+              <li key={line}>
+                <span aria-hidden className="ns-lamp" data-tone="ok" />
+                {line}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <LegalFooter />
+      </main>
+    </div>
   );
 }
 
-/** A labelled field in the auth forms' style. */
+/** A labelled field in the auth forms' style: an engraved label over a key-shaped well. */
 export function AuthField({
   label,
   hint,
   ...input
 }: { label: string; hint?: string } & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">{label}</span>
-      <input
-        {...input}
-        className="pill border border-[var(--color-border)] bg-transparent px-5 py-3 text-[15px] font-light outline-none transition-colors focus:border-[var(--color-primary)]"
-      />
-      {hint && <span className="px-2 text-[11px] font-light text-[var(--color-muted)]">{hint}</span>}
+    <label className="st-field">
+      <span>{label}</span>
+      <input {...input} />
+      {hint && <small>{hint}</small>}
     </label>
+  );
+}
+
+/** The form's one action: the lit key, full width. */
+export function AuthSubmit({ busy, children, disabled }: { busy?: boolean; disabled?: boolean; children: React.ReactNode }) {
+  return (
+    <button type="submit" disabled={busy || disabled} className="st-key mt-3 disabled:cursor-not-allowed disabled:opacity-55" data-block="true">
+      {children}
+    </button>
+  );
+}
+
+/** A form-level problem, in words, with its tone. */
+export function AuthAlert({ tone, children }: { tone: "fail" | "warn"; children: React.ReactNode }) {
+  return (
+    <p role="alert" className="st-alert" data-tone={tone}>
+      <span aria-hidden className="ns-lamp mt-1.5" data-tone={tone} />
+      <span>{children}</span>
+    </p>
   );
 }

@@ -265,7 +265,8 @@ describe("edit, discard, dismiss, retry", () => {
       ["dismiss_inbox_comment", { p_comment: C, p_dismissed: false }],
       ["retry_reply_post", { p_post: P }],
     ]);
-    expect(h.audits.map((a) => a.action)).toEqual(["inbox.draft.discard", "inbox.comment.dismiss", "inbox.comment.restore", "inbox.reply.retry"]);
+    // Setting a comment aside is recorded by the database (inbox_events), not by an audit-log line.
+    expect(h.audits.map((a) => a.action)).toEqual(["inbox.draft.discard", "inbox.reply.retry"]);
   });
   it("refuses a dismissed flag that is not a boolean", async () => {
     expect((await dismissRoute.POST(post("/", { dismissed: "yes" }), { params: Promise.resolve({ comment: C }) })).status).toBe(400);

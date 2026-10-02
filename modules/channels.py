@@ -75,7 +75,7 @@ _STATUSES = (STATUS_ACTIVE, STATUS_PAUSED)
 
 def validate_channel_id(value: str) -> ChannelId:
     """Return `value` as a ChannelId, or raise ValueError if it isn't a slug."""
-    if not isinstance(value, str) or not _ID_RE.match(value):
+    if not isinstance(value, str) or not _ID_RE.fullmatch(value):
         raise ValueError(
             f"Invalid channel id {value!r} — expected a lowercase slug like "
             "'extinct-world' (2-39 chars, a-z 0-9 and dashes, not leading with a dash)"

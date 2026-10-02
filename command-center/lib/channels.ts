@@ -109,6 +109,26 @@ export function isSection(segment: string): boolean {
   return (SECTIONS as readonly string[]).includes(segment);
 }
 
+/**
+ * A one-segment URL that cannot be anything a signed-out visitor might be sent
+ * to sign in for: not a section (an old `/videos` link), not the every-channel
+ * segment, not a page reserved at the root (`/welcome`, `/auth`, `/docs`…).
+ *
+ * For a signed-out visitor `/blog` and `/chronos` look the same — a channel the
+ * gate cannot see without a session — so both get the 404 rather than a sign-in
+ * form, uniformly, which also says nothing about which channels exist. Deeper
+ * app URLs (`/chronos/videos`) still go to /login. This never opens anything:
+ * the 404 is the only page such a request can reach (middleware.ts).
+ */
+export function isUnknownRootPath(pathname: string): boolean {
+  const trimmed = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  const segments = trimmed.split("/").slice(1);
+  if (segments.length !== 1) return false;
+  const [segment] = segments;
+  if (!segment || segment === ALL_CHANNELS_SLUG || isSection(segment)) return false;
+  return !(RESERVED_ROOT_SEGMENTS as readonly string[]).includes(segment);
+}
+
 /** URL segment → selection. */
 export function slugToSelection(slug: string): ChannelSelection {
   return slug === ALL_CHANNELS_SLUG ? ALL_CHANNELS : slug;
@@ -563,7 +583,10 @@ export function isValidChannelId(value: string): boolean {
   // The same goes for the pages that live beside the channels at the root.
   if (value === ALL_CHANNELS_SLUG || isSection(value)) return false;
   if ((RESERVED_ROOT_SEGMENTS as readonly string[]).includes(value)) return false;
-  return /^[a-z0-9][a-z0-9-]{1,38}$/.test(value);
+  // The database's rule (create_channel, migration 0086): single hyphens between
+  // letters and digits, 2 to 39 characters. A trailing or double hyphen names the
+  // same token secret as the id without it.
+  return value.length >= 2 && value.length <= 39 && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(value);
 }
 
 /** Turn a display name into a candidate channel id. */
@@ -573,7 +596,8 @@ export function slugifyChannelId(name: string): string {
     .normalize("NFKD")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 39);
+    .slice(0, 39)
+    .replace(/-+$/, "");
 }
 
 /**

@@ -7,51 +7,39 @@ import { paddleClient, paddleConfig } from "@/lib/paddle";
 import { PLAN_ENV, planMatrix } from "@/lib/plans";
 import { planValue, readPlanCatalog } from "@/lib/server/plans";
 import { PRICING_ENV, resolvePricing } from "@/lib/pricing";
+import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import {
   SHOWCASE,
   jsonLdScript,
+  moneyAnchor,
   pricingTeaser,
-  siteOrigin,
+  runtimeSiteOrigin,
+  shareMetadata,
   softwareApplicationJsonLd,
   visibleShowcase,
 } from "@/lib/landing";
+import { readPublicApiPrices } from "@/lib/server/api-prices";
+import { PUBLIC_READ_TIMEOUT_MS } from "@/lib/server/public-read";
+import { readPublicCreditRates } from "@/lib/server/public-rates";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { Landing } from "@/components/landing/Landing";
-
-/** Read by literal name at request time — a self-hosted deploy sets APP_ORIGIN
- *  in the container, not at build. */
-function origin(): string | null {
-  return siteOrigin({ APP_ORIGIN: process.env.APP_ORIGIN });
-}
-
-/** Served by app/og.png/route.tsx; see there for why it is not opengraph-image.tsx. */
-const OG_IMAGE = { url: "/og.png", width: 1200, height: 630, type: "image/png" };
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t, locale } = await getDictionary();
   const m = t.landing.meta;
-  const base = origin();
   return {
-    // Without a known origin a canonical or og:url would be resolved against
-    // localhost, which is worse than leaving them out.
-    ...(base ? { metadataBase: new URL(base), alternates: { canonical: "/" } } : {}),
     title: { absolute: m.title },
     description: m.description,
-    openGraph: {
-      type: "website",
+    // No known origin, no image or canonical: never a card pointing at localhost.
+    ...shareMetadata({
+      origin: runtimeSiteOrigin(),
+      path: "/",
+      title: m.title,
+      description: m.description,
       siteName: t.brand.name,
-      title: m.title,
-      description: m.description,
-      locale: { en: "en_US", ru: "ru_RU", uz: "uz_UZ" }[locale],
-      images: [{ ...OG_IMAGE, alt: m.ogAlt }],
-      ...(base ? { url: "/" } : {}),
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: m.title,
-      description: m.description,
-      images: [{ url: OG_IMAGE.url, alt: m.ogAlt }],
-    },
+      imageAlt: m.ogAlt,
+      locale,
+    }),
   };
 }
 
@@ -69,19 +57,37 @@ export default async function Home() {
   // The same pricing source /pricing reads; the teaser only ever shows what it holds.
   // Plans (0034) come from the public price list in the database.
   const supabase = await createClient().catch(() => null);
-  // An unreadable catalog teases no plans (the pricing page itself says it could not read them).
-  const catalog = supabase ? planValue(await readPlanCatalog(supabase).catch(() => ({ state: "failed" as const }))) : null;
-  const pricing = pricingTeaser(resolvePricing(PRICING_ENV, paddleConfig), planMatrix(catalog, PLAN_ENV, paddleClient));
+  // The three public reads run together, each bounded (BR-L-047): a stalled
+  // backend costs this page one timeout, not three in a row.
+  const [catalogRead, apiPrices, siteRates] = await Promise.all([
+    // An unreadable catalog teases no plans (the pricing page itself says it could not read them).
+    supabase
+      ? readPlanCatalog(supabase, { signal: AbortSignal.timeout(PUBLIC_READ_TIMEOUT_MS) }).catch(() => ({ state: "failed" as const }))
+      : null,
+    readPublicApiPrices(),
+    readPublicCreditRates(),
+  ]);
+  const catalog = catalogRead ? planValue(catalogRead) : null;
+  const resolved = resolvePricing(PRICING_ENV, paddleConfig);
+  const pricing = pricingTeaser(resolved, planMatrix(catalog, PLAN_ENV, paddleClient));
+  const anchor = moneyAnchor(resolved, apiPrices, siteRates);
   const jsonLd = softwareApplicationJsonLd({
     name: t.brand.name,
     description: t.landing.meta.description,
-    url: origin(),
+    url: runtimeSiteOrigin(),
   });
 
   return (
     <PublicShell t={t}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
-      <Landing t={t} locale={locale} pricing={pricing} showcase={visibleShowcase(SHOWCASE)} />
+      <Landing
+        t={t}
+        locale={locale}
+        pricing={pricing}
+        anchor={anchor}
+        showcase={visibleShowcase(SHOWCASE)}
+        expiryMonths={catalog?.packValidMonths === undefined ? CREDIT_EXPIRY_MONTHS : catalog.packValidMonths}
+      />
     </PublicShell>
   );
 }

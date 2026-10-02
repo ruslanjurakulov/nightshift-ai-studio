@@ -175,3 +175,8 @@ grant execute on function public.take_web_rate(text, integer, integer) to authen
 --                   and pg_get_constraintdef(oid) like '%@%') as rate_bucket_allows_window,
 --          has_function_privilege('authenticated', 'public.take_web_rate(text,integer,integer)', 'EXECUTE')
 --            and not has_function_privilege('anon', 'public.take_web_rate(text,integer,integer)', 'EXECUTE') as rate_acl;
+--
+-- Audit rows an earlier version let a member write (not a verdict: the service
+-- role and the SQL editor also write actions of their own, e.g. a worker's):
+--   select a.id, a.at, a.action, a.actor_email from public.app_audit_log a
+--    where not public.audit_action_allowed(a.action) order by a.at desc;

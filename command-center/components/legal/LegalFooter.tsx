@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useI18n } from "@/lib/i18n/context";
+import { usePublicI18n } from "@/lib/i18n/public-context";
 import { LEGAL } from "@/lib/legal";
 
 /**
@@ -15,25 +15,25 @@ import { LEGAL } from "@/lib/legal";
  * the NOT CONFIGURED marker, which is where the owner will look.
  */
 export function LegalFooter({ className = "" }: { className?: string }) {
-  const { t } = useI18n();
+  const { t } = usePublicI18n();
   return (
     <footer
       className={`relative z-10 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 px-4 py-6 text-[12px] font-light text-[var(--color-muted)] ${className}`}
     >
       {LEGAL.legalName && <span>© {LEGAL.legalName}</span>}
-      <Link href="/pricing" className="tap-link underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline">
+      <Link href="/pricing" className="inline-flex min-h-11 min-w-11 items-center justify-center underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline">
         {t.legal.pricing}
       </Link>
-      <Link href="/privacy" className="tap-link underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline">
+      <Link href="/privacy" className="inline-flex min-h-11 min-w-11 items-center justify-center underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline">
         {t.legal.privacy}
       </Link>
-      <Link href="/terms" className="tap-link underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline">
+      <Link href="/terms" className="inline-flex min-h-11 min-w-11 items-center justify-center underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline">
         {t.legal.terms}
       </Link>
       {LEGAL.contactEmail && (
         <a
           href={`mailto:${LEGAL.contactEmail}`}
-          className="tap-link underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline"
         >
           {LEGAL.contactEmail}
         </a>

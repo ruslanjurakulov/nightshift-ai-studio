@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getPathMatch } from "next/dist/shared/lib/router/utils/path-match";
-import nextConfig from "../next.config";
+import nextConfig, { FONT_FILES } from "../next.config";
+import { PUBLIC_FONT_PATHS } from "@/lib/public-paths";
 
 /**
  * BR-S-007: every app page carries frame protection, nosniff, a Referrer-Policy
@@ -72,4 +73,22 @@ describe("security headers (BR-S-007)", () => {
   it("does not advertise the framework", () => {
     expect(nextConfig.poweredByHeader).toBe(false);
   });
+});
+
+describe("the immutable cache on the self-hosted fonts", () => {
+  it("covers exactly the two font files the gate lets through", async () => {
+    expect([...FONT_FILES]).toEqual([...PUBLIC_FONT_PATHS]);
+    for (const path of PUBLIC_FONT_PATHS) {
+      expect((await headersFor(path))["cache-control"]).toBe("public, max-age=31536000, immutable");
+    }
+  });
+
+  // A redirect to /login, a 404 or (were a channel ever called "fonts") an app
+  // screen must never be pinned in a browser or shared cache for a year.
+  it.each(["/fonts", "/fonts/videos", "/fonts/other.woff2", "/fonts/sofia-sans-cyrillic-v20.woff2x", "/fonts/sofia-sans-cyrillic-v20woff2", "/fonts/a/b", "/chronos/videos"])(
+    "leaves %s without it",
+    async (path) => {
+      expect((await headersFor(path))["cache-control"]).toBeUndefined();
+    },
+  );
 });

@@ -22,13 +22,16 @@ Fixed (patch-breach7, now ordinary tests):
     every member reads (RegenerationRefusalReachesMembers below pins the contract).
 """
 
+import io
+import re
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from modules import channel_credentials, run_checkpoint, run_slug, scene_regenerate as sr, scene_repair
 from modules.channels import ChannelContext, CredentialRef
-from tools import list_channels
+from tools import list_channels, restore_channel_token
 from tools import queue_worker as qw
 
 CUSTOMER_ORG = "22222222-2222-2222-2222-222222222222"
@@ -57,7 +60,7 @@ class CustomerChannelCredentials(unittest.TestCase):
 
     def test_a_customer_channel_that_names_no_other_reference_has_only_its_own_secret(self):
         row, got = self.resolve(customer_channel("cust-chan"))
-        self.assertEqual(row["token_secret"], "CHRONOS_YT_TOKEN_CUST_CHAN")
+        self.assertEqual(row["token_secret"], "", "a customer channel has no secret name")
         self.assertFalse(got.found, "a channel with no token of its own must publish nothing, "
                                     "never with another channel's")
 
@@ -68,7 +71,7 @@ class CustomerChannelCredentials(unittest.TestCase):
         guessed an operator channel's id published with the operator's YouTube
         token. A customer channel now has no environment path at all."""
         row, got = self.resolve(customer_channel("cust-chan", ref="extinct-world"))
-        self.assertEqual(row["token_secret"], "CHRONOS_YT_TOKEN_CUST_CHAN", "the row's reference chose the secret")
+        self.assertEqual(row["token_secret"], "", "the row's reference chose the secret")
         self.assertFalse(got.found, "a customer channel resolved the operator's token from the worker's "
                                     f"environment ({OPERATORS_SECRET}) because its own row named it")
 
@@ -88,7 +91,7 @@ class CustomerChannelCredentials(unittest.TestCase):
         env = dict(self.ENV)
         env["CHRONOS_YT_TOKEN_EXTINCT_WORLD"] = OPERATORS_TOKEN
         row, got = self.resolve_with(customer_channel("extinct--world"), env)
-        self.assertEqual(row["token_secret"], "CHRONOS_YT_TOKEN_EXTINCT_WORLD")
+        self.assertEqual(row["token_secret"], "", "a name equal to the operator's was emitted")
         self.assertFalse(got.found)
 
     def test_a_row_without_the_operator_flag_is_treated_as_someone_elses(self):
@@ -115,7 +118,12 @@ class CustomerChannelCredentials(unittest.TestCase):
 
     def test_a_customer_channels_token_file_is_its_own_not_a_name_it_chose(self):
         c = customer_channel("cust-chan", ref="extinct-world")
-        self.assertEqual(channel_credentials.token_path(c).name, "youtube_token_cust-chan.json")
+        self.assertEqual(channel_credentials.token_path(c).name, "youtube_token__cust-chan.json")
+        # No operator reference can produce a customer's file name.
+        operator = ChannelContext(channel_id="chan-one", name="One", niche="n",
+                                  credential=CredentialRef(ref="_cust-chan", youtube_channel_id=YT, verified_at=STAMP))
+        self.assertNotEqual(channel_credentials.token_path(operator).name,
+                            channel_credentials.token_path(c).name)
 
     def test_a_customer_channel_with_a_vault_connection_gets_exactly_that(self):
         class Vault:
@@ -131,8 +139,161 @@ class CustomerChannelCredentials(unittest.TestCase):
         self.assertEqual(got.source, qw.channel_tokens.SOURCE_VAULT)
         with tempfile.TemporaryDirectory() as repo:
             child = qw.prepare_credentials(row, env, Path(repo), Vault())
-        self.assertIn("CHRONOS_YT_TOKEN_CUST_CHAN", child)
-        self.assertNotIn(OPERATORS_SECRET, child)
+            wrote = sorted(p.name for p in Path(repo).glob("youtube_token*.json"))
+            body = (Path(repo) / "youtube_token__cust-chan.json").read_text()
+        # Handed over as the file its uploader reads, never as an environment variable.
+        self.assertEqual(wrote, ["youtube_token__cust-chan.json"])
+        self.assertIn("rt-1234567890", body)
+        self.assertFalse([k for k in child if k.startswith(qw.TOKEN_PREFIX)], sorted(child))
+
+
+class HyphenCollidingIds(unittest.TestCase):
+    """BR-L-080. Channel ids that differ only in punctuation normalise to one
+    secret name ('extinct-world', 'extinct-world-', 'extinct--world'), and the
+    operator's secrets sit in the environment of every runner. With the
+    operator's secret in the environment, a customer channel of such an id gets
+    no token and no secret name on EVERY path that could read it: the queue
+    worker, the Actions matrix row, tools/restore_channel_token, and
+    materialize_token (the uploader, the analytics client and the comment
+    fetcher, so the intelligence poll too)."""
+
+    IDS = ("extinct-world-", "extinct--world", "extinct-world--", "extinct-world")
+    ENV = {OPERATORS_SECRET: OPERATORS_TOKEN, "YOUTUBE_TOKEN_JSON": '{"refresh_token": "default-token"}'}
+
+    def test_the_secret_name_function_answers_the_table_the_lab_holds_sql_to(self):
+        """BR-L-080: SQL's channel_secret_name (migration 0086, which create_channel
+        uses to refuse colliding ids) and secret_name_for are one function."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "security"))
+        from secret_name_corpus import EXPECTED
+
+        for key, want in EXPECTED.items():
+            self.assertEqual(channel_credentials.secret_name_for(key), want, repr(key))
+
+    def test_BR_L_110_a_customer_channel_carrying_the_id_default_is_not_the_default_channel(self):
+        """The default channel's token is chosen by its id alone (YOUTUBE_TOKEN_JSON). If the
+        operator's `default` row were ever absent a customer could create the id; on every
+        path it is still just a customer channel."""
+        c = customer_channel("default")
+        row = list_channels._row(c)
+        self.assertEqual((row["is_default"], row["is_operators"], row["token_secret"]), (False, False, ""))
+        self.assertFalse(qw.channel_token(row, self.ENV, None).found)
+        with tempfile.TemporaryDirectory() as repo:
+            qw.prepare_credentials(row, self.ENV, Path(repo))
+            self.assertEqual(list(Path(repo).glob("youtube_token*.json")), [])
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("modules.channel_credentials.cfg.BASE_DIR", Path(tmp)):
+            self.assertEqual(channel_credentials.token_path(c).name, "youtube_token__default.json")
+            gh_env = Path(tmp) / "github_env"
+            gh_env.write_text("")
+            out = io.StringIO()
+
+            class Vault:
+                configured = True
+
+                def read(self, channel_id):
+                    return None
+
+            code = restore_channel_token.main(dict(self.ENV, CHANNEL_ID="default", GITHUB_ENV=str(gh_env)),
+                                              load_channel=lambda _id: c, client=Vault(), out=out)
+            self.assertEqual(code, 0)
+            self.assertIn("this channel has no token", out.getvalue())
+            self.assertEqual(list(Path(tmp).glob("youtube_token*.json")), [])
+
+    def test_BR_L_115_an_id_with_a_trailing_newline_is_not_a_channel_id(self):
+        from modules.channels import validate_channel_id
+
+        for bad in ("extinct-world\n", "extinct-world\r\n", "a\n"):
+            with self.assertRaises(ValueError):
+                validate_channel_id(bad)
+        self.assertEqual(str(validate_channel_id("extinct-world")), "extinct-world")
+
+    def test_the_matrix_row_and_the_queue_worker_hand_such_a_channel_nothing(self):
+        for cid in self.IDS:
+            c = customer_channel(cid)
+            row = list_channels._row(c)
+            self.assertEqual((row["is_operators"], row["token_secret"]), (False, ""), cid)
+            self.assertFalse(qw.channel_token(row, self.ENV, None).found, cid)
+            with tempfile.TemporaryDirectory() as repo:
+                child = qw.prepare_credentials(row, self.ENV, Path(repo))
+                self.assertEqual(list(Path(repo).glob("youtube_token*.json")), [], cid)
+            self.assertFalse([k for k in child if k.startswith(qw.TOKEN_PREFIX)], cid)
+
+    def test_materialize_token_never_reads_the_environment_for_such_a_channel(self):
+        for cid in self.IDS:
+            with tempfile.TemporaryDirectory() as tmp, \
+                    mock.patch("modules.channel_credentials.cfg.BASE_DIR", Path(tmp)), \
+                    mock.patch.dict("os.environ", {OPERATORS_SECRET: OPERATORS_TOKEN}):
+                got = channel_credentials.materialize_token(customer_channel(cid))
+                self.assertIsNone(got, cid)
+                self.assertEqual(list(Path(tmp).glob("*.json")), [], cid)
+
+    def test_materialize_token_still_returns_the_file_the_worker_wrote_for_a_customer(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("modules.channel_credentials.cfg.BASE_DIR", Path(tmp)):
+            c = customer_channel("cust-chan")
+            path = Path(tmp) / channel_credentials.customer_token_filename("cust-chan")
+            path.write_text('{"refresh_token": "x"}')
+            self.assertEqual(channel_credentials.materialize_token(c), path)
+
+    def test_materialize_token_still_reads_the_operators_environment(self):
+        operator = ChannelContext(channel_id="extinct-world", name="E", niche="n",
+                                  credential=CredentialRef(ref="extinct-world", youtube_channel_id=YT, verified_at=STAMP))
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch("modules.channel_credentials.cfg.BASE_DIR", Path(tmp)), \
+                mock.patch.dict("os.environ", {OPERATORS_SECRET: OPERATORS_TOKEN}):
+            got = channel_credentials.materialize_token(operator)
+            self.assertIsNotNone(got)
+            self.assertIn("operator-refresh-token", got.read_text())
+
+    def test_the_restore_step_gives_such_a_channel_no_token_and_exports_nothing(self):
+        for cid in self.IDS[:-1]:
+            for client in (None, "unconfigured", "empty"):
+                out = io.StringIO()
+
+                class Vault:
+                    configured = client != "unconfigured"
+
+                    def read(self, channel_id):
+                        return None
+
+                with tempfile.TemporaryDirectory() as tmp, \
+                        mock.patch("modules.channel_credentials.cfg.BASE_DIR", Path(tmp)):
+                    gh_env = Path(tmp) / "github_env"
+                    gh_env.write_text("")
+                    env = dict(self.ENV, CHANNEL_ID=cid, GITHUB_ENV=str(gh_env))
+                    code = restore_channel_token.main(env, load_channel=lambda _id, c=cid: customer_channel(c),
+                                                      client=Vault(), out=out)
+                    self.assertEqual(code, 0, (cid, out.getvalue()))
+                    self.assertEqual(list(Path(tmp).glob("youtube_token*.json")), [], cid)
+                    self.assertEqual(gh_env.read_text(), "")
+                self.assertNotIn(OPERATORS_SECRET, out.getvalue())
+                self.assertNotIn("using CHRONOS", out.getvalue())
+
+    def test_the_restore_step_writes_a_customers_vault_token_to_its_own_file(self):
+        class Vault:
+            configured = True
+
+            def read(self, channel_id):
+                return qw.channel_tokens.VaultToken(refresh_token="rt-1234567890", scopes=(), oauth_client_id="cid",
+                                                    youtube_channel_id=YT)
+
+        out = io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("modules.channel_credentials.cfg.BASE_DIR", Path(tmp)):
+            env = dict(self.ENV, CHANNEL_ID="cust-chan", GOOGLE_OAUTH_CLIENT_ID="cid", GOOGLE_OAUTH_CLIENT_SECRET="csec")
+            self.assertEqual(restore_channel_token.main(env, load_channel=lambda _id: customer_channel("cust-chan"),
+                                                        client=Vault(), out=out), 0)
+            self.assertEqual([p.name for p in Path(tmp).glob("youtube_token*.json")], ["youtube_token__cust-chan.json"])
+
+    def test_the_workflow_step_that_exports_a_secret_runs_only_for_the_operators_channels(self):
+        text = (Path(__file__).resolve().parent.parent / ".github" / "workflows" / "daily_video.yml").read_text()
+        step = text.split("- name: Restore YouTube token (this channel)", 1)[1].split("- name:", 1)[0]
+        self.assertIn("if: ${{ !matrix.is_default && matrix.is_operators }}", step)
+        # Every workflow that evaluates a secret by a matrix-provided name is gated the same way.
+        for path in (Path(__file__).resolve().parent.parent / ".github" / "workflows").glob("*.yml"):
+            body = path.read_text()
+            for m in re.finditer(r"secrets\[matrix\.\w+\]", body):
+                head = body[:m.start()].rsplit("- name:", 1)[1]
+                self.assertIn("matrix.is_operators", head, f"{path.name}: {m.group(0)} is not gated")
 
 
 class RegenerationRefusalReachesMembers(unittest.TestCase):
