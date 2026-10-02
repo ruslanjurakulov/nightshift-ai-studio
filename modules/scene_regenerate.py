@@ -369,15 +369,12 @@ def regen_dir(run_dir: Path, regen_id: str) -> Path:
 
 
 def _keep(src: Path, dest: Path) -> Optional[str]:
-    """Keep a copy of the previous take (a hard link when it can be one — the
-    previous cut is not written again, so a link is a true copy)."""
+    """Keep a copy of the previous take. A real copy, never a hard link: a
+    writer that rewrites the file in place (video_ir.save does) would change a
+    linked "previous" take along with the current one."""
     if not src.is_file():
         return None
-    if dest.exists():
-        return dest.name
-    try:
-        os.link(src, dest)
-    except OSError:
+    if not dest.exists():
         shutil.copy2(src, dest)
     return dest.name
 
