@@ -1102,6 +1102,10 @@ option {
   .sheet-close,
   .nav-back { width: 2.75rem; height: 2.75rem; }
   .tap-link { display: inline-flex; align-items: center; min-height: 2.75rem; }
+  /* A chip that opts in (.studio-chip / .ns-chip with .tap) keeps 44px: the chip
+     rule comes later in this file and would otherwise set it back to 32px. */
+  .studio-chip.tap,
+  .ns-chip.tap { min-height: 2.75rem; }
   /* Text fields and selects; a checkbox or radio is tapped through its label
      row (see .tap-row), and hidden inputs have no box. */
   :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="hidden"], [type="file"]), select) {
