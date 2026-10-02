@@ -294,8 +294,10 @@ class WorkerCase(unittest.TestCase):
             "CHRONOS_YT_TOKEN_FINANCE": json.dumps({"refresh_token": "finance-refresh-token"}),
         }
         self.rows = {
-            "news": {"channel_id": "news", "is_default": False, "token_secret": "CHRONOS_YT_TOKEN_NEWS"},
-            "default": {"channel_id": "default", "is_default": True, "token_secret": "CHRONOS_YT_TOKEN_DEFAULT"},
+            "news": {"channel_id": "news", "is_default": False, "is_operators": True,
+                     "token_secret": "CHRONOS_YT_TOKEN_NEWS"},
+            "default": {"channel_id": "default", "is_default": True, "is_operators": True,
+                        "token_secret": "CHRONOS_YT_TOKEN_DEFAULT"},
         }
         self.out = io.StringIO()
 
@@ -580,7 +582,7 @@ class YoutubePublishCredentials(unittest.TestCase):
         from types import SimpleNamespace
 
         def ctx(cid, ref=""):
-            return SimpleNamespace(channel_id=cid, name=cid, niche="n", is_verified=verified,
+            return SimpleNamespace(channel_id=cid, name=cid, niche="n", is_verified=verified, is_operators=True,
                                    credential=SimpleNamespace(ref=ref, youtube_channel_id="UC" + cid))
 
         chans = {"news": ctx("news"), "default": ctx("default")}

@@ -39,8 +39,9 @@ import { isValidChannelId, slugifyChannelId, voiceOwners } from "@/lib/channels"
  *    channel already uses cannot be chosen — two channels in one voice sound
  *    like one channel with two names.
  *
- * The write goes to `channels` only, via the authenticated insert policy added
- * by migration 0001. No data table is writable from here.
+ * The write is the `create_channel` function (migration 0086) and nothing else:
+ * the table itself takes no insert from the browser. No data table is writable
+ * from here.
  */
 
 // The voice step sits *after* keys on purpose: picking from the account's real
@@ -83,15 +84,22 @@ type ChannelInfo = {
 
 /**
  * `orgId` is the organization the new channel belongs to — the current one,
- * resolved on the server. Null before migration 0018, when the column does not
- * exist and must not be sent. `initialNiche` / `initialLanguage` are what the
+ * resolved on the server (create_channel, migration 0086, needs it). `initialNiche` / `initialLanguage` are what the
  * person answered on /welcome: a starting value for the form, nothing more.
  */
 export function AddChannelWizard({
   orgId = null,
+  canConfirm = false,
   initialNiche = null,
   initialLanguage = null,
-}: { orgId?: string | null; initialNiche?: string | null; initialLanguage?: string | null } = {}) {
+}: {
+  orgId?: string | null;
+  /** The caller administers the operator's own organization: the database then
+   *  stamps the confirmation from this lookup (migration 0086). */
+  canConfirm?: boolean;
+  initialNiche?: string | null;
+  initialLanguage?: string | null;
+} = {}) {
   const { t } = useI18n();
   const router = useRouter();
   const path = useChannelPath();
@@ -353,16 +361,25 @@ export function AddChannelWizard({
 
     // 2. Create the channel row — configuration only, no credential material.
     setStage(t.channels.creating);
-    const now = new Date().toISOString();
-    const { error: err } = await supabase.from("channels").insert({
-      channel_id: effectiveId,
-      // The org it is created in; RLS requires editor there (migration 0018).
-      ...(orgId ? { org_id: orgId } : {}),
-      name: name.trim(),
-      niche: niche.trim(),
-      // Not negotiable: a new channel does not publish until a human says so.
-      status: "PAUSED",
-      agent_config: {
+    // Through create_channel (migration 0086), not a table insert: the table's
+    // INSERT, credential_ref and status are closed to the browser. The channel is
+    // created PAUSED by the function, never active. The reference is the channel's
+    // own id unless this is the operator's organization, and the YouTube
+    // confirmation (`verified_at`) is stamped by the database, never typed here:
+    // for the operator's own organization from the lookup above, for anyone else's
+    // by connecting YouTube on the Channels page.
+    if (!orgId) {
+      setBusy(false);
+      setStage(null);
+      setError(t.channels.createFailed);
+      return;
+    }
+    const { error: err } = await supabase.rpc("create_channel", {
+      p_channel_id: effectiveId,
+      p_org: orgId,
+      p_name: name.trim(),
+      p_niche: niche.trim(),
+      p_agent_config: {
         language,
         target_duration_seconds: duration,
         tts_provider: ttsProvider,
@@ -378,18 +395,13 @@ export function AddChannelWizard({
           .map((c) => c.trim())
           .filter(Boolean),
       },
-      schedule_config: {
+      p_schedule_config: {
         publish_hour_utc: hour === "" ? null : Number(hour),
         enabled: scheduleEnabled,
       },
-      // A reference only — the token itself never reaches this app. The public
-      // channel facts confirmed above are safe to keep: they are the proof the
-      // right channel was opened.
-      // Proof, not decoration: `verified_at` is what the database checks
-      // before it will let this channel be ACTIVE, and what the scheduler
-      // checks before it will spend anything on it. None of it is secret —
-      // every field came back from a public channels.list read.
-      credential_ref: {
+      // A reference and public facts only — the token itself never reaches this
+      // app. Every field of the lookup came back from a public channels.list read.
+      p_credential: {
         provider: "youtube",
         ref: credentialRef.trim() || effectiveId,
         youtube_channel_id: info.channelId,
@@ -398,10 +410,8 @@ export function AddChannelWizard({
         youtube_custom_url: info.customUrl,
         subscriber_count: info.subscribers ?? "",
         video_count: info.videos ?? "",
-        verified_at: now,
       },
-      created_at: now,
-      updated_at: now,
+      p_verified: canConfirm,
     });
     setBusy(false);
     setStage(null);

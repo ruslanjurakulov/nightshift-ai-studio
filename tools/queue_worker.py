@@ -370,18 +370,24 @@ def resume_target(job: Mapping, params: Mapping, output_dir: Path) -> Optional[s
             return None
         from modules import run_checkpoint  # noqa: PLC0415 — imports config
 
-        wanted_slug = _slugify(params["topic"]) if params.get("topic") else None
+        from modules import run_slug  # noqa: PLC0415
+
+        channel = str(job.get("channel_id"))
+        # A run's directory is keyed by its channel (modules/run_slug.py,
+        # BR-G-007); a run begun before the key is named by the topic alone.
+        wanted_slugs = (set(run_slug.candidates(params["topic"], channel))
+                        if params.get("topic") else None)
         best = None
         for child in Path(output_dir).iterdir():
-            if not child.is_dir() or (wanted_slug and child.name != wanted_slug):
+            if not child.is_dir() or (wanted_slugs is not None and child.name not in wanted_slugs):
                 continue
             cp = run_checkpoint.load(child.name, root=Path(output_dir))
-            if cp is None or cp.completed or str(cp.channel_id) != str(job.get("channel_id")):
+            if cp is None or cp.completed or str(cp.channel_id) != channel:
                 continue
             created = _parse_ts(cp.created_at)
             if created is None or created < queued_at:
                 continue
-            if not cp.topic or _slugify(cp.topic) != cp.slug:
+            if not cp.topic or cp.slug not in run_slug.candidates(cp.topic, channel):
                 continue
             if not cp.can_resume_stage(run_checkpoint.STAGE_SCRIPT):
                 continue
@@ -416,7 +422,9 @@ def channel_token(channel_row: Mapping, env: Mapping[str, str],
     """This channel's YouTube token, in memory — the one rule a render run
     (prepare_credentials) and a "Publish to platforms" YouTube upload
     (youtube_publish_credentials) share. The default channel: YOUTUBE_TOKEN_JSON.
-    Any other: its ACTIVE Vault connection, else its own CHRONOS_YT_TOKEN_<REF>
+    Any other operator channel: its ACTIVE Vault connection, else its own
+    CHRONOS_YT_TOKEN_<REF>. A channel of any other organization: its ACTIVE
+    Vault connection only, never the environment (BR-G-002)
     (modules/channel_tokens.py). Never another channel's token. Raises
     ChannelTokenError when the Vault lookup failed with nothing to fall back to."""
     if channel_row.get("is_default"):
@@ -426,10 +434,13 @@ def channel_token(channel_row: Mapping, env: Mapping[str, str],
     name = str(channel_row.get("token_secret") or "")
     if not name.startswith(TOKEN_PREFIX):
         name = ""
+    # The environment is the operator's own channels' place for a token. A row
+    # without the flag is treated as someone else's: the safe direction.
     return channel_tokens.resolve_channel_token(
         str(channel_row.get("channel_id") or ""), name, env, client=token_client,
         expected_youtube_channel_id=(expected_youtube_channel_id
-                                     or str(channel_row.get("youtube_channel_id") or "")))
+                                     or str(channel_row.get("youtube_channel_id") or "")),
+        allow_env=channel_row.get("is_operators") is True)
 
 
 def youtube_publish_credentials(channel_id: str, env: Mapping[str, str],
@@ -463,9 +474,11 @@ def prepare_credentials(channel_row: Mapping, env: Mapping[str, str], repo_dir: 
     size.
 
     A non-default channel's token comes from modules/channel_tokens: its
-    ACTIVE Vault connection (migration 0022) when it has one, else its own
-    CHRONOS_YT_TOKEN_<REF> secret, as before. Either way it reaches the run in
-    memory, under that channel's own env var name only — the run writes it to
+    ACTIVE Vault connection (migration 0022) when it has one, else — for the
+    operator's own channels only — its own CHRONOS_YT_TOKEN_<REF> secret, as
+    before (BR-G-002: another organization's channel never reads the
+    environment). Either way it reaches the run in memory, under that
+    channel's own env var name only — the run writes it to
     a 0600 file that remove_credential_files deletes after the job. Raises
     ChannelTokenError when the Vault lookup failed and there is nothing to fall
     back to, so the job fails before the run spends anything."""

@@ -98,6 +98,10 @@ def _row(c) -> dict:
         "name": c.name,
         "niche": c.niche,
         "is_default": str(c.channel_id) == str(DEFAULT_CHANNEL_ID),
+        # Does the operator's own organization own it? Only these channels may
+        # read a token from the worker's environment (BR-G-002); everyone
+        # else's token is their own Vault connection.
+        "is_operators": bool(getattr(c, "is_operators", False)),
         "token_secret": env_var_name(c),
     }
 

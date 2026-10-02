@@ -2261,6 +2261,7 @@ export const uz: Dictionary = {
     autoOff: "O'CHIQ",
     autoOnHint: "Bu kanal videolarini o'zi ochiq qiladi. Nashr darvozasi baribir har birining oldida ishlaydi.",
     autoOffHint: "Videolar siz video sahifasida tasdiqlaguningizcha private turadi. Xavfsiz standart.",
+    adminOnly: "Buni faqat makon administratori o'zgartira oladi.",
     pause: "To'xtatish",
     activate: "Faollashtirish",
     saving: "Saqlanmoqda…",

@@ -283,6 +283,24 @@ class ResumeFromApproved(unittest.TestCase):
         self.assertEqual(loaded.sections[0].narration, "The approved opening, as the person read it.")
         self.assertEqual(len(loaded.sections), 2)
 
+    def test_a_run_is_found_under_its_channels_keyed_name_or_the_topics_own(self):
+        """BR-G-007: the run directory is keyed by the channel for a customer
+        organization; a storyboard of a run begun before the key is stored under
+        the topic's own slug. Both are looked up, the channel's own row only."""
+        from modules import run_slug
+
+        topic = "The Lighthouse Keeper"
+        keyed = run_slug.keyed_slug(topic, "news")
+        for stored_as in (keyed, "the-lighthouse-keeper"):
+            http = FakeHttp([self.approved_row(slug=stored_as)])
+            got = sb.approved_for_resume("news", topic, store=store(http), output_dir=self.out,
+                                         slugs=run_slug.candidates(topic, "news"))
+            self.assertEqual(got.script_path, self.out / stored_as / "script.json")
+        # Another channel's approved storyboard for the same topic is never this channel's.
+        http = FakeHttp([self.approved_row(channel_id="other", slug=keyed)])
+        self.assertIsNone(sb.approved_for_resume("news", topic, store=store(http), output_dir=self.out,
+                                                 slugs=run_slug.candidates(topic, "news")))
+
     def test_nothing_to_resume_unless_approved(self):
         for status in ("ready", "discarded", "rendered"):
             http = FakeHttp([self.approved_row(status=status)])
@@ -472,7 +490,10 @@ class Wiring(unittest.TestCase):
 
     def test_the_approved_script_is_loaded_through_the_resume_path(self):
         body = ast.get_source_segment(self.src, self._run())
-        self.assertIn("storyboard_review.approved_for_resume(channel_id, topic)", body)
+        self.assertIn("storyboard_review.approved_for_resume(", body)
+        self.assertIn("channel_id, topic,", body)
+        # BR-G-007: the run is looked up under the names its channel keys it by.
+        self.assertIn("slugs=run_slug.candidates(topic, str(channel_id), operators=ctx.is_operators)", body)
         self.assertLess(body.index("approved_for_resume("), body.index("ScriptEngine.load(Path(script_file)"))
 
     def test_an_edited_opening_records_no_hook_arm(self):

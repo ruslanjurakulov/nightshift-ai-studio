@@ -36,6 +36,7 @@ export function ChannelCard({
   videos,
   vault,
   dna,
+  canControl = false,
 }: {
   channel: ChannelRow;
   /** The channel's URL segment — its name, not its internal id. */
@@ -48,6 +49,13 @@ export function ChannelCard({
   vault?: Omit<ChannelTokenPanelProps, "channelId">;
   /** The channel's DNA card (components/channels/ChannelDnaSection), when the page has it. */
   dna?: ReactNode;
+  /**
+   * May the caller change the controls that hold a render (auto publish and
+   * storyboard review)? An administrator of the organization, since migration
+   * 0086: a trigger refuses the write from anyone else (BR-G-003), so without
+   * this the switches are shown but disabled.
+   */
+  canControl?: boolean;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -145,10 +153,13 @@ export function ChannelCard({
     setBusy(true);
     setError(null);
     const next = active ? "PAUSED" : "ACTIVE";
-    const { error: err } = await supabase
-      .from("channels")
-      .update({ status: next, updated_at: new Date().toISOString() })
-      .eq("channel_id", channel.channel_id);
+    // `status` is written through set_channel_status (migration 0086): the
+    // table's own column is closed to the browser, and activating still needs a
+    // channel YouTube has confirmed.
+    const { error: err } = await supabase.rpc("set_channel_status", {
+      p_channel_id: channel.channel_id,
+      p_status: next,
+    });
     setBusy(false);
     if (err) {
       setError(err.message);
@@ -221,7 +232,8 @@ export function ChannelCard({
           role="switch"
           aria-checked={auto}
           onClick={toggleAuto}
-          disabled={autoBusy || pending}
+          disabled={autoBusy || pending || !canControl}
+          title={canControl ? undefined : t.channels.adminOnly}
           className="btn-sky pill shrink-0 px-4 py-2 text-[12px] disabled:opacity-50"
           style={{
             borderColor: auto ? "var(--color-warn)" : "var(--color-border)",
@@ -249,7 +261,8 @@ export function ChannelCard({
           aria-checked={review}
           aria-label={t.storyboardReview.toggleLabel}
           onClick={toggleReview}
-          disabled={reviewBusy || pending}
+          disabled={reviewBusy || pending || !canControl}
+          title={canControl ? undefined : t.channels.adminOnly}
           className="btn-sky pill shrink-0 px-4 py-2 text-[12px] disabled:opacity-50"
           style={{
             borderColor: review ? "var(--color-primary)" : "var(--color-border)",

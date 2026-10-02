@@ -94,9 +94,26 @@ class CredentialStatus:
         }
 
 
+def credential_key(channel: ChannelContext) -> str:
+    """The name this channel's token secret and token file are derived from.
+
+    The operator's own channels may name a reference (``credential.ref``): that
+    is how one GitHub secret serves a channel whose id differs from it. Every
+    other channel's key is its own id, whatever its row says. ``credential_ref``
+    is written through the Command Center; a customer organization's row must
+    never choose which secret the shared worker reads (BR-G-002), so for those
+    channels the reference is ignored here and, in ``tools/queue_worker``,
+    nothing is read from the environment at all: their token is their Vault
+    connection.
+    """
+    if channel.is_operators:
+        return channel.credential.ref or str(channel.channel_id)
+    return str(channel.channel_id)
+
+
 def env_var_name(channel: ChannelContext) -> str:
     """The env var expected to hold this channel's token JSON."""
-    key = channel.credential.ref or str(channel.channel_id)
+    key = credential_key(channel)
     return ENV_PREFIX + re.sub(r"[^A-Z0-9]+", "_", key.upper()).strip("_")
 
 
@@ -154,7 +171,7 @@ def token_path(channel: ChannelContext) -> Path:
     """
     if channel.is_default and not channel.credential.ref:
         return legacy_token_path()
-    key = channel.credential.ref or str(channel.channel_id)
+    key = credential_key(channel)
     safe = re.sub(r"[^a-zA-Z0-9_-]+", "-", key)
     return cfg.BASE_DIR / f"youtube_token_{safe}.json"
 

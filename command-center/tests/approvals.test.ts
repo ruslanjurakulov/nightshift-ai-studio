@@ -37,8 +37,12 @@ describe("canRequest", () => {
 });
 
 describe("canToggleRequirement", () => {
-  it("allows editor and above, refuses viewer", () => {
-    expect(canToggleRequirement("editor")).toBe(true);
+  // BR-G-003 (migration 0086): the requirement is an administrator's, because an
+  // editor could otherwise switch off the check that holds a publish for a second person.
+  it("allows admin and above, refuses editor and viewer", () => {
+    expect(canToggleRequirement("owner")).toBe(true);
+    expect(canToggleRequirement("admin")).toBe(true);
+    expect(canToggleRequirement("editor")).toBe(false);
     expect(canToggleRequirement("viewer")).toBe(false);
   });
 });
