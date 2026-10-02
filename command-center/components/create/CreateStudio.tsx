@@ -177,7 +177,7 @@ export function CreateStudio({
   const customVoiceInvalid = voice === CUSTOM_VOICE && customVoice.trim() !== "" && !isVoiceId(customVoice.trim());
 
   const selectClass =
-    "pill border border-[var(--color-border)] bg-transparent px-4 py-2 text-[13px] outline-none transition-colors focus:border-[var(--color-primary)]";
+    "studio-field min-h-[44px] w-full px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none sm:min-h-[40px] sm:text-[13px]";
 
   const voiceChip =
     agentConfig?.tts_provider === "edge"
@@ -193,7 +193,7 @@ export function CreateStudio({
       {connectedTargets.length > 0 && (
         <div className="flex justify-center">
           <label className="flex flex-wrap items-center justify-center gap-2">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+            <span className="studio-label">
               {t.publish.makingFor}
             </span>
             <select
@@ -223,8 +223,12 @@ export function CreateStudio({
       )}
 
       {/* The prompt: a topic, an idea, or a short brief. */}
-      <div className="glass-card rounded-[20px] border border-[var(--color-border)] p-4">
+      <div className="studio-surface p-4">
+        <label htmlFor="run-brief" className="studio-label mb-2 block">
+          {t.home.promptLabel}
+        </label>
         <textarea
+          id="run-brief"
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
           onKeyDown={onKeyDown}
@@ -232,13 +236,13 @@ export function CreateStudio({
           maxLength={300}
           autoFocus={initial !== null}
           placeholder={t.create.placeholder}
-          className="w-full resize-y bg-transparent text-[15px] leading-relaxed outline-none placeholder:text-[var(--color-muted)]"
+          className="studio-field w-full resize-y px-3 py-3 text-[16px] leading-relaxed outline-none placeholder:text-[var(--color-muted)] sm:text-[15px]"
         />
 
         {/* Per-run controls the pipeline actually reads. */}
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.agents.runDurationLabel}</span>
+            <span className="studio-label">{t.agents.runDurationLabel}</span>
             <select value={duration} onChange={(e) => setDuration(e.target.value)} className={selectClass}>
               <option value="">{t.agents.runOptChannel}</option>
               <option value="60">{t.agents.runDur1m}</option>
@@ -249,7 +253,7 @@ export function CreateStudio({
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.agents.runLangLabel}</span>
+            <span className="studio-label">{t.agents.runLangLabel}</span>
             <select value={language} onChange={(e) => setLanguage(e.target.value)} className={selectClass}>
               <option value="">{t.agents.runOptChannel}</option>
               <option value="Uzbek">O&apos;zbek</option>
@@ -263,7 +267,7 @@ export function CreateStudio({
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.agents.runStyleLabel}</span>
+            <span className="studio-label">{t.agents.runStyleLabel}</span>
             <input value={style} onChange={(e) => setStyle(e.target.value)} placeholder={t.agents.runStylePlaceholder} maxLength={300} className={selectClass} />
           </label>
         </div>
@@ -272,7 +276,7 @@ export function CreateStudio({
             supplies the imagery. Empty = the repo's configured default. */}
         <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.create.videoModel}</span>
+            <span className="studio-label">{t.create.videoModel}</span>
             <select value={videoProvider} onChange={(e) => setVideoProvider(e.target.value)} className={selectClass}>
               <option value="">{t.create.optDefault}</option>
               <option value="seedance">Seedance</option>
@@ -284,7 +288,7 @@ export function CreateStudio({
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.create.imageModel}</span>
+            <span className="studio-label">{t.create.imageModel}</span>
             <select value={imageProvider} onChange={(e) => setImageProvider(e.target.value)} className={selectClass}>
               <option value="">{t.create.optDefault}</option>
               <option value="pexels">Pexels (stock)</option>
@@ -296,7 +300,7 @@ export function CreateStudio({
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.create.voiceModel}</span>
+            <span className="studio-label">{t.create.voiceModel}</span>
             <select value={ttsModel} onChange={(e) => setTtsModel(e.target.value)} className={selectClass}>
               <option value="">{t.create.optDefault}</option>
               {TTS_MODELS.map((m) => (
@@ -312,7 +316,7 @@ export function CreateStudio({
             "Listen" plays the chosen voice (or the channel's) before running. */}
         <div className="mt-2 grid grid-cols-1 items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.create.voicePick}</span>
+            <span className="studio-label">{t.create.voicePick}</span>
             <select value={voice} onChange={(e) => setVoice(e.target.value)} className={selectClass}>
               <option value="">{t.create.voiceChannel}</option>
               {VOICES.map((v) => (
@@ -325,7 +329,7 @@ export function CreateStudio({
           </label>
           {voice === CUSTOM_VOICE && (
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.create.voiceCustomId}</span>
+              <span className="studio-label">{t.create.voiceCustomId}</span>
               <input
                 value={customVoice}
                 onChange={(e) => setCustomVoice(e.target.value)}
@@ -348,7 +352,7 @@ export function CreateStudio({
         {/* Models governed elsewhere — shown here, edited there. */}
         <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
           <span className="text-[var(--color-muted)]">{t.create.models}:</span>
-          <span className="pill border border-[var(--color-border)] px-2.5 py-1 text-[var(--color-muted)]">
+          <span className="rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-2.5 py-1 text-[var(--color-muted)]">
             {t.create.voice}: {voiceChip}
           </span>
           {operator && (
@@ -370,11 +374,11 @@ export function CreateStudio({
               <button
                 type="button"
                 onClick={create}
-                className="cta-glass pill px-6 py-2.5 text-[13px] font-semibold"
+                className="studio-cta w-auto min-h-[44px] px-6 text-[14px]"
               >
                 {t.create.confirm}
               </button>
-              <button type="button" onClick={() => setPhase("idle")} className="btn-sky is-quiet pill px-4 py-2 text-[13px]">
+              <button type="button" onClick={() => setPhase("idle")} className="btn-quiet min-h-[44px] px-4 text-[13px]">
                 {t.create.cancel}
               </button>
             </>
@@ -383,7 +387,7 @@ export function CreateStudio({
               type="button"
               disabled={blocked || phase === "starting"}
               onClick={() => setPhase("confirm")}
-              className="cta-glass pill px-6 py-2.5 text-[13px] font-semibold disabled:opacity-40"
+              className="studio-cta w-auto min-h-[44px] px-6 text-[14px]"
             >
               {phase === "starting" ? t.create.starting : t.create.create}
             </button>
@@ -408,8 +412,8 @@ export function CreateStudio({
 
       {/* Live progress: the pipeline's own events, refreshed while a run is up. */}
       {phase === "queued" && (
-        <div className="panel flex flex-col gap-2 p-4">
-          <h2 className="t-section">{t.create.progressTitle}</h2>
+        <div className="ns-panel flex flex-col gap-2 p-4">
+          <h2 className="ns-eyebrow">{t.create.progressTitle}</h2>
           <p className="text-[12px] text-[var(--color-muted)]">
             {backend === "queue" ? t.create.progressHintQueue : t.create.progressHint}
           </p>

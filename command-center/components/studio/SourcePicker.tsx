@@ -33,7 +33,10 @@ export function SourcePicker({
   media = "picture",
   maxSeconds = null,
   label,
+  well = false,
 }: {
+  /** On the Image and Enhance desks: the chosen picture lies large on the light table, not as a thumbnail. */
+  well?: boolean;
   orgId: string;
   value: string | null;
   onChange: (id: string) => void;
@@ -79,6 +82,27 @@ export function SourcePicker({
         libraryHref={libraryHref}
         maxSeconds={maxSeconds}
       />
+    );
+  }
+
+  if (value && !browsing && well) {
+    return (
+      <figure className="desk-well" data-testid="source-well">
+        {chosen?.thumbUrl || chosen?.viewUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- signed, short-lived library links
+          <img src={(chosen.viewUrl ?? chosen.thumbUrl) as string} alt={chosen.name ?? g.sourceChosen} className="desk-well-img" />
+        ) : (
+          <span className="grid min-h-[160px] w-full place-items-center text-[var(--color-muted)]">
+            <ImageOff aria-hidden className="size-6" />
+          </span>
+        )}
+        <figcaption className="desk-well-cap">
+          <span className="min-w-0 truncate">{chosen?.name ?? g.sourceChosen}</span>
+          <button type="button" onClick={() => setBrowsing(true)} className="ns-chip shrink-0">
+            {g.sourceChange}
+          </button>
+        </figcaption>
+      </figure>
     );
   }
 

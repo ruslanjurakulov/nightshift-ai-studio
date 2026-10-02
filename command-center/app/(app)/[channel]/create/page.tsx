@@ -19,6 +19,11 @@ import { AssistantPlanner } from "@/components/assistant/AssistantPlanner";
 import { channelDnaForCreate } from "@/lib/server/channel-dna";
 import { startStyleKitId } from "@/lib/styles/add";
 import { parseStyleId } from "@/lib/style-kits";
+import { deskFromQuery, isMediaDesk } from "@/lib/creative/desks";
+import { DeskBar, StudioOverview, YouTubeDesk, type CreditsReading, type ProjectsReading } from "@/components/studio/Desks";
+import { createClient } from "@/lib/supabase/server";
+import { readCreditAccount } from "@/lib/server/credits";
+import { loadEditorProjects } from "@/lib/server/editor";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -101,35 +106,59 @@ export default async function CreatePage({
       runConfigured={isRunNowConfigured}
     />
   );
-  const prefilled = !!runInitial || !!initial;
+  // Which desk (lib/creative/desks): ?desk= when it names one, else the tool's
+  // desk, else the YouTube run when Home handed over a topic, else the overview.
+  // A desk only arranges the page: every price, hold and create call is the same.
+  const desk = deskFromQuery({ desk: q.desk, tool: q.tool, hasRunPrefill: !!runInitial });
 
-  // Arriving from Home with a topic, the run form comes first: that is what
-  // was asked for, and its price is the next thing to read.
+  // The overview's side panels, read as the member (RLS) and only on the overview.
+  // Unreadable is unknown, never a zero; the operator's own organization is not charged.
+  let credits: CreditsReading = { state: "unknown" };
+  let projects: ProjectsReading = { state: "not_available" };
+  if (desk === "overview" && org.supported && org.current) {
+    const orgId = org.current.id;
+    const supabase = await createClient();
+    const [account, list] = await Promise.all([
+      org.current.is_default || !supabase ? Promise.resolve(null) : readCreditAccount(supabase, orgId).catch(() => null),
+      loadEditorProjects(orgId),
+    ]);
+    credits = org.current.is_default ? { state: "exempt" } : account?.account ? { state: "account", account: account.account } : { state: "unknown" };
+    projects =
+      list.state === "ok"
+        ? { state: "ok", projects: list.value.map((p) => ({ id: p.id, title: p.title, updatedAt: p.updatedAt })) }
+        : list.state === "not_available"
+          ? { state: "not_available" }
+          : { state: "failed" };
+  }
+
   return (
     <div className="rhythm stagger-enter">
-      <PageHeader icon="studio" title={t.create.title} subtitle={t.create.subtitle} />
-      {!prefilled && assistant}
-      {runInitial && run}
-      {/* Keyed by the link's tool and picture: moving between the sidebar's
-          tool rows is a client navigation to the same page, and without a new
-          key the panel would keep the tool it already had. */}
-      {genOrgId && (
-        <GenerateSection
-          key={`${initial?.capability ?? ""}:${initial?.sourceId ?? ""}:${askedStyle ?? ""}`}
-          orgId={genOrgId}
-          models={models}
-          initial={initial}
-          // The channel's look (0047) is the starting style; the panel uses it
-          // only if it is one of the organization's kits as loaded.
-          defaultStyleKitId={startKit}
-          dna={dna.studio}
-          // The platform operator has no phone tab bar to dock Generate above.
-          bottomBar={!operator}
-          plans={plans}
-        />
-      )}
-      {!runInitial && run}
-      {prefilled && assistant}
+      <PageHeader icon="studio" title={t.create.title} subtitle={t.desk.blurbs[desk]} />
+      <DeskBar current={desk} />
+      {desk === "overview" && <StudioOverview orgId={genOrgId} credits={credits} projects={projects} assistant={assistant} />}
+      {isMediaDesk(desk) &&
+        (genOrgId ? (
+          // Keyed by the desk and the link's tool and picture: moving between the
+          // sidebar's rows is a client navigation to the same page, and without a
+          // new key the panel would keep the tool it already had.
+          <GenerateSection
+            key={`${desk}:${initial?.capability ?? ""}:${initial?.sourceId ?? ""}:${askedStyle ?? ""}`}
+            desk={desk}
+            orgId={genOrgId}
+            models={models}
+            initial={initial}
+            // The channel's look (0047) is the starting style; the panel uses it
+            // only if it is one of the organization's kits as loaded.
+            defaultStyleKitId={startKit}
+            dna={dna.studio}
+            // The platform operator has no phone tab bar to dock Generate above.
+            bottomBar={!operator}
+            plans={plans}
+          />
+        ) : (
+          <p className="studio-field p-4 text-[13px] text-[var(--color-muted)]">{t.desk.noOrg}</p>
+        ))}
+      {desk === "youtube" && <YouTubeDesk run={run} />}
     </div>
   );
 }
