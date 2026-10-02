@@ -52,3 +52,19 @@ describe("legal operator config", () => {
     expect(missing.map((f) => LEGAL_ENV_VARS[f])).toEqual(["NEXT_PUBLIC_CONTACT_EMAIL"]);
   });
 });
+
+describe("the contact address (BR-L-103)", () => {
+  it("refuses anything that would add mailto: parameters or markup", async () => {
+    const { readLegalConfig } = await import("@/lib/legal");
+    for (const bad of [
+      'a"><img/src=x/onerror=alert(3)>@b.co?bcc=x&body=hi',
+      "privacy@example.com?bcc=x@y.z",
+      "privacy@example.com&body=hi",
+      "a<b@example.com",
+    ]) {
+      expect(readLegalConfig({ NEXT_PUBLIC_CONTACT_EMAIL: bad }).contactEmail, bad).toBeNull();
+    }
+    for (const ok of ["privacy+site@example.co.uk", "o'brien@example.com"])
+      expect(readLegalConfig({ NEXT_PUBLIC_CONTACT_EMAIL: ok }).contactEmail).toBe(ok);
+  });
+});

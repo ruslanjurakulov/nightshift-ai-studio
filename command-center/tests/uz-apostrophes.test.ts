@@ -11,9 +11,11 @@ import { describe, expect, it } from "vitest";
 const FILES = ["lib/i18n/uz.ts", "lib/i18n/site/uz.ts", "lib/legal-docs/uz.ts"];
 
 describe("Uzbek text spells its apostrophes one way", () => {
-  it.each(FILES)("%s has no ASCII apostrophe inside a word", (file) => {
+  it.each(FILES)("%s has no ASCII apostrophe after a letter, inside a word or at its end", (file) => {
     const text = readFileSync(join(__dirname, "..", file), "utf8");
-    const hits = [...text.matchAll(/\S*[A-Za-zʻʼ]'[A-Za-z]\S*/g)].map((m) => m[0]).slice(0, 5);
+    // Word-final too: "obroʻ" was written "obro'" and the inside-a-word check missed it (PIXEL-5 N4).
+    // These files quote with double quotes, so a ' after a letter is always text.
+    const hits = [...text.matchAll(/\S*[A-Za-zʻʼ]'\S*/g)].map((m) => m[0]).slice(0, 5);
     expect(hits).toEqual([]);
   });
 

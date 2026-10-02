@@ -22,6 +22,9 @@ export const SECURITY_HEADERS = [
   { key: "Permissions-Policy", value: PERMISSIONS_POLICY },
 ];
 
+/** The public paths that are route handlers (files), not pages. */
+export const ROUTE_HANDLER_FILES = ["/robots.txt", "/sitemap.xml", "/docs/api/openapi.json"] as const;
+
 /** Must equal PUBLIC_FONT_PATHS in lib/public-paths.ts (tests/security-headers.test.ts). */
 export const FONT_FILES = [
   "/fonts/sofia-sans-extra-condensed-cyrillic-v6.woff2",
@@ -98,6 +101,12 @@ const nextConfig: NextConfig = {
       { source: "/measure", destination: "/measurement", permanent: true },
       { source: "/intelligence", destination: "/intelligence-map", permanent: true },
       { source: "/feedback", destination: "/feedback-loop", permanent: true },
+      // BR-L-102: the router read `/robots.txt.rsc` as a channel page and
+      // answered an RSC request with the app layout's skeleton, and the
+      // middleware cannot tell (Next hands it the path without `.rsc` and
+      // without the RSC header). A route handler has no RSC form: send it to
+      // the file itself, before routing.
+      ...ROUTE_HANDLER_FILES.map((path) => ({ source: `${path}.rsc`, destination: path, permanent: false })),
     ];
   },
 };

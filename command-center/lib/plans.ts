@@ -607,3 +607,27 @@ export function balanceSplit(
     sources,
   };
 }
+
+/**
+ * How long top-up credits last, as a public page may state it.
+ *
+ * - "months" / "never": what the plan catalog's pack policy says (0034's
+ *   credit_lot_policies, read), or the operator's NEXT_PUBLIC_CREDITS_EXPIRY_MONTHS.
+ * - "never" also when there is no catalog to read at all (no backend, 0034
+ *   not applied) and the env is empty: then nothing expires credits.
+ * - "unknown": the catalog read FAILED (or timed out) and the env is empty —
+ *   the database may well hold a term, so the page points to the Terms rather
+ *   than promising "do not expire" (BR-L-100).
+ */
+export type PackExpiry = { kind: "months"; months: number } | { kind: "never" } | { kind: "unknown" };
+
+export function packExpiry(
+  read: { state: "ok"; value: { packValidMonths?: number | null } } | { state: "unsupported" } | { state: "failed" } | null,
+  envMonths: number | null,
+): PackExpiry {
+  if (read?.state === "ok" && read.value.packValidMonths !== undefined) {
+    return read.value.packValidMonths === null ? { kind: "never" } : { kind: "months", months: read.value.packValidMonths };
+  }
+  if (envMonths !== null) return { kind: "months", months: envMonths };
+  return read?.state === "failed" ? { kind: "unknown" } : { kind: "never" };
+}

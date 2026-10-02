@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { ALL_CHANNELS_SLUG } from "@/lib/channels";
-import { createClient, getUser } from "@/lib/supabase/server";
+import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { paddleClient, paddleConfig } from "@/lib/paddle";
-import { PLAN_ENV, planMatrix } from "@/lib/plans";
-import { planValue, readPlanCatalog } from "@/lib/server/plans";
+import { PLAN_ENV, packExpiry, planMatrix } from "@/lib/plans";
+import { planValue } from "@/lib/server/plans";
+import { readPublicPlanCatalog } from "@/lib/server/public-catalog";
 import { PRICING_ENV, resolvePricing } from "@/lib/pricing";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import {
@@ -19,7 +20,6 @@ import {
   visibleShowcase,
 } from "@/lib/landing";
 import { readPublicApiPrices } from "@/lib/server/api-prices";
-import { PUBLIC_READ_TIMEOUT_MS } from "@/lib/server/public-read";
 import { readPublicCreditRates } from "@/lib/server/public-rates";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { Landing } from "@/components/landing/Landing";
@@ -55,19 +55,16 @@ export default async function Home() {
 
   const { t, locale } = await getDictionary();
   // The same pricing source /pricing reads; the teaser only ever shows what it holds.
-  // Plans (0034) come from the public price list in the database.
-  const supabase = await createClient().catch(() => null);
-  // The three public reads run together, each bounded (BR-L-047): a stalled
-  // backend costs this page one timeout, not three in a row.
+  // Plans (0034) come from the public price list in the database. The landing
+  // is signed out by now, so all three are the shared public reads: bounded,
+  // kept and run together (BR-L-047, BR-L-101).
   const [catalogRead, apiPrices, siteRates] = await Promise.all([
-    // An unreadable catalog teases no plans (the pricing page itself says it could not read them).
-    supabase
-      ? readPlanCatalog(supabase, { signal: AbortSignal.timeout(PUBLIC_READ_TIMEOUT_MS) }).catch(() => ({ state: "failed" as const }))
-      : null,
+    readPublicPlanCatalog(),
     readPublicApiPrices(),
     readPublicCreditRates(),
   ]);
-  const catalog = catalogRead ? planValue(catalogRead) : null;
+  // An unreadable catalog teases no plans (the pricing page itself says it could not read them).
+  const catalog = planValue(catalogRead);
   const resolved = resolvePricing(PRICING_ENV, paddleConfig);
   const pricing = pricingTeaser(resolved, planMatrix(catalog, PLAN_ENV, paddleClient));
   const anchor = moneyAnchor(resolved, apiPrices, siteRates);
@@ -86,7 +83,7 @@ export default async function Home() {
         pricing={pricing}
         anchor={anchor}
         showcase={visibleShowcase(SHOWCASE)}
-        expiryMonths={catalog?.packValidMonths === undefined ? CREDIT_EXPIRY_MONTHS : catalog.packValidMonths}
+        expiry={packExpiry(catalogRead, CREDIT_EXPIRY_MONTHS)}
       />
     </PublicShell>
   );

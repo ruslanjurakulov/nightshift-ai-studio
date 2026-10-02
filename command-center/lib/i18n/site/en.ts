@@ -169,6 +169,7 @@ export const siteEn = {
     card: "No. You create an account with your email and get the welcome credits once. You pay only when you buy a credit pack.",
     unusedNever: "Top-up credits do not expire. Credits held for a run go back to your balance if the run fails.",
     unusedAfter: "Top-up credits stay usable for {m} months after you buy them, and the ones that expire soonest are spent first.",
+    unusedUnknown: "Top-up credits follow the expiry set out in the Terms, and the ones that expire soonest are spent first.",
   },
   anchor: {
     title: "What it costs",
@@ -313,7 +314,7 @@ export const siteEn = {
         id: "creative-studio",
         nav: "Creative studio",
         kicker: "For single pieces",
-        title: "Pictures, clips and voice-overs, priced on the key.",
+        title: "Pictures, clips and voice‑overs, priced on the key.",
         lead: "For creators and editors who need a thumbnail idea, a b-roll clip or a narration line, without starting a whole video.",
         what: [
           { title: "Images", body: "From a description, in 16:9, 9:16 or square — then edit them by typing, upscale them or cut them out." },

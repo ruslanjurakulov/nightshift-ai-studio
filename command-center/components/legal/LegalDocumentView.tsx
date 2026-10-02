@@ -8,10 +8,18 @@ import { CREDIT_EXPIRY_MONTHS, LEGAL, missingLegalFields, type LegalConfig } fro
  *  language. Never the env var behind it: these are public pages, and a
  *  variable name is for whoever deploys the site (lib/legal.ts lists them),
  *  not for the person reading the Terms. */
-function Var({ name, t }: { name: LegalVar; t: Dictionary }) {
+function Var({ name, t, inline = true }: { name: LegalVar; t: Dictionary; inline?: boolean }) {
   const value = LEGAL[name as keyof LegalConfig];
   if (value === null) {
-    return <span className="italic text-[var(--color-muted)]">{t.legal.pending}</span>;
+    // Inside a sentence, a bracketed placeholder naming what is missing reads
+    // as a template still to be filled ("an agreement between you and [operator
+    // name to be published]"), where "not published yet" read like a bug.
+    // Beside its own label in the facts card the short form is enough.
+    return (
+      <span className="italic text-[var(--color-muted)]">
+        {inline ? t.legal.placeholder[name as keyof typeof t.legal.placeholder] : t.legal.pending}
+      </span>
+    );
   }
   if (name === "contactEmail") {
     return (
@@ -152,7 +160,7 @@ export function LegalDocumentView({ doc, t, locale }: { doc: LegalDocument; t: D
           <div key={f.name} className="flex flex-col gap-1">
             <dt className="t-label">{f.label}</dt>
             <dd>
-              <Var name={f.name} t={t} />
+              <Var name={f.name} t={t} inline={false} />
             </dd>
           </div>
         ))}

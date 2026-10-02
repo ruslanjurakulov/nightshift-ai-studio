@@ -4,7 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { readCreditPrices } from "@/lib/server/credits";
 import { paddleClient, paddleConfig } from "@/lib/paddle";
 import { PRICING_ENV, creditRates, resolvePricing, type CreditRates } from "@/lib/pricing";
-import { PLAN_ENV, planMatrix } from "@/lib/plans";
+import { PLAN_ENV, packExpiry, planMatrix } from "@/lib/plans";
+import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
+import { readPublicPlanCatalog } from "@/lib/server/public-catalog";
 import { planValue, readPlanCatalog, type PlanRead } from "@/lib/server/plans";
 import { generationRates, type GenerationRates, type PlanCatalog } from "@/lib/plans";
 import { readSellableModels } from "@/lib/creative/registry";
@@ -59,15 +61,17 @@ export default async function PricingPage() {
   const publicRatesRead = readPublicCreditRates();
 
   const supabase = await createClient();
-  // The plan catalog is a public price list (0034): read signed in or out, and
-  // started now so it runs alongside the price reads (BR-L-047: one bounded
-  // wait on a stalled backend, not several in a row).
+  const user = supabase ? (await supabase.auth.getUser()).data.user : null;
+  // The plan catalog is a public price list (0034). Signed out, it is the
+  // shared public read — bounded, kept and run alongside the price reads
+  // (BR-L-047, BR-L-101); signed in, a per-request read, bounded the same way.
   // `unsupported` (0034 not applied) offers no plans, as before; `failed` says
   // the plans could not be read instead of silently showing none.
-  const catalogPending: Promise<PlanRead<PlanCatalog>> = supabase
-    ? readPlanCatalog(supabase, { signal: AbortSignal.timeout(PUBLIC_READ_TIMEOUT_MS) }).catch(() => ({ state: "failed" as const }))
-    : Promise.resolve({ state: "unsupported" as const });
-  const user = supabase ? (await supabase.auth.getUser()).data.user : null;
+  const catalogPending: Promise<PlanRead<PlanCatalog>> = !supabase
+    ? Promise.resolve({ state: "unsupported" as const })
+    : user
+      ? readPlanCatalog(supabase, { signal: AbortSignal.timeout(PUBLIC_READ_TIMEOUT_MS) }).catch(() => ({ state: "failed" as const }))
+      : readPublicPlanCatalog();
   let rates: CreditRates | null = null;
   let ratesFailed = false;
   let genRates: GenerationRates | null = null;
@@ -103,7 +107,7 @@ export default async function PricingPage() {
         generationRates={genRates}
         plansFailed={catalogRead.state === "failed"}
         plans={plans}
-        packValidMonths={catalog?.packValidMonths}
+        expiry={packExpiry(catalogRead, CREDIT_EXPIRY_MONTHS)}
         anchor={moneyAnchor(pricing, await apiPricesRead, publicRates)}
       />
     </PublicShell>

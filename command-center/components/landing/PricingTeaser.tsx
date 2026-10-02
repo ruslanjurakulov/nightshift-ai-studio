@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
-import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
+import type { Dictionary, Locale } from "@/lib/i18n";
+import type { PackExpiry } from "@/lib/plans";
+import { expiryTerm } from "@/components/landing/Faq";
 import { formatCredits } from "@/lib/credits";
 import { CREDIT_PACKS } from "@/lib/paddle";
 import type { MoneyAnchor as Anchor, PricingTeaser as PricingTeaserData } from "@/lib/landing";
@@ -20,14 +22,13 @@ export function PricingTeaser({
   locale,
   teaser,
   anchor,
-  expiryMonths,
+  expiry,
 }: {
   t: Dictionary;
   locale: Locale;
   teaser: PricingTeaserData;
   anchor: Anchor;
-  /** null = top-up credits do not expire. */
-  expiryMonths: number | null;
+  expiry: PackExpiry;
 }) {
   const p = t.site.pricingTeaser;
   // The pack terms /pricing lists (one-time, expiry, failures returned), here
@@ -37,7 +38,7 @@ export function PricingTeaser({
   const packTerms =
     teaser.kind === "plans"
       ? []
-      : [tp.terms[2], expiryMonths === null ? tp.expiryNever : fmt(tp.expiryAfter, { m: expiryMonths }), tp.terms[3]];
+      : [tp.terms[2], expiryTerm(tp, expiry), tp.terms[3]];
 
   return (
     <section id="pricing" aria-labelledby="pricing-title" className="st-section">
