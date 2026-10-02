@@ -4386,6 +4386,356 @@
      }
     ]
    }
+  },
+  {
+   "name": "4K UHD frame",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 3840,
+    "height": 2160,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "portrait 4K frame at 60 fps",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 2160,
+    "height": 3840,
+    "fps": 60,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "4096-wide frame within 4K UHD's area",
+   "valid": true,
+   "doc": {
+    "version": 1,
+    "width": 4096,
+    "height": 2024,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "frame larger than 4K UHD",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 4096,
+    "height": 2304,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "name": "square 4096 frame",
+   "valid": false,
+   "doc": {
+    "version": 1,
+    "width": 4096,
+    "height": 4096,
+    "fps": 30,
+    "tracks": [
+     {
+      "id": "v1",
+      "kind": "V",
+      "clips": [
+       {
+        "id": "c1",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 0,
+        "in_s": 1,
+        "out_s": 5,
+        "speed": 2,
+        "audio": true
+       },
+       {
+        "id": "c2",
+        "asset_id": "11111111-1111-4111-8111-111111111111",
+        "start_s": 2,
+        "in_s": 5,
+        "out_s": 6,
+        "speed": 0.5,
+        "audio": false,
+        "fit": "cover"
+       }
+      ]
+     },
+     {
+      "id": "t1",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x1",
+        "start_s": 0,
+        "end_s": 2,
+        "text": "Hello",
+        "size": 64,
+        "x": 0.5,
+        "y": 0.88,
+        "anchor": "bottom",
+        "bold": true
+       }
+      ]
+     },
+     {
+      "id": "t2",
+      "kind": "T",
+      "clips": [
+       {
+        "id": "x2",
+        "start_s": 1,
+        "end_s": 3,
+        "text": "Layer two {\\b1}",
+        "size": 40,
+        "x": 0.5,
+        "y": 0.12,
+        "anchor": "top"
+       }
+      ]
+     }
+    ]
+   }
   }
  ]
 }

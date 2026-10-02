@@ -45,7 +45,9 @@ ffmpeg 7.0.2 on 4 cores; peak RSS from ``getrusage``):
   child's own peak RSS (``wait4``), and the media library refuses a decode
   that needed far more memory than the frame size its probe declared allows
   (``media_library.expected_rss_bytes``): the frame the decoder really met
-  was bigger than any check before it could see.
+  was bigger than any check before it could see. That is an early refusal
+  for small declared frames only (below about 7-8 MP, BR-L-015); a file that
+  declares a 4K first frame is held by the limit alone.
 """
 
 from __future__ import annotations
@@ -62,8 +64,10 @@ from typing import Callable, Dict, List, Optional, Sequence
 #: HEVC 10-bit proxy (6 reference frames, B-frames) needs 1611 MB of address
 #: space with the settings here (1349 MB RSS) and fails at 1.5 GiB; an 8K
 #: H.264 proxy 581 MB RSS; 4K HDR10 HEVC 297 MB. The crop-window file of
-#: BR-L-007 stops at 1.5 GB RSS. The media worker's container has 4 GB and
-#: runs at most one upload and one export at once.
+#: BR-L-007 stops at about 1.5 GB RSS in an export segment and 1.8 GB in the
+#: ingest proxy. The media worker's container has 4 GB and runs at most one
+#: upload and one export at once (measured by Lens: 3289 MB for both at
+#: their worst; the HEIC child has its own 3 GiB limit, BR-L-015).
 CHILD_MEM_BYTES = 2 * 1024 ** 3
 #: Decoder threads per input (``-threads`` before each ``-i``).
 DECODE_THREADS = 2
@@ -76,6 +80,16 @@ FILTER_THREADS = 2
 #: one from a plain 720p clip at 96; at 4 threads an 8K DCI HEVC 10-bit
 #: segment needs 1368 MB and passes.
 ENCODE_THREADS = 4
+#: An export whose frame is larger than this (2560x1440) encodes with
+#: LARGE_ENCODE_THREADS, and its final pass with a 20-frame lookahead
+#: (render_spec.final_x264), BR-L-014. Measured, final pass of a 4K60
+#: timeline: libx264 medium at 4 threads failed the limit (exit 187, a
+#: malloc in libx264; 1931 MB without the limit); at 2 threads and
+#: rc-lookahead 20 it takes 1235-1314 MB (portrait too), and a segment from
+#: an 8K DCI HEVC 10-bit clip 1499 MB. 2560x1440 at 60 fps needs 855 MB
+#: with the defaults, so ordinary outputs keep them.
+LARGE_OUTPUT_PX = 2560 * 1440
+LARGE_ENCODE_THREADS = 2
 #: Added to the child's environment (see the module docstring).
 CHILD_ENV: Dict[str, str] = {"MALLOC_ARENA_MAX": "2"}
 #: What libavcodec logs, at ``-loglevel error``, when it decodes no picture
@@ -106,6 +120,8 @@ def limited_argv(argv: Sequence[str], mem_bytes: Optional[int] = None) -> List[s
     the pid, so killing the child kills ffmpeg). A limit that cannot be set
     fails the run; it never runs unlimited."""
     n = CHILD_MEM_BYTES if mem_bytes is None else mem_bytes
+    if int(n) <= 0:  # -1 would be RLIM_INFINITY: never run unlimited
+        raise ValueError("the address-space limit must be positive")
     return [sys.executable, "-I", "-S", "-c", _SET_LIMIT_AND_EXEC, str(int(n)), *argv]
 
 
@@ -125,9 +141,12 @@ def decode_thread_options() -> List[str]:
     return ["-threads", str(DECODE_THREADS)]
 
 
-def encode_thread_options(threads: Optional[int] = None) -> List[str]:
-    """Output options: the encoder's thread count (before the output)."""
-    return ["-threads", str(ENCODE_THREADS if threads is None else threads)]
+def encode_thread_options(threads: Optional[int] = None, *, out_pixels: Optional[int] = None) -> List[str]:
+    """Output options: the encoder's thread count (before the output);
+    fewer for a frame above LARGE_OUTPUT_PX."""
+    if threads is None:
+        threads = LARGE_ENCODE_THREADS if out_pixels and out_pixels > LARGE_OUTPUT_PX else ENCODE_THREADS
+    return ["-threads", str(threads)]
 
 
 @dataclass(frozen=True)

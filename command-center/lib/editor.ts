@@ -29,6 +29,9 @@ export const FPS_VALUES = [24, 25, 30, 50, 60] as const;
 export const EDITOR_FPS = 30;
 export const MIN_SIDE = 16;
 export const MAX_SIDE = 4096;
+/** The largest frame an export renders, 4K UHD either way (modules/timeline.py
+ *  MAX_FRAME_PIXELS): larger frames do not fit the export's memory limit. */
+export const MAX_FRAME_PIXELS = 3840 * 2160;
 export const MAX_DURATION_S = 4 * 3600;
 export const MAX_TRACKS = 32;
 export const MAX_CLIPS_PER_TRACK = 2000;
@@ -391,6 +394,14 @@ export function validateTimeline(doc: unknown): string[] {
         `timeline: ${k} must be an even integer from ${MIN_SIDE} to ${MAX_SIDE}`,
       );
   }
+  if (
+    isInt(doc.width) &&
+    isInt(doc.height) &&
+    doc.width * doc.height > MAX_FRAME_PIXELS
+  )
+    problems.push(
+      `timeline: the frame is at most ${MAX_FRAME_PIXELS} pixels (3840x2160 or 2160x3840)`,
+    );
   const fps: number | null =
     isInt(doc.fps) && (FPS_VALUES as readonly number[]).includes(doc.fps)
       ? doc.fps

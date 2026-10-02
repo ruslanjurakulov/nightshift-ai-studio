@@ -80,7 +80,8 @@ class _Store:
         return {"id": kw["asset_id"], "reused": False}
 
 
-def _ingest(test: unittest.TestCase, src: Path, probe_data: dict, *, exe: str = "ffmpeg", runner=None):
+def _ingest(test: unittest.TestCase, src: Path, probe_data: dict, *, exe: str = "ffmpeg", runner=None,
+            mime: str = "video/mp4", name: str = "clip.mp4"):
     """Run ``ml.ingest`` on a copy of ``src`` with a prober that answers
     ``probe_data`` (the bundled ffmpeg ships no ffprobe). Returns (store,
     files under media)."""
@@ -91,7 +92,7 @@ def _ingest(test: unittest.TestCase, src: Path, probe_data: dict, *, exe: str = 
     media.mkdir()
     tid = str(uuid.uuid4())
     shutil.copyfile(src, ml.staged_path(staging, tid))
-    ticket = {"id": tid, "declared_mime": "video/mp4", "original_name": "clip.mp4",
+    ticket = {"id": tid, "declared_mime": mime, "original_name": name,
               "declared_bytes": src.stat().st_size}
     store = _Store()
     kw = {"runner": runner} if runner else {}
@@ -554,6 +555,235 @@ class ExportRefusalTests(unittest.TestCase):
         self.assertEqual(status, "failed")
         self.assertEqual(store.finished[-1][2:], (None, "render_failed"))
         self.assertFalse((root / editor_export.WORK_DIRNAME / eid).exists())
+
+
+# ── Lens round 6: BR-L-014 .. BR-L-017 ──────────────────────────────────────
+
+class LargeExportCommandTests(unittest.TestCase):
+    """BR-L-014: above 2560x1440 an export encodes with two threads and its
+    final pass with a 20-frame lookahead, the settings measured to fit 4K
+    under the limit; ordinary exports and the pipeline keep theirs."""
+
+    def _final(self, w, h, frame_exact=True):
+        spec = rs.RenderSpec("/o.mp4", segments=[S(2.0, "/t/s0.mp4")], width=w, height=h, fps=60,
+                             frame_exact=frame_exact)
+        return rs.build_ffmpeg_command(spec, "/t/list.txt")
+
+    def test_large_frames_get_fewer_threads_and_a_shorter_lookahead(self):
+        for w, h in ((3840, 2160), (2160, 3840), (2562, 1440)):
+            with self.subTest(size=(w, h)):
+                final = self._final(w, h)
+                self.assertEqual(final[-3:-1], ["-threads", "2"])
+                self.assertEqual(final[final.index("-rc-lookahead") + 1], "20")
+                for cmd in rb.segment_commands("ffmpeg", S(1.0, "/m/a.mp4"), Path("/t/s.mp4"), w, h, 60,
+                                               frame_exact=True):
+                    self.assertEqual(cmd[-3:-1], ["-threads", "2"])
+
+    def test_ordinary_frames_and_the_pipeline_keep_their_settings(self):
+        for w, h in ((1920, 1080), (1080, 1920), (2560, 1440)):
+            with self.subTest(size=(w, h)):
+                final = self._final(w, h)
+                self.assertEqual(final[-3:-1], ["-threads", "4"])
+                self.assertNotIn("-rc-lookahead", final)
+        self.assertNotIn("-rc-lookahead", self._final(3840, 2160, frame_exact=False))
+
+    def test_the_timeline_frame_is_at_most_4k_uhd(self):
+        from modules import timeline as tl
+
+        def doc(w, h):
+            return {"version": 1, "width": w, "height": h, "fps": 60, "tracks": []}
+
+        for w, h in ((3840, 2160), (2160, 3840), (4096, 2024), (2560, 1440), (1080, 1920)):
+            with self.subTest(ok=(w, h)):
+                self.assertEqual([p for p in tl.validate(doc(w, h)) if "frame" in p], [])
+        for w, h in ((4096, 2304), (3840, 2162), (3840, 3840), (4096, 4096)):
+            with self.subTest(refused=(w, h)):
+                self.assertTrue([p for p in tl.validate(doc(w, h)) if "at most" in p])
+
+    def test_every_export_the_timeline_admits_fits_the_decode_budget(self):
+        """BR-L-017: the largest frame at the highest rate for the longest
+        export stays inside the budget store_generated applies."""
+        from modules import editor_export, timeline as tl
+
+        worst = ml.decode_work(3840, 2160, max(tl.FPS_VALUES), editor_export.EXPORT_MAX_S)
+        self.assertEqual(tl.MAX_FRAME_PIXELS, 3840 * 2160)
+        self.assertLessEqual(worst, ml.DECODE_BUDGET_PX)
+
+    def test_an_export_over_the_budget_is_refused_before_it_renders(self):
+        from modules import editor_export
+
+        aid = "11111111-1111-4111-8111-111111111111"
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        f = ml.asset_file(root, aid, "original")
+        f.parent.mkdir(parents=True)
+        f.write_bytes(b"x")
+        rendered = []
+
+        class Store:
+            finished = []
+
+            def export_assets(self, eid):
+                return [{"id": aid, "kind": "video", "mime": "video/mp4", "duration_s": 20, "variants": []}]
+
+            def export_heartbeat(self, *a):
+                return True
+
+            def finish_export(self, *a):
+                self.finished.append(a)
+                return "failed"
+
+        doc = {"version": 1, "width": 1920, "height": 1080, "fps": 60, "tracks": [
+            {"id": "v1", "kind": "V", "clips": [
+                {"id": "c1", "asset_id": aid, "start_s": 0, "in_s": 0, "out_s": 10}]}]}
+        store = Store()
+        with mock.patch.object(ml, "DECODE_BUDGET_PX", 1920 * 1080 * 60 * 9):
+            status = editor_export.run_export(
+                {"id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", "org_id": "00000000-0000-4000-8000-000000000001",
+                 "project_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "rev": 1, "duration_s": 10, "doc": doc},
+                store=store, media_root=root, worker_id="w1", tools=ml.Tools("ffprobe", "ffmpeg"),
+                render=lambda *a, **k: rendered.append(a), has_audio=lambda p, m: False, heartbeat_s=0.01)
+        self.assertEqual(status, "failed")
+        self.assertEqual(store.finished[-1][2:], (None, "too_long"))
+        self.assertEqual(rendered, [], "refused before anything is rendered")
+
+
+class ProxyTimeLimitFloorTests(unittest.TestCase):
+    """BR-L-016: a file whose FIRST frame is small declares almost no pixel
+    work; its proxy limit must still cover an honest decode (Lens measured
+    0.1585 s per second of video on one cpu for a 320x180-then-1080p
+    meeting recording)."""
+
+    def test_a_meeting_recording_gets_a_quarter_second_per_second(self):
+        for minutes in (5, 29, 60, 240):
+            with self.subTest(minutes=minutes):
+                d = minutes * 60.0
+                info = ml.interpret_probe("video/webm", _video(320, 180, str(d), avg_frame_rate="30/1"))
+                nbytes = int(1.6e6 / 8 * d)
+                t = ml.proxy_timeout_s(info, nbytes)
+                self.assertGreaterEqual(t, min(ml.PROXY_TIMEOUT_S, 120 + 0.25 * d))
+                self.assertGreater(t - 120, min(ml.PROXY_TIMEOUT_S - 120, 1.5 * 0.1585 * d))
+                self.assertLessEqual(t, ml.PROXY_TIMEOUT_S)
+
+    def test_rates_are_half_of_the_slowest_measured(self):
+        self.assertLessEqual(ml.PROXY_PX_PER_S, 190e6 / 2)
+        self.assertLessEqual(ml.PROXY_BYTES_PER_S, 5.6e6 / 2)
+        # Lens's honest HEVC 4K60 10-bit, 60 Mbit/s, 15 s: 71 s on one cpu.
+        info = ml.interpret_probe("video/mp4", _video(3840, 2160, "15", avg_frame_rate="60/1"))
+        self.assertGreater(ml.proxy_timeout_s(info, int(60e6 / 8 * 15)) - ml.PROXY_TIMEOUT_BASE_S, 2 * 71)
+
+
+class KenBurnsRefusalTests(unittest.TestCase):
+    def test_a_refused_still_is_not_retried_as_a_held_still(self):
+        """The hold reads the same picture, so a refusal of the move ends the
+        segment; a generic failure of the move still falls back to the hold."""
+        calls = []
+
+        def refuse(cmd, deadline=None):
+            calls.append(cmd)
+            raise rb.RenderRefused("refused")
+
+        seg = S(2.0, "/m/i.jpg", rs.KIND_IMAGE)
+        with mock.patch.object(rb, "_run", side_effect=refuse):
+            with self.assertRaises(rb.RenderRefused):
+                rb._normalize_segment("ffmpeg", seg, Path("/t/s.mp4"), 320, 240, 30, frame_exact=True,
+                                      deadline=_deadline(60))
+        self.assertEqual(len(calls), 1)
+        calls.clear()
+
+        def fail_move(cmd, deadline=None):
+            calls.append(cmd)
+            if len(calls) == 1:
+                raise rb.RenderBackendError("zoompan failed")
+
+        with mock.patch.object(rb, "_run", side_effect=fail_move):
+            rb._normalize_segment("ffmpeg", seg, Path("/t/s.mp4"), 320, 240, 30, frame_exact=True,
+                                  deadline=_deadline(60))
+        self.assertEqual(len(calls), 2)
+        self.assertIn("-loop", calls[1])
+
+
+class RealLargeExportTests(unittest.TestCase):
+    """End to end through timeline_render.render as an export runs it (one
+    job, a time limit, so every command runs under ffmpeg_limits): 4K and
+    2560x1440 at 60 fps render; on main's settings the 4K final pass failed
+    the limit (exit 187)."""
+
+    @classmethod
+    def setUpClass(cls):
+        exe = _ffmpeg()
+        if not exe:
+            raise unittest.SkipTest("no ffmpeg on this machine")
+        cls.exe = exe
+        cls._dir = tempfile.TemporaryDirectory()
+        cls.tmp = Path(cls._dir.name)
+        if _run([exe, "-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-f", "lavfi",
+                 "-i", "testsrc2=s=1280x720:r=30:d=2", "-c:v", "libx264", "-preset", "veryfast",
+                 "-pix_fmt", "yuv420p", str(cls.tmp / "clip.mp4")]).returncode:
+            cls._dir.cleanup()
+            raise unittest.SkipTest("this ffmpeg cannot build the fixture")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._dir.cleanup()
+
+    def _render(self, w, h, fps):
+        from modules import timeline as tl
+        from modules import timeline_render as tr
+
+        aid = "22222222-2222-4222-8222-222222222222"
+        doc = {"version": 1, "width": w, "height": h, "fps": fps, "tracks": [
+            {"id": "v1", "kind": "V", "clips": [{"id": "c1", "asset_id": aid, "start_s": 0, "in_s": 0,
+                                                  "out_s": 1.5}]}]}
+        assets = {aid: tl.ResolvedAsset(aid, "video", str(self.tmp / "clip.mp4"), 2.0)}
+        work = Path(tempfile.mkdtemp(dir=self.tmp))
+        out = work / "export.mp4"
+        tr.render(doc, assets.get, str(out), ffmpeg=self.exe, workdir=str(work), jobs=1, timeout_s=600)
+        head = _run([self.exe, "-hide_banner", "-i", str(out)]).stderr
+        self.assertRegex(head, rf"Video: h264.*\b{w}x{h}\b")
+
+    def test_a_4k_export_renders_under_the_limit(self):
+        self._render(3840, 2160, 30)
+
+    def test_a_portrait_4k_export_at_60_renders(self):
+        self._render(2160, 3840, 60)
+
+    def test_a_1440p60_export_renders(self):
+        self._render(2560, 1440, 60)
+
+
+class RealMeetingRecordingTests(unittest.TestCase):
+    """BR-L-016 / BR-L-015: a VP9 webm that starts at 320x180 for 1 s and
+    switches to 1080p, like a meeting recording, is stored: the proxy's limit
+    is not the first frame's, and the memory check (512 MB base) leaves
+    room for the switch."""
+
+    def test_a_small_to_large_switch_is_stored(self):
+        exe = _ffmpeg()
+        if not exe:
+            self.skipTest("no ffmpeg on this machine")
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        q = [exe, "-hide_banner", "-nostdin", "-loglevel", "error", "-y"]
+        vp9 = ["-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8", "-b:v", "1.6M",
+               "-pix_fmt", "yuv420p"]
+        steps = [q + ["-f", "lavfi", "-i", "testsrc2=s=320x180:r=30:d=1", *vp9, str(tmp / "a.webm")],
+                 q + ["-f", "lavfi", "-i", "testsrc2=s=1920x1080:r=30:d=6", *vp9, str(tmp / "b.webm")]]
+        for argv in steps:
+            if _run(argv).returncode:
+                self.skipTest("this ffmpeg cannot encode VP9")
+        (tmp / "l.txt").write_text(f"file '{tmp / 'a.webm'}'\nfile '{tmp / 'b.webm'}'\n")
+        if _run(q + ["-f", "concat", "-safe", "0", "-i", str(tmp / "l.txt"), "-c", "copy",
+                     str(tmp / "meet.webm")]).returncode:
+            self.skipTest("this ffmpeg cannot join the fixture")
+        sizes = _run([exe, "-hide_banner", "-nostdin", "-i", str(tmp / "meet.webm"), "-vf", "showinfo",
+                      "-f", "null", "-"]).stderr
+        self.assertIn(" s:320x180 ", sizes)
+        self.assertIn(" s:1920x1080 ", sizes)
+        probe = _video(320, 180, "7", avg_frame_rate="30/1")
+        store, files = _ingest(self, tmp / "meet.webm", probe, exe=exe, mime="video/webm", name="meeting.webm")
+        self.assertEqual(len(store.registered), 1)
+        self.assertIn("proxy", store.registered[0]["variants"])
 
 
 if __name__ == "__main__":

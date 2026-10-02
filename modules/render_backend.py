@@ -259,7 +259,7 @@ def segment_commands(
                              seed=seed, x264=x264, frame_exact=frame_exact)
     if frame_exact or seg.xfade is not None:
         videos = [s.path for s in (seg, seg.xfade) if s is not None and s.path and s.kind == KIND_VIDEO]
-        return [cap_inputs(c, video_inputs=videos) for c in cmds]
+        return [cap_inputs(c, video_inputs=videos, out_pixels=width * height) for c in cmds]
     return cmds
 
 

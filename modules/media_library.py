@@ -166,16 +166,22 @@ ASSUMED_FPS = 60.0
 MAX_PLAUSIBLE_FPS = 240.0
 #: The proxy's time limit follows the decode work the probe declared, not a
 #: flat PROXY_TIMEOUT_S (which stays the ceiling): base + pixels / rate +
-#: bytes / rate. Measured with the bundled ffmpeg 7.0.2 and the proxy's own
-#: limits (two decoder threads), on ONE cpu: HEVC 10-bit decodes at
-#: 190-197 Mpx/s, H.264 at 383 Mpx/s or more; CABAC at 20-40 Mbit/s is
-#: bound by bytes, about 5.6-5.8 MB/s. The rates below are below every one of
-#: those, so a legitimate file finishes well inside its limit, while a
-#: crafted file that decodes slower than it declares (a crop window over a
-#: big coded frame, BR-L-007, or a frame rate understated) is stopped early.
+#: bytes / rate, and never less than PROXY_S_PER_S per second of video.
+#: Measured with the bundled ffmpeg 7.0.2 and the proxy's own limits (two
+#: decoder threads), on ONE cpu: HEVC 10-bit decodes at 190-197 Mpx/s, H.264
+#: at 383 Mpx/s or more; CABAC at 20-40 Mbit/s is bound by bytes, about
+#: 5.6-5.8 MB/s. The rates below are less than half of every one of those
+#: (halved after Lens round 6, BR-L-016: the first margin was 1.34x for an
+#: honest HEVC 4K60 10-bit clip on one cpu). The floor is for a file whose
+#: FIRST frame is small: a meeting recording that starts at 320x180 and
+#: switches to 1080p declares almost no pixel work, and its proxy took
+#: 0.1585 s per second of video on one cpu (Lens). A crafted file that
+#: decodes slower than all of this is still stopped at its limit, and never
+#: later than PROXY_TIMEOUT_S.
 PROXY_TIMEOUT_BASE_S = 120.0
-PROXY_PX_PER_S = 150e6
-PROXY_BYTES_PER_S = 2.5e6
+PROXY_PX_PER_S = 75e6
+PROXY_BYTES_PER_S = 1.25e6
+PROXY_S_PER_S = 0.25
 DISPLAY_SIDE = 2048
 HEIC_DECODE_TIMEOUT_S = 120
 HEIC_DECODE_CPU_S = 90
@@ -628,8 +634,9 @@ def proxy_timeout_s(info: "Probe", nbytes: int) -> float:
     older caller) gets the ceiling, as before."""
     if info.work_px is None:
         return float(PROXY_TIMEOUT_S)
-    t = PROXY_TIMEOUT_BASE_S + float(info.work_px) / PROXY_PX_PER_S + max(0, int(nbytes)) / PROXY_BYTES_PER_S
-    return min(float(PROXY_TIMEOUT_S), t)
+    work_s = float(info.work_px) / PROXY_PX_PER_S + max(0, int(nbytes)) / PROXY_BYTES_PER_S
+    floor_s = PROXY_S_PER_S * float(info.duration or 0.0)
+    return min(float(PROXY_TIMEOUT_S), PROXY_TIMEOUT_BASE_S + max(work_s, floor_s))
 
 
 def run_probe(exe: str, path: Path, sniffed: str, *, timeout_s: float = PROBE_TIMEOUT_S) -> Probe:
@@ -726,10 +733,12 @@ REFUSED_EXIT = 254
 #: frame (6 bytes) times 16 reference frames plus the frames in flight, with
 #: room to spare; the base is ffmpeg, the 480p encoder and the sound, with
 #: room for a recording whose size changes on the way (measured: 98 MB for a
-#: 720p proxy, 136 MB for a 64x64 clip). Above about 10 MP the bound is past
-#: the child's address-space limit, so it only ever refuses a SMALL declared
-#: frame that decoded big: Lens's crop-window file declares 64x64 and peaked
-#: at 1787 MB (BR-L-007).
+#: 720p proxy, 136 MB for a 64x64 clip). It is only a cheap early refusal
+#: for a SMALL declared frame that decoded big (Lens's crop-window file
+#: declares 64x64 and peaked at 1787 MB, BR-L-007); the guarantee is the
+#: address-space limit. A child reaches about 1.8 GB RSS under it, so from a
+#: declared frame of about 7-8 MP up (ordinary 4K included) this check can
+#: no longer refuse anything (Lens round 6, BR-L-015).
 RSS_BASE_BYTES = 512 * 1024 ** 2
 RSS_PER_PIXEL = 160
 
