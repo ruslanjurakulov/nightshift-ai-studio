@@ -21,6 +21,8 @@ import {
   MEDIA_SOURCE_CAPABILITIES,
   PARAM_KEYS,
   QUALITY_CAPABILITIES,
+  ROUTE_REASONS,
+  type RouteReason,
   SOURCE_CAPABILITIES,
   STYLE_CAPABILITIES,
   UPSCALE_FACTORS,
@@ -518,8 +520,41 @@ export const SHEET_PRICE_MAX = 8;
 export type QuoteState =
   | { status: "idle" }
   | { status: "quoting" }
-  | { status: "ready"; credits: number }
+  // `routed`: Auto's pick (0075) — the model the database chose, why, and the
+  // display name it answered; the press sends that model back with the price.
+  | { status: "ready"; credits: number; routed?: RoutedPick }
   | { status: "error"; code: CreativeError };
+
+/** What Auto picked: the model, its name to show, and why (a reason code). */
+export interface RoutedPick {
+  model: string;
+  name: string;
+  reason: RouteReason | null;
+}
+
+/**
+ * A routed quote's answer (quote_creative_route) -> the pick, or null when the
+ * answer does not name one (then nothing may be started from it).
+ */
+export function routedPick(q: Record<string, unknown> | null | undefined, names?: ReadonlyMap<string, string>): RoutedPick | null {
+  if (!q) return null;
+  const model = typeof q.routed_model === "string" ? q.routed_model : "";
+  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(model)) return null;
+  const reason =
+    typeof q.route_reason === "string" && (ROUTE_REASONS as readonly string[]).includes(q.route_reason)
+      ? (q.route_reason as RouteReason)
+      : null;
+  const name = names?.get(model) ?? (typeof q.display_name === "string" && q.display_name.trim() ? q.display_name : model);
+  return { model, name, reason };
+}
+
+/** "Auto picked X for N credits" and the reason, in the person's language. */
+export function routedLine(t: Dictionary, pick: RoutedPick, credits: number, locale = "en"): { picked: string; why: string | null } {
+  return {
+    picked: fmt(t.gen.router.picked, { model: pick.name, n: formatCredits(credits, locale) }),
+    why: pick.reason ? fmt(t.gen.router.why, { reason: t.gen.router.reasons[pick.reason] }) : null,
+  };
+}
 
 /**
  * Price on the button: "Generate · N credits" once the database has priced it
@@ -539,6 +574,21 @@ export function asCreativeError(code: unknown): CreativeError {
     : "failed";
 }
 
+/**
+ * The video-upscale sizes to offer. A picked model: its own. Auto: every size
+ * some model of this kind makes (in the fixed order) — never the hand-picked
+ * model's list, which Auto does not use; the database then picks among the
+ * models that make the chosen size (BR-L-024).
+ */
+export function upscaleTargetsFor(
+  available: readonly Pick<StudioModel, "upscaleTargets">[],
+  current: Pick<StudioModel, "upscaleTargets"> | null,
+  routed: boolean,
+): UpscaleTarget[] {
+  if (!routed) return current?.upscaleTargets ?? [];
+  return UPSCALE_TARGETS.filter((x) => available.some((m) => m.upscaleTargets?.includes(x)));
+}
+
 /** A route's error code -> the sentence the person reads (never the code itself). */
 export function apiErrorMessage(t: Dictionary, code: unknown): string {
   return t.creative.errors[asCreativeError(code)];
@@ -553,7 +603,7 @@ export function errorAction(code: unknown): "credits" | "plans" | "requote" | nu
   const c = asCreativeError(code);
   if (c === "insufficient_credits") return "credits";
   if (c === "entitlement_required" || c === "run_limit_reached") return "plans";
-  if (c === "price_changed") return "requote";
+  if (c === "price_changed" || c === "route_changed") return "requote";
   return null;
 }
 
@@ -570,6 +620,11 @@ export interface StudioJob {
   capability: string;
   status: string;
   requested_model: string;
+  /** 0075: the model that runs the job (exact: the one picked; Auto: its pick, or a failover). */
+  routed_model?: string | null;
+  /** 0075: the model a routed job moved away from, and why (an error code). */
+  fallback_from?: string | null;
+  fallback_reason?: string | null;
   params: Record<string, unknown>;
   quoted_credits: number;
   charged_credits: number | null;
@@ -606,6 +661,9 @@ export function coerceJobs(rows: unknown): StudioJob[] {
       capability: typeof j.capability === "string" ? j.capability : "",
       status: j.status,
       requested_model: typeof j.requested_model === "string" ? j.requested_model : "",
+      routed_model: typeof j.routed_model === "string" ? j.routed_model : null,
+      fallback_from: typeof j.fallback_from === "string" ? j.fallback_from : null,
+      fallback_reason: typeof j.fallback_reason === "string" ? j.fallback_reason : null,
       params,
       quoted_credits: num(j.quoted_credits) ?? 0,
       charged_credits: num(j.charged_credits),
@@ -679,6 +737,28 @@ const REASON_GROUPS: Record<string, keyof Dictionary["gen"]["reasons"]> = {
   no_speech: "no_speech",
   too_many_words: "bad_request",
 };
+
+/** The model that made (or makes) a job: a failover's model when there was one (0075). */
+export function jobModel(job: Pick<StudioJob, "requested_model" | "routed_model">): string {
+  return job.routed_model || job.requested_model;
+}
+
+/**
+ * "Made with X: Y was unavailable." for a routed job that moved to another
+ * model (0075); null otherwise. Model ids become their names; the code is
+ * never shown.
+ */
+export function fellBackLine(
+  t: Dictionary,
+  job: Pick<StudioJob, "routed_model" | "fallback_from">,
+  names: ReadonlyMap<string, string>,
+): string | null {
+  if (!job.fallback_from || !job.routed_model || job.fallback_from === job.routed_model) return null;
+  return fmt(t.gen.router.fellBack, {
+    model: names.get(job.routed_model) ?? job.routed_model,
+    from: names.get(job.fallback_from) ?? job.fallback_from,
+  });
+}
 
 /** A finished job's error_code -> a plain sentence (internal codes never reach the screen). */
 export function failureReason(t: Dictionary, job: Pick<StudioJob, "status" | "error_code">): string {

@@ -328,7 +328,7 @@ const CREATIVE_BODY_FIELDS = ["capability", "model", "params", "mode", "max_cred
 const NO_ORG = "00000000-0000-0000-0000-000000000000";
 
 const CREATIVE_MESSAGES: Record<string, string> = {
-  invalid_body: "Send a JSON object with capability, model, params and max_credits.",
+  invalid_body: "Send a JSON object with capability, model (or a mode), params and max_credits.",
   capability_not_supported: "capability is not one this API can generate.",
   invalid_params: "A parameter is missing or not accepted.",
   invalid_idempotency_key: "Idempotency-Key: 1-255 characters of A-Z a-z 0-9 _ : . -",
@@ -378,7 +378,17 @@ export async function quoteCreative(caller: ApiCaller, body: unknown): Promise<A
   const parsed = parseCreativeBody(body, { requireMaxCredits: false });
   if (!parsed.ok) return parsed.result;
   const r = parsed.request;
-  return call(caller, "api_creative_quote", { p_capability: r.capability, p_model: r.model, p_params: r.params }, "0062");
+  if (r.mode === "exact")
+    return call(caller, "api_creative_quote", { p_capability: r.capability, p_model: r.model, p_params: r.params }, "0062");
+  // A routed mode (0075): the database picks among the models the API sells and
+  // answers that model's id, the reason and its quote. Create then sends back
+  // that model and price (max_credits); a different pick is 409 route_changed.
+  return call(
+    caller,
+    "api_creative_quote",
+    { p_capability: r.capability, p_model: r.model || null, p_params: r.params, p_mode: r.mode },
+    "0075",
+  );
 }
 
 /**

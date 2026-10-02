@@ -43,6 +43,11 @@ job folder), the capability layer knows vendors (``CapabilityRequest``,
   ``GenerationRequest.reference_files``) follow them only for a capability
   the adapter lists in ``reference_capabilities``, and only as many as the
   registry entry's ``inputs.image_refs_max`` leaves (``style_support``);
+* a submit's failure carries ``not_accepted`` (BR-L-019) only when it PROVES
+  the vendor took nothing: no key, no connection opened, or an outright
+  refusal (401/402/403/404/429) of the submit's first call. A timeout, a
+  dropped connection or a 5xx never does — the worker never moves such a job
+  to another model, because the vendor may be billing a task we never heard of;
 * synchronous vendors (the image APIs) finish inside ``submit``: their
   outputs are kept in this process under a ``sync:<uuid>`` task id and
   written out by the first ``poll``. A worker that restarts in between has
@@ -210,7 +215,16 @@ class RegistryAdapter:
         problems = self.adapter.problems(req, self.entry)
         if problems:
             raise CreativeAdapterError("bad_request", "; ".join(problems)[:500])
-        task: ProviderTask = self.adapter.submit(req, self._vendor_model(cap))
+        # BR-L-019: a failure proves "nothing was bought" only for the submit's
+        # FIRST call to the vendor; once an earlier call went out (an upload, a
+        # create), that call may have started a paid task, so no proof stands.
+        self.adapter.calls_sent = 0
+        try:
+            task: ProviderTask = self.adapter.submit(req, self._vendor_model(cap))
+        except AdapterError as e:
+            if e.not_accepted and getattr(self.adapter, "calls_sent", 0) > 1:
+                e.not_accepted = False
+            raise
         if task.task_id:
             return str(task.task_id)
         if not task.outputs:
