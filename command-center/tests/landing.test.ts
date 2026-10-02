@@ -68,8 +68,7 @@ describe("site origin", () => {
     expect(siteOrigin({ APP_ORIGIN: "javascript:alert(1)" })).toBeNull();
   });
 
-  it("falls back to the explicit site URL, then Vercel's production domain", () => {
-    expect(siteOrigin({ NEXT_PUBLIC_SITE_URL: "https://site.example.com/" })).toBe("https://site.example.com");
+  it("falls back to Vercel's production domain", () => {
     expect(siteOrigin({ VERCEL_PROJECT_PRODUCTION_URL: "nightshift.example.com" })).toBe("https://nightshift.example.com");
     expect(
       siteOrigin({ APP_ORIGIN: "https://a.example.com", VERCEL_PROJECT_PRODUCTION_URL: "b.example.com" }),

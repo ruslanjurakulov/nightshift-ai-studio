@@ -128,8 +128,6 @@ export function moneyAnchor(pricing: Pricing, apiPrices: ApiPriceMap | null): Mo
 
 export interface SiteEnv {
   APP_ORIGIN?: string;
-  /** An explicit public URL for the marketing pages, when it differs from nothing else. */
-  NEXT_PUBLIC_SITE_URL?: string;
   /** Vercel's production domain, a bare host ("app.example.com"); set on every Vercel deploy. */
   VERCEL_PROJECT_PRODUCTION_URL?: string;
 }
@@ -153,8 +151,7 @@ function httpOrigin(value: string | undefined, assumeHttps = false): string | nu
  *
  * A deploy states it in APP_ORIGIN — the same variable the OAuth redirect
  * trusts (lib/server/public-origin.ts), already set by the self-hosted compose
- * file — or, failing that, NEXT_PUBLIC_SITE_URL, or the production domain
- * Vercel sets on every deploy. Request headers are not consulted: a canonical
+ * file — or, failing that, the production domain Vercel sets on every deploy. Request headers are not consulted: a canonical
  * URL a client can steer is worse than none. A loopback host is never an
  * answer. Unset, a page leaves canonical, og:url and the share image out
  * (shareMetadata) rather than let Next resolve them against localhost.
@@ -162,7 +159,6 @@ function httpOrigin(value: string | undefined, assumeHttps = false): string | nu
 export function siteOrigin(env: SiteEnv): string | null {
   return (
     httpOrigin(env.APP_ORIGIN) ??
-    httpOrigin(env.NEXT_PUBLIC_SITE_URL) ??
     httpOrigin(env.VERCEL_PROJECT_PRODUCTION_URL, true)
   );
 }
@@ -173,7 +169,6 @@ export function siteOrigin(env: SiteEnv): string | null {
 export function runtimeSiteOrigin(): string | null {
   return siteOrigin({
     APP_ORIGIN: process.env.APP_ORIGIN,
-    NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
     VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
   });
 }
