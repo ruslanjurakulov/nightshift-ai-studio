@@ -153,6 +153,7 @@ export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "library",
   "editor",
   "workflows",
+  "models",
   "channels",
   "credits",
   "series",
@@ -193,6 +194,8 @@ export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly SectionI
     { href: "/studio", key: "studio" },
     { href: "/styles", key: "styles" },
     { href: "/series", key: "series" },
+    // The catalog of models a customer may use (sellable_models()), by task.
+    { href: "/models", key: "models" },
   ],
   settings: [
     { href: "/organization", key: "organization" },
