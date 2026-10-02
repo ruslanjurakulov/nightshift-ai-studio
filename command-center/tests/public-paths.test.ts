@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { gateDecision, isPublicFontPath, isPublicPath } from "@/lib/public-paths";
+import { gateDecision, isPublicFontPath, isPublicPath, isUnknownSolutionPath } from "@/lib/public-paths";
 import { isValidChannelId } from "@/lib/channels";
 
 // The middleware only asks Supabase one question — who is signed in — so the
@@ -254,6 +254,31 @@ describe("gateDecision", () => {
   });
 });
 
+describe("a mistyped solution link", () => {
+  it.each(["/solutions/nope", "/solutions/youtube", "/solutions/youtube-channels/x", "/solutions/nope/"])(
+    "is the 404 for a signed-out visitor at %s, not a sign-in form",
+    async (path) => {
+      const { redirect, res } = await visit(path, false);
+      expect(redirect).toBeNull();
+      expect(res.status).toBe(404);
+      expect(new URL(res.headers.get("x-middleware-rewrite") ?? "").pathname).toBe("/_not-found");
+    },
+  );
+
+  it.each(["/solutions", "/solutions/youtube-channels", "/solutions/creative-studio", "/solutions/developers"])(
+    "leaves the real page %s public",
+    async (path) => {
+      const { redirect, res } = await visit(path, false);
+      expect(redirect).toBeNull();
+      expect(res.headers.get("x-middleware-rewrite")).toBeNull();
+    },
+  );
+
+  it("is not a 404 rule for anything outside /solutions", () => {
+    for (const p of ["/solution/x", "/solutionsx/y", "/chronos/solutions/x", "/pricing/credits"]) expect(isUnknownSolutionPath(p)).toBe(false);
+  });
+});
+
 describe("the public pages' font files", () => {
   it.each(["/fonts/sofia-sans-extra-condensed-cyrillic-v6.woff2", "/fonts/sofia-sans-cyrillic-v20.woff2"])(
     "serves %s to anyone, without a sign-in redirect",
@@ -274,7 +299,7 @@ describe("the public pages' font files", () => {
 });
 
 describe("channel ids", () => {
-  it.each(["privacy", "terms", "pricing", "login", "api", "signup", "auth", "welcome"])(
+  it.each(["privacy", "terms", "pricing", "login", "api", "signup", "auth", "welcome", "solutions", "docs", "fonts"])(
     "cannot be %s, which would be shadowed by a page at the root",
     (id) => {
       expect(isValidChannelId(id)).toBe(false);

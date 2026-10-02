@@ -75,6 +75,18 @@ export function isPublicFontPath(pathname: string): boolean {
   return (PUBLIC_FONT_PATHS as readonly string[]).includes(pathname);
 }
 
+/**
+ * A URL under /solutions that is not one of the listed pages: a mistyped
+ * solution link. Nothing in the app lives there (`solutions` is a reserved
+ * segment, so no channel can), so a signed-out visitor gets the 404 rather
+ * than a sign-in form (middleware.ts). It opens nothing: the rewrite serves
+ * only the not-found page.
+ */
+export function isUnknownSolutionPath(pathname: string): boolean {
+  const p = normalize(pathname);
+  return p.startsWith(SOLUTIONS_PATH + "/") && !(SOLUTION_PATHS as readonly string[]).includes(p);
+}
+
 /** Served as-is to anyone, signed in or not, without channel resolution. */
 export const ALWAYS_PUBLIC_PATHS = [...LEGAL_PATHS, ...INFO_PATHS, ...SOLUTION_PATHS] as const;
 
@@ -115,6 +127,8 @@ export const RESERVED_ROOT_SEGMENTS = [
   "solutions",
   "api",
   "docs",
+  // The self-hosted font files live under /fonts (PUBLIC_FONT_PATHS).
+  "fonts",
 ] as const;
 
 /** Next's router treats `/terms/` as `/terms`; the gate must agree with it. */

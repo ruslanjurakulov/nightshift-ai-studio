@@ -96,6 +96,8 @@ describe("the public pages' dictionary", () => {
       expect(Object.keys(slice)).not.toContain("nav");
       // No setup copy (env-var names, the database vendor) rides along.
       expect(json).not.toMatch(/NEXT_PUBLIC_SUPABASE|Supabase/);
+      // …nor the operator's setup notes: env names, docs paths, server keys.
+      expect(json).not.toMatch(/NEXT_PUBLIC_|PADDLE_[A-Z]|docs\/[A-Z_]+\.md/);
     }
   });
 

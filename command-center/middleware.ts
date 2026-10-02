@@ -10,7 +10,13 @@ import {
   isSection,
   isUnknownRootPath,
 } from "@/lib/channels";
-import { gateDecision, isPublicApiPath, isPublicFontPath, isSignedMediaPath } from "@/lib/public-paths";
+import {
+  gateDecision,
+  isPublicApiPath,
+  isPublicFontPath,
+  isSignedMediaPath,
+  isUnknownSolutionPath,
+} from "@/lib/public-paths";
 
 /** Next's own route for app/not-found.tsx (it is what an unmatched URL renders). */
 const NOT_FOUND_PATH = "/_not-found";
@@ -114,7 +120,10 @@ export async function middleware(request: NextRequest) {
   // A signed-out visitor who mistyped a URL (/blog, /about) gets the 404, not a
   // sign-in form for a page that was never there. The rewrite serves only the
   // root not-found page: no layout of the app runs, nothing is read.
-  if (decision === "to-login" && isUnknownRootPath(request.nextUrl.pathname)) {
+  if (
+    decision === "to-login" &&
+    (isUnknownRootPath(request.nextUrl.pathname) || isUnknownSolutionPath(request.nextUrl.pathname))
+  ) {
     return notFoundResponse(request);
   }
   if (decision === "to-login" || decision === "to-home") {

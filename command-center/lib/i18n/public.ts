@@ -16,8 +16,10 @@ export type PublicDictionary = {
   common: Dictionary["common"];
   landing: { nav: Dictionary["landing"]["nav"] };
   legal: Dictionary["legal"];
-  pricing: Dictionary["pricing"];
-  plans: Dictionary["plans"];
+  // Minus the operator's setup notes (env names, docs paths): they are app copy,
+  // never shown to a visitor, and must not ride along in a public page's payload.
+  pricing: Omit<Dictionary["pricing"], "comingSoonOperator">;
+  plans: Omit<Dictionary["plans"], "managePortalMissing">;
   credits: { buy: { pack: Dictionary["credits"]["buy"]["pack"] } };
   creditsPage: { eq: Dictionary["creditsPage"]["eq"] };
   site: {
@@ -30,14 +32,20 @@ export type PublicDictionary = {
   ux: Pick<Dictionary["ux"], "errorTitle" | "errorBody" | "errorRetry" | "errorHome" | "errorRef">;
 };
 
+function omit<T extends object, K extends keyof T>(o: T, key: K): Omit<T, K> {
+  const { [key]: _dropped, ...rest } = o;
+  void _dropped;
+  return rest;
+}
+
 export function publicDictionary(t: Dictionary): PublicDictionary {
   return {
     brand: { name: t.brand.name },
     common: t.common,
     landing: { nav: t.landing.nav },
     legal: t.legal,
-    pricing: t.pricing,
-    plans: t.plans,
+    pricing: omit(t.pricing, "comingSoonOperator"),
+    plans: omit(t.plans, "managePortalMissing"),
     credits: { buy: { pack: t.credits.buy.pack } },
     creditsPage: { eq: t.creditsPage.eq },
     site: { pricingTeaser: { credits: t.site.pricingTeaser.credits }, auth: t.site.auth },
