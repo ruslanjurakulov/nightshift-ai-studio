@@ -9,7 +9,7 @@ import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 import { formatTimecode } from "@/components/ui/Timecode";
 import { Stagger, StaggerItem } from "@/components/motion/Reveal";
 import { Playhead } from "@/components/concepts/Playhead";
-import { PriceFacts } from "@/components/concepts/PriceFacts";
+import { PriceFacts, PriceLine } from "@/components/concepts/PriceFacts";
 
 /** An example timeline, 20 s long, labelled as one: every tick and label sits at a real position on it. */
 const LENGTH = 20;
@@ -74,6 +74,7 @@ export function ConceptC({ t, locale, anchor }: { t: Dictionary; locale: Locale;
             <span aria-hidden className="ns-lamp" data-tone="ok" />
             {fmt(h.note, { n: formatCredits(WELCOME_CREDITS, locale) })}
           </p>
+          <PriceLine t={t} locale={locale} anchor={anchor} />
         </div>
 
         <figure role="img" aria-label={c.screenFigure} className="ac-c-screen">

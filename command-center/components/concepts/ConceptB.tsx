@@ -6,7 +6,7 @@ import { WELCOME_CREDITS } from "@/lib/pricing";
 import type { MoneyAnchor } from "@/lib/landing";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 import { Stagger, StaggerItem } from "@/components/motion/Reveal";
-import { PriceFacts } from "@/components/concepts/PriceFacts";
+import { PriceFacts, PriceLine } from "@/components/concepts/PriceFacts";
 
 const RULE_TONE: Record<string, LampTone> = { price: "ok", refund: "ok", approval: "run" };
 
@@ -53,6 +53,7 @@ export function ConceptB({ t, locale, anchor }: { t: Dictionary; locale: Locale;
               <span aria-hidden className="ns-lamp" data-tone="ok" />
               {fmt(h.note, { n: formatCredits(WELCOME_CREDITS, locale) })}
             </p>
+            <PriceLine t={t} locale={locale} anchor={anchor} />
           </div>
         </div>
 

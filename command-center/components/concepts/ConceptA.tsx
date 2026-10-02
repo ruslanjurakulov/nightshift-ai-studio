@@ -8,7 +8,7 @@ import { conceptCopy } from "@/lib/i18n/site/concepts";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 import { Meter } from "@/components/ui/Meter";
 import { Stagger, StaggerItem } from "@/components/motion/Reveal";
-import { PriceFacts } from "@/components/concepts/PriceFacts";
+import { PriceFacts, PriceLine } from "@/components/concepts/PriceFacts";
 
 /** Each rule's lamp, as the live page's Rules section lights them. */
 const RULE_TONE: Record<string, LampTone> = { price: "ok", refund: "ok", approval: "run" };
@@ -31,7 +31,7 @@ const cueState = (id: string): CueState => (id === "approval" ? "yours" : id ===
  * in the hero is the welcome grant and whatever the price list holds.
  *
  * Motion (MOTION.md §5.1): the cluster prints in reading order once, on first
- * paint; the waiting lamp breathes. The headline, the lead and the key are
+ * paint; one lamp breathes (the approval module's: the cue row's lamp is lit and still). The headline, the lead and the key are
  * plain HTML. Reduced motion: complete and still.
  */
 export function ConceptA({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: MoneyAnchor }) {
@@ -64,6 +64,7 @@ export function ConceptA({ t, locale, anchor }: { t: Dictionary; locale: Locale;
             <span aria-hidden className="ns-lamp" data-tone="ok" />
             {fmt(h.note, { n: formatCredits(WELCOME_CREDITS, locale) })}
           </p>
+          <PriceLine t={t} locale={locale} anchor={anchor} />
         </div>
       </div>
 
@@ -87,7 +88,7 @@ export function ConceptA({ t, locale, anchor }: { t: Dictionary; locale: Locale;
                     </span>
                     <span className="ac-cue-state">
                       {state === "done" && <StatusLamp tone="ok" label={r.done} />}
-                      {state === "yours" && <StatusLamp tone="run" label={r.yours} live size="md" />}
+                      {state === "yours" && <StatusLamp tone="run" label={r.yours} size="md" />}
                       {state === "next" && <StatusLamp tone="idle" label={r.next} />}
                     </span>
                   </StaggerItem>

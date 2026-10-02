@@ -40,6 +40,10 @@
   .ac-facts dl > div + div { padding-left: 24px; border-left: 1px solid var(--ns-rule); }
 }
 
+.ac-priceline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; margin-top: 8px; font-size: 14px; color: var(--ns-text); }
+.ac-priceline-k { color: var(--ns-text-dim); }
+.ac-priceline-v { font-weight: 600; }
+
 /* ══ A · The rack ═════════════════════════════════════════════════════════ */
 .ac-a { padding-bottom: 56px; }
 .ac-a-top { display: grid; gap: 22px; padding-block: 32px 28px; }
@@ -228,7 +232,7 @@ html:is([lang="ru"], [lang="uz"]) .ac-b-b { font-size: clamp(52px, 10.6cqi, 150p
   .ac-entry-lines { grid-column: 3; padding-top: 6px; }
   .ac-entry-state { grid-column: 4; padding-top: 10px; justify-self: end; }
 }
-.ac-entry[data-id="approval"] { background: var(--ns-select); padding-inline: 16px; }
+.ac-entry[data-id="approval"] { border-bottom-color: var(--ns-text); }
 .ac-b-facts { margin-top: 28px; }
 
 /* ══ C · The screen waiting ═══════════════════════════════════════════════ */
@@ -301,13 +305,13 @@ html:is([lang="ru"], [lang="uz"]) .ac-c-h1 { font-size: clamp(36px, 3.3vw, 48px)
 .ac-scene-big { position: absolute; inset: 0; background: #2b3a55; overflow: hidden; }
 .ac-scene-big i { position: absolute; display: block; }
 .ac-scene-big .sun { width: 15%; aspect-ratio: 1; border-radius: 50%; right: 13%; top: 13%; background: #f4d58d; }
-.ac-scene-big .dune-far { left: -10%; right: -10%; top: 64%; bottom: -40%; border-radius: 50% 50% 0 0; background: #c9a227; }
+.ac-scene-big .dune-far { left: -10%; right: -10%; top: 64%; bottom: 0; border-radius: 50% 50% 0 0 / 40% 40% 0 0; background: #c9a227; }
 .ac-scene-big .wall { left: 22%; width: 44%; bottom: 31%; height: 9%; background: #8d5b4c; }
 .ac-scene-big .dome { left: 32%; width: 22%; bottom: 39%; height: 30%; border-radius: 50% 50% 0 0; background: #2a9d8f; }
 .ac-scene-big .tower { bottom: 39%; width: 3.2%; height: 36%; background: #8d5b4c; }
 .ac-scene-big .tower.l { left: 26%; }
 .ac-scene-big .tower.r { left: 60%; height: 28%; }
-.ac-scene-big .dune-near { left: -20%; right: -10%; top: 78%; bottom: -40%; border-radius: 50% 50% 0 0; background: #b5651d; }
+.ac-scene-big .dune-near { left: -20%; right: -10%; top: 78%; bottom: 0; border-radius: 50% 50% 0 0 / 60% 60% 0 0; background: #b5651d; }
 
 .ac-c-verdicts { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; background: var(--ns-select); }
 @media (max-width: 719px) { .ac-c-verdicts { border-top: 1px solid var(--ns-rule); } }

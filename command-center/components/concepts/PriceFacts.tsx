@@ -78,3 +78,30 @@ export function PriceFacts({
     </div>
   );
 }
+
+/**
+ * The hero's one-line price: what a minute of finished video costs in the app,
+ * from the live price list, or the words that it is not published. It sits
+ * under the sign-up key so the price is in the first view, not only in the row
+ * further down (price first is the product's rule). Same source and words as
+ * PriceFacts; never a zero, never a default.
+ */
+export function PriceLine({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: MoneyAnchor }) {
+  const a = t.site.anchor;
+  const credits = (n: number) => formatCredits(n, locale);
+  const unit = (n: number) => creditUnit(n, locale, t.shell.creditUnit);
+  return (
+    <p className="ac-priceline">
+      <span className="ac-priceline-k">{a.siteLabel}</span>
+      {anchor.site ? (
+        <span className="st-num ac-priceline-v">
+          {fmt(a.siteValue, { n: credits(anchor.site.perMinute), unit: unit(anchor.site.perMinute) })}
+          {anchor.site.minimum !== null &&
+            ` · ${fmt(a.siteMinimum, { n: credits(anchor.site.minimum), unit: unit(anchor.site.minimum) })}`}
+        </span>
+      ) : (
+        <span className="ac-priceline-v">{a.none}</span>
+      )}
+    </p>
+  );
+}

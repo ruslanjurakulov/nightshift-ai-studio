@@ -16,6 +16,7 @@ export function Playhead({ at, children }: { at: number; children: React.ReactNo
   return (
     <MDiv
       data-ns-motion=""
+      data-ns-reveal=""
       className="ac-c-playhead-run"
       style={{ width: `${at}%` }}
       {...(still
