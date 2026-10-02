@@ -1,6 +1,7 @@
 "use client";
 
-import { Panel, StatusPill } from "@/components/ui";
+import { Panel } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
 import { ErrorState } from "@/components/ReadError";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
@@ -65,7 +66,7 @@ export function WorkerStatusPanel({
                       <span className="text-[13px] font-semibold text-[var(--color-fg)]">{w.kinds[v.kind]}</span>
                       <span className="mono truncate text-[11px] text-[var(--color-muted)]">{v.workerId}</span>
                     </span>
-                    <StatusPill tone={TONE[v.shown]} label={w.states[v.shown]} live={v.shown === "running"} />
+                    <StatusLamp tone={TONE[v.shown]} label={w.states[v.shown]} live={v.shown === "running"} />
                   </div>
                   <div className="mono flex flex-wrap gap-x-4 text-[11px] text-[var(--color-muted)]">
                     <span>{v.updatedAt && v.ageSeconds !== null ? fmt(w.heartbeat, { t: relativeTime(v.updatedAt) }) : w.noHeartbeat}</span>

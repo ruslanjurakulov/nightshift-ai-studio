@@ -282,7 +282,9 @@ describe("the editor", () => {
     fireEvent.change(out, { target: { value: "6" } });
     fireEvent.blur(out);
     expect(clipButtons()[0].getAttribute("aria-label")).toContain("0:06.0");
-    expect(screen.getByText("0:00.0 / 0:10.0")).toBeTruthy();
+    // The readout is counter-face timecode with a spoken form that keeps tenths.
+    const readout = Array.from(document.querySelectorAll(".ns-tc .sr-only")).map((n) => n.textContent);
+    expect(readout).toEqual(["0:00.0", "0:10.0"]);
   });
 
   it("adds text at the playhead, edits it, and shows it on the preview", async () => {

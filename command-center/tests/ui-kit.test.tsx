@@ -57,7 +57,7 @@ describe("every primitive reads tokens, never a literal colour", () => {
 
   it("phones get 44px targets on the switch, chips and the small price key", () => {
     const css = readFileSync(path.join(ROOT, "app/globals.css"), "utf8");
-    expect(css).toMatch(/\.ns-seg > button,\s*\.ns-chip,\s*\.ns-price-button\[data-size="md"\] \{ min-height: 44px; \}/);
+    expect(css).toMatch(/\.ns-seg > button,\s*\.ns-chip:not\(\[data-plain\]\),\s*\.ns-price-button\[data-size="md"\] \{ min-height: 44px; \}/);
   });
 
   it("the running lamp only breathes when motion is welcome", () => {

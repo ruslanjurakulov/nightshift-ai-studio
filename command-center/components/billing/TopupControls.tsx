@@ -57,7 +57,7 @@ function CopyButton({ value }: { value: string }) {
           /* clipboard blocked — the amount is still visible */
         }
       }}
-      className="btn-sky is-quiet pill px-3 py-1.5 text-[12px]"
+      className="btn-quiet text-[12px]"
     >
       {copied ? t.billing.payCopied : t.billing.payCopy}
     </button>
@@ -65,7 +65,7 @@ function CopyButton({ value }: { value: string }) {
 }
 
 const inputClass =
-  "pill border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 mono text-[12px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
+  "rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 mono text-[12px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
 
 /** The per-provider Pay panel, opened from its card. */
 export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested: number | null; onDone: () => void }) {
@@ -96,7 +96,7 @@ export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested:
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3">
+    <div className="flex flex-col gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3">
       <p className="text-[12px] font-semibold text-[var(--color-fg)]">{fmt(t.billing.payTitle, { name: p.name })}</p>
       <p className="flex items-start gap-2 text-[11px] leading-relaxed text-[var(--color-muted)]">
         <CreditCard className="mt-0.5 size-3.5 shrink-0" aria-hidden />
@@ -123,7 +123,7 @@ export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested:
           href={p.billingUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="cta-glass pill inline-flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-semibold"
+          className="btn-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-semibold"
         >
           {fmt(t.billing.payOpen, { name: p.name })}
           <ExternalLink className="size-3" aria-hidden />
@@ -134,7 +134,7 @@ export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested:
         type="button"
         onClick={record}
         disabled={!valid || state === "busy" || state === "ok"}
-        className="btn-sky pill w-fit px-4 py-1.5 text-[12px] disabled:opacity-40"
+        className="btn-quiet w-fit px-4 py-1.5 text-[12px] disabled:opacity-40"
       >
         {state === "ok" ? t.billing.payRecorded : t.billing.payDone}
       </button>
@@ -299,12 +299,12 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
             setPaidCount(0);
             setStep(0);
           }}
-          className="cta-glass pill w-fit px-6 py-2.5 text-[13px] font-semibold disabled:opacity-40"
+          className="btn-primary w-fit px-6 py-2.5 text-[13px] font-semibold disabled:opacity-40"
         >
           {queue.length === 0 ? t.billing.bulkNothing : `${t.billing.bulkPay} · ${money(plan.total)}`}
         </button>
       ) : current ? (
-        <div className="flex flex-col gap-3 rounded-[14px] border border-[var(--color-primary)] p-3" aria-live="polite">
+        <div className="flex flex-col gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-primary)] p-3" aria-live="polite">
           <p className="mono text-[11px] text-[var(--color-muted)]">
             {fmt(t.billing.stepOf, { i: step + 1, n: queue.length })}
           </p>
@@ -317,7 +317,7 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
               href={current.billingUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="cta-glass pill inline-flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-semibold"
+              className="btn-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-semibold"
             >
               {fmt(t.billing.payOpen, { name: current.name })}
               <ExternalLink className="size-3" aria-hidden />
@@ -327,11 +327,11 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
               type="button"
               onClick={confirmStep}
               disabled={busy}
-              className="btn-sky pill px-4 py-1.5 text-[12px] disabled:opacity-40"
+              className="btn-quiet text-[12px] disabled:opacity-40"
             >
               {t.billing.payDone}
             </button>
-            <button type="button" onClick={() => setStep(step + 1)} className="btn-sky is-quiet pill px-3 py-1.5 text-[12px]">
+            <button type="button" onClick={() => setStep(step + 1)} className="btn-quiet text-[12px]">
               {t.billing.stepSkip}
             </button>
           </div>
@@ -345,7 +345,7 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
               setStep(null);
               onDone();
             }}
-            className="btn-sky is-quiet pill px-3 py-1.5 text-[12px]"
+            className="btn-quiet text-[12px]"
           >
             {t.billing.stepClose}
           </button>

@@ -78,7 +78,7 @@ export const FolderMenu = forwardRef<
             setOpen(true);
           }
         }}
-        className="press grid size-9 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-fg)]"
+        className="press grid size-9 place-items-center max-sm:size-11 rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-fg)]"
       >
         <MoreHorizontal className="size-4" aria-hidden />
       </button>
@@ -88,7 +88,7 @@ export const FolderMenu = forwardRef<
           role="menu"
           aria-label={label}
           onKeyDown={onMenuKey}
-          className="absolute right-0 top-[calc(100%+6px)] z-30 flex min-w-[12rem] flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-1.5 shadow-[var(--shadow-elevated)]"
+          className="absolute right-0 top-[calc(100%+6px)] z-30 flex min-w-[12rem] flex-col rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] p-1.5 shadow-[var(--shadow-elevated)]"
         >
           <button
             ref={(el) => {
@@ -97,7 +97,7 @@ export const FolderMenu = forwardRef<
             type="button"
             role="menuitem"
             onClick={choose(onRename)}
-            className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[14px] text-[var(--color-fg)] hover:bg-[var(--color-panel-2)] focus-visible:bg-[var(--color-panel-2)]"
+            className="flex items-center gap-2.5 rounded-[var(--ns-r-key)] px-3 py-2.5 text-left text-[14px] text-[var(--color-fg)] hover:bg-[var(--color-panel-2)] focus-visible:bg-[var(--color-panel-2)]"
           >
             <Pencil className="size-4 text-[var(--color-muted)]" aria-hidden />
             {renameLabel}
@@ -109,7 +109,7 @@ export const FolderMenu = forwardRef<
             type="button"
             role="menuitem"
             onClick={choose(onDelete)}
-            className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[14px] text-[var(--color-fail)] hover:bg-[var(--color-panel-2)] focus-visible:bg-[var(--color-panel-2)]"
+            className="flex items-center gap-2.5 rounded-[var(--ns-r-key)] px-3 py-2.5 text-left text-[14px] text-[var(--color-fail)] hover:bg-[var(--color-panel-2)] focus-visible:bg-[var(--color-panel-2)]"
           >
             <Trash2 className="size-4" aria-hidden />
             {deleteLabel}

@@ -108,7 +108,7 @@ describe("credits: never a 0 balance on failure", () => {
   it("failed reads", async () => {
     const html = await render(load);
     expect(has(html, en.credits.readFailed)).toBe(true);
-    expect(html.split(esc(en.common.unknown)).length - 1).toBe(3); // available / on hold / balance
+    expect(html.split(`>${esc(en.common.unknown)}<`).length - 1).toBe(3); // available / on hold / balance
     expect(html).not.toMatch(zeroFigure);
     expect(has(html, en.credits.ledgerEmpty)).toBe(false);
     expect(has(html, en.credits.pricesEmpty)).toBe(false);
@@ -360,7 +360,7 @@ describe("videos: the KPIs are unknown when the library could not be read", () =
   it("failed", async () => {
     const html = await render(load);
     expect(has(html, en.videos.readErr)).toBe(true);
-    expect(html.split(esc(en.common.unknown)).length - 1).toBe(3); // shown, total views, published today
+    expect(html.split(`>${esc(en.common.unknown)}<`).length - 1).toBe(3); // shown, total views, published today
     expect(html).not.toMatch(zeroFigure);
     expect(has(html, en.videos.empty)).toBe(false);
     expect(html).toContain("data-read-error");

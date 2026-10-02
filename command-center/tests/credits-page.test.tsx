@@ -330,7 +330,7 @@ describe("credits page: clear, honest, terms before buying", () => {
   it("balance, plans with computed equivalents, packs, plain history; terms above every buy button", async () => {
     const html = renderToStaticMarkup(await load());
     // balance: available = 75 − 5, held, and only the source that has credits
-    expect(html).toMatch(/data-balance-available[^>]*>70</);
+    expect(html).toMatch(/data-balance-available[^>]*>(<[^>]+>)*70</);
     expect(html).toContain(`>${esc(en.creditsPage.source.pack)}<`);
     expect(html).not.toContain(`>${esc(en.creditsPage.source.plan)}<`);
     expect(has(html, en.creditsPage.heldHint)).toBe(true);
