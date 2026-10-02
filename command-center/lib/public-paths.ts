@@ -26,6 +26,9 @@ export const LEGAL_PATHS = ["/privacy", "/terms"] as const;
  *  The API reference and its OpenAPI spec are read before anyone has a key. */
 export const INFO_PATHS = ["/pricing", "/docs/api", "/docs/api/openapi.json"] as const;
 
+/** Always public: the crawler files (app/robots.ts, app/sitemap.ts). */
+export const CRAWLER_PATHS = ["/robots.txt", "/sitemap.xml"] as const;
+
 /** Always public: what the product does, by who it is for (lib/solutions.ts).
  *  Listed one by one — the index and each page — never as a prefix. */
 export const SOLUTION_PATHS = [SOLUTIONS_PATH, ...SOLUTION_IDS.map(solutionHref)] as const;
@@ -88,7 +91,11 @@ export function isUnknownSolutionPath(pathname: string): boolean {
 }
 
 /** Served as-is to anyone, signed in or not, without channel resolution. */
-export const ALWAYS_PUBLIC_PATHS = [...LEGAL_PATHS, ...INFO_PATHS, ...SOLUTION_PATHS] as const;
+export const ALWAYS_PUBLIC_PATHS = [...LEGAL_PATHS, ...INFO_PATHS, ...SOLUTION_PATHS, ...CRAWLER_PATHS] as const;
+
+/** The pages the sitemap lists: every public page a visitor reads, not the
+ *  sign-in flow, the machine-readable spec or the crawler files. */
+export const SITEMAP_PATHS = ["/", "/pricing", ...SOLUTION_PATHS, "/docs/api", "/privacy", "/terms"] as const;
 
 /** Create an account. Like /login, only for someone signed out: a signed-in
  *  user asking for it is sent on to their app. */

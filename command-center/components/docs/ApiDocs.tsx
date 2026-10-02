@@ -102,7 +102,8 @@ export function ApiDocs({ prices, origin, labels }: { prices: ApiPriceMap | null
           Make faceless videos, follow them through the pipeline, cross-post them and download them — from your own
           code. The same checks as the site apply to every call: your organization&apos;s channels only, the publish
           gate and approvals, private YouTube uploads. Machine-readable:{" "}
-          <a className="underline" href="/docs/api/openapi.json">
+          {/* Inline, with a 44px tall hit area that does not move the line. */}
+          <a className="-my-[14px] inline-block py-[14px] underline" href="/docs/api/openapi.json">
             OpenAPI 3.1
           </a>
           .
@@ -113,8 +114,12 @@ export function ApiDocs({ prices, origin, labels }: { prices: ApiPriceMap | null
         <ol className="list-decimal space-y-1 pl-5 text-[14px] text-[var(--color-muted)]">
           <li>Buy any credit pack on the site (the API opens to organizations that have made a purchase).</li>
           <li>
-            An owner or admin opens <b>Developers</b> in the Command Center and clicks <b>Activate API</b>, accepting
-            the <Link className="underline" href="/terms">Terms</Link>.
+            An organization admin opens <b>Developers</b> in the Command Center and clicks <b>Activate API</b>, accepting
+            the{" "}
+            <Link className="-my-[14px] inline-block min-w-11 py-[14px] text-center underline" href="/terms">
+              Terms
+            </Link>
+            .
           </li>
           <li>Top up the API balance (at least $5; it is separate from site credits).</li>
           <li>Create a key (up to {MAX_ACTIVE_KEYS} active keys). It is shown once — store it as a secret.</li>
