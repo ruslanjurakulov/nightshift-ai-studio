@@ -447,3 +447,8 @@ sec_style_0065.extend(TABLES, FUNCTIONS)
 import sec_workflows_0073  # noqa: E402
 
 sec_workflows_0073.extend(TABLES, FUNCTIONS)
+
+# Migration 0076 (scene regeneration v2): tests/security/sec_scene_regen_0076.py
+import sec_scene_regen_0076  # noqa: E402
+
+sec_scene_regen_0076.extend(TABLES, FUNCTIONS)
