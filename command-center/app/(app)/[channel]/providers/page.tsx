@@ -73,7 +73,7 @@ export default async function ProvidersPage({
             <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.providers.ytSubtitle}</p>
           </div>
           {isGoogleOAuthConfigured ? (
-            <a href={startHref} className="btn-sky pill px-4 py-1.5 text-[13px]">
+            <a href={startHref} className="btn-sky rounded-[var(--ns-r-key)] px-4 py-1.5 text-[13px]">
               {t.providers.ytConnect}
             </a>
           ) : (
