@@ -362,6 +362,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Notifications (0064): tests/security/sec_notify_0064.py — raised by the real triggers.
     import sec_notify_0064
     sec_notify_0064.seed(conn, sc)
+    # Workflow apps (0073): tests/security/sec_workflows_0073.py.
+    import sec_workflows_0073
+    sec_workflows_0073.seed(conn, sc)
     # A pending invite into org A, addressed to Ivan's email, not yet accepted.
     with acting(conn, sc.alice.actor, commit=True) as s:
         s.value("select public.invite_org_member(%s, %s, 'viewer')", [sc.alice.org, sc.invitee.email])

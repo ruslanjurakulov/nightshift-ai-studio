@@ -437,3 +437,8 @@ sec_notify_0064.extend(TABLES, FUNCTIONS)
 import sec_style_0065  # noqa: E402
 
 sec_style_0065.extend(TABLES, FUNCTIONS)
+
+# Migration 0073 (workflow apps): tests/security/sec_workflows_0073.py
+import sec_workflows_0073  # noqa: E402
+
+sec_workflows_0073.extend(TABLES, FUNCTIONS)
