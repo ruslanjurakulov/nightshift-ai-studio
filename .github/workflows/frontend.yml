@@ -30,6 +30,11 @@ concurrency:
   group: frontend-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege (BR-S-001): nothing in this workflow calls the GitHub API or
+# pushes, so the job token can only read the repository.
+permissions:
+  contents: read
+
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -44,6 +49,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # Never pushes: keeps the job token out of .git/config (BR-S-001).
+          persist-credentials: false
 
       - name: Set up Node 22
         uses: actions/setup-node@v7

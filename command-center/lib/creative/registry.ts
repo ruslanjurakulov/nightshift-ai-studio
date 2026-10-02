@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { isMissingFunction } from "@/lib/orgs";
-import { UPSCALE_TARGETS, type UpscaleTarget } from "@/lib/creative/operations";
+import { UPSCALE_TARGETS, isImageQuality, type ImageQuality, type UpscaleTarget } from "@/lib/creative/operations";
 
 /**
  * The models a signed-in user may be offered, read under their own session
@@ -43,6 +43,8 @@ export interface PublicSpec {
   aspectRatios: string[];
   aspectRatiosByCapability: Partial<Record<Capability, string[]>>;
   imageSizes: string[];
+  /** Render qualities the model is sold by (0060); empty = it has no tiers. */
+  qualities: ImageQuality[];
   resolutions: string[];
   durationsS: number[];
   /** Upscale factors the model is sold for (0046); empty unless it can upscale. */
@@ -56,6 +58,10 @@ export interface PublicSpec {
   /** The longest source a file tool takes, in seconds (0052); null = not stated. */
   maxSourceSeconds: number | null;
   audioOut: boolean;
+  /** 0070: the resolution a clip is made at when none is named (priced and sent); null = the model has none pinned. */
+  defaultResolution: string | null;
+  /** 0070: how the model's price varies (resolution, audio, resolution_audio, quality ...); null = one flat price. */
+  priceVariantsBy: string | null;
   isAsync: boolean;
   /** What credits_per_unit counts: an image, a second, a character, a request. */
   unit: "image" | "second" | "character" | "request";
@@ -124,6 +130,7 @@ function coerceSpec(v: unknown): PublicSpec | null {
     aspectRatios: strings(v.aspect_ratios),
     aspectRatiosByCapability: byCap,
     imageSizes: strings(v.image_sizes),
+    qualities: strings(v.qualities).filter(isImageQuality),
     resolutions: strings(v.resolutions),
     durationsS: Array.isArray(v.durations_s) ? v.durations_s.filter((d): d is number => posInt(d) !== null) : [],
     upscaleFactors: Array.isArray(v.upscale_factors)
@@ -134,6 +141,8 @@ function coerceSpec(v: unknown): PublicSpec | null {
     endFrame: v.end_frame === true,
     maxSourceSeconds: posInt(limits.max_source_seconds),
     audioOut: v.audio_out === true,
+    defaultResolution: typeof v.default_resolution === "string" && v.default_resolution ? v.default_resolution : null,
+    priceVariantsBy: typeof v.price_variants_by === "string" && v.price_variants_by ? v.price_variants_by : null,
     isAsync: v.async === true,
     unit,
     attribution,
