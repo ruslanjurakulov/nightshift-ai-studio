@@ -461,6 +461,11 @@ import sec_router_0075  # noqa: E402
 
 sec_router_0075.extend(TABLES, FUNCTIONS)
 
+# Migration 0076 (scene regeneration v2): tests/security/sec_scene_regen_0076.py
+import sec_scene_regen_0076  # noqa: E402
+
+sec_scene_regen_0076.extend(TABLES, FUNCTIONS)
+
 # Migration 0081 (the comment inbox): tests/security/sec_inbox_0081.py
 import sec_inbox_0081  # noqa: E402
 

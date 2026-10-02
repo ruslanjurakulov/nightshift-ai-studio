@@ -288,6 +288,27 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def regeneration_summary(result: Mapping) -> Optional[dict]:
+    """What a regeneration's row keeps of its result: ids, codes and counts
+    (the 0076 CHECK caps it at 8 KB). Never a path, a prompt or an error tail."""
+    if not isinstance(result, Mapping) or not result:
+        return None
+    ids = lambda v: [str(x)[:64] for x in v][:16] if isinstance(v, list) else []  # noqa: E731
+    take = result.get("previous_take") if isinstance(result.get("previous_take"), Mapping) else {}
+    qc = result.get("qc") if isinstance(result.get("qc"), Mapping) else {}
+    out = {
+        "source_kind": str(result.get("source_kind") or "")[:16] or None,
+        "explicit_stock": result.get("explicit_stock") is True,
+        "previous_asset_ids": ids(result.get("previous_asset_ids")),
+        "new_asset_ids": ids(result.get("new_asset_ids")),
+        "previous_take_kept": bool(take.get("project") or take.get("video")),
+        "qc_blocks": ids(qc.get("blocks")) if "blocks" in qc else None,
+        "gate": "not_evaluated",
+        "published": False,
+    }
+    return out
+
+
 # ── resume a re-queued run ─────────────────────────────────────────────────
 
 def _slugify(text: str) -> str:
@@ -658,6 +679,12 @@ class Worker:
         except Exception as e:
             return self._finish(job, "failed", f"channel registry unavailable ({type(e).__name__})")
 
+        # A priced scene regeneration (migration 0076) is paid and settled by
+        # its own row, not by the per-minute settle of a video run.
+        regen_id = str(job.get("scene_regeneration_id") or "").strip()
+        if regen_id:
+            return self._process_regeneration(job, channel_id, clean, channel_row, regen_id)
+
         topic = resume_target(job, clean, self.output_dir)
         if topic:
             clean = dict(clean, resume=True, topic=topic)
@@ -688,6 +715,65 @@ class Worker:
         # the stale sweep is released by expire_credit_reservations.
         return outcome
 
+    def _process_regeneration(self, job: Mapping, channel_id: str, clean: Mapping,
+                              channel_row: Mapping, regen_id: str) -> str:
+        """One scene of a run made again, as the person priced and confirmed it
+        (modules/scene_regenerate.py). The database claims the hold before
+        anything runs (start_scene_regeneration) and settles it with the
+        regeneration's status (finish_scene_regeneration): the quote on
+        success, a full release on any failure — the confirmed price, never a
+        per-minute meter. A job it cannot claim is failed without running."""
+        from modules import scene_regenerate  # noqa: PLC0415 — only these jobs need it
+
+        job_id = job["id"]
+        if job.get("kind") != "repair":
+            return self._finish(job, "failed", "scene regeneration: not a repair job (nothing was run)")
+        if self.credits is None or not callable(getattr(self.credits, "scene_regen_start", None)):
+            return self._finish(job, "failed", "scene regeneration: this worker has no credits client to "
+                                               "claim its hold (nothing was run)")
+        try:
+            terms = self.credits.scene_regen_start(regen_id, job_id)
+        except credit_rules.CreditsUnavailable as e:
+            return self._finish(job, "failed", f"scene regeneration: credits unavailable ({e}) (nothing was run)")
+        if not terms:
+            return self._finish(job, "failed", "scene regeneration: its hold is not open or it already ended "
+                                               "(nothing was run)")
+        try:
+            argv = run_request.build_regenerate_args(channel_id, clean)
+            run_env = run_request.build_regenerate_env(terms, clean, self.env)
+        except run_request.InvalidRunRequest as e:
+            self._settle_regeneration(job, regen_id, ok=False, code="invalid_job", error=str(e))
+            return self._finish(job, "failed", f"scene regeneration refused (nothing was run): {e}")
+
+        outcome = self._execute(job, argv, run_env, channel_row)
+        if outcome in ("succeeded", "failed"):
+            # Charged only when the run exited 0, its own result says the new
+            # take is in place, AND the cut on disk is byte for byte the one
+            # that result names. Otherwise the previous take is put back
+            # first, so "failed, nothing charged" always means "unchanged".
+            verdict = scene_regenerate.settle_outcome(self.output_dir, str(terms.get("slug") or ""), regen_id,
+                                                      exited_ok=outcome == "succeeded")
+            self._settle_regeneration(job, regen_id, ok=verdict["ok"], code=verdict["code"],
+                                      error=verdict["error"], result=regeneration_summary(verdict["result"]))
+        # "released" (re-queued) keeps its hold and its provider tasks for the
+        # next attempt; "lost" belongs to whoever took the job.
+        return outcome
+
+    def _settle_regeneration(self, job: Mapping, regen_id: str, *, ok: bool, code: Optional[str],
+                             error=None, result: Optional[dict] = None) -> None:
+        """Never raises. If the database cannot be reached the regeneration
+        stays open and expire_scene_regenerations releases it later — the
+        person is never charged for an unconfirmed end."""
+        try:
+            out = self.credits.scene_regen_finish(regen_id, job["id"], ok=ok, error_code=code,
+                                                  error=scrub(str(error), self._secrets) if error else None,
+                                                  result=result)
+            logger.info("job %s: scene regeneration %s (%s)", job["id"],
+                        (out or {}).get("status", "unknown"), "captured the quote" if ok else "hold released")
+        except credit_rules.CreditsUnavailable as e:
+            logger.error("job %s: could not settle the scene regeneration (%s) — it is released by the "
+                         "expiry sweep", job["id"], e)
+
     def _open_credit_hold(self, job: Mapping, channel_id: str, clean: Mapping):
         api_ref = str(job.get("api_hold_ref") or "").strip()
         if api_ref:
@@ -717,6 +803,15 @@ class Worker:
                 logger.info("credits: released %d stale reservation(s)", int(n))
         except credit_rules.CreditsUnavailable as e:
             logger.info("credits: expiry sweep skipped (%s)", e)
+        # Scene regenerations (migration 0076) whose job ended without them.
+        expire_regens = getattr(self.credits, "scene_regen_expire", None)
+        if callable(expire_regens):
+            try:
+                n = expire_regens()
+                if n:
+                    logger.info("credits: released %d unfinished scene regeneration(s)", int(n))
+            except credit_rules.CreditsUnavailable as e:
+                logger.info("credits: scene regeneration sweep skipped (%s)", e)
         # Plans (migration 0034): expired credit lots. Separate, so a database
         # without 0034 still gets its holds swept.
         expire_lots = getattr(self.credits, "expire_lots", None)

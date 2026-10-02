@@ -369,6 +369,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Workflow apps (0073): tests/security/sec_workflows_0073.py.
     import sec_workflows_0073
     sec_workflows_0073.seed(conn, sc)
+    # Scene regeneration v2 (0076): tests/security/sec_scene_regen_0076.py.
+    import sec_scene_regen_0076
+    sec_scene_regen_0076.seed(conn, sc)
     # The comment inbox (0081): tests/security/sec_inbox_0081.py — comments through the worker's function.
     import sec_inbox_0081
     sec_inbox_0081.seed(conn, sc)
