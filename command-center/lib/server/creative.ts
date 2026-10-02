@@ -20,13 +20,12 @@ export function creativeDb(supabase: SupabaseClient): CreativeDb {
       const { data, error } = await supabase.from("creative_jobs").select(JOB_COLUMNS).eq("id", id).maybeSingle();
       return { data, error };
     },
-    async listJobs(orgId, limit) {
-      const { data, error } = await supabase
-        .from("creative_jobs")
-        .select(JOB_COLUMNS)
-        .eq("org_id", orgId)
-        .order("created_at", { ascending: false })
-        .limit(limit);
+    async listJobs(orgId, limit, capabilities) {
+      let query = supabase.from("creative_jobs").select(JOB_COLUMNS).eq("org_id", orgId);
+      // A Studio desk asks for its own tools: filtered in the query, so its newest
+      // jobs are not crowded out of the page by another desk's.
+      if (capabilities && capabilities.length > 0) query = query.in("capability", [...capabilities]);
+      const { data, error } = await query.order("created_at", { ascending: false }).limit(limit);
       return { data, error };
     },
   };
