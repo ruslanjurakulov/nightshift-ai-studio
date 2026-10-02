@@ -133,6 +133,12 @@ export function StoryboardReview({
   const router = useRouter();
   const [status, setStatus] = useState<StoryboardStatus>(storyboard.status);
   const [price, setPrice] = useState<StoryboardQuote>(quote);
+  // What the approval held for the render (0057 credits_held): the stored row,
+  // or the approve answer; null = none on record, never shown as 0.
+  const [hold, setHold] = useState<{ credits: number | null; included: boolean }>({
+    credits: storyboard.creditsHeld,
+    included: false,
+  });
   const [saved, setSaved] = useState<Saved>({
     revision: typeof storyboard.revision === "number" ? storyboard.revision : null,
     scenes: storyboard.scenes,
@@ -199,7 +205,25 @@ export function StoryboardReview({
         : status === "rendered"
           ? { state: "done", label: ts.statusRendered }
           : { state: "next", label: status === "discarded" ? ts.stepNotRendered : ts.statusUnknown };
-  const renderCredits = price.kind === "paid" ? price.credits : null;
+  // The Render step's figure is the price of what would render, or what was
+  // held for it — never a quote for something else: while scenes are edited
+  // and unsaved, the saved scenes' quote is not this render's price; once
+  // approved, the hold on record is (not today's quote).
+  const decided = status === "approved" || status === "rendered";
+  const renderFigure: { credits: number | null; words?: string; label: string; unknown: string } = decided
+    ? hold.included
+      ? { credits: null, words: ts.priceIncluded, label: ts.stepHeld, unknown: ts.heldUnknown }
+      : { credits: hold.credits, label: ts.stepHeld, unknown: ts.heldUnknown }
+    : waiting && dirty
+      ? { credits: null, words: ts.renderOnSave, label: ts.stepPrice, unknown: ts.renderOnSave }
+      : waiting
+        ? {
+            credits: price.kind === "paid" ? price.credits : null,
+            words: price.kind === "included" ? ts.priceIncluded : undefined,
+            label: ts.stepPrice,
+            unknown: ts.priceUnknown,
+          }
+        : { credits: null, label: ts.stepPrice, unknown: ts.priceUnknown };
 
   function register(key: string) {
     return (el: HTMLElement | null) => {
@@ -334,6 +358,12 @@ export function StoryboardReview({
     const { ok, body } = await post("approve", payload);
     setBusy(null);
     if (ok) {
+      const reserved = body?.credits_reserved;
+      setHold({
+        credits: typeof reserved === "number" && Number.isFinite(reserved) ? reserved : null,
+        // Approved without a price (an operator channel): nothing was held, by design.
+        included: price.kind === "included",
+      });
       setStatus("approved");
       setNotice(ts.approvedNote);
       router.refresh();
@@ -470,7 +500,7 @@ export function StoryboardReview({
                 totalSpoken={running[i] !== null ? fmt(ts.seconds, { n: running[i] as number }) : undefined}
                 priceSpoken={len !== null ? fmt(ts.seconds, { n: len }) : undefined}
                 priceLabel={ts.length}
-                totalLabel={ts.stepTotal}
+                totalLabel={ts.stepLengthTotal}
                 unknownPrice={ts.lengthOnSave}
                 locale={locale}
               >
@@ -573,14 +603,14 @@ export function StoryboardReview({
             title={ts.stepRender}
             state={renderStep.state}
             stateLabel={renderStep.label}
-            price={renderCredits}
-            total={renderCredits}
-            priceWords={price.kind === "included" ? ts.priceIncluded : undefined}
-            totalWords={price.kind === "included" ? ts.priceIncluded : undefined}
-            unit={renderCredits !== null ? creditUnit(renderCredits, locale, t.shell.creditUnit) : undefined}
-            priceLabel={ts.stepPrice}
-            totalLabel={ts.stepTotal}
-            unknownPrice={ts.priceUnknown}
+            price={renderFigure.credits}
+            total={renderFigure.credits}
+            priceWords={renderFigure.words}
+            totalWords={renderFigure.words}
+            unit={renderFigure.credits !== null ? creditUnit(renderFigure.credits, locale, t.shell.creditUnit) : undefined}
+            priceLabel={renderFigure.label}
+            totalLabel={ts.stepCreditsTotal}
+            unknownPrice={renderFigure.unknown}
             locale={locale}
           />
         </StepList>
