@@ -111,9 +111,15 @@ export function isPublicPath(pathname: string): boolean {
   return (PUBLIC_PATHS as readonly string[]).includes(normalize(pathname));
 }
 
+/** The sign-in page. */
+export const LOGIN_PATH = "/login";
+
 export function isLoginPath(pathname: string): boolean {
-  // Unchanged from the original gate, which matched the prefix.
-  return pathname.startsWith("/login");
+  // Exact, like every other public path (BR-H-001). The original gate matched
+  // the prefix, so `/loginx/providers` and `/login/providers` passed signed
+  // out and the router served them as the Providers screen of a channel
+  // called "loginx" or "login".
+  return normalize(pathname) === LOGIN_PATH;
 }
 
 export function isSignupPath(pathname: string): boolean {
