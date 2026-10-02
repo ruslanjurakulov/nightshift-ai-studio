@@ -14,7 +14,8 @@
  * pipeline's (modules/storyboard_review.py); keep the three in step.
  */
 
-import { fmt, type Dictionary } from "@/lib/i18n";
+import { fmt } from "@/lib/i18n/core";
+import type { Dictionary } from "@/lib/i18n";
 
 export const MAX_SCENES = 60;
 export const MAX_NARRATION = 4000;

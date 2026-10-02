@@ -32,6 +32,13 @@ vi.mock("@/lib/i18n/context", async () => {
     useI18n: () => ({ t: dictionaries[state.locale], locale: state.locale, fmt, setLocale: () => {} }),
   };
 });
+// Shared components on the public pages read the public slice the same way.
+vi.mock("@/lib/i18n/public-context", async () => {
+  const { dictionaries, fmt } = await import("../lib/i18n");
+  return {
+    usePublicI18n: () => ({ t: dictionaries[state.locale], locale: state.locale, fmt, setLocale: () => {} }),
+  };
+});
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }), usePathname: () => "/x/integrations" }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined, getAll: () => [] }), headers: async () => new Headers() }));
 vi.mock("@/lib/supabase/server", () => ({

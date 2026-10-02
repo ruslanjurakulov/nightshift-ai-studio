@@ -2890,7 +2890,7 @@ export const en = {
   },
   landing: {
     meta: {
-      title: "Nightshift — the AI studio for YouTube channels",
+      title: "Nightshift — autonomous studio for YouTube channels",
       description: "Turn a topic into a finished YouTube video — script, voice, visuals and edit — and make images, clips and voice-overs in one studio. The price is shown before every run, a failed run returns its credits, and nothing goes public without your approval.",
       ogAlt: "Nightshift — from a topic to a finished YouTube video, with your approval before anything goes public.",
     },
@@ -2906,7 +2906,7 @@ export const en = {
       close: "Close menu",
     },
     hero: {
-      eyebrow: "AI studio for YouTube channels",
+      eyebrow: "Autonomous studio for YouTube channels",
       title: "From a topic to a finished YouTube video.",
       lead: "Nightshift writes the script, voices it, makes the visuals and edits the video for your channel — then waits for your approval before anything reaches YouTube. You see the price before every run.",
       ctaPrimary: "Start free",
@@ -3082,7 +3082,7 @@ export const en = {
     notConfigured: "NOT CONFIGURED",
     contents: "Contents",
     translationNote: "This translation is provided for convenience. If it differs from the English version, the English version prevails.",
-    tagline: "Creative OS for YouTube creators and channels.",
+    tagline: "Autonomous studio for YouTube channels.",
     pricing: "Pricing",
   },
   pricing: {
@@ -3131,7 +3131,7 @@ export const en = {
     linkTerms: "Terms: credits and refunds",
     linkBuyerTerms: "Paddle Buyer Terms",
     linkPrivacy: "Privacy Policy",
-    ctaSignedOut: "Create a free account",
+    ctaSignedOut: "Start free",
     ctaSignedIn: "Open Credits",
     ctaNote: "Email sign-up, no card. You pay only when you pick a plan or a pack.",
     termsTitle: "Terms at a glance",

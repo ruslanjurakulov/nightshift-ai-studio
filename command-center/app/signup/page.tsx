@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/config";
-import { useI18n } from "@/lib/i18n/context";
-import { fmt } from "@/lib/i18n";
+import { usePublicI18n } from "@/lib/i18n/public-context";
+import { fmt } from "@/lib/i18n/core";
 import { AuthAlert, AuthField, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
 import { AUTH_CALLBACK_PATH, WELCOME_PATH } from "@/lib/public-paths";
 import {
@@ -28,7 +28,7 @@ import {
  */
 export default function SignupPage() {
   const router = useRouter();
-  const { t } = useI18n();
+  const { t } = usePublicI18n();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -94,7 +94,7 @@ export default function SignupPage() {
 
   if (sentTo) {
     return (
-      <AuthShell title={t.signup.checkTitle}>
+      <AuthShell title={t.signup.checkTitle} mode="signup">
         <p role="status" className="st-body mt-4 text-[var(--ns-text)]">
           {fmt(t.signup.checkBody, { email: sentTo })}
         </p>
@@ -121,78 +121,88 @@ export default function SignupPage() {
   const shownProblem = problem && problem !== "check_email" && problem !== "signed_in" ? messages[problem] : null;
 
   return (
-    <AuthShell title={t.signup.title} subtitle={t.signup.sub}>
+    <AuthShell title={t.signup.title} subtitle={t.signup.sub} mode="signup">
       {!isSupabaseConfigured && (
         <div className="mt-5">
-          <AuthAlert tone="warn">{t.site.auth.unavailable}</AuthAlert>
+          <AuthAlert tone="warn">{t.site.auth.unavailableSignup}</AuthAlert>
         </div>
       )}
 
-      <form onSubmit={onSubmit} noValidate className="mt-8 flex flex-col gap-4">
-        <AuthField
-          label={t.signup.email}
-          type="email"
-          autoComplete="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <AuthField
-          label={t.signup.password}
-          type="password"
-          autoComplete="new-password"
-          required
-          minLength={PASSWORD_MIN}
-          maxLength={PASSWORD_MAX}
-          hint={fmt(t.signup.passwordHint, { n: PASSWORD_MIN })}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <AuthField
-          label={t.signup.confirm}
-          type="password"
-          autoComplete="new-password"
-          required
-          maxLength={PASSWORD_MAX}
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-        />
-        <label className="mt-1 flex min-h-11 items-start gap-3 text-[14px] leading-snug text-[var(--ns-text-dim)]">
-          <input
-            type="checkbox"
+      <form onSubmit={onSubmit} noValidate className="mt-8">
+        <fieldset disabled={!isSupabaseConfigured} className="st-fieldset">
+          <AuthField
+            label={t.signup.email}
+            type="email"
+            autoComplete="email"
             required
-            checked={consent}
-            onChange={(e) => setConsent(e.target.checked)}
-            className="mt-0.5 size-5 shrink-0 accent-[var(--ns-amber)]"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
-          <span>
-            {t.signup.consentPre}{" "}
-            <Link href="/terms" target="_blank" className="underline decoration-[var(--ns-rule-strong)] underline-offset-4 text-[var(--ns-text)] hover:text-[var(--ns-amber-ink)]">
-              {t.signup.terms}
-            </Link>{" "}
-            {t.signup.consentAnd}{" "}
-            <Link href="/privacy" target="_blank" className="underline decoration-[var(--ns-rule-strong)] underline-offset-4 text-[var(--ns-text)] hover:text-[var(--ns-amber-ink)]">
-              {t.signup.privacy}
-            </Link>
-            {t.signup.consentPost}
-          </span>
-        </label>
-        {shownProblem && (
-          <AuthAlert tone="fail">
-            {shownProblem}
-            {problem === "already_registered" && (
-              <>
-                {" "}
-                <Link href="/login" className="underline underline-offset-4 text-[var(--ns-text)]">
-                  {t.signup.signIn}
-                </Link>
-              </>
-            )}
-          </AuthAlert>
-        )}
-        <AuthSubmit busy={busy} disabled={!isSupabaseConfigured}>
-          {busy ? t.signup.submitting : t.signup.submit}
-        </AuthSubmit>
+          <AuthField
+            label={t.signup.password}
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={PASSWORD_MIN}
+            maxLength={PASSWORD_MAX}
+            hint={fmt(t.signup.passwordHint, { n: PASSWORD_MIN })}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <AuthField
+            label={t.signup.confirm}
+            type="password"
+            autoComplete="new-password"
+            required
+            maxLength={PASSWORD_MAX}
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+          />
+          <label className="mt-1 flex min-h-11 items-start gap-3 text-[14px] leading-snug text-[var(--ns-text-dim)]">
+            <input
+              type="checkbox"
+              required
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+              className="mt-0.5 size-5 shrink-0 accent-[var(--ns-amber)]"
+            />
+            <span>
+              {t.signup.consentPre}{" "}
+              <Link
+                href="/terms"
+                target="_blank"
+                className="-my-[14px] inline-block py-[14px] underline decoration-[var(--ns-rule-strong)] underline-offset-4 text-[var(--ns-text)] hover:text-[var(--ns-amber-ink)]"
+              >
+                {t.signup.terms}
+              </Link>{" "}
+              {t.signup.consentAnd}{" "}
+              <Link
+                href="/privacy"
+                target="_blank"
+                className="-my-[14px] inline-block py-[14px] underline decoration-[var(--ns-rule-strong)] underline-offset-4 text-[var(--ns-text)] hover:text-[var(--ns-amber-ink)]"
+              >
+                {t.signup.privacy}
+              </Link>
+              {t.signup.consentPost}
+            </span>
+          </label>
+          {shownProblem && (
+            <AuthAlert tone="fail">
+              {shownProblem}
+              {problem === "already_registered" && (
+                <>
+                  {" "}
+                  <Link href="/login" className="underline underline-offset-4 text-[var(--ns-text)]">
+                    {t.signup.signIn}
+                  </Link>
+                </>
+              )}
+            </AuthAlert>
+          )}
+          <AuthSubmit busy={busy} disabled={!isSupabaseConfigured}>
+            {busy ? t.signup.submitting : t.signup.submit}
+          </AuthSubmit>
+        </fieldset>
       </form>
 
       <p className="st-small mt-8 flex flex-wrap items-center gap-x-2 border-t border-[var(--ns-rule)] pt-5">

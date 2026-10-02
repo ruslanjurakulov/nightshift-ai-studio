@@ -21,7 +21,8 @@
 import { percentile } from "@/lib/billing";
 import { DEFAULT_ORG_ID } from "@/lib/orgs";
 import type { VideoEconomics } from "@/lib/unitEconomics";
-import { fmt, type Dictionary } from "@/lib/i18n";
+import { fmt } from "@/lib/i18n/core";
+import type { Dictionary } from "@/lib/i18n";
 
 export const UNIT_VIDEO_MINUTE = "video_minute";
 export const UNIT_USD = "usd";

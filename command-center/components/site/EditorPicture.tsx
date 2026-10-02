@@ -9,7 +9,8 @@ const CLIPS = [
   { from: 6.2, to: 13.4, scene: "st-scene-b" },
   { from: 13.4, to: 20, scene: "st-scene-c" },
 ];
-const TEXT = { from: 1, to: 5.6 };
+// Long enough that "Samarkand, 1404" reads whole on a phone's lane too.
+const TEXT = { from: 0.6, to: 9.6 };
 const PLAYHEAD = 7.48;
 const pct = (s: number) => `${(s / LENGTH) * 100}%`;
 
@@ -30,7 +31,9 @@ export function EditorPicture({ t }: { t: Dictionary }) {
         <b>{e.title}</b>
         <span className="st-tag">{e.tag}</span>
       </div>
-      <div className="st-tl">
+      <div className="st-tl relative">
+        {/* The playhead's head row: its timecode lives here, above the ruler. */}
+        <div className="st-tl-head" />
         <div className="st-tl-ruler">
           <span />
           <div className="st-tl-ticks">
@@ -42,7 +45,7 @@ export function EditorPicture({ t }: { t: Dictionary }) {
           </div>
         </div>
 
-        <div className="relative">
+        <div>
           <div className="st-tl-track">
             <span className="st-tl-label">{e.tracks.video}</span>
             <div className="st-tl-lane">
@@ -79,14 +82,13 @@ export function EditorPicture({ t }: { t: Dictionary }) {
                     <rect key={i} x={i * 2} y={10 - h * 9} width="1.1" height={h * 18} fill="currentColor" opacity={i > 50 ? 0.9 - (i - 50) * 0.06 : 0.9} />
                   ))}
                 </svg>
-                <span className="st-wave-fade" />
               </div>
             </div>
           </div>
-          <div className="pointer-events-none absolute inset-y-0 left-[66px] right-0">
-            <div className="st-playhead" style={{ left: pct(PLAYHEAD) }}>
-              <span className="st-playhead-tc st-num">{formatTimecode(PLAYHEAD, "frames")}</span>
-            </div>
+        </div>
+        <div className="st-tl-overlay">
+          <div className="st-playhead" style={{ left: pct(PLAYHEAD) }}>
+            <span className="st-playhead-tc st-num">{formatTimecode(PLAYHEAD, "frames")}</span>
           </div>
         </div>
       </div>

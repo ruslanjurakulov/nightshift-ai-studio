@@ -25,7 +25,10 @@ export function SolutionView({ t, id, page }: { t: Dictionary; id: SolutionId; p
       <section aria-labelledby="solution-title" className="st-wrap st-hero">
         <div>
           <nav aria-label={s.breadcrumb} className="st-kicker flex flex-wrap items-center gap-2">
-            <Link href="/solutions" className="underline decoration-[var(--ns-rule-strong)] underline-offset-4 hover:text-[var(--ns-text)]">
+            <Link
+              href="/solutions"
+              className="inline-flex min-h-11 min-w-11 items-center underline decoration-[var(--ns-rule-strong)] underline-offset-4 hover:text-[var(--ns-text)]"
+            >
               {s.slug}
             </Link>
             <span aria-hidden>/</span>
@@ -60,9 +63,10 @@ export function SolutionView({ t, id, page }: { t: Dictionary; id: SolutionId; p
           <h2 id="what-title" className="sr-only">
             {s.whatLabel}
           </h2>
-          <ul className="mt-10 grid gap-x-10 md:grid-cols-2 lg:grid-cols-3">
+          {/* A ruled list, one row each: any count reads whole, with no empty cell. */}
+          <ul className="st-ruled mt-10">
             {page.what.map((w) => (
-              <li key={w.title} className="flex flex-col gap-2 border-t border-[var(--ns-rule)] py-6">
+              <li key={w.title}>
                 <h3 className="st-h3">{w.title}</h3>
                 <p className="st-body">{w.body}</p>
               </li>
@@ -101,7 +105,9 @@ export function SolutionView({ t, id, page }: { t: Dictionary; id: SolutionId; p
                 <span className="st-step-no st-num" aria-hidden>
                   {String(i + 1).padStart(2, "0")}
                 </span>
-                <h3 className="st-step-title">{step}</h3>
+                <h3 className="st-step-title" data-case="sentence">
+                  {step}
+                </h3>
               </li>
             ))}
           </ol>

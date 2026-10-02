@@ -1,8 +1,8 @@
 "use client";
 
 import { Check, Minus } from "lucide-react";
-import { fmt } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n/context";
+import { fmt } from "@/lib/i18n/core";
+import { usePublicI18n } from "@/lib/i18n/public-context";
 import { formatCredits } from "@/lib/credits";
 import { WELCOME_CREDITS } from "@/lib/pricing";
 import type { PlanMatrix as Matrix } from "@/lib/plans";
@@ -19,7 +19,7 @@ import { entitlementText } from "@/components/pricing/PlanMatrix";
  * itself never does — with the feature column pinned.
  */
 export function PlanCompare({ matrix, titleId }: { matrix: Matrix; titleId: string }) {
-  const { t, locale } = useI18n();
+  const { t, locale } = usePublicI18n();
   const p = t.plans;
   const rowLabel = (key: string) => (p.row as Record<string, string>)[key] ?? key;
   return (

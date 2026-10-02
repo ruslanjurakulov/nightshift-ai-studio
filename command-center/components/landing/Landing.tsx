@@ -1,19 +1,5 @@
 import Link from "next/link";
-import {
-  ArrowRight,
-  ArrowUpRight,
-  Clapperboard,
-  Film,
-  ImagePlus,
-  Library,
-  Lock,
-  Mic,
-  Play,
-  Scissors,
-  Wand2,
-  ZoomIn,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowRight, ArrowUpRight, Lock } from "lucide-react";
 import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
 import type { MoneyAnchor, PricingTeaser as PricingTeaserData, ShowcaseItem } from "@/lib/landing";
 import { WELCOME_CREDITS } from "@/lib/pricing";
@@ -29,17 +15,6 @@ import { Faq } from "@/components/landing/Faq";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 
-const TOOL_ICON: Record<string, LucideIcon> = {
-  image: ImagePlus,
-  video: Clapperboard,
-  voice: Mic,
-  edit: Wand2,
-  animate: Play,
-  upscale: ZoomIn,
-  cutout: Scissors,
-  styles: Library,
-  editor: Film,
-};
 
 /** Each rule's state, as the app would show it on its lamp. */
 const RULE_TONE: Record<string, LampTone> = { price: "ok", refund: "ok", approval: "run" };
@@ -210,18 +185,27 @@ function Studio({ t }: { t: Dictionary }) {
           <p className="st-lead">{s.lead}</p>
         </div>
         <div className="st-split">
-          <ul className="st-tools" aria-label={s.slug}>
-            {s.tools.map((tool) => {
-              const Icon = TOOL_ICON[tool.id] ?? ImagePlus;
+          {/* The tools as a patch list, one ruled row each, read like the
+              rundown: number, name, what it does, and how it is paid for. */}
+          <ol className="st-patch" aria-label={s.slug}>
+            {s.tools.map((tool, i) => {
+              // The editor and the style library spend nothing; every other
+              // tool is a generation, priced on its key before it runs.
+              const free = tool.id === "editor" || tool.id === "styles";
               return (
-                <li key={tool.id} className="st-tool">
-                  <Icon aria-hidden />
-                  <b>{tool.title}</b>
-                  <span>{tool.body}</span>
+                <li key={tool.id} className="st-patch-row">
+                  <span className="st-patch-no st-num" aria-hidden>
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <h3 className="st-patch-name">{tool.title}</h3>
+                  <p className="st-patch-body">{tool.body}</p>
+                  <span className="st-patch-cost" data-free={free ? "true" : undefined}>
+                    {free ? s.free : s.priced}
+                  </span>
                 </li>
               );
             })}
-          </ul>
+          </ol>
           <EditorPicture t={t} />
         </div>
       </div>

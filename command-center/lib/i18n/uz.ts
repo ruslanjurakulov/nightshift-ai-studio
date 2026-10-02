@@ -2881,7 +2881,7 @@ export const uz: Dictionary = {
   },
   landing: {
     meta: {
-      title: "Nightshift — YouTube kanallari uchun AI studiya",
+      title: "Nightshift — YouTube kanallari uchun avtonom studiya",
       description: "Mavzuni tayyor YouTube videoga aylantiring — ssenariy, ovoz, tasvir va montaj — hamda bitta studiyada rasm, klip va ovozlashtirish yarating. Narx har bir ishga tushirishdan oldin ko'rinadi, muvaffaqiyatsiz ish kreditlarni qaytaradi, sizning tasdig'ingizsiz hech narsa ommaga chiqmaydi.",
       ogAlt: "Nightshift — mavzudan tayyor YouTube videogacha, ommaga chiqishidan oldin sizning tasdig'ingiz bilan.",
     },
@@ -3073,7 +3073,7 @@ export const uz: Dictionary = {
     notConfigured: "SOZLANMAGAN",
     contents: "Mundarija",
     translationNote: "Ushbu tarjima qulaylik uchun berilgan. Ingliz tilidagi versiyadan farq qilsa, ingliz tilidagi versiya ustun turadi.",
-    tagline: "YouTube ijodkorlari va kanallari uchun kreativ OS.",
+    tagline: "YouTube kanallari uchun avtonom studiya.",
     pricing: "Narxlar",
   },
   pricing: {
@@ -3122,7 +3122,7 @@ export const uz: Dictionary = {
     linkTerms: "Shartlar: kreditlar va qaytarish",
     linkBuyerTerms: "Paddle xaridorlar shartlari",
     linkPrivacy: "Maxfiylik siyosati",
-    ctaSignedOut: "Bepul akkaunt ochish",
+    ctaSignedOut: "Bepul boshlash",
     ctaSignedIn: "Kreditlarni ochish",
     ctaNote: "Email orqali ro'yxatdan o'tish, kartasiz. Faqat tarif yoki paket tanlaganingizda to'laysiz.",
     termsTitle: "Shartlar qisqacha",

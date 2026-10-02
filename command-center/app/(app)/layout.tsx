@@ -26,6 +26,8 @@ import { planValue, readBillingSummary } from "@/lib/server/plans";
 import { accountPlan, type AccountPlan } from "@/lib/account";
 import type { CreditAccount } from "@/lib/credits";
 import { ShellProvider } from "@/components/shell/ShellContext";
+import { AppProviders } from "@/components/AppProviders";
+import { getLocale } from "@/lib/i18n/server";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // No backend means no account and nothing to show. A built site then answers
@@ -121,35 +123,37 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   );
 
   return (
-    <NavigationProvider channelNames={channelNames}>
-      <ShellProvider operator={operator}>
-        <div className="app-shell atmos relative flex min-h-dvh flex-col">
-          <NeuralBackdrop dim />
-          {operator ? (
-            <div className="relative z-10 flex min-h-dvh flex-col">
-              {header}
-              <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-                <SideNav operator />
-                <main className="pad-page min-w-0 flex-1">{children}</main>
-              </div>
-            </div>
-          ) : (
-            // A customer's frame, as creative apps draw it: the sidebar full
-            // height on the left, the top bar and the page to its right. On a
-            // phone the sidebar gives way to the bottom tab bar, and the page
-            // keeps its end above it.
-            <div className="relative z-10 flex min-h-dvh">
-              <SideNav email={email} plan={plan} />
-              <div className="flex min-w-0 flex-1 flex-col">
+    <AppProviders locale={await getLocale()}>
+      <NavigationProvider channelNames={channelNames}>
+        <ShellProvider operator={operator}>
+          <div className="app-shell atmos relative flex min-h-dvh flex-col">
+            <NeuralBackdrop dim />
+            {operator ? (
+              <div className="relative z-10 flex min-h-dvh flex-col">
                 {header}
-                <main className="pad-page min-w-0 flex-1 pb-24 lg:pb-10">{children}</main>
+                <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+                  <SideNav operator />
+                  <main className="pad-page min-w-0 flex-1">{children}</main>
+                </div>
               </div>
-            </div>
-          )}
-          <CommandPalette scope={scope} operator={operator} />
-          <ScrollToTop />
-        </div>
-      </ShellProvider>
-    </NavigationProvider>
+            ) : (
+              // A customer's frame, as creative apps draw it: the sidebar full
+              // height on the left, the top bar and the page to its right. On a
+              // phone the sidebar gives way to the bottom tab bar, and the page
+              // keeps its end above it.
+              <div className="relative z-10 flex min-h-dvh">
+                <SideNav email={email} plan={plan} />
+                <div className="flex min-w-0 flex-1 flex-col">
+                  {header}
+                  <main className="pad-page min-w-0 flex-1 pb-24 lg:pb-10">{children}</main>
+                </div>
+              </div>
+            )}
+            <CommandPalette scope={scope} operator={operator} />
+            <ScrollToTop />
+          </div>
+        </ShellProvider>
+      </NavigationProvider>
+    </AppProviders>
   );
 }

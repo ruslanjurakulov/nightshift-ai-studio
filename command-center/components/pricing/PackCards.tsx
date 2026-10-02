@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fmt } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n/context";
+import { fmt } from "@/lib/i18n/core";
+import { usePublicI18n } from "@/lib/i18n/public-context";
 import { formatCredits } from "@/lib/credits";
 import { packMinutes, packPrice, type Pricing, type PricingPack } from "@/lib/pricing";
 import { ensurePaddle, previewPrices } from "@/lib/paddle-client";
@@ -28,7 +28,7 @@ export function PackCards({
   /** Today's generation prices; when known, "≈ N images · M videos" replaces the minutes line. */
   rates?: GenerationRates | null;
 }) {
-  const { t, locale } = useI18n();
+  const { t, locale } = usePublicI18n();
   const p = t.pricing;
   const [preview, setPreview] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(Boolean(paddle));

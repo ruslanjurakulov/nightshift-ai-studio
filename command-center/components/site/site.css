@@ -20,6 +20,12 @@
   --st-max: 1240px;
   --st-gutter: 16px;
   --st-section: 72px;
+  /* The lit key: amber with ink legend in both themes — the identity's one
+     signature, kept on the proof sheet too. Only the page's CTA uses it;
+     drawn controls inside illustrations are outlined (see .st-fake-key). */
+  --st-lit-bg: var(--ns-amber);
+  --st-lit-fg: var(--ns-on-amber);
+  --st-lit-edge: color-mix(in srgb, var(--ns-amber-ink) 55%, transparent);
   background: var(--ns-ground);
   color: var(--ns-text);
 }
@@ -140,8 +146,8 @@ html:has(.st) { scroll-padding-top: 80px; }
 }
 
 /* ── Keys (buttons and button-like links) ─────────────────────────────────
-   The primary key is the CTA token: amber with ink legend in the control
-   room, an ink slab with paper legend on the proof sheet. One per view. */
+   The primary key is the lit key: amber with an ink legend, in both themes.
+   One per view; everything else is a quiet key or a link. */
 .st-key {
   display: inline-flex;
   align-items: center;
@@ -150,9 +156,9 @@ html:has(.st) { scroll-padding-top: 80px; }
   min-height: 50px;
   padding: 0 22px;
   border-radius: var(--ns-r-key);
-  border: 1px solid transparent;
-  background: var(--ns-cta-bg);
-  color: var(--ns-cta-fg);
+  border: 1px solid var(--st-lit-edge);
+  background: var(--st-lit-bg);
+  color: var(--st-lit-fg);
   font-family: var(--font-display);
   font-size: 18px;
   font-weight: 750;
@@ -241,8 +247,10 @@ html:has(.st) { scroll-padding-top: 80px; }
 .st-nav a {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   min-height: 44px;
+  min-width: 44px;
   padding: 0 12px;
   border-radius: var(--ns-r-key);
   font-family: var(--font-display);
@@ -312,6 +320,12 @@ html:has(.st) { scroll-padding-top: 80px; }
   text-transform: uppercase;
 }
 .st-menu a:hover { background: var(--ns-hover); }
+.st-menu-scrim {
+  position: fixed;
+  inset: 64px 0 0;
+  z-index: 45;
+  background: var(--ns-scrim);
+}
 .st-menu a[aria-current="page"] { background: var(--ns-select); }
 
 /* ── Hero ───────────────────────────────────────────────────────────────── */
@@ -393,14 +407,14 @@ html:has(.st) { scroll-padding-top: 80px; }
 .st-rows { list-style: none; margin: 0; padding: 0; }
 .st-row {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   gap: 4px 12px;
   align-items: start;
   padding: 13px 16px;
   border-bottom: 1px solid var(--ns-rule);
 }
 @media (min-width: 480px) {
-  .st-row { grid-template-columns: 52px minmax(0, 1fr) auto; }
+  .st-row { grid-template-columns: 28px minmax(0, 1fr) auto; }
 }
 .st-row-time { padding-top: 3px; font-size: 12px; color: var(--ns-text-dim); }
 .st-row-name {
@@ -444,7 +458,17 @@ html:has(.st) { scroll-padding-top: 80px; }
   border: 1px solid var(--ns-rule-strong);
   color: var(--ns-text);
 }
-.st-fake-key[data-lit="true"] { background: var(--ns-cta-bg); color: var(--ns-cta-fg); border-color: transparent; }
+/* The drawn "lit" key is outlined with a lamp, never filled: the page's own
+   CTA is the only filled key in any view. */
+.st-fake-key[data-lit="true"] { border-color: var(--ns-amber-ink); color: var(--ns-text); }
+.st-fake-key[data-lit="true"]::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ns-amber);
+  box-shadow: 0 0 0 3px var(--ns-select);
+}
 .st-fake-key svg { width: 15px; height: 15px; }
 
 /* ── Rules: three columns split by hairlines, not three cards ─────────── */
@@ -523,6 +547,27 @@ html:has(.st) { scroll-padding-top: 80px; }
   text-transform: uppercase;
   line-height: 1.05;
 }
+/* A whole sentence as a step reads in sentence case, not engraved caps. */
+.st-step-title[data-case="sentence"] {
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.35;
+  text-wrap: pretty;
+}
+h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
+.st-ruled { list-style: none; margin-left: 0; margin-right: 0; padding: 0; border-top: 1px solid var(--ns-rule-strong); }
+.st-ruled > li {
+  display: grid;
+  gap: 8px 40px;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--ns-rule);
+}
+@media (min-width: 900px) {
+  .st-ruled > li { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: baseline; }
+}
 .st-step p { grid-column: 2; font-size: 14.5px; line-height: 1.55; color: var(--ns-text-dim); }
 @media (min-width: 1100px) { .st-step p { grid-column: 1; } }
 .st-step-lamp { grid-column: 2; margin-top: 2px; }
@@ -537,27 +582,43 @@ html:has(.st) { scroll-padding-top: 80px; }
 @media (min-width: 1024px) {
   .st-split { grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr); gap: 56px; align-items: start; }
 }
-.st-tools {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.st-patch { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ns-rule-strong); }
+.st-patch-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 8px;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 2px 14px;
+  align-items: baseline;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ns-rule);
 }
-.st-tool {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-height: 112px;
-  padding: 14px;
-  border-radius: var(--ns-r-key);
-  border: 1px solid var(--ns-rule-strong);
-  background: var(--ns-key);
+.st-patch-no { grid-row: 1 / span 2; font-size: 12px; color: var(--ns-text-dim); }
+.st-patch-name {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.1;
 }
-.st-tool svg { width: 20px; height: 20px; color: var(--ns-text-dim); }
-.st-tool b { margin-top: auto; font-family: var(--font-display); font-size: 18px; font-weight: 750; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.05; }
-.st-tool span { font-size: 13px; line-height: 1.35; color: var(--ns-text-dim); }
+.st-patch-body { grid-column: 2; font-size: 14.5px; line-height: 1.4; color: var(--ns-text-dim); }
+.st-patch-cost {
+  grid-column: 3;
+  grid-row: 1;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ns-text-dim);
+  white-space: nowrap;
+}
+.st-patch-cost[data-free="true"] { color: var(--ns-go); }
+@media (min-width: 640px) {
+  .st-patch-row { grid-template-columns: 32px minmax(0, 9.5rem) minmax(0, 1fr) auto; align-items: baseline; padding: 13px 0; }
+  .st-patch-no { grid-row: auto; }
+  .st-patch-body { grid-column: 3; }
+  .st-patch-cost { grid-column: 4; }
+}
 
 .st-panel {
   background: var(--ns-console);
@@ -575,7 +636,17 @@ html:has(.st) { scroll-padding-top: 80px; }
 }
 .st-panel-head b { font-family: var(--font-display); font-size: 15px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
 
-.st-tl { padding: 12px 16px 18px; }
+.st-tl { padding: 10px 16px 18px; }
+.st-tl-head { height: 22px; margin-bottom: 2px; }
+/* Covers the lanes only (not the label column): from the head row down. */
+.st-tl-overlay {
+  position: absolute;
+  top: 10px;
+  bottom: 18px;
+  left: calc(16px + 56px + 10px);
+  right: 16px;
+  pointer-events: none;
+}
 .st-tl-ruler {
   position: relative;
   display: grid;
@@ -667,6 +738,7 @@ html:has(.st) { scroll-padding-top: 80px; }
   white-space: nowrap;
   overflow: hidden;
 }
+@media (max-width: 479px) { .st-textclip { padding: 0 6px; font-size: 11px; } }
 .st-wave {
   position: absolute;
   inset: 0;
@@ -676,25 +748,6 @@ html:has(.st) { scroll-padding-top: 80px; }
   overflow: hidden;
 }
 .st-wave svg { position: absolute; inset: 3px 6px; width: calc(100% - 12px); height: calc(100% - 6px); color: var(--ns-text-dim); }
-.st-wave-fade {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
-  width: 22%;
-  border-left: 1px dashed var(--ns-rule-strong);
-  font-family: var(--font-display);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ns-text-dim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--ns-console);
-  clip-path: polygon(0 0, 100% 100%, 0 100%);
-}
 .st-playhead {
   position: absolute;
   top: 0;
@@ -703,15 +756,20 @@ html:has(.st) { scroll-padding-top: 80px; }
   background: var(--ns-amber);
   pointer-events: none;
 }
+/* The playhead's head and its timecode ride a row of their own above the
+   ruler, so they never sit on a clip's edge print or a tick label. */
 .st-playhead-tc {
   position: absolute;
-  top: -2px;
-  left: 4px;
-  padding: 1px 5px;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 6px;
   border-radius: var(--ns-r-chip);
-  background: var(--ns-amber);
-  color: var(--ns-on-amber);
+  border: 1px solid var(--ns-amber-ink);
+  background: var(--ns-console);
+  color: var(--ns-amber-ink);
   font-size: 10.5px;
+  line-height: 1.3;
   white-space: nowrap;
 }
 
@@ -983,7 +1041,7 @@ html:has(.st) { scroll-padding-top: 80px; }
 .st-footer nav a {
   display: flex;
   align-items: center;
-  min-height: 40px;
+  min-height: 44px;
   font-size: 14.5px;
   color: var(--ns-text);
 }
@@ -1039,6 +1097,7 @@ html:has(.st) { scroll-padding-top: 80px; }
   color: var(--ns-text-dim);
 }
 .st-field input {
+  height: 48px;
   min-height: 48px;
   padding: 0 14px;
   border-radius: var(--ns-r-key);
@@ -1054,6 +1113,11 @@ html:has(.st) { scroll-padding-top: 80px; }
   box-shadow: 0 0 0 1px var(--ns-focus);
 }
 .st-field small { font-size: 13px; color: var(--ns-text-dim); }
+/* The form's fields as one group: disabled together when sign-in is off. */
+.st-fieldset { display: flex; flex-direction: column; gap: 16px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.st-fieldset:disabled .st-field input,
+.st-fieldset:disabled input[type="checkbox"] { opacity: 0.55; cursor: not-allowed; }
+.st-fieldset:disabled .st-field > span:first-child { opacity: 0.7; }
 .st-alert {
   display: flex;
   gap: 10px;
@@ -1118,6 +1182,36 @@ html:has(.st) { scroll-padding-top: 80px; }
 }
 
 /* Drawn copies of the Studio's segmented keys and style chip (illustrations only). */
+.st-fake-generate {
+  display: flex;
+  align-items: stretch;
+  min-height: 52px;
+  overflow: hidden;
+  border-radius: var(--ns-r-key);
+  border: 1px solid var(--ns-amber-ink);
+  background: var(--ns-key);
+}
+.st-fake-generate-word {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.st-fake-generate-price {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-left: 1px solid var(--ns-rule);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ns-text-dim);
+}
 .st-fake-seg {
   display: inline-flex;
   padding: 2px;
@@ -1134,7 +1228,7 @@ html:has(.st) { scroll-padding-top: 80px; }
   font-size: 13px;
   color: var(--ns-text-dim);
 }
-.st-fake-seg > span[data-on="true"] { color: var(--ns-cta-fg); background: var(--ns-cta-bg); }
+.st-fake-seg > span[data-on="true"] { color: var(--ns-text); background: var(--ns-key-hi); box-shadow: inset 0 0 0 1px var(--ns-rule-strong); }
 .st-fake-chip {
   display: inline-flex;
   align-items: center;

@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { fmt } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n/context";
+import { fmt } from "@/lib/i18n/core";
+import { usePublicI18n } from "@/lib/i18n/public-context";
 import { formatCredits } from "@/lib/credits";
 import { WELCOME_CREDITS } from "@/lib/pricing";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -22,23 +22,27 @@ import "@/components/site/site.css";
 export function AuthShell({
   title,
   subtitle,
+  mode = "signin",
   children,
 }: {
   title: string;
   subtitle?: string;
+  /** Which form this frames, for the house rules' heading. */
+  mode?: "signin" | "signup";
   children: React.ReactNode;
 }) {
-  const { t, locale } = useI18n();
+  const { t, locale } = usePublicI18n();
   const a = t.site.auth;
+  const asideTitle = mode === "signup" ? a.asideTitleSignup : a.asideTitle;
   return (
     <div className="st st-auth">
-      <aside className="st-auth-aside" aria-label={a.asideTitle}>
+      <aside className="st-auth-aside" aria-label={asideTitle}>
         <Link href="/" className="st-brand self-start">
           <BrandMark />
           {t.brand.name}
         </Link>
         <div className="flex flex-col gap-8">
-          <p className="st-h2 max-w-[16ch]">{a.asideTitle}</p>
+          <p className="st-h2 max-w-[16ch]">{asideTitle}</p>
           <ul className="st-ledger max-w-[44ch]">
             {a.asideItems.map((line) => (
               <li key={line} className="text-[16px]">
@@ -78,7 +82,7 @@ export function AuthShell({
           {subtitle && <p className="st-body mt-4">{subtitle}</p>}
           {children}
           {/* On a phone the house rules sit under the form instead of beside it. */}
-          <ul className="st-ledger mt-10 lg:hidden" aria-label={a.asideTitle}>
+          <ul className="st-ledger mt-10 lg:hidden" aria-label={asideTitle}>
             {a.asideItems.map((line) => (
               <li key={line}>
                 <span aria-hidden className="ns-lamp" data-tone="ok" />

@@ -19,7 +19,8 @@ function rowState(id: string): RowState {
  *
  * An illustration, labelled as one ("Example run"), and a single image to
  * assistive tech: its description is the figure's label, and nothing in it
- * can be pressed. The times are a log's clock, not a promise of speed.
+ * can be pressed. Its rows carry cue numbers, not times: there is no
+ * measured duration to show, so none is implied.
  */
 export function Rundown({ t }: { t: Dictionary }) {
   const r = t.site.rundown;
@@ -37,14 +38,11 @@ export function Rundown({ t }: { t: Dictionary }) {
           const state = rowState(row.id);
           return (
             <li key={row.id} className="st-row" data-state={state}>
-              <span className="st-row-time st-num">{row.time ?? "--:--"}</span>
+              {/* The cue number, as a broadcast rundown numbers its items. No
+                  clock: a time beside each step would read as a speed nobody measured. */}
+              <span className="st-row-time st-num">{String(i + 1).padStart(2, "0")}</span>
               <div className="min-w-0">
-                <div className="st-row-name">
-                  <span className="st-num mr-2 text-[12px] font-normal tracking-normal text-[var(--ns-text-dim)]">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  {row.name}
-                </div>
+                <div className="st-row-name">{row.name}</div>
                 <div className="st-row-detail">{row.detail}</div>
               </div>
               <span className="st-row-state">

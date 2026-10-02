@@ -1,7 +1,7 @@
 "use client";
 
-import { useI18n } from "@/lib/i18n/context";
-import { fmt } from "@/lib/i18n";
+import { usePublicI18n } from "@/lib/i18n/public-context";
+import { fmt } from "@/lib/i18n/core";
 import { creditEquivalents, type GenerationRates } from "@/lib/plans";
 
 type Forms = { one: string; few: string; many: string; other: string };
@@ -32,7 +32,7 @@ export function shortDate(iso: string | null, locale: string): string {
  * can be computed: no equivalent is better than an invented one.
  */
 export function Equivalents({ credits, rates, className = "" }: { credits: number; rates: GenerationRates | null; className?: string }) {
-  const { t, locale } = useI18n();
+  const { t, locale } = usePublicI18n();
   const eq = creditEquivalents(credits, rates);
   if (!eq) return null;
   const e = t.creditsPage.eq;

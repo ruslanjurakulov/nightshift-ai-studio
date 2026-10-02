@@ -2,8 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { Martian_Mono, Sofia_Sans, Sofia_Sans_Extra_Condensed } from "next/font/google";
 import "./globals.css";
 import { getLocale } from "@/lib/i18n/server";
-import { I18nProvider } from "@/lib/i18n/context";
-import { ToastProvider } from "@/components/feedback/ToastProvider";
+import { getDictionaryFor } from "@/lib/i18n";
+import { publicDictionary } from "@/lib/i18n/public";
+import { PublicI18nProvider } from "@/lib/i18n/public-context";
 import { NO_FLASH_SCRIPT } from "@/lib/theme";
 
 export const metadata: Metadata = {
@@ -60,9 +61,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
       </head>
       <body>
-        <I18nProvider locale={locale}>
-          <ToastProvider>{children}</ToastProvider>
-        </I18nProvider>
+        {/* Only the public slice of the dictionary reaches the browser here.
+            The app's layouts mount the full I18nProvider and the toasts
+            (app/(app)/layout.tsx, app/welcome/layout.tsx). */}
+        <PublicI18nProvider locale={locale} t={publicDictionary(getDictionaryFor(locale))}>
+          {children}
+        </PublicI18nProvider>
       </body>
     </html>
   );

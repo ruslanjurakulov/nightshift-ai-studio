@@ -33,7 +33,8 @@ import {
 } from "@/lib/creative/operations";
 import { VOICES } from "@/lib/ttsModels";
 import { formatCredits } from "@/lib/credits";
-import { fmt, type Dictionary } from "@/lib/i18n";
+import { fmt } from "@/lib/i18n/core";
+import type { Dictionary } from "@/lib/i18n";
 
 /**
  * The Studio's make-and-edit tools (templates and Home's quick tools start

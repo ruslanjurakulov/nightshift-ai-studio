@@ -1,7 +1,7 @@
 "use client";
 
-import { useI18n } from "@/lib/i18n/context";
-import { fmt } from "@/lib/i18n";
+import { usePublicI18n } from "@/lib/i18n/public-context";
+import { fmt } from "@/lib/i18n/core";
 import { AuthShell } from "@/components/auth/AuthShell";
 
 /**
@@ -10,7 +10,7 @@ import { AuthShell } from "@/components/auth/AuthShell";
  * turns a pending sign-in into a session.
  */
 export function ConfirmSignIn({ email, csrf, next }: { email: string; csrf: string; next: string }) {
-  const { t } = useI18n();
+  const { t } = usePublicI18n();
   const s = t.signup;
   return (
     <AuthShell title={s.confirmTitle} subtitle={fmt(s.confirmBody, { email })}>

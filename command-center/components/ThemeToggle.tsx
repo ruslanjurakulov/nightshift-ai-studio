@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { applyTheme, resolvedTheme, type Theme } from "@/lib/theme";
-import { useI18n } from "@/lib/i18n/context";
+import { usePublicI18n } from "@/lib/i18n/public-context";
 
 /**
  * Dark / light toggle. The theme is applied to <html> before paint by the
@@ -10,7 +10,7 @@ import { useI18n } from "@/lib/i18n/context";
  * hydration mismatch) and flips it, persisting the choice.
  */
 export function ThemeToggle({ showLabel = false }: { showLabel?: boolean } = {}) {
-  const { t } = useI18n();
+  const { t } = usePublicI18n();
   const [theme, setTheme] = useState<Theme | null>(null);
 
   useEffect(() => {

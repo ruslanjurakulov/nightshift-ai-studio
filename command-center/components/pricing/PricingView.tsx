@@ -4,7 +4,7 @@ import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
 import { formatCredits } from "@/lib/credits";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import { ALL_CHANNELS_SLUG } from "@/lib/channels";
-import { WELCOME_CREDITS, type CreditRates, type Pricing } from "@/lib/pricing";
+import type { CreditRates, Pricing } from "@/lib/pricing";
 import { plansOnSale, type GenerationRates, type PlanMatrix as Matrix } from "@/lib/plans";
 import { PackCards } from "@/components/pricing/PackCards";
 import { PlanMatrix } from "@/components/pricing/PlanMatrix";

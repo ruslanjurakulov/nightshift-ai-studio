@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, Minus } from "lucide-react";
-import { fmt } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n/context";
+import { fmt } from "@/lib/i18n/core";
+import { usePublicI18n } from "@/lib/i18n/public-context";
 import { formatCredits } from "@/lib/credits";
 import { packMinutes, WELCOME_CREDITS } from "@/lib/pricing";
 import {
@@ -17,7 +17,7 @@ import {
 import { Equivalents } from "@/components/credits/Equivalents";
 import { ensurePaddle, previewPrices } from "@/lib/paddle-client";
 
-type Dict = ReturnType<typeof useI18n>["t"];
+type Dict = ReturnType<typeof usePublicI18n>["t"];
 
 /** How one entitlement reads in a cell. Unknown keys fall back to the raw value. */
 export function entitlementText(key: string, type: EntitlementType, v: EntitlementValue, t: Dict): string {
@@ -54,7 +54,7 @@ export function PlanMatrix({
   signedIn: boolean;
   subscribeHref: string;
 }) {
-  const { t, locale } = useI18n();
+  const { t, locale } = usePublicI18n();
   const p = t.plans;
   const [preview, setPreview] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(Boolean(matrix.paddle));

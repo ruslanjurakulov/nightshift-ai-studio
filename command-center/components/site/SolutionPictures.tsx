@@ -1,4 +1,3 @@
-import { Play } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import { ASPECT_RATIOS } from "@/lib/creative/studio";
 
@@ -44,14 +43,13 @@ export function ComposerPicture({ t }: { t: Dictionary }) {
             </span>
           </div>
         </div>
-        <span className="flex min-h-[52px] items-stretch overflow-hidden rounded-[var(--ns-r-key)] bg-[var(--ns-cta-bg)] text-[var(--ns-cta-fg)]">
-          <span className="flex flex-1 items-center gap-2 px-4 font-[family-name:var(--font-display)] text-[19px] font-[750] uppercase tracking-[0.07em]">
-            <Play className="size-4" aria-hidden />
+        {/* Drawn outlined with its lamp: the page's own CTA is the only filled key in view. */}
+        <span className="st-fake-generate">
+          <span className="st-fake-generate-word">
+            <span aria-hidden className="ns-lamp" data-tone="run" />
             {c.generate}
           </span>
-          <span className="flex items-center border-l border-[color-mix(in_srgb,var(--ns-cta-fg)_30%,transparent)] px-4 text-[13px] font-semibold text-[var(--ns-cta-price)]">
-            {c.price}
-          </span>
+          <span className="st-fake-generate-price">{c.price}</span>
         </span>
       </div>
     </figure>
