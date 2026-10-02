@@ -87,7 +87,7 @@ describe("public landing page", () => {
     const tools = screen.getByRole("list", { name: t.site.studio.slug });
     expect(within(tools).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(t.site.studio.tools.map((x) => x.title));
     // Each row says how it is paid for: the editor and the style library spend nothing.
-    const cost = within(tools).getAllByRole("listitem").map((li) => li.querySelector(".st-patch-cost")?.textContent);
+    const cost = within(tools).getAllByRole("listitem").map((li) => li.querySelector(".st-patch-cost, .sr-only")?.textContent);
     expect(cost).toEqual(t.site.studio.tools.map((x) => (x.id === "editor" || x.id === "styles" ? t.site.studio.free : t.site.studio.priced)));
     expect(studio.querySelector("img")).toBeNull();
     expect(within(studio).getByRole("img", { name: t.site.studio.editor.figure })).toBeTruthy();

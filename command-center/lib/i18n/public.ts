@@ -26,6 +26,8 @@ export type PublicDictionary = {
   };
   signup: Dictionary["signup"];
   auth: Pick<Dictionary["auth"], "email" | "password" | "signIn" | "signingIn">;
+  /** The error screen (components/feedback/ErrorScreen), shown by app/error.tsx on any page. */
+  ux: Pick<Dictionary["ux"], "errorTitle" | "errorBody" | "errorRetry" | "errorHome" | "errorRef">;
 };
 
 export function publicDictionary(t: Dictionary): PublicDictionary {
@@ -41,5 +43,12 @@ export function publicDictionary(t: Dictionary): PublicDictionary {
     site: { pricingTeaser: { credits: t.site.pricingTeaser.credits }, auth: t.site.auth },
     signup: t.signup,
     auth: { email: t.auth.email, password: t.auth.password, signIn: t.auth.signIn, signingIn: t.auth.signingIn },
+    ux: {
+      errorTitle: t.ux.errorTitle,
+      errorBody: t.ux.errorBody,
+      errorRetry: t.ux.errorRetry,
+      errorHome: t.ux.errorHome,
+      errorRef: t.ux.errorRef,
+    },
   };
 }

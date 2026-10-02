@@ -41,7 +41,7 @@ export function MoneyAnchor({
           <dt>{a.packLabel}</dt>
           <dd>
             {anchor.pack.kind === "priced" ? (
-              <span className="st-num st-anchor-money">
+              <span className="st-anchor-money">
                 {fmt(a.packValue, { price: anchor.pack.price, n: formatCredits(anchor.pack.credits, locale) })}
               </span>
             ) : anchor.pack.kind === "checkout" ? (
@@ -63,7 +63,7 @@ export function MoneyAnchor({
           <dd>
             {anchor.api ? (
               <>
-                <span className="st-num st-anchor-money">
+                <span className="st-anchor-money">
                   {fmt(a.apiValue, { perMinute: formatUsd(anchor.api.perMinuteCents, locale) })}
                 </span>
                 {anchor.api.minimumCents !== null && (
@@ -80,7 +80,7 @@ export function MoneyAnchor({
         <div>
           <dt>{a.freeLabel}</dt>
           <dd>
-            <span className="st-num st-anchor-money">
+            <span className="st-anchor-money">
               {fmt(a.freeValue, { n: formatCredits(WELCOME_CREDITS, locale) })}
             </span>
           </dd>

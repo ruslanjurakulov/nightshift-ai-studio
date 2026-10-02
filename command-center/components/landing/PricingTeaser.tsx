@@ -97,7 +97,6 @@ export function PricingTeaser({
                     ),
                   )}
                 </ul>
-                {teaser.kind === "announced" && <p className="st-small border-t border-[var(--ns-rule)] px-4 py-3">{p.sizesBody}</p>}
               </>
             )}
             <div className="border-t border-[var(--ns-rule)] px-4 py-2">

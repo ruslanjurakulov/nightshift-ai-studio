@@ -96,7 +96,7 @@ export function PricingView({
     <div>
       <section aria-labelledby="pricing-title" className="st-wrap st-hero">
         <div>
-          <p className="st-kicker">{p.eyebrow}</p>
+          <p className="st-kicker">{showPlans ? p.eyebrow : pp.eyebrowNoPlans}</p>
           <h1 id="pricing-title" className="st-h1 mt-5">
             {p.title}
           </h1>
@@ -133,7 +133,14 @@ export function PricingView({
               <div key={row.id}>
                 <dt className={row.id === "return" ? "text-[var(--ns-go)]" : undefined}>{row.word}</dt>
                 <dd>
-                  <code>{row.formula}</code>
+                  {/* One equation per line: "failed → return = hold" never breaks mid-way. */}
+                  <code>
+                    {row.formula.split(/;\s*/).map((clause) => (
+                      <span key={clause} className="st-formula-clause">
+                        {clause}
+                      </span>
+                    ))}
+                  </code>
                   <p className="st-small">{row.body}</p>
                 </dd>
               </div>

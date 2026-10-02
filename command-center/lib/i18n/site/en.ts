@@ -171,6 +171,7 @@ export const siteEn = {
     freeValue: "{n} credits, once. No card.",
   },
   pricingPage: {
+    eyebrowNoPlans: "Credits and top-ups",
     mathSlug: "Credits math",
     mathTitle: "How a price becomes a charge.",
     mathLead: "The same four steps for a video run and a Studio generation. The price of each is on the key you press, before anything starts.",

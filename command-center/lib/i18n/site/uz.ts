@@ -164,6 +164,7 @@ export const siteUz: SiteDictionary = {
     freeValue: "{n} kredit, bir marta. Kartasiz.",
   },
   pricingPage: {
+    eyebrowNoPlans: "Kreditlar va toʻldirishlar",
     mathSlug: "Kredit hisobi",
     mathTitle: "Narx qanday qilib yechimga aylanadi.",
     mathLead: "Video uchun ham, Studiyadagi generatsiya uchun ham bir xil toʻrt qadam. Narxning oʻzi — boshlanishdan oldin bosadigan tugmangizda.",

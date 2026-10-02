@@ -11,7 +11,9 @@ const CLIPS = [
 ];
 // Long enough that "Samarkand, 1404" reads whole on a phone's lane too.
 const TEXT = { from: 0.6, to: 9.6 };
-const PLAYHEAD = 7.48;
+// Late in the second clip: clear of its edge print, of the 0:10 tick label and
+// of the third clip, at every width.
+const PLAYHEAD = 12.6;
 const pct = (s: number) => `${(s / LENGTH) * 100}%`;
 
 /** A fixed, made-up waveform (the same every render, so nothing shifts). */

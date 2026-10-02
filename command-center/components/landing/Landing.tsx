@@ -199,9 +199,9 @@ function Studio({ t }: { t: Dictionary }) {
                   </span>
                   <h3 className="st-patch-name">{tool.title}</h3>
                   <p className="st-patch-body">{tool.body}</p>
-                  <span className="st-patch-cost" data-free={free ? "true" : undefined}>
-                    {free ? s.free : s.priced}
-                  </span>
+                  {/* Priced is the rule (the lead says so), so only the exceptions
+                      are marked on screen; a screen reader hears it on every row. */}
+                  {free ? <span className="st-patch-cost">{s.free}</span> : <span className="sr-only">{s.priced}</span>}
                 </li>
               );
             })}

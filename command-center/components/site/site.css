@@ -45,7 +45,7 @@ html[lang="ru"] {
 .st {
   --st-max: 1240px;
   --st-gutter: 16px;
-  --st-section: 72px;
+  --st-section: 56px;
   /* The lit key: amber with ink legend in both themes — the identity's one
      signature, kept on the proof sheet too. Only the page's CTA uses it;
      drawn controls inside illustrations are outlined (see .st-fake-key). */
@@ -56,10 +56,10 @@ html[lang="ru"] {
   color: var(--ns-text);
 }
 @media (min-width: 640px) {
-  .st { --st-gutter: 24px; --st-section: 96px; }
+  .st { --st-gutter: 24px; --st-section: 72px; }
 }
 @media (min-width: 1024px) {
-  .st { --st-gutter: 40px; --st-section: 120px; }
+  .st { --st-gutter: 40px; --st-section: 88px; }
 }
 html:has(.st) { scroll-padding-top: 80px; }
 @media (prefers-reduced-motion: no-preference) {
@@ -116,6 +116,9 @@ html:has(.st) { scroll-padding-top: 80px; }
   color: var(--ns-text);
 }
 .st-h1 .st-h1-b { display: block; color: var(--ns-text-dim); }
+/* Russian and Uzbek run a third longer than English: a smaller cap keeps the
+   hero to four lines, so its key stays in the first frame at 1440×900. */
+html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(46px, 6vw, 86px); }
 .st-h1-page {
   font-family: var(--font-display);
   font-weight: 750;
@@ -210,6 +213,7 @@ html:has(.st) { scroll-padding-top: 80px; }
   align-items: center;
   gap: 8px;
   min-height: 44px;
+  min-width: 44px;
   font-size: 15.5px;
   font-weight: 600;
   color: var(--ns-text);
@@ -635,10 +639,9 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ns-text-dim);
+  color: var(--ns-go);
   white-space: nowrap;
 }
-.st-patch-cost[data-free="true"] { color: var(--ns-go); }
 @media (min-width: 640px) {
   .st-patch-row { grid-template-columns: 32px minmax(0, 9.5rem) minmax(0, 1fr) auto; align-items: baseline; padding: 13px 0; }
   .st-patch-no { grid-row: auto; }
@@ -947,7 +950,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 }
 .st-anchor dt { display: flex; flex-direction: column; align-items: flex-start; font-size: 14px; line-height: 1.35; color: var(--ns-text-dim); }
 .st-anchor dd { margin: 0; display: flex; flex-direction: column; gap: 2px; }
-.st-anchor-money { font-size: 16.5px; line-height: 1.35; color: var(--ns-text); }
+.st-anchor-money { font-size: 16px; font-weight: 600; line-height: 1.4; color: var(--ns-text); font-variant-numeric: tabular-nums; }
 .st-anchor-none { font-size: 15px; line-height: 1.4; color: var(--ns-text); }
 .st-anchor-sub { font-size: 13.5px; line-height: 1.4; color: var(--ns-text-dim); }
 .st-anchor-src {
@@ -994,6 +997,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 }
 .st-formula dt { font-family: var(--font-display); font-size: 20px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
 .st-formula dd { margin: 0; }
+.st-formula-clause { display: block; }
 .st-formula code {
   display: inline-block;
   margin-bottom: 4px;
@@ -1356,4 +1360,6 @@ h2.st-h2 { letter-spacing: -0.008em; }
 h3.st-step-title { letter-spacing: 0.04em; }
 :is(h2, h3).st-price-name { letter-spacing: 0.1em; }
 :is(h2, h3).st-kicker { letter-spacing: 0.14em; }
+h3.st-patch-name { letter-spacing: 0.05em; }
+h3.st-caption { letter-spacing: 0.14em; }
 .st-footer h2 { letter-spacing: 0.14em; }
