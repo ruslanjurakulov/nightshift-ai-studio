@@ -495,6 +495,12 @@ class RoutedModes(Base):
         self.assertFalse(any(c[0] == "reroute" for c in q.calls))
         self.assertEqual(q.finished["error_code"], "unavailable")
 
+    def test_exact_runs_the_requested_model_whatever_the_routed_column_says(self):
+        q = FakeQueue(job(requested_model="img-a", routed_model="img-b"))
+        m = PerModel()
+        self.go(q, m)
+        self.assertEqual([x[1] for x in m.log if x[0] == "submit"], ["img-a"])
+
     def test_a_refusal_of_the_request_itself_is_never_shopped_to_another_model(self):
         for code in ("policy", "bad_request", "bad_response"):
             with self.subTest(code=code):

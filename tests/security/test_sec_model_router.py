@@ -388,9 +388,13 @@ def test_no_failover_above_the_hold_or_to_a_lower_tier_or_after_a_task_exists(db
         assert svc(db, "select public.reroute_creative_job(%s,'w-r','unavailable')", [jid])[0][0] is None
     finally:
         set_price(db, "img-best-b", 9)
-    # Once the provider has a task, the job is that task's: never moved.
+    # Once the provider has a task, the job is that task's: never moved — even
+    # if the row read 'running' again (the task id alone decides).
     svc(db, "select public.advance_creative_job(%s,'w-r','submitted','task-x')", [jid])
     assert svc(db, "select public.reroute_creative_job(%s,'w-r','unavailable')", [jid])[0][0] is None
+    db.su("update public.creative_jobs set status='running' where id=%s", [jid])
+    assert svc(db, "select public.reroute_creative_job(%s,'w-r','unavailable')", [jid])[0][0] is None
+    assert job(db, jid)["routed_model"] == "img-best"
     svc(db, "select public.finish_creative_job(%s,'w-r',false,null,null,'unavailable','down')", [jid])
     # auto (img-webonly, tier 4, 3 credits): every other candidate is dearer or of a lower tier.
     drain(db)
