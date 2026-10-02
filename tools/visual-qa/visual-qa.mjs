@@ -29,6 +29,9 @@
  *     --frames 0,60,120,200,320  ms after the click to capture
  *     --full                     full-page screenshots (default: viewport)
  *     --no-axe                   skip the accessibility scan
+ *     --fake-session [url]       sign in to the customer shell against
+ *                                tools/visual-qa/fake-supabase.mjs (the app must
+ *                                be built pointing at it; see that file)
  *     --fail-on serious          exit 1 on axe violations of this impact or
  *                                worse, any overflow, or CLS > 0.1 (for CI use)
  *

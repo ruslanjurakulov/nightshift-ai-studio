@@ -339,10 +339,14 @@ describe("motion.css", () => {
   it("shows in-view reveals when there is no script", () => {
     expect(css).toMatch(/@media \(scripting: none\)\s*\{\s*\[data-ns-reveal\]\s*\{\s*opacity:\s*1 !important;/);
   });
-  it("is loaded by the root layout, with the provider", () => {
-    const layout = readFileSync(path.join(ROOT, "app/layout.tsx"), "utf8");
-    expect(layout).toContain('import "@/components/motion/motion.css"');
-    expect(layout).toMatch(/<MotionProvider>/);
+  it("is global (root layout), while the engine is mounted only where pages animate", () => {
+    const root = readFileSync(path.join(ROOT, "app/layout.tsx"), "utf8");
+    expect(root).toContain('import "@/components/motion/motion.css"');
+    // LazyMotion pulls ~11 kB gz of Motion's core into every route under it
+    // (docs/design/MOTION.md §7): the public pages must not carry it for nothing.
+    expect(root).not.toMatch(/<MotionProvider|from "@\/components\/motion\/MotionProvider"/);
+    const app = readFileSync(path.join(ROOT, "app/(app)/layout.tsx"), "utf8");
+    expect(app).toMatch(/<MotionProvider>/);
   });
 });
 

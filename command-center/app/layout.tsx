@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { Martian_Mono, Sofia_Sans, Sofia_Sans_Extra_Condensed } from "next/font/google";
 import "./globals.css";
+// The motion kit's CSS half (reduced-motion and no-script guards, plate,
+// .ns-press) is global and tiny; the JavaScript half (MotionProvider) is
+// mounted only by layouts whose pages animate — see docs/design/MOTION.md §7.
 import "@/components/motion/motion.css";
 import { getLocale } from "@/lib/i18n/server";
 import { I18nProvider } from "@/lib/i18n/context";
 import { ToastProvider } from "@/components/feedback/ToastProvider";
 import { NO_FLASH_SCRIPT } from "@/lib/theme";
-import { MotionProvider } from "@/components/motion/MotionProvider";
 
 export const metadata: Metadata = {
   title: "Nightshift Command Center",
@@ -51,9 +53,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body>
         <I18nProvider locale={locale}>
-          <MotionProvider>
-            <ToastProvider>{children}</ToastProvider>
-          </MotionProvider>
+          <ToastProvider>{children}</ToastProvider>
         </I18nProvider>
       </body>
     </html>

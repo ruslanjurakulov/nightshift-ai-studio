@@ -103,6 +103,10 @@ complete; under `prefers-reduced-motion: reduce` every animation and
 transition is cut to zero (globals.css) and the running lamp stays lit
 without breathing.
 
+The full motion language, its tokens (`lib/motion/tokens.ts`), the kit
+(`components/motion/`), recipes and the bundle and licence notes are in
+`MOTION.md`.
+
 ## 6. Iconography
 
 - Lucide, stroke 1.75–2, sized 14/16/18/20; colour from text tokens, amber
