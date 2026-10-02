@@ -11,9 +11,16 @@ import { NextRequest } from "next/server";
  * before for these paths.
  */
 
-const auth = vi.hoisted(() => ({ user: null as { id: string } | null }));
+const auth = vi.hoisted(() => ({ user: null as { id: string } | null, calls: 0 }));
 vi.mock("@supabase/ssr", () => ({
-  createServerClient: () => ({ auth: { getUser: async () => ({ data: { user: auth.user } }) } }),
+  createServerClient: () => ({
+    auth: {
+      getUser: async () => {
+        auth.calls += 1;
+        return { data: { user: auth.user } };
+      },
+    },
+  }),
 }));
 vi.mock("@/lib/config", () => ({
   SUPABASE_URL: "https://project.supabase.test",
@@ -36,6 +43,7 @@ const { default: robots } = await import("@/app/robots");
 
 beforeEach(() => {
   auth.user = null;
+  auth.calls = 0;
   vi.unstubAllEnvs();
 });
 
@@ -126,6 +134,28 @@ describe("middleware, flag on", () => {
 
   it.each(["/atelier", "/atelier/d", "/atelier/a/x", "/atelier/%61", "/ATELIER/a"])("%s stays a 404", async (path) => {
     expect((await visit(path)).notFound).toBe(true);
+  });
+
+  // BR-L-161: the served response must be built with { request }, or the CSP
+  // nonce set on the request never reaches the renderer and an enforced policy
+  // blocks the page's scripts.
+  it("forwards the CSP nonce to the renderer (response built with { request })", async () => {
+    vi.stubEnv("CSP_MODE", "enforce");
+    const r = await visit("/atelier/a");
+    expect(r.served).toBe(true);
+    expect(r.res.headers.get("content-security-policy")).toMatch(/'nonce-[^']+'/);
+    const forwarded = r.res.headers.get("x-middleware-request-content-security-policy");
+    expect(forwarded).toMatch(/'nonce-[^']+'/);
+    expect(r.res.headers.get("x-middleware-override-headers")).toContain("content-security-policy");
+  });
+
+  it("is decided before the gate: no session round trip for a served concept", async () => {
+    await visit("/atelier/b");
+    expect(auth.calls).toBe(0);
+    await visit("/atelier/zzz");
+    expect(auth.calls).toBe(0);
+    await visit("/chronos/videos");
+    expect(auth.calls).toBe(1);
   });
 
   it("does not open any other private path", async () => {

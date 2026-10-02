@@ -136,6 +136,11 @@ export const RESERVED_ROOT_SEGMENTS = [
   "docs",
   // The self-hosted font files live under /fonts (PUBLIC_FONT_PATHS).
   "fonts",
+  // The design concept prototypes (lib/concepts.ts): the whole /atelier path is
+  // the public 404 unless the flag is on, so a channel called "atelier" (or a
+  // channel named "Atelier", whose URL slug would be it) would lose every
+  // screen. Reserved so no customer can take the word.
+  "atelier",
 ] as const;
 
 /** Next's router treats `/terms/` as `/terms`; the gate must agree with it. */

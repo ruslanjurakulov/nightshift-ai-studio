@@ -22,7 +22,15 @@ ATELIER_CONCEPTS=1 npx next build && ATELIER_CONCEPTS=1 npx next start -p 3821
 The flag is a server variable read per request (`lib/concepts.ts`), so the same
 build answers 404 without it. Run without it to see the 404.
 
-### What keeps them private
+### What keeps them off the site, and what does not
+
+Setting `ATELIER_CONCEPTS=1` makes the three pages **public but unlisted, not
+private**: anyone who can reach the deploy and knows the URL can open them, with
+no sign-in, and they read the same two public price lists as the landing.
+`noindex` and the absence from the sitemap only keep them out of search and out
+of the listing. Leave the variable unset on a production deploy unless that is
+what you want; the deploy template says so.
+
 
 | Rule | Where | Pinned by |
 | :-- | :-- | :-- |
@@ -31,6 +39,7 @@ build answers 404 without it. Run without it to see the 404.
 | On: exactly `/atelier/a`, `/atelier/b`, `/atelier/c` (trailing slash ok) are served, with `X-Robots-Tag: noindex, nofollow`; `/atelier`, `/atelier/d`, `/atelier/a/x`, `/atelier/%61`, `/ATELIER/a` stay 404 | `conceptDecision()` | same |
 | The page checks the flag itself, before it reads anything, and is `force-dynamic` with `robots: noindex, nofollow, nocache` | `app/(concepts)/atelier/[variant]/page.tsx` | source pin + live check |
 | Not in `PUBLIC_PATHS`, `ALWAYS_PUBLIC_PATHS`, `SITEMAP_PATHS`, the sitemap output or `robots.txt` (a robots line would publish the path; none is added) | `lib/public-paths.ts`, `app/sitemap.ts`, `app/robots.ts` untouched | same |
+| `atelier` is a reserved root segment (no customer channel can be called that; BR-L-160), pinned in `tests/atelier-reserved.test.ts` | `lib/public-paths.ts` `RESERVED_ROOT_SEGMENTS` | same |
 | BR-H-001 is untouched: the `config.matcher` string is unchanged, `gateDecision("/atelier/a", false)` is still `to-login`, `isPublicPath` is still false | `middleware.ts` matcher, `lib/public-paths.ts` | same, plus `tests/middleware-matcher.test.ts` and `tests/public-paths.test.ts` still green |
 
 Checked on a production build: flag on, `/atelier/{a,b,c}` 200 with
@@ -173,9 +182,9 @@ Nothing in it can be pressed.
 
 Screenshots are in `docs/design/atelier/` (21 webp, 1.2 MB): per variant 1440
 light and dark, 390 light and dark (full page), 1440 ru, 390 uz, and 1440
-light with the price list filled. Full-size PNGs and the scripts (`shoot.js`,
-`audit.js`, `priced.js`, adapted from `design-inbox/pixel-5-shots/`) are in
-`/home/user/design-inbox/atelier-concept-shots/`.
+light with the price list filled. The full-size PNGs and the capture scripts
+(adapted from the PIXEL-5 ones) are kept with the review notes, not in this
+repository.
 
 Builds: unpriced and without a backend (the owner's current state) for every
 number below, and one priced build (display prices `$10 / $45 / $160` baked in
