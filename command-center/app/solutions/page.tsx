@@ -2,34 +2,29 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, X } from "lucide-react";
 import { getDictionary } from "@/lib/i18n/server";
-import { siteOrigin } from "@/lib/landing";
+import { runtimeSiteOrigin, shareMetadata } from "@/lib/landing";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { Slug } from "@/components/site/Slug";
 import { StatusLamp } from "@/components/ui/StatusLamp";
-
-const OG_IMAGE = { url: "/og.png", width: 1200, height: 630, type: "image/png" };
 
 /** Public: listed exactly in lib/public-paths.ts (SOLUTION_PATHS). */
 export async function generateMetadata(): Promise<Metadata> {
   const { t, locale } = await getDictionary();
   const m = t.site.solutions.meta;
   const title = `${m.title} · ${t.brand.name}`;
-  const base = siteOrigin({ APP_ORIGIN: process.env.APP_ORIGIN });
   return {
-    ...(base ? { metadataBase: new URL(base), alternates: { canonical: "/solutions" } } : {}),
     title: { absolute: title },
     description: m.description,
-    openGraph: {
-      type: "website",
-      siteName: t.brand.name,
+    ...shareMetadata({
+      origin: runtimeSiteOrigin(),
+      path: "/solutions",
       title,
       description: m.description,
-      locale: { en: "en_US", ru: "ru_RU", uz: "uz_UZ" }[locale],
-      images: [{ ...OG_IMAGE, alt: t.landing.meta.ogAlt }],
-      ...(base ? { url: "/solutions" } : {}),
-    },
-    twitter: { card: "summary_large_image", title, description: m.description, images: [{ url: OG_IMAGE.url, alt: t.landing.meta.ogAlt }] },
+      siteName: t.brand.name,
+      imageAlt: t.landing.meta.ogAlt,
+      locale,
+    }),
   };
 }
 

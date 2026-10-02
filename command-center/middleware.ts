@@ -8,8 +8,12 @@ import {
   PATH_HEADER,
   SEARCH_HEADER,
   isSection,
+  isUnknownRootPath,
 } from "@/lib/channels";
 import { gateDecision, isPublicApiPath, isSignedMediaPath } from "@/lib/public-paths";
+
+/** Next's own route for app/not-found.tsx (it is what an unmatched URL renders). */
+const NOT_FOUND_PATH = "/_not-found";
 
 /**
  * Which channel a URL is about, and where a URL that does not say lands.
@@ -53,8 +57,26 @@ function channelRedirect(request: NextRequest): URL | null {
  * Privacy, Terms and Pricing pages and the sign-up flow. When Supabase isn't configured we let requests
  * through so the pages can render the NOT CONFIGURED state.
  */
+function notFoundResponse(request: NextRequest): NextResponse {
+  return NextResponse.rewrite(new URL(NOT_FOUND_PATH, request.url), { status: 404 });
+}
+
 export async function middleware(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.next();
+  if (!isSupabaseConfigured) {
+    // No backend, so no account and no app to show. A built site answers every
+    // app URL with the public 404 — never the app's frame or its setup notice
+    // (env-var names, vendor names). API routes answer for themselves, and
+    // `next dev` keeps the setup notice for whoever is wiring the site up.
+    const path = request.nextUrl.pathname;
+    if (
+      process.env.NODE_ENV === "production" &&
+      !path.startsWith("/api/") &&
+      gateDecision(path, false) === "to-login"
+    ) {
+      return notFoundResponse(request);
+    }
+    return NextResponse.next();
+  }
   // The public API authenticates its own bearer key (lib/public-paths.ts);
   // there is no session to refresh and nothing to redirect.
   if (isPublicApiPath(request.nextUrl.pathname)) return NextResponse.next();
@@ -86,6 +108,12 @@ export async function middleware(request: NextRequest) {
   // Privacy, Terms, Pricing) are reachable signed out; see lib/public-paths.ts
   // for why the match is exact.
   const decision = gateDecision(request.nextUrl.pathname, Boolean(user));
+  // A signed-out visitor who mistyped a URL (/blog, /about) gets the 404, not a
+  // sign-in form for a page that was never there. The rewrite serves only the
+  // root not-found page: no layout of the app runs, nothing is read.
+  if (decision === "to-login" && isUnknownRootPath(request.nextUrl.pathname)) {
+    return notFoundResponse(request);
+  }
   if (decision === "to-login" || decision === "to-home") {
     const url = request.nextUrl.clone();
     url.pathname = decision === "to-login" ? "/login" : "/";

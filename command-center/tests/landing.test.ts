@@ -3,6 +3,7 @@ import {
   SHOWCASE,
   jsonLdScript,
   pricingTeaser,
+  shareMetadata,
   siteOrigin,
   softwareApplicationJsonLd,
   visibleShowcase,
@@ -64,6 +65,42 @@ describe("site origin", () => {
     expect(siteOrigin({})).toBeNull();
     expect(siteOrigin({ APP_ORIGIN: "not a url" })).toBeNull();
     expect(siteOrigin({ APP_ORIGIN: "javascript:alert(1)" })).toBeNull();
+  });
+
+  it("falls back to the explicit site URL, then Vercel's production domain", () => {
+    expect(siteOrigin({ NEXT_PUBLIC_SITE_URL: "https://site.example.com/" })).toBe("https://site.example.com");
+    expect(siteOrigin({ VERCEL_PROJECT_PRODUCTION_URL: "nightshift.example.com" })).toBe("https://nightshift.example.com");
+    expect(
+      siteOrigin({ APP_ORIGIN: "https://a.example.com", VERCEL_PROJECT_PRODUCTION_URL: "b.example.com" }),
+    ).toBe("https://a.example.com");
+  });
+
+  it("never answers with a loopback host", () => {
+    for (const v of ["http://localhost:3471", "http://127.0.0.1:3000", "http://0.0.0.0:3000"]) {
+      expect(siteOrigin({ APP_ORIGIN: v })).toBeNull();
+    }
+    expect(siteOrigin({ VERCEL_PROJECT_PRODUCTION_URL: "localhost:3000" })).toBeNull();
+  });
+});
+
+describe("share metadata", () => {
+  const base = { path: "/pricing", title: "T", description: "D", siteName: "Nightshift", imageAlt: "A", locale: "en" as const };
+
+  it("puts every URL on the known origin, image included", () => {
+    const m = shareMetadata({ ...base, origin: "https://app.example.com" });
+    expect(m.metadataBase?.toString()).toBe("https://app.example.com/");
+    expect(m.openGraph.url).toBe("https://app.example.com/pricing");
+    expect(m.openGraph.images?.[0].url).toBe("https://app.example.com/og.png");
+    expect(m.twitter.card).toBe("summary_large_image");
+    expect(m.twitter.images?.[0].url).toBe("https://app.example.com/og.png");
+  });
+
+  it("with no origin leaves the image, og:url and canonical out instead of pointing at localhost", () => {
+    const m = shareMetadata({ ...base, origin: null });
+    expect(JSON.stringify(m)).not.toMatch(/localhost|og\.png/);
+    expect(m).not.toHaveProperty("metadataBase");
+    expect(m.openGraph).not.toHaveProperty("images");
+    expect(m.twitter.card).toBe("summary");
   });
 });
 

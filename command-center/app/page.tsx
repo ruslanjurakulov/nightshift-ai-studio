@@ -11,47 +11,30 @@ import {
   SHOWCASE,
   jsonLdScript,
   pricingTeaser,
-  siteOrigin,
+  runtimeSiteOrigin,
+  shareMetadata,
   softwareApplicationJsonLd,
   visibleShowcase,
 } from "@/lib/landing";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { Landing } from "@/components/landing/Landing";
 
-/** Read by literal name at request time — a self-hosted deploy sets APP_ORIGIN
- *  in the container, not at build. */
-function origin(): string | null {
-  return siteOrigin({ APP_ORIGIN: process.env.APP_ORIGIN });
-}
-
-/** Served by app/og.png/route.tsx; see there for why it is not opengraph-image.tsx. */
-const OG_IMAGE = { url: "/og.png", width: 1200, height: 630, type: "image/png" };
-
 export async function generateMetadata(): Promise<Metadata> {
   const { t, locale } = await getDictionary();
   const m = t.landing.meta;
-  const base = origin();
   return {
-    // Without a known origin a canonical or og:url would be resolved against
-    // localhost, which is worse than leaving them out.
-    ...(base ? { metadataBase: new URL(base), alternates: { canonical: "/" } } : {}),
     title: { absolute: m.title },
     description: m.description,
-    openGraph: {
-      type: "website",
+    // No known origin, no image or canonical: never a card pointing at localhost.
+    ...shareMetadata({
+      origin: runtimeSiteOrigin(),
+      path: "/",
+      title: m.title,
+      description: m.description,
       siteName: t.brand.name,
-      title: m.title,
-      description: m.description,
-      locale: { en: "en_US", ru: "ru_RU", uz: "uz_UZ" }[locale],
-      images: [{ ...OG_IMAGE, alt: m.ogAlt }],
-      ...(base ? { url: "/" } : {}),
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: m.title,
-      description: m.description,
-      images: [{ url: OG_IMAGE.url, alt: m.ogAlt }],
-    },
+      imageAlt: m.ogAlt,
+      locale,
+    }),
   };
 }
 
@@ -75,7 +58,7 @@ export default async function Home() {
   const jsonLd = softwareApplicationJsonLd({
     name: t.brand.name,
     description: t.landing.meta.description,
-    url: origin(),
+    url: runtimeSiteOrigin(),
   });
 
   return (

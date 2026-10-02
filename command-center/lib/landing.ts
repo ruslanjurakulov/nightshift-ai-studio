@@ -87,25 +87,100 @@ export function pricingTeaser(pricing: Pricing, plans: PlanMatrix | null = null)
 
 export interface SiteEnv {
   APP_ORIGIN?: string;
+  /** An explicit public URL for the marketing pages, when it differs from nothing else. */
+  NEXT_PUBLIC_SITE_URL?: string;
+  /** Vercel's production domain, a bare host ("app.example.com"); set on every Vercel deploy. */
+  VERCEL_PROJECT_PRODUCTION_URL?: string;
 }
 
-/**
- * The site's public origin for canonical and OpenGraph URLs, or null.
- *
- * A deploy states it once in APP_ORIGIN — the same variable the OAuth redirect
- * trusts (lib/server/public-origin.ts), already set by the self-hosted compose
- * file. Request headers are not consulted: a canonical URL a client can steer
- * is worse than none. Unset, the page leaves canonical and og:url out.
- */
-export function siteOrigin(env: SiteEnv): string | null {
-  const v = (env.APP_ORIGIN ?? "").trim();
+function httpOrigin(value: string | undefined, assumeHttps = false): string | null {
+  const v = (value ?? "").trim();
   if (!v) return null;
   try {
-    const url = new URL(v);
-    return url.protocol === "https:" || url.protocol === "http:" ? url.origin : null;
+    const url = new URL(assumeHttps && !/^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? `https://${v}` : v);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    // A loopback origin in a card is the bug this exists to stop.
+    if (/^(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(url.hostname)) return null;
+    return url.origin;
   } catch {
     return null;
   }
+}
+
+/**
+ * The site's public origin for canonical, OpenGraph and Twitter URLs, or null.
+ *
+ * A deploy states it in APP_ORIGIN — the same variable the OAuth redirect
+ * trusts (lib/server/public-origin.ts), already set by the self-hosted compose
+ * file — or, failing that, NEXT_PUBLIC_SITE_URL, or the production domain
+ * Vercel sets on every deploy. Request headers are not consulted: a canonical
+ * URL a client can steer is worse than none. A loopback host is never an
+ * answer. Unset, a page leaves canonical, og:url and the share image out
+ * (shareMetadata) rather than let Next resolve them against localhost.
+ */
+export function siteOrigin(env: SiteEnv): string | null {
+  return (
+    httpOrigin(env.APP_ORIGIN) ??
+    httpOrigin(env.NEXT_PUBLIC_SITE_URL) ??
+    httpOrigin(env.VERCEL_PROJECT_PRODUCTION_URL, true)
+  );
+}
+
+/** The origin for this request's metadata, from the environment read by literal
+ *  name at request time (a self-hosted deploy sets APP_ORIGIN in the container,
+ *  not at build). */
+export function runtimeSiteOrigin(): string | null {
+  return siteOrigin({
+    APP_ORIGIN: process.env.APP_ORIGIN,
+    NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+    VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  });
+}
+
+/** Served by app/og.png/route.tsx; see there for why it is not opengraph-image.tsx. */
+export const OG_IMAGE = { url: "/og.png", width: 1200, height: 630, type: "image/png" } as const;
+
+const OG_LOCALE = { en: "en_US", ru: "ru_RU", uz: "uz_UZ" } as const;
+
+/**
+ * The share metadata every public page carries: canonical, OpenGraph and the
+ * Twitter card, all on one origin.
+ *
+ * With an origin, metadataBase is set and every URL — og:url, og:image,
+ * twitter:image — is absolute on it. Without one, there is no URL to give a
+ * crawler that would not be a guess (Next would resolve it against
+ * localhost), so the card goes out with no image, a plain summary card, and
+ * no canonical: a missing picture beats a broken one.
+ */
+export function shareMetadata(input: {
+  origin: string | null;
+  path: string;
+  title: string;
+  description: string;
+  siteName: string;
+  imageAlt: string;
+  locale?: keyof typeof OG_LOCALE;
+}) {
+  const { origin, path, title, description, siteName, imageAlt, locale } = input;
+  const image = origin ? { ...OG_IMAGE, url: new URL(OG_IMAGE.url, origin).toString(), alt: imageAlt } : null;
+  return {
+    ...(origin ? { metadataBase: new URL(origin), alternates: { canonical: path } } : {}),
+    openGraph: {
+      type: "website" as const,
+      siteName,
+      title,
+      description,
+      ...(locale ? { locale: OG_LOCALE[locale] } : {}),
+      ...(origin ? { url: new URL(path, origin).toString() } : {}),
+      ...(image ? { images: [image] } : {}),
+    },
+    twitter: {
+      card: image ? ("summary_large_image" as const) : ("summary" as const),
+      title,
+      description,
+      ...(image ? { images: [{ url: image.url, alt: imageAlt }] } : {}),
+    },
+  };
 }
 
 /**

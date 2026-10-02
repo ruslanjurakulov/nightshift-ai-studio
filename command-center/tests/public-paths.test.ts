@@ -50,7 +50,7 @@ describe("signed-out visitors (what Google's reviewer sees)", () => {
 
   // Exact matching, as for the legal pages: /signup/x would be the "x" screen
   // of a channel called "signup", and /auth/anything else is not the callback.
-  it.each(["/signup/x", "/signup/videos", "/signupx", "/auth", "/auth/callback/x", "/auth/other", "/welcome"])(
+  it.each(["/signup/x", "/signup/videos", "/auth", "/auth/callback/x", "/auth/other", "/welcome"])(
     "are sent to /login from %s",
     async (path) => {
       expect((await visit(path, false)).redirect).toBe("/login");
@@ -70,12 +70,62 @@ describe("signed-out visitors (what Google's reviewer sees)", () => {
 
   // Prefix matching would have published a channel's screens: the router reads
   // /privacy/videos as the Videos page of a channel whose segment is "privacy".
-  it.each(["/privacy/videos", "/terms/command-center", "/privacy-policy", "/termsx", "/pricing/credits", "/pricing-old"])(
+  it.each(["/privacy/videos", "/terms/command-center", "/pricing/credits"])(
     "do not get %s just because it starts like a public page",
     async (path) => {
       expect((await visit(path, false)).redirect).toBe("/login");
     },
   );
+
+  // …and a one-segment look-alike is not a page at all: it gets the 404.
+  it.each(["/signupx", "/privacy-policy", "/termsx", "/pricing-old"])(
+    "do not get %s just because it starts like a public page (404)",
+    async (path) => {
+      const { redirect, res } = await visit(path, false);
+      expect(redirect).toBeNull();
+      expect(res.status).toBe(404);
+      expect(new URL(res.headers.get("x-middleware-rewrite") ?? "").pathname).toBe("/_not-found");
+    },
+  );
+});
+
+describe("signed-out visitors on a URL that is not a page", () => {
+  // A mistyped or invented URL is the 404 — never the app's frame, never a
+  // sign-in form for something that was never there.
+  it.each(["/blog", "/about", "/contact", "/no-such-page-xyz", "/blog/", "/chronos", "/x"])(
+    "get the 404 for %s, served by the not-found page alone",
+    async (path) => {
+      const { redirect, res } = await visit(path, false);
+      expect(redirect).toBeNull();
+      expect(res.status).toBe(404);
+      expect(new URL(res.headers.get("x-middleware-rewrite") ?? "").pathname).toBe("/_not-found");
+      // Nothing about a channel is handed inward: no app layout resolves it.
+      expect(res.headers.get("x-middleware-request-x-nightshift-channel")).toBeNull();
+    },
+  );
+
+  // Uniform on purpose: a real channel's segment and an invented one get the
+  // same answer, so the 404 says nothing about which channels exist.
+  it("answer a real channel's bare segment exactly like an invented one", async () => {
+    const real = await visit("/chronos", false);
+    const invented = await visit("/zz-not-a-channel", false);
+    expect(real.res.status).toBe(invented.res.status);
+    expect(real.res.headers.get("x-middleware-rewrite")).toBe(invented.res.headers.get("x-middleware-rewrite"));
+  });
+
+  it.each(["/xyz/videos", "/chronos/videos", "/all-channels", "/videos", "/welcome", "/auth", "/docs", "/api", "/api/agent/run"])(
+    "are still sent to /login from the app-shaped or reserved URL %s",
+    async (path) => {
+      expect((await visit(path, false)).redirect).toBe("/login");
+    },
+  );
+
+  it("does not change what a signed-in user gets for an unknown segment", async () => {
+    const { redirect, res } = await visit("/blog", true);
+    expect(res.status).not.toBe(404);
+    expect(redirect).toBeNull();
+    expect(res.headers.get("x-middleware-rewrite")).toBeNull();
+  });
 });
 
 describe("signed-in users keep today's behaviour", () => {

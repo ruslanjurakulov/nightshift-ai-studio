@@ -8,42 +8,30 @@ import { PLAN_ENV, planMatrix } from "@/lib/plans";
 import { planValue, readPlanCatalog, type PlanRead } from "@/lib/server/plans";
 import { generationRates, type GenerationRates, type PlanCatalog } from "@/lib/plans";
 import { readSellableModels } from "@/lib/creative/registry";
-import { siteOrigin } from "@/lib/landing";
+import { runtimeSiteOrigin, shareMetadata } from "@/lib/landing";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { PricingView } from "@/components/pricing/PricingView";
 
 // Who is asking decides the rates panel, so this is never a static page.
 export const dynamic = "force-dynamic";
 
-/** Served by app/og.png/route.tsx — the homepage's card, for the same brand. */
-const OG_IMAGE = { url: "/og.png", width: 1200, height: 630, type: "image/png" };
-
 /** Public: middleware lets this path through signed in or out (lib/public-paths.ts). */
 export async function generateMetadata(): Promise<Metadata> {
   const { t, locale } = await getDictionary();
   const title = `${t.pricing.title} · ${t.brand.name}`;
   const description = t.pricing.metaDescription;
-  // Read by literal name at request time, like the homepage; unset, no canonical.
-  const base = siteOrigin({ APP_ORIGIN: process.env.APP_ORIGIN });
   return {
-    ...(base ? { metadataBase: new URL(base), alternates: { canonical: "/pricing" } } : {}),
     title: { absolute: title },
     description,
-    openGraph: {
-      type: "website",
+    ...shareMetadata({
+      origin: runtimeSiteOrigin(),
+      path: "/pricing",
+      title,
+      description,
       siteName: t.brand.name,
-      title,
-      description,
-      locale: { en: "en_US", ru: "ru_RU", uz: "uz_UZ" }[locale],
-      images: [{ ...OG_IMAGE, alt: t.landing.meta.ogAlt }],
-      ...(base ? { url: "/pricing" } : {}),
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-      images: [{ url: OG_IMAGE.url, alt: t.landing.meta.ogAlt }],
-    },
+      imageAlt: t.landing.meta.ogAlt,
+      locale,
+    }),
   };
 }
 

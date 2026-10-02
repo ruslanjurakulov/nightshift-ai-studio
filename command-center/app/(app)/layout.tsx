@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { SideNav } from "@/components/SideNav";
 import { NeuralBackdrop } from "@/components/NeuralBackdrop";
 import { Header } from "@/components/Header";
@@ -28,6 +28,12 @@ import type { CreditAccount } from "@/lib/credits";
 import { ShellProvider } from "@/components/shell/ShellContext";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  // No backend means no account and nothing to show. A built site then answers
+  // every app URL — /blog as much as /chronos/videos — with the public 404, so
+  // a visitor never meets setup copy, env-var names or the app's frame. Only
+  // `next dev` keeps the setup notice (NotConfigured), for whoever is wiring it up.
+  if (!isSupabaseConfigured && process.env.NODE_ENV === "production") notFound();
+
   const org = isSupabaseConfigured
     ? await getOrgContext()
     : { supported: false, orgs: [], current: null };
