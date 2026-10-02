@@ -42,12 +42,17 @@ function classify(errors: ReadError[]): "unsupported" | "failed" | null {
 }
 
 /** The plan catalog (public price list). */
-export async function readPlanCatalog(supabase: SupabaseClient): Promise<PlanRead<PlanCatalog>> {
+export async function readPlanCatalog(
+  supabase: SupabaseClient,
+  /** A public page bounds this read (BR-L-047): an aborted read is a failed one. */
+  opts: { signal?: AbortSignal } = {},
+): Promise<PlanRead<PlanCatalog>> {
+  const bound = <Q extends { abortSignal: (s: AbortSignal) => Q }>(q: Q): Q => (opts.signal ? q.abortSignal(opts.signal) : q);
   const [plans, keys, values, policies] = await Promise.all([
-    supabase.from("plans").select("id,name,sort_order,monthly_credits,is_default,is_public").order("sort_order"),
-    supabase.from("entitlement_keys").select("key,value_type,default_value,exempt_value,status,sort_order").order("sort_order"),
-    supabase.from("plan_entitlements").select("plan_id,key,value"),
-    supabase.from("credit_lot_policies").select("source,valid_months"),
+    bound(supabase.from("plans").select("id,name,sort_order,monthly_credits,is_default,is_public").order("sort_order")),
+    bound(supabase.from("entitlement_keys").select("key,value_type,default_value,exempt_value,status,sort_order").order("sort_order")),
+    bound(supabase.from("plan_entitlements").select("plan_id,key,value")),
+    bound(supabase.from("credit_lot_policies").select("source,valid_months")),
   ]);
   const bad = classify([plans.error, keys.error, values.error]);
   if (bad) return { state: bad };

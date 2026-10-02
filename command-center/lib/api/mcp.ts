@@ -60,8 +60,8 @@ export function buildMcpServer(caller: ApiCaller): McpServer {
   const server = new McpServer(MCP_SERVER_INFO, {
     instructions:
       "Nightshift makes faceless YouTube videos. Start with list_channels, then create_video (it costs money from the " +
-      "organization's prepaid API balance: about $1.20 per minute of requested length, at least $0.60 — say so before " +
-      "calling it). Poll get_job_status until the job succeeds, then list_videos to find the video. publish_video " +
+      "organization's prepaid API balance, priced per minute of requested length with a minimum per video, from " +
+      "the live price list at /docs/api#pricing — say so before calling it). Poll get_job_status until the job succeeds, then list_videos to find the video. publish_video " +
       "cross-posts a finished video that passed review; YouTube uploads are private.",
   });
   const done = (r: ApiResult) => toToolResult(r, caller.requestId);

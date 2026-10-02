@@ -5,7 +5,7 @@
  * built-in style can be added under a library id" is enforced.
  */
 
-import { DEFAULT_LOCALE, isLocale, type Locale } from "@/lib/i18n";
+import { DEFAULT_LOCALE, isLocale, type Locale } from "@/lib/i18n/core";
 import { parseStyleId } from "@/lib/style-kits";
 import { kitNameFor, libraryStyleById, type LibraryStyle } from "@/lib/styles/library";
 

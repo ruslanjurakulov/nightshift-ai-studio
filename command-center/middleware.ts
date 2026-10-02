@@ -8,9 +8,20 @@ import {
   PATH_HEADER,
   SEARCH_HEADER,
   isSection,
+  isUnknownRootPath,
 } from "@/lib/channels";
-import { SIGNED_MEDIA_PREFIX, gateDecision, isPublicApiPath, isSignedMediaPath } from "@/lib/public-paths";
+import {
+  SIGNED_MEDIA_PREFIX,
+  gateDecision,
+  isPublicApiPath,
+  isPublicFontPath,
+  isSignedMediaPath,
+  isUnknownSolutionPath,
+} from "@/lib/public-paths";
 import { buildCsp, cspHeaderName, cspMode, makeNonce, reportUri } from "@/lib/security/csp";
+
+/** Next's own route for app/not-found.tsx (it is what an unmatched URL renders). */
+const NOT_FOUND_PATH = "/_not-found";
 
 /**
  * Which channel a URL is about, and where a URL that does not say lands.
@@ -80,9 +91,31 @@ export async function middleware(request: NextRequest) {
  * Privacy, Terms and Pricing pages and the sign-up flow. When Supabase isn't configured we let requests
  * through so the pages can render the NOT CONFIGURED state.
  */
+/** The public 404, rendered in place with its status. `request` carries the CSP nonce on. */
+function notFoundResponse(request: NextRequest): NextResponse {
+  return NextResponse.rewrite(new URL(NOT_FOUND_PATH, request.url), { request, status: 404 });
+}
+
 async function gate(request: NextRequest): Promise<NextResponse> {
-  // `{ request }` so the page still receives the CSP nonce set above.
-  if (!isSupabaseConfigured) return NextResponse.next({ request });
+  // The public pages' two self-hosted font files, by exact name: static, public,
+  // and on the critical path of a Russian page's first paint.
+  if (isPublicFontPath(request.nextUrl.pathname)) return NextResponse.next({ request });
+  if (!isSupabaseConfigured) {
+    // No backend, so no account and no app to show. A built site answers every
+    // app URL with the public 404 — never the app's frame or its setup notice
+    // (env-var names, vendor names). API routes answer for themselves, and
+    // `next dev` keeps the setup notice for whoever is wiring the site up.
+    const path = request.nextUrl.pathname;
+    if (
+      process.env.NODE_ENV === "production" &&
+      !path.startsWith("/api/") &&
+      gateDecision(path, false) === "to-login"
+    ) {
+      return notFoundResponse(request);
+    }
+    // `{ request }` so the page still receives the CSP nonce set above.
+    return NextResponse.next({ request });
+  }
   // The public API authenticates its own bearer key (lib/public-paths.ts);
   // there is no session to refresh and nothing to redirect.
   if (isPublicApiPath(request.nextUrl.pathname)) return NextResponse.next();
@@ -114,6 +147,15 @@ async function gate(request: NextRequest): Promise<NextResponse> {
   // Privacy, Terms, Pricing) are reachable signed out; see lib/public-paths.ts
   // for why the match is exact.
   const decision = gateDecision(request.nextUrl.pathname, Boolean(user));
+  // A signed-out visitor who mistyped a URL (/blog, /about) gets the 404, not a
+  // sign-in form for a page that was never there. The rewrite serves only the
+  // root not-found page: no layout of the app runs, nothing is read.
+  if (
+    decision === "to-login" &&
+    (isUnknownRootPath(request.nextUrl.pathname) || isUnknownSolutionPath(request.nextUrl.pathname))
+  ) {
+    return notFoundResponse(request);
+  }
   if (decision === "to-login" || decision === "to-home") {
     const url = request.nextUrl.clone();
     url.pathname = decision === "to-login" ? "/login" : "/";
@@ -160,8 +202,9 @@ export const config = {
   // path, each static file is named exactly (dots escaped), and an upload is
   // one segment. A new file under public/ must be named here
   // (tests/middleware-matcher.test.ts fails until it is); until then it is
-  // gated, never the other way round.
+  // gated, never the other way round. The public site's icon.svg and its two
+  // self-hosted font files (FONT_FILES in next.config.ts) are named the same way.
   matcher: [
-    "/((?!_next/static/|_next/image$|favicon\\.ico$|icon\\.png$|apple-icon\\.png$|og\\.png$|api/media/uploads/[^/]+$).*)",
+    "/((?!_next/static/|_next/image$|favicon\\.ico$|icon\\.png$|icon\\.svg$|apple-icon\\.png$|og\\.png$|fonts/sofia-sans-cyrillic-v20\\.woff2$|fonts/sofia-sans-extra-condensed-cyrillic-v6\\.woff2$|api/media/uploads/[^/]+$).*)",
   ],
 };

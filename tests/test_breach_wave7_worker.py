@@ -171,6 +171,43 @@ class HyphenCollidingIds(unittest.TestCase):
         for key, want in EXPECTED.items():
             self.assertEqual(channel_credentials.secret_name_for(key), want, repr(key))
 
+    def test_BR_L_110_a_customer_channel_carrying_the_id_default_is_not_the_default_channel(self):
+        """The default channel's token is chosen by its id alone (YOUTUBE_TOKEN_JSON). If the
+        operator's `default` row were ever absent a customer could create the id; on every
+        path it is still just a customer channel."""
+        c = customer_channel("default")
+        row = list_channels._row(c)
+        self.assertEqual((row["is_default"], row["is_operators"], row["token_secret"]), (False, False, ""))
+        self.assertFalse(qw.channel_token(row, self.ENV, None).found)
+        with tempfile.TemporaryDirectory() as repo:
+            qw.prepare_credentials(row, self.ENV, Path(repo))
+            self.assertEqual(list(Path(repo).glob("youtube_token*.json")), [])
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("modules.channel_credentials.cfg.BASE_DIR", Path(tmp)):
+            self.assertEqual(channel_credentials.token_path(c).name, "youtube_token__default.json")
+            gh_env = Path(tmp) / "github_env"
+            gh_env.write_text("")
+            out = io.StringIO()
+
+            class Vault:
+                configured = True
+
+                def read(self, channel_id):
+                    return None
+
+            code = restore_channel_token.main(dict(self.ENV, CHANNEL_ID="default", GITHUB_ENV=str(gh_env)),
+                                              load_channel=lambda _id: c, client=Vault(), out=out)
+            self.assertEqual(code, 0)
+            self.assertIn("this channel has no token", out.getvalue())
+            self.assertEqual(list(Path(tmp).glob("youtube_token*.json")), [])
+
+    def test_BR_L_115_an_id_with_a_trailing_newline_is_not_a_channel_id(self):
+        from modules.channels import validate_channel_id
+
+        for bad in ("extinct-world\n", "extinct-world\r\n", "a\n"):
+            with self.assertRaises(ValueError):
+                validate_channel_id(bad)
+        self.assertEqual(str(validate_channel_id("extinct-world")), "extinct-world")
+
     def test_the_matrix_row_and_the_queue_worker_hand_such_a_channel_nothing(self):
         for cid in self.IDS:
             c = customer_channel(cid)

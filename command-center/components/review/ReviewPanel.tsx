@@ -135,7 +135,12 @@ export function ReviewPanel({
         </div>
         <div className="stack gap-2">
           <div className="t-label">{t.review.privacy}</div>
-          <p className="mono m-0 text-[15px]">{video.privacy ?? t.common.dash}</p>
+          <p className="mono m-0 text-[15px]">
+            {/* YouTube's own value, in the reader's language when it is one of the three. */}
+            {video.privacy
+              ? (t.review.privacyValue as Record<string, string>)[video.privacy] ?? video.privacy
+              : t.common.dash}
+          </p>
         </div>
       </div>
 

@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
-import { useI18n } from "@/lib/i18n/context";
+import { usePublicI18n } from "@/lib/i18n/public-context";
 
 /**
  * The one "could not read this" state. It replaces a list, a table or a figure
@@ -21,7 +21,7 @@ export function ErrorState({
   onRetry?: () => void;
   compact?: boolean;
 }) {
-  const { t } = useI18n();
+  const { t } = usePublicI18n();
   const router = useRouter();
   const [pending, start] = useTransition();
 

@@ -4,10 +4,10 @@
  * and api_org_eligible. tests/api-pricing.test.ts pins the two together.
  *
  * The API is paid from its own prepaid balance in US cents, separate from the
- * site's credits. Why its price is what it is (docs/API.md):
- *   the site sells ~60 credits per video minute at ~$0.01 a credit, so
- *   ~$0.60 per minute retail, against ~$0.20 per minute of cost; the API
- *   charges 2x site retail — $1.20 per minute, $0.60 at least per video.
+ * site's credits. Its prices are the api_prices rows the owner sets (0031
+ * seeds a fresh database with a starting list); nothing here holds a price —
+ * a page or document that shows one reads the live list, and says no price
+ * is published when it cannot.
  */
 
 import { derivePlan, type LedgerPurchaseRow } from "@/lib/account";
@@ -43,15 +43,6 @@ export function tierFor(paidCents: number, exempt = false): ApiTier {
   for (const tier of API_TIERS) if (paidCents >= tier.minPaidCents) t = tier;
   return t;
 }
-
-/** The seeded price list (0031). The live list is api_prices; these are only
- *  what a fresh database starts with, and are labelled as such when shown. */
-export const DEFAULT_API_PRICES = {
-  video_minute: 120,
-  job_minimum: 60,
-  publish: 0,
-  download_cents_per_credit: 1.5,
-} as const;
 
 export type ApiPriceMap = Record<string, number>;
 

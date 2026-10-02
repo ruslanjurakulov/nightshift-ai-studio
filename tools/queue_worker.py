@@ -914,7 +914,18 @@ class Worker:
                 return self._finish(job, "failed", f"channel token unavailable (nothing was run): {e}")
             # A Vault token was never in this worker's env, so the scrubber
             # built at start-up does not know it: add this run's credentials.
-            self._secrets = sorted(set(self._base_secrets) | set(secret_values(child_env)),
+            # A customer's token is a file, not an env var (BR-L-080): its strings
+            # are added from the file the run reads.
+            from_file: List[str] = []
+            if channel_row.get("is_operators") is not True and not channel_row.get("is_default"):
+                try:
+                    text = (Path(self.repo_dir) / channel_credentials.customer_token_filename(
+                        str(channel_row.get("channel_id")))).read_text(encoding="utf-8")
+                    from_file = channel_tokens.secret_strings(channel_tokens.ResolvedToken(
+                        channel_tokens.SOURCE_VAULT, text))
+                except OSError:
+                    pass
+            self._secrets = sorted(set(self._base_secrets) | set(secret_values(child_env)) | set(from_file),
                                    key=len, reverse=True)
             for cmd in self.prelude:
                 rc, tail, how = self._run(cmd, child_env, lost)

@@ -318,6 +318,13 @@ class WorkerWithVault(unittest.TestCase):
         self.assertFalse(list(self.repo.glob("youtube_token*.json")))  # deleted after the run
         self.assertNotIn(REFRESH, "".join(w._secrets))  # not kept for the next job
 
+    def test_BR_L_111_a_customers_token_is_scrubbed_from_the_file_even_when_nothing_else_names_it(self):
+        """The token travels as a file (BR-L-080), so the scrub list gets its strings from the file."""
+        plain = "plainvaulttokenvalue0123456789"
+        q, w = self.run_worker(client(Resp(200, [vault_row(refresh_token=plain)])))
+        self.assertNotIn(plain, self.out.getvalue())
+        self.assertIn("refreshing with [redacted]", self.out.getvalue())
+
     def test_failed_run_error_is_scrubbed_of_the_vault_token(self):
         self.env["FAKE_RC"] = "2"
         q, _ = self.run_worker(client(Resp(200, [vault_row()])))

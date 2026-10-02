@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   API_TIERS,
-  DEFAULT_API_PRICES,
   apiEligible,
   downloadPriceCents,
   parseLimitDollars,
@@ -51,7 +50,9 @@ describe("usage tiers", () => {
 });
 
 describe("prices", () => {
-  const p = { ...DEFAULT_API_PRICES };
+  // A price list for the arithmetic only — 0031's seed rows, which the app
+  // no longer carries: a page shows the live list or no price at all.
+  const p = { video_minute: 120, job_minimum: 60, publish: 0, download_cents_per_credit: 1.5 };
 
   it("charge $1.20 a requested minute, at least $0.60, rounded up to the cent", () => {
     expect(videoPriceCents(60, p)).toBe(120);
@@ -66,7 +67,7 @@ describe("prices", () => {
     expect(videoPriceCents(null, p)).toBeNull();
   });
 
-  it("seed the same defaults in SQL", () => {
+  it("are the rows 0031 seeds a fresh database with", () => {
     expect(SQL).toContain("('video_minute', 120,");
     expect(SQL).toContain("('job_minimum', 60,");
     expect(SQL).toContain("('publish', 0,");

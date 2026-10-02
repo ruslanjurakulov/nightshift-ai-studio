@@ -5,9 +5,11 @@ asserts the SQL ``channel_secret_name`` (migration 0086) gives these answers, an
 tests/test_breach_wave7_worker.py asserts Python's
 ``channel_credentials.secret_name_for`` does. The lab's CI job installs no
 pipeline dependency, so it cannot import the Python module; the table is how the
-two functions are pinned against each other (BR-L-080). ASCII keys only: that is
-every channel id the database accepts; for anything else both functions collapse
-a non-[A-Z0-9] run to one underscore.
+two functions are pinned against each other (BR-L-080). ASCII keys only, and
+only for ASCII is the pin exact: every channel id the database accepts, and every
+reference it accepts, is ASCII. For non-ASCII text the two differ (Python's
+full case mapping turns ß into SS, Postgres upper() does not); no id or reference
+can carry such text, so nothing depends on it (BR-L-116).
 """
 
 P = "CHRONOS_YT_TOKEN_"

@@ -1,3 +1,5 @@
+import { siteEn } from "./site/en";
+
 /**
  * English dictionary — the source of truth. The exported type `Dictionary`
  * (see ./index.ts) is `typeof en`, so ru.ts and uz.ts must provide exactly the
@@ -9,6 +11,8 @@
  * shape while still free to supply their own text.
  */
 export const en = {
+  /** The public site (landing, Solutions, sign-in shell, 404): ./site/en.ts. */
+  site: siteEn,
   brand: {
     name: "Nightshift",
     tagline: "COMMAND CENTER",
@@ -1910,6 +1914,7 @@ export const en = {
     autoOff: "AUTO PUBLISH OFF",
     uploadTitle: "Going out as",
     privacy: "Privacy",
+    privacyValue: { private: "private", unlisted: "unlisted", public: "public" },
     gate: "Publish gate",
     gatePassed: "Passed every check",
     gateBlocked: "Blocked — it will not publish",
@@ -3053,7 +3058,7 @@ export const en = {
   },
   landing: {
     meta: {
-      title: "Nightshift — the AI studio for YouTube channels",
+      title: "Nightshift — autonomous studio for YouTube channels",
       description: "Turn a topic into a finished YouTube video — script, voice, visuals and edit — and make images, clips and voice-overs in one studio. The price is shown before every run, a failed run returns its credits, and nothing goes public without your approval.",
       ogAlt: "Nightshift — from a topic to a finished YouTube video, with your approval before anything goes public.",
     },
@@ -3069,7 +3074,7 @@ export const en = {
       close: "Close menu",
     },
     hero: {
-      eyebrow: "AI studio for YouTube channels",
+      eyebrow: "Autonomous studio for YouTube channels",
       title: "From a topic to a finished YouTube video.",
       lead: "Nightshift writes the script, voices it, makes the visuals and edits the video for your channel — then waits for your approval before anything reaches YouTube. You see the price before every run.",
       ctaPrimary: "Start free",
@@ -3243,13 +3248,15 @@ export const en = {
     country: "Country",
     effectiveDate: "Effective date",
     notConfigured: "NOT CONFIGURED",
+    pending: "not published yet",
+    pendingNote: "Operator details are not published yet.",
     contents: "Contents",
     translationNote: "This translation is provided for convenience. If it differs from the English version, the English version prevails.",
-    tagline: "Creative OS for YouTube creators and channels.",
+    tagline: "Autonomous studio for YouTube channels.",
     pricing: "Pricing",
   },
   pricing: {
-    metaDescription: "Nightshift plans, top-up credit packs and prices: monthly credits, what a credit pays for, how cancelling works, and how Paddle handles payments and refunds.",
+    metaDescription: "Top-up credit packs, what a credit buys, what a video costs per minute, and how refunds work. Every run shows its price before it starts; a failed run returns its credits.",
     eyebrow: "Plans and credits",
     title: "Pricing",
     lead: "Pick a monthly plan for a steady credit allowance, or top up with one-time packs. Every generation shows its price before it starts, and a failed one costs nothing.",
@@ -3282,7 +3289,7 @@ export const en = {
     rateMinimum: "Minimum hold per run",
     rateValue: "{n} credits",
     rateUnset: "not set",
-    ratesSignedOut: "Signed-in accounts see the current per-minute rate and minimum here; every run's estimate is shown before it starts.",
+    ratesSignedOut: "No per-minute rate is published yet. Every run's estimate is shown before it starts.",
     ratesUnavailable: "The rates are not published on this deployment yet.",
     ratesReadFailed: "The current rates could not be read, so none are shown. Nothing was changed — retry in a moment.",
     ratesNote: "Rates are the platform's price list and may change; a run is never charged more than the hold taken when it started.",
@@ -3294,7 +3301,7 @@ export const en = {
     linkTerms: "Terms: credits and refunds",
     linkBuyerTerms: "Paddle Buyer Terms",
     linkPrivacy: "Privacy Policy",
-    ctaSignedOut: "Create a free account",
+    ctaSignedOut: "Start free",
     ctaSignedIn: "Open Credits",
     ctaNote: "Email sign-up, no card. You pay only when you pick a plan or a pack.",
     termsTitle: "Terms at a glance",

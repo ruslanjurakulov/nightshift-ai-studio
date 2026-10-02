@@ -188,7 +188,9 @@ def token_path(channel: ChannelContext) -> Path:
     suffixed path is still returned so a fresh token is written where this
     deployment expects it.
     """
-    if channel.is_default and not channel.credential.ref:
+    # Only the operator's own `default` channel has the legacy token file: a customer
+    # channel that somehow carries the id `default` (BR-L-110) gets its own namespace.
+    if channel.is_default and channel.is_operators and not channel.credential.ref:
         return legacy_token_path()
     if not channel.is_operators:
         return cfg.BASE_DIR / customer_token_filename(str(channel.channel_id))

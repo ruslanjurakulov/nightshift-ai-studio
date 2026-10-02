@@ -391,7 +391,10 @@ begin
   -- operator reference such as 'extinct_world') is refused with the same answer
   -- as a taken id. Serialised, so two creates cannot both pass.
   perform pg_advisory_xact_lock(hashtext('nightshift.channel_secret_name'));
-  if exists (
+  -- The id `default` (and any id with its secret name) is the operator's legacy
+  -- channel, whose token is chosen by its id alone (BR-L-110): reserved whether or
+  -- not its row exists.
+  if public.channel_secret_name(p_channel_id) = public.channel_secret_name('default') or exists (
     select 1 from public.channels c
      where public.channel_secret_name(c.channel_id) = public.channel_secret_name(p_channel_id)
         or public.channel_secret_name(nullif(c.credential_ref ->> 'ref', '')) = public.channel_secret_name(p_channel_id)

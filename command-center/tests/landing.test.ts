@@ -3,11 +3,13 @@ import {
   SHOWCASE,
   jsonLdScript,
   pricingTeaser,
+  moneyAnchor,
+  shareMetadata,
   siteOrigin,
   softwareApplicationJsonLd,
   visibleShowcase,
 } from "@/lib/landing";
-import { resolvePricing, type PricingEnv } from "@/lib/pricing";
+import { displayPriceCents, displayPriceText, publicCreditRates, resolvePricing, type PricingEnv } from "@/lib/pricing";
 import { resolvePaddleConfig } from "@/lib/paddle";
 import { en } from "@/lib/i18n/en";
 import { ru } from "@/lib/i18n/ru";
@@ -64,6 +66,128 @@ describe("site origin", () => {
     expect(siteOrigin({})).toBeNull();
     expect(siteOrigin({ APP_ORIGIN: "not a url" })).toBeNull();
     expect(siteOrigin({ APP_ORIGIN: "javascript:alert(1)" })).toBeNull();
+  });
+
+  it("falls back to Vercel's production domain", () => {
+    expect(siteOrigin({ VERCEL_PROJECT_PRODUCTION_URL: "nightshift.example.com" })).toBe("https://nightshift.example.com");
+    expect(
+      siteOrigin({ APP_ORIGIN: "https://a.example.com", VERCEL_PROJECT_PRODUCTION_URL: "b.example.com" }),
+    ).toBe("https://a.example.com");
+  });
+
+  it("never answers with a loopback host", () => {
+    for (const v of ["http://localhost:3471", "http://127.0.0.1:3000", "http://0.0.0.0:3000"]) {
+      expect(siteOrigin({ APP_ORIGIN: v })).toBeNull();
+    }
+    expect(siteOrigin({ VERCEL_PROJECT_PRODUCTION_URL: "localhost:3000" })).toBeNull();
+  });
+});
+
+describe("money anchor", () => {
+  it("is words only when nothing is published and the API list is unreadable", () => {
+    expect(moneyAnchor(resolvePricing({}, null), null)).toEqual({ pack: { kind: "none" }, api: null, site: null });
+  });
+
+  it("names the smallest pack with a published price, as written", () => {
+    const pricing = resolvePricing(
+      { NEXT_PUBLIC_PRICE_DISPLAY_STUDIO: "$160", NEXT_PUBLIC_PRICE_DISPLAY_CREATOR: "$45" },
+      null,
+    );
+    const a = moneyAnchor(pricing, null);
+    expect(a.pack).toEqual({ kind: "priced", id: "creator", credits: 5000, price: "$45" });
+  });
+
+  it("says the price is at checkout when Paddle sells without a display price", () => {
+    const paddle = resolvePaddleConfig({
+      NEXT_PUBLIC_PADDLE_CLIENT_TOKEN: "test_0123456789abcdef0123",
+      NEXT_PUBLIC_PADDLE_ENV: "sandbox",
+      NEXT_PUBLIC_PADDLE_PRICE_STARTER: "pri_01starter0000000000000000",
+    });
+    expect(moneyAnchor(resolvePricing({}, paddle), null).pack).toEqual({ kind: "checkout" });
+  });
+
+  it("takes the API's video price from the live list only, and never a zero", () => {
+    const none = resolvePricing({}, null);
+    expect(moneyAnchor(none, { video_minute: 120, job_minimum: 60 }).api).toEqual({ perMinuteCents: 120, minimumCents: 60 });
+    expect(moneyAnchor(none, { video_minute: 120 }).api).toEqual({ perMinuteCents: 120, minimumCents: null });
+    expect(moneyAnchor(none, { video_minute: 0, job_minimum: 60 }).api).toBeNull();
+    expect(moneyAnchor(none, {}).api).toBeNull();
+  });
+
+  it("names a video's price in the app from the live credit rates, never a guess", () => {
+    const none = resolvePricing({}, null);
+    expect(moneyAnchor(none, null, null).site).toBeNull();
+    expect(moneyAnchor(none, null, { perMinute: 0, jobMinimum: 30 }).site).toBeNull();
+    // No priced pack: credits only, no dollar figure.
+    expect(moneyAnchor(none, null, { perMinute: 60, jobMinimum: 30 }).site).toEqual({ perMinute: 60, minimum: 30, usd: null });
+  });
+
+  it("turns the minute into dollars only at a plain US-dollar pack price", () => {
+    const rates = { perMinute: 60, jobMinimum: null };
+    const usd = (price: string) =>
+      moneyAnchor(resolvePricing({ NEXT_PUBLIC_PRICE_DISPLAY_STARTER: price }, null), null, rates).site?.usd ?? null;
+    expect(usd("$10")).toEqual({ cents: 60, pack: "starter" }); // 60 credits x $10 / 1,000
+    expect(usd("$9.99")).toEqual({ cents: 60, pack: "starter" }); // 59.94 cents, rounded
+    expect(usd("€9")).toBeNull();
+    expect(usd("from $10")).toBeNull();
+    expect(usd("10 USD / one-time")).toBeNull();
+  });
+});
+
+describe("display price cents", () => {
+  it("reads only a plain US-dollar amount", () => {
+    expect(displayPriceCents("$10")).toBe(1000);
+    expect(displayPriceCents("US$1,000.50")).toBe(100050);
+    expect(displayPriceCents("$ 45")).toBe(4500);
+    for (const v of ["€9", "$10/mo", "from $5", "$0", "", null, "$1,00"]) expect(displayPriceCents(v)).toBeNull();
+  });
+});
+
+describe("display price text", () => {
+  it("writes a plain US-dollar price the way the page's language writes the figures beside it", () => {
+    // ru/uz cards mixed "$10" with "1,20 $" / "1,20 US$" (PIXEL-4 D7).
+    expect(displayPriceText("$10", "en")).toBe("$10");
+    expect(displayPriceText("$9.99", "en")).toBe("$9.99");
+    expect(displayPriceText("$10", "ru").replace(/\s/g, " ")).toBe("10 $");
+    expect(displayPriceText("$10", "uz").replace(/\s/g, " ")).toBe("10 US$");
+  });
+
+  it("prints anything else exactly as the owner typed it", () => {
+    for (const v of ["€9", "from $5", "10 USD / one-time"]) expect(displayPriceText(v, "ru")).toBe(v);
+  });
+});
+
+describe("public credit rates (0089)", () => {
+  it("are the per-minute rate and the smallest hold, or nothing when the minute is unset or zero", () => {
+    expect(publicCreditRates([{ unit: "video_minute", credits_per_unit: 60 }, { unit: "job_minimum", credits_per_unit: 30 }])).toEqual({
+      perMinute: 60,
+      jobMinimum: 30,
+    });
+    expect(publicCreditRates([{ unit: "video_minute", credits_per_unit: "62.5" }])).toEqual({ perMinute: 62.5, jobMinimum: null });
+    expect(publicCreditRates([{ unit: "job_minimum", credits_per_unit: 30 }])).toBeNull();
+    expect(publicCreditRates([{ unit: "video_minute", credits_per_unit: 0 }])).toBeNull();
+    expect(publicCreditRates(null)).toBeNull();
+  });
+});
+
+describe("share metadata", () => {
+  const base = { path: "/pricing", title: "T", description: "D", siteName: "Nightshift", imageAlt: "A", locale: "en" as const };
+
+  it("puts every URL on the known origin, image included", () => {
+    const m = shareMetadata({ ...base, origin: "https://app.example.com" });
+    expect(m.metadataBase?.toString()).toBe("https://app.example.com/");
+    expect(m.openGraph.url).toBe("https://app.example.com/pricing");
+    expect(m.openGraph.images?.[0].url).toBe("https://app.example.com/og.png");
+    expect(m.twitter.card).toBe("summary_large_image");
+    expect(m.twitter.images?.[0].url).toBe("https://app.example.com/og.png");
+  });
+
+  it("with no origin leaves the image, og:url and canonical out instead of pointing at localhost", () => {
+    const m = shareMetadata({ ...base, origin: null });
+    expect(JSON.stringify(m)).not.toMatch(/localhost|og\.png/);
+    expect(m).not.toHaveProperty("metadataBase");
+    expect(m.openGraph).not.toHaveProperty("images");
+    expect(m.twitter.card).toBe("summary");
   });
 });
 
@@ -128,5 +252,14 @@ describe("landing copy", () => {
 
   it("no longer says access is by invitation — signup is open", () => {
     for (const d of [en, ru, uz]) expect(JSON.stringify(d.landing)).not.toMatch(/invitation|приглашени|taklif orqali/i);
+  });
+});
+
+describe("/pricing share text (PIXEL-4 D1)", () => {
+  it("names only what is on sale: no plans, monthly credits or cancelling, in any language", () => {
+    for (const d of [en, ru, uz]) {
+      expect(d.pricing.metaDescription).not.toMatch(/plan|monthly|cancel|тариф|месяц|отмен|tarif|oylik|bekor/i);
+      expect(d.pricing.metaDescription.length).toBeGreaterThan(60);
+    }
   });
 });

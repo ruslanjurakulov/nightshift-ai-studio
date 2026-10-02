@@ -98,7 +98,9 @@ def _row(c) -> dict:
         "channel_id": str(c.channel_id),
         "name": c.name,
         "niche": c.niche,
-        "is_default": str(c.channel_id) == str(DEFAULT_CHANNEL_ID),
+        # The legacy default (YOUTUBE_TOKEN_JSON) is the operator's own channel only: a customer
+        # channel carrying the id `default` is never it (BR-L-110).
+        "is_default": operators and str(c.channel_id) == str(DEFAULT_CHANNEL_ID),
         # Does the operator's own organization own it? Only these channels may
         # read a token from the worker's environment (BR-G-002); everyone
         # else's token is their own Vault connection.

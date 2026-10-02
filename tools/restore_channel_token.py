@@ -67,7 +67,7 @@ def main(env=None, *, load_channel=_load_channel, client=None, out=None) -> int:
         say(f"::warning::channel {channel_id}: could not load the channel registry "
             f"({type(e).__name__}) — Vault not consulted; the GitHub secret applies as before.")
         return 0
-    if channel.is_default:
+    if channel.is_default and channel.is_operators:
         say(f"channel {channel_id}: the default channel keeps YOUTUBE_TOKEN_JSON — Vault is not consulted.")
         return 0
 

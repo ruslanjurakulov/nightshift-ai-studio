@@ -523,3 +523,16 @@ def test_BR_L_081_the_operators_channels_are_not_held_to_a_connection(conn, sc):
     with acting(conn, sc.operator) as s:
         assert s.run(CREATE, ["w7-op-live", DEFAULT_ORG, "Op", "{}", json.dumps({"youtube_channel_id": "UCop"}), True]).ok
         assert s.run("select public.set_channel_status('w7-op-live', 'ACTIVE')").ok
+
+
+def test_BR_L_110_the_id_default_is_reserved_whether_or_not_its_row_exists(conn, sc):
+    """The legacy default channel's token is chosen by its id alone. Even with the operator's
+    row gone (here: removed inside the rolled-back world), a customer cannot take the id."""
+    with as_superuser(conn, commit=False) as su:
+        su.conn.execute("set local session_replication_role = replica")
+        su.conn.execute("delete from public.channels where channel_id = 'default'")
+        su.conn.execute("set local session_replication_role = origin")
+        assert su.value("select count(*) from public.channels where channel_id = 'default'") == 0
+        with acting(conn, sc.alice.actor) as s:
+            out = s.run(CREATE, ["default", sc.alice.org, "x", "{}", None, False])
+            assert (out.ok, out.sqlstate, out.error) == (False, "23505", "that channel id is not available"), out
