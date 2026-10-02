@@ -165,7 +165,7 @@ export function StyleSections({
                           disabled={busy !== null}
                           onClick={() => void attach(isDefault ? null : k.id)}
                           aria-pressed={isDefault}
-                          className={`disabled:opacity-50 btn-sky pill w-full px-3 py-1.5 text-[12px] ${isDefault ? "is-quiet" : "is-solid"}`}
+                          className={`disabled:opacity-50 w-full ${isDefault ? "btn-quiet" : "btn-primary"}`}
                         >
                           {isDefault ? ts.removeFromChannel : ts.useForChannel}
                         </button>
@@ -260,7 +260,7 @@ function SectionHead({
         type="button"
         onClick={onAction}
         disabled={disabled}
-        className="disabled:opacity-50 btn-sky is-solid pill inline-flex items-center gap-1.5 px-4 py-2 text-[13px]"
+        className="disabled:opacity-50 btn-primary inline-flex items-center gap-1.5 text-[13px]"
       >
         <Plus aria-hidden className="size-4" />
         {action}
@@ -293,12 +293,12 @@ function EmptyCard({
     <div className="panel flex flex-col items-center gap-3 px-6 py-10 text-center">
       <span
         aria-hidden
-        className="grid size-12 place-items-center rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
+        className="grid size-12 place-items-center rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
       >
         <Icon className="size-5" strokeWidth={1.5} />
       </span>
       <p className="m-0 max-w-[46ch] text-[13px] text-[var(--color-muted)]">{text}</p>
-      <button type="button" onClick={onAction} className="disabled:opacity-50 btn-sky is-quiet pill px-4 py-1.5 text-[13px]">
+      <button type="button" onClick={onAction} className="disabled:opacity-50 btn-quiet text-[13px]">
         {action}
       </button>
     </div>
@@ -350,7 +350,7 @@ function Card({
         )}
         {badge && (
           <span
-            className="pill absolute left-2 top-2 px-2 py-0.5 text-[10px] font-semibold"
+            className="absolute left-2 top-2 rounded-[var(--ns-r-chip)] px-2 py-0.5 text-[10px] font-semibold"
             style={
               quietBadge
                 ? { background: "rgba(0,0,0,0.55)", color: "#fff" }
@@ -375,14 +375,14 @@ function Card({
         <div className="mt-auto flex flex-col gap-2 pt-2">
           {extra}
           <div className="flex gap-2">
-            <button type="button" onClick={onEdit} disabled={busy} className="disabled:opacity-50 btn-sky is-quiet pill flex-1 px-3 py-1.5 text-[12px]">
+            <button type="button" onClick={onEdit} disabled={busy} className="disabled:opacity-50 btn-quiet flex-1 text-[12px]">
               {ts.edit}
             </button>
             <button
               type="button"
               onClick={onDelete}
               disabled={busy}
-              className="disabled:opacity-50 btn-sky is-quiet pill flex-1 px-3 py-1.5 text-[12px]"
+              className="disabled:opacity-50 btn-quiet flex-1 text-[12px]"
               style={{ color: "var(--color-fail)" }}
             >
               {ts.delete}

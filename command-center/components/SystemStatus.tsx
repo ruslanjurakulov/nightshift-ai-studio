@@ -8,6 +8,7 @@ import { relativeTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
 import type { Dictionary } from "@/lib/i18n";
 import type { SystemEventRow } from "@/lib/types";
+import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 
 const NAME_KEY: Record<SubsystemKey, keyof Dictionary["ops"]> = {
   youtube: "subYoutube",
@@ -24,15 +25,6 @@ const STATE_KEY: Record<Subsystem["state"], keyof Dictionary["ops"]> = {
   offline: "stOffline",
   unknown: "stUnknown",
 };
-
-const TONE_COLOR: Record<string, string> = {
-  ok: "var(--color-ok)",
-  warn: "var(--color-warn)",
-  fail: "var(--color-fail)",
-  idle: "var(--color-idle)",
-};
-/** Text needs contrast the status dot does not: idle words read in --color-muted. */
-const TONE_TEXT: Record<string, string> = { ...TONE_COLOR, idle: "var(--color-muted)" };
 
 /**
  * Subsystem status board. Each subsystem's state is derived from real event
@@ -57,32 +49,21 @@ export function SystemStatus({
 
   const banner =
     overall === "operational" ? t.ops.allOperational : overall === "degraded" ? t.ops.someDegraded : t.ops.someOffline;
-  const bannerColor = overall === "operational" ? "var(--color-ok)" : overall === "degraded" ? "var(--color-warn)" : "var(--color-fail)";
+  const bannerTone: LampTone = overall === "operational" ? "ok" : overall === "degraded" ? "warn" : "fail";
 
   return (
     <div className="flex flex-col gap-3 p-4">
-      <div className="flex items-center gap-2">
-        <span className="glow-dot live-ring size-2 rounded-full" style={{ color: bannerColor, background: bannerColor }} />
-        <span className="mono text-[11px] font-semibold tracking-wider" style={{ color: bannerColor }}>
-          {banner}
-        </span>
-      </div>
+      <StatusLamp tone={bannerTone} label={banner} size="md" />
       <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
         {subs.map((s) => {
-          const color = TONE_COLOR[s.tone];
           return (
-            <li key={s.key} className="flex items-center justify-between gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-1.5">
-              <span className="flex items-center gap-2">
-                <span className="size-1.5 rounded-full" style={{ background: color }} />
-                <span className="text-[12px] text-[var(--color-fg)]">{String(t.ops[NAME_KEY[s.key]])}</span>
-              </span>
-              <span className="flex items-center gap-2">
+            <li key={s.key} className="flex items-center justify-between gap-2 rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2">
+              <span className="text-[13px] text-[var(--color-fg)]">{String(t.ops[NAME_KEY[s.key]])}</span>
+              <span className="flex items-center gap-3">
                 {s.lastSuccess && (
-                  <span className="mono hidden text-[9px] text-[var(--color-muted)] sm:inline">{relativeTime(s.lastSuccess)}</span>
+                  <span className="mono hidden text-[10px] text-[var(--color-muted)] sm:inline">{relativeTime(s.lastSuccess)}</span>
                 )}
-                <span className="text-[9px] font-semibold uppercase tracking-[0.22em]" style={{ color: TONE_TEXT[s.tone] }}>
-                  {String(t.ops[STATE_KEY[s.state]])}
-                </span>
+                <StatusLamp tone={s.tone as LampTone} label={String(t.ops[STATE_KEY[s.state]])} />
               </span>
             </li>
           );

@@ -132,12 +132,16 @@ afterEach(() => {
 });
 
 describe("tool tabs", () => {
-  it("are one tablist of every tool, with one tab stop and arrow keys that choose", () => {
+  it("are a mode switch (Image, Video, Voice) and a tool row, each with one tab stop and arrow keys that choose", () => {
     render(withI18n(<GeneratePanel orgId={ORG} models={MODELS} />));
-    const list = screen.getByRole("tablist", { name: t.gen.kindLabel });
-    const tabs = within(list).getAllByRole("tab");
-    expect(tabs.map((x) => x.textContent)).toEqual(PANEL_CAPABILITIES.map((c) => t.gen.tabs[c]));
-    expect(tabs.filter((x) => x.getAttribute("tabindex") === "0")).toHaveLength(1);
+    const modes = screen.getByRole("tablist", { name: t.gen.kindLabel });
+    const tools = screen.getByRole("tablist", { name: t.gen.toolRowLabel });
+    const modeTabs = within(modes).getAllByRole("tab");
+    const toolTabs = within(tools).getAllByRole("tab");
+    expect([...modeTabs, ...toolTabs].map((x) => x.textContent)).toEqual(PANEL_CAPABILITIES.map((c) => t.gen.tabs[c]));
+    expect(modeTabs.filter((x) => x.getAttribute("tabindex") === "0")).toHaveLength(1);
+    // No tool is on: the tool row still has one tab stop (its first tab).
+    expect(toolTabs.filter((x) => x.getAttribute("tabindex") === "0")).toHaveLength(1);
 
     const image = screen.getByRole("tab", { name: t.gen.tabs.t2i });
     expect(image.getAttribute("aria-selected")).toBe("true");
@@ -149,10 +153,23 @@ describe("tool tabs", () => {
     expect(document.activeElement).toBe(video);
 
     fireEvent.keyDown(video, { key: "End" });
-    const last = t.gen.tabs[PANEL_CAPABILITIES[PANEL_CAPABILITIES.length - 1]];
-    expect(screen.getByRole("tab", { name: last }).getAttribute("aria-selected")).toBe("true");
-    fireEvent.keyDown(screen.getByRole("tab", { name: last }), { key: "ArrowRight" });
+    const voice = screen.getByRole("tab", { name: t.gen.tabs.tts });
+    expect(voice.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(voice, { key: "ArrowRight" });
     expect(screen.getByRole("tab", { name: t.gen.tabs.t2i }).getAttribute("aria-selected")).toBe("true");
+
+    // A tool lights its own key; the mode switch then has none lit and keeps its tab stop.
+    const cutOut = screen.getByRole("tab", { name: t.gen.tabs.remove_bg });
+    fireEvent.click(cutOut);
+    expect(cutOut.getAttribute("aria-selected")).toBe("true");
+    expect(modeTabs.every((x) => x.getAttribute("aria-selected") === "false")).toBe(true);
+    expect(modeTabs.filter((x) => x.getAttribute("tabindex") === "0")).toHaveLength(1);
+    expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(cutOut.id);
+    fireEvent.keyDown(cutOut, { key: "End" });
+    const lastTool = within(tools).getAllByRole("tab").at(-1) as HTMLElement;
+    expect(lastTool.getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(lastTool, { key: "ArrowRight" });
+    expect(within(tools).getAllByRole("tab")[0].getAttribute("aria-selected")).toBe("true");
   });
 
   it("every language names every tab", () => {

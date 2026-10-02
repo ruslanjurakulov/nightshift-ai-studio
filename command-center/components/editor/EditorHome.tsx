@@ -8,11 +8,11 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import {
-  formatTime,
   parseTitle,
   type EditorAsset,
   type EditorError,
 } from "@/lib/editor";
+import { Timecode } from "@/components/ui/Timecode";
 import { createProject } from "./editorApi";
 
 export interface ProjectRow {
@@ -95,7 +95,7 @@ export function EditorHome({
             </p>
             <Link
               href={path("/library")}
-              className="btn-sky ghost pill px-4 py-2 text-[13px]"
+              className="btn-quiet text-[13px]"
             >
               {te.openLibrary}
             </Link>
@@ -112,7 +112,7 @@ export function EditorHome({
                 value={title}
                 maxLength={120}
                 onChange={(e) => setTitle(e.target.value)}
-                className="pill border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
+                className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
               />
             </label>
             <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
@@ -123,7 +123,7 @@ export function EditorHome({
                 {videos.map((v) => (
                   <label
                     key={v.id}
-                    className={`press flex min-w-0 cursor-pointer flex-col gap-1 rounded-2xl border p-2 text-[12px] ${
+                    className={`press flex min-w-0 cursor-pointer flex-col gap-1 rounded-[var(--ns-r-panel)] border p-2 text-[12px] ${
                       picked === v.id
                         ? "border-[var(--color-primary)]"
                         : "border-[var(--color-border)]"
@@ -137,7 +137,7 @@ export function EditorHome({
                       onChange={() => setPicked(v.id)}
                       className="sr-only"
                     />
-                    <span className="relative block aspect-video overflow-hidden rounded-xl bg-[var(--color-panel-2)]">
+                    <span className="relative block aspect-video overflow-hidden rounded-[var(--ns-r-key)] bg-[var(--color-panel-2)]">
                       {v.thumbUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -156,7 +156,7 @@ export function EditorHome({
                       {v.name ?? te.untitledVideo}
                     </span>
                     <span className="text-[var(--color-muted)]">
-                      {formatTime(v.durationS ?? 0)}
+                      <Timecode value={v.durationS} format="duration" />
                     </span>
                   </label>
                 ))}
@@ -175,7 +175,7 @@ export function EditorHome({
                 type="button"
                 onClick={onCreate}
                 disabled={busy || !picked}
-                className="btn-sky is-solid pill inline-flex items-center gap-2 px-4 py-2 text-[13px]"
+                className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-[13px]"
               >
                 <Plus className="size-4" aria-hidden />
                 {busy ? te.creating : te.create}

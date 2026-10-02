@@ -151,9 +151,9 @@ export function MediaViewer({
       className="fixed inset-0 z-50 flex items-stretch justify-center outline-none sm:items-center sm:p-6"
     >
       <div aria-hidden className="scrim-enter absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="sheet-enter relative flex h-full w-full flex-col overflow-hidden bg-[var(--color-panel)] sm:h-[min(88vh,880px)] sm:max-w-6xl sm:rounded-[18px] sm:border sm:border-[var(--color-border)] sm:shadow-[var(--shadow-elevated)]">
+      <div className="sheet-enter relative flex h-full w-full flex-col overflow-hidden bg-[var(--color-panel)] sm:h-[min(88vh,880px)] sm:max-w-6xl sm:rounded-[var(--ns-r-sheet)] sm:border sm:border-[var(--color-border)] sm:shadow-[var(--shadow-elevated)]">
         <header className="flex items-center gap-3 border-b border-[var(--color-border)] px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:pt-3">
-          <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-xl bg-[var(--color-panel-2)] text-[var(--color-muted)]">
+          <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-[var(--ns-r-key)] bg-[var(--color-panel-2)] text-[var(--color-muted)]">
             <Icon className="size-4" strokeWidth={1.75} />
           </span>
           <div className="flex min-w-0 flex-1 flex-col">
@@ -184,18 +184,18 @@ export function MediaViewer({
                   controls
                   playsInline
                   preload="metadata"
-                  className="max-h-full max-w-full rounded-xl bg-black"
+                  className="max-h-full max-w-full rounded-[var(--ns-r-key)] bg-black"
                 />
               ) : picture ? (
                 // eslint-disable-next-line @next/next/no-img-element -- a signed, short-lived same-origin link; next/image would re-host it
-                <img key={asset.id} src={picture} alt={name} className="max-h-full max-w-full rounded-xl object-contain" />
+                <img key={asset.id} src={picture} alt={name} className="max-h-full max-w-full rounded-[var(--ns-r-key)] object-contain" />
               ) : asset.kind === "audio" && asset.viewUrl ? (
                 <div className="flex w-full max-w-md flex-col items-center gap-5">
                   {asset.thumbUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- see above
-                    <img src={asset.thumbUrl} alt="" className="size-40 rounded-2xl object-cover" />
+                    <img src={asset.thumbUrl} alt="" className="size-40 rounded-[var(--ns-r-key)] object-cover" />
                   ) : (
-                    <span aria-hidden className="grid size-28 place-items-center rounded-3xl border border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-primary)]">
+                    <span aria-hidden className="grid size-28 place-items-center rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-primary)]">
                       <Icon className="size-10" strokeWidth={1.25} />
                     </span>
                   )}
@@ -203,7 +203,7 @@ export function MediaViewer({
                 </div>
               ) : (
                 <div className="flex max-w-xs flex-col items-center gap-3 text-center text-[var(--color-muted)]">
-                  <span aria-hidden className="grid size-20 place-items-center rounded-3xl border border-[var(--color-border)] bg-[var(--color-panel)]">
+                  <span aria-hidden className="grid size-20 place-items-center rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)]">
                     <Icon className="size-8" strokeWidth={1.25} />
                   </span>
                   <p className="m-0 text-[13px]">{tv.noPreview}</p>
@@ -217,7 +217,7 @@ export function MediaViewer({
                   onClick={() => go(-1)}
                   disabled={!hasPrev}
                   aria-label={tv.prev}
-                  className="press absolute left-2 top-1/2 grid size-10 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-fg)] shadow-[var(--shadow-panel)] hover:border-[var(--color-primary)] disabled:pointer-events-none disabled:opacity-0 sm:left-4"
+                  className="press absolute left-2 top-1/2 grid size-10 -translate-y-1/2 max-sm:size-11 place-items-center rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-fg)] shadow-[var(--shadow-panel)] hover:border-[var(--color-primary)] disabled:pointer-events-none disabled:opacity-0 sm:left-4"
                 >
                   <ChevronLeft className="size-5" aria-hidden />
                 </button>
@@ -226,7 +226,7 @@ export function MediaViewer({
                   onClick={() => go(1)}
                   disabled={!hasNext}
                   aria-label={tv.next}
-                  className="press absolute right-2 top-1/2 grid size-10 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-fg)] shadow-[var(--shadow-panel)] hover:border-[var(--color-primary)] disabled:pointer-events-none disabled:opacity-0 sm:right-4"
+                  className="press absolute right-2 top-1/2 grid size-10 -translate-y-1/2 max-sm:size-11 place-items-center rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-fg)] shadow-[var(--shadow-panel)] hover:border-[var(--color-primary)] disabled:pointer-events-none disabled:opacity-0 sm:right-4"
                 >
                   <ChevronRight className="size-5" aria-hidden />
                 </button>
@@ -258,7 +258,7 @@ export function MediaViewer({
                     <Link
                       key={tool}
                       href={path(`/create?tool=${tool}&source=${encodeURIComponent(asset.id)}`)}
-                      className="btn-sky is-quiet pill px-3 py-1.5 text-[12px]"
+                      className="btn-quiet text-[12px]"
                     >
                       {t.gen.kinds[tool]}
                     </Link>
@@ -276,7 +276,7 @@ export function MediaViewer({
                   href={asset.viewUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn-sky ghost pill px-4 py-2.5 text-[13px]"
+                  className="btn-quiet text-[13px]"
                 >
                   <ExternalLink size={14} aria-hidden />
                   {tv.openTab}
@@ -284,18 +284,18 @@ export function MediaViewer({
               )}
               {onDelete &&
                 (confirm ? (
-                  <div className="flex flex-col gap-2 rounded-2xl border border-[var(--color-border)] p-3">
+                  <div className="flex flex-col gap-2 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3">
                     <p className="m-0 text-[12px] text-[var(--color-muted)]">{fmt(tm.deleteConfirm, { name })}</p>
                     <div className="flex gap-2">
                       <button
                         type="button"
                         disabled={deleting}
                         onClick={() => onDelete(asset)}
-                        className="btn-sky is-solid pill flex-1 px-4 py-2 text-[13px] disabled:opacity-40"
+                        className="btn-primary flex-1 text-[13px] disabled:opacity-40"
                       >
                         {deleting ? tm.deleting : tm.delete}
                       </button>
-                      <button type="button" onClick={() => setConfirm(false)} className="btn-sky is-quiet pill px-4 py-2 text-[13px]">
+                      <button type="button" onClick={() => setConfirm(false)} className="btn-quiet text-[13px]">
                         {tm.cancel}
                       </button>
                     </div>
@@ -304,7 +304,7 @@ export function MediaViewer({
                   <button
                     type="button"
                     onClick={() => setConfirm(true)}
-                    className="btn-sky is-quiet pill px-4 py-2.5 text-[13px] hover:text-[var(--color-fail)]!"
+                    className="btn-quiet text-[13px] hover:text-[var(--color-fail)]!"
                   >
                     <Trash2 size={14} aria-hidden />
                     {tm.delete}

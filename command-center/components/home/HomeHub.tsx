@@ -24,6 +24,10 @@ import { useChannelPath } from "@/lib/channels-client";
 import { HOME_FORMATS, QUICK_ACTIONS, toolHref, type HomeChannel, type QuickActionId } from "@/lib/home";
 import { HomeComposer, type ComposerChannel, type ComposerHandle } from "@/components/home/HomeComposer";
 import { FormatArt } from "@/components/home/FormatArt";
+import { Chip } from "@/components/ui/Chip";
+import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
+import { StatusLamp } from "@/components/ui/StatusLamp";
+import { Timecode } from "@/components/ui/Timecode";
 import { RecentStrip } from "@/components/home/RecentStrip";
 import { AssistantPlanner } from "@/components/assistant/AssistantPlanner";
 import type { StudioModel } from "@/lib/creative/studio";
@@ -35,16 +39,6 @@ const QUICK_ICON: Record<QuickActionId, LucideIcon> = {
   edit: Wand2,
   upscale: ZoomIn,
   cutout: Scissors,
-};
-
-/** Each tool's mark on its own painted square (same in both themes). */
-const QUICK_HUES: Record<QuickActionId, string> = {
-  image: "linear-gradient(135deg,#ff7a59,#ffb35c)",
-  video: "linear-gradient(135deg,#7b5cff,#d65cff)",
-  voice: "linear-gradient(135deg,#2bb3a3,#5ad1e6)",
-  edit: "linear-gradient(135deg,#3f7bff,#69b4ff)",
-  upscale: "linear-gradient(135deg,#ffb020,#ff6a3d)",
-  cutout: "linear-gradient(135deg,#e2559f,#ff8fb1)",
 };
 
 const FLOW = ["channel", "topic", "script", "video", "approval", "youtube"] as const;
@@ -96,14 +90,6 @@ export function HomeHub({
     <div className="flex flex-col gap-10 sm:gap-12">
       {/* ── Hero: the idea, then the box ─────────────────────────────── */}
       <section aria-labelledby="home-hero" className="relative flex flex-col gap-5">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -inset-x-6 -top-10 h-[260px] opacity-80"
-          style={{
-            background:
-              "radial-gradient(60% 70% at 50% 0%, color-mix(in srgb, var(--color-primary) 18%, transparent), transparent 70%)",
-          }}
-        />
         <ol
           aria-label={t.home.flowLabel}
           className="relative -mx-1 flex items-center gap-1 overflow-x-auto px-1 pb-1 text-[12px] text-[var(--color-muted)] [scrollbar-width:none]"
@@ -111,15 +97,9 @@ export function HomeHub({
           {FLOW.map((step, i) => (
             <li key={step} className="flex shrink-0 items-center gap-1">
               {i > 0 && <ChevronRight aria-hidden className="size-3.5 opacity-50" />}
-              <span
-                className={`pill border px-2.5 py-1 ${
-                  step === "approval"
-                    ? "border-[color-mix(in_srgb,var(--color-primary)_55%,var(--color-border))] text-[var(--color-fg)]"
-                    : "border-[var(--color-border)]"
-                }`}
-              >
+              <Chip plain tone={step === "approval" ? "lit" : undefined}>
                 {t.home.flow[step]}
-              </span>
+              </Chip>
             </li>
           ))}
         </ol>
@@ -168,10 +148,14 @@ export function HomeHub({
               <li key={a.id}>
                 <Link
                   href={path(toolHref(a.tool))}
-                  className="press group flex h-full flex-col gap-3 rounded-[16px] border border-[var(--color-border)] bg-[var(--color-panel)] p-3 transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-border))]"
+                  className="press group flex h-full flex-col gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel)] p-3 transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-border))]"
                 >
-                  <span aria-hidden className="grid size-9 place-items-center rounded-[11px] text-white" style={{ background: QUICK_HUES[a.id] }}>
-                    <Icon className="size-[18px]" strokeWidth={2} />
+                  {/* An engraved key: hairline square, dim glyph; it lights when the tile is pointed at. */}
+                  <span
+                    aria-hidden
+                    className="grid size-9 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] text-[var(--color-muted)] transition-colors group-hover:text-[var(--ns-amber-ink)]"
+                  >
+                    <Icon className="size-[18px]" strokeWidth={1.75} />
                   </span>
                   <span className="flex flex-col">
                     <span className="text-[14px] font-medium leading-snug text-[var(--color-fg)]">{t.home.quick[a.id].title}</span>
@@ -192,28 +176,27 @@ export function HomeHub({
           </h2>
           <p className="text-[13px] text-[var(--color-muted)]">{t.home.formatsHint}</p>
         </div>
-        <ul className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 sm:pb-0">
+        <ContactSheet label={t.home.formatsTitle} ragged min={160}>
           {HOME_FORMATS.map((f) => (
-            <li key={f.id} className="w-[200px] shrink-0 snap-start sm:w-auto">
-              <button
-                type="button"
-                onClick={() => composer.current?.preset(f.length, t.home.formats[f.id].starter)}
-                className="press group flex h-full w-full flex-col overflow-hidden rounded-[16px] border border-[var(--color-border)] bg-[var(--color-panel)] text-left transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-border))]"
-              >
-                <span className="relative block aspect-[16/10] w-full overflow-hidden">
-                  <FormatArt id={f.id} className="absolute inset-0 size-full transition-transform duration-500 group-hover:scale-[1.04]" />
-                  <span className="pill absolute bottom-2 left-2 bg-black/55 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm">
-                    {t.home.lengths[f.length]}
-                  </span>
-                </span>
-                <span className="flex flex-col gap-0.5 p-3">
+            <Frame
+              key={f.id}
+              aspect="16 / 10"
+              edge={[t.home.lengths[f.length]]}
+              body={
+                <button
+                  type="button"
+                  onClick={() => composer.current?.preset(f.length, t.home.formats[f.id].starter)}
+                  className="press flex min-h-11 w-full flex-col gap-0.5 text-left"
+                >
                   <span className="text-[14px] font-medium text-[var(--color-fg)]">{t.home.formats[f.id].title}</span>
                   <span className="text-[12px] leading-snug text-[var(--color-muted)]">{t.home.formats[f.id].who}</span>
-                </span>
-              </button>
-            </li>
+                </button>
+              }
+            >
+              <FormatArt id={f.id} className="absolute inset-0 size-full" />
+            </Frame>
           ))}
-        </ul>
+        </ContactSheet>
       </section>
 
       {/* ── Your channels: the part no other studio has ───────────────── */}
@@ -232,15 +215,15 @@ export function HomeHub({
           )}
         </div>
         {channels.length === 0 ? (
-          <div className="flex flex-col items-start gap-3 rounded-[18px] border border-dashed border-[var(--color-border)] p-5 sm:flex-row sm:items-center">
-            <span aria-hidden className="grid size-11 shrink-0 place-items-center rounded-[14px] bg-[var(--color-panel-2)] text-[var(--color-primary)]">
+          <div className="flex flex-col items-start gap-3 rounded-[var(--ns-r-panel)] border border-dashed border-[var(--color-border)] p-5 sm:flex-row sm:items-center">
+            <span aria-hidden className="grid size-11 shrink-0 place-items-center rounded-[var(--ns-r-panel)] bg-[var(--color-panel-2)] text-[var(--color-primary)]">
               <Film className="size-5" />
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-[14px] font-medium text-[var(--color-fg)]">{t.home.noChannelsTitle}</p>
               <p className="text-[13px] text-[var(--color-muted)]">{t.home.noChannelsBody}</p>
             </div>
-            <Link href={path("/channels/new")} className="cta-glass pill inline-flex min-h-10 items-center gap-1.5 px-4 text-[13px] font-semibold">
+            <Link href={path("/channels/new")} className="btn-primary text-[13px]">
               <Plus aria-hidden className="size-4" />
               {t.home.connect}
             </Link>
@@ -285,9 +268,9 @@ function when(iso: string, t: Dictionary): string {
 }
 
 const STANDING_TONE = {
-  live: "var(--color-ok)",
-  paused: "var(--color-warn)",
-  draft: "var(--color-idle)",
+  live: "ok",
+  paused: "warn",
+  draft: "idle",
 } as const;
 
 function ChannelCard({ c }: { c: HomeChannel }) {
@@ -299,16 +282,15 @@ function ChannelCard({ c }: { c: HomeChannel }) {
 
   return (
     <li className="w-[272px] shrink-0 snap-start sm:w-[300px]" data-channel={c.slug}>
-      <div className="flex h-full flex-col gap-3 rounded-[18px] border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
+      <div className="flex h-full flex-col gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
         <div className="flex items-center gap-3">
           {c.avatar ? (
             // eslint-disable-next-line @next/next/no-img-element -- the channel's public YouTube avatar
-            <img src={c.avatar} alt="" width={40} height={40} className="size-10 shrink-0 rounded-full border border-[var(--color-border)] object-cover" />
+            <img src={c.avatar} alt="" width={40} height={40} className="size-10 shrink-0 rounded-[var(--ns-r-key)] border border-[var(--color-border)] object-cover" />
           ) : (
             <span
               aria-hidden
-              className="grid size-10 shrink-0 place-items-center rounded-full text-[15px] font-semibold text-white"
-              style={{ background: "linear-gradient(135deg, #3f7bff, #a35cff)" }}
+              className="grid size-10 shrink-0 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] font-display text-[18px] font-bold text-[var(--color-fg)]"
             >
               {initial}
             </span>
@@ -316,8 +298,7 @@ function ChannelCard({ c }: { c: HomeChannel }) {
           <div className="min-w-0 flex-1">
             <p className="truncate text-[14px] font-medium text-[var(--color-fg)]">{c.name}</p>
             <p className="flex items-center gap-1.5 text-[12px] text-[var(--color-muted)]">
-              <span aria-hidden className="size-1.5 rounded-full" style={{ background: STANDING_TONE[c.standing] }} />
-              {t.home.standing[c.standing]}
+              <StatusLamp tone={STANDING_TONE[c.standing]} label={t.home.standing[c.standing]} />
               {c.language && <span className="truncate">· {c.language}</span>}
             </p>
           </div>
@@ -361,7 +342,7 @@ function ChannelCard({ c }: { c: HomeChannel }) {
                 style={{ color: c.waiting > 0 ? "var(--color-warn)" : "var(--color-muted)" }}
                 data-testid="waiting"
               >
-                {c.waiting}
+                <Timecode value={c.waiting} format="count" />
               </span>
             )}
           </dd>

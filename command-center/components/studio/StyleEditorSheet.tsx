@@ -156,7 +156,7 @@ export function StyleEditorSheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="sheet-enter relative flex max-h-[92dvh] w-full flex-col rounded-t-2xl border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] sm:max-w-2xl sm:rounded-2xl"
+        className="sheet-enter relative flex max-h-[92dvh] w-full flex-col rounded-t-2xl border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] sm:max-w-2xl sm:rounded-[var(--ns-r-key)]"
       >
         <header className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
           <h2 id={titleId} className="text-[15px] font-semibold text-[var(--color-fg)]">
@@ -167,7 +167,7 @@ export function StyleEditorSheet({
             onClick={onClose}
             disabled={saving}
             aria-label={ts.close}
-            className="grid size-9 place-items-center rounded-full text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+            className="grid size-9 place-items-center rounded-[var(--ns-r-key)] text-[var(--color-muted)] hover:text-[var(--color-fg)]"
           >
             <X aria-hidden className="size-5" />
           </button>
@@ -212,7 +212,7 @@ export function StyleEditorSheet({
                       type="button"
                       onClick={() => setKind(k)}
                       aria-pressed={kind === k}
-                      className={`disabled:opacity-50 btn-sky pill px-4 py-1.5 text-[13px] ${kind === k ? "is-solid" : "is-quiet"}`}
+                      className={`disabled:opacity-50 ${kind === k ? "btn-primary" : "btn-quiet"}`}
                     >
                       {k === "character" ? ts.kindCharacter : ts.kindProduct}
                     </button>
@@ -259,10 +259,10 @@ export function StyleEditorSheet({
               </p>
             )}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <button type="button" onClick={onClose} disabled={saving} className="disabled:opacity-50 btn-sky is-quiet pill px-4 py-2 text-[13px]">
+              <button type="button" onClick={onClose} disabled={saving} className="disabled:opacity-50 btn-quiet text-[13px]">
                 {ts.cancel}
               </button>
-              <button type="submit" disabled={!canSave} aria-busy={saving} className="disabled:opacity-50 btn-sky is-solid pill px-5 py-2 text-[13px]">
+              <button type="submit" disabled={!canSave} aria-busy={saving} className="disabled:opacity-50 btn-primary text-[13px]">
                 {saving ? ts.saving : ts.save}
               </button>
             </div>

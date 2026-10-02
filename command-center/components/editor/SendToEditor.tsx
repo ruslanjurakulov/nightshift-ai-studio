@@ -70,7 +70,7 @@ export function SendToEditor({
         onClick={() => setOpen(true)}
         aria-label={variant === "icon" ? ts.action : undefined}
         title={variant === "icon" ? ts.action : undefined}
-        className={className ?? (variant === "icon" ? "grid size-9 place-items-center rounded-full" : "btn-sky ghost pill px-4 py-2.5 text-[13px]")}
+        className={className ?? (variant === "icon" ? "tap-icon grid size-9 place-items-center rounded-[var(--ns-r-key)]" : "btn-quiet text-[13px]")}
         data-testid="open-in-editor"
       >
         <Clapperboard aria-hidden className="size-4" />
@@ -159,7 +159,7 @@ function SendDialog({
 
   const note = kind === "image" ? fmt(ts.stillNote, { s: STILL_DEFAULT_S }) : kind === "audio" ? ts.soundNote : ts.videoNote;
   const field =
-    "pill border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
+    "rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
 
   return (
     <LibraryDialog
@@ -174,14 +174,14 @@ function SendDialog({
       testId="open-in-editor-dialog"
       footer={
         <>
-          <button type="button" onClick={onClose} disabled={busy} className="btn-sky is-quiet pill px-4 py-2 text-[13px]">
+          <button type="button" onClick={onClose} disabled={busy} className="btn-quiet text-[13px]">
             {ts.cancel}
           </button>
           <button
             type="button"
             onClick={() => void submit()}
             disabled={busy || (projects === null && !listError) || (existing && !picked)}
-            className="btn-sky is-solid pill px-4 py-2 text-[13px]"
+            className="btn-primary text-[13px]"
           >
             {busy ? ts.sending : ts.submit}
           </button>
@@ -197,7 +197,7 @@ function SendDialog({
         {listError ? (
           <div className="flex flex-wrap items-center gap-3" role="alert">
             <p className="m-0 text-[13px] text-[var(--color-fail)]">{ts.projectsFailed}</p>
-            <button type="button" className="btn-sky is-quiet pill px-3 py-1.5 text-[12px]" onClick={() => setAttempt((n) => n + 1)}>
+            <button type="button" className="btn-quiet text-[12px]" onClick={() => setAttempt((n) => n + 1)}>
               {ts.retry}
             </button>
           </div>

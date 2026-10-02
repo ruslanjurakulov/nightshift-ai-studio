@@ -4,6 +4,8 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { STYLE_PRESETS, presetGradient } from "@/lib/stylePresets";
+import { Chip } from "@/components/ui/Chip";
+import { TileGrid } from "@/components/ui/ContactSheet";
 
 /**
  * The Studio Canvas preset gallery, now clickable.
@@ -70,13 +72,13 @@ export function PresetGallery({
       {!channelId && (
         <p className="mb-4 text-[13px] text-[var(--color-warn)]">{t.studio.pickChannelHint}</p>
       )}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <TileGrid min={260} gap={16} label={t.studio.presetsTitle}>
         {STYLE_PRESETS.map((p) => {
           const isApplied = applied === p.id;
           return (
-            <div
+            <li
               key={p.id}
-              className="panel overflow-hidden p-0 transition-transform duration-200 hover:-translate-y-0.5 hover:border-[var(--color-primary-dim)]"
+              className="panel overflow-hidden p-0 hover:border-[var(--color-primary-dim)]"
               style={isApplied ? { borderColor: "var(--color-primary)" } : undefined}
             >
               <div className="h-24 w-full" style={{ background: presetGradient(p) }} aria-hidden />
@@ -84,13 +86,13 @@ export function PresetGallery({
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-[var(--color-fg)]">{p.name}</span>
                   {isApplied ? (
-                    <span className="pill border border-[var(--color-primary)] px-2 py-0.5 mono text-[10px] text-[var(--color-primary)]">
+                    <Chip plain tone="lit" className="shrink-0">
                       {t.studio.currentBadge}
-                    </span>
+                    </Chip>
                   ) : (
-                    <span className="pill border border-[var(--color-border)] px-2 py-0.5 mono text-[10px] text-[var(--color-muted)]">
+                    <Chip plain className="shrink-0">
                       {t.studio.moodLabel}: {p.mood}
-                    </span>
+                    </Chip>
                   )}
                 </div>
                 <p className="text-[13px] leading-relaxed text-[var(--color-muted)]">{p.directive}</p>
@@ -102,7 +104,7 @@ export function PresetGallery({
                     type="button"
                     onClick={() => apply(p.id)}
                     disabled={!channelId || busy !== null || isApplied}
-                    className="btn-sky pill shrink-0 px-3 py-1.5 text-[12px] disabled:opacity-40"
+                    className="btn-quiet shrink-0 disabled:opacity-40"
                   >
                     {busy === p.id
                       ? t.studio.applying
@@ -115,10 +117,10 @@ export function PresetGallery({
                   <p className="mono text-[11px] text-[var(--color-fail)]">{t.studio.applyFailed}</p>
                 )}
               </div>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </TileGrid>
     </div>
   );
 }
