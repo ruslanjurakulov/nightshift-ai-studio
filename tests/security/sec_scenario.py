@@ -372,6 +372,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Scene regeneration v2 (0076): tests/security/sec_scene_regen_0076.py.
     import sec_scene_regen_0076
     sec_scene_regen_0076.seed(conn, sc)
+    # Multi-clip repurposing (0080): tests/security/sec_repurpose_0080.py.
+    import sec_repurpose_0080
+    sec_repurpose_0080.seed(conn, sc)
     # A pending invite into org A, addressed to Ivan's email, not yet accepted.
     with acting(conn, sc.alice.actor, commit=True) as s:
         s.value("select public.invite_org_member(%s, %s, 'viewer')", [sc.alice.org, sc.invitee.email])

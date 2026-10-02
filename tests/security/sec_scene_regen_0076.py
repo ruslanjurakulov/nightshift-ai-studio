@@ -24,11 +24,13 @@ REGENERATION: Dict[str, str] = {}
 
 
 def extend(tables: dict, functions: dict) -> None:
-    from sec_expectations import SERVICE, USER, Channel
+    from sec_expectations import SERVICE, USER, Channel, Service
 
     tables.update({
         # Members of the channel's organization read; nobody writes directly.
         "scene_regenerations": Channel(),
+        # 0085: the worker's own text for a failed regeneration. No API role.
+        "scene_regeneration_details": Service(),
     })
     functions.update({
         # Each checks who the caller is itself: quote = may read the video,
@@ -39,6 +41,8 @@ def extend(tables: dict, functions: dict) -> None:
         "start_scene_regeneration": SERVICE,
         "finish_scene_regeneration": SERVICE,
         "expire_scene_regenerations": SERVICE,
+        # 0085: what the worker settles from its disk before the sweep.
+        "scene_regenerations_unsettled": SERVICE,
         "scene_regen_plan": SERVICE,
         "scene_regen_price": SERVICE,
         "scene_regen_published": SERVICE,
@@ -83,6 +87,9 @@ def seed(conn, sc) -> None:
                 [t.org, t.channel, t.video, f"seed-{t.key}", f"seed-key-{t.key}",
                  hashlib.md5(t.key.encode()).hexdigest()])
             REGENERATION[t.key] = str(rid)
+            # 0085: the worker's own text for it (a service-only table).
+            s.rows("insert into public.scene_regeneration_details (regeneration_id, detail) values (%s, %s) "
+                   "returning 1", [rid, f"seed detail {t.key}"])
 
 
 def manifest_json(**kw) -> str:

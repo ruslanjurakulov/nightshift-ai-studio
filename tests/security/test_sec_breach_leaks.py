@@ -18,14 +18,12 @@ Fixed (migrations 0087 and 0088):
     value on ``creative_jobs``. Both now say 'unavailable'; the real code is in
     the platform-only ``creative_job_routes.reasons``.
 
-Open (xfail strict, flip when fixed):
-  * BR-G-006  ``scene_regenerations.error`` is readable by every member over
+Fixed elsewhere (the marker is dropped, migration 0085, BR-L-040 = BR-G-006):
+  * BR-G-006  ``scene_regenerations.error`` was readable by every member over
     PostgREST, and the worker fills it with the refusal's raw text (the
-    platform's configured vendor model, key and error text). The Command Center
-    reads only ``error_code``. Owned by claude/patch-scene-regen-followups
-    (migration 0085 revokes the column and moves the text to a service-only
-    table): this pin flips there. It is NOT strict-xfail-safe to merge both
-    without dropping the marker in the second PR.
+    platform's configured vendor model, key and error text). Members are now
+    granted every column but ``error`` and the raw text goes to a service-only
+    table. The Command Center reads only ``error_code``.
 """
 
 from __future__ import annotations
@@ -170,7 +168,6 @@ def test_BR_G_005_a_second_run_of_the_migration_finds_nothing_to_move_and_a_firs
 
 # ── BR-G-006 ────────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="BR-G-006 open: scene_regenerations.error (the worker's raw refusal text) is member-readable")
 def test_BR_G_006_a_member_cannot_read_the_raw_error_text_of_a_regeneration(conn, sc):
     with acting(conn, sc.alice.actor) as s:
         out = s.run("select error from public.scene_regenerations")
