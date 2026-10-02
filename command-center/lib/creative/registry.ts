@@ -84,8 +84,11 @@ export interface SellableModel {
   creditUnit: string;
   /** The plan entitlement a model needs (0034 key, e.g. models_video:premium); null = none. */
   entitlement: string | null;
+  /**
+   * Credits per unit AS CHARGED (the platform's margin folded in, 0084). The
+   * margin itself is never sent to a member.
+   */
   creditsPerUnit: number;
-  margin: number;
   spec: PublicSpec;
 }
 
@@ -170,9 +173,13 @@ export function coerceSellableModels(rows: unknown): SellableModel[] {
     if (availability !== "beta" && availability !== "ga") continue;
     if (typeof verified_at !== "string" || verified_at === "") continue;
     if (typeof credit_unit !== "string" || credit_unit === "") continue;
-    const credits = Number(r.credits_per_unit);
+    // 0084 returns the rate as charged and a NULL margin. A database still on
+    // 0072 returns the base rate and its margin: folded here, so the number is
+    // the same either way and no margin leaves this function.
+    const base = Number(r.credits_per_unit);
     const margin = Number(r.margin ?? 0);
-    if (!Number.isFinite(credits) || credits <= 0 || !Number.isFinite(margin) || margin < 0) continue;
+    if (!Number.isFinite(base) || base <= 0 || !Number.isFinite(margin) || margin < 0) continue;
+    const credits = base * (1 + margin);
     const capabilities = strings(r.capabilities).filter(isCapability);
     if (capabilities.length === 0) continue;
     const spec = coerceSpec(r.spec);
@@ -187,7 +194,6 @@ export function coerceSellableModels(rows: unknown): SellableModel[] {
       creditUnit: credit_unit,
       entitlement: typeof entitlement === "string" && entitlement !== "" ? entitlement : null,
       creditsPerUnit: credits,
-      margin,
       spec,
     });
   }

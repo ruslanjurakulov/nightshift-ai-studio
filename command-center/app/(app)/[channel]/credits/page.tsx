@@ -10,7 +10,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { coerceTransactions, isCreditExempt } from "@/lib/credits";
-import { creditsEnforced, readCreditAccount, readCreditPrices } from "@/lib/server/credits";
+import { creditsEnforced, readCreditAccount, readCreditPriceList, readCreditPrices } from "@/lib/server/credits";
 import { buyAccess, paddleClient, paddleConfig } from "@/lib/paddle";
 import { PLAN_ENV, balanceSplit, generationRates, planMatrix, subscribeAccess } from "@/lib/plans";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
@@ -85,6 +85,10 @@ export default async function CreditsPage() {
 
   const exempt = isCreditExempt(orgId);
   const platformAdmin = admin.data === true;
+  // The editor needs the base rates, margins and notes: the raw list, which
+  // the database (0084) shows a platform owner/admin only. Never read for
+  // anyone else, so a member's page never carries a margin.
+  const priceList = platformAdmin ? await readCreditPriceList(supabase) : null;
   // acct.account is null exactly when the read failed: the balance is unknown,
   // and no figure, purchase flow or "no prices" line may stand in for it.
   const account = acct.account;
@@ -199,13 +203,13 @@ export default async function CreditsPage() {
           </p>
           {!paddleConfig && !exempt && <p className="mono text-[11px] text-[var(--color-muted)]">{t.credits.buy.notConfigured}</p>}
           <GrantCreditsForm orgId={orgId} orgName={org.current.name} />
-          {priceRes.failed ? (
+          {!priceList || priceList.failed || !priceList.supported ? (
             <div className="panel p-4">
               <h2 className="t-section">{t.credits.pricesTitle}</h2>
               <ErrorState compact />
             </div>
           ) : (
-            <CreditPricesEditor prices={Object.values(priceRes.prices)} canEdit />
+            <CreditPricesEditor prices={Object.values(priceList.prices)} canEdit />
           )}
         </>
       )}
