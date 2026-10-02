@@ -447,3 +447,8 @@ sec_style_0065.extend(TABLES, FUNCTIONS)
 import sec_workflows_0073  # noqa: E402
 
 sec_workflows_0073.extend(TABLES, FUNCTIONS)
+
+# Migration 0075 (Model Router v1): tests/security/sec_router_0075.py
+import sec_router_0075  # noqa: E402
+
+sec_router_0075.extend(TABLES, FUNCTIONS)
