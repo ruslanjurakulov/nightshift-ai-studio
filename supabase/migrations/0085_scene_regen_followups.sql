@@ -284,14 +284,14 @@ $$;
 -- and ends it with finish_scene_regeneration (a success captures the quote
 -- only for a cut that is in place and matches its result).
 create or replace function public.scene_regenerations_unsettled()
-  returns table (id uuid, render_job_id bigint, slug text, status text)
+  returns table (id uuid, render_job_id bigint, slug text, status text, created_at timestamptz)
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 begin
   if not public.credits_trusted_caller() then
     raise exception 'forbidden' using errcode = '42501';
   end if;
   return query
-    select s.id, s.render_job_id, s.slug, s.status
+    select s.id, s.render_job_id, s.slug, s.status, s.created_at
       from public.scene_regenerations s
      where s.status in ('queued', 'running')
        and (s.created_at < now() - interval '26 hours'

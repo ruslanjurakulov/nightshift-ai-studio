@@ -86,7 +86,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 
@@ -735,19 +735,73 @@ class Worker:
         return outcome
 
     def _settle_regeneration(self, job: Mapping, regen_id: str, *, ok: bool, code: Optional[str],
-                             error=None, result: Optional[dict] = None) -> None:
+                             error=None, result: Optional[dict] = None) -> bool:
         """Never raises. If the database cannot be reached the regeneration
-        stays open and expire_scene_regenerations releases it later — the
-        person is never charged for an unconfirmed end."""
+        stays open and the expiry sweep takes it later — after the worker has
+        settled it from its disk (_reconcile_regenerations), so the person is
+        never charged for an unconfirmed end and a hold is never released
+        while the new cut is in place. True when the database took it."""
         try:
             out = self.credits.scene_regen_finish(regen_id, job["id"], ok=ok, error_code=code,
                                                   error=scrub(str(error), self._secrets) if error else None,
                                                   result=result)
             logger.info("job %s: scene regeneration %s (%s)", job["id"],
                         (out or {}).get("status", "unknown"), "captured the quote" if ok else "hold released")
+            return True
         except credit_rules.CreditsUnavailable as e:
-            logger.error("job %s: could not settle the scene regeneration (%s) — it is released by the "
-                         "expiry sweep", job["id"], e)
+            logger.error("job %s: could not settle the scene regeneration (%s) — the next sweep settles it "
+                         "from this worker's files", job["id"], e)
+            return False
+
+    #: A regeneration this old is past every hold (the credit sweep releases a
+    #: started hold after 24 h): it never blocks the expiry sweep.
+    _RECONCILE_GIVE_UP_HOURS = 28
+
+    def _reconcile_regenerations(self) -> bool:
+        """BR-L-042. Before expire_scene_regenerations() fails a regeneration
+        and releases its hold, settle each one it would take from the files on
+        this worker: the new cut is in place and matches its result (capture
+        the quote), or the previous take is put back (release). Returns False
+        when one could not be settled, so the sweep leaves them all for the
+        next round instead of releasing a hold while the new cut may be on
+        disk. Never raises."""
+        lister = getattr(self.credits, "scene_regen_unsettled", None)
+        if not callable(lister):
+            return True
+        try:
+            rows = lister()
+        except credit_rules.CreditsUnavailable as e:
+            if "HTTP 404" in str(e):
+                # A database without migration 0085: the old sweep, as before.
+                logger.warning("credits: scene_regenerations_unsettled() is missing (apply migration 0085); "
+                               "unfinished regenerations are released without checking this worker's files")
+                return True
+            logger.info("credits: could not list unfinished scene regenerations (%s)", e)
+            return False
+        from modules import scene_regenerate  # noqa: PLC0415 — only regenerations need it
+
+        settled = True
+        for row in rows or []:
+            try:
+                regen_id = str(row.get("id") or "")
+                job_id = row.get("render_job_id")
+                verdict = scene_regenerate.reconcile_outcome(self.output_dir, str(row.get("slug") or ""),
+                                                             regen_id)
+                done = job_id is not None and self._settle_regeneration(
+                    {"id": job_id}, regen_id, ok=verdict["ok"], code=verdict["code"], error=verdict["error"],
+                    result=regeneration_summary(verdict["result"]))
+            except Exception as e:  # one bad row must not stop the others
+                logger.error("credits: could not settle scene regeneration %s (%s)", row.get("id"),
+                             type(e).__name__)
+                done = False
+            if not done and not self._regeneration_is_ancient(row):
+                settled = False
+        return settled
+
+    def _regeneration_is_ancient(self, row: Mapping) -> bool:
+        created = _parse_ts(row.get("created_at"))
+        return created is not None and \
+            datetime.now(timezone.utc) - created > timedelta(hours=self._RECONCILE_GIVE_UP_HOURS)
 
     def _open_credit_hold(self, job: Mapping, channel_id: str, clean: Mapping):
         api_ref = str(job.get("api_hold_ref") or "").strip()
@@ -780,7 +834,7 @@ class Worker:
             logger.info("credits: expiry sweep skipped (%s)", e)
         # Scene regenerations (migration 0076) whose job ended without them.
         expire_regens = getattr(self.credits, "scene_regen_expire", None)
-        if callable(expire_regens):
+        if callable(expire_regens) and self._reconcile_regenerations():
             try:
                 n = expire_regens()
                 if n:
