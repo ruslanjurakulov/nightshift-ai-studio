@@ -51,7 +51,6 @@ export function cleanPrompt(v: unknown): string | null | undefined {
   if (typeof v !== "string") return null;
   const t = v.trim();
   if (!t) return undefined;
-  // eslint-disable-next-line no-control-regex
   if (t.length > MAX_PROMPT || /[\u0000-\u001f\u007f]/.test(t)) return null;
   return t;
 }
