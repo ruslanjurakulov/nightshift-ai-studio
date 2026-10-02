@@ -381,7 +381,7 @@ export function soundChoice(spec: DiscoverySpec): boolean {
 
 // ── price ───────────────────────────────────────────────────────────────────
 
-/** credit_prices rows as unit -> credits_per_unit; null = the list could not be read. */
+/** The price list as unit -> rate (as charged for a customer, credit_rates(); base for the operator); null = the list could not be read. */
 export type PriceList = Record<string, number> | null;
 
 /** model_registry.credit_unit_for's suffix rule: lower case, anything else becomes `_`. */
@@ -491,9 +491,12 @@ export function fromSellableRow(row: unknown, prices: PriceList, purchased: bool
   if (!capabilities.length) return null;
   const spec = discoverySpec(row.spec);
   const creditUnit = str(row.credit_unit);
-  // The base rate sellable_models() joined is the fallback when the list
-  // itself could not be read: it is the same row, read a moment earlier.
-  const base = Number(row.credits_per_unit);
+  // The rate sellable_models() returned is the fallback when the list itself
+  // could not be read: the same row as charged (0084), read a moment earlier.
+  // A database still on 0072 returns the base rate and its margin: folded the
+  // same way, so the figure is the price either way.
+  const margin = Number(row.margin ?? 0);
+  const base = Number(row.credits_per_unit) * (Number.isFinite(margin) && margin > 0 ? 1 + margin : 1);
   const list = prices ?? (creditUnit && Number.isFinite(base) && base > 0 && !priceVariants(creditUnit, spec) ? { [creditUnit]: base } : null);
   const entitlement = str(row.entitlement);
   const gate = planGate(entitlement, purchased);
