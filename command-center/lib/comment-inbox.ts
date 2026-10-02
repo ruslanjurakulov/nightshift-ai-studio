@@ -69,7 +69,11 @@ export function cleanReply(raw: unknown): string {
   const text = typeof raw === "string" ? raw : "";
   return text
     .replace(/\r\n/g, "\n")
-    .replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g, "")
+    // The same characters the database removes (tests/fixtures/inbox_cleaner_cases.json).
+    .replace(
+      /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0d\ufeff\uffa0\ufff9-\ufffb\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/gu,
+      "",
+    )
     .trim()
     .slice(0, INBOX_LIMITS.replyMax);
 }

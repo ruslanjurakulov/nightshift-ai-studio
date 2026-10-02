@@ -166,13 +166,19 @@ def _parse_response(text: str, expected_ids: set) -> list[CommentClassification]
         if category not in VALID_CATEGORIES:
             category = _SENTINEL_CATEGORY
 
-        flagged = bool(item.get("flagged_injection_attempt", False))
+        raw_flag = item.get("flagged_injection_attempt")
+        flagged = bool(raw_flag) if isinstance(raw_flag, bool) else False
+        # An answer with no usable category, or no true/false injection verdict, is
+        # not a verdict: the comment is unclassified (the inbox never drafts for it)
+        # rather than "off_topic, not flagged" (BR-L-075).
+        answered = item.get("category") in VALID_CATEGORIES and isinstance(raw_flag, bool)
 
         results.append(CommentClassification(
             comment_id=comment_id,
             sentiment=sentiment,
             category=category,
             flagged_injection_attempt=flagged,
+            classified=answered,
         ))
 
     if seen_ids != expected_ids:

@@ -143,9 +143,11 @@ describe("the price", () => {
     expect(screen.getByText(t.inbox.readFailed)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Draft a reply/ })).toBeNull();
   });
-  it("a unit priced at zero says included, not a number", () => {
+  it("a unit priced at zero says included, not a number, and sends no figure", async () => {
     show(inbox({ comments: [comment(C1)] }), { price: { state: "included", credits: 0 } });
-    expect(screen.getByRole("button", { name: t.inbox.draft.askIncluded })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: t.inbox.draft.askIncluded }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0].body).toMatchObject({ max_credits: null });
   });
   it("a retried press after a dropped connection reuses its key; after an answer it does not", async () => {
     let first = true;

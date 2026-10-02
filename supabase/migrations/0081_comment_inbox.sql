@@ -41,6 +41,17 @@
 --      the scope ('channel_not_ready'). Quota: one reply costs 50 units, so a
 --      channel may approve at most 40 replies a day (and request at most 200
 --      drafts); a quota refusal from YouTube is recorded as 'quota_exceeded'.
+--      claim_reply_post asks channel readiness AGAIN when the worker takes a post
+--      (a revoked or scope-less connection stops it: 'channel_not_ready'). The
+--      inbox as a whole may spend at most inbox_settings.daily_quota_ceiling
+--      YouTube units a rolling day across every channel (default 2000), so it
+--      cannot starve the uploads that share the project's 10,000.
+--   8. In every organization but the operator's own, approve_reply and
+--      retry_reply_post need a REAL org_members row of editor or above: a
+--      platform owner/admin (a member of every organization through 0018) reads,
+--      quotes and edits for support but does not approve public speech under a
+--      customer's name (owner decision BR-L-078; the old rule is one line,
+--      inbox_real_member).
 --
 -- WHAT IT ADDS (all new; nothing existing is replaced)
 --   inbox_comments   one comment on one of the channel's videos, as stored
@@ -50,13 +61,16 @@
 --   reply_posts      the posting state of an intent (queued -> posting ->
 --                    posted | failed) and the YouTube id of the reply
 --   inbox_events     append-only audit trail of every person and worker step
+--   inbox_settings   the platform-wide daily YouTube quota ceiling of the inbox
+--   inbox_quota_ledger  the quota units the inbox spent (comment reads, replies)
 --   browser:  quote_reply_draft, request_reply_draft, edit_reply_draft,
 --             discard_reply_draft, approve_reply, retry_reply_post,
 --             dismiss_inbox_comment                          (authenticated)
---   worker:   store_inbox_comments, inbox_comments_to_classify, claim_reply_draft, store_reply_draft,
+--             set_inbox_quota_ceiling                        (platform admin)
+--   worker:   record_inbox_quota, inbox_quota_remaining, store_inbox_comments, inbox_comments_to_classify, claim_reply_draft, store_reply_draft,
 --             fail_reply_draft, expire_reply_drafts, purge_revoked_inbox, claim_reply_post,
 --             mark_reply_submitting, finish_reply_post         (service role)
---   internal: inbox_clean_text, inbox_parse_ts, inbox_url_like, inbox_channel_ready,
+--   internal: inbox_real_member, inbox_clean_text, inbox_parse_ts, inbox_url_like, inbox_channel_ready,
 --             inbox_daily_cap, inbox_draft_block, inbox_log, reply_draft_price
 --
 -- WHO MAY DO WHAT (customer words: "member of this organization")
@@ -211,6 +225,10 @@ create table if not exists public.reply_intents (
 );
 
 create index if not exists reply_intents_channel_idx on public.reply_intents (channel_id, approved_at desc);
+-- One approved reply per YouTube comment, whatever surrogate id the comment row has
+-- (a purge and a re-fetch gives the same comment a new id).
+create unique index if not exists reply_intents_youtube_comment_key
+  on public.reply_intents (channel_id, youtube_comment_id);
 
 comment on table public.reply_intents is
   'Comment inbox (migration 0081): who approved which reply text, append-only (update, delete and truncate are refused for every role). Written only by approve_reply.';
@@ -269,6 +287,38 @@ create index if not exists inbox_events_channel_idx on public.inbox_events (chan
 comment on table public.inbox_events is
   'Comment inbox (migration 0081): append-only audit trail. actor is the signed-in person, null for the worker. detail names facts (codes, counts), never comment or reply text.';
 
+-- The platform's own YouTube quota for this feature (BR-L-071). The project has
+-- 10,000 units a day shared by every channel's uploads (CLAUDE.md known
+-- ceilings); a reply costs 50 and the comment sync a few units per cycle. The
+-- ceiling is the most this feature may spend in a rolling day across ALL
+-- channels and organizations; claim_reply_post and the sync stop at it, leaving
+-- the rest for uploads. Default 2000 (a fifth of the day); only a platform
+-- admin changes it.
+create table if not exists public.inbox_settings (
+  id                  boolean primary key default true check (id),
+  daily_quota_ceiling integer not null default 2000 check (daily_quota_ceiling between 0 and 10000),
+  updated_by          uuid,
+  updated_at          timestamptz not null default now()
+);
+
+insert into public.inbox_settings (id) values (true) on conflict (id) do nothing;
+
+comment on table public.inbox_settings is
+  'Comment inbox (migration 0081): the platform-wide daily YouTube quota ceiling of the inbox. One row, read and changed by a platform owner/admin only (set_inbox_quota_ceiling).';
+
+create table if not exists public.inbox_quota_ledger (
+  id         bigint generated always as identity primary key,
+  at         timestamptz not null default now(),
+  kind       text not null check (kind in ('sync', 'reply')),
+  channel_id text,
+  units      integer not null check (units between 0 and 1000)
+);
+
+create index if not exists inbox_quota_ledger_at_idx on public.inbox_quota_ledger (at desc);
+
+comment on table public.inbox_quota_ledger is
+  'Comment inbox (migration 0081): YouTube quota units the inbox spent (comment reads and replies), recorded by the worker; the rolling 24-hour sum is held against inbox_settings.daily_quota_ceiling. Operator-only.';
+
 -- Append-only: refused for every role, the service key and the owner included.
 create or replace function public.inbox_append_only() returns trigger
   language plpgsql set search_path = public, pg_temp as $$
@@ -308,8 +358,21 @@ create or replace function public.inbox_clean_text(p_text text, p_max integer) r
            regexp_replace(
              regexp_replace(replace(left(coalesce(p_text, ''), greatest(coalesce(p_max, 0), 0) * 4 + 16), E'\r\n', E'\n'),
                             E'[\\x01-\\x09\\x0b-\\x1f\\x7f]', '', 'g'),
-             '[' || chr(128) || '-' || chr(159) || chr(8203) || '-' || chr(8207)
-                 || chr(8234) || '-' || chr(8238) || chr(8294) || '-' || chr(8297) || chr(65279) || ']',
+             -- Invisible and format characters that no reader sees: C1 controls, soft hyphen,
+             -- grapheme joiner, Arabic letter mark, Hangul fillers, Mongolian vowel separator,
+             -- zero-width and direction marks (U+200B-200F), line/paragraph separators and the
+             -- embedding/override controls (U+2028-202E), word joiner, invisible operators and
+             -- the deprecated format controls (U+2060-206F), braille blank, FE00-FE0D variation
+             -- selectors (FE0E/FE0F stay: they pick emoji or text style), BOM, halfwidth Hangul
+             -- filler, interlinear annotation controls, the Unicode tag block (a hidden-text
+             -- channel for prompt injection) and the variation selectors supplement.
+             '[' || chr(128) || '-' || chr(159) || chr(173) || chr(847) || chr(1564)
+                 || chr(4447) || chr(4448) || chr(6158)
+                 || chr(8203) || '-' || chr(8207) || chr(8232) || '-' || chr(8238)
+                 || chr(8288) || '-' || chr(8303) || chr(10240) || chr(12644)
+                 || chr(65024) || '-' || chr(65037) || chr(65279) || chr(65440)
+                 || chr(65529) || '-' || chr(65531)
+                 || chr(917504) || '-' || chr(917631) || chr(917760) || '-' || chr(917999) || ']',
              '', 'g')), greatest(coalesce(p_max, 0), 0))
 $$;
 
@@ -353,6 +416,36 @@ create or replace function public.inbox_channel_ready(p_channel text) returns bo
             or exists (select 1 from public.channel_token_refs r
                         where r.channel_id = c.channel_id and r.revoked_at is null
                           and 'https://www.googleapis.com/auth/youtube.force-ssl' = any (r.scopes))))
+$$;
+
+-- Is the caller a REAL member of the organization (an org_members row bound to
+-- their user id, of at least this role)? Platform owners and
+-- admins are members of every organization through 0018's accessible_org_ids,
+-- which is right for support (read, quote, edit) and wrong for public speech
+-- under a customer's name and a customer's credits (BR-L-078): approve_reply and
+-- retry_reply_post ask this in every organization but the operator's own,
+-- where the old rule stays.
+create or replace function public.inbox_real_member(p_org uuid, p_min text) returns boolean
+  language sql stable security definer set search_path = public, pg_temp as $$
+  select case
+    when p_org = public.default_org_id() then public.is_org_member(p_org, p_min)
+    else exists (
+      select 1 from public.org_members m
+       where m.org_id = p_org
+         -- Bound membership only (0043): an unbound e-mail invite is an offer, and an
+         -- e-mail claim in a token grants nothing.
+         and m.user_id = auth.uid()
+         and public.app_role_rank(m.role) >= public.app_role_rank(p_min))
+  end
+$$;
+
+-- The inbox's quota ceiling, what the last 24 hours spent, what is left.
+create or replace function public.inbox_quota_remaining() returns integer
+  language sql stable security definer set search_path = public, pg_temp as $$
+  select greatest(
+           coalesce((select s.daily_quota_ceiling from public.inbox_settings s where s.id), 2000)
+           - coalesce((select sum(l.units) from public.inbox_quota_ledger l where l.at > now() - interval '24 hours'), 0),
+           0)::integer
 $$;
 
 -- Why a comment cannot be drafted for now; null when it can.
@@ -540,6 +633,9 @@ begin
   if price > 0 and p_max_credits is null and not public.credits_exempt(org) then
     raise exception 'price_required' using errcode = '22023', detail = format('credits=%s', price);
   end if;
+  if p_max_credits is not null and (p_max_credits = 'NaN'::numeric or p_max_credits < 0) then
+    raise exception 'price_required' using errcode = '22023', detail = format('credits=%s', price);
+  end if;
   if p_max_credits is not null and price > p_max_credits then
     perform public.creative_refuse('price_changed',
       format('credits=%s confirmed=%s', price, p_max_credits), 'NS409');
@@ -678,6 +774,12 @@ begin
   if not public.is_org_member(org, 'editor') then
     raise exception 'forbidden' using errcode = '42501';
   end if;
+  -- Public speech under the customer's name: a real member of that organization
+  -- (a platform admin who is not one reads, quotes and edits, but does not approve).
+  if not public.inbox_real_member(org, 'editor') then
+    raise exception 'forbidden' using errcode = '42501',
+      detail = 'a reply is approved by a member of the channel''s organization';
+  end if;
   -- Locked only once the caller is known to be allowed: the comment first, then
   -- the draft (dismiss_inbox_comment takes them in the same order, so a person
   -- approving while a colleague sets the comment aside cannot deadlock).
@@ -706,6 +808,10 @@ begin
     perform public.creative_refuse('channel_not_ready',
       'the channel is not connected with permission to reply: reconnect it', 'NS409');
   end if;
+  -- The daily cap is counted under a lock of its own, so concurrent approvals
+  -- cannot all read "39" (BR-L-071). An advisory lock, not a row lock: nothing
+  -- else takes it, so it cannot deadlock with the comment and draft locks above.
+  perform pg_advisory_xact_lock(hashtext('inbox:reply:' || c.channel_id));
   if (select count(*) from public.reply_intents x
        where x.channel_id = c.channel_id and x.approved_at > now() - interval '24 hours')
      >= public.inbox_daily_cap('reply') then
@@ -757,6 +863,10 @@ begin
   end if;
   if not public.is_org_member(org, 'editor') then
     raise exception 'forbidden' using errcode = '42501';
+  end if;
+  if not public.inbox_real_member(org, 'editor') then
+    raise exception 'forbidden' using errcode = '42501',
+      detail = 'a reply is retried by a member of the channel''s organization';
   end if;
   select * into p from public.reply_posts where id = p_post for update;
   if p.status = 'queued' or p.status = 'posting' then
@@ -894,7 +1004,8 @@ begin
   delete from public.inbox_comments c
    where c.channel_id = p_channel and c.status in ('open', 'dismissed')
      and c.fetched_at < now() - interval '30 days'
-     and not exists (select 1 from public.reply_drafts d where d.comment_id = c.id)
+     and not exists (select 1 from public.reply_drafts d where d.comment_id = c.id
+                      and d.status in ('pending', 'drafting', 'ready'))
      and not exists (select 1 from public.reply_intents i where i.comment_id = c.id);
   return coalesce(n, 0);
 end
@@ -1130,12 +1241,53 @@ begin
   if not public.credits_trusted_caller() then
     raise exception 'only the platform may purge the inbox' using errcode = '42501';
   end if;
+  -- A comment with an approved reply stays as a tombstone (its words and author
+  -- removed): the unique (channel, YouTube id) on the intents then still refuses a
+  -- second reply to it after the channel is reconnected and the comment re-fetched.
+  update public.inbox_comments c
+     set body = '[removed]', author_name = null, updated_at = now()
+   where c.channel_id in (select r.channel_id from public.channel_token_refs r where r.revoked_at is not null)
+     and c.body <> '[removed]'
+     and exists (select 1 from public.reply_intents i where i.comment_id = c.id);
   delete from public.inbox_comments c
    where c.channel_id in (select r.channel_id from public.channel_token_refs r where r.revoked_at is not null)
+     and not exists (select 1 from public.reply_intents i where i.comment_id = c.id)
      and not exists (select 1 from public.reply_drafts d where d.comment_id = c.id and d.status in ('pending', 'drafting'))
      and not exists (select 1 from public.reply_posts p where p.comment_id = c.id and p.status in ('queued', 'posting'));
   get diagnostics n = row_count;
   return n;
+end
+$$;
+
+-- The sync's own quota units (the reads), recorded by the worker; old rows go.
+create or replace function public.record_inbox_quota(p_channel text, p_units integer) returns integer
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+begin
+  if not public.credits_trusted_caller() then
+    raise exception 'only the platform may record quota' using errcode = '42501';
+  end if;
+  if coalesce(p_units, 0) > 0 then
+    insert into public.inbox_quota_ledger (kind, channel_id, units)
+    values ('sync', left(p_channel, 200), least(p_units, 1000));
+  end if;
+  delete from public.inbox_quota_ledger where at < now() - interval '7 days';
+  return public.inbox_quota_remaining();
+end
+$$;
+
+-- A platform owner/admin sets the inbox's daily quota ceiling (0 switches the
+-- worker's reads and posts off for the day; 10000 is the whole project quota).
+create or replace function public.set_inbox_quota_ceiling(p_units integer) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+begin
+  if auth.uid() is null or not public.is_platform_admin() then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  if p_units is null or p_units < 0 or p_units > 10000 then
+    raise exception 'invalid_ceiling' using errcode = 'NS400', detail = 'between 0 and 10000';
+  end if;
+  update public.inbox_settings set daily_quota_ceiling = p_units, updated_by = auth.uid(), updated_at = now() where id;
+  return jsonb_build_object('daily_quota_ceiling', p_units, 'remaining', public.inbox_quota_remaining());
 end
 $$;
 
@@ -1154,23 +1306,43 @@ begin
   if coalesce(p_worker, '') !~ '^[A-Za-z0-9._:-]{1,80}$' then
     raise exception 'invalid worker' using errcode = '22023';
   end if;
-  select * into p from public.reply_posts x
-   where x.status = 'queued'
-      or (x.status = 'posting' and x.claimed_at < now() - interval '15 minutes')
-   order by x.created_at
-   limit 1
-   for update skip locked;
-  if not found then
+  -- The platform's daily YouTube quota for this feature (BR-L-071): replies wait
+  -- queued while it is used up, and one costs 50 units plus its channel check.
+  if public.inbox_quota_remaining() < 60 then
     return null;
   end if;
-  select * into i from public.reply_intents where id = p.intent_id;
-  update public.reply_posts
-     set status = 'posting', worker_id = p_worker, claimed_at = now(), attempts = attempts + 1, updated_at = now()
-   where id = p.id;
-  return jsonb_build_object(
-    'post_id', p.id, 'intent_id', i.id, 'channel_id', i.channel_id, 'video_id', i.video_id,
-    'parent_id', i.youtube_comment_id, 'body', i.body,
-    'reconcile', p.submitted_at is not null, 'attempts', p.attempts + 1);
+  loop
+    select * into p from public.reply_posts x
+     where x.status = 'queued'
+        or (x.status = 'posting' and x.claimed_at < now() - interval '15 minutes')
+     order by x.created_at
+     limit 1
+     for update skip locked;
+    if not found then
+      return null;
+    end if;
+    select * into i from public.reply_intents where id = p.intent_id;
+    -- Readiness is asked again NOW, not only at approval (BR-L-070): a connection
+    -- revoked, or reconnected without the comment scope, since the approval stops
+    -- the reply here. A person re-queues it after reconnecting.
+    if not public.inbox_channel_ready(i.channel_id) then
+      update public.reply_posts
+         set status = 'failed', error_code = 'channel_not_ready', worker_id = null,
+             error_detail = 'the channel is no longer connected with permission to reply: reconnect it',
+             finished_at = now(), updated_at = now()
+       where id = p.id;
+      perform public.inbox_log(p.channel_id, p.comment_id, null, 'reply_failed',
+        jsonb_build_object('code', 'channel_not_ready', 'attempts', p.attempts));
+      continue;
+    end if;
+    update public.reply_posts
+       set status = 'posting', worker_id = p_worker, claimed_at = now(), attempts = attempts + 1, updated_at = now()
+     where id = p.id;
+    return jsonb_build_object(
+      'post_id', p.id, 'intent_id', i.id, 'channel_id', i.channel_id, 'video_id', i.video_id,
+      'parent_id', i.youtube_comment_id, 'body', i.body,
+      'reconcile', p.submitted_at is not null, 'submitted_at', p.submitted_at, 'attempts', p.attempts + 1);
+  end loop;
 end
 $$;
 
@@ -1228,6 +1400,9 @@ begin
            quota_units = quota_units + units, finished_at = now(), updated_at = now()
      where id = p.id returning * into p;
     update public.inbox_comments set status = 'replied', updated_at = now() where id = p.comment_id;
+    if units > 0 then
+      insert into public.inbox_quota_ledger (kind, channel_id, units) values ('reply', p.channel_id, units);
+    end if;
     perform public.inbox_log(p.channel_id, p.comment_id, null, 'reply_posted',
       jsonb_build_object('attempts', p.attempts, 'quota_units', p.quota_units));
   else
@@ -1241,6 +1416,9 @@ begin
            error_detail = nullif(left(public.inbox_clean_text(p_detail, 300), 300), ''),
            quota_units = quota_units + units, finished_at = now(), updated_at = now()
      where id = p.id returning * into p;
+    if units > 0 then
+      insert into public.inbox_quota_ledger (kind, channel_id, units) values ('reply', p.channel_id, units);
+    end if;
     perform public.inbox_log(p.channel_id, p.comment_id, null, 'reply_failed',
       jsonb_build_object('code', code, 'attempts', p.attempts));
   end if;
@@ -1257,6 +1435,8 @@ alter table public.reply_drafts enable row level security;
 alter table public.reply_intents enable row level security;
 alter table public.reply_posts enable row level security;
 alter table public.inbox_events enable row level security;
+alter table public.inbox_settings enable row level security;
+alter table public.inbox_quota_ledger enable row level security;
 
 -- No API role writes any of these tables, the service key included: every
 -- write is one of the functions above.
@@ -1270,6 +1450,10 @@ grant select on public.reply_drafts to authenticated;
 grant select on public.reply_intents to authenticated;
 grant select on public.reply_posts to authenticated;
 grant select on public.inbox_events to authenticated;
+revoke all on public.inbox_settings from public, anon, authenticated, service_role;
+revoke all on public.inbox_quota_ledger from public, anon, authenticated, service_role;
+grant select on public.inbox_settings to authenticated;
+grant select on public.inbox_quota_ledger to authenticated;
 
 -- Whoever may see the channel sees its inbox: channels_auth_read's rule.
 drop policy if exists inbox_comments_select on public.inbox_comments;
@@ -1293,11 +1477,21 @@ create policy inbox_events_select on public.inbox_events
   for select to authenticated
   using (channel_id in (select public.accessible_channel_ids('viewer')));
 
+-- The quota ceiling and what the inbox spent are the operator's.
+drop policy if exists inbox_settings_select on public.inbox_settings;
+create policy inbox_settings_select on public.inbox_settings
+  for select to authenticated using (public.is_platform_admin());
+drop policy if exists inbox_quota_ledger_select on public.inbox_quota_ledger;
+create policy inbox_quota_ledger_select on public.inbox_quota_ledger
+  for select to authenticated using (public.is_platform_admin());
+
 -- Supabase hands every new function to anon and authenticated; each one is
 -- narrowed explicitly. Trigger functions are not callable and need no grant.
 revoke all on function public.inbox_append_only() from public, anon, authenticated, service_role;
 revoke all on function public.inbox_clean_text(text, integer) from public, anon, authenticated, service_role;
 revoke all on function public.inbox_parse_ts(text) from public, anon, authenticated, service_role;
+revoke all on function public.inbox_real_member(uuid, text) from public, anon, authenticated, service_role;
+revoke all on function public.inbox_quota_remaining() from public, anon, authenticated, service_role;
 revoke all on function public.inbox_url_like(text) from public, anon, authenticated, service_role;
 revoke all on function public.inbox_daily_cap(text) from public, anon, authenticated, service_role;
 revoke all on function public.inbox_channel_ready(text) from public, anon, authenticated, service_role;
@@ -1312,6 +1506,8 @@ revoke all on function public.discard_reply_draft(uuid) from public, anon, authe
 revoke all on function public.approve_reply(uuid, text) from public, anon, authenticated, service_role;
 revoke all on function public.retry_reply_post(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.dismiss_inbox_comment(uuid, boolean) from public, anon, authenticated, service_role;
+revoke all on function public.set_inbox_quota_ceiling(integer) from public, anon, authenticated, service_role;
+grant execute on function public.set_inbox_quota_ceiling(integer) to authenticated;
 grant execute on function public.quote_reply_draft(uuid) to authenticated;
 grant execute on function public.request_reply_draft(uuid, numeric, text) to authenticated;
 grant execute on function public.edit_reply_draft(uuid, text) to authenticated;
@@ -1327,6 +1523,9 @@ revoke all on function public.store_reply_draft(uuid, text, text) from public, a
 revoke all on function public.fail_reply_draft(uuid, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.expire_reply_drafts() from public, anon, authenticated, service_role;
 revoke all on function public.purge_revoked_inbox() from public, anon, authenticated, service_role;
+revoke all on function public.record_inbox_quota(text, integer) from public, anon, authenticated, service_role;
+grant execute on function public.record_inbox_quota(text, integer) to service_role;
+grant execute on function public.inbox_quota_remaining() to service_role;
 revoke all on function public.claim_reply_post(text) from public, anon, authenticated, service_role;
 revoke all on function public.mark_reply_submitting(uuid, text) from public, anon, authenticated, service_role;
 revoke all on function public.finish_reply_post(uuid, text, boolean, text, text, text, integer) from public, anon, authenticated, service_role;
@@ -1359,7 +1558,7 @@ grant execute on function public.finish_reply_post(uuid, text, boolean, text, te
 --     and not has_function_privilege('authenticated', 'public.claim_reply_post(text)', 'EXECUTE')
 --     as functions_scoped,
 --   (select count(*) = 0 from pg_proc p
---     where p.proname in ('quote_reply_draft', 'request_reply_draft', 'edit_reply_draft', 'discard_reply_draft',
+--     where p.proname in ('set_inbox_quota_ceiling', 'record_inbox_quota', 'quote_reply_draft', 'request_reply_draft', 'edit_reply_draft', 'discard_reply_draft',
 --                         'approve_reply', 'retry_reply_post', 'dismiss_inbox_comment', 'store_inbox_comments',
 --                         'claim_reply_draft', 'store_reply_draft', 'fail_reply_draft', 'expire_reply_drafts',
 --                         'claim_reply_post', 'mark_reply_submitting', 'finish_reply_post')

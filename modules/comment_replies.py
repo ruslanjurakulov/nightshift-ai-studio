@@ -59,6 +59,8 @@ import json
 import logging
 import re
 import time
+import unicodedata
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Mapping, Optional
 
 from modules import upload_idempotency
@@ -84,9 +86,19 @@ DEFAULT_SYNC_SECONDS = 300.0
 _CODE = re.compile(r"^[a-z_]{1,48}$")
 _REPLY_ID = re.compile(r"^[A-Za-z0-9_.-]{5,128}$")
 
-# Characters the database removes too (inbox_clean_text): controls but newline,
-# the C1 block, zero-width and direction-override characters, the BOM.
-_STRIP = re.compile("[\x00-\x09\x0b-\x1f\x7f\x80-\x9f​-‏‪-‮⁦-⁩﻿]")
+# Characters the database removes too (inbox_clean_text; the shared table is
+# tests/fixtures/inbox_cleaner_cases.json): controls but newline, the C1 block,
+# soft hyphen and other invisible letters, zero-width and direction controls,
+# word joiner and the invisible operators, the Unicode tag block (a hidden-text
+# channel for prompt injection), variation selectors (FE0E/FE0F stay: they pick
+# emoji or text style), the BOM and the filler characters.
+_STRIP = re.compile(
+    "["
+    "\x00-\x09\x0b-\x1f\x7f-\x9f\u00ad\u034f\u061c\u115f\u1160\u180e"
+    "\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0d\ufeff\uffa0\ufff9-\ufffb"
+    "\U000e0000-\U000e007f\U000e0100-\U000e01ef"
+    "]"
+)
 
 
 def clean_text(value, limit: int) -> str:
@@ -156,7 +168,8 @@ class DraftRefused(Exception):
 
 
 _LINK = re.compile(
-    r"(https?:|www\.|://|\b[a-z0-9-]{2,}\.(?:com|net|org|io|ru|uz|me|ly|co|tv|app|xyz|info|link|click|ai|dev|shop|top|site|online|gl|be)\b)",
+    r"(https?:|www\.|://|\b[a-z0-9-]{1,}(?:\.|\s?\[\.\]\s?|\s?\(\.\)\s?)(?:com|net|org|io|ru|uz|me|ly|co|tv|app|xyz|info|link|click|ai|dev|shop|top|site|online|gl|be"
+    r"|biz|us|to|cc|gg|page|club|store|tk|ms|su|by|kz|ua|in|id|fm|vip|live|cloud|pro|ws|sh|gd|cx|nu|pw|work|one|bio|lol|wtf)\b)",
     re.IGNORECASE,
 )
 _MENTION = re.compile(r"@\w")
@@ -169,6 +182,9 @@ _ECHO = re.compile(r"DATA \(JSON\)|untrusted audience input|\"reply\"\s*:", re.I
 def looks_unsafe(text: str) -> Optional[str]:
     """A reason word when a drafted reply carries something a hostile comment
     could be trying to get through the model, else None."""
+    # Look at what a reader would see: compatibility forms folded (fullwidth letters,
+    # small @), invisible characters gone, so "ｅｖｉｌ．ｃｏｍ" and "evil[.]com" read as links.
+    text = _STRIP.sub("", unicodedata.normalize("NFKC", text))
     if _LINK.search(text):
         return "unsafe_draft"
     if _MENTION.search(text) or _EMAIL.search(text):
@@ -223,6 +239,11 @@ def gemini_drafter(prompt: str) -> str:
 # ── the database (service key) ───────────────────────────────────────────────
 
 
+class NotInstalled(RuntimeError):
+    """PostgREST answered 404: migration 0081 is not applied on this database.
+    The inbox is idle until it is (one log line, nothing classified, nothing read)."""
+
+
 class StoreError(RuntimeError):
     """A database call failed. ``code`` is PostgREST's message (our machine
     codes: lost, unsafe_draft, ...); never a body that could carry a secret."""
@@ -257,7 +278,7 @@ class InboxStore:
     def rpc(self, name: str, payload: dict):
         r = self.http().post(f"{self.url}/rest/v1/rpc/{name}", json=payload, headers=self._h(), timeout=self._timeout)
         if r.status_code == 404:
-            return None  # 0081 not applied here: nothing to do
+            raise NotInstalled(name)
         if r.status_code >= 300:
             code = ""
             try:
@@ -310,14 +331,24 @@ class InboxStore:
 
     def to_classify(self, channel_id: str, ids: list) -> list:
         out = self.rpc("inbox_comments_to_classify", {"p_channel": channel_id, "p_ids": list(ids)})
-        return [str(i) for i in out] if isinstance(out, list) else list(ids)
+        if not isinstance(out, list):
+            # An answer we cannot read is not "classify everything": nothing is spent.
+            raise StoreError("inbox_comments_to_classify", 200, "")
+        return [str(i) for i in out]
+
+    def quota_remaining(self) -> int:
+        out = self.rpc("inbox_quota_remaining", {})
+        return int(out) if isinstance(out, int) and not isinstance(out, bool) else 0
+
+    def record_quota(self, channel_id: str, units: int):
+        return self.rpc("record_inbox_quota", {"p_channel": channel_id, "p_units": int(units)})
 
     def store_comments(self, channel_id: str, video_id: str, items: list) -> int:
         out = self.rpc("store_inbox_comments", {"p_channel": channel_id, "p_video": video_id, "p_comments": items})
         return int(out) if isinstance(out, int) else 0
 
     # reads
-    def channel_ids(self, limit: int = 200) -> list:
+    def channel_ids(self, limit: int = 1000) -> list:
         rows = self.select("channels", select="channel_id", order="channel_id.asc", limit=str(limit))
         return [str(r["channel_id"]) for r in rows if isinstance(r, dict) and r.get("channel_id")]
 
@@ -415,13 +446,39 @@ def granted_scopes(token_json: str) -> Optional[set]:
     return {str(s) for s in scopes}
 
 
+class ReconcileIncomplete(RuntimeError):
+    """The comment has more replies than were read and none of the ones read is ours:
+    whether the earlier attempt went out is unknown, so nothing is sent."""
+
+
+def _norm(text: str) -> str:
+    return " ".join(str(text or "").split())
+
+
+def _parse_time(value) -> Optional[datetime]:
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 def find_existing_reply(service, parent_id: str, text: str, own_channel_id: str,
-                        *, max_pages: int = 3) -> tuple:
+                        *, submitted_at=None, max_pages: int = 5) -> tuple:
     """(reply id or None, quota units spent): a reply to ``parent_id`` already
-    on YouTube from THIS channel with the same text. The reconcile step: a
-    reply that may have gone out is found, never sent a second time. Raises
-    whatever the API raises (the caller records it)."""
-    want = text.strip()
+    on YouTube from THIS channel that is the earlier attempt of this post. The
+    reconcile step: a reply that may have gone out is found, never sent a
+    second time.
+
+    It matches on this channel as the author and EITHER the same words (white
+    space folded: YouTube may store a different spacing) OR a reply published
+    since the post was marked "submitting" (a minute's grace for clock skew),
+    whatever its words. It fails CLOSED: when it reads ``max_pages`` pages, finds
+    nothing and more pages remain, it raises ReconcileIncomplete and the caller
+    sends nothing (BR-L-074). Raises whatever the API raises (the caller records it)."""
+    want = _norm(text)
+    since = _parse_time(submitted_at)
+    since = since - timedelta(seconds=60) if since else None
     units = 0
     token = None
     for _ in range(max_pages):
@@ -433,13 +490,16 @@ def find_existing_reply(service, parent_id: str, text: str, own_channel_id: str,
         for item in (resp or {}).get("items", []) or []:
             snip = (item or {}).get("snippet") or {}
             author = ((snip.get("authorChannelId") or {}).get("value")) or ""
-            body = str(snip.get("textOriginal") or snip.get("textDisplay") or "").strip()
-            if author == own_channel_id and body == want and _REPLY_ID.match(str(item.get("id") or "")):
+            if author != own_channel_id or not _REPLY_ID.match(str(item.get("id") or "")):
+                continue
+            body = _norm(snip.get("textOriginal") or snip.get("textDisplay"))
+            when = _parse_time(snip.get("publishedAt"))
+            if body == want or (since is not None and when is not None and when >= since):
                 return str(item["id"]), units
         token = (resp or {}).get("nextPageToken")
         if not token:
-            break
-    return None, units
+            return None, units
+    raise ReconcileIncomplete(parent_id)
 
 
 def insert_reply(service, parent_id: str, text: str) -> str:
@@ -487,16 +547,31 @@ class CommentInboxService:
         self._next_sync = 0.0
         self._rotation = 0
         self._last_expire = 0.0
+        self._off_until = 0.0
+        self._warned_off = False
 
     # -- the step the worker loop calls -----------------------------------
 
     def run_once(self) -> bool:
+        now = self.clock()
+        if now < self._off_until:
+            return False
         did = False
         for step in (self.expire_step, self.post_one, self.draft_one, self.sync_one):
             try:
                 did = bool(step()) or did
+            except NotInstalled:
+                # Migration 0081 is not applied here: nothing is read, classified or
+                # posted until it is. One line, then silence for an hour (BR-L-072).
+                self._off_until = now + 3600.0
+                if not self._warned_off:
+                    self._warned_off = True
+                    logger.warning("comment inbox: migration 0081 is not applied on this database; "
+                                   "the inbox is idle (nothing is read or classified)")
+                return did
             except Exception as e:  # a failed step never stops the worker
                 logger.warning("comment inbox: %s failed (%s)", step.__name__, type(e).__name__)
+        self._warned_off = False
         return did
 
     def expire_step(self) -> bool:
@@ -606,8 +681,13 @@ class CommentInboxService:
         if claim.get("reconcile"):
             # An earlier attempt may have reached YouTube: look before sending.
             try:
-                found, spent = find_existing_reply(service, parent, text, own)
+                found, spent = find_existing_reply(service, parent, text, own, submitted_at=claim.get("submitted_at"))
                 units += spent
+            except ReconcileIncomplete:
+                units += UNITS_LIST * 5
+                done_fail("outcome_unknown", "the comment has more replies than could be checked; "
+                                             "check it on YouTube before trying again")
+                return True
             except Exception as e:
                 units += UNITS_LIST
                 failure = classify_youtube_error("reconcile", e)
@@ -660,6 +740,10 @@ class CommentInboxService:
         if now < self._next_sync:
             return False
         self._next_sync = now + self.sync_seconds
+        # The platform's daily YouTube quota for this feature (BR-L-071): reads wait
+        # while the ceiling is used up, so uploads keep their share of the day.
+        if self.store.quota_remaining() < 20:
+            return False
         channels = self.store.channel_ids()
         if not channels:
             return False
@@ -685,11 +769,23 @@ class CommentInboxService:
 
         fetcher = CommentFetcher.from_service(client.service)
         new_total = 0
-        for video_id in self.store.recent_videos(channel_id):
+        units = UNITS_LIST  # the channel check made while signing in
+        try:
+            for video_id in self.store.recent_videos(channel_id):
+                units += UNITS_LIST  # one page of comments per video
+                try:
+                    new_total += self._sync_video(fetcher, channel_id, video_id)
+                except NotInstalled:
+                    raise
+                except Exception as e:
+                    logger.info("comment inbox: video %s skipped (%s)", video_id, type(e).__name__)
+        finally:
             try:
-                new_total += self._sync_video(fetcher, channel_id, video_id)
-            except Exception as e:
-                logger.info("comment inbox: video %s skipped (%s)", video_id, type(e).__name__)
+                self.store.record_quota(channel_id, units)
+            except NotInstalled:
+                pass
+            except StoreError as e:
+                logger.info("comment inbox: quota not recorded (%s)", e)
         if new_total:
             logger.info("comment inbox: channel %s: %d new comment(s)", channel_id, new_total)
         return new_total

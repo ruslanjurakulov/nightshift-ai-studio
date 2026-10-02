@@ -73,7 +73,8 @@ jobs the worker also keeps each connected channel's recent comments in step
 asked a draft for and paid for, and posts a reply ONLY after a person approved
 that exact text (``comments.insert`` through the channel's own token, once;
 a quota refusal is recorded as ``quota_exceeded``). Nothing replies on its own.
-Set ``NIGHTSHIFT_COMMENT_INBOX=off`` to switch the whole step off.
+The step is OFF unless ``NIGHTSHIFT_COMMENT_INBOX=on`` (it spends YouTube quota and
+classifier calls for every connected channel, within the inbox's daily quota ceiling).
 
 Credits (migration 0020, ``modules/credits.py``): a job whose channel belongs
 to an organization other than the operator's own is paid for by the hold its
@@ -1136,7 +1137,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                                                 downloads_dir=Path(downloads_dir), worker_id=args.worker_id)
                  if downloads_dir and os.path.isabs(downloads_dir) else None)
     comments = None
-    if os.environ.get("NIGHTSHIFT_COMMENT_INBOX", "on").strip().lower() not in ("off", "0", "false", "no"):
+    # OFF by default (BR-L-072): the inbox reads every connected channel's comments and
+    # spends YouTube quota and classifier calls, so it runs only where an operator
+    # turned it on (and applied migration 0081).
+    if os.environ.get("NIGHTSHIFT_COMMENT_INBOX", "off").strip().lower() in ("on", "1", "true", "yes"):
         comments = _comment_inbox(url, key, args.worker_id, token_client)
     worker = Worker(QueueClient(url, key), worker_id=args.worker_id,
                     poll_seconds=args.poll_seconds, stale_minutes=args.stale_minutes,

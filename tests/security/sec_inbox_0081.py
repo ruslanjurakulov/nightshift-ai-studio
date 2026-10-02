@@ -31,7 +31,7 @@ POST: Dict[str, str] = {}
 
 
 def extend(tables: dict, functions: dict) -> None:
-    from sec_expectations import SERVICE, USER, Channel
+    from sec_expectations import SERVICE, USER, Channel, Platform
 
     tables.update({
         # Members read their organization's channels' rows; nobody inserts,
@@ -41,6 +41,9 @@ def extend(tables: dict, functions: dict) -> None:
         "reply_intents": Channel(),
         "reply_posts": Channel(),
         "inbox_events": Channel(),
+        # The platform-wide daily YouTube quota ceiling of the inbox and what it spent: the operator's.
+        "inbox_settings": Platform(),
+        "inbox_quota_ledger": Platform(),
     })
     functions.update({
         # The person's own session.
@@ -51,6 +54,7 @@ def extend(tables: dict, functions: dict) -> None:
         "approve_reply": USER,
         "retry_reply_post": USER,
         "dismiss_inbox_comment": USER,
+        "set_inbox_quota_ceiling": USER,
         # The worker (service role).
         "store_inbox_comments": SERVICE,
         "inbox_comments_to_classify": SERVICE,
@@ -59,12 +63,15 @@ def extend(tables: dict, functions: dict) -> None:
         "fail_reply_draft": SERVICE,
         "expire_reply_drafts": SERVICE,
         "purge_revoked_inbox": SERVICE,
+        "record_inbox_quota": SERVICE,
+        "inbox_quota_remaining": SERVICE,
         "claim_reply_post": SERVICE,
         "mark_reply_submitting": SERVICE,
         "finish_reply_post": SERVICE,
         # Internal: called only inside the functions above; no API role.
         "inbox_clean_text": SERVICE,
         "inbox_parse_ts": SERVICE,
+        "inbox_real_member": SERVICE,
         "inbox_url_like": SERVICE,
         "inbox_daily_cap": SERVICE,
         "inbox_channel_ready": SERVICE,
@@ -76,6 +83,10 @@ def extend(tables: dict, functions: dict) -> None:
 
 def seed(conn, sc) -> None:
     from sec_db import SERVICE, acting, as_superuser
+
+    # One quota entry for the operator's table (the isolation tests clone a row of every table).
+    with as_superuser(conn) as s:
+        s.rows("insert into public.inbox_quota_ledger (kind, units) values ('sync', 6) returning 1")
 
     for t in sc.tenants():
         k = t.key

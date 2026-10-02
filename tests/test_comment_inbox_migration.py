@@ -19,13 +19,14 @@ SQL = FILE.read_text()
 CODE = "\n".join(line.split("--", 1)[0] for line in SQL.splitlines())
 
 BROWSER = ("quote_reply_draft", "request_reply_draft", "edit_reply_draft", "discard_reply_draft",
-           "approve_reply", "retry_reply_post", "dismiss_inbox_comment")
-WORKER = ("store_inbox_comments", "inbox_comments_to_classify", "claim_reply_draft", "store_reply_draft",
+           "approve_reply", "retry_reply_post", "dismiss_inbox_comment", "set_inbox_quota_ceiling")
+WORKER = ("record_inbox_quota", "inbox_quota_remaining", "store_inbox_comments", "inbox_comments_to_classify", "claim_reply_draft", "store_reply_draft",
           "fail_reply_draft", "expire_reply_drafts", "purge_revoked_inbox", "claim_reply_post", "mark_reply_submitting", "finish_reply_post")
-INTERNAL = ("inbox_append_only", "inbox_clean_text", "inbox_parse_ts", "inbox_url_like", "inbox_daily_cap", "inbox_channel_ready",
+INTERNAL = ("inbox_real_member", "inbox_append_only", "inbox_clean_text", "inbox_parse_ts", "inbox_url_like", "inbox_daily_cap", "inbox_channel_ready",
             "inbox_draft_block", "inbox_log", "reply_draft_price")
-TABLES = ("inbox_comments", "reply_drafts", "reply_intents", "reply_posts", "inbox_events")
-DEFINER = BROWSER + WORKER + ("inbox_channel_ready", "inbox_draft_block", "inbox_log", "reply_draft_price")
+TABLES = ("inbox_comments", "reply_drafts", "reply_intents", "reply_posts", "inbox_events", "inbox_settings", "inbox_quota_ledger")
+CHANNEL_TABLES = TABLES[:5]
+DEFINER = BROWSER + WORKER + ("inbox_channel_ready", "inbox_draft_block", "inbox_log", "reply_draft_price", "inbox_real_member")
 
 
 def head(name):
@@ -78,14 +79,20 @@ class CommentInboxMigration(unittest.TestCase):
 
     def test_every_worker_function_checks_the_caller_is_the_platform(self):
         for name in WORKER:
+            if name == "inbox_quota_remaining":   # a read-only sum: closed to every role but the service role by its grant
+                continue
             self.assertIn("if not public.credits_trusted_caller() then", body(name), name)
 
     def test_no_api_role_writes_any_table_and_reads_are_scoped_by_channel(self):
         for t in TABLES:
             self.assertIn(f"revoke all on public.{t} from public, anon, authenticated, service_role;", CODE)
             self.assertIn(f"grant select on public.{t} to authenticated;", CODE)
+        for t in CHANNEL_TABLES:
             self.assertRegex(CODE, rf"create policy {t}_select on public\.{t}\s+for select to authenticated\s+"
                                    r"using \(channel_id in \(select public\.accessible_channel_ids\('viewer'\)\)\);")
+        # The quota ceiling and ledger are the operator's.
+        for t in ("inbox_settings", "inbox_quota_ledger"):
+            self.assertRegex(CODE, rf"create policy {t}_select on public\.{t}\s+for select to authenticated using \(public\.is_platform_admin\(\)\);")
         self.assertNotRegex(CODE, r"grant [^;]*\b(insert|update|delete|truncate)\b[^;]* to ")
         self.assertEqual(len(re.findall(r"create policy", CODE)), len(TABLES))
 
@@ -132,7 +139,8 @@ class CommentInboxMigration(unittest.TestCase):
         self.assertIn("public.inbox_clean_text(e ->> 'author', 100)", b)
         self.assertIn("jsonb_array_length(p_comments) > 100", b)
         self.assertIn("v.channel_id = p_channel", b)
-        self.assertIn("chr(8234)", body("inbox_clean_text"))
+        for cp in (8232, 8238, 917504, 8288, 173):   # separators..override, the tag block, word joiner, soft hyphen
+            self.assertIn(f"chr({cp})", body("inbox_clean_text"))
 
     def test_spam_flagged_and_unclassified_comments_are_refused_at_three_points(self):
         for fn in ("inbox_draft_block", "claim_reply_draft", "approve_reply"):
@@ -185,19 +193,45 @@ class CommentInboxMigration(unittest.TestCase):
         b = body("purge_revoked_inbox")
         self.assertIn("r.revoked_at is not null", b)
         self.assertIn("delete from public.inbox_comments", b)
-        self.assertNotIn("reply_intents", b, "the audit trail stays")
+        self.assertNotIn("delete from public.reply_intents", b, "the audit trail stays")
+        self.assertIn("set body = '[removed]', author_name = null", b, "a comment with an approved reply stays as a tombstone")
         self.assertIn("status in ('pending', 'drafting')", b)
         self.assertIn("status in ('queued', 'posting')", b)
 
     def test_stored_comments_are_pruned_after_thirty_days_untouched(self):
         b = body("store_inbox_comments")
         self.assertIn("c.fetched_at < now() - interval '30 days'", b)
-        self.assertIn("not exists (select 1 from public.reply_drafts d where d.comment_id = c.id)", b)
+        self.assertIn("d.status in ('pending', 'drafting', 'ready'))", b)
         self.assertIn("not exists (select 1 from public.reply_intents i where i.comment_id = c.id)", b)
 
     def test_a_malformed_date_never_aborts_a_batch(self):
         self.assertIn("exception when others then\n  return null;", body("inbox_parse_ts"))
         self.assertIn("public.inbox_parse_ts(e ->> 'published_at')", body("store_inbox_comments"))
+
+    def test_the_review_round_guards(self):
+        # BR-L-070: readiness is asked again when the worker takes a post, inside the claim.
+        c = body("claim_reply_post")
+        self.assertIn("if not public.inbox_channel_ready(i.channel_id) then", c)
+        self.assertIn("error_code = 'channel_not_ready'", c)
+        self.assertIn("public.inbox_quota_remaining() < 60", c)
+        # BR-L-078: only a real member approves or retries, outside the operator's own organization.
+        for fn in ("approve_reply", "retry_reply_post"):
+            self.assertIn("public.inbox_real_member(org, 'editor')", body(fn), fn)
+        r = body("inbox_real_member")
+        self.assertIn("p_org = public.default_org_id()", r)
+        self.assertIn("from public.org_members m", r)
+        # BR-L-071: the daily approval cap is counted under a lock of its own.
+        a = body("approve_reply")
+        self.assertLess(a.index("pg_advisory_xact_lock(hashtext('inbox:reply:' || c.channel_id))"), a.index("inbox_daily_cap('reply')"))
+        # BR-L-073: one approved reply per YouTube comment, not per surrogate id.
+        self.assertIn("create unique index if not exists reply_intents_youtube_comment_key", CODE)
+        self.assertIn("on public.reply_intents (channel_id, youtube_comment_id)", CODE)
+        # BR-L-071: the ceiling is the operator's to set, and it defaults to a fifth of the day.
+        self.assertIn("daily_quota_ceiling integer not null default 2000 check (daily_quota_ceiling between 0 and 10000)", CODE)
+        self.assertIn("not public.is_platform_admin()", body("set_inbox_quota_ceiling"))
+        self.assertIn("insert into public.inbox_quota_ledger", body("finish_reply_post"))
+        # BR-L-081: NaN is not a confirmed price.
+        self.assertIn("p_max_credits = 'NaN'::numeric", body("request_reply_draft"))
 
     def test_there_is_a_verify_query_at_the_end(self):
         self.assertIn("-- Verify (run after applying; every column should read true)", SQL)

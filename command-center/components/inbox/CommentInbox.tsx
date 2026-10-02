@@ -165,7 +165,9 @@ function Card({
     // One key per intended press: a dropped connection retried sends the same key.
     key.current ??= newIdempotencyKey();
     const a = await call(`/api/inbox/comments/${comment.id}/draft`, "POST", {
-      max_credits: price.state === "priced" ? price.credits : 0,
+      // "included" (priced at 0, or the operator's own organization) carries no figure: the
+      // database holds nothing there, and a price set since then is refused (price_required).
+      max_credits: price.state === "priced" ? price.credits : null,
       idempotency_key: key.current,
     });
     setBusy(null);
