@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link";
 import { AudioLines, Check, Clapperboard, Copy, CopyPlus, ExternalLink, FolderOpen, ImagePlus, Play, ScanText, TriangleAlert, type LucideIcon } from "lucide-react";
 import { StatusLamp } from "@/components/ui/StatusLamp";
+import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
 import { BeforeAfter } from "@/components/studio/BeforeAfter";
 import { TOOL_ICONS } from "@/components/studio/toolIcons";
 import { SendToEditor, isSendKind } from "@/components/editor/SendToEditor";
@@ -20,6 +21,7 @@ import {
   compareSources,
   creditsLine,
   describeResult,
+  edgeFacts,
   failureReason,
   isActiveStatus,
   isDubLanguage,
@@ -175,8 +177,8 @@ export function JobFeed({
   const library = useLibraryImages(orgId, { enabled: libraryKey !== "", key: libraryKey });
   const pictures = new Map(library.images.map((i) => [i.id, i.viewUrl ?? i.thumbUrl]));
   const chip = "studio-chip tap";
-  // Round icon buttons on the picture: named for screen readers and on hover.
-  const onMedia = "studio-on-media tap-icon press grid size-9 place-items-center rounded-full";
+  // Square keys on the picture: named for screen readers and on hover; 44px on a phone.
+  const onMedia = "studio-on-media tap-icon press grid size-9 place-items-center rounded-[var(--ns-r-key)] max-sm:size-11";
 
   return (
     <section className="@container flex min-w-0 flex-col gap-3" aria-labelledby="gen-feed-title">
@@ -197,11 +199,13 @@ export function JobFeed({
         <>
           {state === "failed" && <p className="text-[12px] text-[var(--color-warn)]">{t.gen.loadFailed}</p>}
           {jobs === null && (
-            <div className="columns-2 gap-3 @lg:columns-3 @4xl:columns-4" aria-busy="true" aria-label={t.gen.feedLoading}>
+            <ContactSheet label={t.gen.feedLoading} min={200} ragged>
               {["16 / 9", "1 / 1", "9 / 16", "16 / 9"].map((a, i) => (
-                <div key={i} className="skeleton mb-3 w-full rounded-[16px]" style={{ aspectRatio: a }} />
+                <Frame key={i} aspect={a} aria-busy="true">
+                  <div className="skeleton h-full w-full rounded-none" />
+                </Frame>
               ))}
-            </div>
+            </ContactSheet>
           )}
           {jobs !== null && shown.length === 0 && state === "ok" && (
             <div className="flex flex-col items-center justify-center gap-3 rounded-[var(--ns-r-panel)] border border-dashed border-[var(--ns-rule-strong)] bg-[var(--studio-canvas)] px-6 py-16 text-center">
@@ -216,7 +220,7 @@ export function JobFeed({
             </div>
           )}
           {shown.length > 0 && (
-            <ul className="columns-2 gap-3 @lg:columns-3 @4xl:columns-4">
+            <ContactSheet label={t.gen.feedTitle} min={200} ragged>
               {shown.map((job) => {
                 const sv = statusView(t, job.status);
                 const prompt = typeof job.params.prompt === "string" ? job.params.prompt : "";
@@ -266,7 +270,7 @@ export function JobFeed({
                     <>
                       {/* eslint-disable-next-line @next/next/no-img-element -- see above */}
                       <img src={preview.thumbUrl} alt={alt} loading="lazy" className="h-full w-full object-cover" />
-                      <span aria-hidden className="studio-on-media absolute left-1/2 top-1/2 grid size-10 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full">
+                      <span aria-hidden className="studio-on-media absolute left-1/2 top-1/2 grid size-10 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-[var(--ns-r-key)]">
                         <Play className="size-4" />
                       </span>
                     </>
@@ -294,15 +298,113 @@ export function JobFeed({
                 }
 
                 return (
-                  <li
+                  <Frame
                     key={job.id}
-                    className="studio-card mb-3 flex break-inside-avoid flex-col overflow-hidden rounded-[var(--ns-r-chip)] border border-[var(--color-border)] bg-[var(--color-panel)]"
+                    className="studio-card"
                     data-status={job.status}
+                    edge={edgeFacts(t, job, locale)}
+                    aspect={before && after ? undefined : cardAspect(job)}
+                    body={
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="min-w-0 truncate text-[12px] font-semibold text-[var(--color-fg)]">{kindLabel(t, job.capability)}</span>
+                          <span className="ml-auto shrink-0">
+                            <StatusLamp tone={sv.tone} label={sv.label} live={sv.live} />
+                          </span>
+                        </div>
+                        {prompt && <p className="studio-clamp-2 break-words text-[13px] leading-snug text-[var(--color-fg)]">{truncate(prompt)}</p>}
+                        {description && (
+                          <div className="flex flex-col gap-2">
+                            <p className="sr-only">{t.gen.descriptionLabel}</p>
+                            <p
+                              lang={description.language}
+                              className="select-text whitespace-pre-wrap break-words rounded-[10px] bg-[var(--studio-field)] p-2.5 text-[13px] leading-relaxed text-[var(--color-fg)]"
+                              data-testid="describe-text"
+                            >
+                              {description.text}
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              <button type="button" className={`${chip} gap-1.5`} onClick={() => void copy(job.id, description.text)}>
+                                {copied?.id === job.id && copied.ok ? (
+                                  <Check aria-hidden className="size-3.5" />
+                                ) : (
+                                  <Copy aria-hidden className="size-3.5" />
+                                )}
+                                {copied?.id === job.id && copied.ok ? t.gen.copied : t.gen.copy}
+                              </button>
+                              {onMakeSimilar && (
+                                <button
+                                  type="button"
+                                  className={`${chip} gap-1.5`}
+                                  title={t.gen.makeSimilarHint}
+                                  aria-describedby={`similar-hint-${job.id}`}
+                                  onClick={() => onMakeSimilar(similarPrefill(description))}
+                                >
+                                  <CopyPlus aria-hidden className="size-3.5" />
+                                  {t.gen.makeSimilar}
+                                </button>
+                              )}
+                            </div>
+                            <span id={`similar-hint-${job.id}`} className="sr-only">
+                              {t.gen.makeSimilarHint}
+                            </span>
+                            <p className="min-h-[1em] text-[12px]" aria-live="polite">
+                              {copied?.id === job.id && !copied.ok && (
+                                <span className="text-[var(--color-warn)]">{t.gen.copyFailed}</span>
+                              )}
+                            </p>
+                          </div>
+                        )}
+                        {job.capability === "dub" && isDubLanguage(job.params.target_language) && (
+                          <p className="text-[13px] leading-snug text-[var(--color-fg)]" lang={job.params.target_language}>
+                            → {t.gen.languages[job.params.target_language]}
+                          </p>
+                        )}
+                        <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[11px] text-[var(--color-muted)]">
+                          <span className="min-w-0 truncate">{names.get(job.requested_model) ?? job.requested_model}</span>
+                          <span aria-hidden>·</span>
+                          <span className="mono">{creditsLine(t, job, locale)}</span>
+                        </p>
+                        {isUnsuccessful(job.status) && (
+                          <p className="text-[12px] text-[var(--color-muted)]">
+                            {failureReason(t, job)} {t.gen.returnedNote}
+                          </p>
+                        )}
+                        {cancelError?.id === job.id && (
+                          <p className="text-[12px] text-[var(--color-fail)]">{apiErrorMessage(t, cancelError.code)}</p>
+                        )}
+                        {(job.status === "queued" || retry || isUnsuccessful(job.status)) && (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {job.status === "queued" && (
+                              <button
+                                type="button"
+                                className={chip}
+                                disabled={cancelling === job.id}
+                                onClick={() => void cancel(job.id)}
+                              >
+                                {cancelling === job.id ? t.gen.cancelling : t.gen.cancel}
+                              </button>
+                            )}
+                            {retry && onRetry && (
+                              <button type="button" className={chip} onClick={() => onRetry(retry)}>
+                                {t.gen.tryAgain}
+                              </button>
+                            )}
+                            {isUnsuccessful(job.status) && (
+                              <button
+                                type="button"
+                                className={chip}
+                                onClick={() => setDismissed(addDismissed(job.id, dismissed))}
+                              >
+                                {t.gen.dismiss}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                    
+                      </div>
+                    }
                   >
-                    <div
-                      className="relative overflow-hidden bg-[var(--studio-field)]"
-                      style={before && after ? undefined : { aspectRatio: cardAspect(job) }}
-                    >
                       {media}
                       {done && kind !== "text" && (
                         <div className="studio-card-actions absolute bottom-2 right-2 z-10 flex gap-1.5">
@@ -342,109 +444,10 @@ export function JobFeed({
                           )}
                         </div>
                       )}
-                    </div>
-
-                    <div className="flex flex-col gap-1.5 p-3">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="min-w-0 truncate text-[12px] font-semibold text-[var(--color-fg)]">{kindLabel(t, job.capability)}</span>
-                        <span className="ml-auto shrink-0">
-                          <StatusLamp tone={sv.tone} label={sv.label} live={sv.live} />
-                        </span>
-                      </div>
-                      {prompt && <p className="studio-clamp-2 break-words text-[13px] leading-snug text-[var(--color-fg)]">{truncate(prompt)}</p>}
-                      {description && (
-                        <div className="flex flex-col gap-2">
-                          <p className="sr-only">{t.gen.descriptionLabel}</p>
-                          <p
-                            lang={description.language}
-                            className="select-text whitespace-pre-wrap break-words rounded-[10px] bg-[var(--studio-field)] p-2.5 text-[13px] leading-relaxed text-[var(--color-fg)]"
-                            data-testid="describe-text"
-                          >
-                            {description.text}
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            <button type="button" className={`${chip} gap-1.5`} onClick={() => void copy(job.id, description.text)}>
-                              {copied?.id === job.id && copied.ok ? (
-                                <Check aria-hidden className="size-3.5" />
-                              ) : (
-                                <Copy aria-hidden className="size-3.5" />
-                              )}
-                              {copied?.id === job.id && copied.ok ? t.gen.copied : t.gen.copy}
-                            </button>
-                            {onMakeSimilar && (
-                              <button
-                                type="button"
-                                className={`${chip} gap-1.5`}
-                                title={t.gen.makeSimilarHint}
-                                aria-describedby={`similar-hint-${job.id}`}
-                                onClick={() => onMakeSimilar(similarPrefill(description))}
-                              >
-                                <CopyPlus aria-hidden className="size-3.5" />
-                                {t.gen.makeSimilar}
-                              </button>
-                            )}
-                          </div>
-                          <span id={`similar-hint-${job.id}`} className="sr-only">
-                            {t.gen.makeSimilarHint}
-                          </span>
-                          <p className="min-h-[1em] text-[12px]" aria-live="polite">
-                            {copied?.id === job.id && !copied.ok && (
-                              <span className="text-[var(--color-warn)]">{t.gen.copyFailed}</span>
-                            )}
-                          </p>
-                        </div>
-                      )}
-                      {job.capability === "dub" && isDubLanguage(job.params.target_language) && (
-                        <p className="text-[13px] leading-snug text-[var(--color-fg)]" lang={job.params.target_language}>
-                          → {t.gen.languages[job.params.target_language]}
-                        </p>
-                      )}
-                      <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[11px] text-[var(--color-muted)]">
-                        <span className="min-w-0 truncate">{names.get(job.requested_model) ?? job.requested_model}</span>
-                        <span aria-hidden>·</span>
-                        <span className="mono">{creditsLine(t, job, locale)}</span>
-                      </p>
-                      {isUnsuccessful(job.status) && (
-                        <p className="text-[12px] text-[var(--color-muted)]">
-                          {failureReason(t, job)} {t.gen.returnedNote}
-                        </p>
-                      )}
-                      {cancelError?.id === job.id && (
-                        <p className="text-[12px] text-[var(--color-fail)]">{apiErrorMessage(t, cancelError.code)}</p>
-                      )}
-                      {(job.status === "queued" || retry || isUnsuccessful(job.status)) && (
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          {job.status === "queued" && (
-                            <button
-                              type="button"
-                              className={chip}
-                              disabled={cancelling === job.id}
-                              onClick={() => void cancel(job.id)}
-                            >
-                              {cancelling === job.id ? t.gen.cancelling : t.gen.cancel}
-                            </button>
-                          )}
-                          {retry && onRetry && (
-                            <button type="button" className={chip} onClick={() => onRetry(retry)}>
-                              {t.gen.tryAgain}
-                            </button>
-                          )}
-                          {isUnsuccessful(job.status) && (
-                            <button
-                              type="button"
-                              className={chip}
-                              onClick={() => setDismissed(addDismissed(job.id, dismissed))}
-                            >
-                              {t.gen.dismiss}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </li>
+                  </Frame>
                 );
               })}
-            </ul>
+            </ContactSheet>
           )}
         </>
       )}

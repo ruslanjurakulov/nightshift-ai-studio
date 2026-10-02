@@ -299,7 +299,7 @@ describe("the editor page", () => {
     const picker = screen.getByRole("region", { name: te.addSoundTitle });
     // Only audio is offered.
     expect(within(picker).queryByRole("button", { name: /beach|city/ })).toBeNull();
-    expect(within(picker).getByRole("button", { name: /song\.mp3/ }).textContent).toContain("3:00.0");
+    expect(within(picker).getByRole("button", { name: /song\.mp3/ }).textContent).toContain("3:00");
     fireEvent.click(within(picker).getByRole("button", { name: /song\.mp3/ }));
     const lane = screen.getByRole("list", { name: te.soundsTrack });
     const block = within(lane).getByRole("button");

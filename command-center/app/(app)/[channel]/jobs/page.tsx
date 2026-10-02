@@ -9,7 +9,7 @@ import { getChannelScope } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import { fmt } from "@/lib/i18n";
 import type { SystemEventRow } from "@/lib/types";
-import { JobStatusPill, type JobStatus } from "@/components/jobs/JobStatusPill";
+import { JobStatusLamp, type JobStatus } from "@/components/jobs/JobStatusLamp";
 import { CopyButton } from "@/components/feedback/CopyButton";
 import { relativeTime, statusTone, storedMs } from "@/lib/format";
 
@@ -193,7 +193,7 @@ export default async function JobsPage() {
                       </td>
                       <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">{durationLabel(j.durationMs)}</td>
                       <td className="px-4 py-2">
-                        <JobStatusPill status={j.status} />
+                        <JobStatusLamp status={j.status} />
                       </td>
                     </tr>
                   ))}

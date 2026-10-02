@@ -27,7 +27,7 @@ export function BeforeAfter({
   return (
     <div
       className={`relative aspect-[4/3] w-full overflow-hidden focus-within:ring-2 focus-within:ring-inset focus-within:ring-[var(--color-primary)] ${
-        bare ? "" : "max-w-md rounded-xl border border-[var(--color-border)]"
+        bare ? "" : "max-w-md rounded-[var(--ns-r-key)] border border-[var(--color-border)]"
       }`}
       style={{
         backgroundColor: "var(--color-panel-2)",
@@ -50,7 +50,7 @@ export function BeforeAfter({
         draggable={false}
       />
       <span aria-hidden className="pointer-events-none absolute inset-y-0 w-0.5 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.35)]" style={{ left: `${pos}%` }}>
-        <span className="absolute left-1/2 top-1/2 grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white text-[12px] text-black shadow">
+        <span className="absolute left-1/2 top-1/2 grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-[var(--ns-r-key)] bg-white text-[12px] text-black shadow">
           ⇆
         </span>
       </span>

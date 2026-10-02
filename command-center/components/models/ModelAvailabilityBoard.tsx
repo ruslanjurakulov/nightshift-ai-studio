@@ -10,7 +10,10 @@ import { relativeTime } from "@/lib/format";
 import { formatCredits } from "@/lib/credits";
 import { useChannelPath } from "@/lib/channels-client";
 import { useToast } from "@/components/feedback/ToastProvider";
-import { StatusPill } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
+import { Chip } from "@/components/ui/Chip";
+import { TileGrid } from "@/components/ui/ContactSheet";
+import { SegmentedSwitch } from "@/components/ui/SegmentedSwitch";
 import {
   AVAILABILITIES,
   availabilityBlocker,
@@ -45,11 +48,11 @@ export function ModelAvailabilityBoard({
     <div className="flex flex-col gap-3">
       <p className="mono text-[11px] text-[var(--color-muted)]">{fmt(t.models.count, { n: models.length, sale: onSale })}</p>
       {probes === null && <p className="text-[12px] text-[var(--color-warn)]">{t.models.probesFailed}</p>}
-      <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+      <TileGrid as="div" min={320} label={t.models.title}>
         {models.map((m) => (
           <ModelCard key={m.id} model={m} probe={probes?.[m.id] ?? null} probesRead={probes !== null} prices={prices} />
         ))}
-      </div>
+      </TileGrid>
     </div>
   );
 }
@@ -139,7 +142,7 @@ function ModelCard({
           </h2>
           <p className="mono truncate text-[11px] text-[var(--color-muted)]">{model.id}</p>
         </div>
-        <StatusPill tone={TONE[availability]} label={label(availability).toUpperCase()} live={availability === "ga"} />
+        <StatusLamp tone={TONE[availability]} label={label(availability)} live={availability === "ga"} />
       </div>
 
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12px]">
@@ -149,9 +152,9 @@ function ModelCard({
         <dt className="text-[var(--color-muted)]">{t.models.capabilities}</dt>
         <dd className="flex min-w-0 flex-wrap gap-1">
           {model.capabilities.map((c) => (
-            <span key={c} className="pill mono border border-[var(--color-border)] px-2 py-0.5 text-[10px] text-[var(--color-muted)]">
+            <Chip key={c} plain>
               {c}
-            </span>
+            </Chip>
           ))}
         </dd>
 
@@ -204,7 +207,7 @@ function ModelCard({
       </dl>
 
       {warnings.length > 0 && (
-        <div id={`${warnId}-warn`} className="flex flex-col gap-1 rounded-lg border border-[var(--color-warn)] p-2.5" role="note">
+        <div id={`${warnId}-warn`} className="flex flex-col gap-1 rounded-[var(--ns-r-key)] border border-[var(--color-warn)] p-2.5" role="note">
           {warnings.map((w) => (
             <p key={w} className="flex items-start gap-1.5 text-[12px] leading-snug text-[var(--color-warn)]">
               <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
@@ -218,25 +221,14 @@ function ModelCard({
         <legend className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-muted)]">
           {busy ? t.models.saving : t.models.availability}
         </legend>
-        <div className="grid grid-cols-4 gap-1.5">
-          {AVAILABILITIES.map((a) => {
-            const selected = a === availability;
-            const blocked = !selected && availabilityBlocker(model, a) !== null;
-            return (
-              <button
-                key={a}
-                type="button"
-                aria-pressed={selected}
-                aria-describedby={blocked && warnings.length > 0 ? `${warnId}-warn` : undefined}
-                disabled={blocked}
-                onClick={() => change(a)}
-                className={`btn-sky pill min-h-[40px] px-2 py-1.5 text-[12px] disabled:opacity-40 ${selected ? "is-solid" : "is-quiet"}`}
-              >
-                {label(a)}
-              </button>
-            );
-          })}
-        </div>
+        <SegmentedSwitch
+          label={t.models.availability}
+          size="lg"
+          className="w-full [&>button]:flex-1 [&>button]:justify-center"
+          value={availability}
+          onChange={(a) => void change(a)}
+          options={AVAILABILITIES.map((a) => ({ value: a, label: label(a), disabled: a !== availability && availabilityBlocker(model, a) !== null }))}
+        />
       </fieldset>
 
       {error && (

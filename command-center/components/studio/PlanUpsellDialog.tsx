@@ -125,7 +125,7 @@ export function PlanUpsellDialog({
   };
 
   const linkBase =
-    "tap press inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full px-4 text-[14px] font-semibold";
+    "tap press inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[var(--ns-r-key)] px-4 text-[14px] font-semibold";
   const primaryCls = `${linkBase} bg-[var(--studio-cta-bg)] text-[var(--studio-cta-fg)] shadow-[var(--studio-cta-shadow)]`;
   const secondaryCls = `${linkBase} border border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-fg)] hover:border-[var(--color-primary)]`;
   // With credits missing, "Buy credits" is the answer; the plans are the alternative.
@@ -143,7 +143,7 @@ export function PlanUpsellDialog({
         aria-describedby={descId}
         data-testid="plan-upsell"
         data-reason={view.reason}
-        className="relative flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-t-[20px] border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] sm:max-h-[85vh] sm:max-w-[640px] sm:rounded-[20px]"
+        className="relative flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-t-[var(--ns-r-sheet)] border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] sm:max-h-[85vh] sm:max-w-[640px] sm:rounded-[var(--ns-r-sheet)]"
       >
         <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4 sm:px-6 sm:pt-5">
           <div className="flex min-w-0 items-start gap-3">
@@ -167,7 +167,7 @@ export function PlanUpsellDialog({
             type="button"
             onClick={onClose}
             aria-label={u.close}
-            className="tap-icon grid size-9 shrink-0 place-items-center rounded-full text-[var(--color-muted)] hover:bg-[var(--studio-field)] hover:text-[var(--color-fg)]"
+            className="tap-icon grid size-9 shrink-0 place-items-center rounded-[var(--ns-r-key)] text-[var(--color-muted)] hover:bg-[var(--studio-field)] hover:text-[var(--color-fg)]"
           >
             <X aria-hidden className="size-4" />
           </button>
@@ -192,7 +192,7 @@ export function PlanUpsellDialog({
                     <li
                       key={p.id}
                       data-plan={p.id}
-                      className="flex min-w-0 flex-col gap-2 rounded-[14px] border border-[var(--color-border)] bg-[var(--studio-field)] p-3"
+                      className="flex min-w-0 flex-col gap-2 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--studio-field)] p-3"
                     >
                       <span className="truncate text-[15px] font-semibold text-[var(--color-fg)]">{p.name}</span>
                       <span className="text-[13px] text-[var(--color-fg)]">

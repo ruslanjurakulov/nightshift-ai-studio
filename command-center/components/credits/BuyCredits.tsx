@@ -5,12 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
-import { formatCredits } from "@/lib/credits";
 import { resolvedTheme } from "@/lib/theme";
 import { checkoutCustomData, paddleLocale, purchaseArrived, type PaddleConfig, type SellablePack } from "@/lib/paddle";
 import { ensurePaddle, previewPrices, type PaddleEventData } from "@/lib/paddle-client";
 import type { GenerationRates } from "@/lib/plans";
 import { Equivalents } from "@/components/credits/Equivalents";
+import { Chip } from "@/components/ui/Chip";
+import { PriceButton } from "@/components/ui/PriceButton";
+import { Timecode } from "@/components/ui/Timecode";
 
 /**
  * Buy credits for the current organization with Paddle's overlay checkout.
@@ -186,9 +188,9 @@ export function BuyCredits({
             {cp.packsTitle}
           </h2>
           {config.environment === "sandbox" && (
-            <span className="pill border border-[var(--color-warn)] px-2.5 py-0.5 text-[11px]" style={{ color: "var(--color-warn)" }}>
+            <Chip plain tone="warn">
               {cp.testMode}
-            </span>
+            </Chip>
           )}
         </div>
         <p className="text-[14px] font-light text-[var(--color-muted)]">
@@ -206,23 +208,24 @@ export function BuyCredits({
 
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {config.packs.map((pack) => (
-          <li key={pack.id} className="flex flex-col gap-3 rounded-2xl border border-[var(--color-border)] p-4">
+          <li key={pack.id} className="flex flex-col gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] p-4">
             <span className="text-[15px] font-medium">{t.credits.buy.pack[pack.id]}</span>
             <div className="flex flex-col gap-1">
-              <span className="text-[28px] font-semibold leading-none tabular-nums">{formatCredits(pack.credits, locale)}</span>
+              <span className="text-[28px] font-semibold leading-none">
+                <Timecode value={pack.credits} locale={locale} />
+              </span>
               <span className="text-[13px] text-[var(--color-muted)]">{cp.unit}</span>
             </div>
             <Equivalents credits={pack.credits} rates={rates} />
-            <div className="mt-auto flex items-center justify-between gap-3 border-t border-[var(--color-border)] pt-3">
-              <span className="text-[15px] font-medium tabular-nums">{prices[pack.priceId] ?? <span className="text-[12px] font-normal text-[var(--color-muted)]">{cp.priceAtCheckout}</span>}</span>
-              <button
-                type="button"
+            <div className="mt-auto flex flex-col gap-2 border-t border-[var(--color-border)] pt-3">
+              {/* The price is the provider's quote, drawn as given; with none, the key says so in words. */}
+              {!prices[pack.priceId] && <span className="text-[12px] text-[var(--color-muted)]">{cp.priceAtCheckout}</span>}
+              <PriceButton
                 onClick={() => buy(pack)}
                 disabled={phase === "opening"}
-                className="btn-sky is-solid pill tap shrink-0 px-5 py-2 text-[14px] disabled:opacity-40"
-              >
-                {phase === "opening" ? cp.opening : cp.buy}
-              </button>
+                label={phase === "opening" ? cp.opening : cp.buy}
+                priceText={prices[pack.priceId] ?? null}
+              />
             </div>
           </li>
         ))}

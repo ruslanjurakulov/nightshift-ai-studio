@@ -75,7 +75,7 @@ export function CreditActivity({ rows, showRefs = false }: { rows: CreditTransac
             <button
               type="button"
               onClick={() => setShown((n) => n + PAGE)}
-              className="btn-sky ghost pill tap self-center px-5 py-2 text-[13px]"
+              className="btn-quiet self-center px-5 py-2 text-[13px]"
             >
               {cp.showMore}
             </button>

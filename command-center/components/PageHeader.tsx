@@ -83,7 +83,7 @@ export function PageHeader({
       <div className="flex min-w-0 items-start gap-4">
         <span
           aria-hidden
-          className="mt-1 grid size-11 shrink-0 place-items-center rounded-2xl border border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] text-[var(--color-primary)]"
+          className="mt-1 grid size-11 shrink-0 place-items-center rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] text-[var(--color-primary)]"
         >
           <Icon className="size-[22px]" strokeWidth={1.75} />
         </span>

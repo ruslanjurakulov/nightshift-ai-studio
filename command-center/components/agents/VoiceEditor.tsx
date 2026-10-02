@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
+import { Chip } from "@/components/ui/Chip";
 import type { ChannelAgentConfig } from "@/lib/types";
 
 /**
@@ -122,7 +123,7 @@ export function VoiceEditor({
   }
 
   const inputClass =
-    "pill border border-[var(--color-border)] bg-transparent px-4 py-2 text-[13px] outline-none transition-colors focus:border-[var(--color-primary)]";
+    "rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-transparent px-4 py-2 text-[13px] outline-none transition-colors focus:border-[var(--color-primary)]";
 
   return (
     <div className="panel flex flex-col gap-4 p-4">
@@ -192,7 +193,7 @@ export function VoiceEditor({
                   type="button"
                   onClick={loadVoices}
                   disabled={loadPhase === "loading" || !apiKey.trim()}
-                  className="btn-sky pill px-5 py-2 text-[13px] disabled:opacity-40"
+                  className="btn-quiet text-[13px] disabled:opacity-40"
                 >
                   {loadPhase === "loading" ? t.voice.loading : t.voice.load}
                 </button>
@@ -211,15 +212,9 @@ export function VoiceEditor({
                     {t.voice.pickFor}
                   </span>
                   {(["main", "secondary"] as const).map((role) => (
-                    <button
-                      key={role}
-                      type="button"
-                      aria-pressed={pickFor === role}
-                      onClick={() => setPickFor(role)}
-                      className={`btn-sky pill px-4 py-1.5 text-[12px] ${pickFor === role ? "is-solid" : "is-quiet"}`}
-                    >
+                    <Chip key={role} pressed={pickFor === role} onClick={() => setPickFor(role)}>
                       {role === "main" ? t.voice.pickNarrator : t.voice.pickQuote}
-                    </button>
+                    </Chip>
                   ))}
                 </div>
                 <p className="max-w-[72ch] text-[11px] leading-relaxed text-[var(--color-muted)]">
@@ -247,7 +242,7 @@ export function VoiceEditor({
                     return (
                       <li key={v.voiceId}>
                         <div
-                          className="flex items-center gap-3 rounded-[14px] border p-2.5 transition-colors"
+                          className="flex items-center gap-3 rounded-[var(--ns-r-panel)] border p-2.5 transition-colors"
                           style={{
                             borderColor: isSel || isQuote ? "var(--color-primary)" : "var(--color-border)",
                             background: isSel || isQuote ? "var(--color-panel-2)" : "transparent",
@@ -258,7 +253,7 @@ export function VoiceEditor({
                             onClick={() => preview(v)}
                             disabled={!v.previewUrl}
                             aria-label={t.voice.preview}
-                            className="btn-sky is-quiet pill size-8 shrink-0 text-[13px] disabled:opacity-30"
+                            className="btn-quiet size-8 shrink-0 text-[13px] disabled:opacity-30"
                           >
                             {playingId === v.voiceId ? "⏸" : "▶"}
                           </button>
@@ -309,7 +304,7 @@ export function VoiceEditor({
                 (provider === "elevenlabs" && (!selected || !secondary)) ||
                 (provider === "edge" && !edgeVoice.trim())
               }
-              className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
+              className="btn-primary text-[13px] disabled:opacity-40"
             >
               {state === "saving" ? t.voice.saving : t.voice.save}
             </button>
