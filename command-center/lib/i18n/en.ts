@@ -2344,6 +2344,7 @@ export const en = {
     posted: {
       approvedBy: "Approved by {who}",
       waiting: "Approved. Waiting to be posted.",
+      waitingQuota: "Approved. Waiting for today's YouTube quota; it is posted automatically as soon as there is room.",
       done: "Posted publicly.",
       notPosted: "Not posted.",
       retry: "Try again",
@@ -2362,6 +2363,7 @@ export const en = {
       notDraftable: "No reply can be drafted for this comment.",
       channelNotReady: "This channel is not connected with permission to reply. Reconnect it on the Channels page.",
       invalidBody: "A reply cannot be empty.",
+      alreadyApproved: "A colleague already approved this draft with other words. Reload the page to see what was approved.",
       conflict: "This comment changed in the meantime. Reload the page.",
       notInstalled: "The comment inbox is not switched on for this workspace yet.",
       failed: "That did not work. Nothing was posted. Try again.",
