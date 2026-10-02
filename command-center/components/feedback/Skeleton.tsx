@@ -1,3 +1,5 @@
+import { LoadingGrace } from "@/components/motion/LoadingGrace";
+
 /**
  * Placeholder shapes while a route streams in. The `.skeleton` shimmer lives in
  * globals.css, so the page-wide prefers-reduced-motion rule already stills it —
@@ -17,26 +19,30 @@ export function Skeleton({ className = "", style }: { className?: string; style?
  */
 export function PageSkeleton({ label }: { label: string }) {
   return (
-    <div role="status" aria-live="polite" className="flex w-full min-w-0 flex-col gap-6">
+    <div role="status" aria-live="polite" className="w-full min-w-0">
       <span className="sr-only">{label}</span>
-      <div className="flex flex-col gap-2">
-        <Skeleton className="h-7 w-2/3 max-w-xs" />
-        <Skeleton className="h-4 w-full max-w-md" />
-      </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="panel flex flex-col gap-2 p-4">
-            <Skeleton className="h-3 w-1/2" />
-            <Skeleton className="h-6 w-3/4" />
-          </div>
-        ))}
-      </div>
-      <div className="panel flex flex-col gap-3 p-4">
-        <Skeleton className="h-4 w-40" />
-        {[0, 1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-9 w-full" style={{ opacity: 1 - i * 0.14 }} />
-        ))}
-      </div>
+      {/* After a click the blocks wait out a short grace period, so a fast
+          route never flashes them; the status line above is announced at once. */}
+      <LoadingGrace className="flex w-full min-w-0 flex-col gap-6">
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-7 w-2/3 max-w-xs" />
+          <Skeleton className="h-4 w-full max-w-md" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="panel flex flex-col gap-2 p-4">
+              <Skeleton className="h-3 w-1/2" />
+              <Skeleton className="h-6 w-3/4" />
+            </div>
+          ))}
+        </div>
+        <div className="panel flex flex-col gap-3 p-4">
+          <Skeleton className="h-4 w-40" />
+          {[0, 1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-9 w-full" style={{ opacity: 1 - i * 0.14 }} />
+          ))}
+        </div>
+      </LoadingGrace>
     </div>
   );
 }

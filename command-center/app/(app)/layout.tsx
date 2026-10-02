@@ -26,6 +26,7 @@ import { planValue, readBillingSummary } from "@/lib/server/plans";
 import { accountPlan, type AccountPlan } from "@/lib/account";
 import type { CreditAccount } from "@/lib/credits";
 import { ShellProvider } from "@/components/shell/ShellContext";
+import { MotionProvider } from "@/components/motion/MotionProvider";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // Fail closed (BR-H-001). The middleware is the gate, but a request it never
@@ -122,35 +123,40 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   );
 
   return (
-    <NavigationProvider channelNames={channelNames}>
-      <ShellProvider operator={operator}>
-        <div className="app-shell atmos relative flex min-h-dvh flex-col">
-          <NeuralBackdrop dim />
-          {operator ? (
-            <div className="relative z-10 flex min-h-dvh flex-col">
-              {header}
-              <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-                <SideNav operator />
-                <main className="pad-page min-w-0 flex-1">{children}</main>
-              </div>
-            </div>
-          ) : (
-            // A customer's frame, as creative apps draw it: the sidebar full
-            // height on the left, the top bar and the page to its right. On a
-            // phone the sidebar gives way to the bottom tab bar, and the page
-            // keeps its end above it.
-            <div className="relative z-10 flex min-h-dvh">
-              <SideNav email={email} plan={plan} />
-              <div className="flex min-w-0 flex-1 flex-col">
+    // The motion kit's engine for the signed-in app (docs/design/MOTION.md):
+    // here rather than in the root layout, so the public pages do not carry
+    // Motion's core until a page of theirs animates with it.
+    <MotionProvider>
+      <NavigationProvider channelNames={channelNames}>
+        <ShellProvider operator={operator}>
+          <div className="app-shell atmos relative flex min-h-dvh flex-col">
+            <NeuralBackdrop dim />
+            {operator ? (
+              <div className="relative z-10 flex min-h-dvh flex-col">
                 {header}
-                <main className="pad-page min-w-0 flex-1 pb-24 lg:pb-10">{children}</main>
+                <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+                  <SideNav operator />
+                  <main className="pad-page min-w-0 flex-1">{children}</main>
+                </div>
               </div>
-            </div>
-          )}
-          <CommandPalette scope={scope} operator={operator} />
-          <ScrollToTop />
-        </div>
-      </ShellProvider>
-    </NavigationProvider>
+            ) : (
+              // A customer's frame, as creative apps draw it: the sidebar full
+              // height on the left, the top bar and the page to its right. On a
+              // phone the sidebar gives way to the bottom tab bar, and the page
+              // keeps its end above it.
+              <div className="relative z-10 flex min-h-dvh">
+                <SideNav email={email} plan={plan} />
+                <div className="flex min-w-0 flex-1 flex-col">
+                  {header}
+                  <main className="pad-page min-w-0 flex-1 pb-24 lg:pb-10">{children}</main>
+                </div>
+              </div>
+            )}
+            <CommandPalette scope={scope} operator={operator} />
+            <ScrollToTop />
+          </div>
+        </ShellProvider>
+      </NavigationProvider>
+    </MotionProvider>
   );
 }

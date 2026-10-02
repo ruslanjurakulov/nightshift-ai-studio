@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingFunction } from "@/lib/orgs";
-import { readCreditPrices } from "@/lib/server/credits";
+import { readCreditPriceList, readCreditPrices } from "@/lib/server/credits";
 import { coerceSellableModels } from "@/lib/creative/registry";
 import { coerceAdminModels, latestProbes } from "@/lib/models-admin";
 import {
@@ -19,7 +19,7 @@ import {
  * and the security-definer functions' own checks apply). No service key.
  *
  *  - customer: sellable_models('web') — what the database would sell them —
- *    and the price list (0020: readable by any signed-in user);
+ *    and the price list as charged (credit_rates(), 0084: never the margin);
  *  - operator: model_registry_admin() (refused to anyone but a platform admin
  *    with 42501), the probe log and the price list.
  *
@@ -33,10 +33,15 @@ export type DiscoveryRead =
   | { status: "ok"; models: DiscoveryModel[]; pricesRead: boolean; probesRead: boolean }
   | { status: "not_enabled" | "forbidden" | "error" };
 
-/** The price list as unit -> rate, or null when it could not be read (never an empty list that reads as "free"). */
-export async function readPriceList(supabase: SupabaseClient): Promise<PriceList> {
+/**
+ * The price list as unit -> rate, or null when it could not be read (never an
+ * empty list that reads as "free"). A customer gets the rates as charged
+ * (credit_rates(), 0084); the operator (`raw`) the base rates of the list
+ * they edit, which the database shows no one else.
+ */
+export async function readPriceList(supabase: SupabaseClient, raw = false): Promise<PriceList> {
   try {
-    const read = await readCreditPrices(supabase);
+    const read = raw ? await readCreditPriceList(supabase) : await readCreditPrices(supabase);
     if (!read.supported || read.failed) return null;
     return Object.fromEntries(Object.values(read.prices).map((p) => [p.unit, p.creditsPerUnit]));
   } catch {
@@ -120,7 +125,7 @@ export async function readOperatorModels(supabase: SupabaseClient): Promise<Disc
         .select("model_id,ok,error_code,capability,created_at")
         .order("created_at", { ascending: false })
         .limit(2000),
-      readPriceList(supabase),
+      readPriceList(supabase, true),
     ]);
     if (registry.error) {
       if (isMissingFunction(registry.error)) return { status: "not_enabled" };

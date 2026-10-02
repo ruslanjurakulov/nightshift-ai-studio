@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { unitEconomics, type DurationRow, type LedgerRow } from "../unitEconomics";
 import {
+  chargedPrices,
   coerceAccount,
   estimateRunCredits,
   frozenRunDurationS,
@@ -20,8 +21,9 @@ import {
 
 /**
  * Prepaid credits, read on the server with the signed-in user's client (RLS:
- * migration 0020 shows an organization's credits to its viewers, the price
- * list to every signed-in account). No service key: reserving goes through the
+ * migration 0020 shows an organization's credits to its viewers; the price
+ * list as charged comes from credit_rates(), 0084, and the raw list with its
+ * margins only to a platform owner/admin). No service key: reserving goes through the
  * security-definer reserve_credits(), which checks the caller's role itself.
  */
 
@@ -68,9 +70,32 @@ export async function readCreditAccount(
   return { supported: true, failed: false, hasRow: data != null, account: coerceAccount(data) };
 }
 
-export async function readCreditPrices(
-  supabase: SupabaseClient,
-): Promise<{ supported: boolean; failed: boolean; prices: PriceMap }> {
+export type PriceRead = { supported: boolean; failed: boolean; prices: PriceMap };
+
+/**
+ * The price list AS CHARGED — for every estimate, hold and customer screen:
+ * credit_rates() (0084) gives each unit's rate with the platform's margin
+ * folded in (margin reads 0 here) and never the margin or the note, which are
+ * the platform's (BR-G-001). Before 0084 the function is missing and the
+ * table is read instead (members could still read it then), folded the same
+ * way: every charge works out identically, and no margin leaves this function.
+ */
+export async function readCreditPrices(supabase: SupabaseClient): Promise<PriceRead> {
+  const { data, error } = await supabase.rpc("credit_rates");
+  if (!error) return { supported: true, failed: false, prices: parsePrices(data) };
+  // A read that errored is unknown, never an empty (free) list.
+  if (!isCreditsMissing(error)) return { supported: true, failed: true, prices: {} };
+  const legacy = await readCreditPriceList(supabase);
+  return { ...legacy, prices: chargedPrices(legacy.prices) };
+}
+
+/**
+ * The operator's price list — base rate, margin and note — for the price
+ * editor and the operator's model board. Since 0084 the table answers a
+ * platform owner/admin only: anyone else reads no rows, so this is never a
+ * customer's price list (use readCreditPrices).
+ */
+export async function readCreditPriceList(supabase: SupabaseClient): Promise<PriceRead> {
   const { data, error } = await supabase
     .from("credit_prices")
     .select("unit,credits_per_unit,margin,note,updated_at")

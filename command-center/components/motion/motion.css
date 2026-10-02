@@ -1,0 +1,65 @@
+/* ── Nightshift motion kit (components/motion, lib/motion) ───────────────────
+   The CSS half of the kit. Its own file so the motion work never has to edit
+   the palette and type in globals.css. Imported once by app/layout.tsx. */
+
+/* The reduced-motion contract, enforced where JavaScript cannot be late: a
+   kit element is always shown at its final state for a reader who asked for
+   less motion — before hydration, before the animation engine has loaded,
+   and whatever inline style an earlier animation left behind. Stylesheet
+   !important beats Motion's (non-important) inline styles. */
+@media (prefers-reduced-motion: reduce) {
+  [data-ns-motion] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* The animation engine failed to load (components/motion/engine.ts): the same
+   still screen as reduced motion, so nothing drawn at its start state is left
+   invisible. */
+html[data-ns-motion-engine="failed"] [data-ns-motion] {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+/* No scripting (a crawler, a blocked bundle): in-view reveals start hidden in
+   the HTML, so show them; nothing would ever reveal them. */
+@media (scripting: none) {
+  [data-ns-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* The lit plate under the current row (SharedLayout.tsx <Plate>). It sits
+   behind the row's content inside the row's own stacking context and is
+   positioned absolutely, so it never takes or changes space. */
+.ns-plate-host {
+  position: relative;
+  isolation: isolate;
+}
+.ns-plate {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--ns-key-hi);
+  pointer-events: none;
+}
+/* The phone tab bar's plate sits in the icon well, in the selection tint. */
+.ns-plate.is-tab { background: var(--ns-select); }
+/* The row carrying a plate draws no background of its own: the plate is it. */
+.shell-link.ns-plate-host[aria-current="page"],
+.ns-tab[aria-current="page"] .ns-tab-icon.ns-plate-host { background: transparent; }
+
+/* Micro-states for plain elements: a key gives a little when pressed. CSS, not
+   Motion — one tool per interaction, and this one needs no JavaScript. The
+   global reduced-motion rule (globals.css) already zeroes the transition, and
+   the transform is dropped too, so a reduced-motion press does not move. */
+.ns-press {
+  transition: transform var(--ns-dur-1) var(--ns-ease);
+}
+.ns-press:active:not(:disabled) { transform: scale(0.97); }
+@media (prefers-reduced-motion: reduce) {
+  .ns-press:active:not(:disabled) { transform: none; }
+}

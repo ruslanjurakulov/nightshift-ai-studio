@@ -52,8 +52,9 @@ export async function generateMetadata(): Promise<Metadata> {
  * Paddle's seller verification reads, and the one the Terms link to.
  *
  * Prices come only from Paddle's preview or the owner's display env
- * (lib/pricing.ts). The live credit rates come from credit_prices, which RLS
- * (0020) shows to signed-in accounts only: a signed-out visitor is told that,
+ * (lib/pricing.ts). The live credit rates come from credit_rates() (0084: the
+ * rates as charged, never the margin), which only a signed-in account may
+ * call: a signed-out visitor is told that,
  * rather than shown a number this page would have had to guess.
  */
 export default async function PricingPage() {
