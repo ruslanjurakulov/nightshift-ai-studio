@@ -59,41 +59,53 @@ function catalog() {
 describe("public landing page", () => {
   it("has one h1 with the promise and a heading for every section", () => {
     const t = dictionaries.en;
+    const s = t.site;
     renderLanding({ kind: "announced" });
     const h1s = screen.getAllByRole("heading", { level: 1 });
     expect(h1s).toHaveLength(1);
-    expect(h1s[0].textContent).toBe(t.landing.hero.title);
-    for (const title of [t.landing.make.title, t.landing.how.title, t.landing.why.title, t.landing.pricing.title, t.landing.faq.title]) {
+    expect(h1s[0].textContent).toBe(`${s.hero.titleA} ${s.hero.titleB}`);
+    for (const title of [s.rules.title, s.how.title, s.studio.title, s.desk.title, s.solutionsTeaser.title, s.pricingTeaser.title, t.landing.faq.title, s.final.title]) {
       expect(screen.getByRole("heading", { level: 2, name: title })).toBeTruthy();
     }
-    // How it works is the six-step video flow; every difference has its own heading.
-    const how = screen.getByRole("heading", { level: 2, name: t.landing.how.title }).closest("section")!;
-    expect(within(how).getAllByRole("listitem")).toHaveLength(6);
-    const why = screen.getByRole("heading", { level: 2, name: t.landing.why.title }).closest("section")!;
-    for (const w of t.landing.why.items) expect(within(why).getByRole("heading", { level: 3, name: w.title })).toBeTruthy();
+    // How a video moves is the six-step flow, ending with your approval and YouTube.
+    const how = screen.getByRole("list", { name: s.how.slug });
+    expect(how.tagName).toBe("OL");
+    const steps = within(how).getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
+    expect(steps).toEqual(s.how.steps.map((x) => x.title));
+    expect(steps.slice(-2)).toEqual([s.how.steps[4].title, s.how.steps[5].title]);
+    // Every rule the product keeps has its own heading.
+    const rules = screen.getByRole("heading", { level: 2, name: s.rules.title }).closest("section")!;
+    for (const r of s.rules.items) expect(within(rules).getByRole("heading", { level: 3, name: r.title })).toBeTruthy();
   });
 
-  it("shows every video format and every Studio tool", () => {
+  it("shows every Studio tool, and draws the editor instead of shipping an image", () => {
     const t = dictionaries.en;
     renderLanding({ kind: "announced" });
-    const make = screen.getByRole("heading", { level: 2, name: t.landing.make.title }).closest("section")!;
-    for (const f of Object.values(t.landing.make.formats)) expect(within(make).getByRole("heading", { level: 4, name: f.title })).toBeTruthy();
-    for (const tool of Object.values(t.landing.make.tools)) expect(within(make).getByText(tool.title)).toBeTruthy();
-    // Drawn, not generated: no image file anywhere in the section.
-    expect(make.querySelector("img")).toBeNull();
+    const studio = screen.getByRole("heading", { level: 2, name: t.site.studio.title }).closest("section")!;
+    const tools = screen.getByRole("list", { name: t.site.studio.slug });
+    expect(within(tools).getAllByRole("listitem").map((li) => li.querySelector("b")?.textContent)).toEqual(t.site.studio.tools.map((x) => x.title));
+    expect(studio.querySelector("img")).toBeNull();
+    expect(within(studio).getByRole("img", { name: t.site.studio.editor.figure })).toBeTruthy();
   });
 
-  it("shows the channel → YouTube flow in the hero as an ordered list ending with your approval and YouTube", () => {
+  it("draws the hero rundown as one labelled example, with nothing to press and no money in it", () => {
     const t = dictionaries.en;
     renderLanding({ kind: "announced" });
-    const flow = screen.getByRole("list", { name: t.landing.hero.flowLabel });
-    expect(flow.tagName).toBe("OL");
-    expect(within(flow).getAllByRole("listitem").map((li) => li.textContent)).toEqual(Object.values(t.landing.flow));
+    const img = screen.getByRole("img", { name: t.site.rundown.figure });
+    expect(img.textContent).toContain(t.site.rundown.tag);
+    expect(img.textContent).not.toMatch(MONEY);
+    expect(img.querySelector("a, button, input, [tabindex]")).toBeNull();
+    // The rows are the same channel → YouTube flow, and the only lit row is your approval.
+    const rows = [...img.querySelectorAll("li")];
+    expect(rows).toHaveLength(t.site.rundown.rows.length);
+    expect(rows.filter((r) => r.getAttribute("data-state") === "yours").map((r) => r.textContent)).toEqual([
+      expect.stringContaining(t.site.rundown.rows.find((r) => r.id === "approval")!.name),
+    ]);
   });
 
   it("names the welcome grant from WELCOME_CREDITS, once on sign-up", () => {
     renderLanding({ kind: "announced" });
-    expect(screen.getByText(fmt(dictionaries.en.landing.hero.note, { n: WELCOME_CREDITS }))).toBeTruthy();
+    expect(screen.getByText(fmt(dictionaries.en.site.hero.note, { n: WELCOME_CREDITS }))).toBeTruthy();
   });
 
   it("opens the cancelling and refund answers before anyone buys", () => {
@@ -107,19 +119,11 @@ describe("public landing page", () => {
   it("sends the primary call to action to sign-up and the secondary to pricing", () => {
     const t = dictionaries.en;
     renderLanding({ kind: "announced" });
-    const primary = screen.getAllByRole("link", { name: t.landing.hero.ctaPrimary });
+    const primary = screen.getAllByRole("link", { name: t.site.hero.cta });
     expect(primary.length).toBeGreaterThan(0);
     for (const a of primary) expect(a.getAttribute("href")).toBe("/signup");
-    const secondary = screen.getAllByRole("link", { name: t.landing.hero.ctaSecondary });
+    const secondary = screen.getAllByRole("link", { name: t.site.hero.secondary });
     for (const a of secondary) expect(a.getAttribute("href")).toBe("/pricing");
-  });
-
-  it("shows the product picture as one labelled image, with no figures in it", () => {
-    const t = dictionaries.en;
-    renderLanding({ kind: "announced" });
-    const img = screen.getByRole("img", { name: t.landing.mock.label });
-    expect(img.textContent).not.toMatch(MONEY);
-    expect(img.querySelector("a, button, input, [tabindex]")).toBeNull();
   });
 
   it("prints no price when none is configured", () => {
@@ -140,16 +144,21 @@ describe("public landing page", () => {
   it("renders in Russian and Uzbek from the language switch's dictionary", () => {
     for (const locale of ["ru", "uz"] as const) {
       renderLanding({ kind: "announced" }, locale);
-      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(dictionaries[locale].landing.hero.title);
+      const hero = dictionaries[locale].site.hero;
+      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(`${hero.titleA} ${hero.titleB}`);
+      expect(screen.getByRole("img", { name: dictionaries[locale].site.rundown.figure })).toBeTruthy();
       cleanup();
     }
   });
 
-  it("states each difference against a market pattern, never a named product", () => {
+  it("lights the refund ledger's failure in red and its return in green, with the words beside the lamps", () => {
     const t = dictionaries.en;
     renderLanding({ kind: "announced" });
-    for (const w of t.landing.why.items) expect(screen.getByText(w.typical)).toBeTruthy();
-    expect(screen.getByText(t.landing.why.note)).toBeTruthy();
+    const refund = t.site.rules.items.find((r) => r.id === "refund")!;
+    const ledger = screen.getByRole("list", { name: refund.title });
+    const lamps = [...ledger.querySelectorAll(".ns-lamp")].map((l) => l.getAttribute("data-tone"));
+    expect(lamps).toEqual(["ok", "fail", "ok"]);
+    expect(within(ledger).getAllByRole("listitem").map((li) => li.textContent)).toEqual(refund.lines);
   });
 
   it.each(["en", "ru", "uz"] as const)("names no AI provider or competitor anywhere on the page (%s)", (locale) => {
