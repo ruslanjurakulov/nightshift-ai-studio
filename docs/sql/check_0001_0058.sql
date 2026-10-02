@@ -1,4 +1,3 @@
--- 0001..0058 tekshiruvi (0053 mavjud emas). Bo'sh natija = hammasi bor. Faqat tekshiradi, hech narsani o'zgartirmaydi.
 with col as (
   select table_name || '.' || column_name as c
   from information_schema.columns where table_schema = 'public'

@@ -79,6 +79,9 @@ class OpenAIImageAdapter(HttpAdapter):
     #: /images/edits takes several ``image[]`` parts; /images/generations
     #: takes none, so text-to-image gets no references here.
     reference_capabilities = (EDIT,)
+    #: ``quality`` (low / medium / high) is a documented field of both calls;
+    #: left out, the vendor renders at its own default and bills that.
+    quality_capabilities = (T2I, EDIT)
     timeout = 180
     SIZES = {"1:1": "1024x1024", "3:2": "1536x1024", "2:3": "1024x1536",
              "16:9": "1536x864", "9:16": "864x1536", "4:3": "1344x1008", "3:4": "1008x1344"}
@@ -86,6 +89,8 @@ class OpenAIImageAdapter(HttpAdapter):
     def _common(self, request: CapabilityRequest, vendor_model: str) -> dict:
         body = {"model": vendor_model, "prompt": request.prompt.strip(), "n": 1,
                 "size": self.SIZES.get(request.aspect_ratio or "1:1", "1024x1024")}
+        if request.quality:
+            body["quality"] = request.quality        # the tier the person was quoted
         if request.end_user and _END_USER.fullmatch(request.end_user):
             body["user"] = request.end_user          # OpenAI's safety identifier
         return body
