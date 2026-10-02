@@ -225,12 +225,23 @@ class CommandLimitTests(unittest.TestCase):
         # The proxy's encoder threads too: their count would grow with the host.
         self.assertEqual(proxy[proxy.index("-pix_fmt") + 2:proxy.index("-pix_fmt") + 4], ["-threads", "2"])
 
-    def test_export_segments_carry_no_xerror(self):
+    def test_export_commands_carry_no_xerror_and_pin_every_thread_count(self):
+        """Measured with the counts of a bigger host forced: auto encoder
+        threads failed the memory limit on a 1080p segment from an 8K clip
+        (48 threads) and from a 720p one (96)."""
+        cmds = []
         for seg in (S(1.0, "/m/a.mp4"), S(1.0, "/m/i.jpg", rs.KIND_IMAGE),
                     S(0.5, "/m/a.mp4", xfade=S(1.0, "/m/i.jpg", rs.KIND_IMAGE))):
-            for cmd in rb.segment_commands("ffmpeg", seg, Path("/t/s.mp4"), 1080, 1920, 24, frame_exact=True):
-                with self.subTest(seg=seg.kind, xfade=seg.xfade is not None):
-                    self.assertNotIn("-xerror", cmd)
+            cmds += rb.segment_commands("ffmpeg", seg, Path("/t/s.mp4"), 1080, 1920, 24, frame_exact=True)
+        cmds.append(rs.build_ffmpeg_command(rs.RenderSpec("/o.mp4", segments=[S(2.0, "/t/s0.mp4")],
+                                                          frame_exact=True), "/t/list.txt"))
+        for cmd in cmds:
+            with self.subTest(cmd=cmd[:8]):
+                self.assertNotIn("-xerror", cmd)
+                self.assertEqual(cmd[-3:-1], ["-threads", "4"])
+                self.assertEqual(cmd[1:5], ["-filter_threads", "2", "-filter_complex_threads", "2"])
+        thumb = ml.thumbnail_command("ffmpeg", Path("/m/o"), Path("/m/t.jpg"), "image/png", None)
+        self.assertEqual(thumb[-5:-3], ["-threads", "2"])
 
 
 # ── the runner: limit, threads' environment, refusal, memory (needs a child) ──
