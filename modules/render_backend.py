@@ -38,7 +38,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence
 
-from modules import ass_captions
+from modules import ass_captions, ffmpeg_limits
 from modules.render_spec import (
     FIT_COVER,
     KIND_COLOR,
@@ -68,6 +68,13 @@ class RenderTimeout(RenderBackendError):
     Never retried or fallen back from: the next attempt would hang the same way."""
 
 
+class RenderRefused(RenderBackendError):
+    """ffmpeg refused a frame of a member's media: over the decoder's size cap
+    (a stream that switches to a bigger frame, BR-L-004), or no memory for it
+    under the child's limit (a big coded frame behind a small crop window,
+    BR-L-007). Never retried: the same file is refused the same way."""
+
+
 def resolve_ffmpeg() -> str:
     """Path to an ffmpeg binary. Prefers the imageio-ffmpeg binary MoviePy
     already installs; falls back to `ffmpeg` on PATH."""
@@ -86,7 +93,15 @@ def _run(cmd: List[str], deadline: Optional[float] = None) -> None:
     ``deadline`` (a ``time.monotonic()`` instant) bounds it: a render that
     hangs — a source that decodes forever, a filter that never ends — used to
     keep its export's heartbeat alive indefinitely. Past the deadline the
-    process is killed, reaped, and RenderTimeout is raised."""
+    process is killed, reaped, and RenderTimeout is raised.
+
+    Only an editor export passes a deadline, and its commands decode library
+    media members uploaded, so they run under ffmpeg_limits: an address-space
+    limit and two threads (BR-L-007), and a frame the decoder refuses, for
+    its size or for want of memory, fails the command with RenderRefused
+    instead of being skipped (no ``-xerror``, which also failed damaged but
+    playable clips, BR-L-008). The pipeline's renders (no deadline) make
+    exactly the call they always made."""
     if deadline is None:
         proc = subprocess.run(cmd, capture_output=True, text=True)
         returncode, stderr = proc.returncode, proc.stderr
@@ -94,18 +109,14 @@ def _run(cmd: List[str], deadline: Optional[float] = None) -> None:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise RenderTimeout("the render ran past its time limit")
-        child = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        try:
-            _out, stderr = child.communicate(timeout=remaining)
-        except subprocess.TimeoutExpired:
-            child.kill()
-            child.communicate()  # reap: no zombie, no open pipes
-            raise RenderTimeout("the render ran past its time limit") from None
-        except BaseException:
-            child.kill()
-            child.communicate()
-            raise
-        returncode = child.returncode
+        out = ffmpeg_limits.run(cmd, timeout_s=remaining)
+        if out.timed_out:
+            raise RenderTimeout("the render ran past its time limit")
+        if out.refused:
+            tail = out.tail.strip().splitlines()[-4:]
+            raise RenderRefused("ffmpeg refused a frame (over the size cap, or out of memory "
+                                f"under the limit): {' / '.join(tail)}")
+        returncode, stderr = out.returncode, out.tail
     if returncode != 0:
         tail = (stderr or "").strip().splitlines()[-8:]
         raise RenderBackendError(
@@ -238,15 +249,17 @@ def segment_commands(
     would drift every later cut of a timeline off its audio.
 
     A timeline's commands (``frame_exact``, and every cross-fade) read library
-    media members uploaded, so each input is capped at DECODE_MAX_PIXELS and a
-    refused frame fails the run (BR-L-004): skipped, it would leave a short
-    clip, or under ``-stream_loop -1`` a clip whose every frame is refused
-    would loop until the export's time limit. The pipeline's commands are
-    unchanged."""
+    media members uploaded, so each input gets the decoder's frame cap (the
+    video cap for a clip, the still cap for a picture, BR-L-004 / BR-L-010)
+    and two decoder threads (BR-L-007), and ``_run`` fails the command on a
+    refused frame: skipped, it would leave a short clip, or under
+    ``-stream_loop -1`` a clip whose every frame is refused would loop until
+    the export's time limit. The pipeline's commands are unchanged."""
     cmds = _segment_commands(ffmpeg, seg, out_path, width, height, fps,
                              seed=seed, x264=x264, frame_exact=frame_exact)
     if frame_exact or seg.xfade is not None:
-        return [cap_inputs(c, fail_on_error=True) for c in cmds]
+        videos = [s.path for s in (seg, seg.xfade) if s is not None and s.path and s.kind == KIND_VIDEO]
+        return [cap_inputs(c, video_inputs=videos) for c in cmds]
     return cmds
 
 
@@ -383,7 +396,8 @@ def _normalize_segment(
         try:
             run(move)
             return
-        except RenderTimeout:
+        except (RenderTimeout, RenderRefused):
+            # The hold reads the same picture: it would be refused too.
             raise
         except RenderBackendError as e:
             logger.warning("Ken Burns (%s) failed for %s — holding the still instead: %s",
@@ -619,9 +633,9 @@ def _normalize_all(ffmpeg: str, spec: RenderSpec, tmpdir: Path, jobs: int,
         else:
             timings.segment_s = _run_sequential(tasks)
         timings.mode, timings.jobs = ("parallel" if jobs > 1 else "sequential"), jobs
-    except RenderTimeout:
+    except (RenderTimeout, RenderRefused):
         # Out of time: redoing the stage one segment at a time would only
-        # run past the limit again.
+        # run past the limit again. Refused: the same file is refused again.
         raise
     except Exception as e:
         logger.warning("ffmpeg segment normalisation (%d job(s)) failed (%s) — redoing it "
