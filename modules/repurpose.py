@@ -290,7 +290,13 @@ def _window_scores(manifest, points, windows: Sequence[Window]) -> Dict[Tuple[st
     """Per window: minus the audience's drop per minute across it, or None.
     The edges must lie on the measured curve (scene_retention never
     extrapolates), otherwise the window is unmeasured — not 0."""
-    rows = scene_retention.for_video(manifest, points)
+    # Only scenes that carry their own id: a scene without one has no place in
+    # a window, and must not lend its positional fallback id to another.
+    if not isinstance(manifest, Mapping) or not isinstance(manifest.get("scenes"), list):
+        return {(w.first, w.last): None for w in windows}
+    scenes = [sc for sc in manifest["scenes"]
+              if isinstance(sc, Mapping) and isinstance(sc.get("id"), str) and _SCENE_ID.match(sc["id"])]
+    rows = scene_retention.map_scenes(scenes, points, scene_retention.video_duration(manifest, scenes))
     by_id = {r.scene_id: r for r in rows}
     out: Dict[Tuple[str, str], Optional[float]] = {}
     for w in windows:

@@ -14,10 +14,22 @@ import { Panel, StatCard, EmptyState, StatusPill } from "@/components/ui";
 import { ViewsSparkline } from "@/components/videos/ViewsSparkline";
 import { VideoLifecycle } from "@/components/videos/VideoLifecycle";
 import { Storyboard } from "@/components/videos/Storyboard";
+import { RepurposePanel } from "@/components/videos/RepurposePanel";
 import { IntelligenceTrace } from "@/components/intel/IntelligenceTrace";
 import { QualityGate } from "@/components/autonomy/QualityGate";
 import { buildTrace } from "@/lib/decisions";
 import { summarizeSceneRetention } from "@/lib/sceneRetention";
+import {
+  CLIP_COLUMNS,
+  REQUEST_COLUMNS,
+  clipMasterId,
+  isRepurposedClip,
+  parseClipRows,
+  parseRequestRows,
+  proposeClips,
+  type RequestRow,
+} from "@/lib/repurpose";
+import { resolveRunBackend } from "@/lib/runBackend";
 import { pendingSceneRequests, sceneRepairEligibility } from "@/lib/sceneRepair";
 import { heldGate, heldState, heldStateLabel, isHeldVideo } from "@/lib/heldVideos";
 import { num, decimal, relativeTime, timeOfDay, statusTone } from "@/lib/format";
@@ -69,6 +81,9 @@ export default async function VideoDetail({
   let retentionPoints: RetentionPointRow[] = [];
   let pendingScenes = new Set<string>();
   let channelName = "";
+  // Repurposing (migration 0080). `null` = the migration is not applied, so
+  // the panel is not offered at all (nothing is shown as available that is not).
+  let repurposeRequests: RequestRow[] | null = null;
 
   if (supabase) {
     const [vid, snap, ev, fs, ret] = await Promise.all([
@@ -142,6 +157,25 @@ export default async function VideoDetail({
       pendingScenes = sceneIntents.error
         ? new Set<string>()
         : pendingSceneRequests((sceneIntents.data as ReviewIntentRow[] | null) ?? []);
+      if (!isRepurposedClip(video)) {
+        // This video's repurpose requests and their clips, through RLS with the
+        // person's own session. An error (0080 not applied) hides the panel.
+        const [reqs, clips] = await Promise.all([
+          supabase
+            .from("repurpose_requests")
+            .select(REQUEST_COLUMNS)
+            .eq("video_id", id)
+            .order("created_at", { ascending: false })
+            .limit(5),
+          supabase
+            .from("repurpose_clips")
+            .select(CLIP_COLUMNS)
+            .eq("master_id", id)
+            .order("created_at", { ascending: false })
+            .limit(25),
+        ]);
+        repurposeRequests = reqs.error ? null : parseRequestRows(reqs.data, clips.error ? [] : parseClipRows(clips.data));
+      }
     }
   }
 
@@ -165,6 +199,23 @@ export default async function VideoDetail({
   }
 
   const latest = snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
+
+  // "Repurpose into clips": proposals come from this video's own scene record
+  // and, when it has one, its retention curve. Display only — the price, who
+  // may press and every window are the database's decision.
+  const isClip = isRepurposedClip(video);
+  const clipMaster = isClip ? clipMasterId(video) : null;
+  const repurposeProposals =
+    repurposeRequests !== null
+      ? proposeClips((video as { manifest?: unknown }).manifest ?? null, retentionPoints)
+      : null;
+  const clipHrefs: Record<string, string> = {};
+  for (const r of repurposeRequests ?? []) {
+    for (const c of r.clips) {
+      if (c.clipVideoId) clipHrefs[c.clipVideoId] = path(`/videos/${encodeURIComponent(c.clipVideoId)}`);
+    }
+  }
+  const queueBackend = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND }) === "queue";
 
   // "Regenerate scene" only where a repair run could carry it out: an uploaded
   // video's run checkpoint is gone (lib/sceneRepair). Display only — who may
@@ -266,7 +317,7 @@ export default async function VideoDetail({
         <Panel title={t.held.detailTitle}>
           <div className="flex flex-col gap-3 p-4">
             <div className="text-sm font-semibold text-[var(--color-warn)]">
-              {heldStateLabel(heldState(video), t.held)}
+              {isClip ? t.repurpose.clipState : heldStateLabel(heldState(video), t.held)}
             </div>
             <p className="m-0 text-[12px] leading-relaxed text-[var(--color-muted)]">{t.held.detailNote}</p>
             {heldVerdict ? (
@@ -282,6 +333,22 @@ export default async function VideoDetail({
               </div>
             ) : (
               <p className="m-0 text-[12px] text-[var(--color-muted)]">{t.held.noGateDetail}</p>
+            )}
+          </div>
+        </Panel>
+      )}
+
+      {isClip && (
+        <Panel title={t.repurpose.clipNoteTitle}>
+          <div className="flex flex-col gap-2 p-4">
+            <p className="m-0 text-[12px] leading-relaxed text-[var(--color-muted)]">{t.repurpose.clipNote}</p>
+            {clipMaster && (
+              <Link
+                href={path(`/videos/${encodeURIComponent(clipMaster)}`)}
+                className="tap-link mono text-[11px] text-[var(--color-primary)] hover:underline"
+              >
+                {t.repurpose.clipOpenMaster}
+              </Link>
             )}
           </div>
         </Panel>
@@ -363,6 +430,19 @@ export default async function VideoDetail({
           }}
         />
       </Panel>
+
+      {repurposeProposals && repurposeRequests && (
+        <Panel title={t.repurpose.title}>
+          <RepurposePanel
+            videoId={video.video_id}
+            proposals={repurposeProposals}
+            queue={queueBackend}
+            requests={repurposeRequests}
+            hrefs={clipHrefs}
+            labels={t.repurpose}
+          />
+        </Panel>
+      )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Panel title={t.auto.gateTitle}>
