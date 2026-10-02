@@ -38,12 +38,16 @@ import {
   lowestRate,
   matchesFilters,
   matchesQuery,
-  planBucket,
   planGate,
   prefillModel,
   priceVariants,
   priceView,
+  promptLimit,
+  PROMPT_CAP,
   providerName,
+  SHOW_PROVIDER_TO_CUSTOMERS,
+  showsProvider,
+  widestShape,
   publicSpecOf,
   queryFor,
   rateText,
@@ -144,11 +148,14 @@ const imagePrices = { model_img_a_image: 5, model_img_a_image_low: 2, model_img_
 // ── tasks and kinds ──────────────────────────────────────────────────────────
 
 describe("tasks", () => {
-  it("offers the twelve task categories, each backed by a registry capability", () => {
+  it("offers eleven task categories, each backed by a registry capability, none twice", () => {
     expect(TASKS.map((t) => t.id)).toEqual([
-      "image", "edit", "video_text", "video_image", "voice", "speech_to_text",
+      "image", "edit", "video_text", "video_image", "voice",
       "sound", "upscale", "remove_bg", "dub", "describe", "captions",
     ]);
+    // One capability, one key: the same model is never listed under two names for one job.
+    const caps = TASKS.flatMap((t) => [...t.caps]);
+    expect(new Set(caps).size).toBe(caps.length);
     for (const t of TASKS) for (const c of t.caps) expect(REGISTRY_CAPABILITIES).toContain(c);
     // Every capability the registry has sits under at least one task.
     for (const c of REGISTRY_CAPABILITIES) expect(TASKS.some((t) => (t.caps as readonly string[]).includes(c))).toBe(true);
@@ -160,7 +167,7 @@ describe("tasks", () => {
 
   it("names a model's tasks in catalog order", () => {
     expect(tasksOf(["i2v", "t2v"])).toEqual(["video_text", "video_image"]);
-    expect(tasksOf(["captions"])).toEqual(["speech_to_text", "captions"]);
+    expect(tasksOf(["captions"])).toEqual(["captions"]);
     expect(tasksOf(["voice_change"])).toEqual(["voice"]);
   });
 
@@ -224,6 +231,9 @@ describe("price", () => {
 
   it("names the variant rows the quote reads (quality, resolution × sound, sound, pinned resolution, upscale size)", () => {
     expect(priceVariants("u", discoverySpec(imageSpec))!.map((v) => v.key)).toEqual(["u_low", "u_medium", "u_high"]);
+    // The row ids stay on the server: the browser gets the variant and its rate.
+    const view = priceView("u", discoverySpec(imageSpec), { u: 1, u_low: 1 });
+    expect(JSON.stringify(view)).not.toContain("u_low");
     expect(priceVariants("u", discoverySpec(videoSpec))!.map((v) => v.key)).toEqual([
       "u_480p_silent", "u_480p_audio", "u_720p_silent", "u_720p_audio", "u_1080p_silent", "u_1080p_audio",
     ]);
@@ -250,24 +260,35 @@ describe("price", () => {
 // ── availability ─────────────────────────────────────────────────────────────
 
 describe("availability", () => {
-  it("reads the database's plan gate: any/none open, paid after a first purchase, any other key gated", () => {
+  it("reads the plan gate exactly as creative_price does: only any/paid can pass", () => {
+    const price = fnBody(sql("0072_captions.sql"), "creative_price");
+    expect(price).toContain("if coalesce(m_ent, 'any') not in ('any', 'paid') then");
     expect(planGate(null)).toBeNull();
     expect(planGate("any")).toBeNull();
-    expect(planGate("paid")).toEqual({ kind: "first_purchase" });
-    expect(planGate("models_video:premium")).toEqual({ kind: "entitlement", key: "models_video", value: "premium" });
-    expect(planGate("api_access")).toEqual({ kind: "entitlement", key: "api_access", value: null });
-    expect(planBucket("models_image:ultra")).toBe("ultra");
-    expect(planBucket(null)).toBe("none");
-    expect(planBucket("paid")).toBe("purchase");
-    expect(planBucket("api_access")).toBe("other");
+    // Every other entitlement is refused for every workspace today: "not open", with no tier promised.
+    expect(planGate("models_image:basic")).toEqual({ kind: "not_open", key: "models_image", value: "basic" });
+    expect(planGate("models_video:premium")).toEqual({ kind: "not_open", key: "models_video", value: "premium" });
+    expect(planGate("api_access")).toEqual({ kind: "not_open", key: "api_access", value: null });
+    // paid: resolved against the organization when its purchases were read, conditional when not.
+    expect(planGate("paid", true)).toBeNull();
+    expect(planGate("paid", false)).toEqual({ kind: "first_purchase", known: true });
+    expect(planGate("paid")).toEqual({ kind: "first_purchase", known: false });
   });
 
-  it("shows a customer's sellable model as available, or plan-gated when it carries an entitlement", () => {
+  it("shows a realistic models_*:basic model as not open — unavailable, never plan-gated — even on a plan that 'has' basic", () => {
+    const basic = fromSellableRow(sellable({ entitlement: "models_image:basic" }), {})!;
+    expect(basic.state).toBe("unavailable");
+    expect(basic.reasons).toEqual([{ kind: "not_open", key: "models_image", value: "basic" }]);
     expect(fromSellableRow(sellable(), {})!.state).toBe("available");
-    const gated = fromSellableRow(sellable({ entitlement: "models_video:ultra" }), {})!;
-    expect(gated.state).toBe("plan_gated");
-    expect(gated.reasons).toEqual([{ kind: "entitlement", key: "models_video", value: "ultra" }]);
-    expect(fromSellableRow(sellable({ entitlement: "paid" }), {})!.reasons).toEqual([{ kind: "first_purchase" }]);
+    expect(fromSellableRow(sellable({ entitlement: "any" }), {})!.state).toBe("available");
+  });
+
+  it("opens a paid model once the organization has bought (or is exempt), and gates it until then", () => {
+    expect(fromSellableRow(sellable({ entitlement: "paid" }), {}, true)!.state).toBe("available");
+    const before = fromSellableRow(sellable({ entitlement: "paid" }), {}, false)!;
+    expect(before.state).toBe("plan_gated");
+    expect(before.reasons).toEqual([{ kind: "first_purchase", known: true }]);
+    expect(fromSellableRow(sellable({ entitlement: "paid" }), {}, null)!.reasons).toEqual([{ kind: "first_purchase", known: false }]);
   });
 
   it("never turns a row sellable_models() could not have returned into a model", () => {
@@ -293,7 +314,8 @@ describe("availability", () => {
     expect(fromAdminRow(admin({ termsGate: "plan_required:scale", availability: "hidden" }), null, p).state).toBe("unavailable");
     expect(fromAdminRow(admin({ creditUnit: null, availability: "hidden" }), null, p).reasons.map((r) => r.kind)).toContain("no_unit");
     expect(fromAdminRow(admin({ availability: "hidden" }), null, p).state).toBe("unavailable");
-    expect(fromAdminRow(admin({ entitlement: "models_image:premium" }), null, p).state).toBe("plan_gated");
+    expect(fromAdminRow(admin({ entitlement: "models_image:premium" }), null, p).state).toBe("unavailable");
+    expect(fromAdminRow(admin({ entitlement: "paid" }), null, p).state).toBe("plan_gated");
   });
 
   it("calls a model unpriced only when the list was read and holds no positive rate for it", () => {
@@ -350,8 +372,11 @@ describe("search and filters", () => {
     expect(matchesQuery("Vid A", "vid xyz")).toBe(false);
     expect(matchesQuery("anything", "   ")).toBe(true);
     expect(fold("Oʻzbek")).toBe(fold("O'zbek"));
-    expect(models.filter((m) => matchesFilters(m, f({ q: "ByteDance" }))).map((m) => m.id)).toEqual(["vid-a"]);
-    expect(models.filter((m) => matchesFilters(m, f({ q: "openai img" }))).map((m) => m.id)).toEqual(["img-b"]);
+    // The operator searches providers; a customer, who is not shown them, cannot find a model by one.
+    expect(models.filter((m) => matchesFilters(m, f({ q: "ByteDance" }), [], true)).map((m) => m.id)).toEqual(["vid-a"]);
+    expect(models.filter((m) => matchesFilters(m, f({ q: "openai img" }), [], true)).map((m) => m.id)).toEqual(["img-b"]);
+    expect(models.filter((m) => matchesFilters(m, f({ q: "ByteDance" }))).map((m) => m.id)).toEqual([]);
+    expect(models.filter((m) => matchesFilters(m, f({ q: "img" }))).map((m) => m.id)).toEqual(["img-b"]);
   });
 
   it("searches the person's own words for tasks (passed in by the screen)", () => {
@@ -363,14 +388,12 @@ describe("search and filters", () => {
     const ids = (x: Partial<Filters>) => models.filter((m) => matchesFilters(m, f(x))).map((m) => m.id);
     expect(ids({ task: "video_image" })).toEqual(["vid-a"]);
     expect(ids({ task: "captions" })).toEqual(["cap-a"]);
-    expect(ids({ task: "speech_to_text" })).toEqual(["cap-a"]);
     expect(ids({ task: "remove_bg" })).toEqual([]);
     expect(ids({ input: "audio" })).toEqual(["cap-a"]);
     expect(ids({ input: "image" })).toEqual(["vid-a", "img-b"]);
     expect(ids({ output: "text" })).toEqual(["cap-a"]);
-    expect(ids({ state: "plan_gated" })).toEqual(["img-b"]);
-    expect(ids({ plan: "premium" })).toEqual(["img-b"]);
-    expect(ids({ plan: "none" })).toEqual(["vid-a", "cap-a"]);
+    expect(ids({ state: "unavailable" })).toEqual(["img-b"]);
+    expect(ids({ state: "available" })).toEqual(["vid-a", "cap-a"]);
   });
 
   it("counts each task over what the other filters leave", () => {
@@ -385,12 +408,12 @@ describe("search and filters", () => {
   });
 
   it("round-trips filters through the URL, and reads anything unknown as 'all'", () => {
-    const x = f({ task: "dub", q: "eleven", input: "audio", output: "audio", state: "available", plan: "basic" });
+    const x = f({ task: "dub", q: "eleven", input: "audio", output: "audio", state: "available" });
     const q = Object.fromEntries(new URLSearchParams(queryFor(x, "m-1").slice(1)));
     expect(filtersFromQuery(q)).toEqual(x);
     expect(q.model).toBe("m-1");
     expect(queryFor(NO_FILTERS, null)).toBe("");
-    expect(filtersFromQuery({ task: "nope", input: "smell", state: "free", plan: ["a", "b"] })).toEqual(NO_FILTERS);
+    expect(filtersFromQuery({ task: "nope", input: "smell", state: "free", q: ["a", "b"] })).toEqual(NO_FILTERS);
   });
 });
 
@@ -450,6 +473,25 @@ describe("figures", () => {
   });
 });
 
+describe("prompt length", () => {
+  it("is the shorter of the model's limit and the database's 4000-character cap", () => {
+    expect(fnBody(sql("0072_captions.sql"), "creative_params_problem")).toContain("prompt is longer than 4000 characters");
+    expect(PROMPT_CAP).toBe(4000);
+    expect(promptLimit({ maxPromptChars: 40000 })).toBe(4000);
+    expect(promptLimit({ maxPromptChars: 10000 })).toBe(4000);
+    expect(promptLimit({ maxPromptChars: 2000 })).toBe(2000);
+    expect(promptLimit({ maxPromptChars: null })).toBe(4000);
+  });
+});
+
+describe("provider names", () => {
+  it("are the operator's by default; one switch shows them to customers", () => {
+    expect(SHOW_PROVIDER_TO_CUSTOMERS).toBe(false);
+    expect(showsProvider(true)).toBe(true);
+    expect(showsProvider(false)).toBe(false);
+  });
+});
+
 describe("identity", () => {
   it("writes the providers' names as they do, and an unknown slug as it is", () => {
     expect(providerName("bfl")).toBe("Black Forest Labs");
@@ -458,10 +500,14 @@ describe("identity", () => {
   });
 
   it("draws a frame in the model's own first shape, capped for tall ones", () => {
-    expect(frameAspect({ spec: discoverySpec(imageSpec) })).toBe("1 / 1");
+    expect(frameAspect({ spec: discoverySpec(imageSpec) })).toBe("16 / 9");
+    expect(frameAspect({ spec: discoverySpec({ ...imageSpec, aspect_ratios: ["1:1", "21:9", "16:9"] }) })).toBe("21 / 9");
     expect(frameAspect({ spec: discoverySpec(videoSpec) })).toBe("16 / 9");
-    expect(frameAspect({ spec: discoverySpec({ ...videoSpec, aspect_ratios: ["9:16"] }) })).toBe("4 / 5");
+    expect(frameAspect({ spec: discoverySpec({ ...videoSpec, aspect_ratios: ["9:16"] }) })).toBe("9 / 16");
+    expect(frameAspect({ spec: discoverySpec({ output: "image" }) })).toBe("3 / 2");
     expect(frameAspect({ spec: discoverySpec(captionSpec) })).toBe("3 / 1");
+    expect(widestShape(discoverySpec({ aspect_ratios_by_capability: { t2v: ["9:16", "16:9"] } }))).toBe("16:9");
+    expect(widestShape(discoverySpec({}))).toBeNull();
   });
 
   it("reads no setting the registry does not declare", () => {
@@ -489,7 +535,7 @@ describe("readCustomerModels", () => {
     expect(read.models.map((m) => m.id)).toEqual(["vid-a"]);
     const price = read.models[0].price;
     expect(price.kind === "variants" && price.from).toBe(2.6);
-    expect(price.kind === "variants" && price.rows.find((r) => r.key.endsWith("1080p_audio"))?.rate).toBeNull();
+    expect(price.kind === "variants" && price.rows.find((r) => r.parts.join("_") === "1080p_audio")?.rate).toBeNull();
     expect(JSON.stringify(read)).not.toContain("secret note");
     expect(read.pricesRead).toBe(true);
   });

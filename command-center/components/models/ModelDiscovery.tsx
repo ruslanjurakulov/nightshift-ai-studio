@@ -18,13 +18,15 @@ import {
   INPUT_KINDS,
   NO_FILTERS,
   OUTPUT_KINDS,
-  PLAN_FILTERS,
   TASKS,
   frameAspect,
   longestDuration,
   matchesFilters,
-  planGate,
+  promptLimit,
   providerName,
+  shapesOf,
+  showsProvider,
+  widestShape,
   queryFor,
   soundChoice,
   rateText,
@@ -81,24 +83,37 @@ export function ModelDiscovery({
   const { t, fmt } = useI18n();
   const c = t.modelDiscovery;
   const searchId = useId();
+  const resultsId = useId();
+  const filtersId = useId();
   const [filters, setFilters] = useState<Filters>(initialFilters);
   const [picked, setPicked] = useState<string | null>(models.some((m) => m.id === initialModel) ? initialModel : null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const filtersId = useId();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
+  const chipsRef = useRef<HTMLDivElement>(null);
+  // Who makes a model is the operator's business; a customer sees the display name, as in the Studio.
+  const withProvider = showsProvider(operator);
 
   // The words a person might search in, in their language: task names and what the model makes.
   const words = useCallback(
     (m: DiscoveryModel): string[] => [...tasksOf(m.capabilities).map((id) => c.tasks[id]), m.spec.output ? c.outputs[m.spec.output] : ""],
     [c],
   );
-  const shown = useMemo(() => sortModels(models.filter((m) => matchesFilters(m, filters, words(m)))), [models, filters, words]);
-  const counts = useMemo(() => taskCounts(models, filters, words), [models, filters, words]);
-  const allCount = useMemo(() => models.filter((m) => matchesFilters(m, { ...filters, task: "all" }, words(m))).length, [models, filters, words]);
+  const shown = useMemo(
+    () => sortModels(models.filter((m) => matchesFilters(m, filters, words(m), withProvider))),
+    [models, filters, words, withProvider],
+  );
+  const counts = useMemo(() => taskCounts(models, filters, words, withProvider), [models, filters, words, withProvider]);
+  const allCount = useMemo(
+    () => models.filter((m) => matchesFilters(m, { ...filters, task: "all" }, words(m), withProvider)).length,
+    [models, filters, words, withProvider],
+  );
+  // A customer is not shown keys for tasks nothing in their catalog does (the picked one always stays).
+  const offered = useMemo(() => taskCounts(models, NO_FILTERS), [models]);
+  const tasks = TASKS.filter((task) => operator || offered[task.id] > 0 || filters.task === task.id);
   const current = models.find((m) => m.id === picked) ?? null;
-  const activeFilters = (["input", "output", "state", "plan"] as const).filter((k) => filters[k] !== "all").length;
-  const filtered = filters.q.trim() !== "" || filters.input !== "all" || filters.output !== "all" || filters.state !== "all" || filters.plan !== "all";
+  const activeFilters = (["input", "output", "state"] as const).filter((k) => filters[k] !== "all").length;
+  const filtered = filters.q.trim() !== "" || activeFilters > 0;
 
   // The URL carries the filters and the picked model, so a view can be shared
   // or reloaded. replaceState: no server round trip, no history entry per key.
@@ -114,12 +129,27 @@ export function ModelDiscovery({
   const set = <K extends keyof Filters>(k: K, v: Filters[K]) => setFilters((f) => ({ ...f, [k]: v }));
 
   // A link can open the page on a task far along the row: bring its key into view once.
-  const chipsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const on = chipsRef.current?.querySelector<HTMLElement>('[aria-pressed="true"]');
     const row = on?.parentElement;
     if (on && row && row.scrollWidth > row.clientWidth) row.scrollLeft = Math.max(0, on.offsetLeft - row.offsetLeft - 16);
   }, []);
+
+  // The task keys are one tab stop: ←/→ (Home/End) move along them and choose, as in a radio group.
+  function onChipKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    const keys = Array.from(chipsRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+    const at = keys.indexOf(document.activeElement as HTMLButtonElement);
+    if (at < 0) return;
+    let to = -1;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") to = (at + 1) % keys.length;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") to = (at - 1 + keys.length) % keys.length;
+    else if (e.key === "Home") to = 0;
+    else if (e.key === "End") to = keys.length - 1;
+    if (to < 0) return;
+    e.preventDefault();
+    keys[to].focus();
+    keys[to].click();
+  }
 
   function pick(id: string, from: HTMLElement) {
     setPicked(id);
@@ -140,48 +170,41 @@ export function ModelDiscovery({
 
   const stateOptions = DISCOVERY_STATES.filter((s) => operator || models.some((m) => m.state === s));
   const taskHint = filters.task === "all" ? null : c.taskHints[filters.task];
+  const emptyTask = filters.task !== "all" && offered[filters.task] === 0 && !filtered;
   let frameNo = 0;
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <div className={styles.toolbar}>
-        <div className={styles.searchWrap}>
-          <label htmlFor={searchId} className="sr-only">
+    <div className="flex min-w-0 flex-col gap-3">
+      <a href={`#${resultsId}`} className={styles.skip}>
+        {c.skipToModels}
+      </a>
+      <div className={styles.controls}>
+        <div className={styles.filter}>
+          <label htmlFor={searchId} className={styles.filterLabel}>
             {c.searchLabel}
           </label>
-          <Search aria-hidden className={`${styles.searchIcon} size-4`} />
-          <input
-            id={searchId}
-            type="search"
-            value={filters.q}
-            maxLength={80}
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={c.searchPlaceholder}
-            onChange={(e) => set("q", e.target.value)}
-            className={`${styles.field} ${styles.search}`}
-          />
-          {filters.q && (
-            <button type="button" className={styles.clearSearch} onClick={() => set("q", "")} aria-label={c.clearSearch}>
-              <X aria-hidden className="size-4" />
-            </button>
-          )}
+          <div className={styles.searchWrap}>
+            <Search aria-hidden className={`${styles.searchIcon} size-4`} />
+            <input
+              id={searchId}
+              type="search"
+              value={filters.q}
+              maxLength={80}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={withProvider ? c.searchPlaceholderOperator : c.searchPlaceholder}
+              onChange={(e) => set("q", e.target.value)}
+              className={`${styles.field} ${styles.search}`}
+            />
+            {filters.q && (
+              <button type="button" className={styles.clearSearch} onClick={() => set("q", "")} aria-label={c.clearSearch}>
+                <X aria-hidden className="size-4" />
+              </button>
+            )}
+          </div>
         </div>
 
-        <div ref={chipsRef} className="min-w-0">
-          <ChipRow label={c.tasksLabel} wrap>
-            <Chip pressed={filters.task === "all"} onClick={() => set("task", "all")} count={allCount}>
-              {c.allTasks}
-            </Chip>
-            {TASKS.map((task) => (
-              <Chip key={task.id} pressed={filters.task === task.id} count={counts[task.id]} onClick={() => set("task", task.id)}>
-                {c.tasks[task.id]}
-              </Chip>
-            ))}
-          </ChipRow>
-        </div>
-
-        {/* On a phone the four filters fold behind one key, so the models start on the first screen. */}
+        {/* On a phone the filters fold behind one key, so the models start on the first screen. */}
         <button
           type="button"
           className={styles.filtersToggle}
@@ -198,8 +221,26 @@ export function ModelDiscovery({
           <FilterSelect label={c.inputLabel} value={filters.input} onChange={(v) => set("input", v as Filters["input"])} options={INPUT_KINDS.map((k) => ({ value: k, label: c.inputs[k] }))} any={c.any} />
           <FilterSelect label={c.outputLabel} value={filters.output} onChange={(v) => set("output", v as Filters["output"])} options={OUTPUT_KINDS.map((k) => ({ value: k, label: c.outputs[k] }))} any={c.any} />
           <FilterSelect label={c.stateLabel} value={filters.state} onChange={(v) => set("state", v as Filters["state"])} options={stateOptions.map((s) => ({ value: s, label: c.states[s] }))} any={c.any} />
-          <FilterSelect label={c.planLabel} value={filters.plan} onChange={(v) => set("plan", v as Filters["plan"])} options={PLAN_FILTERS.map((p) => ({ value: p, label: c.plans[p] }))} any={c.any} />
         </fieldset>
+      </div>
+
+      <div ref={chipsRef} className="min-w-0" onKeyDown={onChipKey}>
+        <ChipRow label={c.tasksLabel} wrap>
+          <Chip pressed={filters.task === "all"} tabIndex={filters.task === "all" ? 0 : -1} onClick={() => set("task", "all")} count={allCount}>
+            {c.allTasks}
+          </Chip>
+          {tasks.map((task) => (
+            <Chip
+              key={task.id}
+              pressed={filters.task === task.id}
+              tabIndex={filters.task === task.id ? 0 : -1}
+              count={counts[task.id]}
+              onClick={() => set("task", task.id)}
+            >
+              {c.tasks[task.id]}
+            </Chip>
+          ))}
+        </ChipRow>
       </div>
 
       <div className={styles.summary}>
@@ -213,58 +254,64 @@ export function ModelDiscovery({
       </div>
 
       <div className={styles.layout}>
-        <div className={styles.groups}>
+        <div id={resultsId} tabIndex={-1} className={styles.groups}>
           {shown.length === 0 ? (
             <div className={`ns-panel ${styles.empty}`} data-tone="sunken">
-              <p>{filters.task !== "all" && counts[filters.task] === 0 && !filtered ? c.emptyTask : c.emptyFiltered}</p>
+              <p>{emptyTask ? (operator ? c.emptyTask : c.emptyTaskCustomer) : c.emptyFiltered}</p>
               <button type="button" className={styles.secondary} onClick={() => setFilters(NO_FILTERS)}>
                 {c.clearFilters}
               </button>
             </div>
           ) : (
-            groups.map((g) => (
-              <section key={g.kind ?? "other"} aria-label={`${g.kind ? c.outputs[g.kind] : c.any} · ${g.items.length}`}>
-                <div className={styles.groupHead}>
-                  <h2 className={styles.groupTitle}>{g.kind ? c.outputs[g.kind] : c.any}</h2>
-                  <span className={styles.groupCount}>{g.items.length}</span>
-                </div>
-                {/* Film is film in both themes: its print reads on the dark rebate. */}
-                <div data-theme-scope="dark">
-                  <ContactSheet label={`${c.resultsLabel}: ${g.kind ? c.outputs[g.kind] : c.any}`} min={168}>
-                    {g.items.map((m) => {
-                      frameNo += 1;
-                      return (
-                        <ModelFrame
-                          key={m.id}
-                          model={m}
-                          number={frameNo}
-                          selected={m.id === picked}
-                          task={filters.task}
-                          onPick={(el) => pick(m.id, el)}
-                        />
-                      );
-                    })}
-                  </ContactSheet>
-                </div>
-              </section>
-            ))
+            groups.map((g) => {
+              const name = g.kind ? c.outputs[g.kind] : c.any;
+              const pictured = g.kind === "image" || g.kind === "video";
+              return (
+                <section key={g.kind ?? "other"} aria-label={`${name} · ${g.items.length}`}>
+                  <div className={styles.groupHead}>
+                    <h2 className={styles.groupTitle}>{name}</h2>
+                    <span className={styles.groupCount}>{g.items.length}</span>
+                  </div>
+                  {/* Film is film in both themes: its print reads on the dark rebate. Pictures and clips
+                      keep each model's own shape, so their frames are ragged, as on a real proof sheet. */}
+                  <div data-theme-scope="dark">
+                    <ContactSheet label={`${c.resultsLabel}: ${name}`} min={pictured ? 232 : 176} ragged={pictured}>
+                      {g.items.map((m) => {
+                        frameNo += 1;
+                        return (
+                          <ModelFrame
+                            key={m.id}
+                            model={m}
+                            number={frameNo}
+                            selected={m.id === picked}
+                            task={filters.task}
+                            showProvider={withProvider}
+                            onPick={(el) => pick(m.id, el)}
+                          />
+                        );
+                      })}
+                    </ContactSheet>
+                  </div>
+                </section>
+              );
+            })
           )}
         </div>
 
         <aside className={`hidden lg:block ${styles.aside}`} aria-label={c.details}>
           <Panel tone="lifted" padded>
-            {current ? <ModelDetail model={current} task={filters.task} /> : <p className={styles.pickHint}>{c.pickHint}</p>}
+            {current ? (
+              <ModelDetail model={current} task={filters.task} operator={operator} />
+            ) : (
+              <p className={styles.pickHint}>{c.pickHint}</p>
+            )}
           </Panel>
         </aside>
       </div>
 
       {sheetOpen && current && (
-        <DetailSheet
-          title={current.displayName}
-          onClose={() => setSheetOpen(false)}
-          returnTo={opener}
-        >
-          <ModelDetail model={current} task={filters.task} />
+        <DetailSheet title={current.displayName} onClose={() => setSheetOpen(false)} returnTo={opener}>
+          <ModelDetail model={current} task={filters.task} operator={operator} />
         </DetailSheet>
       )}
     </div>
@@ -309,12 +356,14 @@ function ModelFrame({
   number,
   selected,
   task,
+  showProvider,
   onPick,
 }: {
   model: DiscoveryModel;
   number: number;
   selected: boolean;
   task: TaskId | "all";
+  showProvider: boolean;
   onPick: (el: HTMLElement) => void;
 }) {
   const { t, fmt } = useI18n();
@@ -322,14 +371,15 @@ function ModelFrame({
   const path = useChannelPath();
   const longest = longestDuration(m.spec);
   const per = m.spec.unit ? c.edgePer[m.spec.unit] : "";
-  // Only a model the Studio would offer gets a link: a hidden or unproven one (the operator's view) would open a tool without it.
+  const ratios = shapesOf(m.spec);
+  // Only a model the Studio would take gets a link: one it would refuse (not open, hidden, unproven) gets none.
   const link = usable(m) ? (linksFor(m, task).find((l) => l.kind !== "none") ?? null) : null;
   return (
     <Frame
       number={String(number).padStart(2, "0")}
       selected={selected}
-      // The frame's own facts, as film prints them: its first shape, its longest clip, its release stage.
-      edge={[m.spec.aspectRatios[0] ?? null, longest !== null ? formatTimecode(longest, "duration") : null, c.stages[m.stage].toUpperCase()]}
+      // The frame's own facts, as film prints them: the shape it is drawn in, its longest clip, its release stage.
+      edge={[widestShape(m.spec), longest !== null ? formatTimecode(longest, "duration") : null, c.stages[m.stage].toUpperCase()]}
       caption={
         <span className={styles.caption}>
           <span>{tasksOf(m.capabilities).map((id) => c.tasks[id]).join(" · ")}</span>
@@ -351,17 +401,18 @@ function ModelFrame({
       <button
         type="button"
         className={styles.slate}
-        // The model's own first shape, on the slate (not the frame): a long name grows it rather than being cut.
+        // Drawn in the widest shape the model makes, on the slate (not the frame): a long name grows it rather than being cut.
         style={{ aspectRatio: frameAspect(m) }}
+        data-guides={ratios.length > 0 ? "true" : undefined}
         aria-pressed={selected}
         aria-label={fmt(c.open, { model: m.displayName })}
         onClick={(e) => onPick(e.currentTarget)}
       >
-        <span>
-          <span className={styles.slateProvider}>{providerName(m.provider)}</span>
+        <FramingGuides ratios={ratios} />
+        <span className={styles.slateText}>
+          {showProvider && <span className={styles.slateProvider}>{providerName(m.provider)}</span>}
           <span className={styles.slateName}>{m.displayName}</span>
         </span>
-        <FramingGuides ratios={guideRatios(m)} />
         <span className={styles.slateFoot}>
           <StatusLamp tone={LAMP[m.state]} label={c.states[m.state]} />
           <span className={styles.slateRate}>
@@ -373,21 +424,16 @@ function ModelFrame({
   );
 }
 
-/** Every shape the registry lists for the model (all its tools), first one first. */
-function guideRatios(m: DiscoveryModel): string[] {
-  const all = [...m.spec.aspectRatios, ...Object.values(m.spec.aspectRatiosByCapability).flat()];
-  return [...new Set(all.filter((r): r is string => typeof r === "string" && /^\d{1,2}:\d{1,2}$/.test(r)))];
-}
-
 /**
  * The shapes a model makes, drawn to scale and nested like the framing guides
- * on a viewfinder: real data (the registry's aspect ratios), the first — the
- * one the Studio starts with — printed amber. A model without shapes has none.
+ * on a viewfinder, at the height of the slate: real data (the registry's
+ * aspect ratios), the first — the one the Studio starts with — printed amber.
+ * A model without shapes has none.
  */
 function FramingGuides({ ratios }: { ratios: string[] }) {
   if (ratios.length === 0) return null;
   return (
-    <svg aria-hidden className={styles.guides} viewBox="-1 -1 102 102" preserveAspectRatio="xMinYMid meet">
+    <svg aria-hidden className={styles.guides} viewBox="-1 -1 102 102" preserveAspectRatio="xMaxYMid meet">
       {ratios
         .map((r, i) => {
           const [w, h] = r.split(":").map(Number);
@@ -411,7 +457,7 @@ function FramingGuides({ ratios }: { ratios: string[] }) {
   );
 }
 
-/** The Studio offers it (to someone): what sellable_models() returns, gated by plan or not. */
+/** The Studio would take it: available, or behind a gate the organization can pass (a first purchase). */
 function usable(m: DiscoveryModel): boolean {
   return m.state === "available" || m.state === "plan_gated";
 }
@@ -452,26 +498,23 @@ function Rate({ value, unit }: { value: number | null; unit: string }) {
 
 // ── the pane ─────────────────────────────────────────────────────────────────
 
-function featureLabel(c: Copy, key: string, value: string | null): string {
-  const tier = value && value in c.tiers ? c.tiers[value as keyof Copy["tiers"]] : (value ?? "");
-  if (key in c.features) return c.features[key as keyof Copy["features"]].replace("{tier}", tier).trim();
-  return c.featureOther.replace("{key}", value ? `${key}:${value}` : key);
-}
-
-function reasonText(c: Copy, r: Reason): string {
+function reasonText(c: Copy, r: Reason, operator: boolean): string {
   switch (r.kind) {
     case "probe_failed":
       return c.reasons.probe_failed.replace("{when}", dayOf(r.at)).replace("{code}", r.code ?? "—");
     case "terms_gate":
       return c.reasons.terms_gate.replace("{gate}", r.gate);
-    case "entitlement":
-      return c.reasons.entitlement.replace("{feature}", featureLabel(c, r.key, r.value));
+    case "not_open":
+      // The Studio's plan dialog says the same to a customer; the operator is told why.
+      return operator ? c.reasons.not_open_operator.replace("{key}", r.value ? `${r.key}:${r.value}` : r.key) : c.reasons.not_open;
+    case "first_purchase":
+      return r.known ? c.reasons.first_purchase : c.reasons.first_purchase_maybe;
     default:
       return c.reasons[r.kind];
   }
 }
 
-function ModelDetail({ model: m, task }: { model: DiscoveryModel; task: TaskId | "all" }) {
+function ModelDetail({ model: m, task, operator }: { model: DiscoveryModel; task: TaskId | "all"; operator: boolean }) {
   const { t, fmt, locale } = useI18n();
   const c = t.modelDiscovery;
   const path = useChannelPath();
@@ -479,13 +522,15 @@ function ModelDetail({ model: m, task }: { model: DiscoveryModel; task: TaskId |
   const unitWords = s.unit ? c.per[s.unit] : c.perUse;
   const links = linksFor(m, "all");
   const ordered = [...links].sort((a, b) => Number(taskFor(b.cap, task) === task) - Number(taskFor(a.cap, task) === task));
-  const gated = planGate(m.entitlement) !== null;
+  const gated = m.state === "plan_gated";
+  const withProvider = showsProvider(operator);
   const dur = (sec: number) => formatTimecode(sec, "duration");
 
   // What it is given: words, reference pictures, and the library file each of its tools starts from.
   const takes: ReactNode[] = [];
   if (m.capabilities.some((cap) => TEXT_CAPS.includes(cap))) {
-    takes.push(<li key="words">{s.maxPromptChars ? fmt(c.inWords, { n: s.maxPromptChars.toLocaleString(locale) }) : c.inWordsPlain}</li>);
+    // The shorter of the model's own limit and the database's 4000 (creative_params_problem).
+    takes.push(<li key="words">{fmt(c.inWords, { n: promptLimit(s).toLocaleString(locale) })}</li>);
   }
   const seen = new Set<string>();
   for (const cap of m.capabilities) {
@@ -550,14 +595,17 @@ function ModelDetail({ model: m, task }: { model: DiscoveryModel; task: TaskId |
   return (
     <div className={styles.detail}>
       <header className={styles.detailHead}>
-        <span className="ns-eyebrow">{providerName(m.provider)}</span>
+        {withProvider && <span className="ns-eyebrow">{providerName(m.provider)}</span>}
         <h2 className={styles.detailName}>{m.displayName}</h2>
         <div className={styles.detailMeta}>
           <StatusLamp tone={LAMP[m.state]} label={c.states[m.state]} size="md" />
           <span className={styles.stage}>{c.stages[m.stage]}</span>
-          <span className="mono">
-            {c.modelId} {m.id}
-          </span>
+          {/* The registry id carries the vendor's name: the operator's, like the provider. */}
+          {withProvider && (
+            <span className="mono">
+              {c.modelId} {m.id}
+            </span>
+          )}
         </div>
       </header>
 
@@ -569,7 +617,7 @@ function ModelDetail({ model: m, task }: { model: DiscoveryModel; task: TaskId |
               {m.reasons.map((r, i) => (
                 <li key={`${r.kind}-${i}`} className={styles.reason}>
                   <TriangleAlert aria-hidden className={`${styles.reasonIcon} size-3.5`} />
-                  <span>{reasonText(c, r)}</span>
+                  <span>{reasonText(c, r, operator)}</span>
                 </li>
               ))}
             </ul>
@@ -587,7 +635,7 @@ function ModelDetail({ model: m, task }: { model: DiscoveryModel; task: TaskId |
           <table className={styles.priceTable}>
             <tbody>
               {m.price.rows.map((r) => (
-                <tr key={r.key}>
+                <tr key={r.parts.join("_")}>
                   <th scope="row">{variantName(r.parts)}</th>
                   <td>
                     <Rate value={r.rate} unit={t.design.crShort} />
@@ -610,8 +658,12 @@ function ModelDetail({ model: m, task }: { model: DiscoveryModel; task: TaskId |
           </dd>
           <dt>{c.outHeading}</dt>
           <dd>{s.output ? c.outputs[s.output] : "—"}</dd>
-          <dt>{c.provider}</dt>
-          <dd>{providerName(m.provider)}</dd>
+          {withProvider && (
+            <>
+              <dt>{c.provider}</dt>
+              <dd>{providerName(m.provider)}</dd>
+            </>
+          )}
         </dl>
       </section>
 

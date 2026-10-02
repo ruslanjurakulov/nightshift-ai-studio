@@ -15,6 +15,7 @@ import { coerceAdminModels, latestProbes } from "@/lib/models-admin";
 import { filtersFromQuery } from "@/lib/models-discovery";
 import { getChannelContext } from "@/lib/channels-server";
 import { channelPath } from "@/lib/channels";
+import { getOrgContext } from "@/lib/orgs-server";
 import styles from "@/components/models/ModelDiscovery.module.css";
 
 export const dynamic = "force-dynamic";
@@ -113,7 +114,9 @@ export default async function ModelsPage({
     );
   }
 
-  const read = operator ? await readOperatorModels(supabase) : await readCustomerModels(supabase);
+  // The open organization, for the one gate that depends on it (`paid`: a first purchase).
+  const org = operator ? null : await getOrgContext().catch(() => null);
+  const read = operator ? await readOperatorModels(supabase) : await readCustomerModels(supabase, org?.current?.id ?? null);
   if (read.status === "not_enabled") return note(c.notEnabled);
   if (read.status === "forbidden") return note(c.forbidden);
   if (read.status !== "ok") return failed;

@@ -8,6 +8,7 @@ import {
   fromAdminRow,
   fromSellableRow,
   publicSpecOf,
+  showsProvider,
   type DiscoveryModel,
   type PriceList,
 } from "@/lib/models-discovery";
@@ -42,7 +43,33 @@ export async function readPriceList(supabase: SupabaseClient): Promise<PriceList
   }
 }
 
-export async function readCustomerModels(supabase: SupabaseClient): Promise<DiscoveryRead> {
+/**
+ * Has the organization made a credit purchase (or is it exempt)? The same two
+ * facts create_creative_job checks for a `paid` model (0050/0072), read as the
+ * member: credits_exempt() is granted to signed-in users and
+ * credit_transactions is readable by the organization's members (0020).
+ * null = not known (no organization, or a read failed): the screen then words
+ * the gate conditionally rather than guess.
+ */
+export async function readPurchased(supabase: SupabaseClient, orgId: string | null): Promise<boolean | null> {
+  if (!orgId) return null;
+  try {
+    const exempt = await supabase.rpc("credits_exempt", { p_org: orgId });
+    if (!exempt.error && exempt.data === true) return true;
+    const { data, error } = await supabase
+      .from("credit_transactions")
+      .select("id")
+      .eq("org_id", orgId)
+      .eq("kind", "purchase")
+      .limit(1);
+    if (error || !Array.isArray(data)) return null;
+    return data.length > 0;
+  } catch {
+    return null;
+  }
+}
+
+export async function readCustomerModels(supabase: SupabaseClient, orgId: string | null = null): Promise<DiscoveryRead> {
   try {
     const [sellable, prices] = await Promise.all([
       supabase.rpc("sellable_models", { p_capability: null, p_surface: "web" }),
@@ -57,10 +84,15 @@ export async function readCustomerModels(supabase: SupabaseClient): Promise<Disc
     // price, a valid spec): a row it drops is not shown, whatever the SQL says.
     const allowed = new Set(coerceSellableModels(sellable.data).map((m) => m.id));
     const rows = Array.isArray(sellable.data) ? sellable.data : [];
+    // Only asked when a model needs it: most deployments sell none behind `paid`.
+    const needsPurchase = rows.some((r) => !!r && typeof r === "object" && (r as Record<string, unknown>).entitlement === "paid");
+    const purchased = needsPurchase ? await readPurchased(supabase, orgId) : null;
     const models = rows
       .filter((r): r is Record<string, unknown> => !!r && typeof r === "object" && allowed.has(String((r as Record<string, unknown>).id)))
-      .map((r) => fromSellableRow(r, prices))
-      .filter((m): m is DiscoveryModel => m !== null);
+      .map((r) => fromSellableRow(r, prices, purchased))
+      .filter((m): m is DiscoveryModel => m !== null)
+      // A customer is not shown who makes a model, so the name does not travel to their browser either.
+      .map((m) => (showsProvider(false) ? m : { ...m, provider: "" }));
     return { status: "ok", models, pricesRead: prices !== null, probesRead: false };
   } catch {
     return { status: "error" };

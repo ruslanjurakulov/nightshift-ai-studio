@@ -44,9 +44,10 @@ export function isRegistryCapability(v: unknown): v is RegistryCapability {
 }
 
 /**
- * The catalog's categories, by what a person wants done. Several map to one
- * capability on purpose: speech to text and captions are the same call (a
- * recording's words, timed), offered as the two jobs people look for.
+ * The catalog's categories, by what a person wants done. Each names only what
+ * a capability really does: `sfx` makes sound effects (nothing makes music),
+ * and `captions` is the one speech-to-text call, offered once, as Captions —
+ * the Editor's tool it opens.
  */
 export const TASKS = [
   { id: "image", caps: ["t2i"] },
@@ -54,7 +55,6 @@ export const TASKS = [
   { id: "video_text", caps: ["t2v"] },
   { id: "video_image", caps: ["i2v"] },
   { id: "voice", caps: ["tts", "voice_change"] },
-  { id: "speech_to_text", caps: ["captions"] },
   { id: "sound", caps: ["sfx"] },
   { id: "upscale", caps: ["upscale", "video_upscale"] },
   { id: "remove_bg", caps: ["remove_bg"] },
@@ -255,8 +255,10 @@ export type Reason =
   | { kind: "removed" }
   | { kind: "no_unit" }
   | { kind: "unpriced" }
-  | { kind: "entitlement"; key: string; value: string | null }
-  | { kind: "first_purchase" };
+  /** An entitlement the database refuses for every workspace today (0072 creative_price: only any/paid pass). */
+  | { kind: "not_open"; key: string; value: string | null }
+  /** `paid`: opens after a first credit purchase. `known` = the organization's purchases were read and it has none. */
+  | { kind: "first_purchase"; known: boolean };
 
 export type PriceView =
   /** The price list could not be read: no rate is shown. */
@@ -266,7 +268,7 @@ export type PriceView =
   /** One rate per unit; null = the list has no positive price for it. */
   | { kind: "flat"; rate: number | null }
   /** Priced per variant (quality, resolution, soundtrack, upscale size); each null = not priced. */
-  | { kind: "variants"; rows: { key: string; parts: string[]; rate: number | null }[]; from: number | null };
+  | { kind: "variants"; rows: { parts: string[]; rate: number | null }[]; from: number | null };
 
 export interface DiscoveryModel {
   id: string;
@@ -282,7 +284,6 @@ export interface DiscoveryModel {
   /** The newest probe (operator view only); null = none, or not read. */
   probe: { ok: boolean; code: string | null; at: string } | null;
   spec: DiscoverySpec;
-  creditUnit: string | null;
   price: PriceView;
 }
 
@@ -416,7 +417,8 @@ export function priceView(creditUnit: string | null, spec: DiscoverySpec, prices
   if (prices === null) return { kind: "unread" };
   const variants = priceVariants(creditUnit, spec);
   if (!variants) return { kind: "flat", rate: rateOf(prices, creditUnit) };
-  const rows = variants.map((v) => ({ ...v, rate: rateOf(prices, v.key) }));
+  // The price-list keys stay on the server: the browser needs the variant and its rate, not the row id.
+  const rows = variants.map((v) => ({ parts: v.parts, rate: rateOf(prices, v.key) }));
   const known = rows.map((r) => r.rate).filter((r): r is number => r !== null);
   return { kind: "variants", rows, from: known.length ? Math.min(...known) : null };
 }
@@ -450,20 +452,36 @@ export function lowestRate(p: PriceView): number | null {
 const ENT_RE = /^([a-z][a-z0-9_]{1,40})(?::([a-z0-9_]{1,20}))?$/;
 
 /**
- * The plan gate the database applies when a job is quoted or made
- * (creative_price / create_creative_job, 0072): `any` (or none) is open,
- * `paid` opens after the organization's first credit purchase, and any other
- * entitlement is refused as entitlement_required. null = not gated.
+ * The plan gate exactly as the database applies it when a job is quoted or
+ * made (creative_price / create_creative_job, 0072):
+ *
+ *   if coalesce(m_ent, 'any') not in ('any', 'paid') then refuse
+ *
+ * So `any` (or none) is open; `paid` opens once the organization has made a
+ * credit purchase (or is exempt); and EVERY other entitlement — the
+ * models_image/video/audio tiers included — is refused for every workspace,
+ * whatever its plan (0034 marks those keys planned, not enforced). Naming a
+ * tier here would promise access no plan can buy; the Studio's plan dialog
+ * says "not open to your workspace yet" for the same case, and so does this.
+ *
+ * `purchased`: whether the organization has a purchase (or is exempt);
+ * null = not read. null = not gated.
  */
-export function planGate(entitlement: string | null): Reason | null {
+export function planGate(entitlement: string | null, purchased: boolean | null = null): Reason | null {
   if (!entitlement || entitlement === "any") return null;
-  if (entitlement === "paid") return { kind: "first_purchase" };
+  if (entitlement === "paid") return purchased === true ? null : { kind: "first_purchase", known: purchased === false };
   const m = ENT_RE.exec(entitlement);
-  return { kind: "entitlement", key: m ? m[1] : entitlement, value: m ? (m[2] ?? null) : null };
+  return { kind: "not_open", key: m ? m[1] : entitlement, value: m ? (m[2] ?? null) : null };
+}
+
+/** The state a plan gate gives a model the database would otherwise sell. */
+function gatedState(gate: Reason | null): DiscoveryState {
+  if (!gate) return "available";
+  return gate.kind === "first_purchase" ? "plan_gated" : "unavailable";
 }
 
 /** A sellable_models() row (already checked by coerceSellableModels) as a catalog model. */
-export function fromSellableRow(row: unknown, prices: PriceList): DiscoveryModel | null {
+export function fromSellableRow(row: unknown, prices: PriceList, purchased: boolean | null = null): DiscoveryModel | null {
   if (!isObj(row)) return null;
   const id = str(row.id);
   const provider = str(row.provider);
@@ -478,20 +496,19 @@ export function fromSellableRow(row: unknown, prices: PriceList): DiscoveryModel
   const base = Number(row.credits_per_unit);
   const list = prices ?? (creditUnit && Number.isFinite(base) && base > 0 && !priceVariants(creditUnit, spec) ? { [creditUnit]: base } : null);
   const entitlement = str(row.entitlement);
-  const gate = planGate(entitlement);
+  const gate = planGate(entitlement, purchased);
   return {
     id,
     displayName: str(row.display_name) ?? id,
     provider,
     capabilities,
     stage: row.availability,
-    state: gate ? "plan_gated" : "available",
+    state: gatedState(gate),
     reasons: gate ? [gate] : [],
     entitlement,
     verifiedAt: str(row.verified_at),
     probe: null,
     spec,
-    creditUnit,
     price: priceView(creditUnit, spec, list),
   };
 }
@@ -536,6 +553,7 @@ export function fromAdminRow(
   else if ((price.kind === "flat" || price.kind === "variants") && (rateOf(prices ?? {}, row.creditUnit) === null || lowestRate(price) === null))
     reasons.push({ kind: "unpriced" });
   if (row.availability === "hidden") reasons.push({ kind: "hidden" });
+  // The operator's own organization is not this view's subject: `paid` stays a conditional gate here.
   const gate = planGate(row.entitlement);
   if (gate) reasons.push(gate);
 
@@ -546,9 +564,7 @@ export function fromAdminRow(
       ? "needs_probe"
       : reasons.some((r) => r.kind === "terms_gate" || r.kind === "no_unit" || r.kind === "unpriced" || r.kind === "hidden")
         ? "unavailable"
-        : gate
-          ? "plan_gated"
-          : "available";
+        : gatedState(gate);
   return {
     id: row.id,
     displayName: row.displayName,
@@ -561,23 +577,8 @@ export function fromAdminRow(
     verifiedAt: row.verifiedAt,
     probe: probe ? { ok: probe.ok, code: probe.errorCode, at: probe.at } : null,
     spec,
-    creditUnit: row.creditUnit,
     price,
   };
-}
-
-// ── plan filter ─────────────────────────────────────────────────────────────
-
-export const PLAN_FILTERS = ["none", "basic", "premium", "ultra", "purchase", "other"] as const;
-export type PlanFilter = (typeof PLAN_FILTERS)[number];
-
-/** Which plan access a model asks for, as a filter bucket. */
-export function planBucket(entitlement: string | null): PlanFilter {
-  const gate = planGate(entitlement);
-  if (!gate) return "none";
-  if (gate.kind === "first_purchase") return "purchase";
-  if (gate.kind === "entitlement" && (gate.value === "basic" || gate.value === "premium" || gate.value === "ultra")) return gate.value;
-  return "other";
 }
 
 // ── search and filters ──────────────────────────────────────────────────────
@@ -588,10 +589,9 @@ export interface Filters {
   input: InputKind | "all";
   output: OutputKind | "all";
   state: DiscoveryState | "all";
-  plan: PlanFilter | "all";
 }
 
-export const NO_FILTERS: Filters = { task: "all", q: "", input: "all", output: "all", state: "all", plan: "all" };
+export const NO_FILTERS: Filters = { task: "all", q: "", input: "all", output: "all", state: "all" };
 
 /** Lower case, accents off, Uzbek ʻ/’ folded to ', so "o'zbek" finds "oʻzbek". */
 export function fold(s: string): string {
@@ -610,18 +610,22 @@ export function matchesQuery(haystack: string, q: string): boolean {
   return words.every((w) => hay.includes(w));
 }
 
-/** What search reads for a model: its names and ids, plus the caller's words for its tasks and output. */
-export function searchText(m: DiscoveryModel, words: readonly string[] = []): string {
-  return [m.displayName, m.id, m.provider, providerName(m.provider), ...m.capabilities, ...words].join(" \u0001 ");
+/**
+ * What search reads for a model: its name, plus the caller's words for its
+ * tasks and output — and its id and provider only where the provider is shown
+ * (a search must not reveal a name the screen hides).
+ */
+export function searchText(m: DiscoveryModel, words: readonly string[] = [], withProvider = false): string {
+  const own = withProvider ? [m.id, m.provider, providerName(m.provider)] : [];
+  return [m.displayName, ...own, ...m.capabilities, ...words].join(" \u0001 ");
 }
 
-export function matchesFilters(m: DiscoveryModel, f: Filters, words: readonly string[] = []): boolean {
+export function matchesFilters(m: DiscoveryModel, f: Filters, words: readonly string[] = [], withProvider = false): boolean {
   if (f.task !== "all" && !taskCaps(f.task).some((c) => m.capabilities.includes(c))) return false;
   if (f.input !== "all" && !inputKindsOf(m).includes(f.input)) return false;
   if (f.output !== "all" && m.spec.output !== f.output) return false;
   if (f.state !== "all" && m.state !== f.state) return false;
-  if (f.plan !== "all" && planBucket(m.entitlement) !== f.plan) return false;
-  return matchesQuery(searchText(m, words), f.q);
+  return matchesQuery(searchText(m, words, withProvider), f.q);
 }
 
 const STATE_RANK: Record<DiscoveryState, number> = { available: 0, plan_gated: 1, needs_probe: 2, unavailable: 3 };
@@ -634,10 +638,15 @@ export function sortModels(models: DiscoveryModel[]): DiscoveryModel[] {
 }
 
 /** How many models each task has, over the models the other filters leave. */
-export function taskCounts(models: DiscoveryModel[], f: Filters, words: (m: DiscoveryModel) => readonly string[] = () => []): Record<TaskId, number> {
+export function taskCounts(
+  models: DiscoveryModel[],
+  f: Filters,
+  words: (m: DiscoveryModel) => readonly string[] = () => [],
+  withProvider = false,
+): Record<TaskId, number> {
   const out = Object.fromEntries(TASKS.map((t) => [t.id, 0])) as Record<TaskId, number>;
   for (const m of models) {
-    if (!matchesFilters(m, { ...f, task: "all" }, words(m))) continue;
+    if (!matchesFilters(m, { ...f, task: "all" }, words(m), withProvider)) continue;
     for (const t of tasksOf(m.capabilities)) out[t] += 1;
   }
   return out;
@@ -650,14 +659,12 @@ export function filtersFromQuery(q: Record<string, string | string[] | undefined
   const input = one("input");
   const output = one("output");
   const state = one("state");
-  const plan = one("plan");
   return {
     task: isTaskId(task) ? task : "all",
     q: one("q").slice(0, 80),
     input: (INPUT_KINDS as readonly string[]).includes(input) ? (input as InputKind) : "all",
     output: (OUTPUT_KINDS as readonly string[]).includes(output) ? (output as OutputKind) : "all",
     state: (DISCOVERY_STATES as readonly string[]).includes(state) ? (state as DiscoveryState) : "all",
-    plan: (PLAN_FILTERS as readonly string[]).includes(plan) ? (plan as PlanFilter) : "all",
   };
 }
 
@@ -669,7 +676,6 @@ export function queryFor(f: Filters, model: string | null, extra: Record<string,
   if (f.input !== "all") p.set("input", f.input);
   if (f.output !== "all") p.set("output", f.output);
   if (f.state !== "all") p.set("state", f.state);
-  if (f.plan !== "all") p.set("plan", f.plan);
   if (model) p.set("model", model);
   const s = p.toString();
   return s ? `?${s}` : "";
@@ -741,25 +747,66 @@ const PROVIDER_NAMES: Record<string, string> = {
   alibaba: "Alibaba",
 };
 
+/**
+ * Whether a CUSTOMER sees who makes a model. Off: the Studio shows a model by
+ * its display name only, and the owner's rule keeps provider names out of
+ * customer copy. The operator always sees the provider. One switch, so the
+ * owner can turn it on in one place.
+ */
+export const SHOW_PROVIDER_TO_CUSTOMERS = false;
+
+export function showsProvider(operator: boolean): boolean {
+  return operator || SHOW_PROVIDER_TO_CUSTOMERS;
+}
+
 export function providerName(slug: string): string {
   return PROVIDER_NAMES[slug] ?? slug;
 }
 
-/** The shape a tile is drawn in: the model's own first shape, so the sheet is not a row of identical cards. */
-export function frameAspect(m: Pick<DiscoveryModel, "spec">): string {
-  const first = m.spec.aspectRatios[0] ?? Object.values(m.spec.aspectRatiosByCapability).find((l) => l && l.length)?.[0];
-  const parsed = first ? /^(\d{1,2}):(\d{1,2})$/.exec(first) : null;
-  if (m.spec.output === "image" || m.spec.output === "video") {
-    if (parsed) {
-      const w = Number(parsed[1]);
-      const h = Number(parsed[2]);
-      // A tall shape would make a tile taller than a phone screen: cap it at 4:5.
-      return w / h < 0.8 ? "4 / 5" : `${w} / ${h}`;
+/** Every shape the registry lists for the model (all its tools), first one first. */
+export function shapesOf(spec: Pick<DiscoverySpec, "aspectRatios" | "aspectRatiosByCapability">): string[] {
+  const all = [...spec.aspectRatios, ...Object.values(spec.aspectRatiosByCapability).flat()];
+  return [...new Set(all.filter((r): r is string => typeof r === "string" && /^\d{1,2}:\d{1,2}$/.test(r)))];
+}
+
+/** The widest shape the model makes (21:9 over 16:9 over 1:1 ...), or null when it lists none. */
+export function widestShape(spec: Pick<DiscoverySpec, "aspectRatios" | "aspectRatiosByCapability">): string | null {
+  let best: string | null = null;
+  let wide = 0;
+  for (const r of shapesOf(spec)) {
+    const [w, h] = r.split(":").map(Number);
+    if (h > 0 && w / h > wide) {
+      wide = w / h;
+      best = r;
     }
-    return m.spec.output === "video" ? "16 / 9" : "1 / 1";
   }
-  // Sound and words have no picture: a strip, like a soundtrack on film.
-  return "3 / 1";
+  return best;
+}
+
+/**
+ * The shape a tile is drawn in: the widest the model makes, so a sheet of
+ * models reads their range at a glance (a 21:9 model's frame is wider than a
+ * 16:9 one's) instead of a row of identical squares. A picture or clip model
+ * that lists no shape gets a plain 3:2 frame and no edge shape; sound and
+ * words have no picture, so they are a strip, like a soundtrack on film.
+ */
+export function frameAspect(m: Pick<DiscoveryModel, "spec">): string {
+  if (m.spec.output !== "image" && m.spec.output !== "video") return "3 / 1";
+  const widest = widestShape(m.spec);
+  if (!widest) return "3 / 2";
+  const [w, h] = widest.split(":").map(Number);
+  return `${w} / ${h}`;
+}
+
+/**
+ * The database's cap on any prompt (creative_params_problem, 0072: "prompt is
+ * longer than 4000 characters"), whatever a model's own limit says.
+ */
+export const PROMPT_CAP = 4000;
+
+/** The longest words a person may send this model: the shorter of its own limit and the database's. */
+export function promptLimit(spec: Pick<DiscoverySpec, "maxPromptChars">): number {
+  return spec.maxPromptChars ? Math.min(spec.maxPromptChars, PROMPT_CAP) : PROMPT_CAP;
 }
 
 /** The longest clip the registry lists, in seconds; null = none listed. */

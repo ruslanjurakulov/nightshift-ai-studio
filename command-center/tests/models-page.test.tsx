@@ -10,6 +10,7 @@ import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { en } from "../lib/i18n/en";
 import { esc } from "./helpers/supabaseStub";
+import { PROVIDER_BRANDS } from "./helpers/brands";
 
 vi.mock("server-only", () => ({}));
 
@@ -58,7 +59,7 @@ const sellableRow = {
   credit_unit: "u_vid",
   entitlement: null,
   credits_per_unit: 3,
-  margin: 1.5,
+  margin: 7.777,
   spec: { output: "video", unit: "second", limits: { max_prompt_chars: 2000, max_concurrent_per_org: 1 } },
 };
 const adminRow = {
@@ -85,7 +86,7 @@ beforeEach(() => {
   state.calls = [];
   state.results = {
     sellable_models: { data: [sellableRow], error: null },
-    credit_prices: { data: [{ unit: "u_vid", credits_per_unit: 3, margin: 1.5 }], error: null },
+    credit_prices: { data: [{ unit: "u_vid", credits_per_unit: 3, margin: 9.999, note: "NOTECANARY" }], error: null },
     model_registry_admin: { data: [adminRow], error: null },
     model_probe_runs: { data: [], error: null },
   };
@@ -101,6 +102,14 @@ describe("Models page", () => {
     expect(state.calls).not.toContain("model_registry_admin");
     expect(state.calls).not.toContain("model_probe_runs");
     expect(html).not.toContain(esc(en.modelDiscovery.viewsLabel));
+  });
+
+  it("sends a customer no margin, price-list note, provider or brand", async () => {
+    state.operator = false;
+    const html = await page({ model: "vid-a" });
+    for (const leak of ["7.777", "9.999", "NOTECANARY", "margin", "bytedance", "ByteDance", "u_vid"]) expect(html).not.toContain(leak);
+    // The display name is the Studio's own word for a model; nothing else may name a vendor.
+    expect(html.split("Vid A").join("").replace(/<[^>]+>/g, " ")).not.toMatch(PROVIDER_BRANDS);
   });
 
   it("gives a customer who asks for ?view=manage the catalog, not the switches", async () => {
