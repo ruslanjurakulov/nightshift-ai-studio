@@ -37,9 +37,13 @@ This module repairs just the named scenes of an existing run:
 
 What a repair spends: Pexels searches (a free, rate-limited API — counted on
 the cost ledger like every other search) and local CPU. No script, voice,
-generated-media or vision call is made. A scene that originally used AI
-b-roll gets *stock* replacement footage; that is recorded per scene in the
-report (``previous_sources``) and the cut goes to a human anyway.
+generated-media or vision call is made. A repair re-fetches STOCK footage, so
+it repairs only scenes that were stock: a scene with generated b-roll is
+refused before anything is searched (:func:`refuse_generated`) — giving it
+stock in place of the generator it was made with is the quality substitution
+CLAUDE.md rule 4 forbids. Such a scene is regenerated with its own generator,
+or from stock only when a person explicitly chooses that, by the priced
+"Regenerate scene" press (``modules/scene_regenerate.py``, migration 0076).
 
 Nothing here raises into the pipeline: :func:`cli` catches everything and
 returns an exit code (0 repaired and held, 2 bad request, 3 cannot repair this
@@ -357,6 +361,26 @@ def preflight(channel_id: str, scene_ids: Sequence[str], *, topic: Optional[str]
                       scene_ids=tuple(scene_ids), kept_scene_ids=kept)
 
 
+def refuse_generated(plan: "RepairPlan") -> None:
+    """A repair re-fetches stock footage. A named scene made with generated
+    b-roll is refused (RepairUnavailable, nothing spent) instead of silently
+    coming back as stock — CLAUDE.md rule 4."""
+    generated = []
+    for sid in plan.scene_ids:
+        scene = plan.project.scene(sid)
+        for aid in scene.asset_ids:
+            a = plan.project.asset(aid)
+            if a is not None and a.source == video_ir.SOURCE_GENERATED:
+                generated.append(sid)
+                break
+    if generated:
+        raise RepairUnavailable(
+            f"scene(s) {', '.join(generated)} were made with generated b-roll, and a repair only fetches "
+            "stock footage, which would replace them with something of another kind nobody chose. "
+            "Use the priced \"Regenerate scene\" on the video page instead: it makes the scene again with "
+            "the same generator, or with stock only if you choose that explicitly. Nothing was spent.")
+
+
 # ── replacement footage ─────────────────────────────────────────────────────
 
 def _section(plan: RepairPlan, index: int) -> Mapping:
@@ -594,6 +618,7 @@ def repair(plan: RepairPlan, *, fetcher=None, render_fn: Optional[Callable] = No
     a SupabaseSync — all injectable for tests."""
     from modules import run_checkpoint, scene_render
 
+    refuse_generated(plan)
     project = plan.project
     if fetcher is None:
         from modules.media_fetcher import MediaFetcher
@@ -710,6 +735,7 @@ def cli(*, channel: Optional[str], raw_scenes: Optional[str], topic: Optional[st
             raise RepairRequestError("no scenes named to repair")
         plan = preflight(channel_id, scene_ids, topic=topic, root=root,
                          check_tools=inject.pop("check_tools", True))
+        refuse_generated(plan)
     except RepairRequestError as e:
         logger.error("Repair request refused: %s", e)
         print(f"\n⛔ Repair request refused: {e}")

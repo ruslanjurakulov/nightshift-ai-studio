@@ -1,13 +1,12 @@
 /**
- * "Regenerate scene" requests (roadmap PR 2.3, migration 0015).
+ * Scene repair eligibility (roadmap PR 2.3, migration 0015).
  *
- * A Storyboard button files a `review_intents` row with action
- * "regenerate_scene" and the scene's Video IR id — exactly the pattern the
- * review panel's "Render it again" uses. The row is the whole effect: nothing
- * in a browser renders, spends or publishes. The repair is a daily_video.yml
- * dispatch with `repair_scenes` (modules/scene_repair.py); it consumes the
- * matching rows when it has rebuilt the scene. Who may file is the database's
- * decision (the review_intents insert policy: editor and above).
+ * The Storyboard's "Regenerate scene" is now the priced, confirmed press of
+ * migration 0076 (lib/sceneRegenerate.ts, RegenerateSceneButton). The legacy
+ * `review_intents` "regenerate_scene" row helpers below are kept for rows
+ * filed before it; the repair they named re-fetched stock footage only, and
+ * modules/scene_repair.py now refuses a generated scene instead of giving it
+ * stock. Who may press is the database's decision.
  *
  * The button is only offered where a repair can happen at all
  * (sceneRepairEligibility): scene_repair.find_run repairs an UNFINISHED run
