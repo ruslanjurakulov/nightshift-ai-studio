@@ -129,6 +129,13 @@ describe("the files", () => {
       expect(src, f).not.toMatch(/SERVICE_KEY|SERVICE_ROLE|service_role|createServiceClient|createAdminClient/i);
     }
   });
+  it("ask who is calling through callInbox, which reads the session before anything else", () => {
+    const helper = readFileSync(join(root, "lib/server/comment-inbox.ts"), "utf8");
+    const call = helper.slice(helper.indexOf("export async function callInbox"), helper.indexOf("export async function channelOf"));
+    expect(call.indexOf("getUser()")).toBeGreaterThan(-1);
+    expect(call.indexOf("getUser()")).toBeLessThan(call.indexOf("supabase.rpc("));
+    for (const f of files(join(root, "app/api/inbox"))) expect(readFileSync(f, "utf8"), f).toContain("callInbox(");
+  });
   it("render audience text as text only: no HTML injection, no raw links built from it", () => {
     for (const f of files(join(root, "components/inbox"))) {
       const src = readFileSync(f, "utf8");
