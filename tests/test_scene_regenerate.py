@@ -666,6 +666,9 @@ FAKE_MAIN = textwrap.dedent("""
         sys.exit(rc)
     shutil.copy2(run / "project.json", d / "previous_project.json")
     shutil.copy2(run / "final_video.mp4", d / "previous_final_video.mp4")
+    if mode != "no_previous_hashes":
+        (d / "previous_take.json").write_text(json.dumps({"version": 1, "sha256": {
+            "project": sha(run / "project.json"), "video": sha(run / "final_video.mp4")}}))
     tv, ti = run / ".new.mp4", run / ".new.json"
     tv.write_bytes(b"NEW CUT"); ti.write_text('{"new": true}')
     body = {"ok": True, "new_asset_ids": ["a_new"], "previous_asset_ids": ["a_old"], "source_kind": "generated",

@@ -26,8 +26,11 @@ has claimed the hold. This module carries them out:
    or leads the search terms (stock).
 3. **The previous take is kept, and the cut changes last.** The previous
    ``project.json`` and ``final_video.mp4`` are copied under
-   ``regenerations/<id>/``; the old scene's asset files are never deleted
-   (only the masters of takes older than the last :data:`KEEP_TAKES` are).
+   ``regenerations/<id>/`` (copied to a temp name, flushed, hash-checked and
+   renamed, with the hashes recorded in ``previous_take.json``: a restore
+   puts back only a copy that matches); the old scene's asset files are never
+   deleted (only the masters of takes older than the last :data:`KEEP_TAKES`
+   are).
    The new cut and IR are rendered beside the run under temp names; then the
    approval is voided, then the result naming the new files' hashes is
    written, and only then are the two files renamed into place. The worker
@@ -86,6 +89,9 @@ REGEN_DIRNAME = "regenerations"
 RESULT_FILENAME = "result.json"
 PREVIOUS_PROJECT = "previous_project.json"
 PREVIOUS_VIDEO = "previous_final_video.mp4"
+#: The sha256 of the previous project and cut as they were when they were kept
+#: (BR-L-041). Restoring puts back only a kept file that matches it.
+PREVIOUS_MANIFEST = "previous_take.json"
 #: How many takes per run keep their full previous master (BR-L-035). Older
 #: takes keep their result and previous Video IR (asset ids), not the master.
 KEEP_TAKES = 5
@@ -426,15 +432,113 @@ def regen_dir(run_dir: Path, regen_id: str) -> Path:
     return Path(run_dir) / REGEN_DIRNAME / regen_id
 
 
-def _keep(src: Path, dest: Path) -> Optional[str]:
-    """Keep a copy of the previous take. A real copy, never a hard link: a
+_SHA_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _fsync_file(path: Path) -> None:
+    with open(path, "rb") as fh:
+        os.fsync(fh.fileno())
+
+
+def _fsync_dir(path: Path) -> None:
+    """Make a rename durable. Best-effort: not every filesystem allows it."""
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
+def _copy_verified(src: Path, dest: Path, want_sha: str) -> None:
+    """``dest`` becomes a byte-for-byte copy of ``src`` whose sha256 is
+    ``want_sha``, or it is untouched (BR-L-041). The copy goes to
+    ``<dest>.partial``, is flushed to disk and hash-checked, and only then
+    renamed over ``dest`` — a worker killed mid-copy leaves a ``.partial``
+    file, never a half-written ``dest``. A real copy, never a hard link: a
     writer that rewrites the file in place (video_ir.save does) would change a
-    linked "previous" take along with the current one."""
+    linked "previous" take along with the current one. Raises OSError."""
+    tmp = dest.with_name(dest.name + ".partial")
+    try:
+        shutil.copyfile(src, tmp)
+        _fsync_file(tmp)
+        if video_ir.file_sha256(tmp) != want_sha:
+            raise OSError(f"the copy of {src.name} does not match the original")
+        os.replace(tmp, dest)
+    except BaseException:
+        _discard(tmp)
+        raise
+    _fsync_dir(dest.parent)
+
+
+def _keep(src: Path, dest: Path) -> Tuple[Optional[str], Optional[str]]:
+    """Keep a verified copy of the previous take: ``(name, sha256)``, or
+    ``(None, None)`` when there is nothing to keep. A copy already there is
+    reused only when its hash equals the file being kept — an interrupted copy
+    by an earlier attempt is never trusted (BR-L-041), it is replaced."""
     if not src.is_file():
-        return None
-    if not dest.exists():
-        shutil.copy2(src, dest)
-    return dest.name
+        return None, None
+    want = video_ir.file_sha256(src)
+    if not want:
+        raise OSError(f"{src.name} cannot be read")
+    if dest.is_file() and not dest.is_symlink() and video_ir.file_sha256(dest) == want:
+        return dest.name, want
+    _copy_verified(src, dest, want)
+    return dest.name, want
+
+
+def keep_previous_take(ir_path: Path, video_path: Path, out_dir: Path) -> Tuple[Dict[str, Optional[str]], Dict[str, Optional[str]]]:
+    """Keep the previous Video IR and cut, and record their hashes (atomically,
+    before anything changes) so a restore can prove what it puts back.
+    Returns ``(names, sha256s)`` keyed ``project`` / ``video``. Raises
+    :class:`RegenFailed` ``previous_take_not_kept`` — before any render or
+    swap — if a copy cannot be made and verified."""
+    names: Dict[str, Optional[str]] = {}
+    shas: Dict[str, Optional[str]] = {}
+    try:
+        for key, src, name in (("project", ir_path, PREVIOUS_PROJECT), ("video", video_path, PREVIOUS_VIDEO)):
+            names[key], shas[key] = _keep(src, out_dir / name)
+        write_result_file(out_dir, PREVIOUS_MANIFEST, {"version": 1, "sha256": shas})
+    except OSError as e:
+        raise RegenFailed("previous_take_not_kept",
+                          f"the previous take could not be kept and verified ({type(e).__name__}); nothing "
+                          "was changed") from None
+    return names, shas
+
+
+def _recorded_previous(kept: Path) -> Dict[str, str]:
+    """The hashes the previous take was kept with; ``{}`` when none are
+    recorded or the file is not trustworthy."""
+    path = kept / PREVIOUS_MANIFEST
+    try:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 4096:
+            return {}
+        body = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    shas = body.get("sha256") if isinstance(body, dict) else None
+    if not isinstance(shas, dict):
+        return {}
+    return {k: v for k, v in shas.items() if k in ("project", "video") and isinstance(v, str) and _SHA_RE.match(v)}
+
+
+def write_result_file(out_dir: Path, name: str, body: Mapping) -> None:
+    """Atomic JSON write (temp file, flushed, renamed); raises OSError."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tmp = out_dir / (name + ".tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(dict(body), indent=2))
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, out_dir / name)
+    except BaseException:
+        _discard(tmp)
+        raise
 
 
 def write_result(out_dir: Path, body: Mapping, *, strict: bool = False) -> None:
@@ -442,10 +546,7 @@ def write_result(out_dir: Path, body: Mapping, *, strict: bool = False) -> None:
     success result is written BEFORE the cut changes, and a cut must never
     change without a result saying so."""
     try:
-        out_dir.mkdir(parents=True, exist_ok=True)
-        tmp = out_dir / (RESULT_FILENAME + ".tmp")
-        tmp.write_text(json.dumps(dict(body), indent=2), encoding="utf-8")
-        os.replace(tmp, out_dir / RESULT_FILENAME)
+        write_result_file(out_dir, RESULT_FILENAME, body)
     except OSError as e:
         if strict:
             raise
@@ -468,28 +569,51 @@ def _discard(*paths: Path) -> None:
             pass
 
 
-def _replace_from(src: Path, dest: Path) -> None:
-    """``dest`` becomes a copy of ``src``, atomically (copy then rename)."""
+def _replace_from(src: Path, dest: Path, want_sha: str) -> None:
+    """``dest`` becomes a copy of ``src`` — which must hash to ``want_sha`` —
+    atomically (copy, flush, verify, rename)."""
     tmp = dest.with_name(dest.name + ".restore")
-    shutil.copy2(src, tmp)
-    os.replace(tmp, dest)
+    try:
+        shutil.copyfile(src, tmp)
+        _fsync_file(tmp)
+        if video_ir.file_sha256(tmp) != want_sha:
+            raise OSError("the restored copy does not match the recorded hash")
+        os.replace(tmp, dest)
+    except BaseException:
+        _discard(tmp)
+        raise
+    _fsync_dir(dest.parent)
 
 
 def restore_previous_take(run_dir: Path, regen_id: str) -> List[str]:
     """Put the previous take back wherever the cut or Video IR differ from it
     (a swap that did not finish, or a run that died after it). Returns what
-    was restored. Never raises; the leftover temp files are removed."""
+    was restored. Never raises; the leftover temp files are removed.
+
+    A kept file goes back only if its sha256 equals the one recorded when it
+    was kept (BR-L-041): a truncated or damaged copy is never put over the
+    cut, it is reported and the file on disk is left as it is. With no
+    recorded hash nothing is restored (the swap needs the hash to exist: it
+    is written before the cut is touched)."""
     run_dir = Path(run_dir)
     kept = regen_dir(run_dir, regen_id)
+    recorded = _recorded_previous(kept)
     restored = []
-    for name, target in ((PREVIOUS_PROJECT, run_dir / video_ir.PROJECT_FILENAME),
-                         (PREVIOUS_VIDEO, run_dir / scene_repair.FINAL_VIDEO)):
+    for key, name, target in (("project", PREVIOUS_PROJECT, run_dir / video_ir.PROJECT_FILENAME),
+                              ("video", PREVIOUS_VIDEO, run_dir / scene_repair.FINAL_VIDEO)):
         prev = kept / name
+        want = recorded.get(key)
         try:
-            if prev.is_file() and not prev.is_symlink() and \
-                    video_ir.file_sha256(prev) != video_ir.file_sha256(target):
-                _replace_from(prev, target)
+            if not want:
+                continue
+            if video_ir.file_sha256(target) == want:
+                continue   # already the previous take
+            if prev.is_file() and not prev.is_symlink() and video_ir.file_sha256(prev) == want:
+                _replace_from(prev, target, want)
                 restored.append(target.name)
+            else:
+                logger.error("Regeneration %s: the kept previous %s does not match its recorded hash, so it "
+                             "was NOT put back", regen_id, target.name)
         except OSError as e:
             logger.error("Regeneration %s: could not restore %s (%s)", regen_id, target.name, e)
     _discard(*temp_paths(run_dir, regen_id))
@@ -529,6 +653,24 @@ def settle_outcome(output_dir: Path, slug: str, regen_id: str, *, exited_ok: boo
         code = str(result.get("error_code") or ("not_confirmed" if exited_ok else "failed"))
     return {"ok": False, "code": code if _CODE_RE.match(code) else "failed",
             "error": result.get("error") if result.get("ok") is not True else None, "result": result}
+
+
+def reconcile_outcome(output_dir: Path, slug: str, regen_id: str) -> dict:
+    """The verdict on a regeneration nobody settled (BR-L-042): its job ended
+    (the worker died between the end of the run and the settle, the job was
+    lost, or it was failed on its last attempt) and its row is about to be
+    released by the expiry sweep.
+
+    There is no exit status to go on, so the files decide, by the same rule
+    as :func:`settle_outcome`: the result must say ok AND the cut and Video IR
+    on disk must be the ones it names — then the new take is in place and the
+    quote is captured. Otherwise the previous take is put back first, and the
+    row says ``job_ended`` (no result at all) or the run's own code. Never
+    raises. Returns ``{ok, code, error, result}``."""
+    verdict = settle_outcome(output_dir, slug, regen_id, exited_ok=True)
+    if not verdict["ok"] and not verdict["result"]:
+        verdict = dict(verdict, code="job_ended")
+    return verdict
 
 
 def check_disk(run_dir: Path, *, free_fn: Optional[Callable[[Path], int]] = None) -> None:
@@ -606,6 +748,7 @@ class RegenResult:
     previous_asset_ids: List[str]
     new_asset_ids: List[str]
     previous_take: Dict[str, Optional[str]] = field(default_factory=dict)
+    previous_sha256: Dict[str, Optional[str]] = field(default_factory=dict)
     qc: Optional[dict] = None
     approvals: Optional[dict] = None
     regenerated_at: str = ""
@@ -617,7 +760,7 @@ class RegenResult:
         return {"version": 1, "ok": True, "regeneration_id": self.regen_id, "scene_id": self.scene_id,
                 "source_kind": self.source_kind, "explicit_stock": self.explicit_stock,
                 "previous_asset_ids": self.previous_asset_ids, "new_asset_ids": self.new_asset_ids,
-                "previous_take": self.previous_take, "qc": self.qc, "approvals": self.approvals,
+                "previous_take": self.previous_take, "previous_sha256": self.previous_sha256, "qc": self.qc, "approvals": self.approvals,
                 "gate": "not_evaluated", "published": False, "regenerated_at": self.regenerated_at,
                 "new_video_sha256": self.new_video_sha256, "new_project_sha256": self.new_project_sha256}
 
@@ -660,8 +803,7 @@ def regenerate(plan, req: RegenRequest, *, client=None, fetcher=None, ledger=Non
     # The previous take, kept before anything changes on disk.
     video_path = plan.run_dir / scene_repair.FINAL_VIDEO
     ir_path = plan.run_dir / video_ir.PROJECT_FILENAME
-    previous_take = {"project": _keep(ir_path, out_dir / PREVIOUS_PROJECT),
-                     "video": _keep(video_path, out_dir / PREVIOUS_VIDEO)}
+    previous_take, previous_sha = keep_previous_take(ir_path, video_path, out_dir)
 
     # From here a two-person approval of the previous cut is void
     # (scene_repair.repaired_at); if that cannot be recorded, nothing renders.
@@ -677,15 +819,15 @@ def regenerate(plan, req: RegenRequest, *, client=None, fetcher=None, ledger=Non
     _discard(tmp_video, tmp_ir)
     try:
         return _render_and_commit(plan, req, updated, clips, searches, previous_ids, previous_take,
-                                  video_path, ir_path, tmp_video, tmp_ir, out_dir, cut_intervals,
+                                  previous_sha, video_path, ir_path, tmp_video, tmp_ir, out_dir, cut_intervals,
                                   render_fn=render_fn, qc_fn=qc_fn, sync=sync, root=root)
     except BaseException:
         _discard(tmp_video, tmp_ir)
         raise
 
 
-def _render_and_commit(plan, req, updated, clips, searches, previous_ids, previous_take, video_path, ir_path,
-                       tmp_video, tmp_ir, out_dir, cut_intervals, *, render_fn, qc_fn, sync, root):
+def _render_and_commit(plan, req, updated, clips, searches, previous_ids, previous_take, previous_sha,
+                       video_path, ir_path, tmp_video, tmp_ir, out_dir, cut_intervals, *, render_fn, qc_fn, sync, root):
     from modules import run_checkpoint, scene_render
 
     started = time.monotonic()
@@ -729,7 +871,7 @@ def _render_and_commit(plan, req, updated, clips, searches, previous_ids, previo
         regen_id=req.regen_id, scene_id=req.scene_id, video_path=video_path, source_kind=req.source_kind,
         explicit_stock=req.explicit_stock, previous_asset_ids=previous_ids,
         new_asset_ids=list(updated.scene(req.scene_id).asset_ids), previous_take=previous_take,
-        qc=qc_meta, approvals=approvals, regenerated_at=at,
+        previous_sha256=previous_sha, qc=qc_meta, approvals=approvals, regenerated_at=at,
         new_video_sha256=video_ir.file_sha256(tmp_video), new_project_sha256=video_ir.file_sha256(tmp_ir))
     try:
         write_result(out_dir, result.to_metadata(), strict=True)

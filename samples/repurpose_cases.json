@@ -1,0 +1,1936 @@
+{
+ "_comment": "Shared by tests/test_repurpose.py (the worker's mirror), command-center/tests/repurpose.test.ts (the proposal twin) and tests/security/test_sec_repurpose.py (the database's repurpose_plan). `manifest` is a spec: `lengths` (seconds, back to back from 0), optional `audio_s` (null = none recorded) and `overrides` (scene index -> fields to set); `__raw__` is the manifest itself.",
+ "plan": [
+  {
+   "name": "a single whole-scene clip",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "clips": [
+    {
+     "first": "s000",
+     "last": "s000"
+    }
+   ],
+   "expected": {
+    "ok": true,
+    "clips": [
+     {
+      "position": 1,
+      "first": "s000",
+      "last": "s000",
+      "scene_ids": [
+       "s000"
+      ],
+      "start_s": 0.0,
+      "end_s": 20.0,
+      "duration_s": 20.0
+     }
+    ]
+   }
+  },
+  {
+   "name": "several clips, in the order given",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "clips": [
+    {
+     "first": "s001",
+     "last": "s003"
+    },
+    {
+     "first": "s006",
+     "last": "s006"
+    }
+   ],
+   "expected": {
+    "ok": true,
+    "clips": [
+     {
+      "position": 1,
+      "first": "s001",
+      "last": "s003",
+      "scene_ids": [
+       "s001",
+       "s002",
+       "s003"
+      ],
+      "start_s": 20.0,
+      "end_s": 45.0,
+      "duration_s": 25.0
+     },
+     {
+      "position": 2,
+      "first": "s006",
+      "last": "s006",
+      "scene_ids": [
+       "s006"
+      ],
+      "start_s": 80.0,
+      "end_s": 110.0,
+      "duration_s": 30.0
+     }
+    ]
+   }
+  },
+  {
+   "name": "a window under 15 seconds is too short",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "clips": [
+    {
+     "first": "s001",
+     "last": "s002"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "clip_too_short",
+    "position": 1
+   }
+  },
+  {
+   "name": "a window over 60 seconds is too long",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "clips": [
+    {
+     "first": "s004",
+     "last": "s006"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "clip_too_long",
+    "position": 1
+   }
+  },
+  {
+   "name": "exactly 60 seconds is allowed",
+   "manifest": {
+    "lengths": [
+     30,
+     30,
+     10
+    ]
+   },
+   "clips": [
+    {
+     "first": "s000",
+     "last": "s001"
+    }
+   ],
+   "expected": {
+    "ok": true,
+    "clips": [
+     {
+      "position": 1,
+      "first": "s000",
+      "last": "s001",
+      "scene_ids": [
+       "s000",
+       "s001"
+      ],
+      "start_s": 0.0,
+      "end_s": 60.0,
+      "duration_s": 60.0
+     }
+    ]
+   }
+  },
+  {
+   "name": "exactly 15 seconds is allowed",
+   "manifest": {
+    "lengths": [
+     15,
+     10
+    ]
+   },
+   "clips": [
+    {
+     "first": "s000",
+     "last": "s000"
+    }
+   ],
+   "expected": {
+    "ok": true,
+    "clips": [
+     {
+      "position": 1,
+      "first": "s000",
+      "last": "s000",
+      "scene_ids": [
+       "s000"
+      ],
+      "start_s": 0.0,
+      "end_s": 15.0,
+      "duration_s": 15.0
+     }
+    ]
+   }
+  },
+  {
+   "name": "first after last",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "clips": [
+    {
+     "first": "s003",
+     "last": "s001"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "invalid_range",
+    "position": 1
+   }
+  },
+  {
+   "name": "an unknown scene",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "clips": [
+    {
+     "first": "s000",
+     "last": "s077"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "scene_not_found",
+    "position": 1
+   }
+  },
+  {
+   "name": "two clips sharing a scene overlap",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "clips": [
+    {
+     "first": "s000",
+     "last": "s000"
+    },
+    {
+     "first": "s000",
+     "last": "s003"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "clips_overlap",
+    "position": 2
+   }
+  },
+  {
+   "name": "the second clip is named first and still overlaps",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "clips": [
+    {
+     "first": "s004",
+     "last": "s004"
+    },
+    {
+     "first": "s003",
+     "last": "s005"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "clips_overlap",
+    "position": 2
+   }
+  },
+  {
+   "name": "neighbouring clips do not overlap",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "clips": [
+    {
+     "first": "s000",
+     "last": "s000"
+    },
+    {
+     "first": "s004",
+     "last": "s004"
+    }
+   ],
+   "expected": {
+    "ok": true,
+    "clips": [
+     {
+      "position": 1,
+      "first": "s000",
+      "last": "s000",
+      "scene_ids": [
+       "s000"
+      ],
+      "start_s": 0.0,
+      "end_s": 20.0,
+      "duration_s": 20.0
+     },
+     {
+      "position": 2,
+      "first": "s004",
+      "last": "s004",
+      "scene_ids": [
+       "s004"
+      ],
+      "start_s": 45.0,
+      "end_s": 70.0,
+      "duration_s": 25.0
+     }
+    ]
+   }
+  },
+  {
+   "name": "a window past the audio",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ],
+    "audio_s": 140
+   },
+   "clips": [
+    {
+     "first": "s007",
+     "last": "s008"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "beyond_audio",
+    "position": 1
+   }
+  },
+  {
+   "name": "half a second past the audio is allowed",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ],
+    "audio_s": 142.6
+   },
+   "clips": [
+    {
+     "first": "s007",
+     "last": "s008"
+    }
+   ],
+   "expected": {
+    "ok": true,
+    "clips": [
+     {
+      "position": 1,
+      "first": "s007",
+      "last": "s008",
+      "scene_ids": [
+       "s007",
+       "s008"
+      ],
+      "start_s": 110.0,
+      "end_s": 143.0,
+      "duration_s": 33.0
+     }
+    ]
+   }
+  },
+  {
+   "name": "no audio duration recorded is not a refusal",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ],
+    "audio_s": null
+   },
+   "clips": [
+    {
+     "first": "s007",
+     "last": "s008"
+    }
+   ],
+   "expected": {
+    "ok": true,
+    "clips": [
+     {
+      "position": 1,
+      "first": "s007",
+      "last": "s008",
+      "scene_ids": [
+       "s007",
+       "s008"
+      ],
+      "start_s": 110.0,
+      "end_s": 143.0,
+      "duration_s": 33.0
+     }
+    ]
+   }
+  },
+  {
+   "name": "a scene without an end time",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ],
+    "overrides": {
+     "3": {
+      "end_s": null
+     }
+    }
+   },
+   "clips": [
+    {
+     "first": "s001",
+     "last": "s003"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "scene_timing_unknown",
+    "position": 1
+   }
+  },
+  {
+   "name": "a scene without times outside the window does not matter",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ],
+    "overrides": {
+     "3": {
+      "end_s": null
+     }
+    }
+   },
+   "clips": [
+    {
+     "first": "s000",
+     "last": "s000"
+    }
+   ],
+   "expected": {
+    "ok": true,
+    "clips": [
+     {
+      "position": 1,
+      "first": "s000",
+      "last": "s000",
+      "scene_ids": [
+       "s000"
+      ],
+      "start_s": 0.0,
+      "end_s": 20.0,
+      "duration_s": 20.0
+     }
+    ]
+   }
+  },
+  {
+   "name": "a scene that starts before its neighbour ended",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ],
+    "overrides": {
+     "2": {
+      "start_s": 22.0
+     }
+    }
+   },
+   "clips": [
+    {
+     "first": "s001",
+     "last": "s003"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "scene_timing_unknown",
+    "position": 1
+   }
+  },
+  {
+   "name": "a scene whose end is not after its start",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ],
+    "overrides": {
+     "4": {
+      "end_s": 45.0
+     }
+    }
+   },
+   "clips": [
+    {
+     "first": "s004",
+     "last": "s004"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "scene_timing_unknown",
+    "position": 1
+   }
+  },
+  {
+   "name": "a text time is not a time",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ],
+    "overrides": {
+     "4": {
+      "start_s": "45"
+     }
+    }
+   },
+   "clips": [
+    {
+     "first": "s004",
+     "last": "s004"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "scene_timing_unknown",
+    "position": 1
+   }
+  },
+  {
+   "name": "thirteen scenes are too many",
+   "manifest": {
+    "lengths": [
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4
+    ]
+   },
+   "clips": [
+    {
+     "first": "s000",
+     "last": "s012"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "too_many_scenes",
+    "position": 1
+   }
+  },
+  {
+   "name": "twelve scenes are allowed",
+   "manifest": {
+    "lengths": [
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4,
+     4
+    ]
+   },
+   "clips": [
+    {
+     "first": "s000",
+     "last": "s011"
+    }
+   ],
+   "expected": {
+    "ok": true,
+    "clips": [
+     {
+      "position": 1,
+      "first": "s000",
+      "last": "s011",
+      "scene_ids": [
+       "s000",
+       "s001",
+       "s002",
+       "s003",
+       "s004",
+       "s005",
+       "s006",
+       "s007",
+       "s008",
+       "s009",
+       "s010",
+       "s011"
+      ],
+      "start_s": 0.0,
+      "end_s": 48.0,
+      "duration_s": 48.0
+     }
+    ]
+   }
+  },
+  {
+   "name": "no clips",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "clips": [],
+   "expected": {
+    "ok": false,
+    "reason": "invalid_clips"
+   }
+  },
+  {
+   "name": "six clips are too many",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "clips": [
+    {
+     "first": "s000",
+     "last": "s000"
+    },
+    {
+     "first": "s000",
+     "last": "s000"
+    },
+    {
+     "first": "s000",
+     "last": "s000"
+    },
+    {
+     "first": "s000",
+     "last": "s000"
+    },
+    {
+     "first": "s000",
+     "last": "s000"
+    },
+    {
+     "first": "s000",
+     "last": "s000"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "invalid_clips"
+   }
+  },
+  {
+   "name": "clips that are not a list",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "clips": {
+    "first": "s000",
+    "last": "s000"
+   },
+   "expected": {
+    "ok": false,
+    "reason": "invalid_clips"
+   }
+  },
+  {
+   "name": "a clip that is not an object",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "clips": [
+    "s000"
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "invalid_clips"
+   }
+  },
+  {
+   "name": "a scene id that is not a string",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "clips": [
+    {
+     "first": 1,
+     "last": 2
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "invalid_clips"
+   }
+  },
+  {
+   "name": "a scene id that is not a scene id",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "clips": [
+    {
+     "first": "0; drop",
+     "last": "s001"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "invalid_clips"
+   }
+  },
+  {
+   "name": "a manifest without scenes",
+   "manifest": {
+    "__raw__": {}
+   },
+   "clips": [
+    {
+     "first": "s000",
+     "last": "s000"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "no_manifest"
+   }
+  },
+  {
+   "name": "a manifest that is not an object",
+   "manifest": {
+    "__raw__": []
+   },
+   "clips": [
+    {
+     "first": "s000",
+     "last": "s000"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "no_manifest"
+   }
+  },
+  {
+   "name": "two scenes with one id",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ],
+    "overrides": {
+     "5": {
+      "id": "s000"
+     }
+    }
+   },
+   "clips": [
+    {
+     "first": "s001",
+     "last": "s003"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "scene_ids_not_unique"
+   }
+  },
+  {
+   "name": "a scene without an id is skipped, not matched",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ],
+    "overrides": {
+     "1": {
+      "id": null
+     }
+    }
+   },
+   "clips": [
+    {
+     "first": "s001",
+     "last": "s003"
+    }
+   ],
+   "expected": {
+    "ok": false,
+    "reason": "scene_not_found",
+    "position": 1
+   }
+  },
+  {
+   "name": "times are rounded to the millisecond, half up",
+   "manifest": {
+    "lengths": [
+     20.0005,
+     15.0004
+    ]
+   },
+   "clips": [
+    {
+     "first": "s000",
+     "last": "s001"
+    }
+   ],
+   "expected": {
+    "ok": true,
+    "clips": [
+     {
+      "position": 1,
+      "first": "s000",
+      "last": "s001",
+      "scene_ids": [
+       "s000",
+       "s001"
+      ],
+      "start_s": 0.0,
+      "end_s": 35.001,
+      "duration_s": 35.001
+     }
+    ]
+   }
+  }
+ ],
+ "propose": [
+  {
+   "name": "no retention data: scene structure only",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "points": [],
+   "max_clips": 5,
+   "expected": {
+    "retention": "not_measured",
+    "clips": [
+     {
+      "rank": 1,
+      "first": "s001",
+      "last": "s005",
+      "scene_ids": [
+       "s001",
+       "s002",
+       "s003",
+       "s004",
+       "s005"
+      ],
+      "start_s": 20.0,
+      "end_s": 80.0,
+      "duration_s": 60.0,
+      "score": null,
+      "measured": false
+     },
+     {
+      "rank": 2,
+      "first": "s006",
+      "last": "s007",
+      "scene_ids": [
+       "s006",
+       "s007"
+      ],
+      "start_s": 80.0,
+      "end_s": 125.0,
+      "duration_s": 45.0,
+      "score": null,
+      "measured": false
+     },
+     {
+      "rank": 3,
+      "first": "s008",
+      "last": "s009",
+      "scene_ids": [
+       "s008",
+       "s009"
+      ],
+      "start_s": 125.0,
+      "end_s": 150.0,
+      "duration_s": 25.0,
+      "score": null,
+      "measured": false
+     },
+     {
+      "rank": 4,
+      "first": "s000",
+      "last": "s000",
+      "scene_ids": [
+       "s000"
+      ],
+      "start_s": 0.0,
+      "end_s": 20.0,
+      "duration_s": 20.0,
+      "score": null,
+      "measured": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "a curve with too few points is not data",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "points": [
+    {
+     "elapsed_ratio": 0.1,
+     "watch_ratio": 0.9,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.5,
+     "watch_ratio": 0.6,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 1.0,
+     "watch_ratio": 0.3,
+     "measured_date": "2026-09-01"
+    }
+   ],
+   "max_clips": 5,
+   "expected": {
+    "retention": "not_measured",
+    "clips": [
+     {
+      "rank": 1,
+      "first": "s001",
+      "last": "s005",
+      "scene_ids": [
+       "s001",
+       "s002",
+       "s003",
+       "s004",
+       "s005"
+      ],
+      "start_s": 20.0,
+      "end_s": 80.0,
+      "duration_s": 60.0,
+      "score": null,
+      "measured": false
+     },
+     {
+      "rank": 2,
+      "first": "s006",
+      "last": "s007",
+      "scene_ids": [
+       "s006",
+       "s007"
+      ],
+      "start_s": 80.0,
+      "end_s": 125.0,
+      "duration_s": 45.0,
+      "score": null,
+      "measured": false
+     },
+     {
+      "rank": 3,
+      "first": "s008",
+      "last": "s009",
+      "scene_ids": [
+       "s008",
+       "s009"
+      ],
+      "start_s": 125.0,
+      "end_s": 150.0,
+      "duration_s": 25.0,
+      "score": null,
+      "measured": false
+     },
+     {
+      "rank": 4,
+      "first": "s000",
+      "last": "s000",
+      "scene_ids": [
+       "s000"
+      ],
+      "start_s": 0.0,
+      "end_s": 20.0,
+      "duration_s": 20.0,
+      "score": null,
+      "measured": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "a measured curve ranks the windows where the audience stayed first",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "points": [
+    {
+     "elapsed_ratio": 0.05,
+     "watch_ratio": 0.95,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.15,
+     "watch_ratio": 0.7,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.25,
+     "watch_ratio": 0.62,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.35,
+     "watch_ratio": 0.6,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.45,
+     "watch_ratio": 0.6,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.55,
+     "watch_ratio": 0.59,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.65,
+     "watch_ratio": 0.58,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.75,
+     "watch_ratio": 0.5,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.85,
+     "watch_ratio": 0.42,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.95,
+     "watch_ratio": 0.35,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 1.0,
+     "watch_ratio": 0.33,
+     "measured_date": "2026-09-01"
+    }
+   ],
+   "max_clips": 5,
+   "expected": {
+    "retention": "measured",
+    "clips": [
+     {
+      "rank": 1,
+      "first": "s004",
+      "last": "s004",
+      "scene_ids": [
+       "s004"
+      ],
+      "start_s": 45.0,
+      "end_s": 70.0,
+      "duration_s": 25.0,
+      "score": -0.0281,
+      "measured": true
+     },
+     {
+      "rank": 2,
+      "first": "s005",
+      "last": "s006",
+      "scene_ids": [
+       "s005",
+       "s006"
+      ],
+      "start_s": 70.0,
+      "end_s": 110.0,
+      "duration_s": 40.0,
+      "score": -0.1275,
+      "measured": true
+     },
+     {
+      "rank": 3,
+      "first": "s002",
+      "last": "s003",
+      "scene_ids": [
+       "s002",
+       "s003"
+      ],
+      "start_s": 25.0,
+      "end_s": 45.0,
+      "duration_s": 20.0,
+      "score": -0.2301,
+      "measured": true
+     },
+     {
+      "rank": 4,
+      "first": "s008",
+      "last": "s009",
+      "scene_ids": [
+       "s008",
+       "s009"
+      ],
+      "start_s": 125.0,
+      "end_s": 150.0,
+      "duration_s": 25.0,
+      "score": -0.2479,
+      "measured": true
+     },
+     {
+      "rank": 5,
+      "first": "s007",
+      "last": "s007",
+      "scene_ids": [
+       "s007"
+      ],
+      "start_s": 110.0,
+      "end_s": 125.0,
+      "duration_s": 15.0,
+      "score": -0.32,
+      "measured": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "only the best two",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "points": [
+    {
+     "elapsed_ratio": 0.05,
+     "watch_ratio": 0.95,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.15,
+     "watch_ratio": 0.7,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.25,
+     "watch_ratio": 0.62,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.35,
+     "watch_ratio": 0.6,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.45,
+     "watch_ratio": 0.6,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.55,
+     "watch_ratio": 0.59,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.65,
+     "watch_ratio": 0.58,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.75,
+     "watch_ratio": 0.5,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.85,
+     "watch_ratio": 0.42,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.95,
+     "watch_ratio": 0.35,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 1.0,
+     "watch_ratio": 0.33,
+     "measured_date": "2026-09-01"
+    }
+   ],
+   "max_clips": 2,
+   "expected": {
+    "retention": "measured",
+    "clips": [
+     {
+      "rank": 1,
+      "first": "s004",
+      "last": "s004",
+      "scene_ids": [
+       "s004"
+      ],
+      "start_s": 45.0,
+      "end_s": 70.0,
+      "duration_s": 25.0,
+      "score": -0.0281,
+      "measured": true
+     },
+     {
+      "rank": 2,
+      "first": "s005",
+      "last": "s006",
+      "scene_ids": [
+       "s005",
+       "s006"
+      ],
+      "start_s": 70.0,
+      "end_s": 110.0,
+      "duration_s": 40.0,
+      "score": -0.1275,
+      "measured": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "a window before the first measured point is unmeasured, not 0",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "points": [
+    {
+     "elapsed_ratio": 0.2,
+     "watch_ratio": 0.7,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.3,
+     "watch_ratio": 0.62,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.4,
+     "watch_ratio": 0.6,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.6,
+     "watch_ratio": 0.59,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.8,
+     "watch_ratio": 0.5,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 1.0,
+     "watch_ratio": 0.3,
+     "measured_date": "2026-09-01"
+    }
+   ],
+   "max_clips": 5,
+   "expected": {
+    "retention": "measured",
+    "clips": [
+     {
+      "rank": 1,
+      "first": "s004",
+      "last": "s005",
+      "scene_ids": [
+       "s004",
+       "s005"
+      ],
+      "start_s": 45.0,
+      "end_s": 80.0,
+      "duration_s": 35.0,
+      "score": -0.0458,
+      "measured": true
+     },
+     {
+      "rank": 2,
+      "first": "s006",
+      "last": "s006",
+      "scene_ids": [
+       "s006"
+      ],
+      "start_s": 80.0,
+      "end_s": 110.0,
+      "duration_s": 30.0,
+      "score": -0.1266,
+      "measured": true
+     },
+     {
+      "rank": 3,
+      "first": "s007",
+      "last": "s007",
+      "scene_ids": [
+       "s007"
+      ],
+      "start_s": 110.0,
+      "end_s": 125.0,
+      "duration_s": 15.0,
+      "score": -0.2532,
+      "measured": true
+     },
+     {
+      "rank": 4,
+      "first": "s008",
+      "last": "s008",
+      "scene_ids": [
+       "s008"
+      ],
+      "start_s": 125.0,
+      "end_s": 143.0,
+      "duration_s": 18.0,
+      "score": -0.4,
+      "measured": true
+     },
+     {
+      "rank": 5,
+      "first": "s000",
+      "last": "s003",
+      "scene_ids": [
+       "s000",
+       "s001",
+       "s002",
+       "s003"
+      ],
+      "start_s": 0.0,
+      "end_s": 45.0,
+      "duration_s": 45.0,
+      "score": null,
+      "measured": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "the video length falls back to the last scene end that is known",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ],
+    "audio_s": null,
+    "overrides": {
+     "9": {
+      "end_s": null
+     }
+    }
+   },
+   "points": [
+    {
+     "elapsed_ratio": 0.05,
+     "watch_ratio": 0.95,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.15,
+     "watch_ratio": 0.7,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.25,
+     "watch_ratio": 0.62,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.35,
+     "watch_ratio": 0.6,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.45,
+     "watch_ratio": 0.6,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.55,
+     "watch_ratio": 0.59,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.65,
+     "watch_ratio": 0.58,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.75,
+     "watch_ratio": 0.5,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.85,
+     "watch_ratio": 0.42,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.95,
+     "watch_ratio": 0.35,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 1.0,
+     "watch_ratio": 0.33,
+     "measured_date": "2026-09-01"
+    }
+   ],
+   "max_clips": 5,
+   "expected": {
+    "retention": "measured",
+    "clips": [
+     {
+      "rank": 1,
+      "first": "s004",
+      "last": "s004",
+      "scene_ids": [
+       "s004"
+      ],
+      "start_s": 45.0,
+      "end_s": 70.0,
+      "duration_s": 25.0,
+      "score": -0.0266,
+      "measured": true
+     },
+     {
+      "rank": 2,
+      "first": "s005",
+      "last": "s006",
+      "scene_ids": [
+       "s005",
+       "s006"
+      ],
+      "start_s": 70.0,
+      "end_s": 110.0,
+      "duration_s": 40.0,
+      "score": -0.1671,
+      "measured": true
+     },
+     {
+      "rank": 3,
+      "first": "s002",
+      "last": "s003",
+      "scene_ids": [
+       "s002",
+       "s003"
+      ],
+      "start_s": 25.0,
+      "end_s": 45.0,
+      "duration_s": 20.0,
+      "score": -0.219,
+      "measured": true
+     },
+     {
+      "rank": 4,
+      "first": "s008",
+      "last": "s008",
+      "scene_ids": [
+       "s008"
+      ],
+      "start_s": 125.0,
+      "end_s": 143.0,
+      "duration_s": 18.0,
+      "score": -0.2437,
+      "measured": true
+     },
+     {
+      "rank": 5,
+      "first": "s007",
+      "last": "s007",
+      "scene_ids": [
+       "s007"
+      ],
+      "start_s": 110.0,
+      "end_s": 125.0,
+      "duration_s": 15.0,
+      "score": -0.326,
+      "measured": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "zero clips asked",
+   "manifest": {
+    "lengths": [
+     20,
+     5,
+     8,
+     12,
+     25,
+     10,
+     30,
+     15,
+     18,
+     7
+    ]
+   },
+   "points": [
+    {
+     "elapsed_ratio": 0.05,
+     "watch_ratio": 0.95,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.15,
+     "watch_ratio": 0.7,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.25,
+     "watch_ratio": 0.62,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.35,
+     "watch_ratio": 0.6,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.45,
+     "watch_ratio": 0.6,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.55,
+     "watch_ratio": 0.59,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.65,
+     "watch_ratio": 0.58,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.75,
+     "watch_ratio": 0.5,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.85,
+     "watch_ratio": 0.42,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.95,
+     "watch_ratio": 0.35,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 1.0,
+     "watch_ratio": 0.33,
+     "measured_date": "2026-09-01"
+    }
+   ],
+   "max_clips": 0,
+   "expected": {
+    "retention": "measured",
+    "clips": []
+   }
+  },
+  {
+   "name": "a short video has nothing to propose",
+   "manifest": {
+    "lengths": [
+     6,
+     6
+    ]
+   },
+   "points": [
+    {
+     "elapsed_ratio": 0.05,
+     "watch_ratio": 0.95,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.15,
+     "watch_ratio": 0.7,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.25,
+     "watch_ratio": 0.62,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.35,
+     "watch_ratio": 0.6,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.45,
+     "watch_ratio": 0.6,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.55,
+     "watch_ratio": 0.59,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.65,
+     "watch_ratio": 0.58,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.75,
+     "watch_ratio": 0.5,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.85,
+     "watch_ratio": 0.42,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 0.95,
+     "watch_ratio": 0.35,
+     "measured_date": "2026-09-01"
+    },
+    {
+     "elapsed_ratio": 1.0,
+     "watch_ratio": 0.33,
+     "measured_date": "2026-09-01"
+    }
+   ],
+   "max_clips": 5,
+   "expected": {
+    "retention": "not_measured",
+    "clips": []
+   }
+  }
+ ]
+}
