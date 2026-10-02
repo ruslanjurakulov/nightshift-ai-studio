@@ -504,7 +504,7 @@ describe("identity", () => {
     expect(frameAspect({ spec: discoverySpec({ ...imageSpec, aspect_ratios: ["1:1", "21:9", "16:9"] }) })).toBe("21 / 9");
     expect(frameAspect({ spec: discoverySpec(videoSpec) })).toBe("16 / 9");
     expect(frameAspect({ spec: discoverySpec({ ...videoSpec, aspect_ratios: ["9:16"] }) })).toBe("9 / 16");
-    expect(frameAspect({ spec: discoverySpec({ output: "image" }) })).toBe("3 / 2");
+    expect(frameAspect({ spec: discoverySpec({ output: "image" }) })).toBe("auto");
     expect(frameAspect({ spec: discoverySpec(captionSpec) })).toBe("3 / 1");
     expect(widestShape(discoverySpec({ aspect_ratios_by_capability: { t2v: ["9:16", "16:9"] } }))).toBe("16:9");
     expect(widestShape(discoverySpec({}))).toBeNull();
