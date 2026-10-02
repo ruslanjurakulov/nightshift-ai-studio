@@ -131,7 +131,22 @@ GOOGLE_OAUTH_CLIENT_SECRET=
 # WORKER_POLL_SECONDS=15
 # WORKER_STALE_MINUTES=10
 # WORKER_STOP_GRACE_SECONDS=3300
+
+# Izohlar qutisi (migration 0081, modules/comment_replies.py)
+# NIGHTSHIFT_COMMENT_INBOX=off          # butun qadamni o'chiradi
+# NIGHTSHIFT_INBOX_SYNC_SECONDS=300     # har oraliqda bitta kanal, navbat bilan
 ```
+
+**Izohlar qutisi (0081).** Render vazifalari orasida worker ulangan kanallarning
+oxirgi izohlarini o'qiydi (har oraliqda bitta kanal, 5 ta oxirgi ochiq video,
+taxminan 6 kvota birligi), yangilarini tasniflaydi, odam narx bilan so'ragan
+javob qoralamasini yozadi va **faqat odam tasdiqlagan matnni** `comments.insert`
+orqali kanalning o'z tokeni bilan, bir marta e'lon qiladi (50 kvota birligi;
+kvota tugasa `quota_exceeded` yoziladi, odam keyinroq qayta navbatga qo'yadi).
+Hech narsa o'zi javob bermaydi. Qoralama narxi `credit_prices` dagi
+`reply_draft` qatori: u yo'q bo'lsa qoralama so'rash o'chiq turadi. Token
+`youtube.force-ssl` ruxsatisiz bo'lsa, javob berilmaydi va kanalni qayta ulash
+so'raladi.
 
 Worker kanallarni bir-biridan ajratadi: har bir vazifa faqat **o'z kanalining**
 tokenini ko'radi (boshqa `CHRONOS_YT_TOKEN_*` lar `main.py` muhitidan olib
