@@ -79,6 +79,26 @@ class DocCasesTestCase(unittest.TestCase):
                 problems = verdict(cases[name])
                 self.assertTrue(any(needle in p for p in problems), problems)
 
+    def test_the_ducking_cases_fail_for_the_reason_their_name_gives(self):
+        cases = {c["name"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))["cases"]}
+        needles = {
+            "duck amount below 1 dB": "duck: amount_db must be a number >= 1 and <= 40",
+            "duck amount above 40 dB": "duck: amount_db must be a number >= 1 and <= 40",
+            "duck attack below 0.05 s": "duck: attack_s must be a number >= 0.05 and <= 2",
+            "duck release above 5 s": "duck: release_s must be a number >= 0.1 and <= 5",
+            "duck without an amount": "duck: amount_db is missing",
+            "duck with a compressor field": "duck: ratio is not a known field",
+            "duck that is not an object": "duck must be an object",
+            "duck on a speech track": "a speech track cannot be lowered under speech",
+            "a role that is not music or speech": "role must be one of ['music', 'speech']",
+            "duck on the picture track": "duck is not a known field",
+            "role on a text track": "role is not a known field",
+        }
+        for name, needle in needles.items():
+            with self.subTest(name):
+                problems = verdict(cases[name])
+                self.assertTrue(any(needle in p for p in problems), problems)
+
 
 if __name__ == "__main__":
     unittest.main()

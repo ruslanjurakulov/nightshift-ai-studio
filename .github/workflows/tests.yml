@@ -15,6 +15,11 @@ on:
     paths-ignore: ["command-center/**"]
   workflow_dispatch:
 
+# Least privilege (BR-S-001): nothing in this workflow calls the GitHub API or
+# pushes, so the job token can only read the repository.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -23,6 +28,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # Never pushes: keeps the job token out of .git/config (BR-S-001).
+          persist-credentials: false
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v7

@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { ArrowUpRight, History, Plus, Sparkle } from "lucide-react";
+import { ArrowUpRight, History, Plus } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import { useOverlay } from "@/components/a11y/useOverlay";
 import { creditPillAmount, creditUnit, formatCredits, type CreditAccount } from "@/lib/credits";
 import { planName, type AccountPlan } from "@/lib/account";
+import { Meter } from "@/components/ui/Meter";
+import { Timecode } from "@/components/ui/Timecode";
 
 /**
  * The credit pill in the top bar and the small menu it opens: the balance, the
@@ -74,7 +76,11 @@ export function CreditMenu({ account, plan = null }: { account: CreditAccount | 
         aria-label={fmt(t.shell.creditsOpen, { n: shown, unit })}
         className="shell-pill"
       >
-        <Sparkle aria-hidden className="size-4 shrink-0 fill-current text-[var(--color-primary)]" strokeWidth={1.75} />
+        {/* The balance as a meter (IDENTITY.md): lit = free to spend, hatched =
+            held for running work. The button's name already says the number. */}
+        <span aria-hidden className="hidden sm:contents">
+          <Meter value={amount} held={account.reserved} segments={8} label={t.shell.creditsMenu} />
+        </span>
         <span className="mono text-[13px] font-medium" style={low ? { color: "var(--color-warn)" } : undefined}>
           {shown}
         </span>
@@ -91,18 +97,26 @@ export function CreditMenu({ account, plan = null }: { account: CreditAccount | 
           tabIndex={-1}
           className="shell-popover sheet-enter fixed inset-x-3 top-16 z-50 flex flex-col gap-3 p-3 outline-none sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[288px]"
         >
-          <div className="flex flex-col gap-1 rounded-[10px] bg-[var(--color-panel-2)] p-3">
-            <h2 id={titleId} className="text-[12px] font-medium text-[var(--color-muted)]">
+          <div className="flex flex-col gap-2 rounded-[var(--ns-r-key)] bg-[var(--color-panel-2)] p-3">
+            <h2 id={titleId} className="ns-eyebrow">
               {t.shell.creditsMenu}
             </h2>
             <p className="flex items-baseline gap-1.5">
-              <span className="mono text-[24px] font-semibold leading-none tracking-tight text-[var(--color-fg)]" style={low ? { color: "var(--color-warn)" } : undefined}>
-                {shown}
+              <span className="text-[26px] font-semibold leading-none text-[var(--color-fg)]" style={low ? { color: "var(--color-warn)" } : undefined}>
+                <Timecode value={amount} locale={locale} />
               </span>
               <span className="text-[12px] text-[var(--color-muted)]">
                 {unit} {t.shell.available}
               </span>
             </p>
+            <Meter
+              value={amount}
+              held={account.reserved}
+              size="lg"
+              segments={16}
+              label={t.shell.creditsMenu}
+              valueText={`${shown} ${unit} ${t.shell.available}`}
+            />
             {account.reserved > 0 && (
               <p className="text-[12px] text-[var(--color-muted)]">
                 {fmt(t.shell.onHold, { n: formatCredits(account.reserved, locale) })}
