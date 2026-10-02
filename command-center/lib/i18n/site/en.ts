@@ -100,7 +100,7 @@ export const siteEn = {
       { id: "animate", title: "Animate", body: "Bring a still picture to life" },
       { id: "upscale", title: "Upscale", body: "Sharper and larger" },
       { id: "cutout", title: "Cut out", body: "Remove the background" },
-      { id: "styles", title: "Style kits", body: "Your own look from 3–12 reference pictures — at no extra cost" },
+      { id: "styles", title: "Styles", body: "28 written art directions, or your own kit from 3–12 pictures" },
       { id: "editor", title: "Editor", body: "Trim, split, add text and music — free of credits" },
     ],
     editor: {
@@ -265,7 +265,7 @@ export const siteEn = {
           { title: "Images", body: "From a description, in 16:9, 9:16 or square — then edit them by typing, upscale them or cut them out." },
           { title: "Video clips", body: "Short clips from text, or animate a picture you made or uploaded." },
           { title: "Voice", body: "Text to speech in the voices your workspace has." },
-          { title: "Style kits and characters", body: "Save a look from 3–12 of your pictures, or a recurring character or product under an @name, and use it in any image or clip. A style adds no credits." },
+          { title: "Styles and characters", body: "Start from 28 written art directions in the style library, or save your own look from 3–12 pictures; keep a recurring character or product under an @name. A style adds no credits." },
           { title: "Editor", body: "Trim, split, change speed, add text and music. Exports land in your library and cost no credits." },
         ],
         not: [

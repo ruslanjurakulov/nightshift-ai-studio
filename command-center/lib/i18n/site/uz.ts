@@ -93,7 +93,7 @@ export const siteUz: SiteDictionary = {
       { id: "animate", title: "Jonlantirish", body: "Harakatsiz rasmni jonlantiring" },
       { id: "upscale", title: "Kattalashtirish", body: "Aniqroq va kattaroq" },
       { id: "cutout", title: "Qirqish", body: "Fonni olib tashlash" },
-      { id: "styles", title: "Uslublar", body: "3–12 ta rasmingizdan oʻz koʻrinishingiz — qoʻshimcha toʻlovsiz" },
+      { id: "styles", title: "Uslublar", body: "28 ta yozma badiiy yoʻnalish yoki 3–12 ta rasmingizdan oʻz toʻplamingiz" },
       { id: "editor", title: "Muharrir", body: "Qirqish, boʻlish, matn va musiqa — kreditsiz" },
     ],
     editor: {
@@ -258,7 +258,7 @@ export const siteUz: SiteDictionary = {
           { title: "Rasmlar", body: "Tavsif boʻyicha, 16:9, 9:16 yoki kvadrat — soʻng yozib tahrirlash, kattalashtirish yoki fonini qirqish." },
           { title: "Videokliplar", body: "Matndan qisqa kliplar yoki shu yerda yaratilgan yoxud yuklangan rasmingizni jonlantirish." },
           { title: "Ovoz", body: "Ish maydoningizdagi ovozlar bilan matndan nutq." },
-          { title: "Uslublar va personajlar", body: "3–12 ta oʻz rasmingizdan koʻrinishni yoki doimiy personaj yoxud mahsulotni @nom ostida saqlang va istalgan rasm yoki klipda ishlating. Uslub kredit qoʻshmaydi." },
+          { title: "Uslublar va personajlar", body: "Uslublar kutubxonasidagi 28 ta yozma badiiy yoʻnalishdan boshlang yoki 3–12 ta rasmingizdan oʻz koʻrinishingizni saqlang; doimiy personaj yoki mahsulot @nom ostida turadi. Uslub kredit qoʻshmaydi." },
           { title: "Muharrir", body: "Qirqish, boʻlish, tezlik, matn va musiqa. Eksport kutubxonangizga tushadi va kredit sarflamaydi." },
         ],
         not: [
