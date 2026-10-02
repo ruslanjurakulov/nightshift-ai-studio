@@ -133,6 +133,8 @@ jobs:
           WEBENV_TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
           WEBENV_SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           WEBENV_MEDIA_URL_SECRET: ${{ secrets.MEDIA_URL_SECRET }}
+          WEBENV_CSP_MODE: ${{ vars.CSP_MODE }}
+          WEBENV_CSP_REPORT_URI: ${{ vars.CSP_REPORT_URI }}
         run: |
           set -euo pipefail
 
