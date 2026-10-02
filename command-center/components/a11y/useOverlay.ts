@@ -79,9 +79,12 @@ export function useOverlay(
     return () => {
       document.removeEventListener("keydown", onKey, true);
       // Give focus back only if nothing else has claimed it: a click on another
-      // control that closed the overlay has already moved focus there.
+      // control that closed the overlay has already moved focus there. Focus
+      // still inside the overlay counts as lost: an overlay that animates out
+      // (components/motion/Presence) is still in the document while it leaves.
       const active = document.activeElement;
-      const lost = !active || active === document.body || !active.isConnected;
+      const lost =
+        !active || active === document.body || !active.isConnected || (box !== null && box.contains(active));
       if (lost && returnTo && returnTo.isConnected && returnTo !== document.body) returnTo.focus();
     };
     // The refs are stable objects; only `open` starts and ends an overlay.

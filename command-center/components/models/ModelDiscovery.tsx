@@ -289,7 +289,7 @@ export function ModelDiscovery({
           <span className="ns-tc">{fmt(c.resultCount, { n: shown.length, total: models.length })}</span>
           {taskHint && <span> · {taskHint}</span>}
         </p>
-        {/* A customer still has each base rate (sellable_models() joins it); the operator's view has none. */}
+        {/* A customer still has each rate as charged (sellable_models() returns it); the operator's view has none. */}
         {!pricesRead && <p className="text-[var(--color-warn)]">{operator ? c.pricesUnread : c.pricesPartial}</p>}
         {operator && !probesRead && <p className="text-[var(--color-warn)]">{c.probesUnread}</p>}
       </div>

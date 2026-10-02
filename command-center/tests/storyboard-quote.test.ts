@@ -36,7 +36,14 @@ function fakeSupabase(opts: { failing?: string[]; org?: string } = {}) {
       resolve(failed ? { data: null, error: { message: "boom", code: "XX000" } } : { data: rows[table] ?? [], error: null });
     return b;
   };
-  return { from } as never;
+  // The price list as charged (credit_rates(), 0084) answers from the same rows.
+  const rpc = async (fn: string) => {
+    if (fn !== "credit_rates") return { data: null, error: { message: "unexpected rpc", code: "XX000" } };
+    return opts.failing?.includes("credit_prices")
+      ? { data: null, error: { message: "boom", code: "XX000" } }
+      : { data: rows.credit_prices, error: null };
+  };
+  return { from, rpc } as never;
 }
 
 describe("quoteStoryboard", () => {
