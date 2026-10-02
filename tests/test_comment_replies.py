@@ -167,6 +167,10 @@ class FakeStore:
         self.calls.append(("expire",))
         return 0
 
+    def purge_revoked(self):
+        self.calls.append(("purge",))
+        return 0
+
     def claim_draft(self, worker):
         self.calls.append(("claim_draft", worker))
         c, self.claim = self.claim, None
@@ -483,6 +487,17 @@ class PostTests(unittest.TestCase):
         store.finish_error = cr.StoreError("finish_reply_post", 500)
         self.assertTrue(poster(store, FakeService(log)).post_one())
         self.assertEqual([e[0] for e in log], ["insert"])
+
+    def test_expiry_and_the_purge_of_revoked_connections_run_at_most_every_five_minutes(self):
+        now = [1000.0]
+        store = FakeStore()
+        s = service(store, clock=lambda: now[0])
+        s.expire_step()
+        s.expire_step()
+        self.assertEqual(store.names(), ["expire", "purge"])
+        now[0] += 301
+        s.expire_step()
+        self.assertEqual(store.names(), ["expire", "purge", "expire", "purge"])
 
     def test_run_once_never_raises_and_posts_before_it_drafts(self):
         order = []

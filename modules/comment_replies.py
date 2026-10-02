@@ -292,6 +292,9 @@ class InboxStore:
     def expire_drafts(self):
         return self.rpc("expire_reply_drafts", {})
 
+    def purge_revoked(self):
+        return self.rpc("purge_revoked_inbox", {})
+
     def claim_post(self, worker: str) -> Optional[dict]:
         out = self.rpc("claim_reply_post", {"p_worker": worker})
         return out if isinstance(out, dict) else None
@@ -504,6 +507,10 @@ class CommentInboxService:
         n = self.store.expire_drafts()
         if isinstance(n, int) and n:
             logger.info("comment inbox: %d draft(s) expired, holds released", n)
+        # A channel whose connection was revoked takes its stored comments with it.
+        gone = self.store.purge_revoked()
+        if isinstance(gone, int) and gone:
+            logger.info("comment inbox: %d comment(s) of revoked connections removed", gone)
         return False
 
     # -- drafts -------------------------------------------------------------

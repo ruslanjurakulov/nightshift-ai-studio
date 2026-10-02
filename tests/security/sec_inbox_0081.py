@@ -58,11 +58,13 @@ def extend(tables: dict, functions: dict) -> None:
         "store_reply_draft": SERVICE,
         "fail_reply_draft": SERVICE,
         "expire_reply_drafts": SERVICE,
+        "purge_revoked_inbox": SERVICE,
         "claim_reply_post": SERVICE,
         "mark_reply_submitting": SERVICE,
         "finish_reply_post": SERVICE,
         # Internal: called only inside the functions above; no API role.
         "inbox_clean_text": SERVICE,
+        "inbox_parse_ts": SERVICE,
         "inbox_url_like": SERVICE,
         "inbox_daily_cap": SERVICE,
         "inbox_channel_ready": SERVICE,

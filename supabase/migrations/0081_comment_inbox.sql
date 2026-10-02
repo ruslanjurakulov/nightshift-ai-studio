@@ -54,9 +54,9 @@
 --             discard_reply_draft, approve_reply, retry_reply_post,
 --             dismiss_inbox_comment                          (authenticated)
 --   worker:   store_inbox_comments, inbox_comments_to_classify, claim_reply_draft, store_reply_draft,
---             fail_reply_draft, expire_reply_drafts, claim_reply_post,
+--             fail_reply_draft, expire_reply_drafts, purge_revoked_inbox, claim_reply_post,
 --             mark_reply_submitting, finish_reply_post         (service role)
---   internal: inbox_clean_text, inbox_url_like, inbox_channel_ready,
+--   internal: inbox_clean_text, inbox_parse_ts, inbox_url_like, inbox_channel_ready,
 --             inbox_daily_cap, inbox_draft_block, inbox_log, reply_draft_price
 --
 -- WHO MAY DO WHAT (customer words: "member of this organization")
@@ -306,11 +306,24 @@ create or replace function public.inbox_clean_text(p_text text, p_max integer) r
   language sql immutable set search_path = public, pg_temp as $$
   select left(btrim(
            regexp_replace(
-             regexp_replace(replace(coalesce(p_text, ''), E'\r\n', E'\n'),
+             regexp_replace(replace(left(coalesce(p_text, ''), greatest(coalesce(p_max, 0), 0) * 4 + 16), E'\r\n', E'\n'),
                             E'[\\x01-\\x09\\x0b-\\x1f\\x7f]', '', 'g'),
              '[' || chr(128) || '-' || chr(159) || chr(8203) || '-' || chr(8207)
                  || chr(8234) || '-' || chr(8238) || chr(8294) || '-' || chr(8297) || chr(65279) || ']',
              '', 'g')), greatest(coalesce(p_max, 0), 0))
+$$;
+
+-- A timestamp from outside, or null: a malformed date never aborts a batch.
+create or replace function public.inbox_parse_ts(p_text text) returns timestamptz
+  language plpgsql immutable set search_path = public, pg_temp as $$
+begin
+  if p_text is null or p_text !~ '^\d{4}-\d{2}-\d{2}[T ][0-9:.]+(Z|[+-]\d{2}:?\d{2})?$' then
+    return null;
+  end if;
+  return p_text::timestamptz;
+exception when others then
+  return null;
+end
 $$;
 
 -- A link in a drafted reply. A model's answer to a hostile comment is the one
@@ -665,7 +678,10 @@ begin
   if not public.is_org_member(org, 'editor') then
     raise exception 'forbidden' using errcode = '42501';
   end if;
-  -- Locked only once the caller is known to be allowed.
+  -- Locked only once the caller is known to be allowed: the comment first, then
+  -- the draft (dismiss_inbox_comment takes them in the same order, so a person
+  -- approving while a colleague sets the comment aside cannot deadlock).
+  select * into c from public.inbox_comments where id = d.comment_id for update;
   select * into d from public.reply_drafts where id = p_draft for update;
 
   select * into i from public.reply_intents where draft_id = d.id;
@@ -677,7 +693,6 @@ begin
   if d.status <> 'ready' then
     perform public.creative_refuse('not_approvable', format('status=%s', d.status), 'NS409');
   end if;
-  select * into c from public.inbox_comments where id = d.comment_id for update;
   if c.status <> 'open' then
     perform public.creative_refuse('comment_closed', format('status=%s', c.status), 'NS409');
   end if;
@@ -824,7 +839,7 @@ $$;
 -- organization is the channel's, never the caller's input. Every field is
 -- cleaned and bounded here again: the worker is not trusted with hostile text.
 -- A known comment keeps its text; only a missing classification is filled in.
--- Returns how many comments were new. Old untouched comments are pruned.
+-- Returns how many comments were new. Old untouched comments are pruned (30 days).
 create or replace function public.store_inbox_comments(p_channel text, p_video text, p_comments jsonb)
   returns integer
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
@@ -847,8 +862,7 @@ begin
            e ->> 'youtube_comment_id' as yid,
            nullif(public.inbox_clean_text(e ->> 'author', 100), '') as author,
            public.inbox_clean_text(e ->> 'text', 2000) as body,
-           case when (e ->> 'published_at') ~ '^\d{4}-\d{2}-\d{2}[T ][0-9:.]+(Z|[+-]\d{2}:?\d{2})?$'
-                then (e ->> 'published_at')::timestamptz end as published_at,
+           public.inbox_parse_ts(e ->> 'published_at') as published_at,
            case when (e ->> 'category') in ('question', 'topic_request', 'praise', 'criticism', 'spam', 'off_topic')
                 then e ->> 'category' end as category,
            case when (e ->> 'sentiment') in ('positive', 'negative', 'neutral', 'mixed')
@@ -875,10 +889,11 @@ begin
   )
   select count(*) filter (where inserted) into n from ins;
 
-  -- Bounded retention: a comment nobody acted on in 90 days goes.
+  -- Bounded retention: a comment nobody acted on in 30 days goes (stored YouTube
+  -- data is refreshed or removed, never kept stale).
   delete from public.inbox_comments c
    where c.channel_id = p_channel and c.status in ('open', 'dismissed')
-     and c.fetched_at < now() - interval '90 days'
+     and c.fetched_at < now() - interval '30 days'
      and not exists (select 1 from public.reply_drafts d where d.comment_id = c.id)
      and not exists (select 1 from public.reply_intents i where i.comment_id = c.id);
   return coalesce(n, 0);
@@ -1014,13 +1029,14 @@ begin
   end if;
   update public.reply_drafts
      set status = 'ready', body = txt, drafted_body = txt, edited = false,
-         charged_credits = quoted_credits, finished_at = null, updated_at = now()
+         charged_credits = case when d.credit_ref is null then 0 else quoted_credits end,
+         finished_at = null, updated_at = now()
    where id = d.id;
   if d.credit_ref is not null then
     perform public.capture_credits(d.credit_ref, d.quoted_credits);
   end if;
   perform public.inbox_log(d.channel_id, d.comment_id, d.id, 'draft_ready',
-    jsonb_build_object('chars', char_length(txt), 'charged', d.quoted_credits));
+    jsonb_build_object('chars', char_length(txt), 'charged', case when d.credit_ref is null then 0 else d.quoted_credits end));
   return jsonb_build_object('id', d.id, 'status', 'ready', 'replay', false);
 end
 $$;
@@ -1097,6 +1113,28 @@ begin
       n := n + 1;
     end if;
   end loop;
+  return n;
+end
+$$;
+
+-- A channel whose connection was revoked takes its stored comments with it:
+-- what Google authorized the platform to read is not kept after the person
+-- withdrew that authorization. Approved replies and the audit trail stay (they
+-- are the platform's own record of what a person approved); a draft being
+-- written or a reply waiting to be posted holds its comment until it ends.
+create or replace function public.purge_revoked_inbox() returns integer
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  n integer;
+begin
+  if not public.credits_trusted_caller() then
+    raise exception 'only the platform may purge the inbox' using errcode = '42501';
+  end if;
+  delete from public.inbox_comments c
+   where c.channel_id in (select r.channel_id from public.channel_token_refs r where r.revoked_at is not null)
+     and not exists (select 1 from public.reply_drafts d where d.comment_id = c.id and d.status in ('pending', 'drafting'))
+     and not exists (select 1 from public.reply_posts p where p.comment_id = c.id and p.status in ('queued', 'posting'));
+  get diagnostics n = row_count;
   return n;
 end
 $$;
@@ -1259,6 +1297,7 @@ create policy inbox_events_select on public.inbox_events
 -- narrowed explicitly. Trigger functions are not callable and need no grant.
 revoke all on function public.inbox_append_only() from public, anon, authenticated, service_role;
 revoke all on function public.inbox_clean_text(text, integer) from public, anon, authenticated, service_role;
+revoke all on function public.inbox_parse_ts(text) from public, anon, authenticated, service_role;
 revoke all on function public.inbox_url_like(text) from public, anon, authenticated, service_role;
 revoke all on function public.inbox_daily_cap(text) from public, anon, authenticated, service_role;
 revoke all on function public.inbox_channel_ready(text) from public, anon, authenticated, service_role;
@@ -1287,6 +1326,7 @@ revoke all on function public.claim_reply_draft(text) from public, anon, authent
 revoke all on function public.store_reply_draft(uuid, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.fail_reply_draft(uuid, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.expire_reply_drafts() from public, anon, authenticated, service_role;
+revoke all on function public.purge_revoked_inbox() from public, anon, authenticated, service_role;
 revoke all on function public.claim_reply_post(text) from public, anon, authenticated, service_role;
 revoke all on function public.mark_reply_submitting(uuid, text) from public, anon, authenticated, service_role;
 revoke all on function public.finish_reply_post(uuid, text, boolean, text, text, text, integer) from public, anon, authenticated, service_role;
@@ -1296,6 +1336,7 @@ grant execute on function public.claim_reply_draft(text) to service_role;
 grant execute on function public.store_reply_draft(uuid, text, text) to service_role;
 grant execute on function public.fail_reply_draft(uuid, text, text) to service_role;
 grant execute on function public.expire_reply_drafts() to service_role;
+grant execute on function public.purge_revoked_inbox() to service_role;
 grant execute on function public.claim_reply_post(text) to service_role;
 grant execute on function public.mark_reply_submitting(uuid, text) to service_role;
 grant execute on function public.finish_reply_post(uuid, text, boolean, text, text, text, integer) to service_role;

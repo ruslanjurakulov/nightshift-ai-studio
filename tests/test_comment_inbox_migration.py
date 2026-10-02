@@ -21,8 +21,8 @@ CODE = "\n".join(line.split("--", 1)[0] for line in SQL.splitlines())
 BROWSER = ("quote_reply_draft", "request_reply_draft", "edit_reply_draft", "discard_reply_draft",
            "approve_reply", "retry_reply_post", "dismiss_inbox_comment")
 WORKER = ("store_inbox_comments", "inbox_comments_to_classify", "claim_reply_draft", "store_reply_draft",
-          "fail_reply_draft", "expire_reply_drafts", "claim_reply_post", "mark_reply_submitting", "finish_reply_post")
-INTERNAL = ("inbox_append_only", "inbox_clean_text", "inbox_url_like", "inbox_daily_cap", "inbox_channel_ready",
+          "fail_reply_draft", "expire_reply_drafts", "purge_revoked_inbox", "claim_reply_post", "mark_reply_submitting", "finish_reply_post")
+INTERNAL = ("inbox_append_only", "inbox_clean_text", "inbox_parse_ts", "inbox_url_like", "inbox_daily_cap", "inbox_channel_ready",
             "inbox_draft_block", "inbox_log", "reply_draft_price")
 TABLES = ("inbox_comments", "reply_drafts", "reply_intents", "reply_posts", "inbox_events")
 DEFINER = BROWSER + WORKER + ("inbox_channel_ready", "inbox_draft_block", "inbox_log", "reply_draft_price")
@@ -180,6 +180,24 @@ class CommentInboxMigration(unittest.TestCase):
         self.assertIn("r.revoked_at is null", body("inbox_channel_ready"))
         self.assertIn("when 'reply' then 40 when 'draft' then 200", body("inbox_daily_cap"))
         self.assertNotRegex(CODE, r"youtube\.(upload|readonly|partner|force-ssl)'\s*\]")  # no scope list of its own
+
+    def test_a_revoked_connection_takes_its_stored_comments_with_it(self):
+        b = body("purge_revoked_inbox")
+        self.assertIn("r.revoked_at is not null", b)
+        self.assertIn("delete from public.inbox_comments", b)
+        self.assertNotIn("reply_intents", b, "the audit trail stays")
+        self.assertIn("status in ('pending', 'drafting')", b)
+        self.assertIn("status in ('queued', 'posting')", b)
+
+    def test_stored_comments_are_pruned_after_thirty_days_untouched(self):
+        b = body("store_inbox_comments")
+        self.assertIn("c.fetched_at < now() - interval '30 days'", b)
+        self.assertIn("not exists (select 1 from public.reply_drafts d where d.comment_id = c.id)", b)
+        self.assertIn("not exists (select 1 from public.reply_intents i where i.comment_id = c.id)", b)
+
+    def test_a_malformed_date_never_aborts_a_batch(self):
+        self.assertIn("exception when others then\n  return null;", body("inbox_parse_ts"))
+        self.assertIn("public.inbox_parse_ts(e ->> 'published_at')", body("store_inbox_comments"))
 
     def test_there_is_a_verify_query_at_the_end(self):
         self.assertIn("-- Verify (run after applying; every column should read true)", SQL)

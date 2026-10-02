@@ -124,12 +124,12 @@ def db():
          [ORG_A, UA, EMAIL[UA], ORG_A, UAV, EMAIL[UAV], ORG_B, UB, EMAIL[UB],
           DEFAULT_ORG, UD, EMAIL[UD], DEFAULT_ORG, UOP, EMAIL[UOP]])
     d.su("insert into public.app_members (user_id, email, role) values (%s, %s, 'owner')", [UOP, EMAIL[UOP]])
-    d.su("select public.grant_credits(%s, 100, 'test')", [ORG_A])
-    d.su("select public.grant_credits(%s, 100, 'test')", [ORG_B])
+    d.su("select public.grant_credits(%s, 1000, 'test')", [ORG_A])
+    d.su("select public.grant_credits(%s, 1000, 'test')", [ORG_B])
     # Drafts hold credits like any job; these tests start several at once.
     d.su("update public.plan_entitlements set value = '1000' where key = 'concurrency'")
     for ch, org, vid in (("chan-a", ORG_A, "vid-a"), ("chan-a2", ORG_A, "vid-a2"), ("chan-cap", ORG_A, "vid-cap"),
-                         ("chan-old", ORG_A, "vid-old"),
+                         ("chan-old", ORG_A, "vid-old"), ("chan-rev", ORG_A, "vid-rev"),
                          ("chan-b", ORG_B, "vid-b"), ("chan-op", DEFAULT_ORG, "vid-op")):
         d.su("insert into public.channels (channel_id, name, niche, status, org_id) values (%s, %s, 'tech', 'PAUSED', %s)",
              [ch, ch, org])
@@ -290,10 +290,10 @@ def test_two_presses_at_once_are_one_draft_and_one_hold(db):
 
 
 def test_not_enough_credits_refuses_before_anything_is_written(db):
-    set_price(db, 150)
+    set_price(db, 5000)
     cid = new_comment(db)
     before = account(db)
-    state, msg = db.refused("authenticated", UA, "select public.request_reply_draft(%s, 150, %s)", [cid, key()])
+    state, msg = db.refused("authenticated", UA, "select public.request_reply_draft(%s, 5000, %s)", [cid, key()])
     assert state == "NS402", (state, msg)
     assert account(db) == before and db.one("select count(*) from public.reply_drafts where comment_id = %s", [cid]) == 0
 
@@ -404,6 +404,47 @@ def test_comment_text_is_cleaned_and_bounded_when_stored(db):
     assert len(body) == 2000 and body.startswith("hello world!\nline twox"), body[:40]
     assert not any(c in body for c in "\x00\x07‮​⁦⁩\r")
     assert len(author) == 100 and author.startswith("<b>Mallory</b>nnn")  # stored as text; the screen escapes it
+
+
+def test_a_malformed_date_does_not_abort_the_batch(db):
+    items = [{"youtube_comment_id": "UgxBadDate0001", "text": "one", "published_at": "2026-13-45T99:99:99Z", "category": "question"},
+             {"youtube_comment_id": "UgxBadDate0002", "text": "two", "published_at": "not a date", "category": "question"},
+             {"youtube_comment_id": "UgxBadDate0003", "text": "three", "published_at": "2026-09-30T10:00:00Z", "category": "question"}]
+    assert db.svc("select public.store_inbox_comments('chan-a', 'vid-a', %s::jsonb)", [json.dumps(items)]) == 3
+    got = db.su("select youtube_comment_id, published_at is not null from public.inbox_comments "
+                "where youtube_comment_id like 'UgxBadDate%%' order by 1")
+    assert got == [("UgxBadDate0001", False), ("UgxBadDate0002", False), ("UgxBadDate0003", True)]
+
+
+def test_a_revoked_connection_takes_its_stored_comments_and_keeps_the_audit_trail(db):
+    drain(db)
+    secret = db.one("select vault.create_secret('t-rev', 'n-rev')")
+    db.su("insert into public.channel_token_refs (channel_id, provider, vault_secret_id, scopes, connected_by) "
+          "values ('chan-rev', 'youtube', %s, %s, %s)", [secret, [FORCE_SSL], UA])
+    cid = new_comment(db, "chan-rev", "vid-rev")
+    held = new_comment(db, "chan-rev", "vid-rev")
+    set_price(db, 3)
+    done, did = ready_draft(db, channel="chan-rev", video="vid-rev")
+    db.user(UA, "select public.approve_reply(%s, 'Thanks!')", [did])
+    claim = db.svc("select public.claim_reply_post(%s)", [WORKER])
+    db.svc("select public.finish_reply_post(%s, %s, true, 'UgxReply00555.1')", [claim["post_id"], WORKER])
+    pending = request(db, held, 3)["draft"]["id"]
+    # Connected: nothing is purged.
+    assert db.svc("select public.purge_revoked_inbox()") == 0
+    db.su("update public.channel_token_refs set revoked_at = now(), vault_secret_id = null where channel_id = 'chan-rev'")
+    # A draft being written holds its comment until it ends; the others go.
+    n = db.svc("select public.purge_revoked_inbox()")
+    left = {str(r[0]) for r in db.su("select id from public.inbox_comments where channel_id = 'chan-rev'")}
+    assert left == {str(held)} and n >= 2, (left, n)
+    db.svc("select public.claim_reply_draft(%s)", [WORKER])
+    db.svc("select public.fail_reply_draft(%s, %s, 'cleanup')", [pending, WORKER])
+    assert db.svc("select public.purge_revoked_inbox()") == 1
+    assert db.one("select count(*) from public.inbox_comments where channel_id = 'chan-rev'") == 0
+    # What a person approved, and what happened to it, outlives the comments.
+    assert db.one("select count(*) from public.reply_intents where channel_id = 'chan-rev'") == 1
+    assert db.one("select count(*) from public.reply_posts where channel_id = 'chan-rev' and status = 'posted'") == 1
+    assert db.one("select count(*) from public.inbox_events where channel_id = 'chan-rev'") >= 3
+    assert db.refused("authenticated", UA, "select public.purge_revoked_inbox()")[0] == "42501"
 
 
 def test_the_worker_cannot_store_a_comment_for_a_video_of_another_channel(db):
@@ -528,6 +569,37 @@ def test_approving_at_the_same_moment_files_one_intent(db):
     assert db.one("select count(*) from public.reply_intents where comment_id = %s", [cid]) == 1
     assert db.one("select count(*) from public.reply_posts where comment_id = %s", [cid]) == 1
     drain(db)
+
+
+def test_approving_while_a_colleague_sets_the_comment_aside_never_deadlocks_and_never_both(db):
+    drain(db)
+    for _ in range(8):
+        cid, did = ready_draft(db)
+        outcomes = []
+
+        def approve():
+            try:
+                db.user(UA, "select public.approve_reply(%s, 'Thanks!')", [did])
+                outcomes.append(("approve", "ok"))
+            except psycopg.Error as e:
+                outcomes.append(("approve", e.sqlstate))
+
+        def dismiss():
+            try:
+                db.user(UA, "select public.dismiss_inbox_comment(%s)", [cid])
+                outcomes.append(("dismiss", "ok"))
+            except psycopg.Error as e:
+                outcomes.append(("dismiss", e.sqlstate))
+
+        ts = [threading.Thread(target=approve), threading.Thread(target=dismiss)]
+        [t.start() for t in ts]
+        [t.join() for t in ts]
+        assert all(state != "40P01" for _, state in outcomes), outcomes
+        intents = db.one("select count(*) from public.reply_intents where comment_id = %s", [cid])
+        status = db.one("select status from public.inbox_comments where id = %s", [cid])
+        # One of the two won, whole: an approved reply on an open comment, or a comment set aside with no reply.
+        assert (intents == 1 and status == "open") or (intents == 0 and status == "dismissed"), (intents, status, outcomes)
+        drain(db)
 
 
 def test_a_comment_with_an_approved_reply_gets_no_second_draft_or_reply(db):
@@ -688,7 +760,9 @@ def test_every_worker_function_is_closed_to_the_browsers_roles(db):
         ("select public.claim_reply_post('w')", None),
         (f"select public.mark_reply_submitting('{some}', 'w')", None),
         (f"select public.finish_reply_post('{some}', 'w', true, 'UgxFake00001')", None),
+        ("select public.purge_revoked_inbox()", None),
         ("select public.inbox_clean_text('x', 5)", None),
+        ("select public.inbox_parse_ts('2026-01-01T00:00:00Z')", None),
         ("select public.inbox_log('chan-a', null, null, 'draft_ready')", None),
         ("select public.inbox_draft_block(gen_random_uuid())", None),
         ("select public.inbox_channel_ready('chan-a')", None),
@@ -931,6 +1005,9 @@ def test_the_operators_own_organization_is_started_by_a_platform_admin_and_holds
     assert out["replay"] is False
     assert db.one("select credit_ref from public.reply_drafts where id = %s", [out["draft"]["id"]]) is None
     assert db.one("select count(*) from public.credit_reservations where job_id like 'rd:%%' and org_id = %s", [DEFAULT_ORG]) == held
+    claim = db.svc("select public.claim_reply_draft(%s)", [WORKER])
+    db.svc("select public.store_reply_draft(%s, %s, 'Thanks!')", [claim["draft_id"], WORKER])
+    assert float(db.one("select charged_credits from public.reply_drafts where id = %s", [claim["draft_id"]])) == 0.0
     drain(db)
 
 
