@@ -61,7 +61,7 @@ describe("the public phone menu", () => {
     // The page behind the panel is inert: no Tab stop, no click reaches it.
     const main = document.getElementById("main")!;
     expect(main.inert).toBe(true);
-    expect(document.querySelector("footer.st-footer")!.inert).toBe(true);
+    expect(document.querySelector<HTMLElement>("footer.st-footer")!.inert).toBe(true);
 
     // Tab from the last control in the panel wraps to the menu button, never into the page.
     const close = screen.getByRole("button", { name: n.close });
