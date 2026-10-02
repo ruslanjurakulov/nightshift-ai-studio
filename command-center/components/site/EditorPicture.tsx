@@ -66,7 +66,7 @@ export function EditorPicture({ t }: { t: Dictionary }) {
             <span className="st-tl-label">{e.tracks.text}</span>
             <div className="st-tl-lane" data-kind="text">
               <div className="st-textclip" style={{ left: pct(TEXT.from), width: pct(TEXT.to - TEXT.from) }}>
-                {e.caption}
+                <span className="min-w-0 truncate">{e.caption}</span>
               </div>
             </div>
           </div>
