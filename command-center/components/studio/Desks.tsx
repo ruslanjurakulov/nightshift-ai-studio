@@ -86,7 +86,7 @@ export function StudioOverview({
   const when = (iso: string | null) => {
     if (!iso) return null;
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? null : d.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
+    return Number.isNaN(d.getTime()) ? null : d.toLocaleString(locale, { dateStyle: "short", timeStyle: "short" });
   };
 
   return (

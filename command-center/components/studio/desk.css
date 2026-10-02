@@ -7,8 +7,9 @@
 
 /* ── The desk switcher: one rack strip of keys, the current one lit ───────── */
 .desk-bar {
-  margin-inline: -16px;
-  padding-inline: 16px;
+  /* Bleeds to the screen edge on a phone (the page's own side padding, .pad-page). */
+  margin-inline: calc(-1 * clamp(0.75rem, 3vw, 56px));
+  padding-inline: clamp(0.75rem, 3vw, 56px);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -544,4 +545,14 @@ li:last-child > .desk-project { border-bottom: 0; }
   .desk-cast-row { min-height: 48px; }
   .desk-composer .studio-chip,
   .desk-composer .studio-seg > button { min-height: 44px; }
+}
+
+/* Phones: the bay reads as a short list — name, its tools and the key; the
+   longer line about each desk is on the desk itself. */
+@media (max-width: 639.98px) {
+  .desk-bay-blurb { display: none; }
+  .desk-bay-key { min-height: 0; padding: 14px 64px 14px 16px; gap: 4px; }
+  .desk-bay-top { justify-content: flex-start; gap: 10px; }
+  .desk-bay-name { font-size: var(--ns-t-h3); }
+  .desk-bay-go { top: 50%; bottom: auto; transform: translateY(-50%); width: 44px; height: 44px; }
 }
