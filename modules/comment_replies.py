@@ -85,20 +85,30 @@ DEFAULT_SYNC_SECONDS = 300.0
 
 _CODE = re.compile(r"^[a-z_]{1,48}$")
 _REPLY_ID = re.compile(r"^[A-Za-z0-9_.-]{5,128}$")
+_CHANNEL_ID = re.compile(r"^UC[A-Za-z0-9_-]{22}$")  # a YouTube channel id
 
 # Characters the database removes too (inbox_clean_text; the shared table is
 # tests/fixtures/inbox_cleaner_cases.txt): controls but newline, the C1 block,
-# soft hyphen and other invisible letters, zero-width and direction controls,
-# word joiner and the invisible operators, the Unicode tag block (a hidden-text
+# soft hyphen and other invisible letters (Khmer inherent vowels, Mongolian
+# variation selectors, Hangul fillers), zero-width and direction controls, word
+# joiner and the invisible operators, the Unicode tag plane (a hidden-text
 # channel for prompt injection), variation selectors (FE0E/FE0F stay: they pick
-# emoji or text style), the BOM and the filler characters.
+# emoji or text style), the BOM, the musical, Egyptian and Bamum format controls
+# and the filler characters (BR-L-120).
 _STRIP = re.compile(
     "["
-    "\x00-\x09\x0b-\x1f\x7f-\x9f\u00ad\u034f\u061c\u115f\u1160\u180e"
-    "\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0d\ufeff\uffa0\ufff9-\ufffb"
-    "\U000e0000-\U000e007f\U000e0100-\U000e01ef"
+    "\x00-\x09\x0b-\x1f\x7f-\x9f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f"
+    "\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0d\ufeff\uffa0\ufff0-\ufffb"
+    "\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff"
     "]"
 )
+# Blank-looking spaces read as an ordinary space: a reply of only these is empty.
+_SPACES = re.compile("[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]")
+# The two selectors that pick emoji or text style stay after a character they can style, once:
+# a run reads as one, and one that follows nothing (the start, a space, a newline) is dropped, so a
+# reply of only those is empty and they are not a hidden channel (BR-L-143).
+_VS_RUN = re.compile("([\ufe0e\ufe0f])[\ufe0e\ufe0f]+")
+_VS_LOOSE = re.compile("(^|[ \n])[\ufe0e\ufe0f]")
 
 
 def clean_text(value, limit: int) -> str:
@@ -106,7 +116,9 @@ def clean_text(value, limit: int) -> str:
     the database's ``inbox_clean_text`` (it cleans again; this keeps NUL out of
     the JSON it is sent in, which jsonb cannot hold)."""
     text = str(value or "").replace("\r\n", "\n")
-    return _STRIP.sub("", text).strip()[: max(limit, 0)]
+    text = _STRIP.sub("", _SPACES.sub(" ", text))
+    text = _VS_LOOSE.sub(r"\1", _VS_RUN.sub(r"\1", text))
+    return text.strip()[: max(limit, 0)].strip()
 
 
 # ── the prompt ───────────────────────────────────────────────────────────────
@@ -340,6 +352,16 @@ class InboxStore:
         out = self.rpc("inbox_quota_remaining", {})
         return int(out) if isinstance(out, int) and not isinstance(out, bool) else 0
 
+    def channel_quota_left(self, channel_id: str) -> int:
+        """What the worker may still spend on this channel: the platform's ceiling or its
+        organization's share of it, whichever is lower (0090, BR-L-121). Without 0090 the
+        platform's ceiling alone holds, as before."""
+        try:
+            out = self.rpc("inbox_channel_quota_left", {"p_channel": channel_id})
+        except NotInstalled:
+            return self.quota_remaining()
+        return int(out) if isinstance(out, int) and not isinstance(out, bool) else 0
+
     def record_quota(self, channel_id: str, units: int):
         return self.rpc("record_inbox_quota", {"p_channel": channel_id, "p_units": int(units)})
 
@@ -476,6 +498,10 @@ def find_existing_reply(service, parent_id: str, text: str, own_channel_id: str,
     whatever its words. It fails CLOSED: when it reads ``max_pages`` pages, finds
     nothing and more pages remain, it raises ReconcileIncomplete and the caller
     sends nothing (BR-L-074). Raises whatever the API raises (the caller records it)."""
+    own_channel_id = str(own_channel_id or "").strip()
+    if not _CHANNEL_ID.fullmatch(own_channel_id):
+        # Without the channel's own id its reply cannot be told from anyone else's (BR-L-144).
+        raise ReconcileIncomplete(parent_id)
     want = _norm(text)
     since = _parse_time(submitted_at)
     since = since - timedelta(seconds=60) if since else None
@@ -676,10 +702,18 @@ class CommentInboxService:
             return True
         units += UNITS_LIST  # the channel check made while signing in
         service = client.service
-        own = str(getattr(client, "target_channel_id", "") or "")
+        # The one spelling that is compared everywhere (BR-L-144): stripped, and a YouTube channel id
+        # or nothing. A padded, lower-cased or made-up id never finds the reply, so it never sends.
+        own = str(getattr(client, "target_channel_id", "") or "").strip()
 
         if claim.get("reconcile"):
-            # An earlier attempt may have reached YouTube: look before sending.
+            # An earlier attempt may have reached YouTube: look before sending. Without the
+            # channel's own YouTube id there is no way to tell its reply from anyone else's, so
+            # nothing is sent (BR-L-123): the person is told to look, never a second reply.
+            if not _CHANNEL_ID.fullmatch(own):
+                done_fail("outcome_unknown", "an earlier attempt may have gone out and the channel could not be "
+                                             "identified to check; check the comment on YouTube before trying again")
+                return True
             try:
                 found, spent = find_existing_reply(service, parent, text, own, submitted_at=claim.get("submitted_at"))
                 units += spent
@@ -749,6 +783,10 @@ class CommentInboxService:
             return False
         channel_id = channels[self._rotation % len(channels)]
         self._rotation += 1
+        # One organization's share of that ceiling (BR-L-121): a channel whose organization has
+        # used its share waits for the next day; the others carry on.
+        if self.store.channel_quota_left(channel_id) < 20:
+            return False
         return self.sync_channel(channel_id) > 0
 
     def sync_channel(self, channel_id: str) -> int:
@@ -792,6 +830,9 @@ class CommentInboxService:
 
     def _sync_video(self, fetcher, channel_id: str, video_id: str) -> int:
         fetched = fetcher.fetch_inbox_comments(video_id, SYNC_PAGE)
+        # A comment that cleans to nothing (only invisible characters or blanks) is not a comment:
+        # it is neither classified (a paid call that could never be answered) nor stored (BR-L-124).
+        fetched = [c for c in (fetched or []) if clean_text(c.get("text"), 2000)]
         if not fetched:
             return 0
         need = set(self.store.to_classify(channel_id, [c["youtube_comment_id"] for c in fetched]))
@@ -803,6 +844,8 @@ class CommentInboxService:
                     verdicts[v.comment_id] = v
             except Exception as e:  # unclassified comments are simply not draftable yet
                 logger.info("comment inbox: classification failed (%s)", type(e).__name__)
+        # Comments really sent to the classifier in this visit (BR-L-142): only those can have used up a try.
+        sent = {c["youtube_comment_id"] for c in todo} if (todo and self.classifier is not None) else set()
         items = []
         for c in fetched:
             item = {
@@ -817,5 +860,7 @@ class CommentInboxService:
                 if getattr(v, "classified", True):
                     item["category"] = v.category
                     item["sentiment"] = v.sentiment
+            if "category" not in item and c["youtube_comment_id"] in sent:
+                item["attempted"] = True  # sent, and no usable answer came back
             items.append(item)
         return self.store.store_comments(channel_id, video_id, items)

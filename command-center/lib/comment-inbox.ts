@@ -67,15 +67,25 @@ export function newIdempotencyKey(rand: () => string = () => globalThis.crypto.r
  */
 export function cleanReply(raw: unknown): string {
   const text = typeof raw === "string" ? raw : "";
-  return text
-    .replace(/\r\n/g, "\n")
-    // The same characters the database removes (tests/fixtures/inbox_cleaner_cases.txt).
-    .replace(
-      /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0d\ufeff\uffa0\ufff9-\ufffb\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/gu,
-      "",
-    )
-    .trim()
-    .slice(0, INBOX_LIMITS.replyMax);
+  return (
+    text
+      .replace(/\r\n/g, "\n")
+      // Blank-looking spaces read as one ordinary space, so a reply of only these is empty
+      // (the shared table, tests/fixtures/inbox_cleaner_cases.txt: "space").
+      .replace(/[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/g, " ")
+      // The same characters the database removes (the shared table: "strip").
+      .replace(
+        /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0d\ufeff\uffa0\ufff0-\ufffb\u{13430}-\u{1343f}\u{1bca0}-\u{1bca3}\u{1d173}-\u{1d17a}\u{e0000}-\u{e0fff}]/gu,
+        "",
+      )
+      // The emoji / text selectors (U+FE0E, U+FE0F) stay after a character they can style, once: a run
+      // reads as one, and one that follows nothing is dropped (the shared table: "empty", "collapse").
+      .replace(/([\ufe0e\ufe0f])[\ufe0e\ufe0f]+/g, "$1")
+      .replace(/(^|[ \n])[\ufe0e\ufe0f]/g, "$1")
+      .trim()
+      .slice(0, INBOX_LIMITS.replyMax)
+      .trim()
+  );
 }
 
 // ── the price ───────────────────────────────────────────────────────────────
@@ -105,7 +115,9 @@ export const COMMENT_COLUMNS =
   "id,channel_id,video_id,author_name,body,published_at,category,sentiment,flagged_injection,status";
 export const DRAFT_COLUMNS = "id,comment_id,status,body,edited,quoted_credits,charged_credits,error_code,created_at";
 export const INTENT_COLUMNS = "id,comment_id,body,edited,approved_by_email,approved_at";
-export const POST_COLUMNS = "id,comment_id,intent_id,status,error_code,attempts,created_at,finished_at";
+export const POST_COLUMNS = "id,comment_id,intent_id,status,error_code,wait_reason,attempts,created_at,finished_at";
+/** The same without 0090's wait_reason: the page falls back to it while 0090 is not applied (0081 alone). */
+export const POST_COLUMNS_0081 = "id,comment_id,intent_id,status,error_code,attempts,created_at,finished_at";
 
 export interface InboxComment {
   id: string;
@@ -143,6 +155,8 @@ export interface InboxPost {
   commentId: string;
   status: PostStatus;
   errorCode: PostFailure | null;
+  /** "quota": queued, and held back until the YouTube quota of the day (the platform's or this organization's share) allows it. */
+  waitReason: "quota" | null;
 }
 
 export interface InboxItem {
@@ -228,7 +242,13 @@ export function parsePosts(data: unknown): InboxPost[] {
     const status = r.status;
     if (status !== "queued" && status !== "posting" && status !== "posted" && status !== "failed") continue;
     const code = (POST_FAILURES as readonly string[]).includes(r.error_code as string) ? (r.error_code as PostFailure) : null;
-    out.push({ id: r.id, commentId: r.comment_id, status, errorCode: status === "failed" ? (code ?? "platform_error") : null });
+    out.push({
+      id: r.id,
+      commentId: r.comment_id,
+      status,
+      errorCode: status === "failed" ? (code ?? "platform_error") : null,
+      waitReason: status === "queued" && r.wait_reason === "quota" ? "quota" : null,
+    });
   }
   return out;
 }
@@ -376,7 +396,7 @@ function detailNumber(text: string | null | undefined, key: string): number | nu
 
 const CONFLICTS = [
   "idempotency_conflict", "in_progress", "draft_exists", "already_replied", "not_editable", "not_approvable",
-  "comment_closed", "channel_not_ready", "not_retryable",
+  "comment_closed", "channel_not_ready", "not_retryable", "already_approved",
 ] as const;
 
 /** A quote / press RPC error -> the route's answer. The code is the contract; the body carries only what the person may see. */
@@ -442,6 +462,8 @@ export function inboxErrorText(body: Record<string, unknown> | null, t: T): stri
       return typeof body?.reason === "string" && body.reason in t.held ? t.held[body.reason as HeldReason] : t.errors.notDraftable;
     case "channel_not_ready":
       return t.errors.channelNotReady;
+    case "already_approved":
+      return t.errors.alreadyApproved;
     case "invalid_body":
       return t.errors.invalidBody;
     case "idempotency_conflict":

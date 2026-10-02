@@ -273,6 +273,22 @@ describe("after approval", () => {
     expect(screen.queryByText(t.inbox.posted.done)).toBeNull();
     expect(within(screen.getByRole("article")).queryByRole("button", { name: t.inbox.dismiss })).toBeNull();
   });
+  it("says so when the approved reply waits for the day's YouTube quota, and says plain waiting otherwise (BR-L-121)", () => {
+    const waiting = (wait_reason: string | null) =>
+      inbox({
+        comments: [comment(C1)],
+        intents: [{ id: I1, comment_id: C1, body: "Thanks for watching!", approved_by_email: "ann@a.test" }],
+        posts: [{ id: P1, comment_id: C1, status: "queued", wait_reason }],
+      });
+    const { unmount } = show(waiting("quota"));
+    expect(screen.getByText(t.inbox.posted.waitingQuota)).toBeTruthy();
+    expect(screen.queryByText(t.inbox.posted.waiting)).toBeNull();
+    expect(screen.queryByText(t.inbox.posted.done)).toBeNull();
+    unmount();
+    show(waiting(null));
+    expect(screen.getByText(t.inbox.posted.waiting)).toBeTruthy();
+    expect(screen.queryByText(t.inbox.posted.waitingQuota)).toBeNull();
+  });
   it("says posted once it is", () => {
     show(inbox({ comments: [comment(C1, { status: "replied" })], intents: [{ id: I1, comment_id: C1, body: "Thanks!" }], posts: [{ id: P1, comment_id: C1, status: "posted" }] }));
     expect(screen.getByText(t.inbox.posted.done)).toBeTruthy();

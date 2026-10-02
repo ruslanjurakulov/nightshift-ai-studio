@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -545,8 +546,11 @@ def test_approving_twice_files_one_intent_and_one_post(db):
     drain(db)
     cid, did = ready_draft(db)
     first = db.user(UA, "select public.approve_reply(%s, 'Thanks!')", [did])
-    second = db.user(UA, "select public.approve_reply(%s, 'A different text')", [did])
+    second = db.user(UA, "select public.approve_reply(%s, 'Thanks!')", [did])
     assert second["replay"] is True and second["intent_id"] == first["intent_id"] and second["post_id"] == first["post_id"]
+    # Other words are not a replay (BR-L-127): the second approver is told, and the filed text is left alone.
+    state, msg = db.refused("authenticated", UA, "select public.approve_reply(%s, 'A different text')", [did])
+    assert state == "NS409" and msg.startswith("already_approved"), (state, msg)
     assert db.one("select body from public.reply_intents where draft_id = %s", [did]) == "Thanks!"
     assert db.one("select count(*) from public.reply_intents where comment_id = %s", [cid]) == 1
     assert db.one("select count(*) from public.reply_posts where comment_id = %s", [cid]) == 1
@@ -1021,8 +1025,10 @@ def test_applying_the_migration_twice_changes_nothing(db):
     counts = db.su("select (select count(*) from public.inbox_comments), (select count(*) from public.reply_drafts), "
                    "(select count(*) from public.reply_intents), (select count(*) from public.reply_posts), "
                    "(select count(*) from public.inbox_events)")[0]
-    sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0081_comment_inbox.sql"])
-    sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0081_comment_inbox.sql"])
+    # Both files, in filename order, twice: 0090 replaces eight of 0081's functions, so 0081 alone would put the
+    # old bodies back (its header says so) and 0090 follows it every time.
+    for _ in range(2):
+        sec_db.apply_files(db.dsn, [sec_db.MIGRATIONS / "0081_comment_inbox.sql", sec_db.MIGRATIONS / "0090_inbox_followups.sql"])
     after = db.su("select (select count(*) from public.inbox_comments), (select count(*) from public.reply_drafts), "
                   "(select count(*) from public.reply_intents), (select count(*) from public.reply_posts), "
                   "(select count(*) from public.inbox_events)")[0]
@@ -1030,7 +1036,7 @@ def test_applying_the_migration_twice_changes_nothing(db):
     # Still enforced after the replay.
     with pytest.raises(psycopg.Error):
         db.su("update public.reply_intents set body = 'x'")
-    assert db.user(UA, "select public.approve_reply(%s, 'Another')", [did])["replay"] is True
+    assert db.user(UA, "select public.approve_reply(%s, 'Thanks!')", [did])["replay"] is True
     drain(db)
 
 
@@ -1047,6 +1053,18 @@ def test_the_database_cleaner_agrees_with_the_shared_table(db):
         assert bad == 0, (lo, hi, bad)
     for text in CLEANER["keep"]:
         assert db.one("select public.inbox_clean_text(%s, 200)", [text]) == text, text
+    # BR-L-120: blank-looking spaces read as one ordinary space, and only those is nothing.
+    for lo, hi in CLEANER["space"]:
+        bad = db.one("select count(*) from generate_series(%s::int, %s::int) cp "
+                     "where public.inbox_clean_text('a' || chr(cp) || 'b', 10) <> 'a b' "
+                     "or public.inbox_clean_text(repeat(chr(cp), 3), 10) <> '' "
+                     "or public.inbox_clean_text(E'\\n' || chr(cp) || chr(8203) || E'\\n', 10) <> ''", [lo, hi])
+        assert bad == 0, (lo, hi, bad)
+    # BR-L-143: a reply of only emoji selectors is empty, and a run of them reads as one.
+    for text in CLEANER["empty"]:
+        assert db.one("select public.inbox_clean_text(%s, 200)", [text]) == "", repr(text)
+    for text, expected in CLEANER["collapse"]:
+        assert db.one("select public.inbox_clean_text(%s, 200)", [text]) == expected, repr(text)
 
 
 def test_hidden_text_is_gone_from_a_stored_comment_and_from_what_a_person_approves(db):
@@ -1230,16 +1248,17 @@ def test_one_reply_per_youtube_comment_even_after_the_comment_row_is_gone(db):
     cid2 = db.one("select id from public.inbox_comments where youtube_comment_id = %s", [yid])
     assert cid2 != cid
     set_price(db, 3)
-    did2 = request(db, cid2, 3)["draft"]["id"]
-    db.svc("select public.claim_reply_draft(%s)", [WORKER])
-    db.svc("select public.store_reply_draft(%s, %s, 'A second reply')", [did2, WORKER])
-    state, msg = db.refused("authenticated", UA, "select public.approve_reply(%s, 'A second reply')", [did2])
+    # BR-L-125: the comment is found by its YouTube id too, so no draft is offered, quoted or paid for.
+    before = account(db)
+    q = db.user(UA, "select public.quote_reply_draft(%s)", [cid2])
+    assert q["status"] == "unavailable" and q["reason"] == "already_replied", q
+    state, msg = db.refused("authenticated", UA, "select public.request_reply_draft(%s, 3, %s)", [cid2, key()])
     assert state == "NS409" and msg.startswith("already_replied"), (state, msg)
+    assert account(db) == before and db.one("select count(*) from public.reply_drafts where comment_id = %s", [cid2]) == 0
     with pytest.raises(psycopg.Error) as e:
         db.su("insert into public.reply_intents (channel_id, comment_id, draft_id, video_id, youtube_comment_id, body, edited, approved_by) "
               "values ('chan-a', gen_random_uuid(), gen_random_uuid(), 'vid-a', %s, 'dup', false, %s)", [yid, UA])
     assert e.value.sqlstate == "23505"
-    db.user(UA, "select public.discard_reply_draft(%s)", [did2])
 
 
 def test_retention_prunes_comments_with_only_finished_drafts_and_keeps_live_ones(db):
@@ -1279,3 +1298,400 @@ def test_a_comment_turned_flagged_after_its_draft_is_ready_cannot_be_approved(db
     state, msg = db.refused("authenticated", UA, "select public.approve_reply(%s, 'Thanks!')", [did])
     assert state == "NS400" and msg.startswith("not_draftable"), (state, msg)
     assert db.one("select count(*) from public.reply_intents where draft_id = %s", [did]) == 0
+
+
+# ── the follow-up round (Lens-20, BR-L-120 .. BR-L-128; migration 0090) ─────
+
+def test_a_reply_of_only_blank_looking_characters_cannot_be_approved_or_filed_by_an_edit(db):
+    # BR-L-120: an em-space, a no-break space, an ideographic space and the invisible fillers read as nothing.
+    cid, did = ready_draft(db)
+    for body in (" ", "  ", "　​", " ㅤ ", "᠋឴឵", "\U0001d173\U0001d17a",
+                 "\U000e0041\U000e0042", "\n   \n"):
+        state, msg = db.refused("authenticated", UA, "select public.approve_reply(%s, %s)", [did, body])
+        assert state == "NS400" and msg.startswith("invalid_body"), (body, state, msg)
+        state, msg = db.refused("authenticated", UA, "select public.edit_reply_draft(%s, %s)", [did, body])
+        assert state == "NS400" and msg.startswith("invalid_body"), (body, state, msg)
+    assert db.one("select count(*) from public.reply_intents where draft_id = %s", [did]) == 0
+    assert db.one("select status from public.reply_drafts where id = %s", [did]) == "ready"
+    # Real words around them are kept, the spaces read as spaces.
+    out = db.user(UA, "select public.approve_reply(%s, %s)", [did, " Thanks a lot⁠!　"])
+    assert out["replay"] is False
+    assert db.one("select body from public.reply_intents where draft_id = %s", [did]) == "Thanks a lot!"
+    drain(db)
+
+
+def test_a_comment_that_cleans_to_nothing_is_not_stored(db):
+    # BR-L-124 (the worker drops it before the classifier; the database never keeps it either).
+    items = [{"youtube_comment_id": "UgxBlank0000001", "text": "​⁠  \U000e0041", "published_at": "2026-09-30T10:00:00Z"},
+             {"youtube_comment_id": "UgxBlank0000002", "text": "　　", "published_at": "2026-09-30T10:00:00Z"}]
+    assert db.svc("select public.store_inbox_comments('chan-a', 'vid-a', %s::jsonb)", [json.dumps(items)]) == 0
+    assert db.one("select count(*) from public.inbox_comments where youtube_comment_id like 'UgxBlank%%'") == 0
+
+
+def test_a_comment_the_classifier_cannot_answer_is_offered_three_times_then_rests_a_day(db):
+    # BR-L-124: a paid call that never succeeds is not made for ever. BR-L-142: only a try the worker really made
+    # counts, and three tries give the comment a day's rest, not a life sentence.
+    yid = f"UgxTries{uuid.uuid4().hex[:10]}"
+    item = [{"youtube_comment_id": yid, "text": "A comment nobody can classify", "published_at": "2026-09-30T10:00:00Z",
+             "attempted": True}]
+    offered = []
+    for _ in range(5):
+        offered.append(db.svc("select public.inbox_comments_to_classify('chan-a', %s::text[])", [[yid]]))
+        db.svc("select public.store_inbox_comments('chan-a', 'vid-a', %s::jsonb)", [json.dumps(item)])
+    assert offered == [[yid], [yid], [yid], [], []], offered
+    assert db.one("select classify_attempts from public.inbox_comments where youtube_comment_id = %s", [yid]) == 3
+    # The count is bounded by its check.
+    with pytest.raises(psycopg.Error):
+        db.su("update public.inbox_comments set classify_attempts = 4 where youtube_comment_id = %s", [yid])
+    # A day later it is offered again, and a try that fails starts the count again at one.
+    db.su("update public.inbox_comments set classify_attempted_at = now() - interval '25 hours' where youtube_comment_id = %s", [yid])
+    assert db.svc("select public.inbox_comments_to_classify('chan-a', %s::text[])", [[yid]]) == [yid]
+    db.svc("select public.store_inbox_comments('chan-a', 'vid-a', %s::jsonb)", [json.dumps(item)])
+    assert db.one("select classify_attempts from public.inbox_comments where youtube_comment_id = %s", [yid]) == 1
+    assert db.svc("select public.inbox_comments_to_classify('chan-a', %s::text[])", [[yid]]) == [yid]
+    # An answer that does come (from anywhere) is still taken.
+    item[0]["category"] = "question"
+    db.svc("select public.store_inbox_comments('chan-a', 'vid-a', %s::jsonb)", [json.dumps(item)])
+    assert db.one("select category from public.inbox_comments where youtube_comment_id = %s", [yid]) == "question"
+
+
+def test_visits_that_never_reached_the_classifier_do_not_use_up_its_tries(db):
+    # BR-L-142: the worker stores a comment it did not (or could not) classify without saying "attempted"
+    # (no classifier configured, the comment was already known): that is not a try.
+    yid = f"UgxQuiet{uuid.uuid4().hex[:10]}"
+    item = [{"youtube_comment_id": yid, "text": "Waiting for a classifier", "published_at": "2026-09-30T10:00:00Z"}]
+    for _ in range(6):
+        db.svc("select public.store_inbox_comments('chan-a', 'vid-a', %s::jsonb)", [json.dumps(item)])
+    assert db.one("select classify_attempts from public.inbox_comments where youtube_comment_id = %s", [yid]) == 0
+    assert db.svc("select public.inbox_comments_to_classify('chan-a', %s::text[])", [[yid]]) == [yid]
+    # A provider outage of fifteen minutes: three visits that did reach the classifier and got nothing back leave
+    # the comment rested, and the next day it is offered again.
+    item[0]["attempted"] = True
+    for _ in range(3):
+        db.svc("select public.store_inbox_comments('chan-a', 'vid-a', %s::jsonb)", [json.dumps(item)])
+    assert db.svc("select public.inbox_comments_to_classify('chan-a', %s::text[])", [[yid]]) == []
+    db.su("update public.inbox_comments set classify_attempted_at = classify_attempted_at - interval '1 day 1 hour' "
+          "where youtube_comment_id = %s", [yid])
+    assert db.svc("select public.inbox_comments_to_classify('chan-a', %s::text[])", [[yid]]) == [yid]
+
+
+def test_a_platform_admin_who_is_not_a_member_cannot_press_a_priced_draft_against_a_customers_balance(db):
+    # BR-L-126: the request needs a real membership in a customer organization, like approve and retry.
+    drain(db)
+    set_price(db, 3)
+    cid = new_comment(db)
+    before = account(db)
+    state, msg = db.refused("authenticated", UOP, "select public.request_reply_draft(%s, 3, %s)", [cid, key()])
+    assert state == "42501", (state, msg)
+    assert account(db) == before and db.one("select count(*) from public.reply_drafts where comment_id = %s", [cid]) == 0
+    # They still read and quote; the quote says they may not start.
+    q = db.user(UOP, "select public.quote_reply_draft(%s)", [cid])
+    assert q["may_start"] is False and q["status"] == "priced", q
+    # An unbound invite is an offer, not a membership.
+    db.su("insert into public.org_members (org_id, user_id, email, role) values (%s, null, %s, 'editor')", [ORG_A, EMAIL[UX]])
+    try:
+        assert db.refused("authenticated", UX, "select public.request_reply_draft(%s, 3, %s)", [cid, key()])[0] == "P0002"
+    finally:
+        db.su("delete from public.org_members where org_id = %s and email = %s", [ORG_A, EMAIL[UX]])
+    # A member bound to their account does.
+    out = request(db, cid, 3)
+    assert out["replay"] is False and float(out["credits_held"]) == 3
+    assert db.user(UA, "select public.quote_reply_draft(%s)", [new_comment(db)])["may_start"] is True
+    claim = db.svc("select public.claim_reply_draft(%s)", [WORKER])
+    assert claim["draft_id"] == out["draft"]["id"]
+    db.svc("select public.store_reply_draft(%s, %s, 'A draft')", [claim["draft_id"], WORKER])
+    db.user(UA, "select public.discard_reply_draft(%s)", [claim["draft_id"]])
+    drain(db)
+
+
+def test_a_second_approver_with_other_words_is_told_not_answered_ok(db):
+    # BR-L-127: two editors, two texts: the second gets a clear refusal; the same words stay a replay.
+    drain(db)
+    cid, did = ready_draft(db)
+    db.su("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, %s, 'editor')", [ORG_A, UX, EMAIL[UX]])
+    try:
+        first = db.user(UA, "select public.approve_reply(%s, 'First editor words')", [did])
+        state, msg = db.refused("authenticated", UX, "select public.approve_reply(%s, 'Second editor words')", [did])
+        assert state == "NS409" and msg.startswith("already_approved"), (state, msg)
+        same = db.user(UX, "select public.approve_reply(%s, 'First editor words')", [did])
+        assert same["replay"] is True and same["intent_id"] == first["intent_id"]
+        assert db.one("select body from public.reply_intents where draft_id = %s", [did]) == "First editor words"
+        assert str(db.one("select approved_by from public.reply_intents where draft_id = %s", [did])) == UA
+        assert db.one("select count(*) from public.reply_intents where comment_id = %s", [cid]) == 1
+        # Words that differ only by what is not seen are the same words.
+        assert db.user(UX, "select public.approve_reply(%s, %s)", [did, "​First editor words　"])["replay"] is True
+    finally:
+        db.su("delete from public.org_members where org_id = %s and user_id = %s", [ORG_A, UX])
+    drain(db)
+
+
+def test_an_organization_cannot_use_more_than_its_share_of_the_days_quota(db):
+    # BR-L-121: 25% of the ceiling by default; one customer's approvals do not use the whole platform's day.
+    drain(db)
+    db.su("delete from public.inbox_quota_ledger")
+    db.su("update public.inbox_settings set daily_quota_ceiling = 2000, org_share_percent = 25")
+    assert db.one("select public.inbox_org_quota_left('chan-a')") == 500      # internal: the owner reads it, no API role
+    assert db.svc("select public.inbox_channel_quota_left('chan-a')") == 500
+    # A is nearly at its share, B has spent nothing.
+    db.svc("select public.record_inbox_quota('chan-a', 450)")
+    db.svc("select public.record_inbox_quota('chan-a2', 10)")      # another channel of the same organization counts too
+    assert db.one("select public.inbox_org_quota_left('chan-a')") == 40
+    assert db.one("select public.inbox_org_quota_left('chan-b')") == 500
+    assert db.svc("select public.inbox_quota_remaining()") == 1540
+    assert db.svc("select public.inbox_channel_quota_left('chan-a')") == 40
+    assert db.svc("select public.inbox_channel_quota_left('chan-b')") == 500
+
+    db.su("update public.channel_token_refs set scopes = %s where channel_id = 'chan-b'", [[UPLOAD, FORCE_SSL]])
+    try:
+        a_cid, a_did = ready_draft(db)
+        db.user(UA, "select public.approve_reply(%s, 'A is waiting')", [a_did])
+        # B's own editor (its owner) asks for and approves its draft.
+        b_cid = new_comment(db, "chan-b", "vid-b")
+        b_did = request(db, b_cid, 3, uid=UB)["draft"]["id"]
+        claim = db.svc("select public.claim_reply_draft(%s)", [WORKER])
+        assert claim["draft_id"] == b_did
+        db.svc("select public.store_reply_draft(%s, %s, 'A draft for B')", [b_did, WORKER])
+        db.user(UB, "select public.approve_reply(%s, 'B goes first')", [b_did])
+        a_post = db.one("select id from public.reply_posts where comment_id = %s", [a_cid])
+        # A's post is the older one, but A has used its share: B's reply is the one claimed, and A's says why it waits.
+        claim = db.svc("select public.claim_reply_post(%s)", [WORKER])
+        assert claim and claim["body"] == "B goes first", claim
+        assert db.one("select status from public.reply_posts where id = %s", [a_post]) == "queued"
+        assert db.one("select wait_reason from public.reply_posts where id = %s", [a_post]) == "quota"
+        assert db.svc("select public.claim_reply_post(%s)", [WORKER]) is None
+        db.svc("select public.finish_reply_post(%s, %s, true, 'UgxReply09001.1', null, null, 51)", [claim["post_id"], WORKER])
+        assert db.one("select wait_reason from public.reply_posts where id = %s", [claim["post_id"]]) is None
+        # The customer sees it on the card's row (RLS by channel), and only their own.
+        assert db.act("authenticated", UA, "select wait_reason from public.reply_posts where id = %s", [a_post])[0][0] == "quota"
+        assert db.act("authenticated", UB, "select count(*) from public.reply_posts where id = %s", [a_post])[0][0] == 0
+        # With a larger share it goes out and the waiting mark is gone.
+        assert db.refused("authenticated", UA, "select public.set_inbox_org_share(50)")[0] == "42501"
+        assert db.user(UOP, "select public.set_inbox_org_share(50)")["org_share_percent"] == 50
+        claim = db.svc("select public.claim_reply_post(%s)", [WORKER])
+        assert claim and claim["body"] == "A is waiting", claim
+        assert db.one("select wait_reason from public.reply_posts where id = %s", [a_post]) is None
+        db.svc("select public.finish_reply_post(%s, %s, true, 'UgxReply09002.1', null, null, 51)", [claim["post_id"], WORKER])
+    finally:
+        db.su("update public.channel_token_refs set scopes = %s where channel_id = 'chan-b'", [[UPLOAD]])
+        db.su("update public.inbox_settings set daily_quota_ceiling = 2000, org_share_percent = 25")
+        db.su("delete from public.inbox_quota_ledger")
+    drain(db)
+
+
+def test_the_platform_ceiling_still_holds_and_says_so_on_the_waiting_posts(db):
+    # BR-L-121: the ceiling is kept; the posts it holds back are marked, and the mark goes when they are claimed.
+    drain(db)
+    db.su("delete from public.inbox_quota_ledger")
+    cid, did = ready_draft(db)
+    out = db.user(UA, "select public.approve_reply(%s, 'Waiting for the ceiling')", [did])
+    try:
+        db.user(UOP, "select public.set_inbox_quota_ceiling(100)")
+        db.svc("select public.record_inbox_quota('chan-b', 60)")   # someone else's reads used most of the platform's day
+        assert db.svc("select public.claim_reply_post(%s)", [WORKER]) is None
+        assert db.one("select wait_reason from public.reply_posts where id = %s", [out["post_id"]]) == "quota"
+        assert db.one("select status from public.reply_posts where id = %s", [out["post_id"]]) == "queued"
+        # The platform has 40 left, the organization's share of a ceiling of 100 is 25: the lower one holds ...
+        assert db.one("select least(public.inbox_quota_remaining(), public.inbox_org_quota_left('chan-a'))") == 25
+        # ... and for the worker's reads one reply's worth is kept back while this reply waits (BR-L-140).
+        assert db.svc("select public.inbox_channel_quota_left('chan-a')") == 0
+        db.user(UOP, "select public.set_inbox_quota_ceiling(2000)")
+        claim = db.svc("select public.claim_reply_post(%s)", [WORKER])
+        assert claim and claim["post_id"] == out["post_id"]
+        assert db.one("select wait_reason from public.reply_posts where id = %s", [out["post_id"]]) is None
+        db.svc("select public.finish_reply_post(%s, %s, true, 'UgxReply09003.1', null, null, 51)", [claim["post_id"], WORKER])
+    finally:
+        db.su("update public.inbox_settings set daily_quota_ceiling = 2000, org_share_percent = 25")
+        db.su("delete from public.inbox_quota_ledger")
+    drain(db)
+
+
+def test_the_share_is_bounded_and_set_only_by_a_platform_admin(db):
+    for who in (UA, UB, UAV, UX, UD):
+        assert db.refused("authenticated", who, "select public.set_inbox_org_share(30)")[0] == "42501"
+    assert db.refused("anon", None, "select public.set_inbox_org_share(30)")[0] == "42501"
+    for bad in (0, -5, 101):
+        assert db.refused("authenticated", UOP, "select public.set_inbox_org_share(%s)", [bad])[0] == "NS400"
+    assert db.refused("authenticated", UOP, "select public.set_inbox_org_share(null)")[0] == "NS400"
+    with pytest.raises(psycopg.Error):
+        db.su("update public.inbox_settings set org_share_percent = 0")
+    # The two quota readers are the worker's, not the browser's.
+    for fn in ("inbox_org_quota_left", "inbox_channel_quota_left"):
+        for role, uid in (("anon", None), ("authenticated", UA), ("authenticated", UOP)):
+            assert db.refused(role, uid, f"select public.{fn}('chan-a')")[0] == "42501", (fn, role)
+    assert db.act("authenticated", UA, "select count(*) from public.inbox_settings")[0][0] == 0
+
+
+def test_a_quota_wait_is_only_ever_quota_and_a_failed_post_carries_no_wait(db):
+    drain(db)
+    cid, did = ready_draft(db, channel="chan-rc", video="vid-rc")
+    out = db.user(UA, "select public.approve_reply(%s, 'Thanks!')", [did])
+    with pytest.raises(psycopg.Error):
+        db.su("update public.reply_posts set wait_reason = 'whatever' where id = %s", [out["post_id"]])
+    db.su("update public.reply_posts set wait_reason = 'quota' where id = %s", [out["post_id"]])
+    db.su("update public.channel_token_refs set revoked_at = now(), vault_secret_id = null where channel_id = 'chan-rc'")
+    try:
+        assert db.svc("select public.claim_reply_post(%s)", [WORKER]) is None
+        row = db.su("select status, error_code, wait_reason from public.reply_posts where id = %s", [out["post_id"]])[0]
+        assert row == ("failed", "channel_not_ready", None), row
+    finally:
+        secret = db.one("select vault.create_secret('t-rc4', 'n-rc4')")
+        db.su("update public.channel_token_refs set revoked_at = null, vault_secret_id = %s where channel_id = 'chan-rc'", [secret])
+
+
+# ── the second review round (Lens-22, BR-L-140 .. BR-L-144) ─────────────────
+
+def _age_ledger(db, minutes):
+    db.su("update public.inbox_quota_ledger set at = at - make_interval(mins => %s)", [minutes])
+
+
+def _starvation_run(db, gate, cycles=300):
+    """The worker's two gates, one 5-minute cycle at a time: a reply is claimed first (the worker posts
+    before it reads), then the read step spends 6 units when `gate` lets it. Returns the cycle a reply
+    went out in, or None. The ledger is aged 5 minutes per cycle."""
+    for n in range(cycles):
+        _age_ledger(db, 5)
+        claim = db.svc("select public.claim_reply_post(%s)", [WORKER])
+        if claim:
+            db.svc("select public.finish_reply_post(%s, %s, true, %s, null, null, 51)",
+                   [claim["post_id"], WORKER, f"UgxReply{uuid.uuid4().hex[:8]}.{n}"])
+            return n
+        if gate() >= 20:
+            db.svc("select public.record_inbox_quota('chan-a', 6)")
+    return None
+
+
+def test_reads_cannot_starve_an_organizations_replies_inside_its_share(db):
+    # BR-L-140: reads (gate 20) outranked replies (gate 60), so an organization whose reads reached its share first
+    # got no reply for ever. Replies now come first: reads only use what is left after the reply waiting.
+    drain(db)
+    db.su("update public.inbox_settings set daily_quota_ceiling = 2000, org_share_percent = 25")
+
+    def seed():
+        db.su("delete from public.inbox_quota_ledger")
+        # 81 reads of 6 units spread over the last day: the share (500) is down to 14.
+        db.su("insert into public.inbox_quota_ledger (at, kind, channel_id, units) "
+              "select now() - make_interval(mins => g * 17), 'sync', 'chan-a', 6 from generate_series(0, 80) g")
+        assert db.one("select public.inbox_org_left(public.channel_org('chan-a'))") == 14
+
+    try:
+        _, did = ready_draft(db)
+        out = db.user(UA, "select public.approve_reply(%s, 'A reply that must not starve')", [did])
+        # The old rule (reads while 20 units are left, replies at 60) reproduces the starvation ...
+        seed()
+        old_gate = lambda: db.one("select public.inbox_org_left(public.channel_org('chan-a'))")
+        assert _starvation_run(db, old_gate) is None, "the scenario no longer reproduces the starvation it guards"
+        assert db.one("select status from public.reply_posts where id = %s", [out["post_id"]]) == "queued"
+        # ... the worker's gate now (inbox_channel_quota_left) lets the reply through within the day.
+        seed()
+        went_out = _starvation_run(db, lambda: db.svc("select public.inbox_channel_quota_left('chan-a')"), cycles=288)
+        assert went_out is not None, "no reply in 24 hours"
+        assert db.one("select status from public.reply_posts where id = %s", [out["post_id"]]) == "posted"
+    finally:
+        db.su("update public.inbox_settings set daily_quota_ceiling = 2000, org_share_percent = 25")
+        db.su("delete from public.inbox_quota_ledger")
+    drain(db)
+
+
+def test_reads_leave_room_for_a_waiting_reply_but_only_for_a_reply_the_quota_could_let_through(db):
+    drain(db)
+    db.su("delete from public.inbox_quota_ledger")
+    db.su("update public.inbox_settings set daily_quota_ceiling = 2000, org_share_percent = 25")
+    try:
+        # Nothing waits: reads may use the share down to nothing.
+        assert db.svc("select public.inbox_channel_quota_left('chan-a')") == 500
+        _, did = ready_draft(db)
+        db.user(UA, "select public.approve_reply(%s, 'Waiting')", [did])
+        # A reply of this organization waits: reads keep 60 back, for the organization and for the platform.
+        assert db.svc("select public.inbox_channel_quota_left('chan-a')") == 440
+        # ... and the other organization's reads keep the platform's 60 back, not its own share.
+        assert db.svc("select public.inbox_channel_quota_left('chan-b')") == 500
+        db.su("update public.inbox_settings set daily_quota_ceiling = 400")
+        assert db.svc("select public.inbox_channel_quota_left('chan-b')") == min(400 - 60, 100)
+        # A reply whose organization has used its share is not waiting for the platform: no reserve for it.
+        db.su("update public.inbox_settings set daily_quota_ceiling = 2000")
+        db.svc("select public.record_inbox_quota('chan-a2', 480)")
+        assert db.one("select public.inbox_org_left(public.channel_org('chan-a'))") == 20
+        assert db.svc("select public.inbox_channel_quota_left('chan-b')") == 500
+        assert db.svc("select public.inbox_channel_quota_left('chan-a')") == 0
+    finally:
+        db.su("update public.inbox_settings set daily_quota_ceiling = 2000, org_share_percent = 25")
+        db.su("delete from public.inbox_quota_ledger")
+    drain(db)
+
+
+def _timed_claim(db):
+    with psycopg.connect(db.dsn, autocommit=False) as c:
+        c.execute("select set_config('request.jwt.claims', %s, true)", [json.dumps({"role": "service_role"})])
+        c.execute("set local role service_role")
+        t0 = time.perf_counter()
+        row = c.execute("select public.claim_reply_post(%s)", [WORKER]).fetchone()[0]
+        took = time.perf_counter() - t0
+        c.commit()
+    return row, took
+
+
+def test_a_backlog_of_waiting_posts_is_skipped_in_one_pass_not_one_post_at_a_time(db):
+    # BR-L-141: 2000 waiting posts of an organization that has used its share cost the worker well under 100 ms
+    # per claim (they were cubic: seconds at 1000), and the next organization's reply is still found.
+    drain(db)
+    db.su("delete from public.inbox_quota_ledger")
+    db.su("update public.inbox_settings set daily_quota_ceiling = 2000, org_share_percent = 25")
+    db.su("update public.channel_token_refs set scopes = %s where channel_id = 'chan-b'", [[UPLOAD, FORCE_SSL]])
+    try:
+        db.svc("select public.record_inbox_quota('chan-a2', 480)")      # organization A: 20 of its 500 left
+        db.su("with i as (insert into public.reply_intents (channel_id, comment_id, draft_id, video_id, youtube_comment_id, body, edited, approved_by) "
+              "  select 'chan-a2', gen_random_uuid(), gen_random_uuid(), 'vid-a2', 'UgxPerf' || g, 'Thanks', false, %s::uuid "
+              "    from generate_series(1, 2000) g returning id, channel_id, comment_id) "
+              "insert into public.reply_posts (intent_id, channel_id, comment_id, created_at) "
+              "  select id, channel_id, comment_id, now() - interval '1 day' from i", [UA])
+        # Organization B's reply is the newest of all.
+        set_price(db, 3)
+        b_cid = new_comment(db, "chan-b", "vid-b")
+        b_did = request(db, b_cid, 3, uid=UB)["draft"]["id"]
+        claim = db.svc("select public.claim_reply_draft(%s)", [WORKER])
+        assert claim["draft_id"] == b_did
+        db.svc("select public.store_reply_draft(%s, %s, 'A draft for B')", [b_did, WORKER])
+        db.user(UB, "select public.approve_reply(%s, 'B is behind two thousand')", [b_did])
+
+        row, took = _timed_claim(db)
+        assert row and row["body"] == "B is behind two thousand", row
+        print(f"claim with 2000 waiting posts: {took * 1000:.1f} ms")
+        assert took < 0.1, f"claim took {took:.3f}s with 2000 waiting posts"
+        db.svc("select public.finish_reply_post(%s, %s, true, 'UgxReply09101.1', null, null, 51)", [row["post_id"], WORKER])
+        assert db.one("select count(*) from public.reply_posts where channel_id = 'chan-a2' and status = 'queued' "
+                      "and wait_reason = 'quota'") == 2000
+        marked = db.one("select max(updated_at) from public.reply_posts where channel_id = 'chan-a2'")
+        # Nothing claimable but the backlog of an organization with no share left: still quick, still nothing,
+        # and the marks are already there, so a second pass changes no row.
+        row, took = _timed_claim(db)
+        print(f"steady-state claim with 2000 waiting posts: {took * 1000:.1f} ms")
+        assert row is None and took < 0.1, (row, took)
+        assert db.one("select max(updated_at) from public.reply_posts where channel_id = 'chan-a2'") == marked
+    finally:
+        db.su("update public.reply_posts set status = 'failed', error_code = 'platform_error', wait_reason = null, "
+              "finished_at = now() where channel_id = 'chan-a2' and status = 'queued'")
+        db.su("update public.channel_token_refs set scopes = %s where channel_id = 'chan-b'", [[UPLOAD]])
+        db.su("update public.inbox_settings set daily_quota_ceiling = 2000, org_share_percent = 25")
+        db.su("delete from public.inbox_quota_ledger")
+    drain(db)
+
+
+def test_a_claim_looks_at_a_bounded_number_of_posts(db):
+    # BR-L-141: posts that fail their readiness check leave the queue 25 to a call, so one call never works through a flood.
+    drain(db)
+    db.su("update public.channel_token_refs set revoked_at = now(), vault_secret_id = null where channel_id = 'chan-rev'")
+    try:
+        db.su("with i as (insert into public.reply_intents (channel_id, comment_id, draft_id, video_id, youtube_comment_id, body, edited, approved_by) "
+              "  select 'chan-rev', gen_random_uuid(), gen_random_uuid(), 'vid-rev', 'UgxFlood' || g, 'Thanks', false, %s::uuid "
+              "    from generate_series(1, 60) g returning id, channel_id, comment_id) "
+              "insert into public.reply_posts (intent_id, channel_id, comment_id) select id, channel_id, comment_id from i", [UA])
+        assert db.svc("select public.claim_reply_post(%s)", [WORKER]) is None
+        assert db.one("select count(*) from public.reply_posts where channel_id = 'chan-rev' and status = 'failed' "
+                      "and error_code = 'channel_not_ready'") == 25
+        for _ in range(2):
+            assert db.svc("select public.claim_reply_post(%s)", [WORKER]) is None
+        assert db.one("select count(*) from public.reply_posts where channel_id = 'chan-rev' and status = 'queued'") == 0
+    finally:
+        db.su("update public.reply_posts set status = 'failed', error_code = 'platform_error', finished_at = now() "
+              "where channel_id = 'chan-rev' and status = 'queued'")
+    drain(db)
