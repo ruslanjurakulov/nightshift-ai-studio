@@ -465,3 +465,8 @@ sec_router_0075.extend(TABLES, FUNCTIONS)
 import sec_scene_regen_0076  # noqa: E402
 
 sec_scene_regen_0076.extend(TABLES, FUNCTIONS)
+
+# Migration 0080 (multi-clip repurposing): tests/security/sec_repurpose_0080.py
+import sec_repurpose_0080  # noqa: E402
+
+sec_repurpose_0080.extend(TABLES, FUNCTIONS)

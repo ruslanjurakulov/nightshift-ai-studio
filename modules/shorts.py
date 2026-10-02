@@ -34,9 +34,11 @@ video has actually published.
 from __future__ import annotations
 
 import logging
+import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -222,5 +224,60 @@ def render_short(
             try:
                 if handle is not None:
                     handle.close()
+            except Exception:
+                pass
+
+
+# ── any window of a finished master (migration 0080, modules/repurpose.py) ──
+#
+# ``render_short`` cuts the hook with moviepy. Repurposing cuts several windows
+# of the MASTER file on the queue worker with ffmpeg, in one pass each: seek to
+# the window, re-encode that stretch to the same vertical frame (the whole
+# frame scaled into the short's width on the project's own background colour,
+# nothing cropped, so burnt-in subtitles survive), and stop at the window's
+# end. The window is whole scenes decided elsewhere; this function only cuts.
+
+
+def window_command(exe: str, src: Path, dst: Path, start_s: float, end_s: float, info) -> List[str]:
+    """The ffmpeg argv that cuts ``[start_s, end_s]`` of ``src`` into a 1080x1920
+    clip. ``info`` is the source's probe (``social_publish.VideoInfo``): a
+    portrait source is fitted by height, a landscape one by width. ``-2`` keeps
+    the other side even, as libx264 requires. Seeking before ``-i`` with a
+    re-encode is frame-accurate."""
+    duration = float(end_s) - float(start_s)
+    if duration <= 0:
+        raise ValueError("a window must end after it starts")
+    portrait = bool(getattr(info, "width", None) and getattr(info, "height", None)
+                    and info.height > info.width)
+    fit = f"scale=-2:{SHORT_HEIGHT}" if portrait else f"scale={SHORT_WIDTH}:-2"
+    colour = "0x%02X%02X%02X" % BACKGROUND_RGB
+    vf = f"{fit},pad={SHORT_WIDTH}:{SHORT_HEIGHT}:(ow-iw)/2:(oh-ih)/2:color={colour},setsar=1"
+    return [
+        exe, "-hide_banner", "-nostdin", "-y", "-loglevel", "error",
+        "-ss", f"{float(start_s):.3f}", "-i", str(src), "-t", f"{duration:.3f}",
+        "-map", "0:v:0", "-map", "0:a:0?",
+        "-vf", vf, "-r", "30",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "21", "-profile:v", "high", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart",
+        str(dst),
+    ]
+
+
+def run_ffmpeg(argv: List[str], heartbeat: Callable[[], None], *, timeout_s: float = 30 * 60,
+               beat_s: float = 30.0) -> int:
+    """Run ffmpeg, beating ``heartbeat`` while it works. Raises TimeoutError
+    (after killing it) when it runs past ``timeout_s``."""
+    proc = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    started = time.monotonic()
+    while True:
+        try:
+            return proc.wait(timeout=beat_s)
+        except subprocess.TimeoutExpired:
+            if time.monotonic() - started > timeout_s:
+                proc.kill()
+                proc.wait()
+                raise TimeoutError("ffmpeg ran past its limit") from None
+            try:
+                heartbeat()
             except Exception:
                 pass
