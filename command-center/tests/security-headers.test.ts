@@ -60,7 +60,7 @@ describe("security headers (BR-S-007)", () => {
     expect(h["x-content-type-options"]).toBe("nosniff");
   });
 
-  it("sets no enforcing content policy beyond frame-ancestors (BR-S-008 is separate)", async () => {
+  it("sets no content policy beyond frame-ancestors here (the per-request one is middleware's, tests/csp.test.ts)", async () => {
     const rules = (await nextConfig.headers?.()) ?? [];
     for (const rule of rules) {
       for (const h of rule.headers) {

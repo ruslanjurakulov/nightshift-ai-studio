@@ -65,7 +65,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -133,6 +133,8 @@ jobs:
           WEBENV_TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
           WEBENV_SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           WEBENV_MEDIA_URL_SECRET: ${{ secrets.MEDIA_URL_SECRET }}
+          WEBENV_CSP_MODE: ${{ vars.CSP_MODE }}
+          WEBENV_CSP_REPORT_URI: ${{ vars.CSP_REPORT_URI }}
         run: |
           set -euo pipefail
 
