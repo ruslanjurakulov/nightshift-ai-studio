@@ -137,34 +137,42 @@ begin
 end
 $$;
 
--- Runs as the caller. The browser roles are held to the rules; the definer
--- functions below (they run as the function's owner), the service role and the
--- SQL editor are not, and say so in their own checks.
+-- Runs as the CALLER (security invoker), on purpose: inside a definer function
+-- current_user is the function's owner, which is how the definer functions
+-- below (and the service role and the SQL editor) are told apart from the
+-- browser roles, which are held to the rules. It calls nothing but
+-- is_org_member, which the browser roles can already execute, so the control
+-- list is repeated here and pinned equal to channel_admin_controls() by
+-- tests/test_channel_config_migration.py.
 create or replace function public.channels_config_guard() returns trigger
   language plpgsql set search_path = public, pg_temp as $$
 declare
-  changed text[];
-  org     uuid;
+  controls constant text[] := array['publish_gate', 'require_two_person_publish', 'storyboard_review', 'auto_publish'];
+  k        text;
+  changed  text[] := '{}';
+  org      uuid;
+  o        jsonb;
+  n        jsonb := case when jsonb_typeof(new.agent_config) = 'object' then new.agent_config else '{}'::jsonb end;
 begin
   if current_user not in ('authenticated', 'anon') then
     return new;
   end if;
   if tg_op = 'INSERT' then
-    changed := public.channel_controls_changed('{}'::jsonb, new.agent_config);
-    if new.auto_publish is true then
-      changed := changed || 'auto_publish';
-    end if;
+    o := '{}'::jsonb;
     org := new.org_id;
+    if new.auto_publish is true then
+      changed := changed || 'auto_publish'::text;
+    end if;
     if coalesce(new.credential_ref, '{}'::jsonb) <> '{}'::jsonb or new.status is distinct from 'PAUSED' then
       raise exception 'a channel is created paused with no credential: use create_channel()'
         using errcode = '42501';
     end if;
   else
-    changed := public.channel_controls_changed(old.agent_config, new.agent_config);
-    if new.auto_publish is distinct from old.auto_publish then
-      changed := changed || 'auto_publish';
-    end if;
+    o := case when jsonb_typeof(old.agent_config) = 'object' then old.agent_config else '{}'::jsonb end;
     org := old.org_id;
+    if new.auto_publish is distinct from old.auto_publish then
+      changed := changed || 'auto_publish'::text;
+    end if;
     if new.credential_ref is distinct from old.credential_ref
        or new.status is distinct from old.status
        or new.channel_id is distinct from old.channel_id then
@@ -172,6 +180,11 @@ begin
         using errcode = '42501';
     end if;
   end if;
+  foreach k in array controls loop
+    if (o -> k) is distinct from (n -> k) and not k = any (changed) then
+      changed := changed || k;
+    end if;
+  end loop;
   if cardinality(changed) > 0 and not public.is_org_member(org, 'admin') then
     raise exception 'only an administrator of this organization may change: %', array_to_string(changed, ', ')
       using errcode = '42501';

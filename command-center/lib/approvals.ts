@@ -34,7 +34,16 @@ export function canRequest(role: Role): boolean {
   return atLeast(role, "editor");
 }
 
-/** Whether `role` may flip a channel's two-person-publish flag (editor and up). */
+/**
+ * Whether `role` may flip a channel's two-person-publish flag (admin and up).
+ *
+ * It was editor and up. An editor could turn off the very requirement that
+ * holds a publish for a second person (Breach wave 7, BR-G-003), so migration
+ * 0086 makes it, the publish gate, storyboard review and auto publish an
+ * administrator's: a trigger on `channels` refuses the write from anyone else,
+ * and this only hides a switch the database would refuse. Opening a request is
+ * still an editor's (`canRequest`).
+ */
 export function canToggleRequirement(role: Role): boolean {
-  return atLeast(role, "editor");
+  return atLeast(role, "admin");
 }

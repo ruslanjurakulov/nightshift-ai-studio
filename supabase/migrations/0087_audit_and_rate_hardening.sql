@@ -13,17 +13,18 @@
 --   `action` must be one the application writes (audit_action_allowed: the
 --   list below, pinned against the Command Center's own logAudit calls by
 --   tests/test_audit_actions.py), `target` <= 200 characters and `detail` an
---   object <= 4 KiB. The definer functions that audit their own work (api
---   keys, 0031 / 0040 / 0042 / 0062) run as the function's owner and are not
---   touched. Not changed: there is still no per-user insert rate limit; a
---   viewer can add rows of known actions about themselves, never about
---   someone else.
+--   object <= 4 KiB. The api-key functions that audit their own work (0031 /
+--   0040 / 0042 / 0062, definer functions a signed-in user calls) are held to
+--   the same rules: their actions are in the list. The service role and the
+--   SQL editor are not. Not changed: there is still no per-user insert rate
+--   limit; a viewer can add rows of known actions about themselves, never
+--   about someone else.
 --
 -- BR-G-004  take_web_rate deleted the caller's rows of the same bucket from
 --   EARLIER windows whatever the window length, so one call with a one-second
 --   window erased the counter a route keeps with a ten-minute one. The counter
---   is now keyed by (user, bucket, window length, window start) and a call
---   deletes only older windows of its own length (plus anything older than two
+--   is now stored under '<bucket>@<window seconds>' and a call deletes only
+--   older windows of its own bucket and length (plus anything older than two
 --   days, which no window can still use). The arguments are still the caller's
 --   to choose; a call with another window length counts in its own counter and
 --   cannot touch the route's.
@@ -71,12 +72,15 @@ create or replace function public.audit_action_allowed(p_action text) returns bo
   or coalesce(p_action, '') ~ '^learning\.(approve|reject)$'
 $$;
 
+-- security definer so it may call the helpers the browser roles cannot execute;
+-- "is this a browser's write" is the role the request SET (PostgREST does
+-- SET LOCAL ROLE), which a definer function the browser called does not reset:
+-- so the api-key functions that audit their own work (0031, 0040, 0042, 0062)
+-- are held to the same rules, and every action they write is in the list.
 create or replace function public.app_audit_log_stamp() returns trigger
-  language plpgsql set search_path = public, pg_temp as $$
+  language plpgsql security definer set search_path = public, pg_temp as $$
 begin
-  -- Only the browser roles. The definer functions that write their own audit
-  -- rows run as their owner and keep what they pass.
-  if current_user not in ('authenticated', 'anon') then
+  if coalesce(current_setting('role', true), '') not in ('authenticated', 'anon') then
     return new;
   end if;
   if not public.audit_action_allowed(new.action) then
@@ -107,21 +111,16 @@ revoke all on function public.app_audit_log_stamp() from public, anon, authentic
 -- 2. The web rate counter (BR-G-004)
 -- ───────────────────────────────────────────────────────────────────────────
 
-alter table public.web_rate_counters add column if not exists window_seconds integer not null default 0;
-
-do $$
-begin
-  -- The key gains the window length. Existing rows keep window_seconds = 0 and
-  -- are cleaned up by the two-day rule below.
-  if not exists (
-    select 1 from pg_constraint c
-      join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
-     where c.conrelid = 'public.web_rate_counters'::regclass and c.contype = 'p' and a.attname = 'window_seconds'
-  ) then
-    alter table public.web_rate_counters drop constraint if exists web_rate_counters_pkey;
-    alter table public.web_rate_counters add primary key (user_id, bucket, window_seconds, window_start);
-  end if;
-end $$;
+-- The window length joins the bucket name the counter is stored under
+-- ('<bucket>@<seconds>': '@' cannot appear in a caller's bucket, so two
+-- (bucket, length) pairs never share a key). The table, its key and every
+-- earlier body keep working: a re-run of 0042 after this file restores the old
+-- function, which counts under the bare bucket name and resets as before until
+-- this file is applied again. Existing rows are left to expire (the two-day
+-- rule below).
+alter table public.web_rate_counters drop constraint if exists web_rate_counters_bucket_check;
+alter table public.web_rate_counters add constraint web_rate_counters_bucket_check
+  check (bucket ~ '^[a-z0-9_.:@-]{1,80}$');
 
 -- True when the caller may make one more request in `p_bucket` now (and
 -- counts it); false when this window's allowance is spent.
@@ -132,6 +131,7 @@ declare
   uid     uuid := auth.uid();
   v_start timestamptz;
   v_used  integer;
+  v_key   text;
 begin
   if uid is null then
     raise exception 'sign in first' using errcode = '42501';
@@ -142,17 +142,18 @@ begin
     raise exception 'bad rate limit arguments' using errcode = '22023';
   end if;
   v_start := to_timestamp(floor(extract(epoch from now()) / p_window_seconds) * p_window_seconds);
-  insert into public.web_rate_counters as c (user_id, bucket, window_seconds, window_start, count)
-  values (uid, p_bucket, p_window_seconds, v_start, 1)
-  on conflict (user_id, bucket, window_seconds, window_start) do update set count = c.count + 1
+  v_key := p_bucket || '@' || p_window_seconds::text;
+  insert into public.web_rate_counters as c (user_id, bucket, window_start, count)
+  values (uid, v_key, v_start, 1)
+  on conflict (user_id, bucket, window_start) do update set count = c.count + 1
   returning c.count into v_used;
   if v_used = 1 then
-    -- Older windows of THIS window length only: another length is another
-    -- counter and is never the caller's to erase. Anything older than two
-    -- days is dead for every allowed length (at most one day).
+    -- Older windows of THIS bucket and window length only: another length is
+    -- another counter and is never the caller's to erase. Anything older than
+    -- two days is dead for every allowed length (at most one day).
     delete from public.web_rate_counters c
      where c.user_id = uid
-       and ((c.bucket = p_bucket and c.window_seconds = p_window_seconds and c.window_start < v_start)
+       and ((c.bucket = v_key and c.window_start < v_start)
             or c.window_start < now() - interval '2 days');
   end if;
   return v_used <= p_max;
@@ -167,8 +168,7 @@ grant execute on function public.take_web_rate(text, integer, integer) to authen
 -- ───────────────────────────────────────────────────────────────────────────
 --   select (select count(*) from pg_trigger where tgrelid = 'public.app_audit_log'::regclass
 --            and tgname = 'app_audit_log_stamp' and not tgisinternal) = 1 as audit_trigger,
---          exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
---                   where c.conrelid = 'public.web_rate_counters'::regclass and c.contype = 'p'
---                     and a.attname = 'window_seconds') as rate_key_has_window,
+--          exists (select 1 from pg_constraint where conrelid = 'public.web_rate_counters'::regclass
+--                   and pg_get_constraintdef(oid) like '%@%') as rate_bucket_allows_window,
 --          has_function_privilege('authenticated', 'public.take_web_rate(text,integer,integer)', 'EXECUTE')
 --            and not has_function_privilege('anon', 'public.take_web_rate(text,integer,integer)', 'EXECUTE') as rate_acl;
