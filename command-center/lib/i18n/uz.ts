@@ -3873,6 +3873,11 @@ export const uz: Dictionary = {
       retry: "Yangilash",
       failedBecause: "Qadam to'xtadi: {why}",
       newRun: "Qayta ishga tushirish",
+      waitingSlot: "{n}-qadam boshlanishini kutmoqda: tarifingiz bir vaqtda ishga tushira oladigan hamma narsa band. U tugagach, bu sahifa ochiq tursa, qadam o'zi boshlanadi.",
+      waitingCredits: "{n}-qadam kredit kutmoqda: mavjud kredit uning narxidan kam. Kredit qo'shing — bu sahifa ochiq tursa, qadam o'zi boshlanadi.",
+      waitingUntil: "Agar u {when} gacha ham boshlana olmasa, ishga tushirish shu yerda to'xtaydi va boshqa hech narsa yechilmaydi.",
+      waitingUntilUnknown: "Agar u narx tasdiqlanganidan keyin bir kun ichida boshlana olmasa, ishga tushirish shu yerda to'xtaydi va boshqa hech narsa yechilmaydi.",
+      stepWaiting: "Boshlanishini kutmoqda: {why}. U uchun hozircha hech narsa band qilinmagan.",
     },
     status: {
       running: "Bajarilmoqda",
@@ -3882,6 +3887,10 @@ export const uz: Dictionary = {
       pending: "Kutmoqda",
       skipped: "Boshlanmagan",
       queued: "Navbatda",
+    },
+    waitReasons: {
+      run_limit_reached: "tarifingiz bir vaqtda ishga tushira oladigan hamma narsa band",
+      insufficient_credits: "hozir u uchun kredit yetarli emas",
     },
     stepErrors: {
       insufficient_credits: "bu qadam navbati kelganda kredit yetarli emas edi",

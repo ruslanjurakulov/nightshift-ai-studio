@@ -3,8 +3,10 @@ import { NotConfigured } from "@/components/NotConfigured";
 import { PageHeader } from "@/components/PageHeader";
 import { RunView } from "@/components/workflows/RunView";
 import { getOrgContext } from "@/lib/orgs-server";
+import { isPlatformAdmin } from "@/lib/auth/org-roles";
 import { getDictionary } from "@/lib/i18n/server";
 import { loadRun } from "@/lib/server/workflows";
+import { DEFAULT_ORG_ID } from "@/lib/orgs";
 import { canCarryRun } from "@/lib/workflows";
 
 export const dynamic = "force-dynamic";
@@ -34,11 +36,15 @@ export default async function WorkflowRunPage({ params }: { params: Promise<{ id
   if (read.state === "not_found") return note(t.workflows.runNotFound);
   if (read.state !== "ok") return note(t.workflows.readFailed);
 
+  // In the operator's own organization only a platform owner/admin may carry a
+  // run on (the database's rule, BR-L-013); asked only for a run there.
+  const platformAdmin = read.value.org_id === DEFAULT_ORG_ID ? await isPlatformAdmin() : false;
+
   return (
     <div className="rhythm">
       {header}
       {/* The caller's role in the RUN's organization (a run of another org they belong to stays theirs to carry on or not). */}
-      <RunView initial={read.value} canAct={canCarryRun(org.orgs, read.value.org_id)} toolLabels={t.workflows.tools} />
+      <RunView initial={read.value} canAct={canCarryRun(org.orgs, read.value.org_id, platformAdmin)} toolLabels={t.workflows.tools} />
     </div>
   );
 }
