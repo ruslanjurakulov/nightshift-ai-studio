@@ -14,7 +14,8 @@ import {
 } from "@/lib/sceneRetention";
 import { EmptyState } from "@/components/ui";
 import { RegenerateSceneButton } from "@/components/videos/RegenerateSceneButton";
-import { fmt } from "@/lib/i18n";
+import { fmt, type Dictionary } from "@/lib/i18n";
+import type { RegenRow } from "@/lib/sceneRegenerate";
 
 /**
  * The scene-by-scene storyboard of a video, parsed from its stored narration
@@ -29,8 +30,9 @@ import { fmt } from "@/lib/i18n";
  * fastest-losing scenes highlighted. Otherwise one neutral note says why not —
  * an unmeasured scene is never drawn as a zero.
  *
- * Each scene with a Video IR id can also file a "Regenerate scene" request
- * (RegenerateSceneButton — a review_intents row, nothing more).
+ * Each scene with a Video IR id can be regenerated (RegenerateSceneButton,
+ * migration 0076): one priced, confirmed press for that one scene, with the
+ * price on the button before it is pressed.
  *
  * Server component; the only client JS is the per-scene request button.
  */
@@ -38,7 +40,7 @@ export function Storyboard({
   scenes: sceneRows,
   scriptText,
   retention = null,
-  repair = null,
+  regenerate = null,
   repairUnavailable = null,
   labels,
 }: {
@@ -49,16 +51,15 @@ export function Storyboard({
   /** Scene-level retention (lib/sceneRetention), when the page computed it. */
   retention?: SceneRetentionSummary | null;
   /**
-   * Per-scene "Regenerate scene" requests (lib/sceneRepair). Only given for a
-   * video with a channel and id; each button only files a review_intents row.
-   * Scenes without a Video IR id (narration-split fallback) get no button.
+   * Per-scene "Regenerate scene" (lib/sceneRegenerate, migration 0076). Only
+   * given for a video that has not uploaded. Scenes without a Video IR id
+   * (narration-split fallback) get no button.
    */
-  repair?: {
-    channelId: string;
+  regenerate?: {
     videoId: string;
-    /** Scene ids with a request still waiting. */
-    pending: ReadonlySet<string>;
-    labels: { action: string; filing: string; filed: string; hint: string };
+    /** The newest regeneration of each scene, by scene id. */
+    latest: ReadonlyMap<string, RegenRow>;
+    labels: Dictionary["sceneRegen"];
   } | null;
   /**
    * Shown instead of the buttons when this video cannot be repaired
@@ -135,10 +136,7 @@ export function Storyboard({
       {counts.total > 0 && (
         <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">{labels.claimsAdvisory}</p>
       )}
-      {repair && scenes.some((s) => s.sceneId) && (
-        <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">{repair.labels.hint}</p>
-      )}
-      {!repair && repairUnavailable && scenes.some((s) => s.sceneId) && (
+      {!regenerate && repairUnavailable && scenes.some((s) => s.sceneId) && (
         <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">{repairUnavailable}</p>
       )}
       {retention && rl && (
@@ -235,13 +233,12 @@ export function Storyboard({
                   )}
                 </div>
               )}
-              {repair && s.sceneId && (
+              {regenerate && s.sceneId && (
                 <RegenerateSceneButton
-                  channelId={repair.channelId}
-                  videoId={repair.videoId}
+                  videoId={regenerate.videoId}
                   sceneId={s.sceneId}
-                  pending={repair.pending.has(s.sceneId)}
-                  labels={repair.labels}
+                  latest={regenerate.latest.get(s.sceneId) ?? null}
+                  labels={regenerate.labels}
                 />
               )}
               {s.keywords && s.keywords.length > 0 && (
