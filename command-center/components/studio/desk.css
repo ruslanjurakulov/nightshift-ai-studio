@@ -115,9 +115,13 @@
 
 /* The desk's tools: a row of source-select keys, name over what it starts from. */
 .desk-tools { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; }
-.desk-composer[data-desk="image"] .desk-tools { grid-auto-flow: row; }
+.desk-composer[data-desk="image"] .desk-tools,
+.desk-composer[data-desk="enhance"] .desk-tools { grid-auto-flow: row; }
+/* Three keys side by side do not fit a phone's width with their second line: stack them. */
+@media (max-width: 639.98px) {
+  .desk-tools[data-count="3"] { grid-auto-flow: row; }
+}
 @media (min-width: 1024px) {
-  .desk-composer[data-desk="enhance"] .desk-tools { grid-auto-flow: row; }
   .desk-composer[data-desk="voice"] .desk-tools { grid-auto-columns: minmax(170px, max-content); }
 }
 .desk-tool {
@@ -452,6 +456,9 @@ li:last-child > .desk-project { border-bottom: 0; }
   border-radius: var(--ns-r-key);
   font-size: var(--ns-t-small);
   color: var(--color-muted);
+}
+@media (min-width: 640px) {
+  .desk-log-go { min-width: 104px; justify-content: space-between; }
 }
 .desk-log-go:hover { color: var(--ns-amber-ink); border-color: var(--ns-amber-ink); }
 @media (max-width: 639.98px) {
