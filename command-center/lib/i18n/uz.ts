@@ -545,6 +545,7 @@ export const uz: Dictionary = {
     errors: {
       forbidden: "Bu kanalda pullik ishni boshlash sizga ochiq emas.",
       insufficient: "Kredit yetarli emas: {needed} kerak, {available} mavjud.",
+      runLimit: "Barcha parallel ishga tushirishlaringiz band. Biri tugashini kuting.",
       priceChanged: "Narx o'zgarib, {credits} kredit bo'ldi. Tekshirib, qayta bosing.",
       priceRequired: "Narx tasdiqlanmadi. Qayta bosing.",
       conflict: "Bu bosish allaqachon boshqa so'rov uchun ishlatilgan. Sahifani yangilab, qayta urinib ko'ring.",

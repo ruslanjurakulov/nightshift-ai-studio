@@ -551,6 +551,7 @@ export const en = {
     errors: {
       forbidden: "Starting paid work on this channel isn't open to you.",
       insufficient: "Not enough credits: {needed} needed, {available} available.",
+      runLimit: "All your parallel runs are in use. Wait for one to finish.",
       priceChanged: "The price changed to {credits} credits. Check it and press again.",
       priceRequired: "The price wasn't confirmed. Press again.",
       conflict: "This press was already used for a different request. Reload and try again.",

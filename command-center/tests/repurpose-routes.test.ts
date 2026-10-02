@@ -196,6 +196,7 @@ describe("POST — the press", () => {
   const refusals: Array<[string, Err, number, Record<string, unknown>]> = [
     ["not an admin here / no such video", { code: "42501", message: "forbidden" }, 403, { error: "forbidden" }],
     ["insufficient credits", { code: "NS402", message: "insufficient credits", details: "available=3 needed=8" }, 402, { error: "insufficient_credits", needed: 8, available: 3 }],
+    ["the plan's parallel runs all in use", { code: "NS429", message: "parallel run limit reached", details: "active=1 limit=1" }, 429, { error: "run_limit" }],
     ["a changed price", { code: "NS409", message: "price_changed", details: "credits=9" }, 409, { error: "price_changed", credits: 9 }],
     ["a press already running", { code: "NS409", message: "in_progress" }, 409, { error: "in_progress" }],
     ["a reused key", { code: "NS409", message: "idempotency_conflict" }, 409, { error: "idempotency_conflict" }],

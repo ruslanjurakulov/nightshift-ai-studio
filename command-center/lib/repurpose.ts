@@ -560,6 +560,7 @@ export function mapRepurposeError(error: DbError): { status: number; body: Recor
         available: detailNumber(error.details, "available"),
       },
     };
+  if (code === "NS429") return { status: 429, body: { error: "run_limit" } };
   if (code === "NS409" && msg === "price_changed")
     return { status: 409, body: { error: "price_changed", credits: detailNumber(error.details, "credits") } };
   if (code === "NS409" && ["in_progress", "idempotency_conflict"].includes(msg)) return { status: 409, body: { error: msg } };
@@ -594,6 +595,8 @@ export function repurposeErrorText(body: Record<string, unknown> | null, t: T): 
       return t.errors.forbidden;
     case "insufficient_credits":
       return fmt(t.errors.insufficient, { needed: n(body?.needed), available: n(body?.available) });
+    case "run_limit":
+      return t.errors.runLimit;
     case "price_changed":
       return fmt(t.errors.priceChanged, { credits: n(body?.credits) });
     case "price_required":

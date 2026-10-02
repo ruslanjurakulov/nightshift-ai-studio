@@ -346,6 +346,59 @@ def test_insufficient_credits_refuse_the_press_and_hold_nothing(conn, sc):
     assert not p.ok and p.sqlstate == "NS402", p
 
 
+def test_the_plans_parallel_runs_apply_to_a_second_request_and_nothing_is_held(conn, sc):
+    with world(conn, sc.bob) as (su, vid):
+        other = _master(su, sc.bob, "master-second")
+        limit = su.value("select coalesce(public.entitlement_int_internal(%s, 'concurrency'), 1)", [sc.bob.org])
+        # All but one of the plan's slots are taken by other runs' holds.
+        active = su.value("select count(*) from public.credit_reservations where org_id = %s and status = 'open'",
+                          [sc.bob.org])
+        for n in range(limit - active - 1):
+            su.value("select public.reserve_credits(%s, %s, 5)", [sc.bob.org, f"rj-fill-{n}-{uuid.uuid4().hex[:8]}"])
+        with acting(conn, sc.bob.actor) as s:
+            first = press(s, vid)
+            second = press(s, other)
+            o = owner(s)
+            h = holds(o, sc.bob.org)
+            r = requests(o, other)
+    assert first.ok, first
+    # The hold is an open credit hold like any run's: at the plan's limit a
+    # further request is refused (NS429) before a hold or a row exists.
+    assert not second.ok and second.sqlstate == "NS429", second
+    assert [x[0] for x in h if x[0].startswith("rp-")] == [first.rows[0][0]["credit_ref"]] and r == [], (h, r)
+
+
+def test_a_member_who_may_only_read_cannot_press_in_the_operators_organization_either(conn, sc):
+    """The operator's own organization holds no credits, so reserve_credits is
+    never asked there: the press must check who is asking by itself."""
+    with as_superuser(conn, commit=False) as su:
+        _set_prices(su, PRICES)
+        vid = _master(su, type("T", (), {"channel": "default", "key": "op"})(), "master-operator-2")
+        with acting(conn, sc.dana) as s:       # Dana: a plain member of the operator's organization
+            q = quote(s, vid)
+            p = press(s, vid, max_credits=None)
+            assert requests(owner(s), vid) == []
+        with acting(conn, sc.operator) as s:
+            ok = press(s, vid, max_credits=None)
+    assert q.ok and q.rows[0][0]["may_start"] is False, q
+    assert not p.ok and p.sqlstate == "42501", p
+    assert ok.ok, ok
+
+
+def test_one_active_request_per_video_is_a_database_rule_not_only_a_check(conn, sc):
+    with world(conn, sc.bob) as (su, vid):
+        def row(key):
+            return su.run("insert into public.repurpose_requests (org_id, channel_id, video_id, slug, clip_count, "
+                          "idempotency_key, request_hash) values (%s, %s, %s, 'master-x', 1, %s, %s)",
+                          [sc.bob.org, sc.bob.channel, vid, key, "0" * 32])
+        first, second = row("key-aaaaaaaaaa"), row("key-bbbbbbbbbb")
+        su.rows("update public.repurpose_requests set status = 'failed', finished_at = now() where idempotency_key = "
+                "'key-aaaaaaaaaa' returning 1")
+        third = row("key-cccccccccc")
+    assert first.ok and not second.ok and second.sqlstate == "23505", second
+    assert third.ok, third
+
+
 def test_the_operators_own_organization_holds_nothing(conn, sc):
     with as_superuser(conn, commit=False) as su:
         _set_prices(su, PRICES)

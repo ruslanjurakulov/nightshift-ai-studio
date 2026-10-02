@@ -93,6 +93,8 @@
 --   NS400 clips_unavailable (detail: the reason) | unpriced
 --   NS409 in_progress | price_changed | idempotency_conflict
 --   NS402 from reserve_credits (insufficient credits)
+--   NS429 from 0034's hold trigger: the plan's parallel runs are all in use (a
+--         repurpose hold is an open credit hold like any run's)
 --
 -- REQUIRES 0003 (videos.video_format, parent_video_id), 0013 (videos.manifest),
 -- 0016 (videos.publish_state), 0018 (organizations), 0020 (credits). Optional:

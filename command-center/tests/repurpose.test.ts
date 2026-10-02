@@ -275,6 +275,9 @@ describe("the database's refusals", () => {
     expect(mapRepurposeError({ code: "NS402", message: "insufficient credits", details: "available=3 needed=8" })).toEqual({
       status: 402, body: { error: "insufficient_credits", needed: 8, available: 3 },
     });
+    expect(mapRepurposeError({ code: "NS429", message: "parallel run limit reached", details: "active=1 limit=1" })).toEqual({
+      status: 429, body: { error: "run_limit" },
+    });
     expect(mapRepurposeError({ code: "NS409", message: "price_changed", details: "credits=12.50" })).toEqual({
       status: 409, body: { error: "price_changed", credits: 12.5 },
     });
@@ -297,6 +300,7 @@ describe("the database's refusals", () => {
     const t = en.repurpose;
     expect(repurposeErrorText({ error: "insufficient_credits", needed: 8, available: 3 }, t)).toBe("Not enough credits: 8 needed, 3 available.");
     expect(repurposeErrorText({ error: "price_changed", credits: 12 }, t)).toContain("12 credits");
+    expect(repurposeErrorText({ error: "run_limit" }, t)).toBe(t.errors.runLimit);
     expect(repurposeErrorText({ error: "unpriced" }, t)).toBe(t.unpriced);
     expect(repurposeErrorText({ error: "clips_unavailable", reason: "gate_blocked" }, t)).toBe(t.reasons.gate_blocked);
     expect(repurposeErrorText({ error: "queue_required" }, t)).toBe(t.errors.queueRequired);
