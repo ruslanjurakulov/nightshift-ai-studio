@@ -217,7 +217,8 @@ describe("pinned to 0055", () => {
     const supported = fn("creative_capability_supported");
     for (const c of CREATIVE_CAPABILITIES) expect(supported, c).toContain(`'${c}'`);
     const params = fn("creative_params_problem");
-    for (const k of PARAM_KEYS) expect(params, k).toContain(`'${k}'`);
+    // quality is 0060's own (pinned in tests/image-quality.test.tsx).
+    for (const k of PARAM_KEYS) if (k !== "quality") expect(params, k).toContain(`'${k}'`);
     expect(CAPABILITIES as readonly string[]).toContain("describe");
   });
 

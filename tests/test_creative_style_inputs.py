@@ -436,7 +436,8 @@ class AdapterSeam(unittest.TestCase):
         sess = FakeSession([("POST", "/images/edits", 200, {"data": [{"b64_json": base64.b64encode(PNG).decode()}]})])
         ra = ca.RegistryAdapter(entry, build_adapter(entry.adapter, env={"OPENAI_API_KEY": "o" * 30}, session=sess),
                                 sync_store={})
-        ra.submit(self.request("edit", {"prompt": "night", "source_asset_id": SRC}, [self.src], refs=self.refs[:2]))
+        ra.submit(self.request("edit", {"prompt": "night", "source_asset_id": SRC, "quality": "medium"}, [self.src],
+                               refs=self.refs[:2]))
         names = [f[1][0] for f in sess.sent[0]["files"]]
         self.assertEqual(names, ["source.png", "ref_0.png", "ref_1.png"])
 

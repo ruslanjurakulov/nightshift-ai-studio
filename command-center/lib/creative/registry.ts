@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { isMissingFunction } from "@/lib/orgs";
-import { UPSCALE_TARGETS, type UpscaleTarget } from "@/lib/creative/operations";
+import { UPSCALE_TARGETS, isImageQuality, type ImageQuality, type UpscaleTarget } from "@/lib/creative/operations";
 
 /**
  * The models a signed-in user may be offered, read under their own session
@@ -43,6 +43,8 @@ export interface PublicSpec {
   aspectRatios: string[];
   aspectRatiosByCapability: Partial<Record<Capability, string[]>>;
   imageSizes: string[];
+  /** Render qualities the model is sold by (0060); empty = it has no tiers. */
+  qualities: ImageQuality[];
   resolutions: string[];
   durationsS: number[];
   /** Upscale factors the model is sold for (0046); empty unless it can upscale. */
@@ -124,6 +126,7 @@ function coerceSpec(v: unknown): PublicSpec | null {
     aspectRatios: strings(v.aspect_ratios),
     aspectRatiosByCapability: byCap,
     imageSizes: strings(v.image_sizes),
+    qualities: strings(v.qualities).filter(isImageQuality),
     resolutions: strings(v.resolutions),
     durationsS: Array.isArray(v.durations_s) ? v.durations_s.filter((d): d is number => posInt(d) !== null) : [],
     upscaleFactors: Array.isArray(v.upscale_factors)
