@@ -18,6 +18,7 @@ import {
   isSignedMediaPath,
   isUnknownSolutionPath,
 } from "@/lib/public-paths";
+import { conceptDecision, conceptsEnabled } from "@/lib/concepts";
 import { buildCsp, cspHeaderName, cspMode, makeNonce, reportUri } from "@/lib/security/csp";
 
 /** Next's own route for app/not-found.tsx (it is what an unmatched URL renders). */
@@ -97,6 +98,17 @@ function notFoundResponse(request: NextRequest): NextResponse {
 }
 
 async function gate(request: NextRequest): Promise<NextResponse> {
+  // The Atelier concept prototypes (lib/concepts.ts): a separate namespace,
+  // decided before the gate and only for it. Off, every path under /atelier is
+  // the public 404; on, exactly three URLs are served, noindex. Nothing here
+  // touches the matcher, gateDecision() or the public-path lists.
+  const concept = conceptDecision(request.nextUrl.pathname, conceptsEnabled());
+  if (concept === "hide") return notFoundResponse(request);
+  if (concept === "serve") {
+    const served = NextResponse.next({ request });
+    served.headers.set("X-Robots-Tag", "noindex, nofollow");
+    return served;
+  }
   // The public pages' two self-hosted font files, by exact name: static, public,
   // and on the critical path of a Russian page's first paint.
   if (isPublicFontPath(request.nextUrl.pathname)) return NextResponse.next({ request });
