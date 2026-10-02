@@ -369,6 +369,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Workflow apps (0073): tests/security/sec_workflows_0073.py.
     import sec_workflows_0073
     sec_workflows_0073.seed(conn, sc)
+    # Multi-clip repurposing (0080): tests/security/sec_repurpose_0080.py.
+    import sec_repurpose_0080
+    sec_repurpose_0080.seed(conn, sc)
     # A pending invite into org A, addressed to Ivan's email, not yet accepted.
     with acting(conn, sc.alice.actor, commit=True) as s:
         s.value("select public.invite_org_member(%s, %s, 'viewer')", [sc.alice.org, sc.invitee.email])
