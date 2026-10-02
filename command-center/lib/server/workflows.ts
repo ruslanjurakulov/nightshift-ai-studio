@@ -8,8 +8,10 @@ import {
   RUN_COLUMNS,
   WORKFLOW_COLUMNS,
   coerceRun,
+  coerceRunSummary,
   coerceWorkflow,
   coerceWorkflows,
+  type RunSummary,
   type RunView,
   type Workflow,
 } from "@/lib/workflows";
@@ -138,15 +140,6 @@ export async function loadRun(id: string): Promise<WorkflowRead<RunView>> {
   }
 }
 
-export interface RunSummary {
-  id: string;
-  workflow_id: string;
-  workflow_name: string;
-  status: string;
-  max_credits: number;
-  charged_credits: number;
-  created_at: string | null;
-}
 
 export async function loadRuns(orgId: string, workflowId: string | null = null, limit = 10): Promise<WorkflowRead<RunSummary[]>> {
   try {
@@ -157,19 +150,10 @@ export async function loadRuns(orgId: string, workflowId: string | null = null, 
     const rows = Array.isArray(data) ? (data as unknown as Record<string, unknown>[]) : [];
     return {
       state: "ok",
-      value: rows.flatMap((r): RunSummary[] =>
-        typeof r.id === "string" && typeof r.workflow_id === "string"
-          ? [{
-              id: r.id,
-              workflow_id: r.workflow_id,
-              workflow_name: typeof r.workflow_name === "string" ? r.workflow_name : "",
-              status: typeof r.status === "string" ? r.status : "running",
-              max_credits: Number(r.max_credits) || 0,
-              charged_credits: Number(r.charged_credits) || 0,
-              created_at: typeof r.created_at === "string" ? r.created_at : null,
-            }]
-          : [],
-      ),
+      value: rows.flatMap((r) => {
+        const row = coerceRunSummary(r);
+        return row ? [row] : [];
+      }),
     };
   } catch {
     return { state: "read_failed" };

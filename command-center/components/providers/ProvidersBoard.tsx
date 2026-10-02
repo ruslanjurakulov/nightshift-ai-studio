@@ -157,7 +157,7 @@ function ProviderCard({
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="pill border border-[var(--color-border)] px-2 py-0.5 mono text-[10px] text-[var(--color-muted)]">
+        <span className="rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-2 py-0.5 mono text-[10px] text-[var(--color-muted)]">
           {provider.live ? t.providers.statusLive : t.providers.statusOptIn}
         </span>
       </div>
@@ -168,7 +168,7 @@ function ProviderCard({
         target="_blank"
         rel="noopener noreferrer"
         aria-label={`${provider.name}: ${t.providers.consoleLink}`}
-        className="btn-sky pill flex w-full items-center justify-center gap-1 px-3 py-1.5 text-[12px]"
+        className="btn-sky rounded-[var(--ns-r-key)] flex w-full items-center justify-center gap-1 px-3 py-1.5 text-[12px]"
       >
         {provider.name} <span aria-hidden>↗</span>
       </a>
@@ -207,7 +207,7 @@ function ProviderCard({
           type="button"
           onClick={save}
           disabled={!canSave || !value.trim() || state === "saving"}
-          className="btn-sky pill shrink-0 px-3 py-1.5 text-[12px] disabled:opacity-40"
+          className="btn-sky rounded-[var(--ns-r-key)] shrink-0 px-3 py-1.5 text-[12px] disabled:opacity-40"
         >
           {state === "saving" ? t.providers.saving : configured ? t.providers.replace : t.providers.save}
         </button>

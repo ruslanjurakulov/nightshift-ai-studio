@@ -18,8 +18,9 @@ export interface RunRow {
   id: string;
   workflow_name: string;
   status: string;
-  max_credits: number;
-  charged_credits: number;
+  /** null = not on record: said in words, never shown as 0. */
+  max_credits: number | null;
+  charged_credits: number | null;
   created_at: string | null;
 }
 
@@ -181,11 +182,13 @@ export function WorkflowsHome({
                 <Link href={path(`/workflows/runs/${r.id}`)} className="panel press flex flex-wrap items-center justify-between gap-2 p-3 text-[13px]">
                   <span className="truncate font-medium">{r.workflow_name}</span>
                   <span className="text-[12px] tabular-nums text-[var(--color-muted)]">
-                    {fmt(w.runSummary, {
-                      status: (w.status as Record<string, string>)[r.status] ?? r.status,
-                      charged: formatCredits(r.charged_credits, locale),
-                      max: formatCredits(r.max_credits, locale),
-                    })}{" "}
+                    {r.charged_credits !== null && r.max_credits !== null
+                      ? fmt(w.runSummary, {
+                          status: (w.status as Record<string, string>)[r.status] ?? r.status,
+                          charged: formatCredits(r.charged_credits, locale),
+                          max: formatCredits(r.max_credits, locale),
+                        })
+                      : fmt(w.runSummaryUnknown, { status: (w.status as Record<string, string>)[r.status] ?? r.status })}{" "}
                     · {when(r.created_at)}
                   </span>
                 </Link>

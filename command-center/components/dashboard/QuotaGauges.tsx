@@ -1,3 +1,5 @@
+import { Meter } from "@/components/ui/Meter";
+import { Timecode } from "@/components/ui/Timecode";
 import { EmptyState } from "@/components/ui";
 import type { QuotaGaugeView } from "@/lib/quota-gauge";
 
@@ -35,7 +37,7 @@ export function QuotaGauges({
       <div className="flex items-baseline justify-between gap-3">
         <span className="t-label">{labels.total}</span>
         <span className="mono text-lg font-semibold tabular-nums text-[var(--color-fg)]">
-          {view.totalSlots === null ? "N/A" : view.totalSlots}
+          <Timecode value={view.totalSlots} format="count" unknown="N/A" />
         </span>
       </div>
 
@@ -45,26 +47,18 @@ export function QuotaGauges({
             <div className="flex items-baseline justify-between gap-3">
               <span className="min-w-0 truncate text-sm text-[var(--color-fg)]">{r.name}</span>
               <span className="mono shrink-0 text-[13px] tabular-nums text-[var(--color-muted)]">
-                {r.slots === null ? "—" : `${r.slots} ${labels.slotsSuffix}`}
+                {r.slots === null ? "—" : (
+                  <>
+                    <Timecode value={r.slots} format="count" /> {labels.slotsSuffix}
+                  </>
+                )}
                 {" · "}
                 {r.measured ? `${r.sharePct}%` : labels.unmeasured}
               </span>
             </div>
-            <div
-              className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--color-panel-2)]"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={r.measured ? r.sharePct ?? undefined : undefined}
-              aria-label={r.name}
-            >
-              {r.measured && (
-                <div
-                  className="h-full rounded-full bg-[var(--color-primary)] transition-[width] duration-500"
-                  style={{ width: `${r.fillPct}%` }}
-                />
-              )}
-            </div>
+            {r.measured && r.sharePct !== null && (
+              <Meter value={r.sharePct} max={100} size="lg" segments={20} label={r.name} valueText={`${r.sharePct}%`} className="mt-2" />
+            )}
           </li>
         ))}
       </ul>

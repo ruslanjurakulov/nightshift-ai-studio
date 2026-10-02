@@ -120,7 +120,7 @@ export function CastEditor({
     prop: t.cast.kindProp,
   };
   const inputClass =
-    "pill border border-[var(--color-border)] bg-transparent px-3 py-2 text-[13px] outline-none transition-colors focus:border-[var(--color-primary)]";
+    "rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-transparent px-3 py-2 text-[13px] outline-none transition-colors focus:border-[var(--color-primary)]";
 
   return (
     <div className="panel flex flex-col gap-4 p-4">
@@ -145,7 +145,7 @@ export function CastEditor({
           {rows.map((r, i) => (
             <li
               key={i}
-              className="flex flex-col gap-2 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3"
+              className="flex flex-col gap-2 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3"
             >
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-[10rem_1fr]">
                 <label className="flex flex-col gap-1">
@@ -187,7 +187,7 @@ export function CastEditor({
                   onChange={(e) => update(i, { description: e.target.value })}
                   rows={2}
                   placeholder={t.cast.descPlaceholder}
-                  className="rounded-[14px] border border-[var(--color-border)] bg-transparent px-3 py-2 text-[13px] leading-relaxed outline-none transition-colors focus:border-[var(--color-primary)]"
+                  className="rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-transparent px-3 py-2 text-[13px] leading-relaxed outline-none transition-colors focus:border-[var(--color-primary)]"
                 />
               </label>
               <div className="flex flex-wrap items-end gap-2">
@@ -206,7 +206,7 @@ export function CastEditor({
                 <button
                   type="button"
                   onClick={() => removeRow(i)}
-                  className="btn-sky is-quiet pill px-3 py-2 text-[12px]"
+                  className="btn-quiet text-[12px]"
                 >
                   {t.cast.remove}
                 </button>
@@ -221,7 +221,7 @@ export function CastEditor({
           type="button"
           onClick={addRow}
           disabled={disabled || rows.length >= MAX_ELEMENTS}
-          className="btn-sky is-quiet pill px-4 py-2 text-[13px] disabled:opacity-40"
+          className="btn-quiet text-[13px] disabled:opacity-40"
         >
           {t.cast.add}
         </button>
@@ -229,7 +229,7 @@ export function CastEditor({
           type="button"
           onClick={save}
           disabled={disabled || state === "saving"}
-          className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
+          className="btn-primary text-[13px] disabled:opacity-40"
         >
           {state === "saving" ? t.cast.saving : t.cast.save}
         </button>

@@ -68,7 +68,7 @@ export function LibraryDialog({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
-        className={`sheet-enter relative flex max-h-[86dvh] w-full flex-col overflow-hidden rounded-t-[20px] border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] outline-none sm:max-h-[80vh] sm:rounded-[20px] ${
+        className={`sheet-enter relative flex max-h-[86dvh] w-full flex-col overflow-hidden rounded-t-[var(--ns-r-sheet)] border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] outline-none sm:max-h-[80vh] sm:rounded-[var(--ns-r-sheet)] ${
           wide ? "sm:max-w-[520px]" : "sm:max-w-[420px]"
         }`}
       >

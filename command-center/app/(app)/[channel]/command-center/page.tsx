@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
-import { EmptyState, StatusPill } from "@/components/ui";
+import { EmptyState } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { SystemStatus } from "@/components/SystemStatus";
 import { DailyMission } from "@/components/DailyMission";
@@ -190,7 +191,7 @@ export default async function CommandCenter() {
             <h2 className="t-section">{t.signup.finishSetup}</h2>
             <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.signup.finishSetupBody}</p>
           </div>
-          <Link href={WELCOME_PATH} className="btn-sky is-solid pill px-5 py-2.5 text-[13px]">
+          <Link href={WELCOME_PATH} className="btn-primary text-[13px]">
             {t.signup.finishSetup} →
           </Link>
         </div>
@@ -251,7 +252,7 @@ export default async function CommandCenter() {
             {operator && (
             <Link
               href={path("/pipeline")}
-              className={`btn-sky pill px-[30px] py-3.5 text-[14px]${canProduce ? "" : " is-solid"}`}
+              className={`${canProduce ? "btn-quiet" : "btn-primary"} text-[14px]`}
             >
               {t.dashboard.openPipeline}
               <span className="btn-arrow" aria-hidden>
@@ -259,11 +260,11 @@ export default async function CommandCenter() {
               </span>
             </Link>
             )}
-            <Link href={path("/videos")} className="btn-sky pill px-[30px] py-3.5 text-[14px]">
+            <Link href={path("/videos")} className="btn-quiet text-[14px]">
               {t.dashboard.openVideos}
             </Link>
             <CustomizeButton />
-            <StatusPill
+            <StatusLamp
               tone={chip === "healthy" ? "ok" : chip === "attention" ? "fail" : chip === "unreadable" ? "warn" : "idle"}
               label={
                 chip === "healthy"
