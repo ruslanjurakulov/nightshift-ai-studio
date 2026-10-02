@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createGeneration, isUuid, listJobs, parseGenerationInput } from "@/lib/creative/operations";
+import { createGeneration, isUuid, listJobs, parseCapabilityFilter, parseGenerationInput } from "@/lib/creative/operations";
 import { creativeSession } from "@/lib/server/creative";
 import { logAudit } from "@/lib/server/audit";
 
@@ -22,7 +22,8 @@ export const dynamic = "force-dynamic";
  * another organization's id answers exactly like one that does not exist —
  * before anything is held.
  *
- * GET `?org_id=` lists the organization's newest jobs (RLS: its members).
+ * GET `?org_id=` lists the organization's newest jobs (RLS: its members);
+ * `&capability=t2v,i2v` lists only those tools' jobs (a Studio desk's).
  */
 export async function POST(request: Request) {
   const session = await creativeSession();
@@ -56,7 +57,11 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   const session = await creativeSession();
   if (!session.ok) return NextResponse.json(session.result.body, { status: session.result.status });
-  const q = new URL(request.url).searchParams.get("org_id");
-  const out = await listJobs(session.db, isUuid(q) ? q : session.defaultOrg);
+  const params = new URL(request.url).searchParams;
+  const q = params.get("org_id");
+  // ?capability=t2v,i2v — a Studio desk's tools only (RLS still decides which rows are visible).
+  const only = parseCapabilityFilter(params.get("capability"));
+  if (!only.ok) return NextResponse.json({ error: "invalid_params" }, { status: 400 });
+  const out = await listJobs(session.db, isUuid(q) ? q : session.defaultOrg, 50, only.value);
   return NextResponse.json(out.body, { status: out.status });
 }

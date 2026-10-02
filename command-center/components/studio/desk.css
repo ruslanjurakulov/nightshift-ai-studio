@@ -1,0 +1,587 @@
+/* ── Studio desks (components/studio/Desks.tsx, GenerateSection, GeneratePanel, JobFeed)
+   Each desk is laid out around its job (docs/design/IDENTITY.md): Video is a
+   program monitor over a docked slate, Image a light table beside its
+   composer, Enhance a loupe with the composer on the right, Voice a booth over
+   its takes. Tokens only; no new colour. Radii by role: frame 2, chip 4,
+   key 6, panel 10. Every key is at least 44 px tall on a phone. */
+
+/* ── The desk switcher: one rack strip of keys, the current one lit ───────── */
+.desk-bar {
+  /* Bleeds to the screen edge on a phone (the page's own side padding, .pad-page). */
+  margin-inline: calc(-1 * clamp(0.75rem, 3vw, 56px));
+  padding-inline: clamp(0.75rem, 3vw, 56px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.desk-bar::-webkit-scrollbar { display: none; }
+/* A phone shows that the row goes on: the last key fades into the edge. */
+@media (max-width: 639.98px) {
+  .desk-bar { -webkit-mask-image: linear-gradient(to right, #000 82%, transparent); mask-image: linear-gradient(to right, #000 82%, transparent); }
+}
+@media (min-width: 640px) {
+  .desk-bar { margin-inline: 0; padding-inline: 0; overflow: visible; }
+}
+.desk-bar-row {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-key);
+  background: var(--color-panel);
+  overflow: hidden;
+}
+.desk-bar-row > li { flex: 1 1 0; min-width: max-content; }
+.desk-bar-row > li + li { border-left: 1px solid var(--ns-rule); }
+.desk-key {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  min-height: 48px;
+  padding: 8px 14px;
+  color: var(--color-muted);
+  transition: background-color var(--ns-dur-1) var(--ns-ease), color var(--ns-dur-1) var(--ns-ease);
+}
+.desk-key:hover { background: var(--color-hover); color: var(--color-fg); }
+.desk-key-icon { width: 18px; height: 18px; flex-shrink: 0; }
+.desk-key-name {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+.desk-key-sub { display: none; font-size: 11px; line-height: 1.3; white-space: nowrap; }
+@media (min-width: 1100px) {
+  .desk-key-sub { display: block; }
+}
+/* Lit: the tally strip along the top edge, the glyph in amber, the key raised. */
+.desk-key[aria-current="page"] { background: var(--ns-key-hi); color: var(--color-fg); }
+.desk-key[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--ns-amber);
+}
+.desk-key[aria-current="page"] .desk-key-icon { color: var(--ns-amber-ink); }
+
+/* ── Layouts per desk ─────────────────────────────────────────────────────── */
+.desk-layout { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.desk-layout-composer { min-width: 0; }
+.desk-layout-canvas { min-width: 0; }
+
+@media (min-width: 1024px) {
+  /* Image: composer column on the left, the light table on the right.
+     Video: the monitor and its strip on the left, the composer to its right. */
+  .desk-layout[data-desk="image"],
+  .desk-layout[data-desk="video"] {
+    display: grid;
+    align-items: start;
+    gap: 24px;
+  }
+  .desk-layout[data-desk="image"] { grid-template-columns: minmax(340px, 380px) minmax(0, 1fr); }
+  .desk-layout[data-desk="video"] { grid-template-columns: minmax(0, 1fr) minmax(340px, 380px); }
+  .desk-layout[data-desk="video"] .desk-layout-composer { order: 2; }
+  .desk-layout[data-desk="image"] .desk-layout-composer,
+  .desk-layout[data-desk="video"] .desk-layout-composer {
+    position: sticky;
+    top: 96px;
+    max-height: calc(100dvh - 112px);
+    overflow-y: auto;
+    border-radius: var(--ns-r-panel);
+  }
+}
+
+/* In a composer that scrolls on its own (Image, Video from lg), the price key
+   stays at its foot: it is the one thing that must never scroll out of reach. */
+@media (min-width: 1024px) {
+  .desk-layout-composer .desk-composer > .studio-dock {
+    position: sticky;
+    bottom: 0;
+    margin: 0 -16px -16px;
+    padding: 12px 16px 16px;
+    border-top: 1px solid var(--color-border);
+    background: var(--color-panel);
+  }
+}
+
+/* ── The composer on a desk ───────────────────────────────────────────────── */
+.desk-composer { display: flex; flex-direction: column; gap: 16px; padding: 16px; }
+.desk-composer-head { display: flex; flex-direction: column; gap: 12px; }
+@media (min-width: 1024px) {
+  .desk-composer-head { flex-direction: row; align-items: center; justify-content: space-between; }
+  .desk-composer-head > .desk-tools { flex: 0 1 auto; }
+}
+
+/* The desk's tools: a row of source-select keys, name over what it starts from. */
+.desk-tools { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; }
+.desk-composer[data-desk="image"] .desk-tools,
+.desk-composer[data-desk="enhance"] .desk-tools { grid-auto-flow: row; }
+/* Three keys side by side do not fit a phone's width with their second line: stack them. */
+@media (max-width: 639.98px) {
+  .desk-tools[data-count="3"] { grid-auto-flow: row; }
+}
+@media (min-width: 1024px) {
+  .desk-composer[data-desk="voice"] .desk-tools { grid-auto-columns: minmax(170px, max-content); }
+}
+.desk-tool {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 6px 12px;
+  border: 1px solid var(--ns-rule);
+  border-radius: var(--ns-r-key);
+  background: var(--studio-field);
+  color: var(--color-muted);
+  font-size: var(--ns-t-ui);
+  font-weight: 600;
+  line-height: 1.2;
+  transition: border-color var(--ns-dur-1) var(--ns-ease), background-color var(--ns-dur-1) var(--ns-ease), color var(--ns-dur-1) var(--ns-ease);
+}
+.desk-tool:hover { color: var(--color-fg); border-color: var(--ns-rule-strong); }
+.desk-tool[aria-selected="true"] {
+  color: var(--color-fg);
+  border-color: var(--ns-amber-ink);
+  background: var(--ns-select);
+}
+.desk-tool[aria-selected="true"] svg { color: var(--ns-amber-ink); }
+.desk-tool-from { font-size: 11px; font-weight: 450; color: var(--color-muted); }
+
+/* A shape key draws the shape it picks. */
+.desk-shape { display: inline-block; border: 1.5px solid currentColor; border-radius: 1px; flex-shrink: 0; }
+.desk-shape[data-shape="16:9"] { width: 16px; height: 9px; }
+.desk-shape[data-shape="9:16"] { width: 8px; height: 14px; }
+.desk-shape[data-shape="1:1"] { width: 11px; height: 11px; }
+
+/* Video's frames: the start and the end side by side, like two cue cards. */
+.desk-frames { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 12px; border: 1px solid var(--ns-rule); border-radius: var(--ns-r-key); background: var(--ns-key); }
+
+/* Enhance's bench: the tools | the picture or video | the size | model and key. */
+.desk-bench,
+.desk-bench-panel,
+.desk-bench-tools,
+.desk-bench-source,
+.desk-bench-size,
+.desk-bench-go { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (min-width: 1024px) {
+  .desk-bench { display: grid; grid-template-columns: 220px minmax(0, 1fr); align-items: start; gap: 20px; }
+  .desk-bench-panel { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(280px, 320px); align-items: start; gap: 20px; }
+  .desk-bench-panel > * + * { padding-left: 20px; border-left: 1px solid var(--ns-rule); }
+}
+
+/* Voice's booth: the script on the left, the cast and the key on the right. */
+.desk-booth { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.desk-booth-script,
+.desk-booth-cast { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (min-width: 1024px) {
+  .desk-booth { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr); align-items: start; gap: 24px; }
+  .desk-booth-cast { padding-left: 24px; border-left: 1px solid var(--ns-rule); }
+}
+.desk-script { min-height: 240px; font-size: 16px !important; line-height: 1.7 !important; }
+.desk-cast {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px;
+  max-height: 264px;
+  overflow-y: auto;
+  padding: 2px;
+}
+.desk-cast-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 10px;
+  border: 1px solid var(--ns-rule);
+  border-radius: var(--ns-r-key);
+  background: var(--studio-field);
+  font-size: var(--ns-t-ui);
+  text-align: left;
+  transition: border-color var(--ns-dur-1) var(--ns-ease), background-color var(--ns-dur-1) var(--ns-ease);
+}
+.desk-cast-row:hover { border-color: var(--ns-rule-strong); }
+.desk-cast-row[aria-checked="true"] { border-color: var(--ns-amber-ink); background: var(--ns-select); }
+
+/* Enhance's size keys: large, the thing being chosen. */
+.desk-size .studio-seg { flex-wrap: wrap; }
+.desk-size .studio-seg > button { min-height: 44px; padding: 0 16px; font-size: 15px; white-space: nowrap; }
+
+/* The chosen picture laid on the table, large. */
+.desk-well {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-frame);
+  background: var(--ns-film);
+}
+.desk-well-img { display: block; width: 100%; max-height: 300px; object-fit: contain; }
+.desk-well-cap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 6px 6px 10px;
+  background: var(--color-panel);
+  border-top: 1px solid var(--ns-rule);
+  font-size: var(--ns-t-small);
+  color: var(--color-fg);
+}
+
+/* ── The stage: the program monitor (Video) and the light table (Image, Enhance) ── */
+.desk-stage { display: flex; flex-direction: column; gap: 12px; min-width: 0; margin: 0; }
+.desk-stage-screen {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 220px;
+  max-height: 62vh;
+  overflow: hidden;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-frame);
+  background: var(--ns-film);
+  color: var(--ns-on-film);
+}
+.desk-stage[data-variant="monitor"] .desk-stage-screen { margin-inline: auto; max-width: 100%; }
+/* A tall clip keeps its own shape, centred on the black, never stretched. */
+.desk-stage[data-variant="monitor"] .desk-stage-screen[style*="9 / 16"] { width: auto; height: 62vh; }
+/* A before / after keeps its 4:3 and fits the height, centred. */
+.desk-stage-screen > div { max-width: calc(62vh * 4 / 3); }
+.desk-stage-screen > img,
+.desk-stage-screen > video { max-height: 62vh; width: 100%; height: 100%; }
+/* The state over a picture: a solid film chip in both themes, its word in the
+   film's own light (the lamp carries the colour), so it reads at well over 4.5:1. */
+.desk-stage-tally {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 4px 8px;
+  border-radius: var(--ns-r-chip);
+  background: var(--ns-film);
+  color: var(--ns-on-film);
+  pointer-events: none;
+}
+.desk-stage-tally .ns-lamp-label { color: var(--ns-on-film) !important; }
+.desk-stage-tally .ns-lamp { box-shadow: 0 0 0 2px var(--ns-film); }
+.desk-stage-actions {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  display: flex;
+  gap: 6px;
+}
+/* The video's own controls sit along the bottom: its keys move to the top right. */
+.desk-stage[data-variant="monitor"] .desk-stage-actions { top: 10px; bottom: auto; }
+.desk-stage-wait { display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--ns-on-film); }
+.desk-stage-wait-word {
+  font-family: var(--font-display);
+  font-size: var(--ns-t-label);
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ns-edge-print);
+}
+.desk-stage-wait-tc { font-size: 34px; line-height: 1; color: var(--ns-edge-print); }
+.desk-stage-slate { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.desk-stage-kind {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-fg);
+}
+.desk-since { font-size: var(--ns-t-small); color: var(--color-muted); }
+
+/* The strip under the monitor: every clip on this desk, one frame each. */
+.desk-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scroll-snap-type: x proximity;
+}
+.desk-strip-item { flex: 0 0 auto; scroll-snap-align: start; }
+.desk-strip-frame {
+  display: flex;
+  flex-direction: column;
+  width: 168px;
+  overflow: hidden;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-frame);
+  background: var(--ns-film);
+  text-align: left;
+}
+/* Picked: an amber border and inner line. The outline stays free for the
+   keyboard's focus ring, so focus and selection never look the same. */
+.desk-strip-frame[aria-pressed="true"] { border-color: var(--ns-amber); box-shadow: inset 0 0 0 2px var(--ns-amber); }
+.desk-strip-pic { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; color: var(--ns-on-film); }
+.desk-strip-frame > span:nth-child(2) > span:last-child { color: var(--ns-on-film); }
+
+/* ── Voice's takes: one row per take, its number like a clapper's ─────────── */
+.desk-take {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 14px 12px;
+  border: 1px solid var(--ns-rule);
+  border-radius: var(--ns-r-key);
+  background: var(--color-panel);
+}
+.desk-take-no { font-size: 22px; line-height: 1; color: var(--color-muted); padding-top: 2px; }
+.desk-take[data-status="running"] .desk-take-no,
+.desk-take[data-status="queued"] .desk-take-no { color: var(--ns-amber-ink); }
+.desk-take-audio { width: 100%; max-width: 560px; height: 40px; }
+.desk-take-side { display: flex; align-items: flex-start; }
+.desk-take-side .studio-on-media { background: var(--ns-key); color: var(--color-fg); }
+
+/* ── The overview ─────────────────────────────────────────────────────────── */
+/* The five desks as one patch bay: one object, cells split by hairlines. */
+.desk-bay {
+  display: grid;
+  grid-template-columns: 1fr;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-panel);
+  background: var(--color-panel);
+  overflow: hidden;
+}
+.desk-bay-cell + .desk-bay-cell { border-top: 1px solid var(--ns-rule); }
+@media (min-width: 640px) {
+  .desk-bay { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .desk-bay-cell + .desk-bay-cell { border-top: 0; }
+  .desk-bay-cell:nth-child(n + 3) { border-top: 1px solid var(--ns-rule); }
+  .desk-bay-cell:nth-child(even) { border-left: 1px solid var(--ns-rule); }
+  .desk-bay-cell:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+@media (min-width: 1180px) {
+  .desk-bay { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .desk-bay-cell:nth-child(n) { border-top: 0; border-left: 1px solid var(--ns-rule); }
+  .desk-bay-cell:first-child { border-left: 0; }
+  .desk-bay-cell:last-child:nth-child(odd) { grid-column: auto; }
+}
+.desk-bay-key {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  min-height: 150px;
+  padding: 16px 16px 44px;
+  color: var(--color-fg);
+  transition: background-color var(--ns-dur-1) var(--ns-ease);
+}
+.desk-bay-key:hover { background: var(--color-hover); }
+.desk-bay-top { display: flex; align-items: center; justify-content: space-between; color: var(--color-muted); }
+.desk-bay-no { font-size: 12px; color: var(--ns-amber-ink); }
+.desk-bay-name {
+  font-family: var(--font-display);
+  font-size: var(--ns-t-h2);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.desk-bay-blurb { font-size: var(--ns-t-ui); line-height: 1.45; color: var(--color-muted); max-width: 40ch; }
+.desk-bay-tools {
+  margin-top: auto;
+  font-family: var(--font-display);
+  font-size: var(--ns-t-label);
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.desk-bay-live { font-size: var(--ns-t-small); }
+.desk-bay-go {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-key);
+  color: var(--color-muted);
+  transition: color var(--ns-dur-1) var(--ns-ease), border-color var(--ns-dur-1) var(--ns-ease);
+}
+.desk-bay-key:hover .desk-bay-go { color: var(--ns-amber-ink); border-color: var(--ns-amber-ink); }
+
+.desk-overview-grid { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+@media (min-width: 1024px) {
+  .desk-overview-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+}
+.desk-side { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.desk-figure { font-size: var(--ns-t-h1); line-height: 1; color: var(--color-fg); }
+.desk-project {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--ns-rule);
+}
+li:last-child > .desk-project { border-bottom: 0; }
+.desk-project:hover span:first-child { color: var(--ns-amber-ink); }
+
+/* The overview's log: every desk's work, one row each. */
+.desk-log { display: flex; flex-direction: column; border: 1px solid var(--ns-rule); border-radius: var(--ns-r-panel); background: var(--color-panel); overflow: hidden; }
+.desk-log-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 8px 10px 8px 8px;
+}
+.desk-log-row + .desk-log-row { border-top: 1px solid var(--ns-rule); }
+.desk-log-pic {
+  position: relative;
+  display: block;
+  width: 64px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: var(--ns-r-frame);
+  background: var(--ns-film);
+  color: var(--ns-on-film);
+}
+.desk-log-pic .studio-on-media { display: none; }
+.desk-log-state { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.desk-log-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+  padding: 0 10px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-key);
+  font-size: var(--ns-t-small);
+  color: var(--color-muted);
+}
+@media (min-width: 640px) {
+  .desk-log-go { min-width: 104px; justify-content: space-between; }
+}
+.desk-log-go:hover { color: var(--ns-amber-ink); border-color: var(--ns-amber-ink); }
+@media (max-width: 639.98px) {
+  .desk-log-row { grid-template-columns: 56px minmax(0, 1fr) auto; }
+  .desk-log-pic { width: 56px; }
+  .desk-log-state { grid-column: 2; grid-row: 2; flex-direction: row; align-items: center; gap: 10px; }
+  .desk-log-go { grid-column: 3; grid-row: 1 / span 2; }
+}
+
+/* ── YouTube: the rundown beside the run form ─────────────────────────────── */
+.desk-yt { display: flex; flex-direction: column-reverse; gap: 24px; min-width: 0; }
+@media (min-width: 1024px) {
+  .desk-yt { display: grid; grid-template-columns: 300px minmax(0, 1fr); align-items: start; }
+  .desk-rundown-wrap { position: sticky; top: 96px; }
+}
+.desk-rundown-wrap { display: flex; flex-direction: column; gap: 10px; }
+.desk-rundown { display: flex; flex-direction: column; border-left: 1px solid var(--ns-rule-strong); }
+.desk-rundown-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 4px;
+  padding: 10px 10px 10px 12px;
+}
+.desk-rundown-step[data-here="true"] { background: var(--ns-select); }
+.desk-rundown-step[data-here="true"]::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--ns-amber);
+}
+.desk-rundown-no { font-size: 12px; padding-top: 2px; color: var(--color-muted); }
+.desk-rundown-step[data-here="true"] .desk-rundown-no { color: var(--ns-amber-ink); }
+.desk-rundown-title { font-size: var(--ns-t-body); font-weight: 650; color: var(--color-fg); }
+.desk-rundown-body { font-size: var(--ns-t-small); line-height: 1.45; color: var(--color-muted); }
+.desk-rundown-here { font-size: var(--ns-t-small); font-weight: 600; color: var(--ns-amber-ink); }
+.desk-rundown-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  min-height: 32px;
+  font-size: var(--ns-t-small);
+  font-weight: 600;
+  color: var(--color-primary);
+}
+.desk-rundown-link:hover { text-decoration: underline; }
+@media (pointer: coarse), (max-width: 40rem) {
+  .desk-rundown-link { min-height: 44px; }
+}
+
+/* ── Empty states, written for each desk; left-aligned like the rest ──────── */
+.desk-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 32px 24px;
+  border: 1px dashed var(--ns-rule-strong);
+  border-radius: var(--ns-r-panel);
+  background: var(--studio-canvas);
+}
+.desk-empty-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-key);
+  color: var(--color-muted);
+}
+/* The monitor with nothing on it is still a monitor: black, the words in its light. */
+.desk-empty[data-variant="monitor"] {
+  justify-content: flex-end;
+  min-height: clamp(200px, 34vw, 420px);
+  border-style: solid;
+  border-radius: var(--ns-r-frame);
+  background: var(--ns-film);
+}
+.desk-empty[data-variant="monitor"] > p:nth-of-type(1) { color: var(--ns-on-film); }
+.desk-empty[data-variant="monitor"] > p:nth-of-type(2) { color: color-mix(in srgb, var(--ns-on-film) 72%, transparent); }
+.desk-empty[data-variant="monitor"] .desk-empty-mark { color: var(--ns-edge-print); border-color: color-mix(in srgb, var(--ns-on-film) 30%, transparent); }
+
+/* Phones: every key in these desks is a 44 px target. */
+@media (pointer: coarse), (max-width: 40rem) {
+  .desk-key,
+  .desk-tool,
+  .desk-cast-row { min-height: 48px; }
+  .desk-composer .studio-chip,
+  .desk-composer .studio-seg > button { min-height: 44px; }
+}
+
+/* Phones: the bay reads as a short list — name, its tools and the key; the
+   longer line about each desk is on the desk itself. */
+@media (max-width: 639.98px) {
+  .desk-bay-blurb { display: none; }
+  .desk-bay-key { min-height: 0; padding: 14px 64px 14px 16px; gap: 4px; }
+  .desk-bay-top { justify-content: flex-start; gap: 10px; }
+  .desk-bay-name { font-size: var(--ns-t-h3); }
+  .desk-bay-go { top: 50%; bottom: auto; transform: translateY(-50%); width: 44px; height: 44px; }
+}
+
+/* Below lg the booth's and the bench's columns stack: they step aside
+   (display: contents) so the price key docks above the tab bar for the
+   whole desk, not only while its own column is on screen. */
+@media (max-width: 1023.98px) {
+  .desk-booth-script,
+  .desk-booth-cast,
+  .desk-bench-source,
+  .desk-bench-size,
+  .desk-bench-go { display: contents; }
+}

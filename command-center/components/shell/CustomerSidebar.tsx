@@ -3,27 +3,16 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { AudioLines, Clapperboard, Image as ImageIcon, Languages, Mic, MonitorUp, Play, ScanText, Scissors, Wand2, ZoomIn, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { CUSTOMER_SIDEBAR, sidebarCurrent, type NavItem, type StudioTool } from "@/lib/navigation";
+import { CUSTOMER_SIDEBAR, sidebarCurrent, type NavItem } from "@/lib/navigation";
+import { DESKS, deskFromQuery, deskHref, type Desk } from "@/lib/creative/desks";
+import { runPrefillFromQuery } from "@/lib/home";
+import { DESK_ICONS } from "@/components/studio/deskIcons";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { ICONS } from "@/components/navigation/navIcons";
 import type { AccountPlan } from "@/lib/account";
 
-const TOOL_ICONS: Record<StudioTool, LucideIcon> = {
-  t2i: ImageIcon,
-  t2v: Clapperboard,
-  tts: Mic,
-  edit: Wand2,
-  i2v: Play,
-  upscale: ZoomIn,
-  remove_bg: Scissors,
-  voice_change: AudioLines,
-  dub: Languages,
-  describe: ScanText,
-  video_upscale: MonitorUp,
-};
 
 /** The section path after the channel: "/chronos/create" → "/create". */
 function useSection(): string {
@@ -69,17 +58,24 @@ export function CustomerSidebar({ email, plan }: { email: string | null; plan: A
   );
 }
 
-/** The rows that need the query string (the tool rows), behind Suspense. */
+/** The rows that need the query string (the desk rows), behind Suspense. */
 function CurrentRows() {
   const section = useSection();
-  const tool = useSearchParams().get("tool");
-  return <SidebarRows current={sidebarCurrent(section, tool)} />;
+  const q = useSearchParams();
+  const tool = q.get("tool");
+  // On /create the row is the desk the page opens (lib/creative/desks), from the same query it reads.
+  const onCreate = section === "/create" || section.startsWith("/create/");
+  // The same validated read the page makes (lib/home), so a junk ?lang= never lights the YouTube desk.
+  const hasRunPrefill = onCreate && !!runPrefillFromQuery({ topic: q.get("topic") ?? undefined, length: q.get("length") ?? undefined, lang: q.get("lang") ?? undefined });
+  const desk = onCreate ? deskFromQuery({ desk: q.get("desk"), tool, hasRunPrefill }) : null;
+  const current = desk ? `desk:${desk}` : sidebarCurrent(section, tool);
+  return <SidebarRows current={current} />;
 }
 
 function SidebarRows({ current }: { current: string | null }) {
   const { t } = useI18n();
   const path = useChannelPath();
-  const { home, tools, work } = CUSTOMER_SIDEBAR;
+  const { home, work } = CUSTOMER_SIDEBAR;
   const HomeIcon = ICONS[home.key];
   return (
     <>
@@ -93,16 +89,17 @@ function SidebarRows({ current }: { current: string | null }) {
       </ul>
 
       <h2 className="shell-group">{t.shell.gCreate}</h2>
+      {/* The Studio's desks (lib/creative/desks), each laid out around one job; the tools live inside them. */}
       <ul className="flex flex-col gap-0.5">
-        {tools.map(({ tool, href }) => {
-          const Icon = TOOL_ICONS[tool];
+        {DESKS.map((d: Desk) => {
+          const Icon = DESK_ICONS[d];
           return (
-            <li key={tool}>
-              <Link href={path(href)} aria-current={current === `tool:${tool}` ? "page" : undefined} className="shell-link">
-                <span aria-hidden className="shell-tile" style={{ background: `var(--tool-${tool})` }}>
-                  <Icon className="size-3.5" strokeWidth={2.1} />
+            <li key={d}>
+              <Link href={path(deskHref(d))} aria-current={current === `desk:${d}` ? "page" : undefined} className="shell-link">
+                <span aria-hidden className="shell-tile">
+                  <Icon className="size-3.5" strokeWidth={2} />
                 </span>
-                <span className="truncate">{t.gen.kinds[tool]}</span>
+                <span className="truncate">{t.desk.names[d]}</span>
               </Link>
             </li>
           );
