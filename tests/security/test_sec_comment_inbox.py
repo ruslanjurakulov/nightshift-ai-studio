@@ -1036,7 +1036,7 @@ def test_applying_the_migration_twice_changes_nothing(db):
 
 # ── the review round (Lens-16) ──────────────────────────────────────────────
 
-CLEANER = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "inbox_cleaner_cases.json").read_text())
+CLEANER = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "inbox_cleaner_cases.txt").read_text())
 
 
 def test_the_database_cleaner_agrees_with_the_shared_table(db):

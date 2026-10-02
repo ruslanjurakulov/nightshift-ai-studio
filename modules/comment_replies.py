@@ -87,7 +87,7 @@ _CODE = re.compile(r"^[a-z_]{1,48}$")
 _REPLY_ID = re.compile(r"^[A-Za-z0-9_.-]{5,128}$")
 
 # Characters the database removes too (inbox_clean_text; the shared table is
-# tests/fixtures/inbox_cleaner_cases.json): controls but newline, the C1 block,
+# tests/fixtures/inbox_cleaner_cases.txt): controls but newline, the C1 block,
 # soft hyphen and other invisible letters, zero-width and direction controls,
 # word joiner and the invisible operators, the Unicode tag block (a hidden-text
 # channel for prompt injection), variation selectors (FE0E/FE0F stay: they pick

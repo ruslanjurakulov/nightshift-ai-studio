@@ -1,0 +1,13 @@
+{
+  "_about": "(JSON, kept as .txt because the repository ignores *.json.) Characters nobody sees that the comment inbox removes from comments, drafts and approved replies. The database (inbox_clean_text), the worker (modules/comment_replies.clean_text) and the screen (lib/comment-inbox cleanReply) must agree on every one; each of the three tests reads this file. 'strip' are inclusive code point ranges; 'keep' are strings that must come through unchanged.",
+  "strip": [
+    [1, 9], [11, 31], [127, 159], [173, 173], [847, 847], [1564, 1564], [4447, 4448], [6158, 6158],
+    [8203, 8207], [8232, 8238], [8288, 8303], [10240, 10240], [12644, 12644],
+    [65024, 65037], [65279, 65279], [65440, 65440], [65529, 65531],
+    [917504, 917631], [917760, 917999]
+  ],
+  "keep": [
+    "plain text", "café", "ёж", "o'zbek ў", "😀", "❤️", "❤︎", "line one\nline two",
+    "中文", "العربية", " nbsp-inside "
+  ]
+}

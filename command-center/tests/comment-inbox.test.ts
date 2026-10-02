@@ -84,7 +84,7 @@ describe("cleanReply", () => {
 });
 
 describe("cleanReply agrees with the database and the worker on one shared table", () => {
-  const cases = JSON.parse(readFileSync(join(__dirname, "../../tests/fixtures/inbox_cleaner_cases.json"), "utf8")) as {
+  const cases = JSON.parse(readFileSync(join(__dirname, "../../tests/fixtures/inbox_cleaner_cases.txt"), "utf8")) as {
     strip: [number, number][];
     keep: string[];
   };

@@ -651,7 +651,7 @@ if __name__ == "__main__":
 
 # ── the review round (Lens-16, BR-L-070 .. BR-L-077) ─────────────────────────
 
-CASES = json.loads((Path(__file__).parent / "fixtures" / "inbox_cleaner_cases.json").read_text())
+CASES = json.loads((Path(__file__).parent / "fixtures" / "inbox_cleaner_cases.txt").read_text())
 
 
 class CleanerTests(unittest.TestCase):
