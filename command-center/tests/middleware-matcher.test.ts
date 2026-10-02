@@ -245,3 +245,18 @@ describe("BR-L-102: a route handler has no RSC form", () => {
     expect([...ROUTE_HANDLER_FILES].sort()).toEqual(["/docs/api/openapi.json", "/robots.txt", "/sitemap.xml"]);
   });
 });
+
+describe("BR-L-132: a public page has no .rsc form either", () => {
+  it("every public page's .rsc form redirects to the page, before routing", async () => {
+    const { default: nextConfig, PUBLIC_PAGE_PATHS } = await import("../next.config");
+    const { SITEMAP_PATHS, LOGIN_PATH, SIGNUP_PATH } = await import("@/lib/public-paths");
+    // The literal list in next.config.ts is exactly the public pages.
+    expect([...PUBLIC_PAGE_PATHS].sort()).toEqual([...SITEMAP_PATHS, LOGIN_PATH, SIGNUP_PATH].sort());
+    const redirects = (await nextConfig.redirects?.()) ?? [];
+    for (const path of PUBLIC_PAGE_PATHS) {
+      const source = path === "/" ? "/index.rsc" : `${path}.rsc`;
+      expect(redirects).toContainEqual({ source, destination: path, permanent: false });
+    }
+    expect(redirects).toContainEqual({ source: "/.rsc", destination: "/", permanent: false });
+  });
+});

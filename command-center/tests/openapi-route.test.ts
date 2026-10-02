@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GET } from "@/app/docs/api/openapi.json/route";
 import { gateDecision } from "@/lib/public-paths";
+import { IMAGE_PROVIDERS, VIDEO_PROVIDERS } from "@/lib/runBackend";
 
 /**
  * PIXEL-5 N1: /docs/api linked "OpenAPI 3.1 spec" at /docs/api/openapi.json,
@@ -20,9 +21,22 @@ describe("GET /docs/api/openapi.json", () => {
     expect(Object.keys(spec.paths).length).toBeGreaterThan(5);
   });
 
-  it("names no price figure (the only prices are the live list on /docs/api)", async () => {
+  it("names no money amount at all (the only prices are the live list on /docs/api)", async () => {
     const text = JSON.stringify(await GET().json());
-    expect(text).not.toMatch(/\$\d+\.\d\d per minute|default prices/i);
+    // BR-L-133: a summary still carried the seed "x $0.015"; no "$" followed by a figure, anywhere.
+    expect(text).not.toMatch(/\$\s?\d/);
+    expect(text).not.toMatch(/default prices|\d+(?:\.\d+)?\s?¢/i);
+  });
+
+  it("names no provider: the public pages name no vendor, and the server validates the id itself", async () => {
+    const values: string[] = [];
+    const walk = (v: unknown): void => {
+      if (typeof v === "string") values.push(v.toLowerCase());
+      else if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === "object") Object.values(v).forEach(walk);
+    };
+    walk(await GET().json());
+    for (const id of [...VIDEO_PROVIDERS, ...IMAGE_PROVIDERS]) expect(values, id).not.toContain(id.toLowerCase());
   });
 
   it("is public, signed in or out", () => {

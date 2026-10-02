@@ -309,6 +309,7 @@ export const en: LegalTexts = {
             creditExpiry: {
               never: "8.5. Expiry. Credits do not expire.",
               after: "8.5. Expiry. Unused credits expire {months} months after the date they were purchased.",
+              unknown: "8.5. Expiry. The expiry term for top-up credits is the one in force for packs when you buy them. It could not be shown here just now; for the current term, write to us at {contactEmail}.",
             },
           },
           "8.6. Refunds. Because Paddle is the seller, refunds are handled by Paddle under [Paddle’s Buyer Terms](https://www.paddle.com/legal/checkout-buyer-terms) and applicable law, including any right you have as a consumer where you live to withdraw from a purchase. To ask for a refund, use the link in your Paddle receipt, or write to us at {contactEmail} and we will help.",

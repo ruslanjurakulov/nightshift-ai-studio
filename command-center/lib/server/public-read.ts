@@ -28,6 +28,9 @@ const inflight = new Map<string, Promise<unknown>>();
 export async function cachedPublicRead<T>(
   key: string,
   read: (signal: AbortSignal) => Promise<T | null>,
+  /** A read that worked but is incomplete (part of it failed) is kept only as
+   *  long as a failure, so the gap is retried soon (BR-L-131). */
+  degraded: (value: T) => boolean = () => false,
 ): Promise<T | null> {
   const hit = cache.get(key);
   if (hit && hit.until > Date.now()) return hit.value as T | null;
@@ -49,7 +52,8 @@ export async function cachedPublicRead<T>(
     } finally {
       clearTimeout(timer);
     }
-    cache.set(key, { value, until: Date.now() + (value === null ? FAIL_TTL_MS : OK_TTL_MS) });
+    const short = value === null || degraded(value as T);
+    cache.set(key, { value, until: Date.now() + (short ? FAIL_TTL_MS : OK_TTL_MS) });
     return value;
   })();
   inflight.set(key, run);

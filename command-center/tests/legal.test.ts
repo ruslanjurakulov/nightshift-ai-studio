@@ -61,6 +61,16 @@ describe("the contact address (BR-L-103)", () => {
       "privacy@example.com?bcc=x@y.z",
       "privacy@example.com&body=hi",
       "a<b@example.com",
+      // BR-L-133 (c): percent-escapes, extra recipients, control, bidi and fullwidth characters.
+      "a@b.co%0D%0ABcc:evil%40x.co",
+      "a@b.co,evil.co",
+      "a@b.co;evil@x.co",
+      "a@b.co#x",
+      "a\u0000b@example.com",
+      "a\u202eb@example.com",
+      "a\u200bb@example.com",
+      "a@example.com\uff1fbcc=x",
+      "a@example.com\uff06body=x",
     ]) {
       expect(readLegalConfig({ NEXT_PUBLIC_CONTACT_EMAIL: bad }).contactEmail, bad).toBeNull();
     }

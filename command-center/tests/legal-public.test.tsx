@@ -36,3 +36,26 @@ describe("public legal pages with the operator's details unset", () => {
     }
   });
 });
+
+describe("/terms 8.5 states the same expiry as the pricing pages (BR-L-130)", () => {
+  const text = (html: string) => new DOMParser().parseFromString(html, "text/html").body.textContent ?? "";
+  const section = (locale: Locale) => {
+    const block = LEGAL_TEXTS[locale].terms.sections.flatMap((s) => s.body).find((b) => typeof b === "object" && "creditExpiry" in b);
+    if (!block || typeof block !== "object" || !("creditExpiry" in block)) throw new Error("no 8.5");
+    return block.creditExpiry;
+  };
+
+  it.each(["en", "ru", "uz"] as Locale[])("the catalog's term, a real 'never', or — unknown — no claim at all (%s)", (locale) => {
+    const t = dictionaries[locale];
+    const doc = LEGAL_TEXTS[locale].terms;
+    const ce = section(locale);
+    const months = text(renderToStaticMarkup(<LegalDocumentView doc={doc} t={t} locale={locale} expiry={{ kind: "months", months: 12 }} />));
+    expect(months).toContain(ce.after.replace("{months}", "12"));
+    expect(months).not.toContain(ce.never);
+    const unknown = text(renderToStaticMarkup(<LegalDocumentView doc={doc} t={t} locale={locale} expiry={{ kind: "unknown" }} />));
+    expect(unknown).not.toContain(ce.never);
+    expect(unknown).toContain(ce.unknown.split("{contactEmail}")[0]);
+    const never = text(renderToStaticMarkup(<LegalDocumentView doc={doc} t={t} locale={locale} expiry={{ kind: "never" }} />));
+    expect(never).toContain(ce.never);
+  });
+});

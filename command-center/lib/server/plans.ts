@@ -56,9 +56,14 @@ export async function readPlanCatalog(
   ]);
   const bad = classify([plans.error, keys.error, values.error]);
   if (bad) return { state: bad };
-  // The pack validity is optional: without it the page falls back to the env.
+  // The pack validity is optional: with no policy table (before 0034's
+  // credit_lot_policies) the page falls back to the env. A policy query that
+  // FAILED is different: a term may exist, so the expiry is unknown, never
+  // "do not expire" (BR-L-131).
+  const policiesFailed = Boolean(policies.error) && !isCreditsMissing(policies.error);
   const catalog = coercePlanCatalog(plans.data, keys.data, values.data, policies.error ? undefined : policies.data);
-  return catalog ? { state: "ok", value: catalog } : { state: "failed" };
+  if (!catalog) return { state: "failed" };
+  return { state: "ok", value: policiesFailed ? { ...catalog, packExpiryUnknown: true } : catalog };
 }
 
 /**

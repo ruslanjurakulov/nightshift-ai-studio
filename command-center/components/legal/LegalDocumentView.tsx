@@ -3,6 +3,7 @@ import type { Dictionary, Locale } from "@/lib/i18n";
 import type { LegalBlock, LegalDocument } from "@/lib/legal-docs";
 import { tokenizeInline, type LegalVar } from "@/lib/legal-docs/inline";
 import { CREDIT_EXPIRY_MONTHS, LEGAL, missingLegalFields, type LegalConfig } from "@/lib/legal";
+import { packExpiry, type PackExpiry } from "@/lib/plans";
 
 /** An operator detail, or a plain "not published yet" in the reader's
  *  language. Never the env var behind it: these are public pages, and a
@@ -68,7 +69,7 @@ function Inline({ text, t }: { text: string; t: Dictionary }) {
   );
 }
 
-function Block({ block, t }: { block: LegalBlock; t: Dictionary }) {
+function Block({ block, t, expiry }: { block: LegalBlock; t: Dictionary; expiry: PackExpiry }) {
   if (typeof block === "string") {
     return (
       <p>
@@ -88,10 +89,15 @@ function Block({ block, t }: { block: LegalBlock; t: Dictionary }) {
     );
   }
   if ("creditExpiry" in block) {
+    // The same source as /pricing and the landing (BR-L-130): the plan
+    // catalog's pack policy, else the operator's env. Unknown names no term
+    // and points to the contact address — /pricing sends readers here for it.
     const text =
-      CREDIT_EXPIRY_MONTHS === null
+      expiry.kind === "never"
         ? block.creditExpiry.never
-        : block.creditExpiry.after.replace("{months}", String(CREDIT_EXPIRY_MONTHS));
+        : expiry.kind === "months"
+          ? block.creditExpiry.after.replace("{months}", String(expiry.months))
+          : block.creditExpiry.unknown;
     return (
       <p>
         <Inline text={text} t={t} />
@@ -142,7 +148,18 @@ function Block({ block, t }: { block: LegalBlock; t: Dictionary }) {
   );
 }
 
-export function LegalDocumentView({ doc, t, locale }: { doc: LegalDocument; t: Dictionary; locale: Locale }) {
+export function LegalDocumentView({
+  doc,
+  t,
+  locale,
+  expiry = packExpiry(null, CREDIT_EXPIRY_MONTHS),
+}: {
+  doc: LegalDocument;
+  t: Dictionary;
+  locale: Locale;
+  /** Top-up credit expiry (lib/plans.ts packExpiry); default: the env alone. */
+  expiry?: PackExpiry;
+}) {
   const facts: { label: string; name: LegalVar }[] = [
     { label: t.legal.operator, name: "legalName" },
     { label: t.legal.country, name: "country" },
@@ -197,7 +214,7 @@ export function LegalDocumentView({ doc, t, locale }: { doc: LegalDocument; t: D
             <h2 className="text-[1.375rem] font-semibold tracking-[-0.015em]">{s.heading}</h2>
             <div className="mt-4 flex flex-col gap-4 text-[15px] font-light leading-relaxed text-[var(--color-fg)]">
               {s.body.map((b, i) => (
-                <Block key={i} block={b} t={t} />
+                <Block key={i} block={b} t={t} expiry={expiry} />
               ))}
             </div>
           </section>

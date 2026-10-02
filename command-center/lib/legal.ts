@@ -54,9 +54,12 @@ function text(raw: string | undefined): string | null {
  *  trying to exercise their rights. */
 function email(raw: string | undefined): string | null {
   const v = text(raw);
-  // `?` `&` would add live parameters to the mailto: link (BR-L-103: "?bcc=…&body=…"),
-  // and double quotes or angle brackets have no place in an address anyone types.
-  return v && /^[^\s@?&"<>]+@[^\s@?&"<>]+\.[^\s@?&"<>]+$/.test(v) ? v : null;
+  // An allowlist, not a denylist (BR-L-103, BR-L-133): the address goes into a
+  // mailto: link, where ?, &, %, a comma or a semicolon add live parameters or
+  // recipients, and control, bidi or fullwidth characters disguise it. A plain
+  // ASCII address: letters, digits and . _ + ' - before the @; a dotted
+  // domain of letters, digits and hyphens after it, ending in letters.
+  return v && /^[A-Za-z0-9._+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/.test(v) ? v : null;
 }
 
 /** A real calendar date in YYYY-MM-DD. `2026-02-31` is rejected rather than
