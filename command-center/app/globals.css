@@ -1513,7 +1513,8 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .ns-seg > button:hover { color: var(--color-fg); }
 .studio-seg > button[aria-pressed="true"],
 .ns-seg > button[aria-pressed="true"],
-.ns-seg > button[aria-checked="true"] {
+.ns-seg > button[aria-checked="true"],
+.ns-seg > button[aria-selected="true"] {
   color: var(--studio-cta-fg);
   background: var(--studio-cta-bg);
 }
@@ -1594,10 +1595,8 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   padding: 12px;
   border: 1px solid var(--ns-rule-strong);
   border-radius: var(--ns-r-panel);
-  background: var(--studio-dock-bg);
+  background: var(--color-panel);
   box-shadow: var(--shadow-elevated);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
 }
 @media (min-width: 1024px) {
   .sb-dock { --sb-dock-offset: 0px; }
@@ -1992,6 +1991,14 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   .ns-chip-row[data-wrap="true"] { flex-wrap: wrap; overflow: visible; }
 }
 .ns-chip > .ns-chip-count { color: var(--color-muted); }
+/* A readout chip is not a key: no hover, a normal-height line on a phone. */
+.ns-chip[data-plain="true"] { cursor: default; min-height: 28px; }
+.ns-chip[data-plain="true"]:hover { color: var(--color-muted); border-color: var(--color-border); }
+.ns-chip[data-tone="lit"],
+.ns-chip[data-plain="true"][data-tone="lit"]:hover { color: var(--ns-amber-ink); border-color: var(--ns-amber-ink); }
+.ns-chip[data-tone="warn"],
+.ns-chip[data-plain="true"][data-tone="warn"]:hover { color: var(--ns-caution); border-color: var(--ns-caution); }
+.ns-chip[data-tone] > .ns-chip-count { color: inherit; }
 
 /* Panel: three roles — flat (a hairline rack face), sunken (a well for a
    field or a feed), lifted (the one thing on the screen). */
@@ -2002,6 +2009,9 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 }
 .ns-panel[data-tone="sunken"] { background: var(--ns-key); border-color: transparent; }
 .ns-panel[data-tone="lifted"] { border-color: var(--ns-rule-strong); box-shadow: var(--ns-lift); }
+/* A drop zone is a well with a dashed edge until something is in it. */
+.ns-panel.ns-dropzone { border: 1px dashed var(--ns-rule-strong); }
+.ns-panel.ns-dropzone-filled { border-style: solid; border-color: var(--color-border); }
 .ns-panel-head {
   display: flex;
   align-items: baseline;
@@ -2029,7 +2039,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .ns-seg[data-size="lg"] > button { min-height: 36px; padding: 0 14px; font-size: var(--ns-t-ui); font-weight: 550; }
 @media (pointer: coarse), (max-width: 40rem) {
   .ns-seg > button,
-  .ns-chip,
+  .ns-chip:not([data-plain]),
   .ns-price-button[data-size="md"] { min-height: 44px; }
 }
 
@@ -2049,6 +2059,9 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   border-radius: var(--ns-r-frame);
   background: var(--ns-film);
 }
+/* Frames of different shapes (a feed of 16:9, 1:1 and 9:16 results): each frame
+   keeps its own film, and the gaps between them show the page, not black. */
+.ns-sheet[data-ragged="true"] { gap: 8px; padding: 0; background: transparent; align-items: start; }
 .ns-frame {
   position: relative;
   display: flex;
@@ -2063,6 +2076,14 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   overflow: hidden;
   border-radius: 1px;
   background: color-mix(in srgb, var(--ns-on-film) 8%, var(--ns-film));
+}
+/* The printed slip under a frame: solid paper, readable in both themes. */
+.ns-frame-body {
+  flex: 1 1 auto;
+  margin-top: 3px;
+  padding: 0.625rem 0.75rem 0.75rem;
+  background: var(--color-panel);
+  color: var(--color-fg);
 }
 .ns-frame[data-selected="true"] .ns-frame-media { outline: 2px solid var(--ns-amber); outline-offset: -2px; }
 .ns-edge {

@@ -27,6 +27,7 @@ import {
 } from "@/lib/creative/operations";
 import { VOICES } from "@/lib/ttsModels";
 import { formatCredits } from "@/lib/credits";
+import { formatTimecode } from "@/components/ui/Timecode";
 import { fmt, type Dictionary } from "@/lib/i18n";
 
 /**
@@ -689,6 +690,26 @@ export function cardAspect(job: Pick<StudioJob, "capability" | "params">): strin
   if (a === "16:9") return "16 / 9";
   if (a === "9:16") return "9 / 16";
   return "1 / 1";
+}
+
+/**
+ * The edge print of a result's frame (IDENTITY.md §Signature devices): only
+ * facts the job itself carries — the shape it was asked for, a clip's length,
+ * the credits held or charged. Nothing is guessed: an unknown shape or length
+ * is left off, and a job that ended without a result prints no price.
+ */
+export function edgeFacts(t: Dictionary, job: StudioJob, locale = "en"): string[] {
+  const kind = outputKind(job.capability);
+  const facts: string[] = [];
+  const a = job.params.aspect_ratio;
+  if ((kind === "image" || kind === "video") && (a === "16:9" || a === "9:16" || a === "1:1")) facts.push(a);
+  const d = job.params.duration_s;
+  if (kind === "video" && typeof d === "number" && Number.isFinite(d) && d > 0) facts.push(formatTimecode(d, "duration"));
+  if (!isUnsuccessful(job.status)) {
+    const credits = job.status === "completed" ? (job.charged_credits ?? job.quoted_credits) : job.quoted_credits;
+    if (typeof credits === "number" && Number.isFinite(credits)) facts.push(`${formatCredits(credits, locale)} ${t.gen.crShort}`);
+  }
+  return facts;
 }
 
 /** What "Try again" puts back into the panel. It spends nothing by itself. */
