@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 const push = vi.fn();
@@ -131,6 +131,19 @@ describe("command palette", () => {
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(opener);
+  });
+
+  it("lists Getting Started for the operator only", () => {
+    const { unmount } = render(withI18n(<CommandPalette scope={unscopedScope()} operator />));
+    open();
+    expect(within(screen.getByRole("dialog")).queryByText(dictionaries.en.nav.onboarding)).not.toBeNull();
+    unmount();
+    render(withI18n(<CommandPalette scope={unscopedScope()} />));
+    open();
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).queryByText(dictionaries.en.nav.onboarding)).toBeNull();
+    // The customer's palette still lists their own places.
+    expect(within(dialog).queryByText(dictionaries.en.nav.credits)).not.toBeNull();
   });
 
   it("the shortcuts help is a dialog named by its heading, and Escape closes it", () => {

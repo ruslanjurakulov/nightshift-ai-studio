@@ -245,7 +245,7 @@ export const uz: Dictionary = {
     skip: "O'tkazib yuborish",
     back: "Orqaga",
     nextTitle: "Keyingi qadamlaringiz",
-    nextHint: "Har biri o'sha ish bajariladigan sahifani ochadi. To'liq ro'yxat \"Ishni boshlash\" bo'limida qoladi.",
+    nextHint: "Har biri o'sha ish bajariladigan sahifani ochadi.",
     stepChannel: "Kanalingizni qo'shing",
     stepChannelBody: "Unga nom bering, nisha va tilni belgilang va u tegishli YouTube kanalini tasdiqlang.",
     stepYoutube: "YouTube'ni ulang",

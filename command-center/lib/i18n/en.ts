@@ -251,7 +251,7 @@ export const en = {
     skip: "Skip",
     back: "Back",
     nextTitle: "Your next steps",
-    nextHint: "Each one opens the screen that does it. The full checklist stays under Getting started.",
+    nextHint: "Each one opens the screen that does it.",
     stepChannel: "Add your channel",
     stepChannelBody: "Name it, set its niche and language, and confirm the YouTube channel it belongs to.",
     stepYoutube: "Connect YouTube",
