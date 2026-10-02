@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nightshift.local/schemas/timeline.schema.json",
   "title": "Nightshift Creative OS timeline v1",
-  "description": "A studio timeline (modules/timeline.py), rendered by the ffmpeg engine through modules/timeline_render.py. Assets are referenced by id only; a resolver turns ids into files and refuses any the caller may not use. The hand-written validator in modules/timeline.py is the twin of this schema and also checks what JSON Schema cannot: out_s > in_s, speed 0.5-2 (a clip lasts (out_s - in_s) / speed), end_s > start_s, unique ids, no overlapping clips on a track, at most one V track, at most 64 audio clips and 5000 clips in all, fades that fit inside their clip, and a total length of at most 4 hours. tests/test_timeline.py keeps the two in sync.",
+  "description": "A studio timeline (modules/timeline.py), rendered by the ffmpeg engine through modules/timeline_render.py. Assets are referenced by id only; a resolver turns ids into files and refuses any the caller may not use. The hand-written validator in modules/timeline.py is the twin of this schema and also checks what JSON Schema cannot: out_s > in_s, speed 0.5-2 (a clip lasts (out_s - in_s) / speed), end_s > start_s, unique ids, no overlapping clips on a track, at most one V track, at most 64 audio clips and 5000 clips in all, fades that fit inside their clip, no duck on a speech track, and a total length of at most 4 hours. tests/test_timeline.py keeps the two in sync.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -131,6 +131,16 @@
           "items": {
             "$ref": "#/$defs/audio_clip"
           }
+        },
+        "role": {
+          "enum": [
+            "music",
+            "speech"
+          ],
+          "description": "What the track carries. A speech track is what a ducked music track is lowered under; a track with no role is treated as music."
+        },
+        "duck": {
+          "$ref": "#/$defs/duck"
         }
       }
     },
@@ -472,6 +482,33 @@
         },
         "text": {
           "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "duck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "amount_db"
+      ],
+      "description": "Lower this track while speech plays: by amount_db, reaching it attack_s before speech starts and coming back over release_s after it ends. Speech is every A track with role 'speech' and every video clip that plays its own sound. Not allowed on a speech track (validated in modules/timeline.py).",
+      "properties": {
+        "amount_db": {
+          "type": "number",
+          "minimum": 1.0,
+          "maximum": 40.0
+        },
+        "attack_s": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 2.0,
+          "default": 0.3
+        },
+        "release_s": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 5.0,
+          "default": 0.8
         }
       }
     }

@@ -24,7 +24,9 @@ Read `CLAUDE.md` and `docs/security/README.md` first.
 ## How to fix
 
 - **Diagnose before you fix.** Reproduce the finding with its pinned test (it must fail today,
-  marked `xfail(strict=True, reason="BR-X-NNN open")` or `it.fails`). Read Sentinel's root
+  marked `xfail(strict=True, reason="BR-X-NNN open")` in `tests/security/`,
+  `@unittest.expectedFailure  # BR-X-NNN open` in `tests/`, or `it.fails` in vitest; see
+  `docs/security/README.md`). Read Sentinel's root
   cause and the list of other places with the same flaw.
 - **Minimal fix.** Change the least code that closes the hole everywhere the root cause appears.
   No refactors, no features, no behaviour change beyond the security boundary.
@@ -50,7 +52,10 @@ Read `CLAUDE.md` and `docs/security/README.md` first.
 ## Tests
 
 - Delete the marker on the pinned test: `@pytest.mark.xfail(strict=True, reason="BR-X-NNN open")`
-  becomes a plain test, and `it.fails(` becomes `it(`. It must now pass.
+  or `@unittest.expectedFailure  # BR-X-NNN open` becomes a plain test, and `it.fails(` becomes
+  `it(`. It must now pass. `grep -rn "BR-X-NNN open"` must then return nothing.
+- `tests/` (outside `tests/security/`) runs under `python -m unittest` in CI, not pytest, so new
+  regression tests there are `unittest.TestCase` methods.
 - Add at least one **regression test** for each variant Sentinel's root-cause search found
   (other table, other RPC, other route), under `tests/security/` for SQL and
   `command-center/tests/` for routes.

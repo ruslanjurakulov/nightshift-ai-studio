@@ -62,13 +62,22 @@ against the argv captured from the code before this extension):
   * ``AudioTrack.crossfade_s`` — this track is joined to the one before it
     with ``acrossfade`` over that many seconds (a cross-fade between two
     clips that both play their own sound).
+  * ``AudioTrack.duck_*`` — music ducking. While any of ``duck_spans`` (where
+    speech plays, merged by the caller) is on, the track is lowered by exactly
+    ``duck_db``: down over ``duck_attack_s`` ending where the span starts,
+    back up over ``duck_release_s`` from where it ends. It is one ``volume``
+    filter with a time expression — numbers this code formats, never text
+    from a document — placed after the track's delay, so ``t`` is output time.
+    A sidechain compressor was not used: it lowers by a ratio of whatever the
+    speech level happens to be, so "12 dB" would mean something different on
+    every clip, and a track's gain would change what it does.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 #: The ONE quality encode of a render (the final pass). These are libx264's own
 #: defaults — what this backend always encoded with implicitly — spelled out so
@@ -200,6 +209,12 @@ class AudioTrack:
     #: Joined to the PREVIOUS track in the list with ``acrossfade`` over this
     #: many seconds (0 = mixed on its own, the original model).
     crossfade_s: float = 0.0
+    #: Ducking (see the module docstring): how far the track is lowered, how
+    #: fast, and where. No spans = no ducking = the original filter graph.
+    duck_db: float = 0.0
+    duck_attack_s: float = 0.0
+    duck_release_s: float = 0.0
+    duck_spans: Tuple[Tuple[float, float], ...] = ()
 
     @property
     def output_s(self) -> float:
@@ -212,6 +227,11 @@ class AudioTrack:
              "fade_out_s": self.fade_out_s}
         _put_if(d, "speed", self.speed, 1.0)
         _put_if(d, "crossfade_s", self.crossfade_s, 0.0)
+        if self.duck_spans:
+            d["duck_db"] = self.duck_db
+            d["duck_attack_s"] = self.duck_attack_s
+            d["duck_release_s"] = self.duck_release_s
+            d["duck_spans"] = [[a, b] for a, b in self.duck_spans]
         return d
 
     @staticmethod
@@ -226,6 +246,10 @@ class AudioTrack:
             fade_out_s=float(d.get("fade_out_s") or 0.0),
             speed=float(d.get("speed") or 1.0),
             crossfade_s=float(d.get("crossfade_s") or 0.0),
+            duck_db=float(d.get("duck_db") or 0.0),
+            duck_attack_s=float(d.get("duck_attack_s") or 0.0),
+            duck_release_s=float(d.get("duck_release_s") or 0.0),
+            duck_spans=tuple((float(a), float(b)) for a, b in (d.get("duck_spans") or [])),
         )
 
 
@@ -384,6 +408,34 @@ def _segment_problems(name: str, seg: Segment, frame_exact: bool) -> List[str]:
     return problems
 
 
+#: The most speech spans one track's envelope may carry: the expression grows
+#: with each, and a document has at most 64 audio inputs to be speech.
+MAX_DUCK_SPANS = 128
+DUCK_DB_MAX = 60.0
+DUCK_RAMP_MIN_S, DUCK_RAMP_MAX_S = 0.01, 10.0
+
+
+def _duck_problems(i: int, t: AudioTrack) -> List[str]:
+    if not t.duck_spans:
+        if t.duck_db or t.duck_attack_s or t.duck_release_s:
+            return [f"audio track {i} has ducking settings but no speech to duck under"]
+        return []
+    problems: List[str] = []
+    if not (0 < t.duck_db <= DUCK_DB_MAX):
+        problems.append(f"audio track {i} duck amount must be above 0 and at most "
+                        f"{DUCK_DB_MAX:g} dB")
+    for name, v in (("attack", t.duck_attack_s), ("release", t.duck_release_s)):
+        if not (DUCK_RAMP_MIN_S <= v <= DUCK_RAMP_MAX_S):
+            problems.append(f"audio track {i} duck {name} must be from {DUCK_RAMP_MIN_S:g} to "
+                            f"{DUCK_RAMP_MAX_S:g} s")
+    if len(t.duck_spans) > MAX_DUCK_SPANS:
+        problems.append(f"audio track {i} has more than {MAX_DUCK_SPANS} speech spans to duck under")
+    elif not all(len(sp) == 2 and all(_finite(x) for x in sp) and 0 <= sp[0] < sp[1]
+                 for sp in t.duck_spans):
+        problems.append(f"audio track {i} duck spans must be finite (start, end) pairs, end after start")
+    return problems
+
+
 def validate(spec: RenderSpec) -> List[str]:
     """Problems that would make this spec un-renderable, as human-readable
     strings. Empty list means the spec is well-formed. Pure — checks the data,
@@ -415,7 +467,7 @@ def validate(spec: RenderSpec) -> List[str]:
         if not t.path:
             problems.append(f"audio track {i} has no path")
         nums = ("duration_s", "start_s", "in_s", "gain_db", "fade_in_s", "fade_out_s", "speed",
-                "crossfade_s")
+                "crossfade_s", "duck_db", "duck_attack_s", "duck_release_s")
         if not all(_finite(getattr(t, n)) for n in nums):
             problems.append(f"audio track {i} has a non-finite number")
             continue
@@ -435,6 +487,7 @@ def validate(spec: RenderSpec) -> List[str]:
             if t.crossfade_s > t.output_s + 1e-9 or (
                     _finite(prev.output_s) and t.crossfade_s > prev.output_s + 1e-9):
                 problems.append(f"audio track {i} cross-fade is longer than a track it joins")
+        problems.extend(_duck_problems(i, t))
     for i, o in enumerate(spec.overlays):
         if not str(o.text or "").strip():
             problems.append(f"overlay {i} has no text")
@@ -548,6 +601,36 @@ def audio_track_filter(track: AudioTrack, input_index: int, label: str, *,
     return f"[{input_index}:a]" + ",".join(chain) + f"[{label}]"
 
 
+def _ramp_term(span: Tuple[float, float], attack_s: float, release_s: float) -> str:
+    """How far one speech span has pulled the track down, 0..1, at time ``t``:
+    rising over ``attack_s`` up to the span's start, 1 inside, falling over
+    ``release_s`` after its end. Only + - * / min and clip: no ffmpeg-only
+    syntax the tests could not evaluate."""
+    start, end = span
+    rise = start - attack_s
+    up = f"(t-{_t(rise)})" if rise >= 0 else f"(t+{_t(-rise)})"
+    down = f"({_t(end + release_s)}-t)"
+    return f"clip(min({up}/{_t(attack_s)},{down}/{_t(release_s)}),0,1)"
+
+
+def duck_expression(track: AudioTrack) -> str:
+    """The ``volume`` expression of a ducked track: 1 outside speech, the
+    linear gain of ``-duck_db`` inside it, ramped between. Where two spans'
+    ramps meet, the deeper one wins (``max``)."""
+    depth = [_ramp_term(sp, track.duck_attack_s, track.duck_release_s) for sp in track.duck_spans]
+    deepest = depth[-1]
+    for term in reversed(depth[:-1]):
+        deepest = f"max({term},{deepest})"
+    lowered = 1.0 - 10 ** (-track.duck_db / 20.0)
+    return f"1-{lowered:.4f}*{deepest}"
+
+
+def audio_duck_filter(track: AudioTrack, source: str, label: str) -> str:
+    """``[source]volume=...[label]``: the ducking envelope, evaluated per audio
+    frame (``eval=frame``), applied after the track's delay."""
+    return f"[{source}]volume=volume='{duck_expression(track)}':eval=frame[{label}]"
+
+
 def audio_runs(tracks: List[AudioTrack]) -> List[List[int]]:
     """Track indexes grouped into runs joined by cross-fades: a track with
     ``crossfade_s`` belongs to the run of the track before it."""
@@ -610,6 +693,10 @@ def _timeline_command(spec: RenderSpec, concat_list_path: str,
     for run in audio_runs(spec.audio_tracks):
         label = f"a{run[0]}"
         graph.extend(audio_run_filters(spec.audio_tracks, run, label))
+        if spec.audio_tracks[run[0]].duck_spans:
+            # After the run's delay, so `t` in the envelope is output time.
+            graph.append(audio_duck_filter(spec.audio_tracks[run[0]], label, f"{label}d"))
+            label = f"{label}d"
         labels.append(f"[{label}]")
     if labels:
         graph.append("".join(labels)

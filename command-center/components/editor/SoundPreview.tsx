@@ -1,12 +1,20 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { soundLength, type EditorAsset, type SoundClip } from "@/lib/editor";
+import {
+  duckGainAt,
+  soundLength,
+  type EditorAsset,
+  type SoundClip,
+} from "@/lib/editor";
 
-/** dB → the 0..1 an <audio> element takes (it cannot go louder than 1). */
-export function previewVolume(gainDb: number): number {
-  return Math.min(1, Math.max(0, 10 ** (gainDb / 20)));
+/** dB → the 0..1 an <audio> element takes (it cannot go louder than 1).
+ *  `duckGain` (linear, 0..1) is the ducking envelope's value at this moment. */
+export function previewVolume(gainDb: number, duckGain = 1): number {
+  return Math.min(1, Math.max(0, 10 ** (gainDb / 20) * duckGain));
 }
+
+const NO_SPEECH: readonly (readonly [number, number])[] = [];
 
 /**
  * Plays the music and sound clips in the preview, following the playhead:
@@ -20,11 +28,14 @@ export function SoundPreview({
   assets,
   playhead,
   playing,
+  speech = NO_SPEECH,
 }: {
   sounds: readonly SoundClip[];
   assets: Record<string, EditorAsset>;
   playhead: number;
   playing: boolean;
+  /** Where speech plays (editor.ts speechSpans): what a ducked sound is lowered under. */
+  speech?: readonly (readonly [number, number])[];
 }) {
   const refs = useRef(new Map<string, HTMLAudioElement>());
 
@@ -38,7 +49,10 @@ export function SoundPreview({
         if (!el.paused) el.pause?.();
         continue;
       }
-      el.volume = previewVolume(x.gain_db);
+      el.volume = previewVolume(
+        x.gain_db,
+        x.duck ? duckGainAt(x.duck, speech, playhead) : 1,
+      );
       const want = x.in_s + into;
       // Seek only when it drifted: re-seeking every frame would stutter.
       if (el.paused || Math.abs((el.currentTime || 0) - want) > 0.3) {
@@ -50,7 +64,7 @@ export function SoundPreview({
       }
       if (el.paused) void el.play?.()?.catch?.(() => {});
     }
-  }, [sounds, playhead, playing]);
+  }, [sounds, playhead, playing, speech]);
 
   return (
     <div hidden>

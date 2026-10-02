@@ -3,6 +3,7 @@
 import { useRef, type KeyboardEvent, type PointerEvent } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
+import { SoundWave } from "./SoundWave";
 import {
   clipEnd,
   clipLength,
@@ -277,18 +278,31 @@ export function TimelineStrip({
                     type="button"
                     onClick={() => onSelect({ kind: "sound", id: x.id })}
                     aria-pressed={on}
-                    aria-label={fmt(te.soundClipLabel, {
-                      name,
-                      from: formatTime(x.start_s),
-                      to: formatTime(end),
-                    })}
-                    className={`size-full truncate rounded-md border px-1.5 text-left text-[11px] ${
+                    aria-label={
+                      fmt(te.soundClipLabel, {
+                        name,
+                        from: formatTime(x.start_s),
+                        to: formatTime(end),
+                      }) +
+                      (x.role === "speech" ? `, ${te.roleSpeechShort}` : "") +
+                      (x.duck
+                        ? `, ${fmt(te.duckLabel, { db: x.duck.amount_db })}`
+                        : "")
+                    }
+                    className={`relative size-full overflow-hidden truncate rounded-md border px-1.5 text-left text-[11px] ${
                       on
                         ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                         : "border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
                     }`}
                   >
-                    ♪ {name}
+                    <SoundWave sound={x} asset={assets[x.asset_id]} />
+                    <span className="relative">
+                      ♪ {name}
+                      {x.role === "speech" ? ` · ${te.roleSpeechShort}` : ""}
+                      {x.duck
+                        ? ` · ${fmt(te.duckBadge, { db: x.duck.amount_db })}`
+                        : ""}
+                    </span>
                   </button>
                 </div>
               );

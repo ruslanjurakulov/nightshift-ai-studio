@@ -72,7 +72,19 @@ the marker is strict. A strict marker makes CI go red the moment the test
 starts passing. That forces whoever closed the hole to remove the marker and
 update the ledger in the same PR.
 
-**Python (pytest, `tests/security/` and `tests/`):**
+Pick the marker for the runner that CI actually uses for that folder:
+
+| Folder | CI runner (workflow) | Marker |
+|---|---|---|
+| `tests/security/` | pytest (`security.yml`) | `@pytest.mark.xfail(strict=True, reason="BR-X-NNN open")` |
+| `tests/` (everything else) | `python -m unittest discover` (`tests.yml`): **no pytest in CI** | `@unittest.expectedFailure  # BR-X-NNN open` |
+| `command-center/tests/` | vitest (`frontend.yml`) | `it.fails(...)` with `// BR-X-NNN open` |
+
+`unittest` ignores pytest markers, so a `pytest.mark.xfail` test under `tests/` would just fail
+CI. `@unittest.expectedFailure` is strict in the same way: an unexpected success makes the run
+unsuccessful.
+
+**Python, security lab (pytest, `tests/security/`):**
 
 ```python
 import pytest
@@ -80,6 +92,15 @@ import pytest
 @pytest.mark.xfail(strict=True, reason="BR-A-007 open")
 def test_tenant_b_cannot_read_tenant_a_storyboard(sec):
     ...  # asserts the SAFE behaviour; fails today because the hole is open
+```
+
+**Python, unit tests (unittest, `tests/`):**
+
+```python
+class MediaBombTest(unittest.TestCase):
+    @unittest.expectedFailure  # BR-C-001 open
+    def test_raster_megapixel_bomb_is_refused(self):
+        ...  # asserts the SAFE behaviour
 ```
 
 **TypeScript (vitest, `command-center/tests/`):**
@@ -95,12 +116,12 @@ Rules:
 
 - The test asserts the **safe** behaviour. It is not written to pass against
   the bug.
-- `reason` is exactly `"BR-X-NNN open"` so that
+- The marker's reason or comment contains exactly `BR-X-NNN open`, so that
   `grep -rn "BR-A-007 open"` finds every test pinned to that finding.
 - Never `skip`, never `xfail(strict=False)`, never `it.skip` or `it.todo`. A
   skipped test cannot go red when the hole closes or reopens.
-- When Patch fixes it, Patch deletes the marker (`xfail` becomes a plain test,
-  `it.fails` becomes `it`), adds at least one more regression test for the
+- When Patch fixes it, Patch deletes the marker (`xfail` or `expectedFailure`
+  becomes a plain test, `it.fails` becomes `it`), adds at least one more regression test for the
   variant that Sentinel's root-cause search found, and sets the ledger row to
   `fixed` with the PR number.
 
