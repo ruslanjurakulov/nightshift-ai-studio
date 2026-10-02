@@ -470,6 +470,34 @@ class RealDecoderTests(unittest.TestCase):
                                       deadline=_deadline(120))
 
 
+# ── the upscale's frame-rate probe (Lens coverage note) ─────────────────────
+
+class UpscaleFpsProbeTests(unittest.TestCase):
+    def test_the_fps_probe_reads_only_the_file_as_its_type(self):
+        from modules.capabilities import video
+
+        seen = []
+
+        def fake_run(argv, **kw):
+            seen.append((argv, kw))
+            return subprocess.CompletedProcess(argv, 0, b'{"streams":[{"avg_frame_rate":"30/1"}]}', b"")
+
+        with mock.patch.object(video.shutil, "which", return_value="/usr/bin/ffprobe"), \
+                mock.patch.object(video.subprocess, "run", side_effect=fake_run):
+            for name, demuxer in (("a.mp4", "mov"), ("a.MOV", "mov"), ("a.webm", "matroska"),
+                                  ("a.mkv", "matroska"), ("a.bin", None)):
+                with self.subTest(name=name):
+                    self.assertEqual(video.video_fps(f"/m/{name}"), 30.0)
+                    argv, kw = seen[-1]
+                    self.assertEqual(argv[argv.index("-protocol_whitelist") + 1], "file")
+                    if demuxer:
+                        self.assertEqual(argv[argv.index("-f") + 1], demuxer)
+                    else:
+                        self.assertNotIn("-f", argv)
+                    self.assertLess(argv.index("-protocol_whitelist"), argv.index(f"/m/{name}"))
+                    self.assertEqual(kw["timeout"], 30)
+
+
 # ── an export: a refusal is render_failed, and is not redone ────────────────
 
 class ExportRefusalTests(unittest.TestCase):
