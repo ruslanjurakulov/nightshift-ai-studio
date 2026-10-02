@@ -4,6 +4,7 @@ import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
 import type { MoneyAnchor, PricingTeaser as PricingTeaserData, ShowcaseItem } from "@/lib/landing";
 import { WELCOME_CREDITS } from "@/lib/pricing";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
+import { packExpiry, type PackExpiry } from "@/lib/plans";
 import { formatCredits } from "@/lib/credits";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
@@ -66,7 +67,7 @@ export function Landing({
   pricing,
   anchor,
   showcase,
-  expiryMonths = CREDIT_EXPIRY_MONTHS,
+  expiry = packExpiry(null, CREDIT_EXPIRY_MONTHS),
 }: {
   t: Dictionary;
   locale: Locale;
@@ -74,8 +75,8 @@ export function Landing({
   /** The money a visitor can know before signing up (lib/landing.ts moneyAnchor). */
   anchor: MoneyAnchor;
   showcase: ShowcaseItem[];
-  /** How long top-up credits last: the plan catalog's policy, else the env; null = they do not expire. */
-  expiryMonths?: number | null;
+  /** How long top-up credits last (lib/plans.ts packExpiry): the catalog's policy, the env, or unknown. */
+  expiry?: PackExpiry;
 }) {
   return (
     <div className="lp-root">
@@ -92,8 +93,8 @@ export function Landing({
         </div>
       )}
       <SolutionsTeaser t={t} />
-      <PricingTeaser t={t} locale={locale} teaser={pricing} anchor={anchor} expiryMonths={expiryMonths} />
-      <Faq t={t} plansOnSale={pricing.kind === "plans"} expiryMonths={expiryMonths} aside={<GoogleData t={t} />} />
+      <PricingTeaser t={t} locale={locale} teaser={pricing} anchor={anchor} expiry={expiry} />
+      <Faq t={t} plansOnSale={pricing.kind === "plans"} expiry={expiry} aside={<GoogleData t={t} />} />
       <FinalCta t={t} />
     </div>
   );
@@ -200,43 +201,59 @@ function How({ t, locale }: { t: Dictionary; locale: Locale }) {
             <h3 className="st-step-title">{s.title}</h3>
             {s.id === "approval" && <StatusLamp tone="run" label={t.site.rundown.yours} />}
             <p>{s.body}</p>
+            {/* On a phone the steps are one column, so the screen of step 05
+                sits in step 05 itself, before step 06 — not after the list. */}
+            {s.id === "approval" && (
+              <div className="st-how-shot-inline">
+                <h4 className="st-h4">{h.shotTitle}</h4>
+                <ReviewShot t={t} shot={shot} />
+              </div>
+            )}
           </li>
         ))}
       </ol>
+      {/* Wider than a phone: the screen sits under the strip, as step 05's callout. */}
       <div className="st-wrap st-how-shot">
         <div>
           <p className="st-kicker">05 · {h.shotTag}</p>
           <h3 className="st-h3 mt-4">{h.shotTitle}</h3>
           <p className="st-body mt-4">{h.shotBody}</p>
         </div>
-        <figure className="st-shot">
-          {/* The real page, photographed: light and dark, desktop and phone are
-              separate captures; only the one matching the theme and the width is
-              shown (the others, lazy and display:none, are never fetched).
-              Served from /_next/static like any build asset. */}
-          {(["light", "dark"] as const).flatMap((theme) =>
-            (["desk", "phone"] as const).map((size) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={`${theme}-${size}`}
-                src={shot[theme][size].src}
-                width={shot[theme][size].width}
-                height={shot[theme][size].height}
-                alt={h.shotAlt}
-                loading="lazy"
-                decoding="async"
-                data-shot-theme={theme}
-                data-shot-size={size}
-              />
-            )),
-          )}
-          <figcaption>
-            <span className="st-tag">{h.shotTag}</span>
-            {h.shotCaption}
-          </figcaption>
-        </figure>
+        <ReviewShot t={t} shot={shot} />
       </div>
     </section>
+  );
+}
+
+/** The real page, photographed: light and dark, desktop and phone are
+ *  separate captures; only the one matching the theme and the width is shown
+ *  (the others, lazy and display:none, are never fetched). Served from
+ *  /_next/static like any build asset. */
+function ReviewShot({ t, shot }: { t: Dictionary; shot: (typeof REVIEW_SHOTS)[Locale] }) {
+  const h = t.site.how;
+  return (
+    <figure className="st-shot">
+      {(["light", "dark"] as const).flatMap((theme) =>
+        (["desk", "phone"] as const).map((size) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={`${theme}-${size}`}
+            src={shot[theme][size].src}
+            width={shot[theme][size].width}
+            height={shot[theme][size].height}
+            alt={h.shotAlt}
+            loading="lazy"
+            decoding="async"
+            data-shot-theme={theme}
+            data-shot-size={size}
+          />
+        )),
+      )}
+      <figcaption>
+        <span className="st-tag">{h.shotTag}</span>
+        {h.shotCaption}
+      </figcaption>
+    </figure>
   );
 }
 

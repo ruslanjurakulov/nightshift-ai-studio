@@ -76,7 +76,7 @@ export const siteUz: SiteDictionary = {
     shotTitle: "05-qadam — ilova uni shunday koʻrsatadi.",
     shotBody: "Tayyor video oʻz sahifasida kutadi: koʻrib chiqish nusxasi, qaysi nom bilan chiqishi, YouTube’da yopiq holati, nashr tekshiruvining xulosasi va tugmalar. Avtomatik nashr oʻchiq boʻlsa, kimdir «Tasdiqlash»ni bosmaguncha hech narsa ochiq boʻlmaydi.",
     shotCaption: "Ilovaning haqiqiy ekrani. Undagi hamma narsa namuna: kanal, video, balans va akkaunt.",
-    shotAlt: "Command Center skrinshoti: “Nega Oy bizga doim bir tomoni bilan qaraydi” videosi tasdiqni kutmoqda — yopiq, avtomatik nashr oʻchiq, nashr tekshiruvidan oʻtgan — “Tasdiqlash va nashr qilish” tugmasi bilan. Undagi barcha maʼlumotlar namuna.",
+    shotAlt: "Boshqaruv markazi skrinshoti: “Nega Oy bizga doim bir tomoni bilan qaraydi” videosi tasdiqni kutmoqda — yopiq, avtomatik nashr oʻchiq, nashr tekshiruvidan oʻtgan — “Tasdiqlash va nashr qilish” tugmasi bilan. Undagi barcha maʼlumotlar namuna.",
     steps: [
       { id: "channel", title: "Kanal", body: "YouTube kanalingizni Google’ning oʻz rozilik oynasi orqali ulang. Kanal faqat YouTube uning sizniki ekanini tasdiqlagandan keyin ishlaydi." },
       { id: "topic", title: "Mavzu", body: "Mavzu, savol yoki qisqa topshiriq yozing — yoki kanal oʻz yoʻnalishidan keyingi mavzuni oʻzi tanlasin." },
@@ -160,6 +160,7 @@ export const siteUz: SiteDictionary = {
     card: "Yoʻq. Akkaunt email orqali ochiladi va xush kelibsiz kreditlari bir marta beriladi. Faqat kredit paketini sotib olganingizda toʻlaysiz.",
     unusedNever: "Toʻldirish kreditlari muddati tugamaydi. Ishga tushirish uchun ajratilgan kreditlar, ishga tushirish muvaffaqiyatsiz boʻlsa, balansga qaytadi.",
     unusedAfter: "Toʻldirish kreditlari sotib olingandan keyin {m} oy amal qiladi, va avval muddati oldinroq tugaydiganlari sarflanadi.",
+    unusedUnknown: "Toʻldirish kreditlari Shartlarda koʻrsatilgan muddatda amal qiladi, va avval muddati oldinroq tugaydiganlari sarflanadi.",
   },
   anchor: {
     title: "Narxi qancha",

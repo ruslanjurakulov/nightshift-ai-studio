@@ -28,6 +28,11 @@ describe("public legal pages with the operator's details unset", () => {
       expect(html).not.toMatch(/NEXT_PUBLIC_|NOT CONFIGURED|НЕ НАСТРОЕНО|SOZLANMAGAN/);
       expect(html).toContain(t.legal.pending);
       expect(html).toContain(t.legal.pendingNote);
+      // PIXEL-5 N3: inside a sentence the gap names what is missing, never a bare "not published yet".
+      const text = new DOMParser().parseFromString(html, "text/html").body.textContent ?? "";
+      expect(text).toContain(t.legal.placeholder.legalName);
+      expect(text).toContain(t.legal.placeholder.contactEmail);
+      expect(text).not.toMatch(new RegExp(`(?:and|и|—) ${t.legal.pending}`));
     }
   });
 });

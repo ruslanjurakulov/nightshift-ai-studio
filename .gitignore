@@ -15,6 +15,9 @@
 # The premade ElevenLabs voice list (ids, names, styles — public data), read by
 # the Create page and tools/voice_previews.py.
 !command-center/lib/voices.json
+# The OpenAPI document's route is a DIRECTORY named openapi.json (Next's URL
+# is the folder name); the blanket rule hid its route.ts. Only that folder.
+!command-center/app/docs/api/openapi.json/
 # Remotion video engine: TS config, lockfile (for `npm ci`) and the props
 # fixtures used by its smoke render — none carries a credential.
 !video-engine/tsconfig.json

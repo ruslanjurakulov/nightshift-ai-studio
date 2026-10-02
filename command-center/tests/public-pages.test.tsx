@@ -173,7 +173,11 @@ describe("public landing page", () => {
     for (const locale of ["en", "ru", "uz"] as const) {
       const { container } = renderLanding({ kind: "announced" }, locale);
       const h = dictionaries[locale].site.how;
-      const imgs = Array.from(container.querySelectorAll("figure.st-shot img"));
+      // Two placements of one figure: inside step 05 (phone) and under the strip (wider).
+      const figures = Array.from(container.querySelectorAll("figure.st-shot"));
+      expect(figures).toHaveLength(2);
+      expect(figures[0].closest("li")?.querySelector("h3")?.textContent).toBe(h.steps.find((x) => x.id === "approval")?.title);
+      const imgs = Array.from(figures[1].querySelectorAll("img"));
       // Light and dark, desktop and phone captures, all described in the page's language.
       expect(imgs.map((i) => `${i.getAttribute("data-shot-theme")}-${i.getAttribute("data-shot-size")}`)).toEqual([
         "light-desk",
@@ -189,6 +193,18 @@ describe("public landing page", () => {
       expect(h.shotCaption).toMatch(locale === "en" ? /sample data/ : locale === "ru" ? /пример/ : /namuna/);
       cleanup();
     }
+  });
+
+  it("never says credits do not expire when the expiry could not be read (BR-L-100)", () => {
+    const t = dictionaries.en;
+    const { container } = render(
+      <Landing t={t} locale="en" pricing={{ kind: "announced" }} anchor={NO_MONEY} showcase={[]} expiry={{ kind: "unknown" }} />,
+    );
+    const text = container.textContent ?? "";
+    expect(text).not.toContain(t.pricing.expiryNever);
+    expect(text).not.toContain(t.site.packsOnly.unusedNever);
+    expect(text).toContain(t.pricing.expiryUnknown);
+    expect(text).toContain(t.site.packsOnly.unusedUnknown);
   });
 
   it("renders in Russian and Uzbek from the language switch's dictionary", () => {
@@ -339,7 +355,7 @@ describe("public pricing page", () => {
     const pricing = resolvePricing({ NEXT_PUBLIC_PRICE_DISPLAY_STARTER: "$5" }, null);
     const rates = { perMinute: 25, jobMinimum: 30 };
     const generationRates: GenerationRates = { image: 4, shortVideo: { credits: 40, seconds: 5 }, videoMinute: 25 };
-    const { container } = renderPricing({ pricing, plans, signedIn: true, rates, generationRates, packValidMonths: 12 });
+    const { container } = renderPricing({ pricing, plans, signedIn: true, rates, generationRates, expiry: { kind: "months", months: 12 } });
     const text = container.textContent ?? "";
 
     // Every figure the page was handed, and every figure derived from them.
