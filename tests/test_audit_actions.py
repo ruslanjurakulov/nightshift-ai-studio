@@ -20,6 +20,9 @@ ACTION = re.compile(
     r"""action:\s*(?:[^"'`,}]*?\?\s*)?["'`]([A-Za-z_.${}]+)["'`](?:\s*:\s*["'`]([A-Za-z_.${}]+)["'`])?""")
 
 
+HELPER = re.compile(r"""\baudit[A-Z]\w*\(\s*["']([a-z_]+\.[a-z_.]+)["']""")
+
+
 def database_actions():
     text = MIGRATION.read_text(encoding="utf-8")
     block = re.search(r"coalesce\(p_action, ''\) = any \(array\[(.*?)\]::text\[\]\)", text, re.S).group(1)
@@ -31,11 +34,11 @@ def logged_actions():
     for root in ("app", "lib"):
         for path in (COMMAND_CENTER / root).rglob("*.ts*"):
             text = path.read_text(encoding="utf-8")
-            if "logAudit" not in text:
-                continue
             for call in re.finditer(r"logAudit\(\{(.*?)\}\)", text, re.S):
                 for pair in ACTION.findall(call.group(1)):
                     seen.update(a for a in pair if a)
+            # A route's own helper that takes the action first: auditInbox("inbox.draft.edit", ...).
+            seen.update(HELPER.findall(text))
     return seen
 
 

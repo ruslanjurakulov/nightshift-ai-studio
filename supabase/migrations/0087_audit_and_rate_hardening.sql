@@ -65,8 +65,11 @@ create or replace function public.audit_action_allowed(p_action text) returns bo
     'media.upload_request', 'model.availability', 'scene.regenerate', 'secret.write', 'series.create',
     'series.update', 'storyboard.approve', 'storyboard.discard', 'storyboard.edit', 'storyboard.reopen',
     'style_kit.add_library', 'style_kit.attach', 'style_kit.create', 'style_kit.delete', 'style_kit.detach',
-    'style_kit.update', 'variable.write', 'video.download_request', 'video.publish_request',
-    'workflow.cancel', 'workflow.delete', 'workflow.run', 'workflow.save'
+    'style_kit.update', 'variable.write', 'video.download_request', 'video.publish_request', 'video.repurpose',
+    'workflow.cancel', 'workflow.delete', 'workflow.run', 'workflow.save',
+    -- The comment inbox (0081, in review when this was written): its routes audit
+    -- through their own helper, auditInbox().
+    'inbox.draft.discard', 'inbox.draft.edit', 'inbox.draft.request', 'inbox.reply.approve', 'inbox.reply.retry'
   ]::text[])
   or coalesce(p_action, '') ~ '^social\.(instagram|tiktok)\.(connect|connect_failed|disconnect)$'
   or coalesce(p_action, '') ~ '^learning\.(approve|reject)$'
