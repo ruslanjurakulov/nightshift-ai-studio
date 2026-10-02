@@ -235,6 +235,13 @@ def run_export(export: Mapping, *, store: ml.MediaStore, media_root: Path, worke
             raise ExportFailed("invalid_timeline") from None
         if tl.duration_s(norm) > EXPORT_MAX_S:
             raise ExportFailed("too_long")
+        # The library holds the export to the same decode budget as an upload
+        # when it stores it (store_generated). Check it here, before the
+        # render, not after it (BR-L-017). The timeline's frame cap keeps
+        # every export inside it (4K60 for EXPORT_MAX_S is 9e11 px); this
+        # stays as the guard should either limit move.
+        if ml.decode_work(norm["width"], norm["height"], norm["fps"], tl.duration_s(norm)) > ml.DECODE_BUDGET_PX:
+            raise ExportFailed("too_long")
         rows = store.export_assets(eid)
         resolver = build_resolver(rows, Path(media_root), has_audio=probe)
         if any(resolver(aid) is None for aid in tl.asset_ids(norm)):
