@@ -394,8 +394,9 @@ def test_quality_fails_over_once_to_the_same_tier_within_the_hold_then_stops(db)
     assert (moved["model"], moved["credits"], moved["params"]) == ("img-best-b", 9, PROMPT)
     j = job(db, jid)
     assert (j["routed_model"], j["fallback_from"], j["fallback_reason"], j["requested_model"]) == \
-        ("img-best-b", "img-best", "unreachable", "img-best")
+        ("img-best-b", "img-best", "unavailable", "img-best")   # members read 'unavailable' (BR-L-032, 0088)
     assert tried(db, jid) == ["img-best", "img-best-b"]
+    assert db.su("select reasons from public.creative_job_routes where job_id=%s", [jid])[0][0] == ["unreachable"]
     # The next submit is a new one: 'submitting' is allowed again, no task id carried.
     assert svc(db, "select public.advance_creative_job(%s,'w-r','submitting')", [jid])[0][0] is True
     # No third model of tier 5 within the hold: no failover, the job fails, the hold comes back in full.
@@ -658,7 +659,8 @@ def test_BR_L_021_an_api_caller_never_reads_the_platforms_vendor_account_state(d
     finally:
         set_price(db, "img-mid", 5)
     assert moved["model"] == "img-mid"                       # img-webonly is not the API's
-    assert job(db, jid)["fallback_reason"] == "auth"        # the platform keeps the truth
+    assert job(db, jid)["fallback_reason"] == "unavailable"     # members read nothing of it (BR-L-032, 0088)
+    assert db.su("select reasons from public.creative_job_routes where job_id=%s", [jid])[0][0] == ["auth"]   # the platform keeps the truth
     out = db.su("select public.api_creative_job_json(j) from public.creative_jobs j where id=%s", [jid])[0][0]
     assert (out["fallback_from"], out["fallback_reason"], out["routed_model"]) == ("img-cheap", "unavailable", "img-mid")
     assert "auth" not in json.dumps(out)

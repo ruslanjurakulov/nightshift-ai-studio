@@ -52,7 +52,7 @@ def test_a_default_org_member_does_not_read_global_stream_rows(conn, sc, table):
 
 @pytest.mark.parametrize("table,insert", [
     ("alert_events", "insert into public.alert_events (kind, severity, channel_id, title) values ('x', 'info', null, 't')"),
-    ("app_audit_log", "insert into public.app_audit_log (actor_user_id, action, channel_id) values (auth.uid(), 'x', null)"),
+    ("app_audit_log", "insert into public.app_audit_log (actor_user_id, action, channel_id) values (auth.uid(), 'secret.write', null)"),
 ])
 def test_only_the_platform_admin_writes_global_stream_rows(conn, sc, table, insert):
     with acting(conn, sc.dana) as s:

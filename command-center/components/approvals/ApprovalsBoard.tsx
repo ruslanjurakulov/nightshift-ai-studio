@@ -206,6 +206,7 @@ export function ApprovalsBoard({
                 ? t.approvals.requireOn
                 : t.approvals.requireOff}
           </p>
+          {!canToggle && <p className="mt-1 text-[12px] text-[var(--color-muted)]">{t.channels.adminOnly}</p>}
         </div>
         {require2p === null ? (
           // Unknown is not "off": the switch is disabled until it can be read.

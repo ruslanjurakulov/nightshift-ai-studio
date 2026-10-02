@@ -67,34 +67,39 @@ def main(env=None, *, load_channel=_load_channel, client=None, out=None) -> int:
         say(f"::warning::channel {channel_id}: could not load the channel registry "
             f"({type(e).__name__}) — Vault not consulted; the GitHub secret applies as before.")
         return 0
-    if channel.is_default:
+    if channel.is_default and channel.is_operators:
         say(f"channel {channel_id}: the default channel keeps YOUTUBE_TOKEN_JSON — Vault is not consulted.")
         return 0
 
-    name = env_var_name(channel)
+    # The environment is the operator's own channels' place for a token. A
+    # channel of any other organization has no name and no fallback: its only
+    # token is its Vault connection (BR-L-080).
+    operators = bool(channel.is_operators)
+    name = env_var_name(channel) if operators else ""
     if client is None:
         client = channel_tokens.VaultTokenClient(env.get("SUPABASE_URL", ""), env.get("SUPABASE_SERVICE_KEY", ""))
     if not client.configured:
         say(f"channel {channel_id}: SUPABASE_URL / SUPABASE_SERVICE_KEY not set — "
-            f"using {name} only, as before.")
+            + (f"using {name} only, as before." if operators else "no token for this channel."))
         return 0
 
     try:
         resolved = channel_tokens.resolve_channel_token(
             channel_id, name, env, client=client,
-            expected_youtube_channel_id=channel.credential.youtube_channel_id)
+            expected_youtube_channel_id=channel.credential.youtube_channel_id, allow_env=operators)
     except channel_tokens.ChannelTokenError as e:
         say(f"::error::channel {channel_id}: {e}. Nothing was run.")
         return 1
 
     if resolved.source != channel_tokens.SOURCE_VAULT:
-        say(f"channel {channel_id}: no active Vault connection — using {name}, as before.")
+        say(f"channel {channel_id}: no active Vault connection — "
+            + (f"using {name}, as before." if operators else "this channel has no token."))
         return 0
 
     for secret in channel_tokens.secret_strings(resolved):
         say(f"::add-mask::{secret}")
     path = channel_tokens.write_private(token_path(channel), resolved.token_json)
-    if (env.get(name) or "").strip() and env.get("GITHUB_ENV"):
+    if name and (env.get(name) or "").strip() and env.get("GITHUB_ENV"):
         with open(env["GITHUB_ENV"], "a", encoding="utf-8") as fh:
             fh.write(f"{name}=\n")
         say(f"channel {channel_id}: {name} is also set; its Vault connection takes precedence "

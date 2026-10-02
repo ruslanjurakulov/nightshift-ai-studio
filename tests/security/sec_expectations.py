@@ -85,7 +85,9 @@ TABLES: Dict[str, Kind] = {
     "org_members": Org(own_insert=True, mutate=("email",)),
     "app_members": Platform(),
     # channels and everything the pipeline writes about them
-    "channels": Org(own_insert=True),
+    # No direct INSERT for any API role since 0086: create_channel() is the way in
+    # (so own_insert is False: the lab then proves the refusal).
+    "channels": Org(),
     "channel_credentials": Channel(),
     "channel_token_refs": Service(),
     "channel_topic_performance": Channel(),
@@ -470,6 +472,12 @@ sec_router_0075.extend(TABLES, FUNCTIONS)
 import sec_scene_regen_0076  # noqa: E402
 
 sec_scene_regen_0076.extend(TABLES, FUNCTIONS)
+
+# Migrations 0086-0088 (channel configuration lock, audit and rate hardening,
+# failover reason): tests/security/sec_channel_lock_0086.py
+import sec_channel_lock_0086  # noqa: E402
+
+sec_channel_lock_0086.extend(TABLES, FUNCTIONS)
 
 # Migration 0080 (multi-clip repurposing): tests/security/sec_repurpose_0080.py
 import sec_repurpose_0080  # noqa: E402

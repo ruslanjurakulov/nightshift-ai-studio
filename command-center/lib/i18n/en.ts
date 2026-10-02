@@ -2272,6 +2272,7 @@ export const en = {
     autoOff: "OFF",
     autoOnHint: "This channel takes its videos public on its own. The publish gate still runs in front of every one.",
     autoOffHint: "Videos stay private until you approve them on the video page. The safe default.",
+    adminOnly: "Only an administrator of this workspace can change this.",
     pause: "Pause",
     activate: "Activate",
     saving: "Saving…",

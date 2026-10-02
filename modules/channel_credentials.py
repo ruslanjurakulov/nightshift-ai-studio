@@ -94,10 +94,46 @@ class CredentialStatus:
         }
 
 
-def env_var_name(channel: ChannelContext) -> str:
-    """The env var expected to hold this channel's token JSON."""
-    key = channel.credential.ref or str(channel.channel_id)
+def credential_key(channel: ChannelContext) -> str:
+    """The name this channel's token secret and token file are derived from.
+
+    The operator's own channels may name a reference (``credential.ref``): that
+    is how one GitHub secret serves a channel whose id differs from it. Every
+    other channel's key is its own id, whatever its row says. ``credential_ref``
+    is written through the Command Center; a customer organization's row must
+    never choose which secret the shared worker reads (BR-G-002), so for those
+    channels the reference is ignored here and, in ``tools/queue_worker``,
+    nothing is read from the environment at all: their token is their Vault
+    connection.
+    """
+    if channel.is_operators:
+        return channel.credential.ref or str(channel.channel_id)
+    return str(channel.channel_id)
+
+
+def secret_name_for(key: str) -> str:
+    """The secret / env var name a token key is stored under: non-alphanumerics
+    collapse to ``_``, ``_`` is trimmed, upper case. supabase 0086's
+    ``channel_secret_name`` is the same function in SQL, and
+    tests/security/test_sec_breach_channel_config.py pins the two against each
+    other over a corpus: two ids that normalise to one name are one secret, so
+    ``create_channel`` refuses the second (BR-L-080)."""
     return ENV_PREFIX + re.sub(r"[^A-Z0-9]+", "_", key.upper()).strip("_")
+
+
+def env_var_name(channel: ChannelContext) -> str:
+    """The env var expected to hold this channel's token JSON. Only the
+    operator's own channels have one: a customer channel's token is its Vault
+    connection, never the environment (BR-G-002, BR-L-080)."""
+    return secret_name_for(credential_key(channel))
+
+
+def customer_token_filename(channel_id: str) -> str:
+    """The token file of a channel that is not the operator's. A name no
+    operator reference can produce (``youtube_token_<ref>.json`` always has a
+    letter or digit after the underscore), so a customer's file is never an
+    operator's."""
+    return "youtube_token__" + re.sub(r"[^a-zA-Z0-9_-]+", "-", str(channel_id)) + ".json"
 
 
 #: What both workflows actually write the default channel's token to. See
@@ -152,10 +188,15 @@ def token_path(channel: ChannelContext) -> Path:
     suffixed path is still returned so a fresh token is written where this
     deployment expects it.
     """
-    if channel.is_default and not channel.credential.ref:
+    # Only the operator's own `default` channel has the legacy token file: a customer
+    # channel that somehow carries the id `default` (BR-L-110) gets its own namespace.
+    if channel.is_default and channel.is_operators and not channel.credential.ref:
         return legacy_token_path()
-    key = channel.credential.ref or str(channel.channel_id)
-    safe = re.sub(r"[^a-zA-Z0-9_-]+", "-", key)
+    if not channel.is_operators:
+        return cfg.BASE_DIR / customer_token_filename(str(channel.channel_id))
+    key = credential_key(channel)
+    # No leading underscore: "youtube_token__<id>.json" is the customer namespace.
+    safe = re.sub(r"[^a-zA-Z0-9_-]+", "-", key).lstrip("_")
     return cfg.BASE_DIR / f"youtube_token_{safe}.json"
 
 
@@ -168,6 +209,12 @@ def materialize_token(channel: ChannelContext) -> Optional[Path]:
     token's *contents* is ever logged — only the path and the channel id.
     """
     path = token_path(channel)
+    if not channel.is_operators:
+        # Never the environment (BR-L-080): the runner holds the operator's
+        # tokens there, and a customer's channel id can normalise to the name of
+        # one. A customer's token reaches the run only as the file the worker
+        # (or tools/restore_channel_token.py) wrote from its Vault connection.
+        return path if path.exists() else None
     raw = os.getenv(env_var_name(channel), "").strip()
     if raw:
         try:
@@ -210,8 +257,10 @@ def credential_status(channel: ChannelContext, *, now: Optional[datetime] = None
         return CredentialStatus(
             **base,
             status=NOT_CONNECTED,
-            detail=f"No token for this channel. Set {env_var_name(channel)} "
-                   "(see docs/MULTI_CHANNEL.md) or connect it with tools/connect_channel.py.",
+            detail=("No token for this channel. Connect YouTube from the Command Center's Channels page."
+                    if not channel.is_operators else
+                    f"No token for this channel. Set {env_var_name(channel)} "
+                    "(see docs/MULTI_CHANNEL.md) or connect it with tools/connect_channel.py."),
         )
     try:
         data = json.loads(path.read_text(encoding="utf-8"))

@@ -180,6 +180,13 @@ def record_stage(
     str. `topic`/`channel_id` fill in on first write and are left alone after."""
     try:
         cp = load(slug, root) or Checkpoint(slug=slug, created_at=_now_iso())
+        if channel_id and cp.channel_id and cp.channel_id != channel_id:
+            # Another channel's run lives here (BR-G-007): never adopt or
+            # overwrite it. main.py names a run's directory by its channel
+            # (modules/run_slug.py), so this is a second lock, not the first.
+            logger.warning("Checkpoint %r belongs to channel %r, not %r — not recording stage %r there",
+                           slug, cp.channel_id, channel_id, stage)
+            return None
         if topic and not cp.topic:
             cp.topic = topic
         if channel_id and not cp.channel_id:
@@ -238,10 +245,14 @@ def clear(slug: str, root: Optional[Path] = None) -> None:
         logger.warning("Could not clear checkpoint %r (%s: %s)", slug, type(e).__name__, e)
 
 
-def latest_incomplete(root: Optional[Path] = None) -> Optional[Checkpoint]:
+def latest_incomplete(root: Optional[Path] = None, *, channel_id: Optional[str] = None) -> Optional[Checkpoint]:
     """The most recently updated checkpoint that is not marked complete, so a
     bare `--resume` (no topic given) can pick up the last failed run. Returns
-    None when there is nothing to resume. Never raises."""
+    None when there is nothing to resume. Never raises.
+
+    With ``channel_id``, only that channel's runs (a checkpoint that names no
+    channel is the default channel's): output/ is shared by every channel, and
+    a bare resume must never continue another channel's run (BR-G-007)."""
     base = Path(root) if root is not None else OUTPUT_DIR
     best: Optional[Checkpoint] = None
     try:
@@ -252,6 +263,8 @@ def latest_incomplete(root: Optional[Path] = None) -> Optional[Checkpoint]:
                 continue
             cp = load(child.name, root)
             if cp is None or cp.completed:
+                continue
+            if channel_id is not None and (cp.channel_id or "default") != str(channel_id):
                 continue
             if best is None or (cp.updated_at or "") > (best.updated_at or ""):
                 best = cp

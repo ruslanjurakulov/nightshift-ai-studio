@@ -174,12 +174,27 @@ def _root(root: Optional[Path]) -> Path:
 def find_run(channel_id: str, *, topic: Optional[str] = None, root: Optional[Path] = None):
     """The checkpoint of the run to repair: by topic when given, else this
     channel's most recently updated unfinished run. Raises RepairUnavailable."""
-    from modules import run_checkpoint
+    from modules import run_checkpoint, run_slug
 
     base = _root(root)
     if topic:
-        slug = _slugify(topic)
-        cp = run_checkpoint.load(slug, base) if _SLUG_RE.match(slug or "") else None
+        # A run's directory is keyed by its channel (modules/run_slug.py,
+        # BR-G-007): the keyed name first, then the topic's own for a run
+        # begun before the key. A directory recorded as ANOTHER channel's is
+        # skipped, never repaired.
+        cp, foreign = None, None
+        for slug in run_slug.candidates(topic, str(channel_id)):
+            found = run_checkpoint.load(slug, base) if _SLUG_RE.match(slug or "") else None
+            if found is None:
+                continue
+            if found.channel_id and found.channel_id != str(channel_id):
+                foreign = foreign or found
+                continue
+            cp = found
+            break
+        if cp is None and foreign is not None:
+            raise RepairUnavailable(
+                f"run {foreign.slug!r} belongs to channel {foreign.channel_id!r}, not {channel_id!r}")
         if cp is None:
             raise RepairUnavailable(
                 f"no saved run for topic {topic!r} on this runner (no checkpoint). A run that "

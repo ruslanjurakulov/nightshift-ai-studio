@@ -458,6 +458,12 @@ describe("channel ids", () => {
 
   it("rejects ids the bot would reject", () => {
     expect(isValidChannelId("-leading")).toBe(false);
+    // BR-L-114: the database's rule (migration 0086): no trailing or double hyphen, 2 to 39 characters.
+    for (const bad of ["extinct-world-", "extinct--world", "a-", "a--b", "x".repeat(40)]) {
+      expect(isValidChannelId(bad)).toBe(false);
+    }
+    expect(isValidChannelId("a-b-c")).toBe(true);
+    expect(isValidChannelId("x".repeat(39))).toBe(true);
     expect(isValidChannelId("Upper")).toBe(false);
     expect(isValidChannelId("a")).toBe(false);
     expect(isValidChannelId("has space")).toBe(false);
@@ -662,5 +668,17 @@ describe("one ElevenLabs voice, one channel", () => {
       withVoice("b-two", "Bravo", "elevenlabs", "voice-1"),
     ]);
     expect(owners["voice-1"]).toBe("Alpha");
+  });
+});
+
+
+describe("slugifyChannelId never ends in a hyphen (BR-L-114)", () => {
+  it("trims the hyphen a 39-character cut leaves", () => {
+    for (const name of ["the complete history of ancient rome explained", "a".repeat(38) + " b", "Hello, World!!", "x"]) {
+      const id = slugifyChannelId(name);
+      expect(id.endsWith("-")).toBe(false);
+      expect(id.length).toBeLessThanOrEqual(39);
+      if (id.length >= 2) expect(isValidChannelId(id)).toBe(true);
+    }
   });
 });
