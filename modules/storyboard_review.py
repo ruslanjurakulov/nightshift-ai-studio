@@ -50,7 +50,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Mapping, Optional
+from typing import Any, List, Mapping, Optional, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -330,22 +330,32 @@ def materialize(script: Any, path: Path) -> Path:
 
 
 def approved_for_resume(channel_id: str, topic: str, *, store: Optional[StoryboardStore] = None,
-                        output_dir: Optional[Path] = None) -> Optional[Approved]:
+                        output_dir: Optional[Path] = None,
+                        slugs: Optional[Sequence[str]] = None) -> Optional[Approved]:
     """On ``--resume``: the approved storyboard of this run, its script written
     to ``output/<slug>/script.json``; else None. A lookup that fails returns
     None here — :func:`checkpoint` then decides, failing closed when the
-    channel has the switch on."""
-    slug = slugify(topic or "")
-    if not _SLUG_RE.match(slug):
+    channel has the switch on.
+
+    ``slugs`` are the names the run may be stored under, best first (a run's
+    directory is keyed by its channel: modules/run_slug.py, BR-G-007); the
+    topic's own slug when not given. A storyboard row is per (channel, slug)."""
+    wanted = [s for s in (slugs if slugs is not None else [slugify(topic or "")]) if _SLUG_RE.match(s or "")]
+    if not wanted:
         return None
     store = store or StoryboardStore()
     if not store.enabled:
         return None
-    try:
-        row = store.latest(channel_id, slug)
-    except StoryboardUnavailable as e:
-        logger.warning("[channel: %s] %s — checking again before the render", channel_id, e)
-        return None
+    slug, row = wanted[0], None
+    for cand in wanted:
+        try:
+            row = store.latest(channel_id, cand)
+        except StoryboardUnavailable as e:
+            logger.warning("[channel: %s] %s — checking again before the render", channel_id, e)
+            return None
+        if row:
+            slug = cand
+            break
     if not row or row.get("status") != STATUS_APPROVED:
         return None
     if output_dir is None:

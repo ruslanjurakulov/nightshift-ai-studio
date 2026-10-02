@@ -1029,7 +1029,7 @@ class EachChannelUploadsToItsOwnAccount(unittest.TestCase):
 
         self.assertEqual(
             set(_row(self.channel("extinct"))),
-            {"channel_id", "name", "niche", "is_default", "token_secret"},
+            {"channel_id", "name", "niche", "is_default", "is_operators", "token_secret"},
         )
 
     def test_the_default_channel_is_marked_so_the_legacy_step_can_run(self):

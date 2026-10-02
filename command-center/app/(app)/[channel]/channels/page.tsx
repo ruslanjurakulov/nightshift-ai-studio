@@ -179,6 +179,7 @@ export default async function ChannelsPage({
                   queue.filter((q) => q.channel_id === channel.channel_id && q.status === "queued").length
                 }
                 videos={videos.filter((v) => v.channel_id === channel.channel_id).length}
+                canControl={atLeast(orgRole, "admin")}
                 vault={
                   tokens && role
                     ? {

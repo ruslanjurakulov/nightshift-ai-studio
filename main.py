@@ -28,6 +28,7 @@ Path("output").mkdir(exist_ok=True)
 import config
 from config import OUTPUT_DIR, THUMBNAIL_VARIANT_COUNT, VIDEO_HEIGHT, VIDEO_WIDTH, YOUTUBE_CATEGORY_ID, YOUTUBE_PRIVACY
 from modules import event_log as events
+from modules import run_slug
 from modules import log_redaction
 from modules import publish_gate
 from modules import publish_score
@@ -330,6 +331,14 @@ def slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:50]
 
 
+def _run_slug(topic: str, ctx) -> str:
+    """The directory and checkpoint name of THIS channel's run of ``topic``
+    (modules/run_slug.py, BR-G-007): the topic slug for the operator's own
+    channels, a channel-keyed one for every other organization's, so two
+    organizations that run one topic never share ``output/<slug>/``."""
+    return run_slug.resolve(topic, str(ctx.channel_id), operators=ctx.is_operators)
+
+
 def _flush_costs(costs, slug: str | None = None) -> None:
     """Record what a run that stops early consumed (the planning it paid for),
     keyed by its slug. Never raises: the ledger is bookkeeping."""
@@ -556,8 +565,18 @@ def run(
     # stage is only reused when its files are still on disk. Off (the default) ⇒
     # the flow below is byte-for-byte unchanged, and this never raises.
     if resume and not script_file:
-        resume_slug = slugify(topic) if topic else None
-        cp = run_checkpoint.load(resume_slug) if resume_slug else run_checkpoint.latest_incomplete()
+        cp = None
+        if topic:
+            # The channel's own run: its keyed directory, or (a run started
+            # before the key existed) the topic's, when its checkpoint names
+            # this channel.
+            for cand in run_slug.candidates(topic, str(channel_id), operators=ctx.is_operators):
+                found = run_checkpoint.load(cand)
+                if found is not None and (found.channel_id or str(channel_id)) == str(channel_id):
+                    cp = found
+                    break
+        else:
+            cp = run_checkpoint.latest_incomplete(channel_id=str(channel_id))
         saved_script = cp.artifact(run_checkpoint.STAGE_SCRIPT, "script_json") if cp else None
         if cp is not None and cp.can_resume_stage(run_checkpoint.STAGE_SCRIPT) and saved_script:
             script_file = saved_script
@@ -580,12 +599,16 @@ def run(
     # the one that planned.
     approved_storyboard = None
     if resume and topic:
-        approved_storyboard = storyboard_review.approved_for_resume(channel_id, topic)
+        # The slugs this channel's run of the topic may be stored under: its
+        # keyed one, and the topic's alone for a run begun before the key.
+        approved_storyboard = storyboard_review.approved_for_resume(
+            channel_id, topic,
+            slugs=run_slug.candidates(topic, str(channel_id), operators=ctx.is_operators))
         if approved_storyboard is not None:
             script_file = str(approved_storyboard.script_path)
             events.emit(events.RUN_RESUMED, agent="pipeline", status=events.STATUS_RUNNING,
                         channel_id=channel_id,
-                        metadata={"slug": slugify(topic), "reused": "storyboard",
+                        metadata={"slug": approved_storyboard.script_path.parent.name, "reused": "storyboard",
                                   "storyboard_id": approved_storyboard.storyboard_id})
 
     # ── Stages 1-2: Topic and Script
@@ -668,7 +691,7 @@ def run(
                                  strategy_note=strategy_note)
         costs.add_gemini_usage(engine.last_response, stage="script")
 
-    slug = slugify(topic)
+    slug = _run_slug(topic, ctx)
     logger.info("Script: '%s'", script.title)
     events.emit(events.SCRIPT_COMPLETED, agent="script_engine", status=events.STATUS_COMPLETED,
                 channel_id=channel_id, metadata={"title": script.title})

@@ -582,7 +582,10 @@ export function isValidChannelId(value: string): boolean {
   // The same goes for the pages that live beside the channels at the root.
   if (value === ALL_CHANNELS_SLUG || isSection(value)) return false;
   if ((RESERVED_ROOT_SEGMENTS as readonly string[]).includes(value)) return false;
-  return /^[a-z0-9][a-z0-9-]{1,38}$/.test(value);
+  // The database's rule (create_channel, migration 0086): single hyphens between
+  // letters and digits, 2 to 39 characters. A trailing or double hyphen names the
+  // same token secret as the id without it.
+  return value.length >= 2 && value.length <= 39 && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(value);
 }
 
 /** Turn a display name into a candidate channel id. */
@@ -592,7 +595,8 @@ export function slugifyChannelId(name: string): string {
     .normalize("NFKD")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 39);
+    .slice(0, 39)
+    .replace(/-+$/, "");
 }
 
 /**

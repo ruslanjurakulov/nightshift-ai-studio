@@ -327,7 +327,11 @@ jobs:
       # client and comment fetcher all resolve to. Duplicating that path in
       # bash is how the two would fall out of step.
       - name: Restore YouTube token (this channel)
-        if: ${{ !matrix.is_default }}
+        # Only the operator's own channels keep a token in a GitHub secret. A
+        # customer channel's id can normalise to the name of an operator's secret
+        # (BR-L-080), and tools/list_channels.py gives it no name at all; its token
+        # is the Vault connection restored by the next step.
+        if: ${{ !matrix.is_default && matrix.is_operators }}
         env:
           CHANNEL_TOKEN_JSON: ${{ secrets[matrix.token_secret] }}
           TOKEN_SECRET_NAME: ${{ matrix.token_secret }}

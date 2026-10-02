@@ -2263,6 +2263,7 @@ export const uz: Dictionary = {
     autoOff: "OʻCHIQ",
     autoOnHint: "Bu kanal videolarini oʻzi ochiq qiladi. Nashr darvozasi baribir har birining oldida ishlaydi.",
     autoOffHint: "Videolar siz video sahifasida tasdiqlaguningizcha private turadi. Xavfsiz standart.",
+    adminOnly: "Buni faqat makon administratori oʻzgartira oladi.",
     pause: "Toʻxtatish",
     activate: "Faollashtirish",
     saving: "Saqlanmoqda…",
