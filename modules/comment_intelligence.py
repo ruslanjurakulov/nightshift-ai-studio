@@ -88,6 +88,12 @@ class CommentClassification:
     sentiment: str
     category: str
     flagged_injection_attempt: bool
+    # False only for the neutral sentinel: the model did not answer for this
+    # comment, so its sentiment/category are placeholders, not a measurement.
+    # The comment inbox never drafts a reply for an unclassified comment
+    # (a missed injection check is not a pass). Default True keeps every
+    # existing caller and constructor as it was.
+    classified: bool = True
 
 
 def _sentinel(comment_id: int) -> CommentClassification:
@@ -97,6 +103,7 @@ def _sentinel(comment_id: int) -> CommentClassification:
         sentiment=_SENTINEL_SENTIMENT,
         category=_SENTINEL_CATEGORY,
         flagged_injection_attempt=False,
+        classified=False,
     )
 
 
@@ -159,13 +166,19 @@ def _parse_response(text: str, expected_ids: set) -> list[CommentClassification]
         if category not in VALID_CATEGORIES:
             category = _SENTINEL_CATEGORY
 
-        flagged = bool(item.get("flagged_injection_attempt", False))
+        raw_flag = item.get("flagged_injection_attempt")
+        flagged = bool(raw_flag) if isinstance(raw_flag, bool) else False
+        # An answer with no usable category, or no true/false injection verdict, is
+        # not a verdict: the comment is unclassified (the inbox never drafts for it)
+        # rather than "off_topic, not flagged" (BR-L-075).
+        answered = item.get("category") in VALID_CATEGORIES and isinstance(raw_flag, bool)
 
         results.append(CommentClassification(
             comment_id=comment_id,
             sentiment=sentiment,
             category=category,
             flagged_injection_attempt=flagged,
+            classified=answered,
         ))
 
     if seen_ids != expected_ids:

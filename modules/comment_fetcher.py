@@ -74,6 +74,17 @@ class CommentFetcher:
         self.token_file = self._resolve_token_file(channel)
         self.youtube = self._auth()
 
+    @classmethod
+    def from_service(cls, service) -> "CommentFetcher":
+        """A fetcher over an already-authorised YouTube service (the comment
+        inbox's worker resolves the channel's own token itself, in memory, and
+        never writes it to a file). No token file, no consent flow."""
+        self = cls.__new__(cls)
+        self.channel = None
+        self.token_file = None
+        self.youtube = service
+        return self
+
     @staticmethod
     def _resolve_token_file(channel) -> Path:
         if channel is None:
@@ -126,6 +137,16 @@ class CommentFetcher:
             "text": plain-text comment body — for `classify_comments()`.
             "youtube_comment_id": the real YouTube comment id (str).
         """
+        return self._fetch(video_id, max_results, rich=False)
+
+    def fetch_inbox_comments(self, video_id: str, max_results: int = 100) -> list[dict]:
+        """Like `fetch_comments`, plus what the comment inbox shows: each dict
+        also carries "author" (the commenter's display name) and
+        "published_at" (the comment's timestamp). All of it is audience-controlled
+        and untrusted — the inbox cleans and bounds it again when storing."""
+        return self._fetch(video_id, max_results, rich=True)
+
+    def _fetch(self, video_id: str, max_results: int, *, rich: bool) -> list[dict]:
         if max_results <= 0:
             return []
 
@@ -165,11 +186,15 @@ class CommentFetcher:
                 text = snippet.get("textDisplay", "")
                 logger.debug("Fetched comment %s: %r", top_comment["id"], text[:80])
 
-                results.append({
+                entry = {
                     "id": next_id,
                     "text": text,
                     "youtube_comment_id": top_comment["id"],
-                })
+                }
+                if rich:
+                    entry["author"] = str(snippet.get("authorDisplayName") or "")
+                    entry["published_at"] = str(snippet.get("publishedAt") or "")
+                results.append(entry)
                 next_id += 1
 
                 if len(results) >= max_results:

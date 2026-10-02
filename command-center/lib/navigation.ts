@@ -61,6 +61,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: HOME, key: "command" },
       { href: "/create", key: "create" },
       { href: "/videos", key: "videos" },
+      // Comments on the channel's videos, with drafted replies a person approves (migration 0081).
+      { href: "/inbox", key: "inbox" },
       { href: "/studio", key: "studio" },
       { href: "/styles", key: "styles" },
       { href: "/library", key: "library" },
@@ -148,6 +150,7 @@ export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "command",
   "create",
   "videos",
+  "inbox",
   "studio",
   "styles",
   "library",
@@ -194,6 +197,8 @@ export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly SectionI
     { href: "/studio", key: "studio" },
     { href: "/styles", key: "styles" },
     { href: "/series", key: "series" },
+    // Comments on the channel's videos, with replies a person approves (migration 0081).
+    { href: "/inbox", key: "inbox" },
     // The catalog of models a customer may use (sellable_models()), by task.
     { href: "/models", key: "models" },
   ],
