@@ -46,6 +46,7 @@ import {
   newIdempotencyKey,
   promptRule,
   sheetQuoteParams,
+  soundQuoteParams,
   takesQuality,
   takesSound,
   takesStyle,
@@ -296,7 +297,8 @@ export function GeneratePanel({
     orgId,
     capability,
     modelId: effectiveModel,
-    params: soundChoice ? sheetQuoteParams({ ...form, audio: null }) : null,
+    // Without the words, like the tiers: a clip's price never reads them, and typing must not re-ask or send them.
+    params: soundChoice ? soundQuoteParams(form) : null,
   });
   const soundText = (on: boolean): string => {
     const label = on ? t.gen.soundOn : t.gen.soundOff;

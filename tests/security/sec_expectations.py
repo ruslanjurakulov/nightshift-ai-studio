@@ -22,6 +22,8 @@ Table kinds
                keeps the isolation tests from passing vacuously).
 ``own_insert`` the tenant may insert a row into its own scope directly
                (an INSERT policy exists for the table).
+``operator_reads``  False for a person's private inbox: the platform admin does
+               not read it either (test_sec_notifications.py proves that).
 ``own_insert_setup``  SQL the tenant runs first, in the same transaction, for
                a table whose own-row insert needs something only the tenant
                can create (a render job needs its own fresh credit hold,
@@ -47,6 +49,10 @@ class Kind:
     # beyond the primary key and unique constraints (expression indexes).
     mutate: Tuple[str, ...] = ()
     own_insert_setup: Optional[str] = None
+    # False for a table that is one person's own inbox (notifications, 0064):
+    # not even a platform admin reads another person's rows, so the "operator
+    # still reads every tenant" check does not apply to it.
+    operator_reads: bool = True
 
 
 def Org(col="org_id", **kw) -> Kind:
@@ -417,7 +423,27 @@ import sec_storyboard_0058  # noqa: E402
 
 sec_storyboard_0058.extend(TABLES, FUNCTIONS)
 
+# Migration 0072 (auto-captions): tests/security/sec_captions_0072.py
+import sec_captions_0072  # noqa: E402
+
+sec_captions_0072.extend(TABLES, FUNCTIONS)
+
+# Migration 0064 (in-app notifications): tests/security/sec_notify_0064.py
+import sec_notify_0064  # noqa: E402
+
+sec_notify_0064.extend(TABLES, FUNCTIONS)
+
+# Migration 0063 (operator margin report): tests/security/sec_margin_0063.py
+import sec_margin_0063  # noqa: E402
+
+sec_margin_0063.extend(TABLES, FUNCTIONS)
+
 # Migration 0065 (the Style Library's add function): tests/security/sec_style_0065.py
 import sec_style_0065  # noqa: E402
 
 sec_style_0065.extend(TABLES, FUNCTIONS)
+
+# Migration 0073 (workflow apps): tests/security/sec_workflows_0073.py
+import sec_workflows_0073  # noqa: E402
+
+sec_workflows_0073.extend(TABLES, FUNCTIONS)
