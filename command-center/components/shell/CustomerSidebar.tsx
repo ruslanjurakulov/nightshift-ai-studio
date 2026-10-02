@@ -48,11 +48,7 @@ export function CustomerSidebar({ email, plan }: { email: string | null; plan: A
   return (
     <aside className="shell-sidebar sticky top-0 z-30 hidden h-dvh w-[240px] shrink-0 flex-col lg:flex">
       <div className="flex h-14 shrink-0 items-center px-5">
-        <Link
-          href={path(home.href)}
-          className="font-display text-[17px] font-semibold tracking-[-0.02em] text-[var(--color-fg)]"
-        >
-          <span aria-hidden className="mr-2 inline-block size-2 rounded-full bg-[var(--color-primary)] align-middle" />
+        <Link href={path(home.href)} className="ns-wordmark">
           {t.brand.name}
         </Link>
       </div>

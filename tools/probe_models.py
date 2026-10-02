@@ -293,7 +293,7 @@ def describe(entry, env: Mapping[str, str], voice_id: Optional[str]) -> str:
     req = entry.probe_request(voice_id=voice_id, generated_image="<generated frame>")
     parts = [f"{entry.id:32} {entry.adapter:22} key={'yes' if adapter.configured() else 'NO'}",
              f"{req.capability} {entry.vendor_model_for(req.capability)}"]
-    for k in ("aspect_ratio", "resolution", "image_size", "duration_s", "target_language", "upscale_target"):
+    for k in ("aspect_ratio", "resolution", "image_size", "quality", "duration_s", "target_language", "upscale_target"):
         v = getattr(req, k)
         if v is not None:
             parts.append(f"{k}={v}")

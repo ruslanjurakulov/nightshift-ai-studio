@@ -136,14 +136,87 @@ TypeScript twin of the SQL; `tests/api-pricing.test.ts` pins them together.
 | GET | `/downloads/{id}` | download status |
 | GET | `/downloads/{id}/file` | the MP4 |
 | GET | `/jobs/{id}` | job status + charge |
+| POST | `/creative/quote` | the price of one generation, in credits |
+| POST | `/creative/jobs` | start a generation (hold the quote) |
+| GET | `/creative/jobs/{id}` | a generation this key started |
 
 `POST /videos` needs `NIGHTSHIFT_RUN_BACKEND=queue` (API jobs are render-queue
 jobs); downloads need the host's downloads volume, as on the site.
 
+## Key scopes and per-key limits (migration 0062)
+
+Every key has scopes; `api_begin()` refuses a call outside them with
+`403 insufficient_scope` (the body names `required_scope`) after the key and its
+creator are checked and before anything is created or charged. The refusal still
+counts against the key's rate limit and is logged.
+
+| Scope | Endpoints |
+| :-- | :-- |
+| `account:read` | `GET /balance`, `/channels`, `/accounts` |
+| `videos:read` | `GET /videos`, `/videos/{id}`, `/jobs/{id}`, `/downloads/{id}` (+ `/file`) |
+| `videos:write` | `POST /videos`, `/videos/{id}/publish`, `/videos/{id}/downloads` |
+| `creative:quote` | `POST /creative/quote` |
+| `creative:create` | `POST /creative/jobs` (spends credits) |
+| `creative:read` | `GET /creative/jobs/{id}` |
+
+`GET /me` needs no scope (it is how a client reads its own). A key made before
+0062 has `scopes = null`, which means the first three and nothing else: it
+cannot spend credits on generations until an admin makes a new key (or
+`set_api_key_access`) with a creative scope. An endpoint missing from
+`api_endpoint_scope()` is closed (`'none'`), so a new endpoint ships closed.
+`api_keys.rpm_limit` (1-300) can only **lower** the usage tier's requests per
+minute; `api_keys.creative_monthly_credits` caps the credits a key may start
+generations for in a calendar month. `lib/api/scopes.ts` is the TypeScript
+twin; `tests/api-scopes.test.ts` pins them together.
+
+## Generations (`/creative`, migration 0062)
+
+The Studio's generation, with a key instead of a session. **Paid in the
+organization's credits, not the USD API balance**, and the same job: a key's
+`POST /creative/jobs` calls 0036's `create_creative_job` (as the key's creator,
+so its membership, source-asset and style-kit checks apply as in the browser),
+which re-quotes, refuses a price above `max_credits`, holds the quote with
+`reserve_credits` and queues the job in one transaction. The worker captures
+(`finish_creative_job`) or releases (failure, expiry, lost worker) exactly as
+for a Studio job; 0062 moves no credit itself (`tests/test_api_creative_migration.py`
+pins that). `tests/security/test_sec_api_creative.py` proves the ledger rows for
+an API job equal a Studio job's.
+
+* `Idempotency-Key` header and `max_credits` in the body are **required**. The
+  job's own idempotency key is namespaced by the API key (`api-` + SHA-256 of
+  `key id:header`), so two keys of one organization never replay or collide.
+  The API's own 24-hour record replays the stored answer (`201` +
+  `idempotent-replayed`); after it expires the job's own record answers `200`
+  with the same job and holds nothing more.
+* Body: `capability`, `model`, `params`, optional `mode` (only `exact`),
+  `max_credits`. Parsed by the Studio's own `parseGenerationInput`; unknown
+  fields (including `org_id` and `idempotency_key`) are refused. **The
+  organization is the key's**; no request can name one.
+* **Stricter than the web:** the model must be listed by
+  `sellable_models(capability, 'api')`. A model whose vendor forbids
+  third-party API exposure (`spec.api_exposure = 'web_only'`), or that is
+  unverified, terms-gated or unpriced, is `422 model_not_sellable`.
+* A key reads only the generations **it** started (`api_creative_jobs`): another
+  key's, another organization's, a Studio job and a missing id are all
+  `404 job_not_found`. The status shows the job, quoted and charged credits and
+  the result (asset ids in the organization's media library); never the worker,
+  provider task, route or params. Fetching the files themselves is not part of
+  this API yet.
+* Refusals hold nothing: `402 insufficient_credits`
+  (`available_credits`, `needed_credits`), `402 key_credit_limit_reached`,
+  `409 price_changed`, `429 run_limit_reached` (the plan's parallel runs),
+  `422 mode_not_supported | unpriced | source_unavailable | style_unavailable`,
+  `403 entitlement_required`, `503 registry_missing`. Anything the database
+  raises that is not one of these is a structured `500 internal_error`; its text
+  never reaches the client, and the job, hold and idempotency record are rolled
+  back.
+* Without 0062 applied: `503 api_unavailable` naming the migration.
+
 ## Developer console (`/{channel}/developers`, owners/admins)
 
-Overview (balance, tier, month-to-date spend, limits) · API keys (create /
-show once / revoke / per-key limit) · Usage (requests and spend per day,
+Overview (balance, tier, month-to-date spend, limits) · API keys (create with
+scopes, a request limit and a credit ceiling / show once / revoke / per-key
+limit) · Usage (requests and spend per day,
 per-endpoint breakdown, from `api_requests`, kept ~90 days) · Billing (top-up
 with a custom amount, payment history with Paddle invoice links) · Limits
 (organization monthly limit).

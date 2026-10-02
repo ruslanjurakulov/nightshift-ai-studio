@@ -2,23 +2,27 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
-import { AtSign, Clock, Languages, Maximize2, RectangleHorizontal, Sparkles, type LucideIcon } from "lucide-react";
+import { AtSign, Clock, Languages, Maximize2, RectangleHorizontal, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
+import { formatCredits } from "@/lib/credits";
 import { useChannelPath } from "@/lib/channels-client";
 import { SourcePicker } from "@/components/studio/SourcePicker";
 import { ModelSheet } from "@/components/studio/ModelSheet";
 import { TierMarks } from "@/components/studio/TierMarks";
 import { TOOL_ICONS } from "@/components/studio/toolIcons";
-import { useModelPrices } from "@/components/studio/useModelPrices";
+import { useModelPrices, useSoundPrices, useTierPrices } from "@/components/studio/useModelPrices";
 import { useStyleKits } from "@/components/studio/useStyleKits";
 import { PlanUpsellDialog } from "@/components/studio/PlanUpsellDialog";
 import { ChannelDnaHint } from "@/components/studio/ChannelDnaHint";
+import { PriceButton } from "@/components/ui/PriceButton";
+import { creditUnit } from "@/lib/credits";
 import type { StudioDna } from "@/lib/channel-dna";
 import { isUpsellCode, refusalFrom, type Refusal, type UpsellCatalog } from "@/lib/upsell";
 import { UPSCALE_FACTORS, type CreativeError } from "@/lib/creative/operations";
 import {
   ASPECT_RATIOS,
   DESCRIBE_LANGUAGES,
+  IMAGE_QUALITIES,
   PANEL_CAPABILITIES,
   DUB_LANGUAGES,
   PROMPT_MAX,
@@ -30,6 +34,8 @@ import {
   buildParams,
   canQuote,
   defaultDescribeLanguage,
+  effectiveQuality,
+  effectiveSound,
   errorAction,
   generateLabel,
   modelsFor,
@@ -39,10 +45,14 @@ import {
   newIdempotencyKey,
   promptRule,
   sheetQuoteParams,
+  takesQuality,
+  takesSound,
   takesStyle,
+  tierQuoteParams,
   type AspectRatio,
   type DescribeLanguage,
   type DubLanguage,
+  type ImageQuality,
   type QuoteState,
   type StudioCapability,
   type StudioModel,
@@ -142,6 +152,10 @@ export function GeneratePanel({
   const [describeLanguage, setDescribeLanguage] = useState<DescribeLanguage>(
     initial?.describeLanguage ?? defaultDescribeLanguage(locale),
   );
+  // 0060: the picture's render quality; null = not picked, so the model's default (medium) applies.
+  const [quality, setQuality] = useState<ImageQuality | null>(initial?.quality ?? null);
+  // 0070: a clip's soundtrack; null = not picked, so the model's default (silent) applies.
+  const [sound, setSound] = useState<boolean | null>(initial?.audio ?? null);
   const styles = useStyleKits(orgId);
   const [quote, setQuote] = useState<QuoteState>({ status: "idle" });
   const [requote, setRequote] = useState(0);
@@ -167,6 +181,10 @@ export function GeneratePanel({
   // The size: the one picked if this model makes it, else the model's first.
   const targets = current?.upscaleTargets ?? [];
   const effectiveTarget = capability !== "video_upscale" ? null : target && targets.includes(target) ? target : (targets[0] ?? null);
+  // A tier only for a picture tool on a model that sells tiers; another model never gets one.
+  const effectiveQ = takesQuality(capability) ? effectiveQuality(current, quality) : null;
+  // A soundtrack choice only for a video tool on a model that sells it; another model never gets one.
+  const effectiveSnd = takesSound(capability) ? effectiveSound(current, sound) : null;
   const form = {
     capability,
     prompt,
@@ -180,6 +198,8 @@ export function GeneratePanel({
     endFrameId: effectiveEnd,
     target: effectiveTarget,
     describeLanguage,
+    quality: effectiveQ,
+    audio: effectiveSnd,
   };
   const params = useMemo(
     () =>
@@ -196,8 +216,10 @@ export function GeneratePanel({
         endFrameId: effectiveEnd,
         target: effectiveTarget,
         describeLanguage,
+        quality: effectiveQ,
+        audio: effectiveSnd,
       }),
-    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, describeLanguage],
+    [capability, prompt, aspect, duration, sourceId, factor, effectiveStyle, voiceId, targetLanguage, effectiveEnd, effectiveTarget, describeLanguage, effectiveQ, effectiveSnd],
   );
   const paramsKey = JSON.stringify(params);
   // A price is asked for only once the form is complete (the picture, the words).
@@ -252,7 +274,45 @@ export function GeneratePanel({
     modelIds: available.map((m) => m.id),
     selectedId: effectiveModel,
     params: sheetParams,
+    // Each model is priced at ITS tier: a model without tiers is asked without one.
+    // Likewise its soundtrack: a model that offers no choice is asked without one.
+    soundFor: takesSound(capability) ? Object.fromEntries(available.map((m) => [m.id, effectiveSound(m, sound)])) : undefined,
+    tierFor: takesQuality(capability) ? Object.fromEntries(available.map((m) => [m.id, effectiveQuality(m, quality)])) : undefined,
   });
+  // The picked model's tiers, each priced by the database for these settings (never a tier's own number from here).
+  const tiers: readonly ImageQuality[] = takesQuality(capability) ? (current?.qualities ?? []) : [];
+  const tierPrices = useTierPrices({
+    orgId,
+    capability,
+    modelId: effectiveModel,
+    tiers,
+    // Without the words: the tiers' prices do not depend on them, and typing must not re-ask or send them.
+    params: tiers.length ? tierQuoteParams(form) : null,
+  });
+  // The picked model's two soundtrack settings, each priced by the database for these settings.
+  const soundChoice = takesSound(capability) && current?.soundChoice === true && effectiveSnd !== null;
+  const soundPrices = useSoundPrices({
+    orgId,
+    capability,
+    modelId: effectiveModel,
+    params: soundChoice ? sheetQuoteParams({ ...form, audio: null }) : null,
+  });
+  const soundText = (on: boolean): string => {
+    const label = on ? t.gen.soundOn : t.gen.soundOff;
+    const p = on ? soundPrices.sound : soundPrices.silent;
+    if (!p) return label;
+    if (p.status === "quoting") return `${label} · …`;
+    if (p.status === "ready") return `${label} · ${fmt(t.gen.sheetCredits, { n: formatCredits(p.credits, locale) })}`;
+    return `${label} · ${p.code === "unpriced" ? t.gen.qualityUnpriced : "—"}`;
+  };
+  const tierText = (q: ImageQuality): string => {
+    const label = t.gen.qualities[q];
+    const p = tierPrices[q];
+    if (!p) return label;
+    if (p.status === "quoting") return `${label} · …`;
+    if (p.status === "ready") return `${label} · ${fmt(t.gen.sheetCredits, { n: formatCredits(p.credits, locale) })}`;
+    return `${label} · ${p.code === "unpriced" ? t.gen.qualityUnpriced : "—"}`;
+  };
 
   const edited = () => setNotice(null);
 
@@ -423,7 +483,7 @@ export function GeneratePanel({
           <div className="studio-field flex items-center gap-3 p-3">
             <span
               aria-hidden
-              className="grid size-10 shrink-0 place-items-center rounded-[10px] bg-[color-mix(in_srgb,var(--color-primary)_14%,transparent)] text-[var(--color-primary)]"
+              className="grid size-10 shrink-0 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] text-[var(--ns-amber-ink)]"
             >
               <ToolIcon className="size-5" strokeWidth={1.75} />
             </span>
@@ -448,7 +508,7 @@ export function GeneratePanel({
               aria-label={t.gen.modelChangeLabel}
               ref={changeRef}
               onClick={() => setSheetOpen(true)}
-              className="tap press shrink-0 rounded-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)]"
+              className="tap press shrink-0 rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)]"
             >
               {t.gen.modelChange}
             </button>
@@ -662,6 +722,68 @@ export function GeneratePanel({
           settings
         )}
 
+        {tiers.length > 0 && effectiveQ && (
+          <div className="flex flex-col gap-2" data-testid="gen-quality">
+            <span className="studio-label" id="gen-quality-label">
+              {t.gen.qualityLabel}
+            </span>
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="gen-quality-label">
+              {IMAGE_QUALITIES.filter((q) => tiers.includes(q)).map((q) => {
+                const p = tierPrices[q];
+                return (
+                  <button
+                    key={q}
+                    type="button"
+                    data-testid={`gen-quality-${q}`}
+                    aria-pressed={effectiveQ === q}
+                    // A tier with no price is not sold: it cannot be picked (never shown as free).
+                    disabled={p?.status === "error" && p.code === "unpriced"}
+                    onClick={() => {
+                      setQuality(q);
+                      edited();
+                    }}
+                    className="studio-chip"
+                  >
+                    {tierText(q)}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-[12px] text-[var(--color-muted)]">{t.gen.qualityNote}</span>
+          </div>
+        )}
+
+        {soundChoice && (
+          <div className="flex flex-col gap-2" data-testid="gen-sound">
+            <span className="studio-label" id="gen-sound-label">
+              {t.gen.soundLabel}
+            </span>
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby="gen-sound-label">
+              {([false, true] as const).map((on) => {
+                const p = on ? soundPrices.sound : soundPrices.silent;
+                return (
+                  <button
+                    key={String(on)}
+                    type="button"
+                    data-testid={on ? "gen-sound-on" : "gen-sound-off"}
+                    aria-pressed={effectiveSnd === on}
+                    // A setting with no price is not sold: it cannot be picked (never shown as free).
+                    disabled={p?.status === "error" && p.code === "unpriced"}
+                    onClick={() => {
+                      setSound(on);
+                      edited();
+                    }}
+                    className="studio-chip"
+                  >
+                    {soundText(on)}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-[12px] text-[var(--color-muted)]">{t.gen.soundNote}</span>
+          </div>
+        )}
+
         {takesStyle(capability) && styles.state !== "unavailable" && (
           <div className="flex flex-col gap-2">
             <span className="studio-label">{t.gen.styleLabel}</span>
@@ -715,6 +837,10 @@ export function GeneratePanel({
                     </Link>
                   </span>
                 )}
+                {/* The built-in library: opening it changes nothing here, adding a style is a click there. */}
+                <Link href={path("/styles")} className="tap-link self-start text-[12px] text-[var(--color-primary)] underline">
+                  {t.gen.styleBrowse}
+                </Link>
               </>
             )}
           </div>
@@ -722,18 +848,29 @@ export function GeneratePanel({
       </div>
 
       <div className="studio-dock flex flex-col gap-2" data-testid="gen-dock">
-        <button
+        {/* The price key (components/ui/PriceButton): the action and the
+            database's quote as two legends; its name is the same sentence. */}
+        <PriceButton
           ref={generateRef}
-          type="button"
           disabled={disabled}
           onClick={generate}
           aria-busy={submitting || quote.status === "quoting"}
           aria-describedby="gen-status"
-          className="studio-cta"
-        >
-          <Sparkles aria-hidden className={`size-4${quote.status === "quoting" || submitting ? " pulse" : ""}`} />
-          <span>{submitting ? t.gen.starting : generateLabel(t, quote, locale, capability)}</span>
-        </button>
+          aria-label={submitting ? t.gen.starting : generateLabel(t, quote, locale, capability)}
+          label={
+            submitting
+              ? t.gen.starting
+              : quote.status === "quoting"
+                ? t.gen.quoting
+                : capability === "describe"
+                  ? t.gen.describe
+                  : t.gen.generate
+          }
+          credits={!submitting && quote.status === "ready" ? quote.credits : null}
+          unit={quote.status === "ready" ? creditUnit(quote.credits, locale, t.shell.creditUnit) : undefined}
+          locale={locale}
+          icon={<span aria-hidden className={`ns-rec${quote.status === "quoting" || submitting ? " pulse" : ""}`} />}
+        />
         <p id="gen-status" className="min-h-[18px] text-center text-[12px]" aria-live="polite">
           {notice?.kind === "ok" ? (
             <span className="text-[var(--color-ok)]">{t.gen.started}</span>
