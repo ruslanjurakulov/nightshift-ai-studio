@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 #
 # The Command Center as a self-hosted container (see deploy/ and
 # docs/DEPLOY_AX42.md). Build context is this directory:
@@ -20,7 +20,7 @@
 #   * The Supabase service key belongs to the bot only. It is not an input here
 #     in any form.
 
-ARG NODE_IMAGE=node:22-bookworm-slim
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
 
 # ── 1. Dependencies, from the lockfile exactly ───────────────────────────────
 FROM ${NODE_IMAGE} AS deps

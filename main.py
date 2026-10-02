@@ -1487,10 +1487,25 @@ if __name__ == "__main__":
                         help="Repair only these scenes of the channel's last unfinished run "
                              "(e.g. '3,17' or 's003,s017'), then hold the new cut for review. "
                              "With --topic, repairs that topic's run.")
+    # Scene regeneration v2 (modules/scene_regenerate.py, migration 0076): one
+    # scene of the run --topic names, made again with the source it was made
+    # with, as priced and held by the person's press. The terms come from the
+    # queue worker in SCENE_REGEN_* env vars; it never uploads.
+    parser.add_argument("--regenerate-scene", dest="regenerate_scene", default=None,
+                        help="Regenerate this one scene (e.g. 's003') of the run --topic names, "
+                             "with the terms the queue worker passes in SCENE_REGEN_*; the new cut "
+                             "is held for review.")
     args = parser.parse_args()
 
     if args.list_channels:
         list_channels()
+    elif args.regenerate_scene is not None:
+        if args.repair_scenes is not None or args.resume:
+            print("--regenerate-scene excludes --repair-scenes and --resume")
+            sys.exit(2)
+        from modules import scene_regenerate
+        sys.exit(scene_regenerate.cli(channel=args.channel, raw_scene=args.regenerate_scene,
+                                      topic=args.topic))
     elif args.repair_scenes is not None:
         from modules import scene_repair
         sys.exit(scene_repair.cli(channel=args.channel, raw_scenes=args.repair_scenes,

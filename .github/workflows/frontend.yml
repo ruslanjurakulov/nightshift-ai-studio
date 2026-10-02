@@ -48,13 +48,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Never pushes: keeps the job token out of .git/config (BR-S-001).
           persist-credentials: false
 
       - name: Set up Node 22
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -77,6 +77,15 @@ jobs:
       - name: Unit tests
         if: ${{ !cancelled() }}
         run: npx vitest run
+
+      # BR-S-004/005: the tree had a critical dev advisory and two runtime ones
+      # that nobody saw because nothing looked. High and critical now fail the
+      # job (runtime and dev alike: a dev server is a target too). A new
+      # advisory can turn this red on an unrelated PR; that is the point, and
+      # the fix is its own small dependency PR.
+      - name: Dependency advisories
+        if: ${{ !cancelled() }}
+        run: npm audit --audit-level=high
 
       # Not redundant with the typecheck. A server/client boundary violation, a
       # bad route export, or a `"use client"` module importing something

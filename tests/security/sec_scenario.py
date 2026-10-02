@@ -369,6 +369,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Workflow apps (0073): tests/security/sec_workflows_0073.py.
     import sec_workflows_0073
     sec_workflows_0073.seed(conn, sc)
+    # Scene regeneration v2 (0076): tests/security/sec_scene_regen_0076.py.
+    import sec_scene_regen_0076
+    sec_scene_regen_0076.seed(conn, sc)
     # Multi-clip repurposing (0080): tests/security/sec_repurpose_0080.py.
     import sec_repurpose_0080
     sec_repurpose_0080.seed(conn, sc)

@@ -30,7 +30,8 @@ import {
   type RequestRow,
 } from "@/lib/repurpose";
 import { resolveRunBackend } from "@/lib/runBackend";
-import { pendingSceneRequests, sceneRepairEligibility } from "@/lib/sceneRepair";
+import { sceneRepairEligibility } from "@/lib/sceneRepair";
+import { latestByScene, parseRegenRows, REGEN_COLUMNS, type RegenRow } from "@/lib/sceneRegenerate";
 import { heldGate, heldState, heldStateLabel, isHeldVideo } from "@/lib/heldVideos";
 import { num, decimal, relativeTime, timeOfDay, statusTone } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
@@ -79,7 +80,7 @@ export default async function VideoDetail({
   let autoPublish = false;
   let pendingIntent: ReviewIntentRow | null = null;
   let retentionPoints: RetentionPointRow[] = [];
-  let pendingScenes = new Set<string>();
+  let sceneRegens: RegenRow[] = [];
   let channelName = "";
   // Repurposing (migration 0080). `null` = the migration is not applied, so
   // the panel is not offered at all (nothing is shown as available that is not).
@@ -128,7 +129,7 @@ export default async function VideoDetail({
       topicPerf = await fetchChannelTopicScores(supabase, video.channel_id);
       // The review panel needs two more facts: whether this channel publishes
       // on its own, and whether a request is already waiting on this video.
-      const [ch, intent, sceneIntents] = await Promise.all([
+      const [ch, intent, regens] = await Promise.all([
         supabase.from("channels").select("auto_publish, name").eq("channel_id", video.channel_id).maybeSingle(),
         // The panel's own decisions only: a per-scene request (below) must not
         // read as the video's approve/regenerate decision.
@@ -141,22 +142,19 @@ export default async function VideoDetail({
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
-        // Waiting "Regenerate scene" requests. An error (0015 not applied)
-        // reads as none waiting.
+        // This video's scene regenerations (migration 0076), read through
+        // RLS. An error (0076 not applied) reads as none.
         supabase
-          .from("review_intents")
-          .select("action,scene_id,consumed_at")
+          .from("scene_regenerations")
+          .select(REGEN_COLUMNS)
           .eq("video_id", id)
-          .eq("action", "regenerate_scene")
-          .is("consumed_at", null)
+          .order("created_at", { ascending: false })
           .limit(200),
       ]);
       autoPublish = Boolean((ch.data as Pick<ChannelRow, "auto_publish"> | null)?.auto_publish);
       channelName = (ch.data as { name?: string } | null)?.name || video.channel_id;
       pendingIntent = (intent.data as ReviewIntentRow | null) ?? null;
-      pendingScenes = sceneIntents.error
-        ? new Set<string>()
-        : pendingSceneRequests((sceneIntents.data as ReviewIntentRow[] | null) ?? []);
+      sceneRegens = regens.error ? [] : parseRegenRows(regens.data);
       if (!isRepurposedClip(video)) {
         // This video's repurpose requests and their clips, through RLS with the
         // person's own session. An error (0080 not applied) hides the panel.
@@ -389,18 +387,12 @@ export default async function VideoDetail({
           scenes={video.scenes ?? null}
           scriptText={video.script_text}
           retention={sceneRetention}
-          repair={repairable ? {
-            channelId: video.channel_id,
+          regenerate={repairable ? {
             videoId: video.video_id,
-            pending: pendingScenes,
-            labels: {
-              action: t.videoDetail.storyboardRegenerate,
-              filing: t.videoDetail.storyboardRegenerateFiling,
-              filed: t.videoDetail.storyboardRegenerateFiled,
-              hint: t.videoDetail.storyboardRegenerateHint,
-            },
+            latest: latestByScene(sceneRegens),
+            labels: t.sceneRegen,
           } : null}
-          repairUnavailable={repairable ? null : t.videoDetail.storyboardRegenerateUnavailable}
+          repairUnavailable={repairable ? null : t.sceneRegen.reasons.published}
           labels={{
             empty: t.videoDetail.storyboardEmpty,
             scene: t.videoDetail.storyboardScene,

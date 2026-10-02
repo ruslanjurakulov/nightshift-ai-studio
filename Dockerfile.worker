@@ -17,7 +17,7 @@
 # .env, youtube_token*.json and client_secret.json out of the build context,
 # and the check below fails the build if one slipped through anyway.
 
-FROM python:3.11-slim-bookworm
+FROM python:3.11-slim-bookworm@sha256:2333bd330d12de02514770b3585cad313644316047cdee24a7acfdece6de6efb
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
