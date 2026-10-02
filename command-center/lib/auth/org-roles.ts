@@ -1,5 +1,6 @@
 import "server-only";
 import { cache } from "react";
+import { notFound, redirect } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/config";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getOrgContext } from "@/lib/orgs-server";
@@ -128,6 +129,10 @@ export async function isPlatformAdmin(): Promise<boolean> {
  *
  * - Supabase not configured (local dev): yes, as before — there is no one
  *   else to hide anything from.
+ * - Nobody signed in: NO (BR-H-001). getOrgContext() reads a signed-out
+ *   visitor as "organizations not supported", which used to fall through to
+ *   the pre-0018 answer below and drew the whole console for anyone who got
+ *   past the middleware.
  * - Before 0018 there are no customer organizations: every signed-in member
  *   is the operator's team, as before.
  * - With organizations: platform owner/admin only (is_platform_admin). An
@@ -135,10 +140,35 @@ export async function isPlatformAdmin(): Promise<boolean> {
  */
 export const isOperator = cache(async (): Promise<boolean> => {
   if (!isSupabaseConfigured) return true;
+  if (!(await getUser())) return false;
   const org = await getOrgContext();
   if (!org.supported) return !org.unavailable;
   return isPlatformAdmin();
 });
+
+/**
+ * For a server-rendered PAGE that reads the platform operator's own things
+ * with the server's credentials — the GitHub token behind provider key names,
+ * routing variables and alert addresses. It must not rely on the middleware
+ * or the layout having stopped anyone (BR-H-001): a layout's redirect does
+ * not stop the page rendered beside it from running.
+ *
+ * - Signed out: redirect to /login. Signed in but not the operator: 404, like
+ *   every other operator-only screen. Both throw, so nothing after the call
+ *   runs.
+ * - Supabase not configured: false. The page may render, but without the
+ *   server's credentials: there is no one to check, and a deployment that
+ *   lost its Supabase env is open to anyone who finds it.
+ *
+ * True only for a signed-in platform operator, who may then have the page
+ * spend the server's credentials.
+ */
+export async function guardOperatorPage(): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+  if (!(await getUser())) redirect("/login");
+  if (!(await isOperator())) notFound();
+  return true;
+}
 
 export type OperatorCheck = { ok: true } | { ok: false; status: 401 | 403; error: "unauthorized" | "forbidden" };
 

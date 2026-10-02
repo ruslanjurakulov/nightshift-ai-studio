@@ -28,6 +28,13 @@ import type { CreditAccount } from "@/lib/credits";
 import { ShellProvider } from "@/components/shell/ShellContext";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  // Fail closed (BR-H-001). The middleware is the gate, but a request it never
+  // sees (a matcher exclusion, a misconfigured edge) must not render the app
+  // either: no session, no shell — before anything else is read or drawn. An
+  // unreachable auth server also lands here as "no user", so it fails closed.
+  const user = isSupabaseConfigured ? await getUser() : null;
+  if (isSupabaseConfigured && !user) redirect("/login");
+
   const org = isSupabaseConfigured
     ? await getOrgContext()
     : { supported: false, orgs: [], current: null };
@@ -68,7 +75,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     });
     if (to) redirect(to);
   }
-  const email = isSupabaseConfigured ? ((await getUser())?.email ?? null) : null;
+  const email = user?.email ?? null;
 
   // Credits in the header, for an organization that pays. The operator's own
   // (default) organization is exempt and shows none; so does a database

@@ -6,6 +6,7 @@ import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/gith
 import { readVariables } from "@/lib/server/github-variables";
 import { isGoogleOAuthConfigured } from "@/lib/server/google-oauth";
 import { getDictionary } from "@/lib/i18n/server";
+import { guardOperatorPage } from "@/lib/auth/org-roles";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -22,6 +23,9 @@ export default async function ProvidersPage({
   params: Promise<{ channel: string }>;
   searchParams: Promise<{ yt?: string }>;
 }) {
+  // The operator's own key names and routing, read with the server's GitHub
+  // token: signed out → /login, anyone else → 404, before any read (BR-H-001).
+  const mayReadGithub = await guardOperatorPage();
   const { t } = await getDictionary();
   const { channel } = await params;
   const { yt } = await searchParams;
@@ -29,7 +33,7 @@ export default async function ProvidersPage({
 
   let configured: string[] = [];
   let routingVars: Record<string, string> = {};
-  if (isGithubConfigured) {
+  if (isGithubConfigured && mayReadGithub) {
     try {
       configured = await listConfiguredSecretNames();
     } catch {
