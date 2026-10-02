@@ -25,7 +25,10 @@ run by ``tools/media_worker.py``, then for each ticket:
    a JPEG thumbnail (images, video), a 480p H.264 proxy (video) that any
    browser can play, and — for a HEIC / HEIF — a JPEG ``display`` copy (long
    side <= 2048) because most browsers cannot show the original, which is
-   stored untouched;
+   stored untouched. Every ffmpeg that decodes the file runs under
+   ``ffmpeg_limits`` (an address-space limit, pinned thread counts, a frame
+   size cap in the decoder and a time limit proportionate to the declared
+   work), and a decode that met a bigger frame than declared is refused;
 5. registers the row (``register_asset``, service role) or rejects the ticket
    with a reason word (``reject_media_upload``), then deletes the staged file.
    The folder a file lands in (migration 0051) is NOT the worker's to say:
