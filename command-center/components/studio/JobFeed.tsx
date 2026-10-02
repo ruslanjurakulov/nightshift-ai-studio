@@ -22,6 +22,8 @@ import {
   coerceJobs,
   compareSources,
   creditsLine,
+  fellBackLine,
+  jobModel,
   describeResult,
   edgeFacts,
   failureReason,
@@ -445,10 +447,15 @@ export function JobFeed({
           </p>
         )}
         <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[11px] text-[var(--color-muted)]">
-          <span className="min-w-0 truncate">{names.get(job.requested_model) ?? job.requested_model}</span>
+          <span className="min-w-0 truncate">{names.get(jobModel(job)) ?? jobModel(job)}</span>
           <span aria-hidden>·</span>
           <span className="mono">{creditsLine(t, job, locale)}</span>
         </p>
+        {fellBackLine(t, job, names) && (
+          <p className="text-[11px] leading-snug text-[var(--color-muted)]" data-testid="job-fell-back">
+            {fellBackLine(t, job, names)}
+          </p>
+        )}
         {isUnsuccessful(job.status) && (
           <p className="text-[12px] text-[var(--color-muted)]">
             {failureReason(t, job)} {t.gen.returnedNote}

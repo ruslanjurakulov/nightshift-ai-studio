@@ -23,9 +23,32 @@ customer's hold rather than risk a second paid submit.
 
 No silent substitution
 ----------------------
-Only EXACT mode exists today (the model the person picked, CLAUDE.md #4): the
-job's adapter is resolved for ``requested_model`` and nothing else, and any
-failure fails the job with the provider's code. There is no second model.
+EXACT mode (the model the person picked, CLAUDE.md #4): the job's adapter is
+resolved for ``requested_model`` and nothing else, and any failure fails the
+job with the provider's code. There is no second model, ever.
+
+Routed modes (migration 0075: auto / cheap / fast / quality) run the job's
+``routed_model`` — the model the person's quote named and confirmed. Only
+when the submit failed in a way that PROVES the vendor took nothing does the
+worker ask the DATABASE for the next compatible model (``reroute_creative_job``:
+same settings, of the same tier for quality, no dearer than the hold — the
+quoted price — at most ``MAX_FAILOVERS`` times). Proof (BR-L-019) is:
+
+* no adapter for the model on this worker, or no key for it (nothing sent);
+* the connection could not even be opened (sent to the database as
+  ``unreachable``);
+* the vendor refused the submit's first call outright: 401 / 403 (``auth``),
+  402 / quota (``quota``), 404 (``not_found``), 429 (``rate_limited``).
+
+A read timeout, a connection dropped after sending, any 5xx (502 / 504
+included) and an answer we could not read are NOT proof: the vendor may have
+accepted, and be billing, a task we never heard of. Such a job fails like
+exact mode (``unavailable``), its hold is released, its ``submit_started_at``
+stays set and it is never submitted again — to any model. The database keeps
+the same list and records ``fallback_from`` / ``fallback_reason``; the worker
+submits a NEW task for the new model (a task id never crosses models). A
+refusal of the request itself (policy, bad request), a failure after the task
+exists, and no compatible model all fail the job and release its hold.
 
 The adapter seam
 ----------------
@@ -148,6 +171,20 @@ FAILED = "failed"
 
 #: Error codes worth polling again for (the task is still the provider's).
 RETRYABLE_POLL_CODES = frozenset({"network", "provider_error", "rate_limited", "unavailable"})
+#: The routed modes (migration 0075); exact is never routed.
+ROUTED_MODES = frozenset({"auto", "cheap", "fast", "quality"})
+#: Submit failures that PROVE no vendor task exists (BR-L-019), as sent to
+#: ``reroute_creative_job``: a routed job may move to the next compatible
+#: model (the database decides which). ``unreachable`` is an ``unavailable``
+#: whose request never left this process. Never ``unavailable`` itself (a
+#: timeout or a 5xx: the vendor may be billing), never policy or bad_request
+#: (the request itself), never after the task id is stored. A code alone is
+#: not proof: the adapter's failure must also say ``not_accepted``. The
+#: database checks the same list.
+FAILOVER_CODES = frozenset({"unreachable", "rate_limited", "quota", "auth", "not_configured", "not_found",
+                            "adapter_missing"})
+#: At most this many failovers per job (the database allows no more either).
+MAX_FAILOVERS = 2
 #: Consecutive poll errors before a job is given up on.
 MAX_POLL_ERRORS = 10
 DEFAULT_POLL_SECONDS = 5.0
@@ -331,6 +368,15 @@ class CreativeRest:
     def expire(self) -> Optional[int]:
         return self._rpc("expire_creative_jobs", {})
 
+    def reroute(self, job_id: str, worker_id: str, code: str) -> Optional[dict]:
+        """The database's next compatible model for a routed job (0075), or
+        None: no failover (a database without 0075 has none either)."""
+        try:
+            out = self._rpc("reroute_creative_job", {"p_job": job_id, "p_worker": worker_id, "p_code": code})
+        except CreativeFunctionMissing:
+            return None
+        return out if isinstance(out, dict) else None
+
     def job_source(self, job_id: str, worker_id: str) -> Optional[dict]:
         out = self._rpc("creative_job_source", {"p_job": job_id, "p_worker": worker_id})
         return out if isinstance(out, dict) else None
@@ -409,12 +455,14 @@ def _duration_s(info: Mapping[str, Any]) -> Optional[float]:
 
 
 class _Refused(Exception):
-    """The job must end now, without a provider call; ``code`` is stored."""
+    """The job must end now, without a provider call; ``code`` is stored.
+    ``not_accepted``: the failure proves no vendor task exists (BR-L-019)."""
 
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, *, not_accepted: bool = False):
         super().__init__(message)
         self.code = code
         self.message = message
+        self.not_accepted = not_accepted
 
 
 class _Heartbeat:
@@ -528,13 +576,18 @@ class CreativeWorker:
 
     def _process(self, job: Mapping[str, Any], beat: _Heartbeat) -> str:
         job_id = str(job["id"])
-        if (job.get("mode") or "exact") != "exact":
-            raise _Refused("mode_not_supported", "only exact mode runs on this worker")
+        mode = str(job.get("mode") or "exact")
+        if mode != "exact" and mode not in ROUTED_MODES:
+            raise _Refused("mode_not_supported", "this worker runs exact and routed jobs only")
         if (job.get("payer") or "credits") != "credits":
             raise _Refused("payer_not_supported", "this worker settles credit-paid jobs only")
         self._check_hold(job)
 
-        model = str(job.get("requested_model") or "")
+        # EXACT: the model the person picked. Routed: the model the database
+        # routed the job to (the quoted pick, or a failover it recorded).
+        model = str(job.get("requested_model") or "") if mode == "exact" else str(job.get("routed_model") or "")
+        if not model:
+            raise _Refused("mode_not_supported", "a routed job without its routed model is not run")
         try:
             quantity = float(job["quantity"]) if job.get("quantity") is not None else None
         except (TypeError, ValueError):
@@ -542,36 +595,78 @@ class CreativeWorker:
         request = GenerationRequest(job_id=job_id, org_id=str(job.get("org_id") or ""),
                                     capability=str(job.get("capability") or ""), model=model,
                                     params=dict(job.get("params") or {}), quantity=quantity)
-        # EXACT: the requested model's adapter, or nothing — never another model.
-        adapter = self.resolve_adapter(model)
-        if adapter is None:
-            raise _Refused("adapter_missing", f"this worker has no adapter for {model}")
-
         task_id = job.get("provider_task_id")
-        if not task_id:
-            if request.capability in SOURCE_CAPABILITIES:
-                # Before 'submitting': a refusal here costs nobody anything.
-                info = self._source_answer(request)
-                request = replace(request, input_files=(self._source(request, info),),
-                                  source_size=_pixel_size(info), source_duration_s=_duration_s(info))
-                if request.params.get("end_asset_id"):
-                    request = replace(request, end_file=self._end_frame(request, info))
-            if cs.wants_style(request.capability, request.params):
-                request = self._style(request, adapter)
-            if not self.queue.advance(job_id, self.worker_id, "submitting"):
-                logger.warning("job %s: not ours to submit any more; leaving it", job_id)
-                return "left"
+        if task_id:
+            # Resuming: the task is this model's; it is polled, never moved.
+            adapter = self.resolve_adapter(model)
+            if adapter is None:
+                raise _Refused("adapter_missing", f"this worker has no adapter for {model}")
+            return self._poll(job, request, adapter, str(task_id), beat)
+
+        if request.capability in SOURCE_CAPABILITIES:
+            # Before 'submitting': a refusal here costs nobody anything.
+            info = self._source_answer(request)
+            request = replace(request, input_files=(self._source(request, info),),
+                              source_size=_pixel_size(info), source_duration_s=_duration_s(info))
+            if request.params.get("end_asset_id"):
+                request = replace(request, end_file=self._end_frame(request, info))
+        base = request
+        failovers = 0
+        while True:
             try:
-                task_id = adapter.submit(request)
-            except Exception as e:
-                raise _Refused(error_code_of(e), error_text_of(e)) from None
-            if not task_id or not isinstance(task_id, str):
-                raise _Refused("bad_response", "the provider accepted the job without a task id")
-            if not self.queue.advance(job_id, self.worker_id, "submitted", task_id,
-                                      {"model": model}):
-                logger.error("job %s: the task id could not be stored; leaving it", job_id)
-                return "left"
+                # The model's adapter, or nothing — never another model unless
+                # the DATABASE moved a routed job (below).
+                adapter = self.resolve_adapter(model)
+                if adapter is None:
+                    raise _Refused("adapter_missing", f"this worker has no adapter for {model}", not_accepted=True)
+                request = replace(base, model=model)
+                if cs.wants_style(request.capability, request.params):
+                    request = self._style(request, adapter)
+                if not self.queue.advance(job_id, self.worker_id, "submitting"):
+                    logger.warning("job %s: not ours to submit any more; leaving it", job_id)
+                    return "left"
+                try:
+                    task_id = adapter.submit(request)
+                except Exception as e:
+                    raise _Refused(error_code_of(e), error_text_of(e),
+                                   not_accepted=getattr(e, "not_accepted", False) is True) from None
+                break
+            except _Refused as r:
+                moved = self._failover(job_id, mode, r, failovers)
+                if moved is None:
+                    raise
+                logger.info("job %s: %s answered %s; the database moved the job to %s", job_id, model, r.code,
+                            moved["model"])
+                model, base, failovers = moved["model"], replace(base, params=moved["params"]), failovers + 1
+        if not task_id or not isinstance(task_id, str):
+            raise _Refused("bad_response", "the provider accepted the job without a task id")
+        if not self.queue.advance(job_id, self.worker_id, "submitted", task_id,
+                                  {"model": model}):
+            logger.error("job %s: the task id could not be stored; leaving it", job_id)
+            return "left"
         return self._poll(job, request, adapter, str(task_id), beat)
+
+    def _failover(self, job_id: str, mode: str, refused: "_Refused", failovers: int) -> Optional[dict]:
+        """A routed job whose submit failed with PROOF that no vendor task
+        exists (``not_accepted`` and a FAILOVER_CODES code): the database's
+        next compatible model and the params it priced, or None. Exact never
+        asks; a timeout or a 5xx never asks; nothing here picks a model."""
+        if mode not in ROUTED_MODES or failovers >= MAX_FAILOVERS or not refused.not_accepted:
+            return None
+        code = "unreachable" if refused.code == "unavailable" else refused.code
+        if code not in FAILOVER_CODES:
+            return None
+        reroute = getattr(self.queue, "reroute", None)
+        if not callable(reroute):
+            return None
+        moved = reroute(job_id, self.worker_id, code)
+        if not isinstance(moved, dict) or not isinstance(moved.get("model"), str) or not moved["model"]:
+            return None
+        params = moved.get("params")
+        if not isinstance(params, dict):
+            # Without the settings the database priced, nothing is sent.
+            return None
+        return {"model": moved["model"], "params": dict(params)}
 
     def _source_answer(self, request: GenerationRequest) -> dict:
         """The database's answer about the job's inputs (for this worker's

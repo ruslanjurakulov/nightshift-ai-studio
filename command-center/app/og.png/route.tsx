@@ -10,9 +10,9 @@ import { en } from "@/lib/i18n/en";
  * Why a route at /og.png and not the app/opengraph-image.tsx convention: that
  * convention serves at /opengraph-image (no extension), which the auth gate in
  * middleware.ts sends to /login for a signed-out visitor — and every crawler
- * that unfurls a link is signed out. The middleware matcher already skips any
- * path ending in .png, so this card is reachable without widening the public
- * surface in lib/public-paths.ts. app/page.tsx points og:image here.
+ * that unfurls a link is signed out. The middleware matcher skips exactly
+ * `/og.png` (anchored, BR-H-001), so this card is reachable without widening
+ * the public surface in lib/public-paths.ts. app/page.tsx points og:image here.
  */
 export const dynamic = "force-static";
 

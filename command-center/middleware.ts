@@ -145,11 +145,23 @@ async function gate(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  // Run on everything except Next internals, static files and the body of a
-  // media upload (PUT /api/media/uploads/<ticket>). Next buffers a request body
-  // in memory for middleware and silently truncates it at 10 MB
+  // Run on everything except Next internals, a few exact static files and the
+  // body of a media upload (PUT /api/media/uploads/<ticket>). Next buffers a
+  // request body in memory for middleware and silently truncates it at 10 MB
   // (experimental.middlewareClientMaxBodySize), so an upload that passed
   // through here would sit whole in RAM and arrive cut short. That route
   // checks the session itself.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/media/uploads/.+|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  //
+  // Every exclusion is ANCHORED (BR-H-001). A request this matcher skips gets
+  // no auth gate at all, and the router still resolves it as an app page when
+  // it can: an unanchored `favicon.ico` skipped `/favicon.icox/providers`, and
+  // `.*\.png$` skipped `/chronos/videos/x.png` — both rendered the console
+  // signed out. So Next's own prefixes end in a slash or at the end of the
+  // path, each static file is named exactly (dots escaped), and an upload is
+  // one segment. A new file under public/ must be named here
+  // (tests/middleware-matcher.test.ts fails until it is); until then it is
+  // gated, never the other way round.
+  matcher: [
+    "/((?!_next/static/|_next/image$|favicon\\.ico$|icon\\.png$|apple-icon\\.png$|og\\.png$|api/media/uploads/[^/]+$).*)",
+  ],
 };
