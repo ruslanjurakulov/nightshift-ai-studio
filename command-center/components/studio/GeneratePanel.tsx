@@ -46,6 +46,7 @@ import {
   takesQuality,
   takesSound,
   takesStyle,
+  tierQuoteParams,
   type AspectRatio,
   type DescribeLanguage,
   type DubLanguage,
@@ -283,7 +284,8 @@ export function GeneratePanel({
     capability,
     modelId: effectiveModel,
     tiers,
-    params: tiers.length ? sheetQuoteParams({ ...form, quality: null }) : null,
+    // Without the words: the tiers' prices do not depend on them, and typing must not re-ask or send them.
+    params: tiers.length ? tierQuoteParams(form) : null,
   });
   // The picked model's two soundtrack settings, each priced by the database for these settings.
   const soundChoice = takesSound(capability) && current?.soundChoice === true && effectiveSnd !== null;

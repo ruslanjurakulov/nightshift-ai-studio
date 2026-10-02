@@ -13,11 +13,20 @@
 --   resolution  an existing param, now checked against the model: t2v and i2v
 --               on a model that lists no such resolution are refused
 --               ('invalid_params') before any hold. Absent = the model's
---               spec.default_resolution (720p), in the quote AND in the worker.
+--               spec.default_resolution (720p) in the QUOTE only: the setting the quote
+--               priced is written into the job's params at create time
+--               (create_creative_job), and the worker sends EXACTLY that.
 --   audio       NEW param, t2v and i2v only, a JSON boolean, accepted only by a
 --               model priced by it (spec.pricing.variants.by is 'audio' or
---               'resolution_audio'). Absent = false (silent), in the quote AND
---               in the worker.
+--               'resolution_audio'). Absent = false (silent) in the QUOTE only, and
+--               written into the job like the resolution.
+--
+-- THE WORKER HAS NO DEFAULT OF ITS OWN (the 0060 rule for the quality tier,
+-- same bug class): a job of a model priced by resolution or soundtrack that
+-- carries no resolution / audio (made before 0070, or by a database whose
+-- registry copy was not synced and so quoted a flat price) is refused before
+-- the provider call and its hold released — sending anything would bill a
+-- setting the customer was not quoted.
 --
 -- HOW A VIDEO IS PRICED (the 0052 / 0060 mechanism: model_registry.credit_unit_for,
 -- model_<id>_<unit>_<variant>). When spec.pricing.variants.by is
@@ -34,6 +43,9 @@
 --
 -- WHAT IT CHANGES (create-or-replace; nothing dropped)
 --   creative_params_problem   0060's rules plus the audio key above.
+--   create_creative_job       0060's body (signature unchanged), plus: when the quote names
+--                             a resolution / audio, the job's params get them as priced.
+--                             The request hash still covers what the caller sent.
 --   creative_price            0060's quote plus the checks and the variant above.
 --                             Every other line is 0060's (0052's video_upscale
 --                             target price, the quality tier, 0055's describe).
@@ -61,8 +73,9 @@
 -- organization. creative_params_problem, creative_price: nobody through the
 -- API directly. anon: nothing. credit_prices keeps 0020's RLS.
 --
--- BUILT ON the LATEST bodies: creative_price, creative_params_problem and
--- sellable_models are 0060's (tests/test_video_price_variants.py pins every
+-- BUILT ON the LATEST bodies: create_creative_job, creative_price,
+-- creative_params_problem and sellable_models are 0060's, model_registry_guard
+-- is 0052's (tests/test_video_price_variants.py pins every
 -- string literal of them).
 --
 -- REQUIRES 0020, 0035, 0036, 0052, 0055 and 0060. Additive and idempotent:
@@ -82,6 +95,12 @@ begin
   if position('qualities' in pg_get_functiondef('public.sellable_models(text, text)'::regprocedure)) = 0
      or position('quality' in pg_get_functiondef('public.creative_params_problem(text, jsonb)'::regprocedure)) = 0 then
     raise exception '0070 needs 0060_image_quality.sql: apply it first';
+  end if;
+  -- 0060's create_creative_job stores the priced tier; replacing anything older would drop that.
+  if to_regprocedure('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)') is null
+     or position('jsonb_build_object(''quality'', q ->> ''quality'')'
+                 in pg_get_functiondef('public.create_creative_job(uuid, text, text, jsonb, text, text, numeric)'::regprocedure)) = 0 then
+    raise exception '0070 needs 0060_image_quality.sql (its create_creative_job): apply it first';
   end if;
   -- The guard below is 0052's plus lines: replacing anything older would drop an earlier check.
   if to_regprocedure('public.model_registry_guard()') is null
@@ -148,6 +167,132 @@ end
 $$;
 
 revoke all on function public.model_registry_guard() from public, anon, authenticated;
+
+-- 0060's create (0036's with the priced tier stored), also storing the priced resolution
+-- and soundtrack of a video in the job's params (header). Nothing else changes.
+create or replace function public.create_creative_job(
+  p_org uuid,
+  p_capability text,
+  p_model text,
+  p_params jsonb default '{}'::jsonb,
+  p_mode text default 'exact',
+  p_idempotency_key text default null,
+  p_max_credits numeric default null
+) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  uid   uuid := auth.uid();
+  md    text := lower(btrim(coalesce(p_mode, 'exact')));
+  idem  text := nullif(btrim(coalesce(p_idempotency_key, '')), '');
+  hash_ text;
+  prior public.creative_jobs;
+  q     jsonb;
+  price numeric;
+  jid   uuid := gen_random_uuid();
+  ref   text;
+  res   jsonb;
+  j     public.creative_jobs;
+  jparams jsonb;
+begin
+  if uid is null or not public.is_org_member(p_org) then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  -- The exempt organization's generations are paid by the platform itself,
+  -- and every account that existed before 0018 is a member of it: only a
+  -- platform owner/admin may spend there (reserve_credits asks for its admins
+  -- too, before answering exempt).
+  if public.credits_exempt(p_org) and not public.is_platform_admin() then
+    raise exception 'forbidden' using errcode = '42501',
+      detail = 'generations in the operator''s organization are started by a platform admin';
+  end if;
+  if md not in ('exact', 'auto', 'cheap', 'fast', 'quality') then
+    perform public.creative_refuse('invalid_params', 'mode must be exact, auto, cheap, fast or quality');
+  end if;
+  -- Router modes need route_model() and failover, which are not built yet: a
+  -- job only ever runs the model the person picked.
+  if md <> 'exact' then
+    perform public.creative_refuse('mode_not_supported',
+      'only exact mode (the model you picked) is available on this deployment');
+  end if;
+  if idem is not null and idem !~ '^[A-Za-z0-9_:.-]{1,255}$' then
+    perform public.creative_refuse('invalid_idempotency_key',
+      'idempotency key: 1-255 characters of A-Z a-z 0-9 _ : . -');
+  end if;
+
+  -- The org's credit account, locked for the rest of this transaction: every
+  -- create (and reserve_credits itself) for this org queues behind it, so two
+  -- concurrent creates cannot both spend the same available credits, and a
+  -- replay of the same idempotency key finds the first one's committed row.
+  perform public.credit_account_lock(p_org);
+
+  hash_ := md5(jsonb_build_object('capability', lower(btrim(coalesce(p_capability, ''))),
+                                  'model', lower(btrim(coalesce(p_model, ''))),
+                                  'mode', md, 'params', coalesce(p_params, 'null'::jsonb))::text);
+  if idem is not null then
+    select * into prior from public.creative_jobs
+     where org_id = p_org and idempotency_key = idem;
+    if found then
+      if prior.request_hash is distinct from hash_ then
+        perform public.creative_refuse('idempotency_conflict',
+          'this idempotency key was used for a different request', 'NS409');
+      end if;
+      return jsonb_build_object('job', public.creative_job_json(prior), 'replay', true);
+    end if;
+  end if;
+
+  -- Holds of this org's jobs that nobody will run give their credits back
+  -- before this one is checked against the balance.
+  perform public.creative_expire_locked(p_org);
+
+  q := public.creative_price(p_org, p_capability, p_model, p_params);
+  price := (q ->> 'credits')::numeric;
+  if p_max_credits is not null and price > p_max_credits then
+    perform public.creative_refuse('price_changed',
+      format('price=%s confirmed=%s', price, p_max_credits), 'NS409');
+  end if;
+
+  -- The tier the quote priced is the tier the job carries (0060): stored in
+  -- the job's params so the worker sends EXACTLY it and never a default of its
+  -- own. Absent from the request = the quote's default, written down here.
+  jparams := p_params;
+  if q ? 'quality' then
+    jparams := coalesce(p_params, '{}'::jsonb) || jsonb_build_object('quality', q ->> 'quality');
+  end if;
+  -- Likewise the resolution and soundtrack of a video (0070): written down as
+  -- priced, so the worker sends exactly them and never a default of its own.
+  if q ? 'resolution' then
+    jparams := coalesce(jparams, '{}'::jsonb) || jsonb_build_object('resolution', q ->> 'resolution');
+  end if;
+  if q ? 'audio' then
+    jparams := coalesce(jparams, '{}'::jsonb) || jsonb_build_object('audio', (q ->> 'audio')::boolean);
+  end if;
+
+  ref := 'cj:' || jid::text;
+  if price > 0 then
+    -- NS402 'insufficient credits' (available=… needed=…) comes from here.
+    res := public.creative_platform_reserve(p_org, ref, price);
+    if coalesce((res ->> 'exempt')::boolean, false) then
+      ref := null;
+    end if;
+  else
+    ref := null;
+  end if;
+
+  insert into public.creative_jobs
+    (id, org_id, kind, capability, mode, requested_model, routed_model, params, status,
+     payer, credit_ref, credit_unit, quantity, quoted_credits, idempotency_key, request_hash,
+     requested_by, expires_at)
+  values
+    (jid, p_org, 'generate', q ->> 'capability', md, q ->> 'model', q ->> 'model',
+     jparams, 'queued', 'credits', ref, q ->> 'unit', (q ->> 'quantity')::numeric, price,
+     idem, hash_, uid, now() + interval '2 hours')
+  returning * into j;
+  perform public.creative_job_log(jid, p_org, 'created', 'queued',
+    jsonb_build_object('quoted_credits', price, 'held', ref is not null));
+
+  return jsonb_build_object('job', public.creative_job_json(j), 'replay', false);
+end
+$$;
 
 -- 0060's sellable_models, with the pinned resolution and the way a model is priced
 -- in the public half of spec, and a model priced by soundtrack (or by a pinned
@@ -694,6 +839,9 @@ revoke all on function public.sellable_models(text, text) from public, anon;
 grant execute on function public.sellable_models(text, text) to authenticated, service_role;
 
 revoke all on function public.creative_params_problem(text, jsonb) from public, anon, authenticated, service_role;
+-- create_creative_job keeps 0036's grant (signed-in members only; anon nothing), restated so it cannot drift.
+revoke all on function public.create_creative_job(uuid, text, text, jsonb, text, text, numeric) from public, anon, authenticated, service_role;
+grant execute on function public.create_creative_job(uuid, text, text, jsonb, text, text, numeric) to authenticated;
 revoke all on function public.creative_price(uuid, text, text, jsonb) from public, anon, authenticated, service_role;
 
 -- ───────────────────────────────────────────────────────────────────────────
@@ -708,6 +856,10 @@ revoke all on function public.creative_price(uuid, text, text, jsonb) from publi
 --     and public.creative_params_problem('video_upscale',
 --       '{"source_asset_id":"00000000-0000-4000-8000-000000000000","target_resolution":"4k"}') is null
 --     as earlier_capabilities_kept,
+--   pg_get_functiondef('public.create_creative_job(uuid,text,text,jsonb,text,text,numeric)'::regprocedure)
+--     like '%jsonb_build_object(''resolution'', q ->> ''resolution'')%'
+--     and pg_get_functiondef('public.create_creative_job(uuid,text,text,jsonb,text,text,numeric)'::regprocedure)
+--     like '%jsonb_build_object(''quality'', q ->> ''quality'')%' as job_stores_the_priced_settings,
 --   position('default_resolution' in pg_get_functiondef('public.model_registry_guard()'::regprocedure)) > 0
 --     and position('qualities' in pg_get_functiondef('public.model_registry_guard()'::regprocedure)) > 0
 --     and position('vendor_model_by_capability' in pg_get_functiondef('public.model_registry_guard()'::regprocedure)) > 0
