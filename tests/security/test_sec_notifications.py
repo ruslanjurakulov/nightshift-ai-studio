@@ -72,15 +72,15 @@ def kinds(rows):
 
 
 @contextmanager
-def colleague(conn, sc):
+def colleague(conn, sc, role="viewer"):
     """A second member of org A with an account of their own, in a world that
     is rolled back: Carol. Yields (session as owner, carol)."""
     carol = user("carol", f"carol-{uuid.uuid4().hex[:6]}@a.test")
     with as_superuser(conn, commit=False) as s:
         s.rows("insert into auth.users (id, email, email_confirmed_at) values (%s, %s, now()) returning id",
                [carol.uid, carol.email])
-        s.rows("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, %s, 'viewer') returning 1",
-               [sc.alice.org, carol.uid, carol.email])
+        s.rows("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, %s, %s) returning 1",
+               [sc.alice.org, carol.uid, carol.email, role])
         yield s, carol
 
 
@@ -190,6 +190,7 @@ def test_the_service_key_cannot_read_an_inbox_either(conn, sc):
 @pytest.mark.parametrize("fn,args", [
     ("notification_emit", "%s, %s, 'credits_low', 'x', '{}'::jsonb"),
     ("notification_emit_org", "%s, 'credits_low', 'x', '{}'::jsonb"),
+    ("notification_emit_org_role", "%s, 'credits_low', 'x', '{}'::jsonb, 'viewer'"),
 ])
 def test_the_emit_helpers_are_not_callable_through_the_api(conn, sc, fn, args):
     params = [sc.alice.org, sc.alice.actor.uid][: args.count("%s")]
@@ -330,16 +331,36 @@ def test_a_job_updated_twice_tells_once(conn, sc):
     assert n == 1
 
 
-def test_a_storyboard_tells_every_member_of_its_org_and_nobody_else(conn, sc):
-    with colleague(conn, sc) as (s, carol):
-        as_owner(s)
-        sid = str(insert_storyboard(s, sc.alice.channel, "told-all-a").rows[0][0])
-        a = [r for r in inbox(s, sc.alice.actor) if r["ref"] == sid]
-        c = [r for r in inbox(s, carol) if r["ref"] == sid]
-        b = [r for r in inbox(s, sc.bob.actor) if r["ref"] == sid]
-    assert len(a) == len(c) == 1 and b == []
-    assert a[0]["kind"] == "storyboard_ready" and a[0]["data"] == {"storyboard_id": sid, "scenes": 3}
-    assert "A topic" not in json.dumps(a[0]["data"]), "the storyboard's topic is text a person typed"
+def test_a_storyboard_tells_only_the_members_who_may_approve_it(conn, sc):
+    # approve_storyboard needs an admin of the org (0057); a member who could
+    # not act on it is not interrupted for it.
+    told = {}
+    for role in ("viewer", "editor", "admin", "owner"):
+        with colleague(conn, sc, role) as (s, carol):
+            as_owner(s)
+            sid = str(insert_storyboard(s, sc.alice.channel, f"told-{role}-a").rows[0][0])
+            a = [r for r in inbox(s, sc.alice.actor) if r["ref"] == sid]
+            c = [r for r in inbox(s, carol) if r["ref"] == sid]
+            b = [r for r in inbox(s, sc.bob.actor) if r["ref"] == sid]
+            # The same rule the approval itself applies, for this very person.
+            as_user(s, carol)
+            may = s.value("select %s in (select public.accessible_channel_ids('admin'))", [sc.alice.channel])
+            as_owner(s)
+        assert len(a) == 1 and b == [], "the org's owner is told once; another org is never told"
+        assert a[0]["kind"] == "storyboard_ready" and a[0]["data"] == {"storyboard_id": sid, "scenes": 3}
+        assert "A topic" not in json.dumps(a[0]["data"]), "the storyboard's topic is text a person typed"
+        told[role] = (len(c) == 1, may)
+    assert told == {"viewer": (False, False), "editor": (False, False), "admin": (True, True), "owner": (True, True)}, \
+        "who is told must equal who may approve"
+
+
+def test_the_role_helper_refuses_a_made_up_role_and_tells_nobody(conn, sc):
+    with as_superuser(conn, commit=False) as s:
+        before = s.value("select count(*) from public.notifications")
+        n = s.value("select public.notification_emit_org_role(%s, 'credits_low', 'x', '{}'::jsonb, 'superuser')", [sc.alice.org])
+        none = s.value("select public.notification_emit_org_role(%s, 'credits_low', 'x', '{}'::jsonb, null)", [sc.alice.org])
+        after = s.value("select count(*) from public.notifications")
+    assert n == 0 and none == 0 and after == before
 
 
 def test_a_finished_export_tells_who_asked_and_only_when_it_is_done(conn, sc):
@@ -387,6 +408,25 @@ def test_low_credits_tells_the_org_once_when_available_crosses_the_line(conn, sc
     assert a[0]["data"] == {"available": float(line - 1)}
 
 
+def test_a_person_in_two_orgs_is_told_about_each_orgs_low_credits_the_same_day(conn, sc):
+    # The key is per person: with only the day in it, the first organization's
+    # alert would swallow the second's and the bell for the second org would
+    # stay silent.
+    with as_superuser(conn, commit=False) as s:
+        line = s.value("select public.notification_low_credits_threshold()")
+        s.rows("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, %s, 'viewer') returning 1",
+               [sc.bob.org, sc.alice.actor.uid, sc.alice.actor.email])
+        for org in (sc.alice.org, sc.bob.org):
+            s.rows("update public.credit_accounts set balance = %s, reserved = 0 where org_id = %s returning 1", [line, org])
+            s.rows("update public.credit_accounts set balance = %s where org_id = %s returning 1", [line - 1, org])
+        mine = [r for r in inbox(s, sc.alice.actor) if r["kind"] == "credits_low"]
+        bob_own = [r for r in inbox(s, sc.bob.actor) if r["kind"] == "credits_low"]
+    assert sorted(r["org_id"] for r in mine) == sorted([sc.alice.org, sc.bob.org]), mine
+    assert len({r["ref"] for r in mine}) == 2 and all(len(r["ref"]) <= 80 for r in mine)
+    assert all(r["ref"].startswith(f"low:{r['org_id']}:") for r in mine)
+    assert [r["org_id"] for r in bob_own] == [sc.bob.org], "Bob hears only about his own org"
+
+
 def test_an_account_that_was_never_above_the_line_is_not_told_it_is_low(conn, sc):
     with as_superuser(conn, commit=False) as s:
         s.rows("update public.credit_accounts set balance = 0, reserved = 0 where org_id = %s returning 1", [sc.alice.org])
@@ -406,11 +446,11 @@ def test_the_platforms_own_org_is_exempt_from_credits_and_never_told(conn, sc):
 
 
 def test_someone_who_left_the_org_reads_nothing_and_is_told_nothing_more(conn, sc):
-    with colleague(conn, sc) as (s, carol):
+    # An admin, so a storyboard WOULD tell her (control) were she still a member.
+    with colleague(conn, sc, "admin") as (s, carol):
         as_owner(s)
-        s.rows("select 1 from (select public.notification_emit(%s, %s, 'credits_low', 'low:l', '{\"available\": 3}'::jsonb)) q",
-               [sc.alice.org, carol.uid])
-        assert inbox(s, carol), "control: Carol had a notification"
+        before = str(insert_storyboard(s, sc.alice.channel, "before-leaving").rows[0][0])
+        assert [r for r in inbox(s, carol) if r["ref"] == before], "control: an admin member is told"
         s.rows("delete from public.org_members where org_id = %s and user_id = %s returning 1", [sc.alice.org, carol.uid])
         assert inbox(s, carol) == [], "a person who left still reads the organization's notifications"
         later = str(insert_storyboard(s, sc.alice.channel, "after-leaving").rows[0][0])
@@ -481,7 +521,8 @@ def test_shapes_the_database_refuses(conn, sc):
 
 # ── the catalog of this migration ───────────────────────────────────────────
 
-NOTIFY_FUNCTIONS = ("notification_emit", "notification_emit_org", "notification_low_credits_threshold",
+NOTIFY_FUNCTIONS = ("notification_emit", "notification_emit_org", "notification_emit_org_role",
+                    "notification_low_credits_threshold",
                     "notify_creative_job_ended", "notify_storyboard_ready", "notify_editor_export_done",
                     "notify_credits_low", "mark_notification_read", "mark_all_notifications_read")
 

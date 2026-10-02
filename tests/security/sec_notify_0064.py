@@ -33,6 +33,7 @@ def extend(tables: dict, functions: dict) -> None:
         # Written only by the triggers; nobody may call them.
         "notification_emit": SERVICE,
         "notification_emit_org": SERVICE,
+        "notification_emit_org_role": SERVICE,
         "notification_low_credits_threshold": SERVICE,
     })
 

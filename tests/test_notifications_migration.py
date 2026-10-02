@@ -17,7 +17,7 @@ FILE = ROOT / "supabase" / "migrations" / "0064_notifications.sql"
 SQL = FILE.read_text()
 CODE = "\n".join(line.split("--", 1)[0] for line in SQL.splitlines())
 
-DEFINER = ("notification_emit", "notification_emit_org", "notify_creative_job_ended",
+DEFINER = ("notification_emit", "notification_emit_org", "notification_emit_org_role", "notify_creative_job_ended",
            "notify_storyboard_ready", "notify_editor_export_done", "notify_credits_low",
            "mark_notification_read", "mark_all_notifications_read")
 BROWSER = ("mark_notification_read", "mark_all_notifications_read")
@@ -113,6 +113,26 @@ class NotificationsMigration(unittest.TestCase):
         self.assertIn("was >= line and now_ < line", b)
         self.assertIn("not public.credits_exempt(new.org_id)", b)
         self.assertIn("to_char(now() at time zone 'utc', 'YYYY-MM-DD')", b)
+
+    def test_the_low_credits_key_carries_the_org_so_a_person_in_two_orgs_hears_from_both(self):
+        # The unique index is per person: a key with only the day would let the
+        # first organization's alert swallow the second's.
+        self.assertIn("'low:' || new.org_id::text || ':' || to_char(", body("notify_credits_low"))
+        # 'low:' + uuid (36) + ':' + date (10) = 51, inside the 80-character ref check.
+        self.assertLessEqual(len("low:") + 36 + 1 + len("2026-10-01"), 80)
+        self.assertIn("char_length(ref) between 1 and 80", CODE)
+
+    def test_a_storyboard_is_told_only_to_who_may_approve_it(self):
+        # approve_storyboard needs an admin of the org (storyboard_lock_for_runner, 0057).
+        b = body("notify_storyboard_ready")
+        self.assertIn("notification_emit_org_role(org, 'storyboard_ready'", b)
+        self.assertRegex(b, r"'admin'\);")
+        self.assertNotIn("notification_emit_org(", b)
+        r = body("notification_emit_org_role")
+        self.assertIn("public.app_role_rank(role) >= public.app_role_rank(p_min_role)", r)
+        self.assertIn("p_min_role not in ('viewer', 'editor', 'admin', 'owner')", r)
+        self.assertIn("public.notification_emit(p_org, m.user_id", r, "recipients still go through the membership check")
+        self.assertIn("accessible_channel_ids('admin')", (ROOT / "supabase" / "migrations" / "0057_storyboard_review.sql").read_text())
 
     def test_no_text_a_person_typed_is_copied_into_a_notification(self):
         for name in ("notify_creative_job_ended", "notify_storyboard_ready", "notify_editor_export_done", "notify_credits_low"):
