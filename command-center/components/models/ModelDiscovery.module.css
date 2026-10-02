@@ -519,3 +519,15 @@
     min-height: 44px;
   }
 }
+
+/* Phones: every key is a 44px target (IDENTITY / the touch rule). */
+@media (pointer: coarse), (max-width: 40rem) {
+  .captionLink {
+    min-height: 44px;
+  }
+  .clearSearch {
+    width: 44px;
+    height: 44px;
+    right: 0;
+  }
+}
