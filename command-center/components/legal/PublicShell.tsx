@@ -9,6 +9,7 @@ import { preloadSiteFonts } from "@/components/site/fonts";
 import { DEFAULT_LOCALE, LOCALES, dictionaries } from "@/lib/i18n";
 import { devFor } from "@/lib/i18n/dev";
 import "@/components/site/site.css";
+import "@/components/site/site-next.css";
 
 /** Which top-level page the visitor is on, for the nav's lit item. */
 export type PublicSection = "home" | "solutions" | "pricing" | "docs" | "legal" | null;
@@ -42,17 +43,20 @@ export function publicNavLinks(t: Dictionary): { href: string; label: string; se
 export function PublicShell({
   t,
   current = null,
+  fresh = false,
   children,
 }: {
   t: Dictionary;
   current?: PublicSection;
+  /** The marketing pages' calmer frame (components/site/site-next.css): bigger type, more air, a stage for the product. */
+  fresh?: boolean;
   children: React.ReactNode;
 }) {
   const links = publicNavLinks(t);
   // The page's language is the dictionary it was handed (server-side lookup, no request read).
   preloadSiteFonts(LOCALES.find((l) => dictionaries[l.code] === t)?.code ?? DEFAULT_LOCALE);
   return (
-    <div className="st relative flex min-h-dvh flex-col">
+    <div className={`st${fresh ? " nx" : ""} relative flex min-h-dvh flex-col`}>
       <a href="#main" className="st-skip">
         {t.landing.nav.skip}
       </a>

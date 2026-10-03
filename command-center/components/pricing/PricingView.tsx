@@ -122,37 +122,19 @@ export function PricingView({
           {!signedIn && <p className="st-small mt-4">{showPlans ? p.ctaNote : t.site.packsOnly.ctaNote}</p>}
         </div>
 
-        <section aria-labelledby="math-title" className="st-monitor self-start">
-          <div className="st-monitor-head">
-            <div className="st-monitor-title">
-              <b>{pp.mathSlug}</b>
-            </div>
-          </div>
-          <div className="px-4 pb-2 pt-4">
-            <h2 id="math-title" className="st-h3">
-              {pp.mathTitle}
-            </h2>
-            <p className="st-small mt-2">{pp.mathLead}</p>
-          </div>
-          <dl className="st-formula mx-4 mb-4 mt-3">
-            {pp.rows.map((row) => (
-              <div key={row.id}>
-                <dt className={row.id === "return" ? "text-[var(--ns-go)]" : undefined}>{row.word}</dt>
-                <dd>
-                  {/* One equation per line: "failed → return = hold" never breaks mid-way. */}
-                  <code>
-                    {row.formula.split(/;\s*/).map((clause) => (
-                      <span key={clause} className="st-formula-clause">
-                        {clause}
-                      </span>
-                    ))}
-                  </code>
-                  <p className="st-small">{row.body}</p>
-                </dd>
-              </div>
+        <aside aria-labelledby="get-title" className="self-start">
+          <h2 id="get-title" className="nx-kicker mb-4">
+            {t.site.rules.slug}
+          </h2>
+          <ul className="nx-get">
+            {t.site.rules.items.map((item) => (
+              <li key={item.id}>
+                <Check aria-hidden />
+                <span>{item.title}</span>
+              </li>
             ))}
-          </dl>
-        </section>
+          </ul>
+        </aside>
       </section>
 
       {plansFailed && (
@@ -184,6 +166,7 @@ export function PricingView({
               signedIn={signedIn}
               subscribeHref={`${credits}#plans`}
             />
+            <p className="nx-extra">{pp.extraLine}</p>
             <ul className="flex max-w-3xl flex-col gap-2 text-sm text-[var(--ns-text-dim)]">
               {generationRates ? <li>{t.creditsPage.eq.note}</li> : !signedIn && <li>{p.eqSignedOut}</li>}
               <li>{t.plans.expiresNote}</li>
@@ -295,6 +278,30 @@ export function PricingView({
               {p.howTitle}
             </h2>
             <p className="st-lead mt-5">{p.howLead}</p>
+            <details className="nx-math">
+              <summary>
+                <span id="math-title">{pp.mathToggle}</span>
+                <span className="st-faq-mark" aria-hidden />
+              </summary>
+              <dl className="st-formula">
+                {pp.rows.map((row) => (
+                  <div key={row.id}>
+                    <dt className={row.id === "return" ? "text-[var(--ns-go)]" : undefined}>{row.word}</dt>
+                    <dd>
+                      {/* One equation per line: "failed → return = hold" never breaks mid-way. */}
+                      <code>
+                        {row.formula.split(/;\s*/).map((clause) => (
+                          <span key={clause} className="st-formula-clause">
+                            {clause}
+                          </span>
+                        ))}
+                      </code>
+                      <p className="st-small">{row.body}</p>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
             {/* A ruled, numbered list like the rest of the site, not an icon grid. */}
             <ol className="st-ruled mt-10">
               {steps.map(({ title, body }, i) => (

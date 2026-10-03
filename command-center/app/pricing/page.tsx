@@ -96,7 +96,7 @@ export default async function PricingPage() {
   const plans = planMatrix(catalog, PLAN_ENV, paddleClient);
 
   return (
-    <PublicShell t={t}>
+    <PublicShell t={t} fresh>
       <PricingView
         t={t}
         locale={locale}

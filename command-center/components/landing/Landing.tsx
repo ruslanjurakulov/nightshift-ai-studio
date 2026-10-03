@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Lock } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Clapperboard, Film, Lock, Maximize2, Mic, Palette, Scissors, SlidersHorizontal, Sparkles, Wand2, ImageIcon, type LucideIcon } from "lucide-react";
 import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
 import type { MoneyAnchor, PricingTeaser as PricingTeaserData, ShowcaseItem } from "@/lib/landing";
 import { WELCOME_CREDITS } from "@/lib/pricing";
@@ -8,9 +8,8 @@ import { packExpiry, type PackExpiry } from "@/lib/plans";
 import { formatCredits } from "@/lib/credits";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
-import { Rundown } from "@/components/site/Rundown";
+import { PressStage } from "@/components/landing/PressStage";
 import { EditorPicture } from "@/components/site/EditorPicture";
-import { Slug } from "@/components/site/Slug";
 import { Showcase } from "@/components/landing/Showcase";
 import { PricingTeaser } from "@/components/landing/PricingTeaser";
 import { Faq } from "@/components/landing/Faq";
@@ -44,14 +43,12 @@ const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 const RULE_TONE: Record<string, LampTone> = { price: "ok", refund: "ok", approval: "run" };
 
 /**
- * The signed-out homepage, drawn as the control room at 03:00 (IDENTITY.md).
- *
- * It leads with the product's promise and its proof in one frame: the headline
- * on the left, and on the right a rundown of one video with the only lit lamp
- * on the page — the approval waiting for its person. Then the three rules the
- * product enforces, how a video moves, the Studio, channels and languages, the
- * Solutions, the money, the questions to settle before paying, and the Google
- * data statement OAuth reviewers read.
+ * The signed-out homepage. One idea per section, in the order a visitor asks
+ * the questions: what is this (the hero, with the product drawn in four
+ * states), how does it work (three steps and the real approval screen), who is
+ * it for, what else is in the box (the Studio), which languages, what can I
+ * count on, what does it cost, what are the catches (the FAQ), and the
+ * button again.
  *
  * Every claim on it is one the code backs; the only figures are the welcome
  * grant (WELCOME_CREDITS, pinned to the database by a test) and whatever the
@@ -59,7 +56,7 @@ const RULE_TONE: Record<string, LampTone> = { price: "ok", refund: "ok", approva
  * are no testimonials, logos or usage numbers, because there are none to show.
  *
  * A Server Component. The only client code on the page is the header's menu
- * and its theme and language keys; the one animation is the waiting lamp.
+ * and its theme and language keys, and the hero's four-state picture.
  */
 export function Landing({
   t,
@@ -81,10 +78,9 @@ export function Landing({
   return (
     <div className="lp-root">
       <Hero t={t} locale={locale} />
-      <Rules t={t} />
       <How t={t} locale={locale} />
+      <Who t={t} />
       <Studio t={t} />
-      <Desk t={t} locale={locale} />
       {showcase.length > 0 && (
         <div className="st-section">
           <div className="st-wrap">
@@ -92,7 +88,8 @@ export function Landing({
           </div>
         </div>
       )}
-      <SolutionsTeaser t={t} />
+      <Languages t={t} locale={locale} />
+      <Rules t={t} />
       <PricingTeaser t={t} locale={locale} teaser={pricing} anchor={anchor} expiry={expiry} />
       <Faq t={t} plansOnSale={pricing.kind === "plans"} expiry={expiry} aside={<GoogleData t={t} />} />
       <FinalCta t={t} />
@@ -103,123 +100,61 @@ export function Landing({
 function Hero({ t, locale }: { t: Dictionary; locale: Locale }) {
   const h = t.site.hero;
   return (
-    <section aria-labelledby="hero-title" className="st-wrap st-hero">
-      <div>
-        <p className="st-kicker">{h.kicker}</p>
-        <h1 id="hero-title" className="st-h1 mt-5">
-          {h.titleA} <span className="st-h1-b">{h.titleB}</span>
+    <section aria-labelledby="hero-title" className="nx-hero">
+      <div className="nx-wrap">
+        <p className="nx-pill">
+          <span aria-hidden className="nx-pill-dot" />
+          {h.kicker}
+        </p>
+        <h1 id="hero-title" className="nx-h1">
+          {h.titleA} <span className="nx-h1-b">{h.titleB}</span>
         </h1>
-        <p className="st-lead mt-7">{h.lead}</p>
-        <div className="st-hero-actions">
-          <Link href="/signup" className="st-key">
+        <p className="nx-lead">{h.lead}</p>
+        <div className="nx-actions">
+          <Link href="/signup" className="nx-btn">
             {h.cta}
             <ArrowRight aria-hidden />
           </Link>
-          <Link href="/pricing" className="st-link">
+          <Link href="/pricing" className="nx-link">
             {h.secondary}
           </Link>
         </div>
-        <p className="st-hero-note">
-          <span aria-hidden className="ns-lamp" data-tone="ok" />
-          {fmt(h.note, { n: formatCredits(WELCOME_CREDITS, locale) })}
-        </p>
-      </div>
-      <Rundown t={t} />
-    </section>
-  );
-}
-
-function Rules({ t }: { t: Dictionary }) {
-  const r = t.site.rules;
-  return (
-    <section id="rules" aria-labelledby="rules-title" className="st-section">
-      <div className="st-wrap">
-        <Slug>{r.slug}</Slug>
-        <h2 id="rules-title" className="st-h2 mt-8 max-w-[26ch]">
-          {r.title}
-        </h2>
-        <ul className="st-rules">
-          {r.items.map((item) => (
-            <li key={item.id} className="st-rule">
-              <StatusLamp tone={RULE_TONE[item.id] ?? "ok"} label={item.state} />
-              <h3 className="st-h3">{item.title}</h3>
-              <p className="st-body">{item.body}</p>
-              <ol className="st-ledger" aria-label={item.title}>
-                {item.lines.map((line, i) => {
-                  const last = i === item.lines.length - 1;
-                  // The refund ledger's middle line is the failure itself.
-                  const tone: LampTone = item.id === "refund" && i === 1 ? "fail" : last && item.id === "approval" ? "run" : "ok";
-                  return (
-                    <li key={line}>
-                      <span aria-hidden className="ns-lamp" data-tone={tone} />
-                      {line}
-                    </li>
-                  );
-                })}
-              </ol>
-            </li>
-          ))}
-        </ul>
+        <p className="nx-note">{fmt(h.note, { n: formatCredits(WELCOME_CREDITS, locale) })}</p>
+        <PressStage stage={t.site.stage} />
       </div>
     </section>
   );
 }
-
-/** Where each step stands on the rail: done, the one waiting for its person, not yet. */
-const HOW_STATE: Record<string, "done" | "yours" | "next"> = {
-  channel: "done",
-  topic: "done",
-  script: "done",
-  video: "done",
-  approval: "yours",
-  youtube: "next",
-};
 
 function How({ t, locale }: { t: Dictionary; locale: Locale }) {
   const h = t.site.how;
   const shot = REVIEW_SHOTS[locale] ?? REVIEW_SHOTS.en;
   return (
-    // The one full-bleed band: a single heading line (no slug, no lede beside
-    // a big title — the formula every other section opens with), then the six
-    // steps as one strip ruled edge to edge with a rail on top, the way a
-    // rundown reads across a wall. Step 05 is then shown on the real screen.
-    <section id="how" aria-labelledby="how-title" className="st-section st-how" data-band="true">
-      <div className="st-wrap st-how-head">
-        <p className="st-kicker">{h.slug}</p>
-        <h2 id="how-title" className="st-how-title">
-          {h.title}
-        </h2>
-        <p className="st-small">{h.lead}</p>
-      </div>
-      <ol className="st-how-strip" aria-label={h.slug}>
-        {h.steps.map((s, i) => (
-          <li key={s.id} className="st-how-step" data-state={HOW_STATE[s.id] ?? "next"}>
-            <span aria-hidden className="st-how-rail" />
-            <span className="st-how-no st-num" aria-hidden>
-              {String(i + 1).padStart(2, "0")}
-            </span>
-            <h3 className="st-step-title">{s.title}</h3>
-            {s.id === "approval" && <StatusLamp tone="run" label={t.site.rundown.yours} />}
-            <p>{s.body}</p>
-            {/* On a phone the steps are one column, so the screen of step 05
-                sits in step 05 itself, before step 06 — not after the list. */}
-            {s.id === "approval" && (
-              <div className="st-how-shot-inline">
-                <h4 className="st-h4">{h.shotTitle}</h4>
-                <ReviewShot t={t} shot={shot} />
-              </div>
-            )}
-          </li>
-        ))}
-      </ol>
-      {/* Wider than a phone: the screen sits under the strip, as step 05's callout. */}
-      <div className="st-wrap st-how-shot">
-        <div>
-          <p className="st-kicker">05 · {h.shotTag}</p>
-          <h3 className="st-h3 mt-4">{h.shotTitle}</h3>
-          <p className="st-body mt-4">{h.shotBody}</p>
+    <section id="how" aria-labelledby="how-title" className="nx-section" data-tone="raised">
+      <div className="nx-wrap nx-how">
+        <div className="nx-how-words">
+          <h2 id="how-title" className="nx-h2">
+            {h.simple.title}
+          </h2>
+          <p className="nx-sub">{h.simple.lead}</p>
+          <ol className="nx-steps" aria-label={h.slug}>
+            {h.simple.steps.map((s, i) => (
+              <li key={s.id} className="nx-step">
+                <span className="nx-step-no" aria-hidden>
+                  {i + 1}
+                </span>
+                <div>
+                  <h3 className="nx-h3">{s.title}</h3>
+                  <p className="nx-body">{s.body}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
         </div>
-        <ReviewShot t={t} shot={shot} />
+        <div className="nx-how-shot">
+          <p className="nx-kicker">{h.shotTitle}</p>
+          <ReviewShot t={t} shot={shot} />
+        </div>
       </div>
     </section>
   );
@@ -257,128 +192,152 @@ function ReviewShot({ t, shot }: { t: Dictionary; shot: (typeof REVIEW_SHOTS)[Lo
   );
 }
 
+const WHO_ICON: Record<string, LucideIcon> = { "youtube-channels": Film, "creative-studio": Palette, developers: Sparkles };
+
+function Who({ t }: { t: Dictionary }) {
+  const w = t.site.who;
+  return (
+    <section id="solutions" aria-labelledby="who-title" className="nx-section">
+      <div className="nx-wrap">
+        <h2 id="who-title" className="nx-h2">
+          {w.title}
+        </h2>
+        <p className="nx-sub">{w.lead}</p>
+        <ul className="nx-tiles">
+          {w.items.map((item) => {
+            const Icon = WHO_ICON[item.id] ?? Film;
+            return (
+              <li key={item.id}>
+                {isSolutionId(item.id) && (
+                  <Link href={solutionHref(item.id)} className="nx-tile">
+                    <span className="nx-tile-icon" aria-hidden>
+                      <Icon />
+                    </span>
+                    <span className="nx-tile-title">{item.title}</span>
+                    <span className="nx-tile-body">{item.body}</span>
+                    <span className="nx-tile-go" aria-hidden>
+                      <ArrowRight />
+                    </span>
+                  </Link>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+        <Link href="/solutions" className="nx-link mt-6">
+          {w.more}
+          <ArrowRight aria-hidden />
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+const TOOL_ICON: Record<string, LucideIcon> = {
+  image: ImageIcon,
+  video: Clapperboard,
+  voice: Mic,
+  edit: Wand2,
+  animate: Film,
+  upscale: Maximize2,
+  cutout: Scissors,
+  styles: Palette,
+  editor: SlidersHorizontal,
+};
+
 function Studio({ t }: { t: Dictionary }) {
   const s = t.site.studio;
   return (
-    <section id="studio" aria-labelledby="studio-title" className="st-section">
-      <div className="st-wrap">
-        <Slug>{s.slug}</Slug>
-        <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] lg:items-end">
-          <h2 id="studio-title" className="st-h2">
-            {s.title}
-          </h2>
-          <p className="st-lead">{s.lead}</p>
-        </div>
-        <div className="st-split">
-          {/* The tools as a patch list, one ruled row each, read like the
-              rundown: number, name, what it does, and how it is paid for. */}
-          <ol className="st-patch" aria-label={s.slug}>
-            {s.tools.map((tool, i) => {
+    <section id="studio" aria-labelledby="studio-title" className="nx-section" data-tone="raised">
+      <div className="nx-wrap">
+        <h2 id="studio-title" className="nx-h2">
+          {s.title}
+        </h2>
+        <p className="nx-sub">{s.lead}</p>
+        <div className="nx-studio">
+          <ol className="nx-tools" aria-label={s.slug}>
+            {s.tools.map((tool) => {
+              const Icon = TOOL_ICON[tool.id] ?? Sparkles;
               // The editor and the style library spend nothing; every other
-              // tool is a generation, priced on its key before it runs.
+              // tool is a generation, priced on its button before it runs.
               const free = tool.id === "editor" || tool.id === "styles";
               return (
-                <li key={tool.id} className="st-patch-row">
-                  <span className="st-patch-no st-num" aria-hidden>
-                    {String(i + 1).padStart(2, "0")}
+                <li key={tool.id} className="nx-tool">
+                  <span className="nx-tool-icon" aria-hidden>
+                    <Icon />
                   </span>
-                  <h3 className="st-patch-name">{tool.title}</h3>
-                  <p className="st-patch-body">{tool.body}</p>
+                  <h3 className="nx-tool-name">{tool.title}</h3>
+                  <p className="nx-tool-body">{tool.body}</p>
                   {/* Priced is the rule (the lead says so), so only the exceptions
                       are marked on screen; a screen reader hears it on every row. */}
-                  {free ? <span className="st-patch-cost">{s.free}</span> : <span className="sr-only">{s.priced}</span>}
+                  {free ? <span className="nx-tool-free st-patch-cost">{s.free}</span> : <span className="sr-only">{s.priced}</span>}
                 </li>
               );
             })}
           </ol>
-          <EditorPicture t={t} />
+          <div className="nx-studio-pic">
+            <EditorPicture t={t} />
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
-function Desk({ t, locale }: { t: Dictionary; locale: Locale }) {
+function Languages({ t, locale }: { t: Dictionary; locale: Locale }) {
   const d = t.site.desk;
   const codes = ["uz", "ru", "en"] as const;
   return (
-    // The one section that opens with its picture: on a wide screen the desk
-    // sits on the left (CSS order), the words and the three languages beside
-    // it. In the document the heading still comes first.
-    <section id="channels" aria-labelledby="desk-title" className="st-section">
-      <div className="st-wrap st-desk">
-        <div className="st-desk-words">
-          <p className="st-kicker">{d.slug}</p>
-          <h2 id="desk-title" className="st-h2 mt-5">
-            {d.title}
-          </h2>
-          <p className="st-lead mt-6">{d.lead}</p>
-        </div>
-        <div className="st-desk-figure">
-          <figure className="st-panel">
-            <div className="st-panel-head">
-              <b aria-hidden>{d.cols.channel}</b>
-              <span className="st-tag">{d.tag}</span>
-            </div>
-            <div className="st-table-wrap">
-              <table className="st-table">
-                <caption className="sr-only">{d.figure}</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">{d.cols.channel}</th>
-                    <th scope="col">{d.cols.language}</th>
-                    <th scope="col" className="st-col-voice">
-                      {d.cols.voice}
-                    </th>
-                    <th scope="col">{d.cols.autopublish}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.rows.map((row) => (
-                    <tr key={row.name}>
-                      <td>{row.name}</td>
-                      <td>{row.language}</td>
-                      <td className="st-col-voice text-[var(--ns-text-dim)]">{row.voice}</td>
-                      <td>
-                        <StatusLamp tone="idle" label={d.off} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </figure>
-          <ul className="st-langs mt-10" aria-label={d.slug}>
-            {d.languages.map((l, i) => (
-              // The page's own language reads in full ink, the other two dimmed;
-              // no lamp: a lit amber dot here meant nothing the page explained.
-              <li key={l} lang={codes[i]} aria-current={codes[i] === locale ? "true" : undefined}>
-                {l}
-              </li>
-            ))}
-          </ul>
-        </div>
+    <section id="channels" aria-labelledby="desk-title" className="nx-section">
+      <div className="nx-wrap nx-langs">
+        <h2 id="desk-title" className="nx-h2">
+          {d.title}
+        </h2>
+        <ul className="nx-lang-list" aria-label={d.slug}>
+          {d.languages.map((l, i) => (
+            // The page's own language reads in full ink, the other two dimmed.
+            <li key={l} lang={codes[i]} aria-current={codes[i] === locale ? "true" : undefined}>
+              {l}
+            </li>
+          ))}
+        </ul>
+        <p className="nx-sub">{d.lead}</p>
       </div>
     </section>
   );
 }
 
-function SolutionsTeaser({ t }: { t: Dictionary }) {
-  const s = t.site.solutionsTeaser;
+/** Each rule's state, as the app would show it on its lamp. */
+function Rules({ t }: { t: Dictionary }) {
+  const r = t.site.rules;
   return (
-    <section id="solutions" aria-labelledby="solutions-title" className="st-section">
-      <div className="st-wrap">
-        <Slug>{s.slug}</Slug>
-        <div className="mt-8 flex flex-wrap items-end justify-between gap-6">
-          <h2 id="solutions-title" className="st-h2">
-            {s.title}
-          </h2>
-          <Link href="/solutions" className="st-link">
-            {s.more}
-            <ArrowRight aria-hidden />
-          </Link>
-        </div>
-        <SolutionRows pages={t.site.solutions.pages} />
+    <section id="rules" aria-labelledby="rules-title" className="nx-section" data-tone="raised">
+      <div className="nx-wrap">
+        <h2 id="rules-title" className="nx-h2">
+          {r.title}
+        </h2>
+        <ul className="nx-rules">
+          {r.items.map((item) => (
+            <li key={item.id} className="nx-rule">
+              <StatusLamp tone={RULE_TONE[item.id] ?? "ok"} label={item.state} />
+              <h3 className="nx-h3">{item.title}</h3>
+              <p className="nx-body">{item.body}</p>
+              <ol className="st-ledger" aria-label={item.title}>
+                {item.lines.map((line, i) => {
+                  const last = i === item.lines.length - 1;
+                  // The refund ledger's middle line is the failure itself.
+                  const tone: LampTone = item.id === "refund" && i === 1 ? "fail" : last && item.id === "approval" ? "run" : "ok";
+                  return (
+                    <li key={line}>
+                      <span aria-hidden className="ns-lamp" data-tone={tone} />
+                      {line}
+                    </li>
+                  );
+                })}
+              </ol>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );
@@ -411,21 +370,21 @@ export function SolutionRows({ pages }: { pages: Dictionary["site"]["solutions"]
 function GoogleData({ t }: { t: Dictionary }) {
   const d = t.landing.data;
   return (
-    <aside id="google-data" aria-labelledby="data-title" className="st-data">
+    <aside id="google-data" aria-labelledby="data-title" className="nx-data">
       <div className="flex items-start gap-4">
-        <span className="grid size-11 shrink-0 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)]">
+        <span className="nx-data-icon">
           <Lock className="size-5" aria-hidden />
         </span>
-        <h2 id="data-title" className="st-h3 pt-2">
+        <h2 id="data-title" className="nx-h3 pt-2">
           {d.title}
         </h2>
       </div>
-      <p className="st-body mt-4">{d.body}</p>
+      <p className="nx-body mt-4">{d.body}</p>
       <div className="mt-3 flex flex-wrap gap-x-6">
-        <Link href="/privacy" className="st-link">
+        <Link href="/privacy" className="nx-link">
           {d.privacy}
         </Link>
-        <a href={GOOGLE_PERMISSIONS} target="_blank" rel="noopener noreferrer" className="st-link">
+        <a href={GOOGLE_PERMISSIONS} target="_blank" rel="noopener noreferrer" className="nx-link">
           {d.revoke}
           <ArrowUpRight aria-hidden />
         </a>
@@ -437,19 +396,19 @@ function GoogleData({ t }: { t: Dictionary }) {
 function FinalCta({ t }: { t: Dictionary }) {
   const f = t.site.final;
   return (
-    <section aria-labelledby="final-title" className="st-section">
-      <div className="st-wrap grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:items-end">
-        <h2 id="final-title" className="st-h1-page">
-          {f.title}
-        </h2>
-        <div>
-          <p className="st-lead">{f.lead}</p>
-          <div className="st-hero-actions mt-7">
-            <Link href="/signup" className="st-key">
+    <section aria-labelledby="final-title" className="nx-final-wrap">
+      <div className="nx-wrap">
+        <div className="nx-final">
+          <h2 id="final-title" className="nx-h2">
+            {f.title}
+          </h2>
+          <p className="nx-sub">{f.lead}</p>
+          <div className="nx-actions">
+            <Link href="/signup" className="nx-btn">
               {f.cta}
               <ArrowRight aria-hidden />
             </Link>
-            <Link href="/pricing" className="st-link">
+            <Link href="/pricing" className="nx-link">
               {t.site.hero.secondary}
             </Link>
           </div>
