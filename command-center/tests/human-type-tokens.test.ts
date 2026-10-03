@@ -103,7 +103,7 @@ describe("no robot styling anywhere in the stylesheets", () => {
 
   it("the wordmark keeps its own logotype", () => {
     expect(block(globals, ".ns-wordmark {")).toContain('"Nightshift Wordmark"');
-    expect(block(read("components/site/site.css"), ".st-brand {")).toContain('"Nightshift Wordmark"');
+    expect(block(read("components/site/site.css"), ".st-brand {\n  display")).toContain('"Nightshift Wordmark"');
   });
 });
 

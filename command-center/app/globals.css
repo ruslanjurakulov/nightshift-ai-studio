@@ -1022,11 +1022,12 @@ option {
   gap: 0.5rem;
   isolation: isolate;
   overflow: hidden;
-  color: var(--color-primary);
-  border: 1px solid var(--color-primary);
+  min-height: 2.75rem;
+  color: var(--color-fg);
+  border: 1px solid var(--ns-rule-strong);
   background: transparent;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.25;
   transition: color 0.28s ease, box-shadow 0.28s ease, transform 0.12s ease;
 }
@@ -1042,18 +1043,20 @@ option {
   transition: transform 0.34s cubic-bezier(0.2, 0.8, 0.25, 1);
 }
 .btn-sky:hover {
-  color: var(--color-on-accent);
-  box-shadow: 0 0 0 6px var(--atmos-1);
+  color: var(--ns-cta-fg);
+  border-color: var(--ns-cta-bg);
 }
 .btn-sky:hover::before { transform: translateY(0); }
 .btn-sky:active { transform: scale(0.965); }
 /* Solid variant: already filled, so the sweep washes it lighter instead. */
 .btn-sky.is-solid {
-  background: var(--color-primary);
-  color: var(--color-on-accent);
+  background: var(--ns-cta-bg);
+  border-color: var(--ns-cta-bg);
+  color: var(--ns-cta-fg);
+  font-weight: 600;
 }
 .btn-sky.is-solid::before { background: var(--color-fg); opacity: 0.14; }
-.btn-sky.is-solid:hover { color: var(--color-on-accent); }
+.btn-sky.is-solid:hover { color: var(--ns-cta-fg); }
 /* Quiet variant: a neutral edge until you point at it, then the accent. */
 .btn-sky.ghost {
   border-color: var(--color-border);

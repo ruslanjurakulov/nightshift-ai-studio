@@ -63,6 +63,22 @@ const RPC = {
   my_organizations: [ORG],
   is_platform_admin: ADMIN,
   billing_summary: { plan_id: "creator", plan_name: "Creator" },
+  // Developers: an activated API workspace with made-up figures (read only).
+  api_console: {
+    eligible: true,
+    activated_at: "2026-09-01T08:00:00Z",
+    exempt: false,
+    balance_cents: 2500,
+    reserved_cents: 300,
+    paid_total_cents: 5000,
+    tier: 1,
+    rpm: 60,
+    concurrency: 2,
+    tier_cap_cents: 10000,
+    monthly_limit_cents: null,
+    month_spend_cents: 1200,
+    active_keys: 1,
+  },
   // Invite friends (0092): a made-up link with three of five friends joined.
   my_friend_invite: {
     enabled: true,

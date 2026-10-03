@@ -39,6 +39,11 @@ function breakable(unit: string) {
   ));
 }
 
+/** The plain meaning heads a row, so it starts with a capital in the person's own language. */
+function sentence(text: string, locale: string) {
+  return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1);
+}
+
 export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[]; canEdit: boolean }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -124,7 +129,7 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
                   <div className="min-w-0">
                     {meaning ? (
                       <>
-                        <p className="text-base font-medium text-[var(--color-fg)]">{meaning}</p>
+                        <p className="text-base font-medium text-[var(--color-fg)]">{sentence(meaning, locale)}</p>
                         <p className="mono mt-0.5 break-words text-xs text-[var(--color-muted)]">{breakable(p.unit)}</p>
                       </>
                     ) : (
@@ -198,7 +203,7 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
                       <td className="py-2 pr-3">
                         {meaning ? (
                           <>
-                            <span className="block text-sm font-medium text-[var(--color-fg)]">{meaning}</span>
+                            <span className="block text-sm font-medium text-[var(--color-fg)]">{sentence(meaning, locale)}</span>
                             <span className="mono mt-0.5 block text-xs text-[var(--color-muted)]">{p.unit}</span>
                           </>
                         ) : (
