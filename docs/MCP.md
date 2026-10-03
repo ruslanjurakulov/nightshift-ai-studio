@@ -167,8 +167,11 @@ Nightshift is its own authorization server for its MCP resource.
   `/.well-known/oauth-authorization-server` (+ `/api/mcp`),
   `/.well-known/openid-configuration` (+ `/api/mcp`, same document; this is not
   an OpenID provider). Exactly these names are public.
-* **Registration** (RFC 7591) `POST /oauth/register`: public clients only
-  (`token_endpoint_auth_method: none`), PKCE required. Redirect URIs: `https`
+* **Registration** (RFC 7591) `POST /oauth/register`: public clients only, PKCE
+  required. No secret is ever issued: a client that asks for
+  `client_secret_post` / `client_secret_basic` is registered as the public
+  client it will be and the answer says `token_endpoint_auth_method: none`;
+  methods needing a key or certificate are refused. Redirect URIs: `https`
   with a real lower-case DNS name, or `http` on `localhost` / `127.0.0.1` /
   `[::1]`; plus Cursor's one private-use callback. No fragment, userinfo,
   wildcard, `javascript:`, `data:` or other custom scheme. Bounded: 5 URIs, 80

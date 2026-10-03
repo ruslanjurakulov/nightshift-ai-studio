@@ -47,8 +47,18 @@ describe("POST /oauth/register (RFC 7591, public clients only)", () => {
     expect(db.clients.size).toBe(1);
   });
 
+  it("registers a client that asks for a secret-based method as the public client it will be, and says so", async () => {
+    for (const method of ["client_secret_post", "client_secret_basic"]) {
+      const res = await registerEndpoint(json({ ...good, token_endpoint_auth_method: method }), deps);
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.token_endpoint_auth_method).toBe("none");
+      expect(body.client_secret).toBeUndefined();
+    }
+  });
+
   it("refuses everything that is not a public client, before the database", async () => {
-    for (const patch of [{ token_endpoint_auth_method: "client_secret_basic" }, { token_endpoint_auth_method: "private_key_jwt" },
+    for (const patch of [{ token_endpoint_auth_method: "private_key_jwt" }, { token_endpoint_auth_method: "tls_client_auth" },
       { grant_types: ["client_credentials"] }, { grant_types: ["implicit"] }, { response_types: ["token"] }, { response_types: ["code", "token"] }]) {
       const res = await registerEndpoint(json({ ...good, ...patch }), deps);
       expect(res.status, JSON.stringify(patch)).toBe(400);
@@ -177,9 +187,15 @@ describe("POST /oauth/token — authorization_code", () => {
     expect((await tokenEndpoint(new Request(ORIGIN + "/oauth/token?" + base, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "" }), deps)).status).toBe(401);
     expect((await tokenEndpoint(new Request(ORIGIN, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }), deps)).status).toBe(400);
     expect((await tokenEndpoint(new Request(ORIGIN, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: base + "&client_id=00000000-0000-4000-8000-000000000002" }), deps)).status).toBe(400);
-    const basic = await tokenEndpoint(form({ grant_type: "refresh_token" }, { authorization: "Basic eDp5" }), deps);
-    expect(basic.status).toBe(401);
-    expect((await basic.json()).error).toBe("invalid_client");
+    // A password in Basic is a secret nobody issued; client_id with an empty password is tolerated.
+    const withSecret = await tokenEndpoint(form({ grant_type: "refresh_token" }, { authorization: "Basic eDp5" }), deps);
+    expect(withSecret.status).toBe(401);
+    expect((await withSecret.json()).error).toBe("invalid_client");
+    const wrongId = await tokenEndpoint(
+      form({ grant_type: "refresh_token", client_id: "00000000-0000-4000-8000-000000000002" }, { authorization: "Basic " + btoa("00000000-0000-4000-8000-000000000001:") }),
+      deps,
+    );
+    expect(wrongId.status).toBe(401);
     expect(db.calls).toEqual([]);
   });
 
@@ -231,6 +247,17 @@ describe("POST /oauth/token — refresh_token", () => {
     expect((await (await tokenEndpoint(refresh(t.access_token, a.clientId), deps)).json()).error).toBe("invalid_grant");
     expect((await (await tokenEndpoint(refresh("nope", a.clientId), deps)).json()).error).toBe("invalid_grant");
     expect(db.calls.length).toBe(before);
+  });
+});
+
+describe("POST /oauth/token — a library that sends the client_id as Basic with no password", () => {
+  it("is served: the client_id is read from the header, there is still no secret to check", async () => {
+    const a = await approved();
+    const res = await tokenEndpoint(
+      form({ grant_type: "authorization_code", code: a.code, code_verifier: a.verifier, redirect_uri: a.redirect }, { authorization: "Basic " + btoa(`${a.clientId}:`) }),
+      deps,
+    );
+    expect(res.status).toBe(200);
   });
 });
 

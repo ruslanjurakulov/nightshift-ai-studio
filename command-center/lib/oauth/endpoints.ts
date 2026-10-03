@@ -60,9 +60,13 @@ export async function registerEndpoint(request: Request, deps: OauthDeps): Promi
   }
   if (!isObject(body)) return oauthError("invalid_client_metadata", "Send a JSON object.");
 
-  // Public clients only: there is no secret to issue, so none is accepted.
+  // Public clients only: no secret is ever issued, and the answer below says
+  // "none" whatever was asked for (RFC 7591 3.2.1 lets a server state the values
+  // it actually registered). A client that asks for a secret-based method is
+  // registered as the public client it will in fact be (PKCE is its proof);
+  // methods that need a key or certificate we do not hold are refused.
   const method = body.token_endpoint_auth_method;
-  if (method !== undefined && method !== "none")
+  if (method !== undefined && method !== "none" && method !== "client_secret_post" && method !== "client_secret_basic")
     return oauthError("invalid_client_metadata", 'Only public clients are supported: token_endpoint_auth_method must be "none".');
   const grants = body.grant_types;
   if (grants !== undefined && (!Array.isArray(grants) || grants.length === 0 || grants.some((g) => !GRANTS.includes(g as string))))
@@ -123,12 +127,28 @@ function one(params: URLSearchParams, name: string): string | null | undefined {
 export async function tokenEndpoint(request: Request, deps: OauthDeps): Promise<Response> {
   if (!(request.headers.get("content-type") ?? "").toLowerCase().startsWith("application/x-www-form-urlencoded"))
     return oauthError("invalid_request", "Send the request as application/x-www-form-urlencoded.");
-  // A public client proves itself with PKCE; credentials in a header mean a client that registered as something else.
-  if (/^basic\s/i.test(request.headers.get("authorization") ?? ""))
-    return oauthError("invalid_client", 'This server has only public clients: send client_id in the body, no client authentication.', 401);
   const text = await boundedText(request, 8192);
   if (text === null) return oauthError("invalid_request", "The request is too large.", 413);
   const p = new URLSearchParams(text);
+  // A public client proves itself with PKCE and has no secret. The one header a
+  // library may still send is Basic with the client_id and an EMPTY password;
+  // anything with a password is a secret we never issued.
+  const basic = /^basic\s+(\S+)$/i.exec(request.headers.get("authorization") ?? "");
+  if (basic) {
+    let decoded = "";
+    try {
+      decoded = atob(basic[1]);
+    } catch {
+      /* falls through to the refusal */
+    }
+    const at = decoded.indexOf(":");
+    const user = at < 0 ? "" : decodeURIComponent(decoded.slice(0, at));
+    const password = at < 0 ? "x" : decoded.slice(at + 1);
+    const fromBody = one(p, "client_id");
+    if (password !== "" || !user || (fromBody != null && fromBody !== user))
+      return oauthError("invalid_client", "This server has only public clients: send client_id (no secret) and the PKCE code_verifier.", 401);
+    if (fromBody === undefined) p.set("client_id", user);
+  }
   const grantType = one(p, "grant_type");
   const clientId = one(p, "client_id");
   const rawResource = one(p, "resource");
