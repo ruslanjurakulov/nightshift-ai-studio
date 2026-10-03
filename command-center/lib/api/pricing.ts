@@ -12,6 +12,7 @@
 
 import { derivePlan, type LedgerPurchaseRow } from "@/lib/account";
 import { isCreditExempt } from "@/lib/credits";
+import { formatUsdAmount } from "@/lib/number-format";
 
 /** The API terms an admin accepts on activation (shown with a link to /terms). */
 export const API_TERMS_VERSION = "api-2026-09";
@@ -116,11 +117,8 @@ export function parseLimitDollars(text: string): { ok: true; cents: number | nul
 
 export function formatUsd(cents: number | null | undefined, locale = "en"): string {
   if (cents === null || cents === undefined || !Number.isFinite(cents)) return "—";
-  return new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : locale, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-  }).format(cents / 100);
+  // Always two decimals, laid out by table (lib/number-format.ts): the same text on the server and in the browser.
+  return formatUsdAmount(cents / 100, locale, 2, 2);
 }
 
 /**
