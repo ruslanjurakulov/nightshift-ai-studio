@@ -66,7 +66,7 @@ describe("public landing page", () => {
     const h1s = screen.getAllByRole("heading", { level: 1 });
     expect(h1s).toHaveLength(1);
     expect(h1s[0].textContent).toBe(`${s.hero.titleA} ${s.hero.titleB}`);
-    for (const title of [s.how.simple.title, s.who.title, s.studio.title, s.desk.title, s.rules.title, s.pricingTeaser.title, t.landing.faq.title, s.final.title]) {
+    for (const title of [s.how.simple.title, ...s.caps.items.map((i) => i.title), s.who.title, s.rules.title, s.pricingTeaser.title, t.landing.faq.title, s.final.title]) {
       expect(screen.getByRole("heading", { level: 2, name: title })).toBeTruthy();
     }
     // How it works is three steps, and the last one is the person's own press.
@@ -87,17 +87,40 @@ describe("public landing page", () => {
     for (const r of s.rules.items) expect(within(rules).getByRole("heading", { level: 3, name: r.title })).toBeTruthy();
   });
 
-  it("shows every Studio tool, and draws the editor instead of shipping an image", () => {
+  it("shows every Studio tool with how it is paid for, and draws every example instead of shipping a picture", () => {
     const t = dictionaries.en;
-    renderLanding({ kind: "announced" });
-    const studio = screen.getByRole("heading", { level: 2, name: t.site.studio.title }).closest("section")!;
-    const tools = screen.getByRole("list", { name: t.site.studio.slug });
-    expect(within(tools).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(t.site.studio.tools.map((x) => x.title));
-    // Each row says how it is paid for: the editor and the style library spend nothing.
-    const cost = within(tools).getAllByRole("listitem").map((li) => li.querySelector(".st-patch-cost, .sr-only")?.textContent);
+    const { container } = renderLanding({ kind: "announced" });
+    const studio = screen.getByRole("heading", { level: 2, name: t.site.caps.items.find((i) => i.id === "studio")!.title }).closest("section")!;
+    const tools = within(studio).getByRole("list", { name: t.site.studio.slug });
+    expect(within(tools).getAllByRole("listitem").map((li) => li.querySelector("span:not(.sr-only):not(.nx-tool-free)")?.textContent)).toEqual(t.site.studio.tools.map((x) => x.title));
+    // Each tool says how it is paid for: the editor and the style library spend nothing.
+    const cost = within(tools).getAllByRole("listitem").map((li) => li.querySelector(".nx-tool-free, .sr-only")?.textContent);
     expect(cost).toEqual(t.site.studio.tools.map((x) => (x.id === "editor" || x.id === "styles" ? t.site.studio.free : t.site.studio.priced)));
-    expect(studio.querySelector("img")).toBeNull();
-    expect(within(studio).getByRole("img", { name: t.site.studio.editor.figure })).toBeTruthy();
+    // Nothing on the page is a photograph or a render: the only images are the real app screenshots.
+    expect([...container.querySelectorAll("img")].every((img) => img.closest("figure.st-shot"))).toBe(true);
+  });
+
+  it("shows each capability as one labelled example: what you ask for, what comes back, and a note that it is an example", () => {
+    const t = dictionaries.en;
+    const { container } = renderLanding({ kind: "announced" });
+    expect(t.site.caps.items.map((i) => i.id)).toEqual(["video", "voice", "studio", "channels", "approvals"]);
+    for (const item of t.site.caps.items) {
+      const section = container.querySelector(`#${item.id}`)!;
+      expect(within(section as HTMLElement).getByRole("heading", { level: 2, name: item.title })).toBeTruthy();
+      // One button per section, in plain words, going somewhere real.
+      const cta = within(section as HTMLElement).getByRole("link", { name: item.cta });
+      expect(cta.getAttribute("href")).toMatch(/^\/(signup|solutions\/youtube-channels)$/);
+      const demo = section.querySelector("figure.nx-demo")!;
+      expect(demo.getAttribute("aria-label")).toContain(t.site.caps.demo);
+      expect(demo.textContent).toContain(item.bubble);
+      expect(demo.textContent).toContain(item.reply);
+      expect(demo.textContent).toContain(t.site.caps.tag);
+      expect(demo.textContent).not.toMatch(MONEY);
+      expect(demo.querySelector("a, button, input, [tabindex]")).toBeNull();
+    }
+    // The approvals card is the Solutions page's own sign-off wording.
+    const approvals = container.querySelector("#approvals")!;
+    expect(approvals.textContent).toContain(t.site.solutions.pictures.signoff.second);
   });
 
   it("draws the hero's product as four labelled example states, with nothing to press but the tabs and no money in it", () => {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Check, Play } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
+import { Art } from "@/components/landing/Art";
 
 type Stage = Dictionary["site"]["stage"];
 
@@ -205,18 +206,7 @@ function PlanUi({ s }: { s: PlanStep }) {
 function Frame({ live = false }: { live?: boolean }) {
   return (
     <div className="nx-frame" data-live={live ? "true" : "false"}>
-      <svg viewBox="0 0 320 180" preserveAspectRatio="xMidYMid slice" aria-hidden focusable="false">
-        <defs>
-          <linearGradient id={live ? "nxg-live" : "nxg"} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#1b2230" />
-            <stop offset="1" stopColor="#0c0f15" />
-          </linearGradient>
-        </defs>
-        <rect width="320" height="180" fill={`url(#${live ? "nxg-live" : "nxg"})`} />
-        <circle cx="214" cy="68" r="30" fill="#e9e2d2" />
-        <circle cx="226" cy="60" r="30" fill="#161c28" />
-        <path d="M0 140 L70 112 L130 132 L205 100 L270 126 L320 108 V180 H0Z" fill="#090c11" />
-      </svg>
+      <Art kind="moon" />
       <span className="nx-frame-play">
         <Play aria-hidden />
       </span>

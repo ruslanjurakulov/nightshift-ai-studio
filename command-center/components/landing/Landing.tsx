@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Clapperboard, Film, Lock, Maximize2, Mic, Palette, Scissors, SlidersHorizontal, Sparkles, Wand2, ImageIcon, type LucideIcon } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Film, Lock, Palette, Sparkles, type LucideIcon } from "lucide-react";
 import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
 import type { MoneyAnchor, PricingTeaser as PricingTeaserData, ShowcaseItem } from "@/lib/landing";
 import { WELCOME_CREDITS } from "@/lib/pricing";
@@ -9,8 +9,8 @@ import { creditUnit, formatCredits } from "@/lib/credits";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 import { PressStage } from "@/components/landing/PressStage";
-import { EditorPicture } from "@/components/site/EditorPicture";
 import { Showcase } from "@/components/landing/Showcase";
+import { Capabilities } from "@/components/landing/Capabilities";
 import { PricingTeaser } from "@/components/landing/PricingTeaser";
 import { Faq } from "@/components/landing/Faq";
 import reviewEnLight from "@/components/site/shots/review-en-light.webp";
@@ -79,8 +79,8 @@ export function Landing({
     <div className="lp-root">
       <Hero t={t} locale={locale} anchor={anchor} />
       <How t={t} locale={locale} />
+      <Capabilities t={t} />
       <Who t={t} />
-      <Studio t={t} />
       {showcase.length > 0 && (
         <div className="st-section">
           <div className="st-wrap">
@@ -88,7 +88,6 @@ export function Landing({
           </div>
         </div>
       )}
-      <Languages t={t} locale={locale} />
       <Rules t={t} />
       <PricingTeaser t={t} locale={locale} teaser={pricing} anchor={anchor} expiry={expiry} />
       <Faq t={t} plansOnSale={pricing.kind === "plans"} expiry={expiry} aside={<GoogleData t={t} />} />
@@ -204,7 +203,7 @@ const WHO_ICON: Record<string, LucideIcon> = { "youtube-channels": Film, "creati
 function Who({ t }: { t: Dictionary }) {
   const w = t.site.who;
   return (
-    <section id="solutions" aria-labelledby="who-title" className="nx-section">
+    <section id="solutions" aria-labelledby="who-title" className="nx-section" data-tone="raised">
       <div className="nx-wrap">
         <h2 id="who-title" className="nx-h2">
           {w.title}
@@ -240,85 +239,11 @@ function Who({ t }: { t: Dictionary }) {
   );
 }
 
-const TOOL_ICON: Record<string, LucideIcon> = {
-  image: ImageIcon,
-  video: Clapperboard,
-  voice: Mic,
-  edit: Wand2,
-  animate: Film,
-  upscale: Maximize2,
-  cutout: Scissors,
-  styles: Palette,
-  editor: SlidersHorizontal,
-};
-
-function Studio({ t }: { t: Dictionary }) {
-  const s = t.site.studio;
-  return (
-    <section id="studio" aria-labelledby="studio-title" className="nx-section" data-tone="raised">
-      <div className="nx-wrap">
-        <h2 id="studio-title" className="nx-h2">
-          {s.title}
-        </h2>
-        <p className="nx-sub">{s.lead}</p>
-        <div className="nx-studio">
-          <ol className="nx-tools" aria-label={s.slug}>
-            {s.tools.map((tool) => {
-              const Icon = TOOL_ICON[tool.id] ?? Sparkles;
-              // The editor and the style library spend nothing; every other
-              // tool is a generation, priced on its button before it runs.
-              const free = tool.id === "editor" || tool.id === "styles";
-              return (
-                <li key={tool.id} className="nx-tool">
-                  <span className="nx-tool-icon" aria-hidden>
-                    <Icon />
-                  </span>
-                  <h3 className="nx-tool-name">{tool.title}</h3>
-                  <p className="nx-tool-body">{tool.body}</p>
-                  {/* Priced is the rule (the lead says so), so only the exceptions
-                      are marked on screen; a screen reader hears it on every row. */}
-                  {free ? <span className="nx-tool-free st-patch-cost">{s.free}</span> : <span className="sr-only">{s.priced}</span>}
-                </li>
-              );
-            })}
-          </ol>
-          <div className="nx-studio-pic">
-            <EditorPicture t={t} />
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function Languages({ t, locale }: { t: Dictionary; locale: Locale }) {
-  const d = t.site.desk;
-  const codes = ["uz", "ru", "en"] as const;
-  return (
-    <section id="channels" aria-labelledby="desk-title" className="nx-section">
-      <div className="nx-wrap nx-langs">
-        <h2 id="desk-title" className="nx-h2">
-          {d.title}
-        </h2>
-        <ul className="nx-lang-list" aria-label={d.slug}>
-          {d.languages.map((l, i) => (
-            // The page's own language reads in full ink, the other two dimmed.
-            <li key={l} lang={codes[i]} aria-current={codes[i] === locale ? "true" : undefined}>
-              {l}
-            </li>
-          ))}
-        </ul>
-        <p className="nx-sub">{d.lead}</p>
-      </div>
-    </section>
-  );
-}
-
 /** Each rule's state, as the app would show it on its lamp. */
 function Rules({ t }: { t: Dictionary }) {
   const r = t.site.rules;
   return (
-    <section id="rules" aria-labelledby="rules-title" className="nx-section" data-tone="raised">
+    <section id="rules" aria-labelledby="rules-title" className="nx-section">
       <div className="nx-wrap">
         <h2 id="rules-title" className="nx-h2">
           {r.title}
