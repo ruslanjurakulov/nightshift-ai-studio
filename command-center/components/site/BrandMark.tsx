@@ -1,49 +1,86 @@
-import type { CSSProperties } from "react";
+import { useId, type CSSProperties } from "react";
+import { BRAND_MARK_ART as A } from "@/components/site/brandMarkArt";
 
 /**
- * The mark: the folded-ribbon N, traced from the owner's artwork
- * (brand/logo/nightshift-mark-mono.svg is the same drawing as a file). One
- * colour, `currentColor`, so it follows whatever text colour it sits in and
- * works on the dark and the light theme alike; the fold where the ribbon
- * passes over each pillar is the same shape at half strength, so the mark
- * keeps its depth without a gradient or a second colour.
+ * The mark, exactly as the owner drew it: the folded-ribbon N in white, with its
+ * soft fold shadows, centred on a black square. The tile is the owner's image —
+ * the same 1254 px square, the N in the same place at the same proportion (37.9%
+ * of the tile's width) — traced to vector (brand/logo/nightshift-app-icon.svg is
+ * the same drawing as a file, and tests/brand-mark.test.tsx holds the two equal).
+ *
+ * The tile is black in both themes, so the white N never meets a light page; on a
+ * dark page a hairline ring keeps its edge visible. Gradient and clip ids are
+ * unique per instance (useId), so any number of marks can share a page.
  *
  * Decorative beside the wordmark, which carries the name (aria-hidden, no
  * accessible name). On its own — no wordmark next to it — pass `title` and it
  * becomes an image named that.
  */
-export const BRAND_MARK_OUTLINE =
-  "M734.3 881.8L286.1 405.1L286.1 927C286.1 936.1 276.2 941.9 268.2 937.5L108.5 850.2C104.3 847.9 50.5 815.5 27.3 781.2C-0.8 739.8 0.2 707.8 0.2 679.6L0.2 130.4C0.2 49.9 41.9 0.6 130 0.2C209.9 -0.2 247.6 3.6 315.9 73.4L713.1 479.2L713.1 10.9C713.1 1.9 722.5 -3.8 730.8 0.2L837 54.3C873.6 73 934.6 110.6 953.5 132.3C995.2 180.3 999.6 211.8 999.6 261.3L999.6 774.7C999.6 847.5 974.5 901.1 905.8 928.5C844.8 952.5 781.4 932.1 734.3 881.8ZM116 224.3L286.1 405.1L286.1 515.7L138.7 358.9ZM713.1 479.2L999.6 771.9L999.6 663.7L713.1 370.9Z";
-export const BRAND_MARK_FOLDS =
-  "M116 224.3L286.1 405.1L286.1 515.7L138.7 358.9ZM713.1 479.2L999.6 771.9L999.6 663.7L713.1 370.9Z";
-
-/** The mark's drawing is 1000 x 938 units. */
-export const BRAND_MARK_RATIO = 938 / 1000;
-
 export function BrandMark({
   className,
-  size = 22,
+  size = 36,
   title,
 }: {
   className?: string;
-  /** Width in CSS pixels; the height follows the drawing's proportions. */
+  /** The tile's width and height in CSS pixels. */
   size?: number;
   /** An accessible name, for the mark standing alone. Omit it beside the wordmark. */
   title?: string;
 }) {
-  const style: CSSProperties = { flexShrink: 0 };
+  const id = `ns${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  const style: CSSProperties = {
+    flexShrink: 0,
+    borderRadius: `${(A.tileRx / A.tile) * 100}%`,
+    // A hairline that only shows against a dark page; on a light one the black tile stands alone.
+    boxShadow: "0 0 0 1px rgba(255,255,255,0.14)",
+  };
+  const grad = (gid: string, x1: number, y1: number, x2: number, y2: number, stops: readonly (readonly [number, number])[], color: string) => (
+    <linearGradient id={`${id}${gid}`} gradientUnits="userSpaceOnUse" x1={x1} y1={y1} x2={x2} y2={y2}>
+      {stops.map(([o, a]) => (
+        <stop key={o} offset={o} stopColor={color} stopOpacity={a} />
+      ))}
+    </linearGradient>
+  );
+  const u = A.unit;
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 1000 938"
+      viewBox={`0 0 ${A.tile} ${A.tile}`}
       width={size}
-      height={Math.round(size * BRAND_MARK_RATIO * 100) / 100}
+      height={size}
       className={className}
       style={style}
       {...(title ? { role: "img", "aria-label": title } : { "aria-hidden": true, focusable: false })}
     >
-      <path fill="currentColor" fillRule="evenodd" d={BRAND_MARK_OUTLINE} />
-      <path fill="currentColor" fillOpacity={0.5} d={BRAND_MARK_FOLDS} />
+      <defs>
+        <clipPath id={`${id}n`}>
+          <path d={A.outline} />
+        </clipPath>
+        {grad("lu", 0, 0, 0, 170, A.lu, "#000")}
+        {grad("ru", 0, 0, 0, 200, A.ru, "#000")}
+        {grad("lv", -130, 0, 150, 0, A.lv, "#fff")}
+        {grad("rv", -100, 0, 200, 0, A.rv, "#fff")}
+        {grad("rb", A.rbX[0], 0, A.rbX[1], 0, A.rb, "#000")}
+        <mask id={`${id}lm`} maskUnits="userSpaceOnUse" x={-200} y={-10} width={400} height={200}>
+          <rect x={-200} y={-10} width={400} height={200} fill={`url(#${id}lv)`} />
+        </mask>
+        <mask id={`${id}rm`} maskUnits="userSpaceOnUse" x={-110} y={-10} width={360} height={230}>
+          <rect x={-110} y={-10} width={360} height={230} fill={`url(#${id}rv)`} />
+        </mask>
+      </defs>
+      <rect width={A.tile} height={A.tile} fill={A.bg} />
+      <g transform={`translate(${A.ox} ${A.oy}) scale(${A.scale})`}>
+        <path d={A.outline} fill="#FAFAFA" />
+        <g clipPath={`url(#${id}n)`}>
+          <rect x={-100} y={-100} width={1300} height={1200} fill={`url(#${id}rb)`} />
+          <g transform={`translate(${A.n1[0]} ${A.n1[1]}) rotate(${A.n1[2]}) scale(${u})`}>
+            <rect x={-200} y={0} width={400} height={170} fill={`url(#${id}lu)`} mask={`url(#${id}lm)`} />
+          </g>
+          <g transform={`translate(${A.n2[0]} ${A.n2[1]}) rotate(${A.n2[2]}) scale(${u} ${-u})`}>
+            <rect x={-110} y={0} width={360} height={200} fill={`url(#${id}ru)`} mask={`url(#${id}rm)`} />
+          </g>
+        </g>
+      </g>
     </svg>
   );
 }

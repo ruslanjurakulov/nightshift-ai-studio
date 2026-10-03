@@ -275,12 +275,12 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(46px, 6vw, 86px); }
   text-transform: uppercase;
   color: var(--ns-text);
 }
-/* The mark made the lockup 12px wider; at 360px in Russian the header's
-   sign-in, call to action and menu button then ran 9px past the viewport. Below
-   380px the lockup is set a size down (wordmark 19px, mark 20px, gap 8px). */
+/* The mark made the lockup wider; at 360px in Russian the header's sign-in, call
+   to action and menu button ran past the viewport. Below 380px the lockup is set
+   a size down (wordmark 19px, tile 28px, gap 8px). */
 @media (max-width: 379px) {
   .st-brand { font-size: 19px; gap: 8px; }
-  .st-brand svg { width: 20px; height: auto; }
+  .st-brand svg { width: 28px; height: auto; }
 }
 .st-nav { display: none; align-items: center; gap: 4px; }
 @media (min-width: 1024px) { .st-nav { display: flex; } }

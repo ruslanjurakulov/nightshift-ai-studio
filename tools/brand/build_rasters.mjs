@@ -31,12 +31,12 @@ async function png(svgFile, size, out, { flatten } = {}) {
   return buf;
 }
 
-// Brand kit: rounded app-icon tile, maskable tile, white mark on transparent.
+// Brand kit: rounded app-icon tile, square (maskable / iOS) tile, white mark on transparent.
 for (const s of [1024, 512, 256, 180, 64, 32, 16]) {
   await png(path.join(LOGO, "nightshift-app-icon.svg"), s, path.join(PNG, `nightshift-app-icon-${s}.png`));
 }
 for (const s of [512, 192]) {
-  await png(path.join(LOGO, "nightshift-maskable.svg"), s, path.join(PNG, `nightshift-maskable-${s}.png`), { flatten: "#000" });
+  await png(path.join(LOGO, "nightshift-maskable.svg"), s, path.join(PNG, `nightshift-maskable-${s}.png`), { flatten: "#030303" });
 }
 const markSvg = readFileSync(path.join(LOGO, "nightshift-mark.svg"));
 writeFileSync(
@@ -45,8 +45,9 @@ writeFileSync(
 );
 
 // Next.js file-convention icons.
-await png(path.join(APP, "icon.svg"), 512, path.join(APP, "icon.png"));
-await png(path.join(LOGO, "nightshift-apple-touch.svg"), 180, path.join(APP, "apple-icon.png"), { flatten: "#000" });
+// icon.png and apple-icon.png are the owner's picture itself: the square tile, same framing.
+await png(path.join(LOGO, "nightshift-maskable.svg"), 512, path.join(APP, "icon.png"));
+await png(path.join(LOGO, "nightshift-maskable.svg"), 180, path.join(APP, "apple-icon.png"), { flatten: "#030303" });
 
 // favicon.ico: PNG-in-ICO at 16, 32, 48 (the tab composition).
 const sizes = [16, 32, 48];

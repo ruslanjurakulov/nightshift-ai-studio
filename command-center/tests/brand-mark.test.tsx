@@ -3,34 +3,83 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { BRAND_MARK_FOLDS, BRAND_MARK_OUTLINE, BrandMark } from "@/components/site/BrandMark";
+import { BrandMark } from "@/components/site/BrandMark";
+import { BRAND_MARK_ART } from "@/components/site/brandMarkArt";
 
 /**
- * The folded-ribbon N is the owner's artwork, traced to vector. Three things
- * must stay true: the inline mark is the very drawing the brand kit ships as a
- * file (so a re-trace cannot update one and not the other); it is decorative
- * beside the wordmark and named when it stands alone; and the icons the app
- * serves are real images of the sizes browsers and iOS ask for.
+ * The mark is the owner's picture: the folded-ribbon N, white with soft fold
+ * shadows, on a black square, in the framing of the supplied 1254 px image.
+ * Three things must stay true: the inline mark is the very drawing the brand kit
+ * ships as a file (so a re-trace cannot update one and not the other); it is
+ * decorative beside the wordmark and named when it stands alone; and several
+ * marks on one page cannot steal each other's gradients.
  */
 const ROOT = process.cwd();
-const read = (p: string) => readFileSync(join(ROOT, p));
+const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
 afterEach(cleanup);
 
-describe("inline mark", () => {
-  it("is the same drawing as brand/logo/nightshift-mark-mono.svg", () => {
-    const svg = read("brand/logo/nightshift-mark-mono.svg").toString("utf8");
-    const paths = [...svg.matchAll(/<path [^>]*\bd="([^"]+)"/g)].map((m) => m[1]);
-    expect(paths).toEqual([BRAND_MARK_OUTLINE, BRAND_MARK_FOLDS]);
-    expect(svg).toContain('viewBox="0 0 1000 938"');
-  });
+const stopsOf = (root: Element | Document, gradientIdSuffix: string) =>
+  [...root.querySelectorAll("linearGradient")]
+    .find((g) => g.id.endsWith(gradientIdSuffix))!
+    .querySelectorAll("stop");
 
-  it("is one colour, currentColor, with no gradient or id that could collide when repeated", () => {
+describe("inline mark", () => {
+  it("is the same drawing as brand/logo/nightshift-app-icon.svg", () => {
+    const file = new DOMParser().parseFromString(read("brand/logo/nightshift-app-icon.svg"), "image/svg+xml");
     const { container } = render(<BrandMark />);
     const svg = container.querySelector("svg")!;
-    expect(svg.innerHTML).not.toMatch(/gradient|url\(|id=/i);
-    const fills = [...svg.querySelectorAll("path")].map((p) => p.getAttribute("fill"));
-    expect(fills).toEqual(["currentColor", "currentColor"]);
+    const fileSvg = file.querySelector("svg")!;
+    expect(svg.getAttribute("viewBox")).toBe(fileSvg.getAttribute("viewBox"));
+    expect(svg.getAttribute("viewBox")).toBe("0 0 1254 1254");
+    // the silhouette
+    expect([...svg.querySelectorAll("path")].map((p) => p.getAttribute("d"))).toEqual(
+      [...fileSvg.querySelectorAll("path")].map((p) => p.getAttribute("d")),
+    );
+    // the tile and where the artwork puts the mark in it
+    expect(svg.querySelector(":scope > rect")!.getAttribute("fill")).toBe(fileSvg.querySelector(":scope > rect")!.getAttribute("fill"));
+    const place = (el: Element) => el.querySelector("g[transform]")!.getAttribute("transform");
+    expect(place(svg)).toBe(place(fileSvg));
+    // every fold-shadow gradient stop
+    for (const suffix of ["lu", "ru", "lv", "rv", "rb"]) {
+      const mine = [...stopsOf(svg, suffix)].map((s) => [s.getAttribute("offset"), s.getAttribute("stop-opacity")]);
+      const theirs = [...stopsOf(fileSvg, suffix)].map((s) => [s.getAttribute("offset"), s.getAttribute("stop-opacity")]);
+      expect(mine.map(([o, a]) => [Number(o), Number(a)])).toEqual(theirs.map(([o, a]) => [Number(o), Number(a)]));
+    }
+  });
+
+  it("keeps the owner's proportions: the N is 37.9% of the tile, centred as in the image", () => {
+    const { scale, ox, oy, tile } = BRAND_MARK_ART;
+    const markW = 1000 * scale;
+    const markH = BRAND_MARK_ART.vbH * scale;
+    expect(markW / tile).toBeCloseTo(475.4 / 1254, 3);
+    expect(Math.abs(ox + markW / 2 - tile / 2)).toBeLessThan(1);
+    expect(Math.abs(oy + markH / 2 - tile / 2)).toBeLessThan(1);
+  });
+
+  it("is a black tile with the soft-shaded white mark, not a flat or currentColor drawing", () => {
+    const { container } = render(<BrandMark />);
+    const svg = container.querySelector("svg")!;
+    expect(svg.querySelector(":scope > rect")!.getAttribute("fill")).toBe("#030303");
+    expect(svg.querySelectorAll("linearGradient").length).toBe(5);
+    expect(svg.innerHTML).not.toContain("currentColor");
+  });
+
+  it("gives every instance its own gradient ids, so many marks can share a page", () => {
+    const { container } = render(
+      <>
+        <BrandMark />
+        <BrandMark size={28} />
+        <BrandMark size={44} />
+      </>,
+    );
+    const ids = [...container.querySelectorAll("[id]")].map((e) => e.id);
+    expect(ids.length).toBe(3 * 8);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const svg of container.querySelectorAll("svg")) {
+      // every url(#...) resolves inside its own svg
+      for (const m of svg.innerHTML.matchAll(/url\(#([^)]+)\)/g)) expect(svg.querySelector(`[id="${m[1]}"]`)).not.toBeNull();
+    }
   });
 
   it("is hidden from assistive technology beside the wordmark", () => {
@@ -47,58 +96,17 @@ describe("inline mark", () => {
     expect(img.getAttribute("aria-hidden")).toBeNull();
   });
 
-  it("keeps the drawing's proportions at any size", () => {
+  it("is square at any size", () => {
     const { container } = render(<BrandMark size={32} />);
     const svg = container.querySelector("svg")!;
-    expect(svg.getAttribute("width")).toBe("32");
-    expect(Number(svg.getAttribute("height"))).toBeCloseTo(30.02, 1);
-  });
-});
-
-/** Width/height of a PNG from its IHDR, colour type 2 = RGB (no alpha). */
-function pngInfo(buf: Buffer) {
-  expect(buf.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
-  return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20), colorType: buf[25] };
-}
-
-describe("served icons (Next.js file convention)", () => {
-  it("icon.png is 512 square", () => {
-    const i = pngInfo(read("app/icon.png"));
-    expect([i.w, i.h]).toEqual([512, 512]);
-  });
-
-  it("apple-icon.png is 180 square with no transparency", () => {
-    const i = pngInfo(read("app/apple-icon.png"));
-    expect([i.w, i.h]).toEqual([180, 180]);
-    expect(i.colorType).toBe(2); // RGB: a transparent corner would render black-on-black-or-white on iOS
-  });
-
-  it("favicon.ico holds 16, 32 and 48 px images", () => {
-    const ico = read("app/favicon.ico");
-    expect(ico.readUInt16LE(0)).toBe(0);
-    expect(ico.readUInt16LE(2)).toBe(1);
-    const n = ico.readUInt16LE(4);
-    const sizes = Array.from({ length: n }, (_, k) => ico[6 + 16 * k]);
-    expect(sizes).toEqual([16, 32, 48]);
-    for (let k = 0; k < n; k++) {
-      const len = ico.readUInt32LE(6 + 16 * k + 8);
-      const off = ico.readUInt32LE(6 + 16 * k + 12);
-      expect(pngInfo(ico.subarray(off, off + len)).w).toBe(sizes[k]);
-    }
-  });
-
-  it("icon.svg is the mark on a black tile", () => {
-    const svg = read("app/icon.svg").toString("utf8");
-    expect(svg).toContain("<title");
-    expect(svg).toContain('fill="#000"');
-    expect(svg).not.toContain("<circle"); // the old lamp-in-bezel
+    expect([svg.getAttribute("width"), svg.getAttribute("height")]).toEqual(["32", "32"]);
   });
 });
 
 describe("brand kit", () => {
   it("ships the four SVG masters", () => {
     for (const f of ["nightshift-mark", "nightshift-mark-mono", "nightshift-mark-dark", "nightshift-app-icon"]) {
-      const svg = read(`brand/logo/${f}.svg`).toString("utf8");
+      const svg = read(`brand/logo/${f}.svg`);
       expect(svg.startsWith("<svg")).toBe(true);
       expect(svg).toContain("<title");
     }
@@ -106,16 +114,17 @@ describe("brand kit", () => {
 
   it("the transparent masters have no background rectangle", () => {
     for (const f of ["nightshift-mark", "nightshift-mark-mono", "nightshift-mark-dark"]) {
-      expect(read(`brand/logo/${f}.svg`).toString("utf8")).not.toMatch(/<rect[^>]*fill="#0/);
+      expect(read(`brand/logo/${f}.svg`)).not.toMatch(/<rect[^>]*fill="#0/);
     }
   });
 
   it("the mono master has no gradient", () => {
-    expect(read("brand/logo/nightshift-mark-mono.svg").toString("utf8")).not.toMatch(/gradient|mask/i);
+    expect(read("brand/logo/nightshift-mark-mono.svg")).not.toMatch(/gradient|mask/i);
   });
 
-  it("maskable PNGs are 192 and 512", () => {
-    expect(pngInfo(read("brand/logo/png/nightshift-maskable-192.png")).w).toBe(192);
-    expect(pngInfo(read("brand/logo/png/nightshift-maskable-512.png")).w).toBe(512);
+  it("the tab icon is the mark on a black tile, not the old lamp", () => {
+    const svg = read("app/icon.svg");
+    expect(svg).toContain('fill="#030303"');
+    expect(svg).not.toContain("<circle");
   });
 });

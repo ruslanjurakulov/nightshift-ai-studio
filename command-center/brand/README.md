@@ -10,21 +10,20 @@ are the masters and everything else is rendered from them.
 
 | File | Use |
 | --- | --- |
-| `nightshift-mark.svg` | White mark with the soft fold shading, transparent background. For dark grounds (social, decks, video end cards). |
-| `nightshift-mark-dark.svg` | Near-black mark with the fold shading adapted (a lightening, since near-black cannot get darker). For light grounds. |
-| `nightshift-mark-mono.svg` | One colour, `currentColor`, no gradients: the fold is the same shape at half opacity. For UI in any theme. Inlined by `components/site/BrandMark.tsx`. |
-| `nightshift-app-icon.svg` | The mark centred on a black rounded-square tile (mark = 55% of the tile). |
-| `nightshift-maskable.svg` | Full-bleed black square, mark = 46% of the tile, inside the maskable safe zone. |
-| `nightshift-apple-touch.svg` | Full-bleed black square for iOS (it rounds the corners itself), mark = 58%. |
-| `png/nightshift-app-icon-{1024,512,256,180,64,32,16}.png` | Raster app icon. |
-| `png/nightshift-maskable-{512,192}.png` | Maskable PNGs for a web app manifest (the app has none today). |
+| `nightshift-app-icon.svg` | **The owner's picture as vector**: the N centred on a black rounded square, framing identical to the supplied image (the N is 37.9% of the tile's width). What the UI mark draws. |
+| `nightshift-maskable.svg` | The same, as a plain square (iOS touch icon, maskable / any-purpose PNGs). Pixel-for-pixel the owner's framing. |
+| `nightshift-mark.svg` | The white mark with the soft fold shading, transparent background, no tile. For dark grounds. |
+| `nightshift-mark-dark.svg` | Near-black mark with the fold adapted (a lightening, since near-black cannot get darker). For light grounds when no tile can be used. |
+| `nightshift-mark-mono.svg` | One colour, `currentColor`, no gradients: the fold is a half-opacity band. A simplification kept for single-colour print or embroidery; **the UI does not use it**. |
+| `png/nightshift-app-icon-{1024,512,256,180,64,32,16}.png` | Rounded app icon rasters. |
+| `png/nightshift-maskable-{512,192}.png` | Square tile rasters for a web app manifest (the app has none today). |
 | `png/nightshift-mark-1024.png` | White mark, transparent. |
 
 ## Where it is wired
 
-- `app/icon.svg` (browser tab; a bigger mark so 16 px stays legible), `app/icon.png` (512), `app/apple-icon.png` (180, opaque), `app/favicon.ico` (16/32/48) are served by the Next.js file convention. Their file names are exempted from the auth gate by name in `middleware.ts`; do not rename them.
-- `app/og.png/route.tsx` draws the mark beside the wordmark on the social card.
-- `components/site/BrandMark.tsx` is the one place the mark is drawn in the UI (public header and footer, sign-in / sign-up, the app sidebar and top bar, the operator bar, the welcome card). Decorative beside the wordmark; pass `title` for an accessible name when it stands alone.
+- `components/site/BrandMark.tsx` draws the owner's tile inline (black square with the shaded white N, unique gradient ids per instance, black in both themes with a hairline ring that only shows on a dark page). Public header and footer, sign-in / sign-up, OAuth, the app sidebar and top bar, the operator bar, the mobile nav drawer and the welcome card. Decorative beside the wordmark; pass `title` for an accessible name when it stands alone. Its numbers come from the generated `components/site/brandMarkArt.ts`.
+- `app/icon.png` (512) and `app/apple-icon.png` (180) are the owner's square picture itself. `app/icon.svg` and `app/favicon.ico` (16/32/48) are the browser-tab composition: same tile, the N set larger (72% of the tile) because at 37.9% it would be 6 px wide in a 16 px tab. Change `app_icon(512, 0.72, True)` in `tools/brand/build_logo.py` to 0.379 to make them exact too.
+- `app/og.png/route.tsx` places the 256 px tile render beside the wordmark. File names of the favicon set are exempted from the auth gate by name in `middleware.ts`; do not rename them.
 
 ## Regenerating
 
@@ -34,9 +33,11 @@ python3 tools/brand/build_logo.py           # outline -> SVG masters + app/icon.
 node tools/brand/build_rasters.mjs          # SVG masters -> PNG / ICO
 ```
 
-After a re-trace, update `BRAND_MARK_OUTLINE` / `BRAND_MARK_FOLDS` in
-`components/site/BrandMark.tsx` from `nightshift-mark-mono.svg`;
-`tests/brand-mark.test.tsx` fails until they match.
+`build_logo.py` also writes `components/site/brandMarkArt.ts`, so the inline mark
+cannot drift from the SVGs (`tests/brand-mark.test.tsx` holds them equal, and
+`tests/brand-icons-framing.test.ts` compares the square icons with the owner's
+image). `node tools/brand/verify_placements.mjs --base <url>` measures every
+rendered mark in Chromium at 2x against the owner's image.
 
 ## Rights
 
