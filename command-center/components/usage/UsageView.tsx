@@ -257,14 +257,14 @@ function PlanLimits({ summary }: { summary: UsageSummary }) {
       <h2 id={titleId} className="t-section">
         {u.limits.title}
       </h2>
-      <dl className="flex flex-col">
+      <ul className="flex flex-col">
         {limits.runs && (
-          <div className="flex flex-col gap-2 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-0">
+          <li className="flex flex-col gap-2 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-0">
             <div className="flex items-baseline justify-between gap-4">
-              <dt className="text-[14px]">{u.limits.runs}</dt>
-              <dd className="text-[14px] font-medium" data-runs-now>
+              <span className="text-[14px]">{u.limits.runs}</span>
+              <span className="text-[14px] font-medium" data-runs-now>
                 {fmt(u.limits.runsNow, { active: limits.runs.active, limit: limits.runs.limit })}
-              </dd>
+              </span>
             </div>
             <Meter
               className="usage-meter"
@@ -276,21 +276,21 @@ function PlanLimits({ summary }: { summary: UsageSummary }) {
               valueText={fmt(u.limits.runsNow, { active: limits.runs.active, limit: limits.runs.limit })}
             />
             <p className="text-[12px] leading-relaxed text-[var(--color-muted)]">{u.limits.runsHint}</p>
-          </div>
+          </li>
         )}
         {limits.priority !== null && (
-          <div className="flex items-baseline justify-between gap-4 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-0">
-            <dt className="text-[14px]">{u.limits.priority}</dt>
-            <dd className="text-[14px] font-medium">{entitlementText("queue_priority", "int", limits.priority, t)}</dd>
-          </div>
+          <li className="flex items-baseline justify-between gap-4 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-0">
+            <span className="text-[14px]">{u.limits.priority}</span>
+            <span className="text-[14px] font-medium">{entitlementText("queue_priority", "int", limits.priority, t)}</span>
+          </li>
         )}
         {limits.api !== null && (
-          <div className="flex items-baseline justify-between gap-4 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-0">
-            <dt className="text-[14px]">{u.limits.api}</dt>
-            <dd className="text-[14px] font-medium">{entitlementText("api_access", "bool", limits.api, t)}</dd>
-          </div>
+          <li className="flex items-baseline justify-between gap-4 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-0">
+            <span className="text-[14px]">{u.limits.api}</span>
+            <span className="text-[14px] font-medium">{entitlementText("api_access", "bool", limits.api, t)}</span>
+          </li>
         )}
-      </dl>
+      </ul>
     </section>
   );
 }

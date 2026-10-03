@@ -172,6 +172,8 @@ export function planAllowance(s: UsageSummary): PlanAllowance {
       ends: Boolean(sub && (sub.status === "canceled" || sub.cancelAtPeriodEnd)),
     };
   }
+  // A live lot that granted nothing is not an expired one: nothing to measure, nothing expired.
+  if (pc) return { kind: "none" };
   if (s.subscription?.live) return s.lastPlanPeriodEnd ? { kind: "ended", endedAt: s.lastPlanPeriodEnd } : { kind: "none" };
   return { kind: "free" };
 }

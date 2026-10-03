@@ -2888,7 +2888,7 @@ export const en = {
       usedUpNone: "You have no extra credits, so new runs are refused until your plan renews. Buy credits or upgrade to keep going.",
       ended: "Your plan credits for the period that ended {date} have expired. The next period's credits arrive when the renewal payment goes through.",
       none: "No plan credits have been added for this period yet. They arrive when the payment goes through.",
-      bonus: "Plus {n} {unit} of bonus credits that don't expire. They are used even when extra credits are off.",
+      bonus: "Plus {n} bonus {unit} that don't expire. They are used even when extra credits are off.",
       meterLabel: "Plan credits used",
     },
     limits: {
@@ -2935,7 +2935,7 @@ export const en = {
       upgrade: "Upgrade plan",
     },
     refusal: {
-      extraOff: "Not enough plan credits: this needs {needed}, your plan and bonus credits have {available}. {extra} {unit} of extra credits are waiting, but extra credits are off.",
+      extraOff: "Not enough plan credits: this needs {needed}, your plan and bonus credits have {available}. Extra credits are off, so the {extra} {unit} waiting in packs are not used.",
       extraOffShort: "Not enough plan credits, and extra credits are off.",
       turnOn: "Turn on extra credits",
       openUsage: "Open Usage",

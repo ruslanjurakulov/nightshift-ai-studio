@@ -32,6 +32,12 @@
  *     --fake-session [url]       sign in to the customer shell against
  *                                tools/visual-qa/fake-supabase.mjs (the app must
  *                                be built pointing at it; see that file)
+ *     --fake-state <name>        with --fake-session: the account state the fake
+ *                                answers for (the Usage page's states; see
+ *                                tools/visual-qa/fake-supabase.mjs)
+ *     --locale en|ru|uz          the interface language (the app's own cookie)
+ *     --prefix <text>            put this before every screenshot's name
+ *     --click-first "<css>"      click this once the page has settled, before measuring
  *     --fail-on serious          exit 1 on axe violations of this impact or
  *                                worse, any overflow, or CLS > 0.1 (for CI use)
  *
@@ -68,6 +74,12 @@ const AXE = arg("no-axe", false) !== true;
 const FAIL_ON = arg("fail-on", null);
 // The signed-in customer shell, against tools/visual-qa/fake-supabase.mjs.
 const FAKE_SESSION = arg("fake-session", false);
+const FAKE_STATE = String(arg("fake-state", "")) === "true" ? "" : String(arg("fake-state", ""));
+const LOCALE = String(arg("locale", "")) === "true" ? "" : String(arg("locale", ""));
+const PREFIX = String(arg("prefix", "")) === "true" ? "" : String(arg("prefix", ""));
+const CLICK_FIRST = arg("click-first", null);
+// The app's own language cookie (command-center/lib/i18n/core.ts LOCALE_COOKIE).
+const LOCALE_COOKIE = "chronos_locale";
 const OUT = path.resolve(String(arg("out", path.join(process.env.TMPDIR || "/tmp", `visual-qa-${Date.now()}`))));
 
 function loadPlaywright() {
@@ -163,7 +175,24 @@ async function measure(page) {
           target: t ? t.nodeName.toLowerCase() + "." + String(t.className).split(" ").slice(0, 2).join(".") : null,
         };
       });
-    return { cls: Number(window.__vqa.cls.toFixed(4)), shifts: window.__vqa.shifts.slice(0, 5), lcp: window.__vqa.lcp, lcpEl: window.__vqa.lcpEl, overflow, culprits, running };
+    // Touch targets under 44px (design rule, WCAG 2.5.5): every visible control that is not a link
+    // inside running text. Reported, not failed on: a few (a bell's badge) are deliberate.
+    const small = [];
+    for (const el of document.querySelectorAll("a[href], button, [role=button], [role=switch], summary, select, input:not([type=hidden])")) {
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      if (r.width === 0 || r.height === 0 || cs.visibility === "hidden" || el.closest("[hidden], [aria-hidden=true]")) continue;
+      if (r.height >= 43.5 && r.width >= 43.5) continue;
+      if (el.tagName === "A" && el.closest("p, li") && cs.display === "inline") continue;
+      small.push(`${el.tagName.toLowerCase()} ${Math.round(r.width)}x${Math.round(r.height)} "${(el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 30)}"`);
+      if (small.length >= 10) break;
+    }
+    // Text fields under 16px make iOS zoom the page on focus.
+    const smallFields = [...document.querySelectorAll("input:not([type=hidden]):not([type=checkbox]):not([type=radio]), textarea, select")]
+      .filter((el) => parseFloat(getComputedStyle(el).fontSize) < 16 && el.getBoundingClientRect().width > 0)
+      .map((el) => `${el.tagName.toLowerCase()} ${getComputedStyle(el).fontSize}`)
+      .slice(0, 5);
+    return { cls: Number(window.__vqa.cls.toFixed(4)), shifts: window.__vqa.shifts.slice(0, 5), lcp: window.__vqa.lcp, lcpEl: window.__vqa.lcpEl, overflow, culprits, running, small, smallFields };
   });
 }
 
@@ -200,21 +229,27 @@ async function main() {
           await context.addInitScript(OBSERVE);
           if (FAKE_SESSION) {
             const { sessionCookie } = await import("./fake-supabase.mjs");
-            const c = sessionCookie(FAKE_SESSION === true ? undefined : String(FAKE_SESSION));
+            const c = sessionCookie(FAKE_SESSION === true ? undefined : String(FAKE_SESSION), FAKE_STATE);
             await context.addCookies([{ ...c, url: BASE }]);
           }
+          if (LOCALE) await context.addCookies([{ name: LOCALE_COOKIE, value: LOCALE, url: BASE }]);
           const page = await context.newPage();
           const errors = [];
           page.on("pageerror", (e) => errors.push(String(e.message).slice(0, 200)));
           page.on("console", (m) => {
             if (m.type() === "error") errors.push(m.text().slice(0, 200));
           });
-          const name = `${slug(route)}_${width}_${theme}_${motion}`;
+          const name = `${PREFIX}${slug(route)}_${width}_${theme}_${motion}`;
           const row = { route, width, theme, motion, file: `${name}.png` };
           try {
             const resp = await page.goto(BASE + route, { waitUntil: "load", timeout: 45000 });
             row.status = resp ? resp.status() : null;
             await page.waitForTimeout(SETTLE);
+            if (CLICK_FIRST) {
+              const first = page.locator(String(CLICK_FIRST)).first();
+              if (await first.count()) await first.click();
+              await page.waitForTimeout(SETTLE);
+            }
             Object.assign(row, await measure(page));
             await page.screenshot({ path: path.join(OUT, row.file), fullPage: FULL });
             row.axe = await axe(page);
@@ -244,7 +279,7 @@ async function main() {
           row.consoleErrors = errors.slice(0, 5);
           results.push(row);
           await context.close();
-          process.stdout.write(`${name}: ${row.error ? "ERROR " + row.error : `cls=${row.cls} lcp=${row.lcp}ms overflow=${row.overflow} axe=${row.axe ? row.axe.length : "-"} running=${row.running ? row.running.length : "-"}`}\n`);
+          process.stdout.write(`${name}: ${row.error ? "ERROR " + row.error : `cls=${row.cls} lcp=${row.lcp}ms overflow=${row.overflow} axe=${row.axe ? row.axe.length : "-"} running=${row.running ? row.running.length : "-"} small=${row.small ? row.small.length : "-"} fields<16=${row.smallFields ? row.smallFields.length : "-"}`}\n`);
         }
       }
     }
@@ -255,12 +290,12 @@ async function main() {
   const md = [
     `# Visual QA — ${BASE}`,
     "",
-    "| page | width | theme | motion | CLS | LCP ms (element) | overflow px | axe (serious+) | running animations after settle |",
-    "|---|---|---|---|---|---|---|---|---|",
+    "| page | width | theme | motion | CLS | LCP ms (element) | overflow px | axe (serious+) | running animations after settle | targets < 44px | fields < 16px |",
+    "|---|---|---|---|---|---|---|---|---|---|---|",
     ...results.map((r) =>
       r.error
         ? `| ${r.route} | ${r.width} | ${r.theme} | ${r.motion} | error: ${r.error} |||||`
-        : `| ${r.route} | ${r.width} | ${r.theme} | ${r.motion} | ${r.cls} | ${r.lcp ?? "–"} (${r.lcpEl ?? "–"}) | ${r.overflow}${r.culprits.length ? " " + r.culprits[0] : ""} | ${r.axe ? r.axe.filter((v) => IMPACT.indexOf(v.impact) >= 2).map((v) => `${v.id}×${v.nodes}`).join(", ") || "0" : "–"} | ${r.running.map((a) => `${a.name}${a.infinite ? "∞" : ""}@${a.target}`).join(", ") || "none"} |`,
+        : `| ${r.route} | ${r.width} | ${r.theme} | ${r.motion} | ${r.cls} | ${r.lcp ?? "–"} (${r.lcpEl ?? "–"}) | ${r.overflow}${r.culprits.length ? " " + r.culprits[0] : ""} | ${r.axe ? r.axe.filter((v) => IMPACT.indexOf(v.impact) >= 2).map((v) => `${v.id}×${v.nodes}`).join(", ") || "0" : "–"} | ${r.running.map((a) => `${a.name}${a.infinite ? "∞" : ""}@${a.target}`).join(", ") || "none"} | ${(r.small || []).length ? r.small.join("; ") : "0"} | ${(r.smallFields || []).length ? r.smallFields.join("; ") : "0"} |`,
     ),
   ].join("\n");
   writeFileSync(path.join(OUT, "report.md"), md + "\n");

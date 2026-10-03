@@ -2879,7 +2879,7 @@ export const uz: Dictionary = {
       usedUpNone: "Qoʻshimcha kreditlaringiz yoʻq, shuning uchun tarif yangilanguncha yangi ishlar boshlanmaydi. Davom etish uchun kredit sotib oling yoki yuqoriroq tarifga oʻting.",
       ended: "{date} da tugagan davr uchun tarif kreditlari yonib ketdi. Yangi davr kreditlari yangilanish toʻlovi oʻtgach keladi.",
       none: "Bu davr uchun tarif kreditlari hali qoʻshilmagan. Toʻlov oʻtgach keladi.",
-      bonus: "Yana {n} {unit} bonus kredit — ular yonmaydi. Qoʻshimcha kreditlar oʻchiq boʻlsa ham sarflanadi.",
+      bonus: "Yana {n} bonus kredit — ular yonmaydi. Qoʻshimcha kreditlar oʻchiq boʻlsa ham sarflanadi.",
       meterLabel: "Ishlatilgan tarif kreditlari",
     },
     limits: {
@@ -2921,12 +2921,12 @@ export const uz: Dictionary = {
       noExpiry: "Yonmaydi",
       none: "Qoʻshimcha kreditlaringiz yoʻq. Tarif kreditlari tugaganda davom etish uchun paket sotib oling.",
       waitingOff: "Bu kreditlar saqlanadi va qoʻshimcha kreditlar oʻchiq ekan sarflanmaydi.",
-      spendable: "Yangi ish hozir {n} {unit} dan foydalana oladi.",
+      spendable: "Yangi ish uchun hozir mavjud: {n} {unit}.",
       buy: "Kredit sotib olish",
       upgrade: "Tarifni oshirish",
     },
     refusal: {
-      extraOff: "Tarif kreditlari yetarli emas: bu ishga {needed} kerak, tarif va bonus kreditlaringizda {available} bor. {extra} {unit} qoʻshimcha kredit kutib turibdi, lekin qoʻshimcha kreditlar oʻchiq.",
+      extraOff: "Tarif kreditlari yetarli emas: bu ishga {needed} kerak, tarif va bonus kreditlaringizda {available} bor. Qoʻshimcha kreditlar oʻchiq, shuning uchun paketlardagi {extra} {unit} sarflanmaydi.",
       extraOffShort: "Tarif kreditlari yetarli emas, qoʻshimcha kreditlar esa oʻchiq.",
       turnOn: "Qoʻshimcha kreditlarni yoqish",
       openUsage: "«Sarf»ni ochish",
