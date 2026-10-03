@@ -73,32 +73,39 @@ is a 404: the marketing surface is the home, pricing, `/mcp` and the docs.
 
 ### Landing (`/`)
 
-One idea per section, in the order a visitor asks the questions (about 12,200px on a phone, was
-13,900; the phone hero shows the headline, the button and the top of the stage in the first 844px):
+One idea per section, in the order a visitor asks the questions. The owner then sent five phone
+screenshots of Krea's `/mcp` page ("build our public pages in this style"); what fit was folded in as the
+capability sections below (a label pill, a two-line headline, a grey paragraph, one black button, and a card
+that shows the capability as a short exchange).
 
 1. **Hero.** A pill ("For YouTube channels, faceless or not"), the H1 in two lines (the second in the
-   dim ink), one 20px line, **one** amber button and a plain link, the welcome-credit note. Under it the
-   **approval press**: a dark rounded stage with four tabs, Topic, Plan, Approve, Live. Each tab is one
-   drawn state of the same video: the typed topic and a "Make a plan" key; the plan (script, voice,
-   visuals, captions) with "the price is on the button before you start"; the video private on YouTube
-   with the publish check passed and an amber-outlined "Approve and publish" waiting; and the video
-   public "by you". It starts at the topic and moves on every 4.6 seconds **only while it is on screen
-   and untouched**; hover, focus, a tap, or reduced motion stop it, and the tabs always work. All four
-   panels share one grid cell, so the stage never changes height (CLS 0).
-2. **How it works.** "Three steps. The last one is yours." Give it a topic; start it at a price you have
-   seen; watch it, then publish. Beside it, the **real approval screen** (the existing captures, sample
-   data, labelled).
-3. **Made for people who run channels.** Three tiles linking to the three Solutions pages.
-4. **The Studio.** "Need just one piece?" Nine tool tiles and the drawn editor timeline.
-5. **Language.** "Your language, all the way through." Oʻzbek, Русский, English set at 88px, the page's
-   own language in full ink.
-6. **Promises.** Price first, a failure costs nothing, nothing goes public without you: each backed by
-   what the code does (see section 4), each with its three-line ledger.
-7. **Money.** The existing honest anchor (smallest pack, a video in the app, a video through the API,
-   the free grant; "No price published yet" where nothing is configured), the pack or plan rows, the
-   quote / hold / charge / return row.
-8. **Questions** and the Google data statement (kept for the OAuth review).
-9. **Closing call** on a dark stage, then the footer.
+   dim ink), one 20px line, **one** amber button and a plain link, the welcome-credit note, and, only when the
+   live price list holds it, one price line ("A video in the app: N credits a minute of finished video").
+   Under it the **approval press**: a dark rounded stage with four tabs, Topic, Plan, Approve, Live. Each tab is
+   one drawn state of the same video: the typed topic and a "Make a plan" key; the plan (script, voice, visuals,
+   captions) with "the price is on the button before you start"; the video private on YouTube with the publish
+   check passed and an amber-outlined "Approve and publish" waiting; and the video public "by you". It starts at
+   the topic and moves on every 4.6 seconds **only while it is on screen and untouched**; hover, focus, a tap, or
+   reduced motion stop it, and the tabs always work. All four panels share one grid cell, so the stage never
+   changes height (CLS 0).
+2. **How it works.** "Three steps. The last one is yours." Give it a topic; start it at a price you have seen;
+   watch it, then publish. Beside it, the **real approval screen** (the existing captures, sample data, labelled).
+3. **Capabilities, five sections** (Video, Voice, Studio, Channels, Approvals), each: label pill, two-line
+   headline, paragraph, one black pill button, and an **example exchange**: your grey bubble, the reply row (the N
+   tile, "Nightshift", a check and "made a video"), a result drawn in flat shapes (the moon video frame, a
+   waveform, a caravan at dusk, the market arch), and small chips (language, narrator, 16:9, a style). Every card
+   carries an "Example" tag and one label for assistive tech. The Studio's nine tools are chips under its button
+   ("No credits" only on the editor and the style library). The Approvals card reuses the wording of the sign-off
+   picture on the Solutions page, so the two cannot disagree. Sections alternate the page ground and the raised
+   tone, and every second one flips the text and the card on a wide screen.
+4. **Made for people who run channels.** Three tiles linking to the three Solutions pages.
+5. **Promises.** Price first, a failure costs nothing, nothing goes public without you: each backed by what the
+   code does (section 4), each with its three-line ledger on a wide screen.
+6. **Money.** The existing honest anchor (smallest pack, a video in the app, a video through the API, the free
+   grant; "No price published yet" where nothing is configured), the pack or plan rows, the quote / hold /
+   charge / return row (tablet and up).
+7. **Questions**, and the Google data statement (kept for the OAuth review).
+8. **Closing call** on a dark stage, then the footer.
 
 ### Pricing (`/pricing`)
 
@@ -140,6 +147,76 @@ AA contrast, visible focus, `prefers-reduced-motion`, no new external request, f
 | Extra credits are on by default and can be turned off | migration 0094 `use_extra_credits boolean not null default true`; Usage page |
 | Languages: Uzbek, Russian, English | `lib/i18n/{en,ru,uz}.ts`; per-channel language setting |
 
-## 5. Honest score and risks
+## 5. Measured results
 
-See the pull request. The summary is in section 6 once the numbers are in.
+Real Chromium (chromium-1194), production builds of `main` and of this branch built the same way (Supabase
+URL pointed at the repo's read-only visual-QA fake, display prices `$10 / $45 / $160` for the packs and `$19 / $49`
+for the plans), 5 pages (landing, pricing, solutions, sign in, sign up) x 360 / 390 / 1280 x light and dark x en, ru,
+uz = **90 states per side**. Screenshots: `before/` and `after/` here (a selection, named `<page>-<width>-<theme>-<lang>.webp`;
+the full set of 180 full-page captures and the scripts are in `design-inbox/site-krea/`), `contact-*.webp` are
+before / after side by side, `after/stage-*.webp` are the four states of the hero picture.
+
+| Check | Before | After |
+| :-- | --: | --: |
+| States captured without an error | 90 / 90 | 90 / 90 |
+| axe 4.x, serious or critical | 0 | **0** (and 0 of any impact) |
+| Horizontal overflow, 360 / 390 / 1280 | 0 | **0** |
+| Controls under 44px high | 0 | **0** |
+| External requests | 0 | **0** |
+| Text under 13px, capitals, tracked labels (`tests/human-type-tokens.test.ts` now also reads `site-next.css`) | 0 | **0** |
+| CLS with every font file held back 1.2 s (30 loads: 5 pages x 3 languages x 390/1280) | max 0.014 | **max 0.0085** (landing 390 en was 0.042 until the H1 size was set so its first line breaks the same before and after the swap) |
+| Hero picture height across its four states | n/a | identical (547 at 1280, 621-675 at 360-390) |
+
+| Page and width | Transfer KB | LCP ms (local, median of 6) | Document height px |
+| :-- | --: | --: | --: |
+| landing 390 | 303 -> 323 | 158 -> 208 | 14,150 -> 14,612 |
+| landing 1280 | 313 -> 334 | 208 -> 252 | 8,821 -> 10,892 |
+| pricing 390 | 246 -> 254 | 164 -> 154 | 9,458 -> 8,880 |
+| pricing 1280 | 248 -> 255 | 192 -> 158 | 6,002 -> 6,128 |
+| solutions 390 / 1280 | 230 -> 235 / 232 -> 237 | 128 -> 124 / 152 -> 148 | 4,013 -> 4,175 / 2,536 -> 2,586 |
+| sign in 390 / 1280 | 275 -> 283 | 140 -> 114 / 200 -> 140 | 1,019 -> 1,026 / 900 -> 900 |
+| sign up 390 / 1280 | 277 -> 284 | 122 -> 146 / 148 -> 156 | 1,210 -> 1,207 / 960 -> 1,000 |
+
+Read this honestly: the landing is **not shorter** than before. It carries five capability sections that did not
+exist (Video, Voice, Studio, Channels, Approvals, each with an example), so it is 3% taller on a phone and 23%
+taller on a wide screen, and it costs 20 KB more (the new stylesheet, the stage's script and the extra drawings). Its
+local LCP is about 50 ms slower; every other page is the same or faster. Fonts did not change (one Latin file,
+34 KB; plus the Cyrillic file on Russian pages). The pricing page is shorter on a phone (the long credit steps and
+the formulas now sit behind "Show the math").
+
+## 6. Score and risks
+
+My own score against `design-rubric.md` (an independent scorer has not seen it yet; Pixel's earlier landing was
+94 to 96):
+
+| # | Criterion | Score | Why |
+| :-- | :-- | --: | :-- |
+| 1 | Identity (20) | 17 | One idea (you press publish) drawn in four states; amber, the N tile, Onest, a warm near-black stage; no cream/serif, no purple gradient. Deducted: the hero is centred (the rubric dislikes centring everything) and the capability cards are close to the chat-card pattern the owner pointed at |
+| 2 | Hierarchy and layout (15) | 14 | One headline, one amber button; 16 / 24 / 28 radii; a consistent label-headline-paragraph-button-card section; tabular numerals in prices. The hero stage is taller than its content in the shorter states on a phone |
+| 3 | Commercial clarity (15) | 14 | What it is, who it is for, the one known price above the fold, the packs and plans, credits math one tap away, the three promises. Unpriced deployments say "No price published yet" |
+| 4 | Responsive and themes (10) | 10 | 0 overflow in 90 states, 44px controls, both themes designed from tokens |
+| 5 | Accessibility (10) | 10 | axe 0, tabs with roving focus, inert inactive panels, reduced motion stops the autoplay, focus rings |
+| 6 | Performance (10) | 9 | +20 KB on the landing, +50 ms local LCP, CLS under 0.0085 with late fonts |
+| 7 | Copy and i18n (10) | 9 | Short and warm in three languages with parity; the Uzbek and Russian lines were written for the page but not read by a native speaker other than the owner |
+| 8 | Product truth (5) | 5 | Every picture is labelled "Example" and drawn; no photographs, logos, testimonials or figures; one price line only from the live list |
+| 9 | Polish (5) | 4 | Motion used once and on purpose; the 404 and the loading states were not touched |
+| | Total | **92** | |
+
+Against Krea: ahead on the clarity of what the product does and on trust that is true (a checked table of claims);
+behind on visual richness (their hero is photographic and their tiles carry real renders; ours are flat drawings,
+by rule) and on the amount of proof (they have millions of users; we have none to show and say none).
+
+Risks:
+
+1. The landing is long and heavier than before; if the owner wants it shorter, the first things to cut are the Studio
+   and Channels capability sections (their content lives on the Solutions pages).
+2. The hero picture's copy ("Make a plan", "Start", "Approve and publish") names buttons that exist in the app; if a
+   button is renamed there, the drawn one should follow.
+3. Uzbek and Russian copy for the new strings was written by the builder; the owner reads Uzbek, a native pass on
+   `lib/i18n/site/uz.ts` is the one review this needs.
+4. The hero price line and the plan rows only appear when the deployment publishes prices; the screenshots here are
+   taken with display prices set, and with none the page says "No price published yet" (both states are tested).
+5. The `ATELIER_CONCEPTS` pages still read `site.hero`, `site.rundown`, `site.rules` and `site.desk`; their copy
+   changed with the headline, their layouts did not.
+6. Sections alternate tones with a data attribute and CSS; a new section that forgets `data-tone` will sit on the
+   ground colour next to another ground section.
