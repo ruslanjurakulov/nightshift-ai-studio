@@ -45,22 +45,23 @@ ROW_RE = re.compile(
 )
 
 #: The units this file prices, and the ones it guesses (their note says est.:).
-EXPECTED_COUNT = 18
+EXPECTED_COUNT = 11
 EXPECTED_ESTIMATES = {
     "model_openai_gpt_image_2_5_flare_image_low",
     "model_openai_gpt_image_2_5_sunburst_image_low",
     "model_elevenlabs_scribe_v2_second",
-    "scene_regenerate",
-    "scene_regenerate_clip_kling",
-    "scene_regenerate_clip_veo",
-    "scene_regenerate_clip_seedance",
-    "scene_regenerate_clip_wan",
     "repurpose_clip",
-    "reply_draft",
 }
 
 #: Chargeable units left without a price ON PURPOSE, each with the reason.
 UNPRICED_ON_PURPOSE = {
+    "video_minute": "held back (Lens-380): publishes the public rate and starts paid runs; owner applies when ready",
+    "reply_draft": "held back (Lens-380): the comment inbox is the last deploy step",
+    "scene_regenerate": "held back (Lens-380): the worker and 0076/0085 first",
+    "scene_regenerate_clip_kling": "held back (Lens-380): per-clip unit loses money on a long clip",
+    "scene_regenerate_clip_veo": "held back (Lens-380): per-clip unit loses money on a long clip",
+    "scene_regenerate_clip_seedance": "held back (Lens-380): per-clip unit loses money on a long clip",
+    "scene_regenerate_clip_wan": "held back (Lens-380): per-clip unit loses money on a long clip",
     "scene_regenerate_clip_minimax": "its default model has no price in the repository",
     "scene_regenerate_clip_higgsfield": "its default model has no price in the repository",
     "model_seedance_1_5_pro_second_480p_silent": "registry: no price read, not sold",
@@ -250,6 +251,13 @@ class PriceDefaultsFile(unittest.TestCase):
                    cl.PEXELS_REQUESTS, cl.UPLOAD_BYTES, cl.VIDEO_GEN_CLIPS, cl.IMAGE_GENERATIONS, cl.VISION_CALLS}
         listed = {u for u, why in UNPRICED_ON_PURPOSE.items() if why.startswith("ledger unit")}
         self.assertEqual(in_code, listed)
+
+    def test_held_rows_are_only_comments(self):
+        held = [u for u, why in UNPRICED_ON_PURPOSE.items() if why.startswith("held back")]
+        self.assertEqual(len(held), 7)
+        for unit in held:
+            self.assertNotIn(f"('{unit}'", self.code, f"{unit} must not be applied by this file")
+            self.assertRegex(self.text, rf"(?m)^--\s+\('{unit}'", f"{unit} should stay visible as a commented row")
 
 
 if __name__ == "__main__":

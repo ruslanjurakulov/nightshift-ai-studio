@@ -26,16 +26,14 @@
 -- 'est.:' is a guess or an assumption the owner should look at; every other note
 -- cites a figure that is written down in this repository.
 --
--- WHAT THIS FILE PRICES (18 units)
+-- WHAT THIS FILE PRICES (11 units; 7 more are HELD BACK, see the end of the file)
 --   Picture quality tiers (0060 sells these three models by tier; the tier row
 --   is what a quote reads, the flat row only opens the catalog):
 --     model_openai_gpt_image_2_image_{low,medium,high}
 --     model_openai_gpt_image_2_5_flare_image_{low,medium,high}
 --     model_openai_gpt_image_2_5_sunburst_image_{low,medium,high}
 --   Captions:   model_elevenlabs_scribe_v2_second
---   Product:    video_minute, scene_regenerate,
---               scene_regenerate_clip_{kling,veo,seedance,wan},
---               repurpose_clip, reply_draft
+--   Product:    repurpose_clip (apply after migration 0080)
 --
 -- WHAT IT DELIBERATELY LEAVES UNPRICED (never free, never guessed)
 --   * scene_regenerate_clip_minimax, scene_regenerate_clip_higgsfield: the
@@ -81,33 +79,11 @@ insert into public.credit_prices (unit, credits_per_unit, margin, note) values
   -- $0.40/h = $0.000111/s = 0.0111 cents/s; rounded up to 0.0112.
   ('model_elevenlabs_scribe_v2_second', 0.0112, 2.0, 'est.: speech-to-text is billed per audio hour by plan, no figure read; assumed $0.40/h = 0.0112 cr/s. Confirm on the vendor plan page.'),
 
-  -- Product-level units. A finished video minute: docs/BILLING_PLANS.md and
-  -- docs/API.md say the site sells a minute for about 60 credits and a minute
-  -- costs about $0.20 (= 20 credits) to make: 20 x (1 + 2.0) = 60 charged.
-  ('video_minute', 20, 2.0, 'Docs: a finished minute costs ~$0.20 (20 cr) and sells for ~60 cr (BILLING_PLANS, API.md): 20 x (1 + 2.0). Run now holds minutes x this.'),
-
-  -- Regenerate scene (0076): price = scene_regenerate + n new clips x
-  -- scene_regenerate_clip_<provider>, at least job_minimum.
-  ('scene_regenerate', 3, 2.0, 'est.: re-cut and re-encode one video + preview upload, no vendor call; ~15% of the 20-cr cost of a finished minute. Clips are priced by the _clip_ rows.'),
-  -- Per generated clip = the provider's default model, 5 s (the scene share the
-  -- worker falls back to), silent, 720p, at the list price in the registry and
-  -- the corrections file. Longer clips are covered by the margin up to ~2.5x
-  -- the assumed length (Veo snaps 5 s to 4 s: 4 x $0.40).
-  ('scene_regenerate_clip_kling',    21,  1.5, 'est.: 5 s clip, default Kling v2.6 720p silent $0.042/s (corrections file) = $0.21. Real clips are 5 or 10 s.'),
-  ('scene_regenerate_clip_veo',      160, 1.5, 'est.: 4 s clip (a 5 s scene snaps to 4), default Veo 3.1 $0.40/s with audio (registry) = $1.60. Clips are 4, 6 or 8 s.'),
-  ('scene_regenerate_clip_seedance', 27,  1.5, 'est.: 5 s clip, default Seedance 1.0 pro 720p ~$0.054/s (est. in prices_2026_10_01.sql) = $0.27.'),
-  ('scene_regenerate_clip_wan',      50,  1.5, 'est.: 5 s clip, default Wan 2.7 720p $0.10/s (corrections file) = $0.50. Clips run 2-15 s; a 15 s clip costs more than it charges.'),
-
   -- Repurpose (0080): one price per clip cut from a master. A clip is one
   -- ffmpeg cut of 15-60 s on the worker with deterministic captions: no model
   -- or vendor call.
-  ('repurpose_clip', 2, 2.0, 'est.: one ffmpeg cut of 15-60 s on the worker, captions are deterministic (no model call); ~10% of the 20-cr cost of a finished minute.'),
+  ('repurpose_clip', 2, 2.0, 'est.: one ffmpeg cut of 15-60 s on the worker, captions are deterministic (no model call); ~10% of the 20-cr cost of a finished minute.')
 
-  -- Comment replies (0081): one drafting-model request per draft, a comment
-  -- plus the video title and tone line in, a short reply out: the same request
-  -- shape and rate as model_gemini_3_6_flash_request after the correction (0.4
-  -- cr = the 2027 rate). The job_minimum floor applies on top.
-  ('reply_draft', 0.4, 2.0, 'est.: one drafting request, same shape and rate as model_gemini_3_6_flash_request (1.5K in + 200 out, 0.4 cr at the 2027 rate). job_minimum floors it.')
 on conflict (unit) do nothing;
 
 -- ───────────────────────────────────────────────────────────────────────────
@@ -124,3 +100,42 @@ on conflict (unit) do nothing;
 --   (select count(*) from public.credit_prices where credits_per_unit <= 0) as nonpositive_rates,   -- 0
 --   (select string_agg(unit, ', ' order by unit) from public.credit_prices
 --     where note like 'est.:%') as estimates_to_review;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- HELD BACK ON PURPOSE (independent review, Lens-380). These seven rows are
+-- NOT applied by this file. Each switches on a feature or a public figure that
+-- has a precondition; apply one only when its condition holds, by removing the
+-- leading "--" from its line and running it on its own.
+--   * video_minute: publishes "60 credits per minute" on the public pricing
+--     page and starts paid Run-now holds. Apply when you want paid runs.
+--   * reply_draft: the comment inbox is the last step (docs/WORKER_VPS.md):
+--     0081 and 0090 applied, worker deployed, NIGHTSHIFT_COMMENT_INBOX=on.
+--   * scene_regenerate and scene_regenerate_clip_*: the worker must be updated
+--     and 0076 then 0085 applied first, or an old worker substitutes stock for
+--     generated scenes while charging. The clip rows are charged PER CLIP and
+--     nothing multiplies by length, so the longest clip loses money (15 s Wan
+--     $1.50 cost vs $1.25 charged; 8 s Veo $3.20 vs $2.88; 10 s Kling, 10 s
+--     Seedance likewise). Reprice each clip row for its LONGEST clip before
+--     applying. The values below assume 4-5 s and are only a starting point.
+-- ───────────────────────────────────────────────────────────────────────────
+--   insert into public.credit_prices (unit, credits_per_unit, margin, note) values
+--   ('video_minute', 20, 2.0, 'Docs: a finished minute costs ~$0.20 (20 cr) and sells for ~60 cr (BILLING_PLANS, API.md): 20 x (1 + 2.0). Run now holds minutes x this.')
+--   on conflict (unit) do nothing;
+--   insert into public.credit_prices (unit, credits_per_unit, margin, note) values
+--   ('scene_regenerate', 3, 2.0, 'est.: re-cut and re-encode one video + preview upload, no vendor call; ~15% of the 20-cr cost of a finished minute. Clips are priced by the _clip_ rows.')
+--   on conflict (unit) do nothing;
+--   insert into public.credit_prices (unit, credits_per_unit, margin, note) values
+--   ('scene_regenerate_clip_kling',    21,  1.5, 'est.: 5 s clip, default Kling v2.6 720p silent $0.042/s (corrections file) = $0.21. Real clips are 5 or 10 s.')
+--   on conflict (unit) do nothing;
+--   insert into public.credit_prices (unit, credits_per_unit, margin, note) values
+--   ('scene_regenerate_clip_veo',      160, 1.5, 'est.: 4 s clip (a 5 s scene snaps to 4), default Veo 3.1 $0.40/s with audio (registry) = $1.60. Clips are 4, 6 or 8 s.')
+--   on conflict (unit) do nothing;
+--   insert into public.credit_prices (unit, credits_per_unit, margin, note) values
+--   ('scene_regenerate_clip_seedance', 27,  1.5, 'est.: 5 s clip, default Seedance 1.0 pro 720p ~$0.054/s (est. in prices_2026_10_01.sql) = $0.27.')
+--   on conflict (unit) do nothing;
+--   insert into public.credit_prices (unit, credits_per_unit, margin, note) values
+--   ('scene_regenerate_clip_wan',      50,  1.5, 'est.: 5 s clip, default Wan 2.7 720p $0.10/s (corrections file) = $0.50. Clips run 2-15 s; a 15 s clip costs more than it charges.')
+--   on conflict (unit) do nothing;
+--   insert into public.credit_prices (unit, credits_per_unit, margin, note) values
+--   ('reply_draft', 0.4, 2.0, 'est.: one drafting request, same shape and rate as model_gemini_3_6_flash_request (1.5K in + 200 out, 0.4 cr at the 2027 rate). job_minimum floors it.')
+--   on conflict (unit) do nothing;
