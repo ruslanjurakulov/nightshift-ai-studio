@@ -185,12 +185,13 @@ export default async function CreditsPage() {
       )}
       {buy === "admin_only" && <BuyCreditsAdminOnly />}
 
-      {/* Invite friends: for a workspace that pays, and for anyone who can run it
-          (the reward is paid into it). Left out before migration 0092. */}
-      {!exempt && org.current.role !== "viewer" && org.current.role !== "editor" && inviteRead.state === "ok" && (
+      {/* Invite friends: for a workspace that pays (the reward is paid into it);
+          the database refuses anyone who does not run the workspace. Left out
+          before migration 0092. */}
+      {!exempt && inviteRead.state === "ok" && (
         <InviteFriendsCard invite={inviteRead.value} orgId={orgId} />
       )}
-      {!exempt && org.current.role !== "viewer" && org.current.role !== "editor" && inviteRead.state === "failed" && (
+      {!exempt && inviteRead.state === "failed" && (
         <section id="invite" className="panel flex scroll-mt-24 flex-col gap-2 p-4" aria-labelledby="invite-title">
           <h2 id="invite-title" className="t-section">
             {t.invite.title}
