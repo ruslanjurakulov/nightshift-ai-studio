@@ -1,6 +1,6 @@
 -- 0093_mcp_oauth.sql — connect an AI app to the MCP server without an API key
 -- (MCP authorization, spec 2026-07-28): Nightshift is the OAuth authorization
--- server for its own MCP resource. Ledger rows BR-L-178 .. BR-L-195.
+-- server for its own MCP resource. Ledger rows BR-L-179 .. BR-L-198.
 --
 -- THE MODEL
 --   * A person signs in, sees a consent screen and sets a per-connection monthly
@@ -591,13 +591,17 @@ begin
   v_ip := encode(sha256(convert_to(left(coalesce(p_ip, ''), 80) || ':' || (select pepper from public.oauth_settings), 'UTF8')), 'hex');
 
   perform pg_advisory_xact_lock(hashtextextended('oauth_register', 0));
-  perform public.oauth_gc();
+  -- The two hourly counts are index probes; a refused call stops here. The
+  -- collector (scans of the token and grant tables) runs only for a call that
+  -- is about to be accepted, so a flood of refused calls cannot make the
+  -- database scan those tables once per call (Lens-386A).
   if (select count(*) from public.oauth_clients where ip_hash = v_ip and created_at > now() - interval '1 hour')
        >= (lim ->> 'register_per_ip_hour')::int
      or (select count(*) from public.oauth_clients where created_at > now() - interval '1 hour')
        >= (lim ->> 'register_global_hour')::int then
     return jsonb_build_object('ok', false, 'error', 'rate_limited', 'description', 'Too many registrations; try again later.');
   end if;
+  perform public.oauth_gc();
   if (select count(*) from public.oauth_clients) >= (lim ->> 'max_clients')::int then
     return jsonb_build_object('ok', false, 'error', 'rate_limited', 'description', 'Registration is closed for now; try again later.');
   end if;
@@ -757,8 +761,15 @@ $$;
 -- ───────────────────────────────────────────────────────────────────────────
 -- The caller (the server route) mints the tokens and passes only their SHA-256.
 
+-- PKCE is checked HERE, from the verifier itself: this function is callable with
+-- the public anon key, so a digest handed in by a caller (the route used to pass
+-- the challenge) would let anyone who saw a code and the authorization URL's
+-- challenge redeem the code without the verifier (Lens-386A). The first line
+-- drops the earlier signature of this file's draft (the parameter was named
+-- p_challenge), which `create or replace` cannot rename.
+drop function if exists public.oauth_exchange_code(text, uuid, text, text, text, text, text);
 create or replace function public.oauth_exchange_code(
-  p_code_hash text, p_client_id uuid, p_redirect_uri text, p_challenge text, p_resource text,
+  p_code_hash text, p_client_id uuid, p_redirect_uri text, p_verifier text, p_resource text,
   p_access_hash text, p_refresh_hash text
 ) returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
@@ -767,11 +778,16 @@ declare
   cd   public.oauth_codes;
   g    public.oauth_grants;
   bad  jsonb := jsonb_build_object('ok', false, 'error', 'invalid_grant');
+  -- RFC 7636 4.2: base64url (no padding) of SHA-256(verifier). A SHA-256 is 44
+  -- base64 characters, so no line break is ever inserted.
+  v_challenge text;
 begin
   if coalesce(p_code_hash, '') !~ '^[0-9a-f]{64}$' or coalesce(p_access_hash, '') !~ '^[0-9a-f]{64}$'
-     or coalesce(p_refresh_hash, '') !~ '^[0-9a-f]{64}$' or p_access_hash = p_refresh_hash then
+     or coalesce(p_refresh_hash, '') !~ '^[0-9a-f]{64}$' or p_access_hash = p_refresh_hash
+     or coalesce(p_verifier, '') !~ '^[A-Za-z0-9._~-]{43,128}$' then
     return bad;
   end if;
+  v_challenge := translate(rtrim(encode(sha256(convert_to(p_verifier, 'UTF8')), 'base64'), '='), '+/', '-_');
   select * into cd from public.oauth_codes where code_hash = p_code_hash for update;
   if cd.code_hash is null then
     return bad;
@@ -790,7 +806,7 @@ begin
   -- verifier or redirect burns the code (the one holding it is not the client).
   if cd.client_id is distinct from p_client_id
      or cd.redirect_uri is distinct from p_redirect_uri
-     or sha256(convert_to(coalesce(p_challenge, ''), 'UTF8')) <> sha256(convert_to(cd.code_challenge, 'UTF8')) then
+     or sha256(convert_to(v_challenge, 'UTF8')) <> sha256(convert_to(cd.code_challenge, 'UTF8')) then
     update public.oauth_codes set used_at = now() where code_hash = p_code_hash;
     perform public.oauth_revoke_grant_locked(cd.grant_id, 'client');
     return bad;
@@ -979,6 +995,15 @@ begin
        or not public.render_job_params_valid(v_p, 'daily') then
       return public.api_finish(ctx, public.api_err(400, 'invalid_params',
         'Allowed: topic (<=300 chars), niche (<=120), duration (whole seconds, 30-3600), language (<=40), visual_style (<=300), video_provider, image_provider.'));
+    end if;
+
+    -- A limit of 0 is a read-only connection, whoever pays: the operator's exempt
+    -- workspace spends nothing, so nothing below would ever count against the
+    -- limit; zero is the one limit that needs no counting (Lens-386A).
+    if (ctx ->> 'exempt')::boolean and (ctx ->> 'limit_credits')::numeric <= 0 then
+      return public.api_finish(ctx, public.api_err(402, 'connection_limit_reached',
+        'This connection is read-only: its monthly spending limit is 0.',
+        jsonb_build_object('limit_credits', 0, 'spent_credits', 0, 'price_credits', 0)));
     end if;
 
     if not (ctx ->> 'exempt')::boolean then

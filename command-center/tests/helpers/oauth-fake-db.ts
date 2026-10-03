@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Rpc } from "@/lib/api/operations";
 
 /**
@@ -87,7 +88,7 @@ export class FakeOauthDb {
     if (!c) return bad;
     if (c.used) { this.revoke(c.grant); return bad; }
     if (c.expires < this.now || this.grants.get(c.grant)?.revoked) return bad;
-    if (c.clientId !== a.p_client_id || c.redirect !== a.p_redirect_uri || c.challenge !== a.p_challenge) {
+    if (c.clientId !== a.p_client_id || c.redirect !== a.p_redirect_uri || c.challenge !== createHash("sha256").update(a.p_verifier ?? "").digest("base64url")) {
       c.used = true; this.revoke(c.grant); return bad;
     }
     if (a.p_resource !== c.resource) return { ok: false, error: "invalid_target" };

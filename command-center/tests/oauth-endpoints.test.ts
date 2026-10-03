@@ -133,12 +133,15 @@ describe("POST /oauth/token — authorization_code", () => {
     expect(body.access_token).toMatch(ACCESS_TOKEN_RE);
     expect(body.refresh_token).toMatch(REFRESH_TOKEN_RE);
     expect(body).toMatchObject({ token_type: "Bearer", expires_in: 3600, scope: "videos:read videos:create videos:publish" });
-    // The database got hashes only, never a token, a code or a verifier.
+    // The database got hashes of every token and of the code, never one itself. The PKCE verifier is
+    // the one raw value it is given (single use, worthless without the code): the function is callable
+    // with the public key, so it checks the S256 digest itself instead of trusting one from a caller.
     const sent = JSON.stringify(db.calls);
     expect(sent).not.toContain(body.access_token);
     expect(sent).not.toContain(body.refresh_token);
     expect(sent).not.toContain(a.code);
-    expect(sent).not.toContain(a.verifier);
+    expect(db.calls[0].args.p_verifier).toBe(a.verifier);
+    expect(db.calls[0].args).not.toHaveProperty("p_challenge");
     expect(db.calls[0].args.p_access_hash).toBe(await hashSecret(body.access_token));
   });
 

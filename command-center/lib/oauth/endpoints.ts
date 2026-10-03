@@ -20,7 +20,6 @@ import {
   hashSecret,
   newAccessToken,
   newRefreshToken,
-  pkceChallenge,
 } from "@/lib/oauth/tokens";
 import { boundedText, clientIp, oauthError, oauthJson } from "@/lib/oauth/responses";
 
@@ -174,7 +173,8 @@ export async function tokenEndpoint(request: Request, deps: OauthDeps): Promise<
       p_code_hash: await hashSecret(code),
       p_client_id: clientId,
       p_redirect_uri: redirectUri,
-      p_challenge: await pkceChallenge(verifier),
+      // The database derives the S256 challenge itself: this function is callable with the public key, so it must not trust a digest from a caller.
+      p_verifier: verifier,
       p_resource: resource,
       p_access_hash: await hashSecret(access),
       p_refresh_hash: await hashSecret(refreshTok),

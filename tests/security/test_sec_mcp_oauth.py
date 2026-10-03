@@ -161,10 +161,11 @@ def decide(db, uid, secret, allow=True, limit=500, code=None):
     return res, code
 
 
-def exchange(db, code, client_id, verifier_challenge, redirect=REDIRECT, resource=RESOURCE):
+def exchange(db, code, client_id, verifier, redirect=REDIRECT, resource=RESOURCE):
+    """The token endpoint's database call: the PKCE verifier itself goes in (0093 checks it)."""
     at, rt = "at-" + secrets.token_urlsafe(32), "rt-" + secrets.token_urlsafe(32)
     res = db.anon("select public.oauth_exchange_code(%s,%s,%s,%s,%s,%s,%s)",
-                  [sha(code), client_id, redirect, verifier_challenge, resource, sha(at), sha(rt)])
+                  [sha(code), client_id, redirect, verifier, resource, sha(at), sha(rt)])
     return res, at, rt
 
 
@@ -184,7 +185,7 @@ def connect(db, uid=UA, limit=500, uris=(REDIRECT,), redirect=REDIRECT):
     assert res["ok"] and res["entitled"], res
     dec, code = decide(db, uid, secret, limit=limit)
     assert dec["ok"] and dec["allowed"], dec
-    ex, at, rt = exchange(db, code, cid, challenge, redirect=redirect)
+    ex, at, rt = exchange(db, code, cid, verifier, redirect=redirect)
     assert ex["ok"], ex
     grant = db.su("select g.id::text from public.oauth_grants g join public.oauth_tokens t on t.grant_id = g.id "
                   "where t.token_hash = %s", [sha(at)])[0][0]
@@ -473,10 +474,10 @@ def test_a_code_is_single_use_and_a_replay_kills_what_the_first_use_made(db):
     verifier, challenge = pkce()
     _, secret = begin(db, UA, cid, challenge=challenge)
     _, code = decide(db, UA, secret)
-    first, at, rt = exchange(db, code, cid, challenge)
+    first, at, rt = exchange(db, code, cid, verifier)
     assert first["ok"]
     assert db.anon("select public.oauth_check(%s,null)", [sha(at)])["ok"] is True
-    second, at2, _ = exchange(db, code, cid, challenge)
+    second, at2, _ = exchange(db, code, cid, verifier)
     assert second == {"ok": False, "error": "invalid_grant"}
     # The leaked-code response: the first use's tokens are dead and so is the refresh token.
     assert db.anon("select public.oauth_check(%s,null)", [sha(at)])["ok"] is False
@@ -485,12 +486,12 @@ def test_a_code_is_single_use_and_a_replay_kills_what_the_first_use_made(db):
 
 def test_two_simultaneous_redemptions_of_one_code_produce_at_most_one_session(db):
     cid = client(db)
-    _, challenge = pkce()
+    verifier, challenge = pkce()
     _, secret = begin(db, UA, cid, challenge=challenge)
     _, code = decide(db, UA, secret)
 
     def go(_):
-        return exchange(db, code, cid, challenge)
+        return exchange(db, code, cid, verifier)
 
     with cf.ThreadPoolExecutor(8) as ex:
         outs = list(ex.map(go, range(8)))
@@ -505,33 +506,33 @@ def test_two_simultaneous_redemptions_of_one_code_produce_at_most_one_session(db
 def test_a_code_is_bound_to_its_pkce_challenge_redirect_client_and_resource(db, what):
     cid = client(db, uris=(REDIRECT, LOOPBACK))
     other = client(db)
-    _, challenge = pkce()
+    verifier, challenge = pkce()
     _, secret = begin(db, UA, cid, challenge=challenge)
     _, code = decide(db, UA, secret)
-    kw = {"verifier": dict(verifier_challenge=pkce()[1]), "redirect": dict(redirect=LOOPBACK),
+    kw = {"verifier": dict(verifier=pkce()[0]), "redirect": dict(redirect=LOOPBACK),
           "client": dict(client_id=other), "resource": dict(resource="https://evil.example/mcp")}[what]
-    args = dict(code=code, client_id=cid, verifier_challenge=challenge)
+    args = dict(code=code, client_id=cid, verifier=verifier)
     args.update(kw)
     res, at, _ = exchange(db, **args)
     assert res["ok"] is False, res
     # A wrong verifier / redirect / client burns the code; the right one afterwards is refused too.
     if what != "resource":
-        assert exchange(db, code, cid, challenge)[0]["ok"] is False
+        assert exchange(db, code, cid, verifier)[0]["ok"] is False
     assert db.anon("select public.oauth_check(%s,null)", [sha(at)])["ok"] is False
 
 
 def test_an_expired_code_is_refused(db):
     cid = client(db)
-    _, challenge = pkce()
+    verifier, challenge = pkce()
     _, secret = begin(db, UA, cid, challenge=challenge)
     _, code = decide(db, UA, secret)
     db.su("update public.oauth_codes set expires_at = now() - interval '1 second' where code_hash=%s", [sha(code)])
-    assert exchange(db, code, cid, challenge)[0] == {"ok": False, "error": "invalid_grant"}
+    assert exchange(db, code, cid, verifier)[0] == {"ok": False, "error": "invalid_grant"}
 
 
 def test_a_code_lives_sixty_seconds(db):
     cid = client(db)
-    _, challenge = pkce()
+    verifier, challenge = pkce()
     _, secret = begin(db, UA, cid, challenge=challenge)
     _, code = decide(db, UA, secret)
     secs = db.su("select extract(epoch from expires_at - created_at)::int from public.oauth_codes where code_hash=%s", [sha(code)])[0][0]
@@ -540,16 +541,16 @@ def test_a_code_lives_sixty_seconds(db):
 
 def test_free_cannot_redeem_even_a_code_made_while_subscribed(db):
     cid = client(db)
-    _, challenge = pkce()
+    verifier, challenge = pkce()
     _, secret = begin(db, UB, cid, challenge=challenge)
     _, code = decide(db, UB, secret)
     set_plan(db, ORG_B, "canceled")
     try:
-        assert exchange(db, code, cid, challenge)[0] == {"ok": False, "error": "subscription_required"}
+        assert exchange(db, code, cid, verifier)[0] == {"ok": False, "error": "subscription_required"}
     finally:
         set_plan(db, ORG_B, "active")
     # Nothing was spent: renewing the plan and trying again works.
-    assert exchange(db, code, cid, challenge)[0]["ok"] is True
+    assert exchange(db, code, cid, verifier)[0]["ok"] is True
 
 
 def test_garbage_input_to_the_token_functions_is_refused_not_raised(db):
@@ -674,7 +675,7 @@ def test_the_scopes_a_person_gave_are_the_scopes_a_token_has(db):
     verifier, challenge = pkce()
     res, secret = begin(db, UA, cid, challenge=challenge, scope="videos:read")
     _, code = decide(db, UA, secret)
-    _ex, at, _ = exchange(db, code, cid, challenge)
+    _ex, at, _ = exchange(db, code, cid, verifier)
     conn_ = {"at": at}
     assert db.anon("select public.api_list_channels(%s,null)", [sha(at)])["ok"] is True
     for q, scope in [("select public.oauth_create_video(%s,'chan-a','{\"duration\":60}'::jsonb,null,null)", "videos:create"),
@@ -1054,3 +1055,62 @@ def test_replaying_the_migration_twice_changes_nothing(db):
     assert before == after
     assert db.anon("select public.oauth_check(%s,null)", [sha(c["at"])])["ok"] is True
     assert db.su("select status from public.entitlement_keys where key='mcp'")[0][0] == "enforced"
+
+
+# ── Lens-386A: PKCE is checked by the database, a limit of 0 is read-only for the operator too,
+#    and a refused registration costs no table scan ────────────────────────────────────────────
+
+def test_pkce_is_checked_in_the_database_not_trusted_from_the_caller(db):
+    """The token functions are callable with the public anon key. Someone who saw the code and the
+    authorization URL (so knows the challenge) must not be able to redeem without the verifier."""
+    cid = client(db)
+    verifier, challenge = pkce()
+    _, secret = begin(db, UA, cid, challenge=challenge)
+    _, code = decide(db, UA, secret)
+    # the challenge presented where the verifier belongs: refused, and it burns the code
+    res, at, _ = exchange(db, code, cid, challenge)
+    assert res == {"ok": False, "error": "invalid_grant"}
+    assert exchange(db, code, cid, verifier)[0]["ok"] is False
+    assert db.anon("select public.oauth_check(%s,null)", [sha(at)])["ok"] is False
+    # a verifier that is not RFC 7636 shaped never reaches the digest (and burns nothing)
+    cid2 = client(db)
+    v2, c2 = pkce()
+    _, secret2 = begin(db, UA, cid2, challenge=c2)
+    _, code2 = decide(db, UA, secret2)
+    for bad in ("", "short", "x" * 129, "has space " + "a" * 40, c2 + "="):
+        assert exchange(db, code2, cid2, bad)[0] == {"ok": False, "error": "invalid_grant"}
+    assert exchange(db, code2, cid2, v2)[0]["ok"] is True
+    # the S256 vector of RFC 7636 appendix B
+    cid3 = client(db)
+    _, secret3 = begin(db, UA, cid3, challenge="E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+    _, code3 = decide(db, UA, secret3)
+    assert exchange(db, code3, cid3, "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")[0]["ok"] is True
+
+
+def test_a_limit_of_zero_is_read_only_for_the_operators_exempt_workspace_too(db):
+    c = connect(db, uid=UOP, limit=0)
+    jobs = lambda: db.su("select count(*) from public.render_jobs where channel_id='chan-op'")[0][0]
+    before = jobs()
+    r = create(db, c, channel="chan-op", params={"duration": 60}, idem="op-zero")
+    assert code_of(r) == "connection_limit_reached", r
+    assert db.su("select count(*) from public.oauth_runs where grant_id=%s", [c["grant"]])[0][0] == 0
+    assert jobs() == before
+    # raised by the person, the same connection creates (the exempt workspace is never charged)
+    assert db.user(UOP, "select public.oauth_set_grant_limit(%s::uuid, 10)", [c["grant"]]) is True
+    assert create(db, c, channel="chan-op", params={"duration": 60}, idem="op-ten")["ok"] is True
+
+
+def test_a_refused_registration_does_not_run_the_collector(db):
+    stale = db.su("insert into public.oauth_clients (client_name, redirect_uris, ip_hash, created_at) "
+                  "values ('stale2', array['https://s2.example.com/cb'], %s, now() - interval '3 days') returning client_id::text", [sha("s2")])[0][0]
+    ip = "198.19.0." + uuid.uuid4().hex[:6]
+    db.su("insert into public.oauth_clients (client_name, redirect_uris, ip_hash) "
+          "select 'flood2', array['https://f2.example.com/cb'], %s from generate_series(1, 300)", [sha("f2")])
+    try:
+        assert register(db, ip=ip)["error"] == "rate_limited"
+        assert db.su("select count(*) from public.oauth_clients where client_id=%s", [stale])[0][0] == 1, \
+            "a refused call must not scan and delete (it is the unauthenticated flood's cheapest lever)"
+    finally:
+        db.su("delete from public.oauth_clients where client_name = 'flood2'")
+    assert register(db, ip=ip)["ok"] is True  # an accepted call still collects
+    assert db.su("select count(*) from public.oauth_clients where client_id=%s", [stale])[0][0] == 0
