@@ -1063,7 +1063,7 @@ export function GeneratePanel({
         locale={locale}
         icon={<span aria-hidden className={`ns-rec${quote.status === "quoting" || submitting ? " pulse" : ""}`} />}
       />
-      <p id="gen-status" className={`min-h-[18px] text-[12px]${desk ? "" : " text-center"}`} aria-live="polite">
+      <p id="gen-status" className={`min-h-[18px] text-xs${desk ? "" : " text-center"}`} aria-live="polite">
         {notice?.kind === "ok" ? (
           <span className="text-[var(--color-ok)]">{t.gen.started}</span>
         ) : errorCode ? (

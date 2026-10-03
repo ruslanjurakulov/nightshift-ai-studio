@@ -218,7 +218,7 @@ export function AutonomyView({
                     </td>
                     <td className="px-4 py-2 mono text-xs text-[var(--color-primary)]">{a.agent}</td>
                     <td className="px-4 py-2 mono text-xs text-[var(--color-fg)]">{a.event}</td>
-                    <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{a.videoId ?? t.common.dash}</td>
+                    <td className="px-4 py-2 mono text-xs text-[var(--color-muted)]">{a.videoId ?? t.common.dash}</td>
                     <td className="px-4 py-2 text-xs font-semibold" style={{ color: OUTCOME_COLOR[a.outcome] }}>
                       {String(t.auto[OUTCOME_KEY[a.outcome]])}
                     </td>

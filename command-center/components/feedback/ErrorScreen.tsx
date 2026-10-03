@@ -57,7 +57,7 @@ export function ErrorScreen({
           {t.ux.errorHome}
         </Link>
       </div>
-      {digest && <p className="tnum text-xs text-[var(--color-muted)]">{fmt(t.ux.errorRef, { digest })}</p>}
+      {digest && <p className="mono text-xs text-[var(--color-muted)]">{fmt(t.ux.errorRef, { digest })}</p>}
     </div>
   );
 }

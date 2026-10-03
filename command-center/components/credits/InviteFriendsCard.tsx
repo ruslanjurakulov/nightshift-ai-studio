@@ -138,7 +138,7 @@ export function InviteFriendsCard({ invite, orgId }: { invite: MyInvite; orgId: 
                 autoComplete="off"
                 autoCapitalize="off"
                 spellCheck={false}
-                className="tnum min-h-11 min-w-0 flex-1 resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-base leading-snug sm:text-sm text-[var(--color-fg)] outline-none [overflow-wrap:anywhere] focus:border-[var(--color-primary)]"
+                className="mono min-h-11 min-w-0 flex-1 resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-base leading-snug sm:text-sm text-[var(--color-fg)] outline-none [overflow-wrap:anywhere] focus:border-[var(--color-primary)]"
               />
               <button
                 type="button"

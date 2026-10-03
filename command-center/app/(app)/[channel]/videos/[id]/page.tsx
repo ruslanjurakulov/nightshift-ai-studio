@@ -322,11 +322,11 @@ export default async function VideoDetail({
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field
                   label={t.held.gateBlocks}
-                  value={heldVerdict.blocks.length ? <span className="tnum text-xs">{heldVerdict.blocks.join(", ")}</span> : t.common.dash}
+                  value={heldVerdict.blocks.length ? <span className="mono text-xs">{heldVerdict.blocks.join(", ")}</span> : t.common.dash}
                 />
                 <Field
                   label={t.held.gateWarnings}
-                  value={heldVerdict.warnings.length ? <span className="tnum text-xs">{heldVerdict.warnings.join(", ")}</span> : t.common.dash}
+                  value={heldVerdict.warnings.length ? <span className="mono text-xs">{heldVerdict.warnings.join(", ")}</span> : t.common.dash}
                 />
               </div>
             ) : (
