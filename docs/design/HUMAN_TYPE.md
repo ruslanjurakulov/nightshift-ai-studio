@@ -205,8 +205,8 @@ before over after. The tool's reports are in `docs/design/design-human/qa/`.
 | LCP, landing at 390 (local, warm) | about 340 ms | about 150 ms |
 
 (The CLS test is `Playwright route` delaying every `.woff2` by 1.2 s and reading
-`layout-shift` entries for 2.8 s; the 0.014 left on English is the swap of the
-headline, below the 0.02 target.)
+`layout-shift` entries for 2.8 s; what is left on English and Uzbek is the late swap itself, under the
+0.02 target.)
 
 ## 7. What this change touched and what it left alone
 
