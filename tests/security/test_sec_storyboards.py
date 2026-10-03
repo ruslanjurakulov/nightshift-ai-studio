@@ -29,6 +29,7 @@ import psycopg
 
 import sec_db
 from sec_db import ANON, SERVICE, acting, as_superuser
+from sec_scenario import seat_invitee
 from sec_storyboard_0057 import STORYBOARD, insert
 
 PRICES = {"video_minute": 12, "job_minimum": 5}  # 300 s = 60 credits
@@ -109,10 +110,10 @@ def test_a_missing_storyboard_and_another_orgs_read_the_same(conn, sc):
 
 
 def test_a_member_who_may_not_start_runs_cannot_approve(conn, sc):
-    # Ivan accepts his pending viewer invite into org A, in this transaction only.
+    # Ivan is bound as a viewer of org A (an extra member 0091 left in place), in this transaction only.
     with world(conn) as su:
         with acting(conn, sc.invitee) as s:
-            s.rows("select public.accept_org_invite(id) from public.my_invites() limit 1")
+            seat_invitee(s, sc)
             can_read = s.rows("select id from public.storyboards where id = %s", [STORYBOARD["a"]])
             out = approve(s, STORYBOARD["a"])
             discard = s.run("select public.discard_storyboard(%s)", [STORYBOARD["a"]])

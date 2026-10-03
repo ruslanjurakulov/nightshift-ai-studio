@@ -31,6 +31,7 @@ import psycopg
 
 import sec_db
 from sec_db import ANON, SERVICE, acting, as_superuser
+from sec_scenario import seat_invitee
 from sec_storyboard_0057 import STORYBOARD, insert
 from test_sec_storyboards import PRICES, approve, held_for, owner, status_of, world
 
@@ -88,9 +89,9 @@ def test_another_org_cannot_edit_and_a_missing_one_reads_the_same(conn, sc):
 
 
 def test_a_viewer_cannot_edit(conn, sc):
-    # Ivan accepts his pending viewer invite into org A, in this transaction only.
+    # Ivan is bound as a viewer of org A (an extra member 0091 left in place), in this transaction only.
     with acting(conn, sc.invitee) as s:
-        s.rows("select public.accept_org_invite(id) from public.my_invites() limit 1")
+        seat_invitee(s, sc)
         can_read = s.rows("select revision from public.storyboards where id = %s", [STORYBOARD["a"]])
         out = save(s, STORYBOARD["a"], 0, keep_all()[:1])
         direct = s.run("update public.storyboards set revision = 7, scenes = '[]' where id = %s", [STORYBOARD["a"]])
@@ -392,7 +393,7 @@ def test_a_viewer_cannot_reopen(conn, sc):
             s.rows("update public.storyboards set status = 'approved', backend = 'actions', "
                    "decided_at = now() - interval '25 hours', approvals = 1 where id = %s returning 1", [sid])
             as_user(s, sc.invitee)
-            s.rows("select public.accept_org_invite(id) from public.my_invites() limit 1")
+            seat_invitee(s, sc)
             out = reopen(s, sid)
             assert status_of(owner(s), sid) == "approved"
             as_user(s, sc.alice.actor)

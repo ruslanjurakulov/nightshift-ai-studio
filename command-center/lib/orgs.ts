@@ -2,17 +2,17 @@
  * Organizations — the tenant boundary (migration 0018).
  *
  * Pure and client-safe: types, the cookie name, and the decisions that are
- * worth unit-testing (which org a request is about, who may change whom). The
+ * worth unit-testing (which org a request is about). The
  * server half that reads cookies and calls Supabase is lib/orgs-server.ts.
  *
  * What the database decides and what this file decides are different things.
  * RLS decides which organizations' rows a user can read at all; this file only
- * decides which of those organizations the dashboard is looking at right now,
- * and mirrors the database's role rules so the UI never offers a control the
- * database would refuse.
+ * decides which of those organizations the dashboard is looking at right now.
+ * There is no member management here: a workspace belongs to the person who
+ * created it (migration 0091 closes every way to add a second person).
  */
 
-import { RANK, type Role, ROLES } from "@/lib/auth/roles-shared";
+import { type Role, ROLES } from "@/lib/auth/roles-shared";
 
 /** Remembers the organization last opened. A memory, validated on every
  *  request against the caller's memberships — never trusted on its own. */
@@ -32,16 +32,6 @@ export interface OrgSummary {
   slug: string;
   role: Role;
   is_default: boolean;
-}
-
-/** One row of `org_members`. */
-export interface OrgMember {
-  id: string;
-  org_id: string;
-  user_id: string | null;
-  email: string;
-  role: Role;
-  created_at: string;
 }
 
 function isRole(value: unknown): value is Role {
@@ -101,43 +91,6 @@ export function validateOrgName(name: string): string | null {
   return trimmed.length >= ORG_NAME_MIN && trimmed.length <= ORG_NAME_MAX ? trimmed : null;
 }
 
-/** Owner/admin manage an org's members; editor and viewer do not. */
-export function canManageMembers(myRole: Role): boolean {
-  return RANK[myRole] >= RANK.admin;
-}
-
-/**
- * May `myRole` change or remove a member who currently holds `targetRole`?
- * Admin+ manages members, and only an owner may touch an owner — the rule the
- * org_members policies enforce.
- */
-export function canEditMember(myRole: Role, targetRole: Role): boolean {
-  if (!canManageMembers(myRole)) return false;
-  return targetRole !== "owner" || myRole === "owner";
-}
-
-/** The roles `myRole` may grant. Only an owner may grant owner. */
-export function assignableRoles(myRole: Role): Role[] {
-  if (!canManageMembers(myRole)) return [];
-  return ROLES.filter((r) => r !== "owner" || myRole === "owner");
-}
-
-/**
- * Would this change leave the org without an owner? The database refuses it
- * (org_members_keep_owner); the UI asks first so the refusal is explained
- * rather than surfaced as a generic save error.
- */
-export function wouldRemoveLastOwner(
-  members: Pick<OrgMember, "id" | "role">[],
-  memberId: string,
-  nextRole: Role | null,
-): boolean {
-  const target = members.find((m) => m.id === memberId);
-  if (!target || target.role !== "owner") return false;
-  if (nextRole === "owner") return false;
-  return !members.some((m) => m.id !== memberId && m.role === "owner");
-}
-
 /**
  * Did an RPC fail because migration 0018 is not applied yet? PostgREST says
  * PGRST202 when a function is not in its schema cache; Postgres itself says
@@ -148,9 +101,4 @@ export function isMissingFunction(error: { code?: string; message?: string } | n
   if (!error) return false;
   if (error.code === "PGRST202" || error.code === "42883") return true;
   return /could not find the function|function .* does not exist/i.test(error.message ?? "");
-}
-
-/** A loose shape check before an invite round-trips to the database. */
-export function isPlausibleEmail(email: string): boolean {
-  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
 }

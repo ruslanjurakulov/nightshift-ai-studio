@@ -82,7 +82,8 @@ def Service(**kw) -> Kind:
 TABLES: Dict[str, Kind] = {
     # tenancy
     "organizations": Org("id"),
-    "org_members": Org(own_insert=True, mutate=("email",)),
+    # No direct write for any API role since 0091: a workspace has one person (create_organization() adds it).
+    "org_members": Org(mutate=("email",)),
     "app_members": Platform(),
     # channels and everything the pipeline writes about them
     # No direct INSERT for any API role since 0086: create_channel() is the way in
@@ -210,17 +211,17 @@ FUNCTIONS: Dict[str, Tuple[bool, bool]] = {
     "app_members_empty": HELPER,
     "app_role_rank": HELPER_ANON,
     "bind_current_member": HELPER,
-    "accept_org_invite": USER,
+    "accept_org_invite": SERVICE,  # closed by 0091: no invitations
     "bind_org_memberships": USER,
-    "decline_org_invite": USER,
+    "decline_org_invite": SERVICE,  # closed by 0091: no invitations
     "my_confirmed_email": HELPER,
-    "my_invites": USER,
+    "my_invites": SERVICE,  # closed by 0091: no invitations
     "channel_org": HELPER,
     "create_organization": USER,
     "current_app_role": HELPER,
     "default_org_id": HELPER_ANON,
     "in_default_org_roster": HELPER,
-    "invite_org_member": USER,
+    "invite_org_member": SERVICE,  # closed by 0091: no invitations
     "is_org_member": HELPER,
     "is_platform_admin": HELPER,
     "my_organizations": HELPER,
