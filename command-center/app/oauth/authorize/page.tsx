@@ -85,8 +85,14 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
   if (!view.ok) {
     if (!view.redirectOk) return failure(o.errorTitle, o.errorBody);
     if (view.error === "no_workspace") return failure(o.noWorkspaceTitle, o.noWorkspaceBody, { href: "/welcome", label: o.finishSetup });
-    const error = p.responseType !== "code" ? "unsupported_response_type" : resource === null ? "invalid_target" : view.error;
-    redirect(redirectWith(p.redirectUri, { error, error_description: view.description ?? "The request is not valid.", state: p.state }, deps.origin));
+    // Each cause names itself: a wrong response_type is not a PKCE problem.
+    const [error, description] =
+      p.responseType !== "code"
+        ? ["unsupported_response_type", "response_type must be code."]
+        : resource === null
+          ? ["invalid_target", `resource must be ${deps.resource}.`]
+          : [view.error, view.description ?? "The request is not valid."];
+    redirect(redirectWith(p.redirectUri, { error, error_description: description, state: p.state }, deps.origin));
   }
   if (!view.entitled) {
     return failure(o.needsPlanTitle, withParts(o.needsPlanBody, { app: <AppName name={view.clientName} />, workspace: <bdi className="font-semibold">{view.workspaceName}</bdi> }), {

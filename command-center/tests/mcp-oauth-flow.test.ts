@@ -35,7 +35,11 @@ vi.mock("@/lib/server/oauth", async () => {
   return {
     oauthEndpoints,
     oauthDeps: () => ({ rpc: h.db.rpc, origin: "https://nightshift-ai.studio", resource: "https://nightshift-ai.studio/api/mcp" }),
-    beginAuthorization: async (a: Parameters<FakeOauthDb["begin"]>[0]) => {
+    beginAuthorization: async (a: Parameters<FakeOauthDb["begin"]>[0] & { method: string }) => {
+      // The database confirms the return address first, then says what is wrong with the request.
+      const known = h.db.clients.get(a.clientId);
+      if (known && known.uris.includes(a.redirectUri) && a.method !== "S256")
+        return { ok: false, error: "invalid_request", redirectOk: true, description: "PKCE with code_challenge_method=S256 is required." };
       const r = h.db.begin(a) as Record<string, unknown>;
       if (r.ok !== true) return { ok: false, error: r.error, redirectOk: false };
       if (r.entitled === false) return { ok: true, entitled: false, clientName: r.client_name, workspaceName: r.workspace_name, plan: r.plan };
@@ -213,6 +217,32 @@ describe("a whole client, through the handlers", () => {
     expect(allText(outcome).join(" ")).toContain("cannot be used");
     expect(find(outcome, (p) => typeof p.secret === "string")).toBeNull();
     expect(h.db.requests.size).toBe(0);
+  });
+
+  it("a bad response_type or resource is reported to the REGISTERED address with a description that names the real cause", async () => {
+    const reg = await register(new Request(ORIGIN, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ client_name: "A", redirect_uris: [REDIRECT] }) }));
+    const clientId = ((await reg.json()) as { client_id: string }).client_id;
+    const base = { client_id: clientId, redirect_uri: REDIRECT, state: "s9", code_challenge: "A".repeat(43), code_challenge_method: "S256" };
+    const redirected = async (extra: Record<string, string>) => {
+      try {
+        await AuthorizePage({ searchParams: Promise.resolve({ ...base, ...extra }) });
+      } catch (e) {
+        return new URL((e as { to: string }).to);
+      }
+      throw new Error("not redirected");
+    };
+    const wrongType = await redirected({ response_type: "token" });
+    expect(wrongType.origin + wrongType.pathname).toBe(REDIRECT);
+    expect(wrongType.searchParams.get("error")).toBe("unsupported_response_type");
+    expect(wrongType.searchParams.get("error_description")).toBe("response_type must be code.");
+    expect(wrongType.searchParams.get("state")).toBe("s9");
+    expect(wrongType.searchParams.get("iss")).toBe(ORIGIN);
+    const wrongResource = await redirected({ response_type: "code", resource: "https://evil.example/mcp" });
+    expect(wrongResource.searchParams.get("error")).toBe("invalid_target");
+    expect(wrongResource.searchParams.get("error_description")).toBe(`resource must be ${MCP}.`);
+    const wrongMethod = await redirected({ response_type: "code", code_challenge_method: "plain" });
+    expect(wrongMethod.searchParams.get("error")).toBe("invalid_request");
+    expect(wrongMethod.searchParams.get("error_description")).toMatch(/S256/);
   });
 
   it("a request with a missing or repeated parameter is an error page too", async () => {

@@ -73,14 +73,74 @@ export function normalizeResource(raw: string | null | undefined, canonical: str
   return canonical;
 }
 
-/** An app's name as shown to a person: printable, no direction overrides, bounded. */
+/**
+ * Characters that draw nothing or reorder what is drawn: C0/C1 controls, soft
+ * hyphen, combining grapheme joiner, Arabic letter mark, Hangul and Khmer
+ * fillers, Mongolian variation selectors, zero-width and direction marks,
+ * embeddings/overrides/isolates, invisible operators and the deprecated format
+ * characters (U+2060-206F), variation selectors, the BOM, halfwidth Hangul
+ * filler, interlinear annotation marks and the tag characters. The SQL twin
+ * (oauth_client_name_problem, 0093) lists exactly these;
+ * tests/test_mcp_oauth_migration.py compares the two.
+ */
+export const INVISIBLE_CLASS =
+  "\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u034f\\u061c\\u115f\\u1160\\u17b4-\\u17b5\\u180b-\\u180f\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u206f\\u2800\\u3164\\ufe00-\\ufe0f\\ufeff\\uffa0\\ufff9-\\ufffb\\u{e0000}-\\u{e007f}";
+const INVISIBLE = new RegExp(`[${INVISIBLE_CLASS}]`, "gu");
+
+/**
+ * Lookalike folding for the brand check, one character to one: leet digits and
+ * symbols, and the Latin-looking letters of other scripts. Lower and upper case
+ * are both listed so the SQL twin, whose lower() depends on the database
+ * locale, folds the same. These are the SQL function's translate() arguments
+ * verbatim (generated from one list).
+ */
+export const HOMOGLYPH_FROM = "0оοօОΟøθ1!|lıɩⅼɪӏІіΙιΊίłℓ3еёЕΕєε4@аɑαАΑ5$ѕꜱʂЅςš7тτƫТΤ†8вΒɓ9ɡցԍɢğʜнһհНҺΗηɦռոпΠΝɴñԁɗĐđƒꜰſрρРΡсϲСϹçхχХΧуүγУΥкκКΚмМΜυцνѵ";
+export const HOMOGLYPH_TO = "ooooooooiiiiiiiiiiiiiiiiieeeeeeeaaaaaaasssssssstttttttbbbbgggggghhhhhhhhhnnnnnnnddddfffppppcccccxxxxyyyyykkkkmmmuuvv";
+const HOMOGLYPHS = new Map([...HOMOGLYPH_FROM].map((c, i) => [c, HOMOGLYPH_TO[i]] as const));
+
+/** The word nobody else may be named: what a person would take for Nightshift's own voice. */
+export const RESERVED_NAME = "nightshift";
+export const MAX_CLIENT_NAME = 80;
+
+/**
+ * What a name looks like once the tricks are taken out: NFKC (full-width,
+ * mathematical and ligature forms), lower case, NFKD with the combining marks
+ * dropped (accents), invisible and direction characters dropped, lookalikes
+ * folded, then ONLY a-z kept, so spacing, dots, dashes and digits used as
+ * separators cannot split the word. Twin of oauth_client_name_problem.
+ */
+export function foldClientName(raw: string): string {
+  const base = raw.normalize("NFKC").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(INVISIBLE, "");
+  let out = "";
+  for (const c of base) out += HOMOGLYPHS.get(c) ?? c;
+  return out.replace(/[^a-z]/g, "");
+}
+
+/** A name as a person reads it: printable, no direction overrides, single spaces. Not bounded. */
+function visibleName(raw: string): string {
+  // Line and tab characters are spaces, not nothing: "line\nbreak" reads as two words.
+  return raw.replace(/[\t-\r]/g, " ").replace(INVISIBLE, "").replace(/\s+/g, " ").trim();
+}
+
+export type NameProblem = "empty" | "too_long" | "reserved";
+
+/**
+ * Registration's rule for client_name. An absent name is allowed (the app is
+ * then shown by its host); a name that is given must show something, be at
+ * most 80 characters and not pass itself off as Nightshift.
+ */
+export function checkClientName(raw: unknown): { ok: true; name: string | null } | { ok: false; reason: NameProblem } {
+  if (raw === undefined || raw === null) return { ok: true, name: null };
+  if (typeof raw !== "string" || raw.length > 400) return { ok: false, reason: typeof raw === "string" ? "too_long" : "empty" };
+  const name = visibleName(raw);
+  if (name.length === 0) return { ok: false, reason: "empty" };
+  if ([...name].length > MAX_CLIENT_NAME) return { ok: false, reason: "too_long" };
+  if (foldClientName(name).includes(RESERVED_NAME)) return { ok: false, reason: "reserved" };
+  return { ok: true, name };
+}
+
+/** An app's name as shown to a person (a second line of defence at display time): printable, bounded, host as fallback. */
 export function cleanClientName(raw: unknown, fallbackHost: string): string {
-  const s = typeof raw === "string" ? raw : "";
-  const cleaned = s
-    .replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80)
-    .trim();
-  return cleaned || fallbackHost.slice(0, 80);
+  const cleaned = visibleName(typeof raw === "string" ? raw : "").slice(0, MAX_CLIENT_NAME).trim();
+  return cleaned || fallbackHost.slice(0, MAX_CLIENT_NAME);
 }

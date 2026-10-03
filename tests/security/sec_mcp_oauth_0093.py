@@ -53,6 +53,8 @@ def extend(tables: dict, functions: dict) -> None:
         "oauth_month_start": SERVICE,
         "oauth_grant_month_credits": SERVICE,
         "oauth_workspace": SERVICE,
+        "oauth_visible_name": SERVICE,
+        "oauth_client_name_problem": SERVICE,
         "oauth_revoke_grant_locked": SERVICE,
         "oauth_gc": SERVICE,
         "oauth_rate_take": SERVICE,

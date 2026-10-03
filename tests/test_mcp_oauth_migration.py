@@ -173,6 +173,40 @@ class Privileges(unittest.TestCase):
         self.assertIn("'default_limit_credits', 500, 'max_limit_credits', 20000", SQL)
 
 
+class ClientNameValidatorsAgree(unittest.TestCase):
+    """The brand check runs in TypeScript (before the database) and in SQL (the
+    last line). They must fold the same way, so the lists are compared."""
+
+    TS = (MIGRATIONS.parent.parent / "command-center" / "lib" / "oauth" / "redirect.ts").read_text(encoding="utf-8")
+
+    def test_homoglyph_strings_are_identical_and_one_to_one(self):
+        import json
+        ts_from = json.loads(re.search(r'HOMOGLYPH_FROM = ("(?:[^"\\]|\\.)*");', self.TS).group(1))
+        ts_to = json.loads(re.search(r'HOMOGLYPH_TO = ("(?:[^"\\]|\\.)*");', self.TS).group(1))
+        sql = re.search(r"translate\(v_fold, '([^']*)', '([^']*)'\)", SQL)
+        self.assertEqual((ts_from, ts_to), (sql.group(1), sql.group(2)))
+        self.assertEqual(len(ts_from), len(ts_to))
+        self.assertEqual(len(set(ts_from)), len(ts_from), "a character is mapped twice")
+
+    def test_invisible_character_lists_are_identical(self):
+        ts_cls = re.search(r'INVISIBLE_CLASS =\s*"([^"]*)"', self.TS).group(1).replace("\\\\", "\\")
+        body = function_body(SQL, "oauth_visible_name")
+        sql_cls = re.findall(r"'\[([^\]]*)\]'", body)[1]  # the second class is the invisible one (the first is line breaks)
+        as_sql = re.sub(r"\\u\{0*([0-9a-f]+)\}", lambda m: "\\U%08x" % int(m.group(1), 16), ts_cls)
+        self.assertEqual(as_sql.replace("\\u0000", "\\u0001"), sql_cls)
+
+    def test_the_rule_is_the_same_in_both(self):
+        body = function_body(SQL, "oauth_client_name_problem")
+        for lit in ("'empty'", "'too_long'", "'reserved'", "'%nightshift%'", "char_length(v_vis) > 80", "NFKC", "NFKD"):
+            self.assertIn(lit, body)
+        self.assertIn('RESERVED_NAME = "nightshift"', self.TS)
+        self.assertIn("MAX_CLIENT_NAME = 80", self.TS)
+
+    def test_registration_calls_it_and_the_port_bound_is_in_sql(self):
+        self.assertIn("oauth_client_name_problem(p_name) is not null", function_body(SQL, "oauth_register_client"))
+        self.assertIn("<= 65535", function_body(SQL, "oauth_redirect_uri_ok"))
+
+
 class NoRoleWordsInWhatACustomerSees(unittest.TestCase):
     def test_messages_have_no_role_vocabulary(self):
         # Only this file's own functions: the API-key door's messages (api_begin) are older and unchanged.

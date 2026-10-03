@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { cleanClientName, describeRedirect, normalizeResource, validateRedirectUri } from "@/lib/oauth/redirect";
+import { checkClientName, cleanClientName, describeRedirect, foldClientName, normalizeResource, validateRedirectUri } from "@/lib/oauth/redirect";
 import { authorizeReturnPath, parseAuthorizeParams, redirectWith } from "@/lib/oauth/authorize";
 import { safeLoginReturn } from "@/lib/safe-redirect";
 
@@ -25,6 +25,8 @@ function pyList(name: string): string[] {
     .map((lit) => JSON.parse(lit) as string);
 }
 
+const NAME_BAD = pyList("NAME_BAD");
+const NAME_GOOD = pyList("NAME_GOOD");
 const BAD = pyList("BAD_URIS");
 const GOOD = pyList("GOOD_URIS");
 
@@ -152,5 +154,45 @@ describe("the sign-in return path honours the connection page and nothing else",
   it("keeps the ordinary rule for ordinary paths, with the ordinary length bound", () => {
     expect(safeLoginReturn("/welcome", "/command-center")).toBe("/welcome");
     expect(safeLoginReturn("/welcome?" + "a".repeat(600), "/command-center")).toBe("/command-center");
+  });
+});
+
+
+describe("client names (twin of oauth_client_name_problem)", () => {
+  it("reads the lab's lists", () => {
+    expect(NAME_BAD.length).toBeGreaterThan(50);
+    expect(NAME_GOOD.length).toBeGreaterThan(10);
+    expect(NAME_BAD).toContain("Night\u200bshift");
+  });
+
+  it.each(NAME_BAD)("refuses %j", (name) => {
+    expect(checkClientName(name).ok).toBe(false);
+  });
+
+  it.each(NAME_GOOD)("accepts %j", (name) => {
+    expect(checkClientName(name)).toEqual({ ok: true, name });
+  });
+
+  it("says why: nothing visible, too long, or passing itself off as Nightshift", () => {
+    for (const n of ["", "   ", "\u200b\u200b", "\u202e", "\u2800", "\u{e0041}\u{e0042}"]) expect(checkClientName(n), JSON.stringify(n)).toEqual({ ok: false, reason: "empty" });
+    expect(checkClientName("x".repeat(81))).toEqual({ ok: false, reason: "too_long" });
+    expect(checkClientName("x".repeat(80)).ok).toBe(true);
+    expect(checkClientName("N\u{e0041}ightshift")).toEqual({ ok: false, reason: "reserved" });
+    expect(checkClientName("Nightshift")).toEqual({ ok: false, reason: "reserved" });
+    expect(checkClientName(42)).toEqual({ ok: false, reason: "empty" });
+  });
+
+  it("an absent name is allowed (the app is then shown by its host)", () => {
+    expect(checkClientName(undefined)).toEqual({ ok: true, name: null });
+    expect(checkClientName(null)).toEqual({ ok: true, name: null });
+  });
+
+  it("a line break is a space, not nothing", () => {
+    expect(checkClientName("line\nbreak")).toEqual({ ok: true, name: "line break" });
+    expect(checkClientName("a\t\tb")).toEqual({ ok: true, name: "a b" });
+  });
+
+  it("folds to the same word whatever trick hides it", () => {
+    for (const n of ["Ｎｉｇｈｔｓｈｉｆｔ", "N1GHT-SH1FT", "N\u0456ghtsh\u0456ft", "Night\u200b \u200bShift", "N\u00edghtsh\u00edft"]) expect(foldClientName(n), n).toBe("nightshift");
   });
 });

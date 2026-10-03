@@ -11,7 +11,7 @@
  */
 
 import type { Rpc } from "@/lib/api/operations";
-import { cleanClientName, describeRedirect, normalizeResource, validateRedirectUri } from "@/lib/oauth/redirect";
+import { checkClientName, describeRedirect, normalizeResource, validateRedirectUri } from "@/lib/oauth/redirect";
 import {
   CODE_RE,
   CODE_VERIFIER_RE,
@@ -86,7 +86,20 @@ export async function registerEndpoint(request: Request, deps: OauthDeps): Promi
       );
   }
   const list = [...new Set(uris as string[])];
-  const name = cleanClientName(body.client_name, describeRedirect(list[0]).host);
+  // The name a person will read on the consent screen: it must show something,
+  // fit 80 characters and not pass itself off as Nightshift (lookalikes, leet,
+  // invisible and direction characters included). No name at all means the host.
+  const named = checkClientName(body.client_name);
+  if (!named.ok)
+    return oauthError(
+      "invalid_client_metadata",
+      named.reason === "reserved"
+        ? 'client_name may not contain "Nightshift": choose the name of your app.'
+        : named.reason === "too_long"
+          ? "client_name is limited to 80 characters."
+          : "client_name must show at least one visible character.",
+    );
+  const name = named.name ?? describeRedirect(list[0]).host.slice(0, 80);
 
   const { data, error } = await deps.rpc("oauth_register_client", {
     p_name: name,

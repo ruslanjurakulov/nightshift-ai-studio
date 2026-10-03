@@ -27,6 +27,7 @@ import concurrent.futures as cf
 import hashlib
 import json
 import os
+import re
 import secrets
 import uuid
 
@@ -266,6 +267,11 @@ BAD_URIS = [
     "/relative",
     "",
     "https://" + "a" * 320 + ".com/cb",
+    "https://claude.ai:65536/cb",                # a port above 65535 (five digits fit the pattern)
+    "https://claude.ai:99999/cb",
+    "http://127.0.0.1:70000/callback",
+    "http://localhost:65536/cb",
+    "http://[::1]:99999/cb",
 ]
 GOOD_URIS = [
     "https://claude.ai/api/mcp/auth_callback",
@@ -274,10 +280,94 @@ GOOD_URIS = [
     "http://localhost:8080/cb",
     "http://[::1]:9000/cb",
     "http://localhost/callback",
+    "https://claude.ai:65535/cb",
+    "http://127.0.0.1:65535/callback",
     "https://vscode.dev/redirect",
     "cursor://anysphere.cursor-retrieval/oauth/user-nightshift/callback",
 ]
 
+
+# Client names (0093): refused at registration by oauth_client_name_problem and, before it,
+# by checkClientName in lib/oauth/redirect.ts. command-center/tests/oauth-redirect.test.ts reads
+# these same lists. Escapes are written out so an invisible character is visible in review.
+NAME_BAD = [
+    "Nightshift",
+    "nightshift",
+    "NIGHTSHIFT",
+    "Night Shift",
+    "night-shift",
+    "night_shift",
+    "N I G H T S H I F T",
+    "Nightshift Official",
+    "My Nightshift Helper",
+    "Claude (Nightshift)",
+    "n.i.g.h.t.s.h.i.f.t",
+    "Ｎｉｇｈｔｓｈｉｆｔ",
+    "𝐍𝐢𝐠𝐡𝐭𝐬𝐡𝐢𝐟𝐭",
+    "ｎｉｇｈｔ ｓｈｉｆｔ",
+    "N\u0456ghtsh\u0456ft",
+    "Night\u0455hift",
+    "Ni\u0261htshift",
+    "Nig\u04bbtshift",
+    "Nigh\u0442shift",
+    "Ni9htshift",
+    "N1ghtsh1ft",
+    "Nightsh!ft",
+    "Night$hift",
+    "nightshiƒt",
+    "N\u0131ghtsh\u0131ft",
+    "nightshlft",
+    "NIGHTSH1FT",
+    "N\u00edghtsh\u00edft",
+    "N\u00eeghtshift",
+    "Nightshift\u0301",
+    "Night\u200bshift",
+    "N\u202eightshift",
+    "\u2066Nightshift\u2069",
+    "Night\u00adshift",
+    "Night\ufe0fshift",
+    "Night\u2060shift",
+    "Ni\u200dght\u200cshift",
+    "Night\u3164shift",
+    "Night\u2800shift",
+    "Night\u034fshift",
+    "Night\u180eshift",
+    "",
+    " ",
+    "\u200b",
+    "\u200b\u200b\u200b",
+    "\u202e",
+    "\u2060\ufeff",
+    "\u00ad",
+    "\u3164",
+    "\u2800",
+    "\u2066\u2069",
+    " \u200b ",
+    "\ufe0f",
+    "\u034f",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "Claude xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+]
+NAME_GOOD = [
+    "Claude",
+    "ChatGPT",
+    "Cursor",
+    "Visual Studio Code",
+    "Claude Code (my-laptop)",
+    "Мой помощник",
+    "Gemini CLI",
+    "OpenClaw",
+    "Hermes Agent",
+    "Night owl",
+    "Nighthawk",
+    "Shift planner",
+    "Codex CLI",
+    "Windsurf",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "Видео-бот",
+    "Ночная смена",
+]
 
 @pytest.mark.parametrize("uri", BAD_URIS)
 def test_registration_refuses_a_hostile_redirect_uri(db, uri):
@@ -290,10 +380,39 @@ def test_registration_accepts_the_redirects_real_clients_use(db, uri):
     assert register(db, uris=[uri], ip="192.0.2." + str(secrets.randbelow(250)) + uuid.uuid4().hex[:4])["ok"] is True
 
 
+@pytest.mark.parametrize("name", NAME_BAD)
+def test_registration_refuses_a_lookalike_empty_or_oversize_name(db, name):
+    res = register(db, name=name)
+    assert res["ok"] is False and res["error"] == "invalid_client_metadata", (name, res)
+    assert db.su("select count(*) from public.oauth_clients where client_name = %s", [name])[0][0] == 0
+
+
+@pytest.mark.parametrize("name", NAME_GOOD)
+def test_registration_accepts_the_names_real_apps_use(db, name):
+    assert register(db, name=name, ip="203.0.113." + uuid.uuid4().hex[:8])["ok"] is True
+
+
+def test_the_name_validator_in_sql_and_typescript_fold_the_same_way(db):
+    ts = (sec_db.REPO / "command-center" / "lib" / "oauth" / "redirect.ts").read_text(encoding="utf-8")
+    sql_text = (sec_db.MIGRATIONS / "0093_mcp_oauth.sql").read_text(encoding="utf-8")
+    ts_from = re.search(r'HOMOGLYPH_FROM = ("(?:[^"\\]|\\.)*");', ts).group(1)
+    ts_to = re.search(r'HOMOGLYPH_TO = ("(?:[^"\\]|\\.)*");', ts).group(1)
+    sql_args = re.search(r"translate\(v_fold, '([^']*)', '([^']*)'\)", sql_text)
+    assert json.loads(ts_from) == sql_args.group(1) and json.loads(ts_to) == sql_args.group(2)
+    assert len(sql_args.group(1)) == len(sql_args.group(2))
+    ts_cls = re.search(r'INVISIBLE_CLASS =\s*"([^"]*)"', ts).group(1).replace("\\\\", "\\")
+    vis = re.search(r"function public\.oauth_visible_name.*?\$\$;", sql_text, re.S).group(0)
+    sql_cls = re.findall(r"'\[([^\]]*)\]'", vis)[1]
+    norm = lambda c: re.sub(r"\\u\{0*([0-9a-f]+)\}", lambda m: "\\U%08x" % int(m.group(1), 16), c)
+    assert norm(ts_cls).replace("\\u0000", "\\u0001") == sql_cls
+
+
 def test_registration_bounds_the_name_and_the_uri_count(db):
     assert register(db, name="")["error"] == "invalid_client_metadata"
     assert register(db, name="x" * 81)["error"] == "invalid_client_metadata"
-    assert register(db, name="line\nbreak")["error"] == "invalid_client_metadata"
+    # A line break is a space, not nothing: the name is stored as two words, never run together.
+    broken = register(db, name="line\nbreak", ip="203.0.113." + uuid.uuid4().hex[:8])
+    assert broken["ok"] is True and broken["client_name"] == "line break"
     assert register(db, uris=[f"https://a{i}.example.com/cb" for i in range(6)])["error"] == "invalid_redirect_uri"
     assert register(db, uris=[])["error"] == "invalid_redirect_uri"
 
@@ -683,6 +802,21 @@ def test_the_scopes_a_person_gave_are_the_scopes_a_token_has(db):
         r = db.anon(q, [sha(at)])
         assert r["status"] == 403 and r["error"]["code"] == "insufficient_scope" and r["error"]["required_scope"] == scope, r
     assert create(db, conn_)["status"] == 403
+
+
+def test_publishing_with_a_token_works_and_never_needs_the_apis_idempotency_table(db):
+    a = connect(db, UA)
+    h = sha(a["at"])
+    # Without a key the database answers (a refusal of this video is fine; a failure is not).
+    plain = db.anon("select public.api_request_publish(%s,'vid-a',null,array['chan-a'],null,null,null)", [h])
+    assert plain["status"] in (200, 409), plain
+    assert plain.get("error", {}).get("code") != "internal_error", plain
+    # The MCP route does not pass the idempotency key on (publishing is retry-safe by its own unique key),
+    # but a caller that does reach the database directly gets a clear refusal, never a crash or a stray row.
+    before = db.su("select count(*) from public.api_idempotency")[0][0]
+    keyed = db.anon("select public.api_request_publish(%s,'vid-a',null,array['chan-a'],'k-1',%s,null)", [h, sha("x")])
+    assert keyed["ok"] is False and keyed["status"] in (400, 409, 500), keyed
+    assert db.su("select count(*) from public.api_idempotency")[0][0] == before
 
 
 def test_a_token_workspace_cannot_be_changed_by_the_caller(db):

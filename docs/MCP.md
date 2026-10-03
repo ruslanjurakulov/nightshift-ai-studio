@@ -30,7 +30,7 @@ limit, prepaid USD balance, holds and database checks as `/api/v1`.
 | `list_videos` | videos, newest first | — | — |
 | `get_video` | one video with its publish requests | — | — |
 | `list_connected_accounts` | publish targets (YouTube channels, Instagram / TikTok accounts) | — | — |
-| `publish_video` | cross-post a finished video; same gate and approvals as the site; YouTube uploads private | free | free |
+| `publish_video` | cross-post a finished video; same gate and approvals as the site; YouTube uploads private. Safe to retry: a target already being sent to is reported `already_sending` (an OAuth connection needs no idempotency key for it) | free | free |
 | `get_balance` | OAuth: credits available / held, plan, videos at once, this connection's limit and use. Key: API balance, month spend, tier | credits | USD cents |
 | `request_download`, `get_download` | HD MP4 of a video | **not offered to OAuth connections** (priced in USD cents from the API balance, file served by an API-key route) | site credit price × 1.5¢ |
 
@@ -174,8 +174,9 @@ Nightshift is its own authorization server for its MCP resource.
   methods needing a key or certificate are refused. Redirect URIs: `https`
   with a real lower-case DNS name, or `http` on `localhost` / `127.0.0.1` /
   `[::1]`; plus Cursor's one private-use callback. No fragment, userinfo,
-  wildcard, `javascript:`, `data:` or other custom scheme. Bounded: 5 URIs, 80
-  character name, 10 registrations per address and 300 in total per hour, 20 000
+  wildcard, `javascript:`, `data:` or other custom scheme. Bounded: 5 URIs, a name of 1 to 80 visible
+  characters that may not contain "Nightshift" (checked after Unicode folding, lookalike and
+  leet folding, with invisible and direction characters removed), 10 registrations per address and 300 in total per hour, 20 000
   rows; an app nobody ever approves is deleted after a day. Client ID Metadata
   Documents are **not** implemented (they need SSRF-safe fetching of a
   client-supplied URL); the metadata says `client_id_metadata_document_supported: false`.

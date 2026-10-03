@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n/core";
 import { AppName } from "@/components/oauth/AppName";
-import { describeRedirect } from "@/lib/oauth/redirect";
+import { cleanClientName, describeRedirect } from "@/lib/oauth/redirect";
 
 /**
  * Connected apps (migration 0093): the AI apps this person allowed to use
@@ -76,7 +76,7 @@ export function ConnectedApps() {
       : new Date(iso).toLocaleDateString(locale, { dateStyle: "medium" });
 
   async function revoke(g: Grant) {
-    if (!window.confirm(fmt(c.sure, { app: g.client_name }))) return;
+    if (!window.confirm(fmt(c.sure, { app: cleanClientName(g.client_name, "?") }))) return;
     const supabase = createClient();
     if (!supabase) return;
     setBusy(g.id);

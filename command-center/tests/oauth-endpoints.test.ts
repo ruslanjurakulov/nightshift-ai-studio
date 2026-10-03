@@ -80,6 +80,18 @@ describe("POST /oauth/register (RFC 7591, public clients only)", () => {
     expect(db.calls).toEqual([]);
   });
 
+  it("refuses a name that passes itself off as Nightshift, shows nothing, or is too long, with a normal invalid_client_metadata", async () => {
+    const names = ["Nightshift", "Night\u200bshift", "N1ghtsh1ft", "Ｎｉｇｈｔｓｈｉｆｔ", "N\u0456ghtsh\u0456ft", "\u200b\u202e", "", "   ", "x".repeat(81)];
+    for (const client_name of names) {
+      const res = await registerEndpoint(json({ ...good, client_name }), deps);
+      expect(res.status, JSON.stringify(client_name)).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("invalid_client_metadata");
+      expect(body.error_description).toMatch(/client_name/);
+    }
+    expect(db.calls).toEqual([]);
+  });
+
   it("is bounded: JSON only, size capped, an object", async () => {
     expect((await registerEndpoint(new Request(ORIGIN, { method: "POST", headers: { "content-type": "text/plain" }, body: "{}" }), deps)).status).toBe(415);
     expect((await registerEndpoint(json({ ...good, client_name: "x".repeat(20000) }), deps)).status).toBe(413);

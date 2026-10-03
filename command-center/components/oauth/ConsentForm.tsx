@@ -92,13 +92,10 @@ export function ConsentForm({
   const n = limitOk ? new Intl.NumberFormat(locale).format(parsed) : "";
 
   return (
-    <form
-      className="mt-6 flex flex-col gap-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void send("allow");
-      }}
-    >
+    // Nothing here submits by itself: a form with one text field submits on
+    // Enter even with no submit button, and Enter in the limit box must not be
+    // read as "Allow". Only a deliberate press of Allow or Deny sends a decision.
+    <form className="mt-6 flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
       <label className="st-field">
         <span>{text.limitLabel}</span>
         <input
@@ -108,6 +105,9 @@ export function ConsentForm({
           required
           value={limit}
           onChange={(e) => setLimit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.preventDefault();
+          }}
           aria-invalid={!limitOk}
           aria-describedby="oauth-limit-hint oauth-limit-echo"
         />
@@ -118,7 +118,7 @@ export function ConsentForm({
       </p>
       {error && <OAuthNotice tone="fail">{error}</OAuthNotice>}
       <div className="flex flex-col gap-3 sm:flex-row-reverse">
-        <button type="submit" className="st-key" data-block="true" disabled={busy !== null}>
+        <button type="button" className="st-key" data-block="true" disabled={busy !== null} onClick={() => void send("allow")}>
           {busy === "allow" ? text.working : text.allow}
         </button>
         <button type="button" className="st-key" data-tone="quiet" data-block="true" disabled={busy !== null} onClick={() => void send("deny")}>

@@ -36,6 +36,26 @@ describe("oauthRpc", () => {
     expect(calls[0].args.p_token_hash).toBe(H);
   });
 
+  it("publish with an idempotency key reaches the database WITHOUT the key and fingerprint (the API's idempotency table is keyed by API key; a token has none)", async () => {
+    const { calls, rpc } = recorder();
+    await oauthRpc(rpc)("api_request_publish", {
+      p_key_hash: H, p_video_id: "v", p_account_ids: [], p_channel_ids: ["c"], p_idem_key: "k-1", p_fingerprint: "f".repeat(64), p_request_id: "r",
+    });
+    expect(calls).toEqual([{ fn: "api_request_publish", args: { p_key_hash: H, p_video_id: "v", p_account_ids: [], p_channel_ids: ["c"], p_request_id: "r" } }]);
+  });
+
+  it("the publish_video TOOL with an idempotency_key works end to end for a connected app", async () => {
+    const { calls, rpc } = recorder();
+    const server = buildMcpServer(caller(rpc), { scopes: ["videos:publish"], origin: "https://nightshift-ai.studio" });
+    const tool = (server as unknown as { _registeredTools: Record<string, { handler: (a: unknown, e: unknown) => Promise<{ isError?: boolean }> }> })._registeredTools.publish_video;
+    const out = await tool.handler({ video_id: "vid-1", channel_ids: ["other"], idempotency_key: "retry-1" }, {});
+    expect(out.isError).toBeUndefined();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].fn).toBe("api_request_publish");
+    expect(calls[0].args).not.toHaveProperty("p_idem_key");
+    expect(calls[0].args).not.toHaveProperty("p_fingerprint");
+  });
+
   it.each(["api_list_channels", "api_list_videos", "api_get_video", "api_list_connected_accounts", "api_request_publish"])(
     "passes %s through unchanged (the database lets a token reach it)",
     async (fn) => {

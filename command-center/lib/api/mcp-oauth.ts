@@ -46,6 +46,16 @@ export function oauthRpc(rpc: Rpc): Rpc {
   return async (fn, args) => {
     const { p_key_hash: hash, p_fingerprint: _fingerprint, ...rest } = args;
     void _fingerprint;
+    // Publishing needs no idempotency record of its own: a target that is
+    // already being sent to is answered "already_sending" by the database, so a
+    // retry can never publish twice. The API's idempotency table belongs to API
+    // keys (its rows are keyed by key id, which a token has none of), so the
+    // key and its fingerprint are not passed on; passing one made the call fail.
+    if (fn === "api_request_publish") {
+      const { p_idem_key: _idem, ...noIdem } = rest;
+      void _idem;
+      return rpc(fn, { p_key_hash: hash, ...noIdem });
+    }
     if (SAME.has(fn)) return rpc(fn, { p_key_hash: hash, ...rest });
     if (fn === "api_get_job") return rpc("oauth_get_job", { p_token_hash: hash, ...rest });
     if (fn === "api_balance") return rpc("oauth_get_balance", { p_token_hash: hash, ...rest });

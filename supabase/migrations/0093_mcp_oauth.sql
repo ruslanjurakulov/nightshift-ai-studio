@@ -1,6 +1,6 @@
 -- 0093_mcp_oauth.sql — connect an AI app to the MCP server without an API key
 -- (MCP authorization, spec 2026-07-28): Nightshift is the OAuth authorization
--- server for its own MCP resource. Ledger rows BR-L-179 .. BR-L-198.
+-- server for its own MCP resource. Ledger rows BR-L-179 .. BR-L-201.
 --
 -- THE MODEL
 --   * A person signs in, sees a consent screen and sets a per-connection monthly
@@ -262,6 +262,8 @@ create or replace function public.oauth_redirect_uri_ok(p text) returns boolean
   select p is not null
      and char_length(p) <= 300
      and p !~ '[[:space:][:cntrl:]\\#@*]'
+     -- A port is 1 to 5 digits above; the number itself must fit 65535 (twin of lib/oauth/redirect.ts).
+     and coalesce((regexp_match(p, '^[a-z]+://(?:[^/?#:\[\]]+|\[::1\])(?::([0-9]{1,5}))?(?:[/?]|$)'))[1]::integer, 0) <= 65535
      and (
        p ~ '^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9](:[0-9]{1,5})?(/[^?#]*)?(\?[^#]*)?$'
        or p ~ '^http://(127\.0\.0\.1|localhost|\[::1\])(:[0-9]{1,5})?(/[^?#]*)?(\?[^#]*)?$'
@@ -563,19 +565,56 @@ $$;
 -- 6. Registration (RFC 7591, public clients only). Unauthenticated: hostile.
 -- ───────────────────────────────────────────────────────────────────────────
 
+-- What a person reads of a client's name, and what a lookalike check sees. Twins
+-- of lib/oauth/redirect.ts (visibleName, foldClientName, checkClientName): the
+-- same invisible-character list, the same one-to-one homoglyph strings, the same
+-- order (NFKC, lower case, NFKD, accents and invisibles out, lookalikes folded,
+-- only a-z kept). tests/test_mcp_oauth_migration.py compares the lists.
+create or replace function public.oauth_visible_name(p text) returns text
+  language sql immutable set search_path = public, pg_temp as $$
+  select btrim(regexp_replace(regexp_replace(regexp_replace(coalesce(p, ''), '[\u0009-\u000d]', ' ', 'g'), '[\u0001-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17b4-\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff9-\ufffb\U000e0000-\U000e007f]', '', 'g'), '[[:space:]]+', ' ', 'g'))
+$$;
+
+create or replace function public.oauth_client_name_problem(p text) returns text
+  language plpgsql immutable set search_path = public, pg_temp as $$
+declare
+  v_vis  text := public.oauth_visible_name(p);
+  v_fold text;
+begin
+  if v_vis = '' then
+    return 'empty';
+  end if;
+  if char_length(v_vis) > 80 then
+    return 'too_long';
+  end if;
+  v_fold := normalize(lower(normalize(v_vis, NFKC)), NFKD);
+  v_fold := regexp_replace(v_fold, '[\u0300-\u036f]', '', 'g');
+  v_fold := regexp_replace(v_fold, '[\u0001-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17b4-\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff9-\ufffb\U000e0000-\U000e007f]', '', 'g');
+  v_fold := translate(v_fold, '0оοօОΟøθ1!|lıɩⅼɪӏІіΙιΊίłℓ3еёЕΕєε4@аɑαАΑ5$ѕꜱʂЅςš7тτƫТΤ†8вΒɓ9ɡցԍɢğʜнһհНҺΗηɦռոпΠΝɴñԁɗĐđƒꜰſрρРΡсϲСϹçхχХΧуүγУΥкκКΚмМΜυцνѵ', 'ooooooooiiiiiiiiiiiiiiiiieeeeeeeaaaaaaasssssssstttttttbbbbgggggghhhhhhhhhnnnnnnnddddfffppppcccccxxxxyyyyykkkkmmmuuvv');
+  v_fold := regexp_replace(v_fold, '[^a-z]', '', 'g');
+  if v_fold like '%nightshift%' then
+    return 'reserved';
+  end if;
+  return null;
+end
+$$;
+
 create or replace function public.oauth_register_client(p_name text, p_redirect_uris text[], p_ip text)
   returns jsonb
   language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare
   lim     jsonb := public.oauth_limits();
-  v_name  text := btrim(coalesce(p_name, ''));
+  v_name  text := public.oauth_visible_name(p_name);
   v_uris  text[];
   u       text;
   v_ip    text;
   v_id    uuid;
 begin
-  if char_length(v_name) not between 1 and 80 or v_name ~ '[[:cntrl:]]' then
-    return jsonb_build_object('ok', false, 'error', 'invalid_client_metadata', 'description', 'client_name: 1 to 80 printable characters.');
+  -- A name that shows nothing, is over 80 characters or passes itself off as
+  -- Nightshift is refused (RFC 7591 invalid_client_metadata).
+  if public.oauth_client_name_problem(p_name) is not null then
+    return jsonb_build_object('ok', false, 'error', 'invalid_client_metadata',
+      'description', 'client_name: 1 to 80 visible characters, and not a name that contains "Nightshift".');
   end if;
   if p_redirect_uris is null or cardinality(p_redirect_uris) not between 1 and 5 then
     return jsonb_build_object('ok', false, 'error', 'invalid_redirect_uri', 'description', 'Register 1 to 5 redirect URIs.');
@@ -1255,6 +1294,8 @@ revoke all on function public.oauth_redirect_uri_ok(text) from public, anon, aut
 revoke all on function public.oauth_month_start() from public, anon, authenticated, service_role;
 revoke all on function public.oauth_grant_month_credits(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.oauth_workspace(uuid) from public, anon, authenticated, service_role;
+revoke all on function public.oauth_visible_name(text) from public, anon, authenticated, service_role;
+revoke all on function public.oauth_client_name_problem(text) from public, anon, authenticated, service_role;
 revoke all on function public.oauth_revoke_grant_locked(uuid, text) from public, anon, authenticated, service_role;
 revoke all on function public.oauth_gc() from public, anon, authenticated, service_role;
 revoke all on function public.oauth_endpoint_scope(text) from public, anon, authenticated, service_role;
