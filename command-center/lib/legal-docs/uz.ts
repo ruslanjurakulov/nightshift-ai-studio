@@ -22,7 +22,7 @@ export const uz: LegalTexts = {
           {
             list: [
               "Akkaunt maʼlumotlari: elektron pochta manzilingiz va parolingiz — ularni autentifikatsiya provayderimiz (Supabase Auth) boshqaradi. Biz parolingizni hech qachon ochiq koʻrinishda koʻrmaymiz va saqlamaymiz.",
-              "Siz kiritgan sozlamalar: kanal nomlari, nisha, til, ovoz va uslub tanlovi, jadvallar, seriyalar, jamoa aʼzolari va rollar, shuningdek tekshiruvdagi qarorlaringiz (masalan, videoni tasdiqlash) — ular foydalanuvchi identifikatoringiz bilan audit jurnaliga yoziladi.",
+              "Siz kiritgan sozlamalar: kanal nomlari, nisha, til, ovoz va uslub tanlovi, jadvallar, seriyalar, shuningdek tekshiruvdagi qarorlaringiz (masalan, videoni tasdiqlash) — ular foydalanuvchi identifikatoringiz bilan audit jurnaliga yoziladi.",
               "Siz kiritgan uchinchi tomon xizmatlarining API kalitlari: ular serverimizga kelgan zahoti shifrlanadi, konveyerning shifrlangan sirlar omboriga (GitHub Actions secrets) yoziladi va tashlab yuboriladi. Ular hech qachon maʼlumotlar bazamizda saqlanmaydi, sizga qayta koʻrsatilmaydi va jurnallarga yozilmaydi.",
               "Siz ruxsat bergan Google foydalanuvchi maʼlumotlari — 3-boʻlimga qarang.",
               "Texnik maʼlumotlar: hosting va maʼlumotlar bazasi provayderlarimiz Xizmatni ishlatish va himoya qilish uchun standart soʻrov jurnallarini (IP manzil, brauzer turi, soʻrov vaqti) yuritadi. Biz analitika, reklama yoki kuzatuv vositalaridan foydalanmaymiz.",
@@ -228,7 +228,7 @@ export const uz: LegalTexts = {
         id: "accounts",
         heading: "3. Akkauntlar",
         body: [
-          "Hozircha kirish taklif orqali beriladi. Kirish maʼlumotlaringizni xavfsiz saqlang va ruxsatsiz foydalanishdan shubhalansangiz, darhol {contactEmail} manziliga xabar bering. Akkauntingizdagi harakatlar, jumladan siz taklif qilgan jamoa aʼzolarining harakatlari uchun siz javobgarsiz.",
+          "Hozircha kirish taklif orqali beriladi. Kirish maʼlumotlaringizni xavfsiz saqlang va ruxsatsiz foydalanishdan shubhalansangiz, darhol {contactEmail} manziliga xabar bering. Akkauntingizdagi harakatlar uchun siz javobgarsiz.",
         ],
       },
       {

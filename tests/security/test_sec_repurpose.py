@@ -43,7 +43,7 @@ from psycopg import sql
 import sec_db
 from sec_db import ANON, SERVICE, acting, as_superuser
 from sec_repurpose_0080 import held_id, manifest_json
-from sec_scenario import DEFAULT_ORG
+from sec_scenario import DEFAULT_ORG, seat_invitee
 
 # One clip: 4, floored to 5. Two clips 8, three 12. job_minimum is the floor.
 PRICES = {"repurpose_clip": 4, "job_minimum": 5}
@@ -163,8 +163,9 @@ def finish(s, rid, worker="w1"):
     return s.run("select public.finish_repurpose_request(%s, %s)", [rid, worker])
 
 
-def _accept_invite(s):
-    s.rows("select public.accept_org_invite(id) from public.my_invites() limit 1")
+def _accept_invite(s, sc):
+    """Ivan's legacy row, bound by the database owner (0091 closed accept_org_invite)."""
+    seat_invitee(s, sc)
 
 
 def _pressed(s, vid, clips=None, **kw):
@@ -197,10 +198,10 @@ def test_a_missing_video_and_another_orgs_read_the_same(conn, sc):
 
 
 def test_a_member_who_may_only_read_sees_the_price_but_cannot_press(conn, sc):
-    # Ivan accepts his pending viewer invite into org A, in this transaction only.
+    # Ivan is bound as a viewer of org A (an extra member 0091 left in place), in this transaction only.
     with world(conn, sc.alice) as (su, vid):
         with acting(conn, sc.invitee) as s:
-            _accept_invite(s)
+            _accept_invite(s, sc)
             q = quote(s, vid)
             p = press(s, vid)
             assert holds(owner(s), sc.alice.org) == []

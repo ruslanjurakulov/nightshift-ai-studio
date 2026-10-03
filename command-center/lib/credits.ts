@@ -149,6 +149,17 @@ export function parsePrices(rows: unknown): PriceMap {
 /** Flat floors: charged at credits_per_unit, their margin ignored (0020, 0030). */
 const FLAT_UNITS: readonly string[] = [UNIT_JOB_MINIMUM, "download_minimum"];
 
+/** Is this unit a flat floor (charged at its rate, margin ignored)? */
+export function isFlatUnit(unit: string): boolean {
+  return FLAT_UNITS.includes(unit);
+}
+
+/** What one unit costs the customer: the rate with its margin folded in
+ *  (a flat floor: the rate itself). The same number credit_rates() returns. */
+export function chargePerUnit(p: Pick<CreditPrice, "unit" | "creditsPerUnit" | "margin">): number {
+  return isFlatUnit(p.unit) ? p.creditsPerUnit : p.creditsPerUnit * (1 + p.margin);
+}
+
 /**
  * The price list as a member is charged (what credit_rates() returns, 0084):
  * each rate with its margin folded in, the margin itself 0 and no note. Used
@@ -158,10 +169,9 @@ const FLAT_UNITS: readonly string[] = [UNIT_JOB_MINIMUM, "download_minimum"];
 export function chargedPrices(prices: PriceMap): PriceMap {
   const out: PriceMap = {};
   for (const p of Object.values(prices)) {
-    const flat = FLAT_UNITS.includes(p.unit);
     out[p.unit] = {
       unit: p.unit,
-      creditsPerUnit: flat ? p.creditsPerUnit : p.creditsPerUnit * (1 + p.margin),
+      creditsPerUnit: chargePerUnit(p),
       margin: 0,
       note: null,
       updatedAt: p.updatedAt,

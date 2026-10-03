@@ -111,7 +111,8 @@ describe("customer sidebar model", () => {
     expect(sidebarCurrent("/editor/3f2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e", null)).toBe("editor");
     expect(sidebarCurrent("/videos/abc", null)).toBe("videos");
     expect(sidebarCurrent("/credits", null)).toBe("credits");
-    expect(sidebarCurrent("/developers", null)).toBe("settings");
+    expect(sidebarCurrent("/developers", null)).toBe("developers");
+    expect(sidebarCurrent("/organization", null)).toBe("settings");
     expect(sidebarCurrent("/pipeline", null)).toBeNull();
   });
 
@@ -190,7 +191,7 @@ describe("customer sidebar (rendered)", () => {
 });
 
 describe("Getting Started is the operator's", () => {
-  it("is not in a customer's sidebar, bottom bar or Settings tabs", () => {
+  it("is not in a customer's sidebar or bottom bar, and Settings has no tabs", () => {
     pathname = "/chronos/organization";
     render(
       withI18n(
@@ -202,9 +203,8 @@ describe("Getting Started is the operator's", () => {
     );
     expect(screen.queryByText(en.nav.onboarding)).toBeNull();
     expect(document.querySelector('a[href$="/getting-started"]')).toBeNull();
-    // The tabs are still there, without it.
-    const tabs = screen.getByRole("navigation", { name: en.nav.sections });
-    expect(within(tabs).getAllByRole("link").map((a) => a.textContent)).toEqual([en.nav.organization, en.nav.developers]);
+    // Settings is one page, not a tab bar: there is no team to lay out behind it.
+    expect(screen.queryByRole("navigation", { name: en.nav.sections })).toBeNull();
   });
 
   it("is still in the operator's console rail", () => {
