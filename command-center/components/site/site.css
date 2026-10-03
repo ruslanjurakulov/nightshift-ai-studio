@@ -1173,6 +1173,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 }
 .st-alert[data-tone="fail"] { color: var(--ns-tally); }
 .st-alert[data-tone="warn"] { color: var(--ns-caution); }
+.st-alert[data-tone="ok"] { color: var(--ns-go); }
 .st-alert > span { color: var(--ns-text); }
 
 /* ── 404: off air ────────────────────────────────────────────────────── */

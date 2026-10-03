@@ -259,11 +259,11 @@ describe("BR-L-102: a route handler has no RSC form", () => {
 describe("BR-L-132: a public page has no .rsc form either", () => {
   it("every public page's .rsc form redirects to the page, before routing", async () => {
     const { default: nextConfig, PUBLIC_PAGE_PATHS } = await import("../next.config");
-    const { SITEMAP_PATHS, LOGIN_PATH, SIGNUP_PATH } = await import("@/lib/public-paths");
+    const { SITEMAP_PATHS, LOGIN_PATH, SIGNUP_PATH, INVITE_NOTICE_PATH } = await import("@/lib/public-paths");
     const { DEV_PAGE_PATHS } = await import("@/lib/dev-pages");
     // The literal list in next.config.ts is exactly the public pages, plus the
     // two flag-gated developer pages (which are in no sitemap while off).
-    expect([...PUBLIC_PAGE_PATHS].sort()).toEqual([...SITEMAP_PATHS, ...DEV_PAGE_PATHS, LOGIN_PATH, SIGNUP_PATH].sort());
+    expect([...PUBLIC_PAGE_PATHS].sort()).toEqual([...SITEMAP_PATHS, ...DEV_PAGE_PATHS, LOGIN_PATH, SIGNUP_PATH, INVITE_NOTICE_PATH].sort());
     const redirects = (await nextConfig.redirects?.()) ?? [];
     for (const path of PUBLIC_PAGE_PATHS) {
       const source = path === "/" ? "/index.rsc" : `${path}.rsc`;

@@ -489,3 +489,8 @@ sec_repurpose_0080.extend(TABLES, FUNCTIONS)
 import sec_inbox_0081  # noqa: E402
 
 sec_inbox_0081.extend(TABLES, FUNCTIONS)
+
+# Migration 0092 (Invite friends): tests/security/sec_friend_invites_0092.py
+import sec_friend_invites_0092  # noqa: E402
+
+sec_friend_invites_0092.extend(TABLES, FUNCTIONS)
