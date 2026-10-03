@@ -37,7 +37,7 @@ export default async function SolutionsPage() {
   const s = t.site.solutions;
   const rules = t.site.rules;
   return (
-    <PublicShell t={t} current="solutions">
+    <PublicShell t={t} current="solutions" fresh>
       <section aria-labelledby="solutions-title" className="st-wrap pb-16 pt-10 lg:pb-24 lg:pt-20">
         <Slug>{s.slug}</Slug>
         <h1 id="solutions-title" className="st-h1-page mt-8 max-w-[20ch]">

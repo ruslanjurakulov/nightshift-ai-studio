@@ -41,7 +41,7 @@ export function PricingTeaser({
       : [tp.terms[2], expiryTerm(tp, expiry), tp.terms[3]];
 
   return (
-    <section id="pricing" aria-labelledby="pricing-title" className="st-section">
+    <section id="pricing" aria-labelledby="pricing-title" className="st-section" data-tone="raised">
       <div className="st-wrap st-pricing">
         {/* Opens on the ledger, not a slug: the four words a credit goes
             through, as wide as the page. In the document the heading still

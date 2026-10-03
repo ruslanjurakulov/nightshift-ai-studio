@@ -43,7 +43,7 @@ export default async function SolutionPage({ params }: { params: Promise<{ slug:
   const page = t.site.solutions.pages.find((p) => p.id === slug);
   if (!page) notFound();
   return (
-    <PublicShell t={t} current="solutions">
+    <PublicShell t={t} current="solutions" fresh>
       <SolutionView t={t} id={slug} page={page} />
     </PublicShell>
   );

@@ -12,6 +12,7 @@ import { LegalFooter } from "@/components/legal/LegalFooter";
 import { BrandMark } from "@/components/site/BrandMark";
 import { preloadSiteFonts } from "@/components/site/fonts";
 import "@/components/site/site.css";
+import "@/components/site/site-next.css";
 
 /**
  * The frame around sign-in, sign-up and the email confirmation: on a wide
@@ -37,7 +38,7 @@ export function AuthShell({
   preloadSiteFonts(locale);
   const asideTitle = mode === "signup" ? a.asideTitleSignup : a.asideTitle;
   return (
-    <div className="st st-auth">
+    <div className="st nx st-auth">
       <aside className="st-auth-aside" aria-label={asideTitle}>
         <Link href="/" className="st-brand self-start">
           <BrandMark />
