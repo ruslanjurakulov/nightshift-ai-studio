@@ -381,9 +381,13 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # MCP over OAuth (0093): tests/security/sec_mcp_oauth_0093.py — one row in each OAuth table.
     import sec_mcp_oauth_0093
     sec_mcp_oauth_0093.seed(conn, sc)
-    # A pending invite into org A, addressed to Ivan's email, not yet accepted.
-    with acting(conn, sc.alice.actor, commit=True) as s:
-        s.value("select public.invite_org_member(%s, %s, 'viewer')", [sc.alice.org, sc.invitee.email])
+    # A LEGACY pending invite into org A, addressed to Ivan's email: written as the
+    # database owner, because since 0091 no API role can create one (and the
+    # migration deleted every one that existed). It is kept so the lab keeps
+    # proving that such a row is inert: Ivan is a member of nothing.
+    with as_superuser(conn) as s:
+        s.rows("insert into public.org_members (org_id, email, role) values (%s, %s, 'viewer') returning 1",
+               [sc.alice.org, sc.invitee.email])
 
     # One web rate-limit window each (0042), written the only way it can be:
     # by the user's own take_web_rate() call.
@@ -403,3 +407,16 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
         sc.channel_org = {r[0]: str(r[1]) for r in s.rows("select channel_id, org_id from public.channels")}
         sc.video_channel = {r[0]: r[1] for r in s.rows("select video_id, channel_id from public.videos")}
     return sc
+
+
+def seat_invitee(s, sc, org=None) -> None:
+    """Make Ivan a bound VIEWER of org A for the rest of the current transaction.
+
+    What an extra member that 0091 left in place looks like (it removes nobody):
+    the legacy pending row is bound to his account by the database owner, the
+    only way left, and the caller's API role is put back. Used by the tests that
+    prove a viewer's limits; rolled back with the transaction."""
+    s.conn.execute("reset role")
+    s.conn.execute("update public.org_members set user_id = %s where org_id = %s and email = %s and user_id is null",
+                   [sc.invitee.uid, org or sc.alice.org, sc.invitee.email])
+    s.conn.execute("set local role authenticated")

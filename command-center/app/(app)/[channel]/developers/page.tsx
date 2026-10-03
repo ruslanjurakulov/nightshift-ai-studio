@@ -13,8 +13,7 @@ export const revalidate = 0;
 
 /**
  * The Developer console (migration 0031): activate the API, keys, usage, the
- * prepaid API balance and its limits — for an owner/admin of the organization
- * being viewed. Everything is read and written through the signed-in user's
+ * prepaid API balance and its limits — for the workspace being viewed. Everything is read and written through the signed-in user's
  * own session and 0031's functions; the top-up checkout is Paddle's.
  */
 export default async function DevelopersPage() {
@@ -26,7 +25,7 @@ export default async function DevelopersPage() {
     <div className="rhythm">
       <PageHeader icon="developers" title={t.developers.title} subtitle={t.developers.subtitle} />
       {!user ? (
-        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.members.signIn}</div>
+        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.org.signIn}</div>
       ) : !current ? (
         <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.org.noOrg}</div>
       ) : !atLeast(current.role, "admin") ? (

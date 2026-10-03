@@ -6,7 +6,6 @@ import { isPlatformAdmin } from "@/lib/auth/org-roles";
 import { NotConfigured } from "@/components/NotConfigured";
 import { NeuralBackdrop } from "@/components/NeuralBackdrop";
 import { WelcomeFlow } from "@/components/welcome/WelcomeFlow";
-import { PendingInvites } from "@/components/org/PendingInvites";
 import { LEGAL } from "@/lib/legal";
 
 export const dynamic = "force-dynamic";
@@ -57,9 +56,6 @@ export default async function WelcomePage() {
     <div className="atmos relative flex min-h-dvh flex-col">
       <NeuralBackdrop dim />
       <div className="relative z-10 mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center gap-4 p-4 sm:p-6">
-        {/* Someone invited to an existing workspace answers that first, rather
-            than being walked into creating a workspace of their own. */}
-        <PendingInvites />
         <WelcomeFlow
           needsWorkspace={org.supported && org.orgs.length === 0}
           unavailable={Boolean(org.unavailable)}
