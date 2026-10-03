@@ -236,7 +236,7 @@ export const devRu: DevDictionary = {
     },
     clients: [
       { id: "claude-code", where: "Выполните в терминале", hint: "Добавляет сервер для вас в текущем проекте; с --scope user он будет во всех проектах. Команда /mcp в Claude Code покажет, что он подключён." },
-      { id: "cursor", where: "Сохраните как ~/.cursor/mcp.json (или .cursor/mcp.json в одном проекте)", hint: "После сохранения перезапустите Cursor." },
+      { id: "cursor", where: "Сохраните как ~/.cursor/mcp.json", hint: "После сохранения перезапустите Cursor." },
       { id: "vscode", where: "Сохраните как .vscode/mcp.json в проекте", hint: "VS Code спросит ключ при первом запуске сервера и сам сохранит его, поэтому в файл он не попадает." },
       { id: "windsurf", where: "Панель Cascade → меню действий → Open MCP config file", hint: "Добавьте запись в mcpServers и сохраните файл." },
       { id: "cline", where: "Панель Cline → MCP Servers → Configure → Configure MCP Servers", hint: "Укажите type: streamableHttp; без него выбирается старый транспорт SSE." },

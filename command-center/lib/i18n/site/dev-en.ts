@@ -248,7 +248,7 @@ export const devEn = {
     },
     clients: [
       { id: "claude-code", where: "Run in a terminal", hint: "Adds the server for you in the current project; add --scope user to have it in every project. Run /mcp inside Claude Code to see it connected." },
-      { id: "cursor", where: "Save as ~/.cursor/mcp.json (or .cursor/mcp.json in one project)", hint: "Restart Cursor after saving." },
+      { id: "cursor", where: "Save as ~/.cursor/mcp.json", hint: "Restart Cursor after saving." },
       { id: "vscode", where: "Save as .vscode/mcp.json in your project", hint: "VS Code asks for the key the first time the server starts and stores it for you, so it is never written into the file." },
       { id: "windsurf", where: "Cascade panel → Actions menu → Open MCP config file", hint: "Add the entry under mcpServers and save." },
       { id: "cline", where: "Cline panel → MCP Servers → Configure → Configure MCP Servers", hint: "Set type to streamableHttp; leaving it out selects the older SSE transport." },

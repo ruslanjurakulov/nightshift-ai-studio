@@ -236,7 +236,7 @@ export const devUz: DevDictionary = {
     },
     clients: [
       { id: "claude-code", where: "Terminalda bajaring", hint: "Serverni joriy loyihada sizga qoʻshadi; --scope user bilan u barcha loyihalarda boʻladi. Claude Code ichidagi /mcp buyrugʻi uning ulanganini koʻrsatadi." },
-      { id: "cursor", where: "~/.cursor/mcp.json sifatida saqlang (yoki bitta loyihada .cursor/mcp.json)", hint: "Saqlagandan keyin Cursor’ni qayta ishga tushiring." },
+      { id: "cursor", where: "~/.cursor/mcp.json sifatida saqlang", hint: "Saqlagandan keyin Cursor’ni qayta ishga tushiring." },
       { id: "vscode", where: "Loyihangizda .vscode/mcp.json sifatida saqlang", hint: "VS Code server birinchi marta ishga tushganda kalitni soʻraydi va uni oʻzi saqlaydi, shuning uchun kalit faylga yozilmaydi." },
       { id: "windsurf", where: "Cascade paneli → amallar menyusi → Open MCP config file", hint: "mcpServers ichiga yozuvni qoʻshing va faylni saqlang." },
       { id: "cline", where: "Cline paneli → MCP Servers → Configure → Configure MCP Servers", hint: "type: streamableHttp deb yozing; yozilmasa eski SSE transporti tanlanadi." },

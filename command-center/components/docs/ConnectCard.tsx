@@ -72,7 +72,12 @@ export function ConnectCard({
 
   useEffect(() => {
     // An old `#cursor` link still works; it becomes `?tab=cursor`.
-    const fromHash = decodeURIComponent(window.location.hash.slice(1));
+    let fromHash = "";
+    try {
+      fromHash = decodeURIComponent(window.location.hash.slice(1));
+    } catch {
+      /* a malformed escape such as #% is not a tab id; it must not take the page down */
+    }
     const id = tabs.some((t) => t.id === fromHash) ? fromHash : active;
     if (id !== active) {
       setActive(id);
