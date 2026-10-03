@@ -29,10 +29,10 @@ export function PlanCompare({ matrix, titleId }: { matrix: Matrix; titleId: stri
       tabIndex={0}
       className="st-panel overflow-x-auto"
     >
-      <table className="w-full min-w-[34rem] border-collapse text-left text-[14px]">
+      <table className="w-full min-w-[34rem] border-collapse text-left text-sm">
         <thead>
           <tr className="border-b border-[var(--color-border)]">
-            <th scope="col" className="sticky left-0 w-[30%] min-w-[9.5rem] bg-[var(--color-panel)] px-5 py-4 text-[12px] font-medium text-[var(--color-muted)]">
+            <th scope="col" className="sticky left-0 w-[30%] min-w-[9.5rem] bg-[var(--color-panel)] px-5 py-4 text-xs font-medium text-[var(--color-muted)]">
               {t.pricing.compareFeature}
             </th>
             {matrix.columns.map((c) => (
@@ -48,7 +48,7 @@ export function PlanCompare({ matrix, titleId }: { matrix: Matrix; titleId: stri
               {t.pricing.compareCredits}
             </th>
             {matrix.columns.map((c) => (
-              <td key={c.id} className="st-num px-5 py-4 text-[13px]">
+              <td key={c.id} className="st-num px-5 py-4 text-sm">
                 {c.isDefault
                   ? fmt(p.freeCredits, { n: formatCredits(WELCOME_CREDITS, locale) })
                   : fmt(p.monthlyCredits, { n: formatCredits(c.monthlyCredits, locale) })}

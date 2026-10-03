@@ -35,7 +35,7 @@ export default async function EditorProjectPage({
         title={t.editor.title}
         subtitle={t.editor.subtitle}
       />
-      <div className="panel p-4 text-[13px] text-[var(--color-muted)]">
+      <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">
         {text}
       </div>
     </div>

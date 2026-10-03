@@ -74,11 +74,11 @@ export function LibraryDialog({
       >
         <div className="flex items-start justify-between gap-4 px-5 pb-2 pt-5">
           <div className="flex min-w-0 flex-col gap-1">
-            <h2 id={titleId} className="m-0 break-words text-[16px] font-semibold leading-snug text-[var(--color-fg)]">
+            <h2 id={titleId} className="m-0 break-words text-base font-semibold leading-snug text-[var(--color-fg)]">
               {title}
             </h2>
             {description && (
-              <p id={descId} className="m-0 text-[13px] leading-relaxed text-[var(--color-muted)]">
+              <p id={descId} className="m-0 text-sm leading-relaxed text-[var(--color-muted)]">
                 {description}
               </p>
             )}

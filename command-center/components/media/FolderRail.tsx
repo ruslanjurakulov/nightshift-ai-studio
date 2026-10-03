@@ -42,7 +42,7 @@ export function FolderRail({
   // Outlines are rings, not borders: the global `* { border-color }` rule in
   // globals.css is unlayered and would win over any border-colour utility.
   const item = (on: boolean) =>
-    `press flex shrink-0 items-center gap-2 rounded-[var(--ns-r-key)] px-3.5 py-2 text-left text-[13px] font-medium ring-inset lg:w-full lg:rounded-[var(--ns-r-key)] lg:px-3 lg:py-2.5 ${
+    `press flex shrink-0 items-center gap-2 rounded-[var(--ns-r-key)] px-3.5 py-2 text-left text-sm font-medium ring-inset lg:w-full lg:rounded-[var(--ns-r-key)] lg:px-3 lg:py-2.5 ${
       on
         ? "bg-[color-mix(in_srgb,var(--color-primary)_14%,var(--color-panel))] text-[var(--color-fg)] ring-1 ring-[var(--color-primary)]"
         : // A chip with an outline on a phone; a quiet row in the column beside the grid.
@@ -50,7 +50,7 @@ export function FolderRail({
     }`;
   const count = (n: number | null, on: boolean) =>
     n === null ? null : (
-      <span className={`mono ml-auto pl-1 text-[11px] ${on ? "text-[var(--color-fg)]" : "text-[var(--color-muted)]"}`} aria-hidden>
+      <span className={`tnum ml-auto pl-1 text-xs ${on ? "text-[var(--color-fg)]" : "text-[var(--color-muted)]"}`} aria-hidden>
         {n}
       </span>
     );
@@ -103,7 +103,7 @@ export function FolderRail({
               type="button"
               disabled={disabled}
               onClick={onNew}
-              className="press flex items-center gap-2 whitespace-nowrap rounded-[var(--ns-r-key)] border border-dashed border-[var(--color-border)] px-3.5 py-2 text-[13px] font-medium text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-fg)] lg:w-full lg:rounded-[var(--ns-r-key)] lg:px-3 lg:py-2.5"
+              className="press flex items-center gap-2 whitespace-nowrap rounded-[var(--ns-r-key)] border border-dashed border-[var(--color-border)] px-3.5 py-2 text-sm font-medium text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-fg)] lg:w-full lg:rounded-[var(--ns-r-key)] lg:px-3 lg:py-2.5"
             >
               <FolderPlus className="size-4 shrink-0" aria-hidden />
               {tf.newFolder}
@@ -112,7 +112,7 @@ export function FolderRail({
         )}
       </ul>
       {state.error && (
-        <p role="alert" className="m-0 mt-2 text-[12px] text-[var(--color-fail)]">
+        <p role="alert" className="m-0 mt-2 text-xs text-[var(--color-fail)]">
           {t.media.readFailed}
         </p>
       )}

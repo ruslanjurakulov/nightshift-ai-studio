@@ -10,7 +10,7 @@ export function CreditsLink() {
   const { t } = useI18n();
   const path = useChannelPath();
   return (
-    <Link href={path("/credits")} className="btn-quiet text-[13px]">
+    <Link href={path("/credits")} className="btn-quiet text-sm">
       {t.usage.openCredits}
       <ArrowUpRight className="size-3.5" aria-hidden />
     </Link>

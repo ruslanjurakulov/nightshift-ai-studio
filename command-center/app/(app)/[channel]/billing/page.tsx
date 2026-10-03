@@ -176,16 +176,16 @@ export default async function BillingPage() {
     <div className="rhythm">
       <PageHeader icon="billing" title={t.billing.title} subtitle={t.billing.subtitle} />
       {migrationMissing && (
-        <div className="panel p-4" role="status">
-          <p className="text-[13px] text-[var(--color-warn)]">{t.billing.migrationMissing}</p>
+        <div className="panel p-5 sm:p-6" role="status">
+          <p className="text-sm text-[var(--color-warn)]">{t.billing.migrationMissing}</p>
         </div>
       )}
       <UnitEconomicsCard ue={ue} scope={ueScope} />
       {operatorView ? (
         <BillingBoard providers={views} runway={runway} githubConfigured={isGithubConfigured} />
       ) : (
-        <div className="panel p-4" role="status">
-          <p className="text-[13px] text-[var(--color-muted)]">{t.billing.providersOperatorOnly}</p>
+        <div className="panel p-5 sm:p-6" role="status">
+          <p className="text-sm text-[var(--color-muted)]">{t.billing.providersOperatorOnly}</p>
         </div>
       )}
     </div>

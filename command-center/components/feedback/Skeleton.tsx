@@ -30,13 +30,13 @@ export function PageSkeleton({ label }: { label: string }) {
         </div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="panel flex flex-col gap-2 p-4">
+            <div key={i} className="panel flex flex-col gap-2 p-5 sm:p-6">
               <Skeleton className="h-3 w-1/2" />
               <Skeleton className="h-6 w-3/4" />
             </div>
           ))}
         </div>
-        <div className="panel flex flex-col gap-3 p-4">
+        <div className="panel flex flex-col gap-3 p-5 sm:p-6">
           <Skeleton className="h-4 w-40" />
           {[0, 1, 2, 3, 4].map((i) => (
             <Skeleton key={i} className="h-9 w-full" style={{ opacity: 1 - i * 0.14 }} />

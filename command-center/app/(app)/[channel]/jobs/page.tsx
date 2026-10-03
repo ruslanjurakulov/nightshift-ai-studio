@@ -158,7 +158,7 @@ export default async function JobsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-[var(--color-border)] text-left text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                  <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
                     <th className="px-4 py-2 font-semibold">{t.jobs.thJob}</th>
                     <th className="px-4 py-2 font-semibold">{t.jobs.thAgents}</th>
                     <th className="px-4 py-2 font-semibold">{t.jobs.thLatest}</th>
@@ -173,25 +173,25 @@ export default async function JobsPage() {
                     <tr key={`${j.keyedBy}-${j.id}`} className="border-b border-[var(--color-border)]/50 align-top transition-colors hover:bg-[var(--color-panel-2)]">
                       <td className="px-4 py-2">
                         <div className="flex min-w-0 items-center gap-1">
-                          <span className="mono min-w-0 truncate text-[12px] text-[var(--color-fg)]">{j.id}</span>
+                          <span className="mono min-w-0 truncate text-xs text-[var(--color-fg)]">{j.id}</span>
                           <CopyButton value={j.id} label={j.id} />
                         </div>
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                        <div className="text-xs text-[var(--color-muted)]">
                           {j.keyedBy === "job_id" ? t.jobs.byJobId : t.jobs.byVideo}
                         </div>
                       </td>
                       <td className="px-4 py-2">
-                        <div className="mono text-[11px] text-[var(--color-primary)]">
+                        <div className="tnum text-xs text-[var(--color-primary)]">
                           {j.agents.length ? j.agents.join(", ") : t.common.system}
                         </div>
-                        <div className="mono text-[10px] text-[var(--color-muted)]">{fmt(t.jobs.eventsN, { n: j.events })}</div>
+                        <div className="tnum text-xs text-[var(--color-muted)]">{fmt(t.jobs.eventsN, { n: j.events })}</div>
                       </td>
-                      <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">{j.latestEvent}</td>
-                      <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">{relativeTime(j.startedAt)}</td>
-                      <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">
+                      <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{j.latestEvent}</td>
+                      <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{relativeTime(j.startedAt)}</td>
+                      <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">
                         {j.completedAt ? relativeTime(j.completedAt) : t.common.dash}
                       </td>
-                      <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">{durationLabel(j.durationMs)}</td>
+                      <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{durationLabel(j.durationMs)}</td>
                       <td className="px-4 py-2">
                         <JobStatusLamp status={j.status} />
                       </td>
@@ -200,7 +200,7 @@ export default async function JobsPage() {
                 </tbody>
               </table>
             </div>
-            <p className="border-t border-[var(--color-border)] px-4 py-2 mono text-[10px] text-[var(--color-muted)]">
+            <p className="border-t border-[var(--color-border)] px-4 py-2 tnum text-xs text-[var(--color-muted)]">
               {t.jobs.readOnly}
             </p>
           </>

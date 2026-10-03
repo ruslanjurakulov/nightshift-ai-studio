@@ -38,10 +38,10 @@ function StageNode({ stage, last, words }: { stage: StageView; last: boolean; wo
     <li className="flex min-w-0 flex-1 items-start">
       <div className="flex min-w-0 flex-col items-center gap-1">
         <StatusLamp tone={STATE_TONE[stage.state]} label={words[stage.state]} live={stage.state === "RUNNING"} hideLabel size="md" />
-        <span className="mono text-center text-[10px] leading-tight" style={{ color: filled ? "var(--color-fg)" : "var(--color-muted)" }}>
+        <span className="tnum text-center text-xs leading-tight" style={{ color: filled ? "var(--color-fg)" : "var(--color-muted)" }}>
           {stage.label}
         </span>
-        <span className="ns-tc text-center text-[10px] text-[var(--color-muted)]">
+        <span className="ns-tc text-center text-xs text-[var(--color-muted)]">
           {stage.ts ? timeOfDay(stage.ts) : "—"}
         </span>
       </div>

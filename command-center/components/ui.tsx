@@ -5,10 +5,10 @@ import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 /** `fg` colours a StatCard figure; `label` is the word a lamp wears when the caller gives none. */
 const TONE: Record<string, { fg: string; label: string }> = {
   ok: { fg: "var(--color-ok)", label: "OK" },
-  run: { fg: "var(--color-primary)", label: "RUNNING" },
-  fail: { fg: "var(--color-fail)", label: "FAILED" },
-  warn: { fg: "var(--color-warn)", label: "WARN" },
-  idle: { fg: "var(--color-idle)", label: "IDLE" },
+  run: { fg: "var(--color-primary)", label: "Running" },
+  fail: { fg: "var(--color-fail)", label: "Failed" },
+  warn: { fg: "var(--color-warn)", label: "Warning" },
+  idle: { fg: "var(--color-idle)", label: "Idle" },
 };
 
 /**
@@ -51,7 +51,7 @@ export function StatCard({
         {value}
       </div>
       {sub !== undefined && (
-        <div className="mt-2 text-[13px] font-light text-[var(--color-muted)]">{sub}</div>
+        <div className="mt-2 text-sm font-light text-[var(--color-muted)]">{sub}</div>
       )}
     </div>
   );
@@ -90,7 +90,7 @@ export function EmptyState({
       >
         <Icon className="size-6" strokeWidth={1.5} />
       </span>
-      <p className="m-0 max-w-[46ch] text-[14px] font-light leading-relaxed text-[var(--color-muted)]">
+      <p className="m-0 max-w-[46ch] text-sm font-light leading-relaxed text-[var(--color-muted)]">
         {children}
       </p>
     </div>

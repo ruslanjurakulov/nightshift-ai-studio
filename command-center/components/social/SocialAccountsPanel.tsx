@@ -75,17 +75,17 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
   }
 
   return (
-    <section className="panel flex flex-col gap-3 p-4" aria-labelledby="social-accounts-title">
+    <section className="panel flex flex-col gap-3 p-5 sm:p-6" aria-labelledby="social-accounts-title">
       <header>
         <h2 id="social-accounts-title" className="text-sm font-semibold">
           {ts.title}
         </h2>
-        <p className="mt-1 text-[12px] text-[var(--color-muted)]">{ts.subtitle}</p>
+        <p className="mt-1 text-xs text-[var(--color-muted)]">{ts.subtitle}</p>
       </header>
 
       {result && (
         <p
-          className="text-[13px]"
+          className="text-sm"
           style={{ color: result.word === "connected" ? "var(--color-primary)" : "var(--color-warn)" }}
           role="status"
         >
@@ -94,9 +94,9 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
       )}
 
       {!hasOrg ? (
-        <p className="text-[12px] text-[var(--color-muted)]">{ts.noOrg}</p>
+        <p className="text-xs text-[var(--color-muted)]">{ts.noOrg}</p>
       ) : !available ? (
-        <p className="text-[12px] text-[var(--color-muted)]">{ts.notMigrated}</p>
+        <p className="text-xs text-[var(--color-muted)]">{ts.notMigrated}</p>
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {SOCIAL_PLATFORMS.map((platform) => {
@@ -109,11 +109,11 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
               >
                 <div className="flex items-center gap-2">
                   <PlatformLogo platform={platform} size={18} />
-                  <span className="text-[13px] font-semibold">{name(platform)}</span>
+                  <span className="text-sm font-semibold">{name(platform)}</span>
                 </div>
 
                 {rows.length === 0 ? (
-                  <p className="mt-2 text-[12px] text-[var(--color-muted)]">{ts.none}</p>
+                  <p className="mt-2 text-xs text-[var(--color-muted)]">{ts.none}</p>
                 ) : (
                   <ul className="mt-2 flex flex-col gap-2">
                     {rows.map((a) => (
@@ -136,7 +136,7 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
                           )}
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <span className="truncate text-[13px]">{accountLabel(a)}</span>
+                              <span className="truncate text-sm">{accountLabel(a)}</span>
                               {a.status === "connected" && (
                                 <CheckCircle2
                                   size={14}
@@ -145,7 +145,7 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
                                 />
                               )}
                             </div>
-                            <div className="mono text-[10px] text-[var(--color-muted)]">
+                            <div className="tnum text-xs text-[var(--color-muted)]">
                               {a.username && a.display_name ? `@${a.username} · ` : ""}
                               {a.connected_at ? fmt(ts.since, { when: relativeTime(a.connected_at) }) : ""}
                             </div>
@@ -161,7 +161,7 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
                               type="button"
                               onClick={() => disconnect(a)}
                               disabled={busy !== null || pending}
-                              className="btn-sky ghost pill px-3 py-1 text-[11px] disabled:opacity-50"
+                              className="btn-sky ghost pill px-3 py-1 text-xs disabled:opacity-50"
                             >
                               {busy === a.id ? ts.disconnecting : ts.disconnect}
                             </button>
@@ -174,19 +174,19 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   {actions.connect ? (
-                    <a href={`/api/oauth/${platform}/start`} className="btn-sky pill px-4 py-1.5 text-[12px]">
+                    <a href={`/api/oauth/${platform}/start`} className="btn-sky pill px-4 py-1.5 text-xs">
                       {rows.length ? ts.connectAnother : fmt(ts.connect, { platform: name(platform) })}
                     </a>
                   ) : !configured[platform] ? (
-                    <span className="text-[11px] text-[var(--color-muted)]" title={fmt(ts.notConfiguredHint, { platform: name(platform) })}>
+                    <span className="text-xs text-[var(--color-muted)]" title={fmt(ts.notConfiguredHint, { platform: name(platform) })}>
                       {fmt(ts.notAvailableYet, { platform: name(platform) })}
                     </span>
                   ) : (
-                    <span className="text-[11px] text-[var(--color-muted)]">{ts.viewerHint}</span>
+                    <span className="text-xs text-[var(--color-muted)]">{ts.viewerHint}</span>
                   )}
                 </div>
                 {platform === "tiktok" && (
-                  <p className="mt-2 text-[10px] text-[var(--color-muted)]">{ts.tiktokPrivateNote}</p>
+                  <p className="mt-2 text-xs text-[var(--color-muted)]">{ts.tiktokPrivateNote}</p>
                 )}
               </div>
             );
@@ -194,9 +194,9 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
         </div>
       )}
 
-      {available && <p className="text-[11px] text-[var(--color-muted)]">{ts.vaultNote}</p>}
+      {available && <p className="text-xs text-[var(--color-muted)]">{ts.vaultNote}</p>}
       {disconnected && (
-        <p className="text-[11px] text-[var(--color-fg)]" role="status">
+        <p className="text-xs text-[var(--color-fg)]" role="status">
           {ts.disconnectedNotice}{" "}
           <a
             href={PLATFORM_PERMISSIONS_URL[disconnected]}
@@ -208,7 +208,7 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
           </a>
         </p>
       )}
-      {error && <p className="mono text-[11px] text-[var(--color-fail)]">{fmt(ts.disconnectFailed, { error })}</p>}
+      {error && <p className="tnum text-xs text-[var(--color-fail)]">{fmt(ts.disconnectFailed, { error })}</p>}
       {dialog}
     </section>
   );

@@ -101,7 +101,7 @@ export function Frame({
       <div className="ns-frame-media" style={aspect ? { aspectRatio: aspect } : undefined}>
         {children}
       </div>
-      {caption && <div className="px-1 pb-1.5 pt-1 text-[12px] leading-snug">{caption}</div>}
+      {caption && <div className="px-1 pb-1.5 pt-1 text-xs leading-snug">{caption}</div>}
       {body && <div className="ns-frame-body">{body}</div>}
     </li>
   );

@@ -70,7 +70,7 @@ export function SendToEditor({
         onClick={() => setOpen(true)}
         aria-label={variant === "icon" ? ts.action : undefined}
         title={variant === "icon" ? ts.action : undefined}
-        className={className ?? (variant === "icon" ? "tap-icon grid size-9 place-items-center rounded-[var(--ns-r-key)]" : "btn-quiet text-[13px]")}
+        className={className ?? (variant === "icon" ? "tap-icon grid size-9 place-items-center rounded-[var(--ns-r-key)]" : "btn-quiet text-sm")}
         data-testid="open-in-editor"
       >
         <Clapperboard aria-hidden className="size-4" />
@@ -159,7 +159,7 @@ function SendDialog({
 
   const note = kind === "image" ? fmt(ts.stillNote, { s: STILL_DEFAULT_S }) : kind === "audio" ? ts.soundNote : ts.videoNote;
   const field =
-    "rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
+    "rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
 
   return (
     <LibraryDialog
@@ -174,14 +174,14 @@ function SendDialog({
       testId="open-in-editor-dialog"
       footer={
         <>
-          <button type="button" onClick={onClose} disabled={busy} className="btn-quiet text-[13px]">
+          <button type="button" onClick={onClose} disabled={busy} className="btn-quiet text-sm">
             {ts.cancel}
           </button>
           <button
             type="button"
             onClick={() => void submit()}
             disabled={busy || (projects === null && !listError) || (existing && !picked)}
-            className="btn-primary text-[13px]"
+            className="btn-primary text-sm"
           >
             {busy ? ts.sending : ts.submit}
           </button>
@@ -190,25 +190,25 @@ function SendDialog({
     >
       <div className="flex flex-col gap-4 pb-2">
         {projects === null && !listError ? (
-          <p className="m-0 text-[13px] text-[var(--color-muted)]" aria-live="polite">
+          <p className="m-0 text-sm text-[var(--color-muted)]" aria-live="polite">
             {ts.loadingProjects}
           </p>
         ) : null}
         {listError ? (
           <div className="flex flex-wrap items-center gap-3" role="alert">
-            <p className="m-0 text-[13px] text-[var(--color-fail)]">{ts.projectsFailed}</p>
-            <button type="button" className="btn-quiet text-[12px]" onClick={() => setAttempt((n) => n + 1)}>
+            <p className="m-0 text-sm text-[var(--color-fail)]">{ts.projectsFailed}</p>
+            <button type="button" className="btn-quiet text-xs" onClick={() => setAttempt((n) => n + 1)}>
               {ts.retry}
             </button>
           </div>
         ) : null}
-        {none ? <p className="m-0 text-[13px] text-[var(--color-muted)]">{ts.noProjects}</p> : null}
+        {none ? <p className="m-0 text-sm text-[var(--color-muted)]">{ts.noProjects}</p> : null}
 
         {projects && projects.length > 0 ? (
           <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
             <legend className="sr-only">{ts.title}</legend>
             {(["new", "existing"] as const).map((m) => (
-              <label key={m} className="flex items-center gap-2 text-[13px] text-[var(--color-fg)]">
+              <label key={m} className="flex items-center gap-2 text-sm text-[var(--color-fg)]">
                 <input
                   type="radio"
                   name={`${ids}-mode`}
@@ -223,7 +223,7 @@ function SendDialog({
         ) : null}
 
         {existing ? (
-          <label htmlFor={`${ids}-project`} className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+          <label htmlFor={`${ids}-project`} className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
             {ts.pickProject}
             <select id={`${ids}-project`} value={picked} onChange={(e) => setPicked(e.target.value)} className={field}>
               {(projects ?? []).map((p) => (
@@ -234,7 +234,7 @@ function SendDialog({
             </select>
           </label>
         ) : projects !== null || listError ? (
-          <label htmlFor={`${ids}-title`} className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+          <label htmlFor={`${ids}-title`} className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
             {ts.projectName}
             <input
               ref={first}
@@ -253,9 +253,9 @@ function SendDialog({
           </label>
         ) : null}
 
-        {projects !== null || listError ? <p className="m-0 text-[12px] text-[var(--color-muted)]">{note}</p> : null}
+        {projects !== null || listError ? <p className="m-0 text-xs text-[var(--color-muted)]">{note}</p> : null}
         {error ? (
-          <p role="alert" className="m-0 text-[13px] text-[var(--color-fail)]">
+          <p role="alert" className="m-0 text-sm text-[var(--color-fail)]">
             {te.errors[error]}
           </p>
         ) : null}

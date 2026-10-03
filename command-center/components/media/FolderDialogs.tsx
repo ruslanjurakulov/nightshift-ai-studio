@@ -92,29 +92,29 @@ export function FolderNameDialog({
           placeholder={tf.namePlaceholder}
           aria-invalid={error !== null || length > FOLDER_NAME_MAX}
           aria-describedby={`${hintId}${error ? ` ${errorId}` : ""}`}
-          className="w-full rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2.5 text-[16px] text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[14px]"
+          className="w-full rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2.5 text-base text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[14px]"
         />
         <span
           id={hintId}
-          className={`mono text-[11px] ${length > FOLDER_NAME_MAX ? "text-[var(--color-fail)]" : "text-[var(--color-muted)]"}`}
+          className={`tnum text-xs ${length > FOLDER_NAME_MAX ? "text-[var(--color-fail)]" : "text-[var(--color-muted)]"}`}
         >
           {fmt(tf.nameHint, { n: length, max: FOLDER_NAME_MAX })}
         </span>
         {error && (
-          <p id={errorId} role="alert" className="m-0 text-[13px] text-[var(--color-fail)]">
+          <p id={errorId} role="alert" className="m-0 text-sm text-[var(--color-fail)]">
             {tf.errors[error]}
           </p>
         )}
       </form>
       <div className="flex flex-wrap items-center justify-end gap-2 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
-        <button type="button" onClick={onClose} disabled={busy} className="btn-quiet text-[13px]">
+        <button type="button" onClick={onClose} disabled={busy} className="btn-quiet text-sm">
           {tf.cancel}
         </button>
         <button
           type="submit"
           form={`${inputId}-form`}
           disabled={!valid || busy}
-          className="btn-primary text-[13px] disabled:opacity-40"
+          className="btn-primary text-sm disabled:opacity-40"
         >
           {mode === "create" ? (busy ? tf.creating : tf.create) : busy ? tf.saving : tf.save}
         </button>
@@ -165,11 +165,11 @@ export function DeleteFolderDialog({
       footer={
         <>
           {error && (
-            <p role="alert" className="m-0 w-full text-[13px] text-[var(--color-fail)]">
+            <p role="alert" className="m-0 w-full text-sm text-[var(--color-fail)]">
               {tf.errors[error]}
             </p>
           )}
-          <button ref={cancel} type="button" onClick={onClose} disabled={busy} className="btn-quiet text-[13px]">
+          <button ref={cancel} type="button" onClick={onClose} disabled={busy} className="btn-quiet text-sm">
             {tf.cancel}
           </button>
           <button

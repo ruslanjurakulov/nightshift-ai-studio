@@ -1,15 +1,17 @@
 import { preload } from "react-dom";
 import type { Locale } from "@/lib/i18n/core";
-import { PUBLIC_FONT_PATHS } from "@/lib/public-paths";
+import { CRITICAL_FONT_PATHS } from "@/lib/public-paths";
 
 /**
- * A Russian page sets its headline and body in Cyrillic, which next/font loads
- * only once the page has been laid out (the subset sits behind a unicode-range)
- * — late enough to reflow the hero (CLS ≈ 0.07 at 1440, 0.22 on a phone). So a
- * Russian page preloads the two Cyrillic faces it will use, from public/fonts
- * (declared in components/site/site.css). Other languages preload nothing more.
+ * Every page preloads the Latin file of the one typeface (app/fonts.css), and a
+ * Russian page the Cyrillic one too: left to the unicode-range rule alone, the
+ * browser finds out it needs Cyrillic only after layout, and the swap reflowed
+ * the hero. English and Uzbek (Latin, with oʻ gʻ in the same file) preload one
+ * file of 34 KB; Russian two, 50 KB in all.
  */
-export function preloadSiteFonts(locale: Locale) {
-  if (locale !== "ru") return;
-  for (const href of PUBLIC_FONT_PATHS) preload(href, { as: "font", type: "font/woff2", crossOrigin: "anonymous" });
+export function preloadFonts(locale: Locale) {
+  for (const href of CRITICAL_FONT_PATHS[locale]) preload(href, { as: "font", type: "font/woff2", crossOrigin: "anonymous" });
 }
+
+/** The public shells' original name for the same call; kept so they need no edit. */
+export const preloadSiteFonts = preloadFonts;

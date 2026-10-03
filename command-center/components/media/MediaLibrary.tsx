@@ -250,7 +250,7 @@ export function MediaLibrary({
 
   if (!data) {
     return readFailed ? (
-      <div role="alert" className="panel p-4 text-[13px] text-[var(--color-fail)]">
+      <div role="alert" className="panel p-5 sm:p-6 text-sm text-[var(--color-fail)]">
         {tm.readFailed}
       </div>
     ) : (
@@ -536,12 +536,12 @@ export function MediaLibrary({
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      {!canUpload && <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{tm.noHost}</div>}
+      {!canUpload && <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{tm.noHost}</div>}
       {canUpload && !data.host.signing && (
-        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{tm.noSigning}</div>
+        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{tm.noSigning}</div>
       )}
       {readFailed && (
-        <div role="alert" className="panel p-4 text-[13px] text-[var(--color-fail)]">
+        <div role="alert" className="panel p-5 sm:p-6 text-sm text-[var(--color-fail)]">
           {tm.readFailed}
         </div>
       )}
@@ -559,11 +559,11 @@ export function MediaLibrary({
         }}
       />
 
-      <section className="panel flex flex-col gap-3 p-4" aria-label={tm.storage}>
+      <section className="panel flex flex-col gap-3 p-5 sm:p-6" aria-label={tm.storage}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1">
             <span className="t-label">{tm.storage}</span>
-            <span className="text-[13px]">{storageLine}</span>
+            <span className="text-sm">{storageLine}</span>
             {usedPct !== null && (
               <div
                 className="h-1.5 w-56 max-w-full overflow-hidden rounded-[var(--ns-r-frame)] bg-[var(--color-panel-2)]"
@@ -579,13 +579,13 @@ export function MediaLibrary({
           </div>
           {uploadButton()}
         </div>
-        <p className="m-0 text-[12px] leading-relaxed text-[var(--color-muted)]">
+        <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">
           {tm.accepted}
           {maxLabel ? ` · ${fmt(tm.maxSize, { max: maxLabel })}` : ""}
         </p>
-        <p className="m-0 text-[12px] leading-relaxed text-[var(--color-muted)]">{tm.checkNote}</p>
+        <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">{tm.checkNote}</p>
         {error && (
-          <p role="alert" className="m-0 text-[13px] text-[var(--color-fail)]">
+          <p role="alert" className="m-0 text-sm text-[var(--color-fail)]">
             {error}
           </p>
         )}
@@ -599,7 +599,7 @@ export function MediaLibrary({
           >
             <Images className="size-6" strokeWidth={1.5} />
           </span>
-          <p className="m-0 max-w-[46ch] text-[14px] font-light leading-relaxed text-[var(--color-muted)]">{tm.empty}</p>
+          <p className="m-0 max-w-[46ch] text-sm font-light leading-relaxed text-[var(--color-muted)]">{tm.empty}</p>
           {canUpload && uploadButton(true)}
         </section>
       ) : (
@@ -623,7 +623,7 @@ export function MediaLibrary({
                   <h2 id={headingId} className="m-0 truncate text-[18px] font-semibold leading-tight text-[var(--color-fg)]" title={openFolder?.name}>
                     {openFolder ? openFolder.name : tf.allFiles}
                   </h2>
-                  <span className="text-[12px] text-[var(--color-muted)]">
+                  <span className="text-xs text-[var(--color-muted)]">
                     {[
                       viewCount === null ? null : fileCount(tf, viewCount),
                       openFolder ? (uploadFolder ? tf.uploadsLandHere : tf.uploadsLand) : null,
@@ -649,21 +649,21 @@ export function MediaLibrary({
               </h2>
             )}
 
-            <p role="status" aria-live="polite" className={notice ? "m-0 text-[13px] text-[var(--color-ok)]" : "sr-only"} data-library-notice>
+            <p role="status" aria-live="polite" className={notice ? "m-0 text-sm text-[var(--color-ok)]" : "sr-only"} data-library-notice>
               {notice ?? ""}
             </p>
 
             {selecting ? (
               <div className="panel flex flex-wrap items-center justify-between gap-3 px-4 py-3" data-library-selection>
                 <div className="flex items-center gap-3">
-                  <span className="text-[13px] font-semibold" aria-live="polite">
+                  <span className="text-sm font-semibold" aria-live="polite">
                     {fmt(tm.selectedCount, { n: selected.size })}
                   </span>
                   {!bulkConfirm && shown.length > 0 && (
                     <button
                       type="button"
                       onClick={() => setSelected(allShownSelected ? new Set() : new Set(shown.map((a) => a.id)))}
-                      className="text-[13px] text-[var(--color-primary)] underline-offset-4 hover:underline"
+                      className="text-sm text-[var(--color-primary)] underline-offset-4 hover:underline"
                     >
                       {allShownSelected ? tf.clearSelection : tf.selectAll}
                     </button>
@@ -672,7 +672,7 @@ export function MediaLibrary({
                 <div className="flex flex-wrap items-center gap-2">
                   {bulkConfirm ? (
                     <>
-                      <span className="w-full text-[12px] text-[var(--color-muted)] sm:w-auto sm:max-w-[42ch]">
+                      <span className="w-full text-xs text-[var(--color-muted)] sm:w-auto sm:max-w-[42ch]">
                         {fmt(tm.deleteSelectedConfirm, { n: selected.size })}
                       </span>
                       <button
@@ -745,7 +745,7 @@ export function MediaLibrary({
                   placeholder={tm.search}
                   enterKeyHint="search"
                   maxLength={SEARCH_MAX * 2}
-                  className="min-h-9 w-full rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] py-2 pl-9 pr-3 text-[16px] max-sm:min-h-11 pointer-coarse:min-h-11 text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[13px]"
+                  className="min-h-9 w-full rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] py-2 pl-9 pr-3 text-base max-sm:min-h-11 pointer-coarse:min-h-11 text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[13px]"
                 />
               </label>
               <label className="shrink-0">
@@ -753,7 +753,7 @@ export function MediaLibrary({
                 <select
                   value={view.sort}
                   onChange={(e) => setView((v) => ({ ...v, sort: e.target.value as LibrarySort }))}
-                  className="min-h-9 rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] px-3 py-2 text-[16px] max-sm:min-h-11 pointer-coarse:min-h-11 text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
+                  className="min-h-9 rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] px-3 py-2 text-base max-sm:min-h-11 pointer-coarse:min-h-11 text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
                 >
                   <option value="newest">{tm.sortNewest}</option>
                   <option value="oldest">{tm.sortOldest}</option>
@@ -775,18 +775,18 @@ export function MediaLibrary({
             </div>
 
             {checkingDown && (!folder || pending.some(isWaitingForCheck)) && (
-              <p role="status" data-pipeline-down className="m-0 text-[13px] text-[var(--color-warn)]">
+              <p role="status" data-pipeline-down className="m-0 text-sm text-[var(--color-warn)]">
                 {tm.pipelineDown}
               </p>
             )}
-            {truncatedLine && <p className="m-0 text-[12px] text-[var(--color-muted)]" data-library-truncated>{truncatedLine}</p>}
+            {truncatedLine && <p className="m-0 text-xs text-[var(--color-muted)]" data-library-truncated>{truncatedLine}</p>}
             {switching && serverQuery !== "" && (
-              <p className="m-0 text-[12px] text-[var(--color-muted)]">{tf.searching}</p>
+              <p className="m-0 text-xs text-[var(--color-muted)]">{tf.searching}</p>
             )}
 
             {folderEmpty ? (
               <div className="panel flex flex-col items-center gap-3 px-6 py-10 text-center" data-folder-empty>
-                <p className="m-0 max-w-[46ch] text-[13px] leading-relaxed text-[var(--color-muted)]">
+                <p className="m-0 max-w-[46ch] text-sm leading-relaxed text-[var(--color-muted)]">
                   {canEditFolders ? tf.emptyFolder : tf.emptyFolderReadOnly}
                 </p>
                 <button type="button" onClick={() => chooseFolder(null)} className="btn-quiet">
@@ -795,12 +795,12 @@ export function MediaLibrary({
               </div>
             ) : libraryEmpty ? (
               <div className="panel flex flex-col items-center gap-4 px-6 py-10 text-center" data-library-empty-all>
-                <p className="m-0 max-w-[46ch] text-[13px] leading-relaxed text-[var(--color-muted)]">{tf.emptyAll}</p>
+                <p className="m-0 max-w-[46ch] text-sm leading-relaxed text-[var(--color-muted)]">{tf.emptyAll}</p>
                 {canUpload && uploadButton()}
               </div>
             ) : nothingShown ? (
               <div className="panel flex flex-col items-center gap-3 px-6 py-10 text-center" data-library-no-match>
-                <p className="m-0 text-[13px] text-[var(--color-muted)]">{switching ? tm.loading : tm.noMatches}</p>
+                <p className="m-0 text-sm text-[var(--color-muted)]">{switching ? tm.loading : tm.noMatches}</p>
                 {isNarrowed(view) && !switching && (
                   <button type="button" onClick={() => setView(DEFAULT_VIEW)} className="btn-quiet">
                     {tm.showAll}
@@ -811,10 +811,10 @@ export function MediaLibrary({
               <div className={`transition-opacity ${switching ? "opacity-60" : ""}`}>
                 <ContactSheet label={tm.title} min={150}>
                   {progress && (
-                    <Frame aspect="1 / 1" data-upload-local body={<span className="block truncate text-[13px]" title={progress.name}>{progress.name}</span>}>
+                    <Frame aspect="1 / 1" data-upload-local body={<span className="block truncate text-sm" title={progress.name}>{progress.name}</span>}>
                       <div className="flex h-full w-full flex-col items-center justify-center gap-3 border border-dashed border-[var(--ns-amber)] p-4 text-center text-[var(--ns-on-film)]">
                         <Upload className="size-6 text-[var(--ns-amber)]" strokeWidth={1.5} aria-hidden />
-                        <span className="text-[12px]">{fmt(tm.uploadingCard, { pct: progress.pct })}</span>
+                        <span className="text-xs">{fmt(tm.uploadingCard, { pct: progress.pct })}</span>
                         <div
                           className="h-1 w-full max-w-[8rem] overflow-hidden rounded-[1px] bg-[color-mix(in_srgb,var(--ns-on-film)_25%,transparent)]"
                           role="progressbar"
@@ -848,10 +848,10 @@ export function MediaLibrary({
                         edge={[tm.kinds[a.kind], duration, formatMediaBytes(a.bytes)]}
                         body={
                           <>
-                            <span className="block truncate text-[13px] text-[var(--color-fg)]" title={name}>
+                            <span className="block truncate text-sm text-[var(--color-fg)]" title={name}>
                               {name}
                             </span>
-                            <span className="block truncate text-[12px] text-[var(--color-muted)]">
+                            <span className="block truncate text-xs text-[var(--color-muted)]">
                               {[where, date].filter(Boolean).join(" · ")}
                             </span>
                           </>
@@ -874,7 +874,7 @@ export function MediaLibrary({
                           ) : (
                             <span className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-[var(--ns-on-film)] opacity-70">
                               <Icon className="size-7" strokeWidth={1.25} aria-hidden />
-                              <span className="text-[11px]">{tm.noPreview}</span>
+                              <span className="text-xs">{tm.noPreview}</span>
                             </span>
                           )}
                           {selecting && (
@@ -969,7 +969,7 @@ function UploadCard({ upload: u, checkingDown }: { upload: MediaUpload; checking
       data-upload-status={paused ? "paused" : u.status}
       edge={[formatMediaBytes(u.bytes)]}
       body={
-        <span className="block truncate text-[13px]" title={u.name}>
+        <span className="block truncate text-sm" title={u.name}>
           {u.name}
         </span>
       }
@@ -986,7 +986,7 @@ function UploadCard({ upload: u, checkingDown }: { upload: MediaUpload; checking
           <StatusPill tone={STATUS_TONE[u.status]} label={tm.status[u.status]} live={isUploadInFlight(u)} />
         )}
         {failed && (
-          <span className="line-clamp-4 text-[11px] leading-snug text-[var(--ns-on-film)] opacity-80">
+          <span className="line-clamp-4 text-xs leading-snug text-[var(--ns-on-film)] opacity-80">
             {reason ? tm.reasons[reason] : tm.reasons.other}
           </span>
         )}

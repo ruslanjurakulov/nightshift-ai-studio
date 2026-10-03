@@ -48,7 +48,7 @@ describe("CreditPricesEditor", () => {
     const rows = Array.from(doc.querySelectorAll("ul li"));
     expect(rows).toHaveLength(prices.length);
     const wan = rows.find((r) => r.textContent?.includes("model_wan_2_7_second_720p"))!;
-    expect(wan.textContent).toContain("per second, at 720p");
+    expect(wan.textContent?.toLowerCase()).toContain("per second, at 720p");
     // credits per unit 10, +150% margin, charged 10 x 2.5 = 25
     const values = Array.from(wan.querySelectorAll("dd")).map((d) => d.textContent);
     expect(values).toEqual(["10", "+150%", "25"]);
@@ -70,8 +70,11 @@ describe("CreditPricesEditor", () => {
     const rows = Array.from(doc.querySelectorAll("ul li"));
     const custom = rows.find((r) => r.textContent?.includes("custom_thing"))!;
     expect(custom.querySelectorAll("p")).toHaveLength(1); // the unit name alone
-    const minute = rows.find((r) => r.textContent?.startsWith("video_minute"))!;
-    expect(minute.textContent).toContain(en.credits.unitMeaning.videoMinute);
+    const minute = rows.find((r) => r.textContent?.includes("video_minute"))!;
+    // The plain meaning comes first and the code name follows, smaller (the owner reads words, not unit names).
+    const gloss = en.credits.unitMeaning.videoMinute;
+    expect(minute.textContent?.startsWith(gloss.charAt(0).toUpperCase() + gloss.slice(1))).toBe(true);
+    expect(minute.textContent).toContain("video_minute");
   });
 
   it("keeps the table for wide screens and shows the phone list below md only", () => {
@@ -83,7 +86,7 @@ describe("CreditPricesEditor", () => {
     const heads = Array.from(doc.querySelectorAll("th")).map((h) => h.textContent);
     expect(heads).toContain(en.credits.colCharged);
     // the table's value cells are in the foreground colour, not the muted one
-    expect(doc.querySelector("tbody td.mono")!.className).toContain("text-[var(--color-fg)]");
+    expect(doc.querySelector("tbody td.tnum")!.className).toContain("text-[var(--color-fg)]");
   });
 
   it("offers Edit and Remove on every phone row to an admin, and none to a reader", () => {
@@ -100,7 +103,7 @@ describe("CreditPricesEditor", () => {
   ] as const)("reads in %s", (locale, t) => {
     const { doc } = render(t as typeof en, locale);
     const row = Array.from(doc.querySelectorAll("ul li")).find((r) => r.textContent?.includes("video_minute"))!;
-    expect(row.textContent).toContain(t.credits.unitMeaning.videoMinute);
+    expect(row.textContent?.toLowerCase()).toContain(t.credits.unitMeaning.videoMinute.toLowerCase());
     expect(Array.from(row.querySelectorAll("dt")).map((d) => d.textContent)).toContain(t.credits.colCharged);
     expect(row.querySelectorAll("dd")[2].textContent).toBe(new Intl.NumberFormat(locale, { maximumSignificantDigits: 6 }).format(60));
   });

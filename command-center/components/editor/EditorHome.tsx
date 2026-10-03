@@ -73,29 +73,29 @@ export function EditorHome({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="m-0 text-[13px] text-[var(--color-muted)]">
+      <p className="m-0 text-sm text-[var(--color-muted)]">
         {te.freeNote} {te.publishNote}
       </p>
 
       <section
         aria-labelledby={`${titleId}-new`}
-        className="panel flex flex-col gap-3 p-4"
+        className="panel flex flex-col gap-3 p-5 sm:p-6"
       >
         <h2 id={`${titleId}-new`} className="m-0 text-[15px] font-semibold">
           {te.newProject}
         </h2>
         {videos === null ? (
-          <p className="m-0 text-[13px] text-[var(--color-fail)]">
+          <p className="m-0 text-sm text-[var(--color-fail)]">
             {te.readFailed}
           </p>
         ) : videos.length === 0 ? (
           <div className="flex flex-wrap items-center gap-3">
-            <p className="m-0 text-[13px] text-[var(--color-muted)]">
+            <p className="m-0 text-sm text-[var(--color-muted)]">
               {te.noVideos}
             </p>
             <Link
               href={path("/library")}
-              className="btn-quiet text-[13px]"
+              className="btn-quiet text-sm"
             >
               {te.openLibrary}
             </Link>
@@ -104,7 +104,7 @@ export function EditorHome({
           <>
             <label
               htmlFor={titleId}
-              className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]"
+              className="flex flex-col gap-1 text-xs text-[var(--color-muted)]"
             >
               {te.projectTitle}
               <input
@@ -112,18 +112,18 @@ export function EditorHome({
                 value={title}
                 maxLength={120}
                 onChange={(e) => setTitle(e.target.value)}
-                className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
+                className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
               />
             </label>
             <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
-              <legend className="mb-1 p-0 text-[12px] text-[var(--color-muted)]">
+              <legend className="mb-1 p-0 text-xs text-[var(--color-muted)]">
                 {te.pickVideo}
               </legend>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
                 {videos.map((v) => (
                   <label
                     key={v.id}
-                    className={`press flex min-w-0 cursor-pointer flex-col gap-1 rounded-[var(--ns-r-panel)] border p-2 text-[12px] ${
+                    className={`press flex min-w-0 cursor-pointer flex-col gap-1 rounded-[var(--ns-r-panel)] border p-2 text-xs ${
                       picked === v.id
                         ? "border-[var(--color-primary)]"
                         : "border-[var(--color-border)]"
@@ -165,7 +165,7 @@ export function EditorHome({
             {error ? (
               <p
                 role="alert"
-                className="m-0 text-[13px] text-[var(--color-fail)]"
+                className="m-0 text-sm text-[var(--color-fail)]"
               >
                 {te.errors[error]}
               </p>
@@ -175,7 +175,7 @@ export function EditorHome({
                 type="button"
                 onClick={onCreate}
                 disabled={busy || !picked}
-                className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-[13px]"
+                className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm"
               >
                 <Plus className="size-4" aria-hidden />
                 {busy ? te.creating : te.create}
@@ -198,7 +198,7 @@ export function EditorHome({
               className="size-6 text-[var(--color-primary)]"
               aria-hidden
             />
-            <p className="m-0 max-w-[46ch] text-[13px] leading-relaxed text-[var(--color-muted)]">
+            <p className="m-0 max-w-[46ch] text-sm leading-relaxed text-[var(--color-muted)]">
               {te.noProjects}
             </p>
           </div>
@@ -208,13 +208,13 @@ export function EditorHome({
               <li key={p.id}>
                 <Link
                   href={path(`/editor/${p.id}`)}
-                  className="panel flex items-center justify-between gap-3 px-4 py-3 text-[13px]"
+                  className="panel flex items-center justify-between gap-3 px-4 py-3 text-sm"
                 >
                   <span className="min-w-0">
                     <span className="block truncate font-semibold text-[var(--color-fg)]">
                       {p.title}
                     </span>
-                    <span className="block text-[12px] text-[var(--color-muted)]">
+                    <span className="block text-xs text-[var(--color-muted)]">
                       {fmt(te.updated, { when: when(p.updatedAt) })}
                     </span>
                   </span>

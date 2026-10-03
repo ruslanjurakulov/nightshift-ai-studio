@@ -115,9 +115,9 @@ const HISTORY = 100;
 const POLL_MS = 4000;
 
 const fieldClass =
-  "rounded-[var(--ns-r-key)] w-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
+  "rounded-[var(--ns-r-key)] w-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
 const quietBtn =
-  "btn-quiet inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px]";
+  "btn-quiet inline-flex items-center gap-1.5 px-3 py-1.5 text-xs";
 
 /** Keys inside these keep their own meaning. */
 function typing(target: EventTarget | null): boolean {
@@ -565,22 +565,22 @@ export function TimelineEditor({
   return (
     <div className="flex flex-col gap-4">
       {/* header: name, history, save, export */}
-      <div className="panel flex flex-col gap-3 p-3 sm:p-4">
+      <div className="panel flex flex-col gap-3 p-4 sm:p-5 sm:p-4">
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href={path("/editor")}
-            className="text-[13px] text-[var(--color-primary)] underline-offset-4 hover:underline"
+            className="text-sm text-[var(--color-primary)] underline-offset-4 hover:underline"
           >
             ← {te.back}
           </Link>
           <span
-            className="ml-auto text-[12px] text-[var(--color-muted)]"
+            className="ml-auto text-xs text-[var(--color-muted)]"
             aria-live="polite"
           >
             {saving ? te.saving : dirty ? te.unsaved : te.saved}
           </span>
         </div>
-        <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
           {te.projectTitle}
           <input
             value={title}
@@ -613,7 +613,7 @@ export function TimelineEditor({
             type="button"
             onClick={() => void save()}
             disabled={!dirty || saving}
-            className="btn-quiet text-[13px]"
+            className="btn-quiet text-sm"
           >
             {saving ? te.saving : te.save}
           </button>
@@ -622,7 +622,7 @@ export function TimelineEditor({
             onClick={() => void startExport()}
             disabled={Boolean(exportBlocked) || starting}
             aria-describedby={exportBlocked ? `${ids}-export-why` : undefined}
-            className="btn-primary text-[13px]"
+            className="btn-primary text-sm"
           >
             {starting ? te.exporting : te.export}
           </button>
@@ -630,18 +630,18 @@ export function TimelineEditor({
         {exportBlocked ? (
           <p
             id={`${ids}-export-why`}
-            className="m-0 text-[12px] text-[var(--color-muted)]"
+            className="m-0 text-xs text-[var(--color-muted)]"
           >
             {exportBlocked}
           </p>
         ) : null}
-        <p className="m-0 text-[12px] text-[var(--color-muted)]">
+        <p className="m-0 text-xs text-[var(--color-muted)]">
           {te.freeNote} {te.publishNote}
         </p>
         {errorText ? (
           <div
             role="alert"
-            className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--color-fail)]"
+            className="flex flex-wrap items-center gap-2 text-sm text-[var(--color-fail)]"
           >
             <span>{errorText}</span>
             {error === "stale_revision" ? (
@@ -707,7 +707,7 @@ export function TimelineEditor({
                 }}
               />
             ) : (
-              <p className="absolute inset-0 m-0 flex items-center justify-center p-4 text-center text-[12px] text-[var(--color-muted)]">
+              <p className="absolute inset-0 m-0 flex items-center justify-center p-4 text-center text-xs text-[var(--color-muted)]">
                 {te.noPreview}
               </p>
             )}
@@ -742,7 +742,7 @@ export function TimelineEditor({
               </span>
             ))}
           </div>
-          <p className="m-0 text-center text-[11px] text-[var(--color-muted)]">
+          <p className="m-0 text-center text-xs text-[var(--color-muted)]">
             {te.previewNote}
             {model.sounds.length ? ` ${te.soundPreviewNote}` : ""}
           </p>
@@ -786,7 +786,7 @@ export function TimelineEditor({
               className="min-w-0 flex-1 accent-[var(--color-primary)]"
             />
             {/* The master-control readout: frame-accurate timecode at the project's rate; the spoken form keeps tenths. */}
-            <span className="shrink-0 text-[12px] text-[var(--color-muted)]">
+            <span className="shrink-0 text-xs text-[var(--color-muted)]">
               <Timecode value={playhead} format="frames" fps={model.fps} label={formatTime(playhead)} /> /{" "}
               <Timecode value={total} format="frames" fps={model.fps} label={formatTime(total)} />
             </span>
@@ -838,21 +838,21 @@ export function TimelineEditor({
             </button>
           </div>
           {model.sounds.length >= MAX_EDITOR_SOUNDS ? (
-            <p className="m-0 text-[12px] text-[var(--color-muted)]">
+            <p className="m-0 text-xs text-[var(--color-muted)]">
               {fmt(te.maxSounds, { max: MAX_EDITOR_SOUNDS })}
             </p>
           ) : audioFull ? (
-            <p className="m-0 text-[12px] text-[var(--color-muted)]">
+            <p className="m-0 text-xs text-[var(--color-muted)]">
               {fmt(te.audioFull, { max: MAX_AUDIO_CLIPS })}
             </p>
           ) : null}
           {addingSound ? (
             <section
               aria-label={te.addSoundTitle}
-              className="panel flex flex-col gap-2 p-3"
+              className="panel flex flex-col gap-2 p-4 sm:p-5"
             >
               <div className="flex items-center justify-between gap-2">
-                <h3 className="m-0 text-[13px] font-semibold">
+                <h3 className="m-0 text-sm font-semibold">
                   {te.addSoundTitle}
                 </h3>
                 <button
@@ -864,7 +864,7 @@ export function TimelineEditor({
                 </button>
               </div>
               {soundFiles.length === 0 ? (
-                <p className="m-0 text-[12px] text-[var(--color-muted)]">
+                <p className="m-0 text-xs text-[var(--color-muted)]">
                   {te.noSounds}{" "}
                   <Link
                     href={path("/library")}
@@ -880,7 +880,7 @@ export function TimelineEditor({
                       <button
                         type="button"
                         onClick={() => onAddSound(a)}
-                        className="flex w-full min-w-0 items-center justify-between gap-2 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-2 text-left text-[12px]"
+                        className="flex w-full min-w-0 items-center justify-between gap-2 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-2 text-left text-xs"
                       >
                         <span className="truncate text-[var(--color-fg)]">
                           {a.name ?? te.untitledSound}
@@ -896,22 +896,22 @@ export function TimelineEditor({
             </section>
           ) : null}
           {model.clips.length >= MAX_EDITOR_CLIPS ? (
-            <p className="m-0 text-[12px] text-[var(--color-muted)]">
+            <p className="m-0 text-xs text-[var(--color-muted)]">
               {fmt(te.maxClips, { max: MAX_EDITOR_CLIPS })}
             </p>
           ) : null}
           {model.texts.length >= MAX_EDITOR_TEXTS ? (
-            <p className="m-0 text-[12px] text-[var(--color-muted)]">
+            <p className="m-0 text-xs text-[var(--color-muted)]">
               {fmt(te.maxTexts, { max: MAX_EDITOR_TEXTS })}
             </p>
           ) : null}
           {adding ? (
             <section
               aria-label={te.addVideoTitle}
-              className="panel flex flex-col gap-2 p-3"
+              className="panel flex flex-col gap-2 p-4 sm:p-5"
             >
               <div className="flex items-center justify-between gap-2">
-                <h3 className="m-0 text-[13px] font-semibold">
+                <h3 className="m-0 text-sm font-semibold">
                   {te.addVideoTitle}
                 </h3>
                 <button
@@ -923,7 +923,7 @@ export function TimelineEditor({
                 </button>
               </div>
               {videos.length === 0 ? (
-                <p className="m-0 text-[12px] text-[var(--color-muted)]">
+                <p className="m-0 text-xs text-[var(--color-muted)]">
                   {te.noVideos}
                 </p>
               ) : (
@@ -933,7 +933,7 @@ export function TimelineEditor({
                       <button
                         type="button"
                         onClick={() => onAddVideo(v)}
-                        className="flex w-full min-w-0 flex-col gap-1 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-2 text-left text-[12px]"
+                        className="flex w-full min-w-0 flex-col gap-1 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-2 text-left text-xs"
                       >
                         <span className="truncate text-[var(--color-fg)]">
                           {v.name ?? te.untitledVideo}
@@ -952,7 +952,7 @@ export function TimelineEditor({
 
         {/* inspector */}
         <aside
-          className="panel flex min-w-0 flex-col gap-3 p-4"
+          className="panel flex min-w-0 flex-col gap-3 p-5 sm:p-6"
           aria-label={
             clip
               ? te.trim
@@ -1022,7 +1022,7 @@ export function TimelineEditor({
               onDelete={() => apply(removeText(model, text.id))}
             />
           ) : (
-            <p className="m-0 text-[13px] text-[var(--color-muted)]">
+            <p className="m-0 text-sm text-[var(--color-muted)]">
               {te.selectHint}
             </p>
           )}
@@ -1043,13 +1043,13 @@ export function TimelineEditor({
       {/* exports */}
       <section
         aria-labelledby={`${ids}-exports`}
-        className="panel flex flex-col gap-2 p-4"
+        className="panel flex flex-col gap-2 p-5 sm:p-6"
       >
         <h2 id={`${ids}-exports`} className="m-0 text-[15px] font-semibold">
           {te.exports}
         </h2>
         {exports.length === 0 ? (
-          <p className="m-0 text-[13px] text-[var(--color-muted)]">
+          <p className="m-0 text-sm text-[var(--color-muted)]">
             {te.noExports}
           </p>
         ) : (
@@ -1068,12 +1068,12 @@ export function TimelineEditor({
               return (
                 <li
                   key={x.id}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[var(--color-border)] pt-2 text-[13px] first:border-t-0 first:pt-0"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[var(--color-border)] pt-2 text-sm first:border-t-0 first:pt-0"
                 >
                   <span className={`font-semibold ${tone}`}>
                     {te.exportStatus[x.status]}
                   </span>
-                  <span className="text-[12px] text-[var(--color-muted)]">
+                  <span className="text-xs text-[var(--color-muted)]">
                     {fmt(te.exportRev, { rev: x.rev })}
                     {x.durationS ? (
                       <>
@@ -1084,7 +1084,7 @@ export function TimelineEditor({
                     {x.createdAt ? ` · ${when(x.createdAt)}` : ""}
                   </span>
                   {x.status === "failed" ? (
-                    <span className="w-full text-[12px] text-[var(--color-fail)]">
+                    <span className="w-full text-xs text-[var(--color-fail)]">
                       {te.exportReasons[x.reason ?? "other"]}
                     </span>
                   ) : null}
@@ -1120,13 +1120,13 @@ export function TimelineEditor({
           <div
             role="group"
             aria-label={te.deleteProject}
-            className="panel flex flex-wrap items-center gap-2 p-3 text-[13px]"
+            className="panel flex flex-wrap items-center gap-2 p-4 sm:p-5 text-sm"
           >
             <span>{te.deleteConfirm}</span>
             <button
               type="button"
               onClick={() => void onDelete()}
-              className="btn-primary text-[12px]"
+              className="btn-primary text-xs"
             >
               {te.deleteYes}
             </button>
@@ -1176,7 +1176,7 @@ function NumberField({
     else setDraft(String(value));
   };
   return (
-    <label className="flex min-w-0 flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+    <label className="flex min-w-0 flex-col gap-1 text-xs text-[var(--color-muted)]">
       {label}
       <input
         type="number"
@@ -1248,7 +1248,7 @@ function ClipInspector({
   const id = useId();
   return (
     <>
-      <h2 className="m-0 text-[14px] font-semibold">
+      <h2 className="m-0 text-sm font-semibold">
         {fmt(te.clipHeading, { n })}
       </h2>
       <div className="grid grid-cols-2 gap-2">
@@ -1270,7 +1270,7 @@ function ClipInspector({
         />
       </div>
       <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0">
-        <legend className="mb-1 p-0 text-[12px] text-[var(--color-muted)]">
+        <legend className="mb-1 p-0 text-xs text-[var(--color-muted)]">
           {te.speed}
         </legend>
         <div className="flex flex-wrap gap-1.5">
@@ -1294,7 +1294,7 @@ function ClipInspector({
           ))}
         </div>
       </fieldset>
-      <label className="flex items-center gap-2 text-[13px]">
+      <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
           checked={clip.audio}
@@ -1308,7 +1308,7 @@ function ClipInspector({
         className="m-0 flex flex-col gap-1.5 border-0 p-0"
         aria-describedby={`${id}-xf`}
       >
-        <legend className="mb-1 p-0 text-[12px] text-[var(--color-muted)]">
+        <legend className="mb-1 p-0 text-xs text-[var(--color-muted)]">
           {te.transition}
         </legend>
         <div className="flex flex-wrap gap-1.5">
@@ -1351,7 +1351,7 @@ function ClipInspector({
             onCommit={onCrossfade}
           />
         ) : null}
-        <p id={`${id}-xf`} className="m-0 text-[11px] text-[var(--color-muted)]">
+        <p id={`${id}-xf`} className="m-0 text-xs text-[var(--color-muted)]">
           {first
             ? te.crossfadeFirst
             : !maxX && crossfade <= 0
@@ -1373,7 +1373,7 @@ function ClipInspector({
         {!canSplitHere ? (
           <p
             id={`${id}-split`}
-            className="m-0 text-[11px] text-[var(--color-muted)]"
+            className="m-0 text-xs text-[var(--color-muted)]"
           >
             {te.splitHint}
           </p>
@@ -1409,7 +1409,7 @@ function ClipInspector({
         </button>
       </div>
       {onlyClip ? (
-        <p className="m-0 text-[11px] text-[var(--color-muted)]">
+        <p className="m-0 text-xs text-[var(--color-muted)]">
           {te.lastClip}
         </p>
       ) : null}
@@ -1436,8 +1436,8 @@ function TextInspector({
   const pos = positionOf(text);
   return (
     <>
-      <h2 className="m-0 text-[14px] font-semibold">{te.textLabel}</h2>
-      <div className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+      <h2 className="m-0 text-sm font-semibold">{te.textLabel}</h2>
+      <div className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
         <label className="flex flex-col gap-1">
           {te.textLabel}
           <textarea
@@ -1447,15 +1447,15 @@ function TextInspector({
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => draft !== text.text && onChange({ text: draft })}
             aria-describedby={`${id}-count`}
-            className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
+            className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
           />
         </label>
-        <span id={`${id}-count`} className="text-[11px]">
+        <span id={`${id}-count`} className="text-xs">
           {fmt(te.textCount, { n: draft.length, max: MAX_TEXT })}
         </span>
       </div>
       {warning ? (
-        <p role="status" className="m-0 text-[12px] text-[var(--color-warn)]">
+        <p role="status" className="m-0 text-xs text-[var(--color-warn)]">
           {warning === "empty" ? te.textEmpty : te.textPastEnd}
         </p>
       ) : null}
@@ -1477,7 +1477,7 @@ function TextInspector({
           onCommit={(v) => onChange({ end_s: v })}
         />
       </div>
-      <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+      <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
         {te.textSize} · {text.size}
         <input
           type="range"
@@ -1490,7 +1490,7 @@ function TextInspector({
         />
       </label>
       <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0">
-        <legend className="mb-1 p-0 text-[12px] text-[var(--color-muted)]">
+        <legend className="mb-1 p-0 text-xs text-[var(--color-muted)]">
           {te.textPosition}
         </legend>
         <div className="flex flex-wrap gap-1.5">
@@ -1555,13 +1555,13 @@ function SoundInspector({
   const fadeMax = Math.min(SOUND_FADE_MAX_S, len);
   return (
     <>
-      <h2 className="m-0 text-[14px] font-semibold">{te.soundHeading}</h2>
-      <p className="m-0 truncate text-[12px] text-[var(--color-muted)]">
+      <h2 className="m-0 text-sm font-semibold">{te.soundHeading}</h2>
+      <p className="m-0 truncate text-xs text-[var(--color-muted)]">
         {name} · <Timecode value={len} format="duration" label={formatTime(len)} />
       </p>
       {warning ? (
         <div role="status" className="flex flex-col gap-1.5">
-          <p className="m-0 text-[12px] text-[var(--color-warn)]">
+          <p className="m-0 text-xs text-[var(--color-warn)]">
             {te.soundPastEnd}
           </p>
           <button
@@ -1607,7 +1607,7 @@ function SoundInspector({
           onCommit={(v) => onChange({ out_s: v })}
         />
       </div>
-      <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+      <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
         <span id={`${id}-vol`}>
           {te.soundVolume} · {fmt(te.soundVolumeValue, { db: sound.gain_db })}
         </span>
@@ -1648,7 +1648,7 @@ function SoundInspector({
         />
       </div>
       <fieldset className="m-0 flex flex-col gap-1.5 border-0 p-0">
-        <legend className="mb-1 p-0 text-[12px] text-[var(--color-muted)]">
+        <legend className="mb-1 p-0 text-xs text-[var(--color-muted)]">
           {te.soundKind}
         </legend>
         <div className="flex gap-1.5">
@@ -1667,13 +1667,13 @@ function SoundInspector({
             );
           })}
         </div>
-        <p className="m-0 text-[11px] text-[var(--color-muted)]">
+        <p className="m-0 text-xs text-[var(--color-muted)]">
           {sound.role === "speech" ? te.roleSpeechHint : te.roleMusicHint}
         </p>
       </fieldset>
       {sound.role !== "speech" ? (
         <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-2 text-[12px]">
+          <label className="flex items-center gap-2 text-xs">
             <input
               type="checkbox"
               checked={Boolean(sound.duck)}
@@ -1686,7 +1686,7 @@ function SoundInspector({
           </label>
           {sound.duck ? (
             <>
-              <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+              <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
                 <span>
                   {te.duckAmount} ·{" "}
                   {fmt(te.soundVolumeValue, { db: -sound.duck.amount_db })}
@@ -1748,7 +1748,7 @@ function SoundInspector({
               </div>
               <p
                 role={hasSpeech ? undefined : "status"}
-                className={`m-0 text-[11px] ${hasSpeech ? "text-[var(--color-muted)]" : "text-[var(--color-warn)]"}`}
+                className={`m-0 text-xs ${hasSpeech ? "text-[var(--color-muted)]" : "text-[var(--color-warn)]"}`}
               >
                 {hasSpeech ? te.duckHint : te.duckNoSpeech}
               </p>

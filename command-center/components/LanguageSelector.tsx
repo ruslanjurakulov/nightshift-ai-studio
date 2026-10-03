@@ -49,7 +49,7 @@ export function LanguageSelector() {
           <circle cx="12" cy="12" r="10" />
           <path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20" />
         </svg>
-        <span className="mono text-[11px] font-semibold tracking-wider">{current.short}</span>
+        <span className="tnum text-xs font-semibold">{current.short}</span>
       </button>
 
       {open && (
@@ -66,11 +66,11 @@ export function LanguageSelector() {
                   role="option"
                   aria-selected={active}
                   onClick={() => choose(l.code)}
-                  className="btn-sky is-quiet pill w-full justify-between border-transparent px-4 py-2.5 text-left text-[14px] font-light"
+                  className="btn-sky is-quiet pill w-full justify-between border-transparent px-4 py-2.5 text-left text-sm font-light"
                   style={{ color: active ? "var(--color-primary)" : "var(--color-fg)" }}
                 >
                   <span>{l.label}</span>
-                  <span className="mono text-[10px] tracking-wider text-[var(--color-muted)]">{l.short}</span>
+                  <span className="tnum text-xs text-[var(--color-muted)]">{l.short}</span>
                 </button>
               </li>
             );

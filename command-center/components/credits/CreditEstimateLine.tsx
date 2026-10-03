@@ -68,7 +68,7 @@ export function CreditEstimateLine({ channelId, durationS }: { channelId: string
 
   if (channelId && failed) {
     return (
-      <div className="text-[11px]" aria-live="polite">
+      <div className="text-xs" aria-live="polite">
         <ErrorState compact message={t.credits.estimateReadFailed} onRetry={retry} />
       </div>
     );
@@ -124,7 +124,7 @@ export function CreditEstimateLine({ channelId, durationS }: { channelId: string
   }
 
   return (
-    <p className="mono flex flex-wrap items-center gap-x-1 text-[11px]" aria-live="polite">
+    <p className="tnum flex flex-wrap items-center gap-x-1 text-xs" aria-live="polite">
       <span className="text-[var(--color-muted)]">{t.credits.estimateLabel}:</span> {body}
       {!data.exempt && (
         <Link href={path("/credits")} className="tap-link ml-2 text-[var(--color-primary)] hover:underline">

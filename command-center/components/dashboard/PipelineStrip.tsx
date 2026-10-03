@@ -48,13 +48,13 @@ export function PipelineStrip({
       {PIPELINE_ORDER.map((stage) => (
         <span
           key={stage}
-          className="text-[11px] font-medium uppercase tracking-[0.22em]"
+          className="text-xs font-medium"
           style={{ color: TONE_COLOR[tones[stage]] }}
         >
           {t.pipeline[LABEL_KEY[stage]]}
         </span>
       ))}
-      <span className="mono ml-auto text-[12px] text-[var(--color-muted)]">
+      <span className="tnum ml-auto text-xs text-[var(--color-muted)]">
         {right ?? t.dashboard.stripIdle}
       </span>
     </div>

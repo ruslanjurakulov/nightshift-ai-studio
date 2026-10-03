@@ -139,7 +139,7 @@ export function SecurityBoard() {
 
   if (!configured) {
     return (
-      <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.security.notConfigured}</div>
+      <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.security.notConfigured}</div>
     );
   }
 
@@ -150,8 +150,8 @@ export function SecurityBoard() {
     <div className="rhythm">
       {dialog}
       {/* Current assurance level */}
-      <div className="panel flex flex-wrap items-center justify-between gap-2 p-4">
-        <span className="text-[13px] text-[var(--color-muted)]">{t.security.currentLevel}</span>
+      <div className="panel flex flex-wrap items-center justify-between gap-2 p-5 sm:p-6">
+        <span className="text-sm text-[var(--color-muted)]">{t.security.currentLevel}</span>
         <StatusPill
           tone={aal === "aal2" ? "ok" : "idle"}
           label={aal === "aal2" ? t.security.aal2 : t.security.aal1}
@@ -159,20 +159,20 @@ export function SecurityBoard() {
       </div>
 
       {stepUp && (
-        <p className="mono text-[12px] text-[var(--color-muted)]">{t.security.stepUpNote}</p>
+        <p className="tnum text-xs text-[var(--color-muted)]">{t.security.stepUpNote}</p>
       )}
 
-      {error && <p className="mono text-[12px] text-[var(--color-fail)]">{error}</p>}
+      {error && <p className="tnum text-xs text-[var(--color-fail)]">{error}</p>}
 
       {/* Existing factors */}
       <div className="panel overflow-hidden p-0">
-        <div className="border-b border-[var(--color-border)] px-4 py-2.5 text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+        <div className="border-b border-[var(--color-border)] px-4 py-2.5 text-xs text-[var(--color-muted)]">
           {t.security.factorsTitle}
         </div>
         {factors === null ? (
-          <p className="p-4 text-[13px] text-[var(--color-muted)]">…</p>
+          <p className="p-4 text-sm text-[var(--color-muted)]">…</p>
         ) : factors.length === 0 ? (
-          <p className="p-4 text-[13px] text-[var(--color-muted)]">{t.security.noFactors}</p>
+          <p className="p-4 text-sm text-[var(--color-muted)]">{t.security.noFactors}</p>
         ) : (
           factors.map((f) => (
             <div
@@ -180,10 +180,10 @@ export function SecurityBoard() {
               className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3 last:border-b-0"
             >
               <div className="min-w-0">
-                <div className="truncate text-[14px] text-[var(--color-fg)]">
+                <div className="truncate text-sm text-[var(--color-fg)]">
                   {f.friendlyName || t.security.factorsTitle}
                 </div>
-                <div className="mono text-[11px] text-[var(--color-muted)]">TOTP</div>
+                <div className="tnum text-xs text-[var(--color-muted)]">TOTP</div>
               </div>
               <div className="flex items-center gap-3">
                 <StatusPill
@@ -194,7 +194,7 @@ export function SecurityBoard() {
                   type="button"
                   onClick={() => remove(f)}
                   disabled={removingId === f.id}
-                  className="btn-sky is-quiet pill px-3 py-1 text-[12px] disabled:opacity-40"
+                  className="btn-sky is-quiet pill px-3 py-1 text-xs disabled:opacity-40"
                 >
                   {removingId === f.id ? t.security.removing : t.security.remove}
                 </button>
@@ -205,7 +205,7 @@ export function SecurityBoard() {
       </div>
 
       {/* Enroll a new factor */}
-      <div className="panel flex flex-col gap-3 p-4">
+      <div className="panel flex flex-col gap-3 p-5 sm:p-6">
         <div>
           <h2 className="t-section">{t.security.enrollTitle}</h2>
         </div>
@@ -213,7 +213,7 @@ export function SecurityBoard() {
         {!enrollment ? (
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-1 flex-col gap-1">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+              <span className="text-xs text-[var(--color-muted)]">
                 {t.security.friendlyName}
               </span>
               <input
@@ -221,21 +221,21 @@ export function SecurityBoard() {
                 value={friendlyName}
                 onChange={(e) => setFriendlyName(e.target.value)}
                 placeholder={t.security.friendlyNamePh}
-                className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+                className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
               />
             </label>
             <button
               type="button"
               onClick={startEnroll}
               disabled={busy}
-              className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
+              className="btn-sky is-solid pill px-5 py-2 text-sm disabled:opacity-40"
             >
               {t.security.startEnroll}
             </button>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
-            <p className="text-[13px] text-[var(--color-muted)]">{t.security.scanHint}</p>
+            <p className="text-sm text-[var(--color-muted)]">{t.security.scanHint}</p>
             <div className="flex flex-wrap items-start gap-4">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -246,17 +246,17 @@ export function SecurityBoard() {
                 className="size-44 rounded-lg border border-[var(--color-border)] bg-white p-2"
               />
               <div className="flex min-w-0 flex-col gap-2">
-                <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+                <span className="text-xs text-[var(--color-muted)]">
                   {t.security.secretLabel}
                 </span>
-                <code className="mono break-all rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-[12px] text-[var(--color-fg)]">
+                <code className="mono break-all rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-xs text-[var(--color-fg)]">
                   {enrollment.secret}
                 </code>
               </div>
             </div>
             <div className="flex flex-wrap items-end gap-3">
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+                <span className="text-xs text-[var(--color-muted)]">
                   {t.security.codeLabel}
                 </span>
                 <input
@@ -266,14 +266,14 @@ export function SecurityBoard() {
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   placeholder={t.security.codePh}
-                  className="mono w-40 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[13px] tracking-[0.3em] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+                  className="tnum w-40 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
                 />
               </label>
               <button
                 type="button"
                 onClick={verify}
                 disabled={busy || code.trim().length < 6}
-                className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
+                className="btn-sky is-solid pill px-5 py-2 text-sm disabled:opacity-40"
               >
                 {busy ? t.security.verifying : t.security.verify}
               </button>

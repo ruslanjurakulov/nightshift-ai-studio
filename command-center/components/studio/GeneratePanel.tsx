@@ -253,6 +253,19 @@ export function GeneratePanel({
   // A price is asked for only once the form is complete (the picture, the words).
   const ready = canQuote(form);
 
+  // The phone's sticky Generate dock would cover the length chips on the first view;
+  // it rests in the flow until the page is scrolled, then sticks above the tab bar.
+  const [dockAtTop, setDockAtTop] = useState(true);
+  useEffect(() => {
+    const onScroll = (e: Event) => {
+      const t = e.target;
+      const top = t instanceof HTMLElement ? t.scrollTop : window.scrollY;
+      setDockAtTop(top < 24);
+    };
+    document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => document.removeEventListener("scroll", onScroll, { capture: true });
+  }, []);
+
   useEffect(() => {
     if (!ready || (!routed && !effectiveModel)) {
       setQuote({ status: "idle" });
@@ -484,7 +497,7 @@ export function GeneratePanel({
               set(v);
               edited();
             }}
-            className={mono ? "mono" : undefined}
+            className={mono ? "tnum" : undefined}
           >
             {text(v)}
           </button>
@@ -570,18 +583,18 @@ export function GeneratePanel({
         {routed ? (
           // Auto's pick, named with its price (it wraps on a phone: never cut).
           <span className="flex min-w-0 flex-col gap-0.5" aria-live="polite" data-testid="gen-auto-pick">
-            <span className="text-[14px] font-semibold leading-snug text-[var(--color-fg)] [overflow-wrap:anywhere]">
+            <span className="text-sm font-semibold leading-snug text-[var(--color-fg)] [overflow-wrap:anywhere]">
               {autoLine ? autoLine.picked : quote.status === "quoting" ? t.gen.router.picking : t.gen.router.auto}
             </span>
-            {autoLine?.why && <span className="text-[12px] text-[var(--color-muted)]">{autoLine.why}</span>}
+            {autoLine?.why && <span className="text-xs text-[var(--color-muted)]">{autoLine.why}</span>}
           </span>
         ) : (
           <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-[14px] font-semibold text-[var(--color-fg)]" data-testid="gen-model-name">
+            <span className="truncate text-sm font-semibold text-[var(--color-fg)]" data-testid="gen-model-name">
               {current.displayName}
             </span>
             {current.beta && (
-              <span className="shrink-0 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
+              <span className="shrink-0 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-1.5 py-px text-xs font-medium text-[var(--color-muted)]">
                 {t.gen.beta}
               </span>
             )}
@@ -612,13 +625,13 @@ export function GeneratePanel({
         aria-label={t.gen.modelChangeLabel}
         ref={changeRef}
         onClick={() => setSheetOpen(true)}
-        className="tap press shrink-0 rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)]"
+        className="tap press shrink-0 rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] px-3 py-1.5 text-xs font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)]"
       >
         {t.gen.modelChange}
       </button>
     </div>
   ) : (
-    <p className="studio-field p-3 text-[13px] text-[var(--color-muted)]">{t.gen.noModels}</p>
+    <p className="studio-field p-3 text-sm text-[var(--color-muted)]">{t.gen.noModels}</p>
   );
 
   // Image and Enhance lay the picture on the table, large; elsewhere it is a thumbnail.
@@ -637,7 +650,7 @@ export function GeneratePanel({
         }}
         libraryHref={path("/library")}
       />
-      <span className="text-[12px] text-[var(--color-muted)]">
+      <span className="text-xs text-[var(--color-muted)]">
         {capability === "describe" ? t.gen.describeNote : t.gen.keepsShape}
       </span>
     </div>
@@ -695,7 +708,7 @@ export function GeneratePanel({
               setEndOpen(false);
               edited();
             }}
-            className="btn-quiet w-fit text-[12px]"
+            className="btn-quiet w-fit text-xs"
           >
             {t.gen.endFrameRemove}
           </button>
@@ -705,7 +718,7 @@ export function GeneratePanel({
           {t.gen.endFrameAdd}
         </button>
       )}
-      <span className="text-[12px] text-[var(--color-muted)]">{t.gen.endFrameNote}</span>
+      <span className="text-xs text-[var(--color-muted)]">{t.gen.endFrameNote}</span>
     </div>
   ) : null;
 
@@ -724,7 +737,7 @@ export function GeneratePanel({
         }}
         libraryHref={path("/library")}
       />
-      <span className="text-[12px] text-[var(--color-muted)]">{t.gen.videoUpscaleNote}</span>
+      <span className="text-xs text-[var(--color-muted)]">{t.gen.videoUpscaleNote}</span>
     </div>
   ) : null;
 
@@ -743,7 +756,7 @@ export function GeneratePanel({
         }}
         libraryHref={path("/library")}
       />
-      <span className="text-[12px] text-[var(--color-muted)]">
+      <span className="text-xs text-[var(--color-muted)]">
         {capability === "dub" ? t.gen.dubNote : t.gen.voiceChangeNote}
       </span>
     </div>
@@ -800,7 +813,7 @@ export function GeneratePanel({
                   <span aria-hidden className="ns-lamp" data-tone={on ? "run" : "off"} />
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate font-semibold text-[var(--color-fg)]">{v.name}</span>
-                    <span className="truncate text-[12px] text-[var(--color-muted)]">{voiceStyle(v)}</span>
+                    <span className="truncate text-xs text-[var(--color-muted)]">{voiceStyle(v)}</span>
                   </span>
                 </button>
               );
@@ -816,7 +829,7 @@ export function GeneratePanel({
             id="gen-voice"
             value={voiceId ?? ""}
             onChange={(e) => pickVoice(e.target.value || null)}
-            className="studio-field w-full px-3 py-2.5 text-[16px] text-[var(--color-fg)] outline-none sm:text-[14px]"
+            className="studio-field w-full px-3 py-2.5 text-base text-[var(--color-fg)] outline-none sm:text-[14px]"
           >
             <option value="">{t.gen.voicePick}</option>
             {STUDIO_VOICES.map((v) => (
@@ -875,12 +888,12 @@ export function GeneratePanel({
             maxLength={PROMPT_MAX}
             autoFocus={initial !== null}
             placeholder={t.gen.promptPh[capability]}
-            className={`${desk === "voice" && isVoice ? "desk-script " : ""}min-h-[104px] w-full resize-none bg-transparent px-3 pb-2 pt-3 text-[16px] leading-relaxed text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus-visible:outline-none sm:text-[14px]`}
+            className={`${desk === "voice" && isVoice ? "desk-script " : ""}${isVoice ? "" : "studio-shot "}min-h-[104px] w-full resize-none bg-transparent px-3 pb-2 pt-3 text-base leading-relaxed text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus-visible:outline-none sm:text-[14px]`}
           />
           {settings && settingsInField && <div className="px-2 pb-2">{settings}</div>}
           {desk === "voice" && isVoice && (
             // Speech is priced by its characters: the count is the meter that matters here.
-            <div className="flex items-center justify-between gap-2 px-3 pb-2 text-[12px] text-[var(--color-muted)]">
+            <div className="flex items-center justify-between gap-2 px-3 pb-2 text-xs text-[var(--color-muted)]">
               <span>{t.desk.scriptNote}</span>
               <span data-testid="gen-char-count">
                 <Timecode value={prompt.length} format="count" locale={locale} label={fmt(t.desk.charCount, { n: prompt.length, max: PROMPT_MAX })} />
@@ -893,7 +906,7 @@ export function GeneratePanel({
           )}
         </div>
         {takesStyle(capability) && (
-          <span className="flex items-start gap-1.5 text-[12px] text-[var(--color-muted)]">
+          <span className="flex items-start gap-1.5 text-xs text-[var(--color-muted)]">
             <AtSign aria-hidden className="mt-[1px] size-3.5 shrink-0" />
             {t.gen.mentionHint}
           </span>
@@ -940,7 +953,7 @@ export function GeneratePanel({
             );
           })}
         </div>
-        <span className="text-[12px] text-[var(--color-muted)]">{t.gen.qualityNote}</span>
+        <span className="text-xs text-[var(--color-muted)]">{t.gen.qualityNote}</span>
       </div>
     ) : null;
 
@@ -971,7 +984,7 @@ export function GeneratePanel({
           );
         })}
       </div>
-      <span className="text-[12px] text-[var(--color-muted)]">{t.gen.soundNote}</span>
+      <span className="text-xs text-[var(--color-muted)]">{t.gen.soundNote}</span>
     </div>
   ) : null;
 
@@ -986,7 +999,7 @@ export function GeneratePanel({
             ))}
           </div>
         ) : styles.state === "failed" ? (
-          <div className="flex flex-wrap items-center gap-3 text-[13px] text-[var(--color-muted)]">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--color-muted)]">
             <span>{t.gen.styleFailed}</span>
             <button type="button" onClick={() => void styles.reload()} className="studio-chip">
               {t.gen.styleRetry}
@@ -1022,7 +1035,7 @@ export function GeneratePanel({
               ))}
             </div>
             {styles.kits.length === 0 && (
-              <span className="text-[12px] text-[var(--color-muted)]">
+              <span className="text-xs text-[var(--color-muted)]">
                 {t.gen.styleEmpty}{" "}
                 <Link href={path("/studio")} className="tap-link text-[var(--color-primary)] underline">
                   {t.gen.styleMake}
@@ -1030,7 +1043,7 @@ export function GeneratePanel({
               </span>
             )}
             {/* The built-in library: opening it changes nothing here, adding a style is a click there. */}
-            <Link href={path("/styles")} className="tap-link self-start text-[12px] text-[var(--color-primary)] underline">
+            <Link href={path("/styles")} className="tap-link self-start text-xs text-[var(--color-primary)] underline">
               {t.gen.styleBrowse}
             </Link>
           </>
@@ -1039,7 +1052,7 @@ export function GeneratePanel({
     ) : null;
 
   const dockBlock = (
-    <div className="studio-dock flex flex-col gap-2" data-testid="gen-dock">
+    <div className="studio-dock flex flex-col gap-2" data-testid="gen-dock" data-at-top={dockAtTop ? "true" : undefined}>
       {/* The price key (components/ui/PriceButton): the action and the
           database's quote as two legends; its name is the same sentence. */}
       <PriceButton
@@ -1063,7 +1076,7 @@ export function GeneratePanel({
         locale={locale}
         icon={<span aria-hidden className={`ns-rec${quote.status === "quoting" || submitting ? " pulse" : ""}`} />}
       />
-      <p id="gen-status" className={`min-h-[18px] text-[12px]${desk ? "" : " text-center"}`} aria-live="polite">
+      <p id="gen-status" className={`min-h-[18px] text-xs${desk ? "" : " text-center"}`} aria-live="polite">
         {notice?.kind === "ok" ? (
           <span className="text-[var(--color-ok)]">{t.gen.started}</span>
         ) : errorCode ? (

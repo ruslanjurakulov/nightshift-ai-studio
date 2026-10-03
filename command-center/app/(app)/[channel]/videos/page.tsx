@@ -129,7 +129,7 @@ export default async function VideoLibrary() {
             title={t.storyboardReview.waitingTitle}
             right={<span className="t-label">{num(storyboards.length)}</span>}
           >
-            <p className="px-4 pt-3 text-[12px] leading-relaxed text-[var(--color-muted)]">
+            <p className="px-4 pt-3 text-xs leading-relaxed text-[var(--color-muted)]">
               {t.storyboardReview.waitingNote}
             </p>
             <ul className="m-0 flex list-none flex-col p-0" data-testid="waiting-storyboards">
@@ -140,7 +140,7 @@ export default async function VideoLibrary() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm text-[var(--color-fg)]">{sb.title ?? sb.topic}</div>
-                    <div className="mt-0.5 text-[12px] text-[var(--color-muted)]">
+                    <div className="mt-0.5 text-xs text-[var(--color-muted)]">
                       {fmt(t.storyboardReview.total, { n: sb.scenes.length, m: minutesLabel(sb.durationS) })}
                       {sb.createdAt ? ` · ${relativeTime(sb.createdAt)}` : ""}
                     </div>
@@ -157,11 +157,11 @@ export default async function VideoLibrary() {
 
       {held.length > 0 && (
         <Panel title={t.held.title} right={<span className="t-label">{num(held.length)}</span>}>
-          <p className="px-4 pt-3 text-[12px] leading-relaxed text-[var(--color-muted)]">{t.held.note}</p>
+          <p className="px-4 pt-3 text-xs leading-relaxed text-[var(--color-muted)]">{t.held.note}</p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
                   <th className="px-4 py-2 font-semibold">{t.videos.thTitle}</th>
                   <th className="px-4 py-2 font-semibold">{t.videos.thTopic}</th>
                   <th className="px-4 py-2 font-semibold">{t.held.thState}</th>
@@ -176,7 +176,7 @@ export default async function VideoLibrary() {
                         {v.title ?? v.topic ?? v.video_id}
                       </Link>
                       <span
-                        className="ml-2 rounded border px-1.5 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-[0.22em]"
+                        className="ml-2 rounded border px-1.5 py-0.5 align-middle text-xs font-semibold"
                         style={{ borderColor: "var(--color-warn)", color: "var(--color-warn)" }}
                       >
                         {t.held.badge}
@@ -184,7 +184,7 @@ export default async function VideoLibrary() {
                     </td>
                     <td className="px-4 py-2 text-[var(--color-muted)]">{v.topic ?? t.common.na}</td>
                     <td className="px-4 py-2 text-[var(--color-fg)]">{heldStateLabel(heldState(v), t.held)}</td>
-                    <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">
+                    <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">
                       {v.held_at ? relativeTime(v.held_at) : t.common.na}
                     </td>
                   </tr>

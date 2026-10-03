@@ -173,7 +173,7 @@ export default async function MeasurePage() {
                   {cost.unpricedUnits.map((unit) => (
                     <code
                       key={unit}
-                      className="mono rounded border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2 py-1 text-[11px] text-[var(--color-warn)]"
+                      className="tnum rounded border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2 py-1 text-xs text-[var(--color-warn)]"
                     >
                       CHRONOS_PRICE_{unit.toUpperCase()}
                     </code>
@@ -194,7 +194,7 @@ export default async function MeasurePage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-[var(--color-border)] text-left text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                      <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
                         <th className="px-4 py-2 font-semibold">{t.measure.thVideo}</th>
                         <th className="px-4 py-2 text-right font-semibold">{t.measure.thCost}</th>
                         <th className="px-4 py-2 text-right font-semibold">{t.measure.thEntries}</th>
@@ -210,7 +210,7 @@ export default async function MeasurePage() {
                           <td className="px-4 py-2 text-[var(--color-fg)]">
                             {(v.video_id && titleOf.get(v.video_id)) ?? v.slug ?? t.common.dash}
                           </td>
-                          <td className="mono px-4 py-2 text-right tabular-nums">
+                          <td className="tnum px-4 py-2 text-right tabular-nums">
                             {v.usd === null ? (
                               <span className="text-[var(--color-muted)]">
                                 {t.measure.unknownCost}
@@ -219,10 +219,10 @@ export default async function MeasurePage() {
                               <span className="text-[var(--color-fg)]">{usd(v.usd)}</span>
                             )}
                           </td>
-                          <td className="mono px-4 py-2 text-right tabular-nums text-[var(--color-muted)]">
+                          <td className="tnum px-4 py-2 text-right tabular-nums text-[var(--color-muted)]">
                             {num(v.entries)}
                           </td>
-                          <td className="mono px-4 py-2 text-right text-[11px] text-[var(--color-muted)]">
+                          <td className="tnum px-4 py-2 text-right text-xs text-[var(--color-muted)]">
                             {relativeTime(v.recordedAt)}
                           </td>
                         </tr>
@@ -243,10 +243,10 @@ export default async function MeasurePage() {
                     .map(([unit, quantity]) => (
                       <li key={unit} className="flex items-baseline gap-3 px-4 py-2.5">
                         {/* Unit names are schema identifiers, so they are not translated. */}
-                        <span className="mono min-w-0 flex-1 truncate text-xs text-[var(--color-muted)]">
+                        <span className="tnum min-w-0 flex-1 truncate text-xs text-[var(--color-muted)]">
                           {unit}
                         </span>
-                        <span className="mono shrink-0 text-sm tabular-nums text-[var(--color-fg)]">
+                        <span className="tnum shrink-0 text-sm tabular-nums text-[var(--color-fg)]">
                           {num(Math.round(quantity))}
                         </span>
                       </li>
@@ -287,16 +287,16 @@ export default async function MeasurePage() {
                             background: "var(--color-panel-2)",
                           }}
                         >
-                          <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                          <div className="text-xs text-[var(--color-muted)]">
                             {label}
                           </div>
                           <div
-                            className="mono mt-1 text-2xl font-semibold tabular-nums"
+                            className="tnum mt-1 text-2xl font-semibold tabular-nums"
                             style={{ color: isWinner ? "var(--color-ok)" : "var(--color-fg)" }}
                           >
                             {pct(arm.meanCtr, 2)}
                           </div>
-                          <div className="mono mt-1 text-[11px] text-[var(--color-muted)]">
+                          <div className="tnum mt-1 text-xs text-[var(--color-muted)]">
                             {num(arm.videos)} {t.measure.abVideos} · {num(arm.impressions)}{" "}
                             {t.measure.impressionsLabel}
                           </div>
@@ -334,16 +334,16 @@ export default async function MeasurePage() {
                             background: "var(--color-panel-2)",
                           }}
                         >
-                          <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                          <div className="text-xs text-[var(--color-muted)]">
                             {arm.variant === "A" ? t.measure.hookA : t.measure.hookB}
                           </div>
                           <div
-                            className="mono mt-1 text-2xl font-semibold tabular-nums"
+                            className="tnum mt-1 text-2xl font-semibold tabular-nums"
                             style={{ color: isWinner ? "var(--color-ok)" : "var(--color-fg)" }}
                           >
                             {arm.meanRetention === null ? t.common.na : `${arm.meanRetention.toFixed(1)}s`}
                           </div>
-                          <div className="mono mt-1 text-[11px] text-[var(--color-muted)]">
+                          <div className="tnum mt-1 text-xs text-[var(--color-muted)]">
                             {num(arm.videos)} {t.measure.abVideos}
                           </div>
                         </div>
@@ -430,7 +430,7 @@ export default async function MeasurePage() {
                         label={blocked ? t.measure.gateBlocked : t.measure.gateAllowed}
                       />
                       <div className="min-w-0 flex-1">
-                        <div className="mono text-[11px] text-[var(--color-muted)]">
+                        <div className="tnum text-xs text-[var(--color-muted)]">
                           {relativeTime(e.ts)}
                           {e.channel_id ? ` · ${e.channel_id}` : ""}
                         </div>
@@ -452,11 +452,11 @@ export default async function MeasurePage() {
               </ul>
             )}
             <div className="px-4 py-3">
-              <p className="mono text-[10px] text-[var(--color-muted)]">{t.measure.gateNote}</p>
+              <p className="tnum text-xs text-[var(--color-muted)]">{t.measure.gateNote}</p>
             </div>
           </Panel>
 
-          <p className="mono text-[10px] text-[var(--color-muted)]">{t.measure.note}</p>
+          <p className="tnum text-xs text-[var(--color-muted)]">{t.measure.note}</p>
         </>
       )}
     </div>

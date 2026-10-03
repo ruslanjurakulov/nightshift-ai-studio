@@ -37,7 +37,7 @@ export function MarginReport({ rows, days }: { rows: MarginRow[]; days: Period }
             key={p}
             href={path(`/margin?days=${p}`)}
             aria-current={p === days ? "page" : undefined}
-            className={`pill border px-3 py-1 text-[12px] ${
+            className={`pill border px-3 py-1 text-xs ${
               p === days
                 ? "border-[var(--color-primary-dim)] text-[var(--color-fg)]"
                 : "border-[var(--color-border)] text-[var(--color-muted)]"
@@ -75,14 +75,14 @@ export function MarginReport({ rows, days }: { rows: MarginRow[]; days: Period }
             />
           </section>
           {totals.unpricedRows > 0 && (
-            <p role="status" className="flex items-start gap-2 text-[12px] text-[var(--color-warn)]">
+            <p role="status" className="flex items-start gap-2 text-xs text-[var(--color-warn)]">
               <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" strokeWidth={1.75} />
               {fmt(t.margin.sumUnpriced, { n: totals.unpricedRows })}
             </p>
           )}
 
           <div tabIndex={0} role="region" aria-label={t.common.scrollTable} className="panel scroll-focus overflow-x-auto">
-            <table className="w-full min-w-[56rem] border-collapse text-left text-[12px]">
+            <table className="w-full min-w-[56rem] border-collapse text-left text-xs">
               <thead>
                 <tr className="border-b border-[var(--color-border)] text-[var(--color-muted)]">
                   <Th>{t.margin.colDay}</Th>
@@ -104,7 +104,7 @@ export function MarginReport({ rows, days }: { rows: MarginRow[]; days: Period }
             </table>
           </div>
 
-          <section aria-labelledby="margin-rules" className="panel flex flex-col gap-2 p-4 text-[12px] font-light leading-relaxed text-[var(--color-muted)]">
+          <section aria-labelledby="margin-rules" className="panel flex flex-col gap-2 p-5 sm:p-6 text-xs font-light leading-relaxed text-[var(--color-muted)]">
             <h2 id="margin-rules" className="t-panel">
               {t.margin.rulesTitle}
             </h2>
@@ -127,7 +127,7 @@ function Figure({ label, value, sub, unknown }: { label: string; value: string; 
     <div className="border-t border-[var(--color-border)] pt-4">
       <div className="t-label">{label}</div>
       <div className={`t-figure mt-3 ${unknown ? "text-[var(--color-warn)]" : ""}`}>{value}</div>
-      {sub && <div className="mt-2 text-[12px] font-light text-[var(--color-muted)]">{sub}</div>}
+      {sub && <div className="mt-2 text-xs font-light text-[var(--color-muted)]">{sub}</div>}
     </div>
   );
 }
@@ -152,16 +152,16 @@ function Row({ row }: { row: MarginRow }) {
 
   return (
     <tr className="border-b border-[var(--color-border)] align-top last:border-b-0">
-      <td className="mono whitespace-nowrap px-3 py-2">{row.day}</td>
+      <td className="tnum whitespace-nowrap px-3 py-2">{row.day}</td>
       <td className="px-3 py-2">
-        <div className="mono text-[var(--color-fg)]">{row.model}</div>
-        <div className="mono text-[11px] text-[var(--color-muted)]">{row.capability}</div>
+        <div className="tnum text-[var(--color-fg)]">{row.model}</div>
+        <div className="tnum text-xs text-[var(--color-muted)]">{row.capability}</div>
       </td>
-      <td className="mono px-3 py-2">{row.jobsCompleted}</td>
+      <td className="tnum px-3 py-2">{row.jobsCompleted}</td>
       <td className="px-3 py-2 text-right">
-        <div className="mono">{row.creditsSold.toLocaleString()}</div>
+        <div className="tnum">{row.creditsSold.toLocaleString()}</div>
         {row.creditsSold > 0 && (
-          <div className="text-[11px] text-[var(--color-muted)]">
+          <div className="text-xs text-[var(--color-muted)]">
             {fmt(t.margin.creditsSplit, {
               paid: row.creditsPaid.toLocaleString(),
               free: row.creditsFree.toLocaleString(),
@@ -170,13 +170,13 @@ function Row({ row }: { row: MarginRow }) {
           </div>
         )}
       </td>
-      <td className="mono px-3 py-2 text-right">{money(row.revenueUsd)}</td>
-      <td className="mono px-3 py-2 text-right">{money(row.providerUsd)}</td>
-      <td className="mono px-3 py-2 text-right">
+      <td className="tnum px-3 py-2 text-right">{money(row.revenueUsd)}</td>
+      <td className="tnum px-3 py-2 text-right">{money(row.providerUsd)}</td>
+      <td className="tnum px-3 py-2 text-right">
         {cell.kind === "value" ? (
           <>
             <div>{cell.pct.toFixed(1)}%</div>
-            {row.marginUsd !== null && <div className="text-[11px] text-[var(--color-muted)]">{formatUsd(row.marginUsd)}</div>}
+            {row.marginUsd !== null && <div className="text-xs text-[var(--color-muted)]">{formatUsd(row.marginUsd)}</div>}
           </>
         ) : cell.kind === "unpriced" ? (
           <span className="text-[var(--color-warn)]">{t.margin.unpriced}</span>
@@ -199,7 +199,7 @@ function Row({ row }: { row: MarginRow }) {
       </td>
       <td className="px-3 py-2">
         {row.flags.length > 0 && (
-          <ul className="m-0 flex list-none flex-col gap-1 p-0 text-[11px] text-[var(--color-muted)]">
+          <ul className="m-0 flex list-none flex-col gap-1 p-0 text-xs text-[var(--color-muted)]">
             {row.flags.map((f) => (
               <li key={f}>{flagText[f]}</li>
             ))}

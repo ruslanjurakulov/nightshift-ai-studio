@@ -1,6 +1,9 @@
 # Nightshift visual identity: "Master control, 03:00"
 
-Status: v1, 2026-10-01. Owner of this file: design. Tokens live in
+Status: v1, 2026-10-01; **type, radius, density and label rules superseded by
+`HUMAN_TYPE.md` (2026-10-03)**: one friendly sans (Onest), no capitals, no
+monospace for words, 16px text, soft 12/16/20px corners. Palette hue, amber,
+the dark-first look and the wordmark are unchanged. Owner of this file: design. Tokens live in
 `command-center/app/globals.css` (`--ns-*`), primitives in
 `command-center/components/ui/`, the living style guide at
 `/{channel}/design` (platform admins only).
@@ -67,28 +70,17 @@ decides which one they see.
 
 ## 3. Type
 
-Google Fonts only, through `next/font/google` (self-hosted at build, no
-run-time request to Google), all three with Cyrillic for Russian and the
-Latin set that carries Uzbek's ʻ.
-
-| Role | Face | Why | Fallbacks |
-| :-- | :-- | :-- | :-- |
-| Display | **Sofia Sans Extra Condensed** (variable 1–1000) | The engraving on a console: tall, narrow capitals that label a key or a rack without shouting. Used for page titles, figures, labels in capitals, the Generate key. | Arial Narrow, Roboto Condensed, sans-serif |
-| Body | **Sofia Sans** (variable 1–1000) | The same family at reading width, so the labels and the copy are one voice at two widths. A humanist grotesk with a strong Cyrillic (Bulgarian foundry), not one of the faces every generated UI uses. | Segoe UI, Helvetica Neue, Arial |
-| Counter | **Martian Mono** (wdth 75–112.5, set to 87.5) | Timecode: slashed zero, tabular figures, and a width axis that narrows it into a readout instead of code. Credits, prices, durations, frame numbers. | ui-monospace, SF Mono, Menlo, Consolas |
-
-Scale (px, tokens `--ns-t-*`): label 11 (display, capitals, +0.12–0.14em) ·
-small 12 · UI 13 · body 14 · lead 16 · h3 20 · h2 26 · h1 34 · hero 48.
-Display face from 20 px up and for capital labels at any size; small section
-headings (13–17 px) use the body face at 600–650.
+Superseded: see `HUMAN_TYPE.md`. One family, **Onest** (OFL, self-hosted, Latin,
+Cyrillic and Uzbek ʻ ʼ ’, tabular figures), at 400 / 500 / 600; sentence case;
+scale 13 · 14 · 16 · 18 · 20 · 24 · 30 · 40; system monospace for real code
+only. The wordmark alone keeps its condensed capitals (`.ns-wordmark`).
 
 ## 4. Space, shape, elevation
 
-- **Space:** a 4 px base; controls sit on 8 px steps; panel padding 16; page
-  gutter 16 on phones.
-- **Radius varies by role, never one radius for everything:** frame 2 (cut
-  film) · chip 4 · key 6 (buttons, fields, segmented keys, nav rows) · panel
-  10 · sheet 14. No pills except the lamp.
+- **Space:** a 4 px base; controls are at least 44 px high; card padding 20 (24
+  from 640 px) and 24 px between cards; page gutter 16 on phones.
+- **Radius by role, soft:** frame and chip 8 · key 12 (buttons, fields, segmented
+  keys, nav rows) · panel 16 · sheet 20.
 - **Elevation: one thing is lifted.** Per screen: an open sheet, a popover, or
   the surface you work at (the Studio composer, `--ns-lift`). Everything else
   is a solid rack face with a hairline (`.panel`, `.section-card`). No glass,
@@ -144,7 +136,7 @@ The full motion language, its tokens (`lib/motion/tokens.ts`), the kit
 | Put the price on the action, in the counter face | Show a price that the backend did not compute, or 0 for unknown |
 | Say a state in words next to its lamp | Use colour as the only signal |
 | Vary radius by role (2/4/6/10/14) | Put the same rounded card + soft shadow on every block |
-| Use the condensed face for titles and capital labels | Set long copy in the condensed face |
+| Use sentence case and the one sans at 400 / 500 / 600 | Set a label in capitals, tracked, or in a monospace |
 | Left-align; let the grid and the hairlines carry the page | Centre everything; add accent bars to cards |
 | Use the cue blue only for focus | Use amber for focus (it means "selected") |
 | Keep ticks and numbers where they count something | Add rulers, ticks or numbering as decoration |

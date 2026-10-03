@@ -91,7 +91,7 @@ export default async function AlertsPage() {
 
       {/* Channel configuration */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="panel p-4">
+        <div className="panel p-5 sm:p-6">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-[var(--color-fg)]">
               {t.alerts.slackTitle}
@@ -102,10 +102,10 @@ export default async function AlertsPage() {
               live={slackConfigured}
             />
           </div>
-          <p className="mono mt-3 text-[11px] text-[var(--color-muted)]">SLACK_WEBHOOK_URL</p>
+          <p className="mono mt-3 text-xs text-[var(--color-muted)]">SLACK_WEBHOOK_URL</p>
         </div>
 
-        <div className="panel p-4">
+        <div className="panel p-5 sm:p-6">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-[var(--color-fg)]">
               {t.alerts.emailTitle}
@@ -116,15 +116,15 @@ export default async function AlertsPage() {
               live={emailConfigured}
             />
           </div>
-          <p className="mono mt-3 text-[11px] text-[var(--color-muted)]">
+          <p className="tnum mt-3 text-xs text-[var(--color-muted)]">
             RESEND_API_KEY · ALERT_EMAIL_TO · ALERT_EMAIL_FROM
           </p>
         </div>
       </div>
 
       {/* Setup note + admin-only test control */}
-      <div className="panel p-4">
-        <p className="text-[13px] text-[var(--color-muted)]">{t.alerts.setupNote}</p>
+      <div className="panel p-5 sm:p-6">
+        <p className="text-sm text-[var(--color-muted)]">{t.alerts.setupNote}</p>
         {isAdmin && (
           <div className="mt-4">
             <SendTestAlert />
@@ -141,7 +141,7 @@ export default async function AlertsPage() {
           <EmptyState>{t.alerts.empty}</EmptyState>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-[13px]">
+            <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="text-left text-[var(--color-muted)]">
                   <th className="border-b border-[var(--color-border)] py-2 pr-4 font-medium">
@@ -158,10 +158,10 @@ export default async function AlertsPage() {
               <tbody>
                 {events.map((e) => (
                   <tr key={e.id} className="align-top">
-                    <td className="border-b border-[var(--color-border)] py-2 pr-4 mono text-[12px] text-[var(--color-muted)] whitespace-nowrap">
+                    <td className="border-b border-[var(--color-border)] py-2 pr-4 tnum text-xs text-[var(--color-muted)] whitespace-nowrap">
                       {relativeTime(e.at)}
                     </td>
-                    <td className="border-b border-[var(--color-border)] py-2 pr-4 mono text-[12px] text-[var(--color-muted)] whitespace-nowrap">
+                    <td className="border-b border-[var(--color-border)] py-2 pr-4 tnum text-xs text-[var(--color-muted)] whitespace-nowrap">
                       {e.kind}
                     </td>
                     <td className="border-b border-[var(--color-border)] py-2 text-[var(--color-fg)]">
@@ -170,7 +170,7 @@ export default async function AlertsPage() {
                         <span className="font-medium">{e.title}</span>
                       </div>
                       {e.body && (
-                        <span className="mt-1 block text-[12px] font-light text-[var(--color-muted)]">
+                        <span className="mt-1 block text-xs font-light text-[var(--color-muted)]">
                           {e.body}
                         </span>
                       )}

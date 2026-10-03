@@ -95,7 +95,7 @@ export const HomeComposer = forwardRef<ComposerHandle, { channels: ComposerChann
             maxLength={TOPIC_MAX}
             placeholder={t.home.placeholder}
             // 16px: iOS zooms the page into any smaller text field.
-            className="w-full resize-none bg-transparent px-1 text-[16px] leading-relaxed text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)]"
+            className="w-full resize-none bg-transparent px-1 text-base leading-relaxed text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)]"
           />
 
           <div role="radiogroup" aria-label={t.home.lengthLabel} className="mt-2 flex flex-wrap gap-1.5">
@@ -135,7 +135,7 @@ export const HomeComposer = forwardRef<ComposerHandle, { channels: ComposerChann
                 <select
                   value={slug}
                   onChange={(e) => setSlug(e.target.value)}
-                  className="rounded-[var(--ns-r-key)] min-h-11 w-full max-w-full truncate border border-[var(--color-border)] bg-transparent px-3 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:w-auto sm:max-w-[14rem]"
+                  className="rounded-[var(--ns-r-key)] min-h-11 w-full max-w-full truncate border border-[var(--color-border)] bg-transparent px-3 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:w-auto sm:max-w-[14rem]"
                 >
                   {channels.map((c) => (
                     <option key={c.slug} value={c.slug}>
@@ -164,7 +164,7 @@ export const HomeComposer = forwardRef<ComposerHandle, { channels: ComposerChann
           </div>
         </div>
 
-        <p className="px-1 text-[12px] leading-relaxed text-[var(--color-muted)]" aria-live="polite">
+        <p className="px-1 text-xs leading-relaxed text-[var(--color-muted)]" aria-live="polite">
           {channel ? (
             <>
               {t.home.handoffNote} {channel.autoPublish ? t.home.approvalAuto : t.home.approvalPrivate}

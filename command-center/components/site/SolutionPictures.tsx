@@ -22,14 +22,14 @@ export function ComposerPicture({ t }: { t: Dictionary }) {
       </div>
       <div className="flex flex-col gap-4 p-4">
         <div className="flex flex-col gap-2">
-          <span className="st-kicker text-[12px]">{c.describe}</span>
+          <span className="st-kicker text-xs">{c.describe}</span>
           <div className="min-h-[96px] rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] p-3 text-[15px] leading-relaxed">
             {c.prompt}
           </div>
         </div>
         <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
           <div className="flex flex-col gap-2">
-            <span className="st-kicker text-[12px]">{c.shape}</span>
+            <span className="st-kicker text-xs">{c.shape}</span>
             <span className="st-fake-seg">
               {ASPECT_RATIOS.map((a, i) => (
                 <span key={a} data-on={i === 0 ? "true" : undefined} className="st-num">
@@ -39,7 +39,7 @@ export function ComposerPicture({ t }: { t: Dictionary }) {
             </span>
           </div>
           <div className="flex flex-col gap-2">
-            <span className="st-kicker text-[12px]">{c.style}</span>
+            <span className="st-kicker text-xs">{c.style}</span>
             <span className="st-fake-chip">
               <span className="truncate">{c.styleName}</span>
             </span>
@@ -73,11 +73,11 @@ export function ApiPicture({ t }: { t: Dictionary }) {
       <ul className="st-rows">
         {a.rows.map((r) => (
           <li key={r.method + r.path} className="grid gap-1 border-b border-[var(--ns-rule)] px-4 py-3 last:border-b-0">
-            <code className="st-num flex flex-wrap items-baseline gap-x-3 text-[13px]">
+            <code className="st-num flex flex-wrap items-baseline gap-x-3 text-sm">
               <span className="font-semibold text-[var(--ns-amber-ink)]">{r.method}</span>
               <span className="break-all">{r.path}</span>
             </code>
-            <span className="text-[13.5px] text-[var(--ns-text-dim)]">{r.body}</span>
+            <span className="text-sm text-[var(--ns-text-dim)]">{r.body}</span>
           </li>
         ))}
       </ul>
@@ -122,7 +122,7 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
             </li>
           ))}
         </ol>
-        <p className="flex items-center gap-2 text-[13.5px] text-[var(--ns-text-dim)]">
+        <p className="flex items-center gap-2 text-sm text-[var(--ns-text-dim)]">
           <Lock className="size-4 shrink-0" aria-hidden />
           {s.air}
         </p>

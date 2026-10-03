@@ -104,16 +104,26 @@ export function isSignedMediaPath(pathname: string): boolean {
 }
 
 /**
- * The Cyrillic faces of the public pages, self-hosted from public/fonts so a
- * Russian page can preload them by a stable name (components/site/fonts.ts).
- * Static OFL font files, listed one by one and matched exactly: the gate lets
- * them through before any session work, like the signed media files, so a
- * font never waits on an auth round trip. Nothing else under /fonts is public.
+ * The product's typeface (Onest, app/fonts.css), self-hosted from public/fonts
+ * so any page, signed in or not, can preload it by a stable name
+ * (components/site/fonts.ts). Static OFL font files, listed one by one and
+ * matched exactly: the gate lets them through before any session work, like
+ * the signed media files, so a font never waits on an auth round trip.
+ * Nothing else under /fonts is public.
  */
 export const PUBLIC_FONT_PATHS = [
-  "/fonts/sofia-sans-extra-condensed-cyrillic-v6.woff2",
-  "/fonts/sofia-sans-cyrillic-v20.woff2",
+  "/fonts/onest-latin-v1.woff2",
+  "/fonts/onest-latin-ext-v1.woff2",
+  "/fonts/onest-cyrillic-v1.woff2",
+  "/fonts/onest-cyrillic-ext-v1.woff2",
 ] as const;
+
+/** What each language needs on its first paint (the rest load on demand). */
+export const CRITICAL_FONT_PATHS = {
+  en: ["/fonts/onest-latin-v1.woff2"],
+  uz: ["/fonts/onest-latin-v1.woff2"],
+  ru: ["/fonts/onest-latin-v1.woff2", "/fonts/onest-cyrillic-v1.woff2"],
+} as const satisfies Record<"en" | "ru" | "uz", readonly (typeof PUBLIC_FONT_PATHS)[number][]>;
 
 export function isPublicFontPath(pathname: string): boolean {
   return (PUBLIC_FONT_PATHS as readonly string[]).includes(pathname);

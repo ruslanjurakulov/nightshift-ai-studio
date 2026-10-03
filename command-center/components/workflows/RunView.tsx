@@ -101,20 +101,20 @@ export function RunView({
 
   return (
     <div className="flex flex-col gap-4">
-      <section className="panel flex flex-col gap-2 p-4" aria-live="polite">
+      <section className="panel flex flex-col gap-2 p-5 sm:p-6" aria-live="polite">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="m-0 text-[15px] font-semibold">{fmt(p.of, { name: run.workflow_name })}</h2>
-          <span className="pill border border-[var(--color-border)] px-3 py-1 text-[12px]">{t.workflows.status[run.status]}</span>
+          <span className="pill border border-[var(--color-border)] px-3 py-1 text-xs">{t.workflows.status[run.status]}</span>
         </div>
-        <p className="m-0 text-[13px] tabular-nums">
+        <p className="m-0 text-sm tabular-nums">
           {run.max_credits !== null ? fmt(p.confirmed, { n: formatCredits(run.max_credits, locale) }) : p.confirmedUnknown}
         </p>
-        <p className="m-0 text-[13px] tabular-nums">
+        <p className="m-0 text-sm tabular-nums">
           {run.charged_credits !== null ? fmt(p.charged, { n: formatCredits(run.charged_credits, locale) }) : p.chargedUnknown}
         </p>
         {waiting ? (
           // The deadline is in the reader's own time zone, which the server cannot know.
-          <p role="status" className="m-0 text-[13px]" suppressHydrationWarning>
+          <p role="status" className="m-0 text-sm" suppressHydrationWarning>
             {fmt(waiting.wait === "run_limit_reached" ? p.waitingSlot : p.waitingCredits, { n: waiting.step_index + 1 })}{" "}
             {deadline
               ? fmt(p.waitingUntil, { when: deadline.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" }) })
@@ -122,28 +122,28 @@ export function RunView({
           </p>
         ) : null}
         {active ? (
-          <p className="m-0 text-[12px] text-[var(--color-muted)]">
+          <p className="m-0 text-xs text-[var(--color-muted)]">
             {carry ? p.keepOpen : p.viewOnly}
             {refreshing ? ` ${p.refreshing}` : ""}
           </p>
         ) : null}
-        {!active && !carry ? <p className="m-0 text-[12px] text-[var(--color-muted)]">{p.viewOnly}</p> : null}
+        {!active && !carry ? <p className="m-0 text-xs text-[var(--color-muted)]">{p.viewOnly}</p> : null}
         {problem ? (
-          <p role="alert" className="m-0 flex flex-wrap items-center gap-3 text-[13px] text-[var(--color-fail)]">
+          <p role="alert" className="m-0 flex flex-wrap items-center gap-3 text-sm text-[var(--color-fail)]">
             {problem}
-            <button type="button" onClick={() => void tick()} className="btn-sky is-quiet pill px-3 py-1.5 text-[12px]">
+            <button type="button" onClick={() => void tick()} className="btn-sky is-quiet pill px-3 py-1.5 text-xs">
               {p.retry}
             </button>
           </p>
         ) : null}
         <div className="flex flex-wrap gap-2">
           {active && carry ? (
-            <button type="button" onClick={onStop} disabled={stopping} className="btn-sky ghost pill px-4 py-2 text-[13px]">
+            <button type="button" onClick={onStop} disabled={stopping} className="btn-sky ghost pill px-4 py-2 text-sm">
               {stopping ? p.cancelling : p.cancel}
             </button>
           ) : null}
           {!active && carry ? (
-            <Link href={path(`/workflows/${run.workflow_id}`)} className="btn-sky ghost pill px-4 py-2 text-[13px]">
+            <Link href={path(`/workflows/${run.workflow_id}`)} className="btn-sky ghost pill px-4 py-2 text-sm">
               {p.newRun}
             </Link>
           ) : null}
@@ -182,30 +182,30 @@ function StepRow({ step, toolLabels, libraryHref }: { step: RunStepView; toolLab
   return (
     <li className="studio-field flex flex-col gap-1 rounded-2xl border border-[var(--color-border)] p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-2 text-[13px] font-medium">
+        <span className="inline-flex items-center gap-2 text-sm font-medium">
           <StepIcon status={step.status} live />
           {fmt(t.workflows.run.stepLine, { n: step.step_index + 1, tool: toolLabels[step.capability] ?? step.capability })}
         </span>
-        <span className="text-[12px] text-[var(--color-muted)]">{word}</span>
+        <span className="text-xs text-[var(--color-muted)]">{word}</span>
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] tabular-nums text-[var(--color-muted)]">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums text-[var(--color-muted)]">
         <span>{step.quoted_credits !== null ? fmt(p.quoted, { n: formatCredits(step.quoted_credits, locale) }) : p.quotedUnknown}</span>
         {step.status === "completed" && step.charged_credits !== null ? (
           <span>{fmt(p.chargedStep, { n: formatCredits(step.charged_credits, locale) })}</span>
         ) : null}
       </div>
       {wait ? (
-        <p className="m-0 text-[12px] text-[var(--color-muted)]">{fmt(p.stepWaiting, { why: t.workflows.waitReasons[wait] })}</p>
+        <p className="m-0 text-xs text-[var(--color-muted)]">{fmt(p.stepWaiting, { why: t.workflows.waitReasons[wait] })}</p>
       ) : step.status === "pending" || step.status === "skipped" ? (
-        <p className="m-0 text-[12px] text-[var(--color-muted)]">{p.notStarted}</p>
+        <p className="m-0 text-xs text-[var(--color-muted)]">{p.notStarted}</p>
       ) : null}
       {step.status === "failed" || step.status === "cancelled" ? (
-        <p role="status" className="m-0 text-[12px] text-[var(--color-fail)]">
+        <p role="status" className="m-0 text-xs text-[var(--color-fail)]">
           {fmt(p.failedBecause, { why: stepFailureReason(t, step.error_code) })}
         </p>
       ) : null}
       {step.status === "completed" && step.result_asset_ids.length > 0 ? (
-        <Link href={libraryHref} className="btn-sky ghost pill w-fit px-3 py-1.5 text-[12px]">
+        <Link href={libraryHref} className="btn-sky ghost pill w-fit px-3 py-1.5 text-xs">
           {p.openResult}
         </Link>
       ) : null}

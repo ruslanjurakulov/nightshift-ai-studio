@@ -54,7 +54,7 @@ function NavList({ operator, onNavigate }: { operator: boolean; onNavigate?: () 
       {navGroupsFor(operator).map((group, gi) => (
         <div key={group.label ?? `g${gi}`} className="flex flex-col gap-0.5">
           {group.label && (
-            <div className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
+            <div className="px-3 pb-1 pt-1 text-xs font-semibold text-[var(--color-muted)]">
               {t.nav[group.label]}
             </div>
           )}
@@ -139,7 +139,7 @@ export function SideNav({
           aria-haspopup="dialog"
           aria-expanded={open}
           aria-controls={open ? drawerId : undefined}
-          className="btn-sky is-quiet pill inline-flex h-10 items-center gap-2 px-3 text-[13px]"
+          className="btn-sky is-quiet pill inline-flex h-10 items-center gap-2 px-3 text-sm"
         >
           <Menu aria-hidden className="size-4" />
           {t.nav.menu}
@@ -165,7 +165,7 @@ export function SideNav({
           />
           <div className="drawer-enter absolute inset-y-0 left-0 flex w-[280px] max-w-[82vw] flex-col overflow-y-auto border-r border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-4 shadow-[var(--shadow-elevated)]">
             <div className="mb-3 flex items-center justify-between px-2">
-              <span className="inline-flex items-center gap-2 font-display text-base font-semibold text-[var(--color-primary)]">
+              <span className="ns-wordmark inline-flex items-center gap-2">
                 <BrandMark size={32} />
                 {t.brand.name}
               </span>

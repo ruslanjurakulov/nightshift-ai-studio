@@ -115,7 +115,7 @@ export default function SignupPage() {
               setSentTo(null);
               setBusy(false);
             }}
-            className="st-link self-center text-[14px]"
+            className="st-link self-center text-sm"
           >
             {t.signup.useDifferent}
           </button>
@@ -169,7 +169,7 @@ export default function SignupPage() {
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
           />
-          <label className="mt-1 flex min-h-11 items-start gap-3 text-[14px] leading-snug text-[var(--ns-text-dim)]">
+          <label className="mt-1 flex min-h-11 items-start gap-3 text-sm leading-snug text-[var(--ns-text-dim)]">
             <input
               type="checkbox"
               required
@@ -218,7 +218,7 @@ export default function SignupPage() {
 
       <p className="st-small mt-8 flex flex-wrap items-center gap-x-2 border-t border-[var(--ns-rule)] pt-5">
         {t.signup.haveAccount}
-        <Link href="/login" className="st-link text-[14.5px]">
+        <Link href="/login" className="st-link text-[15px]">
           {t.signup.signIn}
         </Link>
       </p>

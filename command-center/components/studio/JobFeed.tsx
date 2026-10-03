@@ -403,7 +403,7 @@ export function JobFeed({
         <p className="sr-only">{t.gen.descriptionLabel}</p>
         <p
           lang={description.language}
-          className="select-text whitespace-pre-wrap break-words rounded-[var(--ns-r-key)] bg-[var(--studio-field)] p-2.5 text-[13px] leading-relaxed text-[var(--color-fg)]"
+          className="select-text whitespace-pre-wrap break-words rounded-[var(--ns-r-key)] bg-[var(--studio-field)] p-2.5 text-sm leading-relaxed text-[var(--color-fg)]"
           data-testid="describe-text"
         >
           {description.text}
@@ -429,7 +429,7 @@ export function JobFeed({
         <span id={`similar-hint-${job.id}`} className="sr-only">
           {t.gen.makeSimilarHint}
         </span>
-        <p className="min-h-[1em] text-[12px]" aria-live="polite">
+        <p className="min-h-[1em] text-xs" aria-live="polite">
           {copied?.id === job.id && !copied.ok && <span className="text-[var(--color-warn)]">{t.gen.copyFailed}</span>}
         </p>
       </div>
@@ -442,26 +442,26 @@ export function JobFeed({
     return (
       <>
         {job.capability === "dub" && isDubLanguage(job.params.target_language) && (
-          <p className="text-[13px] leading-snug text-[var(--color-fg)]" lang={job.params.target_language}>
+          <p className="text-sm leading-snug text-[var(--color-fg)]" lang={job.params.target_language}>
             → {t.gen.languages[job.params.target_language]}
           </p>
         )}
-        <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[11px] text-[var(--color-muted)]">
+        <p className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-xs text-[var(--color-muted)]">
           <span className="min-w-0 truncate">{names.get(jobModel(job)) ?? jobModel(job)}</span>
           <span aria-hidden>·</span>
-          <span className="mono">{creditsLine(t, job, locale)}</span>
+          <span className="tnum">{creditsLine(t, job, locale)}</span>
         </p>
         {fellBackLine(t, job, names) && (
-          <p className="text-[11px] leading-snug text-[var(--color-muted)]" data-testid="job-fell-back">
+          <p className="text-xs leading-snug text-[var(--color-muted)]" data-testid="job-fell-back">
             {fellBackLine(t, job, names)}
           </p>
         )}
         {isUnsuccessful(job.status) && (
-          <p className="text-[12px] text-[var(--color-muted)]">
+          <p className="text-xs text-[var(--color-muted)]">
             {failureReason(t, job)} {t.gen.returnedNote}
           </p>
         )}
-        {cancelError?.id === job.id && <p className="text-[12px] text-[var(--color-fail)]">{apiErrorMessage(t, cancelError.code)}</p>}
+        {cancelError?.id === job.id && <p className="text-xs text-[var(--color-fail)]">{apiErrorMessage(t, cancelError.code)}</p>}
         {(job.status === "queued" || retry || isUnsuccessful(job.status)) && (
           <div className="flex flex-wrap gap-2 pt-1">
             {job.status === "queued" && (
@@ -512,12 +512,12 @@ export function JobFeed({
         body={
           <div className="flex flex-col gap-1.5">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="min-w-0 truncate text-[12px] font-semibold text-[var(--color-fg)]">{kindLabel(t, job.capability)}</span>
+              <span className="min-w-0 truncate text-xs font-semibold text-[var(--color-fg)]">{kindLabel(t, job.capability)}</span>
               <span className="ml-auto shrink-0">
                 <StatusLamp tone={sv.tone} label={sv.label} live={sv.live} />
               </span>
             </div>
-            {prompt && <p className="studio-clamp-2 break-words text-[13px] leading-snug text-[var(--color-fg)]">{truncate(prompt)}</p>}
+            {prompt && <p className="studio-clamp-2 break-words text-sm leading-snug text-[var(--color-fg)]">{truncate(prompt)}</p>}
             {descriptionBlock(job)}
             {facts(job)}
           </div>
@@ -554,7 +554,7 @@ export function JobFeed({
             <StatusLamp tone={sv.tone} label={sv.label} live={sv.live} />
             {since(job)}
           </div>
-          {prompt && <p className="break-words text-[14px] leading-snug text-[var(--color-fg)]">{truncate(prompt, 240)}</p>}
+          {prompt && <p className="break-words text-sm leading-snug text-[var(--color-fg)]">{truncate(prompt, 240)}</p>}
           {descriptionBlock(job)}
           {facts(job)}
         </figcaption>
@@ -580,7 +580,7 @@ export function JobFeed({
           <span className="desk-strip-pic">{media(job, { thumb: true })}</span>
           <span className="flex min-w-0 items-center gap-1.5 px-1.5 py-1">
             <span aria-hidden className="ns-lamp" data-tone={sv.tone} data-live={sv.live ? "true" : undefined} />
-            <span className="min-w-0 truncate text-[11px] text-[var(--color-fg)]">{prompt ? truncate(prompt, 40) : kindLabel(t, job.capability)}</span>
+            <span className="min-w-0 truncate text-xs text-[var(--color-fg)]">{prompt ? truncate(prompt, 40) : kindLabel(t, job.capability)}</span>
           </span>
           <span className="sr-only">
             {sv.label}. {t.desk.showOnStage}
@@ -602,15 +602,15 @@ export function JobFeed({
         </span>
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="text-[13px] font-semibold text-[var(--color-fg)]">{kindLabel(t, job.capability)}</span>
+            <span className="text-sm font-semibold text-[var(--color-fg)]">{kindLabel(t, job.capability)}</span>
             <StatusLamp tone={sv.tone} label={sv.label} live={sv.live} />
             {since(job)}
           </div>
-          {prompt && <p className="studio-clamp-2 break-words text-[13px] leading-snug text-[var(--color-fg)]">{truncate(prompt, 200)}</p>}
+          {prompt && <p className="studio-clamp-2 break-words text-sm leading-snug text-[var(--color-fg)]">{truncate(prompt, 200)}</p>}
           {src ? (
             <audio controls preload="none" src={src} className="desk-take-audio" aria-label={fmt(t.desk.playTake, { n })} />
           ) : done ? (
-            <Link href={path("/library")} className="tap-link w-fit text-[12px] text-[var(--color-primary)] underline">
+            <Link href={path("/library")} className="tap-link w-fit text-xs text-[var(--color-primary)] underline">
               {t.gen.openLibrary}
             </Link>
           ) : null}
@@ -634,16 +634,16 @@ export function JobFeed({
       <li key={job.id} className="desk-log-row" data-status={job.status}>
         <span className="desk-log-pic">{media(job, { thumb: true })}</span>
         <span className="flex min-w-0 flex-col gap-0.5">
-          <span className="flex min-w-0 items-center gap-2 text-[13px] font-semibold text-[var(--color-fg)]">
+          <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-[var(--color-fg)]">
             <Icon aria-hidden className="size-3.5 shrink-0 text-[var(--color-muted)]" strokeWidth={1.75} />
             <span className="truncate">{kindLabel(t, job.capability)}</span>
           </span>
-          {prompt && <span className="truncate text-[12px] text-[var(--color-muted)]">{truncate(prompt, 90)}</span>}
-          {isUnsuccessful(job.status) && <span className="text-[12px] text-[var(--color-muted)]">{failureReason(t, job)}</span>}
+          {prompt && <span className="truncate text-xs text-[var(--color-muted)]">{truncate(prompt, 90)}</span>}
+          {isUnsuccessful(job.status) && <span className="text-xs text-[var(--color-muted)]">{failureReason(t, job)}</span>}
         </span>
         <span className="desk-log-state">
           <StatusLamp tone={sv.tone} label={sv.label} live={sv.live} />
-          <span className="mono text-[11px] text-[var(--color-muted)]">{creditsLine(t, job, locale)}</span>
+          <span className="tnum text-xs text-[var(--color-muted)]">{creditsLine(t, job, locale)}</span>
         </span>
         {desk && (
           <Link href={path(deskHref(desk))} className="desk-log-go" aria-label={fmt(t.desk.openOnDesk, { desk: t.desk.names[desk] })}>
@@ -667,17 +667,17 @@ export function JobFeed({
           {heading}
         </h2>
         {active && (
-          <span className="text-[12px] text-[var(--color-muted)]" aria-live="polite">
+          <span className="text-xs text-[var(--color-muted)]" aria-live="polite">
             {t.gen.working}
           </span>
         )}
       </div>
 
       {state === "unavailable" ? (
-        <p className="studio-field p-4 text-[13px] text-[var(--color-muted)]">{t.gen.unavailable}</p>
+        <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.gen.unavailable}</p>
       ) : (
         <>
-          {state === "failed" && <p className="text-[12px] text-[var(--color-warn)]">{t.gen.loadFailed}</p>}
+          {state === "failed" && <p className="text-xs text-[var(--color-warn)]">{t.gen.loadFailed}</p>}
           {loading &&
             (variant === "takes" || variant === "log" ? (
               <div className="flex flex-col gap-2" aria-busy="true" aria-label={t.gen.feedLoading}>
@@ -700,7 +700,7 @@ export function JobFeed({
                 <Clapperboard className="size-6" strokeWidth={1.75} />
               </span>
               <p className="text-[15px] font-semibold text-[var(--color-fg)]">{emptyTitle ?? t.gen.emptyTitle}</p>
-              <p className="max-w-[52ch] text-[13px] text-[var(--color-muted)]">{emptyBody ?? t.gen.empty}</p>
+              <p className="max-w-[52ch] text-sm text-[var(--color-muted)]">{emptyBody ?? t.gen.empty}</p>
             </div>
           )}
           {shown.length > 0 && variant === "sheet" && (

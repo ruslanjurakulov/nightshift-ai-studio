@@ -26,10 +26,10 @@ export function TemplateGallery({
   return (
     <section className="flex min-w-0 flex-col gap-2" aria-labelledby="tpl-title">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 id="tpl-title" className="shrink-0 whitespace-nowrap text-[13px] font-semibold text-[var(--color-fg)]">
+        <h2 id="tpl-title" className="shrink-0 whitespace-nowrap text-sm font-semibold text-[var(--color-fg)]">
           {tt.title}
         </h2>
-        <p className="hidden min-w-0 truncate text-[12px] text-[var(--color-muted)] sm:block">{tt.hint}</p>
+        <p className="hidden min-w-0 truncate text-xs text-[var(--color-muted)] sm:block">{tt.hint}</p>
       </div>
       <ul className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-2">
         {templates.map((tpl) => {
@@ -51,8 +51,8 @@ export function TemplateGallery({
                   <Icon className="size-[18px]" strokeWidth={1.75} />
                 </span>
                 <span className="flex min-w-0 flex-col">
-                  <span className="truncate text-[13px] font-medium text-[var(--color-fg)]">{copy.title}</span>
-                  <span className="truncate text-[11px] text-[var(--color-muted)]">{kindLabel(t, tpl.capability)}</span>
+                  <span className="truncate text-sm font-medium text-[var(--color-fg)]">{copy.title}</span>
+                  <span className="truncate text-xs text-[var(--color-muted)]">{kindLabel(t, tpl.capability)}</span>
                 </span>
               </button>
             </li>

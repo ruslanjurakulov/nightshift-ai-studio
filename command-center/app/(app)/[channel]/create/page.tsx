@@ -160,7 +160,7 @@ export default async function CreatePage({
             plans={plans}
           />
         ) : (
-          <p className="studio-field p-4 text-[13px] text-[var(--color-muted)]">{t.desk.noOrg}</p>
+          <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.desk.noOrg}</p>
         ))}
       {desk === "youtube" && <YouTubeDesk run={run} />}
     </div>

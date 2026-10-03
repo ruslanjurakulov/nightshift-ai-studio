@@ -25,11 +25,11 @@ export function QualityGate({ events }: { events: SystemEventRow[] }) {
   return (
     <div className="p-4">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+        <span className="text-xs text-[var(--color-muted)]">
           {gate.failures > 0 ? fmt(t.auto.gFailures, { n: gate.failures }) : ""}
         </span>
         <span
-          className="text-[10px] font-semibold uppercase tracking-[0.22em]"
+          className="text-xs font-semibold"
           style={{ color: gate.ready ? "var(--color-ok)" : "var(--color-muted)" }}
         >
           {gate.ready ? t.auto.gReady : t.auto.gNotReady}
@@ -46,12 +46,12 @@ export function QualityGate({ events }: { events: SystemEventRow[] }) {
             >
               <span
                 aria-hidden
-                className="grid size-3.5 shrink-0 place-items-center rounded-full text-[8px] font-bold"
+                className="grid size-3.5 shrink-0 place-items-center rounded-full text-xs font-bold"
                 style={{ border: `1.5px solid ${color}`, color: item.ok ? color : "var(--color-muted)" }}
               >
                 {item.ok ? "✓" : ""}
               </span>
-              <span className="truncate text-[12px]" style={{ color: item.ok ? "var(--color-fg)" : "var(--color-muted)" }}>
+              <span className="truncate text-xs" style={{ color: item.ok ? "var(--color-fg)" : "var(--color-muted)" }}>
                 {String(t.auto[LABEL[item.key]])}
               </span>
             </li>
@@ -59,7 +59,7 @@ export function QualityGate({ events }: { events: SystemEventRow[] }) {
         })}
       </ul>
 
-      <p className="mono mt-3 text-[9px] text-[var(--color-muted)]">{t.auto.gNote}</p>
+      <p className="tnum mt-3 text-xs text-[var(--color-muted)]">{t.auto.gNote}</p>
     </div>
   );
 }

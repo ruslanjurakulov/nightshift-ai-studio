@@ -145,7 +145,7 @@ export function PublishPanel({ video, channelName, accounts, youtube, requests, 
   function statusLine(r: PublishRequestRow) {
     const reason = knownReason(r.reason);
     return (
-      <div className="mt-1 flex flex-col gap-0.5 text-[11px] text-[var(--color-muted)]">
+      <div className="mt-1 flex flex-col gap-0.5 text-xs text-[var(--color-muted)]">
         <div className="flex flex-wrap items-center gap-2">
           <StatusPill tone={TONE[r.status]} label={tp.status[r.status]} live={isLive(r.status)} />
           {r.status === "published" && r.privacy === "SELF_ONLY" && <span>{tp.privateOnTiktok}</span>}
@@ -186,9 +186,9 @@ export function PublishPanel({ video, channelName, accounts, youtube, requests, 
       </header>
 
       <div>
-        <h3 className="text-[12px] font-semibold">{tp.publishTitle}</h3>
+        <h3 className="text-xs font-semibold">{tp.publishTitle}</h3>
         {blocker && (
-          <p className="mt-1 text-[12px] text-[var(--color-warn)]" role="status">
+          <p className="mt-1 text-xs text-[var(--color-warn)]" role="status">
             {tp.blocker[blocker]}
           </p>
         )}
@@ -201,12 +201,12 @@ export function PublishPanel({ video, channelName, accounts, youtube, requests, 
           <input type="checkbox" checked={!held} disabled readOnly aria-label="YouTube" className="mt-1" />
           <PlatformLogo platform="youtube" size={20} />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 text-[13px]">
+            <div className="flex items-center gap-1.5 text-sm">
               <ChannelAvatar url={ownChannel?.avatarUrl ?? null} />
               <span className="truncate">{ownChannel?.name ?? channelName}</span>
               {!held && <CheckCircle2 size={14} style={{ color: "var(--color-ok)" }} aria-hidden />}
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--color-muted)]">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-muted)]">
               {held ? (
                 tp.youtubeHeld
               ) : (
@@ -247,17 +247,17 @@ export function PublishPanel({ video, channelName, accounts, youtube, requests, 
                 />
                 <PlatformLogo platform="youtube" size={20} />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 text-[13px]">
+                  <div className="flex items-center gap-1.5 text-sm">
                     <ChannelAvatar url={c.avatarUrl} />
                     <span className="truncate">{c.name}</span>
                     {c.connected && <CheckCircle2 size={14} style={{ color: "var(--color-ok)" }} aria-hidden />}
                   </div>
                   {!c.connected ? (
-                    <div className="text-[11px] text-[var(--color-warn)]">{tp.youtubeReconnect}</div>
+                    <div className="text-xs text-[var(--color-warn)]">{tp.youtubeReconnect}</div>
                   ) : !c.active ? (
-                    <div className="text-[11px] text-[var(--color-warn)]">{tp.channelPaused}</div>
+                    <div className="text-xs text-[var(--color-warn)]">{tp.channelPaused}</div>
                   ) : (
-                    !last && <div className="text-[11px] text-[var(--color-muted)]">{tp.youtubePrivate}</div>
+                    !last && <div className="text-xs text-[var(--color-muted)]">{tp.youtubePrivate}</div>
                   )}
                   {last && statusLine(last)}
                 </div>
@@ -266,9 +266,9 @@ export function PublishPanel({ video, channelName, accounts, youtube, requests, 
           })}
 
         {!available ? (
-          <li className="text-[12px] text-[var(--color-muted)]">{tp.notAvailable}</li>
+          <li className="text-xs text-[var(--color-muted)]">{tp.notAvailable}</li>
         ) : accounts.length === 0 ? (
-          <li className="text-[12px] text-[var(--color-muted)]">
+          <li className="text-xs text-[var(--color-muted)]">
             {tp.noAccounts}{" "}
             <Link href={path("/channels")} className="text-[var(--color-primary)] underline">
               {tp.connectAccounts}
@@ -291,7 +291,7 @@ export function PublishPanel({ video, channelName, accounts, youtube, requests, 
                 />
                 <PlatformLogo platform={a.platform} size={20} />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 text-[13px]">
+                  <div className="flex items-center gap-1.5 text-sm">
                     <ChannelAvatar url={a.avatar_url} />
                     <span className="truncate">{accountLabel(a)}</span>
                     {a.status === "connected" && (
@@ -299,10 +299,10 @@ export function PublishPanel({ video, channelName, accounts, youtube, requests, 
                     )}
                   </div>
                   {a.status !== "connected" && (
-                    <div className="text-[11px] text-[var(--color-warn)]">{tp.reconnect}</div>
+                    <div className="text-xs text-[var(--color-warn)]">{tp.reconnect}</div>
                   )}
                   {a.platform === "tiktok" && !last && (
-                    <div className="text-[11px] text-[var(--color-muted)]">{tp.tiktokPrivate}</div>
+                    <div className="text-xs text-[var(--color-muted)]">{tp.tiktokPrivate}</div>
                   )}
                   {last && statusLine(last)}
                 </div>
@@ -318,15 +318,15 @@ export function PublishPanel({ video, channelName, accounts, youtube, requests, 
             type="button"
             onClick={send}
             disabled={!editor || Boolean(blocker) || picked.size === 0 || sending}
-            className="btn-sky pill px-5 py-2 text-[13px] disabled:opacity-50"
+            className="btn-sky pill px-5 py-2 text-sm disabled:opacity-50"
           >
             {sending ? tp.sending : picked.size ? fmt(tp.sendN, { n: picked.size }) : tp.send}
           </button>
-          {!editor && <span className="text-[11px] text-[var(--color-muted)]">{tp.editorOnly}</span>}
-          <span className="text-[11px] text-[var(--color-muted)]">{tp.sendNote}</span>
+          {!editor && <span className="text-xs text-[var(--color-muted)]">{tp.editorOnly}</span>}
+          <span className="text-xs text-[var(--color-muted)]">{tp.sendNote}</span>
         </div>
       )}
-      {sendError && <p className="mono text-[11px] text-[var(--color-fail)]">{fmt(tp.sendFailed, { error: sendError })}</p>}
+      {sendError && <p className="tnum text-xs text-[var(--color-fail)]">{fmt(tp.sendFailed, { error: sendError })}</p>}
     </section>
   );
 }

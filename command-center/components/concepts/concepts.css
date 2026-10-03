@@ -53,11 +53,11 @@
 }
 .ac-a-h1 {
   font-family: var(--font-display);
-  font-weight: 800;
+  font-weight: 600;
   font-size: clamp(44px, 4.9vw, 70px);
-  line-height: 0.9;
+  line-height: 1.2;
   letter-spacing: -0.006em;
-  text-transform: uppercase;
+  text-transform: none;
   text-wrap: balance;
 }
 .ac-a-h1 span { display: block; color: var(--ns-text-dim); }
@@ -91,9 +91,9 @@ html:is([lang="ru"], [lang="uz"]) .ac-a-h1 { font-size: clamp(38px, 4.1vw, 58px)
 .ac-mod-head b {
   font-family: var(--font-display);
   font-size: 15px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 /* module 1: the cues */
@@ -113,9 +113,9 @@ html:is([lang="ru"], [lang="uz"]) .ac-a-h1 { font-size: clamp(38px, 4.1vw, 58px)
   display: block;
   font-family: var(--font-display);
   font-size: 20px;
-  font-weight: 750;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   line-height: 1.1;
 }
 .ac-cue-detail { display: block; margin-top: 2px; font-size: 13.5px; line-height: 1.35; color: var(--ns-text-dim); }
@@ -138,8 +138,8 @@ html:is([lang="ru"], [lang="uz"]) .ac-a-h1 { font-size: clamp(38px, 4.1vw, 58px)
   margin-top: 8px;
   font-family: var(--font-display);
   font-size: 27px;
-  font-weight: 700;
-  line-height: 1;
+  font-weight: 600;
+  line-height: 1.2;
 }
 .ac-lines { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 3px; }
 .ac-lines li { display: flex; align-items: baseline; gap: 10px; font-size: 13.5px; line-height: 1.4; color: var(--ns-text-dim); }
@@ -151,12 +151,12 @@ html:is([lang="ru"], [lang="uz"]) .ac-a-h1 { font-size: clamp(38px, 4.1vw, 58px)
 /* module 3: approval */
 .ac-approval { flex: 1; display: flex; flex-direction: column; gap: 16px; padding: 18px 18px 16px; background: var(--ns-select); }
 .ac-approval-lamp { font-size: 15px !important; }
-.ac-approval-lamp .ns-lamp-label { font-size: 15px; letter-spacing: 0.14em; }
+.ac-approval-lamp .ns-lamp-label { font-size: 15px; letter-spacing: 0; }
 .ac-approval-line {
   font-family: var(--font-display);
   font-size: 27px;
-  font-weight: 700;
-  line-height: 1.02;
+  font-weight: 600;
+  line-height: 1.2;
   text-wrap: balance;
 }
 .ac-step { display: flex; align-items: baseline; gap: 10px; }
@@ -164,7 +164,7 @@ html:is([lang="ru"], [lang="uz"]) .ac-a-h1 { font-size: clamp(38px, 4.1vw, 58px)
 .ac-step-of { font-size: 26px; color: var(--ns-text-dim); }
 .ac-ladder { margin-top: auto; }
 .ac-ladder .ns-meter[data-size="lg"] .ns-meter-seg { height: 30px; }
-.ac-ladder-ticks { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; margin-top: 6px; font-size: 11px; color: var(--ns-text-dim); }
+.ac-ladder-ticks { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; margin-top: 6px; font-size: 13px; color: var(--ns-text-dim); }
 .ac-approval-price { font-size: 13.5px; color: var(--ns-text-dim); padding-top: 12px; border-top: 1px solid var(--ns-rule-strong); }
 .ac-approval-keys { display: flex; flex-wrap: wrap; gap: 8px 20px; }
 .ac-a-facts { margin-top: 28px; }
@@ -173,19 +173,19 @@ html:is([lang="ru"], [lang="uz"]) .ac-a-h1 { font-size: clamp(38px, 4.1vw, 58px)
 .ac-b { container-type: inline-size; padding: 28px 0 56px; }
 .ac-b > .st-wrap { container-type: inline-size; }
 .ac-b-kicker { padding-bottom: 14px; border-bottom: 1px solid var(--ns-rule-strong); }
-.ac-b-h1 { margin-top: 28px; font-family: var(--font-display); text-transform: uppercase; }
+.ac-b-h1 { margin-top: 28px; font-family: var(--font-display); text-transform: none; }
 .ac-b-a {
   display: block;
-  font-weight: 700;
+  font-weight: 600;
   font-size: clamp(26px, 4.6cqi, 62px);
   line-height: 1;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   color: var(--ns-text-dim);
 }
 .ac-b-b {
   display: block;
   margin-top: 6px;
-  font-weight: 800;
+  font-weight: 600;
   font-size: clamp(60px, 13.4cqi, 190px);
   line-height: 0.84;
   letter-spacing: -0.012em;
@@ -215,9 +215,9 @@ html:is([lang="ru"], [lang="uz"]) .ac-b-b { font-size: clamp(52px, 10.6cqi, 150p
 .ac-entry-no { font-size: 15px; padding-top: 10px; color: var(--ns-text-dim); }
 .ac-entry-title {
   font-family: var(--font-display);
-  font-weight: 750;
+  font-weight: 600;
   font-size: clamp(34px, 4.2cqi, 58px);
-  line-height: 0.96;
+  line-height: 1.2;
   letter-spacing: -0.004em;
   text-wrap: balance;
 }
@@ -244,11 +244,11 @@ html:is([lang="ru"], [lang="uz"]) .ac-b-b { font-size: clamp(52px, 10.6cqi, 150p
 }
 .ac-c-h1 {
   font-family: var(--font-display);
-  font-weight: 800;
+  font-weight: 600;
   font-size: clamp(42px, 3.9vw, 56px);
-  line-height: 0.9;
+  line-height: 1.2;
   letter-spacing: -0.006em;
-  text-transform: uppercase;
+  text-transform: none;
   text-wrap: balance;
 }
 .ac-c-h1 span { display: block; color: var(--ns-text-dim); }
@@ -277,9 +277,9 @@ html:is([lang="ru"], [lang="uz"]) .ac-c-h1 { font-size: clamp(36px, 3.3vw, 48px)
   min-width: 0;
   font-family: var(--font-display);
   font-size: 17px;
-  font-weight: 750;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -295,7 +295,7 @@ html:is([lang="ru"], [lang="uz"]) .ac-c-h1 { font-size: clamp(36px, 3.3vw, 48px)
   display: flex;
   gap: 14px;
   padding-top: 8px;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--ns-edge-print);
 }
 .ac-c-rebate-end { margin-left: auto; }
@@ -318,30 +318,30 @@ html:is([lang="ru"], [lang="uz"]) .ac-c-h1 { font-size: clamp(36px, 3.3vw, 48px)
 .ac-c-vhead {
   font-family: var(--font-display);
   font-size: 14px;
-  font-weight: 750;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--ns-text-dim);
 }
 .ac-c-verdicts ul { list-style: none; margin: 0; padding: 0; display: grid; }
 .ac-c-verdicts li { padding: 11px 0; border-bottom: 1px solid var(--ns-rule); }
 .ac-c-verdicts li:first-child { border-top: 1px solid var(--ns-rule-strong); }
-.ac-c-verdicts .ns-lamp-row { font-size: 13px; letter-spacing: 0.08em; white-space: normal; }
+.ac-c-verdicts .ns-lamp-row { font-size: 13px; letter-spacing: 0; white-space: normal; }
 .ac-c-keys { margin-top: auto; padding-top: 6px; display: flex; flex-wrap: wrap; gap: 8px 20px; }
 
 .ac-c-tl { position: relative; padding: 10px 16px 14px; border-top: 1px solid var(--ns-rule); --lab: 52px; }
 .ac-c-tl-ruler, .ac-c-track { display: grid; grid-template-columns: var(--lab) minmax(0, 1fr); gap: 0 10px; }
 .ac-c-tl-ruler { height: 20px; }
 .ac-c-ticks { position: relative; }
-.ac-c-ticks span { position: absolute; top: 0; font-size: 10.5px; color: var(--ns-text-dim); white-space: nowrap; }
+.ac-c-ticks span { position: absolute; top: 0; font-size: 13px; color: var(--ns-text-dim); white-space: nowrap; }
 .ac-c-ticks span:not(:first-child):not(:last-child) { transform: translateX(-50%); }
 .ac-c-track { margin-top: 5px; align-items: center; }
 .ac-c-label {
   font-family: var(--font-display);
-  font-size: 12px;
-  font-weight: 750;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--ns-text-dim);
 }
 .ac-c-lane { position: relative; height: 60px; }
@@ -363,8 +363,7 @@ html:is([lang="ru"], [lang="uz"]) .ac-c-h1 { font-size: clamp(36px, 3.3vw, 48px)
   gap: 6px;
   padding: 0 2px 2px;
   font-family: var(--font-mono);
-  font-variation-settings: "wdth" 87.5;
-  font-size: 9.5px;
+  font-size: 13px;
   color: var(--ns-edge-print);
   white-space: nowrap;
 }
@@ -388,7 +387,7 @@ html:is([lang="ru"], [lang="uz"]) .ac-c-h1 { font-size: clamp(36px, 3.3vw, 48px)
   border: 1px solid var(--ns-rule-strong);
   border-radius: var(--ns-r-chip);
   background: var(--ns-key);
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
 }

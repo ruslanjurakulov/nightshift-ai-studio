@@ -172,7 +172,7 @@ export function RegenerateSceneButton({
     <div className="mt-2 flex flex-col gap-1.5">
       {latest && (
         <p
-          className={`m-0 text-[11px] leading-relaxed ${
+          className={`m-0 text-xs leading-relaxed ${
             latest.status === "failed"
               ? "text-[var(--color-warn)]"
               : latest.status === "succeeded"
@@ -186,19 +186,19 @@ export function RegenerateSceneButton({
       )}
       {!open && !inProgress && (
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={openPanel} className="btn-sky is-quiet pill px-3 py-1 text-[11px]">
+          <button type="button" onClick={openPanel} className="btn-sky is-quiet pill px-3 py-1 text-xs">
             {labels.action}
           </button>
-          <span className="mono text-[10px] text-[var(--color-muted)]">{sceneId}</span>
+          <span className="mono text-xs text-[var(--color-muted)]">{sceneId}</span>
         </div>
       )}
       {open && (
         <div className="flex flex-col gap-2 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] p-3">
-          {loading && <p className="m-0 text-[11px] text-[var(--color-muted)]">{labels.loading}</p>}
+          {loading && <p className="m-0 text-xs text-[var(--color-muted)]">{labels.loading}</p>}
           {!loading && quoteFailed && (
             <div className="flex flex-wrap items-center gap-2">
-              <p className="m-0 text-[11px] text-[var(--color-warn)]">{labels.quoteFailed}</p>
-              <button type="button" className="btn-quiet px-2 text-[11px]" onClick={() => void loadQuote(source)}>
+              <p className="m-0 text-xs text-[var(--color-warn)]">{labels.quoteFailed}</p>
+              <button type="button" className="btn-quiet px-2 text-xs" onClick={() => void loadQuote(source)}>
                 {labels.retry}
               </button>
             </div>
@@ -206,12 +206,12 @@ export function RegenerateSceneButton({
           {!loading && quote && (
             <>
               {quote.status !== "unavailable" && (
-                <p className="m-0 text-[11px] text-[var(--color-muted)]">
+                <p className="m-0 text-xs text-[var(--color-muted)]">
                   {source === "stock" || quote.sourceKind === "stock" ? labels.sameStock : labels.sameGenerated}
                 </p>
               )}
               {stockOffered && (
-                <label className="flex items-start gap-2 text-[11px] text-[var(--color-fg)]">
+                <label className="flex items-start gap-2 text-xs text-[var(--color-fg)]">
                   <input
                     type="checkbox"
                     checked={source === "stock"}
@@ -226,20 +226,20 @@ export function RegenerateSceneButton({
                 </label>
               )}
               {quote.status === "unavailable" && (
-                <p className="m-0 text-[11px] leading-relaxed text-[var(--color-warn)]">{reasonText(quote.reason, labels)}</p>
+                <p className="m-0 text-xs leading-relaxed text-[var(--color-warn)]">{reasonText(quote.reason, labels)}</p>
               )}
               {quote.status === "unpriced" && (
-                <p className="m-0 text-[11px] leading-relaxed text-[var(--color-warn)]">{labels.unpriced}</p>
+                <p className="m-0 text-xs leading-relaxed text-[var(--color-warn)]">{labels.unpriced}</p>
               )}
               {quote.status !== "unavailable" && quote.status !== "unpriced" && !quote.mayStart && (
-                <p className="m-0 text-[11px] leading-relaxed text-[var(--color-muted)]">{labels.noPermission}</p>
+                <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">{labels.noPermission}</p>
               )}
               {canPress(quote) && !queue && (
-                <p className="m-0 text-[11px] leading-relaxed text-[var(--color-muted)]">{labels.errors.queueRequired}</p>
+                <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">{labels.errors.queueRequired}</p>
               )}
               {canPress(quote) && queue && (
                 <>
-                  <label className="flex flex-col gap-1 text-[11px] text-[var(--color-muted)]">
+                  <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
                     <span>{labels.promptLabel}</span>
                     <textarea
                       value={prompt}
@@ -250,17 +250,17 @@ export function RegenerateSceneButton({
                         setPrompt(e.target.value);
                         freshKey();
                       }}
-                      className="w-full rounded-[var(--ns-r-chip)] border border-[var(--color-border)] bg-[var(--color-panel)] p-2 text-[12px] text-[var(--color-fg)]"
+                      className="w-full rounded-[var(--ns-r-chip)] border border-[var(--color-border)] bg-[var(--color-panel)] p-2 text-xs text-[var(--color-fg)]"
                     />
                     <span>{labels.promptHint}</span>
                   </label>
-                  <p className="m-0 text-[11px] leading-relaxed text-[var(--color-muted)]">{labels.hint}</p>
+                  <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">{labels.hint}</p>
                 </>
               )}
             </>
           )}
           {error && (
-            <p className="m-0 text-[11px] text-[var(--color-fail)]" role="alert">
+            <p className="m-0 text-xs text-[var(--color-fail)]" role="alert">
               {error}
             </p>
           )}
@@ -270,12 +270,12 @@ export function RegenerateSceneButton({
                 type="button"
                 disabled={busy || loading}
                 onClick={press}
-                className="btn-sky is-solid pill px-3 py-1 text-[11px] disabled:opacity-40"
+                className="btn-sky is-solid pill px-3 py-1 text-xs disabled:opacity-40"
               >
                 {busy ? labels.pressing : priceLabel}
               </button>
             )}
-            <button type="button" className="btn-quiet px-2 text-[11px]" disabled={busy} onClick={() => setOpen(false)}>
+            <button type="button" className="btn-quiet px-2 text-xs" disabled={busy} onClick={() => setOpen(false)}>
               {labels.close}
             </button>
           </div>

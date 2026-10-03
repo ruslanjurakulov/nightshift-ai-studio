@@ -58,22 +58,22 @@ export function InviteAdminPanel({ admin }: { admin: InviteAdmin }) {
   }
 
   const inputClass =
-    "min-h-11 w-full min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-[14px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
+    "min-h-11 w-full min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
   const count = (label: string, value: number | string) => (
     <div className="flex flex-col gap-0.5 rounded-lg border border-[var(--color-border)] p-3">
-      <dt className="text-[11px] text-[var(--color-muted)]">{label}</dt>
-      <dd className="mono text-[16px] text-[var(--color-fg)]">{value}</dd>
+      <dt className="text-xs text-[var(--color-muted)]">{label}</dt>
+      <dd className="tnum text-base text-[var(--color-fg)]">{value}</dd>
     </div>
   );
 
   return (
-    <section className="panel flex flex-col gap-4 p-4" aria-labelledby="invite-admin-title" data-invite-admin>
+    <section className="panel flex flex-col gap-4 p-5 sm:p-6" aria-labelledby="invite-admin-title" data-invite-admin>
       <h2 id="invite-admin-title" className="t-section">
         {c.adminTitle}
       </h2>
-      <p className="max-w-[64ch] text-[12px] leading-relaxed text-[var(--color-muted)]">{c.adminHint}</p>
+      <p className="max-w-[64ch] text-xs leading-relaxed text-[var(--color-muted)]">{c.adminHint}</p>
 
-      <label className="flex min-h-11 items-center gap-3 text-[14px] text-[var(--color-fg)]">
+      <label className="flex min-h-11 items-center gap-3 text-sm text-[var(--color-fg)]">
         <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="size-6 accent-[var(--ns-amber)]" />
         <span>
           {c.adminSwitch}: <strong>{enabled ? c.adminOn : c.adminOff}</strong>
@@ -81,21 +81,21 @@ export function InviteAdminPanel({ admin }: { admin: InviteAdmin }) {
       </label>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
           {c.adminRequired}
           <input inputMode="numeric" value={required} onChange={(e) => setRequired(e.target.value)} className={inputClass} />
         </label>
-        <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
           {c.adminReward}
           <input inputMode="decimal" value={reward} onChange={(e) => setReward(e.target.value)} className={inputClass} />
         </label>
-        <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
           {c.adminDailyCap}
           <input inputMode="numeric" value={dailyCap} onChange={(e) => setDailyCap(e.target.value)} className={inputClass} />
         </label>
       </div>
 
-      <p className="text-[12px] text-[var(--color-muted)]" data-invite-exposure>
+      <p className="text-xs text-[var(--color-muted)]" data-invite-exposure>
         {fmt(c.adminExposure, {
           n: formatCredits(exposure, locale),
           cap: parsed ? parsed.dailyCap : state.dailyRewardCap,
@@ -104,11 +104,11 @@ export function InviteAdminPanel({ admin }: { admin: InviteAdmin }) {
       </p>
 
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" onClick={save} disabled={busy} className="btn-primary min-h-11 px-5 text-[14px] disabled:opacity-40">
+        <button type="button" onClick={save} disabled={busy} className="btn-primary min-h-11 px-5 text-sm disabled:opacity-40">
           {busy ? c.adminSaving : c.adminSave}
         </button>
         {msg && (
-          <p role="status" className="text-[12px]" style={{ color: msg.ok ? "var(--color-ok)" : "var(--color-fail)" }}>
+          <p role="status" className="text-xs" style={{ color: msg.ok ? "var(--color-ok)" : "var(--color-fail)" }}>
             {msg.text}
           </p>
         )}
@@ -121,7 +121,7 @@ export function InviteAdminPanel({ admin }: { admin: InviteAdmin }) {
         {count(c.adminCreditsToday, formatCredits(state.creditsToday, locale))}
         {count(c.adminWaiting, state.pending)}
       </dl>
-      <p className="text-[12px] text-[var(--color-muted)]">{fmt(c.adminToday, { n: state.rewardsToday, cap: state.dailyRewardCap })}</p>
+      <p className="text-xs text-[var(--color-muted)]">{fmt(c.adminToday, { n: state.rewardsToday, cap: state.dailyRewardCap })}</p>
     </section>
   );
 }

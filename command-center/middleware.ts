@@ -233,9 +233,9 @@ export const config = {
   // path, each static file is named exactly (dots escaped), and an upload is
   // one segment. A new file under public/ must be named here
   // (tests/middleware-matcher.test.ts fails until it is); until then it is
-  // gated, never the other way round. The public site's icon.svg and its two
+  // gated, never the other way round. The public site's icon.svg and its
   // self-hosted font files (FONT_FILES in next.config.ts) are named the same way.
   matcher: [
-    "/((?!_next/static/|_next/image$|favicon\\.ico$|icon\\.png$|icon\\.svg$|apple-icon\\.png$|og\\.png$|fonts/sofia-sans-cyrillic-v20\\.woff2$|fonts/sofia-sans-extra-condensed-cyrillic-v6\\.woff2$|api/media/uploads/[^/]+$).*)",
+    "/((?!_next/static/|_next/image$|favicon\\.ico$|icon\\.png$|icon\\.svg$|apple-icon\\.png$|og\\.png$|fonts/onest-latin-v1\\.woff2$|fonts/onest-latin-ext-v1\\.woff2$|fonts/onest-cyrillic-v1\\.woff2$|fonts/onest-cyrillic-ext-v1\\.woff2$|api/media/uploads/[^/]+$).*)",
   ],
 };

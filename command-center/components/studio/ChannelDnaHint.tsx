@@ -13,7 +13,7 @@ import { useI18n } from "@/lib/i18n/context";
 export function ChannelDnaHint({ href }: { href: string }) {
   const { t } = useI18n();
   return (
-    <p className="flex items-center gap-1.5 text-[12px] text-[var(--color-muted)]" data-testid="dna-hint">
+    <p className="flex items-center gap-1.5 text-xs text-[var(--color-muted)]" data-testid="dna-hint">
       <Dna aria-hidden className="size-3.5 shrink-0 text-[var(--color-primary)]" />
       <span>{t.dna.using}</span>
       <span aria-hidden>·</span>

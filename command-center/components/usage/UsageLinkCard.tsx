@@ -24,10 +24,10 @@ export function UsageLinkCard() {
         <Activity aria-hidden className="mt-0.5 size-[18px] shrink-0 text-[var(--color-primary)]" strokeWidth={1.75} />
         <span className="flex min-w-0 flex-col gap-0.5">
           <span className="text-[15px] font-medium">{c.title}</span>
-          <span className="text-[13px] text-[var(--color-muted)]">{c.hint}</span>
+          <span className="text-sm text-[var(--color-muted)]">{c.hint}</span>
         </span>
       </span>
-      <span className="flex shrink-0 items-center gap-1 text-[13px] text-[var(--color-primary)]">
+      <span className="flex shrink-0 items-center gap-1 text-sm text-[var(--color-primary)]">
         <span className="hidden sm:inline">{c.open}</span>
         <ArrowUpRight aria-hidden className="size-4" />
         <span className="sr-only sm:hidden">{c.open}</span>

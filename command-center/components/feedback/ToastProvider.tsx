@@ -121,7 +121,7 @@ function ToastItem({
       style={{ borderColor: `color-mix(in srgb, ${color} 45%, var(--color-border))` }}
     >
       <Icon aria-hidden className="mt-0.5 size-4 shrink-0" style={{ color }} strokeWidth={2} />
-      <div className="min-w-0 flex-1 break-words text-[13px] leading-snug text-[var(--color-fg)]">
+      <div className="min-w-0 flex-1 break-words text-sm leading-snug text-[var(--color-fg)]">
         {toast.title && <span className="font-semibold">{toast.title}: </span>}
         {toast.message}
       </div>

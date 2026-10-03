@@ -67,14 +67,14 @@ export default async function ModelsPage({
     <div className="rhythm">
       {header}
       {views}
-      <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{text}</div>
+      <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{text}</div>
     </div>
   );
   const failed = (
     <div className="rhythm">
       {header}
       {views}
-      <div className="panel p-4">
+      <div className="panel p-5 sm:p-6">
         <ErrorState compact message={c.readFailed} />
       </div>
     </div>

@@ -150,25 +150,25 @@ export function PipelineRouting({
   })();
 
   const selectCls =
-    "rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] disabled:opacity-50";
+    "rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] disabled:opacity-50";
 
   return (
-    <div className="panel flex flex-col gap-4 p-4">
+    <div className="panel flex flex-col gap-4 p-5 sm:p-6">
       <div>
         <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t.providers.routingTitle}</h2>
-        <p className="mt-1 max-w-[80ch] text-[13px] leading-relaxed text-[var(--color-muted)]">
+        <p className="mt-1 max-w-[80ch] text-sm leading-relaxed text-[var(--color-muted)]">
           {t.providers.routingHint}
         </p>
       </div>
 
       {!githubConfigured && (
-        <p className="text-[13px] text-[var(--color-warn)]">{t.providers.routingNotConfigured}</p>
+        <p className="text-sm text-[var(--color-warn)]">{t.providers.routingNotConfigured}</p>
       )}
 
       {/* Video generator */}
       <div className="flex flex-col gap-1.5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <label htmlFor="route-video" className="text-[12px] font-medium text-[var(--color-fg)]">
+          <label htmlFor="route-video" className="text-xs font-medium text-[var(--color-fg)]">
             {t.providers.routingVideo}
           </label>
           <select
@@ -187,14 +187,14 @@ export function PipelineRouting({
           </select>
         </div>
         {videoKeyMissing && (
-          <p className="text-[11px] text-[var(--color-warn)]">{t.providers.routingKeyNeeded}</p>
+          <p className="text-xs text-[var(--color-warn)]">{t.providers.routingKeyNeeded}</p>
         )}
       </div>
 
       {/* Image generator */}
       <div className="flex flex-col gap-1.5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <label htmlFor="route-image" className="text-[12px] font-medium text-[var(--color-fg)]">
+          <label htmlFor="route-image" className="text-xs font-medium text-[var(--color-fg)]">
             {t.providers.routingImage}
           </label>
           <select
@@ -213,13 +213,13 @@ export function PipelineRouting({
           </select>
         </div>
         {imageKeyMissing && (
-          <p className="text-[11px] text-[var(--color-warn)]">{t.providers.routingKeyNeeded}</p>
+          <p className="text-xs text-[var(--color-warn)]">{t.providers.routingKeyNeeded}</p>
         )}
       </div>
 
       {/* Autopilot */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-4 py-3">
-        <span className="text-[12px] font-medium text-[var(--color-fg)]">
+        <span className="text-xs font-medium text-[var(--color-fg)]">
           {t.providers.routingAutopilot}
         </span>
         <button
@@ -228,7 +228,7 @@ export function PipelineRouting({
           aria-checked={autopilot}
           disabled={!githubConfigured || state === "saving"}
           onClick={toggleAutopilot}
-          className="btn-sky rounded-[var(--ns-r-key)] shrink-0 px-4 py-2 text-[12px] disabled:opacity-50"
+          className="btn-sky rounded-[var(--ns-r-key)] shrink-0 px-4 py-2 text-xs disabled:opacity-50"
           style={{
             borderColor: autopilot ? "var(--color-ok)" : "var(--color-border)",
             color: autopilot ? "var(--color-ok)" : "var(--color-muted)",
@@ -238,7 +238,7 @@ export function PipelineRouting({
         </button>
       </div>
 
-      <p className="mono text-[11px]" aria-live="polite">
+      <p className="tnum text-xs" aria-live="polite">
         {state === "saving" ? (
           <span className="text-[var(--color-muted)]">{t.providers.routingSaving}</span>
         ) : state === "saved" ? (

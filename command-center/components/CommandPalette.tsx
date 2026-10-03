@@ -270,7 +270,7 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
             </div>
             <ul className="max-h-[50vh] overflow-y-auto p-1">
               {results.length === 0 && (
-                <li className="p-4 text-center mono text-xs text-[var(--color-muted)]">{t.ops.paletteNoResults}</li>
+                <li className="p-4 text-center tnum text-xs text-[var(--color-muted)]">{t.ops.paletteNoResults}</li>
               )}
               {results.map((item, i) => (
                 <li key={item.id}>
@@ -282,14 +282,14 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
                     style={{ background: i === active ? "var(--color-panel-2)" : "transparent" }}
                   >
                     <span className="min-w-0 truncate text-[var(--color-fg)]">{item.label}</span>
-                    <span className="shrink-0 text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                    <span className="shrink-0 text-xs text-[var(--color-muted)]">
                       {item.sub ?? sectionLabel[item.section]}
                     </span>
                   </button>
                 </li>
               ))}
             </ul>
-            <div className="border-t border-[var(--color-border)] px-4 py-2 mono text-[10px] text-[var(--color-muted)]">
+            <div className="border-t border-[var(--color-border)] px-4 py-2 tnum text-xs text-[var(--color-muted)]">
               {t.ops.paletteHint}
             </div>
           </div>
@@ -326,8 +326,8 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
                 { k: "Esc", v: t.ops.shortcutsClose },
               ].map((row) => (
                 <div key={row.k} className="flex items-center justify-between gap-4">
-                  <dd className="text-[12px] text-[var(--color-muted)]">{row.v}</dd>
-                  <dt className="mono shrink-0 rounded border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2 py-0.5 text-[10px] text-[var(--color-fg)]">
+                  <dd className="text-xs text-[var(--color-muted)]">{row.v}</dd>
+                  <dt className="tnum shrink-0 rounded border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2 py-0.5 text-xs text-[var(--color-fg)]">
                     {row.k}
                   </dt>
                 </div>

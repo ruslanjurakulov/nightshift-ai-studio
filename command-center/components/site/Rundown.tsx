@@ -55,7 +55,7 @@ export function Rundown({ t }: { t: Dictionary }) {
         })}
       </ol>
       <div className="st-monitor-foot">
-        <span className="flex items-center gap-2 text-[13px] text-[var(--ns-text-dim)]">
+        <span className="flex items-center gap-2 text-sm text-[var(--ns-text-dim)]">
           <Check className="size-4 shrink-0 text-[var(--ns-go)]" aria-hidden />
           {r.price}
         </span>

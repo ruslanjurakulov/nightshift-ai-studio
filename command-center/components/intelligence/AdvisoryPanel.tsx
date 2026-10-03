@@ -35,7 +35,7 @@ function Card({
     <section className="panel flex flex-col gap-4 p-5" style={{ borderTop: `2px solid ${accent}` }}>
       <header className="flex items-baseline justify-between gap-3">
         <h2 className="text-[15px] font-medium">{title}</h2>
-        {updated && <span className="mono text-[11px] text-[var(--color-muted)]">{relativeTime(updated)}</span>}
+        {updated && <span className="tnum text-xs text-[var(--color-muted)]">{relativeTime(updated)}</span>}
       </header>
       {children}
     </section>
@@ -45,8 +45,8 @@ function Card({
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-3 border-b border-[var(--color-border)] py-2 last:border-0">
-      <span className="text-[13px] text-[var(--color-muted)]">{label}</span>
-      <span className={`mono text-[13px] ${strong ? "font-semibold text-[var(--color-fg)]" : "text-[var(--color-fg)]"}`}>
+      <span className="text-sm text-[var(--color-muted)]">{label}</span>
+      <span className={`tnum text-sm ${strong ? "font-semibold text-[var(--color-fg)]" : "text-[var(--color-fg)]"}`}>
         {value}
       </span>
     </div>
@@ -54,7 +54,7 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
 }
 
 function Empty({ label }: { label: string }) {
-  return <p className="text-[13px] text-[var(--color-muted)]">{label}</p>;
+  return <p className="text-sm text-[var(--color-muted)]">{label}</p>;
 }
 
 export function AdvisoryPanel({
@@ -98,7 +98,7 @@ export function AdvisoryPanel({
               <Row label={t.ops.advSpendElapsed} value={`${spend.elapsedDays} / ${spend.daysInMonth}`} />
             )}
             <p
-              className="mt-1 text-[13px]"
+              className="mt-1 text-sm"
               style={{ color: spend.projectedExceeds ? "var(--color-warn)" : "var(--color-muted)" }}
             >
               {spend.ceilingUsd === null
@@ -107,7 +107,7 @@ export function AdvisoryPanel({
                   ? t.ops.advSpendOnTrackBlow
                   : t.ops.advSpendWithinCeiling}
             </p>
-            {spend.hasUnpriced && <p className="text-[12px] text-[var(--color-muted)]">{t.ops.advSpendUnpriced}</p>}
+            {spend.hasUnpriced && <p className="text-xs text-[var(--color-muted)]">{t.ops.advSpendUnpriced}</p>}
           </>
         )}
       </Card>
@@ -126,7 +126,7 @@ export function AdvisoryPanel({
               strong
             />
             <Row label={t.ops.advTimingSamples} value={timing.samples === null ? "N/A" : String(timing.samples)} />
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advTimingHint}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.ops.advTimingHint}</p>
           </>
         )}
       </Card>
@@ -160,7 +160,7 @@ export function AdvisoryPanel({
             <Row label={t.ops.advDurLocal} value={dur.localVideos === null ? "N/A" : String(dur.localVideos)} />
             <Row label={t.ops.advDurRemote} value={dur.remoteVideos === null ? "N/A" : String(dur.remoteVideos)} />
             <p
-              className="mt-1 text-[13px]"
+              className="mt-1 text-sm"
               style={{
                 color:
                   dur.mirrored === true
@@ -196,7 +196,7 @@ export function AdvisoryPanel({
                 value={kw.opportunity === null ? "N/A" : `${Math.round(kw.opportunity * 100)}`}
               />
             ))}
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advVidiqHint}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.ops.advVidiqHint}</p>
           </>
         )}
       </Card>
@@ -221,7 +221,7 @@ export function AdvisoryPanel({
               label={t.ops.advSponsorVideos}
               value={sponsor.measuredVideos === null ? "N/A" : String(sponsor.measuredVideos)}
             />
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advSponsorHint}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.ops.advSponsorHint}</p>
           </>
         )}
       </Card>
@@ -243,7 +243,7 @@ export function AdvisoryPanel({
             {revenue.top[0] && (
               <Row label={t.ops.advRevenueTop} value={usd(revenue.top[0].revenueUsd)} />
             )}
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advRevenueHint}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.ops.advRevenueHint}</p>
           </>
         )}
       </Card>
@@ -268,7 +268,7 @@ export function AdvisoryPanel({
                 }
               />
             ))}
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advNicheHint}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.ops.advNicheHint}</p>
           </>
         )}
       </Card>
@@ -287,7 +287,7 @@ export function AdvisoryPanel({
                 value={`${c.slots ?? 0} · ${c.share === null ? t.common.na : `${Math.round(c.share * 100)}%`}`}
               />
             ))}
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advQuotaHint}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.ops.advQuotaHint}</p>
           </>
         )}
       </Card>
@@ -313,7 +313,7 @@ export function AdvisoryPanel({
                 }`}
               />
             ))}
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">
+            <p className="mt-1 text-sm text-[var(--color-muted)]">
               {spendOv.anyUnpriced ? t.ops.advSpendOvUnpriced : t.ops.advSpendOvHint}
             </p>
           </>
@@ -338,7 +338,7 @@ export function AdvisoryPanel({
                 value={`${s.shot} · ${s.camera}`}
               />
             ))}
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advDirectorHint}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.ops.advDirectorHint}</p>
           </>
         )}
       </Card>
@@ -359,9 +359,9 @@ export function AdvisoryPanel({
               value={`${agent.videoProvider || t.common.dash} · ${agent.voiceProvider || t.common.dash}`}
             />
             {agent.rationale && (
-              <p className="mt-1 text-[13px] text-[var(--color-fg)]">{agent.rationale}</p>
+              <p className="mt-1 text-sm text-[var(--color-fg)]">{agent.rationale}</p>
             )}
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advAgentHint}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.ops.advAgentHint}</p>
           </>
         )}
       </Card>
@@ -381,7 +381,7 @@ export function AdvisoryPanel({
               label={t.ops.advElementsApplied}
               value={elements.applied.length ? elements.applied.slice(0, 6).join(", ") : t.common.none}
             />
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.ops.advElementsHint}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.ops.advElementsHint}</p>
           </>
         )}
       </Card>

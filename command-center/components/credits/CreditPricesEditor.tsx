@@ -39,6 +39,11 @@ function breakable(unit: string) {
   ));
 }
 
+/** The plain meaning heads a row, so it starts with a capital in the person's own language. */
+function sentence(text: string, locale: string) {
+  return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1);
+}
+
 export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[]; canEdit: boolean }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -102,17 +107,17 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
     isFlatUnit(p.unit) ? t.credits.flatUnit : `${p.margin ? "+" : ""}${formatCredits(p.margin * 100, locale)}%`;
 
   const inputClass =
-    "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[16px] text-[var(--color-fg)] outline-none sm:text-[13px] focus:border-[var(--color-primary)]";
-  const fieldLabel = "text-[10px] uppercase leading-tight tracking-[0.1em] text-[var(--color-muted)]";
+    "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-base text-[var(--color-fg)] outline-none sm:text-[13px] focus:border-[var(--color-primary)]";
+  const fieldLabel = "text-xs leading-tight text-[var(--color-muted)]";
   const suggestions = [...SPECIAL_UNITS, ...LEDGER_UNITS];
 
   return (
-    <div id="credit-prices" className="panel flex scroll-mt-24 flex-col gap-3 p-4">
+    <div id="credit-prices" className="panel flex scroll-mt-24 flex-col gap-3 p-5 sm:p-6">
       <h2 className="t-section">{t.credits.pricesTitle}</h2>
-      <p className="text-[12px] leading-relaxed text-[var(--color-muted)]">{t.credits.pricesHint}</p>
+      <p className="text-xs leading-relaxed text-[var(--color-muted)]">{t.credits.pricesHint}</p>
 
       {prices.length === 0 ? (
-        <p className="text-[13px] text-[var(--color-warn)]">{t.credits.pricesEmpty}</p>
+        <p className="text-sm text-[var(--color-warn)]">{t.credits.pricesEmpty}</p>
       ) : (
         <>
           {/* Phone: one row per price, every value in view — no sideways scroll. */}
@@ -122,37 +127,43 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
               return (
                 <li key={p.unit} className="flex flex-col gap-2 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-0">
                   <div className="min-w-0">
-                    <p className="mono break-words text-[13px] text-[var(--color-fg)]">{breakable(p.unit)}</p>
-                    {meaning && <p className="mt-0.5 text-[12px] leading-snug text-[var(--color-muted)]">{meaning}</p>}
+                    {meaning ? (
+                      <>
+                        <p className="text-base font-medium text-[var(--color-fg)]">{sentence(meaning, locale)}</p>
+                        <p className="mono mt-0.5 break-words text-xs text-[var(--color-muted)]">{breakable(p.unit)}</p>
+                      </>
+                    ) : (
+                      <p className="mono break-words text-sm text-[var(--color-fg)]">{breakable(p.unit)}</p>
+                    )}
                   </div>
                   <dl className="grid grid-cols-3 gap-x-3">
                     <div className="flex min-w-0 flex-col">
-                      <dt className="text-[10px] uppercase leading-tight tracking-[0.1em] text-[var(--color-muted)]">{t.credits.colRate}</dt>
-                      <dd className="mono mt-auto pt-1 text-[15px] font-semibold text-[var(--color-fg)]">{figure(p.creditsPerUnit)}</dd>
+                      <dt className="text-xs leading-tight text-[var(--color-muted)]">{t.credits.colRate}</dt>
+                      <dd className="tnum mt-auto pt-1 text-[15px] font-semibold text-[var(--color-fg)]">{figure(p.creditsPerUnit)}</dd>
                     </div>
                     <div className="flex min-w-0 flex-col">
-                      <dt className="text-[10px] uppercase leading-tight tracking-[0.1em] text-[var(--color-muted)]">{t.credits.colMargin}</dt>
-                      <dd className="mono mt-auto pt-1 text-[15px] font-semibold text-[var(--color-fg)]">{marginText(p)}</dd>
+                      <dt className="text-xs leading-tight text-[var(--color-muted)]">{t.credits.colMargin}</dt>
+                      <dd className="tnum mt-auto pt-1 text-[15px] font-semibold text-[var(--color-fg)]">{marginText(p)}</dd>
                     </div>
                     <div className="flex min-w-0 flex-col">
-                      <dt className="text-[10px] uppercase leading-tight tracking-[0.1em] text-[var(--color-muted)]">{t.credits.colCharged}</dt>
-                      <dd className="mono mt-auto pt-1 text-[15px] font-semibold text-[var(--color-fg)]">{figure(chargePerUnit(p), 6)}</dd>
+                      <dt className="text-xs leading-tight text-[var(--color-muted)]">{t.credits.colCharged}</dt>
+                      <dd className="tnum mt-auto pt-1 text-[15px] font-semibold text-[var(--color-fg)]">{figure(chargePerUnit(p), 6)}</dd>
                     </div>
                   </dl>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[11px] text-[var(--color-muted)]">
+                    <span className="text-xs text-[var(--color-muted)]">
                       {t.credits.colUpdated}: {p.updatedAt ? relativeTime(p.updatedAt) : "—"}
                     </span>
                     {canEdit && (
                       <span className="flex items-center gap-2">
-                        <button type="button" onClick={() => edit(p)} className="btn-quiet text-[12px]">
+                        <button type="button" onClick={() => edit(p)} className="btn-quiet text-xs">
                           {t.credits.editPrice}
                         </button>
                         <button
                           type="button"
                           onClick={() => remove(p.unit)}
                           disabled={busy}
-                          className="btn-quiet text-[12px] disabled:opacity-40"
+                          className="btn-quiet text-xs disabled:opacity-40"
                           style={{ color: "var(--color-fail)" }}
                         >
                           {t.credits.removePrice}
@@ -167,8 +178,8 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
 
           {/* Wide screens: the table. */}
           <div className="hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[560px] text-left text-[12px]">
-              <thead className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-muted)]">
+            <table className="w-full min-w-[560px] text-left text-sm">
+              <thead className="text-xs text-[var(--color-muted)]">
                 <tr>
                   <th className="py-2 pr-3 font-semibold">{t.credits.colUnit}</th>
                   <th className="py-2 pr-3 text-right font-semibold">{t.credits.colRate}</th>
@@ -190,23 +201,29 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
                   return (
                     <tr key={p.unit} className="border-t border-[var(--color-border)] align-top">
                       <td className="py-2 pr-3">
-                        <span className="mono text-[var(--color-fg)]">{p.unit}</span>
-                        {meaning && <span className="mt-0.5 block text-[11px] text-[var(--color-muted)]">{meaning}</span>}
+                        {meaning ? (
+                          <>
+                            <span className="block text-sm font-medium text-[var(--color-fg)]">{sentence(meaning, locale)}</span>
+                            <span className="mono mt-0.5 block text-xs text-[var(--color-muted)]">{p.unit}</span>
+                          </>
+                        ) : (
+                          <span className="mono text-[var(--color-fg)]">{p.unit}</span>
+                        )}
                       </td>
-                      <td className="mono py-2 pr-3 text-right text-[var(--color-fg)]">{figure(p.creditsPerUnit)}</td>
-                      <td className="mono py-2 pr-3 text-right text-[var(--color-fg)]">{marginText(p)}</td>
-                      <td className="mono py-2 pr-3 text-right text-[var(--color-fg)]">{figure(chargePerUnit(p), 6)}</td>
+                      <td className="tnum py-2 pr-3 text-right text-[var(--color-fg)]">{figure(p.creditsPerUnit)}</td>
+                      <td className="tnum py-2 pr-3 text-right text-[var(--color-fg)]">{marginText(p)}</td>
+                      <td className="tnum py-2 pr-3 text-right text-[var(--color-fg)]">{figure(chargePerUnit(p), 6)}</td>
                       <td className="py-2 pr-3 text-[var(--color-muted)]">{p.updatedAt ? relativeTime(p.updatedAt) : "—"}</td>
                       {canEdit && (
                         <td className="whitespace-nowrap py-2 text-right">
-                          <button type="button" onClick={() => edit(p)} className="btn-quiet text-[11px]">
+                          <button type="button" onClick={() => edit(p)} className="btn-quiet text-xs">
                             {t.credits.editPrice}
                           </button>{" "}
                           <button
                             type="button"
                             onClick={() => remove(p.unit)}
                             disabled={busy}
-                            className="btn-quiet text-[11px] disabled:opacity-40"
+                            className="btn-quiet text-xs disabled:opacity-40"
                             style={{ color: "var(--color-fail)" }}
                           >
                             {t.credits.removePrice}
@@ -271,16 +288,16 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
             type="button"
             onClick={save}
             disabled={busy || !unit.trim() || !rate.trim()}
-            className="btn-primary text-[13px] disabled:opacity-40"
+            className="btn-primary text-sm disabled:opacity-40"
           >
             {t.credits.savePrice}
           </button>
         </div>
       ) : (
-        <p className="text-[12px] text-[var(--color-muted)]">{t.credits.readOnlyPrices}</p>
+        <p className="text-xs text-[var(--color-muted)]">{t.credits.readOnlyPrices}</p>
       )}
       {error && (
-        <p className="text-[12px] text-[var(--color-fail)]" aria-live="polite">
+        <p className="text-xs text-[var(--color-fail)]" aria-live="polite">
           {error}
         </p>
       )}

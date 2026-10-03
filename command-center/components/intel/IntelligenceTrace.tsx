@@ -48,11 +48,11 @@ export function IntelligenceTrace({ steps }: { steps: TraceStep[] }) {
               )}
             </div>
             <div className="flex flex-1 flex-wrap items-center justify-between gap-2 pb-3">
-              <span className="text-[13px]" style={{ color: s.done ? "var(--color-fg)" : "var(--color-muted)" }}>
+              <span className="text-sm" style={{ color: s.done ? "var(--color-fg)" : "var(--color-muted)" }}>
                 {String(t.intel[LABEL[s.key]])}
-                {s.detail && <span className="mono ml-2 text-[11px] text-[var(--color-muted)]">{s.detail}</span>}
+                {s.detail && <span className="tnum ml-2 text-xs text-[var(--color-muted)]">{s.detail}</span>}
               </span>
-              <span className="mono text-[10px] text-[var(--color-muted)]">
+              <span className="tnum text-xs text-[var(--color-muted)]">
                 {s.done ? (s.at ? relativeTime(s.at) : "") : t.intel.trPending}
               </span>
             </div>

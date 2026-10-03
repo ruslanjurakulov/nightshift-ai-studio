@@ -59,7 +59,7 @@ export function VideoTable({ rows }: { rows: VideoWithMetrics[] }) {
               key={p}
               type="button"
               onClick={() => setPrivacy(p)}
-              className="btn-sky is-quiet pill border-transparent px-2.5 py-1.5 text-[10px] uppercase tracking-[0.22em]"
+              className="btn-sky is-quiet pill border-transparent px-2.5 py-1.5 text-xs"
               style={{
                 background: privacy === p ? "var(--color-panel-2)" : "transparent",
                 color: privacy === p ? "var(--color-primary)" : "var(--color-muted)",
@@ -78,7 +78,7 @@ export function VideoTable({ rows }: { rows: VideoWithMetrics[] }) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[var(--color-border)] text-left text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+            <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
               <th className="px-4 py-2 font-semibold">{t.videos.thTitle}</th>
               <th className="px-4 py-2 font-semibold">{t.videos.thTopic}</th>
               <th className="px-4 py-2 font-semibold">{t.videos.thPublished}</th>
@@ -94,7 +94,7 @@ export function VideoTable({ rows }: { rows: VideoWithMetrics[] }) {
               <tr>
                 <td
                   colSpan={8}
-                  className="px-4 py-8 text-center mono text-xs text-[var(--color-muted)]"
+                  className="px-4 py-8 text-center tnum text-xs text-[var(--color-muted)]"
                 >
                   {t.videos.noMatch}
                 </td>
@@ -114,7 +114,7 @@ export function VideoTable({ rows }: { rows: VideoWithMetrics[] }) {
                     </Link>
                     {v.video_format === "short" && (
                       <span
-                        className="ml-2 rounded border px-1.5 py-0.5 align-middle text-[9px] font-semibold uppercase tracking-[0.22em]"
+                        className="ml-2 rounded border px-1.5 py-0.5 align-middle text-xs font-semibold"
                         style={{
                           borderColor: "var(--color-primary-dim)",
                           color: "var(--color-primary)",
@@ -125,22 +125,22 @@ export function VideoTable({ rows }: { rows: VideoWithMetrics[] }) {
                     )}
                   </td>
                   <td className="px-4 py-2 text-[var(--color-muted)]">{v.topic ?? t.common.na}</td>
-                  <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">
+                  <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">
                     {relativeTime(v.published_at)}
                   </td>
-                  <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">
+                  <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">
                     {v.privacy ?? t.common.na}
                   </td>
-                  <td className="px-4 py-2 text-right mono tabular-nums text-[var(--color-fg)]">
+                  <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-fg)]">
                     {num(v.metrics?.views)}
                   </td>
-                  <td className="px-4 py-2 text-right mono tabular-nums text-[var(--color-muted)]">
+                  <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-muted)]">
                     {num(v.metrics?.likes)}
                   </td>
-                  <td className="px-4 py-2 text-right mono tabular-nums text-[var(--color-muted)]">
+                  <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-muted)]">
                     {num(v.metrics?.comment_count)}
                   </td>
-                  <td className="px-4 py-2 text-right mono tabular-nums text-[var(--color-muted)]">
+                  <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-muted)]">
                     {num(v.metrics?.average_view_duration_seconds)}
                   </td>
                 </tr>
@@ -150,7 +150,7 @@ export function VideoTable({ rows }: { rows: VideoWithMetrics[] }) {
         </table>
       </div>
 
-      <div className="border-t border-[var(--color-border)] px-4 py-2 text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+      <div className="border-t border-[var(--color-border)] px-4 py-2 text-xs text-[var(--color-muted)]">
         {fmt(t.videos.count, { shown: filtered.length, total: rows.length })}
       </div>
     </div>

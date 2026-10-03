@@ -57,7 +57,7 @@ function CopyButton({ value }: { value: string }) {
           /* clipboard blocked — the amount is still visible */
         }
       }}
-      className="btn-quiet text-[12px]"
+      className="btn-quiet text-xs"
     >
       {copied ? t.billing.payCopied : t.billing.payCopy}
     </button>
@@ -65,7 +65,7 @@ function CopyButton({ value }: { value: string }) {
 }
 
 const inputClass =
-  "rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 mono text-[12px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
+  "rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 tnum text-xs text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
 
 /** The per-provider Pay panel, opened from its card. */
 export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested: number | null; onDone: () => void }) {
@@ -97,13 +97,13 @@ export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested:
 
   return (
     <div className="flex flex-col gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3">
-      <p className="text-[12px] font-semibold text-[var(--color-fg)]">{fmt(t.billing.payTitle, { name: p.name })}</p>
-      <p className="flex items-start gap-2 text-[11px] leading-relaxed text-[var(--color-muted)]">
+      <p className="text-xs font-semibold text-[var(--color-fg)]">{fmt(t.billing.payTitle, { name: p.name })}</p>
+      <p className="flex items-start gap-2 text-xs leading-relaxed text-[var(--color-muted)]">
         <CreditCard className="mt-0.5 size-3.5 shrink-0" aria-hidden />
         {fmt(t.billing.payCards, { name: p.name })}
       </p>
       <label className="flex flex-col gap-1">
-        <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.billing.payAmount}</span>
+        <span className="text-xs text-[var(--color-muted)]">{t.billing.payAmount}</span>
         <input
           type="number"
           inputMode="decimal"
@@ -123,7 +123,7 @@ export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested:
           href={p.billingUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="btn-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-semibold"
+          className="btn-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold"
         >
           {fmt(t.billing.payOpen, { name: p.name })}
           <ExternalLink className="size-3" aria-hidden />
@@ -134,12 +134,12 @@ export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested:
         type="button"
         onClick={record}
         disabled={!valid || state === "busy" || state === "ok"}
-        className="btn-quiet w-fit px-4 py-1.5 text-[12px] disabled:opacity-40"
+        className="btn-quiet w-fit px-4 py-1.5 text-xs disabled:opacity-40"
       >
         {state === "ok" ? t.billing.payRecorded : t.billing.payDone}
       </button>
-      {state === "fail" && <span className="text-[11px] text-[var(--color-fail)]">{t.billing.payFailed}</span>}
-      <div className="flex flex-col gap-1.5 border-t border-[var(--color-border)] pt-2 text-[12px]">
+      {state === "fail" && <span className="text-xs text-[var(--color-fail)]">{t.billing.payFailed}</span>}
+      <div className="flex flex-col gap-1.5 border-t border-[var(--color-border)] pt-2 text-xs">
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={cardSaved} onChange={(e) => toggle("card_saved_on_provider", e.target.checked)} />
           {t.billing.cardSaved}
@@ -148,7 +148,7 @@ export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested:
           <input type="checkbox" checked={autoRecharge} onChange={(e) => toggle("auto_recharge_on_provider", e.target.checked)} />
           {t.billing.autoRecharge}
         </label>
-        <p className="text-[11px] text-[var(--color-muted)]">{t.billing.autoRechargeHint}</p>
+        <p className="text-xs text-[var(--color-muted)]">{t.billing.autoRechargeHint}</p>
       </div>
     </div>
   );
@@ -207,15 +207,15 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
   const current = step !== null && step < queue.length ? queue[step] : null;
 
   return (
-    <section className="panel flex flex-col gap-4 p-4">
+    <section className="panel flex flex-col gap-4 p-5 sm:p-6">
       <div>
         <h2 className="t-section">{t.billing.bulkTitle}</h2>
-        <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.billing.bulkSubtitle}</p>
+        <p className="mt-1 text-sm text-[var(--color-muted)]">{t.billing.bulkSubtitle}</p>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.billing.bulkHorizon}</span>
+          <span className="text-xs text-[var(--color-muted)]">{t.billing.bulkHorizon}</span>
           <select value={days} onChange={(e) => setDays(Number(e.target.value))} className={inputClass}>
             {HORIZONS.map((d) => (
               <option key={d} value={d}>
@@ -225,7 +225,7 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
           </select>
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.billing.bulkCap}</span>
+          <span className="text-xs text-[var(--color-muted)]">{t.billing.bulkCap}</span>
           <input
             type="number"
             inputMode="decimal"
@@ -240,9 +240,9 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px] text-[12px]">
+        <table className="w-full min-w-[560px] text-xs">
           <thead>
-            <tr className="text-left text-[10px] uppercase tracking-[0.14em] text-[var(--color-muted)]">
+            <tr className="text-left text-xs text-[var(--color-muted)]">
               <th className="w-8 py-2" />
               <th className="py-2">{t.billing.colProvider}</th>
               <th className="py-2 text-right">{t.billing.colBurn}</th>
@@ -251,7 +251,7 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
               <th className="py-2 text-right">{t.billing.colAmount}</th>
             </tr>
           </thead>
-          <tbody className="mono" style={{ fontVariantNumeric: "tabular-nums" }}>
+          <tbody className="tnum" style={{ fontVariantNumeric: "tabular-nums" }}>
             {providers.map((p) => {
               const on = selected.has(p.id);
               const line = lineOf.get(p.id);
@@ -279,17 +279,17 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
           <tfoot>
             <tr className="border-t-2 border-[var(--color-border)]">
               <td />
-              <td colSpan={4} className="py-3 text-[13px] font-semibold text-[var(--color-fg)]">
+              <td colSpan={4} className="py-3 text-sm font-semibold text-[var(--color-fg)]">
                 {t.billing.bulkTotal}
               </td>
-              <td className="py-3 text-right mono text-[15px] font-semibold text-[var(--color-primary)]">
+              <td className="py-3 text-right tnum text-[15px] font-semibold text-[var(--color-primary)]">
                 {money(plan.total)}
               </td>
             </tr>
           </tfoot>
         </table>
       </div>
-      {plan.scaled && <p className="text-[12px] text-[var(--color-warn)]">{t.billing.bulkScaled}</p>}
+      {plan.scaled && <p className="text-xs text-[var(--color-warn)]">{t.billing.bulkScaled}</p>}
 
       {step === null ? (
         <button
@@ -299,25 +299,25 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
             setPaidCount(0);
             setStep(0);
           }}
-          className="btn-primary w-fit px-6 py-2.5 text-[13px] font-semibold disabled:opacity-40"
+          className="btn-primary w-fit px-6 py-2.5 text-sm font-semibold disabled:opacity-40"
         >
           {queue.length === 0 ? t.billing.bulkNothing : `${t.billing.bulkPay} · ${money(plan.total)}`}
         </button>
       ) : current ? (
         <div className="flex flex-col gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-primary)] p-3" aria-live="polite">
-          <p className="mono text-[11px] text-[var(--color-muted)]">
+          <p className="tnum text-xs text-[var(--color-muted)]">
             {fmt(t.billing.stepOf, { i: step + 1, n: queue.length })}
           </p>
-          <p className="text-[14px] font-semibold text-[var(--color-fg)]">
+          <p className="text-sm font-semibold text-[var(--color-fg)]">
             {current.name} · {money(lineOf.get(current.id)?.amount ?? null)}
           </p>
-          <p className="text-[11px] text-[var(--color-muted)]">{fmt(t.billing.payCards, { name: current.name })}</p>
+          <p className="text-xs text-[var(--color-muted)]">{fmt(t.billing.payCards, { name: current.name })}</p>
           <div className="flex flex-wrap gap-2">
             <a
               href={current.billingUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-semibold"
+              className="btn-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold"
             >
               {fmt(t.billing.payOpen, { name: current.name })}
               <ExternalLink className="size-3" aria-hidden />
@@ -327,25 +327,25 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
               type="button"
               onClick={confirmStep}
               disabled={busy}
-              className="btn-quiet text-[12px] disabled:opacity-40"
+              className="btn-quiet text-xs disabled:opacity-40"
             >
               {t.billing.payDone}
             </button>
-            <button type="button" onClick={() => setStep(step + 1)} className="btn-quiet text-[12px]">
+            <button type="button" onClick={() => setStep(step + 1)} className="btn-quiet text-xs">
               {t.billing.stepSkip}
             </button>
           </div>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-3">
-          <p className="text-[13px] text-[var(--color-ok)]">{fmt(t.billing.stepDone, { n: paidCount })}</p>
+          <p className="text-sm text-[var(--color-ok)]">{fmt(t.billing.stepDone, { n: paidCount })}</p>
           <button
             type="button"
             onClick={() => {
               setStep(null);
               onDone();
             }}
-            className="btn-quiet text-[12px]"
+            className="btn-quiet text-xs"
           >
             {t.billing.stepClose}
           </button>

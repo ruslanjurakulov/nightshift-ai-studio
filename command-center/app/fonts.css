@@ -1,0 +1,67 @@
+/* The product's one typeface: Onest (SIL Open Font License 1.1, licence text in
+   brand/og-fonts/OFL-Onest.txt). A friendly neutral sans with a tall x-height,
+   drawn for Cyrillic first, so Russian and Uzbek read as well as English. One
+   variable file per script (weights 100–900 on one axis), subsetted by Google's
+   own ranges: a page downloads a script's file only when it shows a character
+   of that script. app/layout.tsx preloads the Latin file always and the
+   Cyrillic one for Russian (components/site/fonts.ts). Uzbek's oʻ gʻ (U+02BB),
+   the tutuq (U+02BC) and the curly apostrophe (U+2019) are all in the Latin
+   file; tests/fonts.test.ts keeps that true.
+   docs/design/HUMAN_TYPE.md has the choice, the coverage check and the sizes. */
+@font-face {
+  font-family: "Onest";
+  src: url("/fonts/onest-cyrillic-ext-v1.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "Onest";
+  src: url("/fonts/onest-cyrillic-v1.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Onest";
+  src: url("/fonts/onest-latin-ext-v1.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Onest";
+  src: url("/fonts/onest-latin-v1.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* What shows until the file arrives: the system's Arial/Helvetica/Roboto,
+   scaled and re-spaced to Onest's measurements (average text width 104% of
+   Arial's across our own en/ru/uz strings, ascent 0.97 em, descent 0.305 em),
+   so swapping the real face in moves nothing: CLS stays at about 0. */
+@font-face {
+  font-family: "Onest Fallback";
+  src: local("Arial"), local("Helvetica Neue"), local("Helvetica"), local("Roboto"), local("Liberation Sans");
+  size-adjust: 104%;
+  ascent-override: 93.3%;
+  descent-override: 29.3%;
+  line-gap-override: 0%;
+}
+
+/* The wordmark keeps its own logotype: Sofia Sans Extra Condensed Bold (SIL OFL,
+   brand/og-fonts/OFL-SofiaSans.txt), cut down to the letters of the name — about
+   2 KB, inlined so the logo never waits on a request and never reflows. Used by
+   .ns-wordmark only; nothing else in the product is set in it. */
+@font-face {
+  font-family: "Nightshift Wordmark";
+  src: url("data:font/woff2;base64,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") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}

@@ -158,7 +158,7 @@ export default async function GettingStartedPage() {
           {allDone && (
             <div className="flex items-center gap-3 rounded-xl border border-[var(--color-ok)] bg-[color-mix(in_srgb,var(--color-ok)_10%,transparent)] px-4 py-3">
               <Rocket aria-hidden className="size-5 shrink-0 text-[var(--color-ok)]" strokeWidth={1.75} />
-              <p className="m-0 text-[14px] font-light text-[var(--color-fg)]">{s.allDone}</p>
+              <p className="m-0 text-sm font-light text-[var(--color-fg)]">{s.allDone}</p>
             </div>
           )}
 
@@ -179,7 +179,7 @@ export default async function GettingStartedPage() {
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <span className="text-[14px] font-medium text-[var(--color-fg)]">
+                      <span className="text-sm font-medium text-[var(--color-fg)]">
                         {titleFor(item.key)}
                       </span>
                       <StatusPill
@@ -187,14 +187,14 @@ export default async function GettingStartedPage() {
                         label={item.done ? s.done : s.todo}
                       />
                     </div>
-                    <p className="mt-1 text-[13px] font-light leading-relaxed text-[var(--color-muted)]">
+                    <p className="mt-1 text-sm font-light leading-relaxed text-[var(--color-muted)]">
                       {hintFor(item.key)}
                     </p>
                   </div>
                   {!item.done && (
                     <Link
                       href={path(item.href)}
-                      className="btn-sky is-quiet pill mt-0.5 inline-flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-[12px]"
+                      className="btn-sky is-quiet pill mt-0.5 inline-flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-xs"
                     >
                       {s.fix}
                       <ArrowRight aria-hidden className="size-3.5" />

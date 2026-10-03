@@ -51,10 +51,10 @@ export function CreditActivity({ rows, showRefs = false }: { rows: CreditTransac
                   className="flex items-start justify-between gap-4 border-t border-[var(--color-border)] py-3 first:border-t-0"
                 >
                   <div className="flex min-w-0 flex-col gap-0.5">
-                    <span className="text-[14px]">{label(txnLabel(r))}</span>
-                    <span className="text-[12px] text-[var(--color-muted)] tabular-nums" title={r.createdAt}>
+                    <span className="text-sm">{label(txnLabel(r))}</span>
+                    <span className="text-xs text-[var(--color-muted)] tabular-nums" title={r.createdAt}>
                       {when(r.createdAt)}
-                      {showRefs && r.jobId && <span className="mono ml-2 break-all text-[11px]">{r.jobId}</span>}
+                      {showRefs && r.jobId && <span className="mono ml-2 break-all text-xs">{r.jobId}</span>}
                     </span>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-0.5">
@@ -65,7 +65,7 @@ export function CreditActivity({ rows, showRefs = false }: { rows: CreditTransac
                       {positive ? "+" : ""}
                       {formatCredits(moves ? r.amount : Math.abs(r.amount), locale)}
                     </span>
-                    {r.kind === "reserve" && <span className="text-[11px] text-[var(--color-muted)]">{cp.holdTag}</span>}
+                    {r.kind === "reserve" && <span className="text-xs text-[var(--color-muted)]">{cp.holdTag}</span>}
                   </div>
                 </li>
               );
@@ -75,7 +75,7 @@ export function CreditActivity({ rows, showRefs = false }: { rows: CreditTransac
             <button
               type="button"
               onClick={() => setShown((n) => n + PAGE)}
-              className="btn-quiet self-center px-5 py-2 text-[13px]"
+              className="btn-quiet self-center px-5 py-2 text-sm"
             >
               {cp.showMore}
             </button>

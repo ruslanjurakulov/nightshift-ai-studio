@@ -46,7 +46,7 @@ export function WorkspaceNameForm({ org }: { org: OrgSummary }) {
   }
 
   return (
-    <div className="panel flex flex-col gap-3 p-4">
+    <div className="panel flex flex-col gap-3 p-5 sm:p-6">
       <h2 className="t-section">{t.org.nameTitle}</h2>
       {canRename ? (
         <div className="flex flex-wrap items-end gap-3">
@@ -59,21 +59,21 @@ export function WorkspaceNameForm({ org }: { org: OrgSummary }) {
               setSaved(false);
             }}
             aria-label={t.org.nameLabel}
-            className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+            className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
           />
           <button
             type="button"
             onClick={rename}
             disabled={busy || name.trim() === org.name || validateOrgName(name) === null}
-            className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
+            className="btn-sky is-solid pill px-5 py-2 text-sm disabled:opacity-40"
           >
             {saved ? t.org.saved : t.org.rename}
           </button>
         </div>
       ) : (
-        <p className="text-[14px] text-[var(--color-fg)]">{org.name}</p>
+        <p className="text-sm text-[var(--color-fg)]">{org.name}</p>
       )}
-      {error && <p className="mono text-[12px] text-[var(--color-fail)]">{error}</p>}
+      {error && <p className="tnum text-xs text-[var(--color-fail)]">{error}</p>}
     </div>
   );
 }

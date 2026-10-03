@@ -140,7 +140,7 @@ export function ChannelDnaSection({
     setChars((cur) => (cur.includes(id) ? cur.filter((c) => c !== id) : cur.length >= DNA_LIMITS.maxCharacters ? cur : [...cur, id]));
   };
 
-  const legend = "text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]";
+  const legend = "text-xs text-[var(--color-muted)]";
   const status =
     state.kind === "saved" ? (
       <span className="text-[var(--color-ok)]">{t.dna.saved}</span>
@@ -155,7 +155,7 @@ export function ChannelDnaSection({
       className="scroll-mt-24 rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 id={`${uid}-title`} className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+        <h3 id={`${uid}-title`} className="flex items-center gap-1.5 text-xs text-[var(--color-muted)]">
           <Dna aria-hidden className="size-3.5 text-[var(--color-primary)]" />
           {t.dna.title}
         </h3>
@@ -167,18 +167,18 @@ export function ChannelDnaSection({
               setState({ kind: "idle" });
               setEditing(true);
             }}
-            className="btn-sky ghost pill min-h-[36px] px-4 py-1.5 text-[12px]"
+            className="btn-sky ghost pill min-h-[36px] px-4 py-1.5 text-xs"
           >
             {t.dna.edit}
           </button>
         )}
       </div>
-      <p className="mt-1 max-w-[72ch] text-[11px] leading-relaxed text-[var(--color-muted)]">{t.dna.hint}</p>
+      <p className="mt-1 max-w-[72ch] text-xs leading-relaxed text-[var(--color-muted)]">{t.dna.hint}</p>
 
       {!available ? (
-        <p className="mt-2 text-[12px] text-[var(--color-muted)]">{t.dna.notEnabled}</p>
+        <p className="mt-2 text-xs text-[var(--color-muted)]">{t.dna.notEnabled}</p>
       ) : failed ? (
-        <p className="mt-2 text-[12px] text-[var(--color-warn)]">{t.dna.readFailed}</p>
+        <p className="mt-2 text-xs text-[var(--color-warn)]">{t.dna.readFailed}</p>
       ) : !editing ? (
         <>
           <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
@@ -193,12 +193,12 @@ export function ChannelDnaSection({
             <Field label={t.dna.aspect} value={shownAspect ?? t.dna.notSet} mono={Boolean(shownAspect)} />
             <div className="col-span-2 min-w-0 sm:col-span-3">
               <dt className={legend}>{t.dna.tone}</dt>
-              <dd className="text-[12px] text-[var(--color-fg)] [overflow-wrap:anywhere]">{dna.tone || t.dna.notSet}</dd>
+              <dd className="text-xs text-[var(--color-fg)] [overflow-wrap:anywhere]">{dna.tone || t.dna.notSet}</dd>
             </div>
           </dl>
-          {!canEdit && <p className="mt-2 text-[11px] text-[var(--color-muted)]">{t.dna.readOnly}</p>}
+          {!canEdit && <p className="mt-2 text-xs text-[var(--color-muted)]">{t.dna.readOnly}</p>}
           {status && (
-            <p className="mt-2 text-[12px]" role="status">
+            <p className="mt-2 text-xs" role="status">
               {status}
             </p>
           )}
@@ -211,7 +211,7 @@ export function ChannelDnaSection({
             void save();
           }}
         >
-          {styleState === "failed" && <p className="text-[12px] text-[var(--color-warn)]">{t.dna.readFailed}</p>}
+          {styleState === "failed" && <p className="text-xs text-[var(--color-warn)]">{t.dna.readFailed}</p>}
 
           {styleReady && (
             <fieldset className="flex flex-col gap-2">
@@ -264,7 +264,7 @@ export function ChannelDnaSection({
               id={`${uid}-voice`}
               value={voice}
               onChange={(e) => setVoice(e.target.value)}
-              className="studio-field w-full px-3 py-2.5 text-[16px] text-[var(--color-fg)] outline-none sm:text-[13px]"
+              className="studio-field w-full px-3 py-2.5 text-base text-[var(--color-fg)] outline-none sm:text-[13px]"
               aria-describedby={standardVoice ? `${uid}-voice-note` : undefined}
             >
               <option value="">{dna.voiceId ? t.dna.keepVoice : t.dna.notSet}</option>
@@ -275,7 +275,7 @@ export function ChannelDnaSection({
               ))}
             </select>
             {standardVoice && (
-              <span id={`${uid}-voice-note`} className="text-[11px] leading-relaxed text-[var(--color-muted)]">
+              <span id={`${uid}-voice-note`} className="text-xs leading-relaxed text-[var(--color-muted)]">
                 {t.dna.standardVoiceNote}
               </span>
             )}
@@ -318,7 +318,7 @@ export function ChannelDnaSection({
                 {t.dna.aspectFromFormat}
               </button>
               {DNA_ASPECTS.map((a) => (
-                <button key={a} type="button" aria-pressed={aspect === a} onClick={() => setAspect(a)} className="studio-chip mono">
+                <button key={a} type="button" aria-pressed={aspect === a} onClick={() => setAspect(a)} className="studio-chip tnum">
                   {a}
                 </button>
               ))}
@@ -336,9 +336,9 @@ export function ChannelDnaSection({
               maxLength={DNA_LIMITS.toneMax}
               placeholder={t.dna.tonePlaceholder}
               aria-describedby={`${uid}-tone-hint`}
-              className="studio-field w-full px-3 py-2.5 text-[16px] text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] sm:text-[13px]"
+              className="studio-field w-full px-3 py-2.5 text-base text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] sm:text-[13px]"
             />
-            <span id={`${uid}-tone-hint`} className="text-[11px] text-[var(--color-muted)]">
+            <span id={`${uid}-tone-hint`} className="text-xs text-[var(--color-muted)]">
               {t.dna.toneHint}
             </span>
           </div>
@@ -348,7 +348,7 @@ export function ChannelDnaSection({
               type="submit"
               disabled={state.kind === "saving"}
               aria-busy={state.kind === "saving"}
-              className="btn-sky pill min-h-[40px] px-5 py-2 text-[13px] disabled:opacity-50"
+              className="btn-sky pill min-h-[40px] px-5 py-2 text-sm disabled:opacity-50"
             >
               {state.kind === "saving" ? t.dna.saving : t.dna.save}
             </button>
@@ -358,12 +358,12 @@ export function ChannelDnaSection({
                 setEditing(false);
                 setState({ kind: "idle" });
               }}
-              className="btn-sky is-quiet pill min-h-[40px] px-4 py-2 text-[13px]"
+              className="btn-sky is-quiet pill min-h-[40px] px-4 py-2 text-sm"
             >
               {t.dna.cancel}
             </button>
           </div>
-          <p className="min-h-[18px] text-[12px]" role="status" aria-live="polite">
+          <p className="min-h-[18px] text-xs" role="status" aria-live="polite">
             {status}
           </p>
         </form>
@@ -375,8 +375,8 @@ export function ChannelDnaSection({
 function Field({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]">{label}</dt>
-      <dd className={`truncate text-[12px] text-[var(--color-fg)]${mono ? " mono" : ""}`} title={value}>
+      <dt className="text-xs text-[var(--color-muted)]">{label}</dt>
+      <dd className={`truncate text-xs text-[var(--color-fg)]${mono ? " mono" : ""}`} title={value}>
         {value}
       </dd>
     </div>
@@ -385,7 +385,7 @@ function Field({ label, value, mono = false }: { label: string; value: string; m
 
 function EmptyHint({ text, link, href }: { text: string; link: string; href: string }) {
   return (
-    <span className="text-[12px] text-[var(--color-muted)]">
+    <span className="text-xs text-[var(--color-muted)]">
       {text}{" "}
       <Link href={href} className="tap-link text-[var(--color-primary)] underline">
         {link}

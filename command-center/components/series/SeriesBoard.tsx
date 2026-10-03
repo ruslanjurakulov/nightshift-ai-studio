@@ -204,7 +204,7 @@ export function SeriesBoard({
           ) : (
             <p className="mt-1 text-xs text-[var(--color-muted)]">{s.readOnly}</p>
           )}
-          <p className="text-[11px] text-[var(--color-muted)]">{s.pausedNote}</p>
+          <p className="text-xs text-[var(--color-muted)]">{s.pausedNote}</p>
         </div>
       </Panel>
 
@@ -228,7 +228,7 @@ export function SeriesBoard({
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{row.name}</span>
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[11px] ${
+                          className={`rounded-full px-2 py-0.5 text-xs ${
                             status === "ACTIVE"
                               ? "bg-[color-mix(in_srgb,var(--color-ok)_15%,transparent)] text-[var(--color-ok)]"
                               : status === "ARCHIVED"
@@ -245,7 +245,7 @@ export function SeriesBoard({
                         {cadence ? ` · ${cadence}` : ""}
                       </div>
                       {(row.format || platforms.length > 0) && (
-                        <div className="mt-1 text-[11px] text-[var(--color-muted)]">
+                        <div className="mt-1 text-xs text-[var(--color-muted)]">
                           {row.format}
                           {platforms.length > 0 ? `  ·  ${platforms.join(", ")}` : ""}
                         </div>

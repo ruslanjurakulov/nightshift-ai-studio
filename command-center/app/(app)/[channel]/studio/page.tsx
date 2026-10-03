@@ -85,17 +85,17 @@ export default async function StudioPage() {
             <ErrorState compact />
           ) : agent && agent.topic ? (
             <div className="space-y-1.5">
-              <p className="text-[13px] text-[var(--color-muted)]">{t.studio.autopilotOnTopic}</p>
+              <p className="text-sm text-[var(--color-muted)]">{t.studio.autopilotOnTopic}</p>
               <p className="text-base font-semibold text-[var(--color-fg)]">{agent.topic}</p>
               {agent.rationale && (
-                <p className="text-[13px] text-[var(--color-muted)]">{agent.rationale}</p>
+                <p className="text-sm text-[var(--color-muted)]">{agent.rationale}</p>
               )}
-              <p className="mono text-[11px] text-[var(--color-muted)]">
+              <p className="tnum text-xs text-[var(--color-muted)]">
                 {(agent.videoProvider || t.common.dash) + " · " + (agent.voiceProvider || t.common.dash)}
               </p>
             </div>
           ) : (
-            <p className="text-[13px] text-[var(--color-muted)]">{t.studio.autopilotNone}</p>
+            <p className="text-sm text-[var(--color-muted)]">{t.studio.autopilotNone}</p>
           )}
         </div>
       </Panel>
@@ -109,7 +109,7 @@ export default async function StudioPage() {
 
       {/* Style kits and characters — built from the organization's library (0047) */}
       {styleNote || !org.current || !style ? (
-        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{styleNote}</div>
+        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{styleNote}</div>
       ) : (
         <StyleSections
           orgId={org.current.id}

@@ -35,7 +35,7 @@ export default async function NewChannelPage({
       <div>
         <Link
           href={path("/channels")}
-          className="tap-link text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+          className="tap-link text-xs text-[var(--color-muted)] hover:text-[var(--color-fg)]"
         >
           ← {t.channels.title}
         </Link>
