@@ -176,3 +176,52 @@ button's label ≥ 4.5:1; a control's edge ≥ 3:1.
 5. Say the plain meaning first and the code name small: `Download, per minute of
    1080p video` above `download_1080p_minute`.
 6. Money, limits and legal text keep their meaning when the tone is softened.
+
+## 6. Measured results
+
+All numbers from this branch against `main` at the same moment, real Chromium,
+the repo's visual-QA fake backend (`tools/visual-qa/fake-supabase.mjs`, read-only,
+no secrets; `FAKE_ADMIN=1` and an `api_console` row were added so the operator's
+price list and the Developers page can be photographed). Screenshots are in
+`docs/design/design-human/before/` and `after/`, named alike
+(`<screen>-<width>-<light|dark>-<en|ru|uz>.webp`; `studio-video` is the Studio's
+create-video desk, `create-overview` the Create page, `credit-prices-390-dark-en`
+the operator's price list); `contact-sheet.png` is the six key screens at 390px,
+before over after. The tool's reports are in `docs/design/design-human/qa/`.
+
+| Check | Before | After |
+| :-- | --: | --: |
+| Text nodes in ALL CAPS, 54 phone states (9 screens × en/ru/uz × light/dark, 360px) | 972 of 4908 | **0** |
+| of those letter-spaced | 774 | **0** |
+| Text nodes in a monospace face (outside code) | 522 | **0** |
+| Text nodes smaller than 13px | 1308 | **0** |
+| Phone states with horizontal overflow | 0 | **0** |
+| Inputs under 16px on a phone | 6 | **0** |
+| axe, serious or worse (landing, pricing, sign in, sign up, MCP, API docs, terms; Home, Credits, Create, Studio, Developers; 1440 / 390 / 360, light and dark) | 0 (2 on Home at 390 before) | **0** |
+| CLS with the font files held back 1.2 s, landing en / ru / uz at 390 | 0.107 / 0.226 / 0.211 | **0.014 / 0.000 / 0.012** |
+| CLS, same test, landing at 1440 | 0.059 / 0.061 / 0.051 | **0.000** |
+| Critical font bytes, landing en (what is downloaded) | 166 KB (5 files) | **48 KB** (Latin 33 + Cyrillic 15, because the page names "Русский"); pricing: **33 KB** |
+| Font bytes, signed-in Home, ru | 233 KB (8 files) | **48 KB** |
+| LCP, landing at 390 (local, warm) | about 340 ms | about 150 ms |
+
+(The CLS test is `Playwright route` delaying every `.woff2` by 1.2 s and reading
+`layout-shift` entries for 2.8 s; the 0.014 left on English is the swap of the
+headline, below the 0.02 target.)
+
+## 7. What this change touched and what it left alone
+
+* Tokens: `app/globals.css` (`@theme`, `:root`, both themes, the shared
+  components), `app/fonts.css` (new), `components/site/site.css`,
+  `components/studio/desk.css`, `components/models/ModelDiscovery.module.css`,
+  `components/concepts/concepts.css`, the social card `app/og.png/route.tsx`.
+* Class-level sweep over the app's components (no capitals, no tracking, no
+  `mono` for words and figures, 13 / 14 / 16px instead of 9–12px, card padding),
+  done by script and then read; the few real-code spots keep `mono`.
+* Hand-fixed: landing, pricing, sign in / sign up (through the shared site
+  styles), the app shell and nav, Home (new-user state), Credits (balance as one
+  bar, plain copy), the Studio create-video desk, the price list (plain meaning
+  first, code name small), Developers, the phone header in Russian.
+* Left to the tokens (no hand edit): the MCP and API docs pages, the Usage page,
+  Connected apps and the OAuth screens. They were being rewritten in other pull
+  requests while this one was built; those have merged since, and they simply
+  inherit the type, the radii and the colours.
