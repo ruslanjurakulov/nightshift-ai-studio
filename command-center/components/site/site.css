@@ -2167,14 +2167,14 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   :root:not([data-theme="light"]) .st-logo use[data-v="dark"] { display: inline; }
 }
 .st-logo-glyph { width: 60%; height: 60%; }
-.st-logo-mono { font-family: var(--font-mono); font-size: 12px; font-weight: 700; letter-spacing: 0; color: var(--ns-text-dim); }
-.st-tile .st-logo-mono { font-size: calc(var(--s) * 0.34); font-family: var(--font-display); letter-spacing: 0.02em; }
+.st-logo-mono { font-family: var(--font-mono); font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--ns-text-dim); }
+.st-tile .st-logo-mono { font-size: calc(var(--s) * 0.34); font-family: var(--font-display); letter-spacing: 0; }
 
 /* Tab pills: the logo on its own small tile, the name beside it. */
 .st-pill-glyph { background: var(--ns-ground); border-color: var(--ns-rule-strong); color: var(--ns-text-dim); padding: 5px; }
 .st-pill[aria-selected="true"] .st-pill-glyph { border-color: var(--ns-rule-strong); color: var(--ns-text-dim); }
 .st-pill-glyph[data-tile="paper"] { background: #fff; }
-.st-pill-glyph .st-logo-mono { font-size: 11px; }
+.st-pill-glyph .st-logo-mono { font-size: 13px; }
 .st-pill-glyph .st-logo-glyph { width: 100%; height: 100%; }
 
 /* Hero tiles: the logo at half the tile; the centre tile is the Nightshift N on its own black tile. */
