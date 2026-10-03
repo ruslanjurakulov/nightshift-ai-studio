@@ -76,6 +76,12 @@ class FriendInvitesMigration(unittest.TestCase):
         self.assertIn("exception when unique_violation then", body)
         self.assertIn("pg_advisory_xact_lock(hashtextextended('friend_invite_rewards', 0))", body)
         self.assertIn("user_id    uuid primary key", CODE)
+        # one reward per mailbox too: the key outlives the account (Lens-383)
+        self.assertIn("k := public.friend_invite_mail_key(p_link.user_id);", body)
+        self.assertIn("exists (select 1 from public.friend_invite_rewards where email_key = k)", body)
+        self.assertIn("create unique index if not exists friend_invite_rewards_mailbox_key", CODE)
+        create = dict(function_bodies())["create_friend_invite"]
+        self.assertIn("x.email_key = public.friend_invite_mail_key(uid)", create)
 
     def test_a_join_needs_a_confirmed_new_account_that_is_not_the_owner(self):
         body = dict(function_bodies())["join_friend_invite"]

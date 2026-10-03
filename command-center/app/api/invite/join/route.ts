@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { joinFromCookie } from "@/lib/server/friend-invites";
+import { publicOrigin } from "@/lib/server/public-origin";
+import { isSameOriginPost } from "@/lib/auth-confirm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,9 +14,13 @@ export const dynamic = "force-dynamic";
  * the database still refuses an account whose e-mail is not confirmed.
  *
  * The answer is the same whatever happened: the new person is not told whether
- * they counted.
+ * they counted. Only our own page may ask (Origin / Sec-Fetch-Site, the same test
+ * the sign-in confirmation form uses): a request another site makes for the
+ * visitor changes nothing, on top of the cookies being SameSite=Lax.
  */
-export async function POST() {
+export async function POST(request: Request) {
+  const ours = [publicOrigin(request), new URL(request.url).origin];
+  if (!isSameOriginPost(request.headers, ours)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const supabase = await createClient();

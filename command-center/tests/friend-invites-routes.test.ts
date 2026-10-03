@@ -152,17 +152,37 @@ describe("joining after the e-mail is confirmed", () => {
     expect(h.rpc.mock.calls.map((c) => c[0])).toEqual(["take_web_rate"]);
   });
 
+  const post = (headers: Record<string, string> = { origin: "https://nightshift.test", "sec-fetch-site": "same-origin" }) =>
+    joinRoute(new Request("https://nightshift.test/api/invite/join", { method: "POST", headers }));
+
   it("POST /api/invite/join: signed out is 401; signed in answers the same whatever happened", async () => {
-    const out = await joinRoute();
+    const out = await post();
     expect(out.status).toBe(401);
     h.user = { id: "u1" };
     h.jar.set(INVITE_COOKIE, TOKEN);
-    const ok = await joinRoute();
+    const ok = await post();
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ ok: true });
     expect(h.rpc).toHaveBeenCalledWith("join_friend_invite", { p_token: TOKEN });
     h.rpc.mockRejectedValue(new Error("down"));
     h.jar.set(INVITE_COOKIE, TOKEN);
-    expect(await (await joinRoute()).json()).toEqual({ ok: true });
+    expect(await (await post()).json()).toEqual({ ok: true });
+  });
+
+  it("POST /api/invite/join: a request from another site, or with no origin, joins nothing and keeps the cookie", async () => {
+    h.user = { id: "u1" };
+    for (const headers of [
+      { origin: "https://evil.test", "sec-fetch-site": "cross-site" },
+      { origin: "https://evil.test" },
+      { origin: "null" },
+      { "sec-fetch-site": "same-site", origin: "https://nightshift.test" },
+      {},
+    ] as Record<string, string>[]) {
+      h.jar.set(INVITE_COOKIE, TOKEN);
+      const res = await post(headers);
+      expect(res.status, JSON.stringify(headers)).toBe(403);
+      expect(h.jar.has(INVITE_COOKIE)).toBe(true);
+    }
+    expect(h.rpc).not.toHaveBeenCalled();
   });
 });

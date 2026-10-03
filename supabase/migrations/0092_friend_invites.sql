@@ -30,6 +30,11 @@
 --     row, external_id 'invite-reward:<owner id>' (the ledger's unique index
 --     on external_id, 0020, is the idempotency key). Later joiners are
 --     recorded but not counted, and nothing more is ever paid to that person.
+--     "That person" is the account AND its mailbox (folded like the joins'):
+--     the reward row keeps the owner's mailbox key, which outlives the account,
+--     so deleting the account (an operator step: GDPR request) and signing up
+--     again on the same mailbox cannot earn it a second time — the same
+--     guarantee welcome_credit_claims (0042) gives the welcome credits.
 --     The people who join get nothing from this feature.
 --   * Joins are serialised per link (select ... for update) and the daily cap
 --     is taken under one advisory lock, so two people completing the 5th join
@@ -130,11 +135,17 @@ create table if not exists public.friend_invite_rewards (
   org_id     uuid not null references public.organizations (id) on delete restrict,
   credits    numeric(14,2) not null check (credits > 0),
   joins      integer not null check (joins > 0),
+  email_key  text check (email_key ~ '^[0-9a-f]{64}$'),
   created_at timestamptz not null default now()
 );
+-- The owner's mailbox key (as in friend_invite_joins): one reward per mailbox
+-- for good, even after the account is deleted and made again. Added with
+-- "if not exists" so a database that already ran an earlier draft gets it too.
+alter table public.friend_invite_rewards add column if not exists email_key text;
+create unique index if not exists friend_invite_rewards_mailbox_key on public.friend_invite_rewards (email_key);
 create index if not exists friend_invite_rewards_day_idx on public.friend_invite_rewards (created_at);
 comment on table public.friend_invite_rewards is
-  'The reward paid to a link owner (0092): one row per person, for good (primary key). Its ledger row has external_id invite-reward:<user id>.';
+  'The reward paid to a link owner (0092): one row per person and per mailbox, for good (primary key on user_id, unique email_key). Its ledger row has external_id invite-reward:<user id>.';
 alter table public.friend_invite_rewards enable row level security;
 revoke all on public.friend_invite_rewards from public, anon, authenticated;
 
@@ -179,6 +190,7 @@ declare
   s       public.friend_invite_settings;
   n       integer;
   acc     public.credit_accounts;
+  k       text;
   marker  text := 'invite-reward:' || p_link.user_id::text;
   day0    timestamptz := date_trunc('day', now() at time zone 'UTC') at time zone 'UTC';
 begin
@@ -193,6 +205,12 @@ begin
   if n < s.required_joins then
     return 'none';
   end if;
+  -- One reward per mailbox, for good: an account deleted and made again on the
+  -- same mailbox (a new user id, so a new link and a fresh marker) earns nothing.
+  k := public.friend_invite_mail_key(p_link.user_id);
+  if k is null or exists (select 1 from public.friend_invite_rewards where email_key = k) then
+    return 'none';
+  end if;
 
   -- One platform-wide lock for the cap: two rewards completing together
   -- count each other. Taken after the link row, before the account row, by
@@ -203,8 +221,8 @@ begin
   end if;
 
   begin
-    insert into public.friend_invite_rewards (user_id, link_id, org_id, credits, joins)
-    values (p_link.user_id, p_link.id, p_link.org_id, s.reward_credits, n);
+    insert into public.friend_invite_rewards (user_id, link_id, org_id, credits, joins, email_key)
+    values (p_link.user_id, p_link.id, p_link.org_id, s.reward_credits, n, k);
     perform public.credit_account_lock(p_link.org_id);
     update public.credit_accounts
        set balance = balance + s.reward_credits, updated_at = now()
@@ -258,7 +276,9 @@ begin
     'joined', case when r.user_id is not null then r.joins else least(n, s.required_joins) end,
     'paid', r.user_id is not null,
     'credits_paid', r.credits,
-    'pending', r.user_id is null and l.id is not null and n >= s.required_joins);
+    'pending', r.user_id is null and l.id is not null and n >= s.required_joins
+               and not exists (select 1 from public.friend_invite_rewards x
+                                where x.email_key = public.friend_invite_mail_key(uid)));
 end
 $$;
 
@@ -285,6 +305,9 @@ begin
     end if;
     if not public.is_org_member(p_org, 'admin') or public.credits_exempt(p_org) then
       raise exception 'this workspace cannot receive invite credits' using errcode = '42501';
+    end if;
+    if exists (select 1 from public.friend_invite_rewards x where x.email_key = public.friend_invite_mail_key(uid)) then
+      raise exception 'invite credits were already paid to this mailbox' using errcode = '42501';
     end if;
     loop
       begin

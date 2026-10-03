@@ -417,6 +417,49 @@ def test_a_reward_is_for_life_one_per_person_even_with_a_second_workspace(conn):
         assert not out.ok and out.sqlstate == "23505", "so is the ledger's unique external_id"
 
 
+def test_an_account_deleted_and_made_again_on_the_same_mailbox_earns_nothing_a_second_time(conn):
+    """The reward row outlives the account (user_id has no foreign key, by design)
+    and keeps the owner's folded mailbox key, so the operator deleting an account
+    (a data request) and the person signing up again cannot reset 'once'."""
+    with world(conn) as s:
+        settings(s)
+        base = uuid.uuid4().hex[:8]
+        owner = new_user(s, "owner", email=f"Re.Peat{base}+a@gmail.com")
+        org = ok(call(s, owner, "select public.create_organization('Repeat Studio')"))
+        token = ok(call(s, owner, "select public.create_friend_invite(%s)", [org]))["link"]["token"]
+        for _ in range(REQUIRED):
+            join_new(s, token)
+        assert (reward_rows(s, owner), ledger_rows(s, owner)) == (1, 1)
+        as_owner(s)
+        assert s.value("select email_key from public.friend_invite_rewards where user_id = %s", [owner.uid]) is not None
+        # The operator deletes the account: its link and joins go with it, the reward row stays.
+        s.rows("delete from auth.users where id = %s returning 1", [owner.uid])
+        assert s.value("select count(*) from public.friend_invite_rewards where user_id = %s", [owner.uid]) == 1
+        # Same mailbox (another spelling of it), new account, new workspace.
+        again = new_user(s, "again", email=f"repeat{base}@googlemail.com")
+        org2 = ok(call(s, again, "select public.create_organization('Repeat Again')"))
+        out = call(s, again, "select public.create_friend_invite(%s)", [org2])
+        assert not out.ok and out.sqlstate == "42501", out
+        # Defence in depth: even a link that got made some other way pays nothing.
+        as_owner(s)
+        link = s.value("insert into public.friend_invite_links (user_id, org_id, token) values (%s, %s, %s) returning id",
+                       [again.uid, org2, uuid.uuid4().hex])
+        tok2 = s.value("select token from public.friend_invite_links where id = %s", [link])
+        start = balance(s, org2)
+        for _ in range(REQUIRED + 1):
+            assert join_new(s, tok2)[1] in ("counted", "not_counted")
+        got = progress(s, again)
+        assert got["paid"] is False and got["pending"] is False
+        got = ok(call(s, again, "select public.claim_friend_invite_reward()"))
+        assert got["paid"] is False
+        assert (reward_rows(s, again), ledger_rows(s, again), balance(s, org2)) == (0, 0, start)
+        # A different mailbox is a different person and still earns normally.
+        other, org3, tok3 = new_owner(s)
+        for _ in range(REQUIRED):
+            join_new(s, tok3)
+        assert reward_rows(s, other) == 1
+
+
 def test_the_switch_off_at_the_fifth_join_leaves_the_reward_waiting_not_lost(conn):
     with world(conn) as s:
         settings(s)
