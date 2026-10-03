@@ -222,9 +222,14 @@ function Period({
       </div>
 
       {ranOut && (
-        <p role="status" className="rounded-[var(--ns-r-key)] border border-[var(--color-warn)] p-3 text-[13px] leading-relaxed" data-plan-ran-out>
-          {ranOut}
-        </p>
+        <div role="status" className="flex flex-col items-start gap-1 rounded-[var(--ns-r-key)] border border-[var(--color-warn)] p-3 text-[13px] leading-relaxed" data-plan-ran-out>
+          <p>{ranOut}</p>
+          {!summary.extraEnabled && summary.extra.available > 0 && (
+            <a href="#extra" className="tap-link text-[var(--color-primary)] underline underline-offset-2">
+              {u.refusal.turnOn}
+            </a>
+          )}
+        </div>
       )}
 
       {heldN > 0 && (
@@ -266,15 +271,19 @@ function PlanLimits({ summary }: { summary: UsageSummary }) {
                 {fmt(u.limits.runsNow, { active: limits.runs.active, limit: limits.runs.limit })}
               </span>
             </div>
-            <Meter
-              className="usage-meter"
-              value={Math.min(limits.runs.active, limits.runs.limit)}
-              max={limits.runs.limit}
-              segments={Math.max(1, Math.min(limits.runs.limit, 12))}
-              size="lg"
-              label={u.limits.meterLabel}
-              valueText={fmt(u.limits.runsNow, { active: limits.runs.active, limit: limits.runs.limit })}
-            />
+            {/* One cell per run the plan starts at once, each a fixed width: a plan of 2 is two cells, not two
+                slabs across the page. */}
+            <div style={{ maxWidth: `${Math.max(1, Math.min(limits.runs.limit, 12)) * 44}px` }}>
+              <Meter
+                className="usage-meter"
+                value={Math.min(limits.runs.active, limits.runs.limit)}
+                max={limits.runs.limit}
+                segments={Math.max(1, Math.min(limits.runs.limit, 12))}
+                size="lg"
+                label={u.limits.meterLabel}
+                valueText={fmt(u.limits.runsNow, { active: limits.runs.active, limit: limits.runs.limit })}
+              />
+            </div>
             <p className="text-[12px] leading-relaxed text-[var(--color-muted)]">{u.limits.runsHint}</p>
           </li>
         )}

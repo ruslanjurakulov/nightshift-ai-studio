@@ -24,7 +24,8 @@
  * usage_summary / billing_summary for that state. `set_use_extra_credits` is
  * answered and remembered per state, in memory, so the switch can be pressed.
  * States: sub0 (0% used), sub62, sub100 (extra on), sub100off (all plan credits
- * used, extra credits off with a pack waiting), zeroextra (62%, no pack),
+ * used, extra credits off with a pack waiting), zeroextra (62%, no pack), flip (62%,
+ * for pressing the switch),
  * free (Free, welcome credits left), nolot (live plan, no credits added yet),
  * ended (live plan, last period's credits expired), off62 (62%, switch off).
  */
@@ -50,6 +51,8 @@ const CHANNEL = {
   org_id: ORG.id,
   status: "active",
   youtube_channel_id: "UC_visual_qa_fake",
+  // A length to price a run by (the Create page's estimate line).
+  agent_config: { target_duration_seconds: 120 },
 };
 
 function b64url(s) {
@@ -73,6 +76,8 @@ const iso = (ms) => new Date(Date.now() + ms).toISOString();
 const STATES = {
   sub0: { plan: "creator", granted: 2000, spent: 0, held: 0, extra: 500, bonus: 0, on: true },
   sub62: { plan: "creator", granted: 2000, spent: 1240, held: 180, extra: 500, bonus: 100, on: true },
+  // The same account, for pressing the switch in a screenshot run without changing sub62 for the others.
+  flip: { plan: "creator", granted: 2000, spent: 1240, held: 0, extra: 500, bonus: 0, on: true },
   sub100: { plan: "creator", granted: 2000, spent: 2000, held: 0, extra: 500, bonus: 0, on: true },
   sub100off: { plan: "creator", granted: 2000, spent: 2000, held: 0, extra: 500, bonus: 0, on: false },
   zeroextra: { plan: "creator", granted: 2000, spent: 1240, held: 0, extra: 0, bonus: 0, on: true },
@@ -157,6 +162,11 @@ function creditAccountFor(state) {
 const RPC = {
   my_organizations: [ORG],
   is_platform_admin: false,
+  // The price list as charged (0084): the estimate line needs a per-minute price.
+  credit_rates: [
+    { unit: "video_minute", credits_per_unit: 60, margin: 0, note: null, updated_at: "2026-10-01T00:00:00Z" },
+    { unit: "job_minimum", credits_per_unit: 10, margin: 0, note: null, updated_at: "2026-10-01T00:00:00Z" },
+  ],
   // Invite friends (0092): a made-up link with three of five friends joined.
   my_friend_invite: {
     enabled: true,

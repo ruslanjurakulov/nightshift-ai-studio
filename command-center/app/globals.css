@@ -1099,6 +1099,8 @@ option {
   .cta-glass,
   .side-link,
   .nav-link { min-height: 2.75rem; min-width: 2.75rem; }
+  /* The credit pill in the top bar (it opens the credits menu): 40px high on a mouse, 44px under a finger. */
+  .shell-pill { min-height: 2.75rem; }
   .sheet-close,
   .nav-back { width: 2.75rem; height: 2.75rem; }
   .tap-link { display: inline-flex; align-items: center; min-height: 2.75rem; }

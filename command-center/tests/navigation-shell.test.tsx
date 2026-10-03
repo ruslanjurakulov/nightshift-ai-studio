@@ -111,6 +111,9 @@ describe("customer sidebar model", () => {
     expect(sidebarCurrent("/editor/3f2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e", null)).toBe("editor");
     expect(sidebarCurrent("/videos/abc", null)).toBe("videos");
     expect(sidebarCurrent("/credits", null)).toBe("credits");
+    // Usage (plan allowance, the extra-credits switch) is part of the credits story: Credits is its row.
+    expect(sidebarCurrent("/usage", null)).toBe("credits");
+    expect(sectionAllowed("usage", false)).toBe(true);
     expect(sidebarCurrent("/developers", null)).toBe("developers");
     expect(sidebarCurrent("/organization", null)).toBe("settings");
     expect(sidebarCurrent("/pipeline", null)).toBeNull();

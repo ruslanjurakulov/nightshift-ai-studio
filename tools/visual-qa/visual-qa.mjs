@@ -251,6 +251,17 @@ async function main() {
               await page.waitForTimeout(SETTLE);
             }
             Object.assign(row, await measure(page));
+            if (FULL) {
+              // A full-page picture is stitched from the scrolled page: a bar fixed to the bottom of the
+              // screen (the phone's tab bar) would sit in the middle of it, so it is hidden for the picture.
+              await page.evaluate(() => {
+                for (const el of document.querySelectorAll("body *")) {
+                  const cs = getComputedStyle(el);
+                  const r = el.getBoundingClientRect();
+                  if (cs.position === "fixed" && r.width >= window.innerWidth * 0.9 && r.bottom >= window.innerHeight - 4 && r.height < 140) el.style.visibility = "hidden";
+                }
+              });
+            }
             await page.screenshot({ path: path.join(OUT, row.file), fullPage: FULL });
             row.axe = await axe(page);
             if (CLICK) {

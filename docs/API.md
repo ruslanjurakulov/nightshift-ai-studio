@@ -203,7 +203,9 @@ an API job equal a Studio job's.
   provider task, route or params. Fetching the files themselves is not part of
   this API yet.
 * Refusals hold nothing: `402 insufficient_credits`
-  (`available_credits`, `needed_credits`), `402 key_credit_limit_reached`,
+  (`available_credits`, `needed_credits`; `available_credits` is what a new
+  generation can use: with "Use extra credits" switched off on the Usage page,
+  credits from top-up packs are not counted), `402 key_credit_limit_reached`,
   `409 price_changed`, `429 run_limit_reached` (the plan's parallel runs),
   `422 mode_not_supported | unpriced | source_unavailable | style_unavailable`,
   `403 entitlement_required`, `503 registry_missing`. Anything the database

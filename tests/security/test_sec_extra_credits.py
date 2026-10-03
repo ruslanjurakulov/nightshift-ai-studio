@@ -399,6 +399,19 @@ def test_a_hold_placed_while_on_is_settled_and_released_after_the_flip(conn):
     assert in_step(ws)
 
 
+def test_the_one_settlement_that_may_reach_a_pack_is_a_capture_over_its_hold_which_the_app_never_asks_for(conn):
+    """BR-U-003, pinned as accepted: the switch decides what a NEW hold may draw on.
+    capture_credits(..., allow_over => true) (modules/credits.py always passes false)
+    settles an overage from any available lot, because a running job is not killed."""
+    ws = Ws(conn, plan=100, packs=[(10, 300)])
+    assert ws.switch(False).ok
+    assert ws.reserve(100, "rj-over-1")[0]
+    with acting(conn, SERVICE, commit=True) as s:
+        assert s.value("select public.capture_credits(%s, 110::numeric, true)", ["rj-over-1"]) == 110
+    assert ws.lots() == [("subscription", 0, 0), ("pack", 290, 0)]
+    assert in_step(ws)
+
+
 # ── concurrency and the lock ────────────────────────────────────────────────
 
 def stampede(ws, n, amount, flipper=None):

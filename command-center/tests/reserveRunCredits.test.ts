@@ -172,4 +172,27 @@ describe("reserveRunCredits: a confirmed plan step", () => {
     expect(await reserveRunCredits(client, "ch-a", undefined, "rj", { maxCredits: 36 })).toMatchObject({ ok: true });
     expect(rpc.mock.calls[0][1]).toMatchObject({ p_amount: 36 });
   });
+
+  it("a refusal from a workspace with extra credits off carries that, so the page can say why", async () => {
+    const { client } = fakeSupabase({ target_duration_seconds: 600 });
+    const refused = (details: string) =>
+      Object.assign(client as unknown as { rpc: unknown }, {
+        rpc: async (fn: string) =>
+          fn === "credit_rates"
+            ? { data: [{ unit: "video_minute", credits_per_unit: 12, margin: 0 }], error: null }
+            : { data: null, error: { code: "NS402", message: "insufficient credits", details } },
+      });
+    refused("available=50.00 needed=120.0000000000000000 extra_off=1 extra=400.00");
+    const off = await reserveRunCredits(client, "ch-a", undefined, "rj");
+    expect(off).toEqual({
+      ok: false,
+      status: 402,
+      body: { error: "insufficient_credits", needed: 120, available: 50, extra_off: true, extra: 400 },
+    });
+    // Today's refusal is byte-for-byte what it was: no extra fields.
+    refused("available=50.00 needed=120.0000000000000000");
+    const plain = await reserveRunCredits(client, "ch-a", undefined, "rj");
+    expect(plain).toEqual({ ok: false, status: 402, body: { error: "insufficient_credits", needed: 120, available: 50 } });
+  });
 });
+
