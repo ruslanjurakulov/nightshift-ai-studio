@@ -141,7 +141,7 @@
 .fl-more-body { display: flex; flex-direction: column; gap: 16px; padding-block: 8px 4px; }
 
 /* 3 — the price */
-.fl-price { display: flex; flex-direction: column; gap: 8px; }
+.fl-price { display: flex; flex-direction: column; gap: 8px; min-height: 150px; }
 .fl-price-figure { font-variant-numeric: normal; font-size: var(--ns-t-h1); font-weight: 600; line-height: 1.15; letter-spacing: -0.02em; }
 .fl-price-notes { display: flex; flex-direction: column; gap: 2px; font-size: var(--ns-t-ui); color: var(--color-muted); }
 .fl-price-link { align-self: flex-start; font-size: var(--ns-t-ui); color: var(--color-primary); text-decoration: underline; }
@@ -151,6 +151,7 @@
 .fl-actions .fl-go { min-height: 56px; border-radius: var(--ns-r-panel); font-size: 1.0625rem; }
 .fl-cancel { width: 100%; }
 .fl-status:empty { display: none; }
+.fl-status:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 4px; border-radius: var(--ns-r-chip); }
 .fl-status { font-size: var(--ns-t-ui); }
 .fl-watch { font-size: 1rem; }
 @media (min-width: 720px) {

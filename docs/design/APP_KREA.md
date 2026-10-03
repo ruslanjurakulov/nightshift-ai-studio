@@ -105,6 +105,22 @@ video cards and the clip-status line. Full suite: 218 files, all green.
 * SQL, RLS, credit logic, publish gate, approvals: untouched.
 * A disabled button when the run is unpriced: it is enabled as before; the server refuses with the plain sentence.
 
+## 6b. Fixes after review (Pixel and Lens, PR #393)
+
+* **The price card is never empty.** It keeps a 150px minimum and says "Checking the price…" while the estimate
+  loads, "We can't show a price for this video right now." when none can be shown (unsupported or refused), and the
+  existing read-error with Retry when it fails. The button's behaviour is unchanged: the server stays the authority.
+  Measured with the estimate held for 2.5s, answered 404 and answered 500 (390 and 1280): the Make button moves 0px
+  and CLS is 0 in all six (`design-inbox/app-krea/slow.mjs`).
+* **Keyboard focus.** "Yes, make it" is its own button (not the Make button relabelled), takes focus, and stays
+  focusable while it starts (`aria-disabled`, a second press is ignored); a short live message announces the swap.
+  When the run is queued or refused, focus moves to the status line, so it never drops to the page.
+* A customer never reads environment variable names ("Making videos is not available right now."); the operator
+  still does. The "not charged yet — credits are not enforced" line is the operator's too.
+* Allow keeps its original place (first in the page, on the right from `sm` up) with Deny the same width.
+* Copy: "Open credits", Uzbek "Ovoz yozuvlaringiz", Russian "Как должно выглядеть и звучать видео?".
+  Connected apps' limit field is 16px and 44px high from `sm` up.
+
 ## 7. Not done / next
 
 * The ten-tab strip under the header (Pixel's #6) and the VU-style balance chip: shared chrome used by every

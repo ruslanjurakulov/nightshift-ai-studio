@@ -112,6 +112,9 @@ export function CreateStudio({
   // for the worker is visible as waiting, not as a run that never started.
   const [jobs, setJobs] = useState<QueueJob[] | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // After the confirm press the button that was focused goes away; the result (started, or why not)
+  // is read from here, so keyboard and screen-reader focus never drops to the page.
+  const statusRef = useRef<HTMLParagraphElement>(null);
 
   const blocked = !channelId || !githubConfigured || !canRun;
 
@@ -125,6 +128,10 @@ export function CreateStudio({
       /* a dropped poll is not an error worth showing */
     }
   }
+
+  useEffect(() => {
+    if (phase === "queued" || phase === "error") statusRef.current?.focus();
+  }, [phase]);
 
   // Poll the pipeline's events while a run is in flight, so the panel is live.
   useEffect(() => {
@@ -259,7 +266,14 @@ export function CreateStudio({
 
       {blocked && (
         <p className="fl-card fl-warn" role="status">
-          {!channelId ? t.create.pickChannel : !githubConfigured ? t.create.notConfigured : t.create.needsAdmin}
+          {!channelId
+            ? t.create.pickChannel
+            : !githubConfigured
+              ? // The environment variable names are the operator's; a customer reads a plain sentence.
+                operator
+                ? t.create.notConfigured
+                : f.unavailable
+              : t.create.needsAdmin}
         </p>
       )}
 
@@ -459,32 +473,49 @@ export function CreateStudio({
         <h2 id="fl-price-title" className="fl-q">
           {f.priceTitle}
         </h2>
-        <CreditEstimateLine variant="card" channelId={channelId} durationS={Number(duration) > 0 ? Number(duration) : null} />
+        <CreditEstimateLine variant="card" showNotEnforced={operator} channelId={channelId} durationS={Number(duration) > 0 ? Number(duration) : null} />
         <p className="fl-hint">{f.holdNote}</p>
 
-        {/* Create — asks once, because it spends money and can produce a video. */}
-        {phase === "confirm" ? (
+        {/* Create — asks once, because it spends money and can produce a video. The confirm is its own
+            button (never the same element as "Make"), so a quick second tap cannot confirm by accident; it takes
+            focus, stays focusable (aria-disabled, not disabled) while it starts, and says it is starting. */}
+        <p className="sr-only" aria-live="polite">
+          {phase === "confirm" ? f.confirmAnnounce : ""}
+        </p>
+        {phase === "confirm" || phase === "starting" ? (
           <div className="fl-actions">
-            <button type="button" onClick={create} className="studio-cta fl-go">
-              {t.create.confirm}
+            <button
+              key="confirm"
+              type="button"
+              autoFocus
+              aria-disabled={phase === "starting"}
+              onClick={() => {
+                if (phase === "confirm") void create();
+              }}
+              className="studio-cta fl-go"
+            >
+              {phase === "starting" ? t.create.starting : t.create.confirm}
             </button>
-            <button type="button" onClick={() => setPhase("idle")} className="btn-quiet fl-cancel">
-              {t.create.cancel}
-            </button>
+            {phase === "confirm" && (
+              <button type="button" onClick={() => setPhase("idle")} className="btn-quiet fl-cancel">
+                {t.create.cancel}
+              </button>
+            )}
           </div>
         ) : (
           <div className="fl-actions">
             <button
+              key="make"
               type="button"
-              disabled={blocked || phase === "starting" || phase === "queued"}
+              disabled={blocked || phase === "queued"}
               onClick={() => setPhase("confirm")}
               className="studio-cta fl-go"
             >
-              {phase === "starting" ? t.create.starting : t.create.create}
+              {t.create.create}
             </button>
           </div>
         )}
-        <p className="fl-status" aria-live="polite">
+        <p className="fl-status" ref={statusRef} tabIndex={-1} aria-live="polite">
           {phase === "queued" ? (
             <span className="text-[var(--color-ok)]">{t.create.queued}</span>
           ) : phase === "error" ? (

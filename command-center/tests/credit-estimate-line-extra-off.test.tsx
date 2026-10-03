@@ -62,6 +62,6 @@ describe("estimate line, extra credits off", () => {
     await waitFor(() => expect(container.textContent).toContain("400 available"));
     expect(container.textContent).not.toContain("extra credits off");
     expect(container.querySelector("[data-extra-off-link]")).toBeNull();
-    expect(screen.getByRole("link", { name: /Credits/ }).getAttribute("href")).toBe("/chronos/credits");
+    expect(screen.getByRole("link", { name: /credits/i }).getAttribute("href")).toBe("/chronos/credits");
   });
 });

@@ -117,7 +117,7 @@ export function ConsentForm({
         {echo ? withParts(echo, { app: <AppName name={app} />, n }) : text.limitInvalid}
       </p>
       {error && <OAuthNotice tone="fail">{error}</OAuthNotice>}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="flex flex-col gap-3 sm:flex-row-reverse">
         <button type="button" className="st-key" data-block="true" disabled={busy !== null} onClick={() => void send("allow")}>
           {busy === "allow" ? text.working : text.allow}
         </button>

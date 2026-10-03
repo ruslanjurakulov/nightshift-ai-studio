@@ -861,6 +861,8 @@ export const en = {
         unknown: "Checking…",
       },
       details: "Show every step",
+      unavailable: "Making videos is not available right now.",
+      confirmAnnounce: "Check the price above, then press Yes, make it to start.",
     },
   },
   voice: {
@@ -2825,6 +2827,8 @@ export const en = {
     estimateLabel: "Estimated cost",
     estimateCredits: "{n} credits",
     estimatePlain: "About {n} credits",
+    priceChecking: "Checking the price…",
+    priceUnavailable: "We can't show a price for this video right now.",
     estimateAvailable: "{n} available",
     estimateExempt: "No charge — this organization is exempt.",
     estimateNotEnforced: "not charged yet — credits are not enforced",
@@ -2852,7 +2856,7 @@ export const en = {
     estimateReadFailed: "This run's cost could not be read just now, so no estimate is shown. Nothing was changed.",
     availableUnknown: "available: unknown",
     heldNote: "Its credit hold returns to the balance automatically within 3 hours.",
-    openCredits: "Open Credits →",
+    openCredits: "Open credits →",
   },
   invite: {
     title: "Invite friends",
@@ -2899,7 +2903,7 @@ export const en = {
     subtitle: "How much of your plan you have used, and what happens when it runs out.",
     notMigrated: "Usage isn't available on this deployment yet. Your plan and credits are on the Credits page.",
     readFailed: "Couldn't read your usage, so nothing is shown rather than a number that could be wrong. Try again in a moment.",
-    openCredits: "Open Credits",
+    openCredits: "Open credits",
     fromCredits: {
       title: "Plan allowance and extra credits",
       hint: "See how much of your plan credits you have used, and choose what happens when they run out.",

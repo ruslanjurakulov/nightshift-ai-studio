@@ -29,14 +29,19 @@ const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.
 const estimate = { credits: 120, basis: "per_minute", sample: 0, floorApplied: false, gap: null };
 
 let calls: { url: string; init?: RequestInit }[];
+/** Hooks for the cases that need a slow or refused answer. */
+let estimateAnswer: () => Promise<Response>;
+let runAnswer: () => Promise<Response>;
 function answer(over: Record<string, unknown> = {}) {
   calls = [];
+  estimateAnswer = () => json({ supported: true, enforced: true, exempt: false, estimate, available: 400, ...over });
+  runAnswer = () => json({ ok: true });
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string, init?: RequestInit) => {
       calls.push({ url: String(url), init });
-      if (String(url).startsWith("/api/credits/estimate")) return json({ supported: true, enforced: true, exempt: false, estimate, available: 400, ...over });
-      if (String(url).startsWith("/api/agent/run")) return json({ ok: true });
+      if (String(url).startsWith("/api/credits/estimate")) return estimateAnswer();
+      if (String(url).startsWith("/api/agent/run")) return runAnswer();
       if (String(url).startsWith("/api/agent/events")) return json({ events: [], jobs: null });
       return json({}, 404);
     }),
@@ -99,7 +104,7 @@ describe("the guided create flow", () => {
   it("an unpriced run says why and shows no number; the button still only asks", async () => {
     answer({ estimate: { credits: null, basis: "unknown", sample: 0, floorApplied: false, gap: "no_prices" } });
     show();
-    await waitFor(() => expect(document.querySelector(".fl-price")).not.toBeNull());
+    await screen.findByText(t.credits.gap.no_prices);
     const price = document.querySelector(".fl-price") as HTMLElement;
     expect(price.textContent).not.toMatch(/About/);
     expect(price.textContent).not.toMatch(/\b0\b/);
@@ -137,6 +142,99 @@ describe("the guided create flow", () => {
     show("en", { canRun: false });
     expect(screen.getByText(t.create.needsAdmin)).toBeTruthy();
     expect((screen.getByRole("button", { name: t.create.create }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("the price card is never empty", () => {
+  it("says it is checking while a slow estimate loads, keeps its height, then shows the figure", async () => {
+    answer();
+    let release: (r: Response) => void = () => {};
+    estimateAnswer = () => new Promise<Response>((r) => (release = r));
+    show();
+    const card = document.querySelector(".fl-price") as HTMLElement;
+    expect(card.textContent).toContain(t.credits.priceChecking);
+    expect(card.getAttribute("aria-busy")).toBe("true");
+    await act(async () => release(new Response(JSON.stringify({ supported: true, enforced: true, exempt: false, estimate, available: 400 }), { status: 200 })));
+    await screen.findByText(/About 120 credits/);
+    expect(document.querySelectorAll(".fl-price")).toHaveLength(1);
+  });
+
+  it("says so in plain words when no price can be shown (unsupported or refused), and the button is not made to look priced", async () => {
+    answer();
+    estimateAnswer = () => json({ error: "channel_not_found" }, 404);
+    show();
+    await screen.findByTestId("price-unavailable");
+    expect(document.querySelector(".fl-price")?.textContent).toBe(t.credits.priceUnavailable);
+    cleanup();
+    answer({ supported: false });
+    show();
+    await screen.findByTestId("price-unavailable");
+  });
+
+  it("an unreadable estimate offers Retry, and Retry asks again", async () => {
+    answer();
+    estimateAnswer = () => json({}, 503);
+    show();
+    const retry = await screen.findByRole("button", { name: t.common.retry });
+    estimateAnswer = () => json({ supported: true, enforced: true, exempt: false, estimate, available: 400 });
+    fireEvent.click(retry);
+    await screen.findByText(/About 120 credits/);
+  });
+
+  it("keeps the 'not charged yet' line for the operator and drops it for a customer", async () => {
+    answer({ enforced: false });
+    show("en", { operator: true });
+    await screen.findByText(/About 120 credits/);
+    expect(document.querySelector(".fl-price")?.textContent).toContain(t.credits.estimateNotEnforced);
+    cleanup();
+    answer({ enforced: false });
+    show("en", { operator: false });
+    await screen.findByText(/About 120 credits/);
+    expect(document.querySelector(".fl-price")?.textContent).not.toContain(t.credits.estimateNotEnforced);
+  });
+});
+
+describe("keyboard focus through the confirm", () => {
+  it("the confirm takes focus, stays focusable while it starts (aria-disabled), ignores a second press, then focus lands on the result", async () => {
+    show();
+    await screen.findByText(/About 120 credits/);
+    fireEvent.click(screen.getByRole("button", { name: t.create.create }));
+    const confirm = screen.getByRole("button", { name: t.create.confirm }) as HTMLButtonElement;
+    expect(document.activeElement).toBe(confirm);
+    expect(screen.getByText(t.create.flow.confirmAnnounce)).toBeTruthy();
+    let release: (r: Response) => void = () => {};
+    runAnswer = () => new Promise<Response>((r) => (release = r));
+    fireEvent.click(confirm);
+    const starting = await screen.findByRole("button", { name: t.create.starting });
+    expect(starting.getAttribute("aria-disabled")).toBe("true");
+    expect((starting as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(starting);
+    expect(runs()).toHaveLength(1);
+    await act(async () => release(new Response("{}", { status: 200 })));
+    await waitFor(() => expect(document.activeElement).toBe(document.querySelector(".fl-status")));
+    expect(document.querySelector(".fl-status")?.textContent).toContain(t.create.queued);
+  });
+
+  it("after a refusal focus lands on the message, not on the page", async () => {
+    show();
+    await screen.findByText(/About 120 credits/);
+    runAnswer = () => json({ error: "insufficient_credits", available: 20, needed: 120 }, 402);
+    fireEvent.click(screen.getByRole("button", { name: t.create.create }));
+    fireEvent.click(screen.getByRole("button", { name: t.create.confirm }));
+    await waitFor(() => expect(document.activeElement).toBe(document.querySelector(".fl-status")));
+    expect(document.querySelector(".fl-status")?.textContent?.length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: t.create.create })).toBeTruthy();
+  });
+});
+
+describe("what a customer reads when running is not set up", () => {
+  it("no environment variable names for a customer; the operator still gets them", () => {
+    show("en", { githubConfigured: false, operator: false });
+    expect(screen.getByText(t.create.flow.unavailable)).toBeTruthy();
+    expect(document.body.textContent).not.toContain("GITHUB_SECRETS");
+    cleanup();
+    show("en", { githubConfigured: false, operator: true });
+    expect(screen.getByText(t.create.notConfigured)).toBeTruthy();
   });
 });
 

@@ -853,6 +853,8 @@ export const uz: Dictionary = {
         unknown: "Tekshirilmoqda…",
       },
       details: "Barcha bosqichlarni koʻrsatish",
+      unavailable: "Videolar yaratish hozir mavjud emas.",
+      confirmAnnounce: "Yuqoridagi narxni tekshiring, boshlash uchun «Ha, yaratilsin»ni bosing.",
     },
   },
   voice: {
@@ -2816,6 +2818,8 @@ export const uz: Dictionary = {
     estimateLabel: "Taxminiy narx",
     estimateCredits: "{n} kredit",
     estimatePlain: "Taxminan {n} kredit",
+    priceChecking: "Narx tekshirilmoqda…",
+    priceUnavailable: "Bu video narxini hozir koʻrsatib boʻlmayapti.",
     estimateAvailable: "{n} mavjud",
     estimateExempt: "Toʻlovsiz — bu tashkilot ozod qilingan.",
     estimateNotEnforced: "hozircha yechilmaydi — kreditlar yoqilmagan",
@@ -4139,7 +4143,7 @@ export const uz: Dictionary = {
     stripLabel: "Bu stoldagi hamma narsa",
     playTake: "{n}-dublni tinglash",
     openOnDesk: "«{desk}» stolini ochish",
-    feedTitle: { video: "Kliplaringiz", image: "Rasmlaringiz", enhance: "Oldin va keyin", voice: "Ovozli matnlaringiz" },
+    feedTitle: { video: "Kliplaringiz", image: "Rasmlaringiz", enhance: "Oldin va keyin", voice: "Ovoz yozuvlaringiz" },
     emptyTitle: {
       video: "Monitorda hali klip yoʻq",
       image: "Yorugʻ stol boʻsh",

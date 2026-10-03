@@ -32,7 +32,7 @@ interface Grant {
 
 const MAX_LIMIT = 20000;
 const INPUT =
-  "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-base text-[var(--color-fg)] sm:text-[13px] outline-none focus:border-[var(--color-primary)]";
+  "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-base text-[var(--color-fg)] sm:min-h-11 outline-none focus:border-[var(--color-primary)]";
 
 function isMissing(e: { code?: string; message?: string } | null): boolean {
   return !!e && (e.code === "PGRST202" || e.code === "42883" || /could not find the function|does not exist/i.test(e.message ?? ""));

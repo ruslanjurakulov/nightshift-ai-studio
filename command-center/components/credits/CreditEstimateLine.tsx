@@ -35,16 +35,21 @@ export function CreditEstimateLine({
   channelId,
   durationS,
   variant = "line",
+  showNotEnforced = true,
 }: {
   channelId: string | null;
   durationS: number | null;
   /** "card": the same facts as a plain price card above the button (the guided create flow). */
   variant?: "line" | "card";
+  /** "not charged yet — credits are not enforced" is the operator's to read; a customer's card leaves it out. */
+  showNotEnforced?: boolean;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
   const [data, setData] = useState<EstimateResponse | null>(null);
   const [failed, setFailed] = useState(false);
+  // False until the first answer (or failure) arrives: the card says "checking", never nothing.
+  const [done, setDone] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const retry = () => setAttempt((n) => n + 1);
 
@@ -64,17 +69,46 @@ export function CreditEstimateLine({
         if (!live) return;
         setFailed(d === "failed");
         setData(d === "failed" ? null : d);
+        setDone(true);
       })
       .catch(() => {
         if (!live) return;
         setFailed(true);
         setData(null);
+        setDone(true);
       });
     return () => {
       live = false;
     };
   }, [channelId, durationS, attempt]);
 
+  // The card keeps its height in every state (checking, unreadable, nothing to show), so the button
+  // under it does not jump, and it always says something in plain words. The server stays the authority:
+  // none of these states changes what the button does.
+  if (variant === "card") {
+    if (channelId && failed)
+      return (
+        <div className="fl-price" aria-live="polite">
+          <ErrorState compact message={t.credits.estimateReadFailed} onRetry={retry} />
+        </div>
+      );
+    if (channelId && !done)
+      return (
+        <div className="fl-price" aria-live="polite" aria-busy="true">
+          <p className="fl-price-notes" data-testid="price-checking">
+            {t.credits.priceChecking}
+          </p>
+        </div>
+      );
+    if (!channelId || !data?.supported)
+      return (
+        <div className="fl-price" aria-live="polite">
+          <p className="fl-price-notes" data-testid="price-unavailable">
+            {t.credits.priceUnavailable}
+          </p>
+        </div>
+      );
+  }
   if (channelId && failed) {
     return (
       <div className="text-xs" aria-live="polite">
@@ -130,7 +164,7 @@ export function CreditEstimateLine({
         </span>,
       );
     }
-    if (!data.enforced) notes.push(<span key="enf">{t.credits.estimateNotEnforced}</span>);
+    if (!data.enforced && (variant === "line" || showNotEnforced)) notes.push(<span key="enf">{t.credits.estimateNotEnforced}</span>);
     body = (
       <>
         <span style={{ color }}>{fmt(t.credits.estimateCredits, { n: formatCredits(credits, locale) })}</span>
