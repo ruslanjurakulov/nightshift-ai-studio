@@ -86,9 +86,9 @@ def test_a_viewer_and_anon_cannot_read_the_error_or_the_details_either(conn, sc)
             become(s, SERVICE)
             s.value("select public.finish_scene_regeneration(%s, %s, false, 'failed', %s, null)",
                     [body["id"], body["render_job_id"], VENDOR_TEXT])
-            # A viewer of org A (his invite accepted in this transaction).
+            # A viewer of org A (bound in this transaction).
             become(s, sc.invitee)
-            _accept_invite(s)
+            _accept_invite(s, sc)
             seen = s.run("select error_code from public.scene_regenerations where id = %s", [body["id"]])
             err = s.run("select error from public.scene_regenerations where id = %s", [body["id"]])
             det = s.run("select detail from public.scene_regeneration_details")

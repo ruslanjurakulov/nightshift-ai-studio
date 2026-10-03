@@ -300,7 +300,6 @@ export const siteEn = {
           { title: "Topic to finished video", body: "Script, narration, visuals, captions and the edit, made for the length you choose." },
           { title: "A channel that stays itself", body: "Language, voice, visual style and schedule are set per channel and never leak into another." },
           { title: "Private until approved", body: "Every video uploads as private and passes a publish check. You watch it, then publish." },
-          { title: "Two-person sign-off", body: "A channel can require a second admin to approve a video before it can go public." },
           { title: "Your channel’s numbers", body: "Views and analytics for the connected channel, read with the access you granted, shown only to you." },
         ],
         not: [
@@ -343,7 +342,7 @@ export const siteEn = {
           { title: "Keys you control", body: "Create and revoke keys in the Developer console, and see usage and limits in the same place." },
         ],
         not: [
-          "It will not open the API until an admin of the workspace turns it on and accepts the API terms.",
+          "It will not open the API until you turn it on and accept the API terms.",
           "It will not publish through a side door — videos made over the API pass the same approval gate.",
           "It will not draw API calls from your credit balance.",
         ],

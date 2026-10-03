@@ -7,7 +7,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import { tabsFor } from "@/lib/navigation";
 
 /**
- * The screens behind one rail entry (Studio, Settings), as tabs under the
+ * The screens behind one rail entry (Studio), as tabs under the
  * panel's bar. Nothing renders for a section that has no group.
  */
 export function SectionTabs() {
@@ -16,7 +16,8 @@ export function SectionTabs() {
   const path = useChannelPath();
   const section = pathname.split("/")[2] ?? "";
   const group = tabsFor(section);
-  if (!group) return null;
+  // One entry is a page, not a tab bar (Settings).
+  if (!group || group.items.length < 2) return null;
   return (
     <nav aria-label={t.nav.sections} className="mb-6 overflow-x-auto">
       {/* A segmented control: the current screen sits on a raised chip. */}

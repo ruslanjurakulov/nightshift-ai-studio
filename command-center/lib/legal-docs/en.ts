@@ -29,7 +29,7 @@ export const en: LegalTexts = {
           {
             list: [
               "Account information: your email address and a password, handled by our authentication provider (Supabase Auth). We never see or store your password in readable form.",
-              "Configuration you enter: channel names, niche, language, voice and style choices, schedules, series, team membership and roles, and your review decisions (for example, approving a video), which are recorded with your user id as an audit trail.",
+              "Configuration you enter: channel names, niche, language, voice and style choices, schedules, series, and your review decisions (for example, approving a video), which are recorded with your user id as an audit trail.",
               "API keys you enter for third-party services: they are encrypted in our server the moment they arrive, written to our pipeline's encrypted secret store (GitHub Actions secrets), and discarded. They are never saved in our database, shown back to you, or logged.",
               "Google user data you authorise us to access, described in section 3.",
               "Technical data: our hosting and database providers record standard request logs (such as IP address, browser type and time of request) to operate and secure the Service. We do not use analytics, advertising or tracking tools.",
@@ -235,7 +235,7 @@ export const en: LegalTexts = {
         id: "accounts",
         heading: "3. Accounts",
         body: [
-          "Access is currently by invitation. Keep your sign-in details secure and tell us promptly at {contactEmail} if you suspect unauthorised use. You are responsible for activity under your account, including actions taken by team members you invite.",
+          "Access is currently by invitation. Keep your sign-in details secure and tell us promptly at {contactEmail} if you suspect unauthorised use. You are responsible for activity under your account.",
         ],
       },
       {
