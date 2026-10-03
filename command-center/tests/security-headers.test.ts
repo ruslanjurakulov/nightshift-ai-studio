@@ -76,7 +76,7 @@ describe("security headers (BR-S-007)", () => {
 });
 
 describe("the immutable cache on the self-hosted fonts", () => {
-  it("covers exactly the two font files the gate lets through", async () => {
+  it("covers exactly the font files the gate lets through", async () => {
     expect([...FONT_FILES]).toEqual([...PUBLIC_FONT_PATHS]);
     for (const path of PUBLIC_FONT_PATHS) {
       expect((await headersFor(path))["cache-control"]).toBe("public, max-age=31536000, immutable");
@@ -85,7 +85,7 @@ describe("the immutable cache on the self-hosted fonts", () => {
 
   // A redirect to /login, a 404 or (were a channel ever called "fonts") an app
   // screen must never be pinned in a browser or shared cache for a year.
-  it.each(["/fonts", "/fonts/videos", "/fonts/other.woff2", "/fonts/sofia-sans-cyrillic-v20.woff2x", "/fonts/sofia-sans-cyrillic-v20woff2", "/fonts/a/b", "/chronos/videos"])(
+  it.each(["/fonts", "/fonts/videos", "/fonts/other.woff2", "/fonts/onest-cyrillic-v1.woff2x", "/fonts/onest-cyrillic-v1woff2", "/fonts/a/b", "/chronos/videos"])(
     "leaves %s without it",
     async (path) => {
       expect((await headersFor(path))["cache-control"]).toBeUndefined();
