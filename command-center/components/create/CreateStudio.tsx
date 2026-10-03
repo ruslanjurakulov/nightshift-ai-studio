@@ -15,6 +15,9 @@ import { VoicePreviewButton } from "@/components/create/VoicePreviewButton";
 import type { RunPrefill } from "@/lib/home";
 import type { RunDna } from "@/lib/channel-dna";
 import { ChannelDnaHint } from "@/components/studio/ChannelDnaHint";
+import { StatusLamp } from "@/components/ui/StatusLamp";
+import { Check, ChevronDown } from "lucide-react";
+import "@/components/create/flow.css";
 
 const CUSTOM_VOICE = "__custom__";
 
@@ -47,6 +50,7 @@ const PLATFORM_LABEL: Record<CreateTarget["platform"], string> = {
  * doesn't.
  */
 type Ev = { ts: string; agent: string | null; event: string; status: string | null; video_id: string | null };
+type Choice = "length" | "voice" | "look";
 type Phase = "idle" | "confirm" | "starting" | "queued" | "error";
 
 export function CreateStudio({
@@ -96,6 +100,8 @@ export function CreateStudio({
   // "platform:id" of the account this video is for, or "" (none chosen).
   const [target, setTarget] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
+  // The one choice card that is open (length, voice or look): the rest stay a single line each.
+  const [open, setOpen] = useState<Choice | null>(null);
   const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
   // A refusal about credits (not enough, no estimate, not set up) — said
   // plainly, instead of the generic "couldn't start".
@@ -106,6 +112,9 @@ export function CreateStudio({
   // for the worker is visible as waiting, not as a run that never started.
   const [jobs, setJobs] = useState<QueueJob[] | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // After the confirm press the button that was focused goes away; the result (started, or why not)
+  // is read from here, so keyboard and screen-reader focus never drops to the page.
+  const statusRef = useRef<HTMLParagraphElement>(null);
 
   const blocked = !channelId || !githubConfigured || !canRun;
 
@@ -119,6 +128,10 @@ export function CreateStudio({
       /* a dropped poll is not an error worth showing */
     }
   }
+
+  useEffect(() => {
+    if (phase === "queued" || phase === "error") statusRef.current?.focus();
+  }, [phase]);
 
   // Poll the pipeline's events while a run is in flight, so the panel is live.
   useEffect(() => {
@@ -179,8 +192,7 @@ export function CreateStudio({
   const voiceId = voice === CUSTOM_VOICE ? customVoice.trim() : voice;
   const customVoiceInvalid = voice === CUSTOM_VOICE && customVoice.trim() !== "" && !isVoiceId(customVoice.trim());
 
-  const selectClass =
-    "studio-field min-h-[44px] w-full px-3 py-2 text-base text-[var(--color-fg)] outline-none sm:min-h-[40px] sm:text-[13px]";
+  const selectClass = "fl-select";
 
   const styleOf = (v: { id: string; style: string }) => (t.desk.voiceStyles as Record<string, string>)[v.id] ?? v.style;
   // The channel's voice in words. The provider and the raw id are the operator's to see.
@@ -190,323 +202,397 @@ export function CreateStudio({
       : `ElevenLabs · ${agentConfig?.elevenlabs_voice_id ? agentConfig.elevenlabs_voice_id.slice(0, 8) + "…" : "—"}`;
 
   const connectedTargets = targets.filter((a) => a.connected);
+  const f = t.create.flow;
+
+  const lengths: { value: string; label: string }[] = [
+    { value: "", label: f.lengthDefault },
+    { value: "60", label: t.agents.runDur1m },
+    { value: "180", label: t.agents.runDur3m },
+    { value: "300", label: t.agents.runDur5m },
+    { value: "600", label: t.agents.runDur10m },
+    { value: "1200", label: t.agents.runDur20m },
+  ];
+  const lengthText = lengths.find((l) => l.value === duration)?.label ?? f.lengthDefault;
+  const picked = VOICES.find((v) => v.id === voice);
+  const voiceText = voice === CUSTOM_VOICE ? voiceId || f.voiceOwn : picked ? picked.name : f.voiceDefault;
+  const lookText = style.trim() || f.lookDefault;
+  const examples = [f.ex1, f.ex2, f.ex3];
+
+  // The newest queue job is the one just made; without a queue only "started" is known.
+  const jobStatus = backend === "queue" && jobs && jobs.length > 0 ? jobs[0].status : null;
+
+  const choice = (id: Choice, label: string, value: string, panel: React.ReactNode) => {
+    const on = open === id;
+    return (
+      <div className="fl-choice-wrap" data-open={on ? "true" : undefined}>
+        <button
+          type="button"
+          className="fl-choice"
+          aria-expanded={on}
+          aria-controls={`fl-panel-${id}`}
+          onClick={() => setOpen(on ? null : id)}
+        >
+          <span className="fl-choice-text">
+            <span className="fl-choice-label">{label}</span>
+            <span className="fl-choice-value">{value}</span>
+          </span>
+          <ChevronDown aria-hidden className="fl-choice-chevron" />
+        </button>
+        {on && (
+          <div id={`fl-panel-${id}`} className="fl-panel">
+            {panel}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const radio = (checked: boolean, onPick: () => void, label: React.ReactNode, sub?: React.ReactNode) => (
+    <button type="button" role="radio" aria-checked={checked} onClick={onPick} className="fl-option">
+      <span aria-hidden className="fl-option-mark">
+        {checked && <Check className="size-3.5" strokeWidth={3} />}
+      </span>
+      <span className="fl-option-text">
+        <span>{label}</span>
+        {sub && <span className="fl-option-sub">{sub}</span>}
+      </span>
+    </button>
+  );
 
   return (
-    <div id="run" className="flex scroll-mt-4 flex-col gap-4">
-      {initial && <p className="text-sm text-[var(--color-muted)]">{t.create.prefilled}</p>}
+    <div id="run" className="fl scroll-mt-4">
+      {initial && <p className="fl-note">{t.create.prefilled}</p>}
       {dna && <ChannelDnaHint href={dna.href} />}
-      {connectedTargets.length > 0 && (
-        <div className="flex justify-center">
-          <label className="flex flex-wrap items-center justify-center gap-2">
-            <span className="studio-label">
-              {t.publish.makingFor}
-            </span>
-            <select
-              value={target}
-              onChange={(e) => setTarget(e.target.value)}
-              className={selectClass}
-              aria-describedby="making-for-hint"
-            >
-              <option value="">{t.publish.makingForNone}</option>
-              {connectedTargets.map((a) => (
-                <option key={`${a.platform}:${a.id}`} value={`${a.platform}:${a.id}`}>
-                  {PLATFORM_LABEL[a.platform]} · {a.name}
-                </option>
-              ))}
-            </select>
-            <span id="making-for-hint" className="text-xs text-[var(--color-muted)]">
-              {t.publish.makingForHint}
-            </span>
-          </label>
-        </div>
-      )}
 
       {blocked && (
-        <p className="text-sm text-[var(--color-warn)]">
-          {!channelId ? t.create.pickChannel : !githubConfigured ? t.create.notConfigured : t.create.needsAdmin}
+        <p className="fl-card fl-warn" role="status">
+          {!channelId
+            ? t.create.pickChannel
+            : !githubConfigured
+              ? // The environment variable names are the operator's; a customer reads a plain sentence.
+                operator
+                ? t.create.notConfigured
+                : f.unavailable
+              : t.create.needsAdmin}
         </p>
       )}
 
-      {/* The prompt: a topic, an idea, or a short brief. */}
-      <div className="studio-surface p-4">
-        <label htmlFor="run-brief" className="studio-label mb-2 block">
-          {t.home.promptLabel}
-        </label>
+      {/* 1 — what is it about: one field, three ways to start. */}
+      <section className="fl-card" aria-labelledby="fl-topic-title">
+        <h2 id="fl-topic-title" className="fl-q">
+          <label htmlFor="run-brief">{f.topicTitle}</label>
+        </h2>
         <textarea
           id="run-brief"
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
           onKeyDown={onKeyDown}
-          rows={4}
+          rows={3}
           maxLength={300}
           autoFocus={initial !== null}
           placeholder={t.create.placeholder}
-          className="studio-field w-full resize-y px-3 py-3 text-base leading-relaxed outline-none placeholder:text-[var(--color-muted)] sm:text-[15px]"
+          aria-describedby="fl-topic-hint"
+          className="fl-topic"
         />
-
-        {/* Per-run controls the pipeline actually reads. */}
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <label className="flex flex-col gap-1">
-            <span className="studio-label">{t.agents.runDurationLabel}</span>
-            <select value={duration} onChange={(e) => setDuration(e.target.value)} className={selectClass}>
-              <option value="">{t.agents.runOptChannel}</option>
-              <option value="60">{t.agents.runDur1m}</option>
-              <option value="180">{t.agents.runDur3m}</option>
-              <option value="300">{t.agents.runDur5m}</option>
-              <option value="600">{t.agents.runDur10m}</option>
-              <option value="1200">{t.agents.runDur20m}</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="studio-label">{t.agents.runLangLabel}</span>
-            <select value={language} onChange={(e) => setLanguage(e.target.value)} className={selectClass}>
-              <option value="">{t.agents.runOptChannel}</option>
-              <option value="Uzbek">O&apos;zbek</option>
-              <option value="English">English</option>
-              <option value="Arabic">العربية</option>
-              <option value="Russian">Русский</option>
-              <option value="Spanish">Español</option>
-              <option value="Chinese">中文</option>
-              <option value="Korean">한국어</option>
-              <option value="Indonesian">Indonesia</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="studio-label">{t.agents.runStyleLabel}</span>
-            <input value={style} onChange={(e) => setStyle(e.target.value)} placeholder={t.agents.runStylePlaceholder} maxLength={300} className={selectClass} />
-          </label>
+        <p id="fl-topic-hint" className="fl-hint">
+          {f.topicHint}
+        </p>
+        <div className="fl-try" role="group" aria-label={f.tryOne}>
+          <span className="fl-try-label">{f.tryOne}</span>
+          {examples.map((ex) => (
+            <button key={ex} type="button" className="ns-chip" onClick={() => setBrief(ex)}>
+              {ex}
+            </button>
+          ))}
         </div>
+      </section>
 
-        {/* Per-run model routing: which model turns stills into b-roll, and which
-            supplies the imagery. Empty = the repo's configured default. */}
-        {/* Provider-level routing is the platform operator's: a customer's run uses the
-            channel's own setup, and customer screens never name a provider. */}
-        {operator && (
-          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <label className="flex flex-col gap-1">
-              <span className="studio-label">{t.create.videoModel}</span>
-              <select value={videoProvider} onChange={(e) => setVideoProvider(e.target.value)} className={selectClass}>
-                <option value="">{t.create.optDefault}</option>
-                <option value="seedance">Seedance</option>
-                <option value="kling">Kling</option>
-                <option value="veo">Veo</option>
-                <option value="higgsfield">Higgsfield</option>
-                <option value="wan">Wan</option>
-                <option value="minimax">MiniMax</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="studio-label">{t.create.imageModel}</span>
-              <select value={imageProvider} onChange={(e) => setImageProvider(e.target.value)} className={selectClass}>
-                <option value="">{t.create.optDefault}</option>
-                <option value="pexels">Pexels (stock)</option>
-                {IMAGE_GENERATORS.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="studio-label">{t.create.voiceModel}</span>
-              <select value={ttsModel} onChange={(e) => setTtsModel(e.target.value)} className={selectClass}>
-                <option value="">{t.create.optDefault}</option>
-                {TTS_MODELS.map((m) => (
-                  <option key={m} value={m}>
-                    {TTS_MODEL_LABELS[m]}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        )}
-
-        {/* The narrator for this run only: the channel keeps its own voice.
-            "Listen" plays the chosen voice (or the channel's) before running. */}
-        <div className="mt-2 grid grid-cols-1 items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
-          <label className="flex flex-col gap-1">
-            <span className="studio-label">{t.create.voicePick}</span>
-            <select value={voice} onChange={(e) => setVoice(e.target.value)} className={selectClass}>
-              <option value="">{t.create.voiceChannel}</option>
-              {VOICES.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name} — {styleOf(v)}
-                </option>
+      {/* 2 — look, length, voice: three big cards, each already set to something sensible. */}
+      <section className="fl-card" aria-labelledby="fl-look-title">
+        <h2 id="fl-look-title" className="fl-q">
+          {f.lookTitle}
+        </h2>
+        <div className="fl-choices">
+          {choice(
+            "length",
+            f.lengthLabel,
+            lengthText,
+            <div role="radiogroup" aria-label={t.agents.runDurationLabel} className="fl-options">
+              {lengths.map((l) => (
+                <span key={l.value || "default"}>{radio(duration === l.value, () => setDuration(l.value), l.label)}</span>
               ))}
-              <option value={CUSTOM_VOICE}>{t.create.voiceCustom}</option>
-            </select>
-          </label>
-          {voice === CUSTOM_VOICE && (
-            <label className="flex flex-col gap-1">
-              <span className="studio-label">{t.create.voiceCustomId}</span>
-              <input
-                value={customVoice}
-                onChange={(e) => setCustomVoice(e.target.value)}
-                placeholder="pNInz6obpgDQGcFmaJgB"
-                maxLength={40}
-                spellCheck={false}
-                aria-invalid={customVoiceInvalid}
-                className={selectClass + " tnum"}
-              />
-              {customVoiceInvalid && (
-                <span className="text-xs text-[var(--color-warn)]">{t.create.voiceCustomInvalid}</span>
+            </div>,
+          )}
+          {choice(
+            "voice",
+            f.voiceLabel,
+            voiceText,
+            <>
+              <div role="radiogroup" aria-label={t.create.voicePick} className="fl-options">
+                {radio(voice === "", () => setVoice(""), f.voiceDefault)}
+                {VOICES.map((v) => (
+                  <span key={v.id}>{radio(voice === v.id, () => setVoice(v.id), v.name, styleOf(v))}</span>
+                ))}
+                {radio(voice === CUSTOM_VOICE, () => setVoice(CUSTOM_VOICE), f.voiceOwn)}
+              </div>
+              {voice === CUSTOM_VOICE && (
+                <label className="fl-field">
+                  <span>{t.create.voiceCustomId}</span>
+                  <input
+                    value={customVoice}
+                    onChange={(e) => setCustomVoice(e.target.value)}
+                    placeholder="pNInz6obpgDQGcFmaJgB"
+                    maxLength={40}
+                    spellCheck={false}
+                    aria-invalid={customVoiceInvalid}
+                    className={selectClass + " font-mono"}
+                    dir="ltr"
+                  />
+                  {customVoiceInvalid && <span className="text-[var(--color-warn)]">{t.create.voiceCustomInvalid}</span>}
+                </label>
               )}
+              <VoicePreviewButton voiceId={voiceId || agentConfig?.elevenlabs_voice_id || ""} channelId={channelId} />
+            </>,
+          )}
+          {choice(
+            "look",
+            f.lookLabel,
+            lookText,
+            <>
+              <div role="radiogroup" aria-label={f.lookLabel} className="fl-options">
+                {radio(style.trim() === "", () => setStyle(""), f.lookDefault)}
+              </div>
+              <label className="fl-field">
+                <span>{f.lookField}</span>
+                <input
+                  value={style}
+                  onChange={(e) => setStyle(e.target.value)}
+                  placeholder={f.lookPlaceholder}
+                  maxLength={300}
+                  className={selectClass}
+                />
+              </label>
+            </>,
+          )}
+        </div>
+
+        <details className="fl-more">
+          <summary>{f.more}</summary>
+          <div className="fl-more-body">
+            <label className="fl-field">
+              <span>{t.agents.runLangLabel}</span>
+              <select value={language} onChange={(e) => setLanguage(e.target.value)} className={selectClass}>
+                <option value="">{t.agents.runOptChannel}</option>
+                <option value="Uzbek">O&apos;zbek</option>
+                <option value="English">English</option>
+                <option value="Arabic">العربية</option>
+                <option value="Russian">Русский</option>
+                <option value="Spanish">Español</option>
+                <option value="Chinese">中文</option>
+                <option value="Korean">한국어</option>
+                <option value="Indonesian">Indonesia</option>
+              </select>
             </label>
-          )}
-          <div className={voice === CUSTOM_VOICE ? "" : "sm:col-start-3"}>
-            <VoicePreviewButton voiceId={voiceId || agentConfig?.elevenlabs_voice_id || ""} channelId={channelId} />
+
+            {connectedTargets.length > 0 && (
+              <label className="fl-field">
+                <span>{t.publish.makingFor}</span>
+                <select value={target} onChange={(e) => setTarget(e.target.value)} className={selectClass} aria-describedby="making-for-hint">
+                  <option value="">{t.publish.makingForNone}</option>
+                  {connectedTargets.map((a) => (
+                    <option key={`${a.platform}:${a.id}`} value={`${a.platform}:${a.id}`}>
+                      {PLATFORM_LABEL[a.platform]} · {a.name}
+                    </option>
+                  ))}
+                </select>
+                <span id="making-for-hint" className="fl-hint">
+                  {t.publish.makingForHint}
+                </span>
+              </label>
+            )}
+
+            {/* Provider-level routing is the platform operator's: a customer's run uses the
+                channel's own setup, and customer screens never name a provider. */}
+            {operator && (
+              <>
+                <label className="fl-field">
+                  <span>{t.create.videoModel}</span>
+                  <select value={videoProvider} onChange={(e) => setVideoProvider(e.target.value)} className={selectClass}>
+                    <option value="">{t.create.optDefault}</option>
+                    <option value="seedance">Seedance</option>
+                    <option value="kling">Kling</option>
+                    <option value="veo">Veo</option>
+                    <option value="higgsfield">Higgsfield</option>
+                    <option value="wan">Wan</option>
+                    <option value="minimax">MiniMax</option>
+                  </select>
+                </label>
+                <label className="fl-field">
+                  <span>{t.create.imageModel}</span>
+                  <select value={imageProvider} onChange={(e) => setImageProvider(e.target.value)} className={selectClass}>
+                    <option value="">{t.create.optDefault}</option>
+                    <option value="pexels">Pexels (stock)</option>
+                    {IMAGE_GENERATORS.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="fl-field">
+                  <span>{t.create.voiceModel}</span>
+                  <select value={ttsModel} onChange={(e) => setTtsModel(e.target.value)} className={selectClass}>
+                    <option value="">{t.create.optDefault}</option>
+                    {TTS_MODELS.map((m) => (
+                      <option key={m} value={m}>
+                        {TTS_MODEL_LABELS[m]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-[var(--color-muted)]">{t.create.models}:</span>
+                  <span className="font-mono text-[var(--color-muted)]">
+                    {t.create.voice}: {voiceChip}
+                  </span>
+                  <Link href={path("/agents")} className="tap-link text-[var(--color-primary)] hover:underline">
+                    {t.create.editVoice}
+                  </Link>
+                  <Link href={path("/providers")} className="tap-link text-[var(--color-primary)] hover:underline">
+                    {t.create.editProviders}
+                  </Link>
+                </div>
+              </>
+            )}
           </div>
-        </div>
+        </details>
+      </section>
 
-        {/* Models governed elsewhere — shown here, edited there. The provider and the
-            raw voice id are the platform operator's; a customer's run uses the channel's. */}
-        {operator && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-[var(--color-muted)]">{t.create.models}:</span>
-          <span className="rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-2.5 py-1 text-[var(--color-muted)]">
-            {t.create.voice}: {voiceChip}
-          </span>
-          {operator && (
-            <>
-              <Link href={path("/agents")} className="tap-link text-[var(--color-primary)] hover:underline">
-                {t.create.editVoice}
-              </Link>
-              <Link href={path("/providers")} className="tap-link text-[var(--color-primary)] hover:underline">
-                {t.create.editProviders}
-              </Link>
-            </>
-          )}
-        </div>
-        )}
+      {/* 3 — the price, said plainly before the button; 4 — the one button. */}
+      <section className="fl-card" aria-labelledby="fl-price-title">
+        <h2 id="fl-price-title" className="fl-q">
+          {f.priceTitle}
+        </h2>
+        <CreditEstimateLine variant="card" showNotEnforced={operator} channelId={channelId} durationS={Number(duration) > 0 ? Number(duration) : null} />
+        <p className="fl-hint">{f.holdNote}</p>
 
-        {/* Create — asks once, because it spends money and can produce a video. */}
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          {phase === "confirm" ? (
-            <>
-              <button
-                type="button"
-                onClick={create}
-                className="studio-cta w-auto min-h-[44px] px-6 text-sm"
-              >
-                {t.create.confirm}
-              </button>
-              <button type="button" onClick={() => setPhase("idle")} className="btn-quiet min-h-[44px] px-4 text-sm">
+        {/* Create — asks once, because it spends money and can produce a video. The confirm is its own
+            button (never the same element as "Make"), so a quick second tap cannot confirm by accident; it takes
+            focus, stays focusable (aria-disabled, not disabled) while it starts, and says it is starting. */}
+        <p className="sr-only" aria-live="polite">
+          {phase === "confirm" ? f.confirmAnnounce : ""}
+        </p>
+        {phase === "confirm" || phase === "starting" ? (
+          <div className="fl-actions">
+            <button
+              key="confirm"
+              type="button"
+              autoFocus
+              aria-disabled={phase === "starting"}
+              onClick={() => {
+                if (phase === "confirm") void create();
+              }}
+              className="studio-cta fl-go"
+            >
+              {phase === "starting" ? t.create.starting : t.create.confirm}
+            </button>
+            {phase === "confirm" && (
+              <button type="button" onClick={() => setPhase("idle")} className="btn-quiet fl-cancel">
                 {t.create.cancel}
               </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              disabled={blocked || phase === "starting"}
-              onClick={() => setPhase("confirm")}
-              className="studio-cta w-auto min-h-[44px] px-6 text-sm"
-            >
-              {phase === "starting" ? t.create.starting : t.create.create}
-            </button>
-          )}
-          <span className="tnum text-xs" aria-live="polite">
-            {phase === "queued" ? (
-              <span className="text-[var(--color-ok)]">{t.create.queued}</span>
-            ) : phase === "error" ? (
-              <span className="text-[var(--color-fail)]">
-                {creditError ?? (errorKey === "unauthorized" ? t.agents.runUnauthorized : t.agents.runFailed)}
-                {extraOff && (
-                  <>
-                    {" "}
-                    <ExtraOffLink />
-                  </>
-                )}
-              </span>
-            ) : (
-              <span className="text-[var(--color-muted)]">{t.create.enterHint}</span>
             )}
-          </span>
-        </div>
-        {/* What this run should cost, before it is confirmed. */}
-        <div className="mt-2">
-          <CreditEstimateLine channelId={channelId} durationS={Number(duration) > 0 ? Number(duration) : null} />
-        </div>
-      </div>
+          </div>
+        ) : (
+          <div className="fl-actions">
+            <button
+              key="make"
+              type="button"
+              disabled={blocked || phase === "queued"}
+              onClick={() => setPhase("confirm")}
+              className="studio-cta fl-go"
+            >
+              {t.create.create}
+            </button>
+          </div>
+        )}
+        <p className="fl-status" ref={statusRef} tabIndex={-1} aria-live="polite">
+          {phase === "queued" ? (
+            <span className="text-[var(--color-ok)]">{t.create.queued}</span>
+          ) : phase === "error" ? (
+            <span className="text-[var(--color-fail)]">
+              {creditError ?? (errorKey === "unauthorized" ? t.agents.runUnauthorized : t.agents.runFailed)}
+              {extraOff && (
+                <>
+                  {" "}
+                  <ExtraOffLink />
+                </>
+              )}
+            </span>
+          ) : null}
+        </p>
+      </section>
 
-      {/* Live progress: the pipeline's own events, refreshed while a run is up. */}
+      {/* Live progress, in plain words; every step stays one tap away. */}
       {phase === "queued" && (
-        <div className="ns-panel flex flex-col gap-2 p-4">
-          <h2 className="ns-eyebrow">{t.create.progressTitle}</h2>
-          <p className="text-xs text-[var(--color-muted)]">
-            {backend === "queue" ? t.create.progressHintQueue : t.create.progressHint}
+        <section className="fl-card" aria-labelledby="fl-watch-title">
+          <h2 id="fl-watch-title" className="fl-q">
+            {f.watchTitle}
+          </h2>
+          <p className="fl-watch">
+            <StatusLamp
+              tone={jobStatus === "succeeded" ? "ok" : jobStatus === "failed" ? "fail" : jobStatus === "cancelled" ? "idle" : "run"}
+              live={jobStatus === null || jobStatus === "queued" || jobStatus === "running"}
+              label={jobStatus ? f.status[jobStatus] : f.started}
+            />
           </p>
-          {backend === "queue" && jobs && jobs.length > 0 && (
-            <ol className="flex flex-col gap-1.5" aria-label={t.create.queueTitle}>
-              {jobs.slice(0, 3).map((j) => (
-                <li key={j.id} className="flex flex-wrap items-center gap-3 text-xs">
-                  <span className="tnum shrink-0 text-xs text-[var(--color-muted)]">
-                    {t.create.queueJob} #{j.id}
-                  </span>
-                  <span
-                    className="shrink-0 text-xs"
-                    style={{
-                      color:
-                        j.status === "succeeded"
-                          ? "var(--color-ok)"
-                          : j.status === "failed"
-                            ? "var(--color-fail)"
-                            : j.status === "running"
-                              ? "var(--color-primary)"
-                              : "var(--color-muted)",
-                    }}
-                  >
-                    {t.create.queueStatus[j.status]}
-                  </span>
-                  {j.attempts > 1 && (
-                    <span className="tnum text-xs text-[var(--color-muted)]">
-                      {t.create.queueAttempt} {j.attempts}
-                    </span>
-                  )}
-                  {j.error && (
-                    <span className="min-w-0 flex-1 truncate text-xs text-[var(--color-fail)]" title={j.error}>
-                      {j.error.split("\n")[0]}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ol>
-          )}
-          {events.length === 0 ? (
-            <p className="tnum text-xs text-[var(--color-muted)]">{t.create.progressWaiting}</p>
-          ) : (
-            <ol className="mt-1 flex flex-col gap-1.5">
-              {events.slice(0, 24).map((e, i) => (
-                <li key={`${e.ts}-${i}`} className="flex items-center gap-3 text-xs">
-                  <span className="tnum w-14 shrink-0 text-xs text-[var(--color-muted)]">
-                    {(e.ts ?? "").slice(11, 19)}
-                  </span>
-                  <span className="tnum shrink-0 text-xs text-[var(--color-primary)]">{e.agent ?? "system"}</span>
-                  <span className="min-w-0 flex-1 truncate text-[var(--color-fg)]">{e.event}</span>
-                  {e.status && (
-                    <span
-                      className="shrink-0 text-xs"
-                      style={{
-                        color:
-                          e.status === "completed"
-                            ? "var(--color-ok)"
-                            : e.status === "failed"
-                              ? "var(--color-fail)"
-                              : "var(--color-primary)",
-                      }}
-                    >
-                      {e.status}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ol>
-          )}
-          {operator && (
-            <Link href={path("/jobs")} className="mt-1 text-xs text-[var(--color-primary)] hover:underline">
-              {t.create.openJobs}
-            </Link>
-          )}
-        </div>
+          <details className="fl-more">
+            <summary>{f.details}</summary>
+            <div className="fl-more-body">
+              <p className="fl-hint">{backend === "queue" ? t.create.progressHintQueue : t.create.progressHint}</p>
+              {backend === "queue" && jobs && jobs.length > 0 && (
+                <ol className="flex flex-col gap-1.5" aria-label={t.create.queueTitle}>
+                  {jobs.slice(0, 3).map((j) => (
+                    <li key={j.id} className="flex flex-wrap items-center gap-3 text-sm">
+                      <span className="tnum shrink-0 text-[var(--color-muted)]">
+                        {t.create.queueJob} #{j.id}
+                      </span>
+                      <span className="shrink-0">{t.create.queueStatus[j.status]}</span>
+                      {j.attempts > 1 && (
+                        <span className="tnum text-[var(--color-muted)]">
+                          {t.create.queueAttempt} {j.attempts}
+                        </span>
+                      )}
+                      {j.error && (
+                        <span className="min-w-0 flex-1 truncate text-[var(--color-fail)]" title={j.error}>
+                          {j.error.split("\n")[0]}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {events.length === 0 ? (
+                <p className="tnum text-sm text-[var(--color-muted)]">{t.create.progressWaiting}</p>
+              ) : (
+                <ol className="flex flex-col gap-1.5">
+                  {events.slice(0, 24).map((e, i) => (
+                    <li key={`${e.ts}-${i}`} className="flex items-center gap-3 text-sm">
+                      <span className="tnum w-16 shrink-0 text-[var(--color-muted)]">{(e.ts ?? "").slice(11, 19)}</span>
+                      <span className="shrink-0 text-[var(--color-primary)]">{e.agent ?? "system"}</span>
+                      <span className="min-w-0 flex-1 truncate text-[var(--color-fg)]">{e.event}</span>
+                      {e.status && <span className="shrink-0 text-[var(--color-muted)]">{e.status}</span>}
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {operator && (
+                <Link href={path("/jobs")} className="text-sm text-[var(--color-primary)] hover:underline">
+                  {t.create.openJobs}
+                </Link>
+              )}
+            </div>
+          </details>
+        </section>
       )}
     </div>
   );

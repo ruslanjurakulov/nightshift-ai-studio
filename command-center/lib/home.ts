@@ -231,6 +231,42 @@ export function countByChannel(rows: unknown): Map<string, number> {
   return out;
 }
 
+/** One video on Home's "your videos" row. */
+export interface HomeVideo {
+  id: string;
+  /** The channel's URL slug, for the link to the video. */
+  slug: string;
+  title: string;
+  at: string | null;
+  /** held = finished but not uploaded (waiting for the person); otherwise what YouTube was told. */
+  state: "waiting" | "private" | "unlisted" | "public" | "uploaded";
+}
+
+/**
+ * The newest videos across the open channels, from rows already read (held rows,
+ * which have no publish time, come first: they are the ones waiting for a decision).
+ * A privacy value this build does not know reads as plain "uploaded", never guessed.
+ */
+export function recentVideos(rows: unknown, slugOfChannel: (channelId: string) => string | null, limit = 6): HomeVideo[] {
+  if (!Array.isArray(rows)) return [];
+  const out: HomeVideo[] = [];
+  for (const r of rows as Record<string, unknown>[]) {
+    if (!r || typeof r.video_id !== "string" || typeof r.channel_id !== "string") continue;
+    const slug = slugOfChannel(r.channel_id);
+    if (!slug) continue;
+    const title = typeof r.title === "string" && r.title.trim() ? r.title.trim() : typeof r.topic === "string" ? r.topic.trim() : "";
+    const at = typeof r.published_at === "string" && r.published_at ? r.published_at : null;
+    const privacy = typeof r.privacy === "string" ? r.privacy : "";
+    const uploaded = at !== null || privacy !== "";
+    const state: HomeVideo["state"] = !uploaded ? "waiting" : privacy === "private" || privacy === "unlisted" || privacy === "public" ? privacy : "uploaded";
+    out.push({ id: r.video_id, slug, title, at, state });
+  }
+  // Waiting first, then newest first; the read's own order is not relied on.
+  const rank = (v: HomeVideo) => (v.state === "waiting" ? 0 : 1);
+  out.sort((a, b) => rank(a) - rank(b) || Date.parse(b.at ?? "") - Date.parse(a.at ?? "") || 0);
+  return out.slice(0, limit);
+}
+
 const httpsUrl = (v: unknown): string | null =>
   typeof v === "string" && /^https:\/\/[^\s"'<>]+$/i.test(v) ? v : null;
 
