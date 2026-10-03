@@ -11,6 +11,8 @@ import type { DevDictionary } from "@/lib/i18n/dev";
 import { BrandLogo, BrandSprite, logoTile } from "@/components/docs/BrandLogo";
 import { ConnectCard, type ConnectTab } from "@/components/docs/ConnectCard";
 import { Field } from "@/components/docs/Field";
+import { McpAfter, McpLanding } from "@/components/docs/McpLanding";
+import { ClientText, McpClientProvider } from "@/components/docs/McpClientContext";
 import { HowTabs } from "@/components/docs/HowTabs";
 import { DevNav, DocSection, Statement, Table, type ScrollLabels } from "@/components/docs/doc-parts";
 import { BrandMark } from "@/components/site/BrandMark";
@@ -192,9 +194,13 @@ export function McpPage({
   // Real logos only around the N, balanced in colour and weight: a white mark and a red one to the left,
   // Anthropic's orange and a blue one to the right. No "+" tile any more: every client has a mark.
   const hero = ["cursor", "chatgpt", "openclaw", "nightshift", "claude", "vscode", "windsurf"] as const;
-  const names = ["claude", "chatgpt", "claude-code", "openclaw", "cursor", "hermes"].map((id) => MCP_CLIENTS.find((x) => x.id === id)!.label);
+  const firstSix = ["claude", "chatgpt", "claude-code", "openclaw", "cursor", "hermes"].map((id) => MCP_CLIENTS.find((x) => x.id === id)!.label);
+
+  const names = Object.fromEntries(MCP_CLIENTS.map((x) => [x.id, x.id === "other" ? dev.ui.other : x.label]));
+  const marks = Object.fromEntries(MCP_CLIENTS.map((x) => [x.id, <span key={x.id} className="st-pill-glyph" data-tile={logoTile(x.id)}><BrandLogo id={x.id} /></span>]));
 
   return (
+    <McpClientProvider initialId={open} names={names} marks={marks}>
     <div className="st-doc st-mcp">
       <BrandSprite ids={MCP_CLIENTS.map((x) => x.id)} />
       <section aria-labelledby="mcp-title" className="st-mcphero">
@@ -214,7 +220,7 @@ export function McpPage({
             ))}
           </div>
           <p className="sr-only">
-            {c.worksWith}: {names.join(", ")}
+            {c.worksWith}: {firstSix.join(", ")}
           </p>
           <h1 id="mcp-title" className="st-mcphero-h1">
             <span>{c.title}</span> <span className="st-mcphero-dim">{c.titleDim}</span>
@@ -224,7 +230,6 @@ export function McpPage({
 
           <ConnectCard
             tabs={tabs}
-            initialId={open}
             title={c.cardTitle}
             tablistLabel={c.tablist}
             moreLabel={c.moreLabel}
@@ -253,13 +258,17 @@ export function McpPage({
           <h2 id="how-title" className="st-how-h2">
             {c.how.title}
           </h2>
-          <p className="st-how-lead">{c.how.lead}</p>
+          <p className="st-how-lead">
+            <ClientText template={c.how.lead} />
+          </p>
           <HowTabs
             tabs={c.how.tabs}
             labels={{ tablist: c.how.tablist, you: c.how.you, agent: c.how.agent, tool: c.how.tool, pane: c.how.pane, example: c.how.example }}
           />
         </div>
       </section>
+
+      <McpLanding dev={dev} />
 
       <DocSection id="tools" no={1} title={c.tools.slug}>
         <Statement>{c.tools.title}</Statement>
@@ -288,42 +297,14 @@ export function McpPage({
         </Table>
       </DocSection>
 
-      <DocSection id="more" no={2} title={c.more.title}>
-        <p className="st-body">{c.more.body}</p>
-        <ul className="st-doc-links">
-          <li>
-            <Link href="/docs/api" className="st-link">
-              {c.more.api}
-              <ArrowRight aria-hidden />
-            </Link>
-          </li>
-          {showCli && (
-            <>
-              <li>
-                <Link href="/docs/cli" className="st-link">
-                  {c.more.cli}
-                  <ArrowRight aria-hidden />
-                </Link>
-              </li>
-              <li>
-                <Link href="/docs/skills" className="st-link">
-                  {c.more.skills}
-                  <ArrowRight aria-hidden />
-                </Link>
-              </li>
-            </>
-          )}
-        </ul>
-      </DocSection>
+      <McpAfter dev={dev} showCli={showCli} />
 
-      <section aria-labelledby="mcp-close-title" className="st-doc-close">
-        <div className="st-wrap st-doc-close-row">
-          <div>
-            <h2 id="mcp-close-title" className="st-doc-h2">
-              {c.closing.title}
-            </h2>
-            <p className="st-body mt-3">{c.closing.body}</p>
-          </div>
+      <section aria-labelledby="mcp-close-title" className="ml-land ml-close">
+        <div className="ml-land-in ml-close-in">
+          <h2 id="mcp-close-title" className="ml-land-h2 ml-close-h2">
+            {c.closing.title}
+          </h2>
+          <p className="ml-land-lead">{c.closing.body}</p>
           <a href="#connect" className="st-key">
             {c.closing.cta}
             <ArrowRight aria-hidden />
@@ -331,5 +312,6 @@ export function McpPage({
         </div>
       </section>
     </div>
+    </McpClientProvider>
   );
 }

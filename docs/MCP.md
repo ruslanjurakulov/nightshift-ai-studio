@@ -73,6 +73,14 @@ environment flag `MCP_OAUTH_LIVE` (literal `1` = on, read at request time; `depl
 `lib/mcp-oauth.ts`). Leave it off until the server's OAuth is merged, deployed and tested with a real connector: while
 it is off the Claude and ChatGPT tabs say "Coming soon" and every other tab shows its API-key steps.
 
+Under the connect card `/mcp` is one long page, the same on every tab except the assistant's name: how it works,
+ready-to-copy asks, six capability rows (video, channels, language and voice, approval, credits and limits, batches),
+a carousel of example asks, a "works with" strip, the tool list, questions, and a closing line. Every picture on it is
+drawn in CSS and inline SVG and captioned as an illustration (never a generated or real result); it names no model,
+provider or price. The structure is in `command-center/lib/dev/mcp-landing.ts`, the copy under `mcp.land` in
+`lib/i18n/site/dev-*.ts`, and `tests/mcp-landing.test.tsx` pins the order, the honesty rules and the carousel's
+keyboard use.
+
 The OAuth sign-in tabs of `/mcp` appear only when `MCP_OAUTH_LIVE=1`. This
 document describes the server as built; **set the flag after migration 0093 is applied, the build is deployed and a real
 connector (claude.ai or ChatGPT) has connected once.**
