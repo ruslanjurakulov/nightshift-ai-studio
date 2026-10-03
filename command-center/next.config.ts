@@ -40,6 +40,8 @@ export const PUBLIC_PAGE_PATHS = [
   "/terms",
   "/login",
   "/signup",
+  // Where an invite link lands when it cannot be used (lib/public-paths.ts).
+  "/invite",
 ] as const;
 
 /** Must equal PUBLIC_FONT_PATHS in lib/public-paths.ts (tests/security-headers.test.ts). */

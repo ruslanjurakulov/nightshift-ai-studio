@@ -18,6 +18,9 @@ import { readSellableModels } from "@/lib/creative/registry";
 import { planValue, readBillingSummary, readCreditLots, readPlanCatalog } from "@/lib/server/plans";
 import { PlanPanel } from "@/components/credits/PlanPanel";
 import { CreditLots } from "@/components/credits/CreditLots";
+import { InviteFriendsCard } from "@/components/credits/InviteFriendsCard";
+import { InviteAdminPanel } from "@/components/credits/InviteAdminPanel";
+import { readInviteAdmin, readMyInvite } from "@/lib/server/friend-invites";
 import { ErrorState } from "@/components/ReadError";
 import { readFailed } from "@/lib/readState";
 
@@ -61,7 +64,7 @@ export default async function CreditsPage() {
   if (!org.current) return note(t.credits.noOrg);
   const orgId = org.current.id;
 
-  const [acct, priceRes, txns, admin, userRes, catalogRead, summaryRead, lotsRead, modelsRead] = await Promise.all([
+  const [acct, priceRes, txns, admin, userRes, catalogRead, summaryRead, lotsRead, modelsRead, inviteRead] = await Promise.all([
     readCreditAccount(supabase, orgId),
     readCreditPrices(supabase),
     supabase
@@ -80,6 +83,9 @@ export default async function CreditsPage() {
     readBillingSummary(supabase, orgId).catch(() => FAILED_READ),
     readCreditLots(supabase, orgId).catch(() => FAILED_READ),
     readSellableModels(supabase),
+    // Invite friends (0092): the person's own link and progress. Unsupported
+    // (not applied yet) leaves the card out; a failed read says so.
+    readMyInvite(supabase),
   ]);
   if (!acct.supported || !priceRes.supported) return note(t.credits.notMigrated);
 
@@ -89,6 +95,7 @@ export default async function CreditsPage() {
   // the database (0084) shows a platform owner/admin only. Never read for
   // anyone else, so a member's page never carries a margin.
   const priceList = platformAdmin ? await readCreditPriceList(supabase) : null;
+  const inviteAdmin = platformAdmin ? await readInviteAdmin(supabase) : null;
   // acct.account is null exactly when the read failed: the balance is unknown,
   // and no figure, purchase flow or "no prices" line may stand in for it.
   const account = acct.account;
@@ -178,6 +185,21 @@ export default async function CreditsPage() {
       )}
       {buy === "admin_only" && <BuyCreditsAdminOnly />}
 
+      {/* Invite friends: for a workspace that pays (the reward is paid into it);
+          the database refuses anyone who does not run the workspace. Left out
+          before migration 0092. */}
+      {!exempt && inviteRead.state === "ok" && (
+        <InviteFriendsCard invite={inviteRead.value} orgId={orgId} />
+      )}
+      {!exempt && inviteRead.state === "failed" && (
+        <section id="invite" className="panel flex scroll-mt-24 flex-col gap-2 p-4" aria-labelledby="invite-title">
+          <h2 id="invite-title" className="t-section">
+            {t.invite.title}
+          </h2>
+          <ErrorState compact message={t.invite.readFailed} />
+        </section>
+      )}
+
       {ledgerFailed ? (
         <div className="panel p-4">
           <h2 className="t-section">{t.credits.ledgerTitle}</h2>
@@ -203,6 +225,13 @@ export default async function CreditsPage() {
           </p>
           {!paddleConfig && !exempt && <p className="mono text-[11px] text-[var(--color-muted)]">{t.credits.buy.notConfigured}</p>}
           <GrantCreditsForm orgId={orgId} orgName={org.current.name} />
+          {inviteAdmin?.state === "ok" && <InviteAdminPanel admin={inviteAdmin.value} />}
+          {inviteAdmin?.state === "failed" && (
+            <div className="panel p-4">
+              <h2 className="t-section">{t.invite.adminTitle}</h2>
+              <ErrorState compact message={t.invite.adminReadFailed} />
+            </div>
+          )}
           {!priceList || priceList.failed || !priceList.supported ? (
             <div className="panel p-4">
               <h2 className="t-section">{t.credits.pricesTitle}</h2>

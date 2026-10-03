@@ -133,3 +133,13 @@ export function AuthAlert({ tone, children }: { tone: "fail" | "warn"; children:
     </p>
   );
 }
+
+/** A calm, non-error line above a form (an invite banner): same shape as AuthAlert, announced politely. */
+export function AuthNotice({ children }: { children: React.ReactNode }) {
+  return (
+    <p role="status" className="st-alert" data-tone="ok">
+      <span aria-hidden className="ns-lamp mt-1.5" data-tone="ok" />
+      <span>{children}</span>
+    </p>
+  );
+}

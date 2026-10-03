@@ -494,3 +494,8 @@ sec_inbox_0081.extend(TABLES, FUNCTIONS)
 import sec_mcp_oauth_0093  # noqa: E402
 
 sec_mcp_oauth_0093.extend(TABLES, FUNCTIONS)
+
+# Migration 0092 (Invite friends): tests/security/sec_friend_invites_0092.py
+import sec_friend_invites_0092  # noqa: E402
+
+sec_friend_invites_0092.extend(TABLES, FUNCTIONS)

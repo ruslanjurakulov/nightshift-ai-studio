@@ -366,6 +366,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Notifications (0064): tests/security/sec_notify_0064.py — raised by the real triggers.
     import sec_notify_0064
     sec_notify_0064.seed(conn, sc)
+    # Invite friends (0092): tests/security/sec_friend_invites_0092.py — one row per table, no credits move.
+    import sec_friend_invites_0092
+    sec_friend_invites_0092.seed(conn, sc)
     # Workflow apps (0073): tests/security/sec_workflows_0073.py.
     import sec_workflows_0073
     sec_workflows_0073.seed(conn, sc)
