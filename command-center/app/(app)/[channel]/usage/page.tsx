@@ -42,7 +42,7 @@ export default async function UsagePage() {
   const note = (text: React.ReactNode) => (
     <div className="rhythm">
       {header}
-      <div className="panel flex flex-col items-start gap-3 p-4 text-[13px] text-[var(--color-muted)]">{text}</div>
+      <div className="panel flex flex-col items-start gap-3 p-4 text-sm text-[var(--color-muted)]">{text}</div>
     </div>
   );
 
@@ -57,7 +57,7 @@ export default async function UsagePage() {
         {header}
         <div className="panel flex flex-col gap-1 p-5 sm:p-6">
           <h2 className="t-section">{t.credits.exemptTitle}</h2>
-          <p className="text-[13px] text-[var(--color-muted)]">{t.credits.exempt}</p>
+          <p className="text-sm text-[var(--color-muted)]">{t.credits.exempt}</p>
         </div>
       </div>
     );
@@ -88,7 +88,7 @@ export default async function UsagePage() {
         {header}
         <div className="panel flex flex-col gap-1 p-5 sm:p-6">
           <h2 className="t-section">{t.credits.exemptTitle}</h2>
-          <p className="text-[13px] text-[var(--color-muted)]">{t.credits.exempt}</p>
+          <p className="text-sm text-[var(--color-muted)]">{t.credits.exempt}</p>
         </div>
       </div>
     );

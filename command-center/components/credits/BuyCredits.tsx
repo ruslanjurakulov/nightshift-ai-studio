@@ -202,7 +202,7 @@ export function BuyCredits({
           {cp.packsLead}
         </p>
         {extraOff && (
-          <p className="text-[13px] leading-relaxed" data-extra-off-note>
+          <p className="text-sm leading-relaxed" data-extra-off-note>
             {t.usage.credits.packsOff}{" "}
             <Link href={path("/usage") + "#extra"} className="tap-link text-[var(--color-primary)] underline underline-offset-2">
               {t.usage.refusal.openUsage}

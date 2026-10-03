@@ -181,10 +181,10 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 .st-key svg { width: 18px; height: 18px; flex-shrink: 0; }
 .st-key[data-size="sm"] { min-height: 44px; padding: 0 16px; font-size: 16px; }
 /* A phone's header holds the wordmark, the one button and the menu on one line
-   even when the button's words are long (Russian: "Начать бесплатно" at 360px). */
+   even when the button's words are long (Russian: "Начать бесплатно" at 360px);
+   the lockup itself steps down below 380px (further down in this file). */
 @media (max-width: 420px) {
   .st-key[data-size="sm"] { padding: 0 12px; font-size: 15px; }
-  .st-brand { font-size: 18px; letter-spacing: 0.05em; gap: 8px; }
   .st-header-tools { gap: 6px; }
 }
 .st-key[data-tone="quiet"] {
