@@ -116,6 +116,16 @@ const HOSTILE = [
   "/_next",
   "/_next/",
   "/_next/data/build/favicon.icox/providers.json",
+  // The developer pages (lib/dev-pages.ts, /mcp): public by exact name only.
+  "/mcpx/providers",
+  "/mcp/providers",
+  "/mcp.x/providers",
+  "/docs/cli/providers",
+  "/docs/clix",
+  "/docs/skills/providers",
+  "/docs/skillsx",
+  "/docs/cli.rsc/providers",
+  "/docs/nope",
   // Upload lookalikes: only one segment after /api/media/uploads/ is the upload body.
   "/api/media/uploads/",
   `/api/media/uploads/${ID}/extra`,
@@ -250,8 +260,10 @@ describe("BR-L-132: a public page has no .rsc form either", () => {
   it("every public page's .rsc form redirects to the page, before routing", async () => {
     const { default: nextConfig, PUBLIC_PAGE_PATHS } = await import("../next.config");
     const { SITEMAP_PATHS, LOGIN_PATH, SIGNUP_PATH } = await import("@/lib/public-paths");
-    // The literal list in next.config.ts is exactly the public pages.
-    expect([...PUBLIC_PAGE_PATHS].sort()).toEqual([...SITEMAP_PATHS, LOGIN_PATH, SIGNUP_PATH].sort());
+    const { DEV_PAGE_PATHS } = await import("@/lib/dev-pages");
+    // The literal list in next.config.ts is exactly the public pages, plus the
+    // two flag-gated developer pages (which are in no sitemap while off).
+    expect([...PUBLIC_PAGE_PATHS].sort()).toEqual([...SITEMAP_PATHS, ...DEV_PAGE_PATHS, LOGIN_PATH, SIGNUP_PATH].sort());
     const redirects = (await nextConfig.redirects?.()) ?? [];
     for (const path of PUBLIC_PAGE_PATHS) {
       const source = path === "/" ? "/index.rsc" : `${path}.rsc`;

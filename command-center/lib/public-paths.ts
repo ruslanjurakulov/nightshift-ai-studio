@@ -23,8 +23,11 @@ export const LEGAL_PATHS = ["/privacy", "/terms"] as const;
 
 /** Always public: what a credit pack costs. Paddle's reviewers read it signed
  *  out, and a signed-in user sees the same page (plus the live credit rates).
- *  The API reference and its OpenAPI spec are read before anyone has a key. */
-export const INFO_PATHS = ["/pricing", "/docs/api", "/docs/api/openapi.json"] as const;
+ *  The API reference and its OpenAPI spec are read before anyone has a key,
+ *  and so is the page that says how to connect an AI assistant (/mcp, a page —
+ *  the server itself is /api/mcp, below). /docs/cli and /docs/skills are not
+ *  here: they are public only while DEV_CLI_PAGE=1 (lib/dev-pages.ts). */
+export const INFO_PATHS = ["/pricing", "/docs/api", "/docs/api/openapi.json", "/mcp"] as const;
 
 /** Always public: the crawler files (app/robots.ts, app/sitemap.ts). */
 export const CRAWLER_PATHS = ["/robots.txt", "/sitemap.xml"] as const;
@@ -90,12 +93,24 @@ export function isUnknownSolutionPath(pathname: string): boolean {
   return p.startsWith(SOLUTIONS_PATH + "/") && !(SOLUTION_PATHS as readonly string[]).includes(p);
 }
 
+/**
+ * A URL under /docs that is not one of the listed pages: a mistyped link.
+ * Nothing in the app lives there (`docs` is a reserved segment), so a
+ * signed-out visitor gets the 404 rather than a sign-in form (middleware.ts).
+ * /docs/cli and /docs/skills are decided earlier, by their flag
+ * (lib/dev-pages.ts), and never reach this check.
+ */
+export function isUnknownDocsPath(pathname: string): boolean {
+  const p = normalize(pathname);
+  return p.startsWith("/docs/") && !(ALWAYS_PUBLIC_PATHS as readonly string[]).includes(p);
+}
+
 /** Served as-is to anyone, signed in or not, without channel resolution. */
 export const ALWAYS_PUBLIC_PATHS = [...LEGAL_PATHS, ...INFO_PATHS, ...SOLUTION_PATHS, ...CRAWLER_PATHS] as const;
 
 /** The pages the sitemap lists: every public page a visitor reads, not the
  *  sign-in flow, the machine-readable spec or the crawler files. */
-export const SITEMAP_PATHS = ["/", "/pricing", ...SOLUTION_PATHS, "/docs/api", "/privacy", "/terms"] as const;
+export const SITEMAP_PATHS = ["/", "/pricing", ...SOLUTION_PATHS, "/docs/api", "/mcp", "/privacy", "/terms"] as const;
 
 /** Create an account. Like /login, only for someone signed out: a signed-in
  *  user asking for it is sent on to their app. */
@@ -134,6 +149,8 @@ export const RESERVED_ROOT_SEGMENTS = [
   "solutions",
   "api",
   "docs",
+  // The page about connecting an AI assistant (/mcp); the server is /api/mcp.
+  "mcp",
   // The self-hosted font files live under /fonts (PUBLIC_FONT_PATHS).
   "fonts",
   // The design concept prototypes (lib/concepts.ts): the whole /atelier path is

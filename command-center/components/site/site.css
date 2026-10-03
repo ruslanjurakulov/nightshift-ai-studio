@@ -1069,7 +1069,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   padding-block: 56px;
 }
 @media (min-width: 900px) {
-  .st-footer-grid { grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(0, 1fr)); gap: 32px; }
+  .st-footer-grid { grid-template-columns: minmax(0, 1.2fr) repeat(5, minmax(0, 1fr)); gap: 24px; }
 }
 .st-footer-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px 16px; }
 @media (min-width: 900px) { .st-footer-cols { display: contents; } }
@@ -1636,6 +1636,208 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   .st-doc-table[data-stack] .st-doc-path { white-space: normal; overflow-wrap: anywhere; }
 }
 @media (min-width: 1024px) { .st-doc-hero { align-items: start; } .st-doc-toc { padding-top: 12px; } }
+
+/* ── The developer pages: API, MCP, CLI, Skills ───────────────────────────
+   The same rundown sheet, plus the patch bay: the connect card is a row of
+   engraved slots, one per assistant, the chosen one lit; the snippet under it
+   is the cable. Code sits in a ruled block with its name and a copy key. */
+.st-devnav { display: flex; flex-wrap: wrap; align-items: center; gap: 0 18px; }
+.st-devnav-label {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ns-text-dim);
+}
+.st-devnav ul { display: flex; flex-wrap: wrap; gap: 2px; list-style: none; margin: 0; padding: 0; }
+.st-devnav a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  border-bottom: 2px solid transparent;
+  font-size: 15.5px;
+  font-weight: 650;
+  color: var(--ns-text-dim);
+}
+.st-devnav a:hover { color: var(--ns-text); }
+.st-devnav a[aria-current="page"] { color: var(--ns-text); border-bottom-color: var(--ns-amber); }
+
+.st-doc-steps-big { counter-reset: st-doc; }
+.st-doc-steps-big li { grid-template-columns: 44px minmax(0, 1fr); gap: 14px; padding: 18px 0; }
+.st-doc-steps-big li::before { font-size: 22px; padding-top: 1px; color: var(--ns-amber-ink); }
+.st-doc-step-title {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--ns-text);
+}
+.st-doc-steps-big p { margin: 0; color: var(--ns-text-dim); max-width: 64ch; text-wrap: pretty; }
+.st-doc-statement {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(24px, 3.4vw, 32px);
+  font-weight: 650;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+.st-doc-cost { color: var(--ns-text); }
+.st-doc-links { display: flex; flex-wrap: wrap; gap: 0 28px; list-style: none; margin: 0; padding: 0; }
+
+.st-codeblock { margin: 0; border: 1px solid var(--ns-rule-strong); border-radius: var(--ns-r-frame); background: var(--ns-ground); overflow: hidden; min-width: 0; }
+.st-codeblock-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 4px 2px 14px;
+  border-bottom: 1px solid var(--ns-rule);
+  background: var(--ns-key);
+}
+.st-codeblock-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ns-text-dim);
+}
+.st-doc-sec .st-codeblock .st-code,
+.st-doc-sec:nth-child(odd) .st-codeblock .st-code,
+.st-codeblock .st-code { border: 0; border-radius: 0; background: transparent; }
+.st-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--ns-r-key);
+  background: transparent;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ns-text);
+  cursor: pointer;
+}
+.st-copy:hover { background: var(--ns-hover); border-color: var(--ns-rule-strong); }
+.st-copy svg { width: 16px; height: 16px; }
+.st-copy[data-state="copied"] { color: var(--ns-go); }
+.st-copy[data-state="failed"] { color: var(--ns-tally); }
+
+.st-mcp-hero { display: grid; gap: 36px; padding-block: 40px 56px; }
+@media (min-width: 1024px) {
+  .st-mcp-hero { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 64px; padding-block: 64px 80px; align-items: start; }
+  .st-mcp-card { position: sticky; top: 88px; }
+}
+.st-mcp-intro, .st-mcp-card { min-width: 0; }
+.st-mcp-steps { list-style: none; margin: 32px 0 18px; padding: 0; counter-reset: st-mcp; border-top: 1px solid var(--ns-rule-strong); }
+.st-mcp-steps li {
+  counter-increment: st-mcp;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  column-gap: 14px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--ns-rule);
+}
+.st-mcp-steps li::before {
+  content: counter(st-mcp, decimal-leading-zero);
+  grid-row: 1 / span 2;
+  font-family: var(--font-mono);
+  font-size: 22px;
+  line-height: 1.1;
+  color: var(--ns-amber-ink);
+}
+.st-mcp-step-title { margin: 0 0 4px; font-family: var(--font-display); font-size: 21px; font-weight: 700; line-height: 1.1; letter-spacing: 0; }
+.st-mcp-steps p { margin: 0; font-size: 15.5px; line-height: 1.55; color: var(--ns-text-dim); max-width: 52ch; text-wrap: pretty; }
+.st-mcp-secret { margin-top: 14px; max-width: 62ch; }
+
+.st-connect { border: 1px solid var(--ns-rule-strong); border-radius: var(--ns-r-panel); background: var(--ns-console); overflow: hidden; }
+.st-connect-head { padding: 12px 16px; border-bottom: 1px solid var(--ns-rule); }
+.st-connect-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ns-text-dim);
+}
+.st-connect-tabs {
+  display: flex;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--ns-rule);
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+@media (min-width: 768px) { .st-connect-tabs { flex-wrap: wrap; overflow-x: visible; } }
+.st-connect-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 15px;
+  border: 0;
+  border-right: 1px solid var(--ns-rule);
+  background: transparent;
+  scroll-snap-align: start;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--ns-text-dim);
+  cursor: pointer;
+}
+@media (min-width: 768px) { .st-connect-tab { border-bottom: 1px solid var(--ns-rule); } }
+.st-connect-tab:hover { color: var(--ns-text); background: var(--ns-hover); }
+.st-connect-tab:focus-visible { outline-offset: -3px; }
+.st-connect-lamp { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--ns-rule-strong); }
+.st-connect-tab[aria-selected="true"] { color: var(--ns-text); background: var(--ns-key); }
+.st-connect-tab[aria-selected="true"] .st-connect-lamp { background: var(--ns-amber); border-color: var(--ns-amber); }
+.st-connect-panel { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.st-connect-where { margin: 0; font-size: 14.5px; line-height: 1.45; color: var(--ns-text); overflow-wrap: anywhere; }
+.st-connect-where-label {
+  display: block;
+  margin-bottom: 2px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ns-text-dim);
+}
+.st-connect-note { margin: 0; }
+.st-setup-steps { list-style: none; margin: 0; padding: 0; counter-reset: st-setup; }
+.st-setup-steps li { counter-increment: st-setup; padding: 16px; border-bottom: 1px solid var(--ns-rule); display: flex; flex-direction: column; gap: 8px; }
+.st-setup-steps li:last-child { border-bottom: 0; }
+.st-setup-step-title { margin: 0; font-family: var(--font-display); font-size: 18px; font-weight: 700; line-height: 1.1; letter-spacing: 0; }
+.st-setup-step-title::before { content: counter(st-setup, decimal-leading-zero); margin-right: 12px; font-family: var(--font-mono); font-size: 15px; color: var(--ns-amber-ink); }
+.st-setup-steps p { margin: 0; }
+
+.st-notyet { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 20px; border: 1px dashed var(--ns-rule-strong); border-radius: var(--ns-r-frame); background: var(--ns-ground); }
+.st-doc-sec:nth-child(odd) .st-notyet { background: var(--ns-ground); }
+
+.st-doc-close { border-top: 1px solid var(--ns-rule); padding-block: 40px 56px; }
+.st-doc-close-row { display: flex; flex-direction: column; align-items: flex-start; gap: 20px; }
+@media (min-width: 768px) { .st-doc-close-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 40px; } }
+@media (max-width: 639px) {
+  .st-doc-table[data-stack="rows"] tr { display: flex; flex-direction: column; gap: 4px; padding: 12px 0; }
+  .st-doc-table[data-stack="rows"] thead { display: none; }
+  .st-doc-table[data-stack="rows"] td:last-child { margin-top: 0; }
+  .st-doc-table[data-stack="rows"] .st-doc-path { white-space: normal; overflow-wrap: anywhere; }
+}
 
 }
 

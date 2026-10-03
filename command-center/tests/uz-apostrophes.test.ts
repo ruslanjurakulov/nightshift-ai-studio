@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
  * belgisi with U+02BC (maʼlumot, eʼlon), and a suffix after a Latin name with
  * U+2019 (YouTube’da) — never an ASCII apostrophe inside a word.
  */
-const FILES = ["lib/i18n/uz.ts", "lib/i18n/site/uz.ts", "lib/legal-docs/uz.ts"];
+const FILES = ["lib/i18n/uz.ts", "lib/i18n/site/uz.ts", "lib/i18n/site/dev-uz.ts", "lib/legal-docs/uz.ts"];
 
 describe("Uzbek text spells its apostrophes one way", () => {
   it.each(FILES)("%s has no ASCII apostrophe after a letter, inside a word or at its end", (file) => {

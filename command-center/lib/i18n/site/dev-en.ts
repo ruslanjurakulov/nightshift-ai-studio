@@ -1,0 +1,316 @@
+/**
+ * The developer pages' copy: the API reference (/docs/api), the MCP page
+ * (/mcp) and the two flag-gated pages (/docs/cli, /docs/skills). Kept apart from
+ * the public site's dictionary so these pages can change without touching it.
+ * English is the source of truth; dev-ru.ts and dev-uz.ts are typed against it,
+ * and tests/dev-pages-copy.test.ts holds them to the same keys, list lengths,
+ * ids and {placeholders}.
+ *
+ * What is NOT here: commands, endpoint paths, header names, error codes and
+ * config snippets (they are code, the same in every language), and any price
+ * (the pages print the live price list, never a number typed into copy).
+ *
+ * The assistants named on the MCP page are tools a person connects FROM; the
+ * pages name no AI model or provider that does the work.
+ */
+export const devEn = {
+  nav: {
+    label: "Developers",
+    api: "API",
+    mcp: "MCP",
+    cli: "CLI",
+    skills: "Skills",
+  },
+  ui: {
+    copy: "Copy",
+    copied: "Copied",
+    copyName: "Copy {name}",
+    copyFailed: "Could not copy — select the text and copy it",
+    connectFrom: "Connect from",
+    where: "Where",
+    keyPlaceholder: "Replace <your API key> with the key you created.",
+    other: "Other",
+    openApi: "OpenAPI 3.1 spec",
+  },
+  api: {
+    meta: {
+      title: "API reference",
+      description:
+        "Make, follow, publish and download videos with the Nightshift REST API: one API key, JSON in and out, a price before every spend.",
+    },
+    kicker: "API reference",
+    title: "The Nightshift API",
+    lead: "Make videos for your channels, follow each one, cross-post it and download it — from your own code or an AI assistant. Every call passes the same checks as the site: your organization’s channels only, the publish check and its approvals, private YouTube uploads.",
+    toAssistant: "Use it from an AI assistant",
+    toc: "On this page",
+    sections: {
+      start: "Quick start",
+      auth: "Authentication",
+      endpoints: "Endpoints",
+      generations: "Generations",
+      safety: "Retries and price limits",
+      pricing: "Pricing and limits",
+    },
+    start: {
+      steps: [
+        {
+          id: "key",
+          title: "Get a key",
+          body: "In the Command Center open Developers. An admin presses Activate API once and accepts the Terms. Then top up the API balance (at least {min}) and create a key under API keys. The key is shown once — store it like a password.",
+        },
+        {
+          id: "request",
+          title: "Make a request",
+          body: "Send the key as a bearer token. This call lists your channels.",
+        },
+        {
+          id: "result",
+          title: "Read the result",
+          body: "You get JSON back. Use a channel’s id to start a video. Amounts of money are whole US cents.",
+        },
+      ],
+      account: "Keys, balance and limits live under {terms}. The API opens to an organization that has bought a credit pack, or that has API access switched on for it.",
+      termsLink: "the Terms",
+      next: "Next: start a video",
+    },
+    auth: {
+      lead: "Every call carries your key in the Authorization header. There is nothing else to sign.",
+      rules: [
+        "A key acts as the admin who created it, inside your organization only. If that person leaves or stops being an admin, their keys stop working: create a new one.",
+        "Keep keys on a server. Never put one in a browser or in an app you ship — anyone holding it can spend your balance.",
+        "You can have {max} active keys. Revoke one any time under Developers.",
+      ],
+      scopesLead: "Each key has scopes, chosen when it is created. A call outside them is refused, and the answer names the scope it needed; nothing is made or charged. Give a key only what its program needs: a key that only reads status cannot spend anything.",
+      scopesTable: "Key scopes",
+      scopes: [
+        { id: "account:read", what: "Balance, channels and publish targets" },
+        { id: "videos:read", what: "List videos, read a video, a job or a download" },
+        { id: "videos:write", what: "Start a video, cross-post it, order a download" },
+        { id: "creative:quote", what: "Ask the price of a generation" },
+        { id: "creative:create", what: "Start a generation (spends credits)" },
+        { id: "creative:read", what: "Read a generation this key started" },
+      ],
+      scopesNote: "GET /me works with any valid key and lists that key’s scopes. Keys made before generations existed hold only {legacy}. A key can also carry its own requests-per-minute limit (1–{rpm}; it can only lower your tier’s) and a monthly credit ceiling for generations.",
+    },
+    endpoints: {
+      lead: "Base URL {base}. JSON in, JSON out. Amounts of money are whole US cents. Every response carries an x-request-id header — quote it if you contact support.",
+      table: "Endpoints",
+      list: [
+        { id: "me", what: "Your organization, usage tier and limits" },
+        { id: "balance", what: "Prepaid balance, reserved amount and this month’s spend" },
+        { id: "channels", what: "Your channels — what POST /videos takes" },
+        { id: "accounts", what: "Where you can publish: YouTube channels, Instagram and TikTok accounts" },
+        { id: "videos-create", what: "Start a video (queued; charged when it succeeds)" },
+        { id: "videos-list", what: "List videos (?channel_id, ?limit up to 100, ?offset)" },
+        { id: "videos-get", what: "One video, with its publish requests" },
+        { id: "videos-publish", what: "Cross-post a finished video (free)" },
+        { id: "videos-download", what: "Order a 720p or 1080p download" },
+        { id: "downloads-get", what: "A download’s status (file_url when ready)" },
+        { id: "downloads-file", what: "The MP4 of a ready download" },
+        { id: "jobs-get", what: "A video job’s status and charge" },
+        { id: "quote", what: "The price of one generation, in credits (nothing is charged)" },
+        { id: "generation-create", what: "Start a generation (Idempotency-Key and max_credits required)" },
+        { id: "generation-get", what: "A generation this key started: status, charge, result" },
+      ],
+      startTitle: "Start a video",
+      startBody: "Only channel_id is required. Optional fields: topic, niche, duration (30–3600 seconds), language, visual_style. Unknown fields are refused. Every POST accepts an Idempotency-Key header (see Retries and price limits). The video is rendered private and follows the channel’s own publish rules.",
+      startName: "Start a video",
+      followTitle: "Follow the job, then find the video",
+      followName: "Follow a job",
+      followBody: "The job’s status moves from queued to running to succeeded — or to failed, and then nothing is charged. Poll every few seconds.",
+      publishTitle: "Publish to platforms",
+      publishName: "Publish a video",
+      publishBody: "One request per target, each with its own answer. A video that has not passed the publish check and its approvals is recorded as refused with a reason, exactly as on the site. Targets come from GET /accounts.",
+      downloadTitle: "Download in HD",
+      downloadName: "Download a video",
+      downloadBody: "Order a quality, poll until the status is ready, then fetch the file. A failed download costs nothing, and the same quality of the same video is free again for 7 days.",
+    },
+    generations: {
+      lead: "Pictures, clips and voice-overs with the same models, prices and checks as the Studio. Unlike videos, a generation is paid in your organization’s credits, not the API balance, and only when it completes: a failed one costs nothing. Ask for the price first, then start with the price you accept.",
+      name: "Quote and start a generation",
+      points: [
+        "Send max_credits, the most you accept to pay, and an Idempotency-Key with every start — see Retries and price limits.",
+        "Input pictures (source_asset_id) come from your organization’s media library.",
+        "A generation ends completed (charged) or failed (nothing charged). The results land in your media library.",
+      ],
+    },
+    safety: {
+      idemTitle: "Retry without paying twice",
+      idemBody: "Networks fail. Every POST accepts an Idempotency-Key header: if a request times out, send it again with the same key and the same body, and you get the first answer back (the response says idempotent-replayed: true) — nothing is made or charged twice. A key is remembered for 24 hours and belongs to the API key that sent it. The same key with a different body is refused, so use a new key for a new request.",
+      maxTitle: "Say the most you will pay",
+      maxBody: "For a generation, max_credits is the most you agree to pay. Ask for the price, then start with that number. If the price has risen above it by then, the start is refused and nothing is charged — ask for the price again. You are never charged more than the price you were quoted.",
+      name: "A safe retry",
+    },
+    pricing: {
+      live: "From the live price list, prepaid, in US dollars:",
+      none: "The live price list is not published, or could not be read just now — so this page shows no price rather than a guess.",
+      notPublished: "No price published yet",
+      table: "Prices",
+      video: "Video",
+      videoPrice: "{perMinute} a minute of requested length{minimum}",
+      videoMinimum: ", at least {minimum} a video",
+      publish: "Publish to platforms",
+      free: "Free",
+      download: "HD download (720p / 1080p)",
+      downloadPrice: "The site’s download price in credits × {perCredit}",
+      howTitle: "How it is charged",
+      howBefore: "Starting a video reserves",
+      howAfter: "of your available balance, and the answer shows it as price_cents. When the video is made you are charged that amount; if the job fails or is cancelled, you are charged nothing. The length is your duration, or the channel’s target length. A download is charged when the file is ready.",
+      formulaGeneric: "max(⌈seconds × per-minute price / 60⌉, minimum)",
+      tiersLead: "Your tier rises by itself with what you have paid in top-ups (net of refunds):",
+      tiersTable: "Usage tiers",
+      tierCols: { tier: "Tier", paid: "Paid top-ups", rpm: "Requests / min", concurrency: "Videos at once", cap: "Monthly spend cap" },
+      activated: "activated",
+      limits: "Your organization can set a lower monthly limit, and each key its own. Spend this month counts what you have been charged plus what is reserved for videos in progress. Rate limits are per key per minute; every response carries x-ratelimit-limit, x-ratelimit-remaining and x-ratelimit-reset (seconds). If you send too many requests, the answer carries Retry-After: the seconds to wait.",
+    },
+    closing: {
+      title: "Prefer to talk to it?",
+      body: "The same key, the same prices and the same approval rules work from an AI assistant over MCP.",
+      cta: "Connect an assistant",
+    },
+  },
+  mcp: {
+    meta: {
+      title: "Connect an AI assistant (MCP)",
+      description:
+        "Connect Claude Code, Cursor, VS Code, Windsurf, Cline, Zed, Gemini CLI, Codex and more to Nightshift with one API key, and make videos by asking.",
+    },
+    kicker: "MCP",
+    title: "Make videos from the assistant you already use.",
+    lead: "Nightshift runs a remote MCP server. Add it to your AI assistant, then ask it to start a video, follow the job, publish and download — with the same key, price list and approval rules as the API.",
+    cardTitle: "Connect",
+    stepsLabel: "Three steps",
+    steps: [
+      {
+        id: "key",
+        title: "Create a key",
+        body: "In the Command Center open Developers → API keys. Copy the key; it is shown once.",
+      },
+      {
+        id: "paste",
+        title: "Paste the snippet",
+        body: "Pick your assistant on the right, copy its snippet and replace <your API key> with your key.",
+      },
+      {
+        id: "ask",
+        title: "Ask your assistant",
+        body: "Try “Which channels do I have in Nightshift?” Starting a video is the step that spends API balance.",
+      },
+    ],
+    needs: "You need the API switched on and a prepaid balance — the API reference explains both.",
+    secret: "The key is a password: an assistant that holds it can spend your API balance. Keep it out of shared files and repositories.",
+    tablist: "Assistants you can connect from",
+    clients: [
+      { id: "claude-code", where: "Run in a terminal", hint: "Adds the server for you in the current project; add --scope user to have it in every project. Run /mcp inside Claude Code to see it connected." },
+      { id: "cursor", where: "Save as ~/.cursor/mcp.json (or .cursor/mcp.json in one project)", hint: "Restart Cursor after saving." },
+      { id: "vscode", where: "Save as .vscode/mcp.json in your project", hint: "VS Code asks for the key the first time the server starts and stores it for you, so it is never written into the file." },
+      { id: "windsurf", where: "Cascade panel → Actions menu → Open MCP config file", hint: "Add the entry under mcpServers and save." },
+      { id: "cline", where: "Cline panel → MCP Servers → Configure → Configure MCP Servers", hint: "Set type to streamableHttp; leaving it out selects the older SSE transport." },
+      { id: "zed", where: "Open your settings file (zed: open settings file)", hint: "Or use Settings → AI → MCP Servers → Add Server → Add Remote Server." },
+      { id: "gemini-cli", where: "Run in a terminal", hint: "Saved for your user in ~/.gemini/settings.json, so the key never lands in a project’s files." },
+      { id: "codex", where: "Shell profile and ~/.codex/config.toml", hint: "The key stays in an environment variable. The desktop app, the CLI and the IDE extension share this file." },
+      { id: "roo-code", where: "Roo Code pane → MCP → Edit Global MCP", hint: "Set type to streamable-http." },
+      { id: "warp", where: "Settings → Agents → MCP servers → + Add, then paste", hint: "Warp accepts the same JSON other assistants use." },
+      { id: "claude-desktop", where: "Settings → Developer → Edit Config (claude_desktop_config.json)", hint: "Claude Desktop connects through the small mcp-remote bridge, which adds the header on your computer. It needs Node.js. Restart Claude Desktop afterwards." },
+      { id: "other", where: "Any client that speaks Streamable HTTP and can send a header", hint: "Use the URL, the transport and the header exactly as written." },
+    ],
+    tools: {
+      slug: "What your assistant can do",
+      title: "Ten tools. Reading is free.",
+      lead: "Only the two that spend money say so. Prices come from the live price list on the API reference.",
+      table: "Tools",
+      cols: { tool: "Tool", what: "What it does", cost: "Cost" },
+      free: "Free",
+      list: [
+        { id: "list_channels", what: "Your channels and their ids" },
+        { id: "create_video", what: "Start a video from a topic and a length" },
+        { id: "get_job_status", what: "Follow a video as it is made: status, error, charge" },
+        { id: "list_videos", what: "Your videos, newest first" },
+        { id: "get_video", what: "One video with its publish status" },
+        { id: "list_connected_accounts", what: "Where you can publish: YouTube channels, Instagram and TikTok accounts" },
+        { id: "publish_video", what: "Cross-post a finished video. Same publish check and approvals as the site; YouTube uploads stay private" },
+        { id: "request_download", what: "Order a 720p or 1080p MP4" },
+        { id: "get_download", what: "A download’s status and link" },
+        { id: "get_balance", what: "Your API balance, this month’s spend and tier" },
+      ],
+      paid: {
+        create_video: "You are charged when the video is made; a failed run costs nothing.",
+        request_download: "Charged when the file is ready; a failed download costs nothing.",
+      },
+    },
+    notYet: {
+      slug: "Not yet",
+      title: "Claude.ai and ChatGPT connectors",
+      body: "The connector screens inside the Claude and ChatGPT apps sign in with OAuth, and Nightshift’s MCP server uses API keys. Until we add OAuth, those two cannot connect. Claude Desktop works through the bridge on its tab above; for ChatGPT, call the REST API from your own code.",
+      link: "Read the API reference",
+    },
+    more: {
+      title: "Where else it fits",
+      body: "The MCP server is the API behind a different door. For scripts and back-end code use the REST API.",
+      api: "API reference",
+      cli: "Command line",
+      skills: "Agent skills",
+    },
+  },
+  cli: {
+    meta: {
+      title: "Command line",
+      description: "Install the Nightshift command line, log in once and make, follow and download videos from your terminal.",
+    },
+    kicker: "CLI",
+    title: "Nightshift in your terminal.",
+    lead: "Install the command line, log in once, and run your channels from a shell or a script. It uses the same API key, prices and approval rules as the API.",
+    cardTitle: "Set up",
+    steps: [
+      { id: "install", title: "Install it", body: "Needs Node.js. One global install." },
+      { id: "login", title: "Log in", body: "Paste an API key from Developers → API keys when asked. It is kept on this computer." },
+      { id: "run", title: "Run a command", body: "Start with your channels. Every command prints the price before it spends." },
+    ],
+    commands: {
+      slug: "Commands",
+      title: "What it can do.",
+      table: "Commands",
+      cols: { command: "Command", what: "What it does" },
+      list: [
+        { id: "login", what: "Save an API key for this computer" },
+        { id: "channels", what: "List your channels and their ids" },
+        { id: "create", what: "Start a video for a channel" },
+        { id: "job", what: "Follow a video job: status and charge" },
+        { id: "publish", what: "Cross-post a finished video" },
+        { id: "download", what: "Order and fetch an HD download" },
+        { id: "balance", what: "Show your API balance and tier" },
+      ],
+    },
+    more: { api: "API reference", skills: "Agent skills", mcp: "Connect an assistant" },
+  },
+  skills: {
+    meta: {
+      title: "Agent skills",
+      description: "Install Nightshift skills so your coding assistant knows how to make, publish and check videos.",
+    },
+    kicker: "Skills",
+    title: "Teach your assistant Nightshift.",
+    lead: "Skills are short instructions your coding assistant loads when a task needs them. Install them once and it knows how to start a video, publish it and check your balance without being told each time.",
+    cardTitle: "Set up",
+    steps: [
+      { id: "install", title: "Install the command line", body: "The skills ship with it." },
+      { id: "skills", title: "Install the skills", body: "One command copies them where your assistant looks." },
+      { id: "ask", title: "Ask for the result", body: "Say what you want — “make a three-minute video for my channel” — and the assistant picks the skill." },
+    ],
+    list: {
+      slug: "Skills",
+      title: "What they teach.",
+      table: "Skills",
+      cols: { skill: "Skill", what: "What it teaches" },
+      items: [
+        { id: "make-video", what: "Pick a channel, check the price and start a video" },
+        { id: "publish", what: "Cross-post a finished video through the publish check" },
+        { id: "balance", what: "Read the API balance before anything is spent" },
+      ],
+    },
+    more: { api: "API reference", cli: "Command line", mcp: "Connect an assistant" },
+  },
+};
+
+/** The shape ru and uz must fill (plain literal, so values widen to string). */
+export type DevDictionary = typeof devEn;
