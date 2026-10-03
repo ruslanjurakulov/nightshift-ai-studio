@@ -114,6 +114,18 @@ describe("the guided create flow", () => {
     expect(document.querySelector("[data-extra-off-link]")).not.toBeNull();
   });
 
+  it("when the balance cannot cover it (credits enforced) the card says so in words, not only in red", async () => {
+    answer({ available: 20 });
+    show();
+    await screen.findByText(/About 120 credits/);
+    expect(document.querySelector(".fl-price")?.textContent).toContain(t.credits.insufficientShort);
+    cleanup();
+    answer({ available: 400 });
+    show();
+    await screen.findByText(/About 120 credits/);
+    expect(document.querySelector(".fl-price")?.textContent).not.toContain(t.credits.insufficientShort);
+  });
+
   it("the plain hold sentence is on the card, and 'more options' keeps language and the rest reachable", () => {
     show();
     expect(screen.getByText(t.create.flow.holdNote)).toBeTruthy();

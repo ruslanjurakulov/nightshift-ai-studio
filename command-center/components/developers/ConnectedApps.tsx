@@ -115,7 +115,7 @@ export function ConnectedApps() {
   }
 
   return (
-    <section className="fl-card" aria-labelledby="connected-apps-title" style={state === "loading" ? { minHeight: 280 } : undefined}>
+    <section className="fl-card" aria-labelledby="connected-apps-title">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="connected-apps-title" className="fl-q">
           {c.title}

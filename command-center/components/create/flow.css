@@ -51,7 +51,7 @@
 .fl-topic:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 2px; }
 .fl-try { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .fl-try-label { font-size: var(--ns-t-ui); color: var(--color-muted); width: 100%; }
-.fl-try .ns-chip { text-align: left; height: auto; padding-block: 10px; line-height: 1.3; }
+.fl-try .ns-chip { font-size: var(--ns-t-ui); text-align: left; height: auto; padding-block: 10px; line-height: 1.3; }
 
 /* 2 — three choices, each one line until it is opened */
 .fl-choices { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); align-items: start; }

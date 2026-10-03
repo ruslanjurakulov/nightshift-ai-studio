@@ -89,6 +89,7 @@ export function CreditEstimateLine({
   let body: React.ReactNode = null;
   let figure: React.ReactNode = null;
   const notes: React.ReactNode[] = [];
+  let cardNotes: React.ReactNode[] = [];
   if (data.exempt) {
     body = <span className="text-[var(--color-muted)]">{t.credits.estimateExempt}</span>;
   } else if (!data.estimate || data.estimate.credits === null) {
@@ -103,6 +104,8 @@ export function CreditEstimateLine({
     const basis = e.basis === "unknown" ? "" : fmt(t.credits.basis[e.basis], { n: e.sample });
     const color = short ? "var(--color-fail)" : "var(--color-fg)";
     figure = <span style={{ color }}>{fmt(t.credits.estimatePlain, { n: formatCredits(credits, locale) })}</span>;
+    // The card says it outright; the line keeps showing only the red figure.
+    cardNotes = short ? [<span key="short" className="text-[var(--color-fail)]">{t.credits.insufficientShort}</span>] : [];
     if (basis) notes.push(<span key="basis">{basis}</span>);
     if (e.floorApplied) notes.push(<span key="floor">{t.credits.floorApplied}</span>);
     if (data.balanceFailed) {
@@ -148,7 +151,7 @@ export function CreditEstimateLine({
           <>
             <p className="fl-price-figure">{figure}</p>
             <ul className="fl-price-notes tnum">
-              {notes.map((n, i) => (
+              {[...cardNotes, ...notes].map((n, i) => (
                 <li key={i}>{n}</li>
               ))}
             </ul>

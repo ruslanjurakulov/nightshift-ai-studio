@@ -127,7 +127,10 @@ export function DeveloperConsole({
     load();
   }, [load]);
 
-  if (state === "loading") return <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">…</div>;
+  // Reserve what the console measures once loaded (about 700px on a phone, 260px from lg up), so what
+  // follows it on the page does not jump when it arrives.
+  if (state === "loading")
+    return <div className="panel min-h-[700px] p-5 text-sm text-[var(--color-muted)] sm:p-6 lg:min-h-[260px]">…</div>;
   if (state === "missing") return <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{d.notMigrated}</div>;
   if (state === "error" || !info) return <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{d.loadFailed}</div>;
 
@@ -156,7 +159,7 @@ export function DeveloperConsole({
             </button>
           ))}
         </div>
-        <a href="/docs/api" target="_blank" rel="noreferrer" className="text-sm underline">
+        <a href="/docs/api" target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center text-sm underline">
           {d.docsLink}
         </a>
       </div>
