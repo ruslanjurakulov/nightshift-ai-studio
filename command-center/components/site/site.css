@@ -2183,6 +2183,13 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 .st-tile[data-tile] { opacity: 1; filter: none; }
 .st-tile[data-slot="brand"] { background: none; box-shadow: 0 0 56px -10px color-mix(in srgb, var(--ns-amber) 55%, transparent); }
 .st-tile .st-tile-n { width: var(--s); height: var(--s); }
+/* A mark that is itself a finished tile (the Claude app icon, the Gemini CLI and Hermes icons) is shown at the
+   tile's own size with its own background and corners, with nothing drawn around it. */
+.st-tile[data-tile="bare"] { background: none; box-shadow: none; border-radius: 22%; }
+.st-tile[data-tile="bare"] .st-logo { width: 100%; height: 100%; }
+.st-pill-glyph[data-tile="bare"],
+.st-pill[aria-selected="true"] .st-pill-glyph[data-tile="bare"] { background: none; border: 0; padding: 0; border-radius: 22%; }
+.st-pill-glyph[data-tile="bare"] .st-logo { width: 100%; height: 100%; }
 /* On the narrowest phones the whole row fits inside the gutters: no half-cut vendor mark at the edge. */
 @media (max-width: 479px) {
   .st-tile[data-slot="3"] { --s: 40px; }

@@ -70,8 +70,8 @@ export function BrandLogo({ id }: { id: string }) {
   );
 }
 
-/** Does this client's tile need the light "paper" surface (a single black mark)? */
-export function logoTile(id: string): "theme" | "paper" {
+/** The surface this client's mark needs: the theme's tile, a light "paper" one (a single black mark), or none (the mark is its own tile). */
+export function logoTile(id: string): "theme" | "paper" | "bare" {
   const e = brandLogo(id);
   return logoShown(e) ? e.tile : "theme";
 }

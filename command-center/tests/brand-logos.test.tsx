@@ -15,7 +15,7 @@ vi.mock("next/link", () => ({
 import { McpPage } from "@/components/docs/McpPage";
 import { BrandLogo, BrandSprite } from "@/components/docs/BrandLogo";
 import { BRAND_ART } from "@/lib/dev/brand-logos-art";
-import { ANTHROPIC_MARKS_APPROVED, BRAND_LOGOS, brandLogo, logoShown, shownSymbols } from "@/lib/dev/brand-logos";
+import { ANTHROPIC_MARKS_APPROVED, BRAND_LOGOS, OWNER_ACCEPTED_MARKS_SHOWN, brandLogo, logoShown, shownSymbols } from "@/lib/dev/brand-logos";
 import { MCP_CLIENTS } from "@/lib/dev/mcp-clients";
 import { devDictionaries } from "@/lib/i18n/dev";
 import type { Locale } from "@/lib/i18n";
@@ -49,6 +49,13 @@ const SOURCE: Record<string, string> = {
   "openclaw-any": "openclaw/favicon.svg",
   "roo-any": "roo/icon.svg",
   "claude-any": "anthropic/ClaudeIcon-Rounded.svg",
+  "claude-spark-any": "anthropic/ClaudeSpark-Clay.svg",
+};
+
+/** The marks a vendor offers only as a picture: the file in brand/third-party each is made from. */
+const RASTER: Record<string, string> = {
+  "hermes-any": "hermes/icon.png",
+  "gemini-any": "gemini-cli/icon.png",
 };
 
 const page = (locale: Locale = "en") =>
@@ -70,31 +77,37 @@ describe("the register (lib/dev/brand-logos.ts)", () => {
     }
   });
 
-  it.each(BRAND_LOGOS.filter((b) => b.status !== "official").map((b) => [b.id, b] as const))("%s: a mark that is not shown says why", (_, b) => {
+  it.each(BRAND_LOGOS.filter((b) => b.status !== "official").map((b) => [b.id, b] as const))("%s: a mark shown without its vendor's permission, or not shown, says why", (_, b) => {
     expect(b.reason?.trim().length ?? 0).toBeGreaterThan(20);
   });
 
-  it("an official mark has a drawing for each theme it needs, all from the sprite sheet", () => {
-    for (const b of BRAND_LOGOS.filter((x) => x.status === "official")) {
+  it.each(BRAND_LOGOS.filter((b) => b.status === "owner-accepted").map((b) => [b.id, b] as const))("%s: records that the site owner accepted the risk and that no vendor permission was obtained", (_, b) => {
+    expect(b.reason).toMatch(/without .*(approval|permission)/i);
+    expect(b.reason).toContain("2026-10-03");
+  });
+
+  it("an official or owner-accepted mark has a drawing for each theme it needs, all from the sprite sheet", () => {
+    for (const b of BRAND_LOGOS.filter((x) => x.status !== "fallback")) {
       expect(b.symbols, b.id).toBeTruthy();
       const s = b.symbols!;
       for (const key of "any" in s ? [s.any] : [s.light, s.dark]) expect(BRAND_ART[key], `${b.id}: ${key}`).toBeTruthy();
     }
   });
 
-  it("Anthropic's marks stay off until its approval is in hand (its guidelines require it first)", () => {
-    expect(ANTHROPIC_MARKS_APPROVED).toBe(false);
-    for (const id of ["claude", "claude-code", "claude-desktop"]) expect(logoShown(brandLogo(id)), id).toBe(false);
-    expect(brandLogo("claude")?.reason).toMatch(/approval/i);
-    expect(shownSymbols(MCP_CLIENTS.map((c) => c.id))).not.toContain("claude-any");
+  it("the gate is on: the owner accepted the trademark risk on 2026-10-03, and every vendor's mark is shown", () => {
+    expect(ANTHROPIC_MARKS_APPROVED).toBe(true);
+    expect(OWNER_ACCEPTED_MARKS_SHOWN).toBe(true);
+    for (const b of BRAND_LOGOS.filter((x) => x.id !== "other")) expect(logoShown(b), b.id).toBe(true);
+    for (const id of ["claude", "claude-code", "claude-desktop", "gemini-cli", "hermes", "codex", "vscode", "roo-code", "openclaw", "chatgpt"]) expect(logoShown(brandLogo(id)), id).toBe(true);
   });
 
-  it("the clients whose own rules or assets do not allow a mark keep a plain icon: Claude Code, Hermes, Gemini CLI, Codex", () => {
-    for (const id of ["claude-code", "hermes", "gemini-cli", "codex"]) expect(logoShown(brandLogo(id)), id).toBe(false);
+  it("taking them down is one line: with the gate off the owner-accepted marks go and the officially allowed ones stay", () => {
+    for (const b of BRAND_LOGOS.filter((x) => x.status === "owner-accepted")) expect(logoShown(b, false), b.id).toBe(false);
+    for (const b of BRAND_LOGOS.filter((x) => x.status === "official")) expect(logoShown(b, false), b.id).toBe(true);
   });
 
-  it("the nine that may be shown are shown: ChatGPT, OpenClaw, Cursor, VS Code, Windsurf, Cline, Zed, Roo Code, Warp", () => {
-    for (const id of ["chatgpt", "openclaw", "cursor", "vscode", "windsurf", "cline", "zed", "roo-code", "warp"]) expect(logoShown(brandLogo(id)), id).toBe(true);
+  it("only \"Other\" (any client) has no mark: it is not a product", () => {
+    expect(BRAND_LOGOS.filter((b) => b.status === "fallback").map((b) => b.id)).toEqual(["other"]);
   });
 });
 
@@ -144,19 +157,41 @@ describe("the marks are the vendors' own drawings", () => {
     expect(css).toMatch(/\.st-tile\[data-tile\]\s*\{\s*opacity:\s*1;\s*filter:\s*none;\s*\}/);
   });
 
+  it.each(Object.entries(RASTER))("%s: a picture the vendor offers only as a picture is embedded, not fetched (a data: image, no other address)", (symbol, file) => {
+    const art = BRAND_ART[symbol];
+    const m = /^<image href="(data:image\/(png|webp);base64,[A-Za-z0-9+/=]+)" width="(\d+)" height="(\d+)"\/>$/.exec(art.markup);
+    expect(m, symbol).toBeTruthy();
+    const original = readFileSync(join(ROOT, "brand", "third-party", file));
+    expect(original.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+    if (symbol === "hermes-any") {
+      // The vendor's 48 px PNG, byte for byte.
+      expect(m![2]).toBe("png");
+      expect(m![1].split(",")[1]).toBe(original.toString("base64"));
+    } else {
+      // The vendor's large PNG, scaled down and re-encoded as WebP: the same picture, a smaller file.
+      expect(m![2]).toBe("webp");
+      expect(Buffer.from(m![1].split(",")[1], "base64").subarray(8, 12).toString()).toBe("WEBP");
+      expect(art.viewBox).toBe("0 0 128 128");
+    }
+  });
+
   it("nothing in the third-party folder is a script, an event handler, an external reference or a foreign object", () => {
     const walk = (dir: string): string[] =>
       readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]));
-    const files = walk(join(ROOT, "brand", "third-party")).filter((f) => f.endsWith(".svg"));
+    const all = walk(join(ROOT, "brand", "third-party"));
+    const files = all.filter((f) => f.endsWith(".svg"));
     expect(files.length).toBe(Object.keys(SOURCE).length);
+    expect(all.filter((f) => f.endsWith(".png")).length).toBe(Object.keys(RASTER).length);
     for (const f of files) {
       const text = readFileSync(f, "utf8");
       expect(text, f).not.toMatch(/<script|<foreignObject|<iframe|<image|\son\w+=|javascript:|<animate|<set\b/i);
       expect(text.replace(/xmlns(?::\w+)?="[^"]*"/g, ""), f).not.toMatch(/(?:href|src)="(?:https?:)?\/\//i);
     }
     for (const [k, a] of Object.entries(BRAND_ART)) {
-      expect(a.markup, k).not.toMatch(/<script|<foreignObject|<iframe|<image|\son\w+=|javascript:|<animate|<style/i);
+      const vector = k in RASTER ? "" : a.markup;
+      expect(vector, k).not.toMatch(/<script|<foreignObject|<iframe|<image|\son\w+=|javascript:|<animate|<style/i);
       expect(a.markup, k).not.toMatch(/https?:\/\//);
+      if (k in RASTER) expect(a.markup, k).not.toMatch(/<script|<foreignObject|<iframe|\son\w+=|javascript:|<animate|<style|href="(?!data:image\/)/i);
     }
   });
 
@@ -174,17 +209,19 @@ describe("the page asks no other origin for anything", () => {
   it.each(LOCALES)("(%s) no img, no external src, no external <use>, no stylesheet or font link — only inline SVG", (locale) => {
     const html = page(locale);
     const doc = new DOMParser().parseFromString(html, "text/html");
-    expect(doc.querySelectorAll("img, image, picture, video, audio, source, iframe, object, embed, link[rel=stylesheet]")).toHaveLength(0);
+    expect(doc.querySelectorAll("img, picture, video, audio, source, iframe, object, embed, link[rel=stylesheet]")).toHaveLength(0);
+    // The only pictures are the two embedded ones (data: URIs inside the sprite): nothing is fetched.
+    for (const im of doc.querySelectorAll("image")) expect(im.getAttribute("href"), "an <image> carries its own bytes").toMatch(/^data:image\/(png|webp);base64,/);
     for (const use of doc.querySelectorAll("use")) expect(use.getAttribute("href"), "a <use> points inside the page").toMatch(/^#nl-/);
     // The only absolute addresses are links a person follows (the Claude and ChatGPT steps, off by default here).
     for (const el of doc.querySelectorAll("[src], [srcset], [data]")) throw new Error(`unexpected resource attribute on <${el.tagName.toLowerCase()}>`);
     for (const a of doc.querySelectorAll("a[href^='http']")) expect(a.getAttribute("rel") ?? "").toContain("noopener");
   });
 
-  it("the sprite is small: the drawings of every shown mark together weigh under 30 KB", () => {
+  it("the sprite is small: the drawings of every shown mark together weigh under 60 KB", () => {
     const shown = shownSymbols(MCP_CLIENTS.map((c) => c.id));
     const bytes = shown.reduce((n, s) => n + BRAND_ART[s].markup.length + BRAND_ART[s].viewBox.length, 0);
-    expect(bytes).toBeLessThan(30_000);
+    expect(bytes).toBeLessThan(60_000);
     const html = page();
     expect((html.match(/<symbol /g) ?? []).length).toBe(shown.length);
   });
@@ -207,7 +244,8 @@ describe("where the logos show", () => {
       expect(p.querySelector(".st-pill-label")?.textContent?.trim().length ?? 0).toBeGreaterThan(0);
     }
     const withLogo = pills.filter((p) => p.querySelector(".st-pill-glyph svg use"));
-    expect(withLogo.length).toBe(shownSymbols(MCP_CLIENTS.map((c) => c.id)).length === 0 ? 0 : 9);
+    // Every tab but "Other" carries its vendor's own mark.
+    expect(withLogo.length).toBe(MCP_CLIENTS.length - 1);
     expect(doc.querySelector(".st-trademarks")?.textContent).toBe(devDictionaries[locale].mcp.trademarks);
     expect(devDictionaries[locale].mcp.trademarks.length).toBeGreaterThan(60);
   });
@@ -233,47 +271,63 @@ describe("where the logos show", () => {
     expect(doc.querySelector('.st-pill[data-id="cursor"] .st-pill-glyph')?.getAttribute("data-tile")).toBe("theme");
   });
 
-  it("the hero row is real logos only, balanced around the N: no monogram, nothing from a client whose mark is not shown", () => {
+  it("the hero row is real logos only, balanced around the N: Cursor, ChatGPT, OpenClaw | N | Claude, VS Code, Windsurf", () => {
     const doc = new DOMParser().parseFromString(page(), "text/html");
     const tiles = [...doc.querySelectorAll(".st-tiles .st-tile")];
-    expect(tiles.map((t) => t.getAttribute("data-id"))).toEqual(["cursor", "chatgpt", "openclaw", "nightshift", "vscode", "windsurf", "more"]);
+    expect(tiles.map((t) => t.getAttribute("data-id"))).toEqual(["cursor", "chatgpt", "openclaw", "nightshift", "claude", "vscode", "windsurf"]);
     expect(doc.querySelectorAll(".st-tiles .st-logo-mono")).toHaveLength(0);
     expect(doc.querySelectorAll(".st-logo-mono")).toHaveLength(0);
-    // Every client tile is a mark that is shown; the only non-logo tile is the "+" one.
     for (const t of tiles) {
       const id = t.getAttribute("data-id")!;
-      if (id === "nightshift" || id === "more") continue;
+      if (id === "nightshift") continue;
       expect(logoShown(brandLogo(id)), id).toBe(true);
       expect(t.querySelector("svg use"), id).toBeTruthy();
     }
-    expect(tiles.find((t) => t.getAttribute("data-id") === "more")?.textContent).toBe("+");
+    // The Claude app icon is the finished tile of its own, shown at the tile's size with nothing around it.
+    expect(tiles.find((t) => t.getAttribute("data-id") === "claude")?.getAttribute("data-tile")).toBe("bare");
+    expect(tiles.find((t) => t.getAttribute("data-id") === "nightshift")?.textContent?.trim()).toBe("");
   });
 
-  it("the tabs whose mark may not be shown carry a plain icon from the icon set the site already uses, never letters", () => {
+  it("every tab shows its vendor's own mark; only \"Other\" carries a plain icon from the icon set the site already uses", () => {
     const doc = new DOMParser().parseFromString(page(), "text/html");
-    const plain = ["claude", "claude-code", "gemini-cli", "codex", "hermes", "claude-desktop", "other"];
-    for (const id of plain) {
-      const glyph = doc.querySelector(`.st-pill[data-id="${id}"] .st-pill-glyph`)!;
-      expect(glyph.querySelector("svg.st-logo-glyph"), id).toBeTruthy();
-      expect(glyph.querySelector("use"), id).toBeNull();
-      expect(glyph.textContent?.trim(), id).toBe("");
+    const glyph = (id: string) => doc.querySelector(`.st-pill[data-id="${id}"] .st-pill-glyph`)!;
+    for (const c of MCP_CLIENTS.filter((x) => x.id !== "other")) {
+      expect(glyph(c.id).querySelector("svg use"), c.id).toBeTruthy();
+      expect(glyph(c.id).textContent?.trim(), c.id).toBe("");
     }
-    // The terminal prompt for the command-line agents, the same on all four.
-    const terminal = (id: string) => doc.querySelector(`.st-pill[data-id="${id}"] .st-pill-glyph svg`)?.innerHTML;
-    expect(new Set(["claude-code", "gemini-cli", "codex", "hermes"].map(terminal)).size).toBe(1);
-    expect(terminal("claude")).not.toBe(terminal("claude-code"));
-    expect(terminal("claude-desktop")).not.toBe(terminal("claude"));
+    expect(glyph("other").querySelector("svg.st-logo-glyph")).toBeTruthy();
+    expect(glyph("other").querySelector("use")).toBeNull();
+    // The tiles that are finished icons of their own sit bare; the rest on the theme's neutral tile.
+    for (const id of ["claude", "claude-desktop", "gemini-cli", "hermes"]) expect(glyph(id).getAttribute("data-tile"), id).toBe("bare");
+    for (const id of ["claude-code", "codex", "cursor", "vscode"]) expect(glyph(id).getAttribute("data-tile"), id).toBe("theme");
   });
 
-  it("no Anthropic or Claude drawing is on the page while approval is not in hand", () => {
+  it("the Anthropic marks are on the page, unmodified: the Claude icon on Claude and Claude Desktop, the Claude Spark on Claude Code", () => {
     const html = page();
-    expect(html).not.toContain("nl-claude-any");
-    expect(html).not.toMatch(/D97757/i);
+    expect(html).toContain('id="nl-claude-any"');
+    expect(html).toContain('id="nl-claude-spark-any"');
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const ref = (id: string) => doc.querySelector(`.st-pill[data-id="${id}"] .st-pill-glyph use`)?.getAttribute("href");
+    expect(ref("claude")).toBe("#nl-claude-any");
+    expect(ref("claude-desktop")).toBe("#nl-claude-any");
+    expect(ref("claude-code")).toBe("#nl-claude-spark-any");
+    // The vendor's own colour, as its file has it.
+    expect(BRAND_ART["claude-spark-any"].markup).toMatch(/#d97757/i);
+    expect(BRAND_ART["claude-any"].markup).toMatch(/#D97757/i);
   });
 
-  it("the sprite exists once and holds no mark that is not shown", () => {
+  it("Codex carries the OpenAI mark under OpenAI's terms; Gemini CLI and Hermes their vendors' own icons", () => {
+    const doc = new DOMParser().parseFromString(page(), "text/html");
+    const uses = (id: string) => [...doc.querySelectorAll(`.st-pill[data-id="${id}"] .st-pill-glyph use`)].map((u) => u.getAttribute("href"));
+    expect(uses("codex")).toEqual(["#nl-openai-light", "#nl-openai-dark"]);
+    expect(uses("gemini-cli")).toEqual(["#nl-gemini-any"]);
+    expect(uses("hermes")).toEqual(["#nl-hermes-any"]);
+  });
+
+  it("the sprite exists once and holds exactly the marks that are shown", () => {
     const html = renderToStaticMarkup(<BrandSprite ids={MCP_CLIENTS.map((c) => c.id)} />);
     expect((html.match(/<svg /g) ?? []).length).toBe(1);
-    expect(html).not.toContain("nl-claude-any");
+    expect(html).toContain("nl-claude-any");
+    expect((html.match(/<symbol /g) ?? []).length).toBe(shownSymbols(MCP_CLIENTS.map((c) => c.id)).length);
   });
 });

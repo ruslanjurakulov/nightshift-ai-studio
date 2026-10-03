@@ -189,9 +189,9 @@ export function McpPage({
 
   const defaultTab = oauthLive ? "claude" : "claude-code";
   const open = initialTab && tabs.some((t) => t.id === initialTab) ? initialTab : defaultTab;
-  // Real logos only around the N, balanced in colour and weight (a red mark against a blue one, a white tile
-  // against a black one); a client whose own mark may not be shown is in the tabs, never in the hero.
-  const hero = ["cursor", "chatgpt", "openclaw", "nightshift", "vscode", "windsurf", "more"] as const;
+  // Real logos only around the N, balanced in colour and weight: a white mark and a red one to the left,
+  // Anthropic's orange and a blue one to the right. No "+" tile any more: every client has a mark.
+  const hero = ["cursor", "chatgpt", "openclaw", "nightshift", "claude", "vscode", "windsurf"] as const;
   const names = ["claude", "chatgpt", "claude-code", "openclaw", "cursor", "hermes"].map((id) => MCP_CLIENTS.find((x) => x.id === id)!.label);
 
   return (
@@ -203,12 +203,10 @@ export function McpPage({
           <div className="st-tiles" aria-hidden>
             <span className="st-tiles-glow" />
             {hero.map((id, i) => (
-              <span key={id} className="st-tile" data-slot={id === "nightshift" ? "brand" : Math.abs(i - 3)} data-id={id} data-tile={id === "nightshift" || id === "more" ? undefined : logoTile(id)}>
+              <span key={id} className="st-tile" data-slot={id === "nightshift" ? "brand" : Math.abs(i - 3)} data-id={id} data-tile={id === "nightshift" ? undefined : logoTile(id)}>
                 {id === "nightshift" ? (
                   // The product's own mark, exactly as the owner drew it: the shaded N on its black tile.
                   <BrandMark size={104} className="st-tile-n" />
-                ) : id === "more" ? (
-                  "+"
                 ) : (
                   <BrandLogo id={id} />
                 )}

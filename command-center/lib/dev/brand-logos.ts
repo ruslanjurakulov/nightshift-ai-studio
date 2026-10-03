@@ -25,9 +25,13 @@
 export type BrandStatus =
   /** The owner publishes the asset and its rules allow this use: shown. */
   | "official"
-  /** The owner's rules require its approval first: assets are ready, not shown until BRAND_APPROVED flips. */
-  | "awaiting-approval"
-  /** No verifiable official asset, or the owner's rules do not allow it: the neutral icon stays. */
+  /**
+   * The vendor's own asset, unmodified, shown WITHOUT the vendor's permission (its rules require approval first,
+   * or publish nothing either way): the site owner accepted the trademark risk on 2026-10-03. Shown while
+   * OWNER_ACCEPTED_MARKS_SHOWN is true; flipping that one constant puts the plain icons back.
+   */
+  | "owner-accepted"
+  /** No vendor asset exists: a plain neutral icon. */
   | "fallback";
 
 export type BrandLogo = {
@@ -37,28 +41,36 @@ export type BrandLogo = {
   status: BrandStatus;
   /** The sprite symbols (brand-logos-art.ts): a mark for a light page and one for a dark page, or one for both. */
   symbols?: { light: string; dark: string } | { any: string };
-  /** The surface the mark needs: the page's own neutral tile, or a light "paper" tile on both themes. */
-  tile: "theme" | "paper";
+  /**
+   * The surface the mark needs: the page's own neutral tile, a light "paper" tile on both themes, or none ("bare":
+   * the mark is itself a finished tile with its own background and corners, and is shown at the tile's size).
+   */
+  tile: "theme" | "paper" | "bare";
   /** The vendor's own page that offers or links the asset. */
   source: string;
   /** The page that states the rules for using the mark. */
   guidelines: string;
   /** What those rules allow, in a sentence, as read on the fetch date. */
   allowed: string;
-  /** Why a plain icon stays (fallback and awaiting-approval only). */
+  /** Why a mark is shown without the vendor's permission, or why a plain icon stays. */
   reason?: string;
   fetched: "2026-10-03";
 };
 
 /**
- * Anthropic's trademark guidelines say its marks may be used "only in materials
- * we approve beforehand" (https://www.anthropic.com/legal/trademark-guidelines;
- * requests: marketing@anthropic.com). Until that approval is in hand the
- * Claude, Claude Code and Claude Desktop tabs keep a plain icon. Flip this to
- * true the day it is, and the Claude icon appears on Claude and Claude Desktop
- * (Claude Code has only a seven-to-one wordmark, which does not fit a tile).
+ * THE GATE. On 2026-10-03 the site's owner decided to show every client's own logo and accepted the
+ * trademark risk himself ("nobody cares about my small site"). No vendor was asked and none gave
+ * permission. This constant covers every mark whose status is "owner-accepted": Anthropic's Claude marks
+ * (its guidelines, https://www.anthropic.com/legal/trademark-guidelines, allow use "only in materials we
+ * approve beforehand"; requests go to marketing@anthropic.com), Google's Gemini CLI icon (the brand
+ * resources are released only on application) and the Hermes icon (no policy published).
+ *
+ * To take them all down: set it to false. The tabs and tiles fall back to the plain icons, with no other
+ * change. The name is the original one; it now means "the owner accepted it".
  */
-export const ANTHROPIC_MARKS_APPROVED = false;
+export const ANTHROPIC_MARKS_APPROVED = true;
+/** The same gate under a name that says what it does. */
+export const OWNER_ACCEPTED_MARKS_SHOWN = ANTHROPIC_MARKS_APPROVED;
 
 const FETCHED = "2026-10-03" as const;
 
@@ -66,16 +78,18 @@ export const BRAND_LOGOS: readonly BrandLogo[] = [
   {
     id: "claude",
     vendor: "Anthropic",
-    status: "awaiting-approval",
+    status: "owner-accepted",
     symbols: { any: "claude-any" },
-    tile: "theme",
+    tile: "bare",
     source: "https://www.anthropic.com/press-kit (zip: Claude logos / Claude icon / ClaudeIcon-Rounded.svg)",
     guidelines: "https://www.anthropic.com/legal/trademark-guidelines",
     allowed:
       "Marks may be used only as Anthropic permits and only in materials it approves beforehand; no alterations; no implied sponsorship or endorsement; reasonable space around the mark; no trademark symbol.",
-    reason: "Anthropic's guidelines require its approval of the material first. Request: marketing@anthropic.com.",
+    reason:
+      "Shown without Anthropic's approval: the site owner accepted the risk on 2026-10-03 (no vendor permission obtained). The drawing is the press-kit file, unmodified; it is the finished app tile, so it is shown at the tile's size.",
     fetched: FETCHED,
   },
+
   {
     id: "chatgpt",
     vendor: "OpenAI",
@@ -91,15 +105,17 @@ export const BRAND_LOGOS: readonly BrandLogo[] = [
   {
     id: "claude-code",
     vendor: "Anthropic",
-    status: "fallback",
+    status: "owner-accepted",
+    symbols: { any: "claude-spark-any" },
     tile: "theme",
-    source: "https://www.anthropic.com/press-kit (Claude Code logo)",
+    source: "https://www.anthropic.com/press-kit (zip: Claude logos / Claude Spark / Claude Spark - Clay.svg)",
     guidelines: "https://www.anthropic.com/legal/trademark-guidelines",
-    allowed: "As for Claude: only with Anthropic's prior approval of the material.",
+    allowed: "As for Claude: only with Anthropic's prior approval of the material; no alterations.",
     reason:
-      "Needs Anthropic's approval like the other Anthropic marks, and the only Claude Code mark in the press kit is a seven-to-one wordmark lockup that cannot sit in a square tile unchanged.",
+      "Shown without Anthropic's approval: the site owner accepted the risk on 2026-10-03. The press kit's Claude Code logo is a seven-to-one lockup (the spark and the words \"Claude Code\"), which cannot sit in a square tile unchanged, so the tab carries the Claude Spark from the same kit, in its own colour.",
     fetched: FETCHED,
   },
+
   {
     id: "openclaw",
     vendor: "OpenClaw Foundation",
@@ -127,15 +143,17 @@ export const BRAND_LOGOS: readonly BrandLogo[] = [
   {
     id: "hermes",
     vendor: "Nous Research",
-    status: "fallback",
-    tile: "theme",
-    source: "https://hermes-agent.nousresearch.com/ and https://github.com/NousResearch/hermes-agent",
-    guidelines: "https://github.com/NousResearch/hermes-agent/blob/main/LICENSE (MIT); no brand page found",
-    allowed: "No brand guideline published.",
+    status: "owner-accepted",
+    symbols: { any: "hermes-any" },
+    tile: "bare",
+    source: "https://hermes-agent.nousresearch.com/icon.png (the Hermes Agent site's own icon, 48 px, byte for byte)",
+    guidelines: "https://github.com/NousResearch/hermes-agent/blob/main/LICENSE (MIT); no brand page or trademark policy published",
+    allowed: "No brand guideline published, so nothing is stated either way.",
     reason:
-      "No brand page and no official vector mark: the only assets are a 48 px favicon and a 1.9 MB marketing badge, neither a logo we can use unmodified at tile size.",
+      "Shown without the vendor's permission: the site owner accepted the risk on 2026-10-03. The only official asset is the site's 48 px PNG icon, used as it is, at no more than its native size.",
     fetched: FETCHED,
   },
+
   {
     id: "vscode",
     vendor: "Microsoft",
@@ -187,25 +205,30 @@ export const BRAND_LOGOS: readonly BrandLogo[] = [
   {
     id: "gemini-cli",
     vendor: "Google",
-    status: "fallback",
-    tile: "theme",
-    source: "https://partnermarketinghub.withgoogle.com/brands/google/overview/ (Google Brand Resource Center)",
-    guidelines: "https://partnermarketinghub.withgoogle.com/brands/google/overview/",
-    allowed: "Brand resources are released only after an application.",
-    reason: "The Gemini mark is available only through Google's Brand Resource Center, which asks for an application first; no public official asset.",
+    status: "owner-accepted",
+    symbols: { any: "gemini-any" },
+    tile: "bare",
+    source: "https://geminicli.com/icon.png (the Gemini CLI site's own icon, 1645 px PNG; the page carries it scaled to 128 px and re-encoded as WebP)",
+    guidelines: "https://partnermarketinghub.withgoogle.com/brands/google/overview/ (Google Brand Resource Center: resources are released only after an application)",
+    allowed: "Google releases its brand resources only to applicants; no public terms for this icon were found.",
+    reason:
+      "Shown without Google's permission: the site owner accepted the risk on 2026-10-03. The picture is the Gemini CLI site's own icon, scaled down only.",
     fetched: FETCHED,
   },
+
   {
     id: "codex",
     vendor: "OpenAI",
-    status: "fallback",
+    status: "official",
+    symbols: { light: "openai-light", dark: "openai-dark" },
     tile: "theme",
-    source: "https://cdn.openai.com/brand/openai-logos.zip",
-    guidelines: "https://openai.com/brand/",
-    allowed: "The kit holds the OpenAI wordmark and the Blossom only.",
-    reason: "OpenAI's logo kit has no Codex mark; the Blossom is already the ChatGPT tab's, and one mark must not stand for two products.",
+    source: "https://cdn.openai.com/brand/openai-logos.zip (OpenAI Blossom, black and white)",
+    guidelines: "https://openai.com/brand/ (usage terms)",
+    allowed:
+      "OpenAI's logo for an OpenAI service, under the same usage terms as the ChatGPT tab; its kit has no separate Codex mark, so the OpenAI Blossom stands for it.",
     fetched: FETCHED,
   },
+
   {
     id: "roo-code",
     vendor: "Roo Code",
@@ -232,15 +255,16 @@ export const BRAND_LOGOS: readonly BrandLogo[] = [
   {
     id: "claude-desktop",
     vendor: "Anthropic",
-    status: "awaiting-approval",
+    status: "owner-accepted",
     symbols: { any: "claude-any" },
-    tile: "theme",
+    tile: "bare",
     source: "https://www.anthropic.com/press-kit (Claude icon)",
     guidelines: "https://www.anthropic.com/legal/trademark-guidelines",
-    allowed: "As for Claude: only with Anthropic's prior approval of the material.",
-    reason: "Anthropic's guidelines require its approval of the material first. Request: marketing@anthropic.com.",
+    allowed: "As for Claude: only with Anthropic's prior approval of the material; no alterations.",
+    reason: "Shown without Anthropic's approval: the site owner accepted the risk on 2026-10-03. The Claude app icon, unmodified.",
     fetched: FETCHED,
   },
+
   {
     id: "other",
     vendor: "—",
@@ -259,11 +283,15 @@ export function brandLogo(id: string): BrandLogo | undefined {
   return BRAND_LOGOS.find((b) => b.id === id);
 }
 
-/** Is this client's real mark shown? Official, or awaiting-approval with the approval flipped on. */
-export function logoShown(entry: BrandLogo | undefined): entry is BrandLogo & { symbols: NonNullable<BrandLogo["symbols"]> } {
+/** Is this client's real mark shown? Official, or owner-accepted while the gate is on. */
+export function logoShown(
+  entry: BrandLogo | undefined,
+  /** The gate; a parameter so a test can show what the page does with it off. */
+  gate: boolean = OWNER_ACCEPTED_MARKS_SHOWN,
+): entry is BrandLogo & { symbols: NonNullable<BrandLogo["symbols"]> } {
   if (!entry?.symbols) return false;
   if (entry.status === "official") return true;
-  return entry.status === "awaiting-approval" && entry.vendor === "Anthropic" && ANTHROPIC_MARKS_APPROVED;
+  return entry.status === "owner-accepted" && gate;
 }
 
 /** The sprite symbol ids a page needs for the logos that are shown. */
