@@ -34,6 +34,16 @@ assistant can tell "top up" (`insufficient_balance`) from "wait"
 
 ## Connecting a client
 
+The customer-facing version of this section is the public page **/mcp** (snippets for
+eleven assistants, each checked against that assistant's own documentation:
+see `command-center/lib/dev/mcp-clients.ts`).
+
+`/mcp` has one tab per assistant (Claude, ChatGPT, Claude Code, OpenClaw, Cursor and Hermes first, then the rest),
+each with three numbered steps. Whether it shows the sign-in (OAuth) flow or only API-key steps is decided by the
+environment flag `MCP_OAUTH_LIVE` (literal `1` = on, read at request time; `deploy/.env.web.example`,
+`lib/mcp-oauth.ts`). Leave it off until the server's OAuth is merged, deployed and tested with a real connector: while
+it is off the Claude and ChatGPT tabs say "Coming soon" and every other tab shows its API-key steps.
+
 Create a key in **Developers → API keys** (owner/admin, after activating the
 API). Treat it like a password: a client holding it can spend your API balance.
 
