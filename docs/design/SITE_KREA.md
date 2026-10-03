@@ -220,3 +220,19 @@ Risks:
    changed with the headline, their layouts did not.
 6. Sections alternate tones with a data attribute and CSS; a new section that forgets `data-tone` will sit on the
    ground colour next to another ground section.
+
+## 7. Fixes after review (Lens and Pixel)
+
+- Hero note says the welcome credits are one-time again (en, ru, uz), matching `grant_welcome_credits`.
+- "You press publish." no longer stands alone: the FAQ answer says auto-publish is off unless you turn it on for
+  a channel; the drawn "Approve and publish" key carries a small "Example" label next to it.
+- The approval screen on the landing is recaptured from the current app (main with the calm-app change),
+  light and dark, en/ru/uz, desktop and phone, from the repo's visual-QA fake backend extended in a scratch copy
+  with one sample video (a drawn moon clip, "Small Science", private, publish gate passed). The panel is now
+  sentence case with no monospace. The caption still says everything on it is sample data.
+- "key" became "button" in the English site copy where it meant the priced button (Russian and Uzbek already said
+  button); API keys stay keys. The credit-math equations are set in the page's face with aligned figures.
+- The Uzbek hero pill is short enough to stay on one line at 340px and up; the sign-up line says a link confirms
+  the email and no card is needed (what the flow does: `signUp`, then `/auth/callback`, then `/welcome`).
+- Left for a separate PR: the hydration mismatch on `/pricing` in Uzbek (Intl currency output differs between
+  server and browser in `lib/pricing.ts`).

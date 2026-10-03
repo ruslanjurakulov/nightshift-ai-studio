@@ -146,7 +146,7 @@ export function PressStage({ stage }: { stage: Stage }) {
               <span className="nx-ui-tag">{stage.tag}</span>
               {s.id === "brief" && <BriefUi s={s as BriefStep} />}
               {s.id === "plan" && <PlanUi s={s as PlanStep} />}
-              {s.id === "approve" && <ApproveUi s={s as ApproveStep} />}
+              {s.id === "approve" && <ApproveUi s={s as ApproveStep} tag={stage.tag} />}
               {s.id === "live" && <LiveUi s={s as LiveStep} />}
             </div>
           </div>
@@ -214,7 +214,7 @@ function Frame({ live = false }: { live?: boolean }) {
   );
 }
 
-function ApproveUi({ s }: { s: ApproveStep }) {
+function ApproveUi({ s, tag }: { s: ApproveStep; tag: string }) {
   return (
     <div className="nx-ui-card">
       <Frame />
@@ -233,6 +233,8 @@ function ApproveUi({ s }: { s: ApproveStep }) {
         </li>
       </ul>
       <div className="nx-ui-foot">
+        {/* The drawn key is a picture; saying so next to it keeps anyone from reaching for it. */}
+        <span className="nx-ui-note">{tag}</span>
         <span className="nx-ui-key" data-lit="true">
           {s.key}
         </span>

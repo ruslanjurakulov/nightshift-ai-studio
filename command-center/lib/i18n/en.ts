@@ -226,7 +226,7 @@ export const en = {
   },
   signup: {
     title: "Create your account",
-    sub: "Just your email and a password. No card needed.",
+    sub: "Your email and a password, then we send a link to confirm it. No card needed.",
     email: "Email",
     password: "Password",
     confirm: "Confirm password",
@@ -3502,7 +3502,7 @@ export const en = {
         { id: "refund", q: "Can I get a refund?", a: "Payments are handled by Paddle, which processes refund requests under its Buyer Terms and applicable law. When a purchase is refunded, the credits it added are removed as far as they are still unused. Credits held for a failed run always come back on their own." },
         { id: "unused", q: "What happens to unused credits?", a: "Plan credits are valid for the billing period they arrive in and do not roll over. Top-up credits are spent after plan credits and follow the expiry shown on the Pricing page." },
         { id: "card", q: "Do I need a card to sign up?", a: "No. You create an account with your email and get the welcome credits once. You pay only when you choose a plan or a credit pack." },
-        { id: "control", q: "Can it publish something without me?", a: "Uploads are private by default and every video passes a publish check first. Auto-publish is a per-channel switch that stays off until you turn it on." },
+        { id: "control", q: "Can it publish something without me?", a: "Only if you let it. Uploads are private by default and every video passes a publish check first. Auto-publish is off unless you turn it on for a channel; until then, going public is your button." },
         { id: "data", q: "What do you do with my data?", a: "Your Google data is used only to upload to the channel you connect and to show that channel's analytics to you — never for advertising. Access tokens are encrypted and never reach the browser, and you can revoke access at any time." },
       ],
       privacyLink: "Read the Privacy Policy",

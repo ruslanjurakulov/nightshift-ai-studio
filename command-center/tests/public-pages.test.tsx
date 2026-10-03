@@ -138,6 +138,9 @@ describe("public landing page", () => {
     expect(tabs.map((x) => x.textContent?.replace(/^\d/, ""))).toEqual(t.site.stage.steps.map((x) => x.tab));
     // The story ends where the page's idea does: you approve, then it is live.
     expect(t.site.stage.steps.map((x) => x.id)).toEqual(["brief", "plan", "approve", "live"]);
+    // The drawn "Approve and publish" key says next to itself that it is an example.
+    const approveFoot = container.querySelector('[role="tabpanel"]:nth-of-type(3) .nx-ui-foot, [role="tabpanel"]:nth-child(3) .nx-ui-foot')!;
+    expect(approveFoot.querySelector(".nx-ui-note")?.textContent).toBe(t.site.stage.tag);
     // Only the open state is exposed; the rest stay in the HTML (search) but out of the way.
     const panels = [...container.querySelectorAll('[role="tabpanel"]')];
     expect(panels.map((p) => p.getAttribute("data-on"))).toEqual(["true", "false", "false", "false"]);
@@ -154,9 +157,38 @@ describe("public landing page", () => {
     expect(on.textContent).toContain(t.site.stage.steps[2].title);
   });
 
-  it("names the welcome grant from WELCOME_CREDITS, once on sign-up", () => {
+  it("names the welcome grant from WELCOME_CREDITS, and says it is one-time in every language", () => {
     renderLanding({ kind: "announced" });
     expect(screen.getByText(fmt(dictionaries.en.site.hero.note, { n: WELCOME_CREDITS }))).toBeTruthy();
+    // The grant is given once (grant_welcome_credits), so the hero must say so, not just "when you sign up".
+    expect(dictionaries.en.site.hero.note).toMatch(/once/i);
+    expect(dictionaries.ru.site.hero.note).toMatch(/один раз/);
+    expect(dictionaries.uz.site.hero.note).toMatch(/bir marta/);
+  });
+
+  it("does not let \"You press publish\" stand alone: the FAQ says auto-publish is off unless turned on for a channel", () => {
+    for (const locale of ["en", "ru", "uz"] as const) {
+      const control = dictionaries[locale].landing.faq.items.find((i) => i.id === "control")!;
+      expect(control.a).toMatch(locale === "en" ? /Auto-publish is off unless you turn it on for a channel/ : locale === "ru" ? /Автопубликация выключена, пока вы не включите её для канала/ : /Avto-nashr kanal uchun siz yoqmaguningizcha oʻchiq/);
+    }
+  });
+
+  it("writes the price as a button, not a key, in the site's English copy (API keys are keys)", () => {
+    const strings: string[] = [];
+    const walk = (n: unknown) => (typeof n === "string" ? strings.push(n) : Array.isArray(n) ? n.forEach(walk) : n && typeof n === "object" ? Object.values(n).forEach(walk) : null);
+    walk(dictionaries.en.site);
+    for (const s of strings) expect(s).not.toMatch(/\b(?:on the key|the key you press|Generate key|priced key|Approve and publish key)\b/i);
+  });
+
+  it("keeps the hero pill to one line in Uzbek (short enough for 390px)", () => {
+    expect(dictionaries.uz.site.hero.kicker.length).toBeLessThanOrEqual(40);
+  });
+
+  it("tells the truth about sign-up: the email is confirmed by a link, and no card is asked for", () => {
+    expect(dictionaries.en.signup.sub).toMatch(/confirm/);
+    expect(dictionaries.ru.signup.sub).toMatch(/подтвержд/);
+    expect(dictionaries.uz.signup.sub).toMatch(/tasdiqlash/);
+    for (const l of ["en", "ru", "uz"] as const) expect(dictionaries[l].signup.sub.length).toBeGreaterThan(20);
   });
 
   it("opens the cancelling and refund answers before anyone buys, when a plan is on sale", () => {

@@ -25,7 +25,7 @@ export const siteEn = {
     lead: "Give Nightshift a topic. It writes, voices and edits a YouTube video, then waits for your OK. You see the price before anything starts.",
     cta: "Start free",
     secondary: "See pricing",
-    note: "{n} free credits when you sign up. No card.",
+    note: "{n} free credits, once, when you sign up. No card.",
   },
   rundown: {
     figure: "Illustration of one video’s rundown in Nightshift: channel, topic, script and video are done; the video is uploaded to YouTube as private and waits for your approval.",
@@ -169,7 +169,7 @@ export const siteEn = {
     shotTitle: "The app’s real approval screen.",
     shotBody: "A finished video waits on its own page: the preview, the title it goes out under, private on YouTube, the publish check's verdict, and the keys. With auto-publish off, nothing goes public until someone presses Approve.",
     shotCaption: "A real screen from the app. Everything on it is sample data: the channel, the video, the balance and the account.",
-    shotAlt: "Screenshot of the Command Center: the video “Why the Moon always shows us the same face” waiting for approval — private, auto-publish off, the publish gate passed every check — with the Approve and publish key. Everything shown is sample data.",
+    shotAlt: "Screenshot of the Command Center: the video “Why the Moon always shows us the same face” waiting for approval — private, auto-publish off, the publish gate passed every check — with the Approve and publish button. Everything shown is sample data.",
     steps: [
       { id: "channel", title: "Channel", body: "Connect your YouTube channel through Google’s own consent screen. It runs only once YouTube confirms the channel is yours." },
       { id: "topic", title: "Topic", body: "Type a topic, a question or a short brief — or let the channel pick its next one from its niche." },
@@ -231,7 +231,7 @@ export const siteEn = {
     title: "Pay for what you make. Never for a failure.",
     lead: "Nightshift runs on credits. A plan brings a monthly allowance; one-time packs top up with or without a plan.",
     ledger: [
-      { id: "quote", word: "Quote", body: "Shown on the key before anything starts" },
+      { id: "quote", word: "Quote", body: "Shown on the button before anything starts" },
       { id: "hold", word: "Hold", body: "Set aside when the run starts" },
       { id: "charge", word: "Charge", body: "What it used, never more than the hold" },
       { id: "return", word: "Return", body: "The rest — or all of it, if the run failed" },
@@ -280,10 +280,10 @@ export const siteEn = {
     eyebrowNoPlans: "Credits and top-ups",
     mathSlug: "Credits math",
     mathTitle: "How a price becomes a charge.",
-    mathLead: "The same four steps for a video run and a Studio generation. The price of each is on the key you press, before anything starts.",
+    mathLead: "The same four steps for a video run and a Studio generation. The price of each is on the button you press, before anything starts.",
     leadNoPlans: "Top up with one-time credit packs. Every generation shows its price before it starts, and a failed one costs nothing.",
     rows: [
-      { id: "quote", word: "Quote", formula: "quote = length × per-minute rate, at least the minimum per run", body: "Shown on the key before anything starts. A Studio generation carries its own price the same way." },
+      { id: "quote", word: "Quote", formula: "quote = length × per-minute rate, at least the minimum per run", body: "Shown on the button before anything starts. A Studio generation carries its own price the same way." },
       { id: "hold", word: "Hold", formula: "hold = quote", body: "Set aside from your balance when the run starts, so it is not spent on anything else meanwhile." },
       { id: "charge", word: "Charge", formula: "charge ≤ hold", body: "What the run actually used, once it finishes — never more than the hold." },
       { id: "return", word: "Return", formula: "return = hold − charge;  failed → return = hold", body: "Comes straight back to your balance, with no request. Every step is in your credit history." },
@@ -352,7 +352,7 @@ export const siteEn = {
         air: "It goes public only when both are in.",
       },
       composer: {
-        figure: "Illustration of the Studio composer: a description, the 16:9 shape selected, one of your style kits, and the Generate key that carries its price.",
+        figure: "Illustration of the Studio composer: a description, the 16:9 shape selected, one of your style kits, and the Generate button that carries its price.",
         title: "Studio",
         tag: "Illustration",
         describe: "Describe it",
@@ -361,7 +361,7 @@ export const siteEn = {
         style: "Style",
         styleName: "Night market",
         generate: "Generate",
-        price: "price on the key",
+        price: "price on the button",
       },
       api: {
         figure: "The public API's endpoints, as listed in the API reference.",
@@ -401,7 +401,7 @@ export const siteEn = {
         id: "creative-studio",
         nav: "Creative studio",
         kicker: "For single pieces",
-        title: "Pictures, clips and voice‑overs, priced on the key.",
+        title: "Pictures, clips and voice‑overs, priced on the button.",
         lead: "For creators and editors who need a thumbnail idea, a b-roll clip or a narration line, without starting a whole video.",
         what: [
           { title: "Images", body: "From a description, in 16:9, 9:16 or square — then edit them by typing, upscale them or cut them out." },
@@ -413,9 +413,9 @@ export const siteEn = {
         not: [
           "It will not start a generation you have not pressed — and the press shows the price.",
           "It will not keep the credits of a generation that failed; they return on their own.",
-          "It will not add a charge for a style kit — the price on the key is the whole price.",
+          "It will not add a charge for a style kit — the price on the button is the whole price.",
         ],
-        start: ["Create a free account", "Open the Studio and pick a tool", "Describe what you want and press the priced key"],
+        start: ["Create a free account", "Open the Studio and pick a tool", "Describe what you want and press the priced button"],
       },
       {
         id: "developers",

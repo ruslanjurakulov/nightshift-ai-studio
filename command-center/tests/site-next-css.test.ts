@@ -85,6 +85,14 @@ describe("site-next.css", () => {
     expect(css).toMatch(/\.nx \.st-field input \{ height: 54px; min-height: 54px;/);
   });
 
+  it("sets the credit-math equations in the page's own face with aligned figures, not in a monospace", () => {
+    const at = css.indexOf(".nx .st-formula code {");
+    expect(at).toBeGreaterThan(-1);
+    const body = css.slice(at, css.indexOf("}", at));
+    expect(body).toContain("font-family: inherit");
+    expect(body).toContain("tabular-nums");
+  });
+
   it("draws nothing as pressable that is not: the drawn keys are spans inside an aria-hidden picture", () => {
     const stage = readFileSync(join(__dirname, "..", "components/landing/PressStage.tsx"), "utf8");
     expect(stage).toMatch(/className="nx-ui" aria-hidden/);

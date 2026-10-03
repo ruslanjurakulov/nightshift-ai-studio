@@ -218,7 +218,7 @@ export const uz: Dictionary = {
   },
   signup: {
     title: "Hisob yarating",
-    sub: "Faqat email va parol. Karta kerak emas.",
+    sub: "Email va parol, soʻng tasdiqlash havolasini yuboramiz. Karta kerak emas.",
     email: "Email",
     password: "Parol",
     confirm: "Parolni takrorlang",
@@ -3493,7 +3493,7 @@ export const uz: Dictionary = {
         { id: "refund", q: "Pulni qaytarib olsa boʻladimi?", a: "Toʻlovlar bilan Paddle shugʻullanadi: qaytarish soʻrovlarini u oʻzining xaridorlar shartlari va amaldagi qonunchilik asosida koʻrib chiqadi. Xarid qaytarilsa, u qoʻshgan kreditlar hali sarflanmagan qismida olib qoʻyiladi. Muvaffaqiyatsiz ish uchun band qilingan kreditlar esa doim oʻzi qaytadi." },
         { id: "unused", q: "Ishlatilmagan kreditlar nima boʻladi?", a: "Tarif kreditlari kelgan hisob-kitob davri davomida amal qiladi va keyingisiga oʻtmaydi. Toʻldirish kreditlari tarif kreditlaridan keyin sarflanadi va Narxlar sahifasida koʻrsatilgan muddatda tugaydi." },
         { id: "card", q: "Roʻyxatdan oʻtish uchun karta kerakmi?", a: "Yoʻq. Akkaunt email orqali ochiladi va xush kelibsiz kreditlari bir marta beriladi. Faqat tarif yoki kredit paketini tanlaganingizda toʻlaysiz." },
-        { id: "control", q: "U mensiz biror narsani nashr qila oladimi?", a: "Yuklamalar sukut boʻyicha yopiq va har bir video avval nashr tekshiruvidan oʻtadi. Avto-nashr — kanal sozlamasi, siz yoqmaguningizcha oʻchiq turadi." },
+        { id: "control", q: "U mensiz biror narsani nashr qila oladimi?", a: "Faqat siz ruxsat bersangiz. Yuklamalar sukut boʻyicha yopiq va har bir video avval nashr tekshiruvidan oʻtadi. Avto-nashr kanal uchun siz yoqmaguningizcha oʻchiq; shu paytgacha ommaviy qilish — sizning tugmangiz." },
         { id: "data", q: "Maʼlumotlarim bilan nima qilasiz?", a: "Google maʼlumotlaringiz faqat siz ulagan kanalga yuklash va oʻsha kanal analitikasini sizga koʻrsatish uchun ishlatiladi — hech qachon reklama uchun emas. Kirish tokenlari shifrlangan va brauzerga chiqmaydi, ruxsatni istalgan vaqtda bekor qilishingiz mumkin." },
       ],
       privacyLink: "Maxfiylik siyosatini oʻqish",

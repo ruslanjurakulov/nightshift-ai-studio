@@ -573,6 +573,8 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(28px, 4.4vw, 46px); 
 .nx-math[open] > summary { border-bottom: 1px solid var(--ns-rule); }
 .nx-math .st-formula { border-top: 1px solid var(--ns-rule); margin: 0 20px 12px; }
 .nx-math-steps { margin: 0 20px; }
+/* Words and equations, not code: the page's own face with aligned figures. */
+.nx .st-formula code { font-family: inherit; font-variation-settings: normal; font-variant-numeric: tabular-nums; font-size: 15px; }
 .nx-flow { margin-top: 32px; }
 .nx-get { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .nx-get li { display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px; border-radius: 20px; border: 1px solid var(--ns-rule); background: var(--ns-console); font-size: 16px; line-height: 1.5; }

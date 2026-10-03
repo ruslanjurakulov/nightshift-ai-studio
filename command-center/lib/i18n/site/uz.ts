@@ -12,13 +12,13 @@ export const siteUz: SiteDictionary = {
     start: "Bepul boshlash",
   },
   hero: {
-    kicker: "YouTube kanallari uchun — yuzli ham, yuzsiz ham",
+    kicker: "Yuzli va yuzsiz YouTube kanallari uchun",
     titleA: "Videoni biz tayyorlaymiz.",
     titleB: "Nashr qilishni siz bosasiz.",
     lead: "Nightshift’ga mavzu bering. U YouTube uchun video yozadi, ovozlaydi va montaj qiladi, soʻng roziligingizni kutadi. Narxni boshlashdan oldin koʻrasiz.",
     cta: "Bepul boshlash",
     secondary: "Narxlarni koʻrish",
-    note: "Roʻyxatdan oʻtsangiz, {n} bepul kredit beriladi. Karta kerak emas.",
+    note: "Roʻyxatdan oʻtishda bir marta {n} bepul kredit. Karta kerak emas.",
   },
   rundown: {
     figure: "Rasm: Nightshift’da bitta videoning yoʻli. Kanal, mavzu, ssenariy va video tayyor; video YouTube’ga shaxsiy holda yuklangan va tasdiqlashingizni kutmoqda.",
