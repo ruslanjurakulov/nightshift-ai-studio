@@ -580,6 +580,8 @@ create or replace function public.oauth_client_name_problem(p text) returns text
 declare
   v_vis  text := public.oauth_visible_name(p);
   v_fold text;
+  c_from constant text := '0оοօОΟøθ1!|lıɩⅼɪӏІіΙιΊίłℓ3еёЕΕєε4@аɑαАΑ5$ѕꜱʂЅςš7тτƫТΤ†8вΒɓ9ɡցԍɢğʜнһհНҺΗηɦռոпΠΝɴñԁɗĐđƒꜰſрρРΡсϲСϹçхχХΧуүγУΥкκКΚмМΜυцνѵⲚꓠ𐔓𑪾𝚴𝛮𝜨𝝢𝞜¡ǀւ׀וןا١۱ߊ।၊Ꭵᛁᛐ↿∣⍳⏽│┃Ⲓⲓⵊⵏꓲꕯꙇꞁꟾ꠰꣎꩝ꭵ︱ﺍﺎ￨𐊊𐌉𐌠𐔎𐤦𐰾𐲥𐳺𑁇𑃀𑅁𑇅𑏔𑑋𑗅𑙁𑣃𑱁𑷚𑷡𖵣𖺪𖼨𝄀𝍷𞅁𞣇𞴁𞸀𞺀ƍᏀᏳᶃꓖႹᎻᏂᕼⲎꓧ𐋏ߠᎢ⊤⟙Ⲧㄒ丅ꓔꔋ𐊗𐊱𐌕𑢼𖼊𝍳🝨ƽՏടႽჽᏕᏚᲽꓢꕶꮪ𐊖𐐠𐑈𑣁𖫖𖼺ʄϜքߓᖴẝꓝꞘꞙꬵ𐅾𐊇𐊥𐔥𑢢𑣂𝈓𝟊𜳖𜳗𜳘𜳙𜳚𜳛𜳜𜳝𜳞𜳟𜳠𜳡𜳢𜳣𜳤𜳥𜳦𜳧𜳨𜳩𜳪𜳫𜳬𜳭𜳮𜳯𜳰𜳱𜳳𜳴𜳵𜳷𜳸𜳹꟱+#𖵩𖵪ŁƑƖƼПӀԌՀՈՌՑՒՔꙆꞀꞪꞬꞮꟅ𑢡𑢣';
+  c_to   constant text := 'ooooooooiiiiiiiiiiiiiiiiieeeeeeeaaaaaaasssssssstttttttbbbbgggggghhhhhhhhhnnnnnnnddddfffppppcccccxxxxyyyyykkkkmmmuuvvnnnnnnnnniiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiggggghhhhhhhttttttttttttttttsssssssssssssssssffffffffffffffffffabcdefghijklmnopqrstuvwxyzoieastbgsthiiifisnighnngifiihgissi';
 begin
   if v_vis = '' then
     return 'empty';
@@ -587,10 +589,16 @@ begin
   if char_length(v_vis) > 80 then
     return 'too_long';
   end if;
-  v_fold := normalize(lower(normalize(v_vis, NFKC)), NFKD);
+  -- Lookalikes first, before NFKC and before lower case (both cases are listed,
+  -- so a character NFKC would rewrite, or a capital whose lower-case form looks
+  -- like another letter, is read as what it looks like), NFKC and lookalikes
+  -- again, lower case, accents and invisibles out, lower case and lookalikes
+  -- once more (what the steps leave behind, in any database locale), only a-z kept.
+  v_fold := translate(normalize(translate(v_vis, c_from, c_to), NFKC), c_from, c_to);
+  v_fold := normalize(lower(v_fold), NFKD);
   v_fold := regexp_replace(v_fold, '[\u0300-\u036f]', '', 'g');
   v_fold := regexp_replace(v_fold, '[\u0001-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17b4-\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff9-\ufffb\U000e0000-\U000e007f]', '', 'g');
-  v_fold := translate(v_fold, '0оοօОΟøθ1!|lıɩⅼɪӏІіΙιΊίłℓ3еёЕΕєε4@аɑαАΑ5$ѕꜱʂЅςš7тτƫТΤ†8вΒɓ9ɡցԍɢğʜнһհНҺΗηɦռոпΠΝɴñԁɗĐđƒꜰſрρРΡсϲСϹçхχХΧуүγУΥкκКΚмМΜυцνѵ', 'ooooooooiiiiiiiiiiiiiiiiieeeeeeeaaaaaaasssssssstttttttbbbbgggggghhhhhhhhhnnnnnnnddddfffppppcccccxxxxyyyyykkkkmmmuuvv');
+  v_fold := translate(lower(v_fold), c_from, c_to);
   v_fold := regexp_replace(v_fold, '[^a-z]', '', 'g');
   if v_fold like '%nightshift%' then
     return 'reserved';

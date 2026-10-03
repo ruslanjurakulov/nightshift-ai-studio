@@ -183,7 +183,7 @@ class ClientNameValidatorsAgree(unittest.TestCase):
         import json
         ts_from = json.loads(re.search(r'HOMOGLYPH_FROM = ("(?:[^"\\]|\\.)*");', self.TS).group(1))
         ts_to = json.loads(re.search(r'HOMOGLYPH_TO = ("(?:[^"\\]|\\.)*");', self.TS).group(1))
-        sql = re.search(r"translate\(v_fold, '([^']*)', '([^']*)'\)", SQL)
+        sql = re.search(r"c_from constant text := '([^']*)';\s*c_to\s+constant text := '([^']*)';", SQL)
         self.assertEqual((ts_from, ts_to), (sql.group(1), sql.group(2)))
         self.assertEqual(len(ts_from), len(ts_to))
         self.assertEqual(len(set(ts_from)), len(ts_from), "a character is mapped twice")

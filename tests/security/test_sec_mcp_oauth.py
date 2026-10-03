@@ -345,6 +345,23 @@ NAME_BAD = [
     " \u200b ",
     "\ufe0f",
     "\u034f",
+    # Review (Lens): capitals whose lower-case form looks like another letter, other scripts, Unicode 16
+    # (an older database has no NFKC data for it), leet plus, compat forms NFKC would rewrite first.
+    "\u039dightshift",
+    "\u039d\u0399GH\u03a4SHIFT",
+    "NIGHTSHLFT",
+    "\u00d1IGHTSHIFT",
+    "\ua4e0\ua4f2\ua4d6\ua4e7\ua4d4\ua4e2\ua4e7\ua4f2\ua4dd\ua4d4",
+    "\u2c9aightshift",
+    "N\u13a5ghtshift",
+    "N𜳞ghtshift",
+    "NIGHTSH𜳱FT",
+    "𝚴ightshift",
+    "nigh+shift",
+    "nig#tshift",
+    "nightshi\u017ft",
+    "nightsh\ufe31ft",
+    "Night\ua7f1hift",
     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     "Claude xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
@@ -367,6 +384,15 @@ NAME_GOOD = [
     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     "Видео-бот",
     "Ночная смена",
+    "Claude Desktop",
+    "Мой ассистент",
+    "我的应用",
+    "تطبيق الذكاء الاصطناعي",
+    "Մեր հավելվածը",
+    "Βοηθός",
+    "Café Müller",
+    "Highlight Fit",
+    "Nine Lights",
 ]
 
 @pytest.mark.parametrize("uri", BAD_URIS)
@@ -397,7 +423,7 @@ def test_the_name_validator_in_sql_and_typescript_fold_the_same_way(db):
     sql_text = (sec_db.MIGRATIONS / "0093_mcp_oauth.sql").read_text(encoding="utf-8")
     ts_from = re.search(r'HOMOGLYPH_FROM = ("(?:[^"\\]|\\.)*");', ts).group(1)
     ts_to = re.search(r'HOMOGLYPH_TO = ("(?:[^"\\]|\\.)*");', ts).group(1)
-    sql_args = re.search(r"translate\(v_fold, '([^']*)', '([^']*)'\)", sql_text)
+    sql_args = re.search(r"c_from constant text := '([^']*)';\s*c_to\s+constant text := '([^']*)';", sql_text)
     assert json.loads(ts_from) == sql_args.group(1) and json.loads(ts_to) == sql_args.group(2)
     assert len(sql_args.group(1)) == len(sql_args.group(2))
     ts_cls = re.search(r'INVISIBLE_CLASS =\s*"([^"]*)"', ts).group(1).replace("\\\\", "\\")
@@ -811,12 +837,41 @@ def test_publishing_with_a_token_works_and_never_needs_the_apis_idempotency_tabl
     plain = db.anon("select public.api_request_publish(%s,'vid-a',null,array['chan-a'],null,null,null)", [h])
     assert plain["status"] in (200, 409), plain
     assert plain.get("error", {}).get("code") != "internal_error", plain
-    # The MCP route does not pass the idempotency key on (publishing is retry-safe by its own unique key),
+    # The MCP route does not pass the idempotency key on (a live post to the same target answers already_sending),
     # but a caller that does reach the database directly gets a clear refusal, never a crash or a stray row.
     before = db.su("select count(*) from public.api_idempotency")[0][0]
     keyed = db.anon("select public.api_request_publish(%s,'vid-a',null,array['chan-a'],'k-1',%s,null)", [h, sha("x")])
     assert keyed["ok"] is False and keyed["status"] in (400, 409, 500), keyed
     assert db.su("select count(*) from public.api_idempotency")[0][0] == before
+
+
+def test_parallel_publishes_of_one_video_to_one_target_make_one_live_request(db):
+    # Without an idempotency key the unique index on live requests is the only guard: 8 parallel
+    # calls (a retry storm) leave one queued request and answer the rest already_sending.
+    db.su("insert into public.videos (video_id, channel_id, title, slug, review_state, published_at, publish_state) "
+          "values ('vid-pub','chan-a','VP','sl-pub','approved', now(), 'uploaded')")
+    db.su("insert into public.system_events (event_key, event, ts, video_id, channel_id) values ('pub-ok','publish.allowed', now(), 'vid-pub','chan-a')")
+    db.su("insert into public.channels (channel_id, name, niche, status, org_id, agent_config, credential_ref) values "
+          "('chan-a2','A2','tech','ACTIVE',%s,'{}','{\"verified_at\":\"2026-09-01\"}')", [ORG_A])
+    db.su("insert into public.channel_credentials (channel_id, provider, status) values ('chan-a2','youtube','connected')")
+    h = sha(connect(db, UA)["at"])
+    q = "select public.api_request_publish(%s,'vid-pub',null,array['chan-a2'],null,null,null)"
+    with cf.ThreadPoolExecutor(8) as ex:
+        res = list(ex.map(lambda _: db.anon(q, [h]), range(8)))
+    assert sum(1 for r in res if r["ok"]) == 1, res
+    assert all(r["status"] == 409 and r["error"]["errors"][0]["error"] == "already_sending" for r in res if not r["ok"]), res
+    assert db.su("select count(*) from public.publish_requests where video_id='vid-pub' and status='queued'")[0][0] == 1
+    # Another workspace's video or target is never reachable with this token.
+    assert db.anon("select public.api_request_publish(%s,'vid-b',null,array['chan-a2'],null,null,null)", [h])["status"] == 404
+    other = db.anon("select public.api_request_publish(%s,'vid-pub',null,array['chan-b'],null,null,null)", [h])
+    assert other["ok"] is False and other["error"]["errors"][0]["error"] == "forbidden", other
+    # Leave the shared fixture as found (later tests list chan-a only).
+    for q in ("delete from public.publish_requests where video_id = 'vid-pub'",
+              "delete from public.system_events where video_id = 'vid-pub'",
+              "delete from public.videos where video_id = 'vid-pub'",
+              "delete from public.channel_credentials where channel_id = 'chan-a2'",
+              "delete from public.channels where channel_id = 'chan-a2'"):
+        db.su(q)
 
 
 def test_a_token_workspace_cannot_be_changed_by_the_caller(db):

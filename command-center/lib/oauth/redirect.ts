@@ -94,8 +94,8 @@ const INVISIBLE = new RegExp(`[${INVISIBLE_CLASS}]`, "gu");
  * locale, folds the same. These are the SQL function's translate() arguments
  * verbatim (generated from one list).
  */
-export const HOMOGLYPH_FROM = "0оοօОΟøθ1!|lıɩⅼɪӏІіΙιΊίłℓ3еёЕΕєε4@аɑαАΑ5$ѕꜱʂЅςš7тτƫТΤ†8вΒɓ9ɡցԍɢğʜнһհНҺΗηɦռոпΠΝɴñԁɗĐđƒꜰſрρРΡсϲСϹçхχХΧуүγУΥкκКΚмМΜυцνѵ";
-export const HOMOGLYPH_TO = "ooooooooiiiiiiiiiiiiiiiiieeeeeeeaaaaaaasssssssstttttttbbbbgggggghhhhhhhhhnnnnnnnddddfffppppcccccxxxxyyyyykkkkmmmuuvv";
+export const HOMOGLYPH_FROM = "0оοօОΟøθ1!|lıɩⅼɪӏІіΙιΊίłℓ3еёЕΕєε4@аɑαАΑ5$ѕꜱʂЅςš7тτƫТΤ†8вΒɓ9ɡցԍɢğʜнһհНҺΗηɦռոпΠΝɴñԁɗĐđƒꜰſрρРΡсϲСϹçхχХΧуүγУΥкκКΚмМΜυцνѵⲚꓠ𐔓𑪾𝚴𝛮𝜨𝝢𝞜¡ǀւ׀וןا١۱ߊ।၊Ꭵᛁᛐ↿∣⍳⏽│┃Ⲓⲓⵊⵏꓲꕯꙇꞁꟾ꠰꣎꩝ꭵ︱ﺍﺎ￨𐊊𐌉𐌠𐔎𐤦𐰾𐲥𐳺𑁇𑃀𑅁𑇅𑏔𑑋𑗅𑙁𑣃𑱁𑷚𑷡𖵣𖺪𖼨𝄀𝍷𞅁𞣇𞴁𞸀𞺀ƍᏀᏳᶃꓖႹᎻᏂᕼⲎꓧ𐋏ߠᎢ⊤⟙Ⲧㄒ丅ꓔꔋ𐊗𐊱𐌕𑢼𖼊𝍳🝨ƽՏടႽჽᏕᏚᲽꓢꕶꮪ𐊖𐐠𐑈𑣁𖫖𖼺ʄϜքߓᖴẝꓝꞘꞙꬵ𐅾𐊇𐊥𐔥𑢢𑣂𝈓𝟊𜳖𜳗𜳘𜳙𜳚𜳛𜳜𜳝𜳞𜳟𜳠𜳡𜳢𜳣𜳤𜳥𜳦𜳧𜳨𜳩𜳪𜳫𜳬𜳭𜳮𜳯𜳰𜳱𜳳𜳴𜳵𜳷𜳸𜳹꟱+#𖵩𖵪ŁƑƖƼПӀԌՀՈՌՑՒՔꙆꞀꞪꞬꞮꟅ𑢡𑢣";
+export const HOMOGLYPH_TO = "ooooooooiiiiiiiiiiiiiiiiieeeeeeeaaaaaaasssssssstttttttbbbbgggggghhhhhhhhhnnnnnnnddddfffppppcccccxxxxyyyyykkkkmmmuuvvnnnnnnnnniiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiggggghhhhhhhttttttttttttttttsssssssssssssssssffffffffffffffffffabcdefghijklmnopqrstuvwxyzoieastbgsthiiifisnighnngifiihgissi";
 const HOMOGLYPHS = new Map([...HOMOGLYPH_FROM].map((c, i) => [c, HOMOGLYPH_TO[i]] as const));
 
 /** The word nobody else may be named: what a person would take for Nightshift's own voice. */
@@ -103,17 +103,31 @@ export const RESERVED_NAME = "nightshift";
 export const MAX_CLIENT_NAME = 80;
 
 /**
- * What a name looks like once the tricks are taken out: NFKC (full-width,
- * mathematical and ligature forms), lower case, NFKD with the combining marks
- * dropped (accents), invisible and direction characters dropped, lookalikes
- * folded, then ONLY a-z kept, so spacing, dots, dashes and digits used as
- * separators cannot split the word. Twin of oauth_client_name_problem.
+ * What a name looks like once the tricks are taken out: lookalikes folded (upper
+ * and lower case are both listed, and this runs before NFKC and before
+ * lower-casing, so a character NFKC would rewrite, such as the long s, and a
+ * capital whose lower-case form looks like another letter, such as Greek capital
+ * Nu, are read as what they look like), NFKC (full-width, mathematical and
+ * ligature forms) and lookalikes again, lower case, NFKD with the combining marks dropped (accents),
+ * invisible and direction characters dropped, lower case and lookalikes once
+ * more (what the steps above leave behind), then ONLY a-z kept, so spacing,
+ * dots, dashes and digits used as separators cannot split the word. Twin of
+ * oauth_client_name_problem.
  */
-export function foldClientName(raw: string): string {
-  const base = raw.normalize("NFKC").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(INVISIBLE, "");
+function lookalikes(s: string): string {
   let out = "";
-  for (const c of base) out += HOMOGLYPHS.get(c) ?? c;
-  return out.replace(/[^a-z]/g, "");
+  for (const c of s) out += HOMOGLYPHS.get(c) ?? c;
+  return out;
+}
+
+export function foldClientName(raw: string): string {
+  const base = lookalikes(lookalikes(raw).normalize("NFKC"))
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(INVISIBLE, "")
+    .toLowerCase();
+  return lookalikes(base).replace(/[^a-z]/g, "");
 }
 
 /** A name as a person reads it: printable, no direction overrides, single spaces. Not bounded. */
