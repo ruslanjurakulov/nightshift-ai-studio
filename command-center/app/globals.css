@@ -1942,9 +1942,10 @@ html:has(.lp-root) { scroll-behavior: smooth; }
    target on a phone), and its state is a lamp AND a word, never colour alone. */
 .usage-switch {
   display: flex;
+  flex-wrap: wrap; /* a long label (Uzbek) keeps its width and the switch drops under it, not a five-line label */
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 10px 16px;
   width: 100%;
   min-height: 56px;
   padding: 12px 16px;

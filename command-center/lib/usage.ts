@@ -12,6 +12,7 @@
  * not numbers is a failed read.
  */
 
+import { formatAhead } from "@/lib/date-format";
 import { SUBSCRIPTION_STATUSES, type EntitlementType, type EntitlementValue, type PlanMatrix, type SubscriptionStatus } from "@/lib/plans";
 
 const LIVE: readonly SubscriptionStatus[] = ["active", "trialing", "past_due"];
@@ -203,6 +204,9 @@ export function relativeUntil(isoDate: string | null, now: number, locale: strin
     value = Math.round(ms / DAY);
     unit = "day";
   }
+  // By table for en / ru / uz (lib/date-format.ts): the runtime's ICU may lack a language the app is written in.
+  const table = formatAhead(value, unit as "minute" | "hour" | "day", locale);
+  if (table) return table;
   try {
     return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(value, unit);
   } catch {

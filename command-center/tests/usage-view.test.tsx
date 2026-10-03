@@ -217,7 +217,15 @@ describe("dates that hydrate", () => {
   // must be the same on both or React discards the server HTML (error #418).
   it("pins the day to a time zone when asked, and uses the viewer's own otherwise", () => {
     expect(shortDate("2026-10-24T20:30:00Z", "en", "UTC")).toBe("Oct 24, 2026");
-    expect(shortDate("2026-10-24T20:30:00Z", "en", "Asia/Tashkent")).toBe("Oct 25, 2026");
+    const was = process.env.TZ;
+    process.env.TZ = "Asia/Tashkent";
+    try {
+      expect(shortDate("2026-10-24T20:30:00Z", "en")).toBe("Oct 25, 2026");
+      expect(shortDate("2026-10-24T20:30:00Z", "en", "UTC")).toBe("Oct 24, 2026");
+    } finally {
+      if (was === undefined) delete process.env.TZ;
+      else process.env.TZ = was;
+    }
   });
 
   it("the server render prints the UTC day whatever zone the server runs in", () => {

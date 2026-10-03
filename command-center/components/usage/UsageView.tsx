@@ -441,7 +441,7 @@ function ExtraCredits({
           className="usage-switch"
           data-on={on ? "true" : "false"}
         >
-          <span id={labelId} className="min-w-0 text-left text-[15px] font-medium leading-snug">
+          <span id={labelId} className="min-w-0 flex-1 basis-[12rem] text-left text-[15px] font-medium leading-snug">
             {u.extra.toggleLabel}
           </span>
           <span aria-hidden className="usage-switch-key">

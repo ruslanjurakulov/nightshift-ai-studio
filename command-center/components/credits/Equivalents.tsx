@@ -2,6 +2,7 @@
 
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { fmt } from "@/lib/i18n/core";
+import { formatDay } from "@/lib/date-format";
 import { creditEquivalents, type GenerationRates } from "@/lib/plans";
 
 type Forms = { one: string; few: string; many: string; other: string };
@@ -22,11 +23,12 @@ export function pluralForm(forms: Forms, n: number, locale: string): string {
  * day is the viewer's own calendar day unless `timeZone` pins it ("UTC" for a
  * first render that the server and the browser must print identically).
  */
-export function shortDate(iso: string | null, locale: string, timeZone?: string): string {
+export function shortDate(iso: string | null, locale: string, timeZone?: "UTC"): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return "—";
-  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric", ...(timeZone ? { timeZone } : {}) }).format(d);
+  // By table for en / ru / uz (lib/date-format.ts), so the server and the browser print the same text.
+  return formatDay(d, locale, timeZone === "UTC" ? "UTC" : undefined);
 }
 
 /**
