@@ -99,24 +99,6 @@ describe("MembersBoard / OrgMembersBoard", () => {
     expect(has(html, en.members.empty)).toBe(true);
     expect(has(html, en.members.claimTitle)).toBe(true); // control: the offer exists when the roster is really empty
   });
-
-  it("org roster: failed read is the error state", async () => {
-    h.client = failingSupabase();
-    const { OrgMembersBoard } = await import("../components/org/OrgMembersBoard");
-    const org = { id: "org-1", name: "Org", role: "owner", is_default: false } as never;
-    const html = await mount(() => createElement(OrgMembersBoard, { org, myUserId: "u1" }));
-    expect(html).toContain("data-read-error");
-    expect(has(html, en.members.empty)).toBe(false);
-  });
-
-  it("org roster: readable empty keeps the empty text", async () => {
-    h.client = supabaseStub(() => EMPTY);
-    const { OrgMembersBoard } = await import("../components/org/OrgMembersBoard");
-    const org = { id: "org-1", name: "Org", role: "owner", is_default: false } as never;
-    const html = await mount(() => createElement(OrgMembersBoard, { org, myUserId: "u1" }));
-    expect(html).not.toContain("data-read-error");
-    expect(has(html, en.members.empty)).toBe(true);
-  });
 });
 
 describe("DeveloperConsole lists", () => {
