@@ -71,7 +71,7 @@ export function Header({
             href={path("/create")}
             className="tap-link ns-wordmark inline-flex shrink-0 items-center gap-2 lg:hidden"
           >
-            <BrandMark size={20} />
+            <BrandMark size={34} />
             {t.brand.name}
           </Link>
           {/* The organization and channel, when there is more than one to choose
@@ -123,7 +123,7 @@ export function Header({
           href={path("/command-center")}
           className="tap-link font-display inline-flex shrink-0 items-center gap-2 text-lg font-semibold tracking-[-0.02em] text-[var(--color-primary)] sm:text-xl"
         >
-          <BrandMark size={20} />
+          <BrandMark size={34} />
           {t.brand.name}
         </Link>
       </div>

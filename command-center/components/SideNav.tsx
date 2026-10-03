@@ -166,7 +166,7 @@ export function SideNav({
           <div className="drawer-enter absolute inset-y-0 left-0 flex w-[280px] max-w-[82vw] flex-col overflow-y-auto border-r border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-4 shadow-[var(--shadow-elevated)]">
             <div className="mb-3 flex items-center justify-between px-2">
               <span className="inline-flex items-center gap-2 font-display text-base font-semibold text-[var(--color-primary)]">
-                <BrandMark size={18} />
+                <BrandMark size={32} />
                 {t.brand.name}
               </span>
               <button

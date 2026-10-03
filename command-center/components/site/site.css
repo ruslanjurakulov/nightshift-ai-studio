@@ -275,12 +275,19 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(46px, 6vw, 86px); }
   text-transform: uppercase;
   color: var(--ns-text);
 }
-/* The mark made the lockup 12px wider; at 360px in Russian the header's
-   sign-in, call to action and menu button then ran 9px past the viewport. Below
-   380px the lockup is set a size down (wordmark 19px, mark 20px, gap 8px). */
-@media (max-width: 379px) {
+/* The tile makes the lockup 25px wider than the old mark. Below 400px it is set a size
+   down (wordmark 19px, tile 28px, gap 8px): in Russian the header's call to action and
+   menu button otherwise run past the viewport at 380px (3px) and sit 7px from the edge
+   at 390px. Below 380px the header's own gaps and the call to action's padding give up a
+   little more so all three controls stay inside the 16px gutter at 360px. */
+@media (max-width: 399px) {
   .st-brand { font-size: 19px; gap: 8px; }
-  .st-brand svg { width: 20px; height: auto; }
+  .st-brand svg { width: 28px; height: auto; }
+}
+@media (max-width: 379px) {
+  .st-header-row { gap: 8px; }
+  .st-header-tools { gap: 6px; }
+  .st-header-tools .st-key[data-size="sm"] { padding: 0 12px; font-size: 15px; }
 }
 .st-nav { display: none; align-items: center; gap: 4px; }
 @media (min-width: 1024px) { .st-nav { display: flex; } }
