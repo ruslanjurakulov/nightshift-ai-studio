@@ -161,9 +161,9 @@
   --ns-amber: #f29a1e;
   --ns-amber-ink: #9c5300;
   --ns-on-amber: #1b1a17;
-  --ns-cta-bg: #1b1a17;
-  --ns-cta-fg: #fbfaf7;
-  --ns-cta-price: #ffa940;
+  --ns-cta-bg: #f29a1e;
+  --ns-cta-fg: #1b1a17;
+  --ns-cta-price: #1b1a17;
   --ns-tally: #b9341f;
   --ns-go: #0a7346;
   --ns-cue: #2a5bc0;
@@ -470,7 +470,6 @@ h1 { letter-spacing: -0.02em; }
    prices, durations, labels) is the normal face with tabular figures. */
 .mono {
   font-family: var(--font-mono);
-  font-size: 0.92em;
   letter-spacing: 0;
 }
 /* Legacy name for figures. Kept so old markup stays readable; it is the normal
@@ -1600,9 +1599,9 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   min-height: var(--ns-chip-h);
   max-width: 100%;
   padding: 0 14px 0 12px;
-  border-radius: var(--ns-r-chip);
-  border: 1px solid var(--color-border);
-  background: var(--color-panel);
+  border-radius: var(--ns-r-key);
+  border: 1px solid transparent;
+  background: var(--ns-key);
   font-size: var(--ns-t-small);
   color: var(--color-muted);
   transition: border-color var(--ns-dur-1) var(--ns-ease), color var(--ns-dur-1) var(--ns-ease), background-color var(--ns-dur-1) var(--ns-ease);
@@ -1617,7 +1616,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   box-shadow: inset 0 0 0 1.5px var(--ns-lamp-off);
 }
 .studio-chip:hover,
-.ns-chip:hover { color: var(--color-fg); border-color: var(--ns-rule-strong); }
+.ns-chip:hover { color: var(--color-fg); background: var(--ns-key-hi); }
 .studio-chip[aria-pressed="true"],
 .ns-chip[aria-pressed="true"] {
   color: var(--color-fg);
@@ -2074,7 +2073,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .ns-chip > .ns-chip-count { color: var(--color-muted); }
 /* A readout chip is not a key: no hover, a normal-height line on a phone. */
 .ns-chip[data-plain="true"] { cursor: default; min-height: 32px; }
-.ns-chip[data-plain="true"]:hover { color: var(--color-muted); border-color: var(--color-border); }
+.ns-chip[data-plain="true"]:hover { color: var(--color-muted); background: var(--ns-key); }
 .ns-chip[data-tone="lit"],
 .ns-chip[data-plain="true"][data-tone="lit"]:hover { color: var(--ns-amber-ink); border-color: var(--ns-amber-ink); }
 .ns-chip[data-tone="warn"],

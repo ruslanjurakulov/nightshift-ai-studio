@@ -55,9 +55,13 @@ export function sessionCookie(url = FAKE_URL_DEFAULT) {
   return { name: `sb-${host}-auth-token`, value: "base64-" + b64url(JSON.stringify(session)) };
 }
 
+// FAKE_ADMIN=1: the signed-in person is a platform admin, so the operator-only
+// parts of the Credits page (the raw price list) can be photographed too.
+const ADMIN = process.env.FAKE_ADMIN === "1";
+
 const RPC = {
   my_organizations: [ORG],
-  is_platform_admin: false,
+  is_platform_admin: ADMIN,
   billing_summary: { plan_id: "creator", plan_name: "Creator" },
   // Invite friends (0092): a made-up link with three of five friends joined.
   my_friend_invite: {
@@ -72,9 +76,21 @@ const RPC = {
   },
 };
 
+const PRICE = (unit, credits_per_unit, margin) => ({ unit, credits_per_unit, margin, updated_at: "2026-09-30T12:00:00Z", updated_by: null });
 const TABLES = {
   channels: [CHANNEL],
   credit_accounts: [{ org_id: ORG.id, balance: 1240, reserved: 180 }],
+  // Made-up rates, only so the price list has rows to look at.
+  credit_prices: ADMIN
+    ? [
+        PRICE("video_minute", 40, 0.5),
+        PRICE("job_minimum", 5, 0),
+        PRICE("download_1080p_minute", 12, 0.25),
+        PRICE("tts_characters", 0.008, 2),
+        PRICE("model_example_second_1080p_silent", 3, 0.3),
+        PRICE("custom_thing", 1, 0),
+      ]
+    : [],
 };
 
 function send(res, status, body) {

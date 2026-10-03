@@ -484,7 +484,7 @@ export function GeneratePanel({
               set(v);
               edited();
             }}
-            className={mono ? "mono" : undefined}
+            className={mono ? "tnum" : undefined}
           >
             {text(v)}
           </button>
