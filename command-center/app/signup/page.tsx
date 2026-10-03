@@ -7,7 +7,8 @@ import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/config";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { fmt } from "@/lib/i18n/core";
-import { AuthAlert, AuthField, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
+import { AuthAlert, AuthField, AuthNotice, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
+import { useInvited } from "@/components/auth/InvitedContext";
 import { AUTH_CALLBACK_PATH, WELCOME_PATH } from "@/lib/public-paths";
 import {
   PASSWORD_MAX,
@@ -29,6 +30,7 @@ import {
 export default function SignupPage() {
   const router = useRouter();
   const { t } = usePublicI18n();
+  const invited = useInvited();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -74,7 +76,11 @@ export default function SignupPage() {
       });
       const outcome = error ? classifySignupError(error) : classifySignupResult(data);
       if (outcome === "signed_in") {
-        // "Confirm email" is off in this project: the account is live already.
+        // "Confirm email" is off in this project: the account is live already,
+        // so there is no confirmation link to land on /auth/callback, where a
+        // friend's invite is otherwise recorded. The database still refuses an
+        // account whose e-mail it has not confirmed.
+        if (invited) await fetch("/api/invite/join", { method: "POST" }).catch(() => undefined);
         router.push(WELCOME_PATH);
         router.refresh();
         return;
@@ -125,6 +131,11 @@ export default function SignupPage() {
       {!isSupabaseConfigured && (
         <div className="mt-5">
           <AuthAlert tone="warn">{t.site.auth.unavailableSignup}</AuthAlert>
+        </div>
+      )}
+      {invited && (
+        <div className="mt-5" data-invite-banner>
+          <AuthNotice>{t.signup.invitedBanner}</AuthNotice>
         </div>
       )}
 

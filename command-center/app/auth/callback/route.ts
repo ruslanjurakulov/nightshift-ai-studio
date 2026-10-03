@@ -4,6 +4,7 @@ import { createClient as createStatelessClient, type EmailOtpType } from "@supab
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/config";
 import { createClient } from "@/lib/supabase/server";
 import { publicOrigin } from "@/lib/server/public-origin";
+import { joinFromCookie } from "@/lib/server/friend-invites";
 import { safeNextPath } from "@/lib/safe-redirect";
 import { callbackErrorFor, type CallbackError } from "@/lib/signup";
 import {
@@ -99,6 +100,9 @@ export async function GET(request: Request) {
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(code);
       if (error) return toLogin(origin, callbackErrorFor(error.code));
+      // The address is confirmed and the person is signed in: the one moment a
+      // friend's invite link (cookie from /i/<token>) may count (migration 0092).
+      await joinFromCookie(supabase);
       return redirect(new URL(next, origin));
     }
     if (tokenHash && type && CONFIRM_TYPES.includes(type)) {
@@ -153,6 +157,7 @@ export async function POST(request: Request) {
   try {
     const { error } = await supabase.auth.refreshSession({ refresh_token: pending.rt });
     if (error) return toLogin(origin, callbackErrorFor(error.code), 303);
+    await joinFromCookie(supabase);
   } catch {
     return toLogin(origin, "link_invalid", 303);
   }

@@ -630,3 +630,35 @@ def test_the_same_person_joining_from_two_tabs_counts_once(conn):
         assert sorted(_race(conn, 4, go)) == ["already", "already", "already", "counted"]
     finally:
         _restore_defaults(conn)
+
+
+# ── replay ──────────────────────────────────────────────────────────────────
+
+def test_applying_the_migration_twice_keeps_links_settings_and_rewards(conn):
+    try:
+        _committed_settings(conn, room=7)
+        owner, org = _committed_user(conn, "replay", org=True)
+        with acting(conn, owner, commit=True) as s:
+            token = s.value("select public.create_friend_invite(%s)", [org])["link"]["token"]
+        with as_superuser(conn, commit=False) as s:
+            before = s.rows("select (select count(*) from public.friend_invite_links), "
+                            "(select count(*) from public.friend_invite_joins), "
+                            "(select count(*) from public.friend_invite_rewards), "
+                            "(select daily_reward_cap from public.friend_invite_settings), "
+                            "(select enabled from public.friend_invite_settings)")[0]
+        for _ in range(2):
+            sec_db.apply_files(_dsn(conn), [sec_db.MIGRATIONS / "0092_friend_invites.sql"])
+        with as_superuser(conn, commit=False) as s:
+            after = s.rows("select (select count(*) from public.friend_invite_links), "
+                           "(select count(*) from public.friend_invite_joins), "
+                           "(select count(*) from public.friend_invite_rewards), "
+                           "(select daily_reward_cap from public.friend_invite_settings), "
+                           "(select enabled from public.friend_invite_settings)")[0]
+        assert after == before, "re-running the migration must not reset the operator's numbers or the switch"
+        with acting(conn, owner) as s:
+            assert s.value("select public.my_friend_invite()")["link"]["token"] == token
+        with acting(conn, ANON) as s:
+            out = s.run("select * from public.friend_invite_links")
+            assert not out.ok and out.sqlstate == "42501"
+    finally:
+        _restore_defaults(conn)

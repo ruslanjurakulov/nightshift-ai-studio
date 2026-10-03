@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { gateDecision, isPublicFontPath, isPublicPath, isUnknownSolutionPath } from "@/lib/public-paths";
+import {
+  gateDecision,
+  isInviteLinkPath,
+  isPublicFontPath,
+  isPublicPath,
+  isUnknownSolutionPath,
+} from "@/lib/public-paths";
 import { isValidChannelId } from "@/lib/channels";
 
 // The middleware only asks Supabase one question — who is signed in — so the
@@ -305,4 +311,76 @@ describe("channel ids", () => {
       expect(isValidChannelId(id)).toBe(false);
     },
   );
+});
+
+// Invite links (migration 0092): /i/<token> works signed out, by an anchored
+// pattern and nothing wider, the way every other public path does (BR-H-001).
+describe("invite links", () => {
+  const TOKEN = "0123456789abcdef0123456789abcdef";
+
+  it.each([`/i/${TOKEN}`, `/i/${TOKEN}/`, "/i/AbCdEf_-AbCdEf_-AbCdEf", `/i/${"a".repeat(64)}`])(
+    "%s passes signed out, with no channel resolved and no sign-in redirect",
+    async (path) => {
+      const { redirect, res } = await visit(path, false);
+      expect(redirect).toBeNull();
+      expect(res.status).toBe(200);
+      expect(res.headers.get("x-middleware-request-x-nightshift-channel")).toBeNull();
+    },
+  );
+
+  it("passes signed in too, untouched (the route explains that an invite is for new accounts)", async () => {
+    const { redirect, res } = await visit(`/i/${TOKEN}`, true);
+    expect(redirect).toBeNull();
+    expect(res.headers.get("x-middleware-request-x-nightshift-channel")).toBeNull();
+  });
+
+  // Negative cases: anything that is not exactly one token-shaped segment under
+  // /i is an ordinary app URL, gated as before.
+  it.each([
+    "/i",
+    "/i/",
+    "/i/short",
+    `/i/${"a".repeat(65)}`,
+    `/i/${TOKEN}/x`,
+    `/i/${TOKEN}.rsc`,
+    `/i/${TOKEN}.png`,
+    `/i/${TOKEN}%2Fx`,
+    `/i/${TOKEN}%00`,
+    `/i//${TOKEN}`,
+    `/I/${TOKEN}`,
+    `/ii/${TOKEN}`,
+    `/chronos/i/${TOKEN}`,
+    `/api/i/${TOKEN}`,
+    "/invite/x",
+    "/invite/videos",
+  ])("%s is gated like any app URL", async (path) => {
+    expect(isInviteLinkPath(path)).toBe(false);
+    expect((await visit(path, false)).redirect).toMatch(/^\/login\/?$/);
+  });
+
+  it("/invite is the one-segment notice page, exact; look-alikes get the 404", async () => {
+    expect((await visit("/invite", false)).redirect).toBeNull();
+    expect((await visit("/invite/", false)).redirect).toBeNull();
+    const signedIn = await visit("/invite", true);
+    expect(signedIn.redirect).toBeNull();
+    expect(signedIn.res.headers.get("x-middleware-request-x-nightshift-channel")).toBeNull();
+    for (const path of ["/invitex", "/invites", "/invite-me"]) {
+      const { redirect, res } = await visit(path, false);
+      expect(redirect, path).toBeNull();
+      expect(res.status, path).toBe(404);
+    }
+  });
+
+  it("is not a channel: the words i and invite are reserved", async () => {
+    expect(isValidChannelId("i")).toBe(false);
+    expect(isValidChannelId("invite")).toBe(false);
+  });
+
+  it("gateDecision", () => {
+    expect(gateDecision(`/i/${TOKEN}`, false)).toBe("pass");
+    expect(gateDecision(`/i/${TOKEN}`, true)).toBe("pass");
+    expect(gateDecision("/i/x", false)).toBe("to-login");
+    expect(gateDecision("/invite", false)).toBe("pass");
+    expect(gateDecision("/invite", true)).toBe("pass");
+  });
 });
