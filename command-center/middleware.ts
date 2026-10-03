@@ -16,9 +16,11 @@ import {
   isPublicApiPath,
   isPublicFontPath,
   isSignedMediaPath,
+  isUnknownDocsPath,
   isUnknownSolutionPath,
 } from "@/lib/public-paths";
 import { conceptDecision, conceptsEnabled } from "@/lib/concepts";
+import { devPageDecision, devPagesEnabled } from "@/lib/dev-pages";
 import { buildCsp, cspHeaderName, cspMode, makeNonce, reportUri } from "@/lib/security/csp";
 
 /** Next's own route for app/not-found.tsx (it is what an unmatched URL renders). */
@@ -109,6 +111,14 @@ async function gate(request: NextRequest): Promise<NextResponse> {
     served.headers.set("X-Robots-Tag", "noindex, nofollow");
     return served;
   }
+  // The CLI and Skills pages (lib/dev-pages.ts): public only while DEV_CLI_PAGE=1.
+  // Off, exactly those two paths are the public 404 — signed in or out, with or
+  // without a backend; on, they are public pages like /docs/api. Decided here,
+  // for these two exact strings only: the matcher, gateDecision() and the
+  // public-path lists are untouched (BR-H-001).
+  const devPage = devPageDecision(request.nextUrl.pathname, devPagesEnabled());
+  if (devPage === "hide") return notFoundResponse(request);
+  if (devPage === "serve") return NextResponse.next({ request });
   // The public pages' two self-hosted font files, by exact name: static, public,
   // and on the critical path of a Russian page's first paint.
   if (isPublicFontPath(request.nextUrl.pathname)) return NextResponse.next({ request });
@@ -164,7 +174,9 @@ async function gate(request: NextRequest): Promise<NextResponse> {
   // root not-found page: no layout of the app runs, nothing is read.
   if (
     decision === "to-login" &&
-    (isUnknownRootPath(request.nextUrl.pathname) || isUnknownSolutionPath(request.nextUrl.pathname))
+    (isUnknownRootPath(request.nextUrl.pathname) ||
+      isUnknownSolutionPath(request.nextUrl.pathname) ||
+      isUnknownDocsPath(request.nextUrl.pathname))
   ) {
     return notFoundResponse(request);
   }

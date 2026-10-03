@@ -15,6 +15,7 @@ vi.mock("next/link", () => ({
 import { ApiDocs } from "@/components/docs/ApiDocs";
 import { LegalDocumentView } from "@/components/legal/LegalDocumentView";
 import { dictionaries, type Locale } from "@/lib/i18n";
+import { devDictionaries } from "@/lib/i18n/dev";
 import { LEGAL_TEXTS } from "@/lib/legal-docs";
 
 const LOCALES: Locale[] = ["en", "ru", "uz"];
@@ -32,10 +33,15 @@ describe("scrollable regions are keyboard-reachable and named", () => {
     });
   }
 
-  it("API reference: every code block and table", () => {
-    const t = dictionaries.en;
+  it.each(LOCALES)("API reference (%s): every code block and table", (locale) => {
+    const t = dictionaries[locale];
     const html = renderToStaticMarkup(
-      <ApiDocs prices={null} origin="https://example.test" labels={{ table: t.common.scrollTable, code: t.common.scrollCode }} />,
+      <ApiDocs
+        prices={null}
+        origin="https://example.test"
+        labels={{ table: t.common.scrollTable, code: t.common.scrollCode }}
+        dev={devDictionaries[locale]}
+      />,
     );
     const boxes = scrollBoxes(html);
     expect(boxes.filter((b) => b.tag === "PRE").length).toBeGreaterThan(5);
