@@ -5,8 +5,10 @@ import { useEffect, useId, useRef, useState } from "react";
 export type ConnectTab = {
   id: string;
   label: string;
-  /** Two letters on the neutral tile that stands in for the client's logo. */
-  mono: string;
+  /** The client's logo (or its neutral monogram), drawn on the server; decorative, the label is beside it. */
+  glyph: React.ReactNode;
+  /** The surface the logo needs: the page's neutral tile, or a light "paper" tile on both themes. */
+  tile: "theme" | "paper";
   group: "primary" | "more";
   /** The tab's steps, rendered on the server. Absent when `soon` is set. */
   panel?: React.ReactNode;
@@ -158,8 +160,8 @@ export function ConnectCard({
                 onClick={() => choose(t.id)}
                 onKeyDown={(e) => onKey(e, i)}
               >
-                <span className="st-pill-glyph" aria-hidden>
-                  {t.mono}
+                <span className="st-pill-glyph" data-tile={t.tile} aria-hidden>
+                  {t.glyph}
                 </span>
                 <span className="st-pill-label">{t.label}</span>
               </button>
