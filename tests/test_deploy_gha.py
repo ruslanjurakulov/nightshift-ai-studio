@@ -492,6 +492,19 @@ class RemoteDeployTests(_RemoteDeployFixture):
         for leaked in ("ana@example.com", "s3cr3t", "/app/x"):
             self.assertNotIn(leaked, out)
 
+    def test_diagnostic_names_come_only_from_the_fixed_list(self):
+        # A crafted path, an e-mail local part or a code-shaped token that is
+        # not on the list must not appear: an open pattern would carry it.
+        proc = self.deploy(
+            self.payload(),
+            FAKE_HEALTH="unhealthy",
+            FAKE_LOG_TEXT="GET /api/SecretValueError 500\nkey (email)=(AnaError@example.com)\nERR_LEAKED_VALUE_HERE\nMyTypeError ERR_INVALID_URL_SCHEME",
+        )
+        out = proc.stdout + proc.stderr
+        self.assertIn("log names=none", out)
+        for leaked in ("SecretValueError", "AnaError", "ERR_LEAKED", "MyTypeError", "ERR_INVALID_URL_SCHEME"):
+            self.assertNotIn(leaked, out)
+
     def test_a_failed_compose_up_also_reports_web_diagnostics(self):
         proc = self.deploy(self.payload(), FAKE_UP_RC="1", FAKE_LOG_TEXT="SyntaxError: nope")
         self.assertNotEqual(proc.returncode, 0)
