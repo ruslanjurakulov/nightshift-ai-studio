@@ -2806,7 +2806,7 @@ export const en = {
     progress: "{joined} of {required} friends joined",
     earned: "You earned {credits} credits.",
     earnedNote: "Friends can keep joining with your link. The reward is paid once.",
-    pending: "{required} friends joined. Your {credits} credits are being added; this can take until tomorrow.",
+    pending: "Your {credits} credits are being added. This can take until tomorrow.",
     paused: "Invites are paused right now. Your link works again when they are back.",
     readFailed: "Couldn't load your invite link. Try again in a moment.",
     adminTitle: "Invite friends: settings",

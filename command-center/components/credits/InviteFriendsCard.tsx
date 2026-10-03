@@ -30,7 +30,7 @@ export function InviteFriendsCard({ invite, orgId }: { invite: MyInvite; orgId: 
   const [problem, setProblem] = useState<"create" | null>(null);
   const [origin, setOrigin] = useState("");
   const [copy, setCopy] = useState<"idle" | "copied" | "failed">("idle");
-  const field = useRef<HTMLInputElement>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const c = t.invite;
 
@@ -125,23 +125,26 @@ export function InviteFriendsCard({ invite, orgId }: { invite: MyInvite; orgId: 
             <label htmlFor="invite-link" className="text-[12px] text-[var(--color-muted)]">
               {c.linkLabel}
             </label>
-            <div className="flex items-stretch gap-2">
-              <input
+            {/* The whole link stays readable: it wraps over two or three lines (a one-line field showed
+                only the first ~20 characters on a phone), and Copy sits under it full width. */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+              <textarea
                 id="invite-link"
                 ref={field}
                 readOnly
+                rows={3}
                 value={url}
                 onFocus={(e) => e.currentTarget.select()}
-                inputMode="none"
                 autoComplete="off"
+                autoCapitalize="off"
                 spellCheck={false}
-                className="mono min-h-11 min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+                className="mono min-h-11 min-w-0 flex-1 resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-[13px] leading-snug text-[var(--color-fg)] outline-none [overflow-wrap:anywhere] focus:border-[var(--color-primary)]"
               />
               <button
                 type="button"
                 onClick={onCopy}
                 disabled={!url}
-                className="btn-primary inline-flex min-h-11 min-w-[7.5rem] shrink-0 items-center justify-center gap-2 px-4 text-[14px] disabled:opacity-40"
+                className="btn-primary inline-flex min-h-12 w-full shrink-0 items-center justify-center gap-2 px-4 text-[14px] disabled:opacity-40 sm:w-auto sm:min-w-[7.5rem]"
               >
                 {copy === "copied" ? <Check aria-hidden className="size-4" /> : <Copy aria-hidden className="size-4" />}
                 {copy === "copied" ? c.copied : c.copy}
@@ -154,7 +157,7 @@ export function InviteFriendsCard({ invite, orgId }: { invite: MyInvite; orgId: 
 
           <div className="flex flex-col gap-2">
             <span className="text-[12px] text-[var(--color-muted)]">{c.progressLabel}</span>
-            <Meter value={state.joined} held={0} max={state.required} segments={Math.min(state.required, 20)} size="lg" label={c.progressLabel} valueText={progress} />
+            <Meter className="invite-meter" value={state.joined} held={0} max={state.required} segments={Math.min(state.required, 20)} size="lg" label={c.progressLabel} valueText={progress} />
             <p className="text-[14px] text-[var(--color-fg)]" data-invite-progress>
               {progress}
             </p>
@@ -167,7 +170,7 @@ export function InviteFriendsCard({ invite, orgId }: { invite: MyInvite; orgId: 
             </p>
           ) : state.pending ? (
             <p className="text-[13px] text-[var(--color-muted)]" data-invite-pending>
-              {fmt(c.pending, { required: state.required, credits })}
+              {fmt(c.pending, { credits })}
             </p>
           ) : !state.enabled ? (
             <p className="text-[13px] text-[var(--color-muted)]">{c.paused}</p>

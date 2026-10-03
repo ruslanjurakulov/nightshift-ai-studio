@@ -1913,6 +1913,16 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   box-shadow: inset 0 0 0 1px var(--ns-amber);
 }
 .ns-meter[data-empty="true"] .ns-meter-seg:first-child { background: var(--ns-tally); opacity: 1; }
+/* Invite progress: nobody joined yet is "0 of 5", not an alarm, so the first segment stays unlit. */
+.invite-meter .ns-meter[data-empty="true"] .ns-meter-seg:first-child { background: transparent; opacity: 1; }
+/* Unfilled steps are outlined, not grey: in the light theme grey and amber have almost the same lightness,
+   so colour alone could not say how many are filled (the count is also written under the bar). */
+.invite-meter .ns-meter-seg[data-state="off"],
+.invite-meter .ns-meter[data-empty="true"] .ns-meter-seg:first-child {
+  background: transparent;
+  opacity: 1;
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--color-muted) 60%, transparent);
+}
 /* The scale under a large meter: real numbers at the ends only. */
 .ns-meter-scale {
   display: flex;

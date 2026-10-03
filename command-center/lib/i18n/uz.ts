@@ -2797,7 +2797,7 @@ export const uz: Dictionary = {
     progress: "{required} tadan {joined} ta doʻst qoʻshildi",
     earned: "Siz {credits} kredit oldingiz.",
     earnedNote: "Doʻstlar havolangiz orqali qoʻshilishda davom etishi mumkin. Mukofot bir marta toʻlanadi.",
-    pending: "{required} ta doʻst qoʻshildi. {credits} kredit hisobingizga qoʻshilmoqda; bu ertagacha davom etishi mumkin.",
+    pending: "{credits} kredit hisobingizga qoʻshilmoqda. Bu ertagacha davom etishi mumkin.",
     paused: "Takliflar hozircha toʻxtatilgan. Qaytganda havolangiz yana ishlaydi.",
     readFailed: "Taklif havolasini yuklab boʻlmadi. Birozdan keyin qayta urinib koʻring.",
     adminTitle: "Doʻstlarni taklif qilish: sozlamalar",
