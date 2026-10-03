@@ -2,11 +2,13 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
 import { en } from "@/lib/i18n/en";
+import { BRAND_MARK_FOLDS, BRAND_MARK_OUTLINE, BRAND_MARK_RATIO } from "@/components/site/BrandMark";
 
 /**
- * The social card: the hero line on the control room's ink ground, and the
- * rundown with its one lit lamp — the video waiting for approval — words
- * only, no figures. English, because a shared link's card is cached once for everyone.
+ * The social card: the folded-ribbon N beside the wordmark, the hero line on
+ * the control room's ink ground, and the rundown with its one lit lamp — the
+ * video waiting for approval — words only, no figures. English, because a
+ * shared link's card is cached once for everyone.
  * Set in the identity's own faces (brand/og-fonts, OFL): Sofia Sans Extra
  * Condensed for the engraving, Sofia Sans for the line under it. They are read
  * from the repository while the static card is built, so building it fetches
@@ -32,6 +34,9 @@ const TEXT = "#ECE5D8";
 const DIM = "#A39D91";
 const AMBER = "#FFA940";
 const GO = "#5FD49A";
+/* The mark: white on the ground, as the owner supplied it (brand/logo). */
+const MARK = "#FAFAFA";
+const MARK_W = 52;
 
 const FONT_DIR = join(process.cwd(), "brand", "og-fonts");
 
@@ -64,7 +69,10 @@ export async function GET() {
       >
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", flex: 1.2 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: AMBER, boxShadow: `0 0 0 4px ${GROUND}, 0 0 0 6px ${RULE_STRONG}` }} />
+            <svg width={MARK_W} height={Math.round(MARK_W * BRAND_MARK_RATIO)} viewBox="0 0 1000 938">
+              <path fill={MARK} fillRule="evenodd" d={BRAND_MARK_OUTLINE} />
+              <path fill={MARK} fillOpacity={0.5} d={BRAND_MARK_FOLDS} />
+            </svg>
             <div style={{ fontFamily: "Sofia Sans Extra Condensed", fontSize: 38, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>
               {en.brand.name}
             </div>
