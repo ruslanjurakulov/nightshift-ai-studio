@@ -4,6 +4,7 @@ import { readCredentials } from "../config.js";
 import { CliError, EXIT, hintFor, usageError } from "../errors.js";
 
 export const KEY_RE = /^nsk_live_[0-9A-Za-z]{43}$/;
+const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 export const IDEMPOTENCY_RE = /^[A-Za-z0-9_:.-]{1,255}$/;
 
 /** Options every command accepts. */
@@ -23,7 +24,14 @@ export function checkKey(key) {
 
 /** --base-url, then NIGHTSHIFT_BASE_URL, then (when allowed) the one saved at login, then the default. */
 export function resolveBaseUrl(ctx, saved) {
-  return normalizeBaseUrl(ctx.values["base-url"] || ctx.io.env.NIGHTSHIFT_BASE_URL || saved || DEFAULT_BASE_URL);
+  const base = normalizeBaseUrl(ctx.values["base-url"] || ctx.io.env.NIGHTSHIFT_BASE_URL || saved || DEFAULT_BASE_URL);
+  // The key goes wherever this points. A wrong or injected --base-url / NIGHTSHIFT_BASE_URL is the
+  // one way to hand it to another server, so say so every time the target is not the default or this machine.
+  const { hostname } = new URL(base);
+  const home = new URL(DEFAULT_BASE_URL).hostname;
+  if (hostname !== home && !LOOPBACK.has(hostname))
+    ctx.warn(`your API key will be sent to ${hostname}, not ${home}. Continue only if you chose that address yourself.`);
+  return base;
 }
 
 /**

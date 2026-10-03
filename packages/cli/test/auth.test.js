@@ -155,6 +155,19 @@ test("--base-url beats the environment; https is the default", async () => {
   assert.equal(seen[2], "https://flag.example.com/api/v1/me");
 });
 
+test("a base URL other than the default or this machine warns that the key goes there", async () => {
+  const fetch = async () => new Response(JSON.stringify(ME), { status: 200, headers: { "content-type": "application/json" } });
+  const flag = await run(["whoami", "--base-url", "https://flag.example.com"], { fetch });
+  assert.match(flag.stderr, /API key will be sent to flag\.example\.com, not nightshift-ai\.studio/);
+  const env = await run(["whoami"], { fetch, env: { NIGHTSHIFT_BASE_URL: "https://env.example.com" } });
+  assert.match(env.stderr, /sent to env\.example\.com/);
+  assert.ok(!env.all.includes(TEST_KEY));
+  const plain = await run(["whoami"], { fetch });
+  assert.doesNotMatch(plain.stderr, /will be sent to/);
+  const local = await run(["whoami", "--base-url", "http://localhost:3000"], { fetch });
+  assert.doesNotMatch(local.stderr, /will be sent to/);
+});
+
 test("a redirect is not followed, so the key cannot be forwarded", async () => {
   const api = await fakeApi({ "GET /me": { status: 302, headers: { location: "http://evil.example/steal" }, body: {} } });
   try {
