@@ -26,6 +26,23 @@ export const LEGAL_PATHS = ["/privacy", "/terms"] as const;
  *  The API reference and its OpenAPI spec are read before anyone has a key. */
 export const INFO_PATHS = ["/pricing", "/docs/api", "/docs/api/openapi.json"] as const;
 
+/**
+ * Invite links (migration 0092). `/i/<token>` is a route handler that works
+ * signed out: it checks the link, keeps the token in a short-lived httpOnly
+ * cookie and sends the visitor to /signup with no token in the address bar.
+ * The match is anchored and the token alphabet is closed: one segment of
+ * letters, digits, `_` and `-`, 16 to 64 long. `/i`, `/i/`, `/i/x/y`, a dot
+ * (so no `.rsc` form) or an encoded slash is not an invite link and is gated
+ * like any other app URL. A link that is the wrong shape for a real token still
+ * passes here and gets the same neutral answer as a dead one (no 404 that would
+ * tell a guesser the shape was wrong).
+ */
+export const INVITE_LINK_PATTERN = /^\/i\/[A-Za-z0-9_-]{16,64}$/;
+
+/** Public: the plain page an invite link lands on when it cannot be used
+ *  (`?s=invalid`) or when the visitor already has an account (`?s=existing`). */
+export const INVITE_NOTICE_PATH = "/invite";
+
 /** Always public: the crawler files (app/robots.ts, app/sitemap.ts). */
 export const CRAWLER_PATHS = ["/robots.txt", "/sitemap.xml"] as const;
 
@@ -91,7 +108,13 @@ export function isUnknownSolutionPath(pathname: string): boolean {
 }
 
 /** Served as-is to anyone, signed in or not, without channel resolution. */
-export const ALWAYS_PUBLIC_PATHS = [...LEGAL_PATHS, ...INFO_PATHS, ...SOLUTION_PATHS, ...CRAWLER_PATHS] as const;
+export const ALWAYS_PUBLIC_PATHS = [
+  ...LEGAL_PATHS,
+  ...INFO_PATHS,
+  ...SOLUTION_PATHS,
+  ...CRAWLER_PATHS,
+  INVITE_NOTICE_PATH,
+] as const;
 
 /** The pages the sitemap lists: every public page a visitor reads, not the
  *  sign-in flow, the machine-readable spec or the crawler files. */
@@ -134,6 +157,9 @@ export const RESERVED_ROOT_SEGMENTS = [
   "solutions",
   "api",
   "docs",
+  // Invite links (/i/<token>) and their notice page (/invite).
+  "i",
+  "invite",
   // The self-hosted font files live under /fonts (PUBLIC_FONT_PATHS).
   "fonts",
   // The design concept prototypes (lib/concepts.ts): the whole /atelier path is
@@ -146,6 +172,10 @@ export const RESERVED_ROOT_SEGMENTS = [
 /** Next's router treats `/terms/` as `/terms`; the gate must agree with it. */
 function normalize(pathname: string): string {
   return pathname.length > 1 ? pathname.replace(/\/+$/, "") || "/" : pathname;
+}
+
+export function isInviteLinkPath(pathname: string): boolean {
+  return INVITE_LINK_PATTERN.test(normalize(pathname));
 }
 
 export function isLegalPath(pathname: string): boolean {
@@ -198,6 +228,9 @@ export type GateDecision = "to-login" | "to-home" | "pass" | "app";
 
 export function gateDecision(pathname: string, signedIn: boolean): GateDecision {
   if (isPublicApiPath(pathname)) return "pass";
+  // The route itself decides: signed out it starts the sign-up, signed in it
+  // explains that an invite is for new accounts.
+  if (isInviteLinkPath(pathname)) return "pass";
   if (isLoginPath(pathname) || isSignupPath(pathname)) return signedIn ? "to-home" : "pass";
   if (isAlwaysPublicPath(pathname)) return "pass";
   // Either way: a confirmation link opened in a browser that still holds an

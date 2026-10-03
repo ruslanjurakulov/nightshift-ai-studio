@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CircleCheck, Coins, LogOut, Settings, UserRound, X } from "lucide-react";
+import { CircleCheck, Coins, Gift, LogOut, Settings, UserRound, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, LOCALES } from "@/lib/i18n";
@@ -325,6 +325,10 @@ export function AccountMenu({
             <Link href={path("/credits")} onClick={() => close(false)} className="side-link">
               <Coins aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
               <span>{t.account.buyCredits}</span>
+            </Link>
+            <Link href={path("/credits") + "#invite"} onClick={() => close(false)} className="side-link">
+              <Gift aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
+              <span>{t.account.inviteFriends}</span>
             </Link>
             <Link href={path("/organization")} onClick={() => close(false)} className="side-link">
               <Settings aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />

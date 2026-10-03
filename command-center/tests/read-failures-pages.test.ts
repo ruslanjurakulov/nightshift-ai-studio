@@ -127,7 +127,9 @@ describe("credits: never a 0 balance on failure", () => {
         ? NO_ROW
         : name === "is_platform_admin"
           ? { data: false, error: null }
-          : EMPTY,
+          : name === "my_friend_invite"
+            ? { data: NO_INVITE, error: null }
+            : EMPTY,
     );
     const html = await render(load);
     expect(has(html, en.credits.ledgerEmpty)).toBe(true);
@@ -156,6 +158,10 @@ const CATALOG_ROWS: Record<string, unknown[]> = {
   credit_lot_policies: [],
 };
 const MISSING = { data: null, error: { message: "relation does not exist", code: "42P01" } };
+// Migration 0092 applied, switch off, no link yet: the Invite friends card's healthy read.
+const NO_INVITE = {
+  enabled: false, required: 5, reward: 100, link: null, joined: 0, paid: false, credits_paid: null, pending: false,
+};
 /** A healthy deployment, with `over` replacing individual tables / functions. */
 function plansClient(over: Record<string, { data: unknown; error: unknown }> = {}) {
   return supabaseStub((name) => {
@@ -163,6 +169,7 @@ function plansClient(over: Record<string, { data: unknown; error: unknown }> = {
     if (name === "credit_accounts") return { data: { balance: 50, reserved: 0 }, error: null };
     if (name === "billing_summary") return { data: FREE_SUMMARY, error: null };
     if (name === "is_platform_admin") return { data: false, error: null };
+    if (name === "my_friend_invite") return { data: NO_INVITE, error: null };
     if (name in CATALOG_ROWS) return { data: CATALOG_ROWS[name], error: null };
     return EMPTY;
   });
@@ -212,6 +219,18 @@ describe("credits plans: unknown, never 'Free', 0 or an empty list", () => {
     expect(has(html, en.plans.lotsEmpty)).toBe(false);
   });
 
+  it("Invite friends: the card when migration 0092 is applied, nothing before it, an honest error when unread", async () => {
+    state.client = plansClient();
+    expect(has(await render(load), en.invite.title)).toBe(true);
+    state.client = plansClient({ my_friend_invite: { data: null, error: { message: "Could not find the function", code: "PGRST202" } } });
+    const before = await render(load);
+    expect(has(before, en.invite.title)).toBe(false);
+    expect(before).not.toContain("data-read-error");
+    state.client = plansClient({ my_friend_invite: FAILED });
+    const failed = await render(load);
+    expect(has(failed, en.invite.readFailed)).toBe(true);
+    expect(failed).not.toContain("data-invite-card");
+  });
   it("a lot row that cannot be read fails the list instead of dropping it", async () => {
     state.client = plansClient({ credit_lots: { data: [{ id: 1, source: "pack", amount: "many", remaining: 5 }], error: null } });
     const html = await render(load);

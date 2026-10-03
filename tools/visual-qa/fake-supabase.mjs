@@ -59,6 +59,17 @@ const RPC = {
   my_organizations: [ORG],
   is_platform_admin: false,
   billing_summary: { plan_id: "creator", plan_name: "Creator" },
+  // Invite friends (0092): a made-up link with three of five friends joined.
+  my_friend_invite: {
+    enabled: true,
+    required: 5,
+    reward: 100,
+    link: { token: "0123456789abcdef0123456789abcdef", created_at: "2026-10-01T00:00:00Z", org_id: ORG.id },
+    joined: 3,
+    paid: false,
+    credits_paid: null,
+    pending: false,
+  },
 };
 
 const TABLES = {
