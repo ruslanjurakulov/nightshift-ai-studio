@@ -63,7 +63,8 @@ describe("unitMeaning", () => {
   it("glosses every unit of the owner-apply price files", () => {
     const root = join(__dirname, "..", "..", "docs", "sql");
     const units = ["prices_2026_10_01.sql", "prices_corrections_2026_10_01.sql", "prices_defaults_2026_10_03.sql"].flatMap(
-      (f) => [...readFileSync(join(root, f), "utf8").matchAll(/^\s*\('([a-z0-9_]+)',\s*[0-9]/gm)].map((x) => x[1]),
+      // Held-back rows stay in the file as `--   ('unit', …` comments: they are still units the editor will show once applied.
+      (f) => [...readFileSync(join(root, f), "utf8").matchAll(/^\s*(?:--\s+)?\('([a-z0-9_]+)',\s*[0-9]/gm)].map((x) => x[1]),
     );
     expect(units.length).toBeGreaterThanOrEqual(60);
     for (const u of units) expect(m(u), u).toBeTruthy();
