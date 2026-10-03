@@ -103,7 +103,7 @@ export function PricingView({
       <section aria-labelledby="pricing-title" className="st-wrap st-hero">
         <div>
           <p className="st-kicker">{showPlans ? p.eyebrow : pp.eyebrowNoPlans}</p>
-          <h1 id="pricing-title" className="st-h1 mt-5">
+          <h1 id="pricing-title" className="st-h1 nx-h1-short mt-5">
             {pp.h1}
           </h1>
           {/* "Pick a monthly plan" only when there is a plan to pick. */}
@@ -122,37 +122,19 @@ export function PricingView({
           {!signedIn && <p className="st-small mt-4">{showPlans ? p.ctaNote : t.site.packsOnly.ctaNote}</p>}
         </div>
 
-        <section aria-labelledby="math-title" className="st-monitor self-start">
-          <div className="st-monitor-head">
-            <div className="st-monitor-title">
-              <b>{pp.mathSlug}</b>
-            </div>
-          </div>
-          <div className="px-4 pb-2 pt-4">
-            <h2 id="math-title" className="st-h3">
-              {pp.mathTitle}
-            </h2>
-            <p className="st-small mt-2">{pp.mathLead}</p>
-          </div>
-          <dl className="st-formula mx-4 mb-4 mt-3">
-            {pp.rows.map((row) => (
-              <div key={row.id}>
-                <dt className={row.id === "return" ? "text-[var(--ns-go)]" : undefined}>{row.word}</dt>
-                <dd>
-                  {/* One equation per line: "failed → return = hold" never breaks mid-way. */}
-                  <code>
-                    {row.formula.split(/;\s*/).map((clause) => (
-                      <span key={clause} className="st-formula-clause">
-                        {clause}
-                      </span>
-                    ))}
-                  </code>
-                  <p className="st-small">{row.body}</p>
-                </dd>
-              </div>
+        <aside aria-labelledby="get-title" className="self-start">
+          <h2 id="get-title" className="nx-kicker mb-4">
+            {t.site.rules.slug}
+          </h2>
+          <ul className="nx-get">
+            {t.site.rules.items.map((item) => (
+              <li key={item.id}>
+                <Check aria-hidden />
+                <span>{item.title}</span>
+              </li>
             ))}
-          </dl>
-        </section>
+          </ul>
+        </aside>
       </section>
 
       {plansFailed && (
@@ -184,6 +166,7 @@ export function PricingView({
               signedIn={signedIn}
               subscribeHref={`${credits}#plans`}
             />
+            <p className="nx-extra">{pp.extraLine}</p>
             <ul className="flex max-w-3xl flex-col gap-2 text-sm text-[var(--ns-text-dim)]">
               {generationRates ? <li>{t.creditsPage.eq.note}</li> : !signedIn && <li>{p.eqSignedOut}</li>}
               <li>{t.plans.expiresNote}</li>
@@ -204,7 +187,7 @@ export function PricingView({
         </section>
       )}
 
-      <section id="packs" aria-labelledby="packs-title" className="st-section">
+      <section id="packs" aria-labelledby="packs-title" className="st-section" data-tone="raised">
         <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-14">
           <div>
             <h2 id="packs-title" className="st-h2">
@@ -287,7 +270,7 @@ export function PricingView({
         </div>
       </section>
 
-      <section aria-labelledby="how-title" className="st-section">
+      <section aria-labelledby="how-title" className="st-section" data-tone="raised">
         <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-14">
           <div>
             <Slug>{pp.creditSlug}</Slug>
@@ -295,20 +278,53 @@ export function PricingView({
               {p.howTitle}
             </h2>
             <p className="st-lead mt-5">{p.howLead}</p>
-            {/* A ruled, numbered list like the rest of the site, not an icon grid. */}
-            <ol className="st-ruled mt-10">
-              {steps.map(({ title, body }, i) => (
-                <li key={title}>
-                  <h3 className="st-h3">
-                    <span className="st-num mr-3 text-sm font-normal text-[var(--ns-text-dim)]" aria-hidden>
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    {title}
-                  </h3>
-                  <p className="st-body">{body}</p>
+            {/* The four steps a price goes through, as four words; the long
+                wording and the formulas are one tap away, not a wall. */}
+            <ol className="st-flow nx-flow" aria-label={t.site.pricingTeaser.slug}>
+              {t.site.pricingTeaser.ledger.map((step) => (
+                <li key={step.id} data-id={step.id}>
+                  <b>{step.word}</b>
+                  <span>{step.body}</span>
                 </li>
               ))}
             </ol>
+            <details className="nx-math">
+              <summary>
+                <span id="math-title">{pp.mathToggle}</span>
+                <span className="st-faq-mark" aria-hidden />
+              </summary>
+              <ol className="st-ruled nx-math-steps">
+                {steps.map(({ title, body }, i) => (
+                  <li key={title}>
+                    <h3 className="st-h3">
+                      <span className="st-num mr-3 text-sm font-normal text-[var(--ns-text-dim)]" aria-hidden>
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      {title}
+                    </h3>
+                    <p className="st-body">{body}</p>
+                  </li>
+                ))}
+              </ol>
+              <dl className="st-formula">
+                {pp.rows.map((row) => (
+                  <div key={row.id}>
+                    <dt className={row.id === "return" ? "text-[var(--ns-go)]" : undefined}>{row.word}</dt>
+                    <dd>
+                      {/* One equation per line: "failed → return = hold" never breaks mid-way. */}
+                      <code>
+                        {row.formula.split(/;\s*/).map((clause) => (
+                          <span key={clause} className="st-formula-clause">
+                            {clause}
+                          </span>
+                        ))}
+                      </code>
+                      <p className="st-small">{row.body}</p>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
           </div>
 
           <aside aria-labelledby="rates-title" className="st-panel h-fit">
@@ -367,7 +383,7 @@ export function PricingView({
         </div>
       </section>
 
-      <section id="pricing-faq" aria-labelledby="pricing-faq-title" className="st-section">
+      <section id="pricing-faq" aria-labelledby="pricing-faq-title" className="st-section" data-tone="raised">
         <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
           <div className="lg:sticky lg:top-28 lg:self-start">
             <Slug>{pp.faqSlug}</Slug>

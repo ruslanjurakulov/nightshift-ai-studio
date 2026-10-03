@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 vi.mock("next/navigation", () => ({
@@ -66,51 +66,129 @@ describe("public landing page", () => {
     const h1s = screen.getAllByRole("heading", { level: 1 });
     expect(h1s).toHaveLength(1);
     expect(h1s[0].textContent).toBe(`${s.hero.titleA} ${s.hero.titleB}`);
-    for (const title of [s.rules.title, s.how.title, s.studio.title, s.desk.title, s.solutionsTeaser.title, s.pricingTeaser.title, t.landing.faq.title, s.final.title]) {
+    for (const title of [s.how.simple.title, ...s.caps.items.map((i) => i.title), s.who.title, s.rules.title, s.pricingTeaser.title, t.landing.faq.title, s.final.title]) {
       expect(screen.getByRole("heading", { level: 2, name: title })).toBeTruthy();
     }
-    // How a video moves is the six-step flow, ending with your approval and YouTube.
+    // How it works is three steps, and the last one is the person's own press.
     const how = screen.getByRole("list", { name: s.how.slug });
     expect(how.tagName).toBe("OL");
     const steps = within(how).getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
-    expect(steps).toEqual(s.how.steps.map((x) => x.title));
-    expect(steps.slice(-2)).toEqual([s.how.steps[4].title, s.how.steps[5].title]);
+    expect(steps).toEqual(s.how.simple.steps.map((x) => x.title));
+    expect(steps).toHaveLength(3);
+    expect(s.how.simple.steps[2].id).toBe("approve");
+    // Who it is for: one tile per solutions page, each a link to it.
+    const who = screen.getByRole("heading", { level: 2, name: s.who.title }).closest("section")!;
+    expect(within(who).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual([
+      ...s.who.items.map((i) => `/solutions/${i.id}`),
+      "/solutions",
+    ]);
     // Every rule the product keeps has its own heading.
     const rules = screen.getByRole("heading", { level: 2, name: s.rules.title }).closest("section")!;
     for (const r of s.rules.items) expect(within(rules).getByRole("heading", { level: 3, name: r.title })).toBeTruthy();
   });
 
-  it("shows every Studio tool, and draws the editor instead of shipping an image", () => {
+  it("shows every Studio tool with how it is paid for, and draws every example instead of shipping a picture", () => {
     const t = dictionaries.en;
-    renderLanding({ kind: "announced" });
-    const studio = screen.getByRole("heading", { level: 2, name: t.site.studio.title }).closest("section")!;
-    const tools = screen.getByRole("list", { name: t.site.studio.slug });
-    expect(within(tools).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(t.site.studio.tools.map((x) => x.title));
-    // Each row says how it is paid for: the editor and the style library spend nothing.
-    const cost = within(tools).getAllByRole("listitem").map((li) => li.querySelector(".st-patch-cost, .sr-only")?.textContent);
+    const { container } = renderLanding({ kind: "announced" });
+    const studio = screen.getByRole("heading", { level: 2, name: t.site.caps.items.find((i) => i.id === "studio")!.title }).closest("section")!;
+    const tools = within(studio).getByRole("list", { name: t.site.studio.slug });
+    expect(within(tools).getAllByRole("listitem").map((li) => li.querySelector("span:not(.sr-only):not(.nx-tool-free)")?.textContent)).toEqual(t.site.studio.tools.map((x) => x.title));
+    // Each tool says how it is paid for: the editor and the style library spend nothing.
+    const cost = within(tools).getAllByRole("listitem").map((li) => li.querySelector(".nx-tool-free, .sr-only")?.textContent);
     expect(cost).toEqual(t.site.studio.tools.map((x) => (x.id === "editor" || x.id === "styles" ? t.site.studio.free : t.site.studio.priced)));
-    expect(studio.querySelector("img")).toBeNull();
-    expect(within(studio).getByRole("img", { name: t.site.studio.editor.figure })).toBeTruthy();
+    // Nothing on the page is a photograph or a render: the only images are the real app screenshots.
+    expect([...container.querySelectorAll("img")].every((img) => img.closest("figure.st-shot"))).toBe(true);
   });
 
-  it("draws the hero rundown as one labelled example, with nothing to press and no money in it", () => {
+  it("shows each capability as one labelled example: what you ask for, what comes back, and a note that it is an example", () => {
     const t = dictionaries.en;
-    renderLanding({ kind: "announced" });
-    const img = screen.getByRole("img", { name: t.site.rundown.figure });
-    expect(img.textContent).toContain(t.site.rundown.tag);
-    expect(img.textContent).not.toMatch(MONEY);
-    expect(img.querySelector("a, button, input, [tabindex]")).toBeNull();
-    // The rows are the same channel → YouTube flow, and the only lit row is your approval.
-    const rows = [...img.querySelectorAll("li")];
-    expect(rows).toHaveLength(t.site.rundown.rows.length);
-    expect(rows.filter((r) => r.getAttribute("data-state") === "yours").map((r) => r.textContent)).toEqual([
-      expect.stringContaining(t.site.rundown.rows.find((r) => r.id === "approval")!.name),
-    ]);
+    const { container } = renderLanding({ kind: "announced" });
+    expect(t.site.caps.items.map((i) => i.id)).toEqual(["video", "voice", "studio", "channels", "approvals"]);
+    for (const item of t.site.caps.items) {
+      const section = container.querySelector(`#${item.id}`)!;
+      expect(within(section as HTMLElement).getByRole("heading", { level: 2, name: item.title })).toBeTruthy();
+      // One button per section, in plain words, going somewhere real.
+      const cta = within(section as HTMLElement).getByRole("link", { name: item.cta });
+      expect(cta.getAttribute("href")).toMatch(/^\/(signup|solutions\/youtube-channels)$/);
+      const demo = section.querySelector("figure.nx-demo")!;
+      expect(demo.getAttribute("aria-label")).toContain(t.site.caps.demo);
+      expect(demo.textContent).toContain(item.bubble);
+      expect(demo.textContent).toContain(item.reply);
+      expect(demo.textContent).toContain(t.site.caps.tag);
+      expect(demo.textContent).not.toMatch(MONEY);
+      expect(demo.querySelector("a, button, input, [tabindex]")).toBeNull();
+    }
+    // The approvals card is the Solutions page's own sign-off wording.
+    const approvals = container.querySelector("#approvals")!;
+    expect(approvals.textContent).toContain(t.site.solutions.pictures.signoff.second);
   });
 
-  it("names the welcome grant from WELCOME_CREDITS, once on sign-up", () => {
+  it("draws the hero's product as four labelled example states, with nothing to press but the tabs and no money in it", () => {
+    const t = dictionaries.en;
+    const { container } = renderLanding({ kind: "announced" });
+    const stage = screen.getByRole("region", { name: t.site.stage.label });
+    // The figure's description is there for assistive tech, and every drawn state says it is an example.
+    expect(stage.textContent).toContain(t.site.stage.figure);
+    expect(stage.querySelectorAll(".nx-ui-tag")).toHaveLength(t.site.stage.steps.length);
+    expect(stage.textContent).toContain(t.site.stage.tag);
+    expect(stage.textContent).not.toMatch(MONEY);
+    // The only controls are the tabs; the drawn keys are pictures, not buttons.
+    expect(stage.querySelector(".nx-ui a, .nx-ui button, .nx-ui input, .nx-ui [tabindex]")).toBeNull();
+    const tabs = within(stage).getAllByRole("tab");
+    expect(tabs.map((x) => x.textContent?.replace(/^\d/, ""))).toEqual(t.site.stage.steps.map((x) => x.tab));
+    // The story ends where the page's idea does: you approve, then it is live.
+    expect(t.site.stage.steps.map((x) => x.id)).toEqual(["brief", "plan", "approve", "live"]);
+    // The drawn "Approve and publish" key says next to itself that it is an example.
+    const approveFoot = container.querySelector('[role="tabpanel"]:nth-of-type(3) .nx-ui-foot, [role="tabpanel"]:nth-child(3) .nx-ui-foot')!;
+    expect(approveFoot.querySelector(".nx-ui-note")?.textContent).toBe(t.site.stage.tag);
+    // Only the open state is exposed; the rest stay in the HTML (search) but out of the way.
+    const panels = [...container.querySelectorAll('[role="tabpanel"]')];
+    expect(panels.map((p) => p.getAttribute("data-on"))).toEqual(["true", "false", "false", "false"]);
+    expect(panels.slice(1).every((p) => p.getAttribute("aria-hidden") === "true")).toBe(true);
+  });
+
+  it("switches the stage to the state that was picked, and stops moving by itself", () => {
+    const t = dictionaries.en;
+    const { container } = renderLanding({ kind: "announced" });
+    const tab = screen.getByRole("tab", { name: new RegExp(t.site.stage.steps[2].tab) });
+    fireEvent.click(tab);
+    expect(tab.getAttribute("aria-selected")).toBe("true");
+    const on = [...container.querySelectorAll('[role="tabpanel"]')].find((p) => p.getAttribute("data-on") === "true")!;
+    expect(on.textContent).toContain(t.site.stage.steps[2].title);
+  });
+
+  it("names the welcome grant from WELCOME_CREDITS, and says it is one-time in every language", () => {
     renderLanding({ kind: "announced" });
     expect(screen.getByText(fmt(dictionaries.en.site.hero.note, { n: WELCOME_CREDITS }))).toBeTruthy();
+    // The grant is given once (grant_welcome_credits), so the hero must say so, not just "when you sign up".
+    expect(dictionaries.en.site.hero.note).toMatch(/once/i);
+    expect(dictionaries.ru.site.hero.note).toMatch(/один раз/);
+    expect(dictionaries.uz.site.hero.note).toMatch(/bir marta/);
+  });
+
+  it("does not let \"You press publish\" stand alone: the FAQ says auto-publish is off unless turned on for a channel", () => {
+    for (const locale of ["en", "ru", "uz"] as const) {
+      const control = dictionaries[locale].landing.faq.items.find((i) => i.id === "control")!;
+      expect(control.a).toMatch(locale === "en" ? /Auto-publish is off unless you turn it on for a channel/ : locale === "ru" ? /Автопубликация выключена, пока вы не включите её для канала/ : /Avto-nashr kanal uchun siz yoqmaguningizcha oʻchiq/);
+    }
+  });
+
+  it("writes the price as a button, not a key, in the site's English copy (API keys are keys)", () => {
+    const strings: string[] = [];
+    const walk = (n: unknown) => (typeof n === "string" ? strings.push(n) : Array.isArray(n) ? n.forEach(walk) : n && typeof n === "object" ? Object.values(n).forEach(walk) : null);
+    walk(dictionaries.en.site);
+    for (const s of strings) expect(s).not.toMatch(/\b(?:on the key|the key you press|Generate key|priced key|Approve and publish key)\b/i);
+  });
+
+  it("keeps the hero pill to one line in Uzbek (short enough for 390px)", () => {
+    expect(dictionaries.uz.site.hero.kicker.length).toBeLessThanOrEqual(40);
+  });
+
+  it("tells the truth about sign-up: the email is confirmed by a link, and no card is asked for", () => {
+    expect(dictionaries.en.signup.sub).toMatch(/confirm/);
+    expect(dictionaries.ru.signup.sub).toMatch(/подтвержд/);
+    expect(dictionaries.uz.signup.sub).toMatch(/tasdiqlash/);
+    for (const l of ["en", "ru", "uz"] as const) expect(dictionaries[l].signup.sub.length).toBeGreaterThan(20);
   });
 
   it("opens the cancelling and refund answers before anyone buys, when a plan is on sale", () => {
@@ -160,6 +238,20 @@ describe("public landing page", () => {
     expect(screen.getByRole("link", { name: dictionaries.en.site.anchor.apiSource }).getAttribute("href")).toBe("/docs/api#pricing");
   });
 
+  it("says the one known price above the fold, only when the live price list holds it", () => {
+    const priced = renderLanding({ kind: "announced" }, "en", {
+      pack: { kind: "none" },
+      api: null,
+      site: { perMinute: 60, minimum: 30, usd: null },
+    });
+    const hero = priced.container.querySelector(".nx-hero")!;
+    expect(hero.querySelector(".nx-price")?.textContent).toBe("A video in the app: 60 credits a minute of finished video");
+    cleanup();
+    // No list, no line: the hero never prints a default or a zero.
+    const unpriced = renderLanding({ kind: "announced" });
+    expect(unpriced.container.querySelector(".nx-hero .nx-price")).toBeNull();
+  });
+
   it("prints exactly the price the data holds", () => {
     const { container } = renderLanding({
       kind: "plans",
@@ -169,15 +261,15 @@ describe("public landing page", () => {
     expect(container.textContent).toContain("Creator");
   });
 
-  it("shows step 05 on a real screenshot, labelled as one, with sample data said plainly (PIXEL-3)", () => {
+  it("shows the approval on a real screenshot, labelled as one, with sample data said plainly (PIXEL-3)", () => {
     for (const locale of ["en", "ru", "uz"] as const) {
       const { container } = renderLanding({ kind: "announced" }, locale);
       const h = dictionaries[locale].site.how;
-      // Two placements of one figure: inside step 05 (phone) and under the strip (wider).
+      // One figure, beside the steps: the page the third step ends on.
       const figures = Array.from(container.querySelectorAll("figure.st-shot"));
-      expect(figures).toHaveLength(2);
-      expect(figures[0].closest("li")?.querySelector("h3")?.textContent).toBe(h.steps.find((x) => x.id === "approval")?.title);
-      const imgs = Array.from(figures[1].querySelectorAll("img"));
+      expect(figures).toHaveLength(1);
+      expect(figures[0].closest("#how")).not.toBeNull();
+      const imgs = Array.from(figures[0].querySelectorAll("img"));
       // Light and dark, desktop and phone captures, all described in the page's language.
       expect(imgs.map((i) => `${i.getAttribute("data-shot-theme")}-${i.getAttribute("data-shot-size")}`)).toEqual([
         "light-desk",
@@ -212,7 +304,7 @@ describe("public landing page", () => {
       renderLanding({ kind: "announced" }, locale);
       const hero = dictionaries[locale].site.hero;
       expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(`${hero.titleA} ${hero.titleB}`);
-      expect(screen.getByRole("img", { name: dictionaries[locale].site.rundown.figure })).toBeTruthy();
+      expect(screen.getByRole("region", { name: dictionaries[locale].site.stage.label }).textContent).toContain(dictionaries[locale].site.stage.figure);
       cleanup();
     }
   });

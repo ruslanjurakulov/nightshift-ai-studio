@@ -75,7 +75,7 @@ export default async function Home() {
   });
 
   return (
-    <PublicShell t={t}>
+    <PublicShell t={t} fresh>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
       <Landing
         t={t}

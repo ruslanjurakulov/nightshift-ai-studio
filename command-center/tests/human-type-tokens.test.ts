@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 const root = join(__dirname, "..");
 const read = (f: string) => readFileSync(join(root, f), "utf8");
 const globals = read("app/globals.css");
-const CSS_FILES = ["app/globals.css", "components/site/site.css", "components/studio/desk.css", "components/models/ModelDiscovery.module.css", "components/concepts/concepts.css", "components/motion/motion.css"];
+const CSS_FILES = ["app/globals.css", "components/site/site.css", "components/site/site-next.css", "components/studio/desk.css", "components/models/ModelDiscovery.module.css", "components/concepts/concepts.css", "components/motion/motion.css"];
 
 /** The declarations of the block that opens with this selector text. */
 function block(css: string, selectorStart: string, nth = 0): string {
