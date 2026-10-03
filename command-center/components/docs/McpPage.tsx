@@ -268,7 +268,7 @@ export function McpPage({
         </div>
       </section>
 
-      <McpLanding dev={dev} />
+      <McpLanding dev={dev} oauthLive={oauthLive} />
 
       <DocSection id="tools" no={1} title={c.tools.slug}>
         <Statement>{c.tools.title}</Statement>
@@ -297,7 +297,7 @@ export function McpPage({
         </Table>
       </DocSection>
 
-      <McpAfter dev={dev} showCli={showCli} />
+      <McpAfter dev={dev} showCli={showCli} oauthLive={oauthLive} />
 
       <section aria-labelledby="mcp-close-title" className="ml-land ml-close">
         <div className="ml-land-in ml-close-in">

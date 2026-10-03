@@ -6,6 +6,7 @@ import { BrandLogo, logoTile } from "@/components/docs/BrandLogo";
 import { ClientMark, ClientText } from "@/components/docs/McpClientContext";
 import { CopyButton } from "@/components/docs/CopyButton";
 import { Marquee } from "@/components/docs/Marquee";
+import { MarqueePause, MarqueeToggle } from "@/components/docs/MarqueePause";
 import { ResultsCarousel } from "@/components/docs/ResultsCarousel";
 import { Scene, SampleFrame } from "@/components/docs/SampleFrame";
 import { BrandMark } from "@/components/site/BrandMark";
@@ -23,12 +24,12 @@ import { BrandMark } from "@/components/site/BrandMark";
  * known pattern: the proportions are measured from a reference page and nothing
  * else is taken from it (no text, image or logo).
  */
-export function McpLanding({ dev }: { dev: DevDictionary }) {
+export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: boolean }) {
   const c = dev.mcp;
   const l = c.land;
   const clientNames = MCP_CLIENTS.filter((x) => x.id !== "other").map((x) => x.label);
-  const primary = MCP_CLIENTS.filter((x) => x.group === "primary");
-  const more = MCP_CLIENTS.filter((x) => x.group === "more" && x.id !== "other");
+  // Every client once, in the connect card's order: one row is wider than a wide screen, so nothing repeats in view.
+  const clients = MCP_CLIENTS.filter((x) => x.id !== "other");
 
   const clientPill = (id: string, label: string) => (
     <span className="ml-mq-pill">
@@ -69,7 +70,7 @@ export function McpLanding({ dev }: { dev: DevDictionary }) {
       </section>
 
       <section aria-labelledby="every-title" className="ml-land ml-every" data-tone="ground">
-        <div className="ml-land-in">
+        <div className="ml-land-in ml-every-in">
           <h2 id="every-title" className="ml-land-h2 ml-land-h2-lg">
             {l.every.title}
           </h2>
@@ -82,7 +83,7 @@ export function McpLanding({ dev }: { dev: DevDictionary }) {
                   <div className="ml-cap-copy">
                     <p className="ml-pillbadge">{t.label}</p>
                     <h3 className="ml-cap-h3">{t.title}</h3>
-                    <p className="ml-cap-body">{t.body}</p>
+                    <p className="ml-cap-body">{row.id === "credits" && !oauthLive ? l.keyMode.credits : t.body}</p>
                     <div className="ml-cap-cta">
                       <CopyButton text={t.prompt} name={`${l.asks.copyName} (${t.title})`} labels={{ ...dev.ui, copy: t.cta }} variant="label" />
                     </div>
@@ -151,32 +152,47 @@ export function McpLanding({ dev }: { dev: DevDictionary }) {
       </section>
 
       <section aria-labelledby="works-title" className="ml-land ml-works">
-        <div className="ml-land-in ml-works-in">
-          <p className="ml-label">{l.works.label}</p>
-          <h2 id="works-title" className="ml-land-h2">
-            {l.works.title}
-          </h2>
-          <p className="ml-land-lead">{l.works.lead}</p>
-        </div>
-        <p className="sr-only">
-          {l.works.label}: {clientNames.join(", ")}, {l.works.more}. {l.works.publishes}: {PUBLISH_TARGETS.join(", ")}.
-        </p>
-        <Marquee
-          rows={[
-            { id: "primary", items: primary.map((x) => clientPill(x.id, x.label)), seconds: 165, repeat: 3 },
-            { id: "more", items: more.map((x) => clientPill(x.id, x.label)), reverse: true, seconds: 150, repeat: 2 },
-            { id: "publish", items: PUBLISH_TARGETS.map((name) => <span key={name} className="ml-mq-pill ml-mq-text">{name}</span>), seconds: 185, repeat: 8 },
-          ]}
-        />
+        <MarqueePause>
+          <div className="ml-land-in ml-works-in">
+            <p className="ml-label">{l.works.label}</p>
+            <h2 id="works-title" className="ml-land-h2">
+              {l.works.title}
+            </h2>
+            <p className="ml-land-lead">{oauthLive ? l.works.lead : l.keyMode.works}</p>
+            <MarqueeToggle label={l.works.pause} />
+          </div>
+          <p className="sr-only">
+            {l.works.label}: {clientNames.join(", ")}, {l.works.more}.
+          </p>
+          <Marquee
+            rows={[
+              { id: "a", items: clients.map((x) => clientPill(x.id, x.label)), seconds: 130 },
+              { id: "b", items: [...clients.slice(8), ...clients.slice(0, 8)].map((x) => clientPill(x.id, x.label)), reverse: true, seconds: 130 },
+            ]}
+          />
+          <div className="ml-publish">
+            <p className="ml-publish-label">{l.works.publishes}</p>
+            <ul>
+              {PUBLISH_TARGETS.map((name) => (
+                <li key={name}>
+                  <span className="ml-mq-pill ml-mq-text">{name}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <p className="ml-works-tm">{c.trademarks}</p>
+        </MarqueePause>
       </section>
     </>
   );
 }
 
 /** The questions people ask, then the "explore more" pills. Rendered after the tool list. */
-export function McpAfter({ dev, showCli }: { dev: DevDictionary; showCli: boolean }) {
+export function McpAfter({ dev, showCli, oauthLive }: { dev: DevDictionary; showCli: boolean; oauthLive: boolean }) {
   const c = dev.mcp;
   const l = c.land;
+  // Until the sign-in is switched on (MCP_OAUTH_LIVE) the page must not promise an app connection: four answers speak of the key.
+  const keyAnswers: Record<number, string> = oauthLive ? {} : { 2: l.keyMode.faq.assistants, 4: l.keyMode.faq.cost, 6: l.keyMode.faq.disconnect, 7: l.keyMode.faq.credits };
   return (
     <>
       <section aria-labelledby="faq-title" className="ml-land ml-faq" data-tone="soft">
@@ -185,10 +201,10 @@ export function McpAfter({ dev, showCli }: { dev: DevDictionary; showCli: boolea
             {l.faq.title}
           </h2>
           <div className="ml-faq-list">
-            {l.faq.items.map((item) => (
+            {l.faq.items.map((item, i) => (
               <details key={item.q} className="ml-faq-item">
                 <summary>{item.q}</summary>
-                <p>{item.a}</p>
+                <p>{keyAnswers[i] ?? item.a}</p>
               </details>
             ))}
           </div>

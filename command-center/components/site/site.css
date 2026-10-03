@@ -2246,6 +2246,9 @@ h3.st-doc-h3 { letter-spacing: 0; }
 .ml-pillbadge { display: inline-block; margin: 0 0 18px; padding: 6px 12px; border-radius: 999px; background: var(--ns-key); font-family: var(--font-display); font-size: 13px; font-weight: 600; line-height: 16px; letter-spacing: 0; color: var(--ns-text-dim); }
 .ml-land-h2 { margin: 0; font-family: var(--font-display); font-size: clamp(30px, 4.6vw, 48px); font-weight: 600; line-height: 1.15; letter-spacing: -0.01em; text-wrap: balance; }
 .ml-land-h2-lg { max-width: 18ch; margin-inline: auto; }
+.ml-every-in { text-align: left; }
+.ml-every-in .ml-land-h2-lg { margin-inline: 0; max-width: 20ch; }
+.ml-every-in .ml-land-lead { margin-left: 0; }
 .ml-land-h2-left { text-align: left; font-size: clamp(26px, 3.4vw, 36px); }
 .ml-land-lead { margin: 16px auto 0; max-width: 62ch; font-size: 16.5px; line-height: 1.6; color: var(--ns-text-dim); text-wrap: pretty; }
 .ml-asks-mark { display: inline-block; vertical-align: -0.12em; }
@@ -2274,7 +2277,7 @@ h3.st-doc-h3 { letter-spacing: 0; }
   .ml-cap[data-flip] .ml-cap-copy { order: 2; }
 }
 .ml-cap-copy { max-width: 520px; }
-.ml-cap-h3 { margin: 0; font-family: var(--font-display); font-size: clamp(24px, 2.8vw, 30px); font-weight: 600; line-height: 1.2; letter-spacing: -0.005em; text-wrap: balance; }
+.ml-cap-h3 { max-width: 18ch; margin: 0; font-family: var(--font-display); font-size: clamp(24px, 2.8vw, 30px); font-weight: 600; line-height: 1.2; letter-spacing: -0.005em; text-wrap: balance; }
 .ml-cap-body { margin: 14px 0 0; font-size: 16px; line-height: 1.6; color: var(--ns-text-dim); }
 .ml-cap-cta { margin-top: 24px; }
 .ml-cap-cta .st-copy { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 24px; border: 0; border-radius: 999px; background: var(--ns-text); color: var(--ns-ground); font-family: var(--font-display); font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity var(--ns-dur-1) var(--ns-ease); }
@@ -2369,7 +2372,8 @@ h3.st-doc-h3 { letter-spacing: 0; }
 .ml-mq-row { overflow: hidden; }
 .ml-mq-track { display: flex; width: max-content; animation: ml-mq var(--mq-s, 90s) linear infinite; will-change: transform; }
 .ml-mq-row[data-reverse] .ml-mq-track { animation-direction: reverse; }
-.ml-mq:hover .ml-mq-track { animation-play-state: paused; }
+.ml-mq:hover .ml-mq-track,
+.ml-works-wrap[data-paused] .ml-mq-track { animation-play-state: paused; }
 .ml-mq-set { display: flex; gap: 12px; margin: 0; padding: 0 12px 0 0; list-style: none; }
 .ml-mq-set li { flex: none; }
 .ml-mq-pill { display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 20px 0 12px; border: 1px solid var(--ns-rule); border-radius: 999px; background: var(--ns-console); font-family: var(--font-display); font-size: 16px; font-weight: 600; line-height: 24px; color: var(--ns-text); white-space: nowrap; }
@@ -2380,8 +2384,20 @@ h3.st-doc-h3 { letter-spacing: 0; }
   .ml-mq { -webkit-mask-image: none; mask-image: none; padding-inline: 16px; }
   .ml-mq-track { animation: none; width: auto; flex-wrap: wrap; justify-content: center; }
   .ml-mq-set { flex-wrap: wrap; justify-content: center; padding-right: 0; }
-  .ml-mq-dup, .ml-mq-rep { display: none; }
+  .ml-mq-dup { display: none; }
 }
+
+/* Pause for the moving rows, the publish targets, and the trademark line */
+.ml-mq-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; margin-top: 22px; padding: 0 18px; border: 1px solid var(--ns-rule-strong); border-radius: 999px; background: transparent; color: var(--ns-text); font-family: var(--font-display); font-size: 14px; font-weight: 600; cursor: pointer; }
+.ml-mq-toggle svg { width: 16px; height: 16px; }
+.ml-mq-toggle:hover { background: var(--ns-hover); }
+.ml-mq-toggle[aria-pressed="true"] { background: var(--ns-key); }
+.ml-mq-toggle:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .ml-mq-toggle { display: none; } }
+.ml-publish { display: grid; justify-items: center; gap: 12px; margin-top: 28px; padding-inline: 16px; }
+.ml-publish-label { margin: 0; font-size: 13px; font-weight: 600; line-height: 16px; color: var(--ns-text-dim); }
+.ml-publish ul { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.ml-works-tm { max-width: 62ch; margin: 24px auto 0; padding-inline: 16px; text-align: center; font-size: 13px; line-height: 1.5; color: var(--ns-text-dim); }
 
 /* Questions */
 .ml-faq-in { max-width: 860px; }

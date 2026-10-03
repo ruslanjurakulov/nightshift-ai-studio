@@ -30,7 +30,7 @@ export function McpClientProvider({
   marks: Record<string, React.ReactNode>;
   children: React.ReactNode;
 }) {
-  const [active, setActive] = useState(initialId in names ? initialId : Object.keys(names)[0]);
+  const [active, setActive] = useState(Object.hasOwn(names, initialId) ? initialId : Object.keys(names)[0]);
   const value = useMemo(() => ({ active, setActive, names, marks }), [active, names, marks]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
