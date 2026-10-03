@@ -114,6 +114,16 @@ function clean(name, raw) {
 const art = {};
 for (const [name, file] of Object.entries(FILES)) art[name] = clean(name, readFileSync(path.join(SRC, file), "utf8"));
 
+// One-colour versions: the same drawing with only its fill swapped for the text colour, the way a vendor's own
+// monochrome press-kit variants differ from the colour ones (the shape is untouched; the tab pill's text colour,
+// which follows the theme and the selected state, fills it).
+const MONO = { "claude-spark-mono": { from: "claude-spark-any", color: "#D97757" } };
+for (const [name, m] of Object.entries(MONO)) {
+  const src = art[m.from];
+  if (!src.inner.includes(`fill="${m.color}"`)) throw new Error(`${name}: ${m.from} has no fill ${m.color}`);
+  art[name] = { viewBox: src.viewBox, inner: src.inner.split(`fill="${m.color}"`).join('fill="currentColor"') };
+}
+
 // Bounding boxes of the artwork itself.
 const { chromium } = loadPlaywright();
 const browser = await chromium.launch();

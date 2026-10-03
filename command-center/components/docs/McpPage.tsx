@@ -203,12 +203,12 @@ export function McpPage({
           <div className="st-tiles" aria-hidden>
             <span className="st-tiles-glow" />
             {hero.map((id, i) => (
-              <span key={id} className="st-tile" data-slot={id === "nightshift" ? "brand" : Math.abs(i - 3)} data-id={id} data-tile={id === "nightshift" ? undefined : logoTile(id)}>
+              <span key={id} className="st-tile" data-slot={id === "nightshift" ? "brand" : Math.abs(i - 3)} data-id={id} data-tile={id === "nightshift" ? undefined : logoTile(id, "hero")}>
                 {id === "nightshift" ? (
                   // The product's own mark, exactly as the owner drew it: the shaded N on its black tile.
                   <BrandMark size={104} className="st-tile-n" />
                 ) : (
-                  <BrandLogo id={id} />
+                  <BrandLogo id={id} variant="hero" />
                 )}
               </span>
             ))}

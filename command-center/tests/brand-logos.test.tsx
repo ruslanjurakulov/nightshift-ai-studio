@@ -52,6 +52,14 @@ const SOURCE: Record<string, string> = {
   "claude-spark-any": "anthropic/ClaudeSpark-Clay.svg",
 };
 
+/**
+ * One-colour versions: the vendor's drawing with only its fill swapped for the text colour (the way a
+ * monochrome press-kit variant differs from the colour one). symbol -> [file, the colour it replaces].
+ */
+const MONO: Record<string, [string, string]> = {
+  "claude-spark-mono": ["anthropic/ClaudeSpark-Clay.svg", "#D97757"],
+};
+
 /** The marks a vendor offers only as a picture: the file in brand/third-party each is made from. */
 const RASTER: Record<string, string> = {
   "hermes-any": "hermes/icon.png",
@@ -112,6 +120,20 @@ describe("the register (lib/dev/brand-logos.ts)", () => {
 });
 
 describe("the marks are the vendors' own drawings", () => {
+  it.each(Object.entries(MONO))("%s: the same shape as the vendor's colour mark, only the fill is the text colour", (symbol, [file, colour]) => {
+    const original = readFileSync(join(ROOT, "brand", "third-party", file), "utf8");
+    const art = BRAND_ART[symbol];
+    const paths = [...art.markup.matchAll(/\sd="([^"]+)"/g)].map((m) => m[1]);
+    expect(paths.length).toBeGreaterThan(0);
+    for (const d of paths) expect(original).toContain(`d="${d}"`);
+    expect(art.markup).toContain('fill="currentColor"');
+    expect(art.markup).not.toMatch(/#[0-9a-f]{3,6}/i);
+    // The vendor's file has that one colour as the path's fill, and nothing else differs.
+    expect(original.toLowerCase()).toContain(`fill="${colour.toLowerCase()}"`);
+    expect(art.markup.replace('fill="currentColor"', `fill="${colour}"`)).toBe(BRAND_ART["claude-spark-any"].markup);
+    expect(art.viewBox).toBe(BRAND_ART["claude-spark-any"].viewBox);
+  });
+
   it.each(Object.entries(SOURCE))("%s: every path in the sprite is, character for character, a path in the vendor's file", (symbol, file) => {
     const original = readFileSync(join(ROOT, "brand", "third-party", file), "utf8");
     const art = BRAND_ART[symbol];
@@ -283,7 +305,7 @@ describe("where the logos show", () => {
       expect(logoShown(brandLogo(id)), id).toBe(true);
       expect(t.querySelector("svg use"), id).toBeTruthy();
     }
-    // The Claude app icon is the finished tile of its own, shown at the tile's size with nothing around it.
+    // The hero tile keeps the Claude app icon: a finished tile of its own, shown at the tile's size with nothing around it.
     expect(tiles.find((t) => t.getAttribute("data-id") === "claude")?.getAttribute("data-tile")).toBe("bare");
     expect(tiles.find((t) => t.getAttribute("data-id") === "nightshift")?.textContent?.trim()).toBe("");
   });
@@ -297,23 +319,36 @@ describe("where the logos show", () => {
     }
     expect(glyph("other").querySelector("svg.st-logo-glyph")).toBeTruthy();
     expect(glyph("other").querySelector("use")).toBeNull();
-    // The tiles that are finished icons of their own sit bare; the rest on the theme's neutral tile.
-    for (const id of ["claude", "claude-desktop", "gemini-cli", "hermes"]) expect(glyph(id).getAttribute("data-tile"), id).toBe("bare");
-    for (const id of ["claude-code", "codex", "cursor", "vscode"]) expect(glyph(id).getAttribute("data-tile"), id).toBe("theme");
+    // The Claude Spark is a loose glyph (no tile); finished icons of their own sit bare; the rest on the theme's neutral tile.
+    for (const id of ["claude", "claude-desktop", "claude-code"]) expect(glyph(id).getAttribute("data-tile"), id).toBe("plain");
+    for (const id of ["gemini-cli", "hermes"]) expect(glyph(id).getAttribute("data-tile"), id).toBe("bare");
+    for (const id of ["codex", "cursor", "vscode"]) expect(glyph(id).getAttribute("data-tile"), id).toBe("theme");
   });
 
-  it("the Anthropic marks are on the page, unmodified: the Claude icon on Claude and Claude Desktop, the Claude Spark on Claude Code", () => {
+  it("the Anthropic marks are on the page, unmodified: the Claude Spark in the text colour on Claude and Claude Desktop, in clay on Claude Code, the app icon on the Claude hero tile", () => {
     const html = page();
     expect(html).toContain('id="nl-claude-any"');
     expect(html).toContain('id="nl-claude-spark-any"');
+    expect(html).toContain('id="nl-claude-spark-mono"');
     const doc = new DOMParser().parseFromString(html, "text/html");
     const ref = (id: string) => doc.querySelector(`.st-pill[data-id="${id}"] .st-pill-glyph use`)?.getAttribute("href");
-    expect(ref("claude")).toBe("#nl-claude-any");
-    expect(ref("claude-desktop")).toBe("#nl-claude-any");
+    expect(ref("claude")).toBe("#nl-claude-spark-mono");
+    expect(ref("claude-desktop")).toBe("#nl-claude-spark-mono");
     expect(ref("claude-code")).toBe("#nl-claude-spark-any");
-    // The vendor's own colour, as its file has it.
+    expect(doc.querySelector('.st-tile[data-id="claude"] use')?.getAttribute("href")).toBe("#nl-claude-any");
+    // The vendor's own colour, as its file has it; the one-colour spark takes the pill's text colour.
     expect(BRAND_ART["claude-spark-any"].markup).toMatch(/#d97757/i);
+    expect(BRAND_ART["claude-spark-mono"].markup).toContain("currentColor");
     expect(BRAND_ART["claude-any"].markup).toMatch(/#D97757/i);
+  });
+
+  it("a loose glyph has no tile, no border, and follows the pill's text colour (so it is muted, and inverts on the selected pill)", () => {
+    const css = readFileSync(join(ROOT, "components", "site", "site.css"), "utf8");
+    const rule = css.match(/\.st-pill-glyph\[data-tile="plain"\],\s*\.st-pill\[aria-selected="true"\] \.st-pill-glyph\[data-tile="plain"\]\s*\{([^}]*)\}/);
+    expect(rule, "plain tile rule").toBeTruthy();
+    expect(rule![1]).toMatch(/background:\s*none/);
+    expect(rule![1]).toMatch(/border:\s*0/);
+    expect(rule![1]).toMatch(/color:\s*inherit/);
   });
 
   it("Codex carries the OpenAI mark under OpenAI's terms; Gemini CLI and Hermes their vendors' own icons", () => {

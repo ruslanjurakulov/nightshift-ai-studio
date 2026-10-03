@@ -46,12 +46,23 @@ decision of 2026-10-03.
 | Zed | logomark, black / white | **official** | zed.dev/brand (logomark "Copy SVG") | zed.dev/brand | Brand blue, full white or full black only; no other colour, no distortion |
 | Roo Code | extension icon (on a light tile in both themes: single black drawing) | **official** | `src/assets/icons/icon.svg` in github.com/RooCodeInc/Roo-Code | repo LICENSE: Apache-2.0 | No brand or trademark policy found; used unmodified |
 | Warp | glyph, black / white | **official** | warp.dev/press -> Logos -> Google Drive "Warp Logos" / Glyph | warp.dev/press | "Logos ... you are free to use in all publications" |
-| Claude | Claude app icon (rounded tile, as the vendor ships it) | **owner-accepted** | anthropic.com/press-kit (`ClaudeIcon-Rounded.svg`) | anthropic.com/legal/trademark-guidelines | Marks only as Anthropic permits and only in materials it approves beforehand; no alterations; no implied endorsement. **No approval was asked.** Request address if ever wanted: marketing@anthropic.com |
-| Claude Desktop | Claude app icon | **owner-accepted** | as Claude | as Claude | as Claude |
-| Claude Code | Claude Spark (clay) from the press kit; the kit's Claude Code logo is a 7:1 wordmark lock-up that cannot sit in a square tile unchanged | **owner-accepted** | anthropic.com/press-kit (`ClaudeSpark-Clay.svg`) | as Claude | as Claude |
+| Claude | Claude Spark as a loose glyph (no tile) in the pill's text colour: muted on a plain pill, inverted on the selected one. The hero tile keeps the Claude app icon (`ClaudeIcon-Rounded.svg`, a finished tile) | **owner-accepted** | anthropic.com/press-kit (`ClaudeSpark-Clay.svg`; hero: `ClaudeIcon-Rounded.svg`) | anthropic.com/legal/trademark-guidelines | Marks only as Anthropic permits and only in materials it approves beforehand; no alterations; no implied endorsement. **No approval was asked.** Request address if ever wanted: marketing@anthropic.com |
+| Claude Desktop | Claude Spark, loose, in the pill's text colour (the press kit has no separate Claude Desktop mark) | **owner-accepted** | as Claude | as Claude | as Claude |
+| Claude Code | Claude Spark, loose (no tile), in clay `#D97757` on every pill, selected or not; the kit's Claude Code logo is a 7:1 wordmark lock-up that cannot sit in a square tile unchanged | **owner-accepted** | anthropic.com/press-kit (`ClaudeSpark-Clay.svg`) | as Claude | as Claude |
 | Gemini CLI | the project's own icon | **owner-accepted** | `geminicli.com/icon.png` (Gemini CLI's own site; Google's Brand Resource Center releases assets only after an application) | partnermarketinghub.withgoogle.com/brands/google | No public official asset or usage terms for this mark; **no permission was asked** |
 | Hermes | the project's own icon | **owner-accepted** | `hermes-agent.nousresearch.com/icon.png` (48 px), github.com/NousResearch/hermes-agent (MIT) | none published | No brand page and no larger official mark; **no permission was asked** |
 | Other | plug glyph (icon set the site already uses) | n/a | - | - | Not a product |
+
+## One-colour Claude Spark
+
+The Claude and Claude Desktop tabs show the Claude Spark in one colour, the way
+Anthropic's own one-colour press-kit variants differ from the clay one: the same
+shape, only the fill changes. `tools/brand/build_brand_logos.mjs` builds
+`claude-spark-mono` from `ClaudeSpark-Clay.svg` by swapping that file's single
+`#D97757` fill for `currentColor`, so the pill's text colour fills it (muted on a
+plain pill, inverted on the selected one, light and dark). A test checks every path
+is character for character the vendor's and that the fill is the only difference.
+Claude Code keeps the clay spark (the vendor's file as it is).
 
 ## Accepted risk (owner decision, 2026-10-03)
 

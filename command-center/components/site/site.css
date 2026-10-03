@@ -2190,6 +2190,11 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 .st-pill-glyph[data-tile="bare"],
 .st-pill[aria-selected="true"] .st-pill-glyph[data-tile="bare"] { background: none; border: 0; padding: 0; border-radius: 22%; }
 .st-pill-glyph[data-tile="bare"] .st-logo { width: 100%; height: 100%; }
+/* A loose glyph (the Claude Spark): no tile, no border. A one-colour mark takes the pill's text colour, so it is
+   muted on a plain pill and follows the selected pill's inverted text; the clay spark keeps its own colour. */
+.st-pill-glyph[data-tile="plain"],
+.st-pill[aria-selected="true"] .st-pill-glyph[data-tile="plain"] { background: none; border: 0; padding: 2px; color: inherit; }
+.st-pill-glyph[data-tile="plain"] .st-logo { width: 100%; height: 100%; }
 /* On the narrowest phones the whole row fits inside the gutters: no half-cut vendor mark at the edge. */
 @media (max-width: 479px) {
   .st-tile[data-slot="3"] { --s: 40px; }

@@ -8,7 +8,7 @@ export type ConnectTab = {
   /** The client's logo (or its neutral monogram), drawn on the server; decorative, the label is beside it. */
   glyph: React.ReactNode;
   /** The surface the logo needs: the page's neutral tile, or a light "paper" tile on both themes. */
-  tile: "theme" | "paper" | "bare";
+  tile: "theme" | "paper" | "bare" | "plain";
   group: "primary" | "more";
   /** The tab's steps, rendered on the server. Absent when `soon` is set. */
   panel?: React.ReactNode;

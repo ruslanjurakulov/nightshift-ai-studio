@@ -43,9 +43,15 @@ export type BrandLogo = {
   symbols?: { light: string; dark: string } | { any: string };
   /**
    * The surface the mark needs: the page's own neutral tile, a light "paper" tile on both themes, or none ("bare":
-   * the mark is itself a finished tile with its own background and corners, and is shown at the tile's size).
+   * the mark is itself a finished tile with its own background and corners, and is shown at the tile's size;
+   * "plain": a loose glyph with no tile at all, in the pill's text colour or its own colour).
    */
-  tile: "theme" | "paper" | "bare";
+  tile: "theme" | "paper" | "bare" | "plain";
+  /**
+   * A different mark for the hero tile row (the tab pill uses `symbols`/`tile`): used where the tab shows a
+   * one-colour or small mark and the hero tile is better as the vendor's finished icon.
+   */
+  hero?: { symbols: { light: string; dark: string } | { any: string }; tile: "theme" | "paper" | "bare" | "plain" };
   /** The vendor's own page that offers or links the asset. */
   source: string;
   /** The page that states the rules for using the mark. */
@@ -79,14 +85,15 @@ export const BRAND_LOGOS: readonly BrandLogo[] = [
     id: "claude",
     vendor: "Anthropic",
     status: "owner-accepted",
-    symbols: { any: "claude-any" },
-    tile: "bare",
-    source: "https://www.anthropic.com/press-kit (zip: Claude logos / Claude icon / ClaudeIcon-Rounded.svg)",
+    symbols: { any: "claude-spark-mono" },
+    tile: "plain",
+    hero: { symbols: { any: "claude-any" }, tile: "bare" },
+    source: "https://www.anthropic.com/press-kit (zip: Claude logos / Claude Spark / Claude Spark - Clay.svg for the tab, in one colour; Claude icon / ClaudeIcon-Rounded.svg for the hero tile)",
     guidelines: "https://www.anthropic.com/legal/trademark-guidelines",
     allowed:
       "Marks may be used only as Anthropic permits and only in materials it approves beforehand; no alterations; no implied sponsorship or endorsement; reasonable space around the mark; no trademark symbol.",
     reason:
-      "Shown without Anthropic's approval: the site owner accepted the risk on 2026-10-03 (no vendor permission obtained). The drawing is the press-kit file, unmodified; it is the finished app tile, so it is shown at the tile's size.",
+      "Shown without Anthropic's approval: the site owner accepted the risk on 2026-10-03 (no vendor permission obtained). The tab shows the press kit's Claude Spark as a loose glyph in the pill's text colour (the one-colour variant: the same shape, only the fill is the text colour); the hero tile shows the press-kit app icon, unmodified, at the tile's size.",
     fetched: FETCHED,
   },
 
@@ -107,12 +114,12 @@ export const BRAND_LOGOS: readonly BrandLogo[] = [
     vendor: "Anthropic",
     status: "owner-accepted",
     symbols: { any: "claude-spark-any" },
-    tile: "theme",
+    tile: "plain",
     source: "https://www.anthropic.com/press-kit (zip: Claude logos / Claude Spark / Claude Spark - Clay.svg)",
     guidelines: "https://www.anthropic.com/legal/trademark-guidelines",
     allowed: "As for Claude: only with Anthropic's prior approval of the material; no alterations.",
     reason:
-      "Shown without Anthropic's approval: the site owner accepted the risk on 2026-10-03. The press kit's Claude Code logo is a seven-to-one lockup (the spark and the words \"Claude Code\"), which cannot sit in a square tile unchanged, so the tab carries the Claude Spark from the same kit, in its own colour.",
+      "Shown without Anthropic's approval: the site owner accepted the risk on 2026-10-03. The press kit's Claude Code logo is a seven-to-one lockup (the spark and the words \"Claude Code\"), which cannot sit in a square tile unchanged, so the tab carries the Claude Spark from the same kit, loose (no tile), in its own clay colour on every pill, selected or not.",
     fetched: FETCHED,
   },
 
@@ -256,12 +263,12 @@ export const BRAND_LOGOS: readonly BrandLogo[] = [
     id: "claude-desktop",
     vendor: "Anthropic",
     status: "owner-accepted",
-    symbols: { any: "claude-any" },
-    tile: "bare",
-    source: "https://www.anthropic.com/press-kit (Claude icon)",
+    symbols: { any: "claude-spark-mono" },
+    tile: "plain",
+    source: "https://www.anthropic.com/press-kit (Claude Spark, one colour; the press kit has no separate Claude Desktop mark)",
     guidelines: "https://www.anthropic.com/legal/trademark-guidelines",
     allowed: "As for Claude: only with Anthropic's prior approval of the material; no alterations.",
-    reason: "Shown without Anthropic's approval: the site owner accepted the risk on 2026-10-03. The Claude app icon, unmodified.",
+    reason: "Shown without Anthropic's approval: the site owner accepted the risk on 2026-10-03. The Claude Spark as a loose glyph in the pill's text colour (the one-colour variant: same shape, only the fill is the text colour); the press kit has no separate Claude Desktop mark.",
     fetched: FETCHED,
   },
 
@@ -300,11 +307,13 @@ export function shownSymbols(ids: readonly string[]): string[] {
   for (const id of ids) {
     const e = brandLogo(id);
     if (!logoShown(e)) continue;
-    const s = e.symbols;
-    if ("any" in s) out.add(s.any);
-    else {
-      out.add(s.light);
-      out.add(s.dark);
+    for (const s of [e.symbols, e.hero?.symbols]) {
+      if (!s) continue;
+      if ("any" in s) out.add(s.any);
+      else {
+        out.add(s.light);
+        out.add(s.dark);
+      }
     }
   }
   return [...out];
