@@ -1,4 +1,5 @@
 import { SOLUTIONS_PATH, SOLUTION_IDS, solutionHref } from "@/lib/solutions";
+import { OAUTH_PUBLIC_PATHS, WELL_KNOWN_PATHS } from "@/lib/oauth/config";
 
 /**
  * Which URLs a signed-out visitor may see, and what the auth gate does with
@@ -45,8 +46,28 @@ export const PUBLIC_API_PREFIX = "/api/v1";
 /** The MCP endpoint (Streamable HTTP): the same bearer keys, exactly this path. */
 export const MCP_PATH = "/api/mcp";
 
+/**
+ * The server-to-server half of MCP over OAuth (migration 0093): the discovery
+ * documents and the registration, token and revocation endpoints. An AI app's
+ * backend calls them with no browser session, and each authenticates by what
+ * it is handed (a code, a refresh token), so the cookie gate must neither
+ * redirect them nor spend a session lookup. EXACT names only: `/.well-known/x`,
+ * `/oauth/token/x` and `/oauth/tokens` are not public. /oauth/authorize (the
+ * consent page) and /oauth/decision need a signed-in person and stay gated.
+ */
+export function isOAuthPublicPath(pathname: string): boolean {
+  return (
+    (OAUTH_PUBLIC_PATHS as readonly string[]).includes(pathname) || (WELL_KNOWN_PATHS as readonly string[]).includes(pathname)
+  );
+}
+
 export function isPublicApiPath(pathname: string): boolean {
-  return pathname === PUBLIC_API_PREFIX || pathname.startsWith(PUBLIC_API_PREFIX + "/") || pathname === MCP_PATH;
+  return (
+    pathname === PUBLIC_API_PREFIX ||
+    pathname.startsWith(PUBLIC_API_PREFIX + "/") ||
+    pathname === MCP_PATH ||
+    isOAuthPublicPath(pathname)
+  );
 }
 
 /**
@@ -134,6 +155,8 @@ export const RESERVED_ROOT_SEGMENTS = [
   "solutions",
   "api",
   "docs",
+  // The consent page and the token endpoints of MCP over OAuth (0093).
+  "oauth",
   // The self-hosted font files live under /fonts (PUBLIC_FONT_PATHS).
   "fonts",
   // The design concept prototypes (lib/concepts.ts): the whole /atelier path is

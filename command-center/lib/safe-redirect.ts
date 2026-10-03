@@ -17,10 +17,14 @@ export const DEFAULT_AFTER_AUTH = "/welcome";
 const MAX_NEXT_LENGTH = 512;
 const PROBE_ORIGIN = "https://nightshift.invalid";
 
-export function safeNextPath(raw: string | null | undefined, fallback: string = DEFAULT_AFTER_AUTH): string {
+export function safeNextPath(
+  raw: string | null | undefined,
+  fallback: string = DEFAULT_AFTER_AUTH,
+  maxLength: number = MAX_NEXT_LENGTH,
+): string {
   if (typeof raw !== "string") return fallback;
   const value = raw.trim();
-  if (!value || value.length > MAX_NEXT_LENGTH) return fallback;
+  if (!value || value.length > maxLength) return fallback;
   // One leading slash, then not another slash or a backslash.
   if (!value.startsWith("/") || value.startsWith("//")) return fallback;
   // Backslashes are read as slashes by browsers; control characters are
@@ -37,4 +41,14 @@ export function safeNextPath(raw: string | null | undefined, fallback: string = 
   // Sending the callback back to itself would loop on a spent code.
   if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) return fallback;
   return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/** The page an AI app's connection request sends a signed-out person through
+ *  sign-in and back to. Its query (PKCE challenge, state, redirect URI) is
+ *  longer than an ordinary `next`, so it gets a longer bound — and it is the
+ *  ONLY longer path: anything else falls back to the ordinary rule. */
+export function safeLoginReturn(raw: string | null | undefined, fallback: string): string {
+  const long = safeNextPath(raw, "", 2048);
+  if (long === "/oauth/authorize" || long.startsWith("/oauth/authorize?")) return long;
+  return safeNextPath(raw, fallback);
 }

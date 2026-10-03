@@ -100,6 +100,18 @@ const nextConfig: NextConfig = {
         source,
         headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
       })),
+      // The connection screen (MCP over OAuth, migration 0093): never framed
+      // (a framed Allow button is clickjacking), never cached, and its URL
+      // carries a PKCE challenge and a state, so it leaks nothing by Referer.
+      {
+        source: "/oauth/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
       // Last, so its stricter Referrer-Policy wins over the rule above.
       {
         source: "/auth/:path*",

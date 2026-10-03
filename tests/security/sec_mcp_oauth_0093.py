@@ -57,3 +57,37 @@ def extend(tables: dict, functions: dict) -> None:
         "oauth_gc": SERVICE,
         "oauth_rate_take": SERVICE,
     })
+
+
+def seed(conn, sc) -> None:
+    """One row in every OAuth table, so the isolation tests have something to
+    attack: a client, a consent request, a grant of Alice's with a code, a
+    token pair, a run and a rate counter."""
+    import hashlib
+    import uuid
+
+    from sec_db import as_superuser
+
+    def h(label):
+        return hashlib.sha256(f"scenario-oauth-{label}".encode()).hexdigest()
+
+    with as_superuser(conn) as s:
+        if not s.value("select to_regclass('public.oauth_grants') is not null"):
+            return
+        client = s.value("insert into public.oauth_clients (client_name, redirect_uris, ip_hash) "
+                         "values ('Scenario app', array['https://claude.ai/api/mcp/auth_callback'], %s) returning client_id", [h("ip")])
+        s.rows("insert into public.oauth_auth_requests (secret_hash, user_id, org_id, client_id, redirect_uri, code_challenge, scopes, resource) "
+               "values (%s, %s, %s, %s, 'https://claude.ai/api/mcp/auth_callback', %s, array['videos:read'], 'https://nightshift-ai.studio/api/mcp') returning 1",
+               [h("req"), sc.alice.actor.uid, sc.alice.org, client, "A" * 43])
+        grant = s.value("insert into public.oauth_grants (user_id, org_id, client_id, scopes, resource, monthly_limit_credits, activated_at) "
+                        "values (%s, %s, %s, array['videos:read'], 'https://nightshift-ai.studio/api/mcp', 100, now()) returning id",
+                        [sc.alice.actor.uid, sc.alice.org, client])
+        s.rows("insert into public.oauth_codes (code_hash, grant_id, client_id, redirect_uri, code_challenge, resource) "
+               "values (%s, %s, %s, 'https://claude.ai/api/mcp/auth_callback', %s, 'https://nightshift-ai.studio/api/mcp') returning 1",
+               [h("code"), grant, client, "A" * 43])
+        s.rows("insert into public.oauth_tokens (token_hash, grant_id, kind, expires_at) values (%s, %s, 'access', now() + interval '1 hour') returning 1",
+               [h("at"), grant])
+        s.rows("insert into public.oauth_runs (grant_id, org_id, idem_key, fingerprint, credit_ref, channel_id) "
+               "values (%s, %s, 'seed', 'fp', %s, %s) returning 1",
+               [grant, sc.alice.org, f"rj-oa-{uuid.uuid4().hex}", sc.alice.channel])
+        s.rows("insert into public.oauth_rate_counters (grant_id, minute, count) values (%s, date_trunc('minute', now()), 1) returning 1", [grant])
