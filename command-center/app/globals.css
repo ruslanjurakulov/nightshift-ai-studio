@@ -2281,10 +2281,10 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .ns-wordmark {
   font-family: "Nightshift Wordmark", var(--font-sans);
   font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-weight: 600;
+  letter-spacing: 0;
   line-height: 1;
-  text-transform: uppercase;
+  text-transform: none;
   color: var(--color-fg);
 }
 
