@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { useMcpClient } from "@/components/docs/McpClientContext";
 
 export type ConnectTab = {
   id: string;
@@ -19,7 +20,7 @@ export type ConnectTab = {
 /**
  * The connect card's tabs: pill tabs over panels, one panel per assistant.
  *
- * The server renders EVERY panel and picks the open tab from `?tab=`, so a
+ * The server renders EVERY panel and the page picks the open tab from `?tab=` (McpClientProvider), so a
  * link opens on the right tab with no flash, and no-JS readers and crawlers
  * find every tab's steps (a noscript rule lays them out one under another).
  * ARIA tablist/tab/tabpanel with `aria-controls`; arrow keys, Home and End move
@@ -34,14 +35,12 @@ export type ConnectTab = {
  */
 export function ConnectCard({
   tabs,
-  initialId,
   title,
   tablistLabel,
   moreLabel,
   banner,
 }: {
   tabs: ConnectTab[];
-  initialId: string;
   title: string;
   tablistLabel: string;
   moreLabel: string;
@@ -49,7 +48,8 @@ export function ConnectCard({
   banner: React.ReactNode;
 }) {
   const uid = useId();
-  const [active, setActive] = useState(tabs.some((t) => t.id === initialId) ? initialId : tabs[0].id);
+  // The open tab lives in the page-wide client context, so the long page below can name the assistant.
+  const { active, setActive } = useMcpClient();
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
   const track = useRef<HTMLDivElement>(null);
   // Which side of the strip still has pills (phone only; CSS draws a soft edge there).
