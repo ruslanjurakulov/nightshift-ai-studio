@@ -114,6 +114,19 @@ class EnvTemplateTests(unittest.TestCase):
             if not name.startswith("NEXT_PUBLIC_"):
                 self.assertNotRegex(dockerfile, rf"ARG {name}\b")
 
+    def test_the_runtime_image_makes_public_readable_whatever_the_checkout_umask(self):
+        # `public/` is copied from the build context as checked out, so a strict
+        # umask on the deploy box leaves it 0700 and `node` dies at start with
+        # EACCES (a restart loop behind a 502). The runner stage must fix the
+        # modes after the COPY and before it drops to `node`.
+        dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+        runner = dockerfile[dockerfile.index("AS runner"):]
+        copy = runner.index("COPY --from=builder /app/public ./public")
+        chmod = runner.index("RUN chmod -R a+rX,go-w public")
+        user = runner.index("USER node")
+        self.assertLess(copy, chmod)
+        self.assertLess(chmod, user)
+
 
 def _docker_compose_available():
     if not shutil.which("docker"):
