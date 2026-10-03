@@ -1,15 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_ORG_ID,
-  assignableRoles,
-  canEditMember,
-  canManageMembers,
   coerceOrgs,
   isMissingFunction,
-  isPlausibleEmail,
   resolveCurrentOrg,
   validateOrgName,
-  wouldRemoveLastOwner,
   type OrgSummary,
 } from "@/lib/orgs";
 import { SECTIONS, isSection } from "@/lib/channels";
@@ -72,41 +67,6 @@ describe("coerceOrgs", () => {
   });
 });
 
-describe("member management mirrors the org_members policies", () => {
-  it("only owner and admin manage members", () => {
-    expect(canManageMembers("owner")).toBe(true);
-    expect(canManageMembers("admin")).toBe(true);
-    expect(canManageMembers("editor")).toBe(false);
-    expect(canManageMembers("viewer")).toBe(false);
-  });
-
-  it("an admin cannot touch an owner; an owner can", () => {
-    expect(canEditMember("admin", "owner")).toBe(false);
-    expect(canEditMember("admin", "editor")).toBe(true);
-    expect(canEditMember("owner", "owner")).toBe(true);
-    expect(canEditMember("editor", "viewer")).toBe(false);
-  });
-
-  it("only an owner may grant owner", () => {
-    expect(assignableRoles("owner")).toContain("owner");
-    expect(assignableRoles("admin")).not.toContain("owner");
-    expect(assignableRoles("admin")).toEqual(["admin", "editor", "viewer"]);
-    expect(assignableRoles("viewer")).toEqual([]);
-  });
-
-  it("refuses to remove or demote the last owner", () => {
-    const members = [
-      { id: "1", role: "owner" as const },
-      { id: "2", role: "editor" as const },
-    ];
-    expect(wouldRemoveLastOwner(members, "1", null)).toBe(true);
-    expect(wouldRemoveLastOwner(members, "1", "admin")).toBe(true);
-    expect(wouldRemoveLastOwner(members, "1", "owner")).toBe(false);
-    expect(wouldRemoveLastOwner(members, "2", null)).toBe(false);
-    expect(wouldRemoveLastOwner([...members, { id: "3", role: "owner" }], "1", null)).toBe(false);
-  });
-});
-
 describe("validation", () => {
   it("accepts 2–80 characters after trimming", () => {
     expect(validateOrgName("  Acme Media ")).toBe("Acme Media");
@@ -116,11 +76,6 @@ describe("validation", () => {
     expect(validateOrgName("x".repeat(80))).toBe("x".repeat(80));
   });
 
-  it("checks email shape loosely", () => {
-    expect(isPlausibleEmail("ali@example.com")).toBe(true);
-    expect(isPlausibleEmail("ali@example")).toBe(false);
-    expect(isPlausibleEmail("not an email")).toBe(false);
-  });
 });
 
 describe("isMissingFunction", () => {

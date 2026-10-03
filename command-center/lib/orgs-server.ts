@@ -45,9 +45,8 @@ export const getOrgContext = cache(async (): Promise<OrgContext> => {
   if (!user) return UNSUPPORTED;
 
   try {
-    // Invites are NOT bound here any more (migration 0043): an invite is an
-    // offer the invitee accepts (components/org/PendingInvites.tsx). Binding
-    // on every page load put people into organizations without asking them.
+    // Nothing is bound here: a workspace has one person, who created it, and
+    // there are no invitations to bind (migrations 0043 and 0091).
     const { data, error } = await supabase.rpc("my_organizations");
     if (error) return isMissingFunction(error) ? UNSUPPORTED : UNAVAILABLE;
     const orgs = coerceOrgs(data);

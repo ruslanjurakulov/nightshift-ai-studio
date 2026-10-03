@@ -291,7 +291,6 @@ export const siteUz: SiteDictionary = {
           { title: "Mavzudan tayyor videogacha", body: "Ssenariy, ovoz, vizual, subtitrlar va montaj — siz tanlagan uzunlikda." },
           { title: "Kanal oʻzligicha qoladi", body: "Til, ovoz, vizual uslub va jadval har bir kanal uchun belgilanadi va boshqasiga oʻtmaydi." },
           { title: "Tasdiqlanguncha shaxsiy", body: "Har bir video shaxsiy holda yuklanadi va nashr tekshiruvidan oʻtadi. Koʻrasiz, soʻng nashr qilasiz." },
-          { title: "Ikki kishilik tasdiq", body: "Kanal video ommaviy boʻlishidan oldin ikkinchi administrator tasdigʻini talab qilishi mumkin." },
           { title: "Kanalingiz raqamlari", body: "Ulangan kanalning koʻrishlari va tahlili — siz bergan ruxsat bilan va faqat sizga." },
         ],
         not: [
@@ -334,7 +333,7 @@ export const siteUz: SiteDictionary = {
           { title: "Nazoratdagi kalitlar", body: "Dasturchi konsolida kalitlarni yarating va bekor qiling, sarf va limitlarni ham shu yerda koʻring." },
         ],
         not: [
-          "Ish maydoni administratori yoqmaguncha va API shartlarini qabul qilmaguncha API ochilmaydi.",
+          "Siz yoqmaguningizcha va API shartlarini qabul qilmaguningizcha API ochilmaydi.",
           "Aylanma yoʻl bilan nashr qilmaydi — API orqali yaratilgan videolar ham oʻsha tasdiqlash darvozasidan oʻtadi.",
           "API chaqiruvlarini kredit balansingizdan yechmaydi.",
         ],
