@@ -89,7 +89,10 @@ export function oauthRefusalText(result: Extract<ApiResult, { ok: false }>, orig
         `Not enough credits to start this video. It needs ${credits(d.price_credits)} credits and the workspace has ${credits(d.available_credits)} available` +
         (held > 0 ? ` (${credits(held)} more are set aside for videos already in progress)` : "") +
         `. Nothing was started and nothing was charged.\n` +
-        `To continue, the person can add credits at ${origin}/credits or choose a plan with more credits at ${origin}/pricing. ` +
+        (d.extra_credits_off === true
+          ? `Extra credits are turned off for this workspace, so credits bought as top-ups are not used for new videos. ` +
+            `The person can turn them on at ${origin}/usage, add credits at ${origin}/credits or choose a plan with more credits at ${origin}/pricing. `
+          : `To continue, the person can add credits at ${origin}/credits or choose a plan with more credits at ${origin}/pricing. `) +
         `This connection keeps working afterwards: there is no need to connect the app again.`
       );
     }

@@ -5,10 +5,11 @@ tests/security/test_sec_extra_credits.py (including a differential run against
 a database built without 0094). This pins, without a database, what must not
 change by accident:
 
-* the two functions it replaces are built on their LATEST bodies — 0020's
-  reserve_credits and 0034's credit_lots_hold_locked, neither redefined since —
-  and keep every line and every string literal of them (an earlier check is
-  never dropped); only the lines this change adds are new;
+* the functions it replaces are built on their LATEST bodies — 0020's
+  reserve_credits, 0034's credit_lots_hold_locked and credit_lots_spend_locked,
+  0030's request_download, 0093's oauth_create_video and oauth_get_balance, none
+  redefined since — and keep every line and every string literal of them (an
+  earlier check is never dropped); only the lines this change adds are new;
 * the switch defaults ON and is a NOT NULL column, so nobody is switched off by
   the migration;
 * every function is a definer with a pinned search_path and explicit grants:
@@ -59,6 +60,19 @@ def latest_other(name):
 
 
 NEW = bodies(SQL)
+REPLACED = ("reserve_credits", "credit_lots_hold_locked", "credit_lots_spend_locked", "request_download",
+            "oauth_create_video", "oauth_get_balance")
+# The only lines of a latest body that 0094 rewrites instead of adding to (the quoted refusal/balance figure).
+CHANGED_LINES = {
+    "oauth_create_video": {
+        "jsonb_build_object('available_credits', greatest(acc.balance - acc.reserved, 0),",
+        "'held_credits', acc.reserved, 'price_credits', v_price)));",
+    },
+    "oauth_get_balance": {
+        "'credits', jsonb_build_object('available', greatest(coalesce(acc.balance, 0) - coalesce(acc.reserved, 0), 0),",
+        "'held', coalesce(acc.reserved, 0)),",
+    },
+}
 CODE = "\n".join(line.split("--", 1)[0] for line in SQL.splitlines())
 
 
@@ -66,27 +80,32 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
     def test_it_defines_exactly_these_functions(self):
         self.assertEqual(
             set(NEW),
-            {"credit_spendable_internal", "reserve_credits", "credit_lots_hold_locked", "set_use_extra_credits", "usage_summary"},
+            {"credit_spendable_internal", "reserve_credits", "credit_lots_hold_locked", "set_use_extra_credits", "usage_summary",
+             "credit_lots_spend_locked", "request_download", "oauth_create_video", "oauth_get_balance"},
         )
 
     def test_the_latest_other_bodies_are_0020s_and_0034s(self):
         self.assertEqual(latest_other("reserve_credits")[0], "0020_credits.sql")
         self.assertEqual(latest_other("credit_lots_hold_locked")[0], "0034_plans_entitlements.sql")
+        self.assertEqual(latest_other("credit_lots_spend_locked")[0], "0034_plans_entitlements.sql")
+        self.assertEqual(latest_other("request_download")[0], "0030_paid_downloads.sql")
+        self.assertEqual(latest_other("oauth_create_video")[0], "0093_mcp_oauth.sql")
+        self.assertEqual(latest_other("oauth_get_balance")[0], "0093_mcp_oauth.sql")
 
     def test_every_string_literal_of_the_latest_bodies_is_kept(self):
-        for name in ("reserve_credits", "credit_lots_hold_locked"):
+        for name in REPLACED:
             src, old = latest_other(name)
             for lit in literals(old):
                 self.assertIn(lit, NEW[name], f"{name} lost {lit} from {src}")
 
     def test_every_code_line_of_the_latest_bodies_is_kept_in_order(self):
-        for name in ("reserve_credits", "credit_lots_hold_locked"):
+        for name in REPLACED:
             _, old = latest_other(name)
             new_lines = code_lines(NEW[name])
             cursor = 0
             for line in code_lines(old):
-                # The declarations gain one variable, and the lot filter gains one condition: those two
-                # lines are compared after the addition is taken out.
+                if line.strip() in CHANGED_LINES.get(name, ()):
+                    continue          # the one figure of each connected-app answer, pinned below
                 try:
                     cursor = new_lines.index(line, cursor) + 1
                 except ValueError:
@@ -129,6 +148,48 @@ class BuiltOnTheLatestBodies(unittest.TestCase):
             ],
         )
 
+    def test_what_is_added_to_the_download_and_the_spender_is_the_switch_and_nothing_else(self):
+        _, old = latest_other("credit_lots_spend_locked")
+        old_lines, new_lines = set(code_lines(old)), code_lines(NEW["credit_lots_spend_locked"])
+        self.assertEqual(
+            [l.strip() for l in new_lines if l not in old_lines],
+            ["and (source <> 'pack' or coalesce(current_setting('nightshift.no_pack_spend', true), '') <> '1')"],
+        )
+        _, old = latest_other("request_download")
+        old_lines, new_lines = set(code_lines(old)), code_lines(NEW["request_download"])
+        self.assertEqual(
+            [l.strip() for l in new_lines if l not in old_lines],
+            [
+                "spend_  numeric;",
+                "if not acc.use_extra_credits then",
+                "spend_ := public.credit_spendable_internal(org);",
+                "if spend_ < price then",
+                "raise exception 'insufficient credits'",
+                "using errcode = 'NS402',",
+                "detail = format('available=%s needed=%s extra_off=1 extra=%s', spend_, price, greatest(acc.balance - acc.reserved - spend_, 0)),",
+                "hint = 'Extra credits are off for this organization. Turn them on, add credits, or upgrade the plan.';",
+                "end if;",
+                "perform set_config('nightshift.no_pack_spend', case when acc.use_extra_credits then '' else '1' end, true);",
+                "perform set_config('nightshift.no_pack_spend', '', true);",
+            ],
+        )
+        body = NEW["request_download"]
+        # the check is before the row and the charge; the flag is set right before the ledger row and cleared right after it
+        self.assertLess(body.index("not acc.use_extra_credits"), body.index("insert into public.download_requests"))
+        self.assertLess(body.index("set_config('nightshift.no_pack_spend', case"), body.index("credit_log(org, 'capture'"))
+        self.assertLess(body.index("credit_log(org, 'capture'"), body.index("set_config('nightshift.no_pack_spend', '', true)"))
+        # nobody but this function sets the flag
+        setters = [n for n, b in NEW.items() if "set_config('nightshift.no_pack_spend'" in b]
+        self.assertEqual(setters, ["request_download"])
+
+    def test_the_connected_app_figures_change_only_when_the_switch_is_off(self):
+        for name in ("oauth_create_video", "oauth_get_balance"):
+            body = NEW[name]
+            self.assertIn("coalesce(acc.use_extra_credits, true)", body)
+            self.assertIn("public.credit_spendable_internal(", body)
+            self.assertIn("'extra_credits_off', true", body)
+        self.assertIn("when sqlstate 'NS402' then", NEW["oauth_create_video"])      # still the catcher of the one refusal code
+
     def test_the_spend_order_is_the_documented_one(self):
         self.assertIn("order by (source <> 'subscription'), expires_at asc nulls last, id", NEW["credit_lots_hold_locked"])
 
@@ -139,7 +200,8 @@ class TheSwitch(unittest.TestCase):
 
     def test_the_refusal_keeps_the_ns402_code_and_the_figure_order(self):
         self.assertIn("available=%s needed=%s extra_off=1 extra=%s", CODE)
-        self.assertEqual(CODE.count("errcode = 'NS402'"), 3)
+        # reserve_credits (old + new), the hold, the spender (old), request_download (old + new)
+        self.assertEqual(CODE.count("errcode = 'NS402'"), 6)
 
     def test_pack_is_the_only_extra_source(self):
         self.assertIn("l.source <> 'pack'", NEW["credit_spendable_internal"])
@@ -177,6 +239,9 @@ class Privileges(unittest.TestCase):
         self.assertEqual(
             grants(),
             [
+                ("oauth_create_video", "anon"),
+                ("oauth_get_balance", "anon"),
+                ("request_download", "authenticated"),
                 ("reserve_credits", "authenticated, service_role"),
                 ("set_use_extra_credits", "authenticated"),
                 ("usage_summary", "authenticated, service_role"),
@@ -186,6 +251,10 @@ class Privileges(unittest.TestCase):
         self.assertIn("revoke all on function public.credit_lots_hold_locked(uuid, text, numeric, bigint) from public, anon, authenticated, service_role;", CODE)
         self.assertIn("revoke all on function public.set_use_extra_credits(uuid, boolean) from public, anon, service_role;", CODE)
         self.assertIn("revoke all on function public.usage_summary(uuid) from public, anon;", CODE)
+        self.assertIn("revoke all on function public.credit_lots_spend_locked(uuid, numeric, text, bigint, bigint) from public, anon, authenticated, service_role;", CODE)
+        self.assertIn("revoke all on function public.request_download(text, text, numeric) from public, anon, authenticated, service_role;", CODE)
+        for fn in ("oauth_create_video(text, text, jsonb, text, text)", "oauth_get_balance(text, text)"):
+            self.assertIn(f"revoke all on function public.{fn} from public, anon, authenticated, service_role;", CODE)
 
     def test_no_table_policy_or_grant_is_added_and_nothing_is_dropped(self):
         self.assertNotRegex(CODE, r"create policy|grant (select|insert|update|delete|all) on|drop (table|function|column)")

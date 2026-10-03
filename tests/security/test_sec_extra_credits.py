@@ -820,3 +820,153 @@ def test_the_real_connected_app_video_call_obeys_the_switch(oauth_db):
     third = create("oa-3")
     assert third["status"] == 201, third
     assert state() == ([("subscription", 60.0, 60.0), ("pack", 500.0, 60.0)], 2)
+
+
+# ── Downloads: charged on the spot, never held (found in review, BR-U-005) ───
+
+def _download_world(ws, *, minutes_credits=100):
+    """A channel, a video and a 1080p master in this workspace, long enough that
+    the download costs about `minutes_credits` at the lab's current rate."""
+    tag = uuid.uuid4().hex[:10]
+    ch, vid = f"ch-dl-{tag}", f"vid-dl-{tag}"
+    with as_superuser(ws.conn) as s:
+        rate, margin = s.rows("select credits_per_unit::float, margin::float from public.credit_prices "
+                              "where unit = 'download_1080p_minute'")[0]
+        seconds = round(minutes_credits * 60.0 / (rate * (1 + margin)), 3)
+        s.rows("insert into public.channels (channel_id, name, niche, status, org_id) values (%s, 'DL', 'tech', 'PAUSED', %s) returning 1",
+               [ch, ws.org])
+        s.rows("insert into public.videos (video_id, channel_id, title, slug, review_state) values (%s, %s, 'V', %s, 'pending') returning 1",
+               [vid, ch, f"slug-{tag}"])
+        s.rows("insert into public.download_masters (video_id, org_id, width, height, duration_seconds, bytes) "
+               "values (%s, %s, 1920, 1080, %s, 1000) returning 1", [vid, ws.org, seconds])
+    return vid
+
+
+def _press_download(ws, vid):
+    with acting(ws.conn, ws.person, commit=True) as s:
+        return s.run("select public.request_download(%s, '1080p', null)", [vid])
+
+
+def test_a_download_with_extra_credits_off_is_refused_before_it_charges_a_pack(conn):
+    ws = Ws(conn, plan=0, packs=[(10, 500)], grants=[40])
+    vid = _download_world(ws)
+    assert ws.switch(False).ok
+    before = (ws.lots(), ws.acct()[:2], ws.count("credit_transactions"))
+    out = _press_download(ws, vid)
+    assert not out.ok and out.sqlstate == "NS402", out
+    assert (ws.lots(), ws.acct()[:2], ws.count("credit_transactions")) == before    # nothing charged, nothing logged
+    assert ws.count("download_requests") == 0
+    # The refusal carries the figures: what the plan side can pay, what it costs, what waits in packs.
+    with acting(conn, ws.person) as s:
+        try:
+            conn.execute("select public.request_download(%s, '1080p', null)", [vid])
+        except psycopg.Error as e:
+            f = figures(e.diag.message_detail)
+            assert e.sqlstate == "NS402" and f["extra_off"] == 1 and f["available"] == 40 and f["extra"] == 500 and f["needed"] >= 99, e.diag.message_detail
+    # Switching on makes the same press work, charged exactly as before the switch existed (the pack, soonest to expire).
+    assert ws.switch(True).ok
+    ok = _press_download(ws, vid)
+    assert ok.ok, ok
+    got = {k: r for k, r, h in ws.lots()}
+    assert got["grant"] == 40 and got["pack"] < 500 and in_step(ws)
+
+
+def test_a_download_with_extra_credits_off_is_paid_from_non_pack_lots_even_when_a_pack_would_be_spent_first(conn):
+    off = Ws(conn, plan=0, packs=[(10, 500)], grants=[300])
+    on = Ws(conn, plan=0, packs=[(10, 500)], grants=[300])
+    v_off, v_on = _download_world(off), _download_world(on)
+    assert off.switch(False).ok
+    a, b = _press_download(off, v_off), _press_download(on, v_on)
+    assert a.ok and b.ok, (a, b)
+    charged = a.rows[0][0]["charged"]
+    assert charged == b.rows[0][0]["charged"] and charged > 0
+    # ON: the pack (it expires, the grant never does) pays first, as ever. OFF: the grant pays and the pack is untouched.
+    assert sorted(on.lots()) == sorted([("pack", 500 - charged, 0), ("grant", 300, 0)]), on.lots()
+    assert sorted(off.lots()) == sorted([("pack", 500, 0), ("grant", 300 - charged, 0)]), off.lots()
+    assert in_step(off) and in_step(on)
+    # A download that then fails is refunded to the lot it was paid from.
+    with as_superuser(conn) as s:
+        did = s.value("select id from public.download_requests where org_id = %s", [off.org])
+        s.rows("select public.download_fail_locked(%s, 'lab', 'lab')", [did])
+    assert dict((k, r) for k, r, h in off.lots()) == {"pack": 500, "grant": 300} and in_step(off)
+
+
+def test_the_download_flag_never_outlives_the_download_and_no_caller_can_make_a_pack_spendable_by_it(conn):
+    ws = Ws(conn, plan=0, packs=[(10, 500)], grants=[300])
+    vid = _download_world(ws)
+    assert ws.switch(False).ok
+    with acting(conn, ws.person, commit=True) as s:
+        assert s.run("select public.request_download(%s, '1080p', null)", [vid]).ok
+        assert (s.value("select coalesce(current_setting('nightshift.no_pack_spend', true), '')")) == ""
+    # A signed-in browser cannot call the lot spender itself (it is not an API function) ...
+    with acting(conn, ws.person) as s:
+        out = s.run("select public.credit_lots_spend_locked(%s, 1, 'x', 1, null)", [ws.org])
+        assert not out.ok and out.sqlstate == "42501", out
+    # ... and with the flag unset the spender still takes the first lot in spend order (a refund clawback or an overage is not constrained).
+    with as_superuser(conn, commit=False) as s:
+        assert s.value("select coalesce(current_setting('nightshift.no_pack_spend', true), '')") == ""
+
+
+def test_the_connected_app_figures_are_what_it_can_spend_and_unchanged_when_the_switch_is_on(oauth_db):
+    import hashlib
+
+    org, uid, token = str(uuid.uuid4()), str(uuid.uuid4()), "oauth-usage-fig-" + uuid.uuid4().hex
+    tok_hash = hashlib.sha256(token.encode()).hexdigest()
+    with psycopg.connect(oauth_db, autocommit=True) as su:
+        su.execute("insert into auth.users (id, email, email_confirmed_at) values (%s, 'oafig@lab.test', now())", [uid])
+        su.execute("insert into public.organizations (id, name, slug) values (%s, 'OAF', 'oaf-usage')", [org])
+        su.execute("insert into public.org_members (org_id, user_id, email, role) values (%s, %s, 'oafig@lab.test', 'owner')", [org, uid])
+        su.execute("select public.upsert_subscription(%s, 'sub_oafigaaaaaaaaaaaa', 'ctm_oafigaaaaaaaaaaaa', 'pro', null, 'active', "
+                   "now() - interval '5 days', now() + interval '25 days', false, null, now())", [org])
+        su.execute("select public.grant_subscription_credits(%s, 'sub_oafigaaaaaaaaaaaa', 'pro', now() - interval '5 days', "
+                   "now() + interval '25 days', 'txn_oafigaaaaaaaaaaaa', null, null, null, 0.01::numeric)", [org])   # 60 plan credits
+        su.execute("select public.add_purchased_credits(%s, 500, 'oaf-usage-pack', 'p')", [org])
+        su.execute("insert into public.credit_prices (unit, credits_per_unit, margin) values ('video_minute', 90, 0), ('job_minimum', 10, 0) "
+                   "on conflict (unit) do update set credits_per_unit = excluded.credits_per_unit, margin = excluded.margin")
+        su.execute("insert into public.channels (channel_id, name, niche, status, org_id, agent_config, credential_ref) values "
+                   "('chan-oaf-usage', 'OAF', 'tech', 'ACTIVE', %s, '{}', '{\"verified_at\": \"2026-09-01\"}')", [org])
+        client = su.execute("insert into public.oauth_clients (client_name, redirect_uris, ip_hash) values "
+                            "('Usage fig app', array['https://claude.ai/api/mcp/auth_callback'], %s) returning client_id",
+                            [hashlib.sha256(b"ip2").hexdigest()]).fetchone()[0]
+        grant = su.execute("insert into public.oauth_grants (user_id, org_id, client_id, scopes, resource, monthly_limit_credits, activated_at) "
+                           "values (%s, %s, %s, array['videos:read', 'videos:create'], 'https://nightshift-ai.studio/api/mcp', 20000, now()) returning id",
+                           [uid, org, client]).fetchone()[0]
+        su.execute("insert into public.oauth_tokens (token_hash, grant_id, kind, expires_at) values (%s, %s, 'access', now() + interval '1 hour')",
+                   [tok_hash, grant])
+
+    def call(q, *args):
+        with psycopg.connect(oauth_db, autocommit=False) as c:
+            c.execute("select set_config('request.jwt.claims', %s, true)", [json.dumps({"role": "anon"})])
+            c.execute("set local role anon")
+            out = c.execute(q, args).fetchone()[0]
+            c.commit()
+            return out
+
+    def flip(on):
+        with psycopg.connect(oauth_db, autocommit=True) as su:
+            su.execute("update public.credit_accounts set use_extra_credits = %s where org_id = %s", [on, org])
+
+    create = lambda idem: call("select public.oauth_create_video(%s, 'chan-oaf-usage', %s::jsonb, %s)", tok_hash, json.dumps({"duration": 90}), idem)
+    balance = lambda: call("select public.oauth_get_balance(%s)", tok_hash)
+    # ON: the figures are balance - held, exactly as before.
+    on_bal = balance()
+    assert on_bal["data"]["credits"] == {"available": 560, "held": 0}, on_bal
+    # OFF: a 135-credit video cannot be paid by the 60 plan credits; the 402 and the balance say 60, not 560.
+    flip(False)
+    off_bal = balance()["data"]["credits"]
+    assert off_bal["available"] == 60 and off_bal["extra_credits_off"] is True and off_bal["held"] == 0, off_bal
+    refused = create("oaf-1")
+    assert refused["status"] == 402 and refused["error"]["code"] == "insufficient_credits", refused
+    err = refused["error"]
+    assert err["available_credits"] == 60 and err["extra_credits_off"] is True and err["price_credits"] == 135 and err["held_credits"] == 0, err
+    assert not any(k in json.dumps(err) for k in ("500", "560"))        # the pack figure is not quoted to the app
+    # ON again: the refusal quotes balance - held exactly as 0093 did (here a video dearer than the whole balance).
+    flip(True)
+    with psycopg.connect(oauth_db, autocommit=True) as su:
+        su.execute("update public.credit_prices set credits_per_unit = 900 where unit = 'video_minute'")
+    try:
+        again = create("oaf-2")
+    finally:
+        with psycopg.connect(oauth_db, autocommit=True) as su:
+            su.execute("update public.credit_prices set credits_per_unit = 60 where unit = 'video_minute'")
+    assert again["status"] == 402 and again["error"]["available_credits"] == 560 and "extra_credits_off" not in again["error"], again

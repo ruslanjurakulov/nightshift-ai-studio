@@ -33,9 +33,9 @@
 --   credits back in the pack lot, as before.
 --
 -- WHERE IT IS ENFORCED (one place, so EVERY spending route obeys it)
---   Every paid action (Run now, studio jobs, storyboards, scene regeneration,
---   repurposing, downloads, API generations, MCP OAuth calls, workflow steps)
---   holds credits through public.reserve_credits(), which writes a 'reserve'
+--   Every paid action except a download (Run now, studio jobs, storyboards,
+--   scene regeneration, repurposing, credit-priced API generations, MCP OAuth
+--   calls, workflow steps) holds credits through public.reserve_credits(), which writes a 'reserve'
 --   ledger row, whose trigger (0034) calls credit_lots_hold_locked(). Both are
 --   replaced here, on the LATEST bodies (reserve_credits: 0020, never
 --   redefined; credit_lots_hold_locked: 0034, never redefined):
@@ -55,6 +55,13 @@
 --   the next reservation sees the new value. Flipping never touches a hold
 --   that already exists: a run already started keeps the lots it was held on,
 --   settles (capture) and releases against them, and is never killed.
+--   A download is the one paid action charged on the spot with no hold (0030
+--   request_download), so it enforces the switch itself (section 4b): the same
+--   NS402 refusal before the charge, and the charge skips pack lots
+--   (credit_lots_spend_locked honours a transaction-local flag,
+--   nightshift.no_pack_spend, that only request_download sets; every other
+--   spender, including a refund clawback, is unchanged). Replaced on the
+--   latest bodies too (request_download: 0030; credit_lots_spend_locked: 0034).
 --
 -- NOT CHANGED, on purpose
 --   Capture / release / refund / expiry / the lot invariants / the parallel-run
@@ -65,14 +72,18 @@
 --   draws on any available lot): the switch governs what a NEW run may start.
 --
 -- Additive and idempotent: add column if not exists, create or replace,
--- explicit revoke/grant. Needs 0020, 0034 and 0091 (workspace owners).
+-- explicit revoke/grant. Needs 0020, 0030, 0034, 0091 (workspace owners) and 0093.
 
 do $$
 begin
   if to_regprocedure('public.reserve_credits(uuid, text, numeric)') is null
      or to_regprocedure('public.credit_lots_hold_locked(uuid, text, numeric, bigint)') is null
+     or to_regprocedure('public.credit_lots_spend_locked(uuid, numeric, text, bigint, bigint)') is null
+     or to_regprocedure('public.request_download(text, text, numeric)') is null
+     or to_regprocedure('public.oauth_create_video(text, text, jsonb, text, text)') is null
+     or to_regprocedure('public.oauth_get_balance(text, text)') is null
      or to_regprocedure('public.billing_may_read(uuid)') is null then
-    raise exception '0094 needs credits and plans: apply 0020 and 0034 first';
+    raise exception '0094 needs credits, downloads, plans and connected apps: apply 0020, 0030, 0034 and 0093 first';
   end if;
 end $$;
 
@@ -232,6 +243,407 @@ end
 $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
+-- 4b. Downloads: the one paid action that is charged without a hold
+-- ───────────────────────────────────────────────────────────────────────────
+-- request_download (0030) charges on the spot (a 'capture' ledger row with no
+-- reservation), so it never passes through reserve_credits. Found by review
+-- (BR-U-005): with the switch OFF it spent pack credits. Both functions below
+-- are 0030's and 0034's latest bodies plus the lines marked 0094.
+
+create or replace function public.credit_lots_spend_locked(
+  p_org uuid, p_amount numeric, p_job text, p_txn bigint, p_prefer bigint default null
+) returns void
+  language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  left_ numeric := p_amount;
+  l record;
+  take numeric;
+begin
+  if left_ is null or left_ <= 0 then
+    return;
+  end if;
+  for l in
+    select id, remaining, held from public.credit_lots
+     where org_id = p_org and remaining > held and (expires_at is null or expires_at > now())
+       and (source <> 'pack' or coalesce(current_setting('nightshift.no_pack_spend', true), '') <> '1')
+     order by coalesce(id = p_prefer, false) desc, (source <> 'subscription'), expires_at asc nulls last, id
+     for update
+  loop
+    take := least(l.remaining - l.held, left_);
+    update public.credit_lots set remaining = remaining - take, updated_at = now() where id = l.id;
+    perform public.credit_lot_move(p_org, l.id, p_txn, p_job, 'spend', -take, 0);
+    left_ := left_ - take;
+    exit when left_ <= 0;
+  end loop;
+  if left_ > 0 then
+    raise exception 'insufficient credits'
+      using errcode = 'NS402',
+            detail = format('available=%s needed=%s', p_amount - left_, p_amount),
+            hint = 'Add credits to this organization.';
+  end if;
+end
+$$;
+
+create or replace function public.request_download(
+  p_video_id text, p_quality text, p_max_credits numeric default null
+) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  vid     text := btrim(coalesce(p_video_id, ''));
+  q       text := btrim(coalesce(p_quality, ''));
+  org     uuid;
+  ch      text;
+  m       public.download_masters;
+  r       public.download_requests;
+  paid    public.download_requests;
+  rate    public.credit_prices;
+  floor_c numeric;
+  mins    numeric;
+  price   numeric := 0;
+  why     text;
+  until_  timestamptz;
+  acc     public.credit_accounts;
+  txn     bigint;
+  s       record;
+  spend_  numeric;
+begin
+  if auth.uid() is null then
+    raise exception 'sign in to download' using errcode = '42501';
+  end if;
+  if q not in ('720p', '1080p') then
+    raise exception 'quality must be 720p or 1080p' using errcode = '22023';
+  end if;
+  select c.org_id, c.channel_id into org, ch
+    from public.videos v join public.channels c on c.channel_id = v.channel_id
+   where v.video_id = vid;
+  if ch is null or org is null then
+    raise exception 'video not found' using errcode = 'P0002';
+  end if;
+  -- Spending credits: an editor or above of THAT organization, never a viewer.
+  if not public.is_org_member(org, 'editor') then
+    raise exception 'only an owner, admin or editor of this organization may buy a download'
+      using errcode = '42501';
+  end if;
+
+  -- One decision per (org, video, quality) at a time: a double click waits
+  -- here and then finds the first one's row.
+  perform pg_advisory_xact_lock(hashtextextended(format('download:%s:%s:%s', org, vid, q), 0));
+
+  -- No worker picked it up for two hours (the worker is off): give it back.
+  for s in
+    select d.id from public.download_requests d
+     where d.org_id = org and d.status = 'queued' and d.created_at < now() - interval '2 hours'
+  loop
+    perform public.download_fail_locked(s.id, 'not_picked_up',
+      'no worker picked the download up within 2 hours; the credits were refunded');
+  end loop;
+
+  -- Already on its way, or still downloadable: the same row, nothing charged.
+  select * into r from public.download_requests d
+   where d.org_id = org and d.video_id = vid and d.quality = q
+     and (d.status in ('queued', 'processing') or (d.status = 'ready' and d.expires_at > now()))
+   order by d.id desc limit 1;
+  if found then
+    return jsonb_build_object('id', r.id, 'status', r.status, 'quality', r.quality,
+                              'charged', 0, 'reused', true, 'expires_at', r.expires_at);
+  end if;
+
+  select * into m from public.download_masters where video_id = vid;
+  if not found or least(m.width, m.height) < public.download_quality_side(q) then
+    raise exception 'no full-quality master for this video at %', q
+      using errcode = 'NS404',
+            hint = 'Only videos rendered on the queue worker keep a master; re-run the video there.';
+  end if;
+  mins := round(m.duration_seconds / 60.0, 4);
+
+  select * into paid from public.download_requests d
+   where d.org_id = org and d.video_id = vid and d.quality = q
+     and d.paid_until > now() and d.status <> 'failed'
+   order by d.id desc limit 1;
+  if found then
+    why := 'redownload';
+    until_ := paid.paid_until;
+  elsif public.credits_exempt(org) then
+    why := 'exempt';
+    until_ := now() + interval '7 days';
+  else
+    select * into rate from public.credit_prices where unit = format('download_%s_minute', q);
+    if not found then
+      raise exception 'downloads in % are not priced yet', q
+        using errcode = 'NS400', hint = 'A platform admin sets the download price on the Credits page.';
+    end if;
+    select credits_per_unit into floor_c from public.credit_prices where unit = 'download_minimum';
+    -- Rounded to 6 places before ceil, so numeric division noise (1.6666…7)
+    -- never adds a whole credit; lib/downloads.ts downloadCharge does the same.
+    price := greatest(ceil(round(m.duration_seconds * rate.credits_per_unit * (1 + rate.margin) / 60.0, 6)),
+                      ceil(round(coalesce(floor_c, 0), 6)));
+    if p_max_credits is not null and price > p_max_credits then
+      raise exception 'the price changed'
+        using errcode = 'NS409', detail = format('price=%s confirmed=%s', price, p_max_credits);
+    end if;
+    until_ := now() + interval '7 days';
+  end if;
+
+  if price > 0 then
+    acc := public.credit_account_lock(org);
+    if acc.balance - acc.reserved < price then
+      raise exception 'insufficient credits'
+        using errcode = 'NS402',
+              detail = format('available=%s needed=%s', acc.balance - acc.reserved, price),
+              hint = 'Add credits to this organization.';
+    end if;
+    -- 0094: a download is a paid action that does not go through
+    -- reserve_credits (it is charged on the spot), so the switch is enforced
+    -- here too: with extra credits off it may be paid only from credit that is
+    -- not a top-up pack, and the charge below skips pack lots (the same NS402
+    -- refusal and figures as a refused run).
+    if not acc.use_extra_credits then
+      spend_ := public.credit_spendable_internal(org);
+      if spend_ < price then
+        raise exception 'insufficient credits'
+          using errcode = 'NS402',
+                detail = format('available=%s needed=%s extra_off=1 extra=%s', spend_, price, greatest(acc.balance - acc.reserved - spend_, 0)),
+                hint = 'Extra credits are off for this organization. Turn them on, add credits, or upgrade the plan.';
+      end if;
+    end if;
+  end if;
+
+  insert into public.download_requests
+    (org_id, channel_id, video_id, quality, status, charged, free_reason, paid_until, minutes, requested_by)
+  values
+    (org, ch, vid, q, 'queued', price, why, until_, mins, auth.uid())
+  returning * into r;
+
+  if price > 0 then
+    update public.credit_accounts
+       set balance = balance - price, updated_at = now()
+     where org_id = org
+    returning * into acc;
+    perform set_config('nightshift.no_pack_spend', case when acc.use_extra_credits then '' else '1' end, true);
+    txn := public.credit_log(org, 'capture', -price, 'download:' || r.id, null,
+                             format('download %s of %s (%s min)', q, vid, mins));
+    perform set_config('nightshift.no_pack_spend', '', true);
+    update public.download_requests set charge_txn = txn where id = r.id;
+  end if;
+
+  return jsonb_build_object('id', r.id, 'status', r.status, 'quality', q, 'charged', price,
+                            'free_reason', why, 'reused', false,
+                            'balance', acc.balance, 'available', acc.balance - acc.reserved);
+end
+$$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- 4c. The connected apps' (MCP OAuth, 0093) credit figures
+-- ───────────────────────────────────────────────────────────────────────────
+-- BR-U-001. 0093's oauth_create_video catches NS402 and quotes
+-- available_credits = balance - held, and oauth_get_balance reports the same:
+-- with the switch OFF that counts pack credits a new video cannot use, so an
+-- app would read "you have 560 available" beside a refusal. Both are 0093's
+-- latest bodies (not redefined since) with ONE change each: with the switch
+-- OFF the figure is credit_spendable_internal(org) and extra_credits_off is
+-- true; with it ON the answer is byte for byte what it was.
+
+create or replace function public.oauth_create_video(
+  p_token_hash text, p_channel_id text, p_params jsonb,
+  p_idem_key text default null, p_request_id text default null
+) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  ctx     jsonb := public.api_begin(p_token_hash, 'oauth.videos.create', p_request_id);
+  v_org   uuid;
+  v_grant uuid;
+  ch      public.channels;
+  v_p     jsonb := coalesce(p_params, '{}'::jsonb);
+  v_secs  numeric;
+  v_idem  text;
+  v_fp    text;
+  prior   public.oauth_runs;
+  jm      numeric;
+  vm      public.credit_prices;
+  v_price numeric;
+  v_limit numeric;
+  v_spent numeric;
+  acc     public.credit_accounts;
+  v_ref   text;
+  v_job   bigint;
+  v_res   jsonb;
+  v_hold  jsonb;
+begin
+  if not (ctx ->> 'ok')::boolean then
+    return ctx;
+  end if;
+  begin
+    v_org := (ctx ->> 'org_id')::uuid;
+    v_grant := (ctx ->> 'grant_id')::uuid;
+    if p_idem_key is not null and p_idem_key !~ '^[A-Za-z0-9_:.-]{1,255}$' then
+      return public.api_finish(ctx, public.api_err(400, 'invalid_idempotency_key',
+        'idempotency_key: 1-255 characters of A-Z a-z 0-9 _ : . -'));
+    end if;
+    v_idem := coalesce(p_idem_key, 'auto-' || gen_random_uuid()::text);
+    v_fp := md5(jsonb_build_object('c', p_channel_id, 'p', v_p)::text);
+
+    -- A retry of the same request waits here, then finds the first one's job.
+    perform pg_advisory_xact_lock(hashtextextended('oauth_run:' || v_grant::text || ':' || v_idem, 0));
+    select * into prior from public.oauth_runs where grant_id = v_grant and idem_key = v_idem;
+    if prior.id is not null then
+      if prior.fingerprint <> v_fp then
+        return public.api_finish(ctx, public.api_err(422, 'idempotency_key_reused',
+          'This idempotency_key was already used with a different request.'));
+      end if;
+      return public.api_finish(ctx, public.api_ok(jsonb_build_object('job_id', prior.render_job_id,
+        'channel_id', prior.channel_id, 'status', 'queued', 'price_credits', prior.quoted_credits), 200)
+        || jsonb_build_object('replayed', true));
+    end if;
+
+    select * into ch from public.channels c where c.channel_id = p_channel_id;
+    if ch.channel_id is null or ch.org_id is distinct from v_org then
+      return public.api_finish(ctx, public.api_err(404, 'channel_not_found', 'No channel with that id in this workspace.'));
+    elsif upper(btrim(coalesce(ch.status, ''))) <> 'ACTIVE' then
+      return public.api_finish(ctx, public.api_err(409, 'channel_not_active',
+        'That channel is not active. Connect it to YouTube and activate it in the Command Center first.'));
+    elsif jsonb_typeof(v_p) <> 'object'
+       or (v_p - array['topic','niche','duration','language','visual_style','video_provider','image_provider']) <> '{}'::jsonb
+       or not public.render_job_params_valid(v_p, 'daily') then
+      return public.api_finish(ctx, public.api_err(400, 'invalid_params',
+        'Allowed: topic (<=300 chars), niche (<=120), duration (whole seconds, 30-3600), language (<=40), visual_style (<=300), video_provider, image_provider.'));
+    end if;
+
+    -- A limit of 0 is a read-only connection, whoever pays: the operator's exempt
+    -- workspace spends nothing, so nothing below would ever count against the
+    -- limit; zero is the one limit that needs no counting (Lens-386A).
+    if (ctx ->> 'exempt')::boolean and (ctx ->> 'limit_credits')::numeric <= 0 then
+      return public.api_finish(ctx, public.api_err(402, 'connection_limit_reached',
+        'This connection is read-only: its monthly spending limit is 0.',
+        jsonb_build_object('limit_credits', 0, 'spent_credits', 0, 'price_credits', 0)));
+    end if;
+
+    if not (ctx ->> 'exempt')::boolean then
+      -- The length the video renders at, frozen the way the payment guard
+      -- (0041) freezes it, so what is held is what runs.
+      v_secs := coalesce((v_p ->> 'duration')::numeric,
+                         case when jsonb_typeof(ch.agent_config -> 'target_duration_seconds') = 'number'
+                              then (ch.agent_config ->> 'target_duration_seconds')::numeric end);
+      if v_secs is null or v_secs <= 0 then
+        return public.api_finish(ctx, public.api_err(400, 'duration_required',
+          'Pass duration (seconds): this channel has no target length to price the video by.'));
+      end if;
+      v_secs := least(greatest(round(v_secs), 30), 3600);
+      v_p := v_p || jsonb_build_object('duration', v_secs::integer);
+
+      -- The price: the same rows and formula the render_jobs payment guard
+      -- demands the hold cover. No per-minute price = unpriced = refused.
+      select credits_per_unit into jm from public.credit_prices where unit = 'job_minimum';
+      select * into vm from public.credit_prices where unit = 'video_minute';
+      if vm.unit is null or vm.credits_per_unit is null then
+        return public.api_finish(ctx, public.api_err(503, 'pricing_unavailable',
+          'Video pricing is not set up on this deployment; nothing was held or charged.'));
+      end if;
+      v_price := public.credits_round_up(greatest(coalesce(jm, 0), vm.credits_per_unit * (1 + vm.margin) * v_secs / 60));
+      if v_price is null or v_price <= 0 then
+        return public.api_finish(ctx, public.api_err(503, 'pricing_unavailable',
+          'Video pricing is not set up on this deployment; nothing was held or charged.'));
+      end if;
+
+      -- Everything below runs under the credit account's row lock, so two calls
+      -- of one connection cannot each pass the limit and jointly exceed it.
+      acc := public.credit_account_lock(v_org);
+      v_limit := (ctx ->> 'limit_credits')::numeric;
+      v_spent := public.oauth_grant_month_credits(v_grant);
+      if v_spent + v_price > v_limit then
+        return public.api_finish(ctx, public.api_err(402, 'connection_limit_reached',
+          'This video would take this connection past its monthly spending limit.',
+          jsonb_build_object('limit_credits', v_limit, 'spent_credits', v_spent, 'price_credits', v_price)));
+      end if;
+
+      v_ref := 'rj-oa-' || replace(gen_random_uuid()::text, '-', '');
+      begin
+        v_hold := public.reserve_credits(v_org, v_ref, v_price);
+      exception
+        when sqlstate 'NS402' then
+          select * into acc from public.credit_accounts where org_id = v_org;
+          -- 0094: with extra credits off, what a new video can use is the plan
+          -- side only, not balance - held (which counts unspendable pack credits).
+          return public.api_finish(ctx, public.api_err(402, 'insufficient_credits',
+            'The workspace does not have enough credits for this video.',
+            jsonb_build_object('available_credits',
+                                 case when coalesce(acc.use_extra_credits, true)
+                                      then greatest(acc.balance - acc.reserved, 0)
+                                      else public.credit_spendable_internal(v_org) end,
+                               'held_credits', acc.reserved, 'price_credits', v_price)
+            || case when coalesce(acc.use_extra_credits, true) then '{}'::jsonb
+                    else jsonb_build_object('extra_credits_off', true) end));
+        when sqlstate 'NS429' then
+          return public.api_finish(ctx, public.api_err(429, 'run_limit_reached',
+            'The plan\''s limit of videos in progress at once is reached.',
+            jsonb_build_object('retry_after', 60,
+                               'active_runs', (select count(*) from public.credit_reservations r where r.org_id = v_org and r.status = 'open'),
+                               'run_limit', public.entitlement_int_internal(v_org, 'concurrency'))));
+      end;
+    end if;
+
+    insert into public.render_jobs (channel_id, kind, params, requested_by, credit_ref)
+    values (ch.channel_id, 'daily', v_p, (ctx ->> 'created_by')::uuid, v_ref)
+    returning id into v_job;
+
+    insert into public.oauth_runs (grant_id, org_id, idem_key, fingerprint, credit_ref, render_job_id, channel_id, quoted_credits)
+    values (v_grant, v_org, v_idem, v_fp, v_ref, v_job, ch.channel_id, v_price);
+
+    insert into public.app_audit_log (actor_user_id, actor_email, action, target, detail, channel_id)
+    values ((ctx ->> 'created_by')::uuid, nullif(auth.jwt() ->> 'email', ''), 'agent.run', ch.channel_id,
+            v_p || jsonb_build_object('via', 'mcp_oauth', 'grant_id', v_grant, 'job_id', v_job,
+                                      'credit_ref', v_ref, 'price_credits', v_price), ch.channel_id);
+
+    v_res := public.api_ok(jsonb_build_object('job_id', v_job, 'channel_id', ch.channel_id, 'status', 'queued',
+                                              'price_credits', v_price), 201);
+    return public.api_finish(ctx, v_res, 0);
+  exception when others then
+    -- Only this block is undone (the hold with it): nothing is held or queued.
+    return public.api_finish(ctx, public.api_err(500, 'internal_error',
+      'The request failed inside the database. Nothing was created or charged; retry with backoff.'));
+  end;
+end
+$$;
+
+create or replace function public.oauth_get_balance(p_token_hash text, p_request_id text default null) returns jsonb
+  language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare
+  ctx   jsonb := public.api_begin(p_token_hash, 'oauth.balance', p_request_id);
+  v_org uuid;
+  acc   public.credit_accounts;
+  v_spent numeric;
+begin
+  if not (ctx ->> 'ok')::boolean then
+    return ctx;
+  end if;
+  begin
+    v_org := (ctx ->> 'org_id')::uuid;
+    if (ctx ->> 'exempt')::boolean then
+      return public.api_finish(ctx, public.api_ok(jsonb_build_object('exempt', true)));
+    end if;
+    select * into acc from public.credit_accounts where org_id = v_org;
+    v_spent := public.oauth_grant_month_credits((ctx ->> 'grant_id')::uuid);
+    return public.api_finish(ctx, public.api_ok(jsonb_build_object(
+      'credits', jsonb_build_object('available',
+                                      case when coalesce(acc.use_extra_credits, true)
+                                           then greatest(coalesce(acc.balance, 0) - coalesce(acc.reserved, 0), 0)
+                                           else public.credit_spendable_internal(v_org) end,
+                                    'held', coalesce(acc.reserved, 0))
+                 || case when coalesce(acc.use_extra_credits, true) then '{}'::jsonb
+                         else jsonb_build_object('extra_credits_off', true) end,
+      'plan', public.org_plan_internal(v_org),
+      'videos_in_progress', (select count(*) from public.credit_reservations r where r.org_id = v_org and r.status = 'open'),
+      'videos_at_once_limit', public.entitlement_int_internal(v_org, 'concurrency'),
+      'this_connection', jsonb_build_object('monthly_limit_credits', (ctx ->> 'limit_credits')::numeric,
+                                            'spent_this_month_credits', v_spent,
+                                            'left_this_month_credits', greatest((ctx ->> 'limit_credits')::numeric - v_spent, 0)))));
+  exception when others then
+    return public.api_finish(ctx, public.api_err(500, 'internal_error',
+      'The request failed inside the database. Nothing was created or charged; retry with backoff.'));
+  end;
+end
+$$;
+
+-- ───────────────────────────────────────────────────────────────────────────
 -- 5. The person flips the switch
 -- ───────────────────────────────────────────────────────────────────────────
 
@@ -342,6 +754,15 @@ revoke all on function public.credit_spendable_internal(uuid) from public, anon,
 revoke all on function public.reserve_credits(uuid, text, numeric) from public, anon;
 grant execute on function public.reserve_credits(uuid, text, numeric) to authenticated, service_role;
 revoke all on function public.credit_lots_hold_locked(uuid, text, numeric, bigint) from public, anon, authenticated, service_role;
+-- 0034's none for the spend lock; 0030's request_download: a signed-in browser only.
+revoke all on function public.credit_lots_spend_locked(uuid, numeric, text, bigint, bigint) from public, anon, authenticated, service_role;
+revoke all on function public.request_download(text, text, numeric) from public, anon, authenticated, service_role;
+grant execute on function public.request_download(text, text, numeric) to authenticated;
+-- 0093's grants for the two connected-app functions replaced above: the anon key (they check the token themselves).
+revoke all on function public.oauth_create_video(text, text, jsonb, text, text) from public, anon, authenticated, service_role;
+revoke all on function public.oauth_get_balance(text, text) from public, anon, authenticated, service_role;
+grant execute on function public.oauth_create_video(text, text, jsonb, text, text) to anon;
+grant execute on function public.oauth_get_balance(text, text) to anon;
 
 revoke all on function public.set_use_extra_credits(uuid, boolean) from public, anon, service_role;
 grant execute on function public.set_use_extra_credits(uuid, boolean) to authenticated;
