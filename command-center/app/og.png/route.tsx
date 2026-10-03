@@ -36,7 +36,7 @@ const AMBER = "#FFA940";
 const GO = "#5FD49A";
 /* The mark: white on the ground, as the owner supplied it (brand/logo). */
 const MARK = "#FAFAFA";
-const MARK_W = 52;
+const MARK_W = 60;
 
 const FONT_DIR = join(process.cwd(), "brand", "og-fonts");
 

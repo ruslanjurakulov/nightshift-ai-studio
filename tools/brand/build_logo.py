@@ -134,7 +134,7 @@ def mark_light_on_dark() -> str:
 
 def mark_dark_on_light() -> str:
     # A near-black mark cannot be darkened, so the fold is a lightening instead.
-    defs, body = shaded_mark("#0E1014", "#fff", 0.8, 0.04, "ns")
+    defs, body = shaded_mark("#0E1014", "#fff", 1.0, 0.04, "ns")
     return _svg(body, "Nightshift", defs)
 
 
