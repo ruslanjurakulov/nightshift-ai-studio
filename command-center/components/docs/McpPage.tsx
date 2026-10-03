@@ -23,9 +23,9 @@ import { BrandMark } from "@/components/site/BrandMark";
  * (a copyable field or one button). Under the card a link to the reference,
  * then "How it works", the ten tools, and a closing line.
  *
- * Original work on a known pattern: the tiles are neutral monograms because the
- * clients' logos are their owners' trademarks; the palette, type, radii and
- * motion are the site's own (components/site/site.css).
+ * Original work on a known pattern: the tiles carry the clients' own logos where
+ * their owners' rules allow (lib/dev/brand-logos.ts) and a plain icon where not;
+ * the palette, type, radii and motion are the site's own (components/site/site.css).
  *
  * What it promises is only what exists. The server takes API keys today; the
  * sign-in (OAuth) flow is switched on by MCP_OAUTH_LIVE (lib/mcp-oauth.ts).
@@ -132,7 +132,7 @@ export function McpPage({
   }
 
   const tabs: ConnectTab[] = MCP_CLIENTS.map((client): ConnectTab => {
-    const base = { id: client.id, glyph: <BrandLogo id={client.id} mono={client.mono} />, tile: logoTile(client.id), group: client.group, label: client.id === "other" ? dev.ui.other : client.label };
+    const base = { id: client.id, glyph: <BrandLogo id={client.id} />, tile: logoTile(client.id), group: client.group, label: client.id === "other" ? dev.ui.other : client.label };
     // Connector-only tabs: the real steps when sign-in is live, an honest "Coming soon" until then.
     if (client.oauthOnly) {
       const o = c.oauth[client.id as "claude" | "chatgpt"];
@@ -189,8 +189,9 @@ export function McpPage({
 
   const defaultTab = oauthLive ? "claude" : "claude-code";
   const open = initialTab && tabs.some((t) => t.id === initialTab) ? initialTab : defaultTab;
-  const hero = ["cursor", "chatgpt", "openclaw", "nightshift", "claude", "hermes", "more"] as const;
-  const mono = (id: string) => MCP_CLIENTS.find((x) => x.id === id)?.mono ?? "";
+  // Real logos only around the N, balanced in colour and weight (a red mark against a blue one, a white tile
+  // against a black one); a client whose own mark may not be shown is in the tabs, never in the hero.
+  const hero = ["cursor", "chatgpt", "openclaw", "nightshift", "vscode", "windsurf", "more"] as const;
   const names = ["claude", "chatgpt", "claude-code", "openclaw", "cursor", "hermes"].map((id) => MCP_CLIENTS.find((x) => x.id === id)!.label);
 
   return (
@@ -209,7 +210,7 @@ export function McpPage({
                 ) : id === "more" ? (
                   "+"
                 ) : (
-                  <BrandLogo id={id} mono={mono(id)} />
+                  <BrandLogo id={id} />
                 )}
               </span>
             ))}

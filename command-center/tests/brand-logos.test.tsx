@@ -89,7 +89,7 @@ describe("the register (lib/dev/brand-logos.ts)", () => {
     expect(shownSymbols(MCP_CLIENTS.map((c) => c.id))).not.toContain("claude-any");
   });
 
-  it("the clients whose own rules or assets do not allow a mark keep the monogram: Claude Code, Hermes, Gemini CLI, Codex", () => {
+  it("the clients whose own rules or assets do not allow a mark keep a plain icon: Claude Code, Hermes, Gemini CLI, Codex", () => {
     for (const id of ["claude-code", "hermes", "gemini-cli", "codex"]) expect(logoShown(brandLogo(id)), id).toBe(false);
   });
 
@@ -190,7 +190,7 @@ describe("the page asks no other origin for anything", () => {
   });
 
   it("a logo is a few bytes of <use>, not the drawing again", () => {
-    const one = renderToStaticMarkup(<BrandLogo id="cursor" mono="Cu" />);
+    const one = renderToStaticMarkup(<BrandLogo id="cursor" />);
     expect(one.length).toBeLessThan(400);
     expect(one).toContain('href="#nl-cursor-light"');
     expect(one).toContain('href="#nl-cursor-dark"');
@@ -231,6 +231,44 @@ describe("where the logos show", () => {
     const roo = doc.querySelector('.st-pill[data-id="roo-code"] .st-pill-glyph')!;
     expect(roo.getAttribute("data-tile")).toBe("paper");
     expect(doc.querySelector('.st-pill[data-id="cursor"] .st-pill-glyph')?.getAttribute("data-tile")).toBe("theme");
+  });
+
+  it("the hero row is real logos only, balanced around the N: no monogram, nothing from a client whose mark is not shown", () => {
+    const doc = new DOMParser().parseFromString(page(), "text/html");
+    const tiles = [...doc.querySelectorAll(".st-tiles .st-tile")];
+    expect(tiles.map((t) => t.getAttribute("data-id"))).toEqual(["cursor", "chatgpt", "openclaw", "nightshift", "vscode", "windsurf", "more"]);
+    expect(doc.querySelectorAll(".st-tiles .st-logo-mono")).toHaveLength(0);
+    expect(doc.querySelectorAll(".st-logo-mono")).toHaveLength(0);
+    // Every client tile is a mark that is shown; the only non-logo tile is the "+" one.
+    for (const t of tiles) {
+      const id = t.getAttribute("data-id")!;
+      if (id === "nightshift" || id === "more") continue;
+      expect(logoShown(brandLogo(id)), id).toBe(true);
+      expect(t.querySelector("svg use"), id).toBeTruthy();
+    }
+    expect(tiles.find((t) => t.getAttribute("data-id") === "more")?.textContent).toBe("+");
+  });
+
+  it("the tabs whose mark may not be shown carry a plain icon from the icon set the site already uses, never letters", () => {
+    const doc = new DOMParser().parseFromString(page(), "text/html");
+    const plain = ["claude", "claude-code", "gemini-cli", "codex", "hermes", "claude-desktop", "other"];
+    for (const id of plain) {
+      const glyph = doc.querySelector(`.st-pill[data-id="${id}"] .st-pill-glyph`)!;
+      expect(glyph.querySelector("svg.st-logo-glyph"), id).toBeTruthy();
+      expect(glyph.querySelector("use"), id).toBeNull();
+      expect(glyph.textContent?.trim(), id).toBe("");
+    }
+    // The terminal prompt for the command-line agents, the same on all four.
+    const terminal = (id: string) => doc.querySelector(`.st-pill[data-id="${id}"] .st-pill-glyph svg`)?.innerHTML;
+    expect(new Set(["claude-code", "gemini-cli", "codex", "hermes"].map(terminal)).size).toBe(1);
+    expect(terminal("claude")).not.toBe(terminal("claude-code"));
+    expect(terminal("claude-desktop")).not.toBe(terminal("claude"));
+  });
+
+  it("no Anthropic or Claude drawing is on the page while approval is not in hand", () => {
+    const html = page();
+    expect(html).not.toContain("nl-claude-any");
+    expect(html).not.toMatch(/D97757/i);
   });
 
   it("the sprite exists once and holds no mark that is not shown", () => {

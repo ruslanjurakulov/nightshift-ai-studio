@@ -39,8 +39,6 @@ export type McpClient = {
   id: string;
   /** The product's own name; not translated. */
   label: string;
-  /** Two letters on the neutral tile that stands in for the client's logo (a trademark we do not hold a licence for). */
-  mono: string;
   /** The six the owner named are primary, in this order; the rest sit behind "More clients". */
   group: "primary" | "more";
   /** Connector-only: the client takes a server URL and a sign-in, never a header, so it has no API-key snippet. */
@@ -79,7 +77,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
     // Connector: https://support.claude.com/en/articles/11175166 — a server URL and a sign-in; no header can be typed there.
     id: "claude",
     label: "Claude",
-    mono: "Cl",
     group: "primary",
     oauthOnly: true,
     lang: "text",
@@ -89,7 +86,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
     // Developer-mode app: https://developers.openai.com/api/docs/guides/developer-mode — URL and OAuth; no static header.
     id: "chatgpt",
     label: "ChatGPT",
-    mono: "Gp",
     group: "primary",
     oauthOnly: true,
     lang: "text",
@@ -98,7 +94,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
   {
     // https://code.claude.com/docs/en/mcp — `claude mcp add --transport http <name> <url> --header "Authorization: Bearer …"`
     id: "claude-code",
-    mono: "Cc",
     group: "primary",
     label: "Claude Code",
     lang: "bash",
@@ -110,7 +105,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
     // (omitted means sse); static `headers`, or `auth: "oauth"` followed by `openclaw mcp login <name>`.
     id: "openclaw",
     label: "OpenClaw",
-    mono: "Oc",
     group: "primary",
     lang: "bash",
     snippet: (url) =>
@@ -121,7 +115,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
   {
     // https://cursor.com/docs/context/mcp — mcp.json, remote server: url + headers (~/.cursor/mcp.json or .cursor/mcp.json)
     id: "cursor",
-    mono: "Cu",
     group: "primary",
     label: "Cursor",
     lang: "json",
@@ -133,7 +126,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
     // `auth: oauth` (required for OAuth) then `hermes mcp login <name>`; `/reload-mcp` picks up the change.
     id: "hermes",
     label: "Hermes",
-    mono: "He",
     group: "primary",
     lang: "text",
     snippet: (url) => `mcp_servers:\n  nightshift:\n    url: "${url}"\n    headers:\n      Authorization: "${bearer}"`,
@@ -143,7 +135,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
     // https://code.visualstudio.com/docs/copilot/reference/mcp-configuration — type "http", url, headers; inputs with
     // promptString + password so the key is asked for, not written into a file that may be committed.
     id: "vscode",
-    mono: "Vs",
     group: "more",
     label: "VS Code",
     lang: "json",
@@ -157,7 +148,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
     // https://docs.windsurf.com/windsurf/cascade/mcp — "Remote HTTP MCPs": serverUrl + headers in mcp_config.json,
     // opened from the Cascade panel's Actions menu (the file's path moved in that page's latest revision, so none is printed).
     id: "windsurf",
-    mono: "Ws",
     group: "more",
     label: "Windsurf",
     lang: "json",
@@ -166,7 +156,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
   {
     // https://docs.cline.bot/mcp/configuring-mcp-servers — "Remote server (Streamable HTTP)": type streamableHttp, url, headers.
     id: "cline",
-    mono: "Cl",
     group: "more",
     label: "Cline",
     lang: "json",
@@ -175,7 +164,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
   {
     // https://zed.dev/docs/ai/mcp — "As Custom Servers": context_servers entry with url + headers in settings.json.
     id: "zed",
-    mono: "Zd",
     group: "more",
     label: "Zed",
     lang: "json",
@@ -185,7 +173,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
     // https://raw.githubusercontent.com/google-gemini/gemini-cli/main/docs/tools/mcp-server.md — `gemini mcp add --transport http --header …`.
     // `--scope user` on purpose: the default scope is "project", which writes the header into .gemini/settings.json in the repository.
     id: "gemini-cli",
-    mono: "Gm",
     group: "more",
     label: "Gemini CLI",
     lang: "bash",
@@ -194,7 +181,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
   {
     // https://developers.openai.com/codex/mcp — config.toml, Streamable HTTP: url + bearer_token_env_var (sent in Authorization).
     id: "codex",
-    mono: "Cx",
     group: "more",
     label: "Codex",
     lang: "toml",
@@ -204,7 +190,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
   {
     // https://docs.roocode.com/features/mcp/using-mcp-in-roo — "Streamable HTTP configuration": type "streamable-http", url, headers.
     id: "roo-code",
-    mono: "Ro",
     group: "more",
     label: "Roo Code",
     lang: "json",
@@ -213,7 +198,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
   {
     // https://docs.warp.dev/knowledge-and-collaboration/mcp — Settings > Agents > MCP servers > + Add: a JSON snippet with url + headers.
     id: "warp",
-    mono: "Wp",
     group: "more",
     label: "Warp",
     lang: "json",
@@ -225,7 +209,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
     // (claude_desktop_config.json); https://github.com/geelen/mcp-remote — `--header "Name:${VAR}"` with the value in `env`
     // (no space after the colon, so a space-bearing value stays out of the argument list).
     id: "claude-desktop",
-    mono: "Cd",
     group: "more",
     label: "Claude Desktop",
     lang: "json",
@@ -243,7 +226,6 @@ export const MCP_CLIENTS: readonly McpClient[] = [
   {
     // The protocol's own shape: any client that speaks Streamable HTTP and can send a header.
     id: "other",
-    mono: "··",
     group: "more",
     label: "Other",
     lang: "text",

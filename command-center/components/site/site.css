@@ -2167,14 +2167,11 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   :root:not([data-theme="light"]) .st-logo use[data-v="dark"] { display: inline; }
 }
 .st-logo-glyph { width: 60%; height: 60%; }
-.st-logo-mono { font-family: var(--font-mono); font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--ns-text-dim); }
-.st-tile .st-logo-mono { font-size: calc(var(--s) * 0.34); font-family: var(--font-display); letter-spacing: 0; }
 
 /* Tab pills: the logo on its own small tile, the name beside it. */
 .st-pill-glyph { background: var(--ns-ground); border-color: var(--ns-rule-strong); color: var(--ns-text-dim); padding: 5px; }
 .st-pill[aria-selected="true"] .st-pill-glyph { border-color: var(--ns-rule-strong); color: var(--ns-text-dim); }
 .st-pill-glyph[data-tile="paper"] { background: #fff; }
-.st-pill-glyph .st-logo-mono { font-size: 13px; }
 .st-pill-glyph .st-logo-glyph { width: 100%; height: 100%; }
 
 /* Hero tiles: the logo at half the tile; the centre tile is the Nightshift N on its own black tile. */
@@ -2186,6 +2183,14 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 .st-tile[data-tile] { opacity: 1; filter: none; }
 .st-tile[data-slot="brand"] { background: none; box-shadow: 0 0 56px -10px color-mix(in srgb, var(--ns-amber) 55%, transparent); }
 .st-tile .st-tile-n { width: var(--s); height: var(--s); }
+/* On the narrowest phones the whole row fits inside the gutters: no half-cut vendor mark at the edge. */
+@media (max-width: 479px) {
+  .st-tile[data-slot="3"] { --s: 40px; }
+  .st-tile[data-slot="2"] { --s: 48px; }
+  .st-tile[data-slot="1"] { --s: 56px; }
+  .st-tile[data-slot="brand"] { --s: 80px; border-radius: 26px; }
+  .st-tile { margin-left: -8px; border-radius: 14px; }
+}
 
 .st-trademarks { margin: 20px auto 0; max-width: 70ch; text-wrap: pretty; }
 }

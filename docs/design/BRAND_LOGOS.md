@@ -24,7 +24,7 @@ Rules we hold ourselves to:
   or more prominent than ours (the Nightshift N is the centre tile).
 - Inline SVG only: no request to another origin, the CSP is untouched.
 - Where the owner's rules do not let us, or no official vector can be verified,
-  the client keeps its neutral two-letter tile (listed below with the reason).
+  the client keeps a plain neutral icon (listed below with the reason).
 
 | Client | Mark | Status | Asset source | Rules | What they allow |
 | :-- | :-- | :-- | :-- | :-- | :-- |
@@ -37,12 +37,12 @@ Rules we hold ourselves to:
 | Zed | logomark, black / white | **shown** | zed.dev/brand (logomark "Copy SVG") | zed.dev/brand | Brand blue, full white or full black only; no other colour, no distortion |
 | Roo Code | extension icon | **shown** (on a light tile in both themes: single black drawing) | `src/assets/icons/icon.svg` in github.com/RooCodeInc/Roo-Code | repo LICENSE: Apache-2.0 | No brand or trademark policy found; used unmodified |
 | Warp | glyph, black / white | **shown** | warp.dev/press → Logos → Google Drive "Warp Logos" / Glyph | warp.dev/press | "Logos ... you are free to use in all publications" |
-| Claude | Claude icon | **awaiting approval** (monogram until then) | anthropic.com/press-kit (ClaudeIcon-Rounded.svg) | anthropic.com/legal/trademark-guidelines | Marks only as Anthropic permits and **only in materials it approves beforehand**; no alterations; no implied endorsement. Request: marketing@anthropic.com. To switch on once approved: set `ANTHROPIC_MARKS_APPROVED = true` in `lib/dev/brand-logos.ts` |
+| Claude | Claude icon | **awaiting approval** (a plain icon until then) | anthropic.com/press-kit (ClaudeIcon-Rounded.svg) | anthropic.com/legal/trademark-guidelines | Marks only as Anthropic permits and **only in materials it approves beforehand**; no alterations; no implied endorsement. Request: marketing@anthropic.com. To switch on once approved: set `ANTHROPIC_MARKS_APPROVED = true` in `lib/dev/brand-logos.ts` |
 | Claude Desktop | Claude icon | **awaiting approval** | as Claude | as Claude | as Claude |
-| Claude Code | — | monogram | anthropic.com/press-kit | as Claude | Needs the same approval, and the only Claude Code mark is a 7:1 wordmark lockup that cannot sit in a square tile unchanged |
-| Hermes | — | monogram | hermes-agent.nousresearch.com, github.com/NousResearch/hermes-agent (MIT) | none published | No brand page and no official vector mark (only a 48 px favicon and a 1.9 MB marketing badge) |
-| Gemini CLI | — | monogram | Google Brand Resource Center | partnermarketinghub.withgoogle.com/brands/google | Resources are released only after an application; no public official asset |
-| Codex | — | monogram | cdn.openai.com/brand/openai-logos.zip | openai.com/brand | The kit has no Codex mark; the Blossom is already the ChatGPT tab's and one mark must not stand for two products |
+| Claude Code | — | plain icon | anthropic.com/press-kit | as Claude | Needs the same approval, and the only Claude Code mark is a 7:1 wordmark lockup that cannot sit in a square tile unchanged |
+| Hermes | — | plain icon | hermes-agent.nousresearch.com, github.com/NousResearch/hermes-agent (MIT) | none published | No brand page and no official vector mark (only a 48 px favicon and a 1.9 MB marketing badge) |
+| Gemini CLI | — | plain icon | Google Brand Resource Center | partnermarketinghub.withgoogle.com/brands/google | Resources are released only after an application; no public official asset |
+| Codex | — | plain icon | cdn.openai.com/brand/openai-logos.zip | openai.com/brand | The kit has no Codex mark; the Blossom is already the ChatGPT tab's and one mark must not stand for two products |
 | Other | plug glyph (icon set the site already uses) | n/a | — | — | Not a product |
 
 ## Light and dark
@@ -61,7 +61,7 @@ sits on a light tile in both.
   a tile, not a lock-up, but it is the nearest of our uses to that line.
 - **OpenClaw** and **Roo Code** publish no brand policy; their marks are used on
   the basis of their open-source repositories. If either asks us to stop, remove
-  its entry's `symbols` (the monogram returns).
+  its entry's `symbols` (the plain icon returns).
 - **Anthropic** requires approval first: nothing of theirs is shown yet.
 - A vendor can change its rules; the "fetched" dates are the day each page was read.
 

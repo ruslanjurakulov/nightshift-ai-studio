@@ -11,7 +11,7 @@
  *
  * A mark is shown only when its status is "official". Where an owner's own
  * guideline does not let us, or no official vector can be verified, the client
- * keeps the neutral two-letter tile and the reason is written here: we never
+ * keeps a plain neutral icon and the reason is written here: we never
  * redraw a logo, and never pull one from a site that is not its owner's.
  *
  * Everything on the page carries the same footnote (dev.mcp.trademarks): names
@@ -27,7 +27,7 @@ export type BrandStatus =
   | "official"
   /** The owner's rules require its approval first: assets are ready, not shown until BRAND_APPROVED flips. */
   | "awaiting-approval"
-  /** No verifiable official asset, or the owner's rules do not allow it: the neutral monogram stays. */
+  /** No verifiable official asset, or the owner's rules do not allow it: the neutral icon stays. */
   | "fallback";
 
 export type BrandLogo = {
@@ -45,7 +45,7 @@ export type BrandLogo = {
   guidelines: string;
   /** What those rules allow, in a sentence, as read on the fetch date. */
   allowed: string;
-  /** Why the monogram stays (fallback and awaiting-approval only). */
+  /** Why a plain icon stays (fallback and awaiting-approval only). */
   reason?: string;
   fetched: "2026-10-03";
 };
@@ -54,7 +54,7 @@ export type BrandLogo = {
  * Anthropic's trademark guidelines say its marks may be used "only in materials
  * we approve beforehand" (https://www.anthropic.com/legal/trademark-guidelines;
  * requests: marketing@anthropic.com). Until that approval is in hand the
- * Claude, Claude Code and Claude Desktop tabs keep the monogram. Flip this to
+ * Claude, Claude Code and Claude Desktop tabs keep a plain icon. Flip this to
  * true the day it is, and the Claude icon appears on Claude and Claude Desktop
  * (Claude Code has only a seven-to-one wordmark, which does not fit a tile).
  */
