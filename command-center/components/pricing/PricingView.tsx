@@ -184,7 +184,7 @@ export function PricingView({
               signedIn={signedIn}
               subscribeHref={`${credits}#plans`}
             />
-            <ul className="flex max-w-3xl flex-col gap-2 text-[14px] text-[var(--ns-text-dim)]">
+            <ul className="flex max-w-3xl flex-col gap-2 text-sm text-[var(--ns-text-dim)]">
               {generationRates ? <li>{t.creditsPage.eq.note}</li> : !signedIn && <li>{p.eqSignedOut}</li>}
               <li>{t.plans.expiresNote}</li>
               <li>{t.plans.spendOrder}</li>
@@ -300,7 +300,7 @@ export function PricingView({
               {steps.map(({ title, body }, i) => (
                 <li key={title}>
                   <h3 className="st-h3">
-                    <span className="st-num mr-3 text-[13px] font-normal text-[var(--ns-text-dim)]" aria-hidden>
+                    <span className="st-num mr-3 text-sm font-normal text-[var(--ns-text-dim)]" aria-hidden>
                       {String(i + 1).padStart(2, "0")}
                     </span>
                     {title}
@@ -334,7 +334,7 @@ export function PricingView({
               ) : (
                 <p className="st-small">{signedIn ? p.ratesUnavailable : p.ratesSignedOut}</p>
               )}
-              <p className="st-small border-t border-[var(--ns-rule)] pt-4 text-[12.5px]">{p.ratesNote}</p>
+              <p className="st-small border-t border-[var(--ns-rule)] pt-4 text-xs">{p.ratesNote}</p>
             </div>
           </aside>
         </div>

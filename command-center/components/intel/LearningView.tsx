@@ -32,7 +32,7 @@ export function LearningView({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
                   <th className="px-4 py-2 font-semibold">{t.intel.sigMetric}</th>
                   <th className="px-4 py-2 font-semibold">{t.intel.sigDirection}</th>
                   <th className="px-4 py-2 font-semibold">{t.intel.sigTopic}</th>
@@ -47,15 +47,15 @@ export function LearningView({
                 {signals.map((s, i) => (
                   <tr key={`${s.signal}-${s.videoId}-${i}`} className="border-b border-[var(--color-border)]/50 transition-colors hover:bg-[var(--color-panel-2)]">
                     <td className="px-4 py-2 text-[var(--color-fg)]">{metricLabel(signalMetric(s.signal))}</td>
-                    <td className="px-4 py-2 mono text-[11px]" style={{ color: s.direction === "up" ? "var(--color-ok)" : "var(--color-fail)" }}>
+                    <td className="px-4 py-2 tnum text-xs" style={{ color: s.direction === "up" ? "var(--color-ok)" : "var(--color-fail)" }}>
                       {s.direction === "up" ? `↑ ${t.intel.dirUp}` : `↓ ${t.intel.dirDown}`}
                     </td>
                     <td className="px-4 py-2 text-[var(--color-muted)]">{s.signal}</td>
-                    <td className="px-4 py-2 text-right mono tabular-nums text-[var(--color-fg)]">{num(s.value)}</td>
-                    <td className="px-4 py-2 text-right mono tabular-nums text-[var(--color-muted)]">{num(s.baseline)}</td>
-                    <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">{s.detail ?? t.common.dash}</td>
-                    <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">{s.videoId}</td>
-                    <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">{relativeTime(s.analyzedDate)}</td>
+                    <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-fg)]">{num(s.value)}</td>
+                    <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-muted)]">{num(s.baseline)}</td>
+                    <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{s.detail ?? t.common.dash}</td>
+                    <td className="px-4 py-2 mono text-xs text-[var(--color-muted)]">{s.videoId}</td>
+                    <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{relativeTime(s.analyzedDate)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -72,7 +72,7 @@ export function LearningView({
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-[var(--color-border)] text-left text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                  <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
                     <th className="px-4 py-2 font-semibold">{t.intel.decTopic}</th>
                     <th className="px-4 py-2 text-right font-semibold">{t.intel.decScore}</th>
                     <th className="px-4 py-2 font-semibold">{t.intel.tiState}</th>
@@ -86,20 +86,20 @@ export function LearningView({
                   {topics.map((ti) => (
                     <tr key={ti.topic} className="border-b border-[var(--color-border)]/50 transition-colors hover:bg-[var(--color-panel-2)]">
                       <td className="px-4 py-2 text-[var(--color-fg)]">{ti.topic}</td>
-                      <td className="px-4 py-2 text-right mono font-bold tabular-nums" style={{ color: (ti.score ?? 0) >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}>
+                      <td className="px-4 py-2 text-right tnum font-bold tabular-nums" style={{ color: (ti.score ?? 0) >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}>
                         {ti.score == null ? t.common.na : ti.score.toFixed(0)}
                       </td>
                       <td className="px-4 py-2"><TopicStateBadge state={ti.state} /></td>
                       <td className="px-4 py-2"><ConfidenceBadge confidence={ti.confidence} /></td>
-                      <td className="px-4 py-2 text-right mono tabular-nums text-[var(--color-muted)]">{ti.videosAnalyzed ?? t.common.na}</td>
-                      <td className="px-4 py-2 text-right mono tabular-nums text-[var(--color-muted)]">{ti.signalCount}</td>
-                      <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">{ti.lastUsed ? relativeTime(ti.lastUsed) : t.common.na}</td>
+                      <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-muted)]">{ti.videosAnalyzed ?? t.common.na}</td>
+                      <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-muted)]">{ti.signalCount}</td>
+                      <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{ti.lastUsed ? relativeTime(ti.lastUsed) : t.common.na}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <p className="border-t border-[var(--color-border)] px-4 py-2 mono text-[10px] text-[var(--color-muted)]">
+            <p className="border-t border-[var(--color-border)] px-4 py-2 tnum text-xs text-[var(--color-muted)]">
               {t.intel.trendNote}
             </p>
           </>

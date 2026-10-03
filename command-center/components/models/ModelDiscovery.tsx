@@ -627,7 +627,7 @@ function ModelDetail({ model: m, task, operator }: { model: DiscoveryModel; task
           <span className={styles.stage}>{c.stages[m.stage]}</span>
           {/* The registry id carries the vendor's name: the operator's, like the provider. */}
           {withProvider && (
-            <span className="mono">
+            <span className="tnum">
               {c.modelId} {m.id}
             </span>
           )}
@@ -704,7 +704,7 @@ function ModelDetail({ model: m, task, operator }: { model: DiscoveryModel; task
           <p className={styles.note}>{c.noSettings}</p>
         )}
         {(s.speedTier !== null || s.qualityTier !== null) && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-[var(--color-muted)]">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--color-muted)]">
             <span>{c.marks}</span>
             <TierMarks speed={s.speedTier} quality={s.qualityTier} />
             <span>{c.marksNote}</span>

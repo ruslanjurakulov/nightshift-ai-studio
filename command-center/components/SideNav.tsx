@@ -53,7 +53,7 @@ function NavList({ operator, onNavigate }: { operator: boolean; onNavigate?: () 
       {navGroupsFor(operator).map((group, gi) => (
         <div key={group.label ?? `g${gi}`} className="flex flex-col gap-0.5">
           {group.label && (
-            <div className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
+            <div className="px-3 pb-1 pt-1 text-xs font-semibold text-[var(--color-muted)]">
               {t.nav[group.label]}
             </div>
           )}
@@ -138,7 +138,7 @@ export function SideNav({
           aria-haspopup="dialog"
           aria-expanded={open}
           aria-controls={open ? drawerId : undefined}
-          className="btn-sky is-quiet pill inline-flex h-10 items-center gap-2 px-3 text-[13px]"
+          className="btn-sky is-quiet pill inline-flex h-10 items-center gap-2 px-3 text-sm"
         >
           <Menu aria-hidden className="size-4" />
           {t.nav.menu}

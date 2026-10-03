@@ -66,11 +66,11 @@ export function ReferencePicker({
               {ts.referencesLabel}
             </Chip>
             <span className="sr-only">{fmt(ts.selected, { n: selected.length })}</span>
-            <span className="ns-tc text-[12px] text-[var(--color-muted)]" aria-hidden>
+            <span className="ns-tc text-xs text-[var(--color-muted)]" aria-hidden>
               {min}–{max}
             </span>
           </span>
-          <span className="text-[12px] text-[var(--color-muted)]">{fmt(ts.refsHint, { min, max })}</span>
+          <span className="text-xs text-[var(--color-muted)]">{fmt(ts.refsHint, { min, max })}</span>
         </div>
 
         {/* The order is the order of use: the first is the cover. */}
@@ -91,7 +91,7 @@ export function ReferencePicker({
                       <ImageOff aria-hidden className="size-4" />
                     </span>
                   )}
-                  <span className="ns-edge-no absolute bottom-0 left-0 bg-[var(--ns-film)] px-1.5 font-mono text-[10px] text-[var(--ns-edge-print)]">
+                  <span className="ns-edge-no absolute bottom-0 left-0 bg-[var(--ns-film)] px-1.5 tnum text-xs text-[var(--ns-edge-print)]">
                     {i + 1}
                   </span>
                   <button
@@ -108,7 +108,7 @@ export function ReferencePicker({
           </ol>
         )}
 
-        {full && state === "ready" && <p className="text-[12px] text-[var(--color-muted)]">{ts.pickerFull}</p>}
+        {full && state === "ready" && <p className="text-xs text-[var(--color-muted)]">{ts.pickerFull}</p>}
 
         {state === "loading" && (
           <ContactSheet label={ts.pickerLoading} min={96}>
@@ -121,7 +121,7 @@ export function ReferencePicker({
         )}
 
         {state === "failed" && (
-          <div className="flex flex-wrap items-center gap-3 text-[13px] text-[var(--color-muted)]">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--color-muted)]">
             <span>{ts.pickerFailed}</span>
             <button type="button" onClick={() => void load()} className="btn-quiet disabled:opacity-50">
               {ts.retry}
@@ -129,10 +129,10 @@ export function ReferencePicker({
           </div>
         )}
 
-        {state === "unavailable" && <p className="text-[13px] text-[var(--color-muted)]">{ts.pickerUnavailable}</p>}
+        {state === "unavailable" && <p className="text-sm text-[var(--color-muted)]">{ts.pickerUnavailable}</p>}
 
         {state === "ready" && images.length === 0 && (
-          <div className="flex flex-wrap items-center gap-3 text-[13px] text-[var(--color-muted)]">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--color-muted)]">
             <span>{ts.pickerEmpty}</span>
             <Link href={libraryHref} className="btn-quiet">
               {ts.pickerOpenLibrary}
@@ -160,7 +160,7 @@ export function ReferencePicker({
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={img.thumbUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
                     ) : (
-                      <span className="grid h-full w-full place-items-center gap-1 text-[10px] text-[var(--ns-on-film)]">
+                      <span className="grid h-full w-full place-items-center gap-1 text-xs text-[var(--ns-on-film)]">
                         <ImageOff aria-hidden className="size-4" />
                         {ts.noPreview}
                       </span>

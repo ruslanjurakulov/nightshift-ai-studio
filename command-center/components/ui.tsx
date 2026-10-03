@@ -51,7 +51,7 @@ export function StatCard({
         {value}
       </div>
       {sub !== undefined && (
-        <div className="mt-2 text-[13px] font-light text-[var(--color-muted)]">{sub}</div>
+        <div className="mt-2 text-sm font-light text-[var(--color-muted)]">{sub}</div>
       )}
     </div>
   );
@@ -90,7 +90,7 @@ export function EmptyState({
       >
         <Icon className="size-6" strokeWidth={1.5} />
       </span>
-      <p className="m-0 max-w-[46ch] text-[14px] font-light leading-relaxed text-[var(--color-muted)]">
+      <p className="m-0 max-w-[46ch] text-sm font-light leading-relaxed text-[var(--color-muted)]">
         {children}
       </p>
     </div>

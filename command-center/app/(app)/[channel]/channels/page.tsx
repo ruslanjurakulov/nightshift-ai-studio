@@ -117,7 +117,7 @@ export default async function ChannelsPage({
         subtitle={t.channels.subtitle}
         actions={
           !notMigrated ? (
-            <Link href={path("/channels/new")} className="btn-sky pill px-5 py-2.5 text-[13px]">
+            <Link href={path("/channels/new")} className="btn-sky pill px-5 py-2.5 text-sm">
               + {t.channels.add}
             </Link>
           ) : undefined
@@ -147,13 +147,13 @@ export default async function ChannelsPage({
             <ChannelComparison stats={stats} />
           </Panel>
 
-          <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">
+          <p className="text-xs leading-relaxed text-[var(--color-muted)]">
             {t.channels.isolationNote}
           </p>
 
           {ytResult && (
             <p
-              className="text-[13px]"
+              className="text-sm"
               style={{ color: ytResult === "connected" ? "var(--color-primary)" : "var(--color-warn)" }}
               role="status"
             >

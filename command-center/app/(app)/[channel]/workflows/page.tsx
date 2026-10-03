@@ -26,7 +26,7 @@ export default async function WorkflowsPage() {
   const note = (text: string) => (
     <div className="rhythm">
       {header}
-      <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{text}</div>
+      <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{text}</div>
     </div>
   );
   if (!org.supported) return note(t.org.notMigrated);

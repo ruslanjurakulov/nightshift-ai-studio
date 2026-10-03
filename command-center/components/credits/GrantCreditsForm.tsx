@@ -49,16 +49,16 @@ export function GrantCreditsForm({ orgId, orgName }: { orgId: string; orgName: s
   }
 
   const inputClass =
-    "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
+    "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
 
   return (
-    <div className="panel flex flex-col gap-3 p-4">
+    <div className="panel flex flex-col gap-3 p-5 sm:p-6">
       <h2 className="t-section">
         {t.credits.grantTitle} · <span className="font-light">{orgName}</span>
       </h2>
-      <p className="text-[12px] text-[var(--color-muted)]">{t.credits.grantHint}</p>
+      <p className="text-xs text-[var(--color-muted)]">{t.credits.grantHint}</p>
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-[11px] text-[var(--color-muted)]">
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
           {t.credits.grantAmount}
           <input
             type="number"
@@ -70,7 +70,7 @@ export function GrantCreditsForm({ orgId, orgName }: { orgId: string; orgName: s
             className={`w-36 ${inputClass}`}
           />
         </label>
-        <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-[11px] text-[var(--color-muted)]">
+        <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-xs text-[var(--color-muted)]">
           {t.credits.grantNote}
           <input
             type="text"
@@ -85,13 +85,13 @@ export function GrantCreditsForm({ orgId, orgName }: { orgId: string; orgName: s
           type="button"
           onClick={grant}
           disabled={busy || amount.trim() === ""}
-          className="btn-primary text-[13px] disabled:opacity-40"
+          className="btn-primary text-sm disabled:opacity-40"
         >
           {busy ? t.credits.granting : t.credits.grant}
         </button>
       </div>
       {msg && (
-        <p className="text-[12px]" style={{ color: msg.ok ? "var(--color-ok)" : "var(--color-fail)" }} aria-live="polite">
+        <p className="text-xs" style={{ color: msg.ok ? "var(--color-ok)" : "var(--color-fail)" }} aria-live="polite">
           {msg.text}
         </p>
       )}

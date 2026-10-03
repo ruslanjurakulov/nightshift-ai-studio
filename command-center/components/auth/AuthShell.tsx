@@ -47,7 +47,7 @@ export function AuthShell({
           <p className="st-h2 max-w-[16ch]">{asideTitle}</p>
           <ul className="st-ledger max-w-[44ch]">
             {a.asideItems.map((line) => (
-              <li key={line} className="text-[16px]">
+              <li key={line} className="text-base">
                 <span aria-hidden className="ns-lamp" data-tone="ok" />
                 {line}
               </li>
@@ -65,7 +65,7 @@ export function AuthShell({
 
       <main className="st-auth-main">
         <div className="flex min-h-14 items-center justify-between gap-3">
-          <Link href="/" className="st-link text-[14px]">
+          <Link href="/" className="st-link text-sm">
             <ArrowLeft aria-hidden />
             <span className="max-[380px]:sr-only">{a.back}</span>
           </Link>

@@ -34,7 +34,7 @@ export function ThemeToggle({ showLabel = false }: { showLabel?: boolean } = {})
       aria-label={label}
       className={
         showLabel
-          ? "btn-sky is-quiet pill h-10 gap-2 px-4 text-[13px] font-light"
+          ? "btn-sky is-quiet pill h-10 gap-2 px-4 text-sm font-light"
           : "btn-sky is-quiet pill grid size-10 place-items-center"
       }
     >

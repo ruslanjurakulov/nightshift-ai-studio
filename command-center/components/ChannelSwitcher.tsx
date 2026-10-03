@@ -99,7 +99,7 @@ export function ChannelSwitcher({
               : "var(--color-primary)",
           }}
         />
-        <span className="truncate text-[14px] font-light">{label}</span>
+        <span className="truncate text-sm font-light">{label}</span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-3.5 shrink-0 text-[var(--color-muted)]">
           <path d="m6 9 6 6 6-6" />
         </svg>
@@ -158,12 +158,12 @@ function Option({
       )}
       <span className="min-w-0 flex-1">
         <span
-          className="block truncate text-[14px] font-light"
+          className="block truncate text-sm font-light"
           style={{ color: active ? "var(--color-primary)" : "var(--color-fg)" }}
         >
           {label}
         </span>
-        {sub && <span className="mono block truncate text-[10px] text-[var(--color-muted)]">{sub}</span>}
+        {sub && <span className="tnum block truncate text-xs text-[var(--color-muted)]">{sub}</span>}
       </span>
     </button>
   );

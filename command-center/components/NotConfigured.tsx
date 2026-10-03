@@ -11,7 +11,7 @@ export function NotConfigured() {
   return (
     <div className="flex min-h-[60vh] items-center justify-center p-6">
       <div className="reveal panel max-w-lg p-6">
-        <div className="mono text-xs font-bold tracking-widest text-[var(--color-warn)]">
+        <div className="tnum text-xs font-bold text-[var(--color-warn)]">
           {t.notConfigured.badge}
         </div>
         <h1 className="mt-2 text-lg font-semibold text-[var(--color-fg)]">{t.notConfigured.title}</h1>

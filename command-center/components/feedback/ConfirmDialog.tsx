@@ -101,7 +101,7 @@ export function ConfirmDialog({
             <h2 id={titleId} className="text-[15px] font-semibold text-[var(--color-fg)]">
               {options.title ?? t.ux.confirmTitle}
             </h2>
-            <p id={bodyId} className="mt-1.5 break-words text-[13px] leading-relaxed text-[var(--color-muted)]">
+            <p id={bodyId} className="mt-1.5 break-words text-sm leading-relaxed text-[var(--color-muted)]">
               {options.message}
             </p>
           </div>
@@ -111,14 +111,14 @@ export function ConfirmDialog({
             ref={cancelRef}
             type="button"
             onClick={() => onResolve(false)}
-            className="btn-sky is-quiet pill px-4 py-2 text-[13px]"
+            className="btn-sky is-quiet pill px-4 py-2 text-sm"
           >
             {options.cancelLabel ?? t.ux.confirmCancel}
           </button>
           <button
             type="button"
             onClick={() => onResolve(true)}
-            className="btn-sky is-solid pill px-4 py-2 text-[13px]"
+            className="btn-sky is-solid pill px-4 py-2 text-sm"
             style={{ borderColor: "var(--color-fail)", color: "var(--color-fail)" }}
           >
             {options.confirmLabel}

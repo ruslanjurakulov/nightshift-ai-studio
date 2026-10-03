@@ -193,13 +193,13 @@ export function BuyCredits({
             </Chip>
           )}
         </div>
-        <p className="text-[14px] font-light text-[var(--color-muted)]">
+        <p className="text-sm font-light text-[var(--color-muted)]">
           {cp.packsLead}
         </p>
       </div>
 
       {/* The terms come before the buttons: read before any checkout opens. */}
-      <p className="text-[12px] leading-relaxed text-[var(--color-muted)]" data-purchase-terms>
+      <p className="text-xs leading-relaxed text-[var(--color-muted)]" data-purchase-terms>
         {validity} {cp.refunds}{" "}
         <Link href="/terms#credits" className="underline underline-offset-2 hover:text-[var(--color-fg)]">
           {cp.termsLink}
@@ -214,12 +214,12 @@ export function BuyCredits({
               <span className="text-[28px] font-semibold leading-none">
                 <Timecode value={pack.credits} locale={locale} />
               </span>
-              <span className="text-[13px] text-[var(--color-muted)]">{cp.unit}</span>
+              <span className="text-sm text-[var(--color-muted)]">{cp.unit}</span>
             </div>
             <Equivalents credits={pack.credits} rates={rates} />
             <div className="mt-auto flex flex-col gap-2 border-t border-[var(--color-border)] pt-3">
               {/* The price is the provider's quote, drawn as given; with none, the key says so in words. */}
-              {!prices[pack.priceId] && <span className="text-[12px] text-[var(--color-muted)]">{cp.priceAtCheckout}</span>}
+              {!prices[pack.priceId] && <span className="text-xs text-[var(--color-muted)]">{cp.priceAtCheckout}</span>}
               <PriceButton
                 onClick={() => buy(pack)}
                 disabled={phase === "opening"}
@@ -230,11 +230,11 @@ export function BuyCredits({
           </li>
         ))}
       </ul>
-      {rates && <p className="text-[11px] text-[var(--color-muted)]">{cp.eq.note}</p>}
+      {rates && <p className="text-xs text-[var(--color-muted)]">{cp.eq.note}</p>}
 
       {msg && (
         <p
-          className="text-[13px]"
+          className="text-sm"
           style={{ color: msg.ok ? "var(--color-ok)" : phase === "slow" || phase === "cancelled" ? "var(--color-muted)" : "var(--color-fail)" }}
           aria-live="polite"
         >
@@ -243,7 +243,7 @@ export function BuyCredits({
       )}
 
       {/* Legal disclosure, not branding: the Merchant of Record must be named before payment. */}
-      <p className="text-[11px] text-[var(--color-muted)]">
+      <p className="text-xs text-[var(--color-muted)]">
         {t.credits.buy.merchant}{" "}
         <Link href="/terms" className="underline">
           {t.credits.buy.terms}
@@ -256,5 +256,5 @@ export function BuyCredits({
 /** For an editor or viewer of a paying organization: who can buy, not a button. */
 export function BuyCreditsAdminOnly() {
   const { t } = useI18n();
-  return <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.credits.buy.adminOnly}</div>;
+  return <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.credits.buy.adminOnly}</div>;
 }

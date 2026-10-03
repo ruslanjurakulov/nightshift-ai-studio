@@ -108,7 +108,7 @@ function Block({ block, t, expiry }: { block: LegalBlock; t: Dictionary; expiry:
     return (
       <p
         role="note"
-        className="rounded-xl border border-[var(--color-warn)] px-4 py-3 text-[14px] font-medium text-[var(--color-warn)]"
+        className="rounded-xl border border-[var(--color-warn)] px-4 py-3 text-sm font-medium text-[var(--color-warn)]"
       >
         <Inline text={block.note} t={t} />
       </p>
@@ -122,11 +122,11 @@ function Block({ block, t, expiry }: { block: LegalBlock; t: Dictionary; expiry:
       aria-label={`${block.table.head.join(" · ")} · ${t.common.scrollTable}`}
       className="scroll-focus overflow-x-auto rounded-xl border border-[var(--color-border)]"
     >
-      <table className="w-full min-w-[34rem] border-collapse text-left text-[14px]">
+      <table className="w-full min-w-[34rem] border-collapse text-left text-sm">
         <thead className="bg-[var(--color-panel-2)]">
           <tr>
             {block.table.head.map((h, i) => (
-              <th key={i} scope="col" className="px-4 py-3 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--color-muted)]">
+              <th key={i} scope="col" className="px-4 py-3 text-xs font-medium text-[var(--color-muted)]">
                 {h}
               </th>
             ))}
@@ -172,7 +172,7 @@ export function LegalDocumentView({
       <h1 className="t-hero">{doc.title}</h1>
       <p className="t-lead mt-4">{doc.summary}</p>
 
-      <dl className="glass-card mt-8 grid gap-x-6 gap-y-3 rounded-2xl border border-[var(--color-border)] p-5 text-[14px] sm:grid-cols-2">
+      <dl className="glass-card mt-8 grid gap-x-6 gap-y-3 rounded-2xl border border-[var(--color-border)] p-5 text-sm sm:grid-cols-2">
         {facts.map((f) => (
           <div key={f.name} className="flex flex-col gap-1">
             <dt className="t-label">{f.label}</dt>
@@ -184,17 +184,17 @@ export function LegalDocumentView({
       </dl>
 
       {missingLegalFields(LEGAL).length > 0 && (
-        <p className="mt-4 text-[13px] text-[var(--color-muted)]">{t.legal.pendingNote}</p>
+        <p className="mt-4 text-sm text-[var(--color-muted)]">{t.legal.pendingNote}</p>
       )}
 
       {locale !== "en" && (
-        <p className="mt-4 text-[13px] font-light text-[var(--color-muted)]">{t.legal.translationNote}</p>
+        <p className="mt-4 text-sm font-light text-[var(--color-muted)]">{t.legal.translationNote}</p>
       )}
 
       <nav aria-label={t.legal.contents} className="mt-10">
         <div className="t-label">{t.legal.contents}</div>
         {/* Each entry is a 44px row: the links were 17px tall, too small to tap. */}
-        <ol className="mt-3 grid gap-x-6 text-[14px] sm:grid-cols-2">
+        <ol className="mt-3 grid gap-x-6 text-sm sm:grid-cols-2">
           {doc.sections.map((s) => (
             <li key={s.id}>
               <a

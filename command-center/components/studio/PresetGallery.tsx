@@ -68,9 +68,9 @@ export function PresetGallery({
   return (
     <div>
       <h2 className="t-section">{t.studio.presetsTitle}</h2>
-      <p className="t-lead mt-2 mb-4 text-[13px]">{t.studio.presetsHint}</p>
+      <p className="t-lead mt-2 mb-4 text-sm">{t.studio.presetsHint}</p>
       {!channelId && (
-        <p className="mb-4 text-[13px] text-[var(--color-warn)]">{t.studio.pickChannelHint}</p>
+        <p className="mb-4 text-sm text-[var(--color-warn)]">{t.studio.pickChannelHint}</p>
       )}
       <TileGrid min={260} gap={16} label={t.studio.presetsTitle}>
         {STYLE_PRESETS.map((p) => {
@@ -95,9 +95,9 @@ export function PresetGallery({
                     </Chip>
                   )}
                 </div>
-                <p className="text-[13px] leading-relaxed text-[var(--color-muted)]">{p.directive}</p>
+                <p className="text-sm leading-relaxed text-[var(--color-muted)]">{p.directive}</p>
                 <div className="flex items-center justify-between gap-2 pt-1">
-                  <span className="mono text-[11px] text-[var(--color-muted)]">
+                  <span className="tnum text-xs text-[var(--color-muted)]">
                     {t.studio.applyHint} <span className="text-[var(--color-primary)]">{p.id}</span>
                   </span>
                   <button
@@ -114,7 +114,7 @@ export function PresetGallery({
                   </button>
                 </div>
                 {failed === p.id && (
-                  <p className="mono text-[11px] text-[var(--color-fail)]">{t.studio.applyFailed}</p>
+                  <p className="tnum text-xs text-[var(--color-fail)]">{t.studio.applyFailed}</p>
                 )}
               </div>
             </li>

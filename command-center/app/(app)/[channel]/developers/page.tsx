@@ -24,11 +24,11 @@ export default async function DevelopersPage() {
     <div className="rhythm">
       <PageHeader icon="developers" title={t.developers.title} subtitle={t.developers.subtitle} />
       {!user ? (
-        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.org.signIn}</div>
+        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.org.signIn}</div>
       ) : !current ? (
-        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.org.noOrg}</div>
+        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.org.noOrg}</div>
       ) : !atLeast(current.role, "admin") ? (
-        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.developers.adminOnly}</div>
+        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.developers.adminOnly}</div>
       ) : (
         <DeveloperConsole
           key={current.id}

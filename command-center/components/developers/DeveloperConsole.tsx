@@ -127,9 +127,9 @@ export function DeveloperConsole({
     load();
   }, [load]);
 
-  if (state === "loading") return <div className="panel p-4 text-[13px] text-[var(--color-muted)]">…</div>;
-  if (state === "missing") return <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{d.notMigrated}</div>;
-  if (state === "error" || !info) return <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{d.loadFailed}</div>;
+  if (state === "loading") return <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">…</div>;
+  if (state === "missing") return <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{d.notMigrated}</div>;
+  if (state === "error" || !info) return <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{d.loadFailed}</div>;
 
   const tabs: [Tab, string][] = [
     ["overview", d.tabOverview],
@@ -150,13 +150,13 @@ export function DeveloperConsole({
               aria-selected={tab === k}
               type="button"
               onClick={() => setTab(k)}
-              className={`pill px-3.5 py-1.5 text-[13px] ${tab === k ? "btn-sky is-solid" : "btn-sky"}`}
+              className={`pill px-3.5 py-1.5 text-sm ${tab === k ? "btn-sky is-solid" : "btn-sky"}`}
             >
               {label}
             </button>
           ))}
         </div>
-        <a href="/docs/api" target="_blank" rel="noreferrer" className="text-[13px] underline">
+        <a href="/docs/api" target="_blank" rel="noreferrer" className="text-sm underline">
           {d.docsLink}
         </a>
       </div>
@@ -206,11 +206,11 @@ function Activate({
   }
 
   return (
-    <div className="panel flex flex-col gap-3 p-4">
+    <div className="panel flex flex-col gap-3 p-5 sm:p-6">
       <h2 className="t-section">{d.activateTitle}</h2>
-      <p className="text-[13px] text-[var(--color-muted)]">{d.activateBody}</p>
+      <p className="text-sm text-[var(--color-muted)]">{d.activateBody}</p>
       {!info.eligible ? (
-        <p className="text-[13px]">
+        <p className="text-sm">
           {d.notEligible}{" "}
           <Link className="underline" href={creditsHref}>
             {d.buyCredits}
@@ -218,7 +218,7 @@ function Activate({
         </p>
       ) : (
         <>
-          <label className="flex items-start gap-2 text-[13px]">
+          <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} className="mt-0.5" />
             <span>
               {d.acceptTerms}{" "}
@@ -232,24 +232,24 @@ function Activate({
               type="button"
               onClick={activate}
               disabled={!accepted || busy}
-              className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
+              className="btn-sky is-solid pill px-5 py-2 text-sm disabled:opacity-40"
             >
               {busy ? d.activating : d.activate}
             </button>
           </div>
         </>
       )}
-      {error && <p className="text-[13px] text-[var(--color-fail)]">{error}</p>}
+      {error && <p className="text-sm text-[var(--color-fail)]">{error}</p>}
     </div>
   );
 }
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="panel flex flex-col gap-1 p-4">
-      <span className="text-[12px] text-[var(--color-muted)]">{label}</span>
+    <div className="panel flex flex-col gap-1 p-5 sm:p-6">
+      <span className="text-xs text-[var(--color-muted)]">{label}</span>
       <span className="text-[20px] font-semibold tabular-nums">{value}</span>
-      {sub ? <span className="text-[12px] text-[var(--color-muted)]">{sub}</span> : null}
+      {sub ? <span className="text-xs text-[var(--color-muted)]">{sub}</span> : null}
     </div>
   );
 }
@@ -265,7 +265,7 @@ function Overview({ info, locale }: { info: Console; locale: string }) {
   return (
     <div className="rhythm">
       {info.activated_at && (
-        <div className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--color-muted)]">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--color-muted)]">
           <StatusPill tone="ok" label={fmt(d.activeSince, { date: new Date(info.activated_at).toLocaleDateString(locale) })} />
           {info.exempt && <span>{d.exemptNote}</span>}
         </div>
@@ -414,21 +414,21 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
   }
 
   const input =
-    "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
+    "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
 
-  if (!activated) return <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{d.activateFirst}</div>;
+  if (!activated) return <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{d.activateFirst}</div>;
 
   return (
     <div className="rhythm">
       {shown && (
-        <div className="panel flex flex-col gap-3 border-[var(--color-primary)] p-4">
+        <div className="panel flex flex-col gap-3 border-[var(--color-primary)] p-5 sm:p-6">
           <h2 className="t-section">{d.newKeyTitle}</h2>
-          <p className="text-[13px] text-[var(--color-muted)]">{d.newKeyNote}</p>
-          <code className="mono break-all rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-2 text-[13px]">{shown}</code>
+          <p className="text-sm text-[var(--color-muted)]">{d.newKeyNote}</p>
+          <code className="mono break-all rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-2 text-sm">{shown}</code>
           <div className="flex gap-2">
             <button
               type="button"
-              className="btn-sky pill px-4 py-1.5 text-[13px]"
+              className="btn-sky pill px-4 py-1.5 text-sm"
               onClick={async () => {
                 try {
                   await navigator.clipboard.writeText(shown);
@@ -440,28 +440,28 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
             >
               {copied ? d.copied : d.copy}
             </button>
-            <button type="button" className="btn-sky is-solid pill px-4 py-1.5 text-[13px]" onClick={() => setShown(null)}>
+            <button type="button" className="btn-sky is-solid pill px-4 py-1.5 text-sm" onClick={() => setShown(null)}>
               {d.done}
             </button>
           </div>
         </div>
       )}
 
-      <div className="panel flex flex-col gap-3 p-4">
+      <div className="panel flex flex-col gap-3 p-5 sm:p-6">
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-1 flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+          <label className="flex flex-1 flex-col gap-1 text-xs text-[var(--color-muted)]">
             {d.keyName}
             <input className={input} value={name} maxLength={60} placeholder={d.keyNamePh} onChange={(e) => setName(e.target.value)} />
           </label>
-          <label className="flex w-56 flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+          <label className="flex w-56 flex-col gap-1 text-xs text-[var(--color-muted)]">
             {d.keyLimit}
             <input className={input} value={limitText} inputMode="decimal" onChange={(e) => setLimitText(e.target.value)} />
           </label>
         </div>
         <fieldset className="flex flex-col gap-1.5">
-          <legend className="mb-1 text-[12px] text-[var(--color-muted)]">{d.keyScopes}</legend>
+          <legend className="mb-1 text-xs text-[var(--color-muted)]">{d.keyScopes}</legend>
           {API_SCOPES.map((scope) => (
-            <label key={scope} className="flex items-start gap-2 text-[13px]">
+            <label key={scope} className="flex items-start gap-2 text-sm">
               <input
                 type="checkbox"
                 className="mt-0.5"
@@ -473,11 +473,11 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
           ))}
         </fieldset>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex min-w-0 flex-1 basis-56 flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+          <label className="flex min-w-0 flex-1 basis-56 flex-col gap-1 text-xs text-[var(--color-muted)]">
             {d.keyRpm}
             <input className={input} value={rpmText} inputMode="numeric" onChange={(e) => setRpmText(e.target.value)} />
           </label>
-          <label className="flex min-w-0 flex-1 basis-56 flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+          <label className="flex min-w-0 flex-1 basis-56 flex-col gap-1 text-xs text-[var(--color-muted)]">
             {d.keyCreditLimit}
             <input className={input} value={creditText} inputMode="decimal" onChange={(e) => setCreditText(e.target.value)} />
           </label>
@@ -485,25 +485,25 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
             type="button"
             onClick={create}
             disabled={busy || !name.trim() || scopes.length === 0 || active >= MAX_ACTIVE_KEYS}
-            className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
+            className="btn-sky is-solid pill px-5 py-2 text-sm disabled:opacity-40"
           >
             {busy ? d.creating : d.create}
           </button>
         </div>
-        {active >= MAX_ACTIVE_KEYS && <p className="text-[12px] text-[var(--color-muted)]">{d.keyLimitReached}</p>}
-        {error && <p className="text-[13px] text-[var(--color-fail)]">{error}</p>}
+        {active >= MAX_ACTIVE_KEYS && <p className="text-xs text-[var(--color-muted)]">{d.keyLimitReached}</p>}
+        {error && <p className="text-sm text-[var(--color-fail)]">{error}</p>}
       </div>
 
-      <div className="panel overflow-x-auto p-4">
+      <div className="panel overflow-x-auto p-5 sm:p-6">
         {keysFailed ? (
           <ErrorState compact onRetry={load} />
         ) : keys === null ? (
-          <p className="text-[13px] text-[var(--color-muted)]">…</p>
+          <p className="text-sm text-[var(--color-muted)]">…</p>
         ) : keys.length === 0 ? (
-          <p className="text-[13px] text-[var(--color-muted)]">{d.noKeys}</p>
+          <p className="text-sm text-[var(--color-muted)]">{d.noKeys}</p>
         ) : (
-          <table className="w-full text-left text-[13px]">
-            <thead className="text-[12px] text-[var(--color-muted)]">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs text-[var(--color-muted)]">
               <tr>
                 <th className="py-1 pr-3">{d.keyName}</th>
                 <th className="py-1 pr-3">{d.keyId}</th>
@@ -520,24 +520,24 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
               {keys.map((k) => (
                 <tr key={k.id} className={k.revoked_at ? "opacity-50" : ""}>
                   <td className="py-2 pr-3">{k.name}</td>
-                  <td className="mono py-2 pr-3 text-[12px]">{k.id}</td>
+                  <td className="mono py-2 pr-3 text-xs">{k.id}</td>
                   <td className="py-2 pr-3">{new Date(k.created_at).toLocaleDateString(locale)}</td>
                   <td className="py-2 pr-3">{k.last_used_at ? new Date(k.last_used_at).toLocaleString(locale) : d.never}</td>
                   <td className="py-2 pr-3">{k.monthly_limit_cents === null ? d.noLimit : formatUsd(k.monthly_limit_cents, locale)}</td>
-                  <td className="py-2 pr-3 text-[12px]">
+                  <td className="py-2 pr-3 text-xs">
                     {k.scopes === null ? d.keyAccessLegacy : effectiveScopes(k.scopes).map((x) => scopeLabel(d, x)).join(" · ")}
                   </td>
                   <td className="py-2 pr-3">{k.rpm_limit ?? d.noLimit}</td>
                   <td className="py-2 pr-3">{k.creative_monthly_credits ?? d.noLimit}</td>
                   <td className="py-2 text-right">
                     {k.revoked_at ? (
-                      <span className="text-[12px]">{d.revoked}</span>
+                      <span className="text-xs">{d.revoked}</span>
                     ) : (
                       <span className="flex justify-end gap-2">
-                        <button type="button" className="text-[12px] underline" onClick={() => setKeyLimit(k)}>
+                        <button type="button" className="text-xs underline" onClick={() => setKeyLimit(k)}>
                           {d.setLimit}
                         </button>
-                        <button type="button" className="text-[12px] underline" onClick={() => revoke(k)}>
+                        <button type="button" className="text-xs underline" onClick={() => revoke(k)}>
                           {d.revoke}
                         </button>
                       </span>
@@ -558,8 +558,8 @@ function Bars({ label, values, format }: { label: string; values: { day: string;
   const max = Math.max(1, ...values.map((x) => x.v));
   const w = 100 / Math.max(1, values.length);
   return (
-    <div className="panel flex flex-col gap-2 p-4">
-      <span className="text-[12px] text-[var(--color-muted)]">{label}</span>
+    <div className="panel flex flex-col gap-2 p-5 sm:p-6">
+      <span className="text-xs text-[var(--color-muted)]">{label}</span>
       <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="h-32 w-full" role="img" aria-label={label}>
         {values.map((x, i) => {
           const h = (x.v / max) * 38;
@@ -570,7 +570,7 @@ function Bars({ label, values, format }: { label: string; values: { day: string;
           );
         })}
       </svg>
-      <div className="flex justify-between text-[11px] text-[var(--color-muted)]">
+      <div className="flex justify-between text-xs text-[var(--color-muted)]">
         <span>{values[0]?.day}</span>
         <span>{values[values.length - 1]?.day}</span>
       </div>
@@ -593,14 +593,14 @@ function UsageTab({ orgId, locale }: { orgId: string; locale: string }) {
     });
   }, [orgId]);
 
-  if (failed) return <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{d.loadFailed}</div>;
-  if (!usage) return <div className="panel p-4 text-[13px] text-[var(--color-muted)]">…</div>;
+  if (failed) return <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{d.loadFailed}</div>;
+  if (!usage) return <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">…</div>;
   const total = usage.days.reduce((s, x) => s + x.requests, 0);
   return (
     <div className="rhythm">
       <h2 className="t-section">{d.usageTitle}</h2>
       {total === 0 ? (
-        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{d.noUsage}</div>
+        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{d.noUsage}</div>
       ) : (
         <>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -611,9 +611,9 @@ function UsageTab({ orgId, locale }: { orgId: string; locale: string }) {
               format={(n) => formatUsd(n, locale)}
             />
           </div>
-          <div className="panel overflow-x-auto p-4">
-            <table className="w-full text-left text-[13px]">
-              <thead className="text-[12px] text-[var(--color-muted)]">
+          <div className="panel overflow-x-auto p-5 sm:p-6">
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs text-[var(--color-muted)]">
                 <tr>
                   <th className="py-1 pr-3">{d.endpoint}</th>
                   <th className="py-1 pr-3">{d.requests}</th>
@@ -726,45 +726,45 @@ export function Billing({
 
   const kindLabel = { topup: d.kindTopup, refund: d.kindRefund, adjustment: d.kindAdjustment };
   const input =
-    "w-36 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
+    "w-36 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
 
   return (
     <div className="rhythm">
-      <div className="panel flex flex-col gap-3 p-4">
+      <div className="panel flex flex-col gap-3 p-5 sm:p-6">
         <h2 className="t-section">{d.topupTitle}</h2>
         {info.exempt ? (
-          <p className="text-[13px] text-[var(--color-muted)]">{d.topupExempt}</p>
+          <p className="text-sm text-[var(--color-muted)]">{d.topupExempt}</p>
         ) : !info.activated_at ? (
-          <p className="text-[13px] text-[var(--color-muted)]">{d.activateFirst}</p>
+          <p className="text-sm text-[var(--color-muted)]">{d.activateFirst}</p>
         ) : !topup ? (
-          <p className="text-[13px] text-[var(--color-muted)]">{d.topupUnavailable}</p>
+          <p className="text-sm text-[var(--color-muted)]">{d.topupUnavailable}</p>
         ) : (
           <>
-            <p className="text-[13px] text-[var(--color-muted)]">{d.topupBody}</p>
+            <p className="text-sm text-[var(--color-muted)]">{d.topupBody}</p>
             <div className="flex flex-wrap items-end gap-3">
-              <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+              <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
                 {d.amount}
                 <input className={input} value={amount} inputMode="decimal" onChange={(e) => setAmount(e.target.value)} />
               </label>
-              <button type="button" onClick={pay} disabled={busy} className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40">
+              <button type="button" onClick={pay} disabled={busy} className="btn-sky is-solid pill px-5 py-2 text-sm disabled:opacity-40">
                 {d.topup}
               </button>
             </div>
           </>
         )}
-        {note && <p className="text-[13px]">{note}</p>}
+        {note && <p className="text-sm">{note}</p>}
       </div>
 
-      <div className="panel overflow-x-auto p-4">
+      <div className="panel overflow-x-auto p-5 sm:p-6">
         <h2 className="t-section mb-2">{d.historyTitle}</h2>
         {rowsFailed ? (
           <ErrorState compact onRetry={loadHistory} />
         ) : rows === null ? (
-          <p className="text-[13px] text-[var(--color-muted)]">…</p>
+          <p className="text-sm text-[var(--color-muted)]">…</p>
         ) : rows.length === 0 ? (
-          <p className="text-[13px] text-[var(--color-muted)]">{d.noPayments}</p>
+          <p className="text-sm text-[var(--color-muted)]">{d.noPayments}</p>
         ) : (
-          <table className="w-full text-left text-[13px]">
+          <table className="w-full text-left text-sm">
             <tbody className="divide-y divide-[var(--color-border)]">
               {rows.map((r) => (
                 <tr key={r.id}>
@@ -774,7 +774,7 @@ export function Billing({
                   <td className="py-2 text-right">
                     {r.kind === "topup" && r.external_id?.startsWith("txn_") ? (
                       <a
-                        className="text-[12px] underline"
+                        className="text-xs underline"
                         href={`/api/developers/receipt?org=${encodeURIComponent(orgId)}&txn=${encodeURIComponent(r.external_id)}`}
                         target="_blank"
                         rel="noreferrer"
@@ -812,30 +812,30 @@ function Limits({ orgId, info, onSaved }: { orgId: string; info: Console; onSave
     if (!error) onSaved();
   }
 
-  if (!info.activated_at) return <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{d.activateFirst}</div>;
+  if (!info.activated_at) return <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{d.activateFirst}</div>;
   return (
-    <div className="panel flex flex-col gap-3 p-4">
+    <div className="panel flex flex-col gap-3 p-5 sm:p-6">
       <h2 className="t-section">{d.limitsTitle}</h2>
-      <p className="text-[13px] text-[var(--color-muted)]">
+      <p className="text-sm text-[var(--color-muted)]">
         {info.tier_cap_cents === null ? d.noLimit : fmt(d.limitsBody, { cap: formatUsd(info.tier_cap_cents, locale) })}
       </p>
       {info.tier_cap_cents !== null && (
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+          <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
             {d.orgLimit}
             <input
-              className="w-40 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+              className="w-40 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
               value={text}
               inputMode="decimal"
               onChange={(e) => setText(e.target.value)}
             />
           </label>
-          <button type="button" onClick={save} className="btn-sky is-solid pill px-5 py-2 text-[13px]">
+          <button type="button" onClick={save} className="btn-sky is-solid pill px-5 py-2 text-sm">
             {d.save}
           </button>
         </div>
       )}
-      {msg && <p className="text-[13px]">{msg}</p>}
+      {msg && <p className="text-sm">{msg}</p>}
     </div>
   );
 }

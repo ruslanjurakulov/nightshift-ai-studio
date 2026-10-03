@@ -68,7 +68,7 @@ function Specimen({ theme }: { theme: "dark" | "light" }) {
       className="ns-specimen flex min-w-0 flex-col gap-8 rounded-[var(--ns-r-panel)] border border-[var(--ns-rule)] bg-[var(--ns-ground)] p-4 text-[var(--ns-text)] sm:p-6"
       data-testid={`specimen-${theme}`}
     >
-      <h2 className="font-display text-[26px] font-bold uppercase leading-none tracking-[0.06em]">
+      <h2 className="font-display text-[26px] font-bold leading-none">
         {theme === "dark" ? t.design.dark : t.design.light}
       </h2>
       <Palette />
@@ -130,8 +130,8 @@ function Palette() {
           <div key={token} className="flex items-center gap-2.5 rounded-[var(--ns-r-key)] border border-[var(--ns-rule)] bg-[var(--ns-console)] p-2">
             <span aria-hidden className="size-9 shrink-0 rounded-[var(--ns-r-chip)] border border-[var(--ns-rule)]" style={{ background: `var(${token})` }} />
             <span className="flex min-w-0 flex-col">
-              <span className="truncate text-[12px] font-semibold">{t.design.roles[role]}</span>
-              <span className="ns-tc truncate text-[10.5px] text-[var(--ns-text-dim)]">{values[token] || token}</span>
+              <span className="truncate text-xs font-semibold">{t.design.roles[role]}</span>
+              <span className="ns-tc truncate text-xs text-[var(--ns-text-dim)]">{values[token] || token}</span>
             </span>
           </div>
         ))}
@@ -148,11 +148,11 @@ function TypeScale() {
       <div ref={ref} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <span className="ns-eyebrow">{t.design.typeDisplay}</span>
-          <p className="font-display text-[40px] font-bold uppercase leading-[0.95] tracking-[0.02em]">{t.design.typeSample}</p>
+          <p className="font-display text-[40px] font-bold leading-[0.95]">{t.design.typeSample}</p>
         </div>
         <div className="flex flex-col gap-1">
           <span className="ns-eyebrow">{t.design.typeBody}</span>
-          <p className="text-[16px] leading-relaxed">{t.design.typeSample}</p>
+          <p className="text-base leading-relaxed">{t.design.typeSample}</p>
         </div>
         <div className="flex flex-col gap-1">
           <span className="ns-eyebrow">{t.design.typeMono}</span>
@@ -163,7 +163,7 @@ function TypeScale() {
         <ul className="flex flex-col gap-1.5 border-t border-[var(--ns-rule)] pt-3">
           {SIZES.map((s) => (
             <li key={s} className="flex items-baseline gap-3">
-              <span className="ns-tc w-[118px] shrink-0 text-[10.5px] text-[var(--ns-text-dim)]">
+              <span className="ns-tc w-[118px] shrink-0 text-xs text-[var(--ns-text-dim)]">
                 {s.replace("--ns-t-", "")} {values[s]}
               </span>
               <span className="truncate" style={{ fontSize: `var(${s})`, fontWeight: s.endsWith("h1") || s.endsWith("h2") ? 700 : 450 }}>
@@ -186,7 +186,7 @@ function Shape() {
         {RADII.map((r) => (
           <div key={r} className="flex flex-col items-center gap-1.5">
             <span aria-hidden className="size-14 border border-[var(--ns-rule-strong)] bg-[var(--ns-key)]" style={{ borderRadius: `var(${r})` }} />
-            <span className="ns-tc text-[10.5px] text-[var(--ns-text-dim)]">
+            <span className="ns-tc text-xs text-[var(--ns-text-dim)]">
               {r.replace("--ns-r-", "")} {values[r]}
             </span>
           </div>
@@ -194,13 +194,13 @@ function Shape() {
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Panel tone="flat" as="div" eyebrow={t.design.flat}>
-          <span className="text-[12px] text-[var(--ns-text-dim)]">.panel</span>
+          <span className="text-xs text-[var(--ns-text-dim)]">.panel</span>
         </Panel>
         <Panel tone="sunken" as="div" eyebrow={t.design.sunken}>
-          <span className="text-[12px] text-[var(--ns-text-dim)]">tone=&quot;sunken&quot;</span>
+          <span className="text-xs text-[var(--ns-text-dim)]">tone=&quot;sunken&quot;</span>
         </Panel>
         <Panel tone="lifted" as="div" eyebrow={t.design.lifted}>
-          <span className="text-[12px] text-[var(--ns-text-dim)]">--ns-lift</span>
+          <span className="text-xs text-[var(--ns-text-dim)]">--ns-lift</span>
         </Panel>
       </div>
     </Block>
@@ -233,7 +233,7 @@ function Timecodes() {
   const { t, locale } = useI18n();
   return (
     <Block title={t.design.sections.timecode}>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
         <div>
           <dt className="ns-eyebrow">credits</dt>
           <dd className="text-[20px]">
@@ -290,7 +290,7 @@ function Meters() {
           valueText={`${formatCredits(avail, locale)} ${unit} ${t.shell.available}`}
           scale={{ from: "0", to: formatCredits(avail + held, locale) }}
         />
-        <p className="mt-1 text-[12px] text-[var(--ns-text-dim)]">{fmt(t.design.held, { n: formatCredits(held, locale) })}</p>
+        <p className="mt-1 text-xs text-[var(--ns-text-dim)]">{fmt(t.design.held, { n: formatCredits(held, locale) })}</p>
       </div>
     </Block>
   );
@@ -399,7 +399,7 @@ function Ruler() {
     <Block title={t.design.sections.ruler}>
       <div className="flex flex-col gap-1">
         <div className="ns-ruler" aria-hidden style={{ "--ruler-major": "20%" } as CSSProperties} />
-        <div className="flex justify-between text-[10.5px] text-[var(--ns-text-dim)]">
+        <div className="flex justify-between text-xs text-[var(--ns-text-dim)]">
           {[0, 1, 2, 3, 4, 5].map((s) => (
             <Timecode key={s} value={s} format="duration" />
           ))}

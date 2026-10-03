@@ -64,7 +64,7 @@ export function SoundWave({
   if (!url) return null;
   if (result && result.status !== "ready")
     return (
-      <span className="ml-1.5 text-[10px] opacity-70">
+      <span className="ml-1.5 text-xs opacity-70">
         {result.status === "too_large" ? te.waveTooLarge : te.waveUnavailable}
       </span>
     );

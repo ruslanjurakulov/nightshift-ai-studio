@@ -30,7 +30,7 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
   const note = (text: string) => (
     <div className="rhythm">
       {header}
-      <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{text}</div>
+      <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{text}</div>
     </div>
   );
 
@@ -38,7 +38,7 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
   // what the page holds, no role words — only that it is not available.
   const unavailable = (
     <div className="rhythm">
-      <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.margin.forbidden}</div>
+      <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.margin.forbidden}</div>
     </div>
   );
   if (!(await isOperator())) return unavailable;
@@ -55,7 +55,7 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
     return (
       <div className="rhythm">
         {header}
-        <div className="panel p-4">
+        <div className="panel p-5 sm:p-6">
           <ErrorState compact message={t.margin.readFailed} />
         </div>
       </div>

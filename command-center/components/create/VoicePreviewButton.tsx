@@ -99,7 +99,7 @@ export function VoicePreviewButton({ voiceId, channelId }: { voiceId: string; ch
         disabled={!valid || state === "loading" || state === "preparing"}
         aria-label={label}
         title={label}
-        className="btn-sky is-quiet pill inline-flex items-center justify-center gap-2 px-4 py-2 text-[12px] disabled:opacity-50"
+        className="btn-sky is-quiet pill inline-flex items-center justify-center gap-2 px-4 py-2 text-xs disabled:opacity-50"
       >
         {state === "loading" || state === "preparing" ? (
           <Loader2 aria-hidden className="size-3.5 animate-spin motion-reduce:animate-none" />
@@ -110,7 +110,7 @@ export function VoicePreviewButton({ voiceId, channelId }: { voiceId: string; ch
         )}
         <span>{label}</span>
       </button>
-      <span aria-live="polite" className="text-[11px] text-[var(--color-muted)]">
+      <span aria-live="polite" className="text-xs text-[var(--color-muted)]">
         {state === "preparing"
           ? t.create.voicePreparingHint
           : state === "failed"

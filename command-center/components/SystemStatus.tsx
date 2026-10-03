@@ -58,10 +58,10 @@ export function SystemStatus({
         {subs.map((s) => {
           return (
             <li key={s.key} className="flex items-center justify-between gap-2 rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2">
-              <span className="text-[13px] text-[var(--color-fg)]">{String(t.ops[NAME_KEY[s.key]])}</span>
+              <span className="text-sm text-[var(--color-fg)]">{String(t.ops[NAME_KEY[s.key]])}</span>
               <span className="flex items-center gap-3">
                 {s.lastSuccess && (
-                  <span className="mono hidden text-[10px] text-[var(--color-muted)] sm:inline">{relativeTime(s.lastSuccess)}</span>
+                  <span className="tnum hidden text-xs text-[var(--color-muted)] sm:inline">{relativeTime(s.lastSuccess)}</span>
                 )}
                 <StatusLamp tone={s.tone as LampTone} label={String(t.ops[STATE_KEY[s.state]])} />
               </span>

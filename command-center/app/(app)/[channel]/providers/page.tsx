@@ -70,23 +70,23 @@ export default async function ProvidersPage({
       <PageHeader icon="providers" title={t.providers.title} subtitle={t.providers.subtitle} />
 
       {/* YouTube connection — the one credential the site can mint itself */}
-      <div className="panel p-4">
+      <div className="panel p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t.providers.ytTitle}</h2>
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.providers.ytSubtitle}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.providers.ytSubtitle}</p>
           </div>
           {isGoogleOAuthConfigured ? (
-            <a href={startHref} className="btn-sky rounded-[var(--ns-r-key)] px-4 py-1.5 text-[13px]">
+            <a href={startHref} className="btn-sky rounded-[var(--ns-r-key)] px-4 py-1.5 text-sm">
               {t.providers.ytConnect}
             </a>
           ) : (
-            <span className="mono text-[11px] text-[var(--color-muted)]">{t.providers.ytSetup}</span>
+            <span className="tnum text-xs text-[var(--color-muted)]">{t.providers.ytSetup}</span>
           )}
         </div>
         {ytMsg && (
           <p
-            className="mt-3 text-[13px]"
+            className="mt-3 text-sm"
             style={{ color: ytOk ? "var(--color-primary)" : "var(--color-warn)" }}
             role="status"
           >

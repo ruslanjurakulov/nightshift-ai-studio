@@ -56,7 +56,7 @@ export function AccountsBoard({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[900px] border-collapse text-left">
           <thead>
-            <tr className="text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+            <tr className="text-xs text-[var(--color-muted)]">
               <th className="px-4 py-2 font-semibold">{t.accounts.thChannel}</th>
               <th className="px-4 py-2 font-semibold">{t.accounts.thStanding}</th>
               <th className="px-4 py-2 font-semibold">{t.accounts.thActivity}</th>
@@ -75,7 +75,7 @@ export function AccountsBoard({
         </table>
       </div>
 
-      <div className="flex flex-col gap-2 text-[11px] leading-relaxed text-[var(--color-muted)]">
+      <div className="flex flex-col gap-2 text-xs leading-relaxed text-[var(--color-muted)]">
         <p>{t.accounts.windowNote.replace("{n}", String(rollup.windowDays))}</p>
         <p>{t.accounts.neverRunNote}</p>
         <p>{t.accounts.dormantNote}</p>
@@ -107,10 +107,10 @@ function Row({ account: a, here }: { account: AccountSummary; here: boolean }) {
   return (
     <tr className="border-t border-[var(--color-border)]">
       <td className="px-4 py-2.5">
-        <Link href={`/${a.slug}/command-center`} className="tap flex items-center text-[12px] text-[var(--color-fg)] hover:text-[var(--color-primary)]">
+        <Link href={`/${a.slug}/command-center`} className="tap flex items-center text-xs text-[var(--color-fg)] hover:text-[var(--color-primary)]">
           <span className="truncate">{a.name}</span>
         </Link>
-        <span className="mono block truncate text-[9px] text-[var(--color-muted)]">
+        <span className="tnum block truncate text-xs text-[var(--color-muted)]">
           {a.channelId}
           {here && ` · ${t.accounts.youAreHere}`}
         </span>
@@ -121,24 +121,24 @@ function Row({ account: a, here }: { account: AccountSummary; here: boolean }) {
       <td className="px-4 py-2.5">
         <StatusPill tone={activity.tone} label={activity.label} />
       </td>
-      <td className="px-4 py-2.5 text-right mono text-[12px] tabular-nums">
+      <td className="px-4 py-2.5 text-right tnum text-xs tabular-nums">
         {a.everRan ? num(a.published) : <Absent label={t.accounts.neverRun} />}
       </td>
       {/* Queued stays a real number even for a channel that has never run: a
           queue can be filled before anything ever processes it, and that is
           worth seeing. */}
-      <td className="px-4 py-2.5 text-right mono text-[12px] tabular-nums">{num(a.queued)}</td>
+      <td className="px-4 py-2.5 text-right tnum text-xs tabular-nums">{num(a.queued)}</td>
       <td
-        className="px-4 py-2.5 text-right mono text-[12px] tabular-nums"
+        className="px-4 py-2.5 text-right tnum text-xs tabular-nums"
         style={{ color: a.failures > 0 ? "var(--color-fail)" : undefined }}
       >
         {/* No runs means no failures to count — not zero failures out of many. */}
         {a.everRan ? num(a.failures) : t.common.dash}
       </td>
-      <td className="px-4 py-2.5 mono text-[11px] text-[var(--color-muted)]">
+      <td className="px-4 py-2.5 tnum text-xs text-[var(--color-muted)]">
         {a.lastPublishedAt ? relativeTime(a.lastPublishedAt) : <Absent label={t.accounts.never} />}
       </td>
-      <td className="px-4 py-2.5 mono text-[11px] text-[var(--color-muted)]">
+      <td className="px-4 py-2.5 tnum text-xs text-[var(--color-muted)]">
         {a.lastActivityAt ? relativeTime(a.lastActivityAt) : <Absent label={t.accounts.never} />}
       </td>
     </tr>
@@ -147,5 +147,5 @@ function Row({ account: a, here }: { account: AccountSummary; here: boolean }) {
 
 /** A fact that does not exist, said in words. Never a zero. */
 function Absent({ label }: { label: string }) {
-  return <span className="mono text-[10px] text-[var(--color-muted)]">{label}</span>;
+  return <span className="tnum text-xs text-[var(--color-muted)]">{label}</span>;
 }

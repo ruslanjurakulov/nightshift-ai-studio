@@ -56,9 +56,9 @@ export default async function AuditPage() {
           <EmptyState icon={ScrollText}>{t.audit.empty}</EmptyState>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-[13px]">
+            <table className="w-full min-w-[720px] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-[11px] uppercase tracking-wider text-[var(--color-muted)]">
+                <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
                   <th className="py-2 pr-4 font-semibold">{t.audit.colTime}</th>
                   <th className="py-2 pr-4 font-semibold">{t.audit.colActor}</th>
                   <th className="py-2 pr-4 font-semibold">{t.audit.colAction}</th>
@@ -74,7 +74,7 @@ export default async function AuditPage() {
                       key={row.id}
                       className="border-b border-[var(--color-border)] align-top transition-colors hover:bg-[color-mix(in_srgb,var(--color-primary)_5%,transparent)]"
                     >
-                      <td className="mono whitespace-nowrap py-2 pr-4 text-[var(--color-muted)]">
+                      <td className="tnum whitespace-nowrap py-2 pr-4 text-[var(--color-muted)]">
                         {renderAt(row.at)}
                       </td>
                       <td className="py-2 pr-4 text-[var(--color-fg)]">
@@ -83,13 +83,13 @@ export default async function AuditPage() {
                       <td className="py-2 pr-4">
                         <span className="mono text-[var(--color-primary)]">{row.action}</span>
                         {detail && (
-                          <span className="mt-0.5 block text-[12px] font-light text-[var(--color-muted)]">
+                          <span className="mt-0.5 block text-xs font-light text-[var(--color-muted)]">
                             {detail}
                           </span>
                         )}
                       </td>
                       <td className="mono py-2 pr-4 text-[var(--color-fg)]">{row.target ?? "—"}</td>
-                      <td className="mono py-2 pr-4 text-[var(--color-muted)]">
+                      <td className="tnum py-2 pr-4 text-[var(--color-muted)]">
                         {row.channel_id ?? "—"}
                       </td>
                     </tr>

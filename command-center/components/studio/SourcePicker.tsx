@@ -120,11 +120,11 @@ export function SourcePicker({
           )}
         </div>
         <div className="flex min-w-0 flex-col gap-1.5">
-          <span className="truncate text-[13px]">{chosen?.name ?? g.sourceChosen}</span>
+          <span className="truncate text-sm">{chosen?.name ?? g.sourceChosen}</span>
           <button
             type="button"
             onClick={() => setBrowsing(true)}
-            className="btn-quiet w-fit text-[12px]"
+            className="btn-quiet w-fit text-xs"
           >
             {g.sourceChange}
           </button>
@@ -135,7 +135,7 @@ export function SourcePicker({
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-[12px] text-[var(--color-muted)]">{g.sourcePick}</span>
+      <span className="text-xs text-[var(--color-muted)]">{g.sourcePick}</span>
 
       {state === "loading" && (
         <div className={`grid grid-cols-4 gap-2${compact ? "" : " sm:grid-cols-6"}`} aria-busy="true" aria-label={g.sourceLoading}>
@@ -146,22 +146,22 @@ export function SourcePicker({
       )}
 
       {state === "failed" && (
-        <div className="flex flex-wrap items-center gap-3 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">
+        <div className="flex flex-wrap items-center gap-3 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3 text-sm text-[var(--color-muted)]">
           <span>{g.sourceFailed}</span>
-          <button type="button" onClick={() => void reload()} className="btn-quiet text-[12px]">
+          <button type="button" onClick={() => void reload()} className="btn-quiet text-xs">
             {g.sourceRetry}
           </button>
         </div>
       )}
 
       {state === "unavailable" && (
-        <p className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">{g.sourceUnavailable}</p>
+        <p className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3 text-sm text-[var(--color-muted)]">{g.sourceUnavailable}</p>
       )}
 
       {state === "ready" && images.length === 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-[var(--ns-r-key)] border border-dashed border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">
+        <div className="flex flex-wrap items-center gap-3 rounded-[var(--ns-r-key)] border border-dashed border-[var(--color-border)] p-3 text-sm text-[var(--color-muted)]">
           <span>{g.sourceEmpty}</span>
-          <Link href={libraryHref} className="btn-quiet text-[12px]">
+          <Link href={libraryHref} className="btn-quiet text-xs">
             {g.sourceOpenLibrary}
           </Link>
         </div>
@@ -191,7 +191,7 @@ export function SourcePicker({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={img.thumbUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
                   ) : (
-                    <span className="grid h-full w-full place-items-center gap-1 text-[10px] text-[var(--color-muted)]">
+                    <span className="grid h-full w-full place-items-center gap-1 text-xs text-[var(--color-muted)]">
                       <ImageOff aria-hidden className="size-4" />
                       {g.noPreview}
                     </span>
@@ -266,14 +266,14 @@ function RecordingPicker({
       <div className="studio-field flex items-center gap-3 p-2">
         <RecordingIcon r={chosen} size="size-14" />
         <div className="flex min-w-0 flex-col gap-1.5">
-          <span className="truncate text-[13px]">{chosen?.name ?? copy.chosen}</span>
+          <span className="truncate text-sm">{chosen?.name ?? copy.chosen}</span>
           {chosen && (
-            <span className="text-[12px] text-[var(--color-muted)]">
+            <span className="text-xs text-[var(--color-muted)]">
               {kindName(chosen)}
               {len ? ` · ${len}` : ""}
             </span>
           )}
-          <button type="button" onClick={() => setBrowsing(true)} className="btn-quiet w-fit text-[12px]">
+          <button type="button" onClick={() => setBrowsing(true)} className="btn-quiet w-fit text-xs">
             {copy.change}
           </button>
         </div>
@@ -283,7 +283,7 @@ function RecordingPicker({
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-[12px] text-[var(--color-muted)]">{copy.pick}</span>
+      <span className="text-xs text-[var(--color-muted)]">{copy.pick}</span>
 
       {state === "loading" && (
         <div className="flex flex-col gap-2" aria-busy="true" aria-label={g.sourceLoading}>
@@ -294,22 +294,22 @@ function RecordingPicker({
       )}
 
       {state === "failed" && (
-        <div className="flex flex-wrap items-center gap-3 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">
+        <div className="flex flex-wrap items-center gap-3 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3 text-sm text-[var(--color-muted)]">
           <span>{g.sourceFailed}</span>
-          <button type="button" onClick={() => void reload()} className="btn-quiet text-[12px]">
+          <button type="button" onClick={() => void reload()} className="btn-quiet text-xs">
             {g.sourceRetry}
           </button>
         </div>
       )}
 
       {state === "unavailable" && (
-        <p className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">{g.sourceUnavailable}</p>
+        <p className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3 text-sm text-[var(--color-muted)]">{g.sourceUnavailable}</p>
       )}
 
       {state === "ready" && recordings.length === 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-[var(--ns-r-key)] border border-dashed border-[var(--color-border)] p-3 text-[13px] text-[var(--color-muted)]">
+        <div className="flex flex-wrap items-center gap-3 rounded-[var(--ns-r-key)] border border-dashed border-[var(--color-border)] p-3 text-sm text-[var(--color-muted)]">
           <span>{copy.empty}</span>
-          <Link href={libraryHref} className="btn-quiet text-[12px]">
+          <Link href={libraryHref} className="btn-quiet text-xs">
             {g.sourceOpenLibrary}
           </Link>
         </div>
@@ -340,8 +340,8 @@ function RecordingPicker({
                 >
                   <RecordingIcon r={r} />
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-[13px] text-[var(--color-fg)]">{r.name ?? kindName(r)}</span>
-                    <span className="text-[12px] text-[var(--color-muted)]">
+                    <span className="truncate text-sm text-[var(--color-fg)]">{r.name ?? kindName(r)}</span>
+                    <span className="text-xs text-[var(--color-muted)]">
                       {kindName(r)}
                       {len ? ` · ${len}` : ""}
                       {note ? ` · ${note}` : ""}

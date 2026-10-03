@@ -173,11 +173,11 @@ export function RepurposePanel({
 
   return (
     <div className="flex flex-col gap-3 p-4">
-      <p className="m-0 text-[12px] leading-relaxed text-[var(--color-muted)]">{labels.lead}</p>
+      <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">{labels.lead}</p>
 
       {latest && (
         <p
-          className={`m-0 text-[12px] leading-relaxed ${
+          className={`m-0 text-xs leading-relaxed ${
             latest.status === "failed" || latest.status === "partial"
               ? "text-[var(--color-warn)]"
               : latest.status === "succeeded"
@@ -191,10 +191,10 @@ export function RepurposePanel({
       )}
 
       {proposals.clips.length === 0 ? (
-        <p className="m-0 text-[12px] text-[var(--color-muted)]">{labels.noProposals}</p>
+        <p className="m-0 text-xs text-[var(--color-muted)]">{labels.noProposals}</p>
       ) : (
         <>
-          <p className="m-0 text-[11px] text-[var(--color-muted)]">
+          <p className="m-0 text-xs text-[var(--color-muted)]">
             {proposals.retention === "measured" ? labels.retentionMeasured : labels.retentionNotMeasured}
           </p>
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
@@ -203,7 +203,7 @@ export function RepurposePanel({
               const full = !on && picked.length >= MAX_CLIPS;
               return (
                 <li key={c.rank}>
-                  <label className="flex cursor-pointer items-start gap-2 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] p-2 text-[12px]">
+                  <label className="flex cursor-pointer items-start gap-2 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] p-2 text-xs">
                     <input
                       type="checkbox"
                       checked={on}
@@ -217,10 +217,10 @@ export function RepurposePanel({
                         {fmt(labels.range, { from: clockText(c.startS), to: clockText(c.endS) })} ·{" "}
                         {fmt(labels.seconds, { s: String(Math.round(c.durationS)) })}
                       </span>
-                      <span className="mono text-[10px] text-[var(--color-muted)]">
+                      <span className="tnum text-xs text-[var(--color-muted)]">
                         {fmt(labels.scenes, { first: c.first, last: c.last })}
                       </span>
-                      <span className="text-[11px] text-[var(--color-muted)]">{scoreText(c, labels)}</span>
+                      <span className="text-xs text-[var(--color-muted)]">{scoreText(c, labels)}</span>
                     </span>
                   </label>
                 </li>
@@ -230,43 +230,43 @@ export function RepurposePanel({
 
           {!inProgress && (
             <div className="flex flex-col gap-2 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] p-3">
-              <p className="m-0 text-[11px] text-[var(--color-muted)]">
+              <p className="m-0 text-xs text-[var(--color-muted)]">
                 {picked.length === 0 ? labels.pickHint : fmt(labels.selected, { n: String(picked.length) })}
               </p>
               {overlap && (
-                <p className="m-0 text-[11px] leading-relaxed text-[var(--color-warn)]" role="alert">
+                <p className="m-0 text-xs leading-relaxed text-[var(--color-warn)]" role="alert">
                   {labels.overlap}
                 </p>
               )}
-              {loading && <p className="m-0 text-[11px] text-[var(--color-muted)]">{labels.loading}</p>}
+              {loading && <p className="m-0 text-xs text-[var(--color-muted)]">{labels.loading}</p>}
               {!loading && quoteFailed && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="m-0 text-[11px] text-[var(--color-warn)]">{labels.quoteFailed}</p>
-                  <button type="button" className="btn-quiet px-2 text-[11px]" onClick={() => void loadQuote(refsKey)}>
+                  <p className="m-0 text-xs text-[var(--color-warn)]">{labels.quoteFailed}</p>
+                  <button type="button" className="btn-quiet px-2 text-xs" onClick={() => void loadQuote(refsKey)}>
                     {labels.retry}
                   </button>
                 </div>
               )}
               {!loading && quote && quote.status === "unavailable" && (
-                <p className="m-0 text-[11px] leading-relaxed text-[var(--color-warn)]">{reasonText(quote.reason, labels)}</p>
+                <p className="m-0 text-xs leading-relaxed text-[var(--color-warn)]">{reasonText(quote.reason, labels)}</p>
               )}
               {!loading && quote && quote.status === "unpriced" && (
-                <p className="m-0 text-[11px] leading-relaxed text-[var(--color-warn)]">{labels.unpriced}</p>
+                <p className="m-0 text-xs leading-relaxed text-[var(--color-warn)]">{labels.unpriced}</p>
               )}
               {!loading && quote && quote.status !== "unavailable" && quote.status !== "unpriced" && !quote.mayStart && (
-                <p className="m-0 text-[11px] leading-relaxed text-[var(--color-muted)]">{labels.noPermission}</p>
+                <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">{labels.noPermission}</p>
               )}
               {!loading && quote && canPress(quote) && !queue && (
-                <p className="m-0 text-[11px] leading-relaxed text-[var(--color-muted)]">{labels.errors.queueRequired}</p>
+                <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">{labels.errors.queueRequired}</p>
               )}
               {!loading && quote && canPress(quote) && queue && (
-                <p className="m-0 text-[11px] leading-relaxed text-[var(--color-muted)]">
+                <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">
                   {quote.clipCredits !== null ? `${fmt(labels.perClip, { credits: String(quote.clipCredits) })} · ` : ""}
                   {labels.hint}
                 </p>
               )}
               {error && (
-                <p className="m-0 text-[11px] text-[var(--color-fail)]" role="alert">
+                <p className="m-0 text-xs text-[var(--color-fail)]" role="alert">
                   {error}
                 </p>
               )}
@@ -275,7 +275,7 @@ export function RepurposePanel({
                   type="button"
                   disabled={busy || loading || overlap || !quote || !canPress(quote) || !queue}
                   onClick={press}
-                  className="btn-sky is-solid pill px-3 py-1 text-[11px] disabled:opacity-40"
+                  className="btn-sky is-solid pill px-3 py-1 text-xs disabled:opacity-40"
                 >
                   {busy ? labels.pressing : priceLabel}
                 </button>
@@ -287,14 +287,14 @@ export function RepurposePanel({
 
       {requests.length > 0 && (
         <div className="flex flex-col gap-2">
-          <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">{labels.requestsTitle}</div>
+          <div className="text-xs text-[var(--color-muted)]">{labels.requestsTitle}</div>
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {requests.slice(0, 3).map((r) => (
-              <li key={r.id} className="flex flex-col gap-1 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] p-2 text-[11px]">
+              <li key={r.id} className="flex flex-col gap-1 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] p-2 text-xs">
                 <span className="text-[var(--color-muted)]">{requestText(r, labels)}</span>
                 {r.clips.map((c) => (
                   <span key={c.ordinal} className="flex flex-wrap items-center gap-2">
-                    <span className="mono text-[10px] text-[var(--color-muted)]">
+                    <span className="tnum text-xs text-[var(--color-muted)]">
                       {fmt(labels.range, { from: clockText(c.startS), to: clockText(c.endS) })}
                     </span>
                     <span className={c.status === "failed" ? "text-[var(--color-warn)]" : "text-[var(--color-fg)]"}>
@@ -302,12 +302,12 @@ export function RepurposePanel({
                     </span>
                     {c.status === "failed" && <span className="text-[var(--color-muted)]">{failureText(c.errorCode, labels)}</span>}
                     {c.status === "rendered" && c.clipVideoId && hrefs[c.clipVideoId] && (
-                      <Link href={hrefs[c.clipVideoId]} className="tap-link mono text-[11px] text-[var(--color-primary)] hover:underline">
+                      <Link href={hrefs[c.clipVideoId]} className="tap-link tnum text-xs text-[var(--color-primary)] hover:underline">
                         {labels.openClip}
                       </Link>
                     )}
                     {c.status === "rendered" && c.captions && (
-                      <span className="text-[10px] text-[var(--color-muted)]">{labels.captionsReady}</span>
+                      <span className="text-xs text-[var(--color-muted)]">{labels.captionsReady}</span>
                     )}
                   </span>
                 ))}

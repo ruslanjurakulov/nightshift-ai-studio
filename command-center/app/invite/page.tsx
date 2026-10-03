@@ -35,7 +35,7 @@ export default async function InviteNoticePage({ searchParams }: { searchParams:
             <Link href="/signup" className="st-key" data-block="true">
               {t.signup.inviteCreateAccount}
             </Link>
-            <Link href="/login" className="st-link self-center text-[14px]">
+            <Link href="/login" className="st-link self-center text-sm">
               {t.signup.signIn}
             </Link>
           </>

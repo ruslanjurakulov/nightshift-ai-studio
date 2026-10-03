@@ -16,7 +16,7 @@ export function SignOutButton() {
   return (
     <button
       onClick={signOut}
-      className="btn-sky is-quiet pill h-9 px-3 text-[12px] font-light sm:px-4 sm:text-[13px]"
+      className="btn-sky is-quiet pill h-9 px-3 text-xs font-light sm:px-4 sm:text-[13px]"
     >
       {t.common.signOut}
     </button>

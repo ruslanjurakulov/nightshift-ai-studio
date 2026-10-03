@@ -42,7 +42,7 @@ export function LogViewer({ rows }: { rows: SystemEventRow[] }) {
   });
 
   const select =
-    "rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2 py-1 mono text-[11px] outline-none transition-colors focus:border-[var(--color-primary)]";
+    "rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2 py-1 tnum text-xs outline-none transition-colors focus:border-[var(--color-primary)]";
 
   return (
     <div className="flex h-full flex-col">
@@ -65,16 +65,16 @@ export function LogViewer({ rows }: { rows: SystemEventRow[] }) {
           <option value="INFO">{levelLabel.INFO}</option>
           <option value="ERROR">{levelLabel.ERROR}</option>
         </select>
-        <span className="mono text-[10px] text-[var(--color-muted)]">{fmt(t.logs.lines, { n: filtered.length })}</span>
+        <span className="tnum text-xs text-[var(--color-muted)]">{fmt(t.logs.lines, { n: filtered.length })}</span>
       </div>
       <ol className="min-h-0 flex-1 divide-y divide-[var(--color-border)] overflow-y-auto">
         {filtered.length === 0 && (
-          <li className="p-6 text-center mono text-xs text-[var(--color-muted)]">{t.logs.noMatch}</li>
+          <li className="p-6 text-center tnum text-xs text-[var(--color-muted)]">{t.logs.noMatch}</li>
         )}
         {filtered.map((r, i) => {
           const lv = LEVEL[statusTone(r.status)];
           return (
-            <li key={`${r.event_key}-${i}`} className="flex items-center gap-3 px-4 py-1.5 mono text-[11px]">
+            <li key={`${r.event_key}-${i}`} className="flex items-center gap-3 px-4 py-1.5 tnum text-xs">
               <span className="w-16 shrink-0 text-[var(--color-muted)]">{timeOfDay(r.ts)}</span>
               <span className="w-20 shrink-0 font-semibold" style={{ color: lv.color }}>{levelLabel[lv.key]}</span>
               <span className="w-28 shrink-0 truncate text-[var(--color-primary)]">{r.agent ?? t.common.system}</span>

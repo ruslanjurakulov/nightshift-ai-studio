@@ -160,7 +160,7 @@ export function MediaViewer({
             <h2 id={titleId} className="m-0 truncate text-[15px] font-semibold text-[var(--color-fg)]" title={name}>
               {name}
             </h2>
-            <span className="mono text-[11px] text-[var(--color-muted)]" aria-live="polite">
+            <span className="tnum text-xs text-[var(--color-muted)]" aria-live="polite">
               {fmt(tv.position, { n: index + 1, total: items.length })}
             </span>
           </div>
@@ -206,7 +206,7 @@ export function MediaViewer({
                   <span aria-hidden className="grid size-20 place-items-center rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)]">
                     <Icon className="size-8" strokeWidth={1.25} />
                   </span>
-                  <p className="m-0 text-[13px]">{tv.noPreview}</p>
+                  <p className="m-0 text-sm">{tv.noPreview}</p>
                 </div>
               )}
             </div>
@@ -237,7 +237,7 @@ export function MediaViewer({
           <aside className="flex max-h-[46vh] shrink-0 flex-col gap-5 overflow-y-auto border-t border-[var(--color-border)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 lg:max-h-none lg:w-80 lg:border-l lg:border-t-0 lg:p-5">
             <div className="flex flex-col gap-2">
               <span className="t-label">{tv.details}</span>
-              <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[13px]">
+              <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
                 {facts
                   .filter(([, v]) => v)
                   .map(([k, v]) => (
@@ -258,7 +258,7 @@ export function MediaViewer({
                     <Link
                       key={tool}
                       href={path(`/create?tool=${tool}&source=${encodeURIComponent(asset.id)}`)}
-                      className="btn-quiet text-[12px]"
+                      className="btn-quiet text-xs"
                     >
                       {t.gen.kinds[tool]}
                     </Link>
@@ -276,7 +276,7 @@ export function MediaViewer({
                   href={asset.viewUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn-quiet text-[13px]"
+                  className="btn-quiet text-sm"
                 >
                   <ExternalLink size={14} aria-hidden />
                   {tv.openTab}
@@ -285,17 +285,17 @@ export function MediaViewer({
               {onDelete &&
                 (confirm ? (
                   <div className="flex flex-col gap-2 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3">
-                    <p className="m-0 text-[12px] text-[var(--color-muted)]">{fmt(tm.deleteConfirm, { name })}</p>
+                    <p className="m-0 text-xs text-[var(--color-muted)]">{fmt(tm.deleteConfirm, { name })}</p>
                     <div className="flex gap-2">
                       <button
                         type="button"
                         disabled={deleting}
                         onClick={() => onDelete(asset)}
-                        className="btn-primary flex-1 text-[13px] disabled:opacity-40"
+                        className="btn-primary flex-1 text-sm disabled:opacity-40"
                       >
                         {deleting ? tm.deleting : tm.delete}
                       </button>
-                      <button type="button" onClick={() => setConfirm(false)} className="btn-quiet text-[13px]">
+                      <button type="button" onClick={() => setConfirm(false)} className="btn-quiet text-sm">
                         {tm.cancel}
                       </button>
                     </div>
@@ -304,7 +304,7 @@ export function MediaViewer({
                   <button
                     type="button"
                     onClick={() => setConfirm(true)}
-                    className="btn-quiet text-[13px] hover:text-[var(--color-fail)]!"
+                    className="btn-quiet text-sm hover:text-[var(--color-fail)]!"
                   >
                     <Trash2 size={14} aria-hidden />
                     {tm.delete}
@@ -312,7 +312,7 @@ export function MediaViewer({
                 ))}
             </div>
 
-            {items.length > 1 && <p className="m-0 hidden text-[12px] text-[var(--color-muted)] sm:block">{tv.swipeHint}</p>}
+            {items.length > 1 && <p className="m-0 hidden text-xs text-[var(--color-muted)] sm:block">{tv.swipeHint}</p>}
           </aside>
         </div>
       </div>

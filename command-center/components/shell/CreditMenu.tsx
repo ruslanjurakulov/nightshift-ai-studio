@@ -82,10 +82,10 @@ export function CreditMenu({ account, plan = null }: { account: CreditAccount | 
         <span aria-hidden className="hidden sm:contents">
           <Meter value={amount} held={account.reserved} segments={8} label={t.shell.creditsMenu} />
         </span>
-        <span className="mono text-[13px] font-medium" style={low ? { color: "var(--color-warn)" } : undefined}>
+        <span className="tnum text-sm font-medium" style={low ? { color: "var(--color-warn)" } : undefined}>
           {shown}
         </span>
-        <span className="hidden text-[12px] text-[var(--color-muted)] sm:inline">{unit}</span>
+        <span className="hidden text-xs text-[var(--color-muted)] sm:inline">{unit}</span>
       </button>
 
       <Presence>
@@ -108,7 +108,7 @@ export function CreditMenu({ account, plan = null }: { account: CreditAccount | 
               <span className="text-[26px] font-semibold leading-none text-[var(--color-fg)]" style={low ? { color: "var(--color-warn)" } : undefined}>
                 <Timecode value={amount} locale={locale} />
               </span>
-              <span className="text-[12px] text-[var(--color-muted)]">
+              <span className="text-xs text-[var(--color-muted)]">
                 {unit} {t.shell.available}
               </span>
             </p>
@@ -121,13 +121,13 @@ export function CreditMenu({ account, plan = null }: { account: CreditAccount | 
               valueText={`${shown} ${unit} ${t.shell.available}`}
             />
             {account.reserved > 0 && (
-              <p className="text-[12px] text-[var(--color-muted)]">
+              <p className="text-xs text-[var(--color-muted)]">
                 {fmt(t.shell.onHold, { n: formatCredits(account.reserved, locale) })}
               </p>
             )}
           </div>
 
-          <dl className="flex items-center justify-between gap-3 px-1 text-[13px]">
+          <dl className="flex items-center justify-between gap-3 px-1 text-sm">
             <dt className="text-[var(--color-muted)]">{t.shell.plan}</dt>
             <dd className="truncate font-medium text-[var(--color-fg)]">{planLabel ?? t.common.dash}</dd>
           </dl>

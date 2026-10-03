@@ -101,13 +101,13 @@ export default async function IntegrationsPage() {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((h) => (
-          <div key={h.name} className="panel p-4 transition-transform duration-200 hover:-translate-y-0.5 hover:border-[var(--color-primary-dim)]">
+          <div key={h.name} className="panel p-5 sm:p-6 transition-transform duration-200 hover:-translate-y-0.5 hover:border-[var(--color-primary-dim)]">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-[var(--color-fg)]">{h.name}</span>
               <StatusPill tone={h.tone} label={h.status} live={h.tone === "ok"} />
             </div>
-            <p className="mt-1.5 mono text-[11px] text-[var(--color-muted)]">{t.integrations[h.detailKey]}</p>
-            <p className="mt-0.5 mono text-[11px] text-[var(--color-muted)]">
+            <p className="mt-1.5 tnum text-xs text-[var(--color-muted)]">{t.integrations[h.detailKey]}</p>
+            <p className="mt-0.5 tnum text-xs text-[var(--color-muted)]">
               {fmt(t.integrations.lastSuccess, { t: h.lastSuccess ? relativeTime(h.lastSuccess) : t.common.na })}
             </p>
           </div>
@@ -117,7 +117,7 @@ export default async function IntegrationsPage() {
       <WorkerStatusPanel read={workersRead} rows={workers} nowMs={Date.now()} />
 
       <Panel title={t.integrations.measuredTitle}>
-        <div className="p-4 text-[11px] leading-relaxed text-[var(--color-muted)]">
+        <div className="p-4 text-xs leading-relaxed text-[var(--color-muted)]">
           {t.integrations.measuredBody}
         </div>
       </Panel>

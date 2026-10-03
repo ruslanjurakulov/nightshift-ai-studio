@@ -79,10 +79,10 @@ export function VideoLifecycle({
               {!last && <span className="w-[2px] flex-1" style={{ background: filled ? color : "var(--color-border)", opacity: filled ? 0.5 : 1, minHeight: 18 }} />}
             </div>
             <div className="flex flex-1 items-center justify-between gap-2 pb-3">
-              <span className="text-[13px]" style={{ color: filled ? "var(--color-fg)" : "var(--color-muted)" }}>
+              <span className="text-sm" style={{ color: filled ? "var(--color-fg)" : "var(--color-muted)" }}>
                 {String(label)}
               </span>
-              <span className="text-[9px] uppercase tracking-[0.22em]" style={{ color }}>
+              <span className="text-xs" style={{ color }}>
                 {st.s.ts ? timeOfDay(st.s.ts) : ""}
               </span>
             </div>

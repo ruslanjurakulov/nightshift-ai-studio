@@ -111,11 +111,11 @@ export function IntelligenceMap({
   const anyActive = active.size > 0;
 
   return (
-    <div className="panel p-4">
+    <div className="panel p-5 sm:p-6">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">{t.ops.intelRecent}</span>
+        <span className="text-xs text-[var(--color-muted)]">{t.ops.intelRecent}</span>
         <span
-          className="text-[10px] font-semibold uppercase tracking-[0.22em]"
+          className="text-xs font-semibold"
           style={{ color: anyActive ? "var(--color-primary)" : "var(--color-muted)" }}
         >
           {anyActive ? t.ops.intelActive : t.ops.intelQuiet}
@@ -168,7 +168,7 @@ export function IntelligenceMap({
               style={{ left: `${(x / W) * 100}%`, top: `${(y / H) * 100}%` }}
             >
               <span
-                className={`mono block whitespace-nowrap rounded-full border px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wider transition-colors ${on ? "node-pulse" : ""}`}
+                className={`tnum block whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${on ? "node-pulse" : ""}`}
                 style={{
                   background: "var(--color-panel-2)",
                   borderColor: on ? "var(--color-primary)" : "var(--color-border)",

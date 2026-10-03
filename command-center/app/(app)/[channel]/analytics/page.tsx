@@ -87,7 +87,7 @@ function RankedList({
         const width = r.bar === null ? 0 : Math.max(2, Math.min(100, r.bar));
         return (
           <li key={p.video_id} className="flex items-center gap-3 px-4 py-2.5">
-            <span className="mono w-5 shrink-0 text-[11px] text-[var(--color-muted)] tabular-nums">
+            <span className="tnum w-5 shrink-0 text-xs text-[var(--color-muted)] tabular-nums">
               {i + 1}
             </span>
             <div className="min-w-0 flex-1">
@@ -96,7 +96,7 @@ function RankedList({
                 <div className="h-full rounded-full transition-all duration-500" style={{ width: `${width}%`, background: color }} />
               </div>
             </div>
-            <span className="mono shrink-0 text-sm font-semibold tabular-nums" style={{ color }}>
+            <span className="tnum shrink-0 text-sm font-semibold tabular-nums" style={{ color }}>
               {r.value}
             </span>
           </li>
@@ -278,7 +278,7 @@ export default async function AnalyticsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-[var(--color-border)] text-left text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                  <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
                     <th className="px-4 py-2 font-semibold">{t.analytics.thTitle}</th>
                     <th className="px-4 py-2 font-semibold">{t.analytics.thTopic}</th>
                     <th className="px-4 py-2 text-right font-semibold">{t.analytics.thViews}</th>
@@ -292,10 +292,10 @@ export default async function AnalyticsPage() {
                     <tr key={p.video_id} className="border-b border-[var(--color-border)]/50 transition-colors hover:bg-[var(--color-panel-2)]">
                       <td className="px-4 py-2 text-[var(--color-fg)]">{p.title}</td>
                       <td className="px-4 py-2 text-[var(--color-muted)]">{p.topic ?? t.common.dash}</td>
-                      <td className="px-4 py-2 text-right mono tabular-nums text-[var(--color-fg)]">{num(p.views)}</td>
-                      <td className="px-4 py-2 text-right mono tabular-nums text-[var(--color-fg)]">{decimal(p.viewsPerDay, 1)}</td>
-                      <td className="px-4 py-2 text-right mono tabular-nums text-[var(--color-muted)]">{pct(p.engagement)}</td>
-                      <td className="px-4 py-2 text-right mono tabular-nums text-[var(--color-muted)]">{seconds(p.retention)}</td>
+                      <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-fg)]">{num(p.views)}</td>
+                      <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-fg)]">{decimal(p.viewsPerDay, 1)}</td>
+                      <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-muted)]">{pct(p.engagement)}</td>
+                      <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-muted)]">{seconds(p.retention)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -303,7 +303,7 @@ export default async function AnalyticsPage() {
             </div>
           </Panel>
 
-          <p className="mono text-[10px] text-[var(--color-muted)]">{t.analytics.note}</p>
+          <p className="tnum text-xs text-[var(--color-muted)]">{t.analytics.note}</p>
         </>
       )}
     </div>

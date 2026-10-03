@@ -47,7 +47,7 @@ export function ActivityFeed({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-2">
-        <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+        <span className="text-xs text-[var(--color-muted)]">
           {fmt(t.feed.events, { n: shown.length })}
         </span>
         <StatusLamp tone={live ? "run" : "idle"} label={live ? t.status.live : t.status.polled} live={live} />
@@ -63,7 +63,7 @@ export function ActivityFeed({
 
       <ol className="min-h-0 flex-1 divide-y divide-[var(--color-border)] overflow-y-auto">
         {shown.length === 0 && (
-          <li className="p-6 text-center mono text-xs text-[var(--color-muted)]">{t.feed.noEvents}</li>
+          <li className="p-6 text-center tnum text-xs text-[var(--color-muted)]">{t.feed.noEvents}</li>
         )}
         {shown.map((e) => {
           const tone = statusTone(e.status);
@@ -72,9 +72,9 @@ export function ActivityFeed({
               key={e.event_key}
               className={`flex items-center gap-3 px-4 py-2 text-sm${freshKey === e.event_key ? " row-enter" : ""}`}
             >
-              <span className="mono w-16 shrink-0 text-[10px] text-[var(--color-muted)]">{timeOfDay(e.ts)}</span>
+              <span className="tnum w-16 shrink-0 text-xs text-[var(--color-muted)]">{timeOfDay(e.ts)}</span>
               <StatusLamp tone={tone as LampTone} label={{ ok: t.status.ok, run: t.status.running, fail: t.status.failed, idle: t.status.idle }[tone]} hideLabel />
-              <span className="mono shrink-0 text-[11px] text-[var(--color-primary)]">{e.agent ?? t.common.system}</span>
+              <span className="tnum shrink-0 text-xs text-[var(--color-primary)]">{e.agent ?? t.common.system}</span>
               <span className="truncate text-[var(--color-fg)]">{e.event}</span>
             </li>
           );

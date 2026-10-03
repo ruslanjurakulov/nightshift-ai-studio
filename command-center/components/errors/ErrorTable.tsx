@@ -67,9 +67,9 @@ export function ErrorTable({ rows }: { rows: SystemEventRow[] }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t.errors.filter}
-          className="mono w-full max-w-md rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-1.5 text-xs text-[var(--color-fg)] outline-none transition-colors placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)]"
+          className="tnum w-full max-w-md rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-1.5 text-xs text-[var(--color-fg)] outline-none transition-colors placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)]"
         />
-        <span className="shrink-0 text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+        <span className="shrink-0 text-xs text-[var(--color-muted)]">
           {filtered.length} / {rows.length}
         </span>
       </div>
@@ -80,7 +80,7 @@ export function ErrorTable({ rows }: { rows: SystemEventRow[] }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[var(--color-border)] text-left text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+              <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
                 <th className="px-4 py-2 font-semibold">{t.errors.thWhen}</th>
                 <th className="px-4 py-2 font-semibold">{t.errors.thComponent}</th>
                 <th className="px-4 py-2 font-semibold">{t.errors.thEvent}</th>
@@ -92,25 +92,25 @@ export function ErrorTable({ rows }: { rows: SystemEventRow[] }) {
             <tbody>
               {filtered.map((e) => (
                 <tr key={e.event_key} className="border-b border-[var(--color-border)]/50 align-top transition-colors hover:bg-[var(--color-panel-2)]">
-                  <td className="whitespace-nowrap px-4 py-2 mono text-[11px] text-[var(--color-muted)]">
+                  <td className="whitespace-nowrap px-4 py-2 tnum text-xs text-[var(--color-muted)]">
                     <div>{relativeTime(e.ts)}</div>
-                    <div className="text-[10px] opacity-70">{timeOfDay(e.ts)}</div>
+                    <div className="text-xs opacity-70">{timeOfDay(e.ts)}</div>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2 mono text-[11px] text-[var(--color-primary)]">
+                  <td className="whitespace-nowrap px-4 py-2 tnum text-xs text-[var(--color-primary)]">
                     {e.agent ?? t.common.system}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2 mono text-[11px] text-[var(--color-fg)]">
+                  <td className="whitespace-nowrap px-4 py-2 tnum text-xs text-[var(--color-fg)]">
                     {e.event}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2 mono text-[10px] text-[var(--color-muted)]">
+                  <td className="whitespace-nowrap px-4 py-2 tnum text-xs text-[var(--color-muted)]">
                     {e.video_id ? <div>vid: {e.video_id}</div> : null}
                     {e.job_id ? <div>job: {e.job_id}</div> : null}
                     {!e.video_id && !e.job_id ? "—" : null}
                   </td>
-                  <td className="px-4 py-2 mono text-[11px] text-[var(--color-fail)]">
+                  <td className="px-4 py-2 tnum text-xs text-[var(--color-fail)]">
                     <span className="block max-w-xl break-words">{errorText(e.metadata)}</span>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2 mono text-[10px] font-semibold tracking-wider text-[var(--color-fail)]">
+                  <td className="whitespace-nowrap px-4 py-2 tnum text-xs font-semibold text-[var(--color-fail)]">
                     {isError(e) ? t.errors.sevError : t.errors.sevWarn}
                   </td>
                 </tr>

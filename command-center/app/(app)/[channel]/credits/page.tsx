@@ -56,7 +56,7 @@ export default async function CreditsPage() {
   const note = (text: string) => (
     <div className="rhythm">
       {header}
-      <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{text}</div>
+      <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{text}</div>
     </div>
   );
 
@@ -138,13 +138,13 @@ export default async function CreditsPage() {
       {exempt ? (
         <div className="panel flex flex-col gap-1 p-5 sm:p-6">
           <h2 className="t-section">{t.credits.exemptTitle}</h2>
-          <p className="text-[13px] text-[var(--color-muted)]">{t.credits.exempt}</p>
+          <p className="text-sm text-[var(--color-muted)]">{t.credits.exempt}</p>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
           <BalanceHero split={split} rates={rates} offers={{ plans: offersPlans, packs: offersPacks }} />
           {balanceUnknown && (
-            <div className="panel p-4">
+            <div className="panel p-5 sm:p-6">
               <ErrorState compact message={t.credits.readFailed} />
             </div>
           )}
@@ -152,7 +152,7 @@ export default async function CreditsPage() {
       )}
 
       {!exempt && summaryFailed && (
-        <section id="plans" className="panel flex scroll-mt-24 flex-col gap-2 p-4" aria-labelledby="plan-title">
+        <section id="plans" className="panel flex scroll-mt-24 flex-col gap-2 p-5 sm:p-6" aria-labelledby="plan-title">
           <h2 id="plan-title" className="t-section">
             {t.plans.panelTitle}
           </h2>
@@ -192,7 +192,7 @@ export default async function CreditsPage() {
         <InviteFriendsCard invite={inviteRead.value} orgId={orgId} />
       )}
       {!exempt && inviteRead.state === "failed" && (
-        <section id="invite" className="panel flex scroll-mt-24 flex-col gap-2 p-4" aria-labelledby="invite-title">
+        <section id="invite" className="panel flex scroll-mt-24 flex-col gap-2 p-5 sm:p-6" aria-labelledby="invite-title">
           <h2 id="invite-title" className="t-section">
             {t.invite.title}
           </h2>
@@ -201,7 +201,7 @@ export default async function CreditsPage() {
       )}
 
       {ledgerFailed ? (
-        <div className="panel p-4">
+        <div className="panel p-5 sm:p-6">
           <h2 className="t-section">{t.credits.ledgerTitle}</h2>
           <ErrorState compact />
         </div>
@@ -210,7 +210,7 @@ export default async function CreditsPage() {
       )}
 
       {!exempt && lotsFailed && (
-        <div className="panel p-4">
+        <div className="panel p-5 sm:p-6">
           <h2 className="t-section">{t.plans.lotsTitle}</h2>
           <ErrorState compact message={t.plans.lotsReadFailed} />
         </div>
@@ -220,20 +220,20 @@ export default async function CreditsPage() {
       {/* Operator tools: the deployment switch, granting, and the raw price list. */}
       {platformAdmin && (
         <>
-          <p className="mono text-[11px] text-[var(--color-muted)]">
+          <p className="tnum text-xs text-[var(--color-muted)]">
             {creditsEnforced ? t.credits.enforcedOn : t.credits.enforcedOff}
           </p>
-          {!paddleConfig && !exempt && <p className="mono text-[11px] text-[var(--color-muted)]">{t.credits.buy.notConfigured}</p>}
+          {!paddleConfig && !exempt && <p className="tnum text-xs text-[var(--color-muted)]">{t.credits.buy.notConfigured}</p>}
           <GrantCreditsForm orgId={orgId} orgName={org.current.name} />
           {inviteAdmin?.state === "ok" && <InviteAdminPanel admin={inviteAdmin.value} />}
           {inviteAdmin?.state === "failed" && (
-            <div className="panel p-4">
+            <div className="panel p-5 sm:p-6">
               <h2 className="t-section">{t.invite.adminTitle}</h2>
               <ErrorState compact message={t.invite.adminReadFailed} />
             </div>
           )}
           {!priceList || priceList.failed || !priceList.supported ? (
-            <div className="panel p-4">
+            <div className="panel p-5 sm:p-6">
               <h2 className="t-section">{t.credits.pricesTitle}</h2>
               <ErrorState compact />
             </div>

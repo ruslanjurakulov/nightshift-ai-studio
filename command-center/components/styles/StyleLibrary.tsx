@@ -141,7 +141,7 @@ export function StyleLibrary({
   return (
     <div className="flex flex-col gap-4">
       {stateNote && (
-        <p role="status" className="panel p-3 text-[13px] text-[var(--color-muted)]">
+        <p role="status" className="panel p-4 sm:p-5 text-sm text-[var(--color-muted)]">
           {stateNote}
         </p>
       )}
@@ -159,7 +159,7 @@ export function StyleLibrary({
             onChange={(e) => setQuery(e.target.value)}
             placeholder={ts.searchPlaceholder}
             autoComplete="off"
-            className="w-full rounded-full border border-[var(--color-border)] bg-[var(--color-panel-2)] py-2.5 pl-9 pr-4 text-[16px] text-[var(--color-fg)] outline-none focus-visible:border-[var(--color-primary)] sm:text-[14px]"
+            className="w-full rounded-full border border-[var(--color-border)] bg-[var(--color-panel-2)] py-2.5 pl-9 pr-4 text-base text-[var(--color-fg)] outline-none focus-visible:border-[var(--color-primary)] sm:text-[14px]"
           />
         </div>
 
@@ -171,7 +171,7 @@ export function StyleLibrary({
           ))}
         </div>
 
-        <div className="flex items-center justify-between gap-3 text-[12px] text-[var(--color-muted)]">
+        <div className="flex items-center justify-between gap-3 text-xs text-[var(--color-muted)]">
           <p aria-live="polite" className="m-0">
             {fmt(ts.count, { n: shown.length, total: STYLE_LIBRARY.length })}
           </p>
@@ -192,14 +192,14 @@ export function StyleLibrary({
 
       {shown.length === 0 ? (
         <div className="panel flex flex-col items-center gap-3 px-6 py-10 text-center">
-          <p className="m-0 max-w-[46ch] text-[13px] text-[var(--color-muted)]">{ts.noMatch}</p>
+          <p className="m-0 max-w-[46ch] text-sm text-[var(--color-muted)]">{ts.noMatch}</p>
           <button
             type="button"
             onClick={() => {
               setQuery("");
               setTags([]);
             }}
-            className="btn-sky is-quiet pill px-4 py-1.5 text-[13px]"
+            className="btn-sky is-quiet pill px-4 py-1.5 text-sm"
           >
             {ts.clear}
           </button>
@@ -218,15 +218,15 @@ export function StyleLibrary({
                 <StyleTile style={style} label={ts.previewLabel} className="aspect-[4/3] w-full" />
                 <span className="flex flex-1 flex-col gap-1 p-3">
                   <span className="flex items-start justify-between gap-2">
-                    <span className="text-[14px] font-semibold text-[var(--color-fg)]">{style.name[locale]}</span>
+                    <span className="text-sm font-semibold text-[var(--color-fg)]">{style.name[locale]}</span>
                     {added[style.id] && (
-                      <span className="pill inline-flex shrink-0 items-center gap-1 border border-[var(--color-border)] px-1.5 py-0.5 text-[10px] text-[var(--color-muted)]">
+                      <span className="pill inline-flex shrink-0 items-center gap-1 border border-[var(--color-border)] px-1.5 py-0.5 text-xs text-[var(--color-muted)]">
                         <Check aria-hidden className="size-3" />
                         {ts.addedBadge}
                       </span>
                     )}
                   </span>
-                  <span className="line-clamp-2 text-[12px] text-[var(--color-muted)]">{style.goodFor[locale]}</span>
+                  <span className="line-clamp-2 text-xs text-[var(--color-muted)]">{style.goodFor[locale]}</span>
                 </span>
               </button>
             </li>

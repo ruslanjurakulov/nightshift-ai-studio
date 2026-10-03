@@ -29,7 +29,7 @@ export function SectionTabs() {
               <Link
                 href={path(href)}
                 aria-current={active ? "page" : undefined}
-                className={`inline-flex min-h-9 items-center rounded-full px-4 max-sm:min-h-10 pointer-coarse:min-h-10 text-[13px] font-medium transition-colors ${
+                className={`inline-flex min-h-9 items-center rounded-full px-4 max-sm:min-h-10 pointer-coarse:min-h-10 text-sm font-medium transition-colors ${
                   active
                     ? "bg-[var(--color-active)] text-[var(--color-fg)]"
                     : "text-[var(--color-muted)] hover:bg-[var(--color-hover)] hover:text-[var(--color-fg)]"

@@ -169,13 +169,13 @@ export function AccountMenu({
         >
           <span
             aria-hidden
-            className="grid size-8 shrink-0 place-items-center rounded-full bg-[var(--color-accent-soft)] text-[13px] font-semibold text-[var(--color-primary)]"
+            className="grid size-8 shrink-0 place-items-center rounded-full bg-[var(--color-accent-soft)] text-sm font-semibold text-[var(--color-primary)]"
           >
             {initial ?? <UserRound className="size-4" />}
           </span>
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-[12.5px] font-medium text-[var(--color-fg)]">{shownEmail ?? dash}</span>
-            {cardPlan && <span className="truncate text-[11px] text-[var(--color-muted)]">{cardPlan}</span>}
+            <span className="truncate text-xs font-medium text-[var(--color-fg)]">{shownEmail ?? dash}</span>
+            {cardPlan && <span className="truncate text-xs text-[var(--color-muted)]">{cardPlan}</span>}
           </span>
         </button>
       ) : (
@@ -191,7 +191,7 @@ export function AccountMenu({
         className="btn-sky is-quiet pill inline-flex size-10 items-center justify-center p-0"
       >
         {initial ? (
-          <span aria-hidden className="text-[14px] font-medium text-[var(--color-primary)]">
+          <span aria-hidden className="text-sm font-medium text-[var(--color-primary)]">
             {initial}
           </span>
         ) : (
@@ -218,10 +218,10 @@ export function AccountMenu({
               {initial ?? <UserRound className="size-4" />}
             </span>
             <div className="min-w-0 flex-1">
-              <h2 id={titleId} className="text-[11px] uppercase tracking-[0.16em] text-[var(--color-muted)]">
+              <h2 id={titleId} className="text-xs text-[var(--color-muted)]">
                 {t.account.title}
               </h2>
-              <p className="truncate text-[14px] text-[var(--color-fg)]" title={shownEmail ?? undefined}>
+              <p className="truncate text-sm text-[var(--color-fg)]" title={shownEmail ?? undefined}>
                 <span className="sr-only">{t.account.signedInAs} </span>
                 {shownEmail ?? dash}
               </p>
@@ -237,7 +237,7 @@ export function AccountMenu({
           </header>
 
           {state === "failed" && (
-            <p role="status" className="text-[12px] text-[var(--color-warn)]">
+            <p role="status" className="text-xs text-[var(--color-warn)]">
               {t.account.loadFailed}
             </p>
           )}
@@ -246,7 +246,7 @@ export function AccountMenu({
             <Stat label={t.account.plan} wide>
               {state === "ready" && data ? planLabel(data.plan, t) : state === "loading" ? t.account.loading : dash}
               {state === "ready" && data && planDetail(data.plan, t, locale) && (
-                <span className="mt-0.5 block text-[10px] font-normal text-[var(--color-muted)]">
+                <span className="mt-0.5 block text-xs font-normal text-[var(--color-muted)]">
                   {planDetail(data.plan, t, locale)}
                 </span>
               )}
@@ -254,14 +254,14 @@ export function AccountMenu({
             {showCredits && (
               <>
                 <Stat label={t.account.remaining}>
-                  <span className="mono">{credits ? formatCredits(credits.available, locale) : dash}</span>
+                  <span className="tnum">{credits ? formatCredits(credits.available, locale) : dash}</span>
                   {credits && credits.reserved > 0 && (
-                    <span className="mt-0.5 block text-[10px] font-normal text-[var(--color-muted)]">
+                    <span className="mt-0.5 block text-xs font-normal text-[var(--color-muted)]">
                       {fmt(t.account.onHold, { n: formatCredits(credits.reserved, locale) })}
                     </span>
                   )}
                   {credits && credits.fromPlan !== null && credits.fromTopups !== null && (
-                    <span className="mt-0.5 block text-[10px] font-normal text-[var(--color-muted)]">
+                    <span className="mt-0.5 block text-xs font-normal text-[var(--color-muted)]">
                       {fmt(t.account.bySource, {
                         plan: formatCredits(credits.fromPlan, locale),
                         topups: formatCredits(credits.fromTopups, locale),
@@ -270,7 +270,7 @@ export function AccountMenu({
                   )}
                 </Stat>
                 <Stat label={t.account.spent}>
-                  <span className="mono">
+                  <span className="tnum">
                     {credits && credits.spent !== null ? formatCredits(credits.spent, locale) : dash}
                   </span>
                 </Stat>
@@ -279,7 +279,7 @@ export function AccountMenu({
           </dl>
 
           <section aria-label={t.account.accounts} className="flex flex-col gap-1.5">
-            <h3 className="text-[11px] uppercase tracking-[0.16em] text-[var(--color-muted)]">{t.account.accounts}</h3>
+            <h3 className="text-xs text-[var(--color-muted)]">{t.account.accounts}</h3>
             <ul className="flex flex-col gap-1">
               {rows(state === "ready" ? (data?.accounts ?? []) : null).map((row) =>
                 row.kind === "account" ? (
@@ -311,7 +311,7 @@ export function AccountMenu({
                   lang={l.code}
                   aria-pressed={l.code === locale}
                   onClick={() => l.code !== locale && setLocale(l.code)}
-                  className="btn-sky is-quiet pill h-10 flex-1 px-2 text-[13px] font-light"
+                  className="btn-sky is-quiet pill h-10 flex-1 px-2 text-sm font-light"
                   style={{ color: l.code === locale ? "var(--color-primary)" : undefined }}
                 >
                   {l.label}
@@ -387,7 +387,7 @@ function Stat({ label, wide, children }: { label: string; wide?: boolean; childr
     <div
       className={`rounded-xl border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2 ${wide ? "col-span-2" : ""}`}
     >
-      <dt className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-muted)]">{label}</dt>
+      <dt className="text-xs text-[var(--color-muted)]">{label}</dt>
       <dd className="mt-0.5 text-[15px] font-medium text-[var(--color-fg)]">{children}</dd>
     </div>
   );
@@ -399,7 +399,7 @@ function PlatformGlyph({ platform }: { platform: Platform }) {
   return (
     <span
       aria-hidden
-      className="mono flex size-8 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[10px] text-[var(--color-muted)]"
+      className="tnum flex size-8 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-panel-2)] text-xs text-[var(--color-muted)]"
     >
       {letter}
     </span>
@@ -427,16 +427,16 @@ function AccountRow({ account }: { account: ConnectedAccount }) {
         <PlatformGlyph platform={account.platform} />
       )}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] text-[var(--color-fg)]">{account.name}</p>
-        <p className="text-[10px] text-[var(--color-muted)]">{PLATFORM_NAME[account.platform]}</p>
+        <p className="truncate text-sm text-[var(--color-fg)]">{account.name}</p>
+        <p className="text-xs text-[var(--color-muted)]">{PLATFORM_NAME[account.platform]}</p>
       </div>
       {account.connected ? (
-        <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-[var(--color-ok)]">
+        <span className="inline-flex shrink-0 items-center gap-1 text-xs text-[var(--color-ok)]">
           <CircleCheck aria-hidden className="size-4" />
           {t.account.connected}
         </span>
       ) : (
-        <span className="shrink-0 text-[11px] text-[var(--color-muted)]">{t.account.notConnected}</span>
+        <span className="shrink-0 text-xs text-[var(--color-muted)]">{t.account.notConnected}</span>
       )}
     </li>
   );
@@ -462,8 +462,8 @@ function PlaceholderRow({
     <li className="flex items-center gap-3 rounded-xl px-2 py-1.5">
       <PlatformGlyph platform={platform} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] text-[var(--color-fg)]">{PLATFORM_NAME[platform]}</p>
-        <p className="text-[10px] text-[var(--color-muted)]">
+        <p className="truncate text-sm text-[var(--color-fg)]">{PLATFORM_NAME[platform]}</p>
+        <p className="text-xs text-[var(--color-muted)]">
           {!youtube
             ? connectable
               ? t.account.notConnected
@@ -477,7 +477,7 @@ function PlaceholderRow({
       </div>
       {youtube || connectable ? (
         status === "ready" && (
-          <Link href={path("/channels")} onClick={onNavigate} className="btn-sky is-quiet pill shrink-0 px-3 py-1 text-[11px]">
+          <Link href={path("/channels")} onClick={onNavigate} className="btn-sky is-quiet pill shrink-0 px-3 py-1 text-xs">
             {t.account.connect}
           </Link>
         )
@@ -487,7 +487,7 @@ function PlaceholderRow({
           disabled
           aria-disabled="true"
           title={t.account.comingSoon}
-          className="btn-sky is-quiet pill shrink-0 px-3 py-1 text-[11px] opacity-50"
+          className="btn-sky is-quiet pill shrink-0 px-3 py-1 text-xs opacity-50"
         >
           {t.account.connect}
         </button>

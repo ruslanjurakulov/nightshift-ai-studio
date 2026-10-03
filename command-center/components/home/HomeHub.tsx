@@ -92,7 +92,7 @@ export function HomeHub({
       <section aria-labelledby="home-hero" className="relative flex flex-col gap-5">
         <ol
           aria-label={t.home.flowLabel}
-          className="relative -mx-1 flex items-center gap-1 overflow-x-auto px-1 pb-1 text-[12px] text-[var(--color-muted)] [scrollbar-width:none]"
+          className="relative -mx-1 flex items-center gap-1 overflow-x-auto px-1 pb-1 text-xs text-[var(--color-muted)] [scrollbar-width:none]"
         >
           {FLOW.map((step, i) => (
             <li key={step} className="flex shrink-0 items-center gap-1">
@@ -108,14 +108,14 @@ export function HomeHub({
           <h1 id="home-hero" className="text-[26px] font-semibold leading-[1.15] tracking-[-0.02em] text-[var(--color-fg)] sm:text-[32px]">
             {t.home.heroTitle}
           </h1>
-          <p className="max-w-[60ch] text-[14px] leading-relaxed text-[var(--color-muted)] sm:text-[15px]">{t.home.heroLead}</p>
+          <p className="max-w-[60ch] text-sm leading-relaxed text-[var(--color-muted)] sm:text-[15px]">{t.home.heroLead}</p>
         </div>
 
         <div className="relative">
           <HomeComposer ref={composer} channels={runnable} currentSlug={currentSlug} />
         </div>
 
-        <ul className="relative flex flex-wrap gap-x-4 gap-y-1.5 px-1 text-[12px] text-[var(--color-muted)]">
+        <ul className="relative flex flex-wrap gap-x-4 gap-y-1.5 px-1 text-xs text-[var(--color-muted)]">
           {[t.home.promisePrice, t.home.promiseRefund, allPrivate ? t.home.promisePrivate : t.home.promiseGate].map((p) => (
             <li key={p} className="flex items-center gap-1.5">
               <Check aria-hidden className="size-3.5 text-[var(--color-ok)]" />
@@ -158,8 +158,8 @@ export function HomeHub({
                     <Icon className="size-[18px]" strokeWidth={1.75} />
                   </span>
                   <span className="flex flex-col">
-                    <span className="text-[14px] font-medium leading-snug text-[var(--color-fg)]">{t.home.quick[a.id].title}</span>
-                    <span className="text-[12px] leading-snug text-[var(--color-muted)]">{t.home.quick[a.id].sub}</span>
+                    <span className="text-sm font-medium leading-snug text-[var(--color-fg)]">{t.home.quick[a.id].title}</span>
+                    <span className="text-xs leading-snug text-[var(--color-muted)]">{t.home.quick[a.id].sub}</span>
                   </span>
                 </Link>
               </li>
@@ -174,7 +174,7 @@ export function HomeHub({
           <h2 id="home-formats" className="t-panel">
             {t.home.formatsTitle}
           </h2>
-          <p className="text-[13px] text-[var(--color-muted)]">{t.home.formatsHint}</p>
+          <p className="text-sm text-[var(--color-muted)]">{t.home.formatsHint}</p>
         </div>
         <ContactSheet label={t.home.formatsTitle} ragged min={160}>
           {HOME_FORMATS.map((f) => (
@@ -188,8 +188,8 @@ export function HomeHub({
                   onClick={() => composer.current?.preset(f.length, t.home.formats[f.id].starter)}
                   className="press flex min-h-11 w-full flex-col gap-0.5 text-left"
                 >
-                  <span className="text-[14px] font-medium text-[var(--color-fg)]">{t.home.formats[f.id].title}</span>
-                  <span className="text-[12px] leading-snug text-[var(--color-muted)]">{t.home.formats[f.id].who}</span>
+                  <span className="text-sm font-medium text-[var(--color-fg)]">{t.home.formats[f.id].title}</span>
+                  <span className="text-xs leading-snug text-[var(--color-muted)]">{t.home.formats[f.id].who}</span>
                 </button>
               }
             >
@@ -206,10 +206,10 @@ export function HomeHub({
             <h2 id="home-channels" className="t-panel">
               {t.home.channelsTitle}
             </h2>
-            {channels.length > 0 && <p className="text-[13px] text-[var(--color-muted)]">{t.home.channelsHint}</p>}
+            {channels.length > 0 && <p className="text-sm text-[var(--color-muted)]">{t.home.channelsHint}</p>}
           </div>
           {channels.length > 0 && (
-            <Link href={path("/channels/new")} className="tap-link shrink-0 text-[13px] text-[var(--color-primary)] hover:underline">
+            <Link href={path("/channels/new")} className="tap-link shrink-0 text-sm text-[var(--color-primary)] hover:underline">
               {t.home.addChannel}
             </Link>
           )}
@@ -220,10 +220,10 @@ export function HomeHub({
               <Film className="size-5" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[14px] font-medium text-[var(--color-fg)]">{t.home.noChannelsTitle}</p>
-              <p className="text-[13px] text-[var(--color-muted)]">{t.home.noChannelsBody}</p>
+              <p className="text-sm font-medium text-[var(--color-fg)]">{t.home.noChannelsTitle}</p>
+              <p className="text-sm text-[var(--color-muted)]">{t.home.noChannelsBody}</p>
             </div>
-            <Link href={path("/channels/new")} className="btn-primary text-[13px]">
+            <Link href={path("/channels/new")} className="btn-primary text-sm">
               <Plus aria-hidden className="size-4" />
               {t.home.connect}
             </Link>
@@ -296,8 +296,8 @@ function ChannelCard({ c }: { c: HomeChannel }) {
             </span>
           )}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[14px] font-medium text-[var(--color-fg)]">{c.name}</p>
-            <p className="flex items-center gap-1.5 text-[12px] text-[var(--color-muted)]">
+            <p className="truncate text-sm font-medium text-[var(--color-fg)]">{c.name}</p>
+            <p className="flex items-center gap-1.5 text-xs text-[var(--color-muted)]">
               <StatusLamp tone={STANDING_TONE[c.standing]} label={t.home.standing[c.standing]} />
               {c.language && <span className="truncate">· {c.language}</span>}
             </p>
@@ -305,12 +305,12 @@ function ChannelCard({ c }: { c: HomeChannel }) {
         </div>
 
         {c.lastVideo?.title && (
-          <p className="line-clamp-2 text-[13px] leading-snug text-[var(--color-fg)]" title={c.lastVideo.title}>
+          <p className="line-clamp-2 text-sm leading-snug text-[var(--color-fg)]" title={c.lastVideo.title}>
             {c.lastVideo.title}
           </p>
         )}
 
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[12px]">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
           <dt className="flex items-center gap-1.5 text-[var(--color-muted)]">
             <Film aria-hidden className="size-3.5" />
             {t.home.lastVideo}
@@ -338,7 +338,7 @@ function ChannelCard({ c }: { c: HomeChannel }) {
               <span className="text-[var(--color-muted)]">{t.home.waitingUnknown}</span>
             ) : (
               <span
-                className="mono font-semibold"
+                className="tnum font-semibold"
                 style={{ color: c.waiting > 0 ? "var(--color-warn)" : "var(--color-muted)" }}
                 data-testid="waiting"
               >
@@ -349,14 +349,14 @@ function ChannelCard({ c }: { c: HomeChannel }) {
         </dl>
 
         <div className="mt-auto flex items-center justify-between gap-2 border-t border-[var(--color-border)] pt-3">
-          <span className="truncate text-[11px] text-[var(--color-muted)]">{c.autoPublish ? t.home.autoOn : t.home.autoOff}</span>
+          <span className="truncate text-xs text-[var(--color-muted)]">{c.autoPublish ? t.home.autoOn : t.home.autoOff}</span>
           {c.standing === "draft" ? (
-            <Link href={path("/channels")} className="tap-link inline-flex shrink-0 items-center gap-1 text-[12px] text-[var(--color-primary)] hover:underline">
+            <Link href={path("/channels")} className="tap-link inline-flex shrink-0 items-center gap-1 text-xs text-[var(--color-primary)] hover:underline">
               {t.home.connect}
               <ArrowUpRight aria-hidden className="size-3.5" />
             </Link>
           ) : (
-            <Link href={at("/videos")} className="tap-link inline-flex shrink-0 items-center gap-1 text-[12px] text-[var(--color-primary)] hover:underline">
+            <Link href={at("/videos")} className="tap-link inline-flex shrink-0 items-center gap-1 text-xs text-[var(--color-primary)] hover:underline">
               {t.home.review}
               <ArrowUpRight aria-hidden className="size-3.5" />
             </Link>

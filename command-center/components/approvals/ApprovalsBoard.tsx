@@ -196,17 +196,17 @@ export function ApprovalsBoard({
   return (
     <div className="rhythm">
       {/* Per-channel requirement toggle */}
-      <div className="panel flex flex-wrap items-center justify-between gap-3 p-4">
+      <div className="panel flex flex-wrap items-center justify-between gap-3 p-5 sm:p-6">
         <div className="min-w-0">
           <h2 className="t-section">{t.approvals.requireToggle}</h2>
-          <p className="mt-1 text-[13px] text-[var(--color-muted)]">
+          <p className="mt-1 text-sm text-[var(--color-muted)]">
             {require2p === null
               ? t.approvals.requireUnknownNote
               : require2p
                 ? t.approvals.requireOn
                 : t.approvals.requireOff}
           </p>
-          {!canToggle && <p className="mt-1 text-[12px] text-[var(--color-muted)]">{t.channels.adminOnly}</p>}
+          {!canToggle && <p className="mt-1 text-xs text-[var(--color-muted)]">{t.channels.adminOnly}</p>}
         </div>
         {require2p === null ? (
           // Unknown is not "off": the switch is disabled until it can be read.
@@ -216,13 +216,13 @@ export function ApprovalsBoard({
                 type="button"
                 data-requirement-toggle
                 disabled
-                className="pill btn-sky is-quiet inline-flex items-center gap-2 px-4 py-2 text-[13px] disabled:opacity-40"
+                className="pill btn-sky is-quiet inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-40"
               >
                 <StatusPill tone="idle" label={t.approvals.requireUnknown} />
               </button>
             )}
             {!canToggle && <StatusPill tone="idle" label={t.approvals.requireUnknown} />}
-            <button type="button" onClick={() => router.refresh()} className="btn-sky pill px-4 py-1.5 text-[12px]">
+            <button type="button" onClick={() => router.refresh()} className="btn-sky pill px-4 py-1.5 text-xs">
               {t.common.retry}
             </button>
           </div>
@@ -233,7 +233,7 @@ export function ApprovalsBoard({
             aria-checked={require2p}
             disabled={busy}
             onClick={() => toggleRequirement(!require2p)}
-            className={`pill inline-flex items-center gap-2 px-4 py-2 text-[13px] disabled:opacity-40 ${
+            className={`pill inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-40 ${
               require2p ? "btn-sky is-solid" : "btn-sky is-quiet"
             }`}
           >
@@ -246,25 +246,25 @@ export function ApprovalsBoard({
 
       {/* Open a request (editor+) */}
       {canReq && (
-        <div className="panel flex flex-col gap-3 p-4">
+        <div className="panel flex flex-col gap-3 p-5 sm:p-6">
           <h2 className="t-section">{t.approvals.requestTitle}</h2>
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-1 flex-col gap-1">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+              <span className="text-xs text-[var(--color-muted)]">
                 {t.approvals.videoRef}
               </span>
               <input
                 type="text"
                 value={videoRef}
                 onChange={(e) => setVideoRef(e.target.value)}
-                className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+                className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
               />
             </label>
             <button
               type="button"
               onClick={request}
               disabled={busy}
-              className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
+              className="btn-sky is-solid pill px-5 py-2 text-sm disabled:opacity-40"
             >
               {busy ? t.approvals.requesting : t.approvals.request}
             </button>
@@ -272,11 +272,11 @@ export function ApprovalsBoard({
         </div>
       )}
 
-      {error && <p className="mono text-[12px] text-[var(--color-fail)]">{error}</p>}
+      {error && <p className="tnum text-xs text-[var(--color-fail)]">{error}</p>}
 
       {/* Requests */}
       <div className="panel overflow-hidden p-0">
-        <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-[var(--color-border)] px-4 py-2.5 text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+        <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-[var(--color-border)] px-4 py-2.5 text-xs text-[var(--color-muted)]">
           <span>{t.approvals.colRequested}</span>
           <span>{t.approvals.colStatus}</span>
           <span />
@@ -284,7 +284,7 @@ export function ApprovalsBoard({
         {loadFailed ? (
           <ErrorState compact message={t.approvals.readFailed} onRetry={load} />
         ) : rows === null ? (
-          <p className="p-4 text-[13px] text-[var(--color-muted)]">…</p>
+          <p className="p-4 text-sm text-[var(--color-muted)]">…</p>
         ) : rows.length === 0 ? (
           <EmptyState>{t.approvals.empty}</EmptyState>
         ) : (
@@ -297,14 +297,14 @@ export function ApprovalsBoard({
                 className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-[var(--color-border)] px-4 py-3 last:border-b-0"
               >
                 <div className="min-w-0">
-                  <div className="truncate text-[14px] text-[var(--color-fg)]">
+                  <div className="truncate text-sm text-[var(--color-fg)]">
                     {row.video_ref || t.approvals.noVideoRef}
                   </div>
-                  <div className="mono text-[11px] text-[var(--color-muted)]">
+                  <div className="tnum text-xs text-[var(--color-muted)]">
                     {t.approvals.colRequested}: {who(row.requested_by)} · {fmt(row.requested_at)}
                   </div>
                   {row.status !== "pending" && (
-                    <div className="mono text-[11px] text-[var(--color-muted)]">
+                    <div className="tnum text-xs text-[var(--color-muted)]">
                       {t.approvals.colDecided}: {who(row.decided_by)} · {fmt(row.decided_at)}
                     </div>
                   )}
@@ -316,7 +316,7 @@ export function ApprovalsBoard({
                       type="button"
                       onClick={() => decide(row, "approved")}
                       disabled={busy}
-                      className="btn-sky is-solid pill px-3 py-1 text-[12px] disabled:opacity-40"
+                      className="btn-sky is-solid pill px-3 py-1 text-xs disabled:opacity-40"
                     >
                       {t.approvals.approve}
                     </button>
@@ -324,13 +324,13 @@ export function ApprovalsBoard({
                       type="button"
                       onClick={() => decide(row, "rejected")}
                       disabled={busy}
-                      className="btn-sky is-quiet pill px-3 py-1 text-[12px] disabled:opacity-40"
+                      className="btn-sky is-quiet pill px-3 py-1 text-xs disabled:opacity-40"
                     >
                       {t.approvals.reject}
                     </button>
                   </div>
                 ) : row.status === "pending" && isOwn ? (
-                  <span className="mono text-[11px] text-[var(--color-muted)]">{t.approvals.cannotApproveOwn}</span>
+                  <span className="tnum text-xs text-[var(--color-muted)]">{t.approvals.cannotApproveOwn}</span>
                 ) : (
                   <span />
                 )}

@@ -128,7 +128,7 @@ export function StyleTile({
         )}
       </svg>
       {label ? (
-        <span className="pointer-events-none absolute bottom-1.5 left-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-panel)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-muted)]">
+        <span className="pointer-events-none absolute bottom-1.5 left-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-panel)] px-2 py-0.5 text-xs font-medium text-[var(--color-muted)]">
           {label}
         </span>
       ) : null}

@@ -50,9 +50,9 @@ export default async function MembersPage() {
     return (
       <div className="rhythm">
         <PageHeader icon="members" title={t.org.platformTitle} subtitle={t.members.subtitle} />
-        <div className="panel flex flex-col gap-3 p-4">
-          <p className="text-[13px] text-[var(--color-muted)]">{t.org.platformOnly}</p>
-          <Link href={path("/organization")} className="btn-sky is-solid pill self-start px-5 py-2 text-[13px]">
+        <div className="panel flex flex-col gap-3 p-5 sm:p-6">
+          <p className="text-sm text-[var(--color-muted)]">{t.org.platformOnly}</p>
+          <Link href={path("/organization")} className="btn-sky is-solid pill self-start px-5 py-2 text-sm">
             {t.org.openOrg}
           </Link>
         </div>
@@ -66,7 +66,7 @@ export default async function MembersPage() {
       {user ? (
         <MembersBoard myRole={role} myEmail={user.email ?? ""} myUserId={user.id} />
       ) : (
-        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.members.signIn}</div>
+        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.members.signIn}</div>
       )}
     </div>
   );

@@ -43,21 +43,21 @@ export function ErrorScreen({
         <AlertTriangle className="size-5" />
       </span>
       <h1 className="text-xl font-semibold text-[var(--color-fg)]">{t.ux.errorTitle}</h1>
-      <p className="text-[14px] leading-relaxed text-[var(--color-muted)]">{t.ux.errorBody}</p>
+      <p className="text-sm leading-relaxed text-[var(--color-muted)]">{t.ux.errorBody}</p>
       <div className="mt-2 flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
         <button
           type="button"
           onClick={reset}
-          className="btn-sky is-solid pill inline-flex items-center justify-center gap-2 px-5 py-2 text-[13px]"
+          className="btn-sky is-solid pill inline-flex items-center justify-center gap-2 px-5 py-2 text-sm"
         >
           <RotateCcw aria-hidden className="size-3.5" />
           {t.ux.errorRetry}
         </button>
-        <Link href={homeHref} className="btn-sky is-quiet pill px-5 py-2 text-center text-[13px]">
+        <Link href={homeHref} className="btn-sky is-quiet pill px-5 py-2 text-center text-sm">
           {t.ux.errorHome}
         </Link>
       </div>
-      {digest && <p className="mono text-[11px] text-[var(--color-muted)]">{fmt(t.ux.errorRef, { digest })}</p>}
+      {digest && <p className="tnum text-xs text-[var(--color-muted)]">{fmt(t.ux.errorRef, { digest })}</p>}
     </div>
   );
 }

@@ -140,7 +140,7 @@ export function StyleSections({
           onAction={() => setEditor({ mode: "kit", item: null })}
           disabled={kits.length >= KIT_LIMITS.perOrg}
         />
-        {!channelId && kits.length > 0 && <p className="text-[12px] text-[var(--color-muted)]">{ts.pickChannelForKit}</p>}
+        {!channelId && kits.length > 0 && <p className="text-xs text-[var(--color-muted)]">{ts.pickChannelForKit}</p>}
         {notice?.section === "kit" && <Notice text={notice.text} />}
         {kits.length === 0 ? (
           <EmptyCard icon="kit" text={ts.emptyKits} action={ts.newKit} onAction={() => setEditor({ mode: "kit", item: null })} />
@@ -254,13 +254,13 @@ function SectionHead({
         <h2 id={id} className="t-section">
           {title}
         </h2>
-        <p className="t-lead mt-2 text-[13px]">{hint}</p>
+        <p className="t-lead mt-2 text-sm">{hint}</p>
       </div>
       <button
         type="button"
         onClick={onAction}
         disabled={disabled}
-        className="disabled:opacity-50 btn-primary inline-flex items-center gap-1.5 text-[13px]"
+        className="disabled:opacity-50 btn-primary inline-flex items-center gap-1.5 text-sm"
       >
         <Plus aria-hidden className="size-4" />
         {action}
@@ -271,7 +271,7 @@ function SectionHead({
 
 function Notice({ text }: { text: string }) {
   return (
-    <p role="alert" className="text-[13px]" style={{ color: "var(--color-fail)" }}>
+    <p role="alert" className="text-sm" style={{ color: "var(--color-fail)" }}>
       {text}
     </p>
   );
@@ -297,8 +297,8 @@ function EmptyCard({
       >
         <Icon className="size-5" strokeWidth={1.5} />
       </span>
-      <p className="m-0 max-w-[46ch] text-[13px] text-[var(--color-muted)]">{text}</p>
-      <button type="button" onClick={onAction} className="disabled:opacity-50 btn-quiet text-[13px]">
+      <p className="m-0 max-w-[46ch] text-sm text-[var(--color-muted)]">{text}</p>
+      <button type="button" onClick={onAction} className="disabled:opacity-50 btn-quiet text-sm">
         {action}
       </button>
     </div>
@@ -343,14 +343,14 @@ function Card({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={cover.thumbUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
         ) : (
-          <span className="grid h-full w-full place-items-center gap-1 text-[11px] text-[var(--color-muted)]">
+          <span className="grid h-full w-full place-items-center gap-1 text-xs text-[var(--color-muted)]">
             <ImageOff aria-hidden className="size-5" />
             {ts.noPreview}
           </span>
         )}
         {badge && (
           <span
-            className="absolute left-2 top-2 rounded-[var(--ns-r-chip)] px-2 py-0.5 text-[10px] font-semibold"
+            className="absolute left-2 top-2 rounded-[var(--ns-r-chip)] px-2 py-0.5 text-xs font-semibold"
             style={
               quietBadge
                 ? { background: "rgba(0,0,0,0.55)", color: "#fff" }
@@ -362,11 +362,11 @@ function Card({
         )}
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-3">
-        <h3 className={`truncate text-[14px] font-semibold text-[var(--color-fg)] ${mono ? "mono" : ""}`} title={title}>
+        <h3 className={`truncate text-sm font-semibold text-[var(--color-fg)] ${mono ? "mono" : ""}`} title={title}>
           {title}
         </h3>
-        {subtitle && <p className="line-clamp-2 text-[12px] text-[var(--color-muted)]">{subtitle}</p>}
-        <p className="mono text-[11px] text-[var(--color-muted)]">
+        {subtitle && <p className="line-clamp-2 text-xs text-[var(--color-muted)]">{subtitle}</p>}
+        <p className="tnum text-xs text-[var(--color-muted)]">
           {fmt(ts.imagesCount, { n: references.length - missing })}
           {missing > 0 && (
             <span style={{ color: "var(--color-warn)" }}> · {fmt(ts.missingRefs, { n: missing })}</span>
@@ -375,14 +375,14 @@ function Card({
         <div className="mt-auto flex flex-col gap-2 pt-2">
           {extra}
           <div className="flex gap-2">
-            <button type="button" onClick={onEdit} disabled={busy} className="disabled:opacity-50 btn-quiet flex-1 text-[12px]">
+            <button type="button" onClick={onEdit} disabled={busy} className="disabled:opacity-50 btn-quiet flex-1 text-xs">
               {ts.edit}
             </button>
             <button
               type="button"
               onClick={onDelete}
               disabled={busy}
-              className="disabled:opacity-50 btn-quiet flex-1 text-[12px]"
+              className="disabled:opacity-50 btn-quiet flex-1 text-xs"
               style={{ color: "var(--color-fail)" }}
             >
               {ts.delete}

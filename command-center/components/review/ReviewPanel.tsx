@@ -96,7 +96,7 @@ export function ReviewPanel({
           </h2>
         </div>
         <span
-          className="pill shrink-0 border px-4 py-2 text-[12px]"
+          className="pill shrink-0 border px-4 py-2 text-xs"
           style={{
             borderColor: autoPublish ? "var(--color-warn)" : "var(--color-border)",
             color: autoPublish ? "var(--color-warn)" : "var(--color-muted)",
@@ -117,7 +117,7 @@ export function ReviewPanel({
         />
       ) : (
         <div className="rounded-[18px] border border-dashed border-[var(--color-border)] p-8 text-center">
-          <p className="text-[13px] text-[var(--color-muted)]">
+          <p className="text-sm text-[var(--color-muted)]">
             {srcError
               ? t.review.previewUnreadable
               : video.preview_path
@@ -135,7 +135,7 @@ export function ReviewPanel({
         </div>
         <div className="stack gap-2">
           <div className="t-label">{t.review.privacy}</div>
-          <p className="mono m-0 text-[15px]">
+          <p className="tnum m-0 text-[15px]">
             {/* YouTube's own value, in the reader's language when it is one of the three. */}
             {video.privacy
               ? (t.review.privacyValue as Record<string, string>)[video.privacy] ?? video.privacy
@@ -159,20 +159,20 @@ export function ReviewPanel({
         {gate ? (
           <>
             <p
-              className="mt-2 text-[14px] font-medium"
+              className="mt-2 text-sm font-medium"
               style={{ color: gate.allowed ? "var(--color-ok)" : "var(--color-fail)" }}
             >
               {gate.allowed ? t.review.gatePassed : t.review.gateBlocked}
             </p>
             {gate.flagged !== null && (
-              <p className="mt-1 text-[13px] text-[var(--color-muted)]">
+              <p className="mt-1 text-sm text-[var(--color-muted)]">
                 {fmt(t.review.gateFlagged, { n: gate.flagged })}
               </p>
             )}
             {gate.reasons.length > 0 && (
               <ul className="mt-2 flex flex-col gap-1">
                 {gate.reasons.map((r) => (
-                  <li key={r} className="text-[13px] text-[var(--color-muted)]">
+                  <li key={r} className="text-sm text-[var(--color-muted)]">
                     — {r}
                   </li>
                 ))}
@@ -180,7 +180,7 @@ export function ReviewPanel({
             )}
           </>
         ) : (
-          <p className="mt-2 text-[13px] text-[var(--color-muted)]">{t.review.gateUnknown}</p>
+          <p className="mt-2 text-sm text-[var(--color-muted)]">{t.review.gateUnknown}</p>
         )}
       </div>
 
@@ -189,7 +189,7 @@ export function ReviewPanel({
         <button
           type="button"
           onClick={() => setShowScript((v) => !v)}
-          className="btn-sky is-quiet pill self-start px-5 py-2.5 text-[13px]"
+          className="btn-sky is-quiet pill self-start px-5 py-2.5 text-sm"
           aria-expanded={showScript}
         >
           {showScript ? t.review.hideScript : t.review.showScript}
@@ -197,21 +197,21 @@ export function ReviewPanel({
         {showScript && (
           <div className="max-h-[420px] overflow-y-auto rounded-[16px] border border-[var(--color-border)] bg-[var(--color-panel-2)] p-5">
             {video.script_text ? (
-              <p className="m-0 whitespace-pre-wrap text-[14px] leading-relaxed text-[var(--color-fg)]">
+              <p className="m-0 whitespace-pre-wrap text-sm leading-relaxed text-[var(--color-fg)]">
                 {video.script_text}
               </p>
             ) : (
-              <p className="m-0 text-[13px] text-[var(--color-muted)]">{t.review.scriptMissing}</p>
+              <p className="m-0 text-sm text-[var(--color-muted)]">{t.review.scriptMissing}</p>
             )}
           </div>
         )}
       </div>
 
-      {error && <p className="mono text-[12px] text-[var(--color-fail)]">{error}</p>}
+      {error && <p className="tnum text-xs text-[var(--color-fail)]">{error}</p>}
 
       {/* ── the decision ───────────────────────────────────────────────── */}
       {filed ? (
-        <p className="text-[13px] text-[var(--color-ok)]">
+        <p className="text-sm text-[var(--color-ok)]">
           {fmt(t.review.filed, { action: t.review[filed as "approve"] ?? filed })}
         </p>
       ) : (
@@ -220,7 +220,7 @@ export function ReviewPanel({
             type="button"
             disabled={!waiting || busy !== null}
             onClick={() => file("approve")}
-            className="btn-sky is-solid pill px-[30px] py-3.5 text-[14px] disabled:opacity-40"
+            className="btn-sky is-solid pill px-[30px] py-3.5 text-sm disabled:opacity-40"
           >
             {busy === "approve" ? t.review.filing : t.review.approve}
           </button>
@@ -228,7 +228,7 @@ export function ReviewPanel({
             type="button"
             disabled={busy !== null}
             onClick={() => file("regenerate")}
-            className="btn-sky pill px-[30px] py-3.5 text-[14px] disabled:opacity-40"
+            className="btn-sky pill px-[30px] py-3.5 text-sm disabled:opacity-40"
           >
             {busy === "regenerate" ? t.review.filing : t.review.regenerate}
           </button>
@@ -236,11 +236,11 @@ export function ReviewPanel({
             type="button"
             disabled={busy !== null}
             onClick={() => file("regenerate_script")}
-            className="btn-sky pill px-[30px] py-3.5 text-[14px] disabled:opacity-40"
+            className="btn-sky pill px-[30px] py-3.5 text-sm disabled:opacity-40"
           >
             {busy === "regenerate_script" ? t.review.filing : t.review.regenerateScript}
           </button>
-          <span className="max-w-[46ch] text-[12px] leading-relaxed text-[var(--color-muted)]">
+          <span className="max-w-[46ch] text-xs leading-relaxed text-[var(--color-muted)]">
             {autoPublish ? t.review.autoHint : t.review.queueHint}
           </span>
         </div>

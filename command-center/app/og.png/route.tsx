@@ -7,10 +7,9 @@ import { en } from "@/lib/i18n/en";
  * The social card: the hero line on the control room's ink ground, and the
  * rundown with its one lit lamp — the video waiting for approval — words
  * only, no figures. English, because a shared link's card is cached once for everyone.
- * Set in the identity's own faces (brand/og-fonts, OFL): Sofia Sans Extra
- * Condensed for the engraving, Sofia Sans for the line under it. They are read
- * from the repository while the static card is built, so building it fetches
- * nothing over the network.
+ * Set in the product's typeface, Onest, and the wordmark's own condensed
+ * capitals (brand/og-fonts, both OFL). They are read from the repository while
+ * the static card is built, so building it fetches nothing over the network.
  *
  * Why a route at /og.png and not the app/opengraph-image.tsx convention: that
  * convention serves at /opengraph-image (no extension), which the auth gate in
@@ -24,12 +23,12 @@ export const dynamic = "force-static";
 const size = { width: 1200, height: 630 };
 
 /* The identity's control-room tokens (docs/design/IDENTITY.md §Palette, dark). */
-const GROUND = "#0B0F16";
-const CONSOLE = "#11161F";
-const RULE = "#252F40";
-const RULE_STRONG = "#56637C";
-const TEXT = "#ECE5D8";
-const DIM = "#A39D91";
+const GROUND = "#131210";
+const CONSOLE = "#1B1A17";
+const RULE = "#2D2B26";
+const RULE_STRONG = "#6F695F";
+const TEXT = "#F1EDE6";
+const DIM = "#B4AEA1";
 const AMBER = "#FFA940";
 const GO = "#5FD49A";
 
@@ -41,10 +40,10 @@ async function font(file: string): Promise<ArrayBuffer> {
 }
 
 export async function GET() {
-  const [display, body, mono] = await Promise.all([
+  const [wordmark, regular, semibold] = await Promise.all([
     font("SofiaSansExtraCondensed-Bold.ttf"),
-    font("SofiaSans-Regular.ttf"),
-    font("MartianMono-Medium.ttf"),
+    font("Onest-Regular.ttf"),
+    font("Onest-SemiBold.ttf"),
   ]);
   const h = en.site.hero;
   const rows = en.site.rundown.rows;
@@ -59,7 +58,7 @@ export async function GET() {
           color: TEXT,
           padding: "60px 72px",
           gap: 56,
-          fontFamily: "Sofia Sans",
+          fontFamily: "Onest",
         }}
       >
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", flex: 1.2 }}>
@@ -73,17 +72,16 @@ export async function GET() {
             style={{
               display: "flex",
               flexDirection: "column",
-              fontFamily: "Sofia Sans Extra Condensed",
-              fontSize: 104,
-              fontWeight: 700,
-              lineHeight: 0.88,
-              textTransform: "uppercase",
+              fontSize: 76,
+              fontWeight: 600,
+              lineHeight: 1.1,
+              letterSpacing: "-0.02em",
             }}
           >
             <span>{h.titleA}</span>
             <span style={{ color: DIM }}>{h.titleB}</span>
           </div>
-          <div style={{ fontSize: 26, color: DIM }}>{h.kicker}</div>
+          <div style={{ fontSize: 28, lineHeight: 1.4, color: DIM }}>{h.kicker}</div>
         </div>
         <div
           style={{
@@ -93,7 +91,7 @@ export async function GET() {
             alignSelf: "center",
             backgroundColor: CONSOLE,
             border: `2px solid ${RULE_STRONG}`,
-            borderRadius: 10,
+            borderRadius: 20,
           }}
         >
           {rows.map((row) => {
@@ -113,11 +111,8 @@ export async function GET() {
               >
                 <div
                   style={{
-                    fontFamily: "Sofia Sans Extra Condensed",
-                    fontSize: 32,
-                    fontWeight: 700,
-                    letterSpacing: "0.05em",
-                    textTransform: "uppercase",
+                    fontSize: 30,
+                    fontWeight: 600,
                     color: next ? DIM : TEXT,
                   }}
                 >
@@ -125,7 +120,7 @@ export async function GET() {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   {yours && (
-                    <div style={{ fontFamily: "Martian Mono", fontSize: 15, color: AMBER, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                    <div style={{ fontSize: 20, fontWeight: 600, color: AMBER }}>
                       {en.site.rundown.yours}
                     </div>
                   )}
@@ -148,9 +143,9 @@ export async function GET() {
     {
       ...size,
       fonts: [
-        { name: "Sofia Sans Extra Condensed", data: display, weight: 700, style: "normal" },
-        { name: "Sofia Sans", data: body, weight: 400, style: "normal" },
-        { name: "Martian Mono", data: mono, weight: 500, style: "normal" },
+        { name: "Sofia Sans Extra Condensed", data: wordmark, weight: 700, style: "normal" },
+        { name: "Onest", data: regular, weight: 400, style: "normal" },
+        { name: "Onest", data: semibold, weight: 600, style: "normal" },
       ],
     },
   );

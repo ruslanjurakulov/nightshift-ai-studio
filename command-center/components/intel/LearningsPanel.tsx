@@ -36,8 +36,8 @@ export function LearningsPanel({
 
   if (migrationMissing) {
     return (
-      <div className="panel p-4" role="status">
-        <p className="text-[13px] text-[var(--color-warn)]">{t.learnings.migrationMissing}</p>
+      <div className="panel p-5 sm:p-6" role="status">
+        <p className="text-sm text-[var(--color-warn)]">{t.learnings.migrationMissing}</p>
       </div>
     );
   }
@@ -46,11 +46,11 @@ export function LearningsPanel({
     <div className="flex flex-col gap-4">
       <Panel
         title={t.learnings.pendingTitle}
-        right={<span className="mono text-[11px] text-[var(--color-muted)]">{pending.length}</span>}
+        right={<span className="tnum text-xs text-[var(--color-muted)]">{pending.length}</span>}
       >
-        <p className="px-4 pt-2 text-[12px] text-[var(--color-muted)]">{t.learnings.pendingNote}</p>
+        <p className="px-4 pt-2 text-xs text-[var(--color-muted)]">{t.learnings.pendingNote}</p>
         {!canDecide && pending.length > 0 && (
-          <p className="px-4 pt-1 mono text-[11px] text-[var(--color-muted)]">{t.learnings.adminOnly}</p>
+          <p className="px-4 pt-1 tnum text-xs text-[var(--color-muted)]">{t.learnings.adminOnly}</p>
         )}
         {pending.length === 0 ? (
           <EmptyState>{t.learnings.noPending}</EmptyState>
@@ -66,9 +66,9 @@ export function LearningsPanel({
 
       <Panel
         title={t.learnings.approvedTitle}
-        right={<span className="mono text-[11px] text-[var(--color-muted)]">{approved.length}</span>}
+        right={<span className="tnum text-xs text-[var(--color-muted)]">{approved.length}</span>}
       >
-        <p className="px-4 pt-2 text-[12px] text-[var(--color-muted)]">{t.learnings.approvedNote}</p>
+        <p className="px-4 pt-2 text-xs text-[var(--color-muted)]">{t.learnings.approvedNote}</p>
         {approved.length === 0 ? (
           <EmptyState>{t.learnings.noApproved}</EmptyState>
         ) : (
@@ -79,7 +79,7 @@ export function LearningsPanel({
             ))}
           </ul>
         )}
-        <p className="border-t border-[var(--color-border)] px-4 py-2 mono text-[10px] text-[var(--color-muted)]">
+        <p className="border-t border-[var(--color-border)] px-4 py-2 tnum text-xs text-[var(--color-muted)]">
           {fmt(t.learnings.rejectedCount, { n: rejected.length })} · {t.learnings.confidenceHow}
         </p>
       </Panel>
@@ -130,16 +130,16 @@ function LearningItem({
 
   return (
     <li className="flex flex-col gap-2 border-b border-[var(--color-border)]/50 px-4 py-3">
-      <div className="flex flex-wrap items-center gap-2 mono text-[10px] uppercase tracking-wider text-[var(--color-muted)]">
+      <div className="flex flex-wrap items-center gap-2 tnum text-xs text-[var(--color-muted)]">
         <span className="text-[var(--color-primary)]">{kindLabel}</span>
         {showChannel && <span>· {row.channel_id}</span>}
         <span>· {t.learnings.confidence}: {pct === null ? t.learnings.confidenceUnknown : `${pct}%`}</span>
         <span>· {t.learnings.proposed} {relativeTime(row.created_at)}</span>
         {row.decided_at && <span>· {t.learnings.decided} {relativeTime(row.decided_at)}</span>}
       </div>
-      <p className="m-0 text-[14px] text-[var(--color-fg)]">{row.observation}</p>
+      <p className="m-0 text-sm text-[var(--color-fg)]">{row.observation}</p>
       {evidenceLines(row.evidence).length > 0 && (
-        <details className="mono text-[11px] text-[var(--color-muted)]">
+        <details className="tnum text-xs text-[var(--color-muted)]">
           <summary className="cursor-pointer">{t.learnings.evidence}</summary>
           <ul className="mt-1 flex flex-col gap-0.5 pl-3">
             {evidenceLines(row.evidence).map((line) => (
@@ -152,17 +152,17 @@ function LearningItem({
         <div className="flex flex-wrap items-center gap-2">
           {actions.includes("approve") && (
             <button type="button" onClick={() => decide("approve")} disabled={state === "busy"}
-              className="btn-sky pill px-3 py-1 text-[12px] disabled:opacity-40">
+              className="btn-sky pill px-3 py-1 text-xs disabled:opacity-40">
               {t.learnings.approve}
             </button>
           )}
           {actions.includes("reject") && (
             <button type="button" onClick={() => decide("reject")} disabled={state === "busy"}
-              className="pill border border-[var(--color-border)] px-3 py-1 text-[12px] text-[var(--color-muted)] disabled:opacity-40">
+              className="pill border border-[var(--color-border)] px-3 py-1 text-xs text-[var(--color-muted)] disabled:opacity-40">
               {withdraw ? t.learnings.withdraw : t.learnings.reject}
             </button>
           )}
-          <span className="mono text-[11px]" aria-live="polite">
+          <span className="tnum text-xs" aria-live="polite">
             {state === "busy" && <span className="text-[var(--color-muted)]">{t.learnings.saving}</span>}
             {state === "fail" && (
               <span className="text-[var(--color-fail)]">{fmt(t.learnings.failed, { error })}</span>

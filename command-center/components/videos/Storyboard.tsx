@@ -107,40 +107,40 @@ export function Storyboard({
       {/* Summary strip: how many scenes and the estimated runtime. */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
         <div className="flex items-baseline gap-2">
-          <span className="mono text-lg text-[var(--color-fg)]">{scenes.length}</span>
-          <span className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+          <span className="tnum text-lg text-[var(--color-fg)]">{scenes.length}</span>
+          <span className="text-xs text-[var(--color-muted)]">
             {labels.scenes}
           </span>
         </div>
         <div className="flex items-baseline gap-2">
-          <span className="mono text-lg text-[var(--color-fg)]">{formatClock(totalSeconds)}</span>
-          <span className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+          <span className="tnum text-lg text-[var(--color-fg)]">{formatClock(totalSeconds)}</span>
+          <span className="text-xs text-[var(--color-muted)]">
             {labels.runtime}
           </span>
         </div>
         {counts.total > 0 && (
           <div className="flex items-baseline gap-2">
             <span
-              className={`mono text-lg ${
+              className={`tnum text-lg ${
                 counts.needsReview > 0 ? "text-[var(--color-warn)]" : "text-[var(--color-fg)]"
               }`}
             >
               {counts.needsReview}/{counts.total}
             </span>
-            <span className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+            <span className="text-xs text-[var(--color-muted)]">
               {labels.claimsNeedReview}
             </span>
           </div>
         )}
       </div>
       {counts.total > 0 && (
-        <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">{labels.claimsAdvisory}</p>
+        <p className="text-xs leading-relaxed text-[var(--color-muted)]">{labels.claimsAdvisory}</p>
       )}
       {!regenerate && repairUnavailable && scenes.some((s) => s.sceneId) && (
-        <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">{repairUnavailable}</p>
+        <p className="text-xs leading-relaxed text-[var(--color-muted)]">{repairUnavailable}</p>
       )}
       {retention && rl && (
-        <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">
+        <p className="text-xs leading-relaxed text-[var(--color-muted)]">
           {retention.status === "ok"
             ? rl.note
             : retention.status === "no_timing"
@@ -164,60 +164,60 @@ export function Storyboard({
           >
             <div className="flex shrink-0 flex-col items-center gap-1">
               <span
-                className="mono flex size-7 items-center justify-center rounded-[var(--ns-r-chip)] border border-[var(--color-border)] text-[12px] text-[var(--color-primary)]"
+                className="tnum flex size-7 items-center justify-center rounded-[var(--ns-r-chip)] border border-[var(--color-border)] text-xs text-[var(--color-primary)]"
                 aria-hidden
               >
                 {s.index}
               </span>
-              <span className="mono text-[9px] text-[var(--color-muted)]">
+              <span className="tnum text-xs text-[var(--color-muted)]">
                 {formatClock(s.cumulativeSeconds)}
               </span>
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                 <span className="flex flex-wrap items-baseline gap-2">
-                  <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                  <span className="text-xs text-[var(--color-muted)]">
                     {s.name ?? `${labels.scene} ${s.index}`}
                   </span>
                   {s.sceneType && (
-                    <span className="rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-2 py-0.5 text-[9px] uppercase tracking-[0.14em] text-[var(--color-primary)]">
+                    <span className="rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-primary)]">
                       {s.sceneType}
                     </span>
                   )}
                 </span>
-                <span className="mono text-[10px] text-[var(--color-muted)]">
+                <span className="tnum text-xs text-[var(--color-muted)]">
                   {s.durationExact ? "" : `${labels.approx} `}
                   {s.estSeconds}s · {s.words}w
                 </span>
               </div>
-              <p className="mt-1.5 whitespace-pre-line text-[13px] leading-relaxed text-[var(--color-fg)]">
+              <p className="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-[var(--color-fg)]">
                 {s.text}
               </p>
               {showRetention && rl && (
                 <div className="mt-2 flex flex-col gap-1">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <span className="text-[9px] uppercase tracking-[0.2em] text-[var(--color-muted)]">
+                    <span className="text-xs text-[var(--color-muted)]">
                       {rl.title}
                     </span>
                     {r && r.dropPerMin !== null ? (
                       <>
-                        <span className="mono text-[11px] text-[var(--color-fg)]">
+                        <span className="tnum text-xs text-[var(--color-fg)]">
                           {pctText(r.retentionStart)} → {pctText(r.retentionEnd)}
                         </span>
                         <span
-                          className={`mono text-[11px] ${worst ? "text-[var(--color-warn)]" : "text-[var(--color-muted)]"}`}
+                          className={`tnum text-xs ${worst ? "text-[var(--color-warn)]" : "text-[var(--color-muted)]"}`}
                         >
                           {fmt(rl.points, { v: pointsText(r.drop) })} ·{" "}
                           {fmt(rl.perMin, { v: pointsText(r.dropPerMin) })}
                         </span>
                         {worst && (
-                          <span className="rounded-[var(--ns-r-chip)] border border-[var(--color-warn)] px-2 py-0.5 text-[9px] uppercase tracking-[0.14em] text-[var(--color-warn)]">
+                          <span className="rounded-[var(--ns-r-chip)] border border-[var(--color-warn)] px-2 py-0.5 text-xs text-[var(--color-warn)]">
                             {fmt(rl.worst, { n: r.rank ?? "" })}
                           </span>
                         )}
                       </>
                     ) : (
-                      <span className="text-[11px] text-[var(--color-muted)]">{rl.unknown}</span>
+                      <span className="text-xs text-[var(--color-muted)]">{rl.unknown}</span>
                     )}
                   </div>
                   {bar !== null && (
@@ -243,13 +243,13 @@ export function Storyboard({
               )}
               {s.keywords && s.keywords.length > 0 && (
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[9px] uppercase tracking-[0.2em] text-[var(--color-muted)]">
+                  <span className="text-xs text-[var(--color-muted)]">
                     {labels.keywords}
                   </span>
                   {s.keywords.map((k) => (
                     <span
                       key={k}
-                      className="rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-2 py-0.5 text-[11px] text-[var(--color-muted)]"
+                      className="rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-muted)]"
                     >
                       {k}
                     </span>
@@ -258,21 +258,21 @@ export function Storyboard({
               )}
               {s.claims && s.claims.length > 0 && (
                 <div className="mt-2 flex flex-col gap-1.5">
-                  <span className="text-[9px] uppercase tracking-[0.2em] text-[var(--color-muted)]">
+                  <span className="text-xs text-[var(--color-muted)]">
                     {labels.claims}
                   </span>
                   <ul className="flex flex-col gap-1.5">
                     {s.claims.map((c, i) => (
-                      <li key={c.id || i} className="flex items-start gap-2 text-[12px] leading-snug">
+                      <li key={c.id || i} className="flex items-start gap-2 text-xs leading-snug">
                         <span
-                          className={`rounded-[var(--ns-r-chip)] shrink-0 border border-[var(--color-border)] px-2 py-0.5 text-[9px] uppercase tracking-[0.12em] ${STATUS_TONE[c.status]}`}
+                          className={`rounded-[var(--ns-r-chip)] shrink-0 border border-[var(--color-border)] px-2 py-0.5 text-xs ${STATUS_TONE[c.status]}`}
                         >
                           {labels.claimStatus[c.status]}
                         </span>
                         <span className="min-w-0 text-[var(--color-fg)]">
                           {c.text}
                           {c.reasoning && (
-                            <span className="mt-0.5 block text-[11px] text-[var(--color-muted)]">
+                            <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
                               {c.reasoning}
                             </span>
                           )}

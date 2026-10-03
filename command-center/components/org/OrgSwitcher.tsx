@@ -85,7 +85,7 @@ export function OrgSwitcher({ orgs, currentId }: { orgs: OrgSummary[]; currentId
           <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
           <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2" />
         </svg>
-        <span className="truncate text-[14px] font-light" style={{ color: error ? "var(--color-fail)" : undefined }}>
+        <span className="truncate text-sm font-light" style={{ color: error ? "var(--color-fail)" : undefined }}>
           {current?.name ?? t.org.switcherLabel}
         </span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-3.5 shrink-0 text-[var(--color-muted)]">
@@ -113,12 +113,12 @@ export function OrgSwitcher({ orgs, currentId }: { orgs: OrgSummary[]; currentId
                 >
                   <span className="min-w-0 flex-1">
                     <span
-                      className="block truncate text-[14px] font-light"
+                      className="block truncate text-sm font-light"
                       style={{ color: active ? "var(--color-primary)" : "var(--color-fg)" }}
                     >
                       {o.name}
                     </span>
-                    <span className="mono block truncate text-[10px] text-[var(--color-muted)]">
+                    <span className="tnum block truncate text-xs text-[var(--color-muted)]">
                       {o.slug}
                       {o.is_default ? ` · ${t.org.defaultBadge}` : ""}
                     </span>

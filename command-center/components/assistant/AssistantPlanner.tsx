@@ -416,7 +416,7 @@ export function AssistantPlanner({ orgId, models, channels, currentSlug, canRun,
       : t.assistant.startPlain;
 
   const chip =
-    "pill min-h-9 border border-[var(--color-border)] bg-transparent px-3 text-[13px] text-[var(--color-fg)] outline-none focus-visible:border-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] disabled:opacity-60";
+    "pill min-h-9 border border-[var(--color-border)] bg-transparent px-3 text-sm text-[var(--color-fg)] outline-none focus-visible:border-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] disabled:opacity-60";
 
   return (
     <section aria-labelledby="assistant-title" className="flex flex-col gap-3" data-testid="assistant">
@@ -425,7 +425,7 @@ export function AssistantPlanner({ orgId, models, channels, currentSlug, canRun,
           <Sparkles aria-hidden className="size-4 text-[var(--color-primary)]" />
           {t.assistant.title}
         </h2>
-        <p className="text-[13px] text-[var(--color-muted)]">{t.assistant.lead}</p>
+        <p className="text-sm text-[var(--color-muted)]">{t.assistant.lead}</p>
       </div>
 
       <div className="flex flex-col gap-4 rounded-[20px] border border-[var(--color-border)] bg-[var(--color-panel)] p-3 sm:p-4">
@@ -436,7 +436,7 @@ export function AssistantPlanner({ orgId, models, channels, currentSlug, canRun,
             if (editing) makePlan();
           }}
         >
-          <label htmlFor="assistant-goal" className="text-[12px] font-medium text-[var(--color-muted)]">
+          <label htmlFor="assistant-goal" className="text-xs font-medium text-[var(--color-muted)]">
             {t.assistant.goalLabel}
           </label>
           <textarea
@@ -454,26 +454,26 @@ export function AssistantPlanner({ orgId, models, channels, currentSlug, canRun,
             maxLength={GOAL_MAX}
             placeholder={t.assistant.placeholder}
             // 16px: iOS zooms the page into any smaller text field.
-            className="w-full resize-none rounded-[14px] border border-[var(--color-border)] bg-transparent px-3 py-2 text-[16px] leading-relaxed text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] disabled:opacity-70"
+            className="w-full resize-none rounded-[14px] border border-[var(--color-border)] bg-transparent px-3 py-2 text-base leading-relaxed text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] disabled:opacity-70"
           />
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="submit"
               disabled={!editing || !goal.trim()}
-              className="pill inline-flex min-h-10 items-center gap-1.5 border border-[var(--color-border)] px-4 text-[13px] font-medium text-[var(--color-fg)] transition-colors hover:border-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] disabled:opacity-50"
+              className="pill inline-flex min-h-10 items-center gap-1.5 border border-[var(--color-border)] px-4 text-sm font-medium text-[var(--color-fg)] transition-colors hover:border-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] disabled:opacity-50"
             >
               <Sparkles aria-hidden className="size-4" />
               {plan ? t.assistant.replan : t.assistant.makePlan}
             </button>
-            <span className="text-[12px] text-[var(--color-muted)]">{t.assistant.planFree}</span>
+            <span className="text-xs text-[var(--color-muted)]">{t.assistant.planFree}</span>
           </div>
         </form>
 
         {plan && (
           <div className="flex flex-col gap-3 border-t border-[var(--color-border)] pt-4">
-            <h3 className="text-[14px] font-semibold text-[var(--color-fg)]">{t.assistant.planTitle}</h3>
-            {plan.guessed && <p className="text-[12px] text-[var(--color-warn)]">{t.assistant.guessed}</p>}
-            {plan.steps.length === 0 && <p className="text-[13px] text-[var(--color-muted)]">{t.assistant.noSteps}</p>}
+            <h3 className="text-sm font-semibold text-[var(--color-fg)]">{t.assistant.planTitle}</h3>
+            {plan.guessed && <p className="text-xs text-[var(--color-warn)]">{t.assistant.guessed}</p>}
+            {plan.steps.length === 0 && <p className="text-sm text-[var(--color-muted)]">{t.assistant.noSteps}</p>}
 
             <ol className="flex flex-col gap-2.5" aria-label={t.assistant.planTitle}>
               {plan.steps.map((s, i) => (
@@ -516,7 +516,7 @@ export function AssistantPlanner({ orgId, models, channels, currentSlug, canRun,
                   </select>
                 </label>
                 {plan.steps.length >= MAX_STEPS && (
-                  <span className="text-[12px] text-[var(--color-muted)]">{fmt(t.assistant.maxSteps, { n: MAX_STEPS })}</span>
+                  <span className="text-xs text-[var(--color-muted)]">{fmt(t.assistant.maxSteps, { n: MAX_STEPS })}</span>
                 )}
               </div>
             )}
@@ -526,8 +526,8 @@ export function AssistantPlanner({ orgId, models, channels, currentSlug, canRun,
               {editing ? (
                 <>
                   <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-[13px] text-[var(--color-muted)]">{t.assistant.totalLabel}</span>
-                    <span className="mono text-[15px] font-semibold text-[var(--color-fg)]" data-testid="assistant-total" aria-live="polite">
+                    <span className="text-sm text-[var(--color-muted)]">{t.assistant.totalLabel}</span>
+                    <span className="tnum text-[15px] font-semibold text-[var(--color-fg)]" data-testid="assistant-total" aria-live="polite">
                       {total.status === "ready"
                         ? total.free
                           ? t.assistant.noCharge
@@ -542,42 +542,42 @@ export function AssistantPlanner({ orgId, models, channels, currentSlug, canRun,
                     onClick={confirm}
                     disabled={total.status !== "ready"}
                     aria-describedby={blockedText ? "assistant-blocked" : "assistant-safety"}
-                    className="cta-glass pill inline-flex min-h-11 w-full items-center justify-center gap-2 px-5 text-[14px] font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                    className="cta-glass pill inline-flex min-h-11 w-full items-center justify-center gap-2 px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {startLabel}
                   </button>
                   {blockedText && (
-                    <p id="assistant-blocked" role="status" className="text-[12px] text-[var(--color-warn)]">
+                    <p id="assistant-blocked" role="status" className="text-xs text-[var(--color-warn)]">
                       {blockedText}
                     </p>
                   )}
                 </>
               ) : (
                 <div className="flex flex-col gap-2" aria-live="polite">
-                  <p className="text-[13px] font-medium text-[var(--color-fg)]" data-testid="assistant-progress">
+                  <p className="text-sm font-medium text-[var(--color-fg)]" data-testid="assistant-progress">
                     {fmt(t.assistant.progress, { done: doneCount, total: allItems.length })}
                   </p>
                   {phase === "running" && (
-                    <p className="flex items-center gap-1.5 text-[12px] text-[var(--color-muted)]">
+                    <p className="flex items-center gap-1.5 text-xs text-[var(--color-muted)]">
                       <Loader2 aria-hidden className="size-3.5 animate-spin" />
                       {t.assistant.status.creating}
                     </p>
                   )}
                   {phase === "stopped" && (
-                    <div role="alert" className="flex flex-col gap-1 text-[12px]">
+                    <div role="alert" className="flex flex-col gap-1 text-xs">
                       {stoppedItem && items[stoppedItem.key]?.message && (
                         <p className="text-[var(--color-fail)]">{items[stoppedItem.key]?.message}</p>
                       )}
                       <p className="text-[var(--color-muted)]">{reloaded ? t.assistant.reloaded : t.assistant.stopped}</p>
                     </div>
                   )}
-                  {phase === "done" && <p className="text-[12px] text-[var(--color-ok)]">{t.assistant.done}</p>}
+                  {phase === "done" && <p className="text-xs text-[var(--color-ok)]">{t.assistant.done}</p>}
                   <div className="flex flex-wrap gap-2">
                     {phase === "stopped" && canContinue && (
                       <button
                         type="button"
                         onClick={resume}
-                        className="cta-glass pill inline-flex min-h-11 items-center justify-center gap-2 px-5 text-[14px] font-semibold"
+                        className="cta-glass pill inline-flex min-h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
                       >
                         {remainingRounded > 0 ? fmt(t.assistant.continue, { n: formatCredits(remainingRounded, locale) }) : t.assistant.continueFree}
                       </button>
@@ -586,7 +586,7 @@ export function AssistantPlanner({ orgId, models, channels, currentSlug, canRun,
                       <button
                         type="button"
                         onClick={reset}
-                        className="pill inline-flex min-h-11 items-center gap-1.5 border border-[var(--color-border)] px-4 text-[13px] text-[var(--color-fg)] hover:border-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)]"
+                        className="pill inline-flex min-h-11 items-center gap-1.5 border border-[var(--color-border)] px-4 text-sm text-[var(--color-fg)] hover:border-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)]"
                       >
                         {t.assistant.newPlan}
                       </button>
@@ -594,7 +594,7 @@ export function AssistantPlanner({ orgId, models, channels, currentSlug, canRun,
                   </div>
                 </div>
               )}
-              <p id="assistant-safety" className="text-[11px] leading-relaxed text-[var(--color-muted)]">
+              <p id="assistant-safety" className="text-xs leading-relaxed text-[var(--color-muted)]">
                 {t.assistant.safety}
               </p>
             </div>
@@ -651,7 +651,7 @@ function StepCard({
       ? t.assistant.wordsLabel
       : t.assistant.describeLabel;
   const field = (name: string) => `assistant-${step.id}-${name}`;
-  const small = "text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-muted)]";
+  const small = "text-xs font-medium text-[var(--color-muted)]";
 
   return (
     <li
@@ -664,11 +664,11 @@ function StepCard({
           <Icon className="size-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <p id={titleId} className="text-[14px] font-medium leading-snug text-[var(--color-fg)]">
+          <p id={titleId} className="text-sm font-medium leading-snug text-[var(--color-fg)]">
             <span className="sr-only">{label}: </span>
             {fmt(t.assistant.stepTitle, { count: step.count, kind: kindLabel })}
           </p>
-          <p className="mono text-[12px] text-[var(--color-muted)]" data-testid="step-price">
+          <p className="tnum text-xs text-[var(--color-muted)]" data-testid="step-price">
             {blocker ? (
               <span className="text-[var(--color-warn)]">{t.assistant.blockers[blocker]}</span>
             ) : !price || price.status === "quoting" ? (
@@ -713,7 +713,7 @@ function StepCard({
               >
                 <Minus aria-hidden className="size-4" />
               </button>
-              <span className="mono min-w-[2ch] text-center text-[14px] font-semibold text-[var(--color-fg)]" aria-live="polite">
+              <span className="tnum min-w-[2ch] text-center text-sm font-semibold text-[var(--color-fg)]" aria-live="polite">
                 {step.count}
               </span>
               <button
@@ -802,10 +802,10 @@ function StepCard({
               onChange={(e) => onEdit({ text: e.target.value })}
               rows={run ? 1 : 3}
               maxLength={textMax(step.kind)}
-              className="w-full resize-y rounded-[12px] border border-[var(--color-border)] bg-transparent px-3 py-2 text-[16px] leading-snug text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[14px]"
+              className="w-full resize-y rounded-[12px] border border-[var(--color-border)] bg-transparent px-3 py-2 text-base leading-snug text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[14px]"
             />
             {run && (
-              <span className="text-[11px] text-[var(--color-muted)]">
+              <span className="text-xs text-[var(--color-muted)]">
                 {!step.text.trim() ? t.assistant.topicEmpty : step.count > 1 ? t.assistant.themeMany : null}
                 {step.durationS === SHORT_S && <> {t.home.shortNote}</>}
               </span>
@@ -816,7 +816,7 @@ function StepCard({
             <button
               type="button"
               onClick={onRequote}
-              className="tap-link inline-flex items-center gap-1 justify-self-start text-[12px] text-[var(--color-primary)] hover:underline"
+              className="tap-link inline-flex items-center gap-1 justify-self-start text-xs text-[var(--color-primary)] hover:underline"
             >
               <RefreshCw aria-hidden className="size-3.5" />
               {t.assistant.requote}
@@ -824,15 +824,15 @@ function StepCard({
           )}
         </div>
       ) : (
-        <p className="truncate text-[12px] text-[var(--color-muted)]" title={step.text}>
+        <p className="truncate text-xs text-[var(--color-muted)]" title={step.text}>
           {step.text || t.assistant.topicEmpty}
         </p>
       )}
 
-      {run && <p className="text-[11px] text-[var(--color-muted)]">{t.assistant.approvalNote}</p>}
+      {run && <p className="text-xs text-[var(--color-muted)]">{t.assistant.approvalNote}</p>}
 
       {started && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]" data-testid="step-status">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" data-testid="step-status">
           {failed ? (
             <span className="inline-flex items-center gap-1 text-[var(--color-fail)]">
               <AlertTriangle aria-hidden className="size-3.5" />
@@ -856,7 +856,7 @@ function StepCard({
           ) : (
             <span className="text-[var(--color-muted)]">{t.assistant.status.pending}</span>
           )}
-          <span className="mono text-[var(--color-muted)]">
+          <span className="tnum text-[var(--color-muted)]">
             {done}/{step.count}
           </span>
           {done > 0 && resultHref && (

@@ -57,11 +57,11 @@ export function ViewsSparkline({ points, label = "Views over time" }: { points: 
           <tbody>
             {points.map((p) => (
               <tr key={p.date} className="border-b border-[var(--color-border)]/50">
-                <td className="py-1.5 pr-4 mono text-[11px] text-[var(--color-muted)]">
+                <td className="py-1.5 pr-4 tnum text-xs text-[var(--color-muted)]">
                   {relativeTime(p.date)}
                 </td>
-                <td className="py-1.5 mono text-[10px] text-[var(--color-muted)]">{p.date}</td>
-                <td className="py-1.5 text-right mono tabular-nums text-[var(--color-fg)]">
+                <td className="py-1.5 tnum text-xs text-[var(--color-muted)]">{p.date}</td>
+                <td className="py-1.5 text-right tnum tabular-nums text-[var(--color-fg)]">
                   {num(p.views)}
                 </td>
               </tr>

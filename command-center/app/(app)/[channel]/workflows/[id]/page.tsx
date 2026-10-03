@@ -27,7 +27,7 @@ export default async function WorkflowPage({ params }: { params: Promise<{ id: s
   const note = (text: string, title = t.workflows.title) => (
     <div className="rhythm">
       <PageHeader icon="workflows" title={title} subtitle={t.workflows.subtitle} />
-      <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{text}</div>
+      <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{text}</div>
     </div>
   );
   if (!org.supported) return note(t.org.notMigrated);
@@ -45,7 +45,7 @@ export default async function WorkflowPage({ params }: { params: Promise<{ id: s
         title={wf.name}
         subtitle={t.workflows.moneyNote}
         actions={
-          <Link href={back} className="btn-sky ghost pill px-4 py-2 text-[13px]">
+          <Link href={back} className="btn-sky ghost pill px-4 py-2 text-sm">
             {t.workflows.back}
           </Link>
         }

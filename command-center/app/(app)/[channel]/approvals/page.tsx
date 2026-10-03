@@ -39,7 +39,7 @@ export default async function ApprovalsPage() {
     return (
       <div className="rhythm">
         <PageHeader icon="approvals" title={t.approvals.title} subtitle={t.approvals.subtitle} />
-        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.approvals.signIn}</div>
+        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.approvals.signIn}</div>
       </div>
     );
   }
@@ -48,7 +48,7 @@ export default async function ApprovalsPage() {
     return (
       <div className="rhythm">
         <PageHeader icon="approvals" title={t.approvals.title} subtitle={t.approvals.subtitle} />
-        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.approvals.notConfigured}</div>
+        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.approvals.notConfigured}</div>
       </div>
     );
   }

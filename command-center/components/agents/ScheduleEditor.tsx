@@ -56,25 +56,25 @@ export function ScheduleEditor({
   }
 
   return (
-    <div className="panel flex flex-col gap-4 p-4">
+    <div className="panel flex flex-col gap-4 p-5 sm:p-6">
       <div>
         <h2 className="t-section">{t.agents.schedTitle}</h2>
-        <p className="mt-1 max-w-[72ch] text-[12px] leading-relaxed text-[var(--color-muted)]">
+        <p className="mt-1 max-w-[72ch] text-xs leading-relaxed text-[var(--color-muted)]">
           {t.agents.schedHint}
         </p>
       </div>
 
       {disabled && (
-        <p className="text-[13px] text-[var(--color-warn)]">{t.agents.schedPickChannel}</p>
+        <p className="text-sm text-[var(--color-warn)]">{t.agents.schedPickChannel}</p>
       )}
 
       {/* Autopilot on/off */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-4 py-3">
         <div className="min-w-0">
-          <div className="text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+          <div className="text-xs text-[var(--color-muted)]">
             {t.agents.schedAutopilot}
           </div>
-          <p className="m-0 mt-1 max-w-[52ch] text-[12px] leading-relaxed text-[var(--color-muted)]">
+          <p className="m-0 mt-1 max-w-[52ch] text-xs leading-relaxed text-[var(--color-muted)]">
             {enabled ? t.agents.schedOnHint : t.agents.schedOffHint}
           </p>
         </div>
@@ -87,7 +87,7 @@ export function ScheduleEditor({
             setEnabled((v) => !v);
             if (state !== "idle") setState("idle");
           }}
-          className="btn-quiet shrink-0 px-4 py-2 text-[12px] disabled:opacity-50"
+          className="btn-quiet shrink-0 px-4 py-2 text-xs disabled:opacity-50"
           style={{
             borderColor: enabled ? "var(--color-ok)" : "var(--color-border)",
             color: enabled ? "var(--color-ok)" : "var(--color-muted)",
@@ -101,7 +101,7 @@ export function ScheduleEditor({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <label
           htmlFor="sched-hour"
-          className="text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]"
+          className="text-xs text-[var(--color-muted)]"
         >
           {t.agents.schedHour}
         </label>
@@ -113,7 +113,7 @@ export function ScheduleEditor({
             setHour(Number(e.target.value));
             if (state !== "idle") setState("idle");
           }}
-          className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 mono text-[12px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] disabled:opacity-50"
+          className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 tnum text-xs text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] disabled:opacity-50"
         >
           {Array.from({ length: 24 }, (_, h) => (
             <option key={h} value={h}>
@@ -128,11 +128,11 @@ export function ScheduleEditor({
           type="button"
           onClick={save}
           disabled={disabled || state === "saving"}
-          className="btn-primary text-[13px] disabled:opacity-40"
+          className="btn-primary text-sm disabled:opacity-40"
         >
           {state === "saving" ? t.agents.schedSaving : t.agents.schedSave}
         </button>
-        <span className="mono text-[11px]" aria-live="polite">
+        <span className="tnum text-xs" aria-live="polite">
           {state === "saved" ? (
             <span className="text-[var(--color-ok)]">{t.agents.schedSaved}</span>
           ) : state === "error" ? (

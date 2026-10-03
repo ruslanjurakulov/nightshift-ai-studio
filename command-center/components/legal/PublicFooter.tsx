@@ -67,7 +67,7 @@ export function PublicFooter({ t }: { t: Dictionary }) {
           </Link>
           <p className="st-small max-w-[30ch]">{f.note}</p>
           {LEGAL.contactEmail && (
-            <a href={`mailto:${LEGAL.contactEmail}`} className="st-link self-start text-[14px]">
+            <a href={`mailto:${LEGAL.contactEmail}`} className="st-link self-start text-sm">
               {LEGAL.contactEmail}
             </a>
           )}

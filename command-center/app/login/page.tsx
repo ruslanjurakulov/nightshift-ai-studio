@@ -90,7 +90,7 @@ export default function LoginPage() {
 
       <p className="st-small mt-8 flex flex-wrap items-center gap-x-2 border-t border-[var(--ns-rule)] pt-5">
         {t.signup.noAccount}
-        <Link href="/signup" className="st-link text-[14.5px]">
+        <Link href="/signup" className="st-link text-[15px]">
           {t.signup.createAccount}
         </Link>
       </p>

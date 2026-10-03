@@ -169,7 +169,7 @@ export function DownloadMenu(props: DownloadMenuProps) {
   return (
     <div className="flex max-w-[360px] flex-col items-end gap-1.5 text-right">
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <label className="text-[11px] text-[var(--color-muted)]" htmlFor="dl-quality">
+        <label className="text-xs text-[var(--color-muted)]" htmlFor="dl-quality">
           {td.quality}
         </label>
         <select
@@ -180,7 +180,7 @@ export function DownloadMenu(props: DownloadMenuProps) {
             setConfirming(false);
             setError(null);
           }}
-          className="rounded-md border border-[var(--color-border)] bg-transparent px-2 py-1 text-[12px]"
+          className="rounded-md border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs"
         >
           {options.map((q) => (
             <option key={q} value={q}>
@@ -194,7 +194,7 @@ export function DownloadMenu(props: DownloadMenuProps) {
             type="button"
             onClick={download480}
             disabled={!video.preview_path || busy}
-            className="btn-sky ghost pill inline-flex items-center gap-1.5 px-4 py-1.5 text-[12px] disabled:opacity-50"
+            className="btn-sky ghost pill inline-flex items-center gap-1.5 px-4 py-1.5 text-xs disabled:opacity-50"
           >
             <Download size={14} aria-hidden />
             {busy ? tp.downloading : tp.download}
@@ -202,7 +202,7 @@ export function DownloadMenu(props: DownloadMenuProps) {
         ) : lastReady && last ? (
           <a
             href={`/api/downloads/${last.id}`}
-            className="btn-sky pill inline-flex items-center gap-1.5 px-4 py-1.5 text-[12px]"
+            className="btn-sky pill inline-flex items-center gap-1.5 px-4 py-1.5 text-xs"
             download
           >
             <Download size={14} aria-hidden />
@@ -213,7 +213,7 @@ export function DownloadMenu(props: DownloadMenuProps) {
             type="button"
             onClick={() => setConfirming(true)}
             disabled={!editor || busy || lastPreparing || price === null || short || confirming}
-            className="btn-sky ghost pill inline-flex items-center gap-1.5 px-4 py-1.5 text-[12px] disabled:opacity-50"
+            className="btn-sky ghost pill inline-flex items-center gap-1.5 px-4 py-1.5 text-xs disabled:opacity-50"
           >
             <Download size={14} aria-hidden />
             {fmt(td.get, { q: selectedHd })}
@@ -222,14 +222,14 @@ export function DownloadMenu(props: DownloadMenuProps) {
       </div>
 
       {selectedHd === null && (
-        <span className="text-[10px] text-[var(--color-muted)]">
+        <span className="text-xs text-[var(--color-muted)]">
           {video.preview_path ? tp.downloadNote : tp.downloadNone}
         </span>
       )}
-      {note && <span className="text-[10px] text-[var(--color-muted)]">{note}</span>}
+      {note && <span className="text-xs text-[var(--color-muted)]">{note}</span>}
 
       {selectedHd && !exempt && credits !== null && (
-        <span className="text-[11px] text-[var(--color-muted)]">
+        <span className="text-xs text-[var(--color-muted)]">
           {fmt(td.balance, { n: credits })}
           {short && (
             <>
@@ -242,25 +242,25 @@ export function DownloadMenu(props: DownloadMenuProps) {
         </span>
       )}
       {short && price !== null && selectedHd && (
-        <span className="text-[11px] text-[var(--color-warn)]">{fmt(td.insufficient, { q: selectedHd, n: price })}</span>
+        <span className="text-xs text-[var(--color-warn)]">{fmt(td.insufficient, { q: selectedHd, n: price })}</span>
       )}
-      {selectedHd && !editor && !lastReady && <span className="text-[11px] text-[var(--color-muted)]">{td.editorOnly}</span>}
+      {selectedHd && !editor && !lastReady && <span className="text-xs text-[var(--color-muted)]">{td.editorOnly}</span>}
 
       {confirming && selectedHd && price !== null && (
-        <div role="dialog" aria-modal="false" className="section-card mt-1 flex flex-col gap-2 p-3 text-left text-[12px]">
+        <div role="dialog" aria-modal="false" className="section-card mt-1 flex flex-col gap-2 p-3 text-left text-xs">
           <strong>
             {price > 0 ? fmt(td.confirmTitle, { q: selectedHd, n: price }) : fmt(td.confirmFree, { q: selectedHd, why: whyFree })}
           </strong>
           {price > 0 && credits !== null && (
             <span>{fmt(td.confirmBody, { b: credits, a: Math.max(0, credits - price) })}</span>
           )}
-          <span className="text-[11px] text-[var(--color-muted)]">{fmt(td.confirmTerms, { q: selectedHd })}</span>
+          <span className="text-xs text-[var(--color-muted)]">{fmt(td.confirmTerms, { q: selectedHd })}</span>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => buy(selectedHd)}
               disabled={busy}
-              className="btn-sky pill px-4 py-1.5 text-[12px] disabled:opacity-50"
+              className="btn-sky pill px-4 py-1.5 text-xs disabled:opacity-50"
             >
               {busy ? td.buying : td.confirm}
             </button>
@@ -268,7 +268,7 @@ export function DownloadMenu(props: DownloadMenuProps) {
               type="button"
               onClick={() => setConfirming(false)}
               disabled={busy}
-              className="btn-sky ghost pill px-4 py-1.5 text-[12px]"
+              className="btn-sky ghost pill px-4 py-1.5 text-xs"
             >
               {td.cancel}
             </button>
@@ -277,7 +277,7 @@ export function DownloadMenu(props: DownloadMenuProps) {
       )}
 
       {selectedHd && last && (
-        <div className="flex flex-col items-end gap-0.5 text-[11px] text-[var(--color-muted)]">
+        <div className="flex flex-col items-end gap-0.5 text-xs text-[var(--color-muted)]">
           <StatusPill
             tone={TONE[last.status === "ready" && !lastReady ? "expired" : last.status]}
             label={td.status[last.status === "ready" && !lastReady ? "expired" : last.status]}
@@ -299,7 +299,7 @@ export function DownloadMenu(props: DownloadMenuProps) {
           )}
         </div>
       )}
-      {error && <span className="text-[11px] text-[var(--color-fail)]">{error}</span>}
+      {error && <span className="text-xs text-[var(--color-fail)]">{error}</span>}
     </div>
   );
 }

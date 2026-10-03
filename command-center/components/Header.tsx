@@ -91,7 +91,7 @@ export function Header({
                   <circle cx="11" cy="11" r="7" />
                   <path d="m21 21-4.3-4.3" />
                 </svg>
-                <span className="mono pill border border-[var(--color-border)] px-1.5 text-[9px] tracking-wider">⌘K</span>
+                <span className="tnum pill border border-[var(--color-border)] px-1.5 text-xs">⌘K</span>
               </button>
             </span>
             <CreditMenu account={credits} plan={plan} />
@@ -149,7 +149,7 @@ export function Header({
               <circle cx="11" cy="11" r="7" />
               <path d="m21 21-4.3-4.3" />
             </svg>
-            <span className="mono pill border border-[var(--color-border)] px-1.5 text-[9px] tracking-wider">⌘K</span>
+            <span className="tnum pill border border-[var(--color-border)] px-1.5 text-xs">⌘K</span>
           </button>
         </span>
         <UtcClock />
