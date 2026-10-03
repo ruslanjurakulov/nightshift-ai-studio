@@ -76,6 +76,19 @@ function Hero({
   );
 }
 
+/** A command wraps between words; a flag or a [bracketed option] is never split across two lines. */
+function keepTogether(command: string): React.ReactNode[] {
+  return command.split(/(\[[^\]]*\]|--[\w-]+)/).map((part, i) =>
+    i % 2 === 1 ? (
+      <span key={i} className="st-nb">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
+  );
+}
+
 function Links({ items }: { items: { href: string; label: string }[] }) {
   return (
     <ul className="st-doc-links">
@@ -117,7 +130,7 @@ export function CliPage({ dev, labels }: { dev: DevDictionary; labels: ScrollLab
           <tbody>
             {CLI_COMMANDS.map(({ id, command }) => (
               <tr key={id}>
-                <td className="st-doc-path">{command}</td>
+                <td className="st-doc-path">{keepTogether(command)}</td>
                 <td>{c.commands.list.find((x) => x.id === id)?.what}</td>
               </tr>
             ))}
