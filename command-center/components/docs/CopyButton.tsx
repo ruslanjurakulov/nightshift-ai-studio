@@ -73,6 +73,11 @@ export function CopyButton({
         {state === "copied" ? <Check aria-hidden /> : <Copy aria-hidden />}
         {variant === "label" && <span>{state === "copied" ? labels.copied : labels.copy}</span>}
       </button>
+      {variant === "icon" && state !== "idle" && (
+        <span className="st-copy-tip" data-state={state} aria-hidden>
+          {state === "copied" ? labels.copied : labels.copyFailed}
+        </span>
+      )}
       <span role="status" aria-live="polite" className="sr-only">
         {state === "copied" ? labels.copied : state === "failed" ? labels.copyFailed : ""}
       </span>

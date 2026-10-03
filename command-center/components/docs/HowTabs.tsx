@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 export type HowTab = {
   id: string;
@@ -36,6 +36,24 @@ export function HowTabs({ tabs, labels }: { tabs: HowTab[]; labels: HowLabels })
   const uid = useId();
   const [active, setActive] = useState(tabs[0].id);
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const root = useRef<HTMLDivElement>(null);
+  // The conversation waits (paused at its first frame) until it is on screen, so nobody scrolls in on a finished scene.
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    const el = root.current;
+    if (!el || typeof IntersectionObserver === "undefined") return setSeen(true);
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setSeen(true);
+          io.disconnect();
+        }
+      },
+      { threshold: 0.25 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   function choose(id: string, focus = false) {
     setActive(id);
@@ -59,9 +77,9 @@ export function HowTabs({ tabs, labels }: { tabs: HowTab[]; labels: HowLabels })
   }
 
   return (
-    <div className="st-how-tabs">
+    <div className="st-how-tabs" ref={root} data-seen={seen}>
       <noscript>
-        <style>{`.st-how-panel[hidden]{display:grid!important}.st-how-panel{margin-bottom:24px}.st-how-pills{display:none!important}`}</style>
+        <style>{`.st-how-panel[hidden]{display:grid!important}.st-how-panel{margin-bottom:24px}.st-how-pills{display:none!important}.st-how-tabs[data-seen] .st-reveal{animation-play-state:running!important}`}</style>
       </noscript>
       <div className="st-how-pills-wrap">
         <div role="tablist" aria-label={labels.tablist} className="st-how-pills">

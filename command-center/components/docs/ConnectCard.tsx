@@ -50,6 +50,17 @@ export function ConnectCard({
   const [active, setActive] = useState(tabs.some((t) => t.id === initialId) ? initialId : tabs[0].id);
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
   const track = useRef<HTMLDivElement>(null);
+  // Which side of the strip still has pills (phone only; CSS draws a soft edge there).
+  const [edge, setEdge] = useState<"none" | "start" | "mid" | "end">("none");
+
+  function measureEdge() {
+    const box = track.current;
+    if (!box) return;
+    const max = box.scrollWidth - box.clientWidth;
+    if (max <= 1) return setEdge("none");
+    const x = box.scrollLeft;
+    setEdge(x <= 2 ? "start" : x >= max - 2 ? "end" : "mid");
+  }
 
   function reveal(id: string, smooth: boolean) {
     const pill = refs.current[id];
@@ -84,6 +95,9 @@ export function ConnectCard({
       writeUrl(id);
     }
     reveal(id, false);
+    measureEdge();
+    window.addEventListener("resize", measureEdge);
+    return () => window.removeEventListener("resize", measureEdge);
     // Once, on load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -120,7 +134,7 @@ export function ConnectCard({
         <style>{`.st-tabpanels{display:block!important}.st-tabpanel{display:block!important;visibility:visible!important;opacity:1!important;margin-bottom:16px}.st-pilltrack{display:none!important}`}</style>
       </noscript>
       <h2 className="sr-only">{title}</h2>
-      <div className="st-pilltrack-wrap" ref={track}>
+      <div className="st-pilltrack-wrap" ref={track} data-edge={edge} onScroll={measureEdge}>
         <div role="tablist" aria-label={tablistLabel} className="st-pilltrack">
           {tabs.map((t, i) => (
             <span key={t.id} className="st-pill-slot" role="presentation">
