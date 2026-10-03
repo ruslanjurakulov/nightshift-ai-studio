@@ -218,7 +218,7 @@ export const uz: Dictionary = {
   },
   signup: {
     title: "Hisob yarating",
-    sub: "Emailingizni tasdiqlang, ish maydoningizga nom bering — va birinchi videoga tayyorsiz.",
+    sub: "Faqat email va parol. Karta kerak emas.",
     email: "Email",
     password: "Parol",
     confirm: "Parolni takrorlang",

@@ -226,7 +226,7 @@ export const en = {
   },
   signup: {
     title: "Create your account",
-    sub: "Confirm your email, name your workspace, and you're ready for your first video.",
+    sub: "Just your email and a password. No card needed.",
     email: "Email",
     password: "Password",
     confirm: "Confirm password",

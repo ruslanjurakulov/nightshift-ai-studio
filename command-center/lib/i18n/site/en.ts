@@ -64,7 +64,7 @@ export const siteEn = {
     lead: "One product, three ways in. Pick the one that fits your work.",
     more: "All solutions",
     items: [
-      { id: "youtube-channels", title: "Channel owners", body: "Run one channel or several, faceless ones too. Each keeps its own language, voice and look." },
+      { id: "youtube-channels", title: "YouTube channels", body: "Run one channel or several, faceless ones too. Each keeps its own language, voice and look." },
       { id: "creative-studio", title: "Creators and studios", body: "Make a picture, a clip or a voice-over on its own, then cut them together in the editor." },
       { id: "developers", title: "Developers", body: "Start videos and read balances from your own code or from an AI assistant." },
     ],

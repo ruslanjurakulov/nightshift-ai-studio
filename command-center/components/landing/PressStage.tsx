@@ -37,6 +37,8 @@ export function PressStage({ stage }: { stage: Stage }) {
   // Autoplay needs three things at once: motion is allowed, the stage is on
   // screen, and nobody has taken over. Any of them failing leaves it still.
   useEffect(() => {
+    // No way to tell, no autoplay: the tabs still work.
+    if (typeof window.matchMedia !== "function" || typeof IntersectionObserver === "undefined") return;
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     let visible = false;
     const sync = () => setAuto(!mq.matches && visible && !picked.current && !held.current);
@@ -136,7 +138,7 @@ export function PressStage({ stage }: { stage: Stage }) {
             aria-hidden={i === active ? undefined : true}
           >
             <div className="nx-panel-words">
-              <h3 className="nx-panel-title">{s.title}</h3>
+              <p className="nx-panel-title">{s.title}</p>
               <p className="nx-panel-body">{s.body}</p>
             </div>
             <div className="nx-ui" aria-hidden>

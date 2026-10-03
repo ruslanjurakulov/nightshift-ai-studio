@@ -40,8 +40,13 @@
 .nx .st-key { border-radius: 14px; }
 .nx .st-footer { border-top: 1px solid var(--ns-rule); }
 .nx .st-footer-grid { padding-block: 72px 48px; }
-.nx .st-section { padding-block: var(--nx-sec); border-top: 0; }
-.nx .st-section[data-size="sm"] { padding-block: calc(var(--nx-sec) * 0.6); }
+.nx .st-section { padding-block: calc(var(--nx-sec) * 0.72); border-top: 0; }
+.nx .st-section[data-tone="raised"] { background: var(--ns-console); }
+.nx .st-section[data-tone="raised"] .st-panel,
+.nx .st-section[data-tone="raised"] .st-anchor,
+.nx .st-section[data-tone="raised"] .nx-get li,
+.nx .st-section[data-tone="raised"] .st-flow li { background: var(--ns-ground); }
+.nx .st-section[data-size="sm"] { padding-block: calc(var(--nx-sec) * 0.5); }
 .nx .st-slug { font-size: 14px; font-weight: 600; }
 .nx .st-slug::after { display: none; }
 .nx .st-h1,
@@ -57,6 +62,8 @@ html:is([lang="ru"], [lang="uz"]) .nx .st-h1-page { font-size: clamp(32px, 5.4vw
 .nx .st-lead { font-size: 18px; }
 @media (min-width: 1024px) { .nx .st-lead { font-size: 20px; } }
 .nx .st-hero { padding-block: 48px 80px; }
+/* Breaks the same way before and after the font loads, so nothing moves. */
+.nx .nx-h1-short { max-width: 12ch; }
 @media (min-width: 1024px) { .nx .st-hero { padding-block: 88px 128px; } }
 
 /* ── Buttons and links ───────────────────────────────────────────────── */
@@ -106,7 +113,9 @@ html:is([lang="ru"], [lang="uz"]) .nx .st-h1-page { font-size: clamp(32px, 5.4vw
 .nx-h1 {
   margin: 24px 0 0;
   font-family: var(--font-display);
-  font-size: clamp(40px, 9vw, 76px);
+  /* 9.6vw keeps the first line ("We make the video.") whole at every phone width, in the
+     fallback face and in Onest alike; at 9vw it wrapped only after the swap and moved the page. */
+  font-size: clamp(34px, 9.6vw, 76px);
   font-weight: 600;
   line-height: 1.04;
   letter-spacing: -0.032em;
@@ -152,7 +161,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(28px, 4.4vw, 46px); 
   gap: 10px;
   min-height: 36px;
   padding: 4px 14px;
-  border-radius: 999px;
+  border-radius: 18px;
   border: 1px solid var(--ns-rule-strong);
   background: var(--ns-console);
   font-size: 14px;
@@ -168,6 +177,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(28px, 4.4vw, 46px); 
   .nx-actions .nx-btn { width: auto; max-width: none; }
 }
 .nx-note { margin-top: 12px; font-size: 14px; color: var(--ns-text-dim); }
+.nx-price { margin-top: 4px; font-size: 14px; font-weight: 600; color: var(--ns-text); font-variant-numeric: tabular-nums; }
 
 /* ── The stage: the product, drawn, in four states ───────────────────── */
 .nx-stage {
@@ -223,7 +233,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(28px, 4.4vw, 46px); 
   height: 22px;
   border-radius: 999px;
   border: 1px solid currentColor;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 @media (min-width: 700px) { .nx-tab-no { display: grid; } }
@@ -241,7 +251,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(28px, 4.4vw, 46px); 
   grid-area: 1 / 1;
   display: grid;
   gap: 20px;
-  align-content: center;
+  align-content: start;
   padding: 24px 12px 12px;
   opacity: 0;
   visibility: hidden;
@@ -252,7 +262,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(28px, 4.4vw, 46px); 
   .nx-panel[data-on="true"] { transition-delay: 0s; }
 }
 @media (min-width: 800px) {
-  .nx-panel { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 40px; align-items: center; padding: 40px 40px 40px 44px; }
+  .nx-panel { align-content: center; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 40px; align-items: center; padding: 32px 40px 32px 44px; }
 }
 .nx-panel-title { font-family: var(--font-display); font-size: clamp(24px, 3.4vw, 34px); font-weight: 600; line-height: 1.12; letter-spacing: -0.022em; }
 .nx-panel-body { margin-top: 12px; font-size: 16px; line-height: 1.55; color: var(--nx-stage-dim); max-width: 34ch; }
@@ -331,9 +341,10 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(28px, 4.4vw, 46px); 
   grid-template-columns: 18px minmax(0, 1fr);
   gap: 2px 12px;
   align-items: baseline;
-  padding: 11px 0;
+  padding: 8px 0;
   border-bottom: 1px solid var(--nx-stage-edge);
 }
+@media (min-width: 640px) { .nx-ui-list li { padding: 11px 0; } }
 .nx-ui-list li:last-child { border-bottom: 0; }
 .nx-ui-list svg { width: 18px; height: 18px; align-self: center; color: var(--nx-stage-go); grid-row: 1 / span 2; }
 .nx-ui-list b { font-size: 16px; font-weight: 600; }
@@ -365,6 +376,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(28px, 4.4vw, 46px); 
 .nx-ui-status { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .nx-ui-status li { display: flex; align-items: center; gap: 10px; font-size: 14.5px; color: var(--nx-stage-dim); }
 .nx-ui-status li[data-lit="true"] { color: var(--nx-stage-amber); font-weight: 600; }
+@media (max-width: 639px) { .nx-ui-status li:nth-child(2):not(:last-child) { display: none; } }
 .nx-dot { flex-shrink: 0; width: 9px; height: 9px; border-radius: 999px; background: var(--nx-stage-go); }
 .nx-dot[data-tone="run"] { background: var(--nx-stage-amber); }
 @media (prefers-reduced-motion: no-preference) {
@@ -545,7 +557,9 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(28px, 4.4vw, 46px); 
 .nx-math > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; padding: 0 20px; cursor: pointer; list-style: none; font-weight: 600; }
 .nx-math > summary::-webkit-details-marker { display: none; }
 .nx-math[open] > summary { border-bottom: 1px solid var(--ns-rule); }
-.nx-math .st-formula { border-top: 0; margin: 0 20px 12px; }
+.nx-math .st-formula { border-top: 1px solid var(--ns-rule); margin: 0 20px 12px; }
+.nx-math-steps { margin: 0 20px; }
+.nx-flow { margin-top: 32px; }
 .nx-get { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .nx-get li { display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px; border-radius: 20px; border: 1px solid var(--ns-rule); background: var(--ns-console); font-size: 16px; line-height: 1.5; }
 .nx-get svg { flex-shrink: 0; width: 20px; height: 20px; margin-top: 2px; color: var(--ns-go); }

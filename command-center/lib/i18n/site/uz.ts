@@ -57,7 +57,7 @@ export const siteUz: SiteDictionary = {
     lead: "Bitta mahsulot, uchta kirish yoʻli. Ishingizga mosini tanlang.",
     more: "Barcha yechimlar",
     items: [
-      { id: "youtube-channels", title: "Kanal egalari", body: "Bitta yoki bir nechta kanalni yuriting, yuzsiz kanallar ham boʻladi. Har birining tili, ovozi va koʻrinishi oʻziniki." },
+      { id: "youtube-channels", title: "YouTube kanallari", body: "Bitta yoki bir nechta kanalni yuriting, yuzsiz kanallar ham boʻladi. Har birining tili, ovozi va koʻrinishi oʻziniki." },
       { id: "creative-studio", title: "Ijodkorlar va studiyalar", body: "Rasm, klip yoki ovozni alohida yarating, soʻng muharrirda birlashtiring." },
       { id: "developers", title: "Dasturchilar", body: "Videolarni ishga tushiring va balansni oʻz kodingizdan yoki AI yordamchidan oʻqing." },
     ],

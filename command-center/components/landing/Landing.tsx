@@ -5,7 +5,7 @@ import type { MoneyAnchor, PricingTeaser as PricingTeaserData, ShowcaseItem } fr
 import { WELCOME_CREDITS } from "@/lib/pricing";
 import { CREDIT_EXPIRY_MONTHS } from "@/lib/legal";
 import { packExpiry, type PackExpiry } from "@/lib/plans";
-import { formatCredits } from "@/lib/credits";
+import { creditUnit, formatCredits } from "@/lib/credits";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 import { PressStage } from "@/components/landing/PressStage";
@@ -77,7 +77,7 @@ export function Landing({
 }) {
   return (
     <div className="lp-root">
-      <Hero t={t} locale={locale} />
+      <Hero t={t} locale={locale} anchor={anchor} />
       <How t={t} locale={locale} />
       <Who t={t} />
       <Studio t={t} />
@@ -97,8 +97,14 @@ export function Landing({
   );
 }
 
-function Hero({ t, locale }: { t: Dictionary; locale: Locale }) {
+function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: MoneyAnchor }) {
   const h = t.site.hero;
+  const a = t.site.anchor;
+  // The one price a visitor can know before signing up, said above the fold, and
+  // only when the live price list says it: never a default, never a zero.
+  const price = anchor.site
+    ? `${a.siteLabel}: ${fmt(a.siteValue, { n: formatCredits(anchor.site.perMinute, locale), unit: creditUnit(anchor.site.perMinute, locale, t.shell.creditUnit) })}`
+    : null;
   return (
     <section aria-labelledby="hero-title" className="nx-hero">
       <div className="nx-wrap">
@@ -120,6 +126,7 @@ function Hero({ t, locale }: { t: Dictionary; locale: Locale }) {
           </Link>
         </div>
         <p className="nx-note">{fmt(h.note, { n: formatCredits(WELCOME_CREDITS, locale) })}</p>
+        {price && <p className="nx-price">{price}</p>}
         <PressStage stage={t.site.stage} />
       </div>
     </section>
