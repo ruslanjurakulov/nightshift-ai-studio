@@ -165,6 +165,7 @@ export const devUz: DevDictionary = {
     titleDim: "Butun studiyangiz agentingiz ichida.",
     lead: "Nightshift’ni allaqachon ishlatadigan yordamchingizga qoʻshing va undan video yaratish, vazifani kuzatish va nashr qilishni soʻrang — ilovadagi bilan bir xil narxlar roʻyxati va tasdiqlash darvozasi bilan.",
     paidLine: "Hisobga kirish orqali ulanish pullik tarifni talab qiladi. Kalitni afzal koʻrasizmi? Sarlavha yubora oladigan mijozlar API kalit bilan ishlaydi.",
+    trademarks: "Mahsulot nomlari va logotiplari ularning egalarining tovar belgilaridir va faqat moslikni koʻrsatish uchun keltirilgan; Nightshift ular bilan bogʻliq emas va ular tomonidan tasdiqlanmagan.",
     worksWith: "Bular bilan ishlaydi",
     moreLabel: "Boshqa mijozlar",
     docs: "API maʼlumotnomasini oʻqish",
