@@ -130,7 +130,7 @@ export const SECTION_ITEMS: readonly SectionItem[] = [{ href: CUSTOMER_HOME, key
 /**
  * The sections a customer's workspace is made of — everything a person who
  * signed up with an email needs to make and publish videos, buy credits and
- * run their organization. The rest of NAV_GROUPS is the platform operator's
+ * run their workspace. The rest of NAV_GROUPS is the platform operator's
  * console (providers, agents, the intelligence stack, logs, the platform team)
  * and is shown only to a platform owner/admin.
  *
@@ -139,8 +139,8 @@ export const SECTION_ITEMS: readonly SectionItem[] = [{ href: CUSTOMER_HOME, key
  * customer's rail, tabs or palette, and a customer who opens its URL is sent to
  * Home like any other operator screen.
  *
- * Two-person publish approval ("approvals") is not here: a self-serve workspace
- * has one person and no roles, so a second approver cannot exist. The screen
+ * Two-person publish approval ("approvals") is not here: a workspace has one
+ * person, so a second approver cannot exist. The screen
  * and the database rule stay for the operator (and a future Teams plan).
  *
  * Presentation and routing only: RLS decides what anyone may read, and every
@@ -175,8 +175,8 @@ export const RAIL_HIDDEN_KEYS: readonly NavKey[] = ["accounts", "members"];
 /**
  * A customer's rail: five destinations, nothing else. Studio is where things
  * are made (create, library, look, series); Settings holds the workspace
- * (organization, developer keys). Each of the two opens
- * its first screen, and SECTION_TABS lays its other screens out as tabs —
+ * (the workspace name; Developers is reached from it). Each of the two opens
+ * its first screen, and SECTION_TABS lays Studio's other screens out as tabs —
  * a short rail with the tools behind it, never a wall of tools.
  */
 export const CUSTOMER_RAIL: readonly NavItem[] = [
@@ -202,10 +202,19 @@ export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly SectionI
     // The catalog of models a customer may use (sellable_models()), by task.
     { href: "/models", key: "models" },
   ],
-  settings: [
-    { href: "/organization", key: "organization" },
-    { href: "/developers", key: "developers" },
-  ],
+  // Settings has no tab bar: it is one plain page (the workspace name) with
+  // Developers (API keys) as its own entry. There is no team to lay out.
+  settings: [],
+};
+
+/**
+ * Screens that belong to a rail entry without being tabs of it: Settings owns
+ * its page and Developers, so the bottom bar and the sidebar keep Settings lit
+ * on both.
+ */
+const RAIL_SCREENS: Readonly<Record<"hub" | "settings", readonly string[]>> = {
+  hub: [],
+  settings: ["/organization", "/developers"],
 };
 
 /**
@@ -256,6 +265,7 @@ export const CUSTOMER_SIDEBAR: CustomerSidebar = {
   ],
   footer: [
     { href: "/credits", key: "credits" },
+    { href: "/developers", key: "developers" },
     { href: "/organization", key: "settings" },
   ],
 };
@@ -264,7 +274,7 @@ export const CUSTOMER_SIDEBAR: CustomerSidebar = {
  * Which sidebar row is the current place, from the section path (no channel,
  * e.g. "/create") and the `tool` query value. A tool row wins on /create when
  * the URL names one; Studio owns the rest of its tab group except Library
- * and the Editor, which have their own rows; Settings owns its tabs.
+ * and the Editor, which have their own rows; Settings owns its page.
  */
 export function sidebarCurrent(section: string, tool: string | null): string | null {
   const first = "/" + (section.split("/").filter(Boolean)[0] ?? "");
@@ -273,6 +283,8 @@ export function sidebarCurrent(section: string, tool: string | null): string | n
   // Styles is a Studio tab, but it also has its own row (the way to browse looks).
   if (first === "/styles") return "styles";
   if (first === "/editor") return "editor";
+  // Developers has its own row; Settings is the workspace page alone.
+  if (first === "/developers") return "developers";
   const group = tabsFor(first.slice(1))?.rail;
   if (group === "hub") return "hub";
   if (group === "settings") return "settings";
@@ -286,7 +298,9 @@ export function sidebarCurrent(section: string, tool: string | null): string | n
 export function tabsFor(section: string): { rail: "hub" | "settings"; items: readonly SectionItem[] } | null {
   const href = "/" + section;
   for (const rail of ["hub", "settings"] as const) {
-    if (SECTION_TABS[rail].some((i) => i.href === href)) return { rail, items: SECTION_TABS[rail] };
+    if (SECTION_TABS[rail].some((i) => i.href === href) || RAIL_SCREENS[rail].includes(href)) {
+      return { rail, items: SECTION_TABS[rail] };
+    }
   }
   return null;
 }

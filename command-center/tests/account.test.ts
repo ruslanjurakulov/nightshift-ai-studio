@@ -41,8 +41,12 @@ describe("nav filtering by role", () => {
     const reachable = new Set<string>([
       ...CUSTOMER_RAIL.map((i) => i.key),
       ...SECTION_TABS.hub.map((i) => i.key),
-      ...SECTION_TABS.settings.map((i) => i.key),
+      // Settings is one page (the workspace) and Developers has its own sidebar row.
+      ...CUSTOMER_SIDEBAR.footer.map((i) => i.key),
+      "organization",
     ]);
+    expect(CUSTOMER_RAIL.find((i) => i.key === "settings")?.href).toBe("/organization");
+    expect(SECTION_TABS.settings).toEqual([]); // no tab bar, no team screens behind it
     for (const k of CUSTOMER_NAV_KEYS) if (k !== "command") expect(reachable.has(k)).toBe(true);
     expect(tabsFor("library")?.rail).toBe("hub");
     expect(tabsFor("developers")?.rail).toBe("settings");

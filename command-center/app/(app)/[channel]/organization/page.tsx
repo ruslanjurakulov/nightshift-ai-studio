@@ -1,49 +1,50 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
-import { OrgMembersBoard } from "@/components/org/OrgMembersBoard";
+import { WorkspaceNameForm } from "@/components/org/WorkspaceNameForm";
 import { CreateOrganizationForm } from "@/components/org/CreateOrganizationForm";
-import { PendingInvites } from "@/components/org/PendingInvites";
 import { getOrgContext } from "@/lib/orgs-server";
-import { isOperator } from "@/lib/auth/org-roles";
 import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
+import { getChannelPath } from "@/lib/channels-path-server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
- * The current organization: its name, its team, and a way to start another.
+ * Settings: the workspace's name, and the way to Developers (API keys).
  *
- * Which org is "current" was decided on the server (lib/orgs-server.ts) from
- * the caller's memberships; the roster below is read and written under the
- * org_members policies of migration 0018. Before that migration this page
- * says so rather than showing an empty team.
- *
- * A self-serve customer sees their workspace, not a team: no roles, no
- * invites, no roster (they own what they create). The team board is the
- * platform operator's until a Teams plan brings it back to customers.
+ * There are two kinds of people in this product: a signed-in user, who owns
+ * their workspace and does everything in it, and the platform operator, who
+ * also sees the operator pages. So there is no team here: no roles, no
+ * invitations, no members table. Which workspace is "current" is decided on
+ * the server (lib/orgs-server.ts) from the caller's own memberships; before
+ * migration 0018 this page says so rather than showing an empty form.
  */
-export default async function OrganizationPage() {
+export default async function SettingsPage() {
   const { t } = await getDictionary();
-  const [org, user, operator] = await Promise.all([getOrgContext(), getUser(), isOperator()]);
+  const [org, user, path] = await Promise.all([getOrgContext(), getUser(), getChannelPath()]);
 
   return (
     <div className="rhythm">
-      <PageHeader icon="organization" title={t.org.title} subtitle={operator ? t.org.subtitle : t.org.customerSubtitle} />
+      <PageHeader icon="organization" title={t.org.title} subtitle={t.org.customerSubtitle} />
       {!user ? (
-        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.members.signIn}</div>
+        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.org.signIn}</div>
       ) : !org.supported ? (
         <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.org.notMigrated}</div>
       ) : org.current ? (
         <>
-          <PendingInvites />
-          <OrgMembersBoard key={org.current.id} org={org.current} myUserId={user.id} team={operator} />
+          <WorkspaceNameForm key={org.current.id} org={org.current} />
+          <div className="panel flex flex-col gap-3 p-4">
+            <h2 className="t-section">{t.org.developersTitle}</h2>
+            <p className="text-[13px] text-[var(--color-muted)]">{t.org.developersHint}</p>
+            <Link href={path("/developers")} className="btn-sky is-solid pill self-start px-5 py-2 text-[13px]">
+              {t.org.developersOpen}
+            </Link>
+          </div>
           <CreateOrganizationForm variant="another" />
         </>
       ) : (
-        <>
-          <PendingInvites />
-          <CreateOrganizationForm variant="first" />
-        </>
+        <CreateOrganizationForm variant="first" />
       )}
     </div>
   );
