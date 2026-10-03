@@ -177,6 +177,7 @@ export const devEn = {
     titleDim: "Your whole studio, inside your agent.",
     lead: "Add Nightshift to the assistant you already use, then ask it to make a video, follow the job and publish it — with the same price list and approval gate as the app.",
     paidLine: "Connecting with a sign-in needs a paid plan. Prefer a key? Clients that can send a header work with an API key.",
+    trademarks: "Product names and logos are trademarks of their respective owners and are shown only to indicate compatibility; Nightshift is not affiliated with or endorsed by them.",
     worksWith: "Works with",
     moreLabel: "More clients",
     docs: "Read the API reference",
