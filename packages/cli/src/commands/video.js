@@ -6,7 +6,7 @@ import { pipeline } from "node:stream/promises";
 import { CliError, EXIT, usageError } from "../errors.js";
 import { chargeLine, parseDuration, rows, show, usd } from "../format.js";
 import { pollUntil } from "../poll.js";
-import { IDEMPOTENCY_OPTION, WAIT_OPTIONS, getClient, idempotencyKeyFor, intOption } from "./shared.js";
+import { IDEMPOTENCY_OPTION, WAIT_OPTIONS, afterCreated, getClient, idempotencyKeyFor, intOption } from "./shared.js";
 
 const JOB_DONE = new Set(["succeeded", "failed", "cancelled"]);
 const DOWNLOAD_DONE = new Set(["ready", "failed", "expired"]);
@@ -118,7 +118,10 @@ export const videoCommands = [
         return;
       }
       ctx.note(`Queued job ${show(id)}. ${created?.price_cents == null ? "Price not reported." : held}\n`);
-      const job = await waitForJob(ctx, client, numericId(String(id), "job id"));
+      const job = await afterCreated(waitForJob(ctx, client, numericId(String(id), "job id")), {
+        text: `job ${id} was already queued and its price held; follow it with: nightshift jobs get ${id} --wait`,
+        details: { created_job_id: id, price_cents: created?.price_cents ?? null },
+      });
       setExitFor(ctx, job);
       ctx.result({ ...job, price_cents: created?.price_cents ?? null }, () =>
         `Job ${show(job.id)} ${show(job.status)}.\n${jobLines(job)}${
@@ -222,7 +225,10 @@ export const videoCommands = [
         return;
       }
       ctx.note(`Download ${show(d?.id)} ${show(d?.status)}. ${price}\n`);
-      const done = await waitForDownload(ctx, client, numericId(String(d?.id), "download id"));
+      const done = await afterCreated(waitForDownload(ctx, client, numericId(String(d?.id), "download id")), {
+        text: `download ${d?.id} was already ordered; follow it with: nightshift download get ${d?.id} --wait`,
+        details: { created_download_id: d?.id ?? null },
+      });
       if (done?.status !== "ready") ctx.exitCode = EXIT.ERROR;
       ctx.result(done, () => `Download ${show(done?.id)} ${show(done?.status)}.\n${done?.status === "ready" ? `Save it: nightshift download save ${show(done?.id)}\n` : ""}`);
     },

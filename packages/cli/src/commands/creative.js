@@ -1,7 +1,7 @@
 import { EXIT, usageError } from "../errors.js";
 import { credits, rows, show } from "../format.js";
 import { pollUntil } from "../poll.js";
-import { IDEMPOTENCY_OPTION, WAIT_OPTIONS, getClient, idempotencyKeyFor, intOption } from "./shared.js";
+import { IDEMPOTENCY_OPTION, WAIT_OPTIONS, afterCreated, getClient, idempotencyKeyFor, intOption } from "./shared.js";
 
 const GEN_DONE = new Set(["completed", "failed", "cancelled", "expired"]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -159,7 +159,10 @@ export const creativeCommands = [
         return;
       }
       ctx.note(`${same}Started generation ${show(job?.id)}. ${held}\n`);
-      const done = await waitForGeneration(ctx, client, job?.id);
+      const done = await afterCreated(waitForGeneration(ctx, client, job?.id), {
+        text: `generation ${job?.id} was already started and its credits held; follow it with: nightshift generations get ${job?.id} --wait`,
+        details: { created_generation_id: job?.id ?? null },
+      });
       if (done?.status !== "completed") ctx.exitCode = EXIT.ERROR;
       ctx.result(done, () => `Generation ${show(done?.id)} ${show(done?.status)}.\n${genLines(done)}`);
     },

@@ -410,3 +410,36 @@ test("a debug trace never contains the key, and an echoed key is redacted", asyn
     await api.close();
   }
 });
+
+test("--wait: if following the job fails, the error still names the job that was created and held", async () => {
+  const api = await fakeApi({
+    "POST /videos": { status: 201, body: { job_id: 31, channel_id: "tides", status: "queued", price_cents: 120 } },
+    "GET /jobs/31": apiError(403, "insufficient_scope", "Needs videos:read.", { required_scope: "videos:read" }),
+  });
+  try {
+    let r = await run(["create", "--channel", "tides", "--duration", "60", "--wait"], { api });
+    assert.equal(r.code, 3);
+    assert.match(r.stderr, /job 31 was already queued and its price held; follow it with: nightshift jobs get 31 --wait/);
+    r = await run(["create", "--channel", "tides", "--duration", "60", "--wait", "--json"], { api });
+    const j = JSON.parse(r.stdout);
+    assert.equal(j.error.created_job_id, 31);
+    assert.equal(j.error.price_cents, 120);
+  } finally {
+    await api.close();
+  }
+});
+
+test("a corrupt saved login does not matter when the environment has a key", async () => {
+  const api = await fakeApi({ "GET /me": { organization: { name: "A" }, key: {}, tier: 1, limits: {} } });
+  try {
+    const { mkdtemp, writeFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "ns-cli-"));
+    await writeFile(join(dir, "credentials.json"), "{not json");
+    assert.equal((await run(["whoami"], { api, configDir: dir })).code, 0);
+    assert.equal((await run(["whoami"], { api, configDir: dir, keyless: true })).code, 1, "but without an env key it is reported, not ignored");
+  } finally {
+    await api.close();
+  }
+});

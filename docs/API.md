@@ -235,3 +235,9 @@ unit = 'video_minute'` (platform owner/admin). Correct a balance with
 
 The same keys, limits and prices are available to AI assistants through the
 remote MCP server at `/api/mcp` — see `docs/MCP.md`.
+
+## CLI and Agent Skills
+
+The same keys, limits and prices are available from a terminal through the
+`nightshift` command-line client (`packages/cli`, `docs/CLI.md`), and AI agents
+can be taught to use it, or the MCP server, with the Agent Skills in `skills/`.

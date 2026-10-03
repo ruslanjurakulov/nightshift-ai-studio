@@ -31,8 +31,8 @@ export function resolveBaseUrl(ctx, saved) {
  * file `login` wrote; it is registered for redaction before anything is sent.
  */
 export async function getClient(ctx) {
-  const saved = await readCredentials(ctx.io);
   const envKey = ctx.io.env.NIGHTSHIFT_API_KEY;
+  const saved = envKey ? null : await readCredentials(ctx.io);
   const key = envKey || saved?.api_key;
   if (!key)
     throw new CliError("not_logged_in", "No API key. Run `nightshift login`, or set NIGHTSHIFT_API_KEY.", {
@@ -42,7 +42,7 @@ export async function getClient(ctx) {
   ctx.addSecret(key);
   checkKey(key);
   for (const w of saved?.warnings ?? []) ctx.warn(w);
-  const baseUrl = resolveBaseUrl(ctx, envKey ? undefined : saved?.base_url);
+  const baseUrl = resolveBaseUrl(ctx, saved?.base_url);
   ctx.keySource = envKey ? "env NIGHTSHIFT_API_KEY" : "saved login";
   return new Client({ baseUrl, key, io: ctx.io, debug: !!ctx.values.debug, log: (s) => ctx.io.stderr.write(ctx.clean(s)) });
 }
@@ -78,3 +78,19 @@ export const IDEMPOTENCY_OPTION = {
     help: "Reuse the key printed by an earlier attempt to retry it safely (24 h). Default: a fresh key.",
   },
 };
+
+/**
+ * A follow-up call failed after the work was already created and its price
+ * held. Say so on the error, so the person still has the id to follow.
+ */
+export async function afterCreated(promise, { text, details }) {
+  try {
+    return await promise;
+  } catch (e) {
+    if (e instanceof CliError) {
+      e.message = `${e.message} (${text})`;
+      e.details = { ...e.details, ...details };
+    }
+    throw e;
+  }
+}

@@ -168,7 +168,13 @@ function builtin(ctx, argv) {
   const json = argv.includes("--json");
   if (argv[0] === "commands") {
     const list = [...COMMANDS, { path: "commands", summary: "List the commands." }, { path: "help", summary: "Show help for a command." }];
-    ctx.say(json ? JSON.stringify({ commands: list.map((c) => ({ name: c.path, summary: c.summary })) }, null, 2) + "\n" : list.map((c) => `${c.path}  ${c.summary}`).join("\n") + "\n");
+    const describe = (c) => ({
+      name: c.path,
+      summary: c.summary,
+      options: Object.keys({ ...GLOBAL_OPTIONS, ...(c.options ?? {}) }),
+      positionals: c.positionals?.names ?? [],
+    });
+    ctx.say(json ? JSON.stringify({ commands: list.map(describe) }, null, 2) + "\n" : list.map((c) => `${c.path}  ${c.summary}`).join("\n") + "\n");
     return EXIT.OK;
   }
   const words = argv.slice(1).filter((a) => !a.startsWith("-"));
