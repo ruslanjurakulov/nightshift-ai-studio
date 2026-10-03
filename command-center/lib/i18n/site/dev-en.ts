@@ -189,7 +189,7 @@ export const devEn = {
       {
         id: "paste",
         title: "Paste the snippet",
-        body: "Pick your assistant on the right, copy its snippet and replace <your API key> with your key.",
+        body: "Pick your assistant in the Connect card, copy its snippet and replace <your API key> with your key.",
       },
       {
         id: "ask",

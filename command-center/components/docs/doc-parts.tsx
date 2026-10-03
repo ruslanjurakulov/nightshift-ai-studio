@@ -81,8 +81,9 @@ export function DevNav({ nav, current, showCli }: { nav: DevDictionary["nav"]; c
         ]
       : []),
   ];
+  // Named by the page too: the footer's "Developers" column is a landmark of the same name (axe landmark-unique).
   return (
-    <nav aria-label={nav.label} className="st-devnav">
+    <nav aria-label={`${nav.label} · ${items.find((i) => i.id === current)?.label ?? ""}`} className="st-devnav">
       <span className="st-devnav-label" aria-hidden>
         {nav.label}
       </span>

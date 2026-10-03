@@ -97,7 +97,7 @@ export function CliPage({ dev, labels }: { dev: DevDictionary; labels: ScrollLab
   return (
     <div className="st-doc">
       <Hero
-        id="cli-title"
+        id="cli-hero-title"
         current="cli"
         kicker={c.kicker}
         title={c.title}
@@ -141,7 +141,7 @@ export function SkillsPage({ dev, labels }: { dev: DevDictionary; labels: Scroll
   return (
     <div className="st-doc">
       <Hero
-        id="skills-title"
+        id="skills-hero-title"
         current="skills"
         kicker={c.kicker}
         title={c.title}

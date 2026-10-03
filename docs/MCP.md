@@ -34,6 +34,10 @@ assistant can tell "top up" (`insufficient_balance`) from "wait"
 
 ## Connecting a client
 
+The customer-facing version of this section is the public page **/mcp** (snippets for
+eleven assistants, each checked against that assistant's own documentation:
+see `command-center/lib/dev/mcp-clients.ts`).
+
 Create a key in **Developers → API keys** (owner/admin, after activating the
 API). Treat it like a password: a client holding it can spend your API balance.
 

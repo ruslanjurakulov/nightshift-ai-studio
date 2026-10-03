@@ -177,7 +177,7 @@ export const devUz: DevDictionary = {
       {
         id: "paste",
         title: "Namunani qoʻying",
-        body: "Yordamchingizni tanlang, uning namunasidan nusxa oling va <your API key> oʻrniga oʻz kalitingizni qoʻying.",
+        body: "“Ulanish” kartasida yordamchingizni tanlang, uning namunasidan nusxa oling va <your API key> oʻrniga oʻz kalitingizni qoʻying.",
       },
       {
         id: "ask",
