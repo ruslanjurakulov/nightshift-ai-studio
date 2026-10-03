@@ -2372,6 +2372,10 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   .ns-wordmark { font-size: 19px; gap: 8px; }
   .ns-wordmark svg { width: 28px; height: auto; }
 }
+@media (max-width: 359px) {
+  .ns-wordmark { font-size: 17px; gap: 6px; }
+  .ns-wordmark svg { width: 24px; }
+}
 
 /* The record dot on the Generate key: making something is a REC press, not a
    sparkle. It pulses only while the price is being asked or the press is sent. */

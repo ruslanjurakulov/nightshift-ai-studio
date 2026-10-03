@@ -266,6 +266,19 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   .st-header-tools { gap: 6px; }
   .st-header-tools .st-key[data-size="sm"] { padding: 0 12px; font-size: 15px; }
 }
+/* Russian's call to action is the longest ("Начать бесплатно"): at the type scale's 15px it
+   still ran 13px past the 16px gutter at 360px, so on a phone it is set at 14px. */
+@media (max-width: 399px) {
+  html[lang="ru"] .st-header-tools .st-key[data-size="sm"] { padding: 0 10px; font-size: 14px; }
+}
+/* The narrowest phones still in use (340px and below): the lockup and the controls give up a little more. */
+@media (max-width: 359px) {
+  .st-header-row { gap: 6px; }
+  .st-brand { font-size: 17px; gap: 6px; }
+  .st-brand svg { width: 24px; }
+  .st-header-tools { gap: 4px; }
+  .st-header-tools .st-key[data-size="sm"] { padding: 0 8px; }
+}
 .st-nav { display: none; align-items: center; gap: 4px; }
 @media (min-width: 1024px) { .st-nav { display: flex; } }
 .st-nav a {
