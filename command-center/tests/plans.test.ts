@@ -134,7 +134,8 @@ describe("the matrix", () => {
 
   it("every enforced key and status has a label in every language", () => {
     for (const t of [en, ru, uz]) {
-      for (const key of ["concurrency", "queue_priority", "api_access"]) expect((t.plans.row as Record<string, string>)[key]).toBeTruthy();
+      for (const key of ["concurrency", "queue_priority", "api_access", "mcp"]) expect((t.plans.row as Record<string, string>)[key]).toBeTruthy();
+      expect((t.upsell.feature as Record<string, string>).mcp).toBeTruthy();
       for (const s of ["active", "trialing", "past_due", "paused", "canceled"] as const) expect(t.plans.status[s]).toBeTruthy();
     }
   });
@@ -144,6 +145,32 @@ describe("the matrix", () => {
     const enforced = [...sql.matchAll(/\('(\w+)',\s*'(?:int|bool|tier)',[^)]*'enforced'/g)].map((x) => x[1]);
     expect(enforced.length).toBeGreaterThan(0);
     for (const k of enforced) expect(Object.keys(en.plans.row)).toContain(k);
+  });
+});
+
+describe("MCP over OAuth is a plan feature (0093)", () => {
+  const sql = readFileSync(join(__dirname, "..", "..", "supabase/migrations/0093_mcp_oauth.sql"), "utf8");
+
+  it("the migration flips `mcp` from planned to enforced, and seeds it for every paid plan and not for Free", () => {
+    expect(sql).toMatch(/update public\.entitlement_keys\s+set status = 'enforced',[\s\S]*?where key = 'mcp';/);
+    for (const plan of ["creator", "pro", "studio"]) expect(sql).toContain(`('${plan}', 'mcp', 'true')`);
+    expect(sql).toContain("('free', 'mcp', 'false')");
+    expect(sql).toMatch(/on conflict \(plan_id, key\) do nothing/);
+  });
+
+  it("once enforced, the plan matrix shows it as a row (paid plans yes, Free no) — and only then", () => {
+    const keys = catalog.keys.map((k) => (k.key === "mcp" ? { ...k, enforced: true } : k));
+    const values = { ...catalog.values, free: { ...catalog.values.free, mcp: false }, creator: { ...catalog.values.creator, mcp: true }, pro: { ...catalog.values.pro, mcp: true } };
+    const enforced = planMatrix({ ...catalog, keys, values }, env, PADDLE)!;
+    expect(enforced.rows.map((r) => r.key)).toEqual(["concurrency", "api_access", "mcp"]);
+    expect(enforced.rows[2].cells).toEqual([false, true, true]);
+    expect(planMatrix(catalog, env, PADDLE)!.rows.map((r) => r.key)).not.toContain("mcp");
+  });
+
+  it("the migration's enforced keys are all labelled in every language", () => {
+    const enforced = [...sql.matchAll(/set status = 'enforced',[\s\S]*?where key = '(\w+)';/g)].map((x) => x[1]);
+    expect(enforced).toEqual(["mcp"]);
+    for (const t of [en, ru, uz]) for (const k of enforced) expect(Object.keys(t.plans.row)).toContain(k);
   });
 });
 

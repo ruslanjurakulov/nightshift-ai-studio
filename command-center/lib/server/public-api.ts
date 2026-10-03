@@ -5,6 +5,7 @@ import { runBackend } from "@/lib/server/run-backend";
 import { downloadsDir } from "@/lib/server/downloads";
 import { apiError, newRequestId, toResponse, type ApiResult } from "@/lib/api/http";
 import { authenticate, type ApiCaller, type Rpc } from "@/lib/api/operations";
+import { oauthRpc } from "@/lib/api/mcp-oauth";
 
 /**
  * The server half of the public API: a Supabase client with the ANON key and
@@ -36,6 +37,20 @@ export async function apiCaller(request: Request, requestId: string): Promise<Ap
   const auth = await authenticate(request.headers.get("authorization"));
   if (!auth.ok) return auth.result;
   return { keyHash: auth.keyHash, requestId, rpc: apiRpc, backend: runBackend, downloads: downloadsDir() !== null };
+}
+
+/**
+ * The caller of an AI app connected with OAuth (migration 0093): the access
+ * token's hash, a database call that reaches only the allow-listed functions
+ * (lib/api/mcp-oauth.ts), and no downloads (they are API-key only).
+ */
+export function oauthApiCaller(tokenHash: string, requestId: string): ApiCaller {
+  return { keyHash: tokenHash, requestId, rpc: oauthRpc(apiRpc), backend: runBackend, downloads: false };
+}
+
+/** oauth_check: is this hash a live access token — for which resource and permissions, entitled now or not. */
+export async function oauthCheck(tokenHash: string, requestId: string) {
+  return apiRpc("oauth_check", { p_token_hash: tokenHash, p_request_id: requestId });
 }
 
 export function isCaller(v: ApiCaller | ApiResult): v is ApiCaller {

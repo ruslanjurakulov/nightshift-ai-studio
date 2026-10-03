@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/PageHeader";
 import { DeveloperConsole } from "@/components/developers/DeveloperConsole";
+import { ConnectedApps } from "@/components/developers/ConnectedApps";
 import { getOrgContext } from "@/lib/orgs-server";
 import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
@@ -30,11 +31,15 @@ export default async function DevelopersPage() {
       ) : !atLeast(current.role, "admin") ? (
         <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.developers.adminOnly}</div>
       ) : (
-        <DeveloperConsole
+        <>
+          {/* AI apps the person connected with OAuth (0093): separate from API keys and the API balance. */}
+          <ConnectedApps />
+          <DeveloperConsole
           key={current.id}
           orgId={current.id}
           topup={paddleApi && paddleClient ? paddleClient : null}
-        />
+          />
+        </>
       )}
     </div>
   );
