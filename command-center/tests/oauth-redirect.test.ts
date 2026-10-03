@@ -145,6 +145,10 @@ describe("the sign-in return path honours the connection page and nothing else",
     expect(safeLoginReturn("/oauth/authorizex?" + "a".repeat(900), "/d")).toBe("/d");
     expect(safeLoginReturn("/oauth/authorize/../../login", "/d")).toBe("/login"); // resolved by the URL parser, still this origin
   });
+  it("never returns a protocol-relative path (dot segments resolve into //host)", () => {
+    for (const raw of ["/oauth/authorize/../..//evil.example", "/a/..//evil.example/oauth/authorize"])
+      expect(safeLoginReturn(raw, "/command-center")).toBe("/command-center");
+  });
   it("keeps the ordinary rule for ordinary paths, with the ordinary length bound", () => {
     expect(safeLoginReturn("/welcome", "/command-center")).toBe("/welcome");
     expect(safeLoginReturn("/welcome?" + "a".repeat(600), "/command-center")).toBe("/command-center");

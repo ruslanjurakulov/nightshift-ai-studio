@@ -40,7 +40,13 @@ export function safeNextPath(
   if (url.origin !== PROBE_ORIGIN) return fallback;
   // Sending the callback back to itself would loop on a spent code.
   if (url.pathname === "/auth" || url.pathname.startsWith("/auth/")) return fallback;
-  return `${url.pathname}${url.search}${url.hash}`;
+  const out = `${url.pathname}${url.search}${url.hash}`;
+  // Dot segments are resolved by the parser: `/a/..//evil.com` becomes the
+  // path `//evil.com`, which `new URL(next, origin)` and router.push read as
+  // another host. The shape check above ran on the raw value; run it again on
+  // what is actually returned.
+  if (out.startsWith("//") || out.includes("\\")) return fallback;
+  return out;
 }
 
 /** The page an AI app's connection request sends a signed-out person through

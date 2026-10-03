@@ -37,6 +37,14 @@ describe("safeNextPath", () => {
     expect(safeNextPath("/a/../welcome")).toBe("/welcome");
   });
 
+  it.each(["/a/..//evil.com", "/oauth/authorize/../..//evil.com", "/a/b/../../..//evil.com/x?y=1", "/a/./..//evil.com"])(
+    "does not let dot segments resolve into a protocol-relative URL (%s)",
+    (raw) => {
+      expect(safeNextPath(raw)).toBe("/welcome");
+      expect(new URL(safeNextPath(raw), "https://app.example").origin).toBe("https://app.example");
+    },
+  );
+
   it("does not send the callback back to itself", () => {
     expect(safeNextPath("/auth/callback?code=x")).toBe("/welcome");
   });
