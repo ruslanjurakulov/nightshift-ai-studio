@@ -32,13 +32,14 @@ export default async function DevelopersPage() {
         <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.developers.adminOnly}</div>
       ) : (
         <>
-          {/* AI apps the person connected with OAuth (0093): separate from API keys and the API balance. */}
-          <ConnectedApps />
           <DeveloperConsole
           key={current.id}
           orgId={current.id}
           topup={paddleApi && paddleClient ? paddleClient : null}
           />
+          {/* AI apps the person connected with OAuth (0093): separate from API keys and the API balance.
+              Below the console, which loads first: this list arrives later and must not push it down. */}
+          <ConnectedApps />
         </>
       )}
     </div>

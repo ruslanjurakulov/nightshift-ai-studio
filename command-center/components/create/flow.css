@@ -1,0 +1,187 @@
+/* The guided create flow: one idea per card, plain words, big targets.
+   Cards are 20px-radius surfaces on the page ground with a low-contrast edge;
+   controls inside keep the 3:1 edge from the tokens (docs/design/APP_KREA.md). */
+
+.fl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ns-gap);
+  min-width: 0;
+  /* One calm column: a form this size reads best at about 55rem, however wide the screen. */
+  max-width: 55rem;
+}
+.fl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: var(--ns-card-pad);
+  border: 1px solid var(--color-border);
+  border-radius: var(--ns-r-sheet);
+  background: var(--color-panel);
+}
+@media (min-width: 640px) {
+  .fl-card { padding: 24px; }
+}
+.fl-warn { color: var(--color-warn); font-size: var(--ns-t-ui); }
+.fl-note { font-size: var(--ns-t-ui); color: var(--color-muted); }
+.fl-q {
+  font-size: var(--ns-t-h3);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.011em;
+  color: var(--color-fg);
+}
+.fl-hint { font-size: var(--ns-t-ui); line-height: 1.5; color: var(--color-muted); }
+
+/* 1 — the topic */
+.fl-topic {
+  width: 100%;
+  min-height: 96px;
+  resize: none;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--ns-r-panel);
+  background: var(--ns-key);
+  color: var(--color-fg);
+  font-size: 1rem; /* 16px: iOS zooms into anything smaller */
+  line-height: 1.5;
+}
+.fl-topic::placeholder { color: var(--color-muted); }
+.fl-topic:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 2px; }
+.fl-try { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.fl-try-label { font-size: var(--ns-t-ui); color: var(--color-muted); width: 100%; }
+.fl-try .ns-chip { font-size: var(--ns-t-ui); text-align: left; height: auto; padding-block: 10px; line-height: 1.3; }
+
+/* 2 — three choices, each one line until it is opened */
+.fl-choices { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 720px) {
+  .fl-choices { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.fl-choice-wrap {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--ns-r-panel);
+  background: var(--ns-key);
+  overflow: clip;
+}
+.fl-choice-wrap[data-open="true"] { border-color: var(--ns-amber-ink); background: var(--color-panel); }
+.fl-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 72px;
+  padding: 14px 16px;
+  text-align: left;
+  color: var(--color-fg);
+}
+.fl-choice:hover { background: var(--ns-key-hi); }
+.fl-choice-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fl-choice-label { font-size: var(--ns-t-small); color: var(--color-muted); }
+.fl-choice-value { font-size: 1rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.fl-choice-chevron { flex: none; width: 20px; height: 20px; color: var(--color-muted); transition: transform var(--ns-dur-2) var(--ns-ease); }
+.fl-choice[aria-expanded="true"] .fl-choice-chevron { transform: rotate(180deg); }
+.fl-panel { display: flex; flex-direction: column; gap: 12px; padding: 4px 16px 16px; }
+.fl-options { display: flex; flex-direction: column; }
+.fl-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 4px;
+  text-align: left;
+  color: var(--color-fg);
+  border-radius: var(--ns-r-chip);
+}
+.fl-option:hover { background: var(--ns-hover); }
+.fl-option-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--ns-rule-strong);
+  color: var(--ns-on-amber);
+}
+.fl-option[aria-checked="true"] .fl-option-mark { background: var(--ns-amber); box-shadow: none; }
+.fl-option-text { display: flex; flex-direction: column; min-width: 0; font-size: 1rem; line-height: 1.3; }
+.fl-option-sub { font-size: var(--ns-t-ui); color: var(--color-muted); }
+
+.fl-field { display: flex; flex-direction: column; gap: 6px; font-size: var(--ns-t-ui); color: var(--color-muted); }
+.fl-select {
+  width: 100%;
+  min-height: var(--ns-control-h);
+  padding: 8px 14px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-key);
+  background: var(--color-panel);
+  color: var(--color-fg);
+  font-size: 1rem;
+}
+.fl-select:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 2px; }
+
+/* more options / details */
+.fl-more > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  font-size: var(--ns-t-ui);
+  font-weight: 500;
+  color: var(--color-primary);
+  list-style: none;
+}
+.fl-more > summary::-webkit-details-marker { display: none; }
+.fl-more > summary::after { content: "+"; margin-inline-start: 8px; font-weight: 400; }
+.fl-more[open] > summary::after { content: "−"; }
+.fl-more-body { display: flex; flex-direction: column; gap: 16px; padding-block: 8px 4px; }
+
+/* 3 — the price */
+.fl-price { display: flex; flex-direction: column; gap: 8px; min-height: 150px; }
+.fl-price-figure { font-variant-numeric: normal; font-size: var(--ns-t-h1); font-weight: 600; line-height: 1.15; letter-spacing: -0.02em; }
+.fl-price-notes { display: flex; flex-direction: column; gap: 2px; font-size: var(--ns-t-ui); color: var(--color-muted); }
+.fl-price-link { align-self: flex-start; font-size: var(--ns-t-ui); color: var(--color-primary); text-decoration: underline; }
+
+/* 4 — the one button */
+.fl-actions { display: flex; flex-direction: column; gap: 12px; }
+.fl-actions .fl-go { min-height: 56px; border-radius: var(--ns-r-panel); font-size: 1.0625rem; }
+.fl-cancel { width: 100%; }
+.fl-status:empty { display: none; }
+.fl-status:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 4px; border-radius: var(--ns-r-chip); }
+.fl-status { font-size: var(--ns-t-ui); }
+.fl-watch { font-size: 1rem; }
+@media (min-width: 720px) {
+  .fl-actions { flex-direction: row; align-items: center; }
+  .fl-actions .fl-go { width: auto; min-width: 260px; padding-inline: 32px; }
+  .fl-cancel { width: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fl-choice-chevron { transition: none; }
+}
+
+/* Home: videos as cards, the other tools as one calm list */
+.home-cards { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 640px) { .home-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .home-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.home-video { height: 100%; justify-content: space-between; gap: 12px; color: var(--color-fg); }
+.home-video:hover { border-color: var(--ns-rule-strong); }
+.home-video-title { font-size: 1.0625rem; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.home-quick { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 640px) { .home-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .home-quick { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.home-quick-link {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 64px;
+  padding: 12px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--ns-r-panel);
+  background: var(--color-panel);
+}
+.home-quick-link:hover { border-color: var(--ns-rule-strong); }
+.home-assistant { border: 1px solid var(--color-border); border-radius: var(--ns-r-sheet); padding: 4px 20px 16px; background: var(--color-panel); }
