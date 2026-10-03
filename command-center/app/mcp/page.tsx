@@ -12,8 +12,10 @@ import { devPageMetadata } from "@/lib/dev/page-metadata";
 export const dynamic = "force-dynamic";
 
 export function generateMetadata(): Promise<Metadata> {
-  // One canonical address for every tab: the title and card do not change with ?tab=.
-  return devPageMetadata("/mcp", (dev) => dev.mcp.meta);
+  // One canonical address for every tab: the title and card do not change with ?tab=. While the sign-in is off the
+  // description does not offer Claude or ChatGPT as something that connects today.
+  const live = mcpOauthLive();
+  return devPageMetadata("/mcp", (dev) => ({ title: dev.mcp.meta.title, description: live ? dev.mcp.meta.description : dev.mcp.signinOff.description }));
 }
 
 /**

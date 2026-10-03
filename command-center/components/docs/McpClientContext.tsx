@@ -15,6 +15,8 @@ type Value = {
   setActive: (id: string) => void;
   names: Record<string, string>;
   marks: Record<string, React.ReactNode>;
+  /** True while the open tab is an assistant that cannot connect yet ("coming soon"): the page then speaks of "your assistant". */
+  soon: boolean;
 };
 
 const Ctx = createContext<Value | null>(null);
@@ -23,15 +25,19 @@ export function McpClientProvider({
   initialId,
   names,
   marks,
+  soonIds = [],
   children,
 }: {
   initialId: string;
   names: Record<string, string>;
   marks: Record<string, React.ReactNode>;
+  /** Tabs of assistants that are "coming soon" (MCP_OAUTH_LIVE off: Claude and ChatGPT). */
+  soonIds?: readonly string[];
   children: React.ReactNode;
 }) {
   const [active, setActive] = useState(Object.hasOwn(names, initialId) ? initialId : Object.keys(names)[0]);
-  const value = useMemo(() => ({ active, setActive, names, marks }), [active, names, marks]);
+  const soon = soonIds.includes(active);
+  const value = useMemo(() => ({ active, setActive, names, marks, soon }), [active, names, marks, soon]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
@@ -47,14 +53,30 @@ export function ClientName() {
   return <span className="ml-client-name">{names[active]}</span>;
 }
 
-/** The open assistant's logo, decorative (its name is always in the text beside it). */
+/** The open assistant's logo, decorative (its name is always in the text beside it). Nothing while the assistant cannot connect yet. */
 export function ClientMark() {
-  const { active, marks } = useMcpClient();
+  const { active, marks, soon } = useMcpClient();
+  if (soon) return null;
   return <span className="ml-client-mark" aria-hidden>{marks[active]}</span>;
 }
 
-/** A sentence with `{client}` in it, with the open assistant's name in its place. */
-export function ClientText({ template }: { template: string }) {
-  const { active, names } = useMcpClient();
-  return <>{template.replace("{client}", names[active])}</>;
+/** "Mark + name" beside "Your assistant" in the scripted chat; not shown for an assistant that cannot connect yet. */
+export function ClientBadge() {
+  const { soon } = useMcpClient();
+  if (soon) return null;
+  return (
+    <span className="ml-msg-client">
+      <ClientMark />
+      <ClientName />
+    </span>
+  );
+}
+
+/**
+ * A sentence with `{client}` in it, with the open assistant's name in its place. `soonTemplate` replaces it while the
+ * open assistant cannot connect yet (it may still name the assistant: "{client} will connect with a sign-in soon").
+ */
+export function ClientText({ template, soonTemplate }: { template: string; soonTemplate?: string }) {
+  const { active, names, soon } = useMcpClient();
+  return <>{(soon && soonTemplate ? soonTemplate : template).replace("{client}", names[active])}</>;
 }

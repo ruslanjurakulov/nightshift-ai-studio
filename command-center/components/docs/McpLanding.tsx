@@ -27,9 +27,16 @@ import { BrandMark } from "@/components/site/BrandMark";
 export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: boolean }) {
   const c = dev.mcp;
   const l = c.land;
-  const clientNames = MCP_CLIENTS.filter((x) => x.id !== "other").map((x) => x.label);
-  // Every client once, in the connect card's order: one row is wider than a wide screen, so nothing repeats in view.
-  const clients = MCP_CLIENTS.filter((x) => x.id !== "other");
+  // The clients that can connect today (while the sign-in is off that leaves out Claude and ChatGPT), split into two rows with
+  // no client in both, so one logo is never on screen twice. Both rows drift the same way at the same speed.
+  const clients = MCP_CLIENTS.filter((x) => x.id !== "other" && (oauthLive || !x.oauthOnly));
+  const half = Math.ceil(clients.length / 2);
+  const clientNames = clients.map((x) => x.label);
+  const rowA = clients.slice(0, half);
+  const rowB = clients.slice(half);
+  // About 19 px a second whatever the row's length (a pill is at least 190 px and its gap 20).
+  const secondsFor = (n: number) => Math.round((n * 210) / 19);
+  const frames = oauthLive ? l.frames : { ...l.frames, credits: { ...l.frames.credits, bars: l.frames.credits.bars.map((b, i) => (i === 2 ? l.keyMode.limitBar : b)) } };
 
   const clientPill = (id: string, label: string) => (
     <span className="ml-mq-pill">
@@ -46,10 +53,7 @@ export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: 
         <div className="ml-land-in">
           <p className="ml-label">{l.asks.label}</p>
           <h2 id="asks-title" className="ml-land-h2">
-            <span className="ml-asks-mark">
-              <ClientMark />
-            </span>{" "}
-            <ClientText template={l.asks.title} />
+            <ClientMark /> <ClientText template={l.asks.title} soonTemplate={oauthLive ? undefined : c.signinOff.asksTitle} />
           </h2>
           <p className="ml-land-lead">{l.asks.lead}</p>
           <ul className="ml-ask-grid">
@@ -106,7 +110,7 @@ export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: 
                       <b>{l.every.replyName}</b>
                       <span>{t.reply}</span>
                     </div>
-                    <SampleFrame kind={row.frame} words={l.frames} />
+                    <SampleFrame kind={row.frame} words={frames} />
                   </div>
                 </article>
               );
@@ -156,7 +160,7 @@ export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: 
           <div className="ml-land-in ml-works-in">
             <p className="ml-label">{l.works.label}</p>
             <h2 id="works-title" className="ml-land-h2">
-              {l.works.title}
+              {oauthLive ? l.works.title : c.signinOff.worksTitle}
             </h2>
             <p className="ml-land-lead">{oauthLive ? l.works.lead : l.keyMode.works}</p>
             <MarqueeToggle label={l.works.pause} />
@@ -166,8 +170,8 @@ export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: 
           </p>
           <Marquee
             rows={[
-              { id: "a", items: clients.map((x) => clientPill(x.id, x.label)), seconds: 130 },
-              { id: "b", items: [...clients.slice(8), ...clients.slice(0, 8)].map((x) => clientPill(x.id, x.label)), reverse: true, seconds: 130 },
+              { id: "a", items: rowA.map((x) => clientPill(x.id, x.label)), seconds: secondsFor(rowA.length) },
+              { id: "b", items: rowB.map((x) => clientPill(x.id, x.label)), seconds: secondsFor(rowB.length) },
             ]}
           />
           <div className="ml-publish">
@@ -192,7 +196,7 @@ export function McpAfter({ dev, showCli, oauthLive }: { dev: DevDictionary; show
   const c = dev.mcp;
   const l = c.land;
   // Until the sign-in is switched on (MCP_OAUTH_LIVE) the page must not promise an app connection: four answers speak of the key.
-  const keyAnswers: Record<number, string> = oauthLive ? {} : { 2: l.keyMode.faq.assistants, 4: l.keyMode.faq.cost, 6: l.keyMode.faq.disconnect, 7: l.keyMode.faq.credits };
+  const keyAnswers: Record<number, string> = oauthLive ? {} : { 2: l.keyMode.faq.assistants, 3: l.keyMode.faq.connect, 4: l.keyMode.faq.cost, 6: l.keyMode.faq.disconnect, 7: l.keyMode.faq.credits };
   return (
     <>
       <section aria-labelledby="faq-title" className="ml-land ml-faq" data-tone="soft">

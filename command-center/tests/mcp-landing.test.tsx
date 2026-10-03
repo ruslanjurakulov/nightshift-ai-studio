@@ -80,14 +80,21 @@ describe("the long /mcp page: order of sections", () => {
 });
 
 describe("one page for every tab: only the assistant's name changes", () => {
-  it.each(MCP_CLIENTS.map((c) => [c.id, c.id === "other" ? "Other" : c.label] as const))("%s: names the assistant in the how-it-works lead, the chat and the asks heading, and opens its own install panel", (id, name) => {
-    const d = doc(page("en", id));
+  it.each(MCP_CLIENTS.map((c) => [c.id, c.id === "other" ? "Other" : c.label] as const))("%s: names the assistant in the how-it-works lead, the chat and the asks heading, and opens its own install panel (sign-in on)", (id, name) => {
+    const d = doc(page("en", id, true));
     expect(d.querySelector(".st-how-lead")?.textContent).toContain(`Brief the work in ${name}.`);
     expect(d.querySelector("#asks-title")?.textContent).toContain(`Ask ${name} like this`);
     expect(d.querySelector(".ml-msg-client")?.textContent).toContain(name);
     expect(d.querySelector(`.st-pill[data-id="${id}"]`)?.getAttribute("aria-selected")).toBe("true");
     // Every tab still has its own install steps (a panel each), whichever one is open.
     expect(d.querySelectorAll(".st-tabpanel")).toHaveLength(MCP_CLIENTS.length);
+  });
+
+  it.each(MCP_CLIENTS.filter((c) => !c.oauthOnly).map((c) => [c.id, c.id === "other" ? "Other" : c.label] as const))("%s: with the sign-in off, a tab that can connect today is named the same way", (id, name) => {
+    const d = doc(page("en", id, false));
+    expect(d.querySelector(".st-how-lead")?.textContent).toContain(`Brief the work in ${name}.`);
+    expect(d.querySelector("#asks-title")?.textContent).toContain(`Ask ${name} like this`);
+    expect(d.querySelector(".ml-msg-client")?.textContent).toContain(name);
   });
 
   it("is the same text under the card on two tabs, bar the assistant's name", () => {
@@ -128,19 +135,18 @@ describe("the pictures are honest", () => {
     expect(d.querySelector(".ml-land")?.querySelectorAll("img, picture, video")).toHaveLength(0);
   });
 
-  it("names no model, provider or price: the moving rows are the assistants only; the publish targets are a still line of three", () => {
-    const d = doc(page());
+  it.each([true, false])("names no model, provider or price (sign-in live: %s): two rows with different assistants, none in both, none twice in a row; the publish targets are a still line of three", (live) => {
+    const d = doc(page("en", undefined, live));
+    const can = MCP_CLIENTS.filter((x) => x.id !== "other" && (live || !x.oauthOnly)).map((x) => x.label);
     const sr = d.querySelector(".ml-works")?.querySelector(".sr-only")?.textContent ?? "";
-    for (const c of MCP_CLIENTS.filter((x) => x.id !== "other")) expect(sr).toContain(c.label);
-    const mq = d.querySelector(".ml-mq")!;
-    const pills = [...mq.querySelectorAll(".ml-mq-set:not(.ml-mq-dup) .ml-mq-pill")].map((p) => p.textContent?.trim());
-    // Every client once per row: nothing repeats inside one row's first set, and no row is a provider or a filler.
-    expect(pills).toHaveLength(MCP_CLIENTS.length - 1 + MCP_CLIENTS.length - 1);
-    for (const row of mq.querySelectorAll(".ml-mq-row")) {
-      const names = [...row.querySelectorAll(".ml-mq-set:not(.ml-mq-dup) .ml-mq-pill")].map((p) => p.textContent?.trim());
-      expect(new Set(names).size).toBe(names.length);
-      for (const n of names) expect(MCP_CLIENTS.some((c) => c.label === n)).toBe(true);
-    }
+    for (const label of can) expect(sr).toContain(label);
+    if (!live) for (const label of ["Claude", "ChatGPT"]) expect(sr.replace("Claude Code", "").replace("Claude Desktop", "")).not.toContain(label);
+    const rows = [...d.querySelectorAll(".ml-mq .ml-mq-row")].map((r) => [...r.querySelectorAll(".ml-mq-set:not(.ml-mq-dup) .ml-mq-pill")].map((p) => p.textContent?.trim()));
+    expect(rows).toHaveLength(2);
+    for (const names of rows) expect(new Set(names).size).toBe(names.length);
+    expect(new Set(rows.flat()).size).toBe(can.length);
+    expect(rows.flat().sort()).toEqual([...can].sort());
+    for (const n of rows[0]) expect(rows[1]).not.toContain(n);
     const pub = [...d.querySelectorAll(".ml-publish li")].map((li) => li.textContent?.trim());
     expect(pub).toEqual([...PUBLISH_TARGETS]);
     expect(d.querySelector(".ml-publish")?.closest(".ml-mq")).toBeNull();
@@ -208,6 +214,63 @@ describe("with sign-in off the page never promises an app connection", () => {
     const l = devDictionaries.en.mcp.land.keyMode;
     for (const t of [l.works, l.faq.assistants, l.faq.cost]) expect(t).toMatch(/coming soon/);
     expect(l.faq.disconnect).not.toMatch(/Connected apps/);
+  });
+});
+
+describe("with sign-in off, nothing on the page reads as if Claude or ChatGPT connect today", () => {
+  const text = (html: string) => doc(html).body.textContent ?? "";
+  it.each(LOCALES)("%s: the lead, the notes, the connect answer, the works-with head and the limit bar use the key wording", (locale) => {
+    const dev = devDictionaries[locale].mcp;
+    const off = text(page(locale, "cursor", false));
+    const on = text(page(locale, "cursor", true));
+    expect(off).toContain(dev.signinOff.paidLine);
+    expect(off).toContain(dev.signinOff.paidBody);
+    expect(off).toContain(dev.signinOff.worksTitle);
+    expect(off).toContain(dev.land.keyMode.faq.connect);
+    expect(off).toContain(dev.land.keyMode.limitBar);
+    expect(off).not.toContain(dev.paidLine);
+    expect(off).not.toContain(dev.paid.body);
+    expect(off).not.toContain(dev.land.works.title);
+    expect(off).not.toContain(dev.land.frames.credits.bars[2]);
+    expect(on).toContain(dev.paidLine);
+    expect(on).toContain(dev.paid.body);
+    expect(on).toContain(dev.land.works.title);
+    expect(on).toContain(dev.land.frames.credits.bars[2]);
+    expect(on).not.toContain(dev.signinOff.paidLine);
+  });
+
+  it.each(LOCALES)("%s: the hero lead does not promise the app's price list (the key door has its own balance)", (locale) => {
+    expect(devDictionaries[locale].mcp.lead).not.toMatch(/price list|прайс|narxlar roʻyxati/i);
+    expect(devDictionaries[locale].mcp.lead).toMatch(/publish check|проверкой публикации|nashr tekshiruvi/);
+  });
+
+  it.each(LOCALES)("%s: the page description does not say Claude or ChatGPT connect while the flag is off", (locale) => {
+    const m = devDictionaries[locale].mcp;
+    expect(m.signinOff.description).not.toMatch(/(?:Connect|Подключите)\s+Claude,\s+ChatGPT/);
+    expect(m.meta.description).toMatch(/Claude, ChatGPT/);
+  });
+
+  it.each(["claude", "chatgpt"])("%s tab, sign-in off: 'your assistant', the coming-soon line, no badge; with sign-in on the name is back", (id) => {
+    const name = id === "claude" ? "Claude" : "ChatGPT";
+    const off = doc(page("en", id, false));
+    expect(off.querySelector("#asks-title")?.textContent?.trim()).toBe("Ask your assistant like this");
+    expect(off.querySelector(".st-how-lead")?.textContent).toContain(`${name} will connect with a sign-in soon.`);
+    expect(off.querySelector(".st-how-lead")?.textContent).not.toContain(`Brief the work in ${name}`);
+    expect(off.querySelector(".ml-msg-client")).toBeNull();
+    expect(off.querySelector("#asks-title .ml-client-mark")).toBeNull();
+    const on = doc(page("en", id, true));
+    expect(on.querySelector("#asks-title")?.textContent).toContain(`Ask ${name} like this`);
+    expect(on.querySelector(".ml-msg-client")?.textContent).toContain(name);
+  });
+
+  it("switching to Claude with the flag off swaps the headings to the soon wording, and back", () => {
+    render(<McpPage dev={devDictionaries.en} origin="https://example.test" labels={labels} showCli={false} oauthLive={false} initialTab="cursor" />);
+    expect(screen.getByRole("heading", { name: /Ask Cursor like this/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Claude" }));
+    expect(screen.getByRole("heading", { name: "Ask your assistant like this" })).toBeTruthy();
+    expect(document.querySelector(".ml-msg-client")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Claude Code" }));
+    expect(screen.getByRole("heading", { name: /Ask Claude Code like this/ })).toBeTruthy();
   });
 });
 
@@ -293,16 +356,23 @@ describe("the marquee", () => {
     const rows = [...mq.querySelectorAll(".ml-mq-row")];
     expect(rows).toHaveLength(2);
     for (const r of rows) {
+      // both rows drift the same way
+      expect(r.hasAttribute("data-reverse")).toBe(false);
       const sets = r.querySelectorAll(".ml-mq-set");
       expect(sets).toHaveLength(2);
       expect(sets[0].innerHTML).toBe(sets[1].innerHTML);
     }
-    expect(rows[1].hasAttribute("data-reverse")).toBe(true);
-    expect(rows[0].hasAttribute("data-reverse")).toBe(false);
+    // The same speed (px per second): a row's seconds follow its length.
+    const secs = rows.map((r) => parseInt((r as HTMLElement).style.getPropertyValue("--mq-s")));
+    const n = rows.map((r) => r.querySelectorAll(".ml-mq-set:not(.ml-mq-dup) li").length);
+    expect(Math.abs(secs[0] / n[0] - secs[1] / n[1])).toBeLessThan(1.5);
   });
 
   it("drifts slowly and, with reduced motion, does not move at all (the rows wrap into still pills)", () => {
     expect(css).toMatch(/\.ml-mq-track\s*\{[^}]*animation:\s*ml-mq var\(--mq-s, 90s\) linear infinite/);
+    // The strip is capped and centred, so on a wide screen a row's first logos do not come round again within the row.
+    expect(css).toMatch(/\.ml-mq\s*\{[^}]*max-width:\s*1000px[^}]*margin-inline:\s*auto/);
+    expect(css).not.toMatch(/\.ml-mq-row\[data-reverse\]/);
     const reduce = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)", css.indexOf(".ml-mq-set li")));
     expect(reduce).toMatch(/\.ml-mq-track\s*\{[^}]*animation:\s*none/);
     expect(reduce).toMatch(/\.ml-mq-dup\s*\{\s*display:\s*none/);

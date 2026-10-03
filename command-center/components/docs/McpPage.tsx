@@ -194,13 +194,15 @@ export function McpPage({
   // Real logos only around the N, balanced in colour and weight: a white mark and a red one to the left,
   // Anthropic's orange and a blue one to the right. No "+" tile any more: every client has a mark.
   const hero = ["cursor", "chatgpt", "openclaw", "nightshift", "claude", "vscode", "windsurf"] as const;
-  const firstSix = ["claude", "chatgpt", "claude-code", "openclaw", "cursor", "hermes"].map((id) => MCP_CLIENTS.find((x) => x.id === id)!.label);
+  const firstSix = ["claude", "chatgpt", "claude-code", "openclaw", "cursor", "hermes"].map((id) => MCP_CLIENTS.find((x) => x.id === id)!).filter((x) => oauthLive || !x.oauthOnly).map((x) => x.label);
 
+  // With the sign-in off (MCP_OAUTH_LIVE) Claude and ChatGPT are "coming soon": nothing on the page may read as if they connect today.
+  const soonIds = oauthLive ? [] : MCP_CLIENTS.filter((x) => x.oauthOnly).map((x) => x.id);
   const names = Object.fromEntries(MCP_CLIENTS.map((x) => [x.id, x.id === "other" ? dev.ui.other : x.label]));
   const marks = Object.fromEntries(MCP_CLIENTS.map((x) => [x.id, <span key={x.id} className="st-pill-glyph" data-tile={logoTile(x.id)}><BrandLogo id={x.id} /></span>]));
 
   return (
-    <McpClientProvider initialId={open} names={names} marks={marks}>
+    <McpClientProvider initialId={open} names={names} marks={marks} soonIds={soonIds}>
     <div className="st-doc st-mcp">
       <BrandSprite ids={MCP_CLIENTS.map((x) => x.id)} />
       <section aria-labelledby="mcp-title" className="st-mcphero">
@@ -226,7 +228,7 @@ export function McpPage({
             <span>{c.title}</span> <span className="st-mcphero-dim">{c.titleDim}</span>
           </h1>
           <p className="st-mcphero-lead">{c.lead}</p>
-          <p className="st-small st-mcphero-paid">{c.paidLine}</p>
+          <p className="st-small st-mcphero-paid">{oauthLive ? c.paidLine : c.signinOff.paidLine}</p>
 
           <ConnectCard
             tabs={tabs}
@@ -235,7 +237,7 @@ export function McpPage({
             moreLabel={c.moreLabel}
             banner={
               <>
-                <strong>{c.paid.title}.</strong> {c.paid.body}{" "}
+                <strong>{oauthLive ? c.paid.title : c.signinOff.paidTitle}.</strong> {oauthLive ? c.paid.body : c.signinOff.paidBody}{" "}
                 <Link href="/pricing" className="st-doc-a">
                   {c.paid.link}
                 </Link>
@@ -259,7 +261,7 @@ export function McpPage({
             {c.how.title}
           </h2>
           <p className="st-how-lead">
-            <ClientText template={c.how.lead} />
+            <ClientText template={c.how.lead} soonTemplate={oauthLive ? undefined : c.signinOff.howLead} />
           </p>
           <HowTabs
             tabs={c.how.tabs}

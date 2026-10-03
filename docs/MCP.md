@@ -74,7 +74,7 @@ environment flag `MCP_OAUTH_LIVE` (literal `1` = on, read at request time; `depl
 it is off the Claude and ChatGPT tabs say "Coming soon" and every other tab shows its API-key steps.
 
 Under the connect card `/mcp` is one long page, the same on every tab except the assistant's name: how it works,
-ready-to-copy asks, six capability rows (video, channels, language and voice, approval, credits and limits, batches),
+ready-to-copy asks, six capability rows (video, channels, language and voice, approval, credits and limits, a list of topics in one ask),
 a carousel of example asks, a "works with" strip, the tool list, questions, and a closing line. Every picture on it is
 drawn in CSS and inline SVG and captioned as an illustration (never a generated or real result); it names no model,
 provider or price. The structure is in `command-center/lib/dev/mcp-landing.ts`, the copy under `mcp.land` in

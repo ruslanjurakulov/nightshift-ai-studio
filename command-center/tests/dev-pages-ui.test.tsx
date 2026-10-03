@@ -258,14 +258,24 @@ describe("the MCP page", () => {
     expect(panel("hermes").textContent).toContain("auth: oauth");
   });
 
-  it("says MCP sign-in needs a paid plan, that Free does not include it, and that keys and REST are billed separately", () => {
-    const d = doc(mcp());
+  it("says MCP sign-in needs a paid plan, that Free does not include it, and that keys and REST are billed separately (sign-in on)", () => {
+    const d = doc(mcp({ oauthLive: true }));
     const banner = d.querySelector(".st-banner")!;
     expect(banner.textContent).toMatch(/paid plan/i);
     expect(banner.textContent).toMatch(/Free/);
     expect(banner.textContent).toMatch(/API keys/);
     expect(banner.querySelector('a[href="/pricing"]')).toBeTruthy();
     expect(d.querySelector(".st-mcphero-paid")?.textContent).toMatch(/paid plan/i);
+  });
+
+  it("with the sign-in off says only that keys work today and that the sign-in is coming soon, and still links the plans", () => {
+    const d = doc(mcp());
+    const banner = d.querySelector(".st-banner")!;
+    expect(banner.textContent).toMatch(/API keys/);
+    expect(banner.textContent).toMatch(/coming soon/i);
+    expect(banner.querySelector('a[href="/pricing"]')).toBeTruthy();
+    expect(d.querySelector(".st-mcphero-paid")?.textContent).toMatch(/coming soon/i);
+    expect(d.querySelector(".st-mcphero-paid")?.textContent).not.toMatch(/needs a paid plan/i);
   });
 
   it("has a tile row around the Nightshift N: decorative, the names in text for screen readers, and no image from anywhere", () => {
@@ -279,7 +289,9 @@ describe("the MCP page", () => {
     for (const im of Array.from(d.querySelectorAll("image"))) {
       expect(im.getAttribute("href") ?? "").toMatch(/^data:image\/(png|webp);base64,/);
     }
-    expect(d.querySelector(".sr-only")?.textContent).toMatch(/Works with: Claude, ChatGPT, Claude Code, OpenClaw, Cursor, Hermes/);
+    // With the sign-in off Claude and ChatGPT cannot connect yet, so the line names only what does.
+    expect(d.querySelector(".sr-only")?.textContent).toMatch(/Works with: Claude Code, OpenClaw, Cursor, Hermes/);
+    expect(doc(mcp({ oauthLive: true })).querySelector(".sr-only")?.textContent).toMatch(/Works with: Claude, ChatGPT, Claude Code, OpenClaw, Cursor, Hermes/);
   });
 
   describe("interaction", () => {

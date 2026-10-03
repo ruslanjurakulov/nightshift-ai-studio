@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ClientMark, ClientName } from "@/components/docs/McpClientContext";
+import { ClientBadge } from "@/components/docs/McpClientContext";
 
 export type HowTab = {
   id: string;
@@ -126,10 +126,7 @@ export function HowTabs({ tabs, labels }: { tabs: HowTab[]; labels: HowLabels })
             <div className="st-msg st-reveal" data-who="agent" style={{ animationDelay: "0.5s" }}>
               <span className="st-msg-who">
                 {labels.agent}
-                <span className="ml-msg-client">
-                  <ClientMark />
-                  <ClientName />
-                </span>
+                <ClientBadge />
                 <span className="st-typing" aria-hidden>
                   <i />
                   <i />
