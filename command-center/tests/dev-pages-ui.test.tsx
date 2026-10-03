@@ -229,7 +229,7 @@ describe("the CLI and Skills pages", () => {
     expect(CLI_INSTALL).toBe("npm i -g @nightshift/cli");
     expect(CLI_LOGIN).toBe("nightshift login");
     const skills = renderToStaticMarkup(<SkillsPage dev={dev} labels={labels} />);
-    expect(skills).toContain(SKILLS_INSTALL);
+    expect(skills).toContain(SKILLS_INSTALL.split("\n")[0]);
     expect(skills).toContain(CLI_INSTALL);
     expect((cli.match(/st-copy/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });

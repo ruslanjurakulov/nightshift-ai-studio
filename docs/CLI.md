@@ -98,7 +98,7 @@ Human output goes to stdout; progress and notes go to stderr. With `--json`, std
 
 ## For the owner: publishing
 
-The package is not published. Nothing in this repository publishes it. See the checklist in the pull request that added it: npm scope `@nightshift` ownership, two-factor authentication, a licence decision (the repository has none, so `package.json` has no `license` field and `prepublishOnly` refuses to publish until one is set), `npm publish` from `packages/cli`, then the repository variable `DEV_CLI_PAGE=on` to show the web pages.
+The package is not published. Nothing in this repository publishes it. See the checklist in the pull request that added it: npm scope `@nightshift` ownership, two-factor authentication, a licence decision (the repository has none, so `package.json` has no `license` field and `prepublishOnly` refuses to publish until one is set), `npm publish` from `packages/cli`, then the repository variable `DEV_CLI_PAGE=1` to show the web pages.
 
 ## Tests
 

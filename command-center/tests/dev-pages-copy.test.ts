@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { devEn } from "@/lib/i18n/site/dev-en";
 import { devRu } from "@/lib/i18n/site/dev-ru";
 import { devUz } from "@/lib/i18n/site/dev-uz";
@@ -93,5 +96,21 @@ describe("developer pages copy", () => {
 
   it("lists the tools the server really has, in the server's order", () => {
     expect([...MCP_TOOL_IDS]).toEqual([...TOOL_NAMES]);
+  });
+
+  it("lists the CLI's real commands, in its own order (packages/cli, docs/CLI.md)", () => {
+    const root = join(__dirname, "..", "..", "packages", "cli", "bin");
+    const bin = join(root, readdirSync(root)[0]);
+    const table = JSON.parse(execFileSync("node", [bin, "commands", "--json"], { encoding: "utf8" })) as { commands: { name: string }[] };
+    const real = table.commands.map((c) => c.name).filter((n) => n !== "commands" && n !== "help");
+    const typed = CLI_COMMANDS.map((c) => c.command.replace(/^nightshift /, "").split(/ (?:--|[A-Z\[])/)[0].trim());
+    expect(typed).toEqual(real);
+    for (const c of CLI_COMMANDS) expect(c.command.startsWith("nightshift ")).toBe(true);
+  });
+
+  it("lists the skills that are really in skills/", () => {
+    const dir = join(__dirname, "..", "..", "skills");
+    const real = readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
+    expect(SKILLS.map((s) => s.name).sort()).toEqual(real);
   });
 });
