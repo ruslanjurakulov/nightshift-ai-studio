@@ -9,6 +9,7 @@ import { ALL_CHANNELS_SLUG, CHANNEL_COOKIE, channelPath } from "@/lib/channels";
 import { ORG_NAME_MAX, validateOrgName } from "@/lib/orgs";
 import { SignOutButton } from "@/components/SignOutButton";
 import { LanguageSelector } from "@/components/LanguageSelector";
+import { BrandMark } from "@/components/site/BrandMark";
 import { newChannelHref, WELCOME_NICHE_MAX, WELCOME_LANGUAGE_MAX } from "@/lib/welcome";
 
 type Step = "workspace" | "about" | "next";
@@ -282,9 +283,10 @@ function Frame({ children }: { children: React.ReactNode }) {
       </div>
       <div className="glass-card sheet-enter rounded-[22px] border border-[var(--color-border)] p-6 sm:p-8">
         <div
-          className="font-display text-xl font-semibold tracking-[-0.02em] text-[var(--color-primary)]"
+          className="inline-flex items-center gap-2 font-display text-xl font-semibold tracking-[-0.02em] text-[var(--color-primary)]"
           style={{ textShadow: "0 0 28px var(--glow-primary)" }}
         >
+          <BrandMark size={20} />
           {t.brand.name}
         </div>
         <h1 className="mt-6 text-[26px] font-semibold leading-tight tracking-[-0.02em]">{t.signup.welcomeTitle}</h1>
