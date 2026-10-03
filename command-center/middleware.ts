@@ -19,6 +19,7 @@ import {
   isUnknownDocsPath,
   isUnknownSolutionPath,
 } from "@/lib/public-paths";
+import { authorizeReturnPath } from "@/lib/oauth/authorize";
 import { conceptDecision, conceptsEnabled } from "@/lib/concepts";
 import { devPageDecision, devPagesEnabled } from "@/lib/dev-pages";
 import { buildCsp, cspHeaderName, cspMode, makeNonce, reportUri } from "@/lib/security/csp";
@@ -183,6 +184,12 @@ async function gate(request: NextRequest): Promise<NextResponse> {
   if (decision === "to-login" || decision === "to-home") {
     const url = request.nextUrl.clone();
     url.pathname = decision === "to-login" ? "/login" : "/";
+    // An AI app's connection request comes back to itself after sign-in. The
+    // login page only honours a return path of exactly this shape
+    // (lib/safe-redirect.ts safeLoginReturn), so this is no open redirect.
+    if (decision === "to-login" && request.nextUrl.pathname === "/oauth/authorize") {
+      url.search = `?next=${encodeURIComponent(authorizeReturnPath(request.nextUrl.search))}`;
+    }
     return NextResponse.redirect(url);
   }
   // Served as-is, with any refreshed auth cookies. The public pages sit outside

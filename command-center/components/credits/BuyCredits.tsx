@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
+import { useChannelPath } from "@/lib/channels-client";
 import { fmt } from "@/lib/i18n";
 import { resolvedTheme } from "@/lib/theme";
 import { checkoutCustomData, paddleLocale, purchaseArrived, type PaddleConfig, type SellablePack } from "@/lib/paddle";
@@ -42,6 +43,7 @@ export function BuyCredits({
   balance,
   rates = null,
   packValidMonths,
+  extraOff = false,
 }: {
   config: PaddleConfig;
   orgId: string;
@@ -52,8 +54,11 @@ export function BuyCredits({
   rates?: GenerationRates | null;
   /** How long pack credits last: months, null = never expire, undefined = unknown (then not stated). */
   packValidMonths?: number | null;
+  /** The workspace's extra-credits switch is off (0094): a pack waits unused until it is turned on. */
+  extraOff?: boolean;
 }) {
   const { t, locale } = useI18n();
+  const path = useChannelPath();
   const cp = t.creditsPage;
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("idle");
@@ -196,6 +201,14 @@ export function BuyCredits({
         <p className="text-sm font-light text-[var(--color-muted)]">
           {cp.packsLead}
         </p>
+        {extraOff && (
+          <p className="text-[13px] leading-relaxed" data-extra-off-note>
+            {t.usage.credits.packsOff}{" "}
+            <Link href={path("/usage") + "#extra"} className="tap-link text-[var(--color-primary)] underline underline-offset-2">
+              {t.usage.refusal.openUsage}
+            </Link>
+          </p>
+        )}
       </div>
 
       {/* The terms come before the buttons: read before any checkout opens. */}

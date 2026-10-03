@@ -75,6 +75,7 @@ export const SECTIONS = [
   "margin",
   "billing",
   "credits",
+  "usage",
   "series",
   "intelligence-map",
   "intelligence",

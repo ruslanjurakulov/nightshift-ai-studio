@@ -137,7 +137,7 @@ export function CreditMenu({ account, plan = null }: { account: CreditAccount | 
               <Plus aria-hidden className="size-4" strokeWidth={2.25} />
               {t.shell.addCredits}
             </Link>
-            <Link href={path("/credits") + "#activity-title"} onClick={close} className="shell-link justify-between">
+            <Link href={path("/usage")} onClick={close} className="shell-link justify-between">
               <span className="flex items-center gap-2.5">
                 <History aria-hidden className="shell-icon size-4" strokeWidth={1.9} />
                 {t.shell.usage}

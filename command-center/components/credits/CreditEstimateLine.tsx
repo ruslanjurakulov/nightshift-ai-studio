@@ -7,6 +7,7 @@ import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import { formatCredits, type CreditEstimate } from "@/lib/credits";
 import { ErrorState } from "@/components/ReadError";
+import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
 
 type EstimateResponse = {
   supported?: boolean;
@@ -16,6 +17,9 @@ type EstimateResponse = {
   available?: number | null;
   /** The balance read errored: `available` is unknown, not 0 and not "no account". */
   balanceFailed?: boolean;
+  /** 0094: extra credits are off, so a run can use only `spendable` (plan and bonus credits). */
+  extraOff?: boolean;
+  spendable?: number;
 };
 
 /**
@@ -80,7 +84,9 @@ export function CreditEstimateLine({ channelId, durationS }: { channelId: string
   } else {
     const e = data.estimate;
     const credits = e.credits ?? 0;
-    const short = data.enforced && data.available !== null && data.available !== undefined && data.available < credits;
+    // With extra credits off, what a run can use is the spendable part of the balance.
+    const usable = data.extraOff && typeof data.spendable === "number" ? Math.min(data.spendable, data.available ?? data.spendable) : data.available;
+    const short = data.enforced && usable !== null && usable !== undefined && usable < credits;
     const basis = e.basis === "unknown" ? "" : fmt(t.credits.basis[e.basis], { n: e.sample });
     body = (
       <>
@@ -98,11 +104,17 @@ export function CreditEstimateLine({ channelId, durationS }: { channelId: string
             </button>
           </span>
         ) : (
-          data.available !== null &&
-          data.available !== undefined && (
+          usable !== null &&
+          usable !== undefined && (
             <span className="text-[var(--color-muted)]">
               {" "}
-              · {fmt(t.credits.estimateAvailable, { n: formatCredits(data.available, locale) })}
+              · {fmt(data.extraOff ? t.usage.estimate.availableOff : t.credits.estimateAvailable, { n: formatCredits(usable, locale) })}
+              {data.extraOff && short && (
+                <>
+                  {" "}
+                  <ExtraOffLink />
+                </>
+              )}
             </span>
           )
         )}

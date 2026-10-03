@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { useToast } from "@/components/feedback/ToastProvider";
-import { creditRunError } from "@/lib/credits";
+import { creditRunError, isExtraOffRefusal } from "@/lib/credits";
+import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
 import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
 
 /**
@@ -46,6 +47,7 @@ export function RunNowButton({
   const [phase, setPhase] = useState<Phase>("idle");
   const [errorKey, setErrorKey] = useState<"unauthorized" | "failed">("failed");
   const [creditError, setCreditError] = useState<string | null>(null);
+  const [extraOff, setExtraOff] = useState(false);
   const toast = useToast();
 
   // Optional per-run topic + data-backed suggestions (panel variant only).
@@ -104,6 +106,7 @@ export function RunNowButton({
         const credit = creditRunError(data, t, locale);
         setErrorKey(unauthorized ? "unauthorized" : "failed");
         setCreditError(credit);
+        setExtraOff(isExtraOffRefusal(data));
         setPhase("error");
         toast.error(credit ?? (unauthorized ? t.agents.runUnauthorized : t.agents.runFailed));
         return;
@@ -154,6 +157,12 @@ export function RunNowButton({
         ) : phase === "error" ? (
           <span className="text-[var(--color-fail)]">
             {creditError ?? (errorKey === "unauthorized" ? t.agents.runUnauthorized : t.agents.runFailed)}
+            {extraOff && (
+              <>
+                {" "}
+                <ExtraOffLink />
+              </>
+            )}
           </span>
         ) : null}
       </span>

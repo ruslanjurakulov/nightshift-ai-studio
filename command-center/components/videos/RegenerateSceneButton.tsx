@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Dictionary } from "@/lib/i18n";
 import { fmt } from "@/lib/i18n";
+import { isExtraOffRefusal } from "@/lib/credits";
 import {
   canPress,
   MAX_PROMPT,
@@ -39,12 +40,15 @@ export function RegenerateSceneButton({
   sceneId,
   latest,
   labels,
+  extraOffNote,
 }: {
   videoId: string;
   sceneId: string;
   /** The newest regeneration of this scene, if any. */
   latest: RegenRow | null;
   labels: Dictionary["sceneRegen"];
+  /** Said after a "not enough credits" refusal that came from the extra-credits switch (0094). */
+  extraOffNote?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -141,7 +145,7 @@ export function RegenerateSceneButton({
       reached = true;
       const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok) {
-        setError(regenErrorText(body, labels));
+        setError(isExtraOffRefusal(body) && extraOffNote ? `${regenErrorText(body, labels)} ${extraOffNote}` : regenErrorText(body, labels));
         // A refusal held nothing; the next press is a new one.
         freshKey();
         if (body?.error === "price_changed") void loadQuote(source);

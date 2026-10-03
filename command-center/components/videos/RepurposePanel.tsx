@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Dictionary } from "@/lib/i18n";
 import { fmt } from "@/lib/i18n";
+import { isExtraOffRefusal } from "@/lib/credits";
 import {
   canPress,
   clockText,
@@ -48,6 +49,7 @@ export function RepurposePanel({
   requests,
   hrefs,
   labels,
+  extraOffNote,
 }: {
   videoId: string;
   proposals: Proposals;
@@ -58,6 +60,8 @@ export function RepurposePanel({
   /** clip video id → its page. */
   hrefs: Record<string, string>;
   labels: Dictionary["repurpose"];
+  /** Said after a "not enough credits" refusal that came from the extra-credits switch (0094). */
+  extraOffNote?: string;
 }) {
   const router = useRouter();
   const [picked, setPicked] = useState<number[]>([]); // proposal ranks
@@ -149,7 +153,7 @@ export function RepurposePanel({
       reached = true;
       const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok) {
-        setError(repurposeErrorText(body, labels));
+        setError(isExtraOffRefusal(body) && extraOffNote ? `${repurposeErrorText(body, labels)} ${extraOffNote}` : repurposeErrorText(body, labels));
         // A refusal held nothing; the next press is a new one.
         keyRef.current = newIdempotencyKey();
         if (body?.error === "price_changed") void loadQuote(refsKey);

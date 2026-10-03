@@ -51,6 +51,8 @@ export const UPSELL_LINKS = {
   plans: "/credits#plans",
   /** The top-up packs on the Credits page (BuyCredits, `id="topups"`). */
   topups: "/credits#topups",
+  /** The extra-credits switch on the Usage page (0094). */
+  extraCredits: "/usage#extra",
   /** The public plan comparison. Not channel-scoped. */
   compare: "/pricing",
 } as const;
@@ -149,6 +151,10 @@ export interface Refusal {
   limit: number | null;
   /** The database's sentence, when the route passed one on. */
   detail: string | null;
+  /** insufficient_credits: the workspace has extra credits switched OFF (0094), so `available` is what its plan side can pay. */
+  extraOff: boolean;
+  /** With extraOff: the credits waiting in packs, when the refusal said. */
+  extra: number | null;
 }
 
 const fin = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -163,6 +169,8 @@ export function refusalFrom(code: UpsellCode, body: unknown): Refusal {
     active: fin(b.active),
     limit: fin(b.limit),
     detail: typeof b.detail === "string" ? b.detail.slice(0, 300) : null,
+    extraOff: b.extra_off === true,
+    extra: fin(b.extra),
   };
 }
 
@@ -214,6 +222,8 @@ export interface UpsellView {
   /** credits: the database's figures, when known. */
   available: number | null;
   needed: number | null;
+  /** credits: refused because extra credits are off — turning them on is the first answer. */
+  extraOff: { extra: number | null } | null;
   /** The plans could not be read: say so instead of showing none. */
   plansUnread: boolean;
 }
@@ -241,6 +251,7 @@ export function upsellView(
     limit: null,
     available: null,
     needed: null,
+    extraOff: null,
     plansUnread: data?.plans === null,
   };
   const take = (plans: UpsellPlan[]) => plans.slice(0, UPSELL_MAX_PLANS);
@@ -253,6 +264,7 @@ export function upsellView(
       buyCredits: true,
       available: refusal.available,
       needed: refusal.needed,
+      extraOff: refusal.extraOff ? { extra: refusal.extra } : null,
       plans: take(offerable(data).filter((p) => floor === null || p.monthlyCredits > floor)),
     };
   }

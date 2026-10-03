@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
+import { BrandMark } from "@/components/site/BrandMark";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { AccountMenu } from "@/components/account/AccountMenu";
@@ -68,8 +69,9 @@ export function Header({
           {/* The wordmark lives in the sidebar from `lg` up. */}
           <Link
             href={path("/create")}
-            className="tap-link ns-wordmark shrink-0 lg:hidden"
+            className="tap-link ns-wordmark inline-flex shrink-0 items-center gap-2 lg:hidden"
           >
+            <BrandMark size={20} />
             {t.brand.name}
           </Link>
           {/* The organization and channel, when there is more than one to choose
@@ -119,8 +121,9 @@ export function Header({
         <div className="flex min-w-0 items-center gap-6 xl:gap-10">
         <Link
           href={path("/command-center")}
-          className="tap-link font-display shrink-0 text-lg font-semibold tracking-[-0.02em] text-[var(--color-primary)] sm:text-xl"
+          className="tap-link font-display inline-flex shrink-0 items-center gap-2 text-lg font-semibold tracking-[-0.02em] text-[var(--color-primary)] sm:text-xl"
         >
+          <BrandMark size={20} />
           {t.brand.name}
         </Link>
       </div>

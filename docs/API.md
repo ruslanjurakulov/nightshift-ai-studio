@@ -203,7 +203,9 @@ an API job equal a Studio job's.
   provider task, route or params. Fetching the files themselves is not part of
   this API yet.
 * Refusals hold nothing: `402 insufficient_credits`
-  (`available_credits`, `needed_credits`), `402 key_credit_limit_reached`,
+  (`available_credits`, `needed_credits`; `available_credits` is what a new
+  generation can use: with "Use extra credits" switched off on the Usage page,
+  credits from top-up packs are not counted), `402 key_credit_limit_reached`,
   `409 price_changed`, `429 run_limit_reached` (the plan's parallel runs),
   `422 mode_not_supported | unpriced | source_unavailable | style_unavailable`,
   `403 entitlement_required`, `503 registry_missing`. Anything the database
@@ -234,10 +236,8 @@ unit = 'video_minute'` (platform owner/admin). Correct a balance with
 ## MCP
 
 The same keys, limits and prices are available to AI assistants through the
-remote MCP server at `/api/mcp` — see `docs/MCP.md`.
-
-## CLI and Agent Skills
-
-The same keys, limits and prices are available from a terminal through the
-`nightshift` command-line client (`packages/cli`, `docs/CLI.md`), and AI agents
-can be taught to use it, or the MCP server, with the Agent Skills in `skills/`.
+remote MCP server at `/api/mcp` — see `docs/MCP.md`. That server has a second
+door that is **not** the API: an AI app (Claude, ChatGPT, Cursor, …) can be
+connected with OAuth, without a key, on a paid plan, spending the workspace's
+site credits instead of this prepaid USD balance. Nothing connected that way
+can reach any function described here that moves the USD balance.

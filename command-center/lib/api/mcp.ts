@@ -24,6 +24,7 @@ import {
   type ApiCaller,
 } from "@/lib/api/operations";
 import { toWire, type ApiResult } from "@/lib/api/http";
+import { OAUTH_TOOL_SCOPES, oauthRefusalText } from "@/lib/api/mcp-oauth";
 
 export const MCP_SERVER_INFO = { name: "nightshift", version: "1.0.0" } as const;
 
@@ -56,17 +57,47 @@ export const TOOL_NAMES = [
   "get_balance",
 ] as const;
 
-export function buildMcpServer(caller: ApiCaller): McpServer {
-  const server = new McpServer(MCP_SERVER_INFO, {
-    instructions:
-      "Nightshift makes faceless YouTube videos. Start with list_channels, then create_video (it costs money from the " +
-      "organization's prepaid API balance, priced per minute of requested length with a minimum per video, from " +
-      "the live price list at /docs/api#pricing — say so before calling it). Poll get_job_status until the job succeeds, then list_videos to find the video. publish_video " +
-      "cross-posts a finished video that passed review; YouTube uploads are private.",
-  });
-  const done = (r: ApiResult) => toToolResult(r, caller.requestId);
+/** An AI app connected with OAuth (migration 0093): what it was allowed, and where its links point. */
+export interface OauthMode {
+  scopes: readonly string[];
+  origin: string;
+}
 
-  server.registerTool(
+const KEY_INSTRUCTIONS =
+  "Nightshift makes faceless YouTube videos. Start with list_channels, then create_video (it costs money from the " +
+  "organization's prepaid API balance, priced per minute of requested length with a minimum per video, from " +
+  "the live price list at /docs/api#pricing — say so before calling it). Poll get_job_status until the job succeeds, then list_videos to find the video. publish_video " +
+  "cross-posts a finished video that passed review; YouTube uploads are private.";
+
+const OAUTH_INSTRUCTIONS =
+  "Nightshift makes faceless YouTube videos. Start with list_channels, then create_video. A video costs CREDITS from the " +
+  "person's Nightshift workspace, priced per minute of requested length with a minimum per video, and this connection has " +
+  "its own monthly spending limit: call get_balance first to see the credits available and what is left of the limit, and " +
+  "tell the person the price and the length before you create a video, and pass a fresh idempotency_key so that a retry " +
+  "can never create a second video. Poll get_job_status until the job succeeds, then " +
+  "list_videos to find the video. publish_video sends a finished video that passed review to connected accounts; YouTube " +
+  "uploads are private. If a call is refused, the message says what is missing and what the person can do (add credits, " +
+  "choose a plan, raise this connection's limit); you cannot change any of those yourself.";
+
+export function buildMcpServer(caller: ApiCaller, oauth?: OauthMode): McpServer {
+  const server = new McpServer(MCP_SERVER_INFO, { instructions: oauth ? OAUTH_INSTRUCTIONS : KEY_INSTRUCTIONS });
+  const done = oauth
+    ? (r: ApiResult): CallToolResult =>
+        r.ok ? toToolResult(r, caller.requestId) : { isError: true, content: [{ type: "text", text: oauthRefusalText(r, oauth.origin) }] }
+    : (r: ApiResult) => toToolResult(r, caller.requestId);
+  // An OAuth caller gets only what its permissions allow; the two paid-download
+  // tools (USD API balance, API-key file route) are for keys only.
+  const offered = (tool: string): boolean => {
+    if (!oauth) return true;
+    const need = (OAUTH_TOOL_SCOPES as Record<string, string | undefined>)[tool];
+    return need !== undefined && oauth.scopes.includes(need);
+  };
+  const register: McpServer["registerTool"] = (name, config, cb) => {
+    if (!offered(name)) return undefined as never;
+    return server.registerTool(name, config, cb);
+  };
+
+  register(
     "list_channels",
     {
       title: "List channels",
@@ -76,14 +107,18 @@ export function buildMcpServer(caller: ApiCaller): McpServer {
     async () => done(await listChannels(caller)),
   );
 
-  server.registerTool(
+  register(
     "create_video",
     {
       title: "Create a video",
-      description:
-        "Queue a new video on a channel. Charges the prepaid API balance: the price for the requested length is held now, " +
-        "charged when the job succeeds and released if it fails. Returns a job_id for get_job_status. The video is " +
-        "rendered private; the channel's own publish rules and review apply.",
+      description: oauth
+        ? "Queue a new video on a channel. It costs credits from the person's workspace: the price for the requested length " +
+          "is set aside now, charged when the job succeeds and returned if it fails, and it can never take this connection past " +
+          "its monthly spending limit. Returns a job_id for get_job_status and the price in credits. The video is rendered " +
+          "private; the channel's own publish rules and review apply."
+        : "Queue a new video on a channel. Charges the prepaid API balance: the price for the requested length is held now, " +
+          "charged when the job succeeds and released if it fails. Returns a job_id for get_job_status. The video is " +
+          "rendered private; the channel's own publish rules and review apply.",
       inputSchema: {
         channel_id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).describe("A channel id from list_channels."),
         topic: z.string().max(300).optional().describe("What the video is about. Omit to let the channel's AI pick."),
@@ -100,18 +135,20 @@ export function buildMcpServer(caller: ApiCaller): McpServer {
     async ({ idempotency_key, ...body }) => done(await createVideo(caller, body, idempotency_key ?? null)),
   );
 
-  server.registerTool(
+  register(
     "get_job_status",
     {
       title: "Get job status",
-      description: "A video job's status (queued, running, succeeded, failed, cancelled), its error if any, and what it was charged.",
+      description: oauth
+        ? "A video job's status (queued, running, succeeded, failed, cancelled), its error if any, and the credits it holds or was charged."
+        : "A video job's status (queued, running, succeeded, failed, cancelled), its error if any, and what it was charged.",
       inputSchema: { job_id: z.number().int().positive() },
       annotations: { readOnlyHint: true },
     },
     async ({ job_id }) => done(await getJob(caller, String(job_id))),
   );
 
-  server.registerTool(
+  register(
     "list_videos",
     {
       title: "List videos",
@@ -126,7 +163,7 @@ export function buildMcpServer(caller: ApiCaller): McpServer {
     async (args) => done(await listVideos(caller, args)),
   );
 
-  server.registerTool(
+  register(
     "get_video",
     {
       title: "Get a video",
@@ -137,7 +174,7 @@ export function buildMcpServer(caller: ApiCaller): McpServer {
     async ({ video_id }) => done(await getVideo(caller, video_id)),
   );
 
-  server.registerTool(
+  register(
     "list_connected_accounts",
     {
       title: "List publish targets",
@@ -147,7 +184,7 @@ export function buildMcpServer(caller: ApiCaller): McpServer {
     async () => done(await listAccounts(caller)),
   );
 
-  server.registerTool(
+  register(
     "publish_video",
     {
       title: "Publish a video to platforms",
@@ -167,7 +204,7 @@ export function buildMcpServer(caller: ApiCaller): McpServer {
       done(await publishVideo(caller, video_id, targets, idempotency_key ?? null)),
   );
 
-  server.registerTool(
+  register(
     "request_download",
     {
       title: "Order an HD download",
@@ -181,7 +218,7 @@ export function buildMcpServer(caller: ApiCaller): McpServer {
       done(await requestDownload(caller, video_id, { quality }, idempotency_key ?? null)),
   );
 
-  server.registerTool(
+  register(
     "get_download",
     {
       title: "Get a download",
@@ -192,11 +229,14 @@ export function buildMcpServer(caller: ApiCaller): McpServer {
     async ({ download_id }) => done(await getDownload(caller, String(download_id))),
   );
 
-  server.registerTool(
+  register(
     "get_balance",
     {
       title: "Get API balance",
-      description: "The prepaid API balance in US cents (available and on hold), this month's spend and limit, and the usage tier.",
+      description: oauth
+        ? "The workspace's credits (available and set aside for videos in progress), its plan, how many videos run at once, " +
+          "and this connection's monthly spending limit with what is used and what is left."
+        : "The prepaid API balance in US cents (available and on hold), this month's spend and limit, and the usage tier.",
       annotations: { readOnlyHint: true },
     },
     async () => done(await getBalance(caller)),

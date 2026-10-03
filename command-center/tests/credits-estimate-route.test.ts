@@ -115,3 +115,44 @@ describe("estimate route: a failed read is an error status, not 'unsupported' or
     expect(r.body).toMatchObject({ available: 0, balanceFailed: false });
   });
 });
+
+describe("estimate route: the extra-credits switch (0094)", () => {
+  const summary = (over: Record<string, unknown> = {}) => ({
+    exempt: false,
+    extra_enabled: false,
+    plan: { id: "creator", name: "Creator", monthly_credits: 2000, is_default: false },
+    subscription: null,
+    plan_credits: null,
+    last_plan_period_end: null,
+    extra_credits: { available: 300, soonest_expiry: null },
+    bonus_credits: { available: 0, soonest_expiry: null },
+    spendable_now: 100,
+    run_slots: null,
+    entitlements: {},
+    ...over,
+  });
+
+  it("with the switch off it says so, and how much a run can really use", async () => {
+    setup({ usage_summary: { data: summary(), error: null } });
+    const r = await call();
+    expect(r.body).toMatchObject({ available: 400, extraOff: true, spendable: 100 });
+  });
+
+  it("with the switch on the answer is exactly what it was before", async () => {
+    setup({ usage_summary: { data: summary({ extra_enabled: true }), error: null } });
+    const r = await call();
+    expect(r.body).not.toHaveProperty("extraOff");
+    expect(r.body).not.toHaveProperty("spendable");
+  });
+
+  it("an unreadable or missing Usage read says nothing about the switch (never 'off')", async () => {
+    setup({ usage_summary: FAILED });
+    expect((await call()).body).not.toHaveProperty("extraOff");
+    setup({ usage_summary: { data: null, error: { code: "PGRST202", message: "Could not find the function" } } });
+    const r = await call();
+    expect(r.status).toBe(200);
+    expect(r.body).not.toHaveProperty("extraOff");
+    setup({ usage_summary: { data: { extra_enabled: false, spendable_now: "x" }, error: null } });
+    expect((await call()).body).not.toHaveProperty("extraOff");
+  });
+});

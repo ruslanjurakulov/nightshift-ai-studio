@@ -76,9 +76,11 @@ Yakuniy narxni **siz** Paddle'da qo'yasiz; kredit miqdorini bazada o'zgartirasiz
 | `api_access` — API'ni yoqish huquqi | – | ✓ | ✓ | ✓ | **enforced** |
 | `models_image` / `models_video` / `models_audio` | basic | premium | all | all | planned |
 | `series`, `channel_dna`, `thumbnail_studio` | – | ✓ | ✓ | ✓ | planned |
-| `autopilot`, `workflows`, `repurposing`, `mcp` | – | – | ✓ | ✓ | planned |
+| `autopilot`, `workflows`, `repurposing` | – | – | ✓ | ✓ | planned |
+| `mcp` — AI ilovalarni (Claude, ChatGPT va boshqalar) OAuth bilan ulash | – | ✓ | ✓ | ✓ | **enforced** (0093) |
 
 - **enforced** — bugun tekshiriladi va `/pricing` sahifasida ko'rsatiladi.
+- **`mcp`** (0093) — obuna xususiyati: Free ham, faqat paket sotib olgan (obunasi yo'q) mijoz ham ulay olmaydi; Creator, Pro, Studio ulaydi. Ulangan ilova **sayt kreditlarini** sarflaydi (API'ning dollar balansini emas), har bir ulanish uchun oylik kredit limiti bilan. Tekshiruv uch joyda: rozilik sahifasida, token/refresh endpointlarida va **har bir chaqiruvda**; obuna bekor bo'lsa, ulanish "to'xtatilgan" bo'ladi va tarif qaytganda qayta ulanmasdan ishlaydi. Qaysi tariflarda borligi — `plan_entitlements` dagi bitta qator: `update plan_entitlements set value = 'false' where plan_id = 'creator' and key = 'mcp';`
 - **planned** — bazada saqlanadi, lekin hali hech narsa tekshirmaydi, shuning
   uchun **sahifada ko'rsatilmaydi** (va'da qilinmagan narsani sotmaymiz). Funksiya
   tayyor bo'lganda, uni tekshiradigan kod bilan **bir PR'da** `status` ni
@@ -292,3 +294,40 @@ select org_id, sum(-amount) from credit_transactions
   qiladi).
 - Trial davri kredit bermaydi (faqat to'langan tranzaksiya kredit beradi).
 - `planned` imkoniyatlar sahifada ko'rsatilmaydi, hech narsani cheklamaydi.
+
+## 7. Qo'shimcha kreditlar tugmasi va Usage sahifasi (migratsiya 0094)
+
+Mijoz `/<kanal>/usage` sahifasida tarif kreditlarining shu davrdagi sarfini
+(«62% ishlatildi», «2 000 dan 1 240 kredit», yangilanish sanasi) va
+**«Tarif kreditlarim tugaganda qo'shimcha kreditlardan foydalanish»** tugmasini
+ko'radi. Haftalik yoki sessiya hisoblagichlari yo'q: platformada bunday cheklov
+yo'q, shuning uchun ular uydirilmaydi.
+
+- **Qayerda saqlanadi:** `credit_accounts.use_extra_credits` — har bir ish
+  maydoniga bitta qiymat, standart **yoqilgan** (bugungi xatti-harakat).
+- **Yoqilgan:** sarflash tartibi o'zgarmaydi (2-bo'lim): avval tarif, keyin
+  paketlar (eng tez yonadigani birinchi), keyin muddatsizlar.
+- **O'chirilgan:** YANGI ish faqat `subscription`, `grant` (xush kelibsiz va
+  operator bergan) va `adjustment` lotlaridan oladi. **«Qo'shimcha» lot =
+  `source = 'pack'`**; ularga tegilmaydi. Yetmasa, ish boshlanmasdan oldin
+  `NS402` (detail: `available=… needed=… extra_off=1 extra=…`), hech narsa band
+  qilinmaydi va yechilmaydi.
+- **Joriy ishlar to'xtatilmaydi:** tugma faqat yangi hold'ga ta'sir qiladi.
+  Boshlangan ishning hold'i, capture va release'i avvalgidek o'z lotlari bilan
+  yopiladi (tugmani o'zgartirsangiz ham).
+- **Qayerda amal qiladi:** `reserve_credits` va `credit_lots_hold_locked`
+  (0094). Run now, studiya, storyboard, sahna qayta generatsiyasi, repurpose,
+  yuklab olish, API generatsiyalari va MCP OAuth — hammasi shu funksiyadan
+  o'tadi, shuning uchun bitta joyda tekshiriladi.
+- **Kim o'zgartiradi:** faqat ish maydonining o'z egasi,
+  `set_use_extra_credits(org, on)` orqali (`org_members` da `user_id = auth.uid()`
+  va rol owner/admin). Boshqa mijoz, operator, anon va service key — rad etiladi.
+- **O'qish:** `usage_summary(org)` — faqat chaqiruvchining o'z ish maydoni
+  (a'zo, platforma yoki ishonchli chaqiruvchi), marja va boshqa tenant
+  ma'lumotlarisiz.
+- **Tatbiq tartibi:** avval `0094_extra_credits_toggle.sql` (idempotent, ikki
+  marta qo'llash xavfsiz), keyin kod. Kod avval chiqsa ham sahifa «hali mavjud
+  emas» deb halol aytadi.
+- **Hozircha yo'q:** kartadan avtomatik to'ldirish (auto-recharge) — mantiqiy
+  keyingi qadam, Paddle ishini talab qiladi.
+

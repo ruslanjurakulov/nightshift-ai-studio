@@ -1,5 +1,5 @@
 import {
-  TerminalSquare,
+  TerminalSquare, Activity,
   Film, Workflow, BarChart3, Palette, ListVideo, Users, UserCircle, KeyRound,
   Bot, ListChecks, Hash, Ruler, GitBranch, GraduationCap, Database, Gauge,
   RefreshCw, Lightbulb, Brain, History, Plug, TriangleAlert, ScrollText,
@@ -20,7 +20,7 @@ export type PageIcon =
   | "accounts" | "portfolio" | "providers" | "agents" | "jobs" | "topics" | "measurement"
   | "decisions" | "learning" | "memory" | "autonomy" | "feedback"
   | "advisory" | "intelligence" | "timeMachine" | "integrations" | "errors" | "logs"
-  | "members" | "organization" | "security" | "onboarding" | "approvals" | "alerts" | "audit" | "billing" | "credits"
+  | "members" | "organization" | "security" | "onboarding" | "approvals" | "alerts" | "audit" | "billing" | "credits" | "usage"
   | "developers" | "library" | "editor" | "models" | "margin" | "styles" | "workflows" | "inbox";
 
 const ICONS: Record<PageIcon, LucideIcon> = {
@@ -65,6 +65,7 @@ const ICONS: Record<PageIcon, LucideIcon> = {
   audit: ClipboardList,
   billing: Wallet,
   credits: Coins,
+  usage: Activity,
 };
 
 export function PageHeader({

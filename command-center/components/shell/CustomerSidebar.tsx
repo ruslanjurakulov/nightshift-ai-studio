@@ -11,6 +11,7 @@ import { runPrefillFromQuery } from "@/lib/home";
 import { DESK_ICONS } from "@/components/studio/deskIcons";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { ICONS } from "@/components/navigation/navIcons";
+import { BrandMark } from "@/components/site/BrandMark";
 import type { AccountPlan } from "@/lib/account";
 import { aside as MAside, nav as MNav } from "motion/react-m";
 import { Plate, SharedLayout } from "@/components/motion/SharedLayout";
@@ -53,7 +54,8 @@ export function CustomerSidebar({ email, plan }: { email: string | null; plan: A
           plate measures itself against the sidebar, not the scrolled page. */}
       <MAside layoutRoot className="shell-sidebar sticky top-0 z-30 hidden h-dvh w-[240px] shrink-0 flex-col lg:flex">
         <div className="flex h-14 shrink-0 items-center px-5">
-          <Link href={path(home.href)} className="ns-wordmark">
+          <Link href={path(home.href)} className="ns-wordmark inline-flex items-center gap-2">
+            <BrandMark size={20} />
             {t.brand.name}
           </Link>
         </div>

@@ -302,13 +302,32 @@ export function coerceTransactions(rows: unknown): CreditTransaction[] {
   });
 }
 
-/** Did reserve_credits refuse for lack of credits? Reads "available=… needed=…". */
+/**
+ * Did reserve_credits refuse for lack of credits? Reads "available=… needed=…".
+ * With the workspace's extra-credits switch OFF (0094) the same refusal also
+ * says "extra_off=1 extra=<credits waiting in packs>": `available` is then what
+ * the plan side can pay, and the pack credits were left untouched on purpose.
+ */
 export function parseInsufficient(
   error: { code?: string; details?: string | null } | null | undefined,
-): { available: number | null; needed: number | null } | null {
+): { available: number | null; needed: number | null; extraOff?: true; extra?: number | null } | null {
   if (!error || error.code !== INSUFFICIENT_CREDITS_CODE) return null;
   const m = /available=(-?[\d.]+)\s+needed=([\d.]+)/.exec(error.details ?? "");
-  return { available: m ? Number(m[1]) : null, needed: m ? Number(m[2]) : null };
+  const base = { available: m ? Number(m[1]) : null, needed: m ? Number(m[2]) : null };
+  const off = extraOffFields(error.details);
+  return off.extra_off ? { ...base, extraOff: true, extra: off.extra } : base;
+}
+
+/**
+ * The extra-credits part of an NS402 detail, as the fields a route puts in its
+ * 402 body: `{ extra_off: true, extra }` when the refusal came from a switched
+ * off workspace (extra = credits waiting in packs, null when not stated), else
+ * nothing at all — so a body without them is exactly today's body.
+ */
+export function extraOffFields(details: string | null | undefined): { extra_off?: true; extra?: number | null } {
+  if (!/(^|\s)extra_off=1(\s|$)/.test(details ?? "")) return {};
+  const m = /(?:^|\s)extra=(-?[\d.]+)/.exec(details ?? "");
+  return { extra_off: true, extra: m ? Number(m[1]) : null };
 }
 
 /** Did reserve_credits refuse because the plan's parallel runs are all in use?
@@ -319,6 +338,24 @@ export function parseRunLimit(
   if (!error || error.code !== RUN_LIMIT_CODE) return null;
   const m = /active=(\d+)\s+limit=(\d+)/.exec(error.details ?? "");
   return { active: m ? Number(m[1]) : null, limit: m ? Number(m[2]) : null };
+}
+
+/**
+ * Does a refused request's body say the workspace has extra credits switched
+ * off (0094)? Then the page shows a "Turn on extra credits" link next to the
+ * message (the Usage page owns the switch).
+ */
+export function isExtraOffRefusal(body: unknown): boolean {
+  return Boolean(body && typeof body === "object" && (body as Record<string, unknown>).error === "insufficient_credits" && (body as Record<string, unknown>).extra_off === true);
+}
+
+/**
+ * A feature's own "not enough credits" sentence, with the extra-credits switch
+ * said after it when that is why it was refused. The figures in the sentence
+ * are what the plan side can pay; this is the reason the packs are not in them.
+ */
+export function appendExtraOff(text: string, body: unknown, t: Dictionary): string {
+  return isExtraOffRefusal(body) ? `${text} ${t.usage.refusal.extraOffShort}` : text;
 }
 
 /** A reservation reference both runners accept (0020's job_id check). */
@@ -422,6 +459,20 @@ export function creditRunError(data: Record<string, unknown>, t: Dictionary, loc
     case "insufficient_credits": {
       const needed = num(data.needed);
       const available = num(data.available);
+      const extra = num(data.extra);
+      if (data.extra_off === true) {
+        // 0094: the pack credits were left alone on purpose; say so and where to turn them on.
+        text =
+          needed !== null && available !== null && extra !== null
+            ? fmt(t.usage.refusal.extraOff, {
+                needed: formatCredits(needed, locale),
+                available: formatCredits(Math.max(0, available), locale),
+                extra: formatCredits(extra, locale),
+                unit: creditUnit(extra, locale, t.shell.creditUnit),
+              })
+            : t.usage.refusal.extraOffShort;
+        break;
+      }
       text =
         needed !== null && available !== null
           ? fmt(t.credits.insufficient, { needed: formatCredits(needed, locale), available: formatCredits(available, locale) })

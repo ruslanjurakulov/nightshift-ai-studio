@@ -1173,6 +1173,8 @@ option {
   .cta-glass,
   .side-link,
   .nav-link { min-height: 2.75rem; min-width: 2.75rem; }
+  /* The credit pill in the top bar (it opens the credits menu): 40px high on a mouse, 44px under a finger. */
+  .shell-pill { min-height: 2.75rem; min-width: 2.75rem; justify-content: center; }
   .sheet-close,
   .nav-back { width: 2.75rem; height: 2.75rem; }
   .tap-link { display: inline-flex; align-items: center; min-height: 2.75rem; }
@@ -1987,10 +1989,14 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .ns-meter[data-empty="true"] .ns-meter-seg:first-child { background: var(--ns-tally); opacity: 1; }
 .ns-meter[data-size="lg"][data-empty="true"] .ns-meter-seg:first-child { background: transparent; }
 /* Invite progress: nobody joined yet is "0 of 5", not an alarm, so the first segment stays unlit. */
-.invite-meter .ns-meter[data-empty="true"] .ns-meter-seg:first-child { background: transparent; opacity: 1; }
-/* Unfilled steps stay readable as an empty track (the count is also written under the bar). */
+.invite-meter .ns-meter[data-empty="true"] .ns-meter-seg:first-child,
+.usage-meter .ns-meter[data-empty="true"] .ns-meter-seg:first-child { background: transparent; opacity: 1; }
+/* Unfilled steps stay readable as an empty track (the count is also written under the bar).
+   The Usage page's meters read the same way: nothing used yet is "0%", not an alarm. */
 .invite-meter .ns-meter-seg[data-state="off"],
-.invite-meter .ns-meter[data-empty="true"] .ns-meter-seg:first-child {
+.invite-meter .ns-meter[data-empty="true"] .ns-meter-seg:first-child,
+.usage-meter .ns-meter-seg[data-state="off"],
+.usage-meter .ns-meter[data-empty="true"] .ns-meter-seg:first-child {
   background: transparent;
   opacity: 1;
 }
@@ -2002,6 +2008,62 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   font-size: var(--ns-t-label);
   font-variant-numeric: tabular-nums;
   color: var(--color-muted);
+}
+
+/* The extra-credits switch on the Usage page: the whole row is the key (a 56px
+   target on a phone), and its state is a lamp AND a word, never colour alone. */
+.usage-switch {
+  display: flex;
+  flex-wrap: wrap; /* a long label (Uzbek) keeps its width and the switch drops under it, not a five-line label */
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  width: 100%;
+  min-height: 56px;
+  padding: 12px 16px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-key);
+  background: var(--ns-key);
+  color: var(--color-fg);
+  cursor: pointer;
+  text-align: left;
+}
+.usage-switch:hover:not(:disabled) { background: var(--color-hover); }
+.usage-switch:disabled { cursor: not-allowed; }
+.usage-switch-key {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+/* The lamp is a switch track with a knob: off = knob left on an empty track, on = knob right on an amber
+   track, so it reads as a toggle at a glance (the word beside it still says which). */
+.usage-switch-lamp {
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 26px;
+  border-radius: 13px;
+  border: 2px solid var(--color-muted);
+  background: transparent;
+}
+.usage-switch-lamp::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-muted);
+}
+.usage-switch[data-on="true"] { border-color: var(--ns-amber-ink); }
+.usage-switch[data-on="true"] .usage-switch-lamp { border-color: var(--ns-amber-ink); background: var(--ns-amber); }
+.usage-switch[data-on="true"] .usage-switch-lamp::after { left: 21px; background: #16120a; }
+@media (prefers-reduced-motion: no-preference) {
+  .usage-switch-lamp, .usage-switch-lamp::after { transition: left 140ms ease, background-color 140ms ease, border-color 140ms ease; }
 }
 
 /* PriceButton: the lit key with its price as a second legend, split by a

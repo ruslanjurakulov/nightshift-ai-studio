@@ -490,6 +490,16 @@ import sec_inbox_0081  # noqa: E402
 
 sec_inbox_0081.extend(TABLES, FUNCTIONS)
 
+# Migration 0093 (MCP over OAuth): tests/security/sec_mcp_oauth_0093.py
+import sec_mcp_oauth_0093  # noqa: E402
+
+sec_mcp_oauth_0093.extend(TABLES, FUNCTIONS)
+
+# Migration 0094 (extra credits switch, the Usage page): tests/security/sec_extra_credits_0094.py
+import sec_extra_credits_0094  # noqa: E402
+
+sec_extra_credits_0094.extend(TABLES, FUNCTIONS)
+
 # Migration 0092 (Invite friends): tests/security/sec_friend_invites_0092.py
 import sec_friend_invites_0092  # noqa: E402
 

@@ -20,6 +20,8 @@ import { PlanPanel } from "@/components/credits/PlanPanel";
 import { CreditLots } from "@/components/credits/CreditLots";
 import { InviteFriendsCard } from "@/components/credits/InviteFriendsCard";
 import { InviteAdminPanel } from "@/components/credits/InviteAdminPanel";
+import { UsageLinkCard } from "@/components/usage/UsageLinkCard";
+import { readUsageSummary } from "@/lib/server/usage";
 import { readInviteAdmin, readMyInvite } from "@/lib/server/friend-invites";
 import { ErrorState } from "@/components/ReadError";
 import { readFailed } from "@/lib/readState";
@@ -64,7 +66,7 @@ export default async function CreditsPage() {
   if (!org.current) return note(t.credits.noOrg);
   const orgId = org.current.id;
 
-  const [acct, priceRes, txns, admin, userRes, catalogRead, summaryRead, lotsRead, modelsRead, inviteRead] = await Promise.all([
+  const [acct, priceRes, txns, admin, userRes, catalogRead, summaryRead, lotsRead, modelsRead, inviteRead, usageRead] = await Promise.all([
     readCreditAccount(supabase, orgId),
     readCreditPrices(supabase),
     supabase
@@ -86,6 +88,8 @@ export default async function CreditsPage() {
     // Invite friends (0092): the person's own link and progress. Unsupported
     // (not applied yet) leaves the card out; a failed read says so.
     readMyInvite(supabase),
+    // Usage (0094): the extra-credits switch, so the packs and the balance can say it is off.
+    readUsageSummary(supabase, orgId).catch(() => FAILED_READ),
   ]);
   if (!acct.supported || !priceRes.supported) return note(t.credits.notMigrated);
 
@@ -130,6 +134,8 @@ export default async function CreditsPage() {
         : undefined;
   const offersPacks = buy === "allowed" && Boolean(paddleConfig) && Boolean(account);
   const offersPlans = !exempt && Boolean(summary) && planAccess === "allowed";
+  // Unknown (an unread summary, or 0094 not applied) is not "off": nothing is claimed then.
+  const extraOff = usageRead.state === "ok" && !usageRead.value.extraEnabled;
 
   return (
     <div className="rhythm">
@@ -142,7 +148,8 @@ export default async function CreditsPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          <BalanceHero split={split} rates={rates} offers={{ plans: offersPlans, packs: offersPacks }} />
+          <BalanceHero split={split} rates={rates} offers={{ plans: offersPlans, packs: offersPacks }} extraOff={extraOff} />
+          {usageRead.state !== "unsupported" && <UsageLinkCard />}
           {balanceUnknown && (
             <div className="panel p-5 sm:p-6">
               <ErrorState compact message={t.credits.readFailed} />
@@ -181,6 +188,7 @@ export default async function CreditsPage() {
           balance={account.balance}
           rates={rates}
           packValidMonths={packValidMonths}
+          extraOff={extraOff}
         />
       )}
       {buy === "admin_only" && <BuyCreditsAdminOnly />}
