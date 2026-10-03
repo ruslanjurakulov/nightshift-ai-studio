@@ -72,3 +72,16 @@ describe("the consent form never decides by itself", () => {
     expect(JSON.parse(String(init.body))).toEqual({ request: "nso_rq_x", decision: "deny", limit: null });
   });
 });
+
+describe("Allow and Deny keep their places and their size", () => {
+  it("Allow comes first in the page and sits on the right from sm up (as it always did); both are the same width", () => {
+    setup();
+    const allow = screen.getByRole("button", { name: "Allow" });
+    const deny = screen.getByRole("button", { name: "Deny" });
+    expect(allow.parentElement).toBe(deny.parentElement);
+    expect(allow.parentElement?.className).toContain("sm:flex-row-reverse");
+    expect(allow.compareDocumentPosition(deny) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(allow.getAttribute("data-block")).toBe("true");
+    expect(deny.getAttribute("data-block")).toBe("true");
+  });
+});

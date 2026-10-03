@@ -2150,6 +2150,61 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 .st-doc-steps-big li::before { padding-top: 0; font-size: 14px; }
 .st-setup-step-title::before { margin-right: 12px; vertical-align: 2px; }
 @media (prefers-reduced-motion: reduce) { .st-devnav a { transition: none; } }
+
+/* ── Client logos on /mcp (lib/dev/brand-logos.ts) ─────────────────────────
+   Every mark sits on a tile that gives it the background its owner's rules
+   need: the page's own neutral tile, or a light "paper" tile on both themes for
+   a single black drawing. A mark that comes in a light-page and a dark-page
+   version shows the one that matches the theme. Nothing here recolours,
+   outlines, rotates or adds an effect to a mark. */
+.st-sprite { position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; }
+.st-logo { width: 100%; height: 100%; display: block; }
+.st-logo use[data-v="dark"] { display: none; }
+:root[data-theme="dark"] .st-logo use[data-v="light"] { display: none; }
+:root[data-theme="dark"] .st-logo use[data-v="dark"] { display: inline; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .st-logo use[data-v="light"] { display: none; }
+  :root:not([data-theme="light"]) .st-logo use[data-v="dark"] { display: inline; }
+}
+.st-logo-glyph { width: 60%; height: 60%; }
+
+/* Tab pills: the logo on its own small tile, the name beside it. */
+.st-pill-glyph { background: var(--ns-ground); border-color: var(--ns-rule-strong); color: var(--ns-text-dim); padding: 5px; }
+.st-pill[aria-selected="true"] .st-pill-glyph { border-color: var(--ns-rule-strong); color: var(--ns-text-dim); }
+.st-pill-glyph[data-tile="paper"] { background: #fff; }
+.st-pill-glyph .st-logo-glyph { width: 100%; height: 100%; }
+
+/* Hero tiles: the logo at half the tile; the centre tile is the Nightshift N on its own black tile. */
+.st-tile { color: var(--ns-text-dim); }
+.st-tile[data-tile] .st-logo { width: 50%; height: 50%; }
+.st-tile[data-tile="paper"] { background: #fff; }
+/* A vendor's mark is never faded or blurred (owners: "exactly as provided", "no effects"): the depth cue
+   (opacity + blur on the outer tiles) stays only on the "+" tile. */
+.st-tile[data-tile] { opacity: 1; filter: none; }
+.st-tile[data-slot="brand"] { background: none; box-shadow: 0 0 56px -10px color-mix(in srgb, var(--ns-amber) 55%, transparent); }
+.st-tile .st-tile-n { width: var(--s); height: var(--s); }
+/* A mark that is itself a finished tile (the Claude app icon, the Gemini CLI and Hermes icons) is shown at the
+   tile's own size with its own background and corners, with nothing drawn around it. */
+.st-tile[data-tile="bare"] { background: none; box-shadow: none; border-radius: 22%; }
+.st-tile[data-tile="bare"] .st-logo { width: 100%; height: 100%; }
+.st-pill-glyph[data-tile="bare"],
+.st-pill[aria-selected="true"] .st-pill-glyph[data-tile="bare"] { background: none; border: 0; padding: 0; border-radius: 22%; }
+.st-pill-glyph[data-tile="bare"] .st-logo { width: 100%; height: 100%; }
+/* A loose glyph (the Claude Spark): no tile, no border. A one-colour mark takes the pill's text colour, so it is
+   muted on a plain pill and follows the selected pill's inverted text; the clay spark keeps its own colour. */
+.st-pill-glyph[data-tile="plain"],
+.st-pill[aria-selected="true"] .st-pill-glyph[data-tile="plain"] { background: none; border: 0; padding: 2px; color: inherit; }
+.st-pill-glyph[data-tile="plain"] .st-logo { width: 100%; height: 100%; }
+/* On the narrowest phones the whole row fits inside the gutters: no half-cut vendor mark at the edge. */
+@media (max-width: 479px) {
+  .st-tile[data-slot="3"] { --s: 40px; }
+  .st-tile[data-slot="2"] { --s: 48px; }
+  .st-tile[data-slot="1"] { --s: 56px; }
+  .st-tile[data-slot="brand"] { --s: 80px; border-radius: 26px; }
+  .st-tile { margin-left: -8px; border-radius: 14px; }
+}
+
+.st-trademarks { margin: 20px auto 0; max-width: 70ch; text-wrap: pretty; }
 }
 
 /* The shared theme and language keys are pills app-wide; on the public

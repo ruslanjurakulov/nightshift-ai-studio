@@ -71,9 +71,11 @@ describe("developer pages copy", () => {
     // The assistants a person connects FROM are named on the MCP page (they are
     // the tools the page is about); no model or provider that does the work is.
     const clients = /\b(?:claude|chatgpt|gemini|openai|anthropic)\b/gi;
+    // The trademark footnote says "owners" of the marks — the legal word, not a team role.
+    const footnote = dict.mcp.trademarks;
     for (const s of strings(dict as unknown as Node)) {
       expect(s.replace(clients, "")).not.toMatch(PROVIDER_BRANDS);
-      expect(s).not.toMatch(/\b(?:owner|viewer)s?\b/i);
+      if (s !== footnote) expect(s).not.toMatch(/\b(?:owner|viewer)s?\b/i);
     }
   });
 

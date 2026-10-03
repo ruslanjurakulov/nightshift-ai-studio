@@ -8,10 +8,11 @@ import { cleanClientName } from "@/lib/oauth/redirect";
  * already did it once; this is the second line), and the name sits in its own
  * <bdi> so a right-to-left name cannot reorder the words around it
  * ("Connect <name> to Nightshift" stays in its own order). The bold weight
- * keeps a lookalike name from reading as part of Nightshift's own sentence.
+ * and the monospace face keep a lookalike name from reading as part of Nightshift's own sentence.
  */
 export function AppName({ name }: { name: string }) {
-  return <bdi className="font-semibold [overflow-wrap:anywhere]">{cleanClientName(name, "?")}</bdi>;
+  // Monospace and its own <bdi>: a lookalike name has to look like text the app wrote, not like our sentence.
+  return <bdi className="font-mono text-[0.94em] font-semibold [overflow-wrap:anywhere]">{cleanClientName(name, "?")}</bdi>;
 }
 
 /** A translated sentence with {placeholders} replaced by nodes (names go in as isolated <bdi>). */

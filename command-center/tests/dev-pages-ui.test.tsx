@@ -268,13 +268,17 @@ describe("the MCP page", () => {
     expect(d.querySelector(".st-mcphero-paid")?.textContent).toMatch(/paid plan/i);
   });
 
-  it("has our own tiles around a lit Nightshift tile: neutral monograms, decorative, with the names in text for screen readers", () => {
+  it("has a tile row around the Nightshift N: decorative, the names in text for screen readers, and no image from anywhere", () => {
     const d = doc(mcp());
     const tiles = d.querySelector(".st-tiles")!;
     expect(tiles.getAttribute("aria-hidden")).toBe("true");
     expect(tiles.querySelectorAll(".st-tile")).toHaveLength(7);
-    expect(tiles.querySelector('[data-slot="brand"]')).toBeTruthy();
-    expect(tiles.querySelectorAll("img, svg, image")).toHaveLength(0);
+    expect(tiles.querySelector('[data-slot="brand"] svg[aria-hidden="true"]')).toBeTruthy();
+    expect(d.querySelectorAll("img, picture, video")).toHaveLength(0);
+    // Only the sprite may hold a picture, and only an embedded one (data: URI), never a remote file.
+    for (const im of Array.from(d.querySelectorAll("image"))) {
+      expect(im.getAttribute("href") ?? "").toMatch(/^data:image\/(png|webp);base64,/);
+    }
     expect(d.querySelector(".sr-only")?.textContent).toMatch(/Works with: Claude, ChatGPT, Claude Code, OpenClaw, Cursor, Hermes/);
   });
 
