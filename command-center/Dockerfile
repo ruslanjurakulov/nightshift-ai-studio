@@ -93,6 +93,13 @@ ENV NODE_ENV=production \
 # stay root-owned and read-only to it; only the Next cache is writable, so a
 # compromised request handler cannot rewrite the server it runs in.
 COPY --from=builder /app/public ./public
+# `public/` is the one thing here that comes from the build context as it was
+# checked out, not from a build step, so it keeps the checkout's modes. On a
+# box whose deploy user has a strict umask (077) the fonts and their folder
+# land 0600/0700, `node` cannot read the directory, and the server dies at
+# start with EACCES (a restart loop behind a 502). Make it readable, never
+# writable, whatever the checkout looked like.
+RUN chmod -R a+rX,go-w public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 RUN mkdir -p .next/cache && chown node:node .next/cache
