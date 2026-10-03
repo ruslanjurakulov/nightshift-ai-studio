@@ -25,6 +25,7 @@
 
 import { CREDIT_PACKS, type CreditPackId, type PaddleConfig, type PaddleEnvironment } from "@/lib/paddle";
 import { UNIT_JOB_MINIMUM, UNIT_VIDEO_MINUTE, parsePrices, roundUpCredits, type PriceMap } from "@/lib/credits";
+import { formatUsdAmount } from "@/lib/number-format";
 
 /** The public env this reads. Literal names only — see PRICING's reader. */
 export interface PricingEnv {
@@ -153,20 +154,19 @@ export function displayPriceCents(text: string | null | undefined): number | nul
 
 /**
  * An owner's display price as this page's language writes US dollars: a plain
- * US-dollar amount ("$10") goes through the same Intl formatter as every
- * computed figure beside it, so one card never mixes "$10" with "1,20 $"
- * (ru) or "1,20 US$" (uz). Whole dollars keep no cents. Anything else ("€9",
- * "from $5") is printed exactly as the owner typed it.
+ * US-dollar amount ("$10") goes through the same formatter as every computed
+ * figure beside it (lib/number-format.ts formatUsdAmount), so one card never
+ * mixes "$10" with "1,20 $" (ru) or a runtime's "1,20 US$" (uz). Whole dollars
+ * keep no cents. The layout is a table, not `Intl`'s currency style: the
+ * runtime's ICU data differs between Node and the browser in Uzbek, and a price
+ * that reads differently on the server than in the browser makes React discard
+ * the server's HTML. Anything else ("€9", "from $5") is printed exactly as the
+ * owner typed it.
  */
 export function displayPriceText(text: string, locale: string): string {
   const cents = displayPriceCents(text);
   if (cents === null) return text;
-  return new Intl.NumberFormat(locale === "uz" ? "uz-UZ" : locale, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
-    maximumFractionDigits: 2,
-  }).format(cents / 100);
+  return formatUsdAmount(cents / 100, locale, cents % 100 === 0 ? 0 : 2, 2);
 }
 
 /**

@@ -145,11 +145,12 @@ describe("display price cents", () => {
 
 describe("display price text", () => {
   it("writes a plain US-dollar price the way the page's language writes the figures beside it", () => {
-    // ru/uz cards mixed "$10" with "1,20 $" / "1,20 US$" (PIXEL-4 D7).
+    // ru/uz cards mixed "$10" with "1,20 $" / "1,20 US$" (PIXEL-4 D7). Uzbek writes the symbol first,
+    // as the Uzbek copy does ("$5 dan $5 000 gacha"), and no longer depends on the runtime's ICU.
     expect(displayPriceText("$10", "en")).toBe("$10");
     expect(displayPriceText("$9.99", "en")).toBe("$9.99");
     expect(displayPriceText("$10", "ru").replace(/\s/g, " ")).toBe("10 $");
-    expect(displayPriceText("$10", "uz").replace(/\s/g, " ")).toBe("10 US$");
+    expect(displayPriceText("$10", "uz")).toBe("$10");
   });
 
   it("prints anything else exactly as the owner typed it", () => {
