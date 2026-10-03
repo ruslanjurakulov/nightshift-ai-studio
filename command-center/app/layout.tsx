@@ -15,6 +15,9 @@ import { preloadFonts } from "@/components/site/fonts";
 export const metadata: Metadata = {
   title: "Nightshift Command Center",
   description: "Nightshift makes finished YouTube videos for your channel, shows the price before every run, and waits for your approval before anything goes public.",
+  // The tab icon is the tile with the N set larger (icon.svg, favicon.ico). Without this the head also
+  // links the 512 px icon.png, whose N is 6 px wide at tab size, and a high-density tab can pick that one.
+  icons: { icon: [{ url: "/icon.svg", type: "image/svg+xml" }, { url: "/favicon.ico", sizes: "32x32" }] },
 };
 
 /** The browser chrome takes the page's ground: the light table, or the control room at night. */

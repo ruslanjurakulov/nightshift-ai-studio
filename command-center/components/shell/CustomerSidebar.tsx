@@ -55,7 +55,7 @@ export function CustomerSidebar({ email, plan }: { email: string | null; plan: A
       <MAside layoutRoot className="shell-sidebar sticky top-0 z-30 hidden h-dvh w-[240px] shrink-0 flex-col lg:flex">
         <div className="flex h-14 shrink-0 items-center px-5">
           <Link href={path(home.href)} className="ns-wordmark inline-flex items-center gap-2">
-            <BrandMark size={20} />
+            <BrandMark size={34} />
             {t.brand.name}
           </Link>
         </div>

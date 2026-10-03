@@ -2,10 +2,9 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
 import { en } from "@/lib/i18n/en";
-import { BRAND_MARK_FOLDS, BRAND_MARK_OUTLINE, BRAND_MARK_RATIO } from "@/components/site/BrandMark";
 
 /**
- * The social card: the folded-ribbon N beside the wordmark, the hero line on
+ * The social card: the owner's N tile beside the wordmark, the hero line on
  * the control room's ink ground, and the rundown with its one lit lamp — the
  * video waiting for approval — words only, no figures. English, because a
  * shared link's card is cached once for everyone.
@@ -33,9 +32,9 @@ const TEXT = "#F1EDE6";
 const DIM = "#B4AEA1";
 const AMBER = "#FFA940";
 const GO = "#5FD49A";
-/* The mark: white on the ground, as the owner supplied it (brand/logo). */
-const MARK = "#FAFAFA";
-const MARK_W = 60;
+/* The mark: the owner's picture, black tile and all (brand/logo/png), drawn from the raster
+   render of the vector master so the framing is the artwork's own. */
+const MARK_TILE = 72;
 
 const FONT_DIR = join(process.cwd(), "brand", "og-fonts");
 
@@ -45,6 +44,7 @@ async function font(file: string): Promise<ArrayBuffer> {
 }
 
 export async function GET() {
+  const markTile = `data:image/png;base64,${(await readFile(join(process.cwd(), "brand", "logo", "png", "nightshift-app-icon-256.png"))).toString("base64")}`;
   const [wordmark, regular, semibold] = await Promise.all([
     font("SofiaSansExtraCondensed-Bold.ttf"),
     font("Onest-Regular.ttf"),
@@ -68,10 +68,8 @@ export async function GET() {
       >
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", flex: 1.2 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <svg width={MARK_W} height={Math.round(MARK_W * BRAND_MARK_RATIO)} viewBox="0 0 1000 938">
-              <path fill={MARK} fillRule="evenodd" d={BRAND_MARK_OUTLINE} />
-              <path fill={MARK} fillOpacity={0.5} d={BRAND_MARK_FOLDS} />
-            </svg>
+            {/* eslint-disable-next-line @next/next/no-img-element -- next/og renders <img> */}
+            <img src={markTile} width={MARK_TILE} height={MARK_TILE} alt="" style={{ borderRadius: 16, boxShadow: `0 0 0 2px ${RULE}` }} />
             <div style={{ fontFamily: "Sofia Sans Extra Condensed", fontSize: 38, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>
               {en.brand.name}
             </div>

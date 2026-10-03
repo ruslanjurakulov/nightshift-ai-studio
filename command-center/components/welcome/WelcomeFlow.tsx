@@ -286,7 +286,7 @@ function Frame({ children }: { children: React.ReactNode }) {
           className="inline-flex items-center gap-2 font-display text-xl font-semibold tracking-[-0.02em] text-[var(--color-primary)]"
           style={{ textShadow: "0 0 28px var(--glow-primary)" }}
         >
-          <BrandMark size={20} />
+          <BrandMark size={36} />
           {t.brand.name}
         </div>
         <h1 className="mt-6 text-[26px] font-semibold leading-tight tracking-[-0.02em]">{t.signup.welcomeTitle}</h1>
