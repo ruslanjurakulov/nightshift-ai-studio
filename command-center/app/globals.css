@@ -143,6 +143,10 @@
 @media (min-width: 640px) {
   :root { --ns-card-pad: 24px; }
 }
+/* A finger: chips and segmented keys are 44px tall on a touch screen or a phone. */
+@media (pointer: coarse), (max-width: 40rem) {
+  :root { --ns-chip-h: 44px; }
+}
 
 /* Light — the proof sheet. */
 :root,
@@ -1691,6 +1695,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
+.studio-dock[data-at-top="true"] { position: static; }
 @media (min-width: 1024px) {
   .studio-dock {
     position: static;
@@ -2183,6 +2188,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   .ns-seg > button,
   .ns-chip:not([data-plain]),
   .ns-price-button[data-size="md"] { min-height: 44px; }
+  .studio-seg > button { min-height: 44px; }
 }
 
 /* A chip that is a radio's label (the editor's speed, transition and caption
@@ -2359,6 +2365,12 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   line-height: 1;
   text-transform: uppercase;
   color: var(--color-fg);
+}
+/* The tile makes the lockup wider: below 400px it steps down (wordmark 19px, tile
+   28px) so the signed-in header, with its bell, search and credit key, stays on one row. */
+@media (max-width: 399px) {
+  .ns-wordmark { font-size: 19px; gap: 8px; }
+  .ns-wordmark svg { width: 28px; height: auto; }
 }
 
 /* The record dot on the Generate key: making something is a REC press, not a

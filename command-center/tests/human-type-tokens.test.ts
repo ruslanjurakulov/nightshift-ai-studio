@@ -140,3 +140,18 @@ describe("fonts", () => {
     expect(layout).toContain("preloadFonts(locale)");
   });
 });
+
+describe("words are written in sentence case, not capitals", () => {
+  // A label used to be written in capitals because the stylesheet drew capitals anyway. Now
+  // nothing does, so a dictionary value in capitals would shout. HTTP verbs, file types and
+  // other fixed names are not words.
+  const FIXED = new Set(["POST", "JSON", "HTTP", "HTTPS", "HTML", "PNG", "JPEG", "WEBP", "MPEG", "CSV", "UTC", "SRT", "VTT", "GIF", "HEVC", "FFMPEG", "MCP", "API", "OAUTH", "REST", "CHRONOS"]);
+  it.each(["lib/i18n/en.ts", "lib/i18n/ru.ts", "lib/i18n/uz.ts", "lib/i18n/site/en.ts", "lib/i18n/site/ru.ts", "lib/i18n/site/uz.ts"])("%s has no value in capitals", (file) => {
+    const shouting: string[] = [];
+    for (const m of read(file).matchAll(/(\w+): "([^"\\]*)"/g)) {
+      const letters = m[2].replace(/[^A-Za-zА-Яа-яЁёʻʼ]/g, "");
+      if (letters.length >= 4 && letters === letters.toUpperCase() && !m[2].includes("_") && !m[2].split(/\s+/).every((w) => FIXED.has(w.replace(/[^A-Za-z]/g, "")))) shouting.push(`${m[1]}: ${m[2]}`);
+    }
+    expect(shouting).toEqual([]);
+  });
+});

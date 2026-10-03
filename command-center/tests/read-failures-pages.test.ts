@@ -87,7 +87,8 @@ describe("command center: a failed read is unknown, not zeros and not healthy", 
     expect(has(html, en.dashboard.heroUnknown)).toBe(true);
     // not healthy / active, no fake "nothing produced" / "none" / "no videos yet"
     expect(has(html, en.dashboard.systemHealthy)).toBe(false);
-    expect(has(html, en.dashboard.active)).toBe(false);
+    // As a whole badge: "Active" is also the start of "Active agents" now that the badge is no longer in capitals.
+    expect(has(html, `>${en.dashboard.active}<`)).toBe(false);
     expect(has(html, en.dashboard.heroIdle)).toBe(false);
     expect(has(html, en.dashboard.noVideos)).toBe(false);
     expect(has(html, en.dashboard.noRunsYet)).toBe(false);

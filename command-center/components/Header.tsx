@@ -121,7 +121,7 @@ export function Header({
         <div className="flex min-w-0 items-center gap-6 xl:gap-10">
         <Link
           href={path("/command-center")}
-          className="tap-link font-display inline-flex shrink-0 items-center gap-2 text-lg font-semibold tracking-[-0.02em] text-[var(--color-primary)] sm:text-xl"
+          className="tap-link ns-wordmark inline-flex shrink-0 items-center gap-2"
         >
           <BrandMark size={34} />
           {t.brand.name}

@@ -19,7 +19,7 @@ type Step = "workspace" | "about" | "next";
 const LANGUAGE_SUGGESTIONS = ["English", "Russian", "Uzbek", "Spanish", "German", "French", "Portuguese", "Turkish", "Arabic", "Hindi"];
 
 const inputClass =
-  "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
+  "min-h-11 min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
 
 function rememberAllChannels() {
   // The org switch already happened server-side (/api/org/create sets the org
@@ -282,10 +282,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         <SignOutButton />
       </div>
       <div className="glass-card sheet-enter rounded-[22px] border border-[var(--color-border)] p-6 sm:p-8">
-        <div
-          className="inline-flex items-center gap-2 font-display text-xl font-semibold tracking-[-0.02em] text-[var(--color-primary)]"
-          style={{ textShadow: "0 0 28px var(--glow-primary)" }}
-        >
+        <div className="ns-wordmark inline-flex items-center gap-2">
           <BrandMark size={36} />
           {t.brand.name}
         </div>

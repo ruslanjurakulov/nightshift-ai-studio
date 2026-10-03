@@ -450,7 +450,7 @@ export function AssistantPlanner({ orgId, models, channels, currentSlug, canRun,
               }
             }}
             disabled={!editing}
-            rows={2}
+            rows={3}
             maxLength={GOAL_MAX}
             placeholder={t.assistant.placeholder}
             // 16px: iOS zooms the page into any smaller text field.
@@ -460,7 +460,7 @@ export function AssistantPlanner({ orgId, models, channels, currentSlug, canRun,
             <button
               type="submit"
               disabled={!editing || !goal.trim()}
-              className="pill inline-flex min-h-10 items-center gap-1.5 border border-[var(--color-border)] px-4 text-sm font-medium text-[var(--color-fg)] transition-colors hover:border-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] disabled:opacity-50"
+              className="pill inline-flex min-h-11 items-center gap-1.5 border border-[var(--color-border)] px-4 text-sm font-medium text-[var(--color-fg)] transition-colors hover:border-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] disabled:opacity-50"
             >
               <Sparkles aria-hidden className="size-4" />
               {plan ? t.assistant.replan : t.assistant.makePlan}

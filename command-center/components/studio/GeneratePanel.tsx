@@ -253,6 +253,19 @@ export function GeneratePanel({
   // A price is asked for only once the form is complete (the picture, the words).
   const ready = canQuote(form);
 
+  // The phone's sticky Generate dock would cover the length chips on the first view;
+  // it rests in the flow until the page is scrolled, then sticks above the tab bar.
+  const [dockAtTop, setDockAtTop] = useState(true);
+  useEffect(() => {
+    const onScroll = (e: Event) => {
+      const t = e.target;
+      const top = t instanceof HTMLElement ? t.scrollTop : window.scrollY;
+      setDockAtTop(top < 24);
+    };
+    document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => document.removeEventListener("scroll", onScroll, { capture: true });
+  }, []);
+
   useEffect(() => {
     if (!ready || (!routed && !effectiveModel)) {
       setQuote({ status: "idle" });
@@ -1039,7 +1052,7 @@ export function GeneratePanel({
     ) : null;
 
   const dockBlock = (
-    <div className="studio-dock flex flex-col gap-2" data-testid="gen-dock">
+    <div className="studio-dock flex flex-col gap-2" data-testid="gen-dock" data-at-top={dockAtTop ? "true" : undefined}>
       {/* The price key (components/ui/PriceButton): the action and the
           database's quote as two legends; its name is the same sentence. */}
       <PriceButton
