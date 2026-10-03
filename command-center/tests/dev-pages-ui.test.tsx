@@ -139,80 +139,253 @@ describe("the API reference carries no errors section and no internal mechanics"
 });
 
 describe("the MCP page", () => {
-  const mcp = (locale: Locale = "en", showCli = false) => (
-    <McpPage dev={devDictionaries[locale]} origin={ORIGIN} labels={labels} showCli={showCli} />
+  const mcp = (opts: { locale?: Locale; showCli?: boolean; oauthLive?: boolean; initialTab?: string } = {}) => (
+    <McpPage
+      dev={devDictionaries[opts.locale ?? "en"]}
+      origin={ORIGIN}
+      labels={labels}
+      showCli={opts.showCli ?? false}
+      oauthLive={opts.oauthLive ?? false}
+      initialTab={opts.initialTab}
+    />
   );
+  const doc = (el: ReactNode) => new DOMParser().parseFromString(renderToStaticMarkup(el as React.ReactElement), "text/html");
+  const selected = (d: Document) => d.querySelector('[role="tab"].st-pill[aria-selected="true"]')?.getAttribute("data-id");
 
-  it("offers at least seven assistants, each with a snippet that names the server and has no real key", () => {
-    expect(MCP_CLIENTS.length).toBeGreaterThanOrEqual(7);
-    for (const c of MCP_CLIENTS) {
+  it("every API-key snippet names the server, carries the visible placeholder (or an editor prompt) and no real key", () => {
+    for (const c of MCP_CLIENTS.filter((x) => !x.oauthOnly)) {
       const snippet = c.snippet(`${ORIGIN}/api/mcp`);
       expect(snippet, c.id).toContain(`${ORIGIN}/api/mcp`);
-      // Visible placeholder, or (VS Code) a prompt the editor fills — never a key.
       expect(snippet.includes("<your API key>") || snippet.includes("${input:"), c.id).toBe(true);
       expect(snippet, c.id).not.toMatch(/nsk_live_[A-Za-z0-9]/);
     }
   });
 
-  it.each(LOCALES)("(%s) one h1, a three-step flow, a tab per assistant and the placeholder", (locale) => {
-    render(mcp(locale));
-    assertNoInternals(document.body.textContent ?? "", `/mcp ${locale}`);
-    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    const dev = devDictionaries[locale].mcp;
-    expect(screen.getByRole("list", { name: dev.stepsLabel }).querySelectorAll("li")).toHaveLength(3);
-    const tabs = screen.getAllByRole("tab");
+  it("the sign-in snippets carry no key at all, and OpenClaw and Hermes turn OAuth on explicitly", () => {
+    for (const c of MCP_CLIENTS.filter((x) => x.oauthSnippet)) {
+      const snippet = c.oauthSnippet!(`${ORIGIN}/api/mcp`);
+      expect(snippet, c.id).toContain(`${ORIGIN}/api/mcp`);
+      expect(snippet, c.id).not.toMatch(/Bearer|API key|nsk_live_/);
+    }
+    const oc = MCP_CLIENTS.find((c) => c.id === "openclaw")!;
+    expect(oc.oauthSnippet!(ORIGIN)).toMatch(/"auth": "oauth"/);
+    expect(oc.oauthSnippet!(ORIGIN)).toMatch(/"transport": "streamable-http"/);
+    expect(oc.snippet(ORIGIN)).toMatch(/"transport": "streamable-http"/);
+    expect(MCP_CLIENTS.find((c) => c.id === "hermes")!.oauthSnippet!(ORIGIN)).toContain("auth: oauth");
+  });
+
+  it.each(LOCALES)("(%s) one h1, the six named tabs first, then the others, ending with Other", (locale) => {
+    const d = doc(mcp({ locale }));
+    expect(d.querySelectorAll("h1")).toHaveLength(1);
+    const tabs = [...d.querySelectorAll('[role="tab"].st-pill')].map((t) => t.getAttribute("data-id"));
+    expect(tabs.slice(0, 6)).toEqual(["claude", "chatgpt", "claude-code", "openclaw", "cursor", "hermes"]);
     expect(tabs).toHaveLength(MCP_CLIENTS.length);
-    expect(screen.getByRole("tabpanel").textContent).toContain("claude mcp add");
-    expect(screen.getByRole("tabpanel").textContent).toContain("<your API key>");
-    expect(document.body.textContent).toContain(dev.notYet.title);
+    expect(tabs.at(-1)).toBe("other");
   });
 
-  it("clicking a tab shows its snippet, and the copy button copies exactly that snippet", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    render(mcp());
-    fireEvent.click(screen.getByRole("tab", { name: /Cursor/ }));
-    const panel = screen.getByRole("tabpanel");
-    expect(panel.textContent).toContain('"mcpServers"');
-    fireEvent.click(within(panel).getByRole("button", { name: /Copy/ }));
-    await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    const copied = String(writeText.mock.calls[0][0]);
-    expect(copied).toContain(`${ORIGIN}/api/mcp`);
-    expect(copied).toContain("Bearer <your API key>");
-    expect(JSON.parse(copied).mcpServers.nightshift.url).toBe(`${ORIGIN}/api/mcp`);
-    expect((await screen.findAllByText("Copied")).length).toBeGreaterThan(0);
+  it.each(LOCALES)("(%s) no internal wording, code names or status numbers, flag off and on", (locale) => {
+    for (const oauthLive of [false, true]) {
+      assertNoInternals(doc(mcp({ locale, oauthLive })).body.textContent ?? "", `/mcp ${locale} oauth=${oauthLive}`);
+    }
   });
 
-  it("arrow keys, Home and End move between tabs; only the chosen tab is a Tab stop", () => {
-    render(mcp());
-    const tabs = screen.getAllByRole("tab");
-    expect(tabs.filter((t) => t.getAttribute("tabindex") === "0")).toHaveLength(1);
-    fireEvent.keyDown(tabs[0], { key: "ArrowRight" });
-    expect(screen.getAllByRole("tab")[1].getAttribute("aria-selected")).toBe("true");
-    fireEvent.keyDown(screen.getAllByRole("tab")[1], { key: "End" });
-    expect(screen.getAllByRole("tab").at(-1)!.getAttribute("aria-selected")).toBe("true");
-    fireEvent.keyDown(screen.getAllByRole("tab").at(-1)!, { key: "ArrowRight" });
-    expect(screen.getAllByRole("tab")[0].getAttribute("aria-selected")).toBe("true");
+  it("picks the open tab on the server from ?tab=, so there is no flash and no-JS sees it", () => {
+    expect(selected(doc(mcp({ initialTab: "cursor" })))).toBe("cursor");
+    expect(selected(doc(mcp({ initialTab: "hermes", oauthLive: true })))).toBe("hermes");
+    // Unknown values and missing values mean the default: Claude Code while sign-in is off, Claude once it is on.
+    expect(selected(doc(mcp({ initialTab: "nope" })))).toBe("claude-code");
+    expect(selected(doc(mcp()))).toBe("claude-code");
+    expect(selected(doc(mcp({ oauthLive: true })))).toBe("claude");
   });
 
-  it("lists the ten tools, free ones marked free and the two that spend money saying so", () => {
-    render(mcp());
-    const table = screen.getByRole("table", { name: "Tools" });
-    const rows = within(table).getAllByRole("row").slice(1);
+  it("renders every tab's steps in the page, for crawlers and for no-JS readers", () => {
+    const html = renderToStaticMarkup(mcp());
+    for (const needle of ["claude mcp add", "openclaw mcp set", "mcp_servers:", "gemini mcp add", "[mcp_servers.nightshift]", "mcp-remote", "context_servers", "streamableHttp", "streamable-http", "serverUrl"]) {
+      expect(html, needle).toContain(needle);
+    }
+    expect(html).toContain("<noscript>");
+    expect(doc(mcp()).querySelectorAll(".st-tabpanel")).toHaveLength(MCP_CLIENTS.length);
+  });
+
+  it("tabs are wired for assistive tech: each tab controls a labelled panel; only the open one is a Tab stop", () => {
+    const d = doc(mcp({ initialTab: "cursor" }));
+    for (const tab of d.querySelectorAll('[role="tab"].st-pill')) {
+      const panel = d.getElementById(tab.getAttribute("aria-controls")!);
+      expect(panel?.getAttribute("role")).toBe("tabpanel");
+      expect(panel?.getAttribute("aria-labelledby")).toBe(tab.id);
+      expect(tab.getAttribute("tabindex")).toBe(tab.getAttribute("aria-selected") === "true" ? "0" : "-1");
+    }
+    expect(d.querySelector('[role="tablist"]')?.getAttribute("aria-label")).toBeTruthy();
+  });
+
+  it("flag off: Claude and ChatGPT say Coming soon, point at what works today, and show no connector link", () => {
+    const html = renderToStaticMarkup(mcp());
+    expect(html).not.toContain("claude.ai/customize");
+    expect(html).not.toContain("developers.openai.com");
+    const d = doc(mcp());
+    for (const id of ["claude", "chatgpt"]) {
+      const panel = d.getElementById(d.querySelector(`[role="tab"][data-id="${id}"]`)!.getAttribute("aria-controls")!)!;
+      expect(panel.textContent).toContain("Coming soon");
+      expect(panel.querySelector("a")).toBeNull();
+      expect(panel.querySelectorAll("button").length).toBeGreaterThan(0);
+    }
+    // Every other primary tab leads with the API-key steps.
+    const cc = d.getElementById(d.querySelector('[role="tab"][data-id="claude-code"]')!.getAttribute("aria-controls")!)!;
+    expect(cc.textContent).toContain("<your API key>");
+    expect(cc.querySelector("details")).toBeNull();
+  });
+
+  it("flag on: the real connector steps — the prefilled Claude link, the ChatGPT developer-mode guide, sign-in snippets with the key under a disclosure", () => {
+    const d = doc(mcp({ oauthLive: true }));
+    const panel = (id: string) => d.getElementById(d.querySelector(`[role="tab"][data-id="${id}"]`)!.getAttribute("aria-controls")!)!;
+    const link = panel("claude").querySelector("a[href]")!.getAttribute("href")!;
+    const u = new URL(link);
+    expect(u.origin + u.pathname).toBe("https://claude.ai/customize/connectors");
+    expect(u.searchParams.get("modal")).toBe("add-custom-connector");
+    expect(u.searchParams.get("connectorName")).toBe("Nightshift");
+    expect(u.searchParams.get("connectorUrl")).toBe(`${ORIGIN}/api/mcp`);
+    expect(panel("claude").querySelector("a")?.getAttribute("rel")).toContain("noopener");
+    expect(panel("claude").textContent).toContain(`${ORIGIN}/api/mcp`);
+    expect(panel("chatgpt").querySelector("a[href]")?.getAttribute("href")).toBe("https://developers.openai.com/api/docs/guides/developer-mode");
+    expect(panel("chatgpt").textContent).toContain("Developer mode");
+    for (const id of ["claude", "chatgpt"]) expect(panel(id).textContent).not.toContain("Coming soon");
+    for (const id of ["claude-code", "openclaw", "cursor", "hermes"]) {
+      expect(panel(id).querySelector("details summary")?.textContent, id).toBe("Use an API key instead");
+      expect(panel(id).querySelector("details")!.textContent, id).toContain("<your API key>");
+    }
+    expect(panel("openclaw").textContent).toContain("openclaw mcp login nightshift");
+    expect(panel("hermes").textContent).toContain("hermes mcp login nightshift");
+    expect(panel("hermes").textContent).toContain("auth: oauth");
+  });
+
+  it("says MCP sign-in needs a paid plan, that Free does not include it, and that keys and REST are billed separately", () => {
+    const d = doc(mcp());
+    const banner = d.querySelector(".st-banner")!;
+    expect(banner.textContent).toMatch(/paid plan/i);
+    expect(banner.textContent).toMatch(/Free/);
+    expect(banner.textContent).toMatch(/API keys/);
+    expect(banner.querySelector('a[href="/pricing"]')).toBeTruthy();
+    expect(d.querySelector(".st-mcphero-paid")?.textContent).toMatch(/paid plan/i);
+  });
+
+  it("has our own tiles around a lit Nightshift tile: neutral monograms, decorative, with the names in text for screen readers", () => {
+    const d = doc(mcp());
+    const tiles = d.querySelector(".st-tiles")!;
+    expect(tiles.getAttribute("aria-hidden")).toBe("true");
+    expect(tiles.querySelectorAll(".st-tile")).toHaveLength(7);
+    expect(tiles.querySelector('[data-slot="brand"]')).toBeTruthy();
+    expect(tiles.querySelectorAll("img, svg, image")).toHaveLength(0);
+    expect(d.querySelector(".sr-only")?.textContent).toMatch(/Works with: Claude, ChatGPT, Claude Code, OpenClaw, Cursor, Hermes/);
+  });
+
+  describe("interaction", () => {
+    beforeEach(() => {
+      window.history.replaceState(null, "", "/mcp");
+    });
+
+    it("clicking a tab opens it, sets ?tab= without adding a history entry, and the copy key copies exactly that snippet", async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+      const before = window.history.length;
+      render(mcp());
+      fireEvent.click(screen.getByRole("tab", { name: /Cursor/ }));
+      expect(window.location.search).toBe("?tab=cursor");
+      expect(window.history.length).toBe(before);
+      const open = document.querySelector('[role="tabpanel"][data-active="true"]') as HTMLElement;
+      expect(open.textContent).toContain('"mcpServers"');
+      fireEvent.click(within(open).getByRole("button", { name: /Copy/ }));
+      await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+      const copied = String(writeText.mock.calls[0][0]);
+      expect(JSON.parse(copied).mcpServers.nightshift.url).toBe(`${ORIGIN}/api/mcp`);
+      expect(copied).toContain("Bearer <your API key>");
+      // The state is announced in a live region, and the key shows a check mark (an inline icon).
+      await vi.waitFor(() => expect(within(open).getAllByRole("status").some((s) => s.textContent === "Copied")).toBe(true));
+      expect(open.querySelector('button[data-state="copied"] svg')).toBeTruthy();
+    });
+
+    it("the copied state returns to the icon after a moment", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      Object.defineProperty(navigator, "clipboard", { value: { writeText: vi.fn().mockResolvedValue(undefined) }, configurable: true });
+      render(mcp());
+      const open = document.querySelector('[role="tabpanel"][data-active="true"]') as HTMLElement;
+      fireEvent.click(within(open).getAllByRole("button", { name: /Copy/ })[0]);
+      await vi.waitFor(() => expect(open.querySelector('button[data-state="copied"]')).toBeTruthy());
+      await vi.advanceTimersByTimeAsync(1700);
+      await vi.waitFor(() => expect(open.querySelector('button[data-state="copied"]')).toBeNull());
+      vi.useRealTimers();
+    });
+
+    it("falls back to the selection copy where the clipboard API is refused, and says so when that fails too", async () => {
+      Object.defineProperty(navigator, "clipboard", { value: { writeText: vi.fn().mockRejectedValue(new Error("no")) }, configurable: true });
+      document.execCommand = vi.fn().mockReturnValue(false);
+      render(mcp());
+      const open = document.querySelector('[role="tabpanel"][data-active="true"]') as HTMLElement;
+      fireEvent.click(within(open).getAllByRole("button", { name: /Copy/ })[0]);
+      await vi.waitFor(() => expect(within(open).getAllByRole("status").some((s) => /Could not copy/.test(s.textContent ?? ""))).toBe(true));
+      (document.execCommand as unknown) = vi.fn().mockReturnValue(true);
+      fireEvent.click(within(open).getAllByRole("button", { name: /Copy/ })[0]);
+      await vi.waitFor(() => expect(within(open).getAllByRole("status").some((s) => s.textContent === "Copied")).toBe(true));
+    });
+
+    it("an old #hash link still opens its tab, and is rewritten to ?tab=", () => {
+      window.history.replaceState(null, "", "/mcp#hermes");
+      render(mcp());
+      expect(screen.getByRole("tab", { name: /Hermes/ }).getAttribute("aria-selected")).toBe("true");
+      expect(window.location.search).toBe("?tab=hermes");
+      expect(window.location.hash).toBe("");
+    });
+
+    it("arrow keys, Home and End move between tabs and wrap; focus follows", () => {
+      render(mcp());
+      const tabs = () => screen.getAllByRole("tab").filter((t) => t.classList.contains("st-pill"));
+      const start = tabs().findIndex((t) => t.getAttribute("aria-selected") === "true");
+      fireEvent.keyDown(tabs()[start], { key: "ArrowRight" });
+      expect(tabs()[start + 1].getAttribute("aria-selected")).toBe("true");
+      expect(document.activeElement).toBe(tabs()[start + 1]);
+      fireEvent.keyDown(tabs()[start + 1], { key: "ArrowLeft" });
+      expect(tabs()[start].getAttribute("aria-selected")).toBe("true");
+      fireEvent.keyDown(tabs()[start], { key: "Home" });
+      expect(tabs()[0].getAttribute("aria-selected")).toBe("true");
+      fireEvent.keyDown(tabs()[0], { key: "ArrowLeft" });
+      expect(tabs().at(-1)!.getAttribute("aria-selected")).toBe("true");
+      fireEvent.keyDown(tabs().at(-1)!, { key: "End" });
+      expect(tabs().at(-1)!.getAttribute("aria-selected")).toBe("true");
+      fireEvent.keyDown(tabs().at(-1)!, { key: "ArrowRight" });
+      expect(tabs()[0].getAttribute("aria-selected")).toBe("true");
+    });
+
+    it("the Coming soon tabs offer buttons that open a tab that works today", () => {
+      render(mcp({ initialTab: "claude" }));
+      const open = document.querySelector('[role="tabpanel"][data-active="true"]') as HTMLElement;
+      fireEvent.click(within(open).getByRole("button", { name: "Claude Code" }));
+      expect(screen.getByRole("tab", { name: /Claude Code/ }).getAttribute("aria-selected")).toBe("true");
+    });
+
+    it("the How it works pills are a tablist too: arrows move, one panel shown, all three in the page", () => {
+      render(mcp());
+      const pills = screen.getAllByRole("tab").filter((t) => t.classList.contains("st-how-pill"));
+      expect(pills).toHaveLength(3);
+      const panels = () => [...document.querySelectorAll(".st-how-panel")] as HTMLElement[];
+      expect(panels()).toHaveLength(3);
+      expect(panels().filter((p) => !p.hidden)).toHaveLength(1);
+      fireEvent.keyDown(pills[0], { key: "ArrowRight" });
+      expect(pills[1].getAttribute("aria-selected")).toBe("true");
+      expect(panels().filter((p) => !p.hidden)[0].id).toBe(pills[1].getAttribute("aria-controls"));
+      fireEvent.keyDown(pills[1], { key: "End" });
+      expect(pills[2].getAttribute("aria-selected")).toBe("true");
+    });
+  });
+
+  it("lists the ten tools, free ones marked free and the two that spend money saying how they are charged", () => {
+    const d = doc(mcp());
+    const rows = [...d.querySelectorAll("table tbody tr")];
     expect(rows).toHaveLength(10);
     expect(rows.filter((r) => /Free$/.test(r.textContent ?? ""))).toHaveLength(8);
   });
 
-  it("says plainly that the Claude and ChatGPT app connectors cannot connect yet, and why", () => {
-    render(mcp());
-    expect(document.body.textContent).toMatch(/Not yet/);
-    expect(document.body.textContent).toMatch(/OAuth/);
-    expect(document.body.textContent).toMatch(/ChatGPT/);
-  });
-
   it("links the CLI and Skills pages only while they are switched on", () => {
-    const off = renderToStaticMarkup(mcp("en", false));
-    const on = renderToStaticMarkup(mcp("en", true));
+    const off = renderToStaticMarkup(mcp({ showCli: false }));
+    const on = renderToStaticMarkup(mcp({ showCli: true }));
     expect(off).not.toContain("/docs/cli");
     expect(off).not.toContain("/docs/skills");
     expect(on).toContain("/docs/cli");

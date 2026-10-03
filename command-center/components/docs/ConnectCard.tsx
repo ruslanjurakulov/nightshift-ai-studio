@@ -1,62 +1,93 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { CodeBlock } from "@/components/docs/CodeBlock";
-import type { CopyLabels } from "@/components/docs/CopyButton";
 
 export type ConnectTab = {
   id: string;
   label: string;
-  /** Where the snippet goes (a file, a menu, a terminal). */
-  where: string;
-  hint: string;
-  code: string;
+  /** Two letters on the neutral tile that stands in for the client's logo. */
+  mono: string;
+  group: "primary" | "more";
+  /** The tab's steps, rendered on the server. Absent when `soon` is set. */
+  panel?: React.ReactNode;
+  /** Not available yet: said honestly instead of a step list that cannot work. */
+  soon?: { badge: string; title: string; body: string; use: string; goto: { id: string; label: string }[] };
 };
 
 /**
- * The connect card: one tab per assistant, each with the place to put the
- * snippet, the snippet with a copy button, and one line worth knowing. The
- * tabs are a patch bay — engraved slots, the chosen one lit. Plain ARIA tabs:
- * arrow keys, Home and End move between them, only the chosen tab is a Tab
- * stop, and `#cursor` in the address opens that tab, so a link can point at the
- * assistant a colleague uses. Server-rendered with the first tab open, so the
- * page is complete before any script runs.
+ * The connect card's tabs: pill tabs over panels, one panel per assistant.
+ *
+ * The server renders EVERY panel and picks the open tab from `?tab=`, so a
+ * link opens on the right tab with no flash, and no-JS readers and crawlers
+ * find every tab's steps (a noscript rule lays them out one under another).
+ * ARIA tablist/tab/tabpanel with `aria-controls`; arrow keys, Home and End move
+ * between tabs and only the open tab is a Tab stop. A click changes the address
+ * to `?tab=<id>` with replaceState (no history entry), and an old `#<id>` link
+ * still opens its tab. On a phone the strip scrolls sideways and the open pill
+ * is scrolled into view.
+ *
+ * From 768px up the panels share one grid cell and the closed ones are
+ * invisible (visibility, so they leave the tab order and the accessibility
+ * tree): the card is as tall as its tallest panel and never jumps on a change.
  */
 export function ConnectCard({
   tabs,
+  initialId,
   title,
   tablistLabel,
-  whereLabel,
-  placeholderNote,
-  scrollLabel,
-  copy,
+  moreLabel,
+  banner,
 }: {
   tabs: ConnectTab[];
+  initialId: string;
   title: string;
   tablistLabel: string;
-  whereLabel: string;
-  placeholderNote: string;
-  scrollLabel: string;
-  copy: CopyLabels;
+  moreLabel: string;
+  /** The paid-plan note, shown above the steps on every tab. */
+  banner: React.ReactNode;
 }) {
   const uid = useId();
-  const [active, setActive] = useState(tabs[0].id);
+  const [active, setActive] = useState(tabs.some((t) => t.id === initialId) ? initialId : tabs[0].id);
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const track = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    // Only a tab that exists: an unknown hash is just a hash.
-    const fromHash = decodeURIComponent(window.location.hash.slice(1));
-    if (tabs.some((t) => t.id === fromHash)) setActive(fromHash);
-  }, [tabs]);
+  function reveal(id: string, smooth: boolean) {
+    const pill = refs.current[id];
+    const box = track.current;
+    if (!pill || !box || box.scrollWidth <= box.clientWidth) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    box.scrollTo({ left: pill.offsetLeft - (box.clientWidth - pill.offsetWidth) / 2, behavior: smooth && !reduce ? "smooth" : "auto" });
+  }
 
-  function choose(id: string, focus = false) {
-    setActive(id);
+  function writeUrl(id: string) {
     try {
-      window.history.replaceState(null, "", `#${id}`);
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", id);
+      url.hash = "";
+      window.history.replaceState(null, "", url.toString());
     } catch {
       /* a sandboxed frame may refuse; the tab still changes */
     }
+  }
+
+  useEffect(() => {
+    // An old `#cursor` link still works; it becomes `?tab=cursor`.
+    const fromHash = decodeURIComponent(window.location.hash.slice(1));
+    const id = tabs.some((t) => t.id === fromHash) ? fromHash : active;
+    if (id !== active) {
+      setActive(id);
+      writeUrl(id);
+    }
+    reveal(id, false);
+    // Once, on load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function choose(id: string, focus = false) {
+    setActive(id);
+    writeUrl(id);
     if (focus) refs.current[id]?.focus();
+    reveal(id, true);
   }
 
   function onKey(e: React.KeyboardEvent, index: number) {
@@ -76,43 +107,78 @@ export function ConnectCard({
     choose(tabs[next].id, true);
   }
 
-  const current = tabs.find((t) => t.id === active) ?? tabs[0];
+  const firstMore = tabs.findIndex((t) => t.group === "more");
 
   return (
-    <div className="st-connect">
-      <div className="st-connect-head">
-        <h2 className="st-connect-title">{title}</h2>
+    <div className="st-cc" id="connect">
+      <noscript>
+        <style>{`.st-tabpanels{display:block!important}.st-tabpanel{display:block!important;visibility:visible!important;opacity:1!important;margin-bottom:16px}.st-pilltrack{display:none!important}`}</style>
+      </noscript>
+      <h2 className="sr-only">{title}</h2>
+      <div className="st-pilltrack-wrap" ref={track}>
+        <div role="tablist" aria-label={tablistLabel} className="st-pilltrack">
+          {tabs.map((t, i) => (
+            <span key={t.id} className="st-pill-slot" role="presentation">
+              {i === firstMore && firstMore > 0 && (
+                <span className="st-pill-more" aria-hidden>
+                  {moreLabel}
+                </span>
+              )}
+              <button
+                ref={(el) => {
+                  refs.current[t.id] = el;
+                }}
+                type="button"
+                role="tab"
+                id={`${uid}-tab-${t.id}`}
+                aria-selected={t.id === active}
+                aria-controls={`${uid}-panel-${t.id}`}
+                tabIndex={t.id === active ? 0 : -1}
+                className="st-pill"
+                data-id={t.id}
+                onClick={() => choose(t.id)}
+                onKeyDown={(e) => onKey(e, i)}
+              >
+                <span className="st-pill-glyph" aria-hidden>
+                  {t.mono}
+                </span>
+                <span className="st-pill-label">{t.label}</span>
+              </button>
+            </span>
+          ))}
+        </div>
       </div>
-      <div role="tablist" aria-label={tablistLabel} className="st-connect-tabs">
-        {tabs.map((t, i) => (
-          <button
+      <div className="st-banner">{banner}</div>
+      <div className="st-tabpanels">
+        {tabs.map((t) => (
+          <div
             key={t.id}
-            ref={(el) => {
-              refs.current[t.id] = el;
-            }}
-            type="button"
-            role="tab"
-            id={`${uid}-tab-${t.id}`}
-            aria-selected={t.id === current.id}
-            aria-controls={`${uid}-panel`}
-            tabIndex={t.id === current.id ? 0 : -1}
-            className="st-connect-tab"
-            onClick={() => choose(t.id)}
-            onKeyDown={(e) => onKey(e, i)}
+            role="tabpanel"
+            id={`${uid}-panel-${t.id}`}
+            aria-labelledby={`${uid}-tab-${t.id}`}
+            data-active={t.id === active}
+            data-group={t.group}
+            className="st-tabpanel"
           >
-            <span className="st-connect-lamp" aria-hidden />
-            {t.label}
-          </button>
+            {t.soon ? (
+              <div className="st-soon">
+                <span className="st-soon-badge">{t.soon.badge}</span>
+                <h3 className="st-soon-title">{t.soon.title}</h3>
+                <p className="st-body">{t.soon.body}</p>
+                <p className="st-small">{t.soon.use}</p>
+                <div className="st-soon-go">
+                  {t.soon.goto.map((g) => (
+                    <button key={g.id} type="button" className="st-key" data-size="sm" data-tone="quiet" onClick={() => choose(g.id, true)}>
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              t.panel
+            )}
+          </div>
         ))}
-      </div>
-      <div role="tabpanel" id={`${uid}-panel`} aria-labelledby={`${uid}-tab-${current.id}`} className="st-connect-panel">
-        <p className="st-connect-where">
-          <span className="st-connect-where-label">{whereLabel}</span>
-          {current.where}
-        </p>
-        <CodeBlock code={current.code} name={current.label} scrollLabel={scrollLabel} copy={copy} />
-        <p className="st-small">{current.hint}</p>
-        <p className="st-small st-connect-note">{placeholderNote}</p>
       </div>
     </div>
   );

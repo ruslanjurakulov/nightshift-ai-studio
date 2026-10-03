@@ -175,3 +175,19 @@ describe("an unknown /docs path signed out", () => {
     expect((await visit("/docs/api/openapi.json", false)).redirect).toBeNull();
   });
 });
+
+describe("the MCP_OAUTH_LIVE flag", () => {
+  it("is on only for the literal 1", async () => {
+    const { mcpOauthLive } = await import("@/lib/mcp-oauth");
+    expect(mcpOauthLive({ MCP_OAUTH_LIVE: "1" })).toBe(true);
+    for (const v of [undefined, "", "0", "true", "yes", " 1", "1 ", "on"]) expect(mcpOauthLive({ MCP_OAUTH_LIVE: v })).toBe(false);
+  });
+
+  it("reads the process environment at call time, never a build-time value", async () => {
+    const { mcpOauthLive } = await import("@/lib/mcp-oauth");
+    vi.stubEnv("MCP_OAUTH_LIVE", "");
+    expect(mcpOauthLive()).toBe(false);
+    vi.stubEnv("MCP_OAUTH_LIVE", "1");
+    expect(mcpOauthLive()).toBe(true);
+  });
+});

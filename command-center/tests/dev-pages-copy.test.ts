@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { devEn } from "@/lib/i18n/site/dev-en";
 import { devRu } from "@/lib/i18n/site/dev-ru";
 import { devUz } from "@/lib/i18n/site/dev-uz";
-import { MCP_CLIENTS, MCP_CLIENT_IDS, MCP_TOOL_IDS } from "@/lib/dev/mcp-clients";
+import { KEY_CLIENT_IDS, MCP_CLIENTS, MCP_CLIENT_IDS, MCP_TOOL_IDS, OAUTH_CLIENT_IDS } from "@/lib/dev/mcp-clients";
 import { CLI_COMMANDS, SKILLS } from "@/lib/dev/cli-skills";
 import { TOOL_NAMES } from "@/lib/api/mcp";
 import { PROVIDER_BRANDS } from "./helpers/brands";
@@ -85,13 +85,27 @@ describe("developer pages copy", () => {
   it("has one entry of copy per MCP client, tool, command and skill — in code order, in every language", () => {
     expect(MCP_CLIENT_IDS).toHaveLength(MCP_CLIENTS.length);
     for (const dict of [devEn, devRu, devUz]) {
-      expect(dict.mcp.clients.map((c) => c.id)).toEqual(MCP_CLIENT_IDS);
+      expect(dict.mcp.clients.map((c) => c.id).sort()).toEqual([...KEY_CLIENT_IDS].sort());
+      expect(Object.keys(dict.mcp.oauth).sort()).toEqual([...OAUTH_CLIENT_IDS].sort());
+      for (const [id, o] of Object.entries(dict.mcp.oauth)) expect(o.steps, id).toHaveLength(3);
+      expect(dict.mcp.steps.map((x) => x.id)).toEqual(["key", "paste", "ask"]);
+      expect(dict.mcp.how.tabs.map((t) => t.id)).toEqual(["channels", "faceless", "studios"]);
+      // The scripted conversations name only tools the server really has.
+      for (const t of dict.mcp.how.tabs) for (const r of t.rows) expect(MCP_TOOL_IDS as readonly string[]).toContain(r.id);
       expect(dict.mcp.tools.list.map((t) => t.id)).toEqual([...MCP_TOOL_IDS]);
       expect(Object.keys(dict.mcp.tools.paid).sort()).toEqual(["create_video", "request_download"]);
       expect(dict.cli.commands.list.map((c) => c.id)).toEqual(CLI_COMMANDS.map((c) => c.id));
       expect(dict.skills.list.items.map((s) => s.id)).toEqual(SKILLS.map((s) => s.id));
       expect(dict.cli.steps.map((s) => s.id)).toEqual(["install", "login", "run"]);
     }
+  });
+
+  it("puts the six clients the owner named first, in his order, then the rest", () => {
+    expect(MCP_CLIENTS.slice(0, 6).map((c) => c.id)).toEqual(["claude", "chatgpt", "claude-code", "openclaw", "cursor", "hermes"]);
+    expect(MCP_CLIENTS.slice(0, 6).every((c) => c.group === "primary")).toBe(true);
+    expect(MCP_CLIENTS.slice(6).every((c) => c.group === "more")).toBe(true);
+    expect(MCP_CLIENTS.at(-1)!.id).toBe("other");
+    expect(MCP_CLIENTS.length).toBeGreaterThanOrEqual(12);
   });
 
   it("lists the tools the server really has, in the server's order", () => {
