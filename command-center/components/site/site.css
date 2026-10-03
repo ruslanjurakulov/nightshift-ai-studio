@@ -2181,6 +2181,9 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 .st-tile { color: var(--ns-text-dim); }
 .st-tile[data-tile] .st-logo { width: 50%; height: 50%; }
 .st-tile[data-tile="paper"] { background: #fff; }
+/* A vendor's mark is never faded or blurred (owners: "exactly as provided", "no effects"): the depth cue
+   (opacity + blur on the outer tiles) stays only on the "+" tile. */
+.st-tile[data-tile] { opacity: 1; filter: none; }
 .st-tile[data-slot="brand"] { background: none; box-shadow: 0 0 56px -10px color-mix(in srgb, var(--ns-amber) 55%, transparent); }
 .st-tile .st-tile-n { width: var(--s); height: var(--s); }
 

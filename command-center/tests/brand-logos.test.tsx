@@ -108,6 +108,42 @@ describe("the marks are the vendors' own drawings", () => {
     for (const d of paths) expect(original, `${symbol}: ${d.slice(0, 40)}`).toContain(`d="${d}"`);
   });
 
+  it.each(Object.entries(SOURCE))("%s: every element and attribute value (fill, opacity, gradient stops, filters, masks) equals the vendor's, bar the id prefix and a <style> class turned into fill", (symbol, file) => {
+    const original = readFileSync(join(ROOT, "brand", "third-party", file), "utf8");
+    const parse = (xml: string) => new DOMParser().parseFromString(xml, "image/svg+xml");
+    const unprefix = (v: string) => v.split(`nl-${symbol}-`).join("");
+    const skip = ["svg", "style", "defs", "title", "symbol"];
+    const flat = (doc: Document, fromSprite: boolean, classFill: Record<string, string>) =>
+      [...doc.querySelectorAll("*")]
+        .filter((e) => !skip.includes(e.localName))
+        .map((e) => {
+          const attrs: Record<string, string> = {};
+          for (const a of [...e.attributes]) {
+            if (a.name === "class" || a.name.startsWith("xmlns") || a.name === "data-name") continue;
+            attrs[a.name] = fromSprite ? unprefix(a.value) : a.value;
+          }
+          const cls = e.getAttribute("class");
+          if (cls && classFill[cls]) attrs.fill = classFill[cls];
+          return { tag: e.localName, attrs };
+        });
+    const src = parse(original);
+    const css = [...src.querySelectorAll("style")].map((s) => s.textContent ?? "").join("\n");
+    const classFill: Record<string, string> = {};
+    for (const m of css.matchAll(/\.([\w-]+)\s*\{([^}]*)\}/g)) {
+      const f = /fill\s*:\s*([^;}\s]+)/.exec(m[2]);
+      if (f) classFill[m[1]] = f[1];
+    }
+    const want = flat(src, false, classFill);
+    const got = flat(parse(`<svg xmlns="http://www.w3.org/2000/svg">${BRAND_ART[symbol].markup}</svg>`), true, {});
+    expect(want.length).toBeGreaterThan(0);
+    expect(got).toEqual(want);
+  });
+
+  it("the hero never fades or blurs a vendor's mark (owners: exactly as provided, no effects)", () => {
+    const css = readFileSync(join(ROOT, "components", "site", "site.css"), "utf8");
+    expect(css).toMatch(/\.st-tile\[data-tile\]\s*\{\s*opacity:\s*1;\s*filter:\s*none;\s*\}/);
+  });
+
   it("nothing in the third-party folder is a script, an event handler, an external reference or a foreign object", () => {
     const walk = (dir: string): string[] =>
       readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]));
