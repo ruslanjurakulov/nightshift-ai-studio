@@ -278,9 +278,10 @@ FAKE_DOCKER = textwrap.dedent(
       *" up "*creative-worker) exit "${FAKE_CREATIVE_UP_RC:-0}" ;;
       *" up "*worker) exit "${FAKE_WORKER_UP_RC:-0}" ;;
       *" up "*) exit "${FAKE_UP_RC:-0}" ;;
-      *" ps -q web") echo cid123 ;;
+      *" ps -q web"|*" ps -aq web") echo cid123 ;;
       *" ps -q worker"|*" ps -q media-worker"|*" ps -q creative-worker") echo cidw ;;
       inspect*) echo "${FAKE_HEALTH:-healthy}" ;;
+      logs*) echo "${FAKE_LOG_TEXT:-}" ;;
       *" logs "*) echo "${FAKE_LOG_TEXT:-}" ;;
     esac
     exit 0
@@ -475,6 +476,39 @@ class RemoteDeployTests(_RemoteDeployFixture):
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("web is unhealthy", proc.stderr)
         self.assertIn("dc logs", proc.stderr)
+
+    def test_an_unhealthy_web_names_why_without_printing_the_log(self):
+        secret = "ana@example.com /reset?token=s3cr3t"
+        proc = self.deploy(
+            self.payload(),
+            FAKE_HEALTH="unhealthy",
+            FAKE_LOG_TEXT=f"Error: EROFS: read-only file system, mkdir '/app/x'\nTypeError: {secret}",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        out = proc.stdout + proc.stderr
+        self.assertIn("web diagnostics: ", out)
+        self.assertIn("log names=EROFS,TypeError", out)
+        self.assertIn("read-only_file_system", out)
+        for leaked in ("ana@example.com", "s3cr3t", "/app/x"):
+            self.assertNotIn(leaked, out)
+
+    def test_diagnostic_names_come_only_from_the_fixed_list(self):
+        # A crafted path, an e-mail local part or a code-shaped token that is
+        # not on the list must not appear: an open pattern would carry it.
+        proc = self.deploy(
+            self.payload(),
+            FAKE_HEALTH="unhealthy",
+            FAKE_LOG_TEXT="GET /api/SecretValueError 500\nkey (email)=(AnaError@example.com)\nERR_LEAKED_VALUE_HERE\nMyTypeError ERR_INVALID_URL_SCHEME",
+        )
+        out = proc.stdout + proc.stderr
+        self.assertIn("log names=none", out)
+        for leaked in ("SecretValueError", "AnaError", "ERR_LEAKED", "MyTypeError", "ERR_INVALID_URL_SCHEME"):
+            self.assertNotIn(leaked, out)
+
+    def test_a_failed_compose_up_also_reports_web_diagnostics(self):
+        proc = self.deploy(self.payload(), FAKE_UP_RC="1", FAKE_LOG_TEXT="SyntaxError: nope")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("log names=SyntaxError", proc.stdout + proc.stderr)
 
     def test_a_failed_compose_up_fails_the_deploy(self):
         proc = self.deploy(self.payload(), FAKE_UP_RC="1")

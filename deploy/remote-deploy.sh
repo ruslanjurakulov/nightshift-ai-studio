@@ -100,6 +100,39 @@ hint_words() {
   printf '%s' "$out"
 }
 
+# Why web is not healthy, in words that cannot carry a value. Docker's own
+# numbers (state, exit code, OOM, restarts) plus which names from a fixed list
+# the container's recent output contains: the built-in error classes
+# (TypeError ...) and system or Node error codes (EROFS, ERR_MODULE_NOT_FOUND
+# ...). Never the log text: this output is public and an app log line can carry a user's e-mail or a request path.
+#   web_diagnostics [container id]
+web_diagnostics() {
+  local cid="${1:-}" state log_text names hints w
+  [[ -n "$cid" ]] || cid="$(compose ps -aq web 2>/dev/null | head -n 1 || true)"
+  if [[ -z "$cid" ]]; then echo "web diagnostics: no web container"; return 0; fi
+  state="$("$DOCKER" inspect -f 'status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} restarts={{.RestartCount}}' "$cid" 2>/dev/null || true)"
+  echo "web diagnostics: ${state:-state unreadable}"
+  log_text="$("$DOCKER" logs --tail 200 "$cid" 2>&1 || true)"
+  # Fixed list, matched as whole words: an open pattern (anything ending in
+  # Error) would let a crafted path or an e-mail's local part pass through as
+  # a "name". Only the list's own spelling is ever printed.
+  names=""
+  for w in EROFS EACCES ENOENT EPERM EADDRINUSE ECONNREFUSED ENOTFOUND ETIMEDOUT EMFILE ENOSPC \
+           TypeError ReferenceError SyntaxError RangeError EvalError URIError AggregateError AssertionError \
+           ERR_MODULE_NOT_FOUND ERR_REQUIRE_ESM ERR_INVALID_URL ERR_UNKNOWN_FILE_EXTENSION ERR_PACKAGE_PATH_NOT_EXPORTED \
+           ERR_INVALID_ARG_TYPE ERR_INVALID_ARG_VALUE ERR_SOCKET_BAD_PORT ERR_SERVER_ALREADY_LISTEN \
+           ERR_UNHANDLED_REJECTION ERR_DLOPEN_FAILED ERR_WORKER_OUT_OF_MEMORY ERR_INVALID_PACKAGE_CONFIG; do
+    if grep -qwF -- "$w" <<<"$log_text"; then names="${names:+$names,}$w"; fi
+  done
+  echo "web diagnostics: log names=${names:-none}"
+  hints=""
+  for w in "read-only file system" "Cannot find module" "Invalid URL" "out of memory" "is not defined" \
+           "must be set" "Permission denied" "No such file" "address already in use" "Unexpected token"; do
+    if printf '%s' "$log_text" | grep -qiF -- "$w"; then hints="${hints:+$hints,}${w// /_}"; fi
+  done
+  echo "web diagnostics: log hints=${hints:-none}"
+}
+
 compose() {
   # WEB_ENV_FILE keeps the web container's env_file pointed at the same file
   # the interpolation reads, including under a test override; WORKER_ENV_FILE
@@ -299,7 +332,7 @@ main() {
   # ── 6. Build and start ─────────────────────────────────────────────────────
   log "docker compose up -d --build --remove-orphans web caddy"
   compose up -d --build --remove-orphans web caddy \
-    || die "docker compose up failed; on the server: dc ps, then dc logs web"
+    || { web_diagnostics || true; die "docker compose up failed; on the server: dc ps, then dc logs web"; }
 
   # ── 7. Wait for web to be healthy ──────────────────────────────────────────
   local cid status="" waited=0
@@ -314,10 +347,12 @@ main() {
     sleep 5
     waited=$((waited + 5))
   done
-  # Status only. Container logs stay on the server: this output is public, and
-  # an app log line can carry a user's e-mail or a request path.
+  # Status only, plus web_diagnostics on failure (numbers and fixed-list names).
+  # Container logs stay on the server: this output is public, and an app log
+  # line can carry a user's e-mail or a request path.
   compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' || true
   if [[ "$status" != healthy ]]; then
+    web_diagnostics "$cid" || true
     die "web is ${status:-not reporting health} after ${waited}s; on the server: dc logs --tail 100 web"
   fi
 
