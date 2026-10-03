@@ -23,7 +23,8 @@ import { Chip } from "@/components/ui/Chip";
 import { Meter } from "@/components/ui/Meter";
 import { Timecode } from "@/components/ui/Timecode";
 import { entitlementText } from "@/components/pricing/PlanMatrix";
-import { pluralForm, shortDate } from "@/components/credits/Equivalents";
+import { pluralForm } from "@/components/credits/Equivalents";
+import { useDay } from "@/components/usage/useDay";
 
 /**
  * The Usage page: how much of the plan's credits this billing period has been
@@ -65,7 +66,7 @@ export function UsageView({
   const limits = usageLimits(summary);
   const showLimits = limits.runs !== null || limits.priority !== null || limits.api !== null;
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex max-w-[44rem] flex-col gap-4">
       {allowance.kind === "free" ? (
         <FreePlan summary={summary} gaps={gaps} canUpgrade={canUpgrade} />
       ) : (
@@ -108,6 +109,7 @@ function PlanCredits({ summary, allowance, nowMs }: { summary: UsageSummary; all
   const u = t.usage;
   const forms = t.shell.creditUnit;
   const titleId = useId();
+  const day = useDay();
   const planName = summary.plan?.name ?? t.common.unknown;
   const status = summary.subscription ? t.plans.status[summary.subscription.status] : null;
 
@@ -136,7 +138,7 @@ function PlanCredits({ summary, allowance, nowMs }: { summary: UsageSummary; all
 
       {allowance.kind === "ended" && (
         <p className="text-[14px] leading-relaxed" role="status">
-          {fmt(u.plan.ended, { date: shortDate(allowance.endedAt, locale) })}
+          {fmt(u.plan.ended, { date: day(allowance.endedAt) })}
         </p>
       )}
       {allowance.kind === "none" && (
@@ -169,12 +171,13 @@ function Period({
   const { t, locale } = useI18n();
   const u = t.usage;
   const forms = t.shell.creditUnit;
+  const day = useDay();
   const pct = formatPercent(allowance.percent, locale);
   const used = formatCredits(allowance.spent, locale);
   const total = formatCredits(allowance.granted, locale);
   const heldN = allowance.held;
   const rel = relativeUntil(allowance.periodEnd, nowMs, locale);
-  const date = allowance.periodEnd ? shortDate(allowance.periodEnd, locale) : null;
+  const date = allowance.periodEnd ? day(allowance.periodEnd) : null;
   const when = date ? `${fmt(allowance.ends ? u.plan.ends : u.plan.renews, { date })}${rel ? ` · ${rel}` : ""}` : null;
   const outOfPlan = allowance.left <= 0;
   const [before, after = ""] = u.plan.usedPercent.split("{pct}");
@@ -410,9 +413,10 @@ function ExtraCredits({
     router.refresh();
   }
 
+  const day = useDay();
   const extra = summary.extra.available;
   const spendable = summary.spendableNow;
-  const expiry = summary.extra.soonestExpiry ? fmt(u.extra.expires, { date: shortDate(summary.extra.soonestExpiry, locale) }) : null;
+  const expiry = summary.extra.soonestExpiry ? fmt(u.extra.expires, { date: day(summary.extra.soonestExpiry) }) : null;
   return (
     <section id="extra" className="panel flex scroll-mt-24 flex-col gap-5 p-5 sm:p-6" aria-labelledby={titleId}>
       <div className="flex flex-col gap-1.5">
@@ -430,7 +434,10 @@ function ExtraCredits({
           aria-labelledby={labelId}
           aria-describedby={hintId}
           onClick={flip}
-          disabled={busy || !canChange}
+          // Not `disabled` while saving: a disabled button drops keyboard focus, and the person is left
+          // at the top of the page. flip() ignores a second press until the first has been saved.
+          disabled={!canChange}
+          aria-busy={busy || undefined}
           className="usage-switch"
           data-on={on ? "true" : "false"}
         >

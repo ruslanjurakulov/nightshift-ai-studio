@@ -1965,15 +1965,33 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   font-size: 13px;
   font-weight: 500;
 }
+/* The lamp is a switch track with a knob: off = knob left on an empty track, on = knob right on an amber
+   track, so it reads as a toggle at a glance (the word beside it still says which). */
 .usage-switch-lamp {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 26px;
+  border-radius: 13px;
   border: 2px solid var(--color-muted);
   background: transparent;
 }
+.usage-switch-lamp::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-muted);
+}
 .usage-switch[data-on="true"] { border-color: var(--ns-amber-ink); }
-.usage-switch[data-on="true"] .usage-switch-lamp { border-color: var(--ns-amber); background: var(--ns-amber); }
+.usage-switch[data-on="true"] .usage-switch-lamp { border-color: var(--ns-amber-ink); background: var(--ns-amber); }
+.usage-switch[data-on="true"] .usage-switch-lamp::after { left: 21px; background: #16120a; }
+@media (prefers-reduced-motion: no-preference) {
+  .usage-switch-lamp, .usage-switch-lamp::after { transition: left 140ms ease, background-color 140ms ease, border-color 140ms ease; }
+}
 
 /* PriceButton: the lit key with its price as a second legend, split by a
    hairline. The old price is struck through beside it. */

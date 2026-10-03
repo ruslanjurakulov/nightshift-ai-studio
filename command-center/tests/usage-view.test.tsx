@@ -32,6 +32,8 @@ vi.mock("@/lib/supabase/client", () => ({ createClient: () => ({ rpc }) }));
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
 import { UsageView } from "@/components/usage/UsageView";
+import { shortDate } from "@/components/credits/Equivalents";
+import { renderToString } from "react-dom/server";
 import { coerceUsageSummary, type FreeGap, type UsageSummary } from "@/lib/usage";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -100,6 +102,22 @@ describe("the extra-credits switch", () => {
     fireEvent.click(screen.getByRole("switch"));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(dictionaries.en.usage.extra.saveFailed));
     expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("stays focusable while it saves (a disabled button would drop the keyboard's place)", async () => {
+    let done: (v: unknown) => void = () => {};
+    rpc.mockReturnValue(new Promise((r) => (done = r)));
+    view("en");
+    const sw = screen.getByRole("switch") as HTMLButtonElement;
+    sw.focus();
+    fireEvent.click(sw);
+    await waitFor(() => expect(sw.getAttribute("aria-busy")).toBe("true"));
+    expect(sw.disabled).toBe(false);
+    expect(document.activeElement).toBe(sw);
+    fireEvent.click(sw); // a second press while saving is ignored
+    expect(rpc).toHaveBeenCalledTimes(1);
+    done({ data: { use_extra_credits: false, changed: true }, error: null });
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 
   it("is disabled, and writes nothing, for someone who does not run the workspace", () => {
@@ -191,5 +209,31 @@ describe.each(["en", "ru", "uz"] as const)("in %s", (locale) => {
       }
     };
     walk(dictionaries.en.usage, dictionaries[locale].usage, "usage");
+  });
+});
+
+describe("dates that hydrate", () => {
+  // A browser in Tashkent (UTC+5) prints the next day for 20:30 UTC; the server prints UTC. The first render
+  // must be the same on both or React discards the server HTML (error #418).
+  it("pins the day to a time zone when asked, and uses the viewer's own otherwise", () => {
+    expect(shortDate("2026-10-24T20:30:00Z", "en", "UTC")).toBe("Oct 24, 2026");
+    expect(shortDate("2026-10-24T20:30:00Z", "en", "Asia/Tashkent")).toBe("Oct 25, 2026");
+  });
+
+  it("the server render prints the UTC day whatever zone the server runs in", () => {
+    const html = renderToString(
+      <I18nProvider locale="en">
+        <UsageView
+          summary={summary({ plan_credits: { granted: 2000, spent: 100, held: 0, left: 1900, period_start: day(-9), period_end: "2026-10-24T20:30:00Z" } })}
+          nowMs={NOW}
+          orgId={ORG}
+          canChange
+          canBuy={false}
+          canUpgrade={false}
+          gaps={GAPS}
+        />
+      </I18nProvider>,
+    );
+    expect(html).toContain("Oct 24, 2026");
   });
 });

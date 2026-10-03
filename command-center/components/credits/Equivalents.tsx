@@ -17,12 +17,16 @@ export function pluralForm(forms: Forms, n: number, locale: string): string {
   return cat === "one" || cat === "few" || cat === "many" ? forms[cat] : forms.other;
 }
 
-/** A date as "1 Oct 2026" in the page's language; "—" when there is none. */
-export function shortDate(iso: string | null, locale: string): string {
+/**
+ * A date as "1 Oct 2026" in the page's language; "—" when there is none. The
+ * day is the viewer's own calendar day unless `timeZone` pins it ("UTC" for a
+ * first render that the server and the browser must print identically).
+ */
+export function shortDate(iso: string | null, locale: string, timeZone?: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return "—";
-  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric" }).format(d);
+  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric", ...(timeZone ? { timeZone } : {}) }).format(d);
 }
 
 /**

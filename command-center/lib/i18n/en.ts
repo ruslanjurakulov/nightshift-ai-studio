@@ -2926,7 +2926,7 @@ export const en = {
       adminOnly: "Only the person who runs this workspace can change this.",
       balance: "Current extra balance",
       balanceValue: "{n} {unit}",
-      expires: "Soonest expire {date}",
+      expires: "First to expire: {date}",
       noExpiry: "Don't expire",
       none: "You have no extra credits. Buy a pack to keep going when your plan credits run out.",
       waitingOff: "These credits are kept, and won't be used while extra credits are off.",
