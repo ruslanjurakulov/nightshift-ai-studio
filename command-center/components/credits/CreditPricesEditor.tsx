@@ -110,17 +110,17 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
                     {meaning && <p className="mt-0.5 text-[12px] leading-snug text-[var(--color-muted)]">{meaning}</p>}
                   </div>
                   <dl className="grid grid-cols-3 gap-x-3">
-                    <div className="min-w-0">
+                    <div className="flex min-w-0 flex-col">
                       <dt className="text-[10px] uppercase leading-tight tracking-[0.1em] text-[var(--color-muted)]">{t.credits.colRate}</dt>
-                      <dd className="mono mt-1 text-[15px] font-semibold text-[var(--color-fg)]">{figure(p.creditsPerUnit)}</dd>
+                      <dd className="mono mt-auto pt-1 text-[15px] font-semibold text-[var(--color-fg)]">{figure(p.creditsPerUnit)}</dd>
                     </div>
-                    <div className="min-w-0">
+                    <div className="flex min-w-0 flex-col">
                       <dt className="text-[10px] uppercase leading-tight tracking-[0.1em] text-[var(--color-muted)]">{t.credits.colMargin}</dt>
-                      <dd className="mono mt-1 text-[15px] font-semibold text-[var(--color-fg)]">{marginText(p)}</dd>
+                      <dd className="mono mt-auto pt-1 text-[15px] font-semibold text-[var(--color-fg)]">{marginText(p)}</dd>
                     </div>
-                    <div className="min-w-0">
+                    <div className="flex min-w-0 flex-col">
                       <dt className="text-[10px] uppercase leading-tight tracking-[0.1em] text-[var(--color-muted)]">{t.credits.colCharged}</dt>
-                      <dd className="mono mt-1 text-[15px] font-semibold text-[var(--color-fg)]">{figure(chargePerUnit(p), 6)}</dd>
+                      <dd className="mono mt-auto pt-1 text-[15px] font-semibold text-[var(--color-fg)]">{figure(chargePerUnit(p), 6)}</dd>
                     </div>
                   </dl>
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -159,7 +159,13 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
                   <th className="py-2 pr-3 text-right font-semibold">{t.credits.colMargin}</th>
                   <th className="py-2 pr-3 text-right font-semibold">{t.credits.colCharged}</th>
                   <th className="py-2 pr-3 font-semibold">{t.credits.colUpdated}</th>
-                  {canEdit && <th className="py-2" />}
+                  {canEdit && (
+                    <th className="py-2">
+                      <span className="sr-only">
+                        {t.credits.editPrice} / {t.credits.removePrice}
+                      </span>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
