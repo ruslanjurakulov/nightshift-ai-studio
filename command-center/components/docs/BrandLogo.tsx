@@ -49,15 +49,16 @@ const GLYPH: Record<string, LucideIcon> = {
  * Decorative: the client's name is always in the text beside it (a tab's label,
  * the "Works with" line for the tile row), so the mark has no name of its own.
  */
-export function BrandLogo({ id }: { id: string }) {
+export function BrandLogo({ id, variant = "tab" }: { id: string; variant?: "tab" | "hero" }) {
   const entry = brandLogo(id);
   if (!logoShown(entry)) {
     const Icon = GLYPH[id] ?? Plug;
     return <Icon className="st-logo-glyph" aria-hidden />;
   }
-  const s = entry.symbols;
+  const pick = variant === "hero" && entry.hero ? entry.hero : entry;
+  const s = pick.symbols;
   return (
-    <svg className="st-logo" data-tile={entry.tile} aria-hidden focusable="false" xmlns="http://www.w3.org/2000/svg">
+    <svg className="st-logo" data-tile={pick.tile} aria-hidden focusable="false" xmlns="http://www.w3.org/2000/svg">
       {"any" in s ? (
         <use href={`#nl-${s.any}`} />
       ) : (
@@ -70,8 +71,9 @@ export function BrandLogo({ id }: { id: string }) {
   );
 }
 
-/** Does this client's tile need the light "paper" surface (a single black mark)? */
-export function logoTile(id: string): "theme" | "paper" {
+/** The surface this client's mark needs: the theme's tile, a light "paper" one (a single black mark), none (the mark is its own tile, "bare"), or no tile at all ("plain": a loose glyph). `variant` picks the tab pill's mark or the hero tile's. */
+export function logoTile(id: string, variant: "tab" | "hero" = "tab"): "theme" | "paper" | "bare" | "plain" {
   const e = brandLogo(id);
-  return logoShown(e) ? e.tile : "theme";
+  if (!logoShown(e)) return "theme";
+  return variant === "hero" && e.hero ? e.hero.tile : e.tile;
 }

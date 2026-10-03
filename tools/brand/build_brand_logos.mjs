@@ -51,6 +51,19 @@ const FILES = {
   "openclaw-any": "openclaw/favicon.svg",
   "roo-any": "roo/icon.svg",
   "claude-any": "anthropic/ClaudeIcon-Rounded.svg",
+  "claude-spark-any": "anthropic/ClaudeSpark-Clay.svg",
+};
+
+/**
+ * Marks a vendor offers only as a picture. They go into the sprite as a data: URI
+ * inside the page (no request to any other origin; the CSP's img-src already allows
+ * data:). Hermes' icon is the vendor's 48 px PNG byte for byte; Gemini CLI's is the
+ * vendor's 1645 px PNG scaled down to 128 px and re-encoded as WebP (a smaller file
+ * of the same picture, not cropped or recoloured).
+ */
+const RASTER = {
+  "hermes-any": { file: "hermes/icon.png", size: 48, scale: false },
+  "gemini-any": { file: "gemini-cli/icon.png", size: 128, scale: true },
 };
 
 function loadPlaywright() {
@@ -101,12 +114,48 @@ function clean(name, raw) {
 const art = {};
 for (const [name, file] of Object.entries(FILES)) art[name] = clean(name, readFileSync(path.join(SRC, file), "utf8"));
 
+// One-colour versions: the same drawing with only its fill swapped for the text colour, the way a vendor's own
+// monochrome press-kit variants differ from the colour ones (the shape is untouched; the tab pill's text colour,
+// which follows the theme and the selected state, fills it).
+const MONO = { "claude-spark-mono": { from: "claude-spark-any", color: "#D97757" } };
+for (const [name, m] of Object.entries(MONO)) {
+  const src = art[m.from];
+  if (!src.inner.includes(`fill="${m.color}"`)) throw new Error(`${name}: ${m.from} has no fill ${m.color}`);
+  art[name] = { viewBox: src.viewBox, inner: src.inner.split(`fill="${m.color}"`).join('fill="currentColor"') };
+}
+
 // Bounding boxes of the artwork itself.
 const { chromium } = loadPlaywright();
 const browser = await chromium.launch();
 const page = await browser.newPage();
 await page.setContent("<body></body>");
+for (const [name, r] of Object.entries(RASTER)) {
+  const bytes = readFileSync(path.join(SRC, r.file));
+  const png = `data:image/png;base64,${bytes.toString("base64")}`;
+  const href = r.scale
+    ? await page.evaluate(
+        ({ png, size }) =>
+          new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+              const c = document.createElement("canvas");
+              c.width = size;
+              c.height = size;
+              const ctx = c.getContext("2d");
+              ctx.imageSmoothingQuality = "high";
+              ctx.drawImage(img, 0, 0, size, size);
+              resolve(c.toDataURL("image/webp", 0.92));
+            };
+            img.onerror = reject;
+            img.src = png;
+          }),
+        { png, size: r.size },
+      )
+    : png;
+  art[name] = { viewBox: `0 0 ${r.size} ${r.size}`, inner: `<image href="${href}" width="${r.size}" height="${r.size}"/>`, raster: true };
+}
 for (const [name, a] of Object.entries(art)) {
+  if (a.raster) continue;
   const box = await page.evaluate(
     ({ vb, inner }) => {
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
