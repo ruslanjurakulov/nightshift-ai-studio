@@ -329,13 +329,13 @@ export const siteUz: SiteDictionary = {
         what: [
           { title: "REST API", body: "Kanallar, videolar, vazifalar, yuklab olishlar va balans /api/v1 manzilida, bearer kalit bilan." },
           { title: "MCP nuqtasi", body: "Oʻsha kalitlar Model Context Protocol’ni tushunadigan yordamchilar bilan ishlaydi." },
-          { title: "Alohida balans", body: "API oylik limitlari koʻrinib turadigan alohida oldindan toʻlangan balansdan toʻlanadi." },
+          { title: "Alohida balans", body: "API orqali yaratilgan videolar oylik limitlari koʻrinib turadigan alohida oldindan toʻlangan balansdan toʻlanadi. Generatsiyalar — Studiyadagidek — kreditlaringizdan toʻlanadi." },
           { title: "Nazoratdagi kalitlar", body: "Dasturchi konsolida kalitlarni yarating va bekor qiling, sarf va limitlarni ham shu yerda koʻring." },
         ],
         not: [
           "Siz yoqmaguningizcha va API shartlarini qabul qilmaguningizcha API ochilmaydi.",
           "Aylanma yoʻl bilan nashr qilmaydi — API orqali yaratilgan videolar ham oʻsha tasdiqlash darvozasidan oʻtadi.",
-          "API chaqiruvlarini kredit balansingizdan yechmaydi.",
+          "Ikki balansni aralashtirmaydi: videolar API balansidan, generatsiyalar esa kreditlaringizdan toʻlanadi.",
         ],
         start: ["API maʼlumotnomasini oʻqing", "Dasturchi konsolida API’ni yoqing", "Kalit yarating va birinchi chaqiruvni bajaring"],
         docs: "API maʼlumotnomasi",

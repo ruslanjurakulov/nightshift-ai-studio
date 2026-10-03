@@ -127,7 +127,7 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
           scheme: "bearer",
           description:
             "An API key: nsk_live_ followed by 43 characters. A key has scopes (" + API_SCOPES.join(", ") + "); each operation names the one it needs " +
-            "in x-required-scope, and a key without it is refused with 403 insufficient_scope. Keys made before generations existed hold only " +
+            "in x-required-scope, and a key without it is refused (403). Keys made before generations existed hold only " +
             LEGACY_SCOPES.join(", ") + ". A key may also carry its own requests-per-minute limit (it can only lower the usage tier's, up to " + KEY_RPM_MAX +
             ") and a monthly credit ceiling for generations.",
         },
@@ -280,9 +280,9 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
               type: "object",
               additionalProperties: false,
               description:
-                "What to generate. edit, i2v, upscale, remove_bg and describe take source_asset_id: an image in the key's organization's media library " +
-                "(another organization's id answers exactly like one that does not exist). A value the model does not offer " +
-                "(for example an image quality tier it does not list) is refused with 400 invalid_params, or 422 unpriced when it has no price, before anything is held.",
+                "What to generate. edit, i2v, upscale, remove_bg and describe take source_asset_id: an image in the key's organization's media library. " +
+                "A value the model does not offer " +
+                "(for example an image quality tier it does not list) is refused with 400 invalid_params, or refused (422) when it has no price, before anything is charged.",
               properties: Object.fromEntries(PARAM_KEYS.map((k) => [k, {}])),
             },
             mode: {
@@ -309,10 +309,10 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
               type: "number",
               minimum: 0,
               description:
-                "The most credits you accept to be charged. A price above it is refused with 409 price_changed; nothing is held. The hold is the " +
-                "price at create time (the quote), never more, whatever max_credits says. For a routed mode a failover goes only to a compatible " +
+                "The most credits you accept to be charged. A price above it is refused (409) and nothing is charged. You are never charged " +
+                "more than the price quoted when the job was started, whatever max_credits says. For a routed mode a failover goes only to a compatible " +
                 "model costing no more than that quote, and the job is charged the price of the model that made it. A different pick than the " +
-                "quote's is refused with 409 route_changed: quote again.",
+                "quote's is refused (409): quote again.",
             },
           },
         },
@@ -322,7 +322,7 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
             quote: {
               type: "object",
               properties: {
-                credits: { type: "number", description: "What the generation costs; exactly what is held when it is started." },
+                credits: { type: "number", description: "What the generation costs; exactly what you are charged if it succeeds." },
                 exempt: { type: "boolean" },
                 model: { type: "string" },
                 capability: { type: "string" },
@@ -351,8 +351,8 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
               type: "string",
               enum: ["queued", "running", "provider_pending", "processing", "completed", "failed", "cancelled", "expired"],
             },
-            quoted_credits: { type: "number", description: "Held when the job was started." },
-            charged_credits: { type: ["number", "null"], description: "What was captured; null until the job ends. 0 when it failed, was cancelled or expired (the hold is released)." },
+            quoted_credits: { type: "number", description: "The price quoted when the job was started." },
+            charged_credits: { type: ["number", "null"], description: "What was captured; null until the job ends. 0 when it failed, was cancelled or expired (nothing is charged)." },
             error_code: { type: ["string", "null"] },
             error: { type: ["string", "null"] },
             result: { type: ["object", "null"], description: "Files (type, size, digest) or, for describe, the text. Outputs are in the organization's media library: result_asset_ids." },
@@ -360,7 +360,7 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
             created_at: { type: "string", format: "date-time" },
             updated_at: { type: "string", format: "date-time" },
             finished_at: { type: ["string", "null"], format: "date-time" },
-            expires_at: { type: "string", format: "date-time", description: "A job no worker picks up by then expires and its hold is released." },
+            expires_at: { type: "string", format: "date-time", description: "A job that has not started by then expires and nothing is charged." },
             mode: { type: "string", enum: ["exact", "auto", "cheap", "fast", "quality"] },
             routed_model: { type: "string", description: "The model that runs the job: the model you named (exact) or the quoted pick." },
             fallback_from: { type: ["string", "null"], description: "Routed modes: the model the job moved away from when it was unavailable." },
@@ -461,7 +461,7 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
       },
       "/creative/quote": {
         post: {
-          summary: "The price of one generation, in credits. Nothing is held.",
+          summary: "The price of one generation, in credits. Nothing is charged.",
           "x-required-scope": "creative:quote",
           requestBody: { required: true, content: json(ref("CreativeQuoteRequest")) },
           responses: { "200": { description: "OK", content: json(ref("CreativeQuote")) }, ...errors(400, 401, 403, 422, 429, 503) },
@@ -469,25 +469,25 @@ function buildSpec(serverUrl: string): Record<string, unknown> {
       },
       "/creative/jobs": {
         post: {
-          summary: "Start a generation: held now at the quoted price, captured when it succeeds, released if it fails.",
+          summary: "Start a generation: priced at the quote, charged when it succeeds, nothing charged if it fails.",
           description:
-            "The same start as the Studio's, on the organization's credits: the quote is held in one transaction with the job, the worker captures " +
-            "the charge when the provider succeeds and releases it on failure, expiry or cancellation. Idempotency-Key and max_credits are required. " +
-            "The plan's parallel-run limit applies (429 run_limit_reached).",
+            "The same start as the Studio's, on the organization's credits: you are charged the quote when the generation succeeds, and nothing " +
+            "if it fails, expires or is cancelled. Idempotency-Key and max_credits are required. " +
+            "The plan's limit on generations running at once applies (429).",
           "x-required-scope": "creative:create",
           parameters: [idemRequired],
           requestBody: { required: true, content: json(ref("CreativeCreateRequest")) },
           responses: {
-            "201": { description: "Queued, and the quote held", content: json(ref("CreativeJob")) },
-            "200": { description: "The job's own idempotency record answered: the same job, nothing more held", content: json(ref("CreativeJob")) },
+            "201": { description: "Queued", content: json(ref("CreativeJob")) },
+            "200": { description: "The job's own idempotency record answered: the same job, nothing more charged", content: json(ref("CreativeJob")) },
             ...errors(400, 401, 402, 403, 409, 422, 429, 503),
           },
         },
       },
       "/creative/jobs/{id}": {
         get: {
-          summary: "A generation this key started: status, held and charged credits, result.",
-          description: "Another key's generation, another organization's and a missing id all answer 404 job_not_found.",
+          summary: "A generation this key started: status, charged credits, result.",
+          description: "A generation this key did not start, or that does not exist, answers 404 job_not_found.",
           "x-required-scope": "creative:read",
           parameters: [pathId("id", "Generation id")],
           responses: { "200": { description: "OK", content: json(ref("CreativeJob")) }, ...errors(401, 403, 404, 429) },

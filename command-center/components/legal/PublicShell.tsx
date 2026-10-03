@@ -7,13 +7,17 @@ import { PublicMobileMenu } from "@/components/legal/PublicMobileMenu";
 import { BrandMark } from "@/components/site/BrandMark";
 import { preloadSiteFonts } from "@/components/site/fonts";
 import { DEFAULT_LOCALE, LOCALES, dictionaries } from "@/lib/i18n";
+import { devFor } from "@/lib/i18n/dev";
 import "@/components/site/site.css";
 
 /** Which top-level page the visitor is on, for the nav's lit item. */
 export type PublicSection = "home" | "solutions" | "pricing" | "docs" | "legal" | null;
 
 /** The public pages' navigation. Hash targets are absolute ("/#how") so they
- *  work from Pricing or Privacy as well as from the homepage itself. */
+ *  work from Pricing or Privacy as well as from the homepage itself. One
+ *  "Developers" entry stands for the API, MCP, CLI and Skills pages: they are
+ *  one click apart on every one of them (components/docs/doc-parts.tsx DevNav)
+ *  and in the footer, and a fifth link here would crowd a phone's bar. */
 export function publicNavLinks(t: Dictionary): { href: string; label: string; section: PublicSection }[] {
   const n = t.site.nav;
   return [
@@ -21,7 +25,7 @@ export function publicNavLinks(t: Dictionary): { href: string; label: string; se
     { href: "/#studio", label: n.studio, section: null },
     { href: "/solutions", label: n.solutions, section: "solutions" },
     { href: "/pricing", label: n.pricing, section: "pricing" },
-    { href: "/docs/api", label: n.api, section: "docs" },
+    { href: "/docs/api", label: devFor(t).nav.label, section: "docs" },
   ];
 }
 
