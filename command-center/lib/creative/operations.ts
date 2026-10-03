@@ -13,6 +13,8 @@
  * Pure apart from the injected `db`, so it is unit-tested with a fake one.
  */
 
+import { extraOffFields } from "@/lib/credits";
+
 export type DbError = { code?: string; message?: string; details?: string | null; hint?: string | null };
 export type DbAnswer = { data: unknown; error: DbError | null };
 
@@ -285,6 +287,7 @@ export function mapCreativeError(error: DbError): CreativeResult {
       return fail(402, "insufficient_credits", {
         available: m ? Number(m[1]) : null,
         needed: m ? Number(m[2]) : null,
+        ...extraOffFields(error.details),
       });
     }
     case "NS429": {

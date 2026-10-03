@@ -4,6 +4,7 @@ import { requireOrgRole } from "@/lib/auth/org-roles";
 import { frozenRunDurationS, isCreditExempt, runDurationS } from "@/lib/credits";
 import { resolveRunBackend } from "@/lib/runBackend";
 import { creditsEnforced, estimateForChannel, readCreditAccount, readCreditPrices } from "@/lib/server/credits";
+import { readUsageSummary } from "@/lib/server/usage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,9 +64,12 @@ export async function GET(request: Request) {
   const requested = Number.isFinite(dur) && dur > 0 ? dur : undefined;
   const queue = resolveRunBackend({ NIGHTSHIFT_RUN_BACKEND: process.env.NIGHTSHIFT_RUN_BACKEND }) === "queue";
   const durationS = queue ? frozenRunDurationS(requested, ch.agent_config) : runDurationS(requested, ch.agent_config);
-  const [read, acct] = await Promise.all([
+  const [read, acct, usage] = await Promise.all([
     estimateForChannel(supabase, channelId, durationS, prices),
     readCreditAccount(supabase, orgId),
+    // 0094: with extra credits off, what this run can actually use is less than the balance.
+    // A failed or missing read says nothing (the balance is shown as before), never "on".
+    readUsageSummary(supabase, orgId).catch(() => ({ state: "failed" as const })),
   ]);
   if (!read.ok) return readFailed();
   const estimate = read.estimate;
@@ -76,5 +80,6 @@ export async function GET(request: Request) {
     estimate,
     available: acct.account?.available ?? null,
     balanceFailed: acct.failed,
+    ...(usage.state === "ok" && !usage.value.extraEnabled ? { extraOff: true, spendable: usage.value.spendableNow } : {}),
   });
 }

@@ -83,6 +83,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/margin", key: "margin" },
       { href: "/billing", key: "billing" },
       { href: "/credits", key: "credits" },
+      // The plan's allowance and the extra-credits switch (migration 0094): reached from Credits and the account menu.
+      { href: "/usage", key: "usage" },
       { href: "/series", key: "series" },
       { href: "/agents", key: "agents" },
       { href: "/jobs", key: "jobs" },
@@ -159,6 +161,7 @@ export const CUSTOMER_NAV_KEYS: readonly NavKey[] = [
   "models",
   "channels",
   "credits",
+  "usage",
   "series",
   "organization",
   "developers",
@@ -285,6 +288,8 @@ export function sidebarCurrent(section: string, tool: string | null): string | n
   if (first === "/editor") return "editor";
   // Developers has its own row; Settings is the workspace page alone.
   if (first === "/developers") return "developers";
+  // Usage is part of the credits story (plan allowance, extra credits): its row is Credits.
+  if (first === "/usage") return "credits";
   const group = tabsFor(first.slice(1))?.rail;
   if (group === "hub") return "hub";
   if (group === "settings") return "settings";

@@ -6,7 +6,8 @@ import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import type { ChannelAgentConfig } from "@/lib/types";
 import type { QueueJob, RunBackend } from "@/lib/runBackend";
-import { creditRunError } from "@/lib/credits";
+import { creditRunError, isExtraOffRefusal } from "@/lib/credits";
+import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
 import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
 import { IMAGE_GENERATORS } from "@/lib/imageProviders";
 import { TTS_MODELS, TTS_MODEL_LABELS, VOICES, isVoiceId } from "@/lib/ttsModels";
@@ -99,6 +100,7 @@ export function CreateStudio({
   // A refusal about credits (not enough, no estimate, not set up) — said
   // plainly, instead of the generic "couldn't start".
   const [creditError, setCreditError] = useState<string | null>(null);
+  const [extraOff, setExtraOff] = useState(false);
   const [events, setEvents] = useState<Ev[]>([]);
   // Queue mode only: this channel's latest render_jobs, so a job still waiting
   // for the worker is visible as waiting, not as a run that never started.
@@ -155,6 +157,7 @@ export function CreateStudio({
       if (!res.ok) {
         setErrorKey(data.error === "github_unauthorized" ? "unauthorized" : "failed");
         setCreditError(creditRunError(data, t, locale));
+        setExtraOff(isExtraOffRefusal(data));
         setPhase("error");
         return;
       }
@@ -407,6 +410,12 @@ export function CreateStudio({
             ) : phase === "error" ? (
               <span className="text-[var(--color-fail)]">
                 {creditError ?? (errorKey === "unauthorized" ? t.agents.runUnauthorized : t.agents.runFailed)}
+                {extraOff && (
+                  <>
+                    {" "}
+                    <ExtraOffLink />
+                  </>
+                )}
               </span>
             ) : (
               <span className="text-[var(--color-muted)]">{t.create.enterHint}</span>

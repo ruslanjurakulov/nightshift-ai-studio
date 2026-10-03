@@ -7,7 +7,7 @@ import { ArrowUpRight, Lock, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { nextFocusIndex } from "@/lib/feedback";
-import { formatCredits } from "@/lib/credits";
+import { creditUnit, formatCredits } from "@/lib/credits";
 import { UPSELL_LINKS, upsellView, type Refusal, type UpsellCatalog, type UpsellKey, type UpsellView } from "@/lib/upsell";
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -35,6 +35,17 @@ function lockedLine(t: Dict, v: UpsellView, modelName: string, locale: string): 
     case "run_limit":
       return v.limit !== null ? fill(u.runLimit, { limit: String(v.limit) }) : u.runLimitUnknown;
     case "credits":
+      if (v.extraOff) {
+        const r = t.usage.refusal;
+        return v.needed !== null && v.available !== null && v.extraOff.extra !== null
+          ? fill(r.extraOff, {
+              needed: formatCredits(v.needed, locale),
+              available: formatCredits(Math.max(0, v.available), locale),
+              extra: formatCredits(v.extraOff.extra, locale),
+              unit: creditUnit(v.extraOff.extra, locale, t.shell.creditUnit),
+            })
+          : r.extraOffShort;
+      }
       return v.needed !== null && v.available !== null
         ? fill(u.credits, { needed: formatCredits(v.needed, locale), available: formatCredits(Math.max(0, v.available), locale) })
         : u.creditsUnknown;
@@ -177,8 +188,18 @@ export function PlanUpsellDialog({
         </div>
 
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-4 sm:px-6">
+          {view.extraOff && (
+            <Link href={path(UPSELL_LINKS.extraCredits)} className={primaryCls} data-upsell-primary data-extra-off onClick={onClose}>
+              {t.usage.refusal.turnOn}
+            </Link>
+          )}
           {view.buyCredits && (
-            <Link href={path(UPSELL_LINKS.topups)} className={primaryCls} data-upsell-primary onClick={onClose}>
+            <Link
+              href={path(UPSELL_LINKS.topups)}
+              className={view.extraOff ? secondaryCls : primaryCls}
+              {...(view.extraOff ? {} : { "data-upsell-primary": true })}
+              onClick={onClose}
+            >
               {u.buyCredits}
             </Link>
           )}

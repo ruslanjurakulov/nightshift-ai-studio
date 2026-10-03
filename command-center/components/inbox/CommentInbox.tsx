@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { PriceButton } from "@/components/ui/PriceButton";
 import { useI18n } from "@/lib/i18n/context";
-import { creditUnit } from "@/lib/credits";
+import { appendExtraOff, creditUnit } from "@/lib/credits";
 import {
   FILTERS,
   INBOX_LIMITS,
@@ -156,7 +156,7 @@ function Card({
   }, [draftId, draftBody]);
 
   const fail = (a: Answer) =>
-    setMessage({ tone: "fail", text: a.status === 0 ? t.inbox.errors.network : inboxErrorText(a.body, t.inbox) });
+    setMessage({ tone: "fail", text: a.status === 0 ? t.inbox.errors.network : appendExtraOff(inboxErrorText(a.body, t.inbox), a.body, t) });
 
   async function ask() {
     if (busy || price.state === "unpriced" || price.state === "failed") return;

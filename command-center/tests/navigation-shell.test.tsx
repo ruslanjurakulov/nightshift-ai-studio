@@ -258,7 +258,7 @@ describe("credit pill and menu", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog.querySelectorAll("button, form, input, iframe, select, textarea")).toHaveLength(0);
     const hrefs = Array.from(dialog.querySelectorAll("a")).map((a) => a.getAttribute("href"));
-    expect(hrefs).toEqual(["/chronos/credits", "/chronos/credits#activity-title"]);
+    expect(hrefs).toEqual(["/chronos/credits", "/chronos/usage"]);
     expect(within(dialog).getByRole("link", { name: en.shell.addCredits })).toBeTruthy();
     expect(within(dialog).getByRole("link", { name: en.shell.usage })).toBeTruthy();
     // Nothing that could open a checkout is even imported.

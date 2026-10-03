@@ -252,10 +252,13 @@ describe("credits plans: unknown, never 'Free', 0 or an empty list", () => {
       plans: MISSING,
       entitlement_keys: MISSING,
       plan_entitlements: MISSING,
+      // 0094 needs 0034: its Usage read is missing too, and the Usage link card is left out with it.
+      usage_summary: { data: null, error: { message: "Could not find the function", code: "PGRST202" } },
     });
     const html = await render(load);
     expect(html).not.toContain("data-read-error");
     expect(has(html, en.plans.panelTitle)).toBe(false);
+    expect(html).not.toContain("data-usage-link");
     expect(has(html, en.plans.lotsTitle)).toBe(false);
     expect(has(html, en.credits.available)).toBe(true);
   });

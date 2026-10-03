@@ -254,7 +254,13 @@ export async function reserveRunCredits(
       return {
         ok: false,
         status: 402,
-        body: { error: "insufficient_credits", needed: short.needed ?? estimate.credits, available: short.available },
+        body: {
+          error: "insufficient_credits",
+          needed: short.needed ?? estimate.credits,
+          available: short.available,
+          // 0094: extra credits are off, so `available` is what the plan side can pay.
+          ...(short.extraOff ? { extra_off: true, extra: short.extra ?? null } : {}),
+        },
       };
     const busy = parseRunLimit(error);
     if (busy) return { ok: false, status: 429, body: { error: "run_limit", active: busy.active, limit: busy.limit } };

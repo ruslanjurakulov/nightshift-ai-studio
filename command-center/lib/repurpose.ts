@@ -25,6 +25,7 @@
  */
 
 import { fmt, type Dictionary } from "@/lib/i18n";
+import { extraOffFields } from "@/lib/credits";
 import { mapScenes, videoDuration, type RetentionPointInput, type SceneWindow } from "@/lib/sceneRetention";
 
 // ── limits (migration 0080 and modules/repurpose.py repeat these) ───────────
@@ -563,6 +564,7 @@ export function mapRepurposeError(error: DbError): { status: number; body: Recor
         error: "insufficient_credits",
         needed: detailNumber(error.details, "needed"),
         available: detailNumber(error.details, "available"),
+        ...extraOffFields(error.details),
       },
     };
   if (code === "NS429") return { status: 429, body: { error: "run_limit" } };

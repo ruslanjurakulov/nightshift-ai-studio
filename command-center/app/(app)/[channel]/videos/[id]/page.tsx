@@ -391,6 +391,7 @@ export default async function VideoDetail({
             videoId: video.video_id,
             latest: latestByScene(sceneRegens),
             labels: t.sceneRegen,
+            extraOffNote: t.usage.refusal.extraOffShort,
           } : null}
           repairUnavailable={repairable ? null : t.sceneRegen.reasons.published}
           labels={{
@@ -432,6 +433,7 @@ export default async function VideoDetail({
             requests={repurposeRequests}
             hrefs={clipHrefs}
             labels={t.repurpose}
+            extraOffNote={t.usage.refusal.extraOffShort}
           />
         </Panel>
       )}

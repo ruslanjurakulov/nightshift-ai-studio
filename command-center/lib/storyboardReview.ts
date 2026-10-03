@@ -16,6 +16,7 @@
 
 import { fmt } from "@/lib/i18n/core";
 import type { Dictionary } from "@/lib/i18n";
+import { extraOffFields } from "@/lib/credits";
 
 export const MAX_SCENES = 60;
 export const MAX_NARRATION = 4000;
@@ -267,6 +268,7 @@ export function mapStoryboardError(error: DbError): { status: number; body: Reco
         error: "insufficient_credits",
         needed: detailNumber(error.details, "needed"),
         available: detailNumber(error.details, "available"),
+        ...extraOffFields(error.details),
       },
     };
   if (code === "NS429") return { status: 429, body: { error: "run_limit" } };

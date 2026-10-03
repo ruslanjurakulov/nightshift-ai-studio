@@ -54,7 +54,11 @@ export async function POST(request: Request) {
   if (error) {
     const mapped = mapDownloadError(error);
     const short = mapped.error === "insufficient_credits" ? parseInsufficient(error) : null;
-    return NextResponse.json({ error: mapped.error, ...(short ?? {}) }, { status: mapped.status });
+    const off = short?.extraOff ? { extra_off: true, extra: short.extra ?? null } : {};
+    return NextResponse.json(
+      { error: mapped.error, ...(short ? { available: short.available, needed: short.needed } : {}), ...off },
+      { status: mapped.status },
+    );
   }
   const out = (data ?? {}) as { id?: number; charged?: number; reused?: boolean; free_reason?: string | null };
   const { data: video } = await supabase.from("videos").select("channel_id").eq("video_id", videoId).maybeSingle();
