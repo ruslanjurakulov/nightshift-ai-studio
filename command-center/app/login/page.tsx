@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/config";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { AuthAlert, AuthField, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
+import { safeLoginReturn } from "@/lib/safe-redirect";
 import { classifySignInError, isCallbackError, type CallbackError, type SignInOutcome } from "@/lib/signup";
 
 export default function LoginPage() {
@@ -48,7 +49,9 @@ export default function LoginPage() {
       setError(messages[classifySignInError(error)]);
       return;
     }
-    router.push("/command-center");
+    // A connection request from an AI app sent this person here: back to it
+    // (only that exact page is honoured), otherwise the app as always.
+    router.push(safeLoginReturn(new URLSearchParams(window.location.search).get("next"), "/command-center"));
     router.refresh();
   }
 

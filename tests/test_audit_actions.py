@@ -16,6 +16,15 @@ REPO = Path(__file__).resolve().parent.parent
 COMMAND_CENTER = REPO / "command-center"
 MIGRATION = REPO / "supabase" / "migrations" / "0087_audit_and_rate_hardening.sql"
 
+
+def latest_definition() -> Path:
+    """The highest-numbered migration that (re)defines audit_action_allowed: 0093
+    replaced 0087's list with the same list plus its own actions, and the newest
+    definition is the one a database runs."""
+    defining = sorted(p for p in (REPO / "supabase" / "migrations").glob("*.sql")
+                      if "create or replace function public.audit_action_allowed" in p.read_text(encoding="utf-8"))
+    return defining[-1]
+
 ACTION = re.compile(
     r"""action:\s*(?:[^"'`,}]*?\?\s*)?["'`]([A-Za-z_.${}]+)["'`](?:\s*:\s*["'`]([A-Za-z_.${}]+)["'`])?""")
 
@@ -24,7 +33,7 @@ HELPER = re.compile(r"""\baudit[A-Z]\w*\(\s*["']([a-z_]+\.[a-z_.]+)["']""")
 
 
 def database_actions():
-    text = MIGRATION.read_text(encoding="utf-8")
+    text = latest_definition().read_text(encoding="utf-8")
     block = re.search(r"coalesce\(p_action, ''\) = any \(array\[(.*?)\]::text\[\]\)", text, re.S).group(1)
     return set(re.findall(r"'([a-z_.]+)'", block))
 
@@ -70,7 +79,7 @@ class AuditActions(unittest.TestCase):
         learnings = (COMMAND_CENTER / "lib" / "learnings.ts").read_text(encoding="utf-8")
         self.assertIn('b.decision !== "approve" && b.decision !== "reject"', learnings,
                       "a decision was added: extend audit_action_allowed")
-        text = MIGRATION.read_text(encoding="utf-8")
+        text = latest_definition().read_text(encoding="utf-8")
         self.assertIn(r"'^social\.(instagram|tiktok)\.(connect|connect_failed|disconnect)$'", text)
         self.assertIn(r"'^learning\.(approve|reject)$'", text)
 

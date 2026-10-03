@@ -76,9 +76,11 @@ Yakuniy narxni **siz** Paddle'da qo'yasiz; kredit miqdorini bazada o'zgartirasiz
 | `api_access` — API'ni yoqish huquqi | – | ✓ | ✓ | ✓ | **enforced** |
 | `models_image` / `models_video` / `models_audio` | basic | premium | all | all | planned |
 | `series`, `channel_dna`, `thumbnail_studio` | – | ✓ | ✓ | ✓ | planned |
-| `autopilot`, `workflows`, `repurposing`, `mcp` | – | – | ✓ | ✓ | planned |
+| `autopilot`, `workflows`, `repurposing` | – | – | ✓ | ✓ | planned |
+| `mcp` — AI ilovalarni (Claude, ChatGPT va boshqalar) OAuth bilan ulash | – | ✓ | ✓ | ✓ | **enforced** (0093) |
 
 - **enforced** — bugun tekshiriladi va `/pricing` sahifasida ko'rsatiladi.
+- **`mcp`** (0093) — obuna xususiyati: Free ham, faqat paket sotib olgan (obunasi yo'q) mijoz ham ulay olmaydi; Creator, Pro, Studio ulaydi. Ulangan ilova **sayt kreditlarini** sarflaydi (API'ning dollar balansini emas), har bir ulanish uchun oylik kredit limiti bilan. Tekshiruv uch joyda: rozilik sahifasida, token/refresh endpointlarida va **har bir chaqiruvda**; obuna bekor bo'lsa, ulanish "to'xtatilgan" bo'ladi va tarif qaytganda qayta ulanmasdan ishlaydi. Qaysi tariflarda borligi — `plan_entitlements` dagi bitta qator: `update plan_entitlements set value = 'false' where plan_id = 'creator' and key = 'mcp';`
 - **planned** — bazada saqlanadi, lekin hali hech narsa tekshirmaydi, shuning
   uchun **sahifada ko'rsatilmaydi** (va'da qilinmagan narsani sotmaymiz). Funksiya
   tayyor bo'lganda, uni tekshiradigan kod bilan **bir PR'da** `status` ni

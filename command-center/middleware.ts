@@ -16,9 +16,12 @@ import {
   isPublicApiPath,
   isPublicFontPath,
   isSignedMediaPath,
+  isUnknownDocsPath,
   isUnknownSolutionPath,
 } from "@/lib/public-paths";
+import { authorizeReturnPath } from "@/lib/oauth/authorize";
 import { conceptDecision, conceptsEnabled } from "@/lib/concepts";
+import { devPageDecision, devPagesEnabled } from "@/lib/dev-pages";
 import { buildCsp, cspHeaderName, cspMode, makeNonce, reportUri } from "@/lib/security/csp";
 
 /** Next's own route for app/not-found.tsx (it is what an unmatched URL renders). */
@@ -109,6 +112,14 @@ async function gate(request: NextRequest): Promise<NextResponse> {
     served.headers.set("X-Robots-Tag", "noindex, nofollow");
     return served;
   }
+  // The CLI and Skills pages (lib/dev-pages.ts): public only while DEV_CLI_PAGE=1.
+  // Off, exactly those two paths are the public 404 — signed in or out, with or
+  // without a backend; on, they are public pages like /docs/api. Decided here,
+  // for these two exact strings only: the matcher, gateDecision() and the
+  // public-path lists are untouched (BR-H-001).
+  const devPage = devPageDecision(request.nextUrl.pathname, devPagesEnabled());
+  if (devPage === "hide") return notFoundResponse(request);
+  if (devPage === "serve") return NextResponse.next({ request });
   // The public pages' two self-hosted font files, by exact name: static, public,
   // and on the critical path of a Russian page's first paint.
   if (isPublicFontPath(request.nextUrl.pathname)) return NextResponse.next({ request });
@@ -164,13 +175,21 @@ async function gate(request: NextRequest): Promise<NextResponse> {
   // root not-found page: no layout of the app runs, nothing is read.
   if (
     decision === "to-login" &&
-    (isUnknownRootPath(request.nextUrl.pathname) || isUnknownSolutionPath(request.nextUrl.pathname))
+    (isUnknownRootPath(request.nextUrl.pathname) ||
+      isUnknownSolutionPath(request.nextUrl.pathname) ||
+      isUnknownDocsPath(request.nextUrl.pathname))
   ) {
     return notFoundResponse(request);
   }
   if (decision === "to-login" || decision === "to-home") {
     const url = request.nextUrl.clone();
     url.pathname = decision === "to-login" ? "/login" : "/";
+    // An AI app's connection request comes back to itself after sign-in. The
+    // login page only honours a return path of exactly this shape
+    // (lib/safe-redirect.ts safeLoginReturn), so this is no open redirect.
+    if (decision === "to-login" && request.nextUrl.pathname === "/oauth/authorize") {
+      url.search = `?next=${encodeURIComponent(authorizeReturnPath(request.nextUrl.search))}`;
+    }
     return NextResponse.redirect(url);
   }
   // Served as-is, with any refreshed auth cookies. The public pages sit outside

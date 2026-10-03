@@ -29,3 +29,18 @@ export function needsKeyCheck(body: unknown): boolean {
  * offers no stream.
  */
 export const MCP_METHODS = ["POST"] as const;
+
+/**
+ * The WWW-Authenticate challenge of a 401 (RFC 6750 3, RFC 9728 5.1): where a
+ * client discovers how to get a token, and the permissions to ask for. With
+ * `invalidToken` it also says the presented token was the problem, so a client
+ * holding a refresh token knows to use it.
+ */
+export function wwwAuthenticate(resourceMetadata: string, scopes: readonly string[], invalidToken = false): string {
+  const parts = [
+    ...(invalidToken ? ['error="invalid_token"', 'error_description="The access token is missing, expired, revoked or not for this server"'] : []),
+    `resource_metadata="${resourceMetadata}"`,
+    `scope="${scopes.join(" ")}"`,
+  ];
+  return `Bearer ${parts.join(", ")}`;
+}

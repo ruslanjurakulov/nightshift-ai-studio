@@ -338,13 +338,13 @@ export const siteEn = {
         what: [
           { title: "REST API", body: "Channels, videos, jobs, downloads and balance under /api/v1, authorised with a bearer key." },
           { title: "MCP endpoint", body: "The same keys work with assistants that speak the Model Context Protocol." },
-          { title: "Its own balance", body: "API use is paid from a separate prepaid balance with monthly limits you can see." },
+          { title: "Its own balance", body: "Videos made over the API are paid from a separate prepaid balance with monthly limits you can see. Generations use your credits, as in the Studio." },
           { title: "Keys you control", body: "Create and revoke keys in the Developer console, and see usage and limits in the same place." },
         ],
         not: [
           "It will not open the API until you turn it on and accept the API terms.",
           "It will not publish through a side door — videos made over the API pass the same approval gate.",
-          "It will not draw API calls from your credit balance.",
+          "It will not mix the two balances: videos are paid from the API balance, generations from your credits.",
         ],
         start: ["Read the API reference", "Activate the API in the Developer console", "Create a key and make your first call"],
         docs: "Read the API reference",

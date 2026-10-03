@@ -3,6 +3,8 @@ import type { Dictionary } from "@/lib/i18n";
 import { LEGAL } from "@/lib/legal";
 import { SOLUTION_IDS, solutionHref } from "@/lib/solutions";
 import { BrandMark } from "@/components/site/BrandMark";
+import { devFor } from "@/lib/i18n/dev";
+import { devPagesEnabled } from "@/lib/dev-pages";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 
@@ -20,6 +22,7 @@ type FooterLink = { href: string; label: string; external?: boolean };
  */
 export function PublicFooter({ t }: { t: Dictionary }) {
   const f = t.site.footer;
+  const dev = devFor(t);
   const contact: FooterLink = LEGAL.contactEmail
     ? { href: `mailto:${LEGAL.contactEmail}`, label: f.contact, external: true }
     : { href: "/terms#contact", label: f.contact };
@@ -32,12 +35,25 @@ export function PublicFooter({ t }: { t: Dictionary }) {
         { href: "/#studio", label: f.studio },
         { href: "/pricing", label: f.pricing },
         { href: "/#faq", label: f.faq },
-        { href: "/docs/api", label: f.api },
       ],
     },
     {
       title: f.solutions,
       links: SOLUTION_IDS.map((id) => ({ href: solutionHref(id), label: pages.find((p) => p.id === id)?.nav ?? id })),
+    },
+    {
+      // CLI and Skills are linked only while their flag is on (lib/dev-pages.ts).
+      title: dev.nav.label,
+      links: [
+        { href: "/docs/api", label: f.api },
+        { href: "/mcp", label: dev.nav.mcp },
+        ...(devPagesEnabled()
+          ? [
+              { href: "/docs/cli", label: dev.nav.cli },
+              { href: "/docs/skills", label: dev.nav.skills },
+            ]
+          : []),
+      ],
     },
     {
       title: f.company,

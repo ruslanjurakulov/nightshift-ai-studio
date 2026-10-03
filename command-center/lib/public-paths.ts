@@ -1,4 +1,5 @@
 import { SOLUTIONS_PATH, SOLUTION_IDS, solutionHref } from "@/lib/solutions";
+import { OAUTH_PUBLIC_PATHS, WELL_KNOWN_PATHS } from "@/lib/oauth/config";
 
 /**
  * Which URLs a signed-out visitor may see, and what the auth gate does with
@@ -23,8 +24,11 @@ export const LEGAL_PATHS = ["/privacy", "/terms"] as const;
 
 /** Always public: what a credit pack costs. Paddle's reviewers read it signed
  *  out, and a signed-in user sees the same page (plus the live credit rates).
- *  The API reference and its OpenAPI spec are read before anyone has a key. */
-export const INFO_PATHS = ["/pricing", "/docs/api", "/docs/api/openapi.json"] as const;
+ *  The API reference and its OpenAPI spec are read before anyone has a key,
+ *  and so is the page that says how to connect an AI assistant (/mcp, a page —
+ *  the server itself is /api/mcp, below). /docs/cli and /docs/skills are not
+ *  here: they are public only while DEV_CLI_PAGE=1 (lib/dev-pages.ts). */
+export const INFO_PATHS = ["/pricing", "/docs/api", "/docs/api/openapi.json", "/mcp"] as const;
 
 /**
  * Invite links (migration 0092). `/i/<token>` is a route handler that works
@@ -62,8 +66,28 @@ export const PUBLIC_API_PREFIX = "/api/v1";
 /** The MCP endpoint (Streamable HTTP): the same bearer keys, exactly this path. */
 export const MCP_PATH = "/api/mcp";
 
+/**
+ * The server-to-server half of MCP over OAuth (migration 0093): the discovery
+ * documents and the registration, token and revocation endpoints. An AI app's
+ * backend calls them with no browser session, and each authenticates by what
+ * it is handed (a code, a refresh token), so the cookie gate must neither
+ * redirect them nor spend a session lookup. EXACT names only: `/.well-known/x`,
+ * `/oauth/token/x` and `/oauth/tokens` are not public. /oauth/authorize (the
+ * consent page) and /oauth/decision need a signed-in person and stay gated.
+ */
+export function isOAuthPublicPath(pathname: string): boolean {
+  return (
+    (OAUTH_PUBLIC_PATHS as readonly string[]).includes(pathname) || (WELL_KNOWN_PATHS as readonly string[]).includes(pathname)
+  );
+}
+
 export function isPublicApiPath(pathname: string): boolean {
-  return pathname === PUBLIC_API_PREFIX || pathname.startsWith(PUBLIC_API_PREFIX + "/") || pathname === MCP_PATH;
+  return (
+    pathname === PUBLIC_API_PREFIX ||
+    pathname.startsWith(PUBLIC_API_PREFIX + "/") ||
+    pathname === MCP_PATH ||
+    isOAuthPublicPath(pathname)
+  );
 }
 
 /**
@@ -107,6 +131,18 @@ export function isUnknownSolutionPath(pathname: string): boolean {
   return p.startsWith(SOLUTIONS_PATH + "/") && !(SOLUTION_PATHS as readonly string[]).includes(p);
 }
 
+/**
+ * A URL under /docs that is not one of the listed pages: a mistyped link.
+ * Nothing in the app lives there (`docs` is a reserved segment), so a
+ * signed-out visitor gets the 404 rather than a sign-in form (middleware.ts).
+ * /docs/cli and /docs/skills are decided earlier, by their flag
+ * (lib/dev-pages.ts), and never reach this check.
+ */
+export function isUnknownDocsPath(pathname: string): boolean {
+  const p = normalize(pathname);
+  return p.startsWith("/docs/") && !(ALWAYS_PUBLIC_PATHS as readonly string[]).includes(p);
+}
+
 /** Served as-is to anyone, signed in or not, without channel resolution. */
 export const ALWAYS_PUBLIC_PATHS = [
   ...LEGAL_PATHS,
@@ -118,7 +154,7 @@ export const ALWAYS_PUBLIC_PATHS = [
 
 /** The pages the sitemap lists: every public page a visitor reads, not the
  *  sign-in flow, the machine-readable spec or the crawler files. */
-export const SITEMAP_PATHS = ["/", "/pricing", ...SOLUTION_PATHS, "/docs/api", "/privacy", "/terms"] as const;
+export const SITEMAP_PATHS = ["/", "/pricing", ...SOLUTION_PATHS, "/docs/api", "/mcp", "/privacy", "/terms"] as const;
 
 /** Create an account. Like /login, only for someone signed out: a signed-in
  *  user asking for it is sent on to their app. */
@@ -157,6 +193,10 @@ export const RESERVED_ROOT_SEGMENTS = [
   "solutions",
   "api",
   "docs",
+  // The consent page and the token endpoints of MCP over OAuth (0093).
+  "oauth",
+  // The page about connecting an AI assistant (/mcp); the server is /api/mcp.
+  "mcp",
   // Invite links (/i/<token>) and their notice page (/invite).
   "i",
   "invite",
