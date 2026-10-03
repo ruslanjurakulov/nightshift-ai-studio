@@ -285,18 +285,20 @@ def test_an_unknown_or_malformed_key_is_refused(conn, sc):
 # ── organizations and membership ────────────────────────────────────────────
 
 def test_customer_cannot_invite_into_another_org(conn, sc):
+    # Since 0091 nobody can invite: the refusal is the privilege, not a role check.
     with acting(conn, sc.bob.actor) as s:
         out = s.run("select public.invite_org_member(%s, 'bob2@b.test', 'owner')", [sc.alice.org])
     assert not out.ok and out.sqlstate == "42501", out
 
 
-def test_binding_invites_only_claims_the_callers_own_email(conn, sc):
+def test_a_legacy_pending_row_is_offered_to_nobody_and_binds_to_nobody(conn, sc):
     with acting(conn, sc.bob.actor) as s:
         s.value("select public.bind_org_memberships()")
         assert s.value("select public.is_org_member(%s, 'viewer')", [sc.alice.org]) is False
-        assert s.rows("select id from public.my_invites()") == []
-    with acting(conn, sc.invitee) as s:  # control: the invite is offered to its addressee
-        assert [str(r[0]) for r in s.rows("select org_id from public.my_invites()")] == [sc.alice.org]
+        assert not s.run("select * from public.my_invites()").ok
+    with acting(conn, sc.invitee) as s:  # control: not even its addressee can list or accept it
+        assert not s.run("select * from public.my_invites()").ok
+        assert s.value("select public.is_org_member(%s, 'viewer')", [sc.alice.org]) is False
 
 
 def test_my_organizations_lists_only_the_callers_own(conn, sc):

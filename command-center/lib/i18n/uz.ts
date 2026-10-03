@@ -2354,7 +2354,7 @@ export const uz: Dictionary = {
       notDraftable: "Bu izoh uchun javob tayyorlab boʻlmaydi.",
       channelNotReady: "Kanal javob berish huquqisiz ulangan. «Kanallar» sahifasida uni qayta ulang.",
       invalidBody: "Javob boʻsh boʻlishi mumkin emas.",
-      alreadyApproved: "Hamkasbingiz bu qoralamani boshqa matn bilan allaqachon tasdiqlagan. Tasdiqlangan javobni koʻrish uchun sahifani yangilang.",
+    alreadyApproved: "Bu qoralama boshqa matn bilan allaqachon tasdiqlangan (boshqa tabda yoki oynada). Tasdiqlangan javobni koʻrish uchun sahifani yangilang.",
       conflict: "Izoh shu orada oʻzgardi. Sahifani yangilang.",
       notInstalled: "Izohlar qutisi bu ish maydoni uchun hali yoqilmagan.",
       failed: "Bajarilmadi. Hech narsa eʼlon qilinmadi. Qayta urinib koʻring.",
