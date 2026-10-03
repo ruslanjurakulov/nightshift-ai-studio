@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
@@ -24,6 +24,21 @@ import { unitMeaning } from "@/lib/creditUnits";
  * and this editor is only offered to them. Who changed a price and when is
  * stamped by the database, not sent from here.
  */
+/** A unit name that may wrap only after an underscore (a lone trailing "p" or "i" on its own line is not a name), and still copies as the exact name. */
+function breakable(unit: string) {
+  const parts = unit.split("_");
+  return parts.map((part, i) => (
+    <Fragment key={i}>
+      {part}
+      {i < parts.length - 1 && (
+        <>
+          _<wbr />
+        </>
+      )}
+    </Fragment>
+  ));
+}
+
 export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[]; canEdit: boolean }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -87,7 +102,8 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
     isFlatUnit(p.unit) ? t.credits.flatUnit : `${p.margin ? "+" : ""}${formatCredits(p.margin * 100, locale)}%`;
 
   const inputClass =
-    "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
+    "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[16px] text-[var(--color-fg)] outline-none sm:text-[13px] focus:border-[var(--color-primary)]";
+  const fieldLabel = "text-[10px] uppercase leading-tight tracking-[0.1em] text-[var(--color-muted)]";
   const suggestions = [...SPECIAL_UNITS, ...LEDGER_UNITS];
 
   return (
@@ -106,7 +122,7 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
               return (
                 <li key={p.unit} className="flex flex-col gap-2 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-0">
                   <div className="min-w-0">
-                    <p className="mono break-all text-[13px] text-[var(--color-fg)]">{p.unit}</p>
+                    <p className="mono break-words text-[13px] text-[var(--color-fg)]">{breakable(p.unit)}</p>
                     {meaning && <p className="mt-0.5 text-[12px] leading-snug text-[var(--color-muted)]">{meaning}</p>}
                   </div>
                   <dl className="grid grid-cols-3 gap-x-3">
@@ -207,43 +223,50 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
       )}
 
       {canEdit ? (
-        <div ref={formRef} className="flex flex-wrap items-end gap-3">
-          <input
-            type="text"
-            list="credit-price-units"
-            value={unit}
-            placeholder={t.credits.unitPh}
-            aria-label={t.credits.colUnit}
-            onChange={(e) => setUnit(e.target.value)}
-            className={`w-full sm:w-56 ${inputClass}`}
-          />
+        <div ref={formRef} className="flex flex-wrap items-end gap-3 scroll-mt-24">
+          {/* Visible labels: once a field holds a value its placeholder is gone, and a phone shows no hint of which field is which. */}
+          <label className="flex w-full flex-col gap-1 sm:w-56">
+            <span className={fieldLabel}>{t.credits.colUnit}</span>
+            <input
+              type="text"
+              list="credit-price-units"
+              value={unit}
+              placeholder={t.credits.unitPh}
+              onChange={(e) => setUnit(e.target.value)}
+              className={inputClass}
+            />
+          </label>
           <datalist id="credit-price-units">
             {suggestions.map((u) => (
               <option key={u} value={u} />
             ))}
           </datalist>
-          <input
-            type="number"
-            min="0"
-            step="any"
-            ref={rateRef}
-            value={rate}
-            placeholder={t.credits.ratePh}
-            aria-label={t.credits.colRate}
-            onChange={(e) => setRate(e.target.value)}
-            className={`w-full sm:w-36 ${inputClass}`}
-          />
-          <input
-            type="number"
-            min="0"
-            max="10"
-            step="0.01"
-            value={margin}
-            placeholder={t.credits.marginPh}
-            aria-label={t.credits.colMargin}
-            onChange={(e) => setMargin(e.target.value)}
-            className={`w-full sm:w-32 ${inputClass}`}
-          />
+          <label className="flex w-full flex-col gap-1 sm:w-36">
+            <span className={fieldLabel}>{t.credits.colRate}</span>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              ref={rateRef}
+              value={rate}
+              placeholder={t.credits.ratePh}
+              onChange={(e) => setRate(e.target.value)}
+              className={inputClass}
+            />
+          </label>
+          <label className="flex w-full flex-col gap-1 sm:w-32">
+            <span className={fieldLabel}>{t.credits.colMargin}</span>
+            <input
+              type="number"
+              min="0"
+              max="10"
+              step="0.01"
+              value={margin}
+              placeholder={t.credits.marginPh}
+              onChange={(e) => setMargin(e.target.value)}
+              className={inputClass}
+            />
+          </label>
           <button
             type="button"
             onClick={save}

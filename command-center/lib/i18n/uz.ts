@@ -2742,7 +2742,7 @@ export const uz: Dictionary = {
     colMargin: "Ustama",
     colUpdated: "Yangilangan",
     colCharged: "Birlik uchun yechiladi",
-    flatUnit: "belgilangan",
+    flatUnit: "qatʼiy",
     unitMeaning: {
       videoMinute: "tayyor videoning har daqiqasi uchun",
       jobMinimum: "bitta ish uchun eng kam yechiladigan kredit (belgilangan)",
