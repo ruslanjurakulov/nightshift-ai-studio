@@ -7,7 +7,8 @@ import { StatusLamp } from "@/components/ui/StatusLamp";
 import { useLibraryImages } from "@/components/studio/useLibraryImages";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { coerceJobs, kindLabel, statusView, truncate, type StudioJob } from "@/lib/creative/studio";
+import { coerceJobs, isActiveStatus, kindLabel, statusView, truncate, type StudioJob } from "@/lib/creative/studio";
+import { fmt } from "@/lib/i18n";
 import { toolHref } from "@/lib/home";
 
 const SHOWN = 8;
@@ -29,7 +30,7 @@ export const KIND_ICON: Record<string, LucideIcon> = {
  * controls — cancelling and retrying stay in the Studio, one tap away. A
  * finished picture shows itself when the library still holds it.
  */
-export function RecentStrip({ orgId, onJobs }: { orgId: string | null; onJobs?: (jobs: StudioJob[]) => void }) {
+export function RecentStrip({ orgId }: { orgId: string | null }) {
   const { t } = useI18n();
   const path = useChannelPath();
   const [jobs, setJobs] = useState<StudioJob[] | null>(null);
@@ -44,9 +45,7 @@ export function RecentStrip({ orgId, onJobs }: { orgId: string | null; onJobs?: 
         const body = (await res.json().catch(() => ({}))) as { jobs?: unknown; error?: unknown };
         if (!live) return;
         if (res.ok) {
-          const list = coerceJobs(body.jobs).slice(0, SHOWN);
-          setJobs(list);
-          onJobs?.(list);
+          setJobs(coerceJobs(body.jobs).slice(0, SHOWN));
           setState("ok");
         } else setState(body.error === "creative_unavailable" ? "unavailable" : "failed");
       } catch {
@@ -56,9 +55,10 @@ export function RecentStrip({ orgId, onJobs }: { orgId: string | null; onJobs?: 
     return () => {
       live = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- onJobs is a plain report-back, not a trigger
   }, [orgId]);
 
+  // In plain words, inside the section that already waits for this read, so nothing above it moves when it arrives.
+  const making = (jobs ?? []).filter((j) => isActiveStatus(j.status)).length;
   const pictures = (jobs ?? []).filter((j) => j.status === "completed" && j.result_asset_ids.length > 0);
   const library = useLibraryImages(orgId ?? "", { enabled: Boolean(orgId) && pictures.length > 0, key: pictures.map((j) => j.id).join(",") });
   const thumbs = new Map(library.images.map((i) => [i.id, i.thumbUrl ?? i.viewUrl ?? null]));
@@ -73,6 +73,12 @@ export function RecentStrip({ orgId, onJobs }: { orgId: string | null; onJobs?: 
           {t.home.recentAll}
         </Link>
       </div>
+
+      {making > 0 && (
+        <p className="fl-hint" data-testid="home-making">
+          <StatusLamp tone="run" live label={making === 1 ? t.home.makingOne : fmt(t.home.makingMany, { n: making })} /> · {t.home.makingBody}
+        </p>
+      )}
 
       {state === "loading" && (
         <div className="flex gap-3 overflow-hidden" aria-hidden>

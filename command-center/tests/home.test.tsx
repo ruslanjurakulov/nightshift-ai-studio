@@ -256,6 +256,19 @@ describe("the rest of Home", () => {
     expect(writes()).toEqual([]);
   });
 
+  it("says in plain words that a clip is being made, under the recent clips and not above the create card", async () => {
+    fetchMock.mockImplementation((url: string) =>
+      String(url).startsWith("/api/creative/jobs")
+        ? json({ jobs: [{ id: "j1", capability: "t2v", status: "running", requested_model: "m", params: { prompt: "a boat" }, created_at: "2026-10-01T00:00:00Z" }] })
+        : json({}, 404),
+    );
+    render(wrap(<HomeHub channels={[card()]} currentSlug="chronos" orgId={ORG} allPrivate />));
+    const line = await screen.findByTestId("home-making");
+    expect(line.textContent).toContain(t.home.makingOne);
+    expect(screen.getByTestId("home-making").closest("section")?.getAttribute("aria-labelledby")).toBe("home-recent");
+    expect(screen.queryByTestId("home-status")).toBeNull();
+  });
+
   it("with no channel at all, the channels section is the connect step", () => {
     render(wrap(<HomeHub channels={[]} currentSlug={null} orgId={null} allPrivate={false} />));
     expect(screen.getByText(t.home.noChannelsTitle)).toBeTruthy();

@@ -26,7 +26,7 @@ import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Timecode } from "@/components/ui/Timecode";
 import { RecentStrip } from "@/components/home/RecentStrip";
 import { AssistantPlanner } from "@/components/assistant/AssistantPlanner";
-import { isActiveStatus, type StudioJob, type StudioModel } from "@/lib/creative/studio";
+import type { StudioModel } from "@/lib/creative/studio";
 import "@/components/create/flow.css";
 
 const QUICK_ICON: Record<QuickActionId, LucideIcon> = {
@@ -80,7 +80,6 @@ export function HomeHub({
   const { t } = useI18n();
   const path = useChannelPath();
   const composer = useRef<ComposerHandle>(null);
-  const [jobs, setJobs] = useState<StudioJob[]>([]);
   const runnable: ComposerChannel[] = channels
     .filter((c) => c.standing !== "draft")
     .map((c) => ({ slug: c.slug, name: c.name, autoPublish: c.autoPublish }));
@@ -94,7 +93,6 @@ export function HomeHub({
 
   // What needs the person, in plain words: finished videos waiting for them, clips being made.
   const waiting = channels.reduce((n, c) => n + (c.waiting ?? 0), 0);
-  const making = jobs.filter((j) => isActiveStatus(j.status)).length;
   const target = channels.find((c) => c.slug === currentSlug && c.standing !== "draft") ?? channels.find((c) => c.standing !== "draft");
 
   return (
@@ -108,7 +106,7 @@ export function HomeHub({
           <p className="max-w-[60ch] text-base leading-relaxed text-[var(--color-muted)]">{t.home.heroLead}</p>
         </div>
 
-        {(waiting > 0 || making > 0) && (
+        {waiting > 0 && (
           <div className="flex flex-col gap-3" data-testid="home-status">
             {waiting > 0 && (
               <div className="fl-card sm:!flex-row sm:items-center sm:justify-between" data-tone="waiting">
@@ -121,14 +119,6 @@ export function HomeHub({
                 <Link href={path("/videos")} className="btn-quiet shrink-0 sm:self-center">
                   {t.home.reviewNow}
                 </Link>
-              </div>
-            )}
-            {making > 0 && (
-              <div className="fl-card">
-                <p className="text-lg font-semibold leading-snug text-[var(--color-fg)]">
-                  <StatusLamp tone="run" live label={making === 1 ? t.home.makingOne : fmt(t.home.makingMany, { n: making })} />
-                </p>
-                <p className="fl-hint">{t.home.makingBody}</p>
               </div>
             )}
           </div>
@@ -186,7 +176,7 @@ export function HomeHub({
               {t.home.videosTitle}
             </h2>
             {videos.length > 0 && (
-              <Link href={path("/videos")} className="tap-link text-sm text-[var(--color-primary)] hover:underline">
+              <Link href={path("/videos")} className="tap-link inline-flex min-h-11 min-w-11 items-center justify-end text-sm text-[var(--color-primary)] hover:underline">
                 {t.home.videosAll}
               </Link>
             )}
@@ -233,7 +223,7 @@ export function HomeHub({
         </ul>
       </section>
 
-      <RecentStrip orgId={orgId} onJobs={setJobs} />
+      <RecentStrip orgId={orgId} />
 
       {/* ── Your channels ─────────────────────────────────────────────── */}
       {channels.length > 0 && (

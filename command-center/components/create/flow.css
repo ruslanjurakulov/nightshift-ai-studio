@@ -7,6 +7,8 @@
   flex-direction: column;
   gap: var(--ns-gap);
   min-width: 0;
+  /* One calm column: a form this size reads best at about 55rem, however wide the screen. */
+  max-width: 55rem;
 }
 .fl-card {
   display: flex;
