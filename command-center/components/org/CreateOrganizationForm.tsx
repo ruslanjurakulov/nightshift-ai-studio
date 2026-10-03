@@ -56,34 +56,34 @@ export function CreateOrganizationForm({ variant }: { variant: "first" | "anothe
   }
 
   return (
-    <form onSubmit={submit} className="panel flex flex-col gap-3 p-4">
+    <form onSubmit={submit} className="panel flex flex-col gap-3 p-5 sm:p-6">
       <div>
         <h2 className="t-section">{variant === "first" ? t.org.createTitle : t.org.createAnotherTitle}</h2>
-        <p className="mt-1 text-[13px] text-[var(--color-muted)]">
+        <p className="mt-1 text-sm text-[var(--color-muted)]">
           {variant === "first" ? t.org.createHint : t.org.createAnotherHint}
         </p>
       </div>
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-1 flex-col gap-1">
-          <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.org.nameLabel}</span>
+          <span className="text-xs text-[var(--color-muted)]">{t.org.nameLabel}</span>
           <input
             type="text"
             value={name}
             maxLength={ORG_NAME_MAX}
             onChange={(e) => setName(e.target.value)}
             placeholder={t.org.namePh}
-            className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+            className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
           />
         </label>
         <button
           type="submit"
           disabled={busy || !valid}
-          className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
+          className="btn-sky is-solid pill px-5 py-2 text-sm disabled:opacity-40"
         >
           {busy ? t.org.creating : t.org.create}
         </button>
       </div>
-      {error && <p className="mono text-[12px] text-[var(--color-fail)]">{error}</p>}
+      {error && <p className="tnum text-xs text-[var(--color-fail)]">{error}</p>}
     </form>
   );
 }

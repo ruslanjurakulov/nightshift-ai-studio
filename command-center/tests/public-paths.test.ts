@@ -286,7 +286,7 @@ describe("a mistyped solution link", () => {
 });
 
 describe("the public pages' font files", () => {
-  it.each(["/fonts/sofia-sans-extra-condensed-cyrillic-v6.woff2", "/fonts/sofia-sans-cyrillic-v20.woff2"])(
+  it.each(["/fonts/onest-latin-v1.woff2", "/fonts/onest-latin-ext-v1.woff2", "/fonts/onest-cyrillic-v1.woff2", "/fonts/onest-cyrillic-ext-v1.woff2"])(
     "serves %s to anyone, without a sign-in redirect",
     async (path) => {
       const { redirect, res } = await visit(path, false);
@@ -296,7 +296,7 @@ describe("the public pages' font files", () => {
     },
   );
 
-  it.each(["/fonts", "/fonts/other.woff2", "/fonts/sofia-sans-cyrillic-v20.woff2/x", "/fonts/../videos", "/chronos/fonts/sofia-sans-cyrillic-v20.woff2"])(
+  it.each(["/fonts", "/fonts/other.woff2", "/fonts/onest-cyrillic-v1.woff2/x", "/fonts/../videos", "/chronos/fonts/onest-cyrillic-v1.woff2"])(
     "matches exactly: %s is not public",
     (path) => {
       expect(isPublicFontPath(path)).toBe(false);

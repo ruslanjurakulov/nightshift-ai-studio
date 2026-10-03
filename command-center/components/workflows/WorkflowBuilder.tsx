@@ -32,7 +32,7 @@ import {
 import { saveWorkflow } from "./workflowsApi";
 
 const field =
-  "pill border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
+  "pill border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
 
 /**
  * The workflow editor: a name and two to six steps. Saving costs nothing and
@@ -81,12 +81,12 @@ export function WorkflowBuilder({
   }
 
   return (
-    <section aria-labelledby={`${id}-h`} className="panel flex flex-col gap-4 p-4">
+    <section aria-labelledby={`${id}-h`} className="panel flex flex-col gap-4 p-5 sm:p-6">
       <h2 id={`${id}-h`} className="m-0 text-[15px] font-semibold">
         {initial ? b.editTitle : b.newTitle}
       </h2>
 
-      <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+      <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
         {b.name}
         <input
           value={draft.name}
@@ -118,25 +118,25 @@ export function WorkflowBuilder({
           type="button"
           disabled={draft.steps.length >= MAX_STEPS}
           onClick={() => setDraft((d) => addStep(d))}
-          className="btn-sky ghost pill inline-flex items-center gap-2 px-4 py-2 text-[13px]"
+          className="btn-sky ghost pill inline-flex items-center gap-2 px-4 py-2 text-sm"
         >
           <Plus className="size-4" aria-hidden />
           {b.addStep}
         </button>
-        {draft.steps.length >= MAX_STEPS ? <span className="text-[12px] text-[var(--color-muted)]">{b.maxSteps}</span> : null}
+        {draft.steps.length >= MAX_STEPS ? <span className="text-xs text-[var(--color-muted)]">{b.maxSteps}</span> : null}
       </div>
 
       {error ? (
-        <p role="alert" className="m-0 text-[13px] text-[var(--color-fail)]">
+        <p role="alert" className="m-0 text-sm text-[var(--color-fail)]">
           {error}
         </p>
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={onSave} disabled={busy} className="btn-sky is-solid pill px-4 py-2 text-[13px]">
+        <button type="button" onClick={onSave} disabled={busy} className="btn-sky is-solid pill px-4 py-2 text-sm">
           {busy ? b.saving : b.save}
         </button>
-        <button type="button" onClick={onCancel} disabled={busy} className="btn-sky is-quiet pill px-4 py-2 text-[13px]">
+        <button type="button" onClick={onCancel} disabled={busy} className="btn-sky is-quiet pill px-4 py-2 text-sm">
           {b.cancel}
         </button>
       </div>
@@ -176,7 +176,7 @@ function StepEditor({
   return (
     <li className="studio-field flex flex-col gap-3 rounded-2xl border border-[var(--color-border)] p-3">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="m-0 text-[13px] font-semibold">{fmt(b.stepN, { n })}</h3>
+        <h3 className="m-0 text-sm font-semibold">{fmt(b.stepN, { n })}</h3>
         {canRemove ? (
           <button
             type="button"
@@ -190,7 +190,7 @@ function StepEditor({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
           {b.tool}
           <select value={step.capability} onChange={(e) => onCapability(e.target.value as WorkflowCapability)} className={field}>
             {WORKFLOW_CAPABILITIES.map((c) => (
@@ -200,7 +200,7 @@ function StepEditor({
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
           {b.model}
           <select value={step.model} onChange={(e) => onPatch({ model: e.target.value })} className={field} disabled={available.length === 0}>
             <option value="">{available.length === 0 ? b.noModels : b.chooseModel}</option>
@@ -215,8 +215,8 @@ function StepEditor({
 
       {picture ? (
         <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
-          <legend className="mb-1 p-0 text-[12px] text-[var(--color-muted)]">{b.picture}</legend>
-          <label className="flex items-center gap-2 text-[13px]">
+          <legend className="mb-1 p-0 text-xs text-[var(--color-muted)]">{b.picture}</legend>
+          <label className="flex items-center gap-2 text-sm">
             <input
               type="radio"
               name={`src-${step.key}`}
@@ -236,10 +236,10 @@ function StepEditor({
             />
           ) : null}
           {earlier.length === 0 ? (
-            <p className="m-0 text-[12px] text-[var(--color-muted)]">{b.noEarlierPicture}</p>
+            <p className="m-0 text-xs text-[var(--color-muted)]">{b.noEarlierPicture}</p>
           ) : (
             earlier.map((k) => (
-              <label key={k} className="flex items-center gap-2 text-[13px]">
+              <label key={k} className="flex items-center gap-2 text-sm">
                 <input
                   type="radio"
                   name={`src-${step.key}`}
@@ -255,8 +255,8 @@ function StepEditor({
 
       {words ? (
         <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
-          <legend className="mb-1 p-0 text-[12px] text-[var(--color-muted)]">{b.words}</legend>
-          <label className="flex items-center gap-2 text-[13px]">
+          <legend className="mb-1 p-0 text-xs text-[var(--color-muted)]">{b.words}</legend>
+          <label className="flex items-center gap-2 text-sm">
             <input
               type="radio"
               name={`words-${step.key}`}
@@ -275,7 +275,7 @@ function StepEditor({
               className={field}
             />
           ) : null}
-          <label className="flex items-center gap-2 text-[13px]">
+          <label className="flex items-center gap-2 text-sm">
             <input
               type="radio"
               name={`words-${step.key}`}
@@ -300,7 +300,7 @@ function StepEditor({
 
       <div className="flex flex-wrap gap-3">
         {clip ? (
-          <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+          <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
             {b.length}
             <select value={step.seconds} onChange={(e) => onPatch({ seconds: Number(e.target.value) as DraftStep["seconds"] })} className={field}>
               {VIDEO_DURATIONS.map((s) => (
@@ -312,7 +312,7 @@ function StepEditor({
           </label>
         ) : null}
         {shaped ? (
-          <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+          <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
             {b.shape}
             <select value={step.aspect} onChange={(e) => onPatch({ aspect: e.target.value as DraftStep["aspect"] })} className={field}>
               {ASPECT_RATIOS.map((a) => (
@@ -324,7 +324,7 @@ function StepEditor({
           </label>
         ) : null}
         {step.capability === "upscale" ? (
-          <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+          <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
             {b.factor}
             <select value={step.factor} onChange={(e) => onPatch({ factor: Number(e.target.value) as DraftStep["factor"] })} className={field}>
               {[2, 4].map((f) => (

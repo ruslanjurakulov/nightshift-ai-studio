@@ -33,9 +33,9 @@ export function NextAction({
       <div className="flex items-center justify-between gap-3 p-4">
         <div>
           <div className="font-display text-sm font-semibold text-[var(--color-fg)]">{t.ops.nextNone}</div>
-          <div className="mono text-[10px] text-[var(--color-muted)]">{t.ops.nextNoneSub}</div>
+          <div className="tnum text-xs text-[var(--color-muted)]">{t.ops.nextNoneSub}</div>
         </div>
-        <span className="mono text-[10px] font-semibold tracking-wider text-[var(--color-muted)]">{t.ops.nextReady}</span>
+        <span className="tnum text-xs font-semibold text-[var(--color-muted)]">{t.ops.nextReady}</span>
       </div>
     );
   }
@@ -49,9 +49,9 @@ export function NextAction({
         <div className="font-display text-sm font-semibold text-[var(--color-primary)]">
           {fmt(t.ops.nextStage, { s: stage })}
         </div>
-        <div className="mono text-[10px] text-[var(--color-muted)]">{fmt(t.ops.nextAfter, { s: after })}</div>
+        <div className="tnum text-xs text-[var(--color-muted)]">{fmt(t.ops.nextAfter, { s: after })}</div>
       </div>
-      <span className="mono text-[10px] font-semibold tracking-wider text-[var(--color-warn)]">{t.ops.nextWaiting}</span>
+      <span className="tnum text-xs font-semibold text-[var(--color-warn)]">{t.ops.nextWaiting}</span>
     </div>
   );
 }

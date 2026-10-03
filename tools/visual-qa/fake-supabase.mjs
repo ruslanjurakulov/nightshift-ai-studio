@@ -159,9 +159,29 @@ function creditAccountFor(state) {
   return { org_id: ORG.id, balance, reserved: a.st.held };
 }
 
+// FAKE_ADMIN=1: the signed-in person is a platform admin, so the operator-only
+// parts of the Credits page (the raw price list) can be photographed too.
+const ADMIN = process.env.FAKE_ADMIN === "1";
+
 const RPC = {
   my_organizations: [ORG],
-  is_platform_admin: false,
+  is_platform_admin: ADMIN,
+  // Developers: an activated API workspace with made-up figures (read only).
+  api_console: {
+    eligible: true,
+    activated_at: "2026-09-01T08:00:00Z",
+    exempt: false,
+    balance_cents: 2500,
+    reserved_cents: 300,
+    paid_total_cents: 5000,
+    tier: 1,
+    rpm: 60,
+    concurrency: 2,
+    tier_cap_cents: 10000,
+    monthly_limit_cents: null,
+    month_spend_cents: 1200,
+    active_keys: 1,
+  },
   // The price list as charged (0084): the estimate line needs a per-minute price.
   credit_rates: [
     { unit: "video_minute", credits_per_unit: 60, margin: 0, note: null, updated_at: "2026-10-01T00:00:00Z" },
@@ -180,9 +200,21 @@ const RPC = {
   },
 };
 
+const PRICE = (unit, credits_per_unit, margin) => ({ unit, credits_per_unit, margin, updated_at: "2026-09-30T12:00:00Z", updated_by: null });
 const TABLES = {
   channels: [CHANNEL],
   credit_accounts: [{ org_id: ORG.id, balance: 1240, reserved: 180 }],
+  // Made-up rates, only so the operator's price list has rows to look at (FAKE_ADMIN=1).
+  credit_prices: ADMIN
+    ? [
+        PRICE("video_minute", 40, 0.5),
+        PRICE("job_minimum", 5, 0),
+        PRICE("download_1080p_minute", 12, 0.25),
+        PRICE("tts_characters", 0.008, 2),
+        PRICE("model_example_second_1080p_silent", 3, 0.3),
+        PRICE("custom_thing", 1, 0),
+      ]
+    : [],
   // The price list the Usage page reads for "what Free does not include" and the upgrade link.
   plans: Object.values(PLANS).map((p) => ({ id: p.id, name: p.name, sort_order: p.sort_order, monthly_credits: p.monthly_credits, is_default: p.is_default, is_public: true })),
   entitlement_keys: [

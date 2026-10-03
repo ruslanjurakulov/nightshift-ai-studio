@@ -102,19 +102,19 @@ export function InviteFriendsCard({ invite, orgId }: { invite: MyInvite; orgId: 
         <h2 id="invite-title" className="t-section">
           {c.title}
         </h2>
-        <p className="max-w-[60ch] text-[13px] leading-relaxed text-[var(--color-muted)]">
+        <p className="max-w-[60ch] text-sm leading-relaxed text-[var(--color-muted)]">
           {fmt(c.offer, { required: state.required, credits })}
         </p>
       </div>
 
       {!state.link ? (
         <div className="flex flex-col items-start gap-2">
-          <button type="button" onClick={create} disabled={busy || block !== null} className="btn-primary min-h-11 px-5 text-[14px] disabled:opacity-40">
+          <button type="button" onClick={create} disabled={busy || block !== null} className="btn-primary min-h-11 px-5 text-sm disabled:opacity-40">
             {busy ? c.creating : c.create}
           </button>
-          {block === "off" && <p className="text-[12px] text-[var(--color-muted)]">{c.closed}</p>}
+          {block === "off" && <p className="text-xs text-[var(--color-muted)]">{c.closed}</p>}
           {problem === "create" && (
-            <p role="alert" className="text-[12px]" style={{ color: "var(--color-fail)" }}>
+            <p role="alert" className="text-xs" style={{ color: "var(--color-fail)" }}>
               {c.createFailed}
             </p>
           )}
@@ -122,7 +122,7 @@ export function InviteFriendsCard({ invite, orgId }: { invite: MyInvite; orgId: 
       ) : (
         <>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="invite-link" className="text-[12px] text-[var(--color-muted)]">
+            <label htmlFor="invite-link" className="text-xs text-[var(--color-muted)]">
               {c.linkLabel}
             </label>
             {/* The whole link stays readable: it wraps over two or three lines (a one-line field showed
@@ -138,47 +138,47 @@ export function InviteFriendsCard({ invite, orgId }: { invite: MyInvite; orgId: 
                 autoComplete="off"
                 autoCapitalize="off"
                 spellCheck={false}
-                className="mono min-h-11 min-w-0 flex-1 resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-[13px] leading-snug text-[var(--color-fg)] outline-none [overflow-wrap:anywhere] focus:border-[var(--color-primary)]"
+                className="mono min-h-11 min-w-0 flex-1 resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-base leading-snug sm:text-sm text-[var(--color-fg)] outline-none [overflow-wrap:anywhere] focus:border-[var(--color-primary)]"
               />
               <button
                 type="button"
                 onClick={onCopy}
                 disabled={!url}
-                className="btn-primary inline-flex min-h-12 w-full shrink-0 items-center justify-center gap-2 px-4 text-[14px] disabled:opacity-40 sm:w-auto sm:min-w-[7.5rem]"
+                className="btn-primary inline-flex min-h-12 w-full shrink-0 items-center justify-center gap-2 px-4 text-sm disabled:opacity-40 sm:w-auto sm:min-w-[7.5rem]"
               >
                 {copy === "copied" ? <Check aria-hidden className="size-4" /> : <Copy aria-hidden className="size-4" />}
                 {copy === "copied" ? c.copied : c.copy}
               </button>
             </div>
-            <p role="status" aria-live="polite" className="min-h-[1.1em] text-[12px]" style={{ color: copy === "failed" ? "var(--color-fail)" : "var(--color-ok)" }}>
+            <p role="status" aria-live="polite" className="min-h-[1.1em] text-xs" style={{ color: copy === "failed" ? "var(--color-fail)" : "var(--color-ok)" }}>
               {copy === "copied" ? c.copied : copy === "failed" ? c.copyFailed : ""}
             </p>
           </div>
 
           <div className="flex flex-col gap-2">
-            <span className="text-[12px] text-[var(--color-muted)]">{c.progressLabel}</span>
+            <span className="text-xs text-[var(--color-muted)]">{c.progressLabel}</span>
             <Meter className="invite-meter" value={state.joined} held={0} max={state.required} segments={Math.min(state.required, 20)} size="lg" label={c.progressLabel} valueText={progress} />
-            <p className="text-[14px] text-[var(--color-fg)]" data-invite-progress>
+            <p className="text-sm text-[var(--color-fg)]" data-invite-progress>
               {progress}
             </p>
           </div>
 
           {state.paid ? (
-            <p className="text-[14px]" style={{ color: "var(--color-ok)" }} data-invite-earned>
+            <p className="text-sm" style={{ color: "var(--color-ok)" }} data-invite-earned>
               {fmt(c.earned, { credits: formatCredits(state.creditsPaid ?? state.reward, locale) })}{" "}
               <span className="text-[var(--color-muted)]">{c.earnedNote}</span>
             </p>
           ) : state.pending ? (
-            <p className="text-[13px] text-[var(--color-muted)]" data-invite-pending>
+            <p className="text-sm text-[var(--color-muted)]" data-invite-pending>
               {fmt(c.pending, { credits })}
             </p>
           ) : !state.enabled ? (
-            <p className="text-[13px] text-[var(--color-muted)]">{c.paused}</p>
+            <p className="text-sm text-[var(--color-muted)]">{c.paused}</p>
           ) : null}
         </>
       )}
 
-      <p className="max-w-[60ch] text-[12px] leading-relaxed text-[var(--color-muted)]">{c.rules}</p>
+      <p className="max-w-[60ch] text-xs leading-relaxed text-[var(--color-muted)]">{c.rules}</p>
     </section>
   );
 }

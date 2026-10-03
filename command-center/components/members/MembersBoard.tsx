@@ -136,14 +136,14 @@ export function MembersBoard({
   return (
     <div className="rhythm">
       {/* Your role + capability legend */}
-      <div className="panel flex flex-col gap-3 p-4">
+      <div className="panel flex flex-col gap-3 p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-[13px] text-[var(--color-muted)]">{t.members.yourRole}</span>
+          <span className="text-sm text-[var(--color-muted)]">{t.members.yourRole}</span>
           <StatusPill tone={canManage ? "ok" : "idle"} label={roleLabel[myRole]} />
         </div>
         <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
           {ROLES.map((r) => (
-            <li key={r} className="text-[12px] leading-relaxed text-[var(--color-muted)]">
+            <li key={r} className="text-xs leading-relaxed text-[var(--color-muted)]">
               <span className="font-semibold text-[var(--color-fg)]">{roleLabel[r]}</span> — {t.members[`cap_${r}` as const]}
             </li>
           ))}
@@ -152,16 +152,16 @@ export function MembersBoard({
 
       {/* Bootstrap: claim ownership while the roster is empty */}
       {empty && (
-        <div className="panel flex flex-col gap-3 p-4">
+        <div className="panel flex flex-col gap-3 p-5 sm:p-6">
           <div>
             <h2 className="t-section">{t.members.claimTitle}</h2>
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.members.claimHint}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.members.claimHint}</p>
           </div>
           <button
             type="button"
             onClick={claim}
             disabled={busy}
-            className="btn-sky is-solid pill self-start px-5 py-2 text-[13px] disabled:opacity-40"
+            className="btn-sky is-solid pill self-start px-5 py-2 text-sm disabled:opacity-40"
           >
             {busy ? t.members.adding : t.members.claim}
           </button>
@@ -170,25 +170,25 @@ export function MembersBoard({
 
       {/* Add member (owner/admin) */}
       {canManage && !empty && (
-        <div className="panel flex flex-col gap-3 p-4">
+        <div className="panel flex flex-col gap-3 p-5 sm:p-6">
           <h2 className="t-section">{t.members.addTitle}</h2>
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-1 flex-col gap-1">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.members.addEmail}</span>
+              <span className="text-xs text-[var(--color-muted)]">{t.members.addEmail}</span>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder={t.members.emailPh}
-                className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+                className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.members.addRole}</span>
+              <span className="text-xs text-[var(--color-muted)]">{t.members.addRole}</span>
               <select
                 value={role}
                 onChange={(e) => setRole(e.target.value as Role)}
-                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
               >
                 {MANAGE_ROLES.map((r) => (
                   <option key={r} value={r}>{roleLabel[r]}</option>
@@ -200,20 +200,20 @@ export function MembersBoard({
               type="button"
               onClick={add}
               disabled={busy || !email.trim()}
-              className="btn-sky is-solid pill px-5 py-2 text-[13px] disabled:opacity-40"
+              className="btn-sky is-solid pill px-5 py-2 text-sm disabled:opacity-40"
             >
               {busy ? t.members.adding : t.members.add}
             </button>
           </div>
-          <p className="text-[11px] text-[var(--color-muted)]">{t.members.addNote}</p>
+          <p className="text-xs text-[var(--color-muted)]">{t.members.addNote}</p>
         </div>
       )}
 
-      {error && <p className="mono text-[12px] text-[var(--color-fail)]">{error}</p>}
+      {error && <p className="tnum text-xs text-[var(--color-fail)]">{error}</p>}
 
       {/* Roster */}
       <div className="panel overflow-hidden p-0">
-        <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-[var(--color-border)] px-4 py-2.5 text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+        <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-[var(--color-border)] px-4 py-2.5 text-xs text-[var(--color-muted)]">
           <span>{t.members.colEmail}</span>
           <span>{t.members.colRole}</span>
           <span />
@@ -221,9 +221,9 @@ export function MembersBoard({
         {loadFailed ? (
           <ErrorState compact onRetry={load} />
         ) : members === null ? (
-          <p className="p-4 text-[13px] text-[var(--color-muted)]">…</p>
+          <p className="p-4 text-sm text-[var(--color-muted)]">…</p>
         ) : members.length === 0 ? (
-          <p className="p-4 text-[13px] text-[var(--color-muted)]">{t.members.empty}</p>
+          <p className="p-4 text-sm text-[var(--color-muted)]">{t.members.empty}</p>
         ) : (
           members.map((m) => {
             const isOwnerRow = m.role === "owner";
@@ -234,8 +234,8 @@ export function MembersBoard({
                 className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-[var(--color-border)] px-4 py-3 last:border-b-0"
               >
                 <div className="min-w-0">
-                  <div className="truncate text-[14px] text-[var(--color-fg)]">{m.email}</div>
-                  <div className="mono text-[11px] text-[var(--color-muted)]">
+                  <div className="truncate text-sm text-[var(--color-fg)]">{m.email}</div>
+                  <div className="tnum text-xs text-[var(--color-muted)]">
                     {m.user_id ? t.members.statusActive : t.members.statusInvited}
                   </div>
                 </div>
@@ -243,7 +243,7 @@ export function MembersBoard({
                   <select
                     value={m.role}
                     onChange={(e) => changeRole(m, e.target.value as Role)}
-                    className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1 text-[12px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+                    className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1 text-xs text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
                   >
                     {ROLES.filter((r) => r !== "owner" || myRole === "owner").map((r) => (
                       <option key={r} value={r}>{roleLabel[r]}</option>
@@ -256,7 +256,7 @@ export function MembersBoard({
                   <button
                     type="button"
                     onClick={() => remove(m)}
-                    className="btn-sky is-quiet pill px-3 py-1 text-[12px]"
+                    className="btn-sky is-quiet pill px-3 py-1 text-xs"
                   >
                     {t.members.remove}
                   </button>

@@ -52,8 +52,10 @@ export const PUBLIC_PAGE_PATHS = [
 
 /** Must equal PUBLIC_FONT_PATHS in lib/public-paths.ts (tests/security-headers.test.ts). */
 export const FONT_FILES = [
-  "/fonts/sofia-sans-extra-condensed-cyrillic-v6.woff2",
-  "/fonts/sofia-sans-cyrillic-v20.woff2",
+  "/fonts/onest-latin-v1.woff2",
+  "/fonts/onest-latin-ext-v1.woff2",
+  "/fonts/onest-cyrillic-v1.woff2",
+  "/fonts/onest-cyrillic-ext-v1.woff2",
 ] as const;
 
 /** The subset that cannot collide with the media file route's own headers. */
@@ -100,7 +102,7 @@ const nextConfig: NextConfig = {
       // them. It gets the non-overlapping headers from the next rule.
       { source: "/((?!api/media/file/).*)", headers: SECURITY_HEADERS },
       { source: "/api/media/file/:path*", headers: MEDIA_FILE_HEADERS },
-      // The two self-hosted font files carry their version in their name, so
+      // The self-hosted font files carry their version in their name, so
       // they — and only they, by exact name — are cached as immutable. Any
       // other /fonts/... path (a redirect to /login, a 404, an app screen)
       // keeps Next's own caching (lib/public-paths.ts PUBLIC_FONT_PATHS).

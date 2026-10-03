@@ -50,14 +50,14 @@ export function BeforeAfter({
         draggable={false}
       />
       <span aria-hidden className="pointer-events-none absolute inset-y-0 w-0.5 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.35)]" style={{ left: `${pos}%` }}>
-        <span className="absolute left-1/2 top-1/2 grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-[var(--ns-r-key)] bg-white text-[12px] text-black shadow">
+        <span className="absolute left-1/2 top-1/2 grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-[var(--ns-r-key)] bg-white text-xs text-black shadow">
           ⇆
         </span>
       </span>
-      <span aria-hidden className="pointer-events-none absolute left-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-white">
+      <span aria-hidden className="pointer-events-none absolute left-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white">
         {t.gen.before}
       </span>
-      <span aria-hidden className="pointer-events-none absolute right-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-white">
+      <span aria-hidden className="pointer-events-none absolute right-2 top-2 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white">
         {t.gen.after}
       </span>
       <input

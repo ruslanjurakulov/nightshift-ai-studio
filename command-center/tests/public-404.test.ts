@@ -33,7 +33,7 @@ describe("a built site with no backend", () => {
     },
   );
 
-  it.each(["/", "/pricing", "/privacy", "/terms", "/solutions", "/login", "/signup", "/docs/api", "/api/v1/models", "/api/credits", "/fonts/sofia-sans-cyrillic-v20.woff2"])(
+  it.each(["/", "/pricing", "/privacy", "/terms", "/solutions", "/login", "/signup", "/docs/api", "/api/v1/models", "/api/credits", "/fonts/onest-cyrillic-v1.woff2"])(
     "serves %s as it is",
     async (path) => {
       vi.stubEnv("NODE_ENV", "production");

@@ -19,7 +19,7 @@ type Step = "workspace" | "about" | "next";
 const LANGUAGE_SUGGESTIONS = ["English", "Russian", "Uzbek", "Spanish", "German", "French", "Portuguese", "Turkish", "Arabic", "Hindi"];
 
 const inputClass =
-  "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-[14px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
+  "min-h-11 min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
 
 function rememberAllChannels() {
   // The org switch already happened server-side (/api/org/create sets the org
@@ -98,7 +98,7 @@ export function WelcomeFlow({
   if (unavailable) {
     return (
       <Frame>
-        <p role="alert" className="text-[14px] text-[var(--color-warn)]">
+        <p role="alert" className="text-sm text-[var(--color-warn)]">
           {t.signup.unavailable}
         </p>
       </Frame>
@@ -113,10 +113,10 @@ export function WelcomeFlow({
         <form onSubmit={createWorkspace} className="mt-3 flex flex-col gap-4">
           <div>
             <h2 className="t-section">{t.signup.wsTitle}</h2>
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.signup.wsHint}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.signup.wsHint}</p>
           </div>
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.signup.wsLabel}</span>
+            <span className="text-xs text-[var(--color-muted)]">{t.signup.wsLabel}</span>
             <input
               type="text"
               autoFocus
@@ -128,7 +128,7 @@ export function WelcomeFlow({
             />
           </label>
           {error && (
-            <p role="alert" className="mono text-[12px] text-[var(--color-fail)]">
+            <p role="alert" className="tnum text-xs text-[var(--color-fail)]">
               {error}
             </p>
           )}
@@ -136,7 +136,7 @@ export function WelcomeFlow({
             <button
               type="submit"
               disabled={busy || validateOrgName(name) === null}
-              className="btn-sky is-solid pill px-6 py-2.5 text-[13px] disabled:opacity-40"
+              className="btn-sky is-solid pill px-6 py-2.5 text-sm disabled:opacity-40"
             >
               {busy ? t.signup.wsCreating : t.signup.wsCreate}
             </button>
@@ -155,10 +155,10 @@ export function WelcomeFlow({
           {welcomeCredits !== null && <CreditsNote amount={welcomeCredits} />}
           <div>
             <h2 className="t-section">{t.signup.aboutTitle}</h2>
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.signup.aboutHint}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.signup.aboutHint}</p>
           </div>
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{t.signup.nicheLabel}</span>
+            <span className="text-xs text-[var(--color-muted)]">{t.signup.nicheLabel}</span>
             <input
               type="text"
               autoFocus
@@ -170,7 +170,7 @@ export function WelcomeFlow({
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+            <span className="text-xs text-[var(--color-muted)]">
               {t.signup.languageLabel}
             </span>
             <input
@@ -196,11 +196,11 @@ export function WelcomeFlow({
                 setLanguage("");
                 setIndex(index + 1);
               }}
-              className="btn-sky ghost pill px-5 py-2.5 text-[13px]"
+              className="btn-sky ghost pill px-5 py-2.5 text-sm"
             >
               {t.signup.skip}
             </button>
-            <button type="submit" className="btn-sky is-solid pill px-6 py-2.5 text-[13px]">
+            <button type="submit" className="btn-sky is-solid pill px-6 py-2.5 text-sm">
               {t.signup.continue}
             </button>
           </div>
@@ -212,7 +212,7 @@ export function WelcomeFlow({
           {welcomeCredits !== null && <CreditsNote amount={welcomeCredits} />}
           <div>
             <h2 className="t-section">{t.signup.nextTitle}</h2>
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.signup.nextHint}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.signup.nextHint}</p>
           </div>
           <ol className="flex flex-col gap-2">
             <Item
@@ -232,12 +232,12 @@ export function WelcomeFlow({
                 (contactEmail ? (
                   <a
                     href={`mailto:${contactEmail}?subject=${encodeURIComponent(t.signup.requestSubject)}`}
-                    className="btn-sky ghost pill mt-2 inline-flex px-4 py-1.5 text-[12px]"
+                    className="btn-sky ghost pill mt-2 inline-flex px-4 py-1.5 text-xs"
                   >
                     {t.signup.requestConnection}
                   </a>
                 ) : (
-                  <p className="mt-2 text-[12px] text-[var(--color-muted)]">{t.signup.requestContact}</p>
+                  <p className="mt-2 text-xs text-[var(--color-muted)]">{t.signup.requestContact}</p>
                 ))}
             </Item>
             <Item n={3} title={t.signup.stepStyle} body={t.signup.stepStyleBody} href={at("/studio")} />
@@ -255,14 +255,14 @@ export function WelcomeFlow({
             <button
               type="button"
               onClick={() => setIndex(index - 1)}
-              className="text-[13px] text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+              className="text-sm text-[var(--color-muted)] hover:text-[var(--color-fg)]"
             >
               ← {t.signup.back}
             </button>
             <Link
               href={home}
               onClick={rememberAllChannels}
-              className="btn-sky is-solid pill px-6 py-2.5 text-[13px]"
+              className="btn-sky is-solid pill px-6 py-2.5 text-sm"
             >
               {t.signup.finish}
             </Link>
@@ -282,15 +282,12 @@ function Frame({ children }: { children: React.ReactNode }) {
         <SignOutButton />
       </div>
       <div className="glass-card sheet-enter rounded-[22px] border border-[var(--color-border)] p-6 sm:p-8">
-        <div
-          className="inline-flex items-center gap-2 font-display text-xl font-semibold tracking-[-0.02em] text-[var(--color-primary)]"
-          style={{ textShadow: "0 0 28px var(--glow-primary)" }}
-        >
+        <div className="ns-wordmark inline-flex items-center gap-2">
           <BrandMark size={36} />
           {t.brand.name}
         </div>
         <h1 className="mt-6 text-[26px] font-semibold leading-tight tracking-[-0.02em]">{t.signup.welcomeTitle}</h1>
-        <p className="mt-2 text-[14px] font-light text-[var(--color-muted)]">{t.signup.welcomeSub}</p>
+        <p className="mt-2 text-sm font-light text-[var(--color-muted)]">{t.signup.welcomeSub}</p>
         <div className="mt-6">{children}</div>
       </div>
     </>
@@ -302,7 +299,7 @@ function CreditsNote({ amount }: { amount: number }) {
   return (
     <p
       role="status"
-      className="rounded-xl border border-[var(--color-primary)] px-4 py-3 text-[13px] text-[var(--color-fg)]"
+      className="rounded-xl border border-[var(--color-primary)] px-4 py-3 text-sm text-[var(--color-fg)]"
       style={{ boxShadow: "0 0 24px var(--glow-primary)" }}
     >
       {fmt(t.signup.welcomeCredits, { n: amount })}
@@ -327,9 +324,9 @@ function Item({
 }) {
   const { t } = useI18n();
   return (
-    <li className="panel flex items-start gap-4 p-4">
+    <li className="panel flex items-start gap-4 p-5 sm:p-6">
       <span
-        className="mono mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px]"
+        className="tnum mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs"
         style={{
           borderColor: done ? "var(--color-ok)" : "var(--color-border)",
           color: done ? "var(--color-ok)" : "var(--color-muted)",
@@ -340,16 +337,16 @@ function Item({
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-[14px] font-semibold">{title}</h3>
+          <h3 className="text-sm font-semibold">{title}</h3>
           {done ? (
-            <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-ok)]">{t.signup.done}</span>
+            <span className="text-xs text-[var(--color-ok)]">{t.signup.done}</span>
           ) : href ? (
-            <Link href={href} className="btn-sky is-quiet pill px-4 py-1.5 text-[12px]">
+            <Link href={href} className="btn-sky is-quiet pill px-4 py-1.5 text-xs">
               {t.signup.open} →
             </Link>
           ) : null}
         </div>
-        <p className="mt-1 text-[13px] text-[var(--color-muted)]">{body}</p>
+        <p className="mt-1 text-sm text-[var(--color-muted)]">{body}</p>
         {children}
       </div>
     </li>

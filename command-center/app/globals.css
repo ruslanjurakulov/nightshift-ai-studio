@@ -29,42 +29,123 @@
    ------------------------------------------------------------------------- */
 
 @theme {
-  /* One superfamily at two widths, and a counter face (IDENTITY.md §Type).
-     The variables come from next/font/google in app/layout.tsx; the names
-     after them are what a reader without the webfont gets. */
-  --font-display: var(--font-ns-display), "Sofia Sans Extra Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
-  --font-sans: var(--font-ns-body), "Sofia Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: var(--font-ns-mono), "Martian Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* One readable sans for everything a person reads or presses (Onest, loaded
+     in app/fonts.css), and the system's own monospace for the few things that
+     really are code: an API key, a command, JSON. `font-display` is kept as a
+     name so existing headings need no edit; it is the same face. */
+  --font-sans: "Onest", "Onest Fallback", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Type scale (docs/design/HUMAN_TYPE.md): 13 · 14 · 16 · 18 · 20 · 24 · 30 · 40.
+     Nothing below 13, and reading text is 16 (14 only for dense secondary UI).
+     Line height 1.5–1.6 for text, 1.2 for headings. Tailwind's text-xs/sm/base/…
+     read these, so every existing utility takes the new scale. */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.45;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 1rem;
+  --text-base--line-height: 1.55;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.45;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.3;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 1.25;
+  --text-3xl: 1.875rem;
+  --text-3xl--line-height: 1.2;
+  --text-4xl: 2.5rem;
+  --text-4xl--line-height: 1.15;
+  --text-5xl: 3rem;
+  --text-5xl--line-height: 1.1;
+
+  /* Three weights: 400 for reading, 500 for labels and buttons, 600 for
+     headings. Heavier or lighter utilities (font-light, font-bold…) land on
+     one of the three, so nothing shouts and nothing is hairline-thin. */
+  --font-weight-thin: 400;
+  --font-weight-extralight: 400;
+  --font-weight-light: 400;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 600;
+  --font-weight-extrabold: 600;
+  --font-weight-black: 600;
+
+  /* Normal tracking: wide tracking is for ALL-CAPS labels, and there are none. */
+  --tracking-tighter: -0.02em;
+  --tracking-tight: -0.011em;
+  --tracking-normal: 0;
+  --tracking-wide: 0;
+  --tracking-wider: 0;
+  --tracking-widest: 0;
+
+  /* Soft corners: 8 · 12 · 16 · 20 · 24. */
+  --radius-xs: 0.375rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
 }
 
-/* Theme-independent identity tokens: shape, motion, type scale. */
+/* Theme-independent tokens: shape, space, type, motion. */
 :root {
-  /* Radius varies by role (IDENTITY.md §Shape): a frame is cut film, a key is
-     a console button, a panel is a rack face, a sheet is the one thing lifted. */
-  --ns-r-frame: 2px;
-  --ns-r-chip: 4px;
-  --ns-r-key: 6px;
-  --ns-r-panel: 10px;
-  --ns-r-sheet: 14px;
-  /* Motion: short, mechanical, no bounce. Reduced motion zeroes all of it. */
+  /* Radius by role: soft, and the same family everywhere. A chip or a media
+     frame is 8, a button or field 12, a card 16, a sheet or dialog 20. */
+  --ns-r-frame: 8px;
+  --ns-r-chip: 8px;
+  --ns-r-key: 12px;
+  --ns-r-panel: 16px;
+  --ns-r-sheet: 20px;
+  /* Space: a 4px base. A card pads 20 on a phone and 24 from 640px; cards and
+     sections sit 24 apart; one card holds one idea. */
+  --ns-s-1: 4px;
+  --ns-s-2: 8px;
+  --ns-s-3: 12px;
+  --ns-s-4: 16px;
+  --ns-s-5: 24px;
+  --ns-s-6: 32px;
+  --ns-s-7: 48px;
+  --ns-card-pad: 20px;
+  --ns-gap: 24px;
+  /* Controls: a button or field is at least 44px tall (a thumb), 12px corners. */
+  --ns-control-h: 44px;
+  --ns-chip-h: 40px;
+  /* Icons: 16 inline with text, 20 in controls, 24 as a feature. */
+  --ns-icon-sm: 16px;
+  --ns-icon-md: 20px;
+  --ns-icon-lg: 24px;
+  /* Motion: short, soft. Reduced motion zeroes all of it. */
   --ns-ease: cubic-bezier(0.2, 0, 0, 1);
   --ns-dur-1: 120ms;
   --ns-dur-2: 200ms;
   --ns-dur-3: 320ms;
-  /* The app's type scale (px): label · small · body · lead · titles. */
-  --ns-t-label: 11px;
-  --ns-t-small: 12px;
-  --ns-t-ui: 13px;
-  --ns-t-body: 14px;
-  --ns-t-lead: 16px;
+  /* The app's type scale (px). Names kept from the first version; the sizes
+     moved up: no label is smaller than 13. */
+  --ns-t-label: 13px;
+  --ns-t-small: 13px;
+  --ns-t-ui: 14px;
+  --ns-t-body: 16px;
+  --ns-t-lead: 18px;
   --ns-t-h3: 20px;
-  --ns-t-h2: 26px;
-  --ns-t-h1: 34px;
-  --ns-t-hero: 48px;
-  /* Film is black in either theme: a contact sheet's rebate, a frame's edge. */
+  --ns-t-h2: 24px;
+  --ns-t-h1: 30px;
+  --ns-t-hero: 40px;
+  --ns-lh-text: 1.55;
+  --ns-lh-head: 1.2;
+  /* Film is black in either theme: a media frame's rebate. */
   --ns-film: #07090c;
   --ns-edge-print: #ffa940;
   --ns-on-film: #f4efe6;
+}
+@media (min-width: 640px) {
+  :root { --ns-card-pad: 24px; }
+}
+/* A finger: chips and segmented keys are 44px tall on a touch screen or a phone. */
+@media (pointer: coarse), (max-width: 40rem) {
+  :root { --ns-chip-h: 44px; }
 }
 
 /* Light — the proof sheet. */
@@ -73,29 +154,29 @@
 [data-theme-scope="light"] {
   /* The identity — proof sheet. Paper leans cool (photo paper under daylight,
      never cream), ink is near-black, amber is a mark, not a fill for text. */
-  --ns-ground: #e4e7ec;
-  --ns-console: #fafaf9;
-  --ns-key: #f0f2f5;
-  --ns-key-hi: #e6e9ee;
-  --ns-rule: #cdd3dc;
-  --ns-rule-strong: #838c9d;
-  --ns-text: #12151b;
-  --ns-text-dim: #525c6c;
+  --ns-ground: #f3f3f1;
+  --ns-console: #ffffff;
+  --ns-key: #f0efec;
+  --ns-key-hi: #e7e6e2;
+  --ns-rule: #e3e2dd;
+  --ns-rule-strong: #8a8880;
+  --ns-text: #1b1a17;
+  --ns-text-dim: #5b5850;
   --ns-amber: #f29a1e;
   --ns-amber-ink: #9c5300;
-  --ns-on-amber: #12151b;
-  --ns-cta-bg: #12151b;
-  --ns-cta-fg: #f7f5f0;
-  --ns-cta-price: #ffa940;
+  --ns-on-amber: #1b1a17;
+  --ns-cta-bg: #f29a1e;
+  --ns-cta-fg: #1b1a17;
+  --ns-cta-price: #1b1a17;
   --ns-tally: #b9341f;
   --ns-go: #0a7346;
   --ns-cue: #2a5bc0;
   --ns-caution: #7e6100;
-  --ns-lamp-off: #b7beca;
-  --ns-hover: rgba(18, 21, 27, 0.05);
+  --ns-lamp-off: #c9c7c0;
+  --ns-hover: rgba(27, 26, 23, 0.05);
   --ns-select: rgba(242, 154, 30, 0.16);
-  --ns-scrim: rgba(18, 21, 27, 0.42);
-  --ns-lift: 0 1px 0 rgba(18, 21, 27, 0.04), 0 14px 36px -10px rgba(18, 21, 27, 0.28);
+  --ns-scrim: rgba(27, 26, 23, 0.42);
+  --ns-lift: 0 1px 2px rgba(27, 26, 23, 0.05), 0 12px 32px -12px rgba(27, 26, 23, 0.22);
   --ns-focus: #2a5bc0;
 
   /* Older role names, remapped. */
@@ -113,8 +194,8 @@
   --color-warn: var(--ns-caution);
   --color-fail: var(--ns-tally);
   --color-info: var(--ns-cue);
-  --color-idle: #8c95a6;
-  --grid-line: rgba(18, 21, 27, 0.045);
+  --color-idle: #8f8c84;
+  --grid-line: rgba(27, 26, 23, 0.045);
   --glow-primary: rgba(242, 154, 30, 0.22);
   --atmos-1: rgba(242, 154, 30, 0.10);
   --atmos-2: transparent;
@@ -123,15 +204,15 @@
   /* Backdrop: the night footage steps aside on paper; the page is the table. */
   --backdrop-video-display: none;
   --backdrop-base: var(--color-bg);
-  --veil-rgb: 228, 231, 236;
+  --veil-rgb: 243, 243, 241;
   --backdrop-glow: none;
   --backdrop-dim: transparent;
   /* The public hero's CTA, on paper: a solid ink key. */
   --cta-fg: var(--ns-cta-fg);
   --cta-base: var(--ns-cta-bg);
   --cta-sheen: linear-gradient(180deg, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.12) 100%);
-  --cta-glow: 0 6px 18px rgba(18, 21, 27, 0.18);
-  --cta-glow-hover: 0 8px 24px rgba(18, 21, 27, 0.26);
+  --cta-glow: 0 6px 18px rgba(27, 26, 23, 0.18);
+  --cta-glow-hover: 0 8px 24px rgba(27, 26, 23, 0.26);
   /* Studio: the composer and its canvas. The scrim stays dark in both themes:
      the picture under a label can be anything. */
   --studio-field: var(--ns-key);
@@ -157,14 +238,14 @@
   :root:not([data-theme="light"]) {
     /* The identity — control room. The console leans ink-blue, the type is
        lamp-warmed, amber is the lit thing: the meter, the key, the mark. */
-    --ns-ground: #0b0f16;
-    --ns-console: #11161f;
-    --ns-key: #18202c;
-    --ns-key-hi: #1f2836;
-    --ns-rule: #252f40;
-    --ns-rule-strong: #56637c;
-    --ns-text: #ece5d8;
-    --ns-text-dim: #a39d91;
+    --ns-ground: #131210;
+    --ns-console: #1b1a17;
+    --ns-key: #25231f;
+    --ns-key-hi: #2e2b26;
+    --ns-rule: #2d2b26;
+    --ns-rule-strong: #6f695f;
+    --ns-text: #f1ede6;
+    --ns-text-dim: #b4aea1;
     --ns-amber: #ffa940;
     --ns-amber-ink: #ffa940;
     --ns-on-amber: #1a1105;
@@ -175,11 +256,11 @@
     --ns-go: #5fd49a;
     --ns-cue: #8db4ff;
     --ns-caution: #f3d36b;
-    --ns-lamp-off: #3a4458;
-    --ns-hover: rgba(236, 229, 216, 0.05);
+    --ns-lamp-off: #4a463f;
+    --ns-hover: rgba(241, 237, 230, 0.05);
     --ns-select: rgba(255, 169, 64, 0.14);
-    --ns-scrim: rgba(3, 5, 9, 0.72);
-    --ns-lift: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 24px 60px -12px rgba(0, 0, 0, 0.8);
+    --ns-scrim: rgba(8, 7, 6, 0.72);
+    --ns-lift: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 20px 48px -16px rgba(0, 0, 0, 0.7);
     --ns-focus: #8db4ff;
 
     --color-bg: var(--ns-ground);
@@ -196,8 +277,8 @@
     --color-warn: var(--ns-caution);
     --color-fail: var(--ns-tally);
     --color-info: var(--ns-cue);
-    --color-idle: #6e7789;
-    --grid-line: rgba(236, 229, 216, 0.035);
+    --color-idle: #7b776e;
+    --grid-line: rgba(241, 237, 230, 0.035);
     --glow-primary: rgba(255, 169, 64, 0.24);
     --atmos-1: rgba(255, 169, 64, 0.10);
     --atmos-2: transparent;
@@ -205,9 +286,9 @@
     --shadow-elevated: var(--ns-lift);
     --backdrop-video-display: block;
     --backdrop-base: var(--ns-ground);
-    --veil-rgb: 11, 15, 22;
+    --veil-rgb: 19, 18, 16;
     --backdrop-glow: none;
-    --backdrop-dim: rgba(11, 15, 22, 0.62);
+    --backdrop-dim: rgba(19, 18, 16, 0.62);
     --shell-bg: var(--ns-console);
     --shell-border: var(--ns-rule);
     --color-hover: var(--ns-hover);
@@ -216,7 +297,7 @@
     --cta-fg: #ffffff;
     --cta-base: transparent;
     --cta-sheen:
-      linear-gradient(180deg, rgba(6, 12, 22, 0) 45%, rgba(6, 12, 22, 0.12) 78%, rgba(6, 12, 22, 0.28) 100%),
+      linear-gradient(180deg, rgba(10, 9, 8, 0) 45%, rgba(10, 9, 8, 0.12) 78%, rgba(10, 9, 8, 0.28) 100%),
       linear-gradient(90deg, rgba(255, 226, 178, 0.17) 0%, rgba(255, 236, 208, 0.07) 22%, rgba(176, 206, 238, 0.03) 55%, rgba(150, 196, 244, 0.09) 100%),
       linear-gradient(90deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.11) 40%, rgba(255, 255, 255, 0.05) 100%);
     --cta-glow:
@@ -244,14 +325,14 @@
 [data-theme-scope="dark"] {
   /* The identity — control room. The console leans ink-blue, the type is
      lamp-warmed, amber is the lit thing: the meter, the key, the mark. */
-  --ns-ground: #0b0f16;
-  --ns-console: #11161f;
-  --ns-key: #18202c;
-  --ns-key-hi: #1f2836;
-  --ns-rule: #252f40;
-  --ns-rule-strong: #56637c;
-  --ns-text: #ece5d8;
-  --ns-text-dim: #a39d91;
+  --ns-ground: #131210;
+  --ns-console: #1b1a17;
+  --ns-key: #25231f;
+  --ns-key-hi: #2e2b26;
+  --ns-rule: #2d2b26;
+  --ns-rule-strong: #6f695f;
+  --ns-text: #f1ede6;
+  --ns-text-dim: #b4aea1;
   --ns-amber: #ffa940;
   --ns-amber-ink: #ffa940;
   --ns-on-amber: #1a1105;
@@ -262,11 +343,11 @@
   --ns-go: #5fd49a;
   --ns-cue: #8db4ff;
   --ns-caution: #f3d36b;
-  --ns-lamp-off: #3a4458;
-  --ns-hover: rgba(236, 229, 216, 0.05);
+  --ns-lamp-off: #4a463f;
+  --ns-hover: rgba(241, 237, 230, 0.05);
   --ns-select: rgba(255, 169, 64, 0.14);
-  --ns-scrim: rgba(3, 5, 9, 0.72);
-  --ns-lift: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 24px 60px -12px rgba(0, 0, 0, 0.8);
+  --ns-scrim: rgba(8, 7, 6, 0.72);
+  --ns-lift: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 20px 48px -16px rgba(0, 0, 0, 0.7);
   --ns-focus: #8db4ff;
 
   --color-bg: var(--ns-ground);
@@ -283,8 +364,8 @@
   --color-warn: var(--ns-caution);
   --color-fail: var(--ns-tally);
   --color-info: var(--ns-cue);
-  --color-idle: #6e7789;
-  --grid-line: rgba(236, 229, 216, 0.035);
+  --color-idle: #7b776e;
+  --grid-line: rgba(241, 237, 230, 0.035);
   --glow-primary: rgba(255, 169, 64, 0.24);
   --atmos-1: rgba(255, 169, 64, 0.10);
   --atmos-2: transparent;
@@ -292,9 +373,9 @@
   --shadow-elevated: var(--ns-lift);
   --backdrop-video-display: block;
   --backdrop-base: var(--ns-ground);
-  --veil-rgb: 11, 15, 22;
+  --veil-rgb: 19, 18, 16;
   --backdrop-glow: none;
-  --backdrop-dim: rgba(11, 15, 22, 0.62);
+  --backdrop-dim: rgba(19, 18, 16, 0.62);
   --shell-bg: var(--ns-console);
   --shell-border: var(--ns-rule);
   --color-hover: var(--ns-hover);
@@ -303,7 +384,7 @@
   --cta-fg: #ffffff;
   --cta-base: transparent;
   --cta-sheen:
-    linear-gradient(180deg, rgba(6, 12, 22, 0) 45%, rgba(6, 12, 22, 0.12) 78%, rgba(6, 12, 22, 0.28) 100%),
+    linear-gradient(180deg, rgba(10, 9, 8, 0) 45%, rgba(10, 9, 8, 0.12) 78%, rgba(10, 9, 8, 0.28) 100%),
     linear-gradient(90deg, rgba(255, 226, 178, 0.17) 0%, rgba(255, 236, 208, 0.07) 22%, rgba(176, 206, 238, 0.03) 55%, rgba(150, 196, 244, 0.09) 100%),
     linear-gradient(90deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.11) 40%, rgba(255, 255, 255, 0.05) 100%);
   --cta-glow:
@@ -344,20 +425,28 @@ body {
 
 body {
   font-family: var(--font-sans);
+  /* Reading size: 16px at 1.55. Phones get the same, so no input zooms on focus. */
+  font-size: var(--ns-t-body);
+  line-height: var(--ns-lh-text);
+  font-weight: 400;
+  font-feature-settings: "calt" 1;
   /* Themes cross-fade rather than snap when toggled. */
   transition: background-color 0.4s ease, color 0.25s ease;
 }
 
-/* The condensed face is engraving: page titles, figures and console labels.
-   Small section headings (h2/h3 at 13–17px) read better in the body face's
-   semibold, so the display face is not forced on them. */
-h1, .font-display {
-  font-family: var(--font-display);
-  letter-spacing: 0.005em;
+/* Headings are the same face at 600 and a tight 1.2 line: no condensed
+   display face, no capitals. `.font-display` is kept as an alias of the face. */
+h1, h2, h3, h4, .font-display {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  line-height: var(--ns-lh-head);
+  letter-spacing: -0.011em;
 }
-h2, h3 {
-  letter-spacing: -0.005em;
-}
+h1 { letter-spacing: -0.02em; }
+
+/* Numbers that line up: prices, credits, durations, counts. Tabular figures
+   from the same face; never a different, "technical" typeface. */
+.tnum { font-variant-numeric: tabular-nums; }
 
 /* Subtle grid backdrop for the ops-console feel. */
 .grid-bg {
@@ -380,17 +469,16 @@ h2, h3 {
   border-color: var(--ns-rule-strong);
 }
 
-/* The counter face: credits, prices, durations, timecode. Narrowed on its
-   width axis so a column of figures reads as a readout, not as code. */
+/* Code: the one place a monospace belongs (an API key, a command, JSON, a raw
+   id). Everything else that used to be set in the counter face (credits,
+   prices, durations, labels) is the normal face with tabular figures. */
 .mono {
   font-family: var(--font-mono);
-  font-feature-settings: "tnum" 1, "zero" 1;
-  font-variation-settings: "wdth" 87.5;
-  letter-spacing: -0.01em;
-  /* Martian's x-height is tall; match it to the body face's so a figure set
-     at the same size as the words beside it does not shout over them. */
-  font-size-adjust: 0.5;
+  letter-spacing: 0;
 }
+/* Legacy name for figures. Kept so old markup stays readable; it is the normal
+   face with aligned digits, never monospace. */
+.num { font-variant-numeric: tabular-nums; }
 
 .glow-dot {
   box-shadow: 0 0 8px 0 currentColor;
@@ -466,61 +554,51 @@ h2, h3 {
   transform: translateY(1px) scale(0.985);
 }
 
-/* ── The reference's rhythm ─────────────────────────────────────────────────
-   byte-sphere.net's own numbers, read out of the page the user sent: h1 70px,
-   h2 45px, lead 22px, sections 100px apart, line-height 1.25, one face in every
-   role. Those numbers belong to a marketing page that scrolls through three
-   sections; this app is nineteen routes of dense operational data. So they are
-   kept at FULL size where they carry the page — the page title and its lead —
-   and clamped down on narrow screens rather than scaled away, and the steps
-   below the title descend properly instead of dropping from 70px straight to
-   11px uppercase mono, which is what made every screen read as a terminal.
-
-   Recolouring alone could never produce this look. The old scale was the look. */
+/* ── Page type: a calm, friendly scale ──────────────────────────────────────
+   Sentence case, normal tracking, 600 for headings, 1.2 line height. A page
+   title is 30–40, a section 24–30, a card heading 18–20, text 16. The scale is
+   the same on the public pages and in the app (the app only steps the largest
+   sizes down). docs/design/HUMAN_TYPE.md has the numbers and where they came from. */
 
 .t-hero {
-  /* 56px, measured off the reference screen — its 70px belongs to the marketing
-     page, not to the dashboard, and carrying it here made the hero oversized. */
-  font-size: clamp(2rem, 4vw, 56px);
-  font-weight: 600;
-  line-height: 1.06;
-  letter-spacing: -0.025em;
-  text-wrap: balance;
-}
-.t-section {
-  font-size: clamp(1.625rem, 3.2vw, 45px);
+  font-size: clamp(2rem, 1.5rem + 2vw, 2.5rem);
   font-weight: 600;
   line-height: 1.15;
   letter-spacing: -0.02em;
   text-wrap: balance;
 }
+.t-section {
+  font-size: clamp(1.5rem, 1.3rem + 0.8vw, 1.875rem);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
 .t-lead {
-  font-size: clamp(1rem, 1.4vw, 22px);
-  font-weight: 300;
-  line-height: 1.45;
+  font-size: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+  font-weight: 400;
+  line-height: 1.55;
   color: var(--color-muted);
   max-width: 62ch;
 }
-/* A section heading inside a page. Not uppercase, not mono — those two choices
-   are most of what made the old screens feel like a log viewer. */
+/* A heading inside a card. */
 .t-panel {
-  font-size: 1.0625rem;
-  font-weight: 500;
-  letter-spacing: -0.01em;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.3;
   color: var(--color-fg);
 }
+/* A small caption above or beside something: sentence case, 13px, plain. */
 .t-label {
-  font-size: 10px;
+  font-size: var(--ns-t-label);
   font-weight: 500;
-  letter-spacing: 0.24em;
-  line-height: 1.25;
-  text-transform: uppercase;
+  line-height: 1.4;
   color: var(--color-muted);
 }
 .t-figure {
-  font-size: clamp(2rem, 3.2vw, 44px);
+  font-size: clamp(1.875rem, 1.5rem + 1.5vw, 2.5rem);
   font-weight: 600;
-  line-height: 1;
+  line-height: 1.1;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
@@ -561,7 +639,7 @@ h2, h3 {
   background: var(--color-panel);
   border: 1px solid var(--color-border);
   border-radius: var(--ns-r-panel);
-  padding: clamp(1.25rem, 3.4vw, 44px) clamp(1.25rem, 3.4vw, 48px);
+  padding: var(--ns-card-pad);
 }
 
 /* An open section: a heading, a hairline, and space. No box, no shadow — the
@@ -671,7 +749,7 @@ option {
   border-radius: 999px;
   padding: 0.5rem 0.875rem;
   font-size: 15px;
-  font-weight: 300;
+  font-weight: 400;
   color: var(--color-muted);
   background: none;
   border: 1px solid transparent;
@@ -702,7 +780,7 @@ option {
   border-radius: 12px;
   padding: 0.55rem 0.75rem;
   font-size: 14px;
-  font-weight: 350;
+  font-weight: 400;
   line-height: 1.1;
   color: var(--color-muted);
   border: 1px solid transparent;
@@ -763,11 +841,11 @@ option {
   display: flex;
   align-items: center;
   gap: 0.625rem;
-  min-height: 2.25rem;
-  padding: 0 0.625rem;
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
   border-radius: var(--ns-r-key);
-  font-size: var(--ns-t-ui);
-  font-weight: 450;
+  font-size: 0.9375rem;
+  font-weight: 500;
   line-height: 1.2;
   color: var(--color-muted);
   transition: background-color var(--ns-dur-1) var(--ns-ease), color var(--ns-dur-1) var(--ns-ease);
@@ -780,14 +858,11 @@ option {
 }
 .shell-link .shell-icon { color: inherit; flex-shrink: 0; }
 .shell-link[aria-current="page"] .shell-icon { color: var(--ns-amber-ink); }
-/* A group heading is a console engraving: the condensed face, capitals. */
+/* A group heading in the sidebar: plain sentence case, quiet. */
 .shell-group {
-  padding: 1.125rem 0.625rem 0.375rem;
-  font-family: var(--font-display);
+  padding: 1.25rem 0.75rem 0.375rem;
   font-size: var(--ns-t-label);
-  font-weight: 650;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-weight: 500;
   color: var(--color-muted);
 }
 .shell-tile {
@@ -809,8 +884,8 @@ option {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  height: 2.5rem;
-  padding: 0 0.75rem;
+  height: 2.75rem;
+  padding: 0 0.875rem;
   border-radius: var(--ns-r-key);
   border: 1px solid var(--shell-border);
   background: var(--color-panel);
@@ -838,13 +913,13 @@ option {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  min-height: 2.25rem;
-  padding: 0 1rem;
+  min-height: 2.75rem;
+  padding: 0 1.25rem;
   border-radius: var(--ns-r-key);
   background: var(--ns-cta-bg);
   color: var(--ns-cta-fg);
-  font-size: var(--ns-t-ui);
-  font-weight: 650;
+  font-size: 0.9375rem;
+  font-weight: 600;
   transition: filter var(--ns-dur-1) var(--ns-ease);
 }
 .btn-primary:hover { filter: brightness(1.08); }
@@ -853,12 +928,12 @@ option {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  min-height: 2.25rem;
-  padding: 0 1rem;
+  min-height: 2.75rem;
+  padding: 0 1.25rem;
   border-radius: var(--ns-r-key);
   border: 1px solid var(--ns-rule-strong);
   color: var(--color-fg);
-  font-size: var(--ns-t-ui);
+  font-size: 0.9375rem;
   font-weight: 500;
   transition: background-color var(--ns-dur-1) var(--ns-ease);
 }
@@ -885,7 +960,7 @@ option {
   gap: 0.25rem;
   padding-bottom: 0.375rem;
   font-size: var(--ns-t-label);
-  font-weight: 550;
+  font-weight: 500;
   color: var(--color-muted);
 }
 .ns-tab[aria-current="page"] { color: var(--color-fg); }
@@ -916,22 +991,22 @@ option {
    title and 45px panel headings shouted over the work, so here the title is
    22–28px, a panel heading 17–20px, and the lead reads as body copy. */
 .app-shell .t-hero {
-  font-size: clamp(1.375rem, 1.1rem + 0.8vw, 1.75rem);
+  font-size: clamp(1.625rem, 1.4rem + 0.9vw, 1.875rem);
   line-height: 1.2;
   letter-spacing: -0.02em;
 }
 .app-shell .t-section {
-  font-size: clamp(1.0625rem, 0.95rem + 0.4vw, 1.25rem);
-  line-height: 1.3;
-  letter-spacing: -0.01em;
+  font-size: clamp(1.25rem, 1.15rem + 0.4vw, 1.5rem);
+  line-height: 1.25;
+  letter-spacing: -0.015em;
 }
 .app-shell .t-lead {
-  font-size: 14px;
+  font-size: 1rem;
   font-weight: 400;
   line-height: 1.55;
 }
-.app-shell .t-figure { font-size: clamp(1.5rem, 1.2rem + 1vw, 2rem); }
-.app-shell .rhythm { gap: clamp(1.5rem, 2.5vw, 2.5rem); }
+.app-shell .t-figure { font-size: clamp(1.875rem, 1.6rem + 1vw, 2.25rem); }
+.app-shell .rhythm { gap: var(--ns-gap); }
 
 /* ── Nightshift interactions ────────────────────────────────────────────────
    Two rules carry the reference's feel. Buttons fill with the accent from the
@@ -951,11 +1026,12 @@ option {
   gap: 0.5rem;
   isolation: isolate;
   overflow: hidden;
-  color: var(--color-primary);
-  border: 1px solid var(--color-primary);
+  min-height: 2.75rem;
+  color: var(--color-fg);
+  border: 1px solid var(--ns-rule-strong);
   background: transparent;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.25;
   transition: color 0.28s ease, box-shadow 0.28s ease, transform 0.12s ease;
 }
@@ -971,18 +1047,20 @@ option {
   transition: transform 0.34s cubic-bezier(0.2, 0.8, 0.25, 1);
 }
 .btn-sky:hover {
-  color: var(--color-on-accent);
-  box-shadow: 0 0 0 6px var(--atmos-1);
+  color: var(--ns-cta-fg);
+  border-color: var(--ns-cta-bg);
 }
 .btn-sky:hover::before { transform: translateY(0); }
 .btn-sky:active { transform: scale(0.965); }
 /* Solid variant: already filled, so the sweep washes it lighter instead. */
 .btn-sky.is-solid {
-  background: var(--color-primary);
-  color: var(--color-on-accent);
+  background: var(--ns-cta-bg);
+  border-color: var(--ns-cta-bg);
+  color: var(--ns-cta-fg);
+  font-weight: 600;
 }
 .btn-sky.is-solid::before { background: var(--color-fg); opacity: 0.14; }
-.btn-sky.is-solid:hover { color: var(--color-on-accent); }
+.btn-sky.is-solid:hover { color: var(--ns-cta-fg); }
 /* Quiet variant: a neutral edge until you point at it, then the accent. */
 .btn-sky.ghost {
   border-color: var(--color-border);
@@ -1392,9 +1470,8 @@ html:has(.lp-root) { scroll-behavior: smooth; }
     content: attr(data-label);
     display: block;
     margin-bottom: 0.25rem;
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-size: 13px;
+    font-weight: 500;
     color: var(--color-muted);
   }
 }
@@ -1450,13 +1527,10 @@ html:has(.lp-root) { scroll-behavior: smooth; }
    second one inside it. Unlayered, because the global :focus-visible is. */
 .studio-field textarea:focus-visible,
 .studio-field input:focus-visible { outline: none; }
-/* Labels are engraving: condensed capitals over the control they name. */
+/* A field's label: sentence case above the control it names. */
 .studio-label {
-  font-family: var(--font-display);
-  font-size: var(--ns-t-label);
-  font-weight: 650;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: var(--ns-t-ui);
+  font-weight: 500;
   color: var(--color-muted);
 }
 /* A tool tab is a source-select key: icon over a short name. The selected
@@ -1508,8 +1582,8 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 }
 .studio-seg > button,
 .ns-seg > button {
-  min-height: 28px;
-  padding: 0 10px;
+  min-height: 36px;
+  padding: 0 12px;
   border-radius: var(--ns-r-chip);
   font-size: var(--ns-t-small);
   color: var(--color-muted);
@@ -1531,12 +1605,12 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  min-height: 32px;
+  min-height: var(--ns-chip-h);
   max-width: 100%;
-  padding: 0 12px 0 10px;
-  border-radius: var(--ns-r-chip);
-  border: 1px solid var(--color-border);
-  background: var(--color-panel);
+  padding: 0 14px 0 12px;
+  border-radius: var(--ns-r-key);
+  border: 1px solid transparent;
+  background: var(--ns-key);
   font-size: var(--ns-t-small);
   color: var(--color-muted);
   transition: border-color var(--ns-dur-1) var(--ns-ease), color var(--ns-dur-1) var(--ns-ease), background-color var(--ns-dur-1) var(--ns-ease);
@@ -1551,7 +1625,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   box-shadow: inset 0 0 0 1.5px var(--ns-lamp-off);
 }
 .studio-chip:hover,
-.ns-chip:hover { color: var(--color-fg); border-color: var(--ns-rule-strong); }
+.ns-chip:hover { color: var(--color-fg); background: var(--ns-key-hi); }
 .studio-chip[aria-pressed="true"],
 .ns-chip[aria-pressed="true"] {
   color: var(--color-fg);
@@ -1575,8 +1649,8 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   min-height: 52px;
   padding: 0 20px;
   border-radius: var(--ns-r-key);
-  font-size: 15px;
-  font-weight: 650;
+  font-size: 1rem;
+  font-weight: 600;
   color: var(--studio-cta-fg);
   background: var(--studio-cta-bg);
   box-shadow: var(--studio-cta-shadow);
@@ -1620,6 +1694,12 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   background: var(--studio-dock-bg);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
+}
+.studio-dock[data-at-top="true"] { position: static; }
+/* A short phone (360x740 and below): the shot box shows two lines so the length chips stay
+   above the fixed tab bar on the first view; it scrolls inside when the shot is longer. */
+@media (max-width: 1023px) and (max-height: 760px) {
+  .studio-shot { height: 72px; min-height: 72px; }
 }
 @media (min-width: 1024px) {
   .studio-dock {
@@ -1672,7 +1752,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   padding: 6px 4px;
   border-radius: 12px;
   border: 1px solid transparent;
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--color-muted);
 }
@@ -1694,10 +1774,10 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .lp-seg > span {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
-  padding: 0 9px;
+  min-height: 28px;
+  padding: 0 10px;
   border-radius: 8px;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .lp-seg > span.is-on { color: var(--studio-cta-fg); background: var(--studio-cta-bg); }
@@ -1773,7 +1853,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   border-radius: 999px;
   border: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-panel) 80%, transparent);
-  font-size: 12.5px;
+  font-size: 13px;
   white-space: nowrap;
   color: var(--color-fg);
 }
@@ -1813,7 +1893,7 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   font-size: clamp(1.625rem, 3vw, 40px);
   font-weight: 600;
   line-height: 1.12;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.02em;
   text-wrap: balance;
 }
 
@@ -1823,25 +1903,20 @@ html:has(.lp-root) { scroll-behavior: smooth; }
    follow. Motion here is decoration on top of a complete static state, and
    prefers-reduced-motion (above) stops all of it. */
 
-/* Timecode: the counter face for credits, prices, durations and frames. */
+/* Timecode: credits, prices, durations. The normal face with aligned digits;
+   never a "technical" typeface. */
 .ns-tc {
-  font-family: var(--font-mono);
-  font-size-adjust: 0.5;
-  font-feature-settings: "tnum" 1, "zero" 1;
-  font-variant-numeric: tabular-nums slashed-zero;
-  font-variation-settings: "wdth" 87.5;
-  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.ns-tc[data-unknown="true"] { color: var(--color-muted); font-family: inherit; font-variation-settings: normal; }
+.ns-tc[data-unknown="true"] { color: var(--color-muted); }
 .ns-tc-unit {
   margin-left: 0.3em;
-  font-family: var(--font-sans);
-  font-size: 0.82em;
-  font-weight: 500;
+  font-size: 0.88em;
+  font-weight: 400;
   letter-spacing: 0;
   color: inherit;
-  opacity: 0.72;
+  opacity: 0.8;
 }
 
 /* Status lamp: a lamp in a bezel. Off is an unlit ring; on is filled. The
@@ -1849,12 +1924,9 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .ns-lamp-row {
   display: inline-flex;
   align-items: center;
-  gap: 0.4375rem;
-  font-family: var(--font-display);
-  font-size: var(--ns-t-label);
-  font-weight: 650;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  gap: 0.5rem;
+  font-size: var(--ns-t-ui);
+  font-weight: 500;
   color: var(--color-muted);
   white-space: nowrap;
 }
@@ -1889,8 +1961,10 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   50% { background: color-mix(in srgb, var(--lamp) 45%, transparent); }
 }
 
-/* Meter: the credit balance as a VU ladder. Lit = free to spend, hatched =
-   held for work in progress (the meter's peak hold), unlit = nothing. */
+/* Meter: one calm progress bar. The filled part is what is free to spend, a
+   paler part is held for work in progress, the rest is the track. (Drawn from
+   segments so each one can be read by assistive tech and the data stays honest;
+   a large meter's segments touch and the bar is rounded as one piece.) */
 .ns-meter {
   display: inline-grid;
   grid-auto-flow: column;
@@ -1902,24 +1976,32 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   display: block;
   width: 4px;
   height: 12px;
-  border-radius: 1px;
+  border-radius: 2px;
   background: var(--ns-lamp-off);
   opacity: 0.55;
 }
-.ns-meter[data-size="lg"] { gap: 3px; width: 100%; }
-.ns-meter[data-size="lg"] .ns-meter-seg { width: auto; height: 18px; }
+.ns-meter[data-size="lg"] {
+  gap: 0;
+  width: 100%;
+  height: 10px;
+  align-items: stretch;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--ns-key-hi);
+}
+.ns-meter[data-size="lg"] .ns-meter-seg { width: auto; height: auto; border-radius: 0; background: transparent; opacity: 1; }
 .ns-meter-seg[data-state="lit"] { background: var(--ns-amber); opacity: 1; }
+.ns-meter[data-size="lg"] .ns-meter-seg[data-state="lit"] { background: var(--ns-amber); }
 .ns-meter-seg[data-state="held"] {
   opacity: 1;
-  background: repeating-linear-gradient(135deg, var(--ns-amber) 0 2px, transparent 2px 4px);
-  box-shadow: inset 0 0 0 1px var(--ns-amber);
+  background: color-mix(in srgb, var(--ns-amber) 40%, transparent);
 }
 .ns-meter[data-empty="true"] .ns-meter-seg:first-child { background: var(--ns-tally); opacity: 1; }
+.ns-meter[data-size="lg"][data-empty="true"] .ns-meter-seg:first-child { background: transparent; }
 /* Invite progress: nobody joined yet is "0 of 5", not an alarm, so the first segment stays unlit. */
 .invite-meter .ns-meter[data-empty="true"] .ns-meter-seg:first-child,
 .usage-meter .ns-meter[data-empty="true"] .ns-meter-seg:first-child { background: transparent; opacity: 1; }
-/* Unfilled steps are outlined, not grey: in the light theme grey and amber have almost the same lightness,
-   so colour alone could not say how many are filled (the count is also written under the bar).
+/* Unfilled steps stay readable as an empty track (the count is also written under the bar).
    The Usage page's meters read the same way: nothing used yet is "0%", not an alarm. */
 .invite-meter .ns-meter-seg[data-state="off"],
 .invite-meter .ns-meter[data-empty="true"] .ns-meter-seg:first-child,
@@ -1927,14 +2009,14 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .usage-meter .ns-meter[data-empty="true"] .ns-meter-seg:first-child {
   background: transparent;
   opacity: 1;
-  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--color-muted) 60%, transparent);
 }
 /* The scale under a large meter: real numbers at the ends only. */
 .ns-meter-scale {
   display: flex;
   justify-content: space-between;
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: var(--ns-t-label);
+  font-variant-numeric: tabular-nums;
   color: var(--color-muted);
 }
 
@@ -2018,14 +2100,11 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   justify-content: center;
   gap: 0.5rem;
   min-width: 0;
-  padding: 0 1rem;
-  font-family: var(--font-display);
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  padding: 0 1.25rem;
+  font-size: 1rem;
+  font-weight: 600;
 }
-.ns-price-button[data-size="md"] .ns-price-label { font-size: 15px; }
+.ns-price-button[data-size="md"] .ns-price-label { font-size: 0.9375rem; }
 .ns-price-tag {
   display: inline-flex;
   flex: 0 0 auto;
@@ -2068,8 +2147,8 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 }
 .ns-chip > .ns-chip-count { color: var(--color-muted); }
 /* A readout chip is not a key: no hover, a normal-height line on a phone. */
-.ns-chip[data-plain="true"] { cursor: default; min-height: 28px; }
-.ns-chip[data-plain="true"]:hover { color: var(--color-muted); border-color: var(--color-border); }
+.ns-chip[data-plain="true"] { cursor: default; min-height: 32px; }
+.ns-chip[data-plain="true"]:hover { color: var(--color-muted); background: var(--ns-key); }
 .ns-chip[data-tone="lit"],
 .ns-chip[data-plain="true"][data-tone="lit"]:hover { color: var(--ns-amber-ink); border-color: var(--ns-amber-ink); }
 .ns-chip[data-tone="warn"],
@@ -2093,18 +2172,15 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.875rem 1rem 0.75rem;
+  padding: 1rem 1.25rem 0.875rem;
   border-bottom: 1px solid var(--color-border);
 }
 .ns-eyebrow {
-  font-family: var(--font-display);
   font-size: var(--ns-t-label);
-  font-weight: 650;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-weight: 500;
   color: var(--color-muted);
 }
-.ns-panel-title { font-size: 15px; font-weight: 650; color: var(--color-fg); }
+.ns-panel-title { font-size: 1.0625rem; font-weight: 600; color: var(--color-fg); }
 
 /* Segmented switch (the mode switcher in a header): sits on .ns-seg above. */
 .ns-seg > button {
@@ -2112,11 +2188,12 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   align-items: center;
   gap: 0.375rem;
 }
-.ns-seg[data-size="lg"] > button { min-height: 36px; padding: 0 14px; font-size: var(--ns-t-ui); font-weight: 550; }
+.ns-seg[data-size="lg"] > button { min-height: 36px; padding: 0 14px; font-size: var(--ns-t-ui); font-weight: 500; }
 @media (pointer: coarse), (max-width: 40rem) {
   .ns-seg > button,
   .ns-chip:not([data-plain]),
   .ns-price-button[data-size="md"] { min-height: 44px; }
+  .studio-seg > button { min-height: 44px; }
 }
 
 /* A chip that is a radio's label (the editor's speed, transition and caption
@@ -2212,18 +2289,16 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   display: flex;
   align-items: center;
   gap: 0.625rem;
-  min-height: 18px;
-  padding: 2px 4px;
-  font-family: var(--font-mono);
-  font-variation-settings: "wdth" 75;
-  font-size: 10px;
-  font-feature-settings: "tnum" 1, "zero" 1;
-  letter-spacing: 0.02em;
+  min-height: 22px;
+  padding: 2px 6px;
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
   color: var(--ns-edge-print);
   white-space: nowrap;
   overflow: hidden;
 }
-.ns-edge-no { font-weight: 700; }
+.ns-edge-no { font-weight: 600; }
 .ns-edge > span:last-child { margin-left: auto; }
 
 /* Step card: one step of a long make (script → characters → storyboard →
@@ -2248,16 +2323,14 @@ html:has(.lp-root) { scroll-behavior: smooth; }
 .ns-step[data-state="blocked"] { background: transparent; }
 .ns-step-no {
   grid-row: span 3;
-  font-family: var(--font-display);
-  font-size: 30px;
-  font-weight: 750;
-  line-height: 0.9;
-  letter-spacing: 0.02em;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1;
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
 }
 .ns-step[data-state="current"] .ns-step-no { color: var(--ns-amber-ink); }
-.ns-step-title { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: var(--ns-t-body); font-weight: 650; color: var(--color-fg); }
+.ns-step-title { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: var(--ns-t-body); font-weight: 600; color: var(--color-fg); }
 .ns-step-body { font-size: var(--ns-t-ui); color: var(--color-muted); }
 .ns-step-price {
   display: flex;
@@ -2287,15 +2360,26 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   border-bottom: 1px solid var(--tick);
 }
 
-/* The wordmark: the condensed face in capitals, as a console's maker's plate. */
+/* The wordmark keeps its own logotype: the cut-down condensed capitals
+   (app/fonts.css). It is the brand's signature, not the product's type. */
 .ns-wordmark {
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 760;
+  font-family: "Nightshift Wordmark", var(--font-sans);
+  font-size: 22px;
+  font-weight: 700;
   letter-spacing: 0.1em;
   line-height: 1;
   text-transform: uppercase;
   color: var(--color-fg);
+}
+/* The tile makes the lockup wider: below 400px it steps down (wordmark 19px, tile
+   28px) so the signed-in header, with its bell, search and credit key, stays on one row. */
+@media (max-width: 399px) {
+  .ns-wordmark { font-size: 19px; gap: 8px; }
+  .ns-wordmark svg { width: 28px; height: auto; }
+}
+@media (max-width: 359px) {
+  .ns-wordmark { font-size: 17px; gap: 6px; }
+  .ns-wordmark svg { width: 24px; }
 }
 
 /* The record dot on the Generate key: making something is a REC press, not a

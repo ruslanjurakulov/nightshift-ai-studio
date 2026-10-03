@@ -31,13 +31,13 @@ export function DailyMission({
       <div className="grid grid-cols-2 gap-3">
         {rows.map((r) => (
           <div key={r.label} className="rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">{r.label}</div>
+            <div className="text-xs text-[var(--color-muted)]">{r.label}</div>
             {r.value === null ? (
-              <div className="mono text-2xl font-bold" style={{ color: "var(--color-muted)" }}>
+              <div className="tnum text-2xl font-bold" style={{ color: "var(--color-muted)" }}>
                 {t.common.unknown}
               </div>
             ) : (
-              <div className="mono text-2xl font-bold tabular-nums" style={{ color: r.tone }}>
+              <div className="tnum text-2xl font-bold tabular-nums" style={{ color: r.tone }}>
                 <AnimatedNumber value={r.value} />
               </div>
             )}
@@ -45,15 +45,15 @@ export function DailyMission({
         ))}
       </div>
       <div className="flex items-center justify-between rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2">
-        <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">{t.ops.missionLearning}</span>
+        <span className="text-xs text-[var(--color-muted)]">{t.ops.missionLearning}</span>
         <span
-          className="mono text-[11px] font-semibold tracking-wider"
+          className="tnum text-xs font-semibold"
           style={{ color: learningActive ? "var(--color-ok)" : "var(--color-muted)" }}
         >
           {learningToday === null ? t.common.unknown : learningActive ? t.ops.missionActive : t.ops.missionIdle}
         </span>
       </div>
-      <p className="mono text-[9px] text-[var(--color-muted)]">
+      <p className="tnum text-xs text-[var(--color-muted)]">
         {t.ops.missionToday} · {t.ops.missionTargetNa}
       </p>
     </div>

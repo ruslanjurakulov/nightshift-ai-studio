@@ -46,8 +46,8 @@ export function ModelAvailabilityBoard({
   const onSale = models.filter((m) => isOnSale(m.availability)).length;
   return (
     <div className="flex flex-col gap-3">
-      <p className="mono text-[11px] text-[var(--color-muted)]">{fmt(t.models.count, { n: models.length, sale: onSale })}</p>
-      {probes === null && <p className="text-[12px] text-[var(--color-warn)]">{t.models.probesFailed}</p>}
+      <p className="tnum text-xs text-[var(--color-muted)]">{fmt(t.models.count, { n: models.length, sale: onSale })}</p>
+      {probes === null && <p className="text-xs text-[var(--color-warn)]">{t.models.probesFailed}</p>}
       <TileGrid as="div" min={320} label={t.models.title}>
         {models.map((m) => (
           <ModelCard key={m.id} model={m} probe={probes?.[m.id] ?? null} probesRead={probes !== null} prices={prices} />
@@ -134,20 +134,20 @@ function ModelCard({
   if (model.removedFromFile) warnings.push(t.models.removed);
 
   return (
-    <article className="panel flex min-w-0 flex-col gap-3 p-4" aria-labelledby={`${warnId}-name`}>
+    <article className="panel flex min-w-0 flex-col gap-3 p-5 sm:p-6" aria-labelledby={`${warnId}-name`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 id={`${warnId}-name`} className="truncate text-sm font-semibold text-[var(--color-fg)]">
             {model.displayName}
           </h2>
-          <p className="mono truncate text-[11px] text-[var(--color-muted)]">{model.id}</p>
+          <p className="mono truncate text-xs text-[var(--color-muted)]">{model.id}</p>
         </div>
         <StatusLamp tone={TONE[availability]} label={label(availability)} live={availability === "ga"} />
       </div>
 
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12px]">
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
         <dt className="text-[var(--color-muted)]">{t.models.provider}</dt>
-        <dd className="mono min-w-0 truncate text-[var(--color-fg)]">{model.provider}</dd>
+        <dd className="tnum min-w-0 truncate text-[var(--color-fg)]">{model.provider}</dd>
 
         <dt className="text-[var(--color-muted)]">{t.models.capabilities}</dt>
         <dd className="flex min-w-0 flex-wrap gap-1">
@@ -166,7 +166,7 @@ function ModelCard({
             <span className="block text-[var(--color-warn)]">{t.models.notVerified}</span>
           )}
           {probesRead && (
-            <span className="mono block text-[11px] text-[var(--color-muted)]">
+            <span className="tnum block text-xs text-[var(--color-muted)]">
               {probe
                 ? probe.ok
                   ? fmt(t.models.probeOk, { when: relativeTime(probe.at) })
@@ -182,7 +182,7 @@ function ModelCard({
             prices === null ? (
               <span className="text-[var(--color-warn)]">{t.models.pricesFailed}</span>
             ) : price !== undefined && price > 0 ? (
-              <span className="mono text-[var(--color-fg)]">
+              <span className="tnum text-[var(--color-fg)]">
                 {fmt(t.models.priceRow, { credits: formatCredits(price, locale), unit: model.creditUnit })}
               </span>
             ) : (
@@ -192,7 +192,7 @@ function ModelCard({
             <span className="text-[var(--color-muted)]">—</span>
           )}
           {model.creditUnit && (
-            <Link href={`${path("/credits")}#credit-prices`} className="mt-0.5 block text-[11px] text-[var(--color-primary)] underline-offset-2 hover:underline">
+            <Link href={`${path("/credits")}#credit-prices`} className="mt-0.5 block text-xs text-[var(--color-primary)] underline-offset-2 hover:underline">
               {t.models.editPrice} →
             </Link>
           )}
@@ -201,7 +201,7 @@ function ModelCard({
         {model.entitlement && (
           <>
             <dt className="text-[var(--color-muted)]">{t.models.entitlement}</dt>
-            <dd className="mono min-w-0 truncate text-[var(--color-fg)]">{model.entitlement}</dd>
+            <dd className="tnum min-w-0 truncate text-[var(--color-fg)]">{model.entitlement}</dd>
           </>
         )}
       </dl>
@@ -209,7 +209,7 @@ function ModelCard({
       {warnings.length > 0 && (
         <div id={`${warnId}-warn`} className="flex flex-col gap-1 rounded-[var(--ns-r-key)] border border-[var(--color-warn)] p-2.5" role="note">
           {warnings.map((w) => (
-            <p key={w} className="flex items-start gap-1.5 text-[12px] leading-snug text-[var(--color-warn)]">
+            <p key={w} className="flex items-start gap-1.5 text-xs leading-snug text-[var(--color-warn)]">
               <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
               <span>{w}</span>
             </p>
@@ -218,7 +218,7 @@ function ModelCard({
       )}
 
       <fieldset className="flex flex-col gap-1.5" disabled={busy}>
-        <legend className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-muted)]">
+        <legend className="mb-1.5 text-xs font-semibold text-[var(--color-muted)]">
           {busy ? t.models.saving : t.models.availability}
         </legend>
         <SegmentedSwitch
@@ -232,7 +232,7 @@ function ModelCard({
       </fieldset>
 
       {error && (
-        <p className="text-[12px] text-[var(--color-fail)]" aria-live="polite">
+        <p className="text-xs text-[var(--color-fail)]" aria-live="polite">
           {error}
         </p>
       )}

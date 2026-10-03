@@ -197,14 +197,14 @@ export function PlanPanel({
         <h2 id="plan-title" className="t-section">
           {cp.plansTitle}
         </h2>
-        <p className="text-[14px] font-light text-[var(--color-muted)]">{cp.plansLead}</p>
+        <p className="text-sm font-light text-[var(--color-muted)]">{cp.plansLead}</p>
       </div>
 
       <div className="flex items-start justify-between gap-3 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-4">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="text-[12px] text-[var(--color-muted)]">{cp.yourPlan}</span>
+          <span className="text-xs text-[var(--color-muted)]">{cp.yourPlan}</span>
           <span className="text-[17px] font-medium">{planName}</span>
-          {dateLine && <span className="text-[12px] text-[var(--color-muted)]">{dateLine}</span>}
+          {dateLine && <span className="text-xs text-[var(--color-muted)]">{dateLine}</span>}
         </div>
         {statusText && (
           <Chip plain tone={sub?.status === "past_due" ? "warn" : undefined} className="shrink-0">
@@ -212,9 +212,9 @@ export function PlanPanel({
           </Chip>
         )}
       </div>
-      {sub?.status === "past_due" && <p className="text-[13px] text-[var(--color-warn)]">{cp.pastDue}</p>}
+      {sub?.status === "past_due" && <p className="text-sm text-[var(--color-warn)]">{cp.pastDue}</p>}
       {summary?.runSlots && summary.runSlots.limit !== null && (
-        <p className="text-[12px] text-[var(--color-muted)]">
+        <p className="text-xs text-[var(--color-muted)]">
           {fmt(p.runSlots, { active: summary.runSlots.active, limit: summary.runSlots.limit })}
         </p>
       )}
@@ -225,27 +225,27 @@ export function PlanPanel({
             type="button"
             onClick={manage}
             disabled={portal === "opening"}
-            className="btn-quiet self-start text-[13px] disabled:opacity-40"
+            className="btn-quiet self-start text-sm disabled:opacity-40"
           >
             {portal === "opening" ? p.manageOpening : p.manage}
             <ExternalLink className="size-3.5" aria-hidden />
           </button>
-          <p className="text-[12px] text-[var(--color-muted)]">{cp.manageHint}</p>
-          <p className="text-[12px] text-[var(--color-muted)]">{cp.changePlan}</p>
-          {portal === "failed" && <p className="text-[12px] text-[var(--color-fail)]">{cp.manageFailed}</p>}
-          {portal === "missing" && <p className="text-[12px] text-[var(--color-muted)]">{cp.manageMissing}</p>}
+          <p className="text-xs text-[var(--color-muted)]">{cp.manageHint}</p>
+          <p className="text-xs text-[var(--color-muted)]">{cp.changePlan}</p>
+          {portal === "failed" && <p className="text-xs text-[var(--color-fail)]">{cp.manageFailed}</p>}
+          {portal === "missing" && <p className="text-xs text-[var(--color-muted)]">{cp.manageMissing}</p>}
         </div>
       )}
 
       {plansUnread && !live && <ErrorState compact message={p.readFailed} />}
 
-      {access === "admin_only" && <p className="text-[13px] text-[var(--color-muted)]">{p.adminOnly}</p>}
+      {access === "admin_only" && <p className="text-sm text-[var(--color-muted)]">{p.adminOnly}</p>}
 
       {showCards && matrix && cards.length > 0 && (
         <div className="flex flex-col gap-4">
           {/* The terms come before the buttons: read before any checkout opens. */}
           {access === "allowed" && (
-            <p className="text-[12px] leading-relaxed text-[var(--color-muted)]" data-purchase-terms>
+            <p className="text-xs leading-relaxed text-[var(--color-muted)]" data-purchase-terms>
               {cp.planTerms} {cp.refunds}{" "}
               <Link href="/terms#credits" className="underline underline-offset-2 hover:text-[var(--color-fg)]">
                 {cp.termsLink}
@@ -277,10 +277,10 @@ export function PlanPanel({
                     {priceText ? (
                       <>
                         <span className="ns-tc text-[28px] font-semibold leading-none">{priceText}</span>
-                        <span className="text-[13px] text-[var(--color-muted)]">{cp.perMonth}</span>
+                        <span className="text-sm text-[var(--color-muted)]">{cp.perMonth}</span>
                       </>
                     ) : (
-                      <span className="text-[13px] text-[var(--color-muted)]">{cp.priceAtCheckout}</span>
+                      <span className="text-sm text-[var(--color-muted)]">{cp.priceAtCheckout}</span>
                     )}
                   </div>
                   <div className="flex flex-col gap-1">
@@ -290,7 +290,7 @@ export function PlanPanel({
                     <Equivalents credits={col.monthlyCredits} rates={rates} />
                   </div>
                   {matrix.rows.length > 0 && (
-                    <ul className="flex flex-col gap-1.5 border-t border-[var(--color-border)] pt-3 text-[12px]">
+                    <ul className="flex flex-col gap-1.5 border-t border-[var(--color-border)] pt-3 text-xs">
                       {matrix.rows.map((row) => (
                         <li key={row.key} className="flex items-start gap-2">
                           <Check className="mt-0.5 size-3.5 shrink-0 text-[var(--color-primary)]" aria-hidden />
@@ -315,12 +315,12 @@ export function PlanPanel({
               );
             })}
           </ul>
-          {rates && <p className="text-[11px] text-[var(--color-muted)]">{cp.eq.note}</p>}
+          {rates && <p className="text-xs text-[var(--color-muted)]">{cp.eq.note}</p>}
         </div>
       )}
 
       {msg && (
-        <p className="text-[13px]" style={{ color: msg.ok ? "var(--color-ok)" : "var(--color-muted)" }} aria-live="polite">
+        <p className="text-sm" style={{ color: msg.ok ? "var(--color-ok)" : "var(--color-muted)" }} aria-live="polite">
           {msg.text}
         </p>
       )}

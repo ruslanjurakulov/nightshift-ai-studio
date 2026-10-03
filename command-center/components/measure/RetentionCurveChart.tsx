@@ -61,7 +61,7 @@ export function RetentionCurveChart({
             x={PAD_X - 6}
             y={y(tick) + 3}
             textAnchor="end"
-            className="mono"
+            className="tnum"
             fontSize={9}
             fill="var(--color-muted)"
           >
@@ -99,7 +99,7 @@ export function RetentionCurveChart({
             y={PAD_TOP + 9}
             textAnchor={cliffAt > 0.85 ? "end" : "start"}
             dx={cliffAt > 0.85 ? -4 : 4}
-            className="mono"
+            className="tnum"
             fontSize={9}
             fill="var(--color-warn)"
           >
@@ -115,7 +115,7 @@ export function RetentionCurveChart({
           x={x(tick)}
           y={H - 6}
           textAnchor={tick === 0 ? "start" : tick === 1 ? "end" : "middle"}
-          className="mono"
+          className="tnum"
           fontSize={9}
           fill="var(--color-muted)"
         >

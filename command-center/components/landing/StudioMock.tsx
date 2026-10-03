@@ -53,8 +53,8 @@ export function StudioMock({ t }: { t: Dictionary }) {
             <span className="size-2.5 rounded-full bg-[var(--color-border)]" />
             <span className="size-2.5 rounded-full bg-[var(--color-border)]" />
           </span>
-          <span className="text-[12.5px] font-medium">{m.title}</span>
-          <span className="mono pill whitespace-nowrap border border-[var(--color-border)] px-2 py-0.5 text-[9.5px] uppercase tracking-[0.12em] text-[var(--color-muted)]">
+          <span className="text-xs font-medium">{m.title}</span>
+          <span className="tnum pill whitespace-nowrap border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-muted)]">
             {m.tag}
           </span>
         </div>
@@ -74,10 +74,10 @@ export function StudioMock({ t }: { t: Dictionary }) {
           <ShieldCheck className="size-5" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-medium">{m.approvalTitle}</span>
-          <span className="block truncate text-[11.5px] text-[var(--color-muted)]">{m.approvalBody}</span>
+          <span className="block text-sm font-medium">{m.approvalTitle}</span>
+          <span className="block truncate text-xs text-[var(--color-muted)]">{m.approvalBody}</span>
         </span>
-        <span className="pill shrink-0 bg-[var(--color-primary)] px-3 py-1 text-[12px] font-medium text-[var(--color-on-accent)]">
+        <span className="pill shrink-0 bg-[var(--color-primary)] px-3 py-1 text-xs font-medium text-[var(--color-on-accent)]">
           {m.approve}
         </span>
       </div>
@@ -110,7 +110,7 @@ function Composer({ t }: { t: Dictionary }) {
       </div>
       <div className="grid grid-cols-4 gap-1 border-b border-[var(--color-border)] pb-2">
         {tools.map(({ icon: Icon, label }) => (
-          <span key={label} className="flex min-w-0 flex-col items-center gap-1 py-1 text-[10.5px] text-[var(--color-muted)]">
+          <span key={label} className="flex min-w-0 flex-col items-center gap-1 py-1 text-xs text-[var(--color-muted)]">
             <Icon className="size-3.5" />
             <span className="max-w-full truncate">{label}</span>
           </span>
@@ -123,14 +123,14 @@ function Composer({ t }: { t: Dictionary }) {
         </span>
         <span className="min-w-0">
           <span className="studio-label block">{m.model}</span>
-          <span className="block truncate text-[12.5px] font-medium">{m.modelValue}</span>
+          <span className="block truncate text-xs font-medium">{m.modelValue}</span>
         </span>
       </div>
 
       <div className="flex flex-col gap-1.5">
         <span className="studio-label">{m.describe}</span>
         <div className="studio-field flex min-h-[100px] flex-col justify-between gap-3 p-3">
-          <p className="lp-type text-[13px] leading-snug">
+          <p className="lp-type text-sm leading-snug">
             {m.prompt}
             <span className="lp-caret ml-0.5 inline-block h-[1.05em] w-px translate-y-[0.18em] bg-[var(--color-primary)]" />
           </p>
@@ -148,7 +148,7 @@ function Composer({ t }: { t: Dictionary }) {
           {m.styles.map((s, i) => (
             <span
               key={s}
-              className={`studio-chip min-h-7 text-[11px] ${
+              className={`studio-chip min-h-7 text-xs ${
                 i === 0 ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]" : ""
               }`}
             >
@@ -159,11 +159,11 @@ function Composer({ t }: { t: Dictionary }) {
       </div>
 
       <div className="mt-auto flex flex-col gap-2">
-        <span className="studio-cta min-h-11 text-[14px]">
+        <span className="studio-cta min-h-11 text-sm">
           <Sparkles className="size-4" />
           {m.generate}
         </span>
-        <span className="flex items-center justify-center gap-1.5 text-center text-[11px] text-[var(--color-muted)]">
+        <span className="flex items-center justify-center gap-1.5 text-center text-xs text-[var(--color-muted)]">
           <Coins className="size-3.5 shrink-0 text-[var(--color-primary)]" />
           {m.priceNote}
         </span>
@@ -177,8 +177,8 @@ function Results({ t }: { t: Dictionary }) {
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex items-center justify-between gap-3 px-1 pt-1">
-        <span className="text-[13.5px] font-semibold">{m.results}</span>
-        <span className="flex items-center gap-1.5 text-[11px] text-[var(--color-muted)]">
+        <span className="text-sm font-semibold">{m.results}</span>
+        <span className="flex items-center gap-1.5 text-xs text-[var(--color-muted)]">
           <span className="lp-pulse size-1.5 rounded-full bg-[var(--color-primary)]" />
           {m.live}
         </span>
@@ -199,10 +199,10 @@ function Results({ t }: { t: Dictionary }) {
           <span className="lp-art lp-art-portrait">
             <span className="absolute inset-y-0 left-0 w-1/2 backdrop-blur-[3px]" />
             <span className="absolute inset-y-0 left-1/2 w-px bg-white/80" />
-            <span className="studio-on-media absolute left-2 top-2 rounded-md px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em]">
+            <span className="studio-on-media absolute left-2 top-2 rounded-md px-1.5 py-0.5 text-xs font-medium">
               {m.before}
             </span>
-            <span className="studio-on-media absolute right-2 top-2 rounded-md px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em]">
+            <span className="studio-on-media absolute right-2 top-2 rounded-md px-1.5 py-0.5 text-xs font-medium">
               {m.after}
             </span>
           </span>
@@ -234,7 +234,7 @@ function Results({ t }: { t: Dictionary }) {
         </Card>
         <Card d={0.95} kind={m.kinds.cutout} icon={Scissors} status={null} tone="ok" caption={m.captions.failed} hideOnPhone>
           <span className="lp-art border border-dashed border-[color-mix(in_srgb,var(--color-fail)_55%,transparent)] bg-[var(--studio-field)]">
-            <span className="absolute inset-0 flex items-center justify-center gap-1.5 px-2 text-center text-[11px] font-medium text-[var(--color-ok)]">
+            <span className="absolute inset-0 flex items-center justify-center gap-1.5 px-2 text-center text-xs font-medium text-[var(--color-ok)]">
               <RotateCcw className="size-3.5 shrink-0" />
               {m.returned}
             </span>
@@ -277,14 +277,14 @@ function Card({
       {children}
       <span className="flex flex-col gap-1 px-1.5 pb-1">
         <span className="flex items-center justify-between gap-2">
-          <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] font-medium">
+          <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium">
             <Icon className="size-3.5 shrink-0 text-[var(--color-muted)]" />
             {/* On a phone the icon names the kind; the status needs the room. */}
             <span className={`truncate ${status ? "hidden sm:inline" : ""}`}>{kind}</span>
           </span>
           {status && (
             <span
-              className="mono flex shrink-0 items-center gap-1 text-[9.5px] font-medium uppercase tracking-[0.08em]"
+              className="tnum flex shrink-0 items-center gap-1 text-xs font-medium"
               style={{ color }}
             >
               <span className={`size-1.5 rounded-full ${tone === "run" ? "lp-pulse" : ""}`} style={{ background: color }} />
@@ -292,7 +292,7 @@ function Card({
             </span>
           )}
         </span>
-        <span className="truncate text-[11px] text-[var(--color-muted)]">{caption}</span>
+        <span className="truncate text-xs text-[var(--color-muted)]">{caption}</span>
       </span>
     </span>
   );

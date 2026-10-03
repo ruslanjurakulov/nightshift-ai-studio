@@ -53,7 +53,7 @@ const TONE_COLOR: Record<string, string> = {
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+      <div className="text-xs text-[var(--color-muted)]">
         {label}
       </div>
       <div className="text-sm text-[var(--color-fg)] break-words">{value}</div>
@@ -182,7 +182,7 @@ export default async function VideoDetail({
       <div className="rhythm stagger-enter">
         <Link
           href={path("/videos")}
-          className="tap-link mono text-[11px] text-[var(--color-primary)] hover:underline"
+          className="tap-link tnum text-xs text-[var(--color-primary)] hover:underline"
         >
           {t.videoDetail.back}
         </Link>
@@ -287,7 +287,7 @@ export default async function VideoDetail({
         <div className="min-w-0">
           <Link
             href={path("/videos")}
-            className="tap-link mono text-[11px] text-[var(--color-primary)] hover:underline"
+            className="tap-link tnum text-xs text-[var(--color-primary)] hover:underline"
           >
             {t.videoDetail.back}
           </Link>
@@ -317,20 +317,20 @@ export default async function VideoDetail({
             <div className="text-sm font-semibold text-[var(--color-warn)]">
               {isClip ? t.repurpose.clipState : heldStateLabel(heldState(video), t.held)}
             </div>
-            <p className="m-0 text-[12px] leading-relaxed text-[var(--color-muted)]">{t.held.detailNote}</p>
+            <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">{t.held.detailNote}</p>
             {heldVerdict ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field
                   label={t.held.gateBlocks}
-                  value={heldVerdict.blocks.length ? <span className="mono text-[12px]">{heldVerdict.blocks.join(", ")}</span> : t.common.dash}
+                  value={heldVerdict.blocks.length ? <span className="mono text-xs">{heldVerdict.blocks.join(", ")}</span> : t.common.dash}
                 />
                 <Field
                   label={t.held.gateWarnings}
-                  value={heldVerdict.warnings.length ? <span className="mono text-[12px]">{heldVerdict.warnings.join(", ")}</span> : t.common.dash}
+                  value={heldVerdict.warnings.length ? <span className="mono text-xs">{heldVerdict.warnings.join(", ")}</span> : t.common.dash}
                 />
               </div>
             ) : (
-              <p className="m-0 text-[12px] text-[var(--color-muted)]">{t.held.noGateDetail}</p>
+              <p className="m-0 text-xs text-[var(--color-muted)]">{t.held.noGateDetail}</p>
             )}
           </div>
         </Panel>
@@ -339,11 +339,11 @@ export default async function VideoDetail({
       {isClip && (
         <Panel title={t.repurpose.clipNoteTitle}>
           <div className="flex flex-col gap-2 p-4">
-            <p className="m-0 text-[12px] leading-relaxed text-[var(--color-muted)]">{t.repurpose.clipNote}</p>
+            <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">{t.repurpose.clipNote}</p>
             {clipMaster && (
               <Link
                 href={path(`/videos/${encodeURIComponent(clipMaster)}`)}
-                className="tap-link mono text-[11px] text-[var(--color-primary)] hover:underline"
+                className="tap-link tnum text-xs text-[var(--color-primary)] hover:underline"
               >
                 {t.repurpose.clipOpenMaster}
               </Link>
@@ -362,7 +362,7 @@ export default async function VideoDetail({
             label={t.videoDetail.fPublished}
             value={
               video.published_at ? (
-                <span className="mono text-[13px]">{video.published_at}</span>
+                <span className="tnum text-sm">{video.published_at}</span>
               ) : held ? (
                 t.held.notUploaded
               ) : (
@@ -374,7 +374,7 @@ export default async function VideoDetail({
             label={t.videoDetail.fVideoId}
             value={
               <span className="inline-flex min-w-0 max-w-full items-center gap-1">
-                <span className="mono min-w-0 truncate text-[13px]">{video.video_id}</span>
+                <span className="mono min-w-0 truncate text-sm">{video.video_id}</span>
                 <CopyButton value={video.video_id} label={t.videoDetail.fVideoId} />
               </span>
             }
@@ -470,14 +470,14 @@ export default async function VideoDetail({
                 const tone = statusTone(e.status);
                 return (
                   <li key={e.event_key} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                    <span className="mono w-16 shrink-0 text-[10px] text-[var(--color-muted)]">
+                    <span className="tnum w-16 shrink-0 text-xs text-[var(--color-muted)]">
                       {timeOfDay(e.ts)}
                     </span>
                     <span
                       className="glow-dot size-1.5 shrink-0 rounded-full"
                       style={{ color: TONE_COLOR[tone], background: TONE_COLOR[tone] }}
                     />
-                    <span className="mono shrink-0 text-[11px] text-[var(--color-primary)]">
+                    <span className="tnum shrink-0 text-xs text-[var(--color-primary)]">
                       {e.agent ?? t.common.system}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-[var(--color-fg)]">
@@ -485,7 +485,7 @@ export default async function VideoDetail({
                     </span>
                     {e.status && (
                       <span
-                        className="shrink-0 text-[10px] uppercase tracking-[0.22em]"
+                        className="shrink-0 text-xs"
                         style={{ color: tone === "idle" ? "var(--color-muted)" : TONE_COLOR[tone] }}
                       >
                         {e.status}
@@ -524,7 +524,7 @@ export default async function VideoDetail({
 
               {snapshots.length >= 2 && (
                 <div className="flex flex-col gap-2">
-                  <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                  <div className="text-xs text-[var(--color-muted)]">
                     {t.videoDetail.viewsOverTime}
                   </div>
                   <ViewsSparkline

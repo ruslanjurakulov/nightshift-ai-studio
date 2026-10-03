@@ -36,7 +36,7 @@ export function QuotaGauges({
     <div>
       <div className="flex items-baseline justify-between gap-3">
         <span className="t-label">{labels.total}</span>
-        <span className="mono text-lg font-semibold tabular-nums text-[var(--color-fg)]">
+        <span className="tnum text-lg font-semibold tabular-nums text-[var(--color-fg)]">
           <Timecode value={view.totalSlots} format="count" unknown="N/A" />
         </span>
       </div>
@@ -46,7 +46,7 @@ export function QuotaGauges({
           <li key={r.channelId}>
             <div className="flex items-baseline justify-between gap-3">
               <span className="min-w-0 truncate text-sm text-[var(--color-fg)]">{r.name}</span>
-              <span className="mono shrink-0 text-[13px] tabular-nums text-[var(--color-muted)]">
+              <span className="tnum shrink-0 text-sm tabular-nums text-[var(--color-muted)]">
                 {r.slots === null ? "—" : (
                   <>
                     <Timecode value={r.slots} format="count" /> {labels.slotsSuffix}
@@ -63,7 +63,7 @@ export function QuotaGauges({
         ))}
       </ul>
 
-      <p className="mt-4 text-[13px] font-light text-[var(--color-muted)]">{labels.hint}</p>
+      <p className="mt-4 text-sm font-light text-[var(--color-muted)]">{labels.hint}</p>
     </div>
   );
 }

@@ -150,7 +150,7 @@ export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
         </svg>
         {unread > 0 && (
           <span
-            className="absolute -right-1 -top-1 grid min-w-[16px] place-items-center rounded-full px-1 text-[9px] font-bold text-[var(--color-on-accent)]"
+            className="absolute -right-1 -top-1 grid min-w-[16px] place-items-center rounded-full px-1 text-xs font-bold text-[var(--color-on-accent)]"
             style={{ background: "var(--color-primary)" }}
           >
             {unread > 9 ? "9+" : unread}
@@ -172,10 +172,10 @@ export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
           className="drawer-enter fixed inset-x-3 top-full z-50 mt-3 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] outline-none sm:absolute sm:inset-x-auto sm:right-0 sm:w-80"
         >
           <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
-            <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--color-fg)]">{t.ops.notifTitle}</span>
+            <span className="text-xs font-bold text-[var(--color-fg)]">{t.ops.notifTitle}</span>
             <span className="flex items-center gap-1">
               {notifications.length > 0 && (
-                <button type="button" onClick={clearAll} className="btn-sky is-quiet pill px-3 py-1 text-[11px] font-light">
+                <button type="button" onClick={clearAll} className="btn-sky is-quiet pill px-3 py-1 text-xs font-light">
                   {t.ops.notifClear}
                 </button>
               )}
@@ -195,16 +195,16 @@ export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
             className="scroll-focus max-h-[60vh] overflow-y-auto overscroll-contain"
           >
             {notifications.length === 0 ? (
-              <li className="p-4 text-center mono text-xs text-[var(--color-muted)]">{t.ops.notifEmpty}</li>
+              <li className="p-4 text-center tnum text-xs text-[var(--color-muted)]">{t.ops.notifEmpty}</li>
             ) : (
               notifications.map((n: Notification) => (
                 <li key={n.id} className="flex items-start gap-2.5 border-b border-[var(--color-border)]/60 px-3 py-2 last:border-0">
                   <span className="mt-1 size-1.5 shrink-0 rounded-full" style={{ background: KIND_COLOR[n.kind] }} />
                   <div className="min-w-0 flex-1">
-                    <div className="text-[12px] text-[var(--color-fg)]">{String(t.ops[KIND_LABEL[n.kind]])}</div>
-                    <div className="mono truncate text-[10px] text-[var(--color-muted)]">{n.subject}</div>
+                    <div className="text-xs text-[var(--color-fg)]">{String(t.ops[KIND_LABEL[n.kind]])}</div>
+                    <div className="tnum truncate text-xs text-[var(--color-muted)]">{n.subject}</div>
                   </div>
-                  <span className="mono shrink-0 text-[9px] text-[var(--color-muted)]">{relativeTime(n.ts)}</span>
+                  <span className="tnum shrink-0 text-xs text-[var(--color-muted)]">{relativeTime(n.ts)}</span>
                 </li>
               ))
             )}

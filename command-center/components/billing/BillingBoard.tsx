@@ -103,12 +103,12 @@ export function BillingBoard({
             type="button"
             onClick={doRefresh}
             disabled={!githubConfigured || refresh === "busy"}
-            className="btn-quiet inline-flex w-fit items-center gap-2 px-4 py-2 text-[13px] disabled:opacity-40"
+            className="btn-quiet inline-flex w-fit items-center gap-2 px-4 py-2 text-sm disabled:opacity-40"
           >
             <RefreshCw className="size-3.5" aria-hidden />
             {refresh === "busy" ? t.billing.refreshing : t.billing.refresh}
           </button>
-          <span className="mono text-[11px]" aria-live="polite">
+          <span className="tnum text-xs" aria-live="polite">
             {refresh === "ok" && <span className="text-[var(--color-ok)]">{t.billing.refreshQueued}</span>}
             {refresh === "fail" && <span className="text-[var(--color-fail)]">{t.billing.refreshFailed}</span>}
           </span>
@@ -135,23 +135,23 @@ function ElevenLabsPanel({ runway }: { runway: RunwayView | null }) {
   const { t } = useI18n();
   if (!runway) {
     return (
-      <div className="panel p-4">
+      <div className="panel p-5 sm:p-6">
         <h2 className="t-section">{t.billing.elevenTitle}</h2>
-        <p className="mt-2 text-[13px] text-[var(--color-muted)]">{t.billing.elevenNoData}</p>
+        <p className="mt-2 text-sm text-[var(--color-muted)]">{t.billing.elevenNoData}</p>
       </div>
     );
   }
   return (
-    <div className="panel flex flex-col gap-3 p-4">
+    <div className="panel flex flex-col gap-3 p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="t-section">{t.billing.elevenTitle}</h2>
-        <span className="mono text-[11px] text-[var(--color-muted)]">
+        <span className="tnum text-xs text-[var(--color-muted)]">
           {runway.tier ? `${runway.tier} · ` : ""}
           {fmt(t.billing.checked, { when: relativeTime(runway.checkedAt) })}
         </span>
       </div>
       <p className="t-figure text-[var(--color-fg)]">{fmt(t.billing.elevenMinutes, { minutes: n0(runway.minMinutes) })}</p>
-      <p className="text-[13px] text-[var(--color-muted)]">
+      <p className="text-sm text-[var(--color-muted)]">
         {runway.minVideos !== null && runway.perVideoChars !== null
           ? fmt(t.billing.elevenVideos, { videos: n0(runway.minVideos), chars: n0(runway.perVideoChars) })
           : t.billing.elevenNoHistory}
@@ -166,7 +166,7 @@ function ElevenLabsPanel({ runway }: { runway: RunwayView | null }) {
           valueText={fmt(t.billing.elevenCredits, { remaining: n0(runway.remainingCredits), total: n0(runway.total) })}
         />
       )}
-      <p className="mono text-[11px] text-[var(--color-muted)]">
+      <p className="tnum text-xs text-[var(--color-muted)]">
         {runway.total !== null
           ? fmt(t.billing.elevenCredits, { remaining: n0(runway.remainingCredits), total: n0(runway.total) })
           : n0(runway.remainingCredits)}
@@ -214,26 +214,26 @@ function ProviderCard({ p, onSaved }: { p: ProviderView; onSaved: () => void }) 
   const low = typeof p.daysLeft === "number" && p.daysLeft <= p.lowBalanceDays && !p.autoRecharge;
 
   return (
-    <div className="panel flex flex-col gap-3 p-4">
+    <div className="panel flex flex-col gap-3 p-5 sm:p-6">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-[var(--color-fg)]">{p.name}</h3>
         <StatusLamp tone={p.keySet ? "ok" : "idle"} label={p.keySet ? t.billing.keySet : t.billing.keyMissing} />
       </div>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[12px]">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
         <dt className="text-[var(--color-muted)]">{t.billing.balance}</dt>
-        <dd className="mono text-right text-[var(--color-fg)]">{balance}</dd>
+        <dd className="tnum text-right text-[var(--color-fg)]">{balance}</dd>
         <dt className="text-[var(--color-muted)]">{t.billing.usage30}</dt>
-        <dd className="mono text-right text-[var(--color-fg)]">
+        <dd className="tnum text-right text-[var(--color-fg)]">
           {n0(p.units30)}
           {p.usdPerDay !== null && p.usdPerDay > 0 ? ` · ${usd(p.usdPerDay)}${t.billing.perDay}` : ""}
         </dd>
         <dt className="text-[var(--color-muted)]">{t.billing.lasts}</dt>
-        <dd className="mono text-right" style={{ color: low ? "var(--color-warn)" : "var(--color-fg)" }}>
+        <dd className="tnum text-right" style={{ color: low ? "var(--color-warn)" : "var(--color-fg)" }}>
           {lasts}
         </dd>
       </dl>
       <label className="flex flex-col gap-1">
-        <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+        <span className="text-xs text-[var(--color-muted)]">
           {fmt(t.billing.price, { unit: p.unitLabel })}
         </span>
         <div className="flex gap-2">
@@ -248,25 +248,25 @@ function ProviderCard({ p, onSaved }: { p: ProviderView; onSaved: () => void }) 
               setState("idle");
             }}
             placeholder={t.billing.pricePlaceholder}
-            className="rounded-[var(--ns-r-key)] min-w-0 flex-1 border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 mono text-[12px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+            className="rounded-[var(--ns-r-key)] min-w-0 flex-1 border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 tnum text-xs text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
           />
           <button
             type="button"
             onClick={save}
             disabled={state === "busy"}
-            className="btn-quiet text-[12px] disabled:opacity-40"
+            className="btn-quiet text-xs disabled:opacity-40"
           >
             {state === "ok" ? t.billing.saved : t.billing.save}
           </button>
         </div>
-        {state === "fail" && <span className="text-[11px] text-[var(--color-fail)]">{t.billing.saveFailed}</span>}
+        {state === "fail" && <span className="text-xs text-[var(--color-fail)]">{t.billing.saveFailed}</span>}
       </label>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => setPaying((v) => !v)}
           aria-expanded={paying}
-          className="btn-primary text-[12px] font-semibold"
+          className="btn-primary text-xs font-semibold"
         >
           {t.billing.pay}
         </button>
@@ -274,7 +274,7 @@ function ProviderCard({ p, onSaved }: { p: ProviderView; onSaved: () => void }) 
           href={p.billingUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-[12px] text-[var(--color-primary)] hover:underline"
+          className="inline-flex items-center gap-1.5 text-xs text-[var(--color-primary)] hover:underline"
         >
           {t.billing.openBilling}
           <ExternalLink className="size-3" aria-hidden />

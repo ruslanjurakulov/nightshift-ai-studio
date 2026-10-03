@@ -61,12 +61,12 @@ export function ProvidersBoard({
 
   return (
     <div className="rhythm stagger-enter">
-      <p className="mono text-[12px] text-[var(--color-muted)]">
+      <p className="tnum text-xs text-[var(--color-muted)]">
         {configuredCount} / {total} · {t.providers.storedNote}
       </p>
 
       {!githubConfigured && (
-        <div className="panel border-[var(--color-warn)] p-4" role="status">
+        <div className="panel border-[var(--color-warn)] p-5 sm:p-6" role="status">
           <p className="text-sm text-[var(--color-fg)]">{t.providers.githubNotConfigured}</p>
         </div>
       )}
@@ -146,7 +146,7 @@ function ProviderCard({
   }
 
   return (
-    <div className="panel flex flex-col gap-2.5 p-4 transition-transform duration-200 hover:-translate-y-0.5 hover:border-[var(--color-primary-dim)]">
+    <div className="panel flex flex-col gap-2.5 p-5 sm:p-6 transition-transform duration-200 hover:-translate-y-0.5 hover:border-[var(--color-primary-dim)]">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-semibold text-[var(--color-fg)]">{provider.name}</span>
         <StatusPill
@@ -157,7 +157,7 @@ function ProviderCard({
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-2 py-0.5 mono text-[10px] text-[var(--color-muted)]">
+        <span className="rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-2 py-0.5 tnum text-xs text-[var(--color-muted)]">
           {provider.live ? t.providers.statusLive : t.providers.statusOptIn}
         </span>
       </div>
@@ -168,7 +168,7 @@ function ProviderCard({
         target="_blank"
         rel="noopener noreferrer"
         aria-label={`${provider.name}: ${t.providers.consoleLink}`}
-        className="btn-sky rounded-[var(--ns-r-key)] flex w-full items-center justify-center gap-1 px-3 py-1.5 text-[12px]"
+        className="btn-sky rounded-[var(--ns-r-key)] flex w-full items-center justify-center gap-1 px-3 py-1.5 text-xs"
       >
         {provider.name} <span aria-hidden>↗</span>
       </a>
@@ -200,20 +200,20 @@ function ProviderCard({
             }}
             placeholder={configured ? t.providers.keySaved : t.providers.keyPlaceholder}
             aria-label={`${provider.name} API key`}
-            className={`w-full rounded-lg border bg-[var(--color-bg)] py-1.5 mono text-[12px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] ${configured && !value ? "pl-8 pr-3" : "px-3"} ${configured && state !== "error" ? "border-[var(--color-ok)]" : "border-[var(--color-border)]"}`}
+            className={`w-full rounded-lg border bg-[var(--color-bg)] py-1.5 tnum text-xs text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] ${configured && !value ? "pl-8 pr-3" : "px-3"} ${configured && state !== "error" ? "border-[var(--color-ok)]" : "border-[var(--color-border)]"}`}
           />
         </div>
         <button
           type="button"
           onClick={save}
           disabled={!canSave || !value.trim() || state === "saving"}
-          className="btn-sky rounded-[var(--ns-r-key)] shrink-0 px-3 py-1.5 text-[12px] disabled:opacity-40"
+          className="btn-sky rounded-[var(--ns-r-key)] shrink-0 px-3 py-1.5 text-xs disabled:opacity-40"
         >
           {state === "saving" ? t.providers.saving : configured ? t.providers.replace : t.providers.save}
         </button>
       </div>
 
-      <p className="mono text-[11px] text-[var(--color-muted)]" aria-live="polite">
+      <p className="tnum text-xs text-[var(--color-muted)]" aria-live="polite">
         {state === "saved"
           ? t.providers.saved
           : state === "error"

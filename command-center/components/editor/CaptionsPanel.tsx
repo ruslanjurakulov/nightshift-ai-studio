@@ -50,9 +50,9 @@ const POLL_MS = 3000;
 const CUES_SHOWN = 40;
 
 const fieldClass =
-  "pill w-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
+  "pill w-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
 const quietBtn =
-  "btn-sky is-quiet pill inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px]";
+  "btn-sky is-quiet pill inline-flex items-center gap-1.5 px-3 py-1.5 text-xs";
 
 /** One transcription model a member may be sold (sellable_models, 0035). */
 export interface CaptionModelOption {
@@ -161,7 +161,7 @@ function CueRow({
         </button>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <label className="flex flex-col gap-1 text-[11px] text-[var(--color-muted)]">
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
           {tc.cueStart}
           <input
             inputMode="decimal"
@@ -172,7 +172,7 @@ function CueRow({
             className={fieldClass}
           />
         </label>
-        <label className="flex flex-col gap-1 text-[11px] text-[var(--color-muted)]">
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
           {tc.cueEnd}
           <input
             inputMode="decimal"
@@ -185,7 +185,7 @@ function CueRow({
         </label>
       </div>
       {warning === "empty" ? (
-        <p role="alert" className="m-0 text-[12px] text-[var(--color-fail)]">
+        <p role="alert" className="m-0 text-xs text-[var(--color-fail)]">
           {tc.cueEmpty}
         </p>
       ) : null}
@@ -529,21 +529,21 @@ export function CaptionsPanel({
   const action = quoteErrorCode ? errorAction(quoteErrorCode) : null;
 
   return (
-    <section aria-labelledby="captions-heading" className="panel flex flex-col gap-3 p-4">
+    <section aria-labelledby="captions-heading" className="panel flex flex-col gap-3 p-5 sm:p-6">
       <div className="flex items-center gap-2">
         <CaptionsIcon className="size-4 text-[var(--color-primary)]" aria-hidden />
         <h2 id="captions-heading" className="m-0 text-[15px] font-semibold">
           {tc.heading}
         </h2>
       </div>
-      <p className="m-0 text-[12px] text-[var(--color-muted)]">{tc.intro}</p>
+      <p className="m-0 text-xs text-[var(--color-muted)]">{tc.intro}</p>
 
       {others.length > 0 ? (
         <div className="flex flex-col gap-1.5">
-          <h3 className="m-0 text-[13px] font-semibold">{tc.othersHeading}</h3>
+          <h3 className="m-0 text-sm font-semibold">{tc.othersHeading}</h3>
           <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
             {others.map((j) => (
-              <li key={j.id} className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--color-muted)]">
+              <li key={j.id} className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-muted)]">
                 <span className="min-w-0 flex-1">{tc.otherRunning}</span>
                 <button type="button" onClick={() => void cancel(j.id)} disabled={cancelling === j.id} className={quietBtn}>
                   {tc.cancel}
@@ -555,13 +555,13 @@ export function CaptionsPanel({
       ) : null}
 
       {models.length === 0 ? (
-        <p className="m-0 text-[13px] text-[var(--color-muted)]">{tc.noModels}</p>
+        <p className="m-0 text-sm text-[var(--color-muted)]">{tc.noModels}</p>
       ) : recordings.length === 0 ? (
-        <p className="m-0 text-[13px] text-[var(--color-muted)]">{tc.noRecordings}</p>
+        <p className="m-0 text-sm text-[var(--color-muted)]">{tc.noRecordings}</p>
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+            <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
               {tc.sourceLabel}
               <select
                 value={picked?.id ?? ""}
@@ -579,7 +579,7 @@ export function CaptionsPanel({
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+            <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
               {tc.languageLabel}
               <select value={spoken ?? "detect"} onChange={(e) => setLanguage(e.target.value as CaptionLanguage | "detect")} className={fieldClass}>
                 {CAPTION_LANGUAGES.filter((l) => chosen?.languages.includes(l)).map((l) => (
@@ -591,7 +591,7 @@ export function CaptionsPanel({
               </select>
             </label>
             {models.length > 1 ? (
-              <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">
+              <label className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
                 {tc.modelLabel}
                 <select value={chosen?.id ?? ""} onChange={(e) => setModelId(e.target.value)} className={fieldClass}>
                   {models.map((m) => (
@@ -605,11 +605,11 @@ export function CaptionsPanel({
           </div>
 
           {picked && !picked.heard && picked.kind === "video" ? (
-            <p className="m-0 text-[12px] text-[var(--color-muted)]">{tc.muted}</p>
+            <p className="m-0 text-xs text-[var(--color-muted)]">{tc.muted}</p>
           ) : null}
-          {problem === "too_long" ? <p role="alert" className="m-0 text-[12px] text-[var(--color-fail)]">{tc.tooLong}</p> : null}
+          {problem === "too_long" ? <p role="alert" className="m-0 text-xs text-[var(--color-fail)]">{tc.tooLong}</p> : null}
           {problem === "unknown" || problem === "not_recording" ? (
-            <p role="alert" className="m-0 text-[12px] text-[var(--color-fail)]">{tc.unknownLength}</p>
+            <p role="alert" className="m-0 text-xs text-[var(--color-fail)]">{tc.unknownLength}</p>
           ) : null}
 
           <div className="flex flex-col gap-2">
@@ -618,13 +618,13 @@ export function CaptionsPanel({
               onClick={() => void start()}
               disabled={quote.status !== "ready" || submitting || jobActive}
               aria-busy={submitting || quote.status === "quoting"}
-              className="btn-sky is-solid pill self-start px-4 py-2 text-[13px]"
+              className="btn-sky is-solid pill self-start px-4 py-2 text-sm"
             >
               {submitting ? tc.starting : priceLabel}
             </button>
-            <p className="m-0 text-[11px] text-[var(--color-muted)]">{tc.priceNote}</p>
+            <p className="m-0 text-xs text-[var(--color-muted)]">{tc.priceNote}</p>
             {quoteErrorCode ? (
-              <div role="alert" className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--color-fail)]">
+              <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-[var(--color-fail)]">
                 <span>{apiErrorMessage(t, quoteErrorCode)}</span>
                 {action === "credits" ? (
                   <Link href={path("/credits")} className="text-[var(--color-primary)] underline-offset-4 hover:underline">
@@ -638,7 +638,7 @@ export function CaptionsPanel({
                 ) : null}
               </div>
             ) : null}
-            <div aria-live="polite" className="text-[13px]">
+            <div aria-live="polite" className="text-sm">
               {status === "working" ? (
                 <span className="inline-flex flex-wrap items-center gap-2 text-[var(--color-warn)]">
                   {tc.working}
@@ -662,17 +662,17 @@ export function CaptionsPanel({
 
           {/* transcripts already made: free to use again */}
           <div className="flex flex-col gap-2">
-            <h3 className="m-0 text-[13px] font-semibold">{tc.earlier}</h3>
+            <h3 className="m-0 text-sm font-semibold">{tc.earlier}</h3>
             {tracks === null ? (
-              <p className="m-0 text-[12px] text-[var(--color-muted)]" role="status">…</p>
+              <p className="m-0 text-xs text-[var(--color-muted)]" role="status">…</p>
             ) : tracksError ? (
-              <p className="m-0 text-[12px] text-[var(--color-fail)]">{tc.transcriptFailed}</p>
+              <p className="m-0 text-xs text-[var(--color-fail)]">{tc.transcriptFailed}</p>
             ) : tracks.length === 0 ? null : (
               <>
-                <p className="m-0 text-[11px] text-[var(--color-muted)]">{tc.earlierNote}</p>
+                <p className="m-0 text-xs text-[var(--color-muted)]">{tc.earlierNote}</p>
                 <ul className="m-0 flex list-none flex-col gap-2 p-0">
                   {tracks.map((x) => (
-                    <li key={x.id} className="flex flex-wrap items-center gap-2 text-[12px]">
+                    <li key={x.id} className="flex flex-wrap items-center gap-2 text-xs">
                       <span className="min-w-0 flex-1 text-[var(--color-fg)]">
                         {fmt(tc.transcriptMeta, {
                           lang: tc.languages[x.language as CaptionLanguage] ?? tc.lang.und,
@@ -701,7 +701,7 @@ export function CaptionsPanel({
 
           {/* the look and the captions on the video: free */}
           <div className="flex flex-col gap-2">
-            <h3 className="m-0 text-[13px] font-semibold">{tc.lookHeading}</h3>
+            <h3 className="m-0 text-sm font-semibold">{tc.lookHeading}</h3>
             <div role="radiogroup" aria-label={tc.lookHeading} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {CAPTION_PRESETS.map((p) => {
                 const on = (current ? burnedLook : preset) === p.id;
@@ -712,14 +712,14 @@ export function CaptionsPanel({
                     role="radio"
                     aria-checked={on}
                     onClick={() => choosePreset(p.id)}
-                    className={`flex flex-col gap-0.5 rounded-xl border p-2 text-left text-[12px] ${
+                    className={`flex flex-col gap-0.5 rounded-xl border p-2 text-left text-xs ${
                       on ? "border-[var(--color-primary)]" : "border-[var(--color-border)]"
                     }`}
                   >
                     <span className="font-semibold" style={{ color: p.style.color, textShadow: "0 0 2px #000, 0 0 3px #000" }}>
                       {tc.presets[p.id]}
                     </span>
-                    <span className="text-[11px] text-[var(--color-muted)]">{tc.presetNotes[p.id]}</span>
+                    <span className="text-xs text-[var(--color-muted)]">{tc.presetNotes[p.id]}</span>
                   </button>
                 );
               })}
@@ -727,8 +727,8 @@ export function CaptionsPanel({
             <div className="flex flex-wrap items-center gap-2">
               {armed ? (
                 <>
-                  <span className="text-[12px] text-[var(--color-muted)]">{tc.rebuildWarn}</span>
-                  <button type="button" onClick={put} className="btn-sky is-solid pill px-3 py-1.5 text-[12px]">
+                  <span className="text-xs text-[var(--color-muted)]">{tc.rebuildWarn}</span>
+                  <button type="button" onClick={put} className="btn-sky is-solid pill px-3 py-1.5 text-xs">
                     {tc.rebuild}
                   </button>
                   <button type="button" onClick={() => setArmed(false)} className={quietBtn}>
@@ -740,14 +740,14 @@ export function CaptionsPanel({
                   type="button"
                   onClick={() => (current ? setArmed(true) : put())}
                   disabled={!activeTrack}
-                  className="btn-sky is-solid pill px-3 py-1.5 text-[12px]"
+                  className="btn-sky is-solid pill px-3 py-1.5 text-xs"
                 >
                   {current ? tc.rebuild : tc.put}
                 </button>
               )}
             </div>
             {notice ? (
-              <p role="status" className="m-0 text-[12px] text-[var(--color-muted)]">
+              <p role="status" className="m-0 text-xs text-[var(--color-muted)]">
                 {notice}
               </p>
             ) : null}
@@ -757,12 +757,12 @@ export function CaptionsPanel({
 
       {/* the captions the project holds: edit, delete, download */}
       <div className="flex flex-col gap-2">
-        <h3 className="m-0 text-[13px] font-semibold">{fmt(tc.cuesHeading, { n: cues.length })}</h3>
+        <h3 className="m-0 text-sm font-semibold">{fmt(tc.cuesHeading, { n: cues.length })}</h3>
         {cues.length === 0 ? (
-          <p className="m-0 text-[12px] text-[var(--color-muted)]">{tc.noCues}</p>
+          <p className="m-0 text-xs text-[var(--color-muted)]">{tc.noCues}</p>
         ) : (
           <>
-            <p className="m-0 text-[11px] text-[var(--color-muted)]">{tc.burnedNote}</p>
+            <p className="m-0 text-xs text-[var(--color-muted)]">{tc.burnedNote}</p>
             <ul className="m-0 flex max-h-[420px] list-none flex-col gap-2 overflow-y-auto p-0 pr-1">
               {cues.slice(0, shown).map((c, i) => (
                 <CueRow
@@ -784,8 +784,8 @@ export function CaptionsPanel({
               </button>
             ) : null}
             <div className="flex flex-col gap-1.5">
-              <h3 className="m-0 text-[13px] font-semibold">{tc.downloadHeading}</h3>
-              <p className="m-0 text-[11px] text-[var(--color-muted)]">{tc.downloadNote}</p>
+              <h3 className="m-0 text-sm font-semibold">{tc.downloadHeading}</h3>
+              <p className="m-0 text-xs text-[var(--color-muted)]">{tc.downloadNote}</p>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"

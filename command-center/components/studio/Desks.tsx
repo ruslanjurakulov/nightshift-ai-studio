@@ -151,7 +151,7 @@ export function StudioOverview({
               emptyBody={t.desk.recentEmpty}
             />
           ) : (
-            <p className="studio-field p-4 text-[13px] text-[var(--color-muted)]">{t.desk.noOrg}</p>
+            <p className="studio-field p-4 text-sm text-[var(--color-muted)]">{t.desk.noOrg}</p>
           )}
         </div>
 
@@ -161,7 +161,7 @@ export function StudioOverview({
               <h2 id="desk-credits-title" className="ns-eyebrow">
                 {t.desk.creditsTitle}
               </h2>
-              <Link href={path("/credits")} className="tap-link text-[12px] text-[var(--color-primary)] underline">
+              <Link href={path("/credits")} className="tap-link text-xs text-[var(--color-primary)] underline">
                 {t.desk.creditsLink}
               </Link>
             </div>
@@ -169,7 +169,7 @@ export function StudioOverview({
               <>
                 <p className="flex items-baseline gap-2">
                   <Timecode value={credits.account.available} locale={locale} className="desk-figure" />
-                  <span className="text-[13px] text-[var(--color-muted)]">{t.desk.creditsAvailable}</span>
+                  <span className="text-sm text-[var(--color-muted)]">{t.desk.creditsAvailable}</span>
                 </p>
                 <Meter
                   value={credits.account.available}
@@ -181,7 +181,7 @@ export function StudioOverview({
                     h: formatNumber(credits.account.reserved, locale, 2),
                   })}
                 />
-                <p className="text-[12px] text-[var(--color-muted)]">
+                <p className="text-xs text-[var(--color-muted)]">
                   {credits.account.reserved > 0 ? (
                     <>
                       <Timecode value={credits.account.reserved} locale={locale} /> {t.desk.creditsHeld}
@@ -192,9 +192,9 @@ export function StudioOverview({
                 </p>
               </>
             ) : credits.state === "exempt" ? (
-              <p className="text-[13px] text-[var(--color-muted)]">{t.desk.creditsExempt}</p>
+              <p className="text-sm text-[var(--color-muted)]">{t.desk.creditsExempt}</p>
             ) : (
-              <p className="text-[13px] text-[var(--color-muted)]">{t.desk.creditsUnknown}</p>
+              <p className="text-sm text-[var(--color-muted)]">{t.desk.creditsUnknown}</p>
             )}
           </section>
 
@@ -203,7 +203,7 @@ export function StudioOverview({
               <h2 id="desk-projects-title" className="ns-eyebrow">
                 {t.desk.projectsTitle}
               </h2>
-              <Link href={path("/editor")} className="tap-link text-[12px] text-[var(--color-primary)] underline">
+              <Link href={path("/editor")} className="tap-link text-xs text-[var(--color-primary)] underline">
                 {t.desk.projectsOpen}
               </Link>
             </div>
@@ -214,18 +214,18 @@ export function StudioOverview({
                     return (
                       <li key={p.id}>
                         <Link href={path(`/editor/${p.id}`)} className="desk-project">
-                          <span className="min-w-0 truncate text-[13px] font-semibold text-[var(--color-fg)]">{p.title}</span>
-                          <LocalTime iso={p.updatedAt} locale={locale} className="shrink-0 text-[11px] text-[var(--color-muted)]" />
+                          <span className="min-w-0 truncate text-sm font-semibold text-[var(--color-fg)]">{p.title}</span>
+                          <LocalTime iso={p.updatedAt} locale={locale} className="shrink-0 text-xs text-[var(--color-muted)]" />
                         </Link>
                       </li>
                     );
                   })}
                 </ul>
               ) : (
-                <p className="text-[13px] text-[var(--color-muted)]">{t.desk.projectsEmpty}</p>
+                <p className="text-sm text-[var(--color-muted)]">{t.desk.projectsEmpty}</p>
               )
             ) : (
-              <p className="text-[13px] text-[var(--color-muted)]">
+              <p className="text-sm text-[var(--color-muted)]">
                 {projects.state === "not_available" ? t.desk.projectsUnavailable : t.desk.projectsFailed}
               </p>
             )}

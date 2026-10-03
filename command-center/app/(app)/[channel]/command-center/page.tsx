@@ -189,9 +189,9 @@ export default async function CommandCenter() {
         <div className="panel flex flex-wrap items-center justify-between gap-4 p-5">
           <div className="min-w-0">
             <h2 className="t-section">{t.signup.finishSetup}</h2>
-            <p className="mt-1 text-[13px] text-[var(--color-muted)]">{t.signup.finishSetupBody}</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.signup.finishSetupBody}</p>
           </div>
-          <Link href={WELCOME_PATH} className="btn-primary text-[13px]">
+          <Link href={WELCOME_PATH} className="btn-primary text-sm">
             {t.signup.finishSetup} →
           </Link>
         </div>
@@ -252,7 +252,7 @@ export default async function CommandCenter() {
             {operator && (
             <Link
               href={path("/pipeline")}
-              className={`${canProduce ? "btn-quiet" : "btn-primary"} text-[14px]`}
+              className={`${canProduce ? "btn-quiet" : "btn-primary"} text-sm`}
             >
               {t.dashboard.openPipeline}
               <span className="btn-arrow" aria-hidden>
@@ -260,7 +260,7 @@ export default async function CommandCenter() {
               </span>
             </Link>
             )}
-            <Link href={path("/videos")} className="btn-quiet text-[14px]">
+            <Link href={path("/videos")} className="btn-quiet text-sm">
               {t.dashboard.openVideos}
             </Link>
             <CustomizeButton />
@@ -292,8 +292,8 @@ export default async function CommandCenter() {
                     key={v.video_id}
                     className="row-sweep flex items-baseline justify-between gap-6 border-b border-[var(--color-border)] py-[15px]"
                   >
-                    <span className="min-w-0 truncate text-[16px]">{v.title ?? v.video_id}</span>
-                    <span className="mono shrink-0 text-[13px] text-[var(--color-muted)]">
+                    <span className="min-w-0 truncate text-base">{v.title ?? v.video_id}</span>
+                    <span className="tnum shrink-0 text-sm text-[var(--color-muted)]">
                       {v.topic ?? t.common.dash} · {relativeTime(v.published_at)}
                     </span>
                   </li>
@@ -328,10 +328,10 @@ export default async function CommandCenter() {
                   >
                     <div className="min-w-0">
                       <div className="truncate text-sm text-[var(--color-fg)]">{tp.topic}</div>
-                      <div className="truncate text-[11px] font-light text-[var(--color-muted)]">{tp.reason}</div>
+                      <div className="truncate text-xs font-light text-[var(--color-muted)]">{tp.reason}</div>
                     </div>
                     <div
-                      className="mono shrink-0 text-lg font-semibold tabular-nums"
+                      className="tnum shrink-0 text-lg font-semibold tabular-nums"
                       style={{ color: tp.score >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}
                     >
                       {tp.score.toFixed(0)}
@@ -405,7 +405,7 @@ function Figure({
       >
         {known ? num(value) : unknown}
       </div>
-      {shownSub && <div className="mt-1.5 max-w-[22ch] truncate text-[12px] font-light text-[var(--color-muted)]">{shownSub}</div>}
+      {shownSub && <div className="mt-1.5 max-w-[22ch] truncate text-xs font-light text-[var(--color-muted)]">{shownSub}</div>}
     </div>
   );
 }

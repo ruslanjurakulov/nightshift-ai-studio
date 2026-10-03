@@ -57,11 +57,11 @@ export default async function FeedbackPage() {
       <PageHeader icon="feedback" title={t.feedback.title} subtitle={t.feedback.subtitle} />
 
       {/* The loop, drawn from the real stages the backend runs */}
-      <div tabIndex={0} role="region" aria-label={t.feedback.title} className="panel scroll-focus overflow-x-auto p-4">
+      <div tabIndex={0} role="region" aria-label={t.feedback.title} className="panel scroll-focus overflow-x-auto p-5 sm:p-6">
         <div className="flex min-w-max items-center gap-2">
           {LOOP.map((step, i) => (
             <div key={step} className="flex items-center gap-2">
-              <span className="mono whitespace-nowrap rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2.5 py-1.5 text-[11px] text-[var(--color-fg)]">
+              <span className="tnum whitespace-nowrap rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2.5 py-1.5 text-xs text-[var(--color-fg)]">
                 {step}
               </span>
               {i < LOOP.length - 1 && <span className="text-[var(--color-primary)]">→</span>}
@@ -89,7 +89,7 @@ export default async function FeedbackPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
                   <th className="px-4 py-2 font-semibold">{t.feedback.thTopic}</th>
                   <th className="px-4 py-2 font-semibold">{t.feedback.thScore}</th>
                   <th className="px-4 py-2 font-semibold">{t.feedback.thVideos}</th>
@@ -101,13 +101,13 @@ export default async function FeedbackPage() {
                 {topics.map((tp) => (
                   <tr key={tp.topic} className="border-b border-[var(--color-border)]/50 transition-colors hover:bg-[var(--color-panel-2)]">
                     <td className="px-4 py-2 text-[var(--color-fg)]">{tp.topic}</td>
-                    <td className="px-4 py-2 mono font-bold tabular-nums"
+                    <td className="px-4 py-2 tnum font-bold tabular-nums"
                       style={{ color: tp.score >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}>
                       {tp.score.toFixed(0)}
                     </td>
-                    <td className="px-4 py-2 mono text-[var(--color-muted)] tabular-nums">{tp.videos_analyzed}</td>
-                    <td className="px-4 py-2 text-[11px] text-[var(--color-muted)]">{tp.reason ?? t.common.dash}</td>
-                    <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">{relativeTime(tp.updated_at)}</td>
+                    <td className="px-4 py-2 tnum text-[var(--color-muted)] tabular-nums">{tp.videos_analyzed}</td>
+                    <td className="px-4 py-2 text-xs text-[var(--color-muted)]">{tp.reason ?? t.common.dash}</td>
+                    <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{relativeTime(tp.updated_at)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -123,7 +123,7 @@ export default async function FeedbackPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
                   <th className="px-4 py-2 font-semibold">{t.feedback.sgSignal}</th>
                   <th className="px-4 py-2 font-semibold">{t.feedback.sgTopic}</th>
                   <th className="px-4 py-2 font-semibold">{t.feedback.sgVideo}</th>
@@ -134,13 +134,13 @@ export default async function FeedbackPage() {
               <tbody>
                 {signals.map((s, i) => (
                   <tr key={`${s.video_id}-${s.signal}-${i}`} className="border-b border-[var(--color-border)]/50 transition-colors hover:bg-[var(--color-panel-2)]">
-                    <td className="px-4 py-2 mono text-[11px] font-semibold" style={{ color: signalTone(s.signal) }}>
+                    <td className="px-4 py-2 tnum text-xs font-semibold" style={{ color: signalTone(s.signal) }}>
                       {s.signal}
                     </td>
                     <td className="px-4 py-2 text-[var(--color-muted)]">{s.topic ?? t.common.dash}</td>
-                    <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">{s.video_id}</td>
-                    <td className="px-4 py-2 text-[11px] text-[var(--color-muted)]">{s.detail ?? t.common.dash}</td>
-                    <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">{relativeTime(s.analyzed_date)}</td>
+                    <td className="px-4 py-2 mono text-xs text-[var(--color-muted)]">{s.video_id}</td>
+                    <td className="px-4 py-2 text-xs text-[var(--color-muted)]">{s.detail ?? t.common.dash}</td>
+                    <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{relativeTime(s.analyzed_date)}</td>
                   </tr>
                 ))}
               </tbody>

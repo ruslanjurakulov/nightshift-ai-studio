@@ -44,13 +44,13 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
     agent.status === "RUNNING" ? t.status.running : agent.status === "FAILED" ? t.status.failed : t.status.idle;
 
   return (
-    <div className="panel flex flex-col gap-3 p-4 transition-transform duration-200 hover:-translate-y-0.5 hover:border-[var(--color-primary-dim)]">
+    <div className="panel flex flex-col gap-3 p-5 sm:p-6 transition-transform duration-200 hover:-translate-y-0.5 hover:border-[var(--color-primary-dim)]">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="mono truncate text-sm font-bold text-[var(--color-primary)]">
+          <div className="tnum truncate text-sm font-bold text-[var(--color-primary)]">
             {agent.agent}
           </div>
-          <div className="mt-0.5 text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+          <div className="mt-0.5 text-xs text-[var(--color-muted)]">
             {fmt(t.agents.recentEvents, { n: agent.eventCount })}
           </div>
         </div>
@@ -58,11 +58,11 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
       </div>
 
       <div className="rounded-md border-l-2 px-3 py-2" style={{ borderColor: accent, background: "var(--color-panel-2)" }}>
-        <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+        <div className="text-xs text-[var(--color-muted)]">
           {t.agents.currentTask}
         </div>
-        <div className="mono mt-0.5 truncate text-sm text-[var(--color-fg)]">{agent.currentTask}</div>
-        <div className="mono mt-0.5 text-[11px] text-[var(--color-muted)]">
+        <div className="tnum mt-0.5 truncate text-sm text-[var(--color-fg)]">{agent.currentTask}</div>
+        <div className="tnum mt-0.5 text-xs text-[var(--color-muted)]">
           {agent.durationMs !== null ? fmt(t.agents.took, { d: durationLabel(agent.durationMs) }) : ""}
           {agent.lastActivity ? relativeTime(agent.lastActivity) : t.common.na}
         </div>
@@ -70,18 +70,18 @@ export function AgentCard({ agent }: { agent: AgentSummary }) {
 
       <dl className="grid grid-cols-2 gap-2">
         <div>
-          <dt className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+          <dt className="text-xs text-[var(--color-muted)]">
             {t.agents.lastSuccess}
           </dt>
-          <dd className="mono mt-0.5 text-[11px]" style={{ color: agent.lastSuccess ? "var(--color-ok)" : "var(--color-muted)" }}>
+          <dd className="tnum mt-0.5 text-xs" style={{ color: agent.lastSuccess ? "var(--color-ok)" : "var(--color-muted)" }}>
             {agent.lastSuccess ? relativeTime(agent.lastSuccess) : t.common.na}
           </dd>
         </div>
         <div>
-          <dt className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+          <dt className="text-xs text-[var(--color-muted)]">
             {t.agents.lastFailure}
           </dt>
-          <dd className="mono mt-0.5 text-[11px]" style={{ color: agent.lastFailure ? "var(--color-fail)" : "var(--color-muted)" }}>
+          <dd className="tnum mt-0.5 text-xs" style={{ color: agent.lastFailure ? "var(--color-fail)" : "var(--color-muted)" }}>
             {agent.lastFailure ? relativeTime(agent.lastFailure) : t.common.na}
           </dd>
         </div>

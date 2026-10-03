@@ -181,7 +181,7 @@ export function NotificationBell({ orgId }: { orgId: string | null }) {
         {badge && (
           <span
             aria-hidden
-            className="absolute -right-1 -top-1 grid min-w-[16px] place-items-center rounded-full px-1 text-[9px] font-bold text-[var(--color-on-accent)]"
+            className="absolute -right-1 -top-1 grid min-w-[16px] place-items-center rounded-full px-1 text-xs font-bold text-[var(--color-on-accent)]"
             style={{ background: "var(--color-primary)" }}
           >
             {badge}
@@ -204,7 +204,7 @@ export function NotificationBell({ orgId }: { orgId: string | null }) {
           className="fixed inset-x-3 top-full z-50 mt-3 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] outline-none sm:absolute sm:inset-x-auto sm:right-0 sm:w-96"
         >
           <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2">
-            <span id={titleId} className="text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--color-fg)]">
+            <span id={titleId} className="text-xs font-bold text-[var(--color-fg)]">
               {t.notifications.title}
             </span>
             <span className="flex items-center gap-1">
@@ -212,7 +212,7 @@ export function NotificationBell({ orgId }: { orgId: string | null }) {
                 type="button"
                 onClick={markAll}
                 disabled={busy || unread === 0}
-                className="btn-sky is-quiet pill px-3 py-1 text-[11px] font-light disabled:opacity-50"
+                className="btn-sky is-quiet pill px-3 py-1 text-xs font-light disabled:opacity-50"
               >
                 {t.notifications.markAll}
               </button>
@@ -223,26 +223,26 @@ export function NotificationBell({ orgId }: { orgId: string | null }) {
           </div>
 
           {markError && (
-            <p role="alert" className="border-b border-[var(--color-border)] px-3 py-2 text-[12px] text-[var(--color-fail)]">
+            <p role="alert" className="border-b border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-fail)]">
               {t.notifications.markError}
             </p>
           )}
 
           {load === "loading" && rows.length === 0 ? (
-            <p role="status" className="p-4 text-center text-[12px] text-[var(--color-muted)]">
+            <p role="status" className="p-4 text-center text-xs text-[var(--color-muted)]">
               {t.notifications.loading}
             </p>
           ) : load === "error" ? (
             <div role="alert" className="flex flex-col items-center gap-2 p-4 text-center">
-              <p className="text-[12px] text-[var(--color-fail)]">{t.notifications.loadError}</p>
-              <button type="button" onClick={() => void refresh()} className="btn-sky is-quiet pill px-3 py-1 text-[12px]">
+              <p className="text-xs text-[var(--color-fail)]">{t.notifications.loadError}</p>
+              <button type="button" onClick={() => void refresh()} className="btn-sky is-quiet pill px-3 py-1 text-xs">
                 {t.notifications.retry}
               </button>
             </div>
           ) : views.length === 0 ? (
             <div className="p-5 text-center">
-              <p className="text-[13px] text-[var(--color-fg)]">{t.notifications.empty}</p>
-              <p className="mt-1 text-[12px] text-[var(--color-muted)]">{t.notifications.emptyHint}</p>
+              <p className="text-sm text-[var(--color-fg)]">{t.notifications.empty}</p>
+              <p className="mt-1 text-xs text-[var(--color-muted)]">{t.notifications.emptyHint}</p>
             </div>
           ) : (
             <ul tabIndex={0} aria-label={t.notifications.title} className="scroll-focus max-h-[60vh] overflow-y-auto overscroll-contain">
@@ -298,11 +298,11 @@ function Item({
         <span aria-hidden className="mt-1.5 size-2 shrink-0" />
       )}
       <span className="min-w-0 flex-1">
-        <span className={`block text-[13px] text-[var(--color-fg)] ${view.unread ? "font-semibold" : ""}`}>{copy.title}</span>
-        <span className="block text-[12px] text-[var(--color-muted)]">{copy.body}</span>
-        {amount && <span className="mono block text-[11px] text-[var(--color-muted)]">{amount}</span>}
+        <span className={`block text-sm text-[var(--color-fg)] ${view.unread ? "font-semibold" : ""}`}>{copy.title}</span>
+        <span className="block text-xs text-[var(--color-muted)]">{copy.body}</span>
+        {amount && <span className="tnum block text-xs text-[var(--color-muted)]">{amount}</span>}
       </span>
-      <span className="mono shrink-0 text-[10px] text-[var(--color-muted)]">{when}</span>
+      <span className="tnum shrink-0 text-xs text-[var(--color-muted)]">{when}</span>
     </Link>
   );
 }

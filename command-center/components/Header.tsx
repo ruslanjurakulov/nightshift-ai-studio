@@ -93,7 +93,7 @@ export function Header({
                   <circle cx="11" cy="11" r="7" />
                   <path d="m21 21-4.3-4.3" />
                 </svg>
-                <span className="mono pill border border-[var(--color-border)] px-1.5 text-[9px] tracking-wider">⌘K</span>
+                <span className="tnum pill border border-[var(--color-border)] px-1.5 text-xs">⌘K</span>
               </button>
             </span>
             <CreditMenu account={credits} plan={plan} />
@@ -121,7 +121,7 @@ export function Header({
         <div className="flex min-w-0 items-center gap-6 xl:gap-10">
         <Link
           href={path("/command-center")}
-          className="tap-link font-display inline-flex shrink-0 items-center gap-2 text-lg font-semibold tracking-[-0.02em] text-[var(--color-primary)] sm:text-xl"
+          className="tap-link ns-wordmark inline-flex shrink-0 items-center gap-2"
         >
           <BrandMark size={34} />
           {t.brand.name}
@@ -152,7 +152,7 @@ export function Header({
               <circle cx="11" cy="11" r="7" />
               <path d="m21 21-4.3-4.3" />
             </svg>
-            <span className="mono pill border border-[var(--color-border)] px-1.5 text-[9px] tracking-wider">⌘K</span>
+            <span className="tnum pill border border-[var(--color-border)] px-1.5 text-xs">⌘K</span>
           </button>
         </span>
         <UtcClock />

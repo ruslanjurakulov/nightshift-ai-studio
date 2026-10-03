@@ -120,7 +120,7 @@ function PlanCredits({ summary, allowance, nowMs }: { summary: UsageSummary; all
           <h2 id={titleId} className="t-section">
             {u.plan.title}
           </h2>
-          <p className="text-[14px] font-light text-[var(--color-muted)]">{u.plan.lead}</p>
+          <p className="text-sm font-light text-[var(--color-muted)]">{u.plan.lead}</p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1.5">
           <Chip plain tone="lit">
@@ -137,18 +137,18 @@ function PlanCredits({ summary, allowance, nowMs }: { summary: UsageSummary; all
       {allowance.kind === "period" && <Period summary={summary} allowance={allowance} nowMs={nowMs} />}
 
       {allowance.kind === "ended" && (
-        <p className="text-[14px] leading-relaxed" role="status">
+        <p className="text-sm leading-relaxed" role="status">
           {fmt(u.plan.ended, { date: day(allowance.endedAt) })}
         </p>
       )}
       {allowance.kind === "none" && (
-        <p className="text-[14px] leading-relaxed" role="status">
+        <p className="text-sm leading-relaxed" role="status">
           {u.plan.none}
         </p>
       )}
 
       {summary.bonus.available > 0 && (
-        <p className="text-[13px] leading-relaxed text-[var(--color-muted)]">
+        <p className="text-sm leading-relaxed text-[var(--color-muted)]">
           {fmt(u.plan.bonus, {
             n: formatCredits(summary.bonus.available, locale),
             unit: unitOf(summary.bonus.available, locale, forms),
@@ -213,7 +213,7 @@ function Period({
           label={u.plan.meterLabel}
           valueText={`${fmt(u.plan.usedPercent, { pct })}: ${fmt(u.plan.usedOf, { used, total, unit: unitOf(allowance.granted, locale, forms) })}`}
         />
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-[13px]">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-sm">
           <span>
             <Timecode value={allowance.spent} locale={locale} /> / <Timecode value={allowance.granted} locale={locale} />{" "}
             <span className="text-[var(--color-muted)]">{unitOf(allowance.granted, locale, forms)}</span>
@@ -225,7 +225,7 @@ function Period({
       </div>
 
       {ranOut && (
-        <div role="status" className="flex flex-col items-start gap-1 rounded-[var(--ns-r-key)] border border-[var(--color-warn)] p-3 text-[13px] leading-relaxed" data-plan-ran-out>
+        <div role="status" className="flex flex-col items-start gap-1 rounded-[var(--ns-r-key)] border border-[var(--color-warn)] p-3 text-sm leading-relaxed" data-plan-ran-out>
           <p>{ranOut}</p>
           {!summary.extraEnabled && summary.extra.available > 0 && (
             <a href="#extra" className="tap-link text-[var(--color-primary)] underline underline-offset-2">
@@ -236,17 +236,17 @@ function Period({
       )}
 
       {heldN > 0 && (
-        <p className="text-[13px] leading-relaxed text-[var(--color-muted)]">
+        <p className="text-sm leading-relaxed text-[var(--color-muted)]">
           {fmt(u.plan.held, { n: formatCredits(heldN, locale), unit: unitOf(heldN, locale, forms) })}
         </p>
       )}
 
       {when && (
         <div className="flex flex-col gap-0.5 border-t border-[var(--color-border)] pt-3">
-          <p className="text-[14px]" data-plan-when>
+          <p className="text-sm" data-plan-when>
             {when}
           </p>
-          <p className="text-[12px] text-[var(--color-muted)]">{u.plan.carry}</p>
+          <p className="text-xs text-[var(--color-muted)]">{u.plan.carry}</p>
         </div>
       )}
     </div>
@@ -269,8 +269,8 @@ function PlanLimits({ summary }: { summary: UsageSummary }) {
         {limits.runs && (
           <li className="flex flex-col gap-2 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-0">
             <div className="flex items-baseline justify-between gap-4">
-              <span className="text-[14px]">{u.limits.runs}</span>
-              <span className="text-[14px] font-medium" data-runs-now>
+              <span className="text-sm">{u.limits.runs}</span>
+              <span className="text-sm font-medium" data-runs-now>
                 {fmt(u.limits.runsNow, { active: limits.runs.active, limit: limits.runs.limit })}
               </span>
             </div>
@@ -287,19 +287,19 @@ function PlanLimits({ summary }: { summary: UsageSummary }) {
                 valueText={fmt(u.limits.runsNow, { active: limits.runs.active, limit: limits.runs.limit })}
               />
             </div>
-            <p className="text-[12px] leading-relaxed text-[var(--color-muted)]">{u.limits.runsHint}</p>
+            <p className="text-xs leading-relaxed text-[var(--color-muted)]">{u.limits.runsHint}</p>
           </li>
         )}
         {limits.priority !== null && (
           <li className="flex items-baseline justify-between gap-4 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-0">
-            <span className="text-[14px]">{u.limits.priority}</span>
-            <span className="text-[14px] font-medium">{entitlementText("queue_priority", "int", limits.priority, t)}</span>
+            <span className="text-sm">{u.limits.priority}</span>
+            <span className="text-sm font-medium">{entitlementText("queue_priority", "int", limits.priority, t)}</span>
           </li>
         )}
         {limits.api !== null && (
           <li className="flex items-baseline justify-between gap-4 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-0">
-            <span className="text-[14px]">{u.limits.api}</span>
-            <span className="text-[14px] font-medium">{entitlementText("api_access", "bool", limits.api, t)}</span>
+            <span className="text-sm">{u.limits.api}</span>
+            <span className="text-sm font-medium">{entitlementText("api_access", "bool", limits.api, t)}</span>
           </li>
         )}
       </ul>
@@ -326,7 +326,7 @@ function FreePlan({ summary, gaps, canUpgrade }: { summary: UsageSummary; gaps: 
           <h2 id={titleId} className="t-section">
             {u.free.title}
           </h2>
-          <p className="text-[14px] font-light text-[var(--color-muted)]">{u.free.lead}</p>
+          <p className="text-sm font-light text-[var(--color-muted)]">{u.free.lead}</p>
         </div>
         <Chip plain tone="lit" className="shrink-0">
           {summary.plan?.name ?? t.common.unknown}
@@ -338,15 +338,15 @@ function FreePlan({ summary, gaps, canUpgrade }: { summary: UsageSummary; gaps: 
             {withFigure(u.free.left, left, locale, unitOf(left, locale, t.shell.creditUnit))}
           </p>
         ) : (
-          <p className="text-[14px]" role="status">
+          <p className="text-sm" role="status">
             {u.free.leftNone}
           </p>
         )}
       </div>
       {gaps.length > 0 && (
         <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-4">
-          <h3 className="text-[13px] font-medium">{u.free.notIncluded}</h3>
-          <ul className="flex flex-col gap-1.5 text-[13px] text-[var(--color-muted)]">
+          <h3 className="text-sm font-medium">{u.free.notIncluded}</h3>
+          <ul className="flex flex-col gap-1.5 text-sm text-[var(--color-muted)]">
             {gaps.map((g) => (
               <li key={g.key} className="flex items-start gap-2">
                 <span aria-hidden className="mt-[7px] block size-1.5 shrink-0 rounded-[1px] bg-[var(--color-muted)]" />
@@ -357,7 +357,7 @@ function FreePlan({ summary, gaps, canUpgrade }: { summary: UsageSummary; gaps: 
         </div>
       )}
       {canUpgrade && (
-        <Link href={path(USAGE_LINKS.upgrade)} className="btn-primary self-start text-[13px]">
+        <Link href={path(USAGE_LINKS.upgrade)} className="btn-primary self-start text-sm">
           {u.free.upgrade}
           <ArrowUpRight className="size-3.5" aria-hidden />
         </Link>
@@ -423,7 +423,7 @@ function ExtraCredits({
         <h2 id={titleId} className="t-section">
           {u.extra.title}
         </h2>
-        <p className="text-[14px] font-light text-[var(--color-muted)]">{u.extra.lead}</p>
+        <p className="text-sm font-light text-[var(--color-muted)]">{u.extra.lead}</p>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -449,42 +449,42 @@ function ExtraCredits({
             <span>{busy ? u.extra.saving : on ? u.extra.on : u.extra.off}</span>
           </span>
         </button>
-        <p id={hintId} className="text-[13px] leading-relaxed text-[var(--color-muted)]">
+        <p id={hintId} className="text-sm leading-relaxed text-[var(--color-muted)]">
           {u.extra.toggleHint}
         </p>
-        {!canChange && <p className="text-[12px] text-[var(--color-muted)]">{u.extra.adminOnly}</p>}
-        <p role="alert" className="text-[13px] text-[var(--color-fail)]" hidden={!failed}>
+        {!canChange && <p className="text-xs text-[var(--color-muted)]">{u.extra.adminOnly}</p>}
+        <p role="alert" className="text-sm text-[var(--color-fail)]" hidden={!failed}>
           {failed ? u.extra.saveFailed : null}
         </p>
       </div>
 
       <dl className="flex flex-col gap-1 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-4">
-        <dt className="text-[12px] text-[var(--color-muted)]">{u.extra.balance}</dt>
+        <dt className="text-xs text-[var(--color-muted)]">{u.extra.balance}</dt>
         <dd className="flex flex-wrap items-baseline gap-x-2">
           <span className="t-figure" data-extra-balance>
             <Timecode value={extra} locale={locale} />
           </span>
-          <span className="text-[14px] text-[var(--color-muted)]">{unitOf(extra, locale, forms)}</span>
+          <span className="text-sm text-[var(--color-muted)]">{unitOf(extra, locale, forms)}</span>
         </dd>
-        {extra > 0 && <dd className="text-[12px] text-[var(--color-muted)]">{expiry ?? u.extra.noExpiry}</dd>}
-        {extra <= 0 && <dd className="text-[13px] text-[var(--color-muted)]">{u.extra.none}</dd>}
-        {extra > 0 && !on && <dd className="text-[13px]">{u.extra.waitingOff}</dd>}
+        {extra > 0 && <dd className="text-xs text-[var(--color-muted)]">{expiry ?? u.extra.noExpiry}</dd>}
+        {extra <= 0 && <dd className="text-sm text-[var(--color-muted)]">{u.extra.none}</dd>}
+        {extra > 0 && !on && <dd className="text-sm">{u.extra.waitingOff}</dd>}
       </dl>
 
-      <p className="text-[13px] text-[var(--color-muted)]" data-spendable>
+      <p className="text-sm text-[var(--color-muted)]" data-spendable>
         {fmt(u.extra.spendable, { n: formatCredits(spendable, locale), unit: unitOf(spendable, locale, forms) })}
       </p>
 
       {(canBuy || canUpgrade) && (
         <div className="flex flex-wrap gap-2">
           {canBuy && (
-            <Link href={path(USAGE_LINKS.buy)} className="btn-primary text-[13px]">
+            <Link href={path(USAGE_LINKS.buy)} className="btn-primary text-sm">
               <Coins className="size-3.5" aria-hidden />
               {u.extra.buy}
             </Link>
           )}
           {canUpgrade && (
-            <Link href={path(USAGE_LINKS.upgrade)} className={`${canBuy ? "btn-quiet" : "btn-primary"} text-[13px]`}>
+            <Link href={path(USAGE_LINKS.upgrade)} className={`${canBuy ? "btn-quiet" : "btn-primary"} text-sm`}>
               {u.extra.upgrade}
               <ArrowUpRight className="size-3.5" aria-hidden />
             </Link>

@@ -41,15 +41,15 @@ export function Showcase({ t, items, hour }: { t: Dictionary; items: ShowcaseIte
                   className="absolute inset-0 size-full object-cover"
                 />
                 {it.format === "short" && (
-                  <span className="mono pill absolute left-3 top-3 bg-[var(--color-bg)] px-2 py-0.5 text-[10px] uppercase tracking-[0.12em]">
+                  <span className="tnum pill absolute left-3 top-3 bg-[var(--color-bg)] px-2 py-0.5 text-xs">
                     {s.short}
                   </span>
                 )}
               </span>
               <span className="flex flex-1 flex-col gap-1.5 p-5">
                 <span className="text-[15px] font-medium leading-snug">{it.title}</span>
-                <span className="text-[13px] font-light text-[var(--color-muted)]">{it.channel}</span>
-                <span className="mt-auto inline-flex items-center gap-1.5 pt-3 text-[13px] text-[var(--color-primary)]">
+                <span className="text-sm font-light text-[var(--color-muted)]">{it.channel}</span>
+                <span className="mt-auto inline-flex items-center gap-1.5 pt-3 text-sm text-[var(--color-primary)]">
                   {s.watch}
                   <ArrowUpRight className="size-3.5" aria-hidden />
                 </span>

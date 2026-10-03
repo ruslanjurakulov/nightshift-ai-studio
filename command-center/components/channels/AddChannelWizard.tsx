@@ -430,10 +430,10 @@ export function AddChannelWizard({
         {info && <ChannelProof info={info} t={t} />}
         {pushed && pushed.length > 0 && (
           <div className="flex flex-col gap-1">
-            <p className="text-[12px] text-[var(--color-ok)]">
+            <p className="text-xs text-[var(--color-ok)]">
               {fmt(t.channels.secretsPushed, { n: pushed.length, repo: ghRepo ?? "GitHub" })}
             </p>
-            <ul className="mono flex flex-col gap-0.5 text-[11px] text-[var(--color-muted)]">
+            <ul className="tnum flex flex-col gap-0.5 text-xs text-[var(--color-muted)]">
               {pushed.map((s) => (
                 <li key={s.name}>
                   {s.name} — {s.result === "created" ? t.channels.secretWritten : t.channels.secretUpdated}
@@ -442,13 +442,13 @@ export function AddChannelWizard({
             </ul>
           </div>
         )}
-        <p className="max-w-[70ch] text-[12px] leading-relaxed text-[var(--color-muted)]">
+        <p className="max-w-[70ch] text-xs leading-relaxed text-[var(--color-muted)]">
           {fmt(t.channels.connectHint, { id: effectiveId, secret })}
         </p>
         <button
           type="button"
           onClick={() => router.push(path("/channels"))}
-          className="btn-sky pill px-5 py-2.5 text-[13px]"
+          className="btn-sky pill px-5 py-2.5 text-sm"
         >
           {t.channels.title} →
         </button>
@@ -463,7 +463,7 @@ export function AddChannelWizard({
           <li
             key={s}
             aria-current={i === step ? "step" : undefined}
-            className="rounded px-2 py-0.5 text-[9px] uppercase tracking-[0.22em]"
+            className="rounded px-2 py-0.5 text-xs"
             style={{
               background: i === step ? "var(--color-panel-2)" : "transparent",
               color:
@@ -583,18 +583,18 @@ export function AddChannelWizard({
                       type="button"
                       onClick={loadVoices}
                       disabled={voicesBusy || !elevenKey.trim()}
-                      className="btn-sky pill px-5 py-2.5 text-[13px] disabled:opacity-40"
+                      className="btn-sky pill px-5 py-2.5 text-sm disabled:opacity-40"
                     >
                       {voicesBusy ? t.channels.voiceLoading : t.channels.voiceLoad}
                     </button>
                     {!elevenKey.trim() && (
-                      <span className="text-[11px] text-[var(--color-muted)]">
+                      <span className="text-xs text-[var(--color-muted)]">
                         {t.channels.voiceNeedsKey}
                       </span>
                     )}
                   </div>
                 ) : voices.length === 0 ? (
-                  <p className="text-[12px] text-[var(--color-warn)]">{t.channels.voiceNone}</p>
+                  <p className="text-xs text-[var(--color-warn)]">{t.channels.voiceNone}</p>
                 ) : (
                   <Field label={t.channels.voiceChoose}>
                     <select
@@ -616,9 +616,9 @@ export function AddChannelWizard({
                     </select>
                   </Field>
                 )}
-                {voicesError && <p className="text-[12px] text-[var(--color-fail)]">{voicesError}</p>}
+                {voicesError && <p className="text-xs text-[var(--color-fail)]">{voicesError}</p>}
                 {voiceTakenBy && (
-                  <p className="text-[12px] text-[var(--color-fail)]">
+                  <p className="text-xs text-[var(--color-fail)]">
                     {fmt(t.channels.voiceTakenWarn, { channel: voiceTakenBy })}
                   </p>
                 )}
@@ -660,7 +660,7 @@ export function AddChannelWizard({
                 className={inputClass}
               />
             </Field>
-            <label className="flex items-center gap-2 text-[12px] text-[var(--color-fg)]">
+            <label className="flex items-center gap-2 text-xs text-[var(--color-fg)]">
               <input
                 type="checkbox"
                 checked={scheduleEnabled}
@@ -673,16 +673,16 @@ export function AddChannelWizard({
 
         {current === "keys" && (
           <>
-            <p className="max-w-[72ch] text-[12px] leading-relaxed text-[var(--color-muted)]">
+            <p className="max-w-[72ch] text-xs leading-relaxed text-[var(--color-muted)]">
               {t.channels.keysHint}
             </p>
             {ghConfigured === false ? (
-              <p className="max-w-[72ch] text-[12px] leading-relaxed text-[var(--color-warn)]">
+              <p className="max-w-[72ch] text-xs leading-relaxed text-[var(--color-warn)]">
                 {t.channels.keysNotConfigured}
               </p>
             ) : (
               ghRepo && (
-                <p className="mono text-[11px] text-[var(--color-muted)]">
+                <p className="tnum text-xs text-[var(--color-muted)]">
                   {fmt(t.channels.keysTarget, { repo: ghRepo })}
                 </p>
               )
@@ -758,25 +758,25 @@ export function AddChannelWizard({
                 type="button"
                 onClick={verify}
                 disabled={verifyBusy || !ytDataKey.trim() || (!youtubeChannelId.trim() && !handle.trim())}
-                className="btn-sky pill px-5 py-2.5 text-[13px] disabled:opacity-40"
+                className="btn-sky pill px-5 py-2.5 text-sm disabled:opacity-40"
               >
                 {verifyBusy ? t.channels.verifying : t.channels.verify}
               </button>
               {!ytDataKey.trim() && (
-                <span className="text-[11px] text-[var(--color-muted)]">{t.channels.verifyNeedsKey}</span>
+                <span className="text-xs text-[var(--color-muted)]">{t.channels.verifyNeedsKey}</span>
               )}
             </div>
 
-            {verifyError && <p className="text-[12px] text-[var(--color-fail)]">{verifyError}</p>}
+            {verifyError && <p className="text-xs text-[var(--color-fail)]">{verifyError}</p>}
             {info ? (
               <ChannelProof info={info} t={t} />
             ) : (
-              <p className="max-w-[72ch] text-[12px] leading-relaxed text-[var(--color-warn)]">
+              <p className="max-w-[72ch] text-xs leading-relaxed text-[var(--color-warn)]">
                 {t.channels.verifyRequired}
               </p>
             )}
 
-            <p className="max-w-[72ch] text-[12px] leading-relaxed text-[var(--color-muted)]">
+            <p className="max-w-[72ch] text-xs leading-relaxed text-[var(--color-muted)]">
               {fmt(t.channels.connectHint, { id: effectiveId || "…", secret })}
             </p>
           </>
@@ -787,26 +787,26 @@ export function AddChannelWizard({
             {info ? (
               <ChannelProof info={info} t={t} />
             ) : (
-              <p className="max-w-[72ch] text-[12px] leading-relaxed text-[var(--color-warn)]">
+              <p className="max-w-[72ch] text-xs leading-relaxed text-[var(--color-warn)]">
                 {t.channels.verifyRequired}
               </p>
             )}
-            <p className="max-w-[72ch] text-[12px] leading-relaxed text-[var(--color-muted)]">
+            <p className="max-w-[72ch] text-xs leading-relaxed text-[var(--color-muted)]">
               {t.channels.activateHint}
             </p>
           </>
         )}
       </div>
 
-      {stage && <p className="text-[12px] text-[var(--color-muted)]">{stage}</p>}
-      {error && <p className="mono text-[11px] text-[var(--color-fail)]">{t.channels.createFailed}: {error}</p>}
+      {stage && <p className="text-xs text-[var(--color-muted)]">{stage}</p>}
+      {error && <p className="tnum text-xs text-[var(--color-fail)]">{t.channels.createFailed}: {error}</p>}
 
       <div className="flex items-center justify-between gap-3 border-t border-[var(--color-border)] pt-3">
         <button
           type="button"
           onClick={() => setStep((s) => Math.max(0, s - 1))}
           disabled={step === 0 || busy}
-          className="btn-sky ghost pill px-5 py-2.5 text-[13px] disabled:opacity-40"
+          className="btn-sky ghost pill px-5 py-2.5 text-sm disabled:opacity-40"
         >
           {t.channels.back}
         </button>
@@ -815,7 +815,7 @@ export function AddChannelWizard({
             type="button"
             onClick={() => setStep((s) => s + 1)}
             disabled={!canAdvance}
-            className="btn-sky pill px-5 py-2.5 text-[13px] disabled:opacity-40"
+            className="btn-sky pill px-5 py-2.5 text-sm disabled:opacity-40"
           >
             {t.channels.next}
           </button>
@@ -824,7 +824,7 @@ export function AddChannelWizard({
             type="button"
             onClick={create}
             disabled={busy || !idValid || !name.trim() || !info || !voiceReady}
-            className="btn-sky is-solid pill px-5 py-2.5 text-[13px] disabled:opacity-40"
+            className="btn-sky is-solid pill px-5 py-2.5 text-sm disabled:opacity-40"
           >
             {busy ? t.channels.creating : t.channels.create}
           </button>
@@ -856,11 +856,11 @@ function ChannelProof({ info, t }: { info: ChannelInfo; t: Dict }) {
         />
       )}
       <div className="min-w-0">
-        <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--color-ok)]">
+        <div className="text-xs text-[var(--color-ok)]">
           {t.channels.verified}
         </div>
         <div className="mt-1.5 truncate text-[17px] font-semibold">{info.title}</div>
-        <div className="mono truncate text-[11px] text-[var(--color-muted)]">
+        <div className="tnum truncate text-xs text-[var(--color-muted)]">
           {info.customUrl || info.channelId}
         </div>
       </div>
@@ -876,21 +876,21 @@ function ChannelProof({ info, t }: { info: ChannelInfo; t: Dict }) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-[9px] uppercase tracking-[0.24em] text-[var(--color-muted)]">{label}</div>
-      <div className="mono mt-1 text-[15px] font-semibold tabular-nums">{value}</div>
+      <div className="text-xs text-[var(--color-muted)]">{label}</div>
+      <div className="tnum mt-1 text-[15px] font-semibold tabular-nums">{value}</div>
     </div>
   );
 }
 
 const inputClass =
-  "w-full rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2.5 py-1.5 text-[13px] text-[var(--color-fg)] outline-none focus-visible:border-[var(--color-primary-dim)]";
+  "w-full rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2.5 py-1.5 text-sm text-[var(--color-fg)] outline-none focus-visible:border-[var(--color-primary-dim)]";
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]">{label}</span>
+      <span className="text-xs text-[var(--color-muted)]">{label}</span>
       {children}
-      {hint && <span className="text-[10px] text-[var(--color-muted)]">{hint}</span>}
+      {hint && <span className="text-xs text-[var(--color-muted)]">{hint}</span>}
     </label>
   );
 }

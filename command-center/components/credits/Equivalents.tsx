@@ -49,7 +49,7 @@ export function Equivalents({ credits, rates, className = "" }: { credits: numbe
   if (eq.minutes !== null) parts.push(fmt(pluralForm(e.minutes, eq.minutes, locale), { n: n(eq.minutes) }));
   return (
     <p
-      className={`flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[12px] leading-relaxed text-[var(--color-muted)] [font-variant-numeric:tabular-nums] ${className}`}
+      className={`flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs leading-relaxed text-[var(--color-muted)] [font-variant-numeric:tabular-nums] ${className}`}
       data-equivalents
     >
       {parts.map((p, i) => (

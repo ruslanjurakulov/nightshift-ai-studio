@@ -26,7 +26,7 @@ export function UtcClock() {
   if (!now) return null;
   return (
     <span
-      className="mono hidden items-center text-[11px] tabular-nums text-[var(--color-muted)] 2xl:inline-flex"
+      className="tnum hidden items-center text-xs tabular-nums text-[var(--color-muted)] 2xl:inline-flex"
       aria-label={`${now} Tashkent`}
       title="Tashkent, UTC+5"
     >

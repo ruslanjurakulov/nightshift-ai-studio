@@ -39,18 +39,18 @@ export function SendTestAlert() {
         type="button"
         onClick={send}
         disabled={state === "sending"}
-        className="btn-sky pill px-4 py-1.5 text-[13px] disabled:opacity-40"
+        className="btn-sky pill px-4 py-1.5 text-sm disabled:opacity-40"
       >
         {state === "sending" ? t.alerts.sending : t.alerts.sendTest}
       </button>
       {state === "sent" && (
-        <span className="mono text-[12px] text-[var(--color-primary)]" role="status">
+        <span className="tnum text-xs text-[var(--color-primary)]" role="status">
           {t.alerts.testSent}
         </span>
       )}
       {state === "error" && (
         <span
-          className="mono text-[12px]"
+          className="tnum text-xs"
           style={{ color: "var(--color-warn)" }}
           role="status"
         >

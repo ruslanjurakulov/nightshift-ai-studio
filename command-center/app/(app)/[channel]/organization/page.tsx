@@ -28,16 +28,16 @@ export default async function SettingsPage() {
     <div className="rhythm">
       <PageHeader icon="organization" title={t.org.title} subtitle={t.org.customerSubtitle} />
       {!user ? (
-        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.org.signIn}</div>
+        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.org.signIn}</div>
       ) : !org.supported ? (
-        <div className="panel p-4 text-[13px] text-[var(--color-muted)]">{t.org.notMigrated}</div>
+        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.org.notMigrated}</div>
       ) : org.current ? (
         <>
           <WorkspaceNameForm key={org.current.id} org={org.current} />
-          <div className="panel flex flex-col gap-3 p-4">
+          <div className="panel flex flex-col gap-3 p-5 sm:p-6">
             <h2 className="t-section">{t.org.developersTitle}</h2>
-            <p className="text-[13px] text-[var(--color-muted)]">{t.org.developersHint}</p>
-            <Link href={path("/developers")} className="btn-sky is-solid pill self-start px-5 py-2 text-[13px]">
+            <p className="text-sm text-[var(--color-muted)]">{t.org.developersHint}</p>
+            <Link href={path("/developers")} className="btn-sky is-solid pill self-start px-5 py-2 text-sm">
               {t.org.developersOpen}
             </Link>
           </div>

@@ -42,11 +42,11 @@ export function ErrorState({
       >
         <AlertTriangle className="size-5" strokeWidth={1.5} />
       </span>
-      <p className="m-0 text-[13px] font-semibold text-[var(--color-fg)]">{t.common.readFailedTitle}</p>
-      <p className="m-0 max-w-[52ch] text-[13px] font-light leading-relaxed text-[var(--color-muted)]">
+      <p className="m-0 text-sm font-semibold text-[var(--color-fg)]">{t.common.readFailedTitle}</p>
+      <p className="m-0 max-w-[52ch] text-sm font-light leading-relaxed text-[var(--color-muted)]">
         {message ?? t.common.readFailedBody}
       </p>
-      <button type="button" onClick={retry} disabled={pending} className="btn-sky rounded-[var(--ns-r-key)] px-4 py-1.5 text-[12px] disabled:opacity-40">
+      <button type="button" onClick={retry} disabled={pending} className="btn-sky rounded-[var(--ns-r-key)] px-4 py-1.5 text-xs disabled:opacity-40">
         {pending ? t.common.retrying : t.common.retry}
       </button>
     </div>

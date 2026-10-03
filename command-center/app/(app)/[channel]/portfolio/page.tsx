@@ -161,7 +161,7 @@ export default async function PortfolioPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-[var(--color-border)] text-left text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                  <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
                     <th className="px-4 py-2 font-semibold">{t.portfolio.colChannel}</th>
                     <th className="px-4 py-2 text-right font-semibold">{t.portfolio.colVideos}</th>
                     <th className="px-4 py-2 text-right font-semibold">{t.portfolio.colSpend}</th>
@@ -188,16 +188,16 @@ export default async function PortfolioPage() {
                             {here && <StatusPill tone="run" label="HERE" />}
                           </span>
                         </td>
-                        <td className="mono px-4 py-2 text-right tabular-nums text-[var(--color-muted)]">
+                        <td className="tnum px-4 py-2 text-right tabular-nums text-[var(--color-muted)]">
                           {num(c.videoCount)}
                         </td>
-                        <td className="mono px-4 py-2 text-right tabular-nums">
+                        <td className="tnum px-4 py-2 text-right tabular-nums">
                           <MoneyCell text={usd(c.cost, dash)} known={c.cost !== null} />
                         </td>
-                        <td className="mono px-4 py-2 text-right tabular-nums">
+                        <td className="tnum px-4 py-2 text-right tabular-nums">
                           <MoneyCell text={usd(c.revenue, dash)} known={c.revenue !== null} />
                         </td>
-                        <td className="mono px-4 py-2 text-right tabular-nums">
+                        <td className="tnum px-4 py-2 text-right tabular-nums">
                           {c.profit === null ? (
                             <span className="text-[var(--color-muted)]">{dash}</span>
                           ) : (
@@ -210,13 +210,13 @@ export default async function PortfolioPage() {
                             </span>
                           )}
                         </td>
-                        <td className="mono px-4 py-2 text-right tabular-nums">
+                        <td className="tnum px-4 py-2 text-right tabular-nums">
                           <MoneyCell text={pct(c.margin, dash)} known={c.margin !== null} />
                         </td>
-                        <td className="mono px-4 py-2 text-right tabular-nums">
+                        <td className="tnum px-4 py-2 text-right tabular-nums">
                           <MoneyCell text={usd(c.costPerVideo, dash)} known={c.costPerVideo !== null} />
                         </td>
-                        <td className="mono px-4 py-2 text-right tabular-nums">
+                        <td className="tnum px-4 py-2 text-right tabular-nums">
                           <MoneyCell text={usd(c.rpm, dash)} known={c.rpm !== null} />
                         </td>
                       </tr>
@@ -227,7 +227,7 @@ export default async function PortfolioPage() {
             </div>
           </Panel>
 
-          <p className="mono text-[10px] leading-relaxed text-[var(--color-muted)]">
+          <p className="tnum text-xs leading-relaxed text-[var(--color-muted)]">
             {t.portfolio.unknownNote}
           </p>
         </>

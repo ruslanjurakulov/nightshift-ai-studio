@@ -106,7 +106,7 @@ export function PlanMatrix({
                 ) : price.kind === "preview" || price.kind === "display" ? (
                   <div className="st-num text-[28px] leading-none">
                     {price.text}
-                    <span className="ml-1 font-[family-name:var(--font-sans)] text-[13px] text-[var(--ns-text-dim)]">{p.perMonth}</span>
+                    <span className="ml-1 font-[family-name:var(--font-sans)] text-sm text-[var(--ns-text-dim)]">{p.perMonth}</span>
                   </div>
                 ) : (
                   <div className="text-[15px] font-medium text-[var(--ns-text-dim)]" aria-live="polite">
@@ -126,15 +126,15 @@ export function PlanMatrix({
                 </div>
                 <Equivalents credits={col.isDefault ? WELCOME_CREDITS : col.monthlyCredits} rates={rates} />
                 {minutes !== null && (
-                  <div className="text-[12px] font-light text-[var(--color-muted)]">
+                  <div className="text-xs font-light text-[var(--color-muted)]">
                     {fmt(p.minutes, { m: formatCredits(minutes, locale) })}
                   </div>
                 )}
               </div>
               {matrix.rows.length > 0 && (
                 <div className="flex flex-col gap-2.5">
-                  <div className="st-kicker text-[12px]">{t.pricing.limitsLabel}</div>
-                  <dl className="flex flex-col gap-2.5 text-[13px]">
+                  <div className="st-kicker text-xs">{t.pricing.limitsLabel}</div>
+                  <dl className="flex flex-col gap-2.5 text-sm">
                     {matrix.rows.map((row) => {
                       const v = row.cells[i];
                       const off = v === false || v === 0 || v === "none";

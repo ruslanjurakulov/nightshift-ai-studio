@@ -51,7 +51,7 @@ export default async function InboxPage() {
     return (
       <div className="rhythm stagger-enter">
         {header}
-        <p className="text-[13px] text-[var(--color-muted)]">{isMissingRelation(res.error) ? t.inbox.notEnabled : t.inbox.readFailed}</p>
+        <p className="text-sm text-[var(--color-muted)]">{isMissingRelation(res.error) ? t.inbox.notEnabled : t.inbox.readFailed}</p>
       </div>
     );
   }
@@ -76,7 +76,7 @@ export default async function InboxPage() {
     return (
       <div className="rhythm stagger-enter">
         {header}
-        <p className="text-[13px] text-[var(--color-muted)]">{t.inbox.readFailed}</p>
+        <p className="text-sm text-[var(--color-muted)]">{t.inbox.readFailed}</p>
       </div>
     );
   }

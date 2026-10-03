@@ -139,7 +139,7 @@ export function PlanUpsellDialog({
   };
 
   const linkBase =
-    "tap press inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[var(--ns-r-key)] px-4 text-[14px] font-semibold";
+    "tap press inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[var(--ns-r-key)] px-4 text-sm font-semibold";
   const primaryCls = `${linkBase} bg-[var(--studio-cta-bg)] text-[var(--studio-cta-fg)] shadow-[var(--studio-cta-shadow)]`;
   const secondaryCls = `${linkBase} border border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-fg)] hover:border-[var(--color-primary)]`;
   // With credits missing, "Buy credits" is the answer; the plans are the alternative.
@@ -168,10 +168,10 @@ export function PlanUpsellDialog({
               <Lock className="size-4" strokeWidth={2} />
             </span>
             <div className="flex min-w-0 flex-col gap-1">
-              <h2 id={titleId} className="text-[16px] font-semibold leading-snug text-[var(--color-fg)]">
+              <h2 id={titleId} className="text-base font-semibold leading-snug text-[var(--color-fg)]">
                 {title}
               </h2>
-              <p id={descId} className="text-[13px] leading-relaxed text-[var(--color-muted)]">
+              <p id={descId} className="text-sm leading-relaxed text-[var(--color-muted)]">
                 {lockedLine(t, view, modelName, locale)}
               </p>
             </div>
@@ -219,24 +219,24 @@ export function PlanUpsellDialog({
                       className="flex min-w-0 flex-col gap-2 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--studio-field)] p-3"
                     >
                       <span className="truncate text-[15px] font-semibold text-[var(--color-fg)]">{p.name}</span>
-                      <span className="text-[13px] text-[var(--color-fg)]">
+                      <span className="text-sm text-[var(--color-fg)]">
                         {p.price ? (
                           <>
-                            <span className="mono font-semibold">{p.price}</span>{" "}
+                            <span className="tnum font-semibold">{p.price}</span>{" "}
                             <span className="text-[var(--color-muted)]">{u.perMonth}</span>
                           </>
                         ) : (
                           <span className="text-[var(--color-muted)]">{u.priceAtCheckout}</span>
                         )}
                       </span>
-                      <span className="text-[12px] text-[var(--color-muted)]">
+                      <span className="text-xs text-[var(--color-muted)]">
                         {fmt(u.monthlyCredits, { n: formatCredits(p.monthlyCredits, locale) })}
                       </span>
-                      {extra && <span className="text-[12px] font-medium text-[var(--color-fg)]">{extra}</span>}
+                      {extra && <span className="text-xs font-medium text-[var(--color-fg)]">{extra}</span>}
                       <Link
                         href={path(UPSELL_LINKS.plans)}
                         onClick={onClose}
-                        className={`${plansArePrimary && i === 0 ? primaryCls : secondaryCls} mt-auto w-full text-[13px]`}
+                        className={`${plansArePrimary && i === 0 ? primaryCls : secondaryCls} mt-auto w-full text-sm`}
                         {...(plansArePrimary && i === 0 ? { "data-upsell-primary": true } : {})}
                       >
                         <span className="truncate">{fmt(u.choose, { plan: p.name })}</span>
@@ -248,11 +248,11 @@ export function PlanUpsellDialog({
             </section>
           )}
 
-          {view.plansUnread && <p className="text-[12px] text-[var(--color-muted)]">{u.plansUnread}</p>}
+          {view.plansUnread && <p className="text-xs text-[var(--color-muted)]">{u.plansUnread}</p>}
         </div>
 
         <div className="flex flex-col gap-2 border-t border-[var(--color-border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p className="text-[12px] text-[var(--color-muted)]">{u.noCharge}</p>
+          <p className="text-xs text-[var(--color-muted)]">{u.noCharge}</p>
           <div className="flex shrink-0 items-center gap-2">
             <Link href={UPSELL_LINKS.compare} onClick={onClose} className={`${secondaryCls} flex-1 sm:flex-none`}>
               {u.compare}

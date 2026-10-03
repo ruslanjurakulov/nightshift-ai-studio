@@ -66,7 +66,7 @@ export default async function TopicManager() {
       <PageHeader icon="topics" title={t.topics.title} subtitle={t.topics.subtitle} />
 
       {showSharedNote && (
-        <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">{t.channels.sharedScoresNote}</p>
+        <p className="text-xs leading-relaxed text-[var(--color-muted)]">{t.channels.sharedScoresNote}</p>
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -94,7 +94,7 @@ export default async function TopicManager() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
                   <th className="px-4 py-2 font-semibold">{t.topics.thTopic}</th>
                   <th className="px-4 py-2 text-right font-semibold">{t.topics.thScore}</th>
                   <th className="px-4 py-2 text-right font-semibold">{t.topics.thVideos}</th>
@@ -111,23 +111,23 @@ export default async function TopicManager() {
                       <div className="flex items-center justify-end gap-2">
                         <ExplainScore score={tp.score} reason={tp.reason} signals={signalsByTopic.get(tp.topic) ?? []} />
                         <span
-                          className="mono font-bold tabular-nums"
+                          className="tnum font-bold tabular-nums"
                           style={{ color: tp.score >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}
                         >
                           {tp.score.toFixed(0)}
                         </span>
                       </div>
                     </td>
-                    <td className="px-4 py-2 text-right mono tabular-nums text-[var(--color-muted)]">
+                    <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-muted)]">
                       {num(tp.videos_analyzed)}
                     </td>
-                    <td className="px-4 py-2 text-right mono tabular-nums text-[var(--color-muted)]">
+                    <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-muted)]">
                       {decimal(tp.avg_views_per_day)}
                     </td>
                     <td className="px-4 py-2 max-w-xs truncate text-[var(--color-muted)]">
                       {tp.reason ?? t.common.na}
                     </td>
-                    <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">
+                    <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">
                       {relativeTime(tp.updated_at)}
                     </td>
                   </tr>
@@ -150,15 +150,15 @@ export default async function TopicManager() {
               >
                 <div className="min-w-0">
                   <div className="truncate text-sm text-[var(--color-fg)]">{d.topic_phrase}</div>
-                  <div className="mono text-[10px] text-[var(--color-muted)]">
+                  <div className="tnum text-xs text-[var(--color-muted)]">
                     {fmt(t.topics.polled, { t: relativeTime(d.polled_date) })}
                   </div>
                 </div>
                 <div className="shrink-0 text-right">
-                  <div className="mono text-lg font-bold tabular-nums text-[var(--color-primary)]">
+                  <div className="tnum text-lg font-bold tabular-nums text-[var(--color-primary)]">
                     {num(d.mention_count)}
                   </div>
-                  <div className="text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                  <div className="text-xs text-[var(--color-muted)]">
                     {t.topics.mentions}
                   </div>
                 </div>

@@ -23,7 +23,7 @@ export type EditorTarget =
   | { mode: "character"; item: Character | null };
 
 const inputClass =
-  "w-full rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none focus-visible:border-[var(--color-primary)] sm:text-[13px]";
+  "w-full rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus-visible:border-[var(--color-primary)] sm:text-[13px]";
 
 /**
  * Create or edit one style kit or character, in a sheet: a bottom sheet on a
@@ -182,7 +182,7 @@ export function StyleEditorSheet({
         >
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
             <label className="flex flex-col gap-1.5">
-              <span className="text-[12px] font-medium text-[var(--color-muted)]">{isKit ? ts.nameLabel : ts.handleLabel}</span>
+              <span className="text-xs font-medium text-[var(--color-muted)]">{isKit ? ts.nameLabel : ts.handleLabel}</span>
               <input
                 ref={firstField}
                 value={name}
@@ -193,10 +193,10 @@ export function StyleEditorSheet({
                 autoCorrect={isKit ? "on" : "off"}
                 spellCheck={isKit}
                 aria-invalid={name !== "" && !nameOk}
-                className={`${inputClass} ${isKit ? "" : "mono"}`}
+                className={`${inputClass} ${isKit ? "" : "tnum"}`}
               />
               {!isKit && (
-                <span className="text-[11px]" style={{ color: name !== "" && !nameOk ? "var(--color-warn)" : "var(--color-muted)" }}>
+                <span className="text-xs" style={{ color: name !== "" && !nameOk ? "var(--color-warn)" : "var(--color-muted)" }}>
                   {ts.handleHint}
                 </span>
               )}
@@ -204,7 +204,7 @@ export function StyleEditorSheet({
 
             {!isKit && (
               <fieldset className="flex flex-col gap-1.5">
-                <legend className="mb-1.5 text-[12px] font-medium text-[var(--color-muted)]">{ts.kindLabel}</legend>
+                <legend className="mb-1.5 text-xs font-medium text-[var(--color-muted)]">{ts.kindLabel}</legend>
                 <div className="flex gap-2">
                   {(["character", "product"] as const).map((k) => (
                     <button
@@ -222,9 +222,9 @@ export function StyleEditorSheet({
             )}
 
             <label className="flex flex-col gap-1.5">
-              <span className="flex items-baseline justify-between gap-2 text-[12px] font-medium text-[var(--color-muted)]">
+              <span className="flex items-baseline justify-between gap-2 text-xs font-medium text-[var(--color-muted)]">
                 <span>{ts.descriptionLabel}</span>
-                <span className="mono text-[11px]" style={{ color: descOk ? "var(--color-muted)" : "var(--color-warn)" }}>
+                <span className="tnum text-xs" style={{ color: descOk ? "var(--color-muted)" : "var(--color-warn)" }}>
                   {fmt(ts.counter, { n: descLength, max: limits.descriptionMax })}
                 </span>
               </span>
@@ -239,7 +239,7 @@ export function StyleEditorSheet({
             </label>
 
             <div className="flex flex-col gap-1.5">
-              <span className="text-[12px] font-medium text-[var(--color-muted)]">{ts.referencesLabel}</span>
+              <span className="text-xs font-medium text-[var(--color-muted)]">{ts.referencesLabel}</span>
               <ReferencePicker
                 orgId={orgId}
                 selected={selected}
@@ -254,15 +254,15 @@ export function StyleEditorSheet({
 
           <footer className="flex flex-col gap-2 border-t border-[var(--color-border)] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             {error && (
-              <p role="alert" className="text-[13px]" style={{ color: "var(--color-fail)" }}>
+              <p role="alert" className="text-sm" style={{ color: "var(--color-fail)" }}>
                 {error}
               </p>
             )}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <button type="button" onClick={onClose} disabled={saving} className="disabled:opacity-50 btn-quiet text-[13px]">
+              <button type="button" onClick={onClose} disabled={saving} className="disabled:opacity-50 btn-quiet text-sm">
                 {ts.cancel}
               </button>
-              <button type="submit" disabled={!canSave} aria-busy={saving} className="disabled:opacity-50 btn-primary text-[13px]">
+              <button type="submit" disabled={!canSave} aria-busy={saving} className="disabled:opacity-50 btn-primary text-sm">
                 {saving ? ts.saving : ts.save}
               </button>
             </div>

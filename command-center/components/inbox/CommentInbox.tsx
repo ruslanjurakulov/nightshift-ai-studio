@@ -95,11 +95,11 @@ export function CommentInbox({
           </button>
         ))}
       </div>
-      {!canAct && <p className="text-[12px] text-[var(--color-muted)]">{t.inbox.readOnly}</p>}
-      {price.state === "unpriced" && <p className="text-[12px] text-[var(--color-warn)]">{t.inbox.unpriced}</p>}
-      {price.state === "failed" && <p className="text-[12px] text-[var(--color-warn)]">{t.inbox.readFailed}</p>}
+      {!canAct && <p className="text-xs text-[var(--color-muted)]">{t.inbox.readOnly}</p>}
+      {price.state === "unpriced" && <p className="text-xs text-[var(--color-warn)]">{t.inbox.unpriced}</p>}
+      {price.state === "failed" && <p className="text-xs text-[var(--color-warn)]">{t.inbox.readFailed}</p>}
       {shown.length === 0 ? (
-        <p className="py-10 text-center text-[13px] text-[var(--color-muted)]">
+        <p className="py-10 text-center text-sm text-[var(--color-muted)]">
           {items.length === 0 ? t.inbox.empty : t.inbox.emptyFiltered}
         </p>
       ) : (
@@ -229,7 +229,7 @@ function Card({
     refresh();
   }
 
-  const label = "text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]";
+  const label = "text-xs text-[var(--color-muted)]";
   const stateLabel: Record<typeof state, string> = {
     dismissed: t.inbox.states.dismissed,
     posted: t.inbox.states.posted,
@@ -252,10 +252,10 @@ function Card({
     >
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <h3 id={`${uid}-who`} dir="auto" className="m-0 text-[13px] font-medium text-[var(--color-fg)] [overflow-wrap:anywhere]">
+          <h3 id={`${uid}-who`} dir="auto" className="m-0 text-sm font-medium text-[var(--color-fg)] [overflow-wrap:anywhere]">
             {comment.author ?? t.inbox.unknownAuthor}
           </h3>
-          <p className="m-0 text-[11px] text-[var(--color-muted)] [overflow-wrap:anywhere]">
+          <p className="m-0 text-xs text-[var(--color-muted)] [overflow-wrap:anywhere]">
             {channelName}
             {videoTitle ? ` · ${fmt(t.inbox.onVideo, { video: videoTitle })}` : ""}
             {date ? " · " : ""}
@@ -267,19 +267,19 @@ function Card({
         </span>
       </header>
 
-      <p dir="auto" className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--color-fg)] [overflow-wrap:anywhere]">
+      <p dir="auto" className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--color-fg)] [overflow-wrap:anywhere]">
         {comment.body}
       </p>
 
-      {state === "held" && item.held && <p className="mt-2 text-[12px] text-[var(--color-muted)]">{heldText(item.held, t.inbox)}</p>}
+      {state === "held" && item.held && <p className="mt-2 text-xs text-[var(--color-muted)]">{heldText(item.held, t.inbox)}</p>}
 
       {state === "writing" && (
-        <p role="status" className="mt-3 text-[12px] text-[var(--color-muted)]">
+        <p role="status" className="mt-3 text-xs text-[var(--color-muted)]">
           {t.inbox.draft.writing}
         </p>
       )}
 
-      {state === "draft_failed" && <p className="mt-3 text-[12px] text-[var(--color-muted)]">{t.inbox.draft.failed}</p>}
+      {state === "draft_failed" && <p className="mt-3 text-xs text-[var(--color-muted)]">{t.inbox.draft.failed}</p>}
 
       {state === "ready" && draft && (
         <div className="mt-3 flex flex-col gap-2">
@@ -298,39 +298,39 @@ function Card({
               setText(e.target.value);
               setConfirming(false);
             }}
-            className="studio-field w-full px-3 py-2.5 text-[16px] text-[var(--color-fg)] outline-none sm:text-[13px]"
+            className="studio-field w-full px-3 py-2.5 text-base text-[var(--color-fg)] outline-none sm:text-[13px]"
           />
-          <p className="m-0 text-[11px] text-[var(--color-muted)]">{fmt(t.inbox.reply.counter, { n: clean.length, max: INBOX_LIMITS.replyMax })}</p>
+          <p className="m-0 text-xs text-[var(--color-muted)]">{fmt(t.inbox.reply.counter, { n: clean.length, max: INBOX_LIMITS.replyMax })}</p>
           {canAct &&
             (confirming ? (
               <div className="flex flex-col gap-2 rounded-md border border-[var(--color-border)] p-2">
-                <p className="m-0 text-[12px] text-[var(--color-fg)]">{fmt(t.inbox.reply.approveNote, { channel: channelName })}</p>
-                <p dir="auto" data-testid="exact-text" className="m-0 whitespace-pre-wrap text-[13px] [overflow-wrap:anywhere]">
+                <p className="m-0 text-xs text-[var(--color-fg)]">{fmt(t.inbox.reply.approveNote, { channel: channelName })}</p>
+                <p dir="auto" data-testid="exact-text" className="m-0 whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">
                   {clean}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" disabled={busy !== null || !clean} onClick={() => void approve()} className="btn-sky pill min-h-[40px] px-4 py-2 text-[13px]">
+                  <button type="button" disabled={busy !== null || !clean} onClick={() => void approve()} className="btn-sky pill min-h-[40px] px-4 py-2 text-sm">
                     {busy === "approve" ? t.inbox.reply.approving : t.inbox.reply.approve}
                   </button>
-                  <button type="button" disabled={busy !== null} onClick={() => setConfirming(false)} className="btn-sky ghost pill min-h-[40px] px-4 py-2 text-[13px]">
+                  <button type="button" disabled={busy !== null} onClick={() => setConfirming(false)} className="btn-sky ghost pill min-h-[40px] px-4 py-2 text-sm">
                     {t.inbox.reply.cancel}
                   </button>
                 </div>
               </div>
             ) : (
               <div className="flex flex-wrap gap-2">
-                <button type="button" disabled={busy !== null || !clean} onClick={() => setConfirming(true)} className="btn-sky pill min-h-[40px] px-4 py-2 text-[13px]">
+                <button type="button" disabled={busy !== null || !clean} onClick={() => setConfirming(true)} className="btn-sky pill min-h-[40px] px-4 py-2 text-sm">
                   {t.inbox.reply.approve}
                 </button>
                 <button
                   type="button"
                   disabled={busy !== null || !clean || clean === draftBody}
                   onClick={() => void save()}
-                  className="btn-sky ghost pill min-h-[40px] px-4 py-2 text-[13px]"
+                  className="btn-sky ghost pill min-h-[40px] px-4 py-2 text-sm"
                 >
                   {busy === "save" ? t.inbox.reply.saving : t.inbox.reply.save}
                 </button>
-                <button type="button" disabled={busy !== null} onClick={() => void discard()} className="btn-sky ghost pill min-h-[40px] px-4 py-2 text-[13px]">
+                <button type="button" disabled={busy !== null} onClick={() => void discard()} className="btn-sky ghost pill min-h-[40px] px-4 py-2 text-sm">
                   {t.inbox.reply.discard}
                 </button>
               </div>
@@ -341,18 +341,18 @@ function Card({
       {(state === "posting" || state === "post_failed" || state === "posted") && intent && (
         <div className="mt-3 flex flex-col gap-1 border-t border-[var(--color-border)] pt-2">
           <span className={label}>{t.inbox.posted.text}</span>
-          <p dir="auto" className="m-0 whitespace-pre-wrap text-[13px] [overflow-wrap:anywhere]">
+          <p dir="auto" className="m-0 whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">
             {intent.body}
           </p>
-          {intent.approvedBy && <p className="m-0 text-[11px] text-[var(--color-muted)] [overflow-wrap:anywhere]">{fmt(t.inbox.posted.approvedBy, { who: intent.approvedBy })}</p>}
-          <p role="status" className="m-0 text-[12px] text-[var(--color-muted)]">
+          {intent.approvedBy && <p className="m-0 text-xs text-[var(--color-muted)] [overflow-wrap:anywhere]">{fmt(t.inbox.posted.approvedBy, { who: intent.approvedBy })}</p>}
+          <p role="status" className="m-0 text-xs text-[var(--color-muted)]">
             {state === "posted" ? t.inbox.posted.done : state === "posting" ? (post?.waitReason === "quota" ? t.inbox.posted.waitingQuota : t.inbox.posted.waiting) : `${t.inbox.posted.notPosted} ${failureText(post?.errorCode ?? null, t.inbox)}`}
           </p>
         </div>
       )}
 
       {message && (
-        <p role="status" className={`mt-2 text-[12px] ${message.tone === "ok" ? "text-[var(--color-ok)]" : "text-[var(--color-fail)]"}`}>
+        <p role="status" className={`mt-2 text-xs ${message.tone === "ok" ? "text-[var(--color-ok)]" : "text-[var(--color-fail)]"}`}>
           {message.text}
         </p>
       )}
@@ -371,29 +371,29 @@ function Card({
                 onClick={() => void ask()}
               />
             ) : (
-              <button type="button" disabled={busy !== null} onClick={() => void ask()} className="btn-sky pill min-h-[40px] px-4 py-2 text-[13px]">
+              <button type="button" disabled={busy !== null} onClick={() => void ask()} className="btn-sky pill min-h-[40px] px-4 py-2 text-sm">
                 {busy === "ask" ? t.inbox.draft.asking : state === "draft_failed" ? t.inbox.draft.askAgain : t.inbox.draft.askIncluded}
               </button>
             ))}
           {state === "post_failed" && post?.errorCode && (RETRYABLE as readonly string[]).includes(post.errorCode) && (
-            <button type="button" disabled={busy !== null} onClick={() => void retry()} className="btn-sky pill min-h-[40px] px-4 py-2 text-[13px]">
+            <button type="button" disabled={busy !== null} onClick={() => void retry()} className="btn-sky pill min-h-[40px] px-4 py-2 text-sm">
               {t.inbox.posted.retry}
             </button>
           )}
           {(state === "open" || state === "held" || state === "draft_failed" || state === "post_failed") && (
-            <button type="button" disabled={busy !== null} onClick={() => void dismiss(true)} className="btn-sky ghost pill min-h-[40px] px-4 py-2 text-[13px]">
+            <button type="button" disabled={busy !== null} onClick={() => void dismiss(true)} className="btn-sky ghost pill min-h-[40px] px-4 py-2 text-sm">
               {t.inbox.dismiss}
             </button>
           )}
           {state === "dismissed" && (
-            <button type="button" disabled={busy !== null} onClick={() => void dismiss(false)} className="btn-sky ghost pill min-h-[40px] px-4 py-2 text-[13px]">
+            <button type="button" disabled={busy !== null} onClick={() => void dismiss(false)} className="btn-sky ghost pill min-h-[40px] px-4 py-2 text-sm">
               {t.inbox.restore}
             </button>
           )}
         </div>
       )}
       {(state === "open" || state === "draft_failed") && canDraft && price.state === "priced" && (
-        <p className="mt-2 text-[11px] text-[var(--color-muted)]">{t.inbox.draft.note}</p>
+        <p className="mt-2 text-xs text-[var(--color-muted)]">{t.inbox.draft.note}</p>
       )}
     </article>
   );

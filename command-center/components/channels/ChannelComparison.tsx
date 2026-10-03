@@ -24,7 +24,7 @@ export function ChannelComparison({ stats }: { stats: ChannelStats[] }) {
       <div tabIndex={0} role="region" aria-label={t.common.scrollTable} className="scroll-focus overflow-x-auto">
         <table className="w-full min-w-[560px] border-collapse text-left">
           <thead>
-            <tr className="text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+            <tr className="text-xs text-[var(--color-muted)]">
               <th className="px-4 py-2 font-semibold">{t.channels.channel}</th>
               <th className="px-4 py-2 font-semibold">{t.channels.status}</th>
               <th className="px-4 py-2 text-right font-semibold">{t.channels.videos}</th>
@@ -38,23 +38,23 @@ export function ChannelComparison({ stats }: { stats: ChannelStats[] }) {
             {stats.map((s) => (
               <tr key={s.channelId} className="border-t border-[var(--color-border)]">
                 <td className="px-4 py-2">
-                  <span className="block truncate text-[12px] text-[var(--color-fg)]">{s.name}</span>
-                  <span className="mono block truncate text-[9px] text-[var(--color-muted)]">{s.channelId}</span>
+                  <span className="block truncate text-xs text-[var(--color-fg)]">{s.name}</span>
+                  <span className="mono block truncate text-xs text-[var(--color-muted)]">{s.channelId}</span>
                 </td>
-                <td className="px-4 py-2 mono text-[10px]" style={{ color: s.status === "ACTIVE" ? "var(--color-ok)" : "var(--color-muted)" }}>
+                <td className="px-4 py-2 tnum text-xs" style={{ color: s.status === "ACTIVE" ? "var(--color-ok)" : "var(--color-muted)" }}>
                   {s.status === "ACTIVE" ? t.channels.active : t.channels.paused}
                 </td>
-                <td className="px-4 py-2 text-right mono text-[12px] tabular-nums">{num(s.videos)}</td>
-                <td className="px-4 py-2 text-right mono text-[12px] tabular-nums">
+                <td className="px-4 py-2 text-right tnum text-xs tabular-nums">{num(s.videos)}</td>
+                <td className="px-4 py-2 text-right tnum text-xs tabular-nums">
                   {s.views === null ? <Unknown label={t.channels.unknown} /> : num(s.views)}
                 </td>
-                <td className="px-4 py-2 text-right mono text-[12px] tabular-nums">
+                <td className="px-4 py-2 text-right tnum text-xs tabular-nums">
                   {s.avgViews === null ? <Unknown label={t.channels.unknown} /> : num(s.avgViews)}
                 </td>
-                <td className="px-4 py-2 text-right mono text-[12px] tabular-nums">
+                <td className="px-4 py-2 text-right tnum text-xs tabular-nums">
                   {s.daysPerVideo === null ? <Unknown label={t.channels.unknown} /> : s.daysPerVideo}
                 </td>
-                <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">
+                <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">
                   {s.lastPublishedAt ? relativeTime(s.lastPublishedAt) : "—"}
                 </td>
               </tr>
@@ -62,7 +62,7 @@ export function ChannelComparison({ stats }: { stats: ChannelStats[] }) {
           </tbody>
         </table>
       </div>
-      <p className="px-4 pb-3 text-[11px] leading-relaxed text-[var(--color-muted)]">
+      <p className="px-4 pb-3 text-xs leading-relaxed text-[var(--color-muted)]">
         {t.channels.comparisonNote}
       </p>
     </div>
@@ -70,5 +70,5 @@ export function ChannelComparison({ stats }: { stats: ChannelStats[] }) {
 }
 
 function Unknown({ label }: { label: string }) {
-  return <span className="mono text-[10px] text-[var(--color-muted)]">{label}</span>;
+  return <span className="tnum text-xs text-[var(--color-muted)]">{label}</span>;
 }

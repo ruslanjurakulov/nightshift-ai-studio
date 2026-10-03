@@ -143,10 +143,10 @@ export function ModelSheet({
       >
         <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] px-4 pb-3 pt-4 sm:px-6">
           <div className="flex min-w-0 flex-col gap-1">
-            <h2 id={titleId} className="font-display text-[22px] font-bold uppercase leading-none tracking-[0.06em] text-[var(--color-fg)]">
+            <h2 id={titleId} className="font-display text-[22px] font-bold leading-none text-[var(--color-fg)]">
               {g.sheetTitle}
             </h2>
-            <p className="text-[12px] text-[var(--color-muted)]">{fmt(g.sheetFor, { kind: kindLabel(t, capability) })}</p>
+            <p className="text-xs text-[var(--color-muted)]">{fmt(g.sheetFor, { kind: kindLabel(t, capability) })}</p>
           </div>
           <button
             type="button"
@@ -177,13 +177,13 @@ export function ModelSheet({
                 }
               }}
               placeholder={g.sheetSearch}
-              className="min-h-10 w-full bg-transparent text-[16px] text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus-visible:outline-none sm:text-[13px]"
+              className="min-h-10 w-full bg-transparent text-base text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus-visible:outline-none sm:text-[13px]"
             />
           </label>
         </div>
 
         {shown.length === 0 ? (
-          <p className="px-4 py-8 text-center text-[13px] text-[var(--color-muted)] sm:px-6">{g.sheetNoMatch}</p>
+          <p className="px-4 py-8 text-center text-sm text-[var(--color-muted)] sm:px-6">{g.sheetNoMatch}</p>
         ) : (
           <ul
             id={listId}
@@ -223,9 +223,9 @@ export function ModelSheet({
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col gap-1">
                     <span className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-[14px] font-medium text-[var(--color-fg)]">{m.displayName}</span>
+                      <span className="truncate text-sm font-medium text-[var(--color-fg)]">{m.displayName}</span>
                       {m.beta && (
-                        <span className="shrink-0 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[var(--color-muted)]">
+                        <span className="shrink-0 rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-1.5 py-px text-xs font-medium text-[var(--color-muted)]">
                           {g.beta}
                         </span>
                       )}
@@ -233,7 +233,7 @@ export function ModelSheet({
                     <TierMarks speed={m.speedTier ?? null} quality={m.qualityTier ?? null} />
                   </span>
                   <span
-                    className={`max-w-[44%] shrink-0 text-right text-[12px] ${price.tone === "fg" ? "ns-tc text-[14px] font-semibold text-[var(--color-fg)]" : price.tone === "fail" ? "text-[var(--color-fail)]" : "text-[var(--color-muted)]"}`}
+                    className={`max-w-[44%] shrink-0 text-right text-xs ${price.tone === "fg" ? "ns-tc text-sm font-semibold text-[var(--color-fg)]" : price.tone === "fail" ? "text-[var(--color-fail)]" : "text-[var(--color-muted)]"}`}
                     data-price={m.id}
                   >
                     {price.text}
@@ -244,7 +244,7 @@ export function ModelSheet({
           </ul>
         )}
 
-        <p className="border-t border-[var(--color-border)] px-4 py-3 text-[12px] text-[var(--color-muted)] sm:px-6">{g.sheetNote}</p>
+        <p className="border-t border-[var(--color-border)] px-4 py-3 text-xs text-[var(--color-muted)] sm:px-6">{g.sheetNote}</p>
       </div>
     </div>,
     document.body,

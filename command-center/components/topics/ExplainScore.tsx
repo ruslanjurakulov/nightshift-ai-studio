@@ -46,7 +46,7 @@ export function ExplainScore({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="btn-sky is-quiet pill px-3 py-1 text-[11px] font-light"
+        className="btn-sky is-quiet pill px-3 py-1 text-xs font-light"
       >
         {t.ops.explainWhy}
       </button>
@@ -54,34 +54,34 @@ export function ExplainScore({
       {open && (
         <div className="drawer-enter absolute right-0 z-40 mt-3 w-72 rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 text-left shadow-[var(--shadow-elevated)]">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-[var(--color-fg)]">{t.ops.explainTitle}</span>
-            <span className="mono text-sm font-bold tabular-nums" style={{ color: score >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}>
+            <span className="text-xs font-bold text-[var(--color-fg)]">{t.ops.explainTitle}</span>
+            <span className="tnum text-sm font-bold tabular-nums" style={{ color: score >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}>
               {score.toFixed(0)}
             </span>
           </div>
 
           {!hasData ? (
-            <p className="mono text-[11px] text-[var(--color-muted)]">{t.ops.explainNotEnough}</p>
+            <p className="tnum text-xs text-[var(--color-muted)]">{t.ops.explainNotEnough}</p>
           ) : (
             <div className="flex flex-col gap-2">
               {reason && (
                 <div>
-                  <div className="text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]">{t.ops.explainReason}</div>
-                  <div className="text-[11px] text-[var(--color-fg)]">{reason}</div>
+                  <div className="text-xs text-[var(--color-muted)]">{t.ops.explainReason}</div>
+                  <div className="text-xs text-[var(--color-fg)]">{reason}</div>
                 </div>
               )}
               {signals.length > 0 && (
                 <div>
-                  <div className="text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]">{t.ops.explainBasis}</div>
+                  <div className="text-xs text-[var(--color-muted)]">{t.ops.explainBasis}</div>
                   <ul className="mt-1 flex flex-col gap-1">
                     {signals.slice(0, 6).map((s, i) => {
                       const up = s.signal?.startsWith("HIGH_");
                       const color = up ? "var(--color-ok)" : s.signal?.startsWith("LOW_") ? "var(--color-fail)" : "var(--color-muted)";
                       return (
                         <li key={`${s.video_id}-${s.signal}-${i}`} className="flex items-center justify-between gap-2">
-                          <span className="mono text-[10px] font-semibold" style={{ color }}>{s.signal}</span>
+                          <span className="tnum text-xs font-semibold" style={{ color }}>{s.signal}</span>
                           {s.metric_value != null && (
-                            <span className="mono text-[10px] text-[var(--color-muted)] tabular-nums">
+                            <span className="tnum text-xs text-[var(--color-muted)] tabular-nums">
                               {s.metric_value.toFixed(0)}
                               {s.channel_baseline != null ? ` / ${s.channel_baseline.toFixed(0)}` : ""}
                             </span>

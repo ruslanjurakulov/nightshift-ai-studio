@@ -169,7 +169,7 @@ export function ChannelCard({
   }
 
   return (
-    <section className="panel flex flex-col gap-3 p-4">
+    <section className="panel flex flex-col gap-3 p-5 sm:p-6">
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-3">
           {/* The channel's own avatar, pulled from YouTube when the channel was
@@ -187,7 +187,7 @@ export function ChannelCard({
           )}
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold">{channel.name}</h2>
-            <p className="mono truncate text-[10px] text-[var(--color-muted)]">
+            <p className="tnum truncate text-xs text-[var(--color-muted)]">
               {channel.credential_ref?.youtube_custom_url || channel.channel_id}
               {channel.niche ? ` · ${channel.niche}` : ""}
             </p>
@@ -203,7 +203,7 @@ export function ChannelCard({
             onClick={toggleStatus}
             disabled={busy || pending || (!active && !verified)}
             title={!active && !verified ? t.channels.verifyRequired : undefined}
-            className="btn-sky ghost pill px-4 py-2 text-[12px] disabled:opacity-50"
+            className="btn-sky ghost pill px-4 py-2 text-xs disabled:opacity-50"
           >
             {busy ? t.channels.saving : active ? t.channels.pause : t.channels.activate}
           </button>
@@ -211,7 +211,7 @@ export function ChannelCard({
       </header>
 
       {!verified && (
-        <p className="max-w-[72ch] text-[12px] leading-relaxed text-[var(--color-warn)]">
+        <p className="max-w-[72ch] text-xs leading-relaxed text-[var(--color-warn)]">
           {t.channels.verifyRequired}
         </p>
       )}
@@ -220,10 +220,10 @@ export function ChannelCard({
           says which way it is currently pointing, in words, not just colour. */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-4 py-3">
         <div className="min-w-0">
-          <div className="text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+          <div className="text-xs text-[var(--color-muted)]">
             {t.channels.autoLabel}
           </div>
-          <p className="m-0 mt-1 max-w-[52ch] text-[12px] leading-relaxed text-[var(--color-muted)]">
+          <p className="m-0 mt-1 max-w-[52ch] text-xs leading-relaxed text-[var(--color-muted)]">
             {auto ? t.channels.autoOnHint : t.channels.autoOffHint}
           </p>
         </div>
@@ -234,7 +234,7 @@ export function ChannelCard({
           onClick={toggleAuto}
           disabled={autoBusy || pending || !canControl}
           title={canControl ? undefined : t.channels.adminOnly}
-          className="btn-sky pill shrink-0 px-4 py-2 text-[12px] disabled:opacity-50"
+          className="btn-sky pill shrink-0 px-4 py-2 text-xs disabled:opacity-50"
           style={{
             borderColor: auto ? "var(--color-warn)" : "var(--color-border)",
             color: auto ? "var(--color-warn)" : "var(--color-muted)",
@@ -248,10 +248,10 @@ export function ChannelCard({
           the render is paid for — it never replaces the publish gate. */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-4 py-3">
         <div className="min-w-0">
-          <div className="text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+          <div className="text-xs text-[var(--color-muted)]">
             {t.storyboardReview.toggleLabel}
           </div>
-          <p className="m-0 mt-1 max-w-[52ch] text-[12px] leading-relaxed text-[var(--color-muted)]">
+          <p className="m-0 mt-1 max-w-[52ch] text-xs leading-relaxed text-[var(--color-muted)]">
             {review ? t.storyboardReview.toggleOnHint : t.storyboardReview.toggleOffHint}
           </p>
         </div>
@@ -263,7 +263,7 @@ export function ChannelCard({
           onClick={toggleReview}
           disabled={reviewBusy || pending || !canControl}
           title={canControl ? undefined : t.channels.adminOnly}
-          className="btn-sky pill shrink-0 px-4 py-2 text-[12px] disabled:opacity-50"
+          className="btn-sky pill shrink-0 px-4 py-2 text-xs disabled:opacity-50"
           style={{
             borderColor: review ? "var(--color-primary)" : "var(--color-border)",
             color: review ? "var(--color-primary)" : "var(--color-muted)",
@@ -274,7 +274,7 @@ export function ChannelCard({
       </div>
 
       {error && (
-        <p className="mono text-[11px] text-[var(--color-fail)]">
+        <p className="tnum text-xs text-[var(--color-fail)]">
           {t.channels.saveFailed}: {error}
         </p>
       )}
@@ -282,12 +282,22 @@ export function ChannelCard({
       {/* -- health ------------------------------------------------------ */}
       <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+          <span className="text-xs text-[var(--color-muted)]">
             {t.channels.health}
           </span>
           <StatusPill
             tone={health.tone === "fail" ? "fail" : health.tone === "warn" ? "warn" : health.tone}
-            label={health.actionRequired ? t.channels.actionRequired : health.tone === "ok" ? t.channels.healthy : undefined}
+            label={
+              health.actionRequired
+                ? t.channels.actionRequired
+                : health.tone === "ok"
+                  ? t.channels.healthy
+                  : health.tone === "warn"
+                    ? t.status.warn
+                    : health.tone === "fail"
+                      ? t.status.failed
+                      : t.status.idle
+            }
           />
         </div>
         <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-4">
@@ -299,11 +309,11 @@ export function ChannelCard({
                 style={{ background: toneColor(s.tone) }}
               />
               <span className="min-w-0">
-                <span className="block truncate text-[11px] text-[var(--color-fg)]">
+                <span className="block truncate text-xs text-[var(--color-fg)]">
                   {subsystemLabel(s.key, t)}
                 </span>
                 {s.detail && (
-                  <span className="mono block truncate text-[9px] text-[var(--color-muted)]">{s.detail}</span>
+                  <span className="tnum block truncate text-xs text-[var(--color-muted)]">{s.detail}</span>
                 )}
               </span>
             </li>
@@ -314,7 +324,7 @@ export function ChannelCard({
       {/* -- youtube ----------------------------------------------------- */}
       <div className="rounded-md border border-[var(--color-border)] p-3">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+          <span className="text-xs text-[var(--color-muted)]">
             {t.channels.youtube}
           </span>
           {credential ? (
@@ -327,7 +337,7 @@ export function ChannelCard({
           )}
         </div>
         {credential ? (
-          <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 mono text-[10px] text-[var(--color-muted)]">
+          <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 tnum text-xs text-[var(--color-muted)]">
             {credential.youtube_channel_id && (
               <div>
                 <dt className="inline">{t.channels.youtube}: </dt>
@@ -348,15 +358,15 @@ export function ChannelCard({
             )}
           </dl>
         ) : (
-          <p className="mt-2 mono text-[10px] text-[var(--color-muted)]">{t.channels.noCredential}</p>
+          <p className="mt-2 tnum text-xs text-[var(--color-muted)]">{t.channels.noCredential}</p>
         )}
         {credential?.detail && (
-          <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">{credential.detail}</p>
+          <p className="mt-1.5 text-xs text-[var(--color-muted)]">{credential.detail}</p>
         )}
         {/* The GitHub-secret hint is the operator's path; a customer channel
             connects in the panel below instead. */}
         {credential?.status !== "connected" && !vault && (
-          <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">
+          <p className="mt-1.5 text-xs text-[var(--color-muted)]">
             {fmt(t.channels.connectHint, {
               id: channel.channel_id,
               secret: secretName(channel),
@@ -399,8 +409,8 @@ export function ChannelCard({
       </dl>
 
       {agent.visual_style_prompt && (
-        <p className="text-[11px] leading-relaxed text-[var(--color-muted)]">
-          <span className="text-[9px] uppercase tracking-[0.22em]">{t.channels.visualStyle}: </span>
+        <p className="text-xs leading-relaxed text-[var(--color-muted)]">
+          <span className="text-xs">{t.channels.visualStyle}: </span>
           {agent.visual_style_prompt}
         </p>
       )}
@@ -409,7 +419,7 @@ export function ChannelCard({
         // This channel's videos, on this channel's own URL — the link carries
         // the lens, so the page opens already scoped.
         href={`/${encodeURIComponent(slug)}/videos`}
-        className="tap-link text-[10px] uppercase tracking-[0.22em] text-[var(--color-primary)] hover:underline"
+        className="tap-link text-xs text-[var(--color-primary)] hover:underline"
       >
         {t.channels.videos} →
       </Link>
@@ -420,8 +430,8 @@ export function ChannelCard({
 function Field({ label, value }: { label: string; value?: string | null }) {
   return (
     <div>
-      <dt className="text-[9px] uppercase tracking-[0.22em] text-[var(--color-muted)]">{label}</dt>
-      <dd className="truncate text-[12px] text-[var(--color-fg)]">{value || "—"}</dd>
+      <dt className="text-xs text-[var(--color-muted)]">{label}</dt>
+      <dd className="truncate text-xs text-[var(--color-fg)]">{value || "—"}</dd>
     </div>
   );
 }

@@ -180,7 +180,7 @@ export function CreateStudio({
   const customVoiceInvalid = voice === CUSTOM_VOICE && customVoice.trim() !== "" && !isVoiceId(customVoice.trim());
 
   const selectClass =
-    "studio-field min-h-[44px] w-full px-3 py-2 text-[16px] text-[var(--color-fg)] outline-none sm:min-h-[40px] sm:text-[13px]";
+    "studio-field min-h-[44px] w-full px-3 py-2 text-base text-[var(--color-fg)] outline-none sm:min-h-[40px] sm:text-[13px]";
 
   const styleOf = (v: { id: string; style: string }) => (t.desk.voiceStyles as Record<string, string>)[v.id] ?? v.style;
   // The channel's voice in words. The provider and the raw id are the operator's to see.
@@ -193,7 +193,7 @@ export function CreateStudio({
 
   return (
     <div id="run" className="flex scroll-mt-4 flex-col gap-4">
-      {initial && <p className="text-[13px] text-[var(--color-muted)]">{t.create.prefilled}</p>}
+      {initial && <p className="text-sm text-[var(--color-muted)]">{t.create.prefilled}</p>}
       {dna && <ChannelDnaHint href={dna.href} />}
       {connectedTargets.length > 0 && (
         <div className="flex justify-center">
@@ -214,7 +214,7 @@ export function CreateStudio({
                 </option>
               ))}
             </select>
-            <span id="making-for-hint" className="text-[11px] text-[var(--color-muted)]">
+            <span id="making-for-hint" className="text-xs text-[var(--color-muted)]">
               {t.publish.makingForHint}
             </span>
           </label>
@@ -222,7 +222,7 @@ export function CreateStudio({
       )}
 
       {blocked && (
-        <p className="text-[13px] text-[var(--color-warn)]">
+        <p className="text-sm text-[var(--color-warn)]">
           {!channelId ? t.create.pickChannel : !githubConfigured ? t.create.notConfigured : t.create.needsAdmin}
         </p>
       )}
@@ -241,7 +241,7 @@ export function CreateStudio({
           maxLength={300}
           autoFocus={initial !== null}
           placeholder={t.create.placeholder}
-          className="studio-field w-full resize-y px-3 py-3 text-[16px] leading-relaxed outline-none placeholder:text-[var(--color-muted)] sm:text-[15px]"
+          className="studio-field w-full resize-y px-3 py-3 text-base leading-relaxed outline-none placeholder:text-[var(--color-muted)] sm:text-[15px]"
         />
 
         {/* Per-run controls the pipeline actually reads. */}
@@ -346,10 +346,10 @@ export function CreateStudio({
                 maxLength={40}
                 spellCheck={false}
                 aria-invalid={customVoiceInvalid}
-                className={selectClass + " mono"}
+                className={selectClass + " tnum"}
               />
               {customVoiceInvalid && (
-                <span className="text-[11px] text-[var(--color-warn)]">{t.create.voiceCustomInvalid}</span>
+                <span className="text-xs text-[var(--color-warn)]">{t.create.voiceCustomInvalid}</span>
               )}
             </label>
           )}
@@ -361,7 +361,7 @@ export function CreateStudio({
         {/* Models governed elsewhere — shown here, edited there. The provider and the
             raw voice id are the platform operator's; a customer's run uses the channel's. */}
         {operator && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
           <span className="text-[var(--color-muted)]">{t.create.models}:</span>
           <span className="rounded-[var(--ns-r-chip)] border border-[var(--color-border)] px-2.5 py-1 text-[var(--color-muted)]">
             {t.create.voice}: {voiceChip}
@@ -386,11 +386,11 @@ export function CreateStudio({
               <button
                 type="button"
                 onClick={create}
-                className="studio-cta w-auto min-h-[44px] px-6 text-[14px]"
+                className="studio-cta w-auto min-h-[44px] px-6 text-sm"
               >
                 {t.create.confirm}
               </button>
-              <button type="button" onClick={() => setPhase("idle")} className="btn-quiet min-h-[44px] px-4 text-[13px]">
+              <button type="button" onClick={() => setPhase("idle")} className="btn-quiet min-h-[44px] px-4 text-sm">
                 {t.create.cancel}
               </button>
             </>
@@ -399,12 +399,12 @@ export function CreateStudio({
               type="button"
               disabled={blocked || phase === "starting"}
               onClick={() => setPhase("confirm")}
-              className="studio-cta w-auto min-h-[44px] px-6 text-[14px]"
+              className="studio-cta w-auto min-h-[44px] px-6 text-sm"
             >
               {phase === "starting" ? t.create.starting : t.create.create}
             </button>
           )}
-          <span className="mono text-[11px]" aria-live="polite">
+          <span className="tnum text-xs" aria-live="polite">
             {phase === "queued" ? (
               <span className="text-[var(--color-ok)]">{t.create.queued}</span>
             ) : phase === "error" ? (
@@ -432,18 +432,18 @@ export function CreateStudio({
       {phase === "queued" && (
         <div className="ns-panel flex flex-col gap-2 p-4">
           <h2 className="ns-eyebrow">{t.create.progressTitle}</h2>
-          <p className="text-[12px] text-[var(--color-muted)]">
+          <p className="text-xs text-[var(--color-muted)]">
             {backend === "queue" ? t.create.progressHintQueue : t.create.progressHint}
           </p>
           {backend === "queue" && jobs && jobs.length > 0 && (
             <ol className="flex flex-col gap-1.5" aria-label={t.create.queueTitle}>
               {jobs.slice(0, 3).map((j) => (
-                <li key={j.id} className="flex flex-wrap items-center gap-3 text-[12px]">
-                  <span className="mono shrink-0 text-[11px] text-[var(--color-muted)]">
+                <li key={j.id} className="flex flex-wrap items-center gap-3 text-xs">
+                  <span className="tnum shrink-0 text-xs text-[var(--color-muted)]">
                     {t.create.queueJob} #{j.id}
                   </span>
                   <span
-                    className="shrink-0 text-[9px] uppercase tracking-[0.18em]"
+                    className="shrink-0 text-xs"
                     style={{
                       color:
                         j.status === "succeeded"
@@ -458,12 +458,12 @@ export function CreateStudio({
                     {t.create.queueStatus[j.status]}
                   </span>
                   {j.attempts > 1 && (
-                    <span className="mono text-[10px] text-[var(--color-muted)]">
+                    <span className="tnum text-xs text-[var(--color-muted)]">
                       {t.create.queueAttempt} {j.attempts}
                     </span>
                   )}
                   {j.error && (
-                    <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--color-fail)]" title={j.error}>
+                    <span className="min-w-0 flex-1 truncate text-xs text-[var(--color-fail)]" title={j.error}>
                       {j.error.split("\n")[0]}
                     </span>
                   )}
@@ -472,19 +472,19 @@ export function CreateStudio({
             </ol>
           )}
           {events.length === 0 ? (
-            <p className="mono text-[12px] text-[var(--color-muted)]">{t.create.progressWaiting}</p>
+            <p className="tnum text-xs text-[var(--color-muted)]">{t.create.progressWaiting}</p>
           ) : (
             <ol className="mt-1 flex flex-col gap-1.5">
               {events.slice(0, 24).map((e, i) => (
-                <li key={`${e.ts}-${i}`} className="flex items-center gap-3 text-[12px]">
-                  <span className="mono w-14 shrink-0 text-[10px] text-[var(--color-muted)]">
+                <li key={`${e.ts}-${i}`} className="flex items-center gap-3 text-xs">
+                  <span className="tnum w-14 shrink-0 text-xs text-[var(--color-muted)]">
                     {(e.ts ?? "").slice(11, 19)}
                   </span>
-                  <span className="mono shrink-0 text-[11px] text-[var(--color-primary)]">{e.agent ?? "system"}</span>
+                  <span className="tnum shrink-0 text-xs text-[var(--color-primary)]">{e.agent ?? "system"}</span>
                   <span className="min-w-0 flex-1 truncate text-[var(--color-fg)]">{e.event}</span>
                   {e.status && (
                     <span
-                      className="shrink-0 text-[9px] uppercase tracking-[0.18em]"
+                      className="shrink-0 text-xs"
                       style={{
                         color:
                           e.status === "completed"
@@ -502,7 +502,7 @@ export function CreateStudio({
             </ol>
           )}
           {operator && (
-            <Link href={path("/jobs")} className="mt-1 text-[12px] text-[var(--color-primary)] hover:underline">
+            <Link href={path("/jobs")} className="mt-1 text-xs text-[var(--color-primary)] hover:underline">
               {t.create.openJobs}
             </Link>
           )}

@@ -55,7 +55,7 @@ export function MemoryView({
                   </p>
                   <ConfidenceBadge confidence={m.confidence} />
                 </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mono text-[10px] text-[var(--color-muted)]">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 tnum text-xs text-[var(--color-muted)]">
                   <span>
                     {t.intel.memEvidence}:{" "}
                     {m.kind === "topic_outperforms" || m.kind === "topic_underperforms"
@@ -85,10 +85,10 @@ export function MemoryView({
                   </p>
                   <ConfidenceBadge confidence={o.confidence} />
                 </div>
-                <p className="mono text-[11px] text-[var(--color-primary)]">
+                <p className="tnum text-xs text-[var(--color-primary)]">
                   {t.intel.oppAction}: {String(t.intel[OPP_ACTION[o.kind]])}
                 </p>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mono text-[10px] text-[var(--color-muted)]">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 tnum text-xs text-[var(--color-muted)]">
                   <span>{t.intel.oppEvidence}: {o.evidenceCount}</span>
                   {o.score != null && <span>{t.intel.decScore}: {o.score.toFixed(0)}</span>}
                   {o.ts && <span>{relativeTime(o.ts)}</span>}

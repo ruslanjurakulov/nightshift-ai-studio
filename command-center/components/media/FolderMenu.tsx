@@ -97,7 +97,7 @@ export const FolderMenu = forwardRef<
             type="button"
             role="menuitem"
             onClick={choose(onRename)}
-            className="flex items-center gap-2.5 rounded-[var(--ns-r-key)] px-3 py-2.5 text-left text-[14px] text-[var(--color-fg)] hover:bg-[var(--color-panel-2)] focus-visible:bg-[var(--color-panel-2)]"
+            className="flex items-center gap-2.5 rounded-[var(--ns-r-key)] px-3 py-2.5 text-left text-sm text-[var(--color-fg)] hover:bg-[var(--color-panel-2)] focus-visible:bg-[var(--color-panel-2)]"
           >
             <Pencil className="size-4 text-[var(--color-muted)]" aria-hidden />
             {renameLabel}
@@ -109,7 +109,7 @@ export const FolderMenu = forwardRef<
             type="button"
             role="menuitem"
             onClick={choose(onDelete)}
-            className="flex items-center gap-2.5 rounded-[var(--ns-r-key)] px-3 py-2.5 text-left text-[14px] text-[var(--color-fail)] hover:bg-[var(--color-panel-2)] focus-visible:bg-[var(--color-panel-2)]"
+            className="flex items-center gap-2.5 rounded-[var(--ns-r-key)] px-3 py-2.5 text-left text-sm text-[var(--color-fail)] hover:bg-[var(--color-panel-2)] focus-visible:bg-[var(--color-panel-2)]"
           >
             <Trash2 className="size-4" aria-hidden />
             {deleteLabel}

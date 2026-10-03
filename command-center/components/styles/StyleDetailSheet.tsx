@@ -116,15 +116,15 @@ export function StyleDetailSheet({
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
           <div>
             <StyleTile style={style} label={ts.previewLabel} className="aspect-[4/3] w-full rounded-xl border border-[var(--color-border)] sm:aspect-[16/7]" />
-            <p className="mt-1.5 text-[11px] text-[var(--color-muted)]">{ts.previewNote}</p>
+            <p className="mt-1.5 text-xs text-[var(--color-muted)]">{ts.previewNote}</p>
           </div>
 
           <section aria-label={ts.goodFor} className="flex flex-col gap-1">
-            <h3 className="text-[12px] font-medium text-[var(--color-muted)]">{ts.goodFor}</h3>
-            <p className="text-[14px] text-[var(--color-fg)]">{style.goodFor[locale]}</p>
+            <h3 className="text-xs font-medium text-[var(--color-muted)]">{ts.goodFor}</h3>
+            <p className="text-sm text-[var(--color-fg)]">{style.goodFor[locale]}</p>
             <ul className="mt-1 flex flex-wrap gap-1.5">
               {style.tags.map((tag) => (
-                <li key={tag} className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[11px] text-[var(--color-muted)]">
+                <li key={tag} className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-muted)]">
                   {ts.tags[tag]}
                 </li>
               ))}
@@ -132,7 +132,7 @@ export function StyleDetailSheet({
           </section>
 
           <section className="flex flex-col gap-1.5">
-            <h3 className="text-[12px] font-medium text-[var(--color-muted)]">{ts.palette}</h3>
+            <h3 className="text-xs font-medium text-[var(--color-muted)]">{ts.palette}</h3>
             <ul className="flex flex-wrap gap-2">
               {style.swatch.map((hex) => (
                 <li key={hex} className="flex items-center gap-1.5">
@@ -142,17 +142,17 @@ export function StyleDetailSheet({
                     className="size-7 rounded-full border border-[var(--color-border)]"
                     style={{ background: hex }}
                   />
-                  <span className="mono text-[11px] text-[var(--color-muted)]">{hex}</span>
+                  <span className="tnum text-xs text-[var(--color-muted)]">{hex}</span>
                 </li>
               ))}
             </ul>
           </section>
 
           <section className="flex flex-col gap-1.5">
-            <h3 className="text-[12px] font-medium text-[var(--color-muted)]">{ts.aspects}</h3>
+            <h3 className="text-xs font-medium text-[var(--color-muted)]">{ts.aspects}</h3>
             <ul className="flex flex-wrap gap-1.5">
               {style.aspects.map((a) => (
-                <li key={a} className="mono rounded-md border border-[var(--color-border)] px-2 py-0.5 text-[12px] text-[var(--color-fg)]">
+                <li key={a} className="tnum rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-fg)]">
                   {a}
                 </li>
               ))}
@@ -160,17 +160,17 @@ export function StyleDetailSheet({
           </section>
 
           <section className="flex flex-col gap-1.5">
-            <h3 className="text-[12px] font-medium text-[var(--color-muted)]">{ts.direction}</h3>
-            <p className="text-[11px] text-[var(--color-muted)]">{ts.directionHint}</p>
+            <h3 className="text-xs font-medium text-[var(--color-muted)]">{ts.direction}</h3>
+            <p className="text-xs text-[var(--color-muted)]">{ts.directionHint}</p>
             {/* The direction is written in English whatever the app's language: it is what a model reads. */}
-            <p lang="en" className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3 text-[13px] leading-relaxed text-[var(--color-fg)]">
+            <p lang="en" className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3 text-sm leading-relaxed text-[var(--color-fg)]">
               {style.description}
             </p>
           </section>
         </div>
 
         <footer className="flex flex-col gap-2 border-t border-[var(--color-border)] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div aria-live="polite" className="min-h-[18px] text-[12px]">
+          <div aria-live="polite" className="min-h-[18px] text-xs">
             {error ? (
               <span role="alert" style={{ color: "var(--color-fail)" }}>
                 {error}
@@ -181,7 +181,7 @@ export function StyleDetailSheet({
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
             {added ? (
-              <span className="pill inline-flex items-center justify-center gap-1.5 border border-[var(--color-border)] px-4 py-2 text-[13px] text-[var(--color-muted)]">
+              <span className="pill inline-flex items-center justify-center gap-1.5 border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-muted)]">
                 <Check aria-hidden className="size-4" />
                 {ts.added}
               </span>
@@ -191,7 +191,7 @@ export function StyleDetailSheet({
                 onClick={onAdd}
                 disabled={!canAdd || working}
                 aria-busy={busy === "add"}
-                className="disabled:opacity-50 btn-sky is-quiet pill px-4 py-2 text-[13px]"
+                className="disabled:opacity-50 btn-sky is-quiet pill px-4 py-2 text-sm"
               >
                 {busy === "add" ? ts.adding : ts.add}
               </button>
@@ -202,16 +202,16 @@ export function StyleDetailSheet({
               disabled={working || (!canAdd && !added)}
               aria-busy={busy === "use"}
               aria-describedby={`${titleId}-use`}
-              className="disabled:opacity-50 btn-sky is-solid pill px-5 py-2 text-[13px]"
+              className="disabled:opacity-50 btn-sky is-solid pill px-5 py-2 text-sm"
             >
               {busy === "use" ? ts.opening : ts.useInStudio}
             </button>
           </div>
-          <p id={`${titleId}-use`} className="text-[11px] text-[var(--color-muted)] sm:text-right">
+          <p id={`${titleId}-use`} className="text-xs text-[var(--color-muted)] sm:text-right">
             {ts.useHint}
           </p>
           {added && (
-            <Link href={manageHref} className="tap-link text-[12px] text-[var(--color-primary)] underline sm:text-right">
+            <Link href={manageHref} className="tap-link text-xs text-[var(--color-primary)] underline sm:text-right">
               {ts.manage}
             </Link>
           )}

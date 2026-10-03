@@ -66,7 +66,7 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
         <h2 id="home-recent" className="t-panel">
           {t.home.recentTitle}
         </h2>
-        <Link href={path("/create")} className="tap-link text-[13px] text-[var(--color-primary)] hover:underline">
+        <Link href={path("/create")} className="tap-link text-sm text-[var(--color-primary)] hover:underline">
           {t.home.recentAll}
         </Link>
       </div>
@@ -78,8 +78,8 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
           ))}
         </div>
       )}
-      {state === "failed" && <p className="text-[13px] text-[var(--color-warn)]">{t.home.recentFailed}</p>}
-      {state === "unavailable" && <p className="text-[13px] text-[var(--color-muted)]">{t.home.recentUnavailable}</p>}
+      {state === "failed" && <p className="text-sm text-[var(--color-warn)]">{t.home.recentFailed}</p>}
+      {state === "unavailable" && <p className="text-sm text-[var(--color-muted)]">{t.home.recentUnavailable}</p>}
 
       {state === "ok" && jobs && jobs.length === 0 && (
         <div className="flex flex-col items-start gap-3 rounded-[var(--ns-r-panel)] border border-dashed border-[var(--color-border)] p-5 sm:flex-row sm:items-center">
@@ -90,10 +90,10 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
             <ImagePlus className="size-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[14px] font-medium text-[var(--color-fg)]">{t.home.recentEmptyTitle}</p>
-            <p className="text-[13px] text-[var(--color-muted)]">{t.home.recentEmptyBody}</p>
+            <p className="text-sm font-medium text-[var(--color-fg)]">{t.home.recentEmptyTitle}</p>
+            <p className="text-sm text-[var(--color-muted)]">{t.home.recentEmptyBody}</p>
           </div>
-          <Link href={path(toolHref("t2i"))} className="btn-quiet text-[13px]">
+          <Link href={path(toolHref("t2i"))} className="btn-quiet text-sm">
             {t.home.recentEmptyCta}
           </Link>
         </div>
@@ -121,9 +121,9 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
                     )}
                   </div>
                   <div className="flex flex-1 flex-col gap-1.5 p-2.5">
-                    <span className="truncate text-[12px] font-medium text-[var(--color-fg)]">{kindLabel(t, job.capability)}</span>
+                    <span className="truncate text-xs font-medium text-[var(--color-fg)]">{kindLabel(t, job.capability)}</span>
                     <StatusLamp tone={sv.tone} label={sv.label} live={sv.live} />
-                    {prompt && <p className="line-clamp-2 text-[12px] leading-snug text-[var(--color-muted)]">{truncate(prompt, 80)}</p>}
+                    {prompt && <p className="line-clamp-2 text-xs leading-snug text-[var(--color-muted)]">{truncate(prompt, 80)}</p>}
                   </div>
                 </Link>
               </li>

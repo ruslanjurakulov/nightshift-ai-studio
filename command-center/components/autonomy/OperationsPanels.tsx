@@ -39,7 +39,7 @@ export function OperationsPanels({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
                   <th className="px-4 py-2 font-semibold">{t.auto.qTopic}</th>
                   <th className="px-4 py-2 font-semibold">{t.auto.qStatus}</th>
                   <th className="px-4 py-2 font-semibold">{t.auto.qSource}</th>
@@ -52,21 +52,21 @@ export function OperationsPanels({
                     <td className="px-4 py-2 text-[var(--color-fg)]">
                       <div className="truncate">{q.topic}</div>
                       {q.rationale && (
-                        <div className="mono truncate text-[10px] text-[var(--color-muted)]">{q.rationale}</div>
+                        <div className="tnum truncate text-xs text-[var(--color-muted)]">{q.rationale}</div>
                       )}
                     </td>
-                    <td className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ color: STATUS_COLOR[q.status] ?? "var(--color-muted)" }}>
+                    <td className="px-4 py-2 text-xs font-semibold" style={{ color: STATUS_COLOR[q.status] ?? "var(--color-muted)" }}>
                       {q.status}
                     </td>
-                    <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">{q.source ?? t.common.dash}</td>
-                    <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">{relativeTime(q.added_at)}</td>
+                    <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{q.source ?? t.common.dash}</td>
+                    <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{relativeTime(q.added_at)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-        <p className="border-t border-[var(--color-border)] px-4 py-2 mono text-[10px] leading-relaxed text-[var(--color-muted)]">
+        <p className="border-t border-[var(--color-border)] px-4 py-2 tnum text-xs leading-relaxed text-[var(--color-muted)]">
           {t.auto.opsNote}
         </p>
       </Panel>
@@ -80,7 +80,7 @@ export function OperationsPanels({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">
+                <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
                   <th className="px-4 py-2 font-semibold">{t.auto.rRun}</th>
                   <th className="px-4 py-2 font-semibold">{t.auto.rStage}</th>
                   <th className="px-4 py-2 font-semibold">{t.auto.rApproved}</th>
@@ -92,14 +92,14 @@ export function OperationsPanels({
                   <tr key={r.run_id} className="border-b border-[var(--color-border)]/50 transition-colors hover:bg-[var(--color-panel-2)]">
                     <td className="px-4 py-2">
                       <div className="truncate text-[var(--color-fg)]">{r.topic}</div>
-                      <div className="mono truncate text-[10px] text-[var(--color-muted)]">{r.run_id}</div>
+                      <div className="mono truncate text-xs text-[var(--color-muted)]">{r.run_id}</div>
                     </td>
-                    <td className="px-4 py-2 mono text-[11px] text-[var(--color-primary)]">{r.current_stage}</td>
-                    <td className="px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.22em]" style={{ color: r.human_approved ? "var(--color-ok)" : "var(--color-muted)" }}>
+                    <td className="px-4 py-2 tnum text-xs text-[var(--color-primary)]">{r.current_stage}</td>
+                    <td className="px-4 py-2 text-xs font-semibold" style={{ color: r.human_approved ? "var(--color-ok)" : "var(--color-muted)" }}>
                       {r.human_approved ? t.auto.rApprovedYes : t.auto.rApprovedNo}
                       {r.approved_by && <span className="ml-1 normal-case text-[var(--color-muted)]">({r.approved_by})</span>}
                     </td>
-                    <td className="px-4 py-2 mono text-[11px] text-[var(--color-muted)]">
+                    <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">
                       {r.updated_at ? relativeTime(r.updated_at) : t.common.dash}
                     </td>
                   </tr>

@@ -185,9 +185,9 @@ export default async function PipelinePage() {
             {pipelines.map((p) => (
               <div key={p.videoId} className="flex flex-col gap-3 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="mono truncate text-[12px] text-[var(--color-fg)]">{p.videoId}</div>
+                  <div className="mono truncate text-xs text-[var(--color-fg)]">{p.videoId}</div>
                   <div className="flex items-center gap-3">
-                    <span className="mono text-[10px] text-[var(--color-muted)]">
+                    <span className="tnum text-xs text-[var(--color-muted)]">
                       {p.lastActivity ? relativeTime(p.lastActivity) : t.common.na}
                     </span>
                     <StatusLamp tone={OVERALL_TONE[p.overall]} label={overallLabel[p.overall]} live={p.overall === "RUNNING"} />
@@ -214,11 +214,11 @@ export default async function PipelinePage() {
               return (
                 <li key={p.event} className="row-sweep flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-[var(--color-panel-2)]">
                   <StatusLamp tone={p.tone} label={{ ok: t.status.ok, run: t.status.running, fail: t.status.failed, idle: t.status.idle }[p.tone]} hideLabel />
-                  <span className="mono w-28 shrink-0 text-[11px] text-[var(--color-primary)]">
+                  <span className="tnum w-28 shrink-0 text-xs text-[var(--color-primary)]">
                     {p.agent ?? t.common.system}
                   </span>
                   <span className="truncate text-[var(--color-fg)]">{p.event}</span>
-                  <span className="mono ml-auto shrink-0 text-[10px] text-[var(--color-muted)]">
+                  <span className="tnum ml-auto shrink-0 text-xs text-[var(--color-muted)]">
                     {p.count}× · {timeOfDay(p.lastTs)} {stale ? t.pipeline.stale : ""}
                   </span>
                 </li>

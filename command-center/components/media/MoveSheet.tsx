@@ -89,8 +89,8 @@ export function MoveSheet({
           >
             <FolderMinus className="size-5 shrink-0 text-[var(--color-muted)]" aria-hidden />
             <span className="flex min-w-0 flex-1 flex-col">
-              <span className="text-[14px] font-medium text-[var(--color-fg)]">{tf.noFolder}</span>
-              <span className="text-[12px] text-[var(--color-muted)]">{busy === "none" ? tf.moving : tf.noFolderHint}</span>
+              <span className="text-sm font-medium text-[var(--color-fg)]">{tf.noFolder}</span>
+              <span className="text-xs text-[var(--color-muted)]">{busy === "none" ? tf.moving : tf.noFolderHint}</span>
             </span>
             {here === null && <HereMark label={tf.here} />}
           </button>
@@ -108,10 +108,10 @@ export function MoveSheet({
               >
                 <Folder className="size-5 shrink-0 text-[var(--color-primary)]" aria-hidden />
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-[14px] font-medium text-[var(--color-fg)]" title={f.name}>
+                  <span className="truncate text-sm font-medium text-[var(--color-fg)]" title={f.name}>
                     {f.name}
                   </span>
-                  <span className="text-[12px] text-[var(--color-muted)]">
+                  <span className="text-xs text-[var(--color-muted)]">
                     {busy === f.id ? tf.moving : f.count === null ? tf.countUnknown : fileCount(tf, f.count)}
                   </span>
                 </span>
@@ -148,9 +148,9 @@ export function MoveSheet({
                 enterKeyHint="done"
                 placeholder={tf.namePlaceholder}
                 disabled={busy !== null}
-                className="min-w-0 flex-[1_1_12rem] rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2.5 text-[16px] text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[14px]"
+                className="min-w-0 flex-[1_1_12rem] rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2.5 text-base text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] sm:text-[14px]"
               />
-              <button type="submit" disabled={!nameOk || busy !== null} className="btn-primary shrink-0 text-[13px] disabled:opacity-40">
+              <button type="submit" disabled={!nameOk || busy !== null} className="btn-primary shrink-0 text-sm disabled:opacity-40">
                 {busy === "new" ? tf.moving : tf.createAndMove}
               </button>
             </div>
@@ -165,14 +165,14 @@ export function MoveSheet({
               // After the input exists.
               setTimeout(() => nameInput.current?.focus(), 0);
             }}
-            className="press flex w-full items-center gap-3 rounded-[var(--ns-r-key)] border border-dashed border-[var(--color-border)] px-3.5 py-3 text-left text-[14px] font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)]"
+            className="press flex w-full items-center gap-3 rounded-[var(--ns-r-key)] border border-dashed border-[var(--color-border)] px-3.5 py-3 text-left text-sm font-medium text-[var(--color-fg)] hover:border-[var(--color-primary)]"
           >
             <FolderPlus className="size-5 shrink-0 text-[var(--color-muted)]" aria-hidden />
             {tf.newAndMove}
           </button>
         )}
         {error && (
-          <p role="alert" className="m-0 mt-3 text-[13px] text-[var(--color-fail)]">
+          <p role="alert" className="m-0 mt-3 text-sm text-[var(--color-fail)]">
             {tf.errors[error]}
           </p>
         )}
@@ -183,7 +183,7 @@ export function MoveSheet({
 
 function HereMark({ label }: { label: string }) {
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 text-[12px] text-[var(--color-muted)]">
+    <span className="inline-flex shrink-0 items-center gap-1 text-xs text-[var(--color-muted)]">
       <Check className="size-3.5" aria-hidden />
       {label}
     </span>

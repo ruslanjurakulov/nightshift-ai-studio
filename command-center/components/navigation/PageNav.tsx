@@ -48,7 +48,7 @@ export function PageNav() {
         <ArrowLeft aria-hidden className="size-4" />
       </button>
       <nav aria-label={t.navigation.breadcrumb} className="min-w-0">
-        <ol className="flex min-w-0 items-center gap-1 text-[12px] text-[var(--color-muted)]">
+        <ol className="flex min-w-0 items-center gap-1 text-xs text-[var(--color-muted)]">
           {crumbs.map((crumb, i) => {
             const last = i === crumbs.length - 1;
             const label = crumbLabel(crumb, t, channelName);

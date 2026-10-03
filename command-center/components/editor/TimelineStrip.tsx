@@ -212,7 +212,7 @@ export function TimelineStrip({
             {ticks.marks.map((m) => (
               <span
                 key={m}
-                className="absolute top-0 whitespace-nowrap pl-1 text-[10px] leading-[12px] text-[var(--color-muted)]"
+                className="absolute top-0 whitespace-nowrap pl-1 text-xs leading-[12px] text-[var(--color-muted)]"
                 style={{ left: pct(m) }}
               >
                 <Timecode value={m} format="duration" />
@@ -252,7 +252,7 @@ export function TimelineStrip({
                       ? `${label}, ${fmt(te.clipCrossfade, { s: x })}`
                       : label
                   }
-                  className={`relative flex size-full min-w-0 flex-col justify-between overflow-hidden rounded-[var(--ns-r-key)] border px-1.5 py-1 text-left text-[11px] ${
+                  className={`relative flex size-full min-w-0 flex-col justify-between overflow-hidden rounded-[var(--ns-r-key)] border px-1.5 py-1 text-left text-xs ${
                     on
                       ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                       : "border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
@@ -350,7 +350,7 @@ export function TimelineStrip({
                         ? `, ${fmt(te.duckLabel, { db: x.duck.amount_db })}`
                         : "")
                     }
-                    className={`relative size-full overflow-hidden truncate rounded-[var(--ns-r-chip)] border px-1.5 text-left text-[11px] ${
+                    className={`relative size-full overflow-hidden truncate rounded-[var(--ns-r-chip)] border px-1.5 text-left text-xs ${
                       on
                         ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                         : "border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"
@@ -398,7 +398,7 @@ export function TimelineStrip({
                     from: formatTime(x.start_s),
                     to: formatTime(x.end_s),
                   })}
-                  className={`size-full truncate rounded-[var(--ns-r-chip)] border px-1.5 text-left text-[11px] ${
+                  className={`size-full truncate rounded-[var(--ns-r-chip)] border px-1.5 text-left text-xs ${
                     on
                       ? "border-[var(--color-primary)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                       : "border-[var(--color-border)] bg-[var(--color-panel)] text-[var(--color-muted)]"

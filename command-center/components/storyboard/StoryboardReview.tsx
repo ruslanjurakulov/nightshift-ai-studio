@@ -433,27 +433,27 @@ export function StoryboardReview({
   return (
     <div className="flex flex-col gap-4" style={dock} data-testid="storyboard-review">
       <div>
-        <Link href={backHref} className="text-[13px] text-[var(--color-muted)] hover:text-[var(--color-fg)]">
+        <Link href={backHref} className="text-sm text-[var(--color-muted)] hover:text-[var(--color-fg)]">
           ← {ts.back}
         </Link>
       </div>
 
-      <header className="panel flex flex-col gap-2 p-4">
+      <header className="panel flex flex-col gap-2 p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <StatusLamp tone={STATUS_TONE[status]} label={statusLabel} />
-          <span className="text-[12px] text-[var(--color-muted)]">{total}</span>
+          <span className="text-xs text-[var(--color-muted)]">{total}</span>
         </div>
         <h2 className="m-0 text-[17px] font-semibold leading-snug text-[var(--color-fg)] [overflow-wrap:anywhere]">
           {storyboard.title ?? storyboard.topic}
         </h2>
         {storyboard.title && storyboard.topic && (
-          <p className="m-0 text-[13px] text-[var(--color-muted)] [overflow-wrap:anywhere]">{storyboard.topic}</p>
+          <p className="m-0 text-sm text-[var(--color-muted)] [overflow-wrap:anywhere]">{storyboard.topic}</p>
         )}
-        {waiting && <p className="m-0 text-[12px] text-[var(--color-muted)]">{ts.planNote}</p>}
-        {editable && <p className="m-0 text-[12px] text-[var(--color-muted)]">{ts.editNote}</p>}
+        {waiting && <p className="m-0 text-xs text-[var(--color-muted)]">{ts.planNote}</p>}
+        {editable && <p className="m-0 text-xs text-[var(--color-muted)]">{ts.editNote}</p>}
       </header>
 
-      <p role="status" aria-live="polite" className="m-0 text-[13px] text-[var(--color-ok)] empty:hidden">
+      <p role="status" aria-live="polite" className="m-0 text-sm text-[var(--color-ok)] empty:hidden">
         {statusNote}
       </p>
       <p className="sr-only" aria-live="polite" data-testid="storyboard-announce">
@@ -461,10 +461,10 @@ export function StoryboardReview({
       </p>
 
       {offerReopen && (
-        <div className="panel flex flex-col gap-2 p-4" data-testid="storyboard-reopen">
-          <p className="m-0 text-[13px] leading-relaxed text-[var(--color-fg)]">{ts.reopenNote}</p>
+        <div className="panel flex flex-col gap-2 p-5 sm:p-6" data-testid="storyboard-reopen">
+          <p className="m-0 text-sm leading-relaxed text-[var(--color-fg)]">{ts.reopenNote}</p>
           {error && (
-            <p role="alert" className="m-0 text-[13px] text-[var(--color-fail)]">
+            <p role="alert" className="m-0 text-sm text-[var(--color-fail)]">
               {error}
             </p>
           )}
@@ -475,7 +475,7 @@ export function StoryboardReview({
       )}
 
       {draft.length === 0 ? (
-        <p className="panel m-0 p-4 text-[13px] text-[var(--color-muted)]">{ts.noScenes}</p>
+        <p className="panel m-0 p-5 sm:p-6 text-sm text-[var(--color-muted)]">{ts.noScenes}</p>
       ) : (
         <StepList label={ts.title}>
           {draft.map((d, i) => {
@@ -508,7 +508,7 @@ export function StoryboardReview({
                   <>
                     <label
                       htmlFor={narrId}
-                      className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]"
+                      className="text-xs text-[var(--color-muted)]"
                     >
                       {ts.narration}
                     </label>
@@ -521,11 +521,11 @@ export function StoryboardReview({
                       onChange={(e) => update(d.key, { narration: e.target.value })}
                       aria-invalid={prob !== null && prob !== "terms"}
                       aria-describedby={prob ? probId : undefined}
-                      className="w-full rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] px-3 py-2 text-[14px] leading-relaxed text-[var(--color-fg)] outline-none transition-colors focus:border-[var(--color-primary)] aria-[invalid=true]:border-[var(--color-fail)]"
+                      className="w-full rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] px-3 py-2 text-sm leading-relaxed text-[var(--color-fg)] outline-none transition-colors focus:border-[var(--color-primary)] aria-[invalid=true]:border-[var(--color-fail)]"
                     />
                     <label
                       htmlFor={visId}
-                      className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]"
+                      className="text-xs text-[var(--color-muted)]"
                     >
                       {ts.visual}
                     </label>
@@ -538,10 +538,10 @@ export function StoryboardReview({
                       onChange={(e) => update(d.key, { visual: e.target.value })}
                       aria-invalid={prob === "terms"}
                       aria-describedby={prob ? probId : undefined}
-                      className="w-full rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] px-3 py-2 text-[13px] leading-relaxed text-[var(--color-fg)] outline-none transition-colors placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] aria-[invalid=true]:border-[var(--color-fail)]"
+                      className="w-full rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] px-3 py-2 text-sm leading-relaxed text-[var(--color-fg)] outline-none transition-colors placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] aria-[invalid=true]:border-[var(--color-fail)]"
                     />
                     {prob && (
-                      <p id={probId} className="m-0 text-[12px] text-[var(--color-fail)]">
+                      <p id={probId} className="m-0 text-xs text-[var(--color-fail)]">
                         {problemText(prob, ts)}
                       </p>
                     )}
@@ -581,14 +581,14 @@ export function StoryboardReview({
                 ) : (
                   <>
                     <div>
-                      <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{ts.narration}</div>
-                      <p className="m-0 mt-1 whitespace-pre-line text-[14px] leading-relaxed text-[var(--color-fg)] [overflow-wrap:anywhere]">
+                      <div className="text-xs text-[var(--color-muted)]">{ts.narration}</div>
+                      <p className="m-0 mt-1 whitespace-pre-line text-sm leading-relaxed text-[var(--color-fg)] [overflow-wrap:anywhere]">
                         {d.narration}
                       </p>
                     </div>
                     <div>
-                      <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">{ts.visual}</div>
-                      <p className="m-0 mt-1 text-[13px] leading-relaxed text-[var(--color-muted)] [overflow-wrap:anywhere]">
+                      <div className="text-xs text-[var(--color-muted)]">{ts.visual}</div>
+                      <p className="m-0 mt-1 text-sm leading-relaxed text-[var(--color-muted)] [overflow-wrap:anywhere]">
                         {d.visual || ts.noVisual}
                       </p>
                     </div>
@@ -619,8 +619,8 @@ export function StoryboardReview({
       {editable && (
         <div className="flex flex-col gap-2">
           {lastRemoved && (
-            <div className="panel flex flex-wrap items-center justify-between gap-2 p-3" data-testid="storyboard-undo">
-              <span className="text-[13px] text-[var(--color-fg)]">{fmt(ts.deletedNote, { n: lastRemoved.index + 1 })}</span>
+            <div className="panel flex flex-wrap items-center justify-between gap-2 p-4 sm:p-5" data-testid="storyboard-undo">
+              <span className="text-sm text-[var(--color-fg)]">{fmt(ts.deletedNote, { n: lastRemoved.index + 1 })}</span>
               <button
                 ref={undoRef}
                 type="button"
@@ -648,7 +648,7 @@ export function StoryboardReview({
           {editable && (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span
-                className="text-[12px] font-medium"
+                className="text-xs font-medium"
                 style={{ color: dirty ? "var(--color-warn)" : "var(--color-ok)" }}
                 data-testid="storyboard-save-state"
               >
@@ -674,7 +674,7 @@ export function StoryboardReview({
           )}
           {error && (
             <div role="alert" className="flex flex-col gap-2">
-              <p className="m-0 text-[13px] text-[var(--color-fail)]">{error}</p>
+              <p className="m-0 text-sm text-[var(--color-fail)]">{error}</p>
               {stale && (
                 <button type="button" className="btn-quiet self-start" onClick={() => router.refresh()}>
                   {ts.loadLatest}
@@ -682,7 +682,7 @@ export function StoryboardReview({
               )}
             </div>
           )}
-          <p id={noteId} className="m-0 text-[12px] leading-relaxed text-[var(--color-muted)]">
+          <p id={noteId} className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">
             {!canRun
               ? ts.notAllowed
               : dirty
@@ -696,7 +696,7 @@ export function StoryboardReview({
           </p>
           {confirming ? (
             <div className="flex flex-col gap-2" role="group" aria-label={ts.discardConfirm}>
-              <p className="m-0 text-[13px] text-[var(--color-fg)]">{ts.discardConfirm}</p>
+              <p className="m-0 text-sm text-[var(--color-fg)]">{ts.discardConfirm}</p>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   ref={keepRef}

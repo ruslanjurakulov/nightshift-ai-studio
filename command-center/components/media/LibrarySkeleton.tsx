@@ -13,7 +13,7 @@ export function LibrarySkeleton({ label, tiles = 8 }: { label: string; tiles?: n
   return (
     <div role="status" aria-live="polite" data-library-skeleton className="flex w-full min-w-0 flex-col gap-4">
       <span className="sr-only">{label}</span>
-      <div className="panel flex items-center justify-between gap-4 p-4">
+      <div className="panel flex items-center justify-between gap-4 p-5 sm:p-6">
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <Skeleton className="h-3 w-16" />
           <Skeleton className="h-4 w-40 max-w-full" />
