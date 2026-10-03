@@ -25,9 +25,12 @@ export const SECURITY_HEADERS = [
 /** The public paths that are route handlers (files), not pages. */
 export const ROUTE_HANDLER_FILES = ["/robots.txt", "/sitemap.xml", "/docs/api/openapi.json"] as const;
 
-/** The public PAGES (lib/public-paths.ts SITEMAP_PATHS plus sign-in and sign-up;
- *  tests/middleware-matcher.test.ts keeps the two lists equal). Literal here:
- *  the config is compiled before the app's modules. */
+/** The public PAGES (lib/public-paths.ts SITEMAP_PATHS, the two flag-gated
+ *  developer pages of lib/dev-pages.ts, sign-in and sign-up;
+ *  tests/middleware-matcher.test.ts keeps the lists equal). Literal here:
+ *  the config is compiled before the app's modules. The flag-gated pages are
+ *  listed even while their flag is off: their `.rsc` form then redirects to a
+ *  path that answers the public 404 itself. */
 export const PUBLIC_PAGE_PATHS = [
   "/",
   "/pricing",
@@ -36,6 +39,9 @@ export const PUBLIC_PAGE_PATHS = [
   "/solutions/creative-studio",
   "/solutions/developers",
   "/docs/api",
+  "/mcp",
+  "/docs/cli",
+  "/docs/skills",
   "/privacy",
   "/terms",
   "/login",

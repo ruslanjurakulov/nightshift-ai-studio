@@ -136,6 +136,8 @@ jobs:
           WEBENV_CSP_MODE: ${{ vars.CSP_MODE }}
           WEBENV_CSP_REPORT_URI: ${{ vars.CSP_REPORT_URI }}
           WEBENV_ATELIER_CONCEPTS: ${{ vars.ATELIER_CONCEPTS }}
+          WEBENV_DEV_CLI_PAGE: ${{ vars.DEV_CLI_PAGE }}
+          WEBENV_MCP_OAUTH_LIVE: ${{ vars.MCP_OAUTH_LIVE }}
         run: |
           set -euo pipefail
 

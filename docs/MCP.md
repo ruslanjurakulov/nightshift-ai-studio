@@ -63,6 +63,20 @@ limit; only new holds are refused.
 
 ## Connecting a client
 
+The customer-facing version of this section is the public page **/mcp** (snippets for
+eleven assistants, each checked against that assistant's own documentation:
+see `command-center/lib/dev/mcp-clients.ts`).
+
+`/mcp` has one tab per assistant (Claude, ChatGPT, Claude Code, OpenClaw, Cursor and Hermes first, then the rest),
+each with three numbered steps. Whether it shows the sign-in (OAuth) flow or only API-key steps is decided by the
+environment flag `MCP_OAUTH_LIVE` (literal `1` = on, read at request time; `deploy/.env.web.example`,
+`lib/mcp-oauth.ts`). Leave it off until the server's OAuth is merged, deployed and tested with a real connector: while
+it is off the Claude and ChatGPT tabs say "Coming soon" and every other tab shows its API-key steps.
+
+The OAuth sign-in tabs of `/mcp` appear only when `MCP_OAUTH_LIVE=1`. This
+document describes the server as built; **set the flag after migration 0093 is applied, the build is deployed and a real
+connector (claude.ai or ChatGPT) has connected once.**
+
 Use the server URL **`https://nightshift-ai.studio/api/mcp`**. A client that
 speaks the MCP authorization flow discovers everything else itself
 (`/.well-known/oauth-protected-resource/api/mcp`,
@@ -71,7 +85,7 @@ Nightshift's consent screen.
 
 ### claude.ai (Custom Connectors) and Claude Desktop
 
-1. **Settings → Connectors → Add custom connector**.
+1. In Claude open **Customize → Connectors**, press **+ Add**, then **Add custom connector**.
 2. Name: `Nightshift`. URL: `https://nightshift-ai.studio/api/mcp`. Leave any
    OAuth client ID / secret fields **empty** (the server registers the app
    itself). Add.
@@ -86,13 +100,15 @@ organization administrator may need to add the connector first.)
 
 ### ChatGPT (developer mode)
 
-1. **Settings → Connectors → Advanced → Developer mode** on (where your
-   ChatGPT plan offers it).
-2. **Create** a connector. Name: `Nightshift`. MCP server URL:
-   `https://nightshift-ai.studio/api/mcp`. Authentication: **OAuth**. If it
-   asks for a client ID / secret, leave them empty.
-3. Create, then **Connect** and approve on the Nightshift page as above.
-4. In a chat, choose the connector from the tools menu.
+1. Turn on **Developer mode**: Settings → Security and login (web; Pro, Plus,
+   Business, Enterprise and Education plans).
+2. Open **Plugins**, press the plus button and create a developer-mode app.
+   Name: `Nightshift`. MCP server URL: `https://nightshift-ai.studio/api/mcp`.
+   Authentication: **OAuth**. If it asks for a client ID / secret, leave them
+   empty.
+3. **Connect** and approve on the Nightshift page as above.
+4. In a chat, choose the app from the tools menu. Check each action before you
+   approve it.
 
 ### Claude Code
 
