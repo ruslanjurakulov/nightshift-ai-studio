@@ -28,6 +28,15 @@
  * for pressing the switch),
  * free (Free, welcome credits left), nolot (live plan, no credits added yet),
  * ended (live plan, last period's credits expired), off62 (62%, switch off).
+ *
+ * The app screens (Home, Create, the Studio clip desk) have their own states,
+ * named for what a person is in: `new` (nothing yet: no channel, no videos, no
+ * jobs), `videos` (a channel with videos made and one waiting for approval),
+ * `running` (a clip being made right now), `low` (a few credits left),
+ * `extraoff` (extra credits switched off), `unpriced` (no price is set: the
+ * estimate and the clip price are unknown, never 0). `FAKE_MODELS=1` is not
+ * needed: every state but `new` offers two made-up clip models so the clip
+ * desk has a price to show.
  */
 import http from "node:http";
 
@@ -49,8 +58,11 @@ const CHANNEL = {
   channel_id: "night-owl",
   name: "Night Owl",
   org_id: ORG.id,
-  status: "active",
+  status: "ACTIVE",
   youtube_channel_id: "UC_visual_qa_fake",
+  // A channel YouTube has answered for (rule 7): without this it is a draft and never runs.
+  credential_ref: { verified_at: "2026-09-01T08:00:00Z", youtube_channel_id: "UC_visual_qa_fake" },
+  auto_publish: false,
   // A length to price a run by (the Create page's estimate line).
   agent_config: { target_duration_seconds: 120 },
 };
@@ -85,6 +97,13 @@ const STATES = {
   free: { plan: "free", granted: 0, spent: 0, held: 0, extra: 0, bonus: 100, on: true },
   nolot: { plan: "creator", granted: null, spent: 0, held: 0, extra: 0, bonus: 0, on: true },
   ended: { plan: "creator", granted: null, ended: true, spent: 0, held: 0, extra: 500, bonus: 0, on: true },
+  // The app-screen states (see the header).
+  new: { plan: "free", granted: 0, spent: 0, held: 0, extra: 0, bonus: 100, on: true },
+  videos: { plan: "creator", granted: 2000, spent: 1240, held: 180, extra: 500, bonus: 100, on: true },
+  running: { plan: "creator", granted: 2000, spent: 1240, held: 240, extra: 500, bonus: 100, on: true },
+  low: { plan: "creator", granted: 2000, spent: 1980, held: 0, extra: 0, bonus: 0, on: true },
+  extraoff: { plan: "creator", granted: 2000, spent: 1240, held: 0, extra: 500, bonus: 0, on: false },
+  unpriced: { plan: "creator", granted: 2000, spent: 1240, held: 0, extra: 500, bonus: 100, on: true },
 };
 const PLANS = {
   free: { id: "free", name: "Free", monthly_credits: 0, is_default: true, sort_order: 0, slots: 1, priority: 0, api: false },
@@ -163,6 +182,30 @@ function creditAccountFor(state) {
 // parts of the Credits page (the raw price list) can be photographed too.
 const ADMIN = process.env.FAKE_ADMIN === "1";
 
+// ── what each app-screen state has made ────────────────────────────────────
+const APP_STATES = new Set(["new", "videos", "running", "low", "extraoff", "unpriced"]);
+const MODELS = [
+  { id: "qa-clip-fast", display_name: "Quick clip", capabilities: ["t2v", "i2v", "t2i"], availability: "ga", verified_at: "2026-09-01T00:00:00Z" },
+  { id: "qa-clip-best", display_name: "Best clip", capabilities: ["t2v", "i2v"], availability: "ga", verified_at: "2026-09-01T00:00:00Z" },
+];
+const VIDEOS = [
+  { channel_id: "night-owl", video_id: "v1", title: "Why octopuses dream in colour", topic: "octopus", published_at: "2026-10-01T10:00:00Z", privacy: "private", publish_state: "uploaded" },
+  { channel_id: "night-owl", video_id: "v2", title: "The lighthouse that never slept", topic: "lighthouse", published_at: "2026-09-28T10:00:00Z", privacy: "private", publish_state: "uploaded" },
+  { channel_id: "night-owl", video_id: "run-3", title: "The last train from Samarkand", topic: "train", published_at: null, privacy: null, publish_state: "awaiting_approval" },
+];
+const JOBS = (state) => {
+  const base = {
+    org_id: ORG.id, kind: "video", mode: "exact", requested_model: "qa-clip-fast", routed_model: null, fallback_from: null, fallback_reason: null,
+    status: "completed", payer: "org", quoted_credits: 40, charged_credits: 40, error_code: null, error: null, result: {}, result_asset_ids: [], expires_at: null,
+    finished_at: iso(-3_600_000),
+  };
+  const done = (n, capability, prompt, ago) => ({ ...base, id: `00000000-0000-4000-8000-00000000d0${n}`, capability, params: { prompt, aspect: "16:9", duration: 5 }, created_at: iso(-ago), updated_at: iso(-ago) });
+  if (state === "new") return [];
+  const out = [done(1, "t2v", "A fox crossing a snowy ridge at dawn", 86_400_000), done(2, "t2v", "Rain on a neon street, slow push in", 2 * 86_400_000)];
+  if (state === "running") out.unshift({ ...base, id: "00000000-0000-4000-8000-00000000d0aa", capability: "t2v", status: "running", finished_at: null, charged_credits: null, params: { prompt: "A paper boat on a flooded street, cinematic", aspect: "16:9", duration: 5 }, created_at: iso(-90_000), updated_at: iso(-30_000) });
+  return out;
+};
+
 const RPC = {
   my_organizations: [ORG],
   is_platform_admin: ADMIN,
@@ -199,6 +242,13 @@ const RPC = {
     pending: false,
   },
 };
+
+// The consent screen and Connected apps (0093): made-up app, made-up return address.
+RPC.oauth_begin_authorization = { ok: true, entitled: true, client_name: "Claude", redirect_uri: "https://claude.ai/api/mcp/auth_callback", workspace_name: "QA Studio", plan: "creator", scopes: ["videos:read", "videos:create", "videos:publish"], default_limit_credits: 500, max_limit_credits: 20000, exempt: false };
+RPC.oauth_my_grants = [
+  { id: "00000000-0000-4000-8000-0000000000c1", client_name: "Claude", scopes: ["videos:read", "videos:create"], monthly_limit_credits: 500, spent_this_month_credits: 120, created_at: "2026-09-10T08:00:00Z", last_used_at: "2026-10-02T09:00:00Z", status: "active", redirect_uris: ["https://claude.ai/api/mcp/auth_callback"] },
+  { id: "00000000-0000-4000-8000-0000000000c2", client_name: "Cursor", scopes: ["videos:read"], monthly_limit_credits: 200, spent_this_month_credits: 0, created_at: "2026-09-20T08:00:00Z", last_used_at: null, status: "paused_plan", redirect_uris: ["http://localhost:6274/cb"] },
+];
 
 const PRICE = (unit, credits_per_unit, margin) => ({ unit, credits_per_unit, margin, updated_at: "2026-09-30T12:00:00Z", updated_by: null });
 const TABLES = {
@@ -261,12 +311,32 @@ export function startFakeSupabase(port = 54399) {
         });
         return;
       }
+      if (APP_STATES.has(state)) {
+        if (rpc[1] === "credit_rates") return send(res, 200, state === "unpriced" ? [] : RPC.credit_rates);
+        if (rpc[1] === "sellable_models") return send(res, 200, state === "new" ? [] : MODELS.map((m, i) => ({ id: m.id, spec: { quality_tier: i === 0 ? 2 : 3, speed_tier: i === 0 ? 3 : 1 }, entitlement: null })));
+        if (rpc[1] === "quote_creative_job") {
+          if (state === "unpriced") return send(res, 400, { code: "NS400", message: "unpriced" });
+          return send(res, 200, { credits: 40 });
+        }
+      }
       if (rpc[1] in RPC) return send(res, 200, RPC[rpc[1]]);
       return send(res, 403, { code: "42501", message: "visual-qa fake: not available" });
     }
     const table = url.pathname.match(/^\/rest\/v1\/([a-z_0-9]+)/);
     if (table && req.method === "GET") {
-      const rows = table[1] === "credit_accounts" && state ? [creditAccountFor(state)] : (TABLES[table[1]] ?? []);
+      let rows = table[1] === "credit_accounts" && state ? [creditAccountFor(state)] : (TABLES[table[1]] ?? []);
+      if (APP_STATES.has(state)) {
+        // A new person has no channel, video, job or model yet; the others have a channel.
+        if (table[1] === "channels") rows = state === "new" ? [] : [CHANNEL];
+        if (table[1] === "videos") {
+          // heldOnly() asks published_at and privacy to be null; uploadedOnly() sends an `or`.
+          const held = url.searchParams.get("published_at") === "is.null";
+          const uploaded = url.searchParams.has("or");
+          rows = state === "new" ? [] : VIDEOS.filter((v) => (held ? !v.published_at && !v.privacy : uploaded ? v.published_at || v.privacy : true));
+        }
+        if (table[1] === "creative_jobs") rows = JOBS(state);
+        if (table[1] === "model_registry") rows = state === "new" ? [] : MODELS;
+      }
       const single = String(req.headers.accept || "").includes("vnd.pgrst.object");
       if (single) return rows.length ? send(res, 200, rows[0]) : send(res, 406, { code: "PGRST116", message: "0 rows" });
       return send(res, 200, rows);

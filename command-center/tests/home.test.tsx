@@ -7,6 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { createRef } from "react";
 import type { ReactNode } from "react";
 
 const push = vi.fn();
@@ -26,7 +27,7 @@ vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
 import { HomeHub } from "@/components/home/HomeHub";
-import { HomeComposer } from "@/components/home/HomeComposer";
+import { HomeComposer, type ComposerHandle } from "@/components/home/HomeComposer";
 import { CreateStudio } from "@/components/create/CreateStudio";
 import {
   HOME_FORMATS,
@@ -38,6 +39,7 @@ import {
   countByChannel,
   lastVideoByChannel,
   nextScheduledRun,
+  recentVideos,
   runHandoffHref,
   runPrefillFromQuery,
   toolPrefill,
@@ -146,18 +148,74 @@ describe("the composer hands off and spends nothing", () => {
     expect(writes()).toEqual([]);
   });
 
-  it("a format card presets the box — length and a starter — and starts nothing", async () => {
+  it("a preset (the box's own handle) sets the length and a starter and starts nothing", async () => {
     vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
       cb(0);
       return 0;
     });
-    render(wrap(<HomeHub channels={[card()]} currentSlug="chronos" orgId={ORG} allPrivate />));
-    await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: new RegExp(t.home.formats.interview.title) }));
+    const ref = createRef<ComposerHandle>();
+    render(wrap(<HomeComposer ref={ref} channels={[{ slug: "chronos", name: "Chronos", autoPublish: false }]} currentSlug="chronos" />));
+    await act(async () => ref.current?.preset("m10_20", t.home.formats.interview.starter));
     expect((screen.getByLabelText(t.home.promptLabel) as HTMLTextAreaElement).value).toBe(t.home.formats.interview.starter);
     expect(screen.getByRole("radio", { name: t.home.lengths.m10_20 }).getAttribute("aria-checked")).toBe("true");
     expect(continueLink().getAttribute("href")).toContain("length=1200");
     expect(writes()).toEqual([]);
+  });
+
+  it("Home puts the guided create flow first when the page hands it one, and keeps the composer out of the way", () => {
+    render(
+      wrap(
+        <HomeHub channels={[card()]} currentSlug="chronos" orgId={null} allPrivate run={<p data-testid="run-flow">the flow</p>} />,
+      ),
+    );
+    expect(screen.getByTestId("run-flow")).toBeTruthy();
+    expect(screen.queryByLabelText(t.home.promptLabel)).toBeNull();
+    expect(screen.queryByRole("link", { name: new RegExp(t.home.continue) })).toBeNull();
+    expect(writes()).toEqual([]);
+  });
+
+  it("says in plain words what is waiting for the person, and nothing when nothing is", () => {
+    const { unmount } = render(wrap(<HomeHub channels={[card({ waiting: 2 })]} currentSlug="chronos" orgId={null} allPrivate />));
+    const status = screen.getByTestId("home-status");
+    expect(status.textContent).toContain("2 videos are waiting for your OK");
+    expect(within(status).getByRole("link", { name: t.home.reviewNow }).getAttribute("href")).toBe("/chronos/videos");
+    unmount();
+    render(wrap(<HomeHub channels={[card({ waiting: 0 })]} currentSlug="chronos" orgId={null} allPrivate />));
+    expect(screen.queryByTestId("home-status")).toBeNull();
+  });
+
+  it("shows the videos as cards with their state in words, waiting ones marked", () => {
+    render(
+      wrap(
+        <HomeHub
+          channels={[card()]}
+          currentSlug="chronos"
+          orgId={null}
+          allPrivate
+          videos={[
+            { id: "run-3", slug: "chronos", title: "The last train", at: null, state: "waiting" },
+            { id: "v1", slug: "chronos", title: "Octopus dreams", at: "2026-10-01T10:00:00Z", state: "private" },
+          ]}
+        />,
+      ),
+    );
+    const link = screen.getByRole("link", { name: new RegExp("The last train") });
+    expect(link.getAttribute("href")).toBe("/chronos/videos/run-3");
+    expect(within(link).getByText(t.home.videoState.waiting)).toBeTruthy();
+    expect(screen.getByText(t.home.videoState.private)).toBeTruthy();
+  });
+
+  it("orders videos waiting-first and never guesses a privacy it does not know", () => {
+    const rows = [
+      { video_id: "a", channel_id: "c1", title: "Old", published_at: "2026-09-01T00:00:00Z", privacy: "public" },
+      { video_id: "b", channel_id: "c1", title: "Weird", published_at: "2026-09-30T00:00:00Z", privacy: "members_only" },
+      { video_id: "c", channel_id: "c1", title: "", topic: "Held topic", published_at: null, privacy: null },
+      { video_id: "d", channel_id: "zz", title: "Other org", published_at: null, privacy: null },
+    ];
+    const out = recentVideos(rows, (id) => (id === "c1" ? "chronos" : null));
+    expect(out.map((v) => [v.id, v.state])).toEqual([["c", "waiting"], ["b", "uploaded"], ["a", "public"]]);
+    expect(out[0].title).toBe("Held topic");
+    expect(recentVideos(null, () => "x")).toEqual([]);
   });
 });
 
@@ -215,9 +273,10 @@ describe("the run form takes the hand-off", () => {
     );
     await act(async () => {});
     expect((screen.getByPlaceholderText(t.create.placeholder) as HTMLTextAreaElement).value).toBe("Ancient Khiva");
-    const selects = screen.getAllByRole("combobox") as HTMLSelectElement[];
-    expect(selects.some((s) => s.value === "60")).toBe(true);
-    expect(selects.some((s) => s.value === "Uzbek")).toBe(true);
+    // Length is a choice card (its value on one line); language is a select under "More options".
+    const shown = Array.from(document.querySelectorAll(".fl-choice-value")).map((n) => n.textContent);
+    expect(shown).toContain(t.agents.runDur1m);
+    expect((screen.getAllByRole("combobox") as HTMLSelectElement[]).some((s) => s.value === "Uzbek")).toBe(true);
     expect(screen.getByText(t.create.prefilled)).toBeTruthy();
     // The first press only asks; nothing reached the run route.
     fireEvent.click(screen.getByRole("button", { name: t.create.create }));

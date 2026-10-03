@@ -143,7 +143,12 @@ const OBSERVE = `
 `;
 
 function slug(s) {
-  return s.replace(/^\/+/, "").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "root";
+  const full = s.replace(/^\/+/, "").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "root";
+  if (full.length <= 90) return full;
+  // A long query (an OAuth request, say) would overflow the file-name limit: keep the path and a short fingerprint.
+  let h = 0;
+  for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return `${s.replace(/^\/+/, "").split("?")[0].replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "root"}-q${h.toString(36)}`;
 }
 
 async function measure(page) {

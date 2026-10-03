@@ -36,6 +36,7 @@ import { EMPTY_DNA, dnaFromChannel, type ChannelDna } from "@/lib/channel-dna";
 import type { StudioModel } from "@/lib/creative/studio";
 
 const t = dictionaries.en;
+import { VOICES } from "@/lib/ttsModels";
 const ORG = "11111111-1111-4111-8111-111111111111";
 const KIT = "55555555-5555-4555-8555-555555555555";
 const KIT2 = "66666666-6666-4666-8666-666666666666";
@@ -253,11 +254,12 @@ describe("Run now starts from the channel's DNA", () => {
 
   it("fills language, voice and length, and says where they came from", () => {
     run();
-    const selects = screen.getAllByRole("combobox") as HTMLSelectElement[];
-    const values = selects.map((s) => s.value);
+    // Language is a select under "More options"; length and voice are the choice cards' one-line values.
+    const values = (screen.getAllByRole("combobox") as HTMLSelectElement[]).map((s) => s.value);
     expect(values).toContain("Uzbek");
-    expect(values).toContain(ADAM);
-    expect(values).toContain("60");
+    const shown = Array.from(document.querySelectorAll(".fl-choice-value")).map((n) => n.textContent);
+    expect(shown).toContain(t.agents.runDur1m);
+    expect(shown).toContain(VOICES.find((v) => v.id === ADAM)?.name);
     expect(screen.getByTestId("dna-hint")).toBeTruthy();
   });
 
@@ -265,8 +267,10 @@ describe("Run now starts from the channel's DNA", () => {
     run({ initial: { brief: "Silk Road", duration: "600", language: "English" } });
     const values = (screen.getAllByRole("combobox") as HTMLSelectElement[]).map((s) => s.value);
     expect(values).toContain("English");
-    expect(values).toContain("600");
     expect(values).not.toContain("Uzbek");
+    const shown = Array.from(document.querySelectorAll(".fl-choice-value")).map((n) => n.textContent);
+    expect(shown).toContain(t.agents.runDur10m);
+    expect(shown).not.toContain(t.agents.runDur1m);
   });
 
   it("nothing is sent before Create is confirmed", () => {

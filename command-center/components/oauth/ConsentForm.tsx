@@ -95,7 +95,7 @@ export function ConsentForm({
     // Nothing here submits by itself: a form with one text field submits on
     // Enter even with no submit button, and Enter in the limit box must not be
     // read as "Allow". Only a deliberate press of Allow or Deny sends a decision.
-    <form className="mt-6 flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
+    <form className="fl-card" onSubmit={(e) => e.preventDefault()}>
       <label className="st-field">
         <span>{text.limitLabel}</span>
         <input
@@ -117,7 +117,7 @@ export function ConsentForm({
         {echo ? withParts(echo, { app: <AppName name={app} />, n }) : text.limitInvalid}
       </p>
       {error && <OAuthNotice tone="fail">{error}</OAuthNotice>}
-      <div className="flex flex-col gap-3 sm:flex-row-reverse">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button type="button" className="st-key" data-block="true" disabled={busy !== null} onClick={() => void send("allow")}>
           {busy === "allow" ? text.working : text.allow}
         </button>

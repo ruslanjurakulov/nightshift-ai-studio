@@ -16,6 +16,7 @@ import { useModelPrices, useSoundPrices, useTierPrices } from "@/components/stud
 import { useStyleKits } from "@/components/studio/useStyleKits";
 import { PlanUpsellDialog } from "@/components/studio/PlanUpsellDialog";
 import { ChannelDnaHint } from "@/components/studio/ChannelDnaHint";
+import "@/components/create/flow.css";
 import { PriceButton } from "@/components/ui/PriceButton";
 import { SegmentedSwitch } from "@/components/ui/SegmentedSwitch";
 import { creditUnit } from "@/lib/credits";
@@ -1180,9 +1181,16 @@ export function GeneratePanel({
               </div>
             )}
             {promptBlock}
-            {soundBlock}
-            {styleBlock}
-            {modelBlock}
+            {/* The defaults are sensible (the channel's look, the best model for the shot): sound, look and
+                model stay one tap away, folded, so the first view is the shot, its length and the price. */}
+            <details className="fl-more" data-testid="gen-more">
+              <summary>{t.create.flow.more}</summary>
+              <div className="fl-more-body">
+                {soundBlock}
+                {styleBlock}
+                {modelBlock}
+              </div>
+            </details>
           </>,
         )}
         {dockBlock}

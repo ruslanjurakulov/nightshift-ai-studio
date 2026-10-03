@@ -29,7 +29,7 @@ export const KIND_ICON: Record<string, LucideIcon> = {
  * controls — cancelling and retrying stay in the Studio, one tap away. A
  * finished picture shows itself when the library still holds it.
  */
-export function RecentStrip({ orgId }: { orgId: string | null }) {
+export function RecentStrip({ orgId, onJobs }: { orgId: string | null; onJobs?: (jobs: StudioJob[]) => void }) {
   const { t } = useI18n();
   const path = useChannelPath();
   const [jobs, setJobs] = useState<StudioJob[] | null>(null);
@@ -44,7 +44,9 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
         const body = (await res.json().catch(() => ({}))) as { jobs?: unknown; error?: unknown };
         if (!live) return;
         if (res.ok) {
-          setJobs(coerceJobs(body.jobs).slice(0, SHOWN));
+          const list = coerceJobs(body.jobs).slice(0, SHOWN);
+          setJobs(list);
+          onJobs?.(list);
           setState("ok");
         } else setState(body.error === "creative_unavailable" ? "unavailable" : "failed");
       } catch {
@@ -54,6 +56,7 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
     return () => {
       live = false;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- onJobs is a plain report-back, not a trigger
   }, [orgId]);
 
   const pictures = (jobs ?? []).filter((j) => j.status === "completed" && j.result_asset_ids.length > 0);

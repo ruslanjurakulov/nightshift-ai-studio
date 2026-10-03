@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
@@ -31,7 +31,16 @@ type EstimateResponse = {
  * those: it shows the read-error state with Retry, never a hidden line, a
  * "price gap" or a number; an unreadable balance reads "unknown" with Retry.
  */
-export function CreditEstimateLine({ channelId, durationS }: { channelId: string | null; durationS: number | null }) {
+export function CreditEstimateLine({
+  channelId,
+  durationS,
+  variant = "line",
+}: {
+  channelId: string | null;
+  durationS: number | null;
+  /** "card": the same facts as a plain price card above the button (the guided create flow). */
+  variant?: "line" | "card";
+}) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
   const [data, setData] = useState<EstimateResponse | null>(null);
@@ -75,7 +84,11 @@ export function CreditEstimateLine({ channelId, durationS }: { channelId: string
   }
   if (!channelId || !data?.supported) return null;
 
-  let body: React.ReactNode;
+  // The line is "label: estimate · note · note"; the card says the figure first and
+  // large, then each note on its own line, in sentences. Same facts, same words.
+  let body: React.ReactNode = null;
+  let figure: React.ReactNode = null;
+  const notes: React.ReactNode[] = [];
   if (data.exempt) {
     body = <span className="text-[var(--color-muted)]">{t.credits.estimateExempt}</span>;
   } else if (!data.estimate || data.estimate.credits === null) {
@@ -88,38 +101,67 @@ export function CreditEstimateLine({ channelId, durationS }: { channelId: string
     const usable = data.extraOff && typeof data.spendable === "number" ? Math.min(data.spendable, data.available ?? data.spendable) : data.available;
     const short = data.enforced && usable !== null && usable !== undefined && usable < credits;
     const basis = e.basis === "unknown" ? "" : fmt(t.credits.basis[e.basis], { n: e.sample });
+    const color = short ? "var(--color-fail)" : "var(--color-fg)";
+    figure = <span style={{ color }}>{fmt(t.credits.estimatePlain, { n: formatCredits(credits, locale) })}</span>;
+    if (basis) notes.push(<span key="basis">{basis}</span>);
+    if (e.floorApplied) notes.push(<span key="floor">{t.credits.floorApplied}</span>);
+    if (data.balanceFailed) {
+      notes.push(
+        <span key="bal" className="text-[var(--color-warn)]" data-balance-unknown>
+          {t.credits.availableUnknown}{" "}
+          <button type="button" onClick={retry} className="tap-link text-[var(--color-primary)] hover:underline">
+            {t.common.retry}
+          </button>
+        </span>,
+      );
+    } else if (usable !== null && usable !== undefined) {
+      notes.push(
+        <span key="bal">
+          {fmt(data.extraOff ? t.usage.estimate.availableOff : t.credits.estimateAvailable, { n: formatCredits(usable, locale) })}
+          {data.extraOff && short && (
+            <>
+              {" "}
+              <ExtraOffLink />
+            </>
+          )}
+        </span>,
+      );
+    }
+    if (!data.enforced) notes.push(<span key="enf">{t.credits.estimateNotEnforced}</span>);
     body = (
       <>
-        <span style={{ color: short ? "var(--color-fail)" : "var(--color-fg)" }}>
-          {fmt(t.credits.estimateCredits, { n: formatCredits(credits, locale) })}
-        </span>
-        {basis && <span className="text-[var(--color-muted)]"> · {basis}</span>}
-        {e.floorApplied && <span className="text-[var(--color-muted)]"> · {t.credits.floorApplied}</span>}
-        {data.balanceFailed ? (
-          <span className="text-[var(--color-warn)]" data-balance-unknown>
+        <span style={{ color }}>{fmt(t.credits.estimateCredits, { n: formatCredits(credits, locale) })}</span>
+        {notes.map((n, i) => (
+          <span key={i} className={React.isValidElement(n) && (n.props as { "data-balance-unknown"?: boolean })["data-balance-unknown"] ? "" : "text-[var(--color-muted)]"}>
             {" "}
-            · {t.credits.availableUnknown}{" "}
-            <button type="button" onClick={retry} className="tap-link text-[var(--color-primary)] hover:underline">
-              {t.common.retry}
-            </button>
+            · {n}
           </span>
-        ) : (
-          usable !== null &&
-          usable !== undefined && (
-            <span className="text-[var(--color-muted)]">
-              {" "}
-              · {fmt(data.extraOff ? t.usage.estimate.availableOff : t.credits.estimateAvailable, { n: formatCredits(usable, locale) })}
-              {data.extraOff && short && (
-                <>
-                  {" "}
-                  <ExtraOffLink />
-                </>
-              )}
-            </span>
-          )
-        )}
-        {!data.enforced && <span className="text-[var(--color-muted)]"> · {t.credits.estimateNotEnforced}</span>}
+        ))}
       </>
+    );
+  }
+
+  if (variant === "card") {
+    return (
+      <div className="fl-price" aria-live="polite">
+        {figure ? (
+          <>
+            <p className="fl-price-figure">{figure}</p>
+            <ul className="fl-price-notes tnum">
+              {notes.map((n, i) => (
+                <li key={i}>{n}</li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="fl-price-notes">{body}</p>
+        )}
+        {!data.exempt && (
+          <Link href={path("/credits")} className="tap-link fl-price-link">
+            {t.credits.openCredits}
+          </Link>
+        )}
+      </div>
     );
   }
 

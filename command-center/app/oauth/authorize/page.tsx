@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { Check } from "lucide-react";
+import "@/components/create/flow.css";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/config";
@@ -105,34 +107,41 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
   const scopeText: Record<string, string> = { "videos:read": o.scopeRead, "videos:create": o.scopeCreate, "videos:publish": o.scopePublish };
   return (
     <OAuthShell title={withParts(o.title, { app: <AppName name={view.clientName} /> })}>
-      <p className="st-body mt-4 [overflow-wrap:anywhere]">{withParts(o.lead, { app: <AppName name={view.clientName} /> })}</p>
-      <p className="st-small mt-2">{o.nameNote}</p>
+      <p className="st-body mt-3 [overflow-wrap:anywhere]">{withParts(o.lead, { app: <AppName name={view.clientName} /> })}</p>
 
-      <dl className="mt-6 flex flex-col gap-4">
-        <div>
-          <dt className="st-small">{o.sendsTo}</dt>
-          <dd className="mt-1 break-all font-semibold text-[var(--ns-text)]" dir="ltr">
-            {where.local ? `${o.localApp} (${where.host})` : where.host}
-          </dd>
-          <dd className="st-small mt-1">{o.checkAddress}</dd>
-        </div>
-        <div>
-          <dt className="st-small">{o.workspace}</dt>
-          <dd className="mt-1 font-semibold text-[var(--ns-text)] [overflow-wrap:anywhere]"><bdi>{view.workspaceName}</bdi></dd>
-        </div>
-      </dl>
+      <div className="mt-6 flex flex-col gap-4">
+        {/* Who is asking, and where this page will send the person: the two facts that expose a lookalike. */}
+        <section className="fl-card" aria-label={o.sendsTo}>
+          <dl className="flex flex-col gap-4">
+            <div>
+              <dt className="fl-hint">{o.sendsTo}</dt>
+              <dd className="mt-1 break-all font-mono text-base font-semibold text-[var(--ns-text)]" dir="ltr">
+                <bdi>{where.local ? `${o.localApp} (${where.host})` : where.host}</bdi>
+              </dd>
+            </div>
+            <div>
+              <dt className="fl-hint">{o.workspace}</dt>
+              <dd className="mt-1 text-base font-semibold text-[var(--ns-text)] [overflow-wrap:anywhere]"><bdi>{view.workspaceName}</bdi></dd>
+            </div>
+          </dl>
+          <p className="fl-hint">{o.checkAddress}</p>
+          <p className="fl-hint">{o.nameNote}</p>
+        </section>
 
-      <h2 className="st-h4 mt-6">{o.canTitle}</h2>
-      <ul className="st-ledger mt-2">
-        {view.scopes.map((s) => (
-          <li key={s}>
-            <span aria-hidden className="ns-lamp" data-tone="ok" />
-            {scopeText[s] ?? s}
-          </li>
-        ))}
-      </ul>
-      <h2 className="st-h4 mt-5">{o.cannotTitle}</h2>
-      <p className="st-body mt-1">{o.cannot}</p>
+        <section className="fl-card" aria-labelledby="oauth-can">
+          <h2 id="oauth-can" className="fl-q">{o.canTitle}</h2>
+          <ul className="flex flex-col gap-3">
+            {view.scopes.map((s) => (
+              <li key={s} className="flex items-start gap-3 text-base leading-snug">
+                <Check aria-hidden className="mt-0.5 size-5 shrink-0 text-[var(--color-ok)]" />
+                <span>{scopeText[s] ?? s}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="fl-hint">
+            <strong className="font-semibold text-[var(--ns-text)]">{o.cannotTitle}</strong> {o.cannot}
+          </p>
+        </section>
 
       <ConsentForm
         secret={secret}
@@ -155,6 +164,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
           sessionEnded: o.sessionEnded,
         }}
       />
+      </div>
     </OAuthShell>
   );
 }
