@@ -24,7 +24,6 @@ import { useChannelPath } from "@/lib/channels-client";
 import { HOME_FORMATS, QUICK_ACTIONS, toolHref, type HomeChannel, type QuickActionId } from "@/lib/home";
 import { HomeComposer, type ComposerChannel, type ComposerHandle } from "@/components/home/HomeComposer";
 import { FormatArt } from "@/components/home/FormatArt";
-import { Chip } from "@/components/ui/Chip";
 import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Timecode } from "@/components/ui/Timecode";
@@ -92,30 +91,28 @@ export function HomeHub({
       <section aria-labelledby="home-hero" className="relative flex flex-col gap-5">
         <ol
           aria-label={t.home.flowLabel}
-          className="relative -mx-1 flex items-center gap-1 overflow-x-auto px-1 pb-1 text-xs text-[var(--color-muted)] [scrollbar-width:none]"
+          className="relative flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-[var(--color-muted)]"
         >
           {FLOW.map((step, i) => (
-            <li key={step} className="flex shrink-0 items-center gap-1">
-              {i > 0 && <ChevronRight aria-hidden className="size-3.5 opacity-50" />}
-              <Chip plain tone={step === "approval" ? "lit" : undefined}>
-                {t.home.flow[step]}
-              </Chip>
+            <li key={step} className="flex items-center gap-1.5">
+              {i > 0 && <ChevronRight aria-hidden className="size-4 opacity-50" />}
+              <span className={step === "approval" ? "font-medium text-[var(--ns-amber-ink)]" : undefined}>{t.home.flow[step]}</span>
             </li>
           ))}
         </ol>
 
         <div className="relative flex flex-col gap-2">
-          <h1 id="home-hero" className="text-[26px] font-semibold leading-[1.15] tracking-[-0.02em] text-[var(--color-fg)] sm:text-[32px]">
+          <h1 id="home-hero" className="text-3xl font-semibold leading-[1.2] tracking-[-0.02em] text-[var(--color-fg)] sm:text-4xl">
             {t.home.heroTitle}
           </h1>
-          <p className="max-w-[60ch] text-sm leading-relaxed text-[var(--color-muted)] sm:text-[15px]">{t.home.heroLead}</p>
+          <p className="max-w-[60ch] text-base leading-relaxed text-[var(--color-muted)]">{t.home.heroLead}</p>
         </div>
 
         <div className="relative">
           <HomeComposer ref={composer} channels={runnable} currentSlug={currentSlug} />
         </div>
 
-        <ul className="relative flex flex-wrap gap-x-4 gap-y-1.5 px-1 text-xs text-[var(--color-muted)]">
+        <ul className="relative flex flex-wrap gap-x-5 gap-y-2 px-1 text-sm text-[var(--color-muted)]">
           {[t.home.promisePrice, t.home.promiseRefund, allPrivate ? t.home.promisePrivate : t.home.promiseGate].map((p) => (
             <li key={p} className="flex items-center gap-1.5">
               <Check aria-hidden className="size-3.5 text-[var(--color-ok)]" />
@@ -141,19 +138,19 @@ export function HomeHub({
         <h2 id="home-quick" className="t-panel">
           {t.home.quickTitle}
         </h2>
-        <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {QUICK_ACTIONS.map((a) => {
             const Icon = QUICK_ICON[a.id];
             return (
               <li key={a.id}>
                 <Link
                   href={path(toolHref(a.tool))}
-                  className="press group flex h-full flex-col gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel)] p-3 transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-border))]"
+                  className="press group flex h-full flex-col gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel)] p-4 transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-border))]"
                 >
                   {/* An engraved key: hairline square, dim glyph; it lights when the tile is pointed at. */}
                   <span
                     aria-hidden
-                    className="grid size-9 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] text-[var(--color-muted)] transition-colors group-hover:text-[var(--ns-amber-ink)]"
+                    className="grid size-10 place-items-center rounded-[var(--ns-r-key)] bg-[var(--ns-key)] text-[var(--color-muted)] transition-colors group-hover:text-[var(--ns-amber-ink)]"
                   >
                     <Icon className="size-[18px]" strokeWidth={1.75} />
                   </span>
@@ -290,7 +287,7 @@ function ChannelCard({ c }: { c: HomeChannel }) {
           ) : (
             <span
               aria-hidden
-              className="grid size-10 shrink-0 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] bg-[var(--ns-key)] font-display text-[18px] font-bold text-[var(--color-fg)]"
+              className="grid size-10 shrink-0 place-items-center rounded-[var(--ns-r-key)] bg-[var(--ns-key)] font-display text-[18px] font-bold text-[var(--color-fg)]"
             >
               {initial}
             </span>

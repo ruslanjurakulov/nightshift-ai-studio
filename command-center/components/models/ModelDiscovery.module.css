@@ -126,9 +126,9 @@
 .filterLabel {
   font-family: var(--font-display);
   font-size: var(--ns-t-label);
-  font-weight: 650;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--color-muted);
 }
 .select {
@@ -176,12 +176,12 @@
 .groupTitle {
   font-family: var(--font-display);
   font-size: 20px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
+  font-weight: 600;
+  letter-spacing: 0;
   color: var(--color-fg);
 }
 .groupCount {
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: var(--ns-t-small);
   color: var(--color-muted);
 }
@@ -243,9 +243,9 @@
 .slateProvider {
   font-family: var(--font-display);
   font-size: var(--ns-t-label);
-  font-weight: 650;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: color-mix(in srgb, var(--ns-on-film) 72%, transparent);
 }
 .slateName {
@@ -253,9 +253,9 @@
   margin-top: 0.125rem;
   font-family: var(--font-display);
   font-size: 21px;
-  font-weight: 650;
-  line-height: 1.02;
-  letter-spacing: 0.01em;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0;
   overflow-wrap: anywhere;
 }
 .slateFoot {
@@ -325,9 +325,9 @@
 .detailName {
   font-family: var(--font-display);
   font-size: 30px;
-  font-weight: 650;
-  line-height: 1;
-  letter-spacing: 0.01em;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0;
   color: var(--color-fg);
 }
 .detailMeta {
@@ -344,9 +344,9 @@
   border: 1px solid var(--ns-rule-strong);
   font-family: var(--font-display);
   font-size: var(--ns-t-label);
-  font-weight: 650;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--color-fg);
 }
 .section {
@@ -358,9 +358,9 @@
 .sectionTitle {
   font-family: var(--font-display);
   font-size: var(--ns-t-label);
-  font-weight: 650;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--color-muted);
 }
 .dl {
@@ -396,9 +396,8 @@
   padding: 1px 6px;
   border-radius: var(--ns-r-chip);
   background: var(--ns-key);
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: var(--ns-t-small);
-  font-variation-settings: "wdth" 87.5;
   color: var(--color-fg);
 }
 .reasons {
@@ -543,7 +542,7 @@
   padding: 0 14px;
   border-radius: var(--ns-r-chip);
   font-size: var(--ns-t-ui);
-  font-weight: 550;
+  font-weight: 500;
   color: var(--color-muted);
 }
 .views a[aria-current="page"] {

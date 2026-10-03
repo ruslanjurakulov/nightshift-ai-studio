@@ -70,8 +70,10 @@ describe("CreditPricesEditor", () => {
     const rows = Array.from(doc.querySelectorAll("ul li"));
     const custom = rows.find((r) => r.textContent?.includes("custom_thing"))!;
     expect(custom.querySelectorAll("p")).toHaveLength(1); // the unit name alone
-    const minute = rows.find((r) => r.textContent?.startsWith("video_minute"))!;
-    expect(minute.textContent).toContain(en.credits.unitMeaning.videoMinute);
+    const minute = rows.find((r) => r.textContent?.includes("video_minute"))!;
+    // The plain meaning comes first and the code name follows, smaller (the owner reads words, not unit names).
+    expect(minute.textContent?.startsWith(en.credits.unitMeaning.videoMinute)).toBe(true);
+    expect(minute.textContent).toContain("video_minute");
   });
 
   it("keeps the table for wide screens and shows the phone list below md only", () => {
@@ -83,7 +85,7 @@ describe("CreditPricesEditor", () => {
     const heads = Array.from(doc.querySelectorAll("th")).map((h) => h.textContent);
     expect(heads).toContain(en.credits.colCharged);
     // the table's value cells are in the foreground colour, not the muted one
-    expect(doc.querySelector("tbody td.mono")!.className).toContain("text-[var(--color-fg)]");
+    expect(doc.querySelector("tbody td.tnum")!.className).toContain("text-[var(--color-fg)]");
   });
 
   it("offers Edit and Remove on every phone row to an admin, and none to a reader", () => {

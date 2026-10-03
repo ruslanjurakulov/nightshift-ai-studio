@@ -40,7 +40,7 @@ export function BalanceHero({
 
   return (
     <section className="panel flex flex-col gap-6 p-5 sm:p-6" aria-labelledby="balance-title">
-      <h2 id="balance-title" className="t-label">
+      <h2 id="balance-title" className="t-panel">
         {p.balanceTitle}
       </h2>
 
@@ -75,13 +75,13 @@ export function BalanceHero({
       </div>
 
       <dl className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3">
+        <div className="flex flex-col gap-1 rounded-[var(--ns-r-key)] bg-[var(--ns-key)] p-4">
           <dt className="text-xs text-[var(--color-muted)]">{cp.reserved}</dt>
           <dd className="text-[20px] font-semibold" style={{ color: split.held === null ? "var(--color-idle)" : undefined }}>
             {figure(split.held)}
           </dd>
         </div>
-        <div className="flex flex-col gap-1 rounded-[var(--ns-r-key)] border border-[var(--color-border)] p-3">
+        <div className="flex flex-col gap-1 rounded-[var(--ns-r-key)] bg-[var(--ns-key)] p-4">
           <dt className="text-xs text-[var(--color-muted)]">{cp.balance}</dt>
           <dd className="text-[20px] font-semibold" style={{ color: split.total === null ? "var(--color-idle)" : undefined }}>
             {figure(split.total)}
