@@ -21,6 +21,7 @@
  */
 
 import { fmt, type Dictionary } from "@/lib/i18n";
+import { extraOffFields } from "@/lib/credits";
 
 export type RegenSource = "same" | "stock";
 export type RegenStatus = "queued" | "running" | "succeeded" | "failed";
@@ -217,6 +218,7 @@ export function mapRegenError(error: DbError): { status: number; body: Record<st
         error: "insufficient_credits",
         needed: detailNumber(error.details, "needed"),
         available: detailNumber(error.details, "available"),
+        ...extraOffFields(error.details),
       },
     };
   if (code === "NS429") return { status: 429, body: { error: "run_limit" } };

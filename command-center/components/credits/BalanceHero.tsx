@@ -21,11 +21,14 @@ export function BalanceHero({
   split,
   rates,
   offers,
+  extraOff = false,
 }: {
   split: BalanceSplit;
   rates: GenerationRates | null;
   /** Which purchase sections exist further down the page (the buttons jump to them). */
   offers: { plans: boolean; packs: boolean };
+  /** The extra-credits switch is off (0094): pack credits are kept but not used for new runs. */
+  extraOff?: boolean;
 }) {
   const { t, locale } = useI18n();
   const cp = t.credits;
@@ -104,6 +107,11 @@ export function BalanceHero({
                   <div className="flex min-w-0 flex-col gap-0.5">
                     <span className="text-[14px]">{p.source[s.source]}</span>
                     {when && <span className="text-[12px] text-[var(--color-muted)]">{when}</span>}
+                    {extraOff && s.source === "pack" && (
+                      <span className="text-[12px] text-[var(--color-warn)]" data-source-off>
+                        {t.usage.credits.sourceOff}
+                      </span>
+                    )}
                   </div>
                   <span className="shrink-0 text-[15px] font-medium"><Timecode value={s.credits} locale={locale} /></span>
                 </li>

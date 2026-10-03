@@ -1,5 +1,5 @@
 import {
-  TerminalSquare,
+  TerminalSquare, Activity,
   LayoutDashboard, Film, Workflow, Palette, BarChart3, ListVideo, CircleDot, SwatchBook,
   Users, UserCircle, KeyRound, Bot, ListChecks,
   Lightbulb, Brain, GitBranch, GraduationCap, Database, Hash, Ruler, RefreshCw, Gauge,
@@ -37,6 +37,7 @@ export const ICONS: Record<NavKey, LucideIcon> = {
   margin: TrendingUp,
   billing: Wallet,
   credits: Coins,
+  usage: Activity,
   series: ListVideo,
   agents: Bot,
   jobs: ListChecks,

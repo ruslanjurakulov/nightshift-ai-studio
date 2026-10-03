@@ -44,6 +44,9 @@ describe("nav filtering by role", () => {
       // Settings is one page (the workspace) and Developers has its own sidebar row.
       ...CUSTOMER_SIDEBAR.footer.map((i) => i.key),
       "organization",
+      // Usage (plan allowance, the extra-credits switch) is opened from the Credits page's link card
+      // and the account and credit menus; its sidebar row is Credits (sidebarCurrent).
+      "usage",
     ]);
     expect(CUSTOMER_RAIL.find((i) => i.key === "settings")?.href).toBe("/organization");
     expect(SECTION_TABS.settings).toEqual([]); // no tab bar, no team screens behind it

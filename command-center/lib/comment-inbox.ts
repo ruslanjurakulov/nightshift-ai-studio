@@ -18,7 +18,7 @@
  */
 
 import { fmt, type Dictionary } from "@/lib/i18n";
-import { UNIT_JOB_MINIMUM, type PriceMap } from "@/lib/credits";
+import { UNIT_JOB_MINIMUM, extraOffFields, type PriceMap } from "@/lib/credits";
 
 /** The unit the owner prices (credit_prices.unit); unset = drafting is blocked. */
 export const UNIT_REPLY_DRAFT = "reply_draft";
@@ -409,7 +409,12 @@ export function mapInboxError(error: DbError): { status: number; body: Record<st
   if (code === "NS402")
     return {
       status: 402,
-      body: { error: "insufficient_credits", needed: detailNumber(error.details, "needed"), available: detailNumber(error.details, "available") },
+      body: {
+        error: "insufficient_credits",
+        needed: detailNumber(error.details, "needed"),
+        available: detailNumber(error.details, "available"),
+        ...extraOffFields(error.details),
+      },
     };
   if (code === "NS429" && msg === "daily_limit") return { status: 429, body: { error: "daily_limit" } };
   if (code === "NS429") return { status: 429, body: { error: "run_limit" } };

@@ -128,6 +128,21 @@ describe("refusals are written for a person", () => {
     expect(t).toContain(`${O}/pricing`);
     expect(t).not.toMatch(INTERNAL);
   });
+  it("extra credits off: the figure is what a video can use, and the person is told where to switch them on", () => {
+    const t = oauthRefusalText(fail("insufficient_credits", { price_credits: 135, available_credits: 60, held_credits: 0, extra_credits_off: true }), O);
+    expect(t).toContain("needs 135 credits");
+    expect(t).toContain("60 available");
+    expect(t).toContain("Extra credits are turned off");
+    expect(t).toContain(`${O}/usage`);
+    expect(t).toContain(`${O}/credits`);
+    expect(t).toContain(`${O}/pricing`);
+    expect(t).not.toMatch(INTERNAL);
+    expect(t).not.toContain("extra_credits_off");
+    // switched on (or an older answer without the field): the words are the ones it always had
+    const on = oauthRefusalText(fail("insufficient_credits", { price_credits: 135, available_credits: 60, held_credits: 0 }), O);
+    expect(on).not.toContain("turned off");
+    expect(on).not.toContain(`${O}/usage`);
+  });
   it("the connection limit: the person raises it, the assistant cannot", () => {
     const t = oauthRefusalText(fail("connection_limit_reached", { limit_credits: 100, spent_credits: 90, price_credits: 90 }), O);
     expect(t).toContain(`${O}/developers`);

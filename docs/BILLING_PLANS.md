@@ -294,3 +294,40 @@ select org_id, sum(-amount) from credit_transactions
   qiladi).
 - Trial davri kredit bermaydi (faqat to'langan tranzaksiya kredit beradi).
 - `planned` imkoniyatlar sahifada ko'rsatilmaydi, hech narsani cheklamaydi.
+
+## 7. Qo'shimcha kreditlar tugmasi va Usage sahifasi (migratsiya 0094)
+
+Mijoz `/<kanal>/usage` sahifasida tarif kreditlarining shu davrdagi sarfini
+(«62% ishlatildi», «2 000 dan 1 240 kredit», yangilanish sanasi) va
+**«Tarif kreditlarim tugaganda qo'shimcha kreditlardan foydalanish»** tugmasini
+ko'radi. Haftalik yoki sessiya hisoblagichlari yo'q: platformada bunday cheklov
+yo'q, shuning uchun ular uydirilmaydi.
+
+- **Qayerda saqlanadi:** `credit_accounts.use_extra_credits` — har bir ish
+  maydoniga bitta qiymat, standart **yoqilgan** (bugungi xatti-harakat).
+- **Yoqilgan:** sarflash tartibi o'zgarmaydi (2-bo'lim): avval tarif, keyin
+  paketlar (eng tez yonadigani birinchi), keyin muddatsizlar.
+- **O'chirilgan:** YANGI ish faqat `subscription`, `grant` (xush kelibsiz va
+  operator bergan) va `adjustment` lotlaridan oladi. **«Qo'shimcha» lot =
+  `source = 'pack'`**; ularga tegilmaydi. Yetmasa, ish boshlanmasdan oldin
+  `NS402` (detail: `available=… needed=… extra_off=1 extra=…`), hech narsa band
+  qilinmaydi va yechilmaydi.
+- **Joriy ishlar to'xtatilmaydi:** tugma faqat yangi hold'ga ta'sir qiladi.
+  Boshlangan ishning hold'i, capture va release'i avvalgidek o'z lotlari bilan
+  yopiladi (tugmani o'zgartirsangiz ham).
+- **Qayerda amal qiladi:** `reserve_credits` va `credit_lots_hold_locked`
+  (0094). Run now, studiya, storyboard, sahna qayta generatsiyasi, repurpose,
+  yuklab olish, API generatsiyalari va MCP OAuth — hammasi shu funksiyadan
+  o'tadi, shuning uchun bitta joyda tekshiriladi.
+- **Kim o'zgartiradi:** faqat ish maydonining o'z egasi,
+  `set_use_extra_credits(org, on)` orqali (`org_members` da `user_id = auth.uid()`
+  va rol owner/admin). Boshqa mijoz, operator, anon va service key — rad etiladi.
+- **O'qish:** `usage_summary(org)` — faqat chaqiruvchining o'z ish maydoni
+  (a'zo, platforma yoki ishonchli chaqiruvchi), marja va boshqa tenant
+  ma'lumotlarisiz.
+- **Tatbiq tartibi:** avval `0094_extra_credits_toggle.sql` (idempotent, ikki
+  marta qo'llash xavfsiz), keyin kod. Kod avval chiqsa ham sahifa «hali mavjud
+  emas» deb halol aytadi.
+- **Hozircha yo'q:** kartadan avtomatik to'ldirish (auto-recharge) — mantiqiy
+  keyingi qadam, Paddle ishini talab qiladi.
+

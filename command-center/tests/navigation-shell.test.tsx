@@ -111,6 +111,9 @@ describe("customer sidebar model", () => {
     expect(sidebarCurrent("/editor/3f2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e", null)).toBe("editor");
     expect(sidebarCurrent("/videos/abc", null)).toBe("videos");
     expect(sidebarCurrent("/credits", null)).toBe("credits");
+    // Usage (plan allowance, the extra-credits switch) is part of the credits story: Credits is its row.
+    expect(sidebarCurrent("/usage", null)).toBe("credits");
+    expect(sectionAllowed("usage", false)).toBe(true);
     expect(sidebarCurrent("/developers", null)).toBe("developers");
     expect(sidebarCurrent("/organization", null)).toBe("settings");
     expect(sidebarCurrent("/pipeline", null)).toBeNull();
@@ -258,7 +261,7 @@ describe("credit pill and menu", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog.querySelectorAll("button, form, input, iframe, select, textarea")).toHaveLength(0);
     const hrefs = Array.from(dialog.querySelectorAll("a")).map((a) => a.getAttribute("href"));
-    expect(hrefs).toEqual(["/chronos/credits", "/chronos/credits#activity-title"]);
+    expect(hrefs).toEqual(["/chronos/credits", "/chronos/usage"]);
     expect(within(dialog).getByRole("link", { name: en.shell.addCredits })).toBeTruthy();
     expect(within(dialog).getByRole("link", { name: en.shell.usage })).toBeTruthy();
     // Nothing that could open a checkout is even imported.

@@ -7,7 +7,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { StepCard, StepList, type StepState } from "@/components/ui/StepCard";
-import { creditUnit } from "@/lib/credits";
+import { appendExtraOff, creditUnit } from "@/lib/credits";
 import {
   MAX_NARRATION,
   MAX_SCENES,
@@ -344,7 +344,7 @@ export function StoryboardReview({
     }
     if (body?.error === "stale_revision") setStale(true);
     if (body?.error === "storyboard_not_ready") router.refresh();
-    setError(storyboardErrorText(body, ts));
+    setError(appendExtraOff(storyboardErrorText(body, ts), body, t));
   }
 
   // ── decisions ────────────────────────────────────────────────────────────
@@ -374,7 +374,7 @@ export function StoryboardReview({
     if (body?.error === "price_changed" && typeof body.credits === "number") setPrice({ kind: "paid", credits: body.credits });
     if (body?.error === "stale_revision") setStale(true);
     if (body?.error === "storyboard_not_ready") router.refresh();
-    setError(storyboardErrorText(body, ts));
+    setError(appendExtraOff(storyboardErrorText(body, ts), body, t));
   }
 
   async function discard() {
@@ -391,7 +391,7 @@ export function StoryboardReview({
       return;
     }
     if (body?.error === "storyboard_not_ready") router.refresh();
-    setError(storyboardErrorText(body, ts));
+    setError(appendExtraOff(storyboardErrorText(body, ts), body, t));
     discardRef.current?.focus();
   }
 
@@ -407,7 +407,7 @@ export function StoryboardReview({
       router.refresh();
       return;
     }
-    setError(storyboardErrorText(body, ts));
+    setError(appendExtraOff(storyboardErrorText(body, ts), body, t));
   }
 
   const dock = { "--sb-dock-offset": bottomBar ? "64px" : "0px" } as CSSProperties;

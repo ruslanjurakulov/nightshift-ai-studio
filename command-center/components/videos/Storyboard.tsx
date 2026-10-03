@@ -60,6 +60,8 @@ export function Storyboard({
     /** The newest regeneration of each scene, by scene id. */
     latest: ReadonlyMap<string, RegenRow>;
     labels: Dictionary["sceneRegen"];
+    /** Said after a refusal caused by the extra-credits switch (0094). */
+    extraOffNote?: string;
   } | null;
   /**
    * Shown instead of the buttons when this video cannot be repaired
@@ -239,6 +241,7 @@ export function Storyboard({
                   sceneId={s.sceneId}
                   latest={regenerate.latest.get(s.sceneId) ?? null}
                   labels={regenerate.labels}
+                  extraOffNote={regenerate.extraOffNote}
                 />
               )}
               {s.keywords && s.keywords.length > 0 && (
