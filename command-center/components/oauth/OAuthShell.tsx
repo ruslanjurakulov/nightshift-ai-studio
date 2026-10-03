@@ -14,7 +14,7 @@ import "@/components/site/site.css";
  * the middle of an approval, and nothing on the page should invite them away
  * before they decide.
  */
-export function OAuthShell({ title, children }: { title: string; children: React.ReactNode }) {
+export function OAuthShell({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
   const { t, locale } = usePublicI18n();
   preloadSiteFonts(locale);
   return (
@@ -30,8 +30,8 @@ export function OAuthShell({ title, children }: { title: string; children: React
             <ThemeToggle />
           </div>
         </div>
-        <div className="st-auth-form" style={{ maxWidth: 520 }}>
-          <h1 className="st-h1-page">{title}</h1>
+        <div className="st-auth-form" style={{ maxWidth: 520, margin: "0 auto" }}>
+          <h1 className="st-h1-page [overflow-wrap:anywhere]">{title}</h1>
           {children}
         </div>
       </main>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AppName, withParts } from "@/components/oauth/AppName";
 import { OAuthNotice } from "@/components/oauth/OAuthShell";
 
 /**
@@ -18,6 +19,10 @@ export interface ConsentText {
   limitLabel: string;
   limitHint: string;
   limitInvalid: string;
+  /** "{app} can spend up to {n} credits a month", said back as the person types. */
+  limitEcho: string;
+  limitEchoOne: string;
+  limitEchoZero: string;
   allow: string;
   deny: string;
   working: string;
@@ -28,11 +33,15 @@ export interface ConsentText {
 
 export function ConsentForm({
   secret,
+  app,
+  locale,
   defaultLimit,
   maxLimit,
   text,
 }: {
   secret: string;
+  app: string;
+  locale: string;
   defaultLimit: number;
   maxLimit: number;
   text: ConsentText;
@@ -78,6 +87,10 @@ export function ConsentForm({
     setBusy(null);
   }
 
+  // What the person is about to grant, in one sentence, from the number now in the box.
+  const echo = !limitOk ? null : parsed === 0 ? text.limitEchoZero : parsed === 1 ? text.limitEchoOne : text.limitEcho;
+  const n = limitOk ? new Intl.NumberFormat(locale).format(parsed) : "";
+
   return (
     <form
       className="mt-6 flex flex-col gap-4"
@@ -96,10 +109,13 @@ export function ConsentForm({
           value={limit}
           onChange={(e) => setLimit(e.target.value)}
           aria-invalid={!limitOk}
-          aria-describedby="oauth-limit-hint"
+          aria-describedby="oauth-limit-hint oauth-limit-echo"
         />
         <small id="oauth-limit-hint">{text.limitHint}</small>
       </label>
+      <p id="oauth-limit-echo" className="st-body min-h-[3.25em] border-l-[3px] border-[var(--ns-text)] pl-3 font-semibold text-[var(--ns-text)] [overflow-wrap:anywhere]" aria-live="polite">
+        {echo ? withParts(echo, { app: <AppName name={app} />, n }) : text.limitInvalid}
+      </p>
       {error && <OAuthNotice tone="fail">{error}</OAuthNotice>}
       <div className="flex flex-col gap-3 sm:flex-row-reverse">
         <button type="submit" className="st-key" data-block="true" disabled={busy !== null}>

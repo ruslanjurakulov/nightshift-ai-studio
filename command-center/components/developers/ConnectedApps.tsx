@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n/core";
+import { AppName } from "@/components/oauth/AppName";
 import { describeRedirect } from "@/lib/oauth/redirect";
 
 /**
@@ -31,7 +32,7 @@ interface Grant {
 
 const MAX_LIMIT = 20000;
 const INPUT =
-  "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
+  "min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-[16px] text-[var(--color-fg)] sm:text-[13px] outline-none focus:border-[var(--color-primary)]";
 
 function isMissing(e: { code?: string; message?: string } | null): boolean {
   return !!e && (e.code === "PGRST202" || e.code === "42883" || /could not find the function|does not exist/i.test(e.message ?? ""));
@@ -68,7 +69,11 @@ export function ConnectedApps() {
     void load();
   }, [load]);
 
-  const day = (iso: string) => new Date(iso).toLocaleDateString(locale, { dateStyle: "medium" });
+  // Uzbek has no usable short-month names in the browser ("2026 M09 1"): numbers only there.
+  const day = (iso: string) =>
+    locale === "uz"
+      ? new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(iso))
+      : new Date(iso).toLocaleDateString(locale, { dateStyle: "medium" });
 
   async function revoke(g: Grant) {
     if (!window.confirm(fmt(c.sure, { app: g.client_name }))) return;
@@ -142,10 +147,12 @@ export function ConnectedApps() {
               <li key={g.id} className="rounded-md border border-[var(--color-border)] p-3" data-testid="connected-app">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="break-words text-[14px] font-semibold">{g.client_name}</p>
-                    <p className="break-all text-[12px] text-[var(--color-muted)]">{where}</p>
+                    <p className="break-words text-[14px]"><AppName name={g.client_name} /></p>
+                    <p className="break-all text-[12px] text-[var(--color-muted)]" dir="ltr">{where}</p>
                   </div>
-                  <span className="text-[12px] text-[var(--color-muted)]">{g.status === "paused_plan" ? c.paused : c.active}</span>
+                  <span className={`rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[12px] ${g.status === "paused_plan" ? "font-semibold text-[var(--color-fg)]" : "text-[var(--color-muted)]"}`}>
+                    {g.status === "paused_plan" ? c.paused : c.active}
+                  </span>
                 </div>
                 <p className="mt-1 text-[12px] text-[var(--color-muted)]">
                   {fmt(c.created, { date: day(g.created_at) })} · {g.last_used_at ? fmt(c.lastUsed, { date: day(g.last_used_at) }) : c.neverUsed} · {scopeNames.join(", ")}
@@ -159,7 +166,7 @@ export function ConnectedApps() {
                   </p>
                 )}
                 <p className="mt-2 text-[13px]">
-                  {c.spent}: <strong>{fmt(c.credits, { n: trim(g.spent_this_month_credits) })}</strong>
+                  {c.spent}: <strong>{fmt(c.credits, { n: `${trim(g.spent_this_month_credits)} / ${trim(g.monthly_limit_credits)}` })}</strong>
                 </p>
                 <div className="mt-2 flex flex-wrap items-end gap-2">
                   <label className="flex flex-col gap-1 text-[12px] text-[var(--color-muted)]">

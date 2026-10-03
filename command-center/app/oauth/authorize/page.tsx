@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/config";
@@ -5,6 +6,7 @@ import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { fmt } from "@/lib/i18n/core";
 import { NotConfigured } from "@/components/NotConfigured";
+import { AppName, withParts } from "@/components/oauth/AppName";
 import { ConsentForm } from "@/components/oauth/ConsentForm";
 import { OAuthNotice, OAuthShell } from "@/components/oauth/OAuthShell";
 import { authorizeReturnPath, parseAuthorizeParams, redirectWith } from "@/lib/oauth/authorize";
@@ -35,7 +37,7 @@ type Raw = Record<string, string | string[] | undefined>;
 export default async function AuthorizePage({ searchParams }: { searchParams: Promise<Raw> }) {
   if (!isSupabaseConfigured) return <NotConfigured />;
   const raw = await searchParams;
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const o = t.oauth;
 
   const user = await getUser();
@@ -45,7 +47,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
     redirect(`/login?next=${encodeURIComponent(authorizeReturnPath(q.toString()))}`);
   }
 
-  const failure = (title: string, body: string, action?: { href: string; label: string }) => (
+  const failure = (title: string, body: ReactNode, action?: { href: string; label: string }) => (
     <OAuthShell title={title}>
       <OAuthNotice tone="warn">{body}</OAuthNotice>
       {action && (
@@ -87,7 +89,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
     redirect(redirectWith(p.redirectUri, { error, error_description: view.description ?? "The request is not valid.", state: p.state }, deps.origin));
   }
   if (!view.entitled) {
-    return failure(o.needsPlanTitle, fmt(o.needsPlanBody, { app: view.clientName, workspace: view.workspaceName }), {
+    return failure(o.needsPlanTitle, withParts(o.needsPlanBody, { app: <AppName name={view.clientName} />, workspace: <bdi className="font-semibold">{view.workspaceName}</bdi> }), {
       href: "/pricing",
       label: o.seePlans,
     });
@@ -96,20 +98,21 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
   const where = describeRedirect(view.redirectUri);
   const scopeText: Record<string, string> = { "videos:read": o.scopeRead, "videos:create": o.scopeCreate, "videos:publish": o.scopePublish };
   return (
-    <OAuthShell title={fmt(o.title, { app: view.clientName })}>
-      <p className="st-body mt-4">{fmt(o.lead, { app: view.clientName })}</p>
+    <OAuthShell title={withParts(o.title, { app: <AppName name={view.clientName} /> })}>
+      <p className="st-body mt-4 [overflow-wrap:anywhere]">{withParts(o.lead, { app: <AppName name={view.clientName} /> })}</p>
+      <p className="st-small mt-2">{o.nameNote}</p>
 
       <dl className="mt-6 flex flex-col gap-4">
         <div>
           <dt className="st-small">{o.sendsTo}</dt>
-          <dd className="mt-1 break-all font-semibold text-[var(--ns-text)]">
+          <dd className="mt-1 break-all font-semibold text-[var(--ns-text)]" dir="ltr">
             {where.local ? `${o.localApp} (${where.host})` : where.host}
           </dd>
           <dd className="st-small mt-1">{o.checkAddress}</dd>
         </div>
         <div>
           <dt className="st-small">{o.workspace}</dt>
-          <dd className="mt-1 font-semibold text-[var(--ns-text)]">{view.workspaceName}</dd>
+          <dd className="mt-1 font-semibold text-[var(--ns-text)] [overflow-wrap:anywhere]"><bdi>{view.workspaceName}</bdi></dd>
         </div>
       </dl>
 
@@ -127,12 +130,17 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
 
       <ConsentForm
         secret={secret}
+        app={view.clientName}
+        locale={locale}
         defaultLimit={view.defaultLimit}
         maxLimit={view.maxLimit}
         text={{
           limitLabel: o.limitLabel,
-          limitHint: fmt(o.limitHint, { max: String(view.maxLimit) }),
-          limitInvalid: fmt(o.limitInvalid, { max: String(view.maxLimit) }),
+          limitHint: fmt(o.limitHint, { max: new Intl.NumberFormat(locale).format(view.maxLimit) }),
+          limitInvalid: fmt(o.limitInvalid, { max: new Intl.NumberFormat(locale).format(view.maxLimit) }),
+          limitEcho: o.limitEcho,
+          limitEchoOne: o.limitEchoOne,
+          limitEchoZero: o.limitEchoZero,
           allow: o.allow,
           deny: o.deny,
           working: o.working,
