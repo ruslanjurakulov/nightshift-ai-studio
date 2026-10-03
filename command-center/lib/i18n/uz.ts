@@ -4691,7 +4691,7 @@ export const uz: Dictionary = {
     title: "Yordamchi",
     lead: "Nima qilmoqchi ekaningizni yozing. Bitta umumiy narxli reja olasiz — «Boshlash»ni bosmaguningizcha hech narsa boshlanmaydi.",
     goalLabel: "Maqsadingiz",
-    placeholder: "Masalan: «Kosmos haqida 5 ta shorts» yoki «Orol dengizi haqida 3 ta muqova va ovozli kirish»",
+    placeholder: "Masalan: «Kosmos haqida 5 ta shorts» yoki «Orol haqida 3 ta muqova va ovozli kirish»",
     makePlan: "Reja tuzish",
     replan: "Qayta tuzish",
     planFree: "Reja tuzish bepul.",

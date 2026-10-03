@@ -4700,7 +4700,7 @@ export const en = {
     title: "Assistant",
     lead: "Say what you want to make. You get a plan with one total price — nothing starts until you press Start.",
     goalLabel: "Your goal",
-    placeholder: "e.g. “Make 5 Shorts about space facts” or “3 thumbnails and a voice intro about the Aral Sea”",
+    placeholder: "e.g. “Make 5 Shorts about space” or “3 thumbnails and a voice intro on the Aral Sea”",
     makePlan: "Make a plan",
     replan: "Plan again",
     planFree: "Making a plan is free.",

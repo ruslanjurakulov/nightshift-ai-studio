@@ -1696,6 +1696,11 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   backdrop-filter: blur(12px);
 }
 .studio-dock[data-at-top="true"] { position: static; }
+/* A short phone (360x740 and below): the shot box shows two lines so the length chips stay
+   above the fixed tab bar on the first view; it scrolls inside when the shot is longer. */
+@media (max-width: 1023px) and (max-height: 760px) {
+  .studio-shot { height: 72px; min-height: 72px; }
+}
 @media (min-width: 1024px) {
   .studio-dock {
     position: static;

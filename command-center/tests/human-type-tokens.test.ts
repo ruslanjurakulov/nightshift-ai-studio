@@ -154,4 +154,9 @@ describe("words are written in sentence case, not capitals", () => {
     }
     expect(shouting).toEqual([]);
   });
+  it("the status lamp's fallback words (components/ui.tsx) are not capitals either", () => {
+    const labels = [...read("components/ui.tsx").matchAll(/label: "([^"]+)"/g)].map((m) => m[1]);
+    expect(labels.length).toBeGreaterThan(3);
+    expect(labels.filter((l) => l.length > 2 && l === l.toUpperCase())).toEqual([]);
+  });
 });

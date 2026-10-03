@@ -5,10 +5,10 @@ import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 /** `fg` colours a StatCard figure; `label` is the word a lamp wears when the caller gives none. */
 const TONE: Record<string, { fg: string; label: string }> = {
   ok: { fg: "var(--color-ok)", label: "OK" },
-  run: { fg: "var(--color-primary)", label: "RUNNING" },
-  fail: { fg: "var(--color-fail)", label: "FAILED" },
-  warn: { fg: "var(--color-warn)", label: "WARN" },
-  idle: { fg: "var(--color-idle)", label: "IDLE" },
+  run: { fg: "var(--color-primary)", label: "Running" },
+  fail: { fg: "var(--color-fail)", label: "Failed" },
+  warn: { fg: "var(--color-warn)", label: "Warning" },
+  idle: { fg: "var(--color-idle)", label: "Idle" },
 };
 
 /**

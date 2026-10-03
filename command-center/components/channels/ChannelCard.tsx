@@ -287,7 +287,17 @@ export function ChannelCard({
           </span>
           <StatusPill
             tone={health.tone === "fail" ? "fail" : health.tone === "warn" ? "warn" : health.tone}
-            label={health.actionRequired ? t.channels.actionRequired : health.tone === "ok" ? t.channels.healthy : undefined}
+            label={
+              health.actionRequired
+                ? t.channels.actionRequired
+                : health.tone === "ok"
+                  ? t.channels.healthy
+                  : health.tone === "warn"
+                    ? t.status.warn
+                    : health.tone === "fail"
+                      ? t.status.failed
+                      : t.status.idle
+            }
           />
         </div>
         <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-4">

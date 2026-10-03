@@ -888,7 +888,7 @@ export function GeneratePanel({
             maxLength={PROMPT_MAX}
             autoFocus={initial !== null}
             placeholder={t.gen.promptPh[capability]}
-            className={`${desk === "voice" && isVoice ? "desk-script " : ""}min-h-[104px] w-full resize-none bg-transparent px-3 pb-2 pt-3 text-base leading-relaxed text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus-visible:outline-none sm:text-[14px]`}
+            className={`${desk === "voice" && isVoice ? "desk-script " : ""}${isVoice ? "" : "studio-shot "}min-h-[104px] w-full resize-none bg-transparent px-3 pb-2 pt-3 text-base leading-relaxed text-[var(--color-fg)] outline-none placeholder:text-[var(--color-muted)] focus-visible:outline-none sm:text-[14px]`}
           />
           {settings && settingsInField && <div className="px-2 pb-2">{settings}</div>}
           {desk === "voice" && isVoice && (
