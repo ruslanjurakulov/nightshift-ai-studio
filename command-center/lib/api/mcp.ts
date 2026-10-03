@@ -73,7 +73,8 @@ const OAUTH_INSTRUCTIONS =
   "Nightshift makes faceless YouTube videos. Start with list_channels, then create_video. A video costs CREDITS from the " +
   "person's Nightshift workspace, priced per minute of requested length with a minimum per video, and this connection has " +
   "its own monthly spending limit: call get_balance first to see the credits available and what is left of the limit, and " +
-  "tell the person the price and the length before you create a video. Poll get_job_status until the job succeeds, then " +
+  "tell the person the price and the length before you create a video, and pass a fresh idempotency_key so that a retry " +
+  "can never create a second video. Poll get_job_status until the job succeeds, then " +
   "list_videos to find the video. publish_video sends a finished video that passed review to connected accounts; YouTube " +
   "uploads are private. If a call is refused, the message says what is missing and what the person can do (add credits, " +
   "choose a plan, raise this connection's limit); you cannot change any of those yourself.";

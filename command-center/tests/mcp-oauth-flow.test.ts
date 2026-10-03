@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import type { ApiCaller } from "@/lib/api/operations";
 import { apiError } from "@/lib/api/http";
 import { oauthRpc } from "@/lib/api/mcp-oauth";
-import { hashSecret, pkceChallenge } from "@/lib/oauth/tokens";
+import { pkceChallenge } from "@/lib/oauth/tokens";
 import { FakeOauthDb } from "./helpers/oauth-fake-db";
 
 /**
@@ -50,7 +50,7 @@ vi.mock("@/lib/server/oauth", async () => {
 });
 vi.mock("@/lib/server/public-api", () => ({
   isCaller: (v: object) => "keyHash" in v,
-  apiCaller: async (_r: Request, requestId: string) => apiError(401, "invalid_api_key", "Send your API key as \"Authorization: Bearer nsk_live_…\"."),
+  apiCaller: async () => apiError(401, "invalid_api_key", "Send your API key as \"Authorization: Bearer nsk_live_…\"."),
   oauthCheck: async (hash: string, requestId: string) => h.db.rpc("oauth_check", { p_token_hash: hash, p_request_id: requestId }),
   oauthApiCaller: (hash: string, requestId: string): ApiCaller => ({ keyHash: hash, requestId, rpc: oauthRpc(h.db.rpc), backend: "queue", downloads: false }),
 }));
@@ -186,6 +186,40 @@ describe("a whole client, through the handlers", () => {
     expect(allText(page).join(" ")).toContain("cannot be used");
     expect(find(page, (p) => typeof p.secret === "string")).toBeNull();
     expect(h.db.requests.size).toBe(0);
+  });
+
+  it.each([
+    REDIRECT + "/",                                  // trailing slash
+    "HTTP://127.0.0.1:33418/callback",               // case
+    "http://127.0.0.1:33418/callback?x=1",           // an added query
+    "http://127.0.0.1:33418/callback#frag",          // a fragment
+    "http://127.0.0.1:33419/callback",               // another port
+    "http://localhost:33418/callback",               // another loopback name
+    "http://127.0.0.1.evil.com:33418/callback",      // lookalike host
+    "http://evil.com@127.0.0.1:33418/callback",      // userinfo
+    "http://[::1]:33418/callback",                   // IPv6 loopback, not registered
+    "http://127.0.0.1:33418/callbаck",               // Cyrillic а
+    "https://evil.example/cb",
+    "",
+  ])("the authorize page never redirects to %j: an unregistered return address is an error page", async (redirect) => {
+    const reg = await register(new Request(ORIGIN, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ client_name: "A", redirect_uris: [REDIRECT] }) }));
+    const clientId = ((await reg.json()) as { client_id: string }).client_id;
+    let outcome: unknown;
+    try {
+      outcome = await AuthorizePage({ searchParams: Promise.resolve({ response_type: "code", client_id: clientId, redirect_uri: redirect, state: "s", code_challenge: "A".repeat(43), code_challenge_method: "S256" }) });
+    } catch (e) {
+      throw new Error(`redirected to ${(e as { to?: string }).to}`);
+    }
+    expect(allText(outcome).join(" ")).toContain("cannot be used");
+    expect(find(outcome, (p) => typeof p.secret === "string")).toBeNull();
+    expect(h.db.requests.size).toBe(0);
+  });
+
+  it("a request with a missing or repeated parameter is an error page too", async () => {
+    for (const raw of [{ client_id: ["a", "b"], redirect_uri: REDIRECT }, { client_id: "3f2b8c1e-5d6a-4b7c-8d9e-0f1a2b3c4d5e" }, { redirect_uri: REDIRECT }]) {
+      const page = await AuthorizePage({ searchParams: Promise.resolve(raw) });
+      expect(allText(page).join(" ")).toContain("cannot be used");
+    }
   });
 
   it("a Free workspace gets the paid-plan screen and no secret, so no code can exist", async () => {
@@ -356,4 +390,3 @@ describe("the consent decision cannot be forged", () => {
   });
 });
 
-void hashSecret;

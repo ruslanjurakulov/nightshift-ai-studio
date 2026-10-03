@@ -30,11 +30,19 @@ async function handle(request: Request): Promise<Response> {
   if (bearer.kind === "oauth") return handleOauth(request, requestId, bearer.token);
   const caller = await apiCaller(request, requestId);
   if (!isCaller(caller)) {
-    const res = toResponse(caller, requestId);
     // No credential, or one that is not a Nightshift key or token: tell the
     // client where to get one (the MCP authorization spec). A malformed or
     // revoked API key keeps exactly the answer it always had.
-    if (bearer.kind !== "api_key") res.headers.set("www-authenticate", challenge());
+    if (bearer.kind === "api_key") return toResponse(caller, requestId);
+    const res = toResponse(
+      apiError(
+        401,
+        "invalid_api_key",
+        'Authorization is required. Connect the app to Nightshift with OAuth (the WWW-Authenticate header says where), or send an API key as "Authorization: Bearer nsk_live_…".',
+      ),
+      requestId,
+    );
+    res.headers.set("www-authenticate", challenge());
     return res;
   }
   return serve(request, requestId, caller);

@@ -23,6 +23,5 @@ trap cleanup EXIT
   APP_ORIGIN="http://localhost:$APP_PORT" NIGHTSHIFT_RUN_BACKEND=queue NEXT_TELEMETRY_DISABLED=1 \
   npx next dev -p "$APP_PORT" >/dev/null 2>&1 ) & pids+=($!)
 for _ in $(seq 1 60); do curl -sf "http://localhost:$APP_PORT/.well-known/oauth-authorization-server" >/dev/null && break; sleep 1; done
-( cd "$root/command-center" && BASE="http://localhost:$APP_PORT" \
-  COOKIE="sb-127-auth-token=$(field cookie)" FREE_COOKIE="sb-127-auth-token=$(field free_cookie)" \
-  node scripts/oauth-e2e.mjs )
+( cd "$root/command-center" && node scripts/oauth-e2e.mjs "http://localhost:$APP_PORT" \
+  "sb-127-auth-token=$(field cookie)" "sb-127-auth-token=$(field free_cookie)" )

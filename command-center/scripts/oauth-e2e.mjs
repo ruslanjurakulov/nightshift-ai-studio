@@ -5,7 +5,7 @@
  * authorization URL the SDK produced, reads the consent page, and posts the
  * person's Allow, exactly as the page's button does.
  *
- *   BASE=http://localhost:3100 COOKIE='sb-127-auth-token=…' node scripts/oauth-e2e.mjs
+ *   node scripts/oauth-e2e.mjs http://localhost:3100 'sb-127-auth-token=…' ['sb-127-auth-token=… of a Free person']
  *
  * See tests/oauth_e2e/run.sh for the whole rig (a Postgres built from the
  * repository's migrations, a Supabase-shaped HTTP shim in front of it, and
@@ -16,9 +16,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import assert from "node:assert/strict";
 
-const BASE = process.env.BASE ?? "http://localhost:3100";
-const COOKIE = process.env.COOKIE ?? "";
-const FREE_COOKIE = process.env.FREE_COOKIE ?? "";
+const [BASE = "http://localhost:3100", COOKIE = "", FREE_COOKIE = ""] = process.argv.slice(2);
 const MCP = new URL("/api/mcp", BASE);
 const REDIRECT = "http://127.0.0.1:33418/callback";
 const log = (...a) => console.log("•", ...a);

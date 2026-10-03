@@ -234,10 +234,8 @@ unit = 'video_minute'` (platform owner/admin). Correct a balance with
 ## MCP
 
 The same keys, limits and prices are available to AI assistants through the
-remote MCP server at `/api/mcp` — see `docs/MCP.md`.
-
-## CLI and Agent Skills
-
-The same keys, limits and prices are available from a terminal through the
-`nightshift` command-line client (`packages/cli`, `docs/CLI.md`), and AI agents
-can be taught to use it, or the MCP server, with the Agent Skills in `skills/`.
+remote MCP server at `/api/mcp` — see `docs/MCP.md`. That server has a second
+door that is **not** the API: an AI app (Claude, ChatGPT, Cursor, …) can be
+connected with OAuth, without a key, on a paid plan, spending the workspace's
+site credits instead of this prepaid USD balance. Nothing connected that way
+can reach any function described here that moves the USD balance.
