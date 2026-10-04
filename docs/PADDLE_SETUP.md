@@ -162,8 +162,8 @@ min = max = 1 qoldiring. (O'zgartirsa ham xavfli emas — webhook kreditni
 `test_…` bilan boshlanadigan token. U brauzer uchun mo'ljallangan (ochiq),
 API key emas. **API key'ni hech qayerga qo'ymang — u kerak emas.**
 
-Self-hosted server (`/opt/nightshift/.env.web`, `deploy/.env.web.example` ga qarang)
-yoki Vercel → Settings → Environment Variables:
+Server (`/opt/nightshift/.env.web`, `deploy/.env.web.example` ga qarang; odatda
+GitHub o'zgaruvchilari orqali `deploy_web.yml` yozadi):
 
 ```dotenv
 NEXT_PUBLIC_PADDLE_ENV=sandbox
@@ -174,7 +174,7 @@ NEXT_PUBLIC_PADDLE_PRICE_STUDIO=pri_01...
 ```
 
 `NEXT_PUBLIC_*` build vaqtida sahifaga yoziladi — o'zgartirgandan keyin
-**qayta build** kerak (`docker compose up -d --build` yoki Vercel redeploy).
+**qayta build** kerak (`docker compose up -d --build` yoki `deploy_web.yml` ni qayta ishga tushirish).
 Token muhitga mos bo'lishi shart: `sandbox` ↔ `test_…`, `production` ↔ `live_…`;
 mos kelmasa panel yashiriladi (yarim yo'lda qolgan production'ga o'tish
 noto'g'ri Paddle'ni ochmasligi uchun).

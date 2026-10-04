@@ -162,8 +162,8 @@ Repository secrets** (yoki `production` Environment secrets) ga qo'shing:
 | `TIKTOK_CLIENT_SECRET` | TikTok → app → Client secret | web **va** worker |
 
 `deploy_web.yml` ularni avtomatik ravishda serverdagi `.env.web` (va worker
-yoqilgan bo'lsa, `.env.worker`) ga yozadi. Command Center Vercel'da ishlasa,
-xuddi shu to'rtta nomni Vercel → Project → Settings → Environment Variables ga
+yoqilgan bo'lsa, `.env.worker`) ga yozadi. Command Center boshqa joyda (masalan
+lokal) ishlasa, xuddi shu to'rtta nomni o'sha muhitning environment o'zgaruvchilariga
 ham qo'shing.
 
 Keyin **Deploy web** workflow'ini qayta ishga tushiring (yoki `main` ga navbatdagi

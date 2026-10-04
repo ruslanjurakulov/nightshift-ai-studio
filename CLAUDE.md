@@ -3,8 +3,8 @@
 Nightshift is an autonomous YouTube channel operator: a Python pipeline that
 researches, writes, narrates, renders and uploads a video, and a Next.js
 "Command Center" (`command-center/`) that a human uses to watch it and decide.
-Supabase holds the state, Vercel serves the dashboard, GitHub Actions runs the
-bot.
+Supabase holds the state, our own server (Docker behind Caddy) serves the app and
+the site, and GitHub Actions or a queue worker runs the bot.
 
 This file is the standing brief. It exists because every rule below was learned
 from something that actually broke, and a rule that lives only in one person's

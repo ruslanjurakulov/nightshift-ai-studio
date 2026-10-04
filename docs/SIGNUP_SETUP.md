@@ -115,7 +115,7 @@ faqat bepul kredit berilmaydi va `/welcome` bu haqda hech narsa demaydi.
 
 ## 5. Ixtiyoriy: aloqa emaili
 
-`NEXT_PUBLIC_CONTACT_EMAIL` (Vercel env) o'rnatilgan bo'lsa, `/welcome`'dagi
+`NEXT_PUBLIC_CONTACT_EMAIL` (GitHub o'zgaruvchisi) o'rnatilgan bo'lsa, `/welcome`'dagi
 "Kanal ulanishini so'rash" tugmasi shu manzilga xat ochadi. O'rnatilmagan bo'lsa,
 "Nightshift jamoasi bilan bog'laning" degan matn ko'rinadi.
 

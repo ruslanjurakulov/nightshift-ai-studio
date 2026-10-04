@@ -3,7 +3,7 @@
 The Nightshift bot runs fully local by default: its state lives in
 `history/chronos.db`, which on the scheduled GitHub Actions runners exists only
 for the life of one job. To power the real-time **Command Center** (the separate
-Next.js app on Vercel) with **real** data, the bot mirrors that state into a
+Next.js app) with **real** data, the bot mirrors that state into a
 hosted Supabase Postgres project, and the dashboard reads (and live-subscribes
 to) it.
 
@@ -33,7 +33,7 @@ In **Project Settings → API**, copy:
 | **anon key** | the Command Center app only | public; RLS keeps it read-only and login-gated |
 
 ## 4. Give the bot the secrets
-In the `chronos_youtube_bot` GitHub repo → **Settings → Secrets and variables →
+In the `nightshift-ai-studio` GitHub repo → **Settings → Secrets and variables →
 Actions**, add:
 
 - `SUPABASE_URL` = the Project URL

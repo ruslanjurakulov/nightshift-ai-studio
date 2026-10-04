@@ -284,7 +284,7 @@ compose service `creative-worker` (bounded concurrency, e.g. 4 provider jobs +
 - Per-org storage quota (bytes) enforced in SQL at upload/ingest; soft-delete
   plus GC like `scene_cache_gc.py`. RAID1 is **not a backup** → off-site copy is
   a P3 item.
-- On a web host without the volume (Vercel) the library says so (as downloads do).
+- On a web host without the volume (e.g. a serverless host) the library says so (as downloads do).
 
 ### 3.6 Project / timeline, rendered by the existing engine
 

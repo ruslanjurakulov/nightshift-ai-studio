@@ -1,5 +1,5 @@
 """Supabase sync — mirror the local SQLite state into hosted Postgres so the
-Command Center (a separate Next.js app on Vercel) can read real data.
+Command Center (a separate Next.js app) can read real data.
 
 Why this exists
 ---------------
