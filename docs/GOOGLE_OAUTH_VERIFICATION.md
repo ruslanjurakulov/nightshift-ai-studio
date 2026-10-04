@@ -20,9 +20,9 @@ Qolgan hamma sahifa va API avvalgidek login ortida (`command-center/lib/public-p
 (`docs/PADDLE_SETUP.md`), lekin landing header/footer'idan havola bor va siyosat/shartlar
 unga tayanadi.
 
-## 1. Operator ma'lumotlarini kiritish (Vercel)
+## 1. Operator ma'lumotlarini kiritish (GitHub o'zgaruvchilari)
 
-Vercel loyihasi → **Settings → Environment Variables** (Production), so'ng qayta deploy:
+GitHub → **Settings → Secrets and variables → Actions → Variables** (`deploy_web.yml` ularni serverga uzatadi), so'ng deploy'ni qayta ishga tushiring:
 
 | O'zgaruvchi | Misol | Izoh |
 | :-- | :-- | :-- |
@@ -40,7 +40,7 @@ Egasi tasdiqlashi kerak bo'lgan matnlar:
 - [ ] Maxfiylik siyosatidagi **"so'rovdan keyin 30 kun ichida o'chiramiz"** va'dasi — bu
       kod emas, sizning majburiyatingiz. Bajara olmasangiz, muddatni o'zgartiring.
 - [ ] Supabase loyihasi qaysi mintaqada ekanini tekshiring (siyosatda "EU, AQSh va boshqa
-      mamlakatlar" deyilgan; Vercel `fra1`).
+      mamlakatlar" deyilgan; serverning joylashuvi bilan solishtiring).
 - [ ] Shartlardagi **8-bo'lim (kreditlar, to'lov, qaytarish)** endi haqiqiy matn: nima
       sotiladi (oldindan to'langan kreditlar), band → haqiqiy sarf yechiladi (banddan ko'p
       emas) → muvaffaqiyatsiz run'da band to'liq qaytadi, Paddle — Merchant of Record va
@@ -57,9 +57,9 @@ Egasi tasdiqlashi kerak bo'lgan matnlar:
 
 ## 2. Domen
 
-- [ ] O'z domeningiz bo'lishi shart — `*.vercel.app` bo'lmaydi, uni Search Console'da
+- [ ] O'z domeningiz bo'lishi shart — `*.vercel.app` kabi vaqtinchalik manzil bo'lmaydi, uni Search Console'da
       o'zingizniki deb tasdiqlab bo'lmaydi.
-- [ ] Vercel → **Settings → Domains** da domenni ulang (DNS yozuvini o'zingiz qo'shasiz).
+- [ ] Domenni serverga ulang: DNS yozuvini o'zingiz qo'shasiz (qarang: `docs/DEPLOY_AX42.md`, Cloudflare + Caddy).
 - [ ] [Google Search Console](https://search.google.com/search-console) → **Domain property**
       → DNS `TXT` yozuvi bilan tasdiqlang. Buni Google Cloud loyihasida **Owner** yoki
       **Editor** bo'lgan o'sha Google akkaunt bilan qiling — aks holda consent screen
@@ -83,7 +83,7 @@ Egasi tasdiqlashi kerak bo'lgan matnlar:
 (Testing → In production).
 
 **Clients:** OAuth client (Web application) → Authorized redirect URIs:
-`https://<domen>/api/oauth/youtube/callback`. Client ID/secret Vercel'da
+`https://<domen>/api/oauth/youtube/callback`. Client ID/secret GitHub o'zgaruvchilarida
 `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` (server-only, `NEXT_PUBLIC_`
 prefiksisiz).
 

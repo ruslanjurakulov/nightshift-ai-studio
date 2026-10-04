@@ -47,8 +47,7 @@ the visitor's console. Anything else in that variable is ignored.
 Both are read per request, not baked into the build. On the self-hosted box
 they are repository variables mapped by `deploy_web.yml` (`vars.CSP_MODE`,
 `vars.CSP_REPORT_URI`) into the server env file, so a restart of `web` is
-enough. On Vercel they are project environment variables, which take effect
-on the next deployment.
+enough.
 
 ### Turning enforcement on
 

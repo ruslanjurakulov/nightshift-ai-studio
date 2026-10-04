@@ -1,7 +1,7 @@
-# Nightshift History Lab — Architecture
+# Nightshift — Architecture
 
-Nightshift History Lab is an autonomous YouTube-automation bot for a
-"history mysteries" channel. It has two distinct halves:
+Nightshift is an autonomous YouTube-automation bot (it began as a
+"history mysteries" channel, which is still the default sample channel). It has two distinct halves:
 
 1. **A per-video generation pipeline** — picks a topic, researches it, writes a
    retention-optimized script with Gemini, synthesizes audio, fetches stock

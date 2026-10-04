@@ -93,7 +93,7 @@ sudo nano /etc/nightshift/worker.env
 nomlar (bitta qatorda `NOM=qiymat`, qo'shtirnoqsiz):
 
 ```dotenv
-# Navbat (majburiy). Service key FAQAT shu yerda — Vercel'ga hech qachon qo'yilmaydi.
+# Navbat (majburiy). Service key FAQAT shu yerda — web serverga hech qachon qo'yilmaydi.
 SUPABASE_URL=https://xxxx.supabase.co
 SUPABASE_SERVICE_KEY=...
 
@@ -112,7 +112,7 @@ CHRONOS_YT_TOKEN_FINANCE={"token":...,"refresh_token":...}
 
 # Mijoz kanallari (migration 0022): token Supabase Vault'da. Worker uni
 # service key bilan ishga tushish paytida o'qiydi; yangilash uchun Command
-# Center'dagi OAuth client kerak (Vercel'dagi qiymatlar bilan bir xil).
+# Center'dagi OAuth client kerak (web serverdagi qiymatlar bilan bir xil).
 GOOGLE_OAUTH_CLIENT_ID=
 GOOGLE_OAUTH_CLIENT_SECRET=
 
@@ -230,8 +230,8 @@ bor papkalar) resume uchun kerak.
 ## 5. "Run now" ni navbatga ulash
 
 1. 0017 migratsiyasi qo'llangan (1-bo'lim) va worker ishlab turibdi (4-bo'lim).
-2. Vercel → Project → Settings → Environment Variables:
-   `NIGHTSHIFT_RUN_BACKEND` = `queue` (Production). **Qayta deploy** qiling.
+2. GitHub → Settings → Secrets and variables → Actions → Variables:
+   `NIGHTSHIFT_RUN_BACKEND` = `queue`. **Qayta deploy** qiling (`deploy_web.yml`).
 3. Create sahifasida video yarating: progress panelida vazifa holati ko'rinadi
    (`navbatda — worker kutilmoqda` → `ishlamoqda` → `muvaffaqiyatli`/`xato`).
 
@@ -298,7 +298,7 @@ sarflanmaydi. Diskni kuzatib boring; kerak bo'lsa oxirgi 5 ta takedan eski
 
 ## 6. Orqaga qaytish (GitHub Actions)
 
-Vercel'da `NIGHTSHIFT_RUN_BACKEND` ni o'chiring (yoki `actions` qiling) va qayta
+GitHub o'zgaruvchilarida `NIGHTSHIFT_RUN_BACKEND` ni o'chiring (yoki `actions` qiling) va qayta
 deploy qiling. "Run now" darhol yana workflow'ni dispatch qiladi. Navbatda
 qolgan vazifalar worker ishlab tursa bajariladi; kerak bo'lmasa bekor qiling:
 
@@ -329,7 +329,7 @@ Boshqa kalitlar yoki noto'g'ri qiymatlar bazaning o'zida rad etiladi.
 ## Xavfsizlik qoidalari
 
 - `worker.env` faqat serverda, `chmod 600`. Git'ga, image'ga, chatga hech qachon.
-- `SUPABASE_SERVICE_KEY` faqat worker'da. Vercel'da faqat anon key.
+- `SUPABASE_SERVICE_KEY` faqat worker'da. web serverda faqat anon key.
 - Image'da hech qanday sir yo'q: `.dockerignore` `.env`, `youtube_token*.json`,
   `client_secret*.json` ni chiqarib tashlaydi, Dockerfile esa shunday fayl
   kirib qolsa build'ni to'xtatadi.

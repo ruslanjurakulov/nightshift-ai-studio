@@ -137,7 +137,7 @@ dashboard cannot show one afterwards — not even its length.
 
 Three properties make this safe rather than merely convenient:
 
-* **The write token is server-only.** `GITHUB_SECRETS_TOKEN` is a plain Vercel
+* **The write token is server-only.** `GITHUB_SECRETS_TOKEN` is a plain server
   environment variable, read exclusively by `lib/server/github-secrets.ts`,
   which is marked `server-only` so importing it from a client component fails
   the build instead of shipping the token. It must never be prefixed

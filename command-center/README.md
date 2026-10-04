@@ -1,14 +1,14 @@
 # Nightshift Command Center
 
-Real-time monitoring & control plane for the Nightshift content-automation bot.
-Next.js (App Router) on Vercel, reading a Supabase Postgres project the bot
-mirrors its state into. **Real data only** — anything the backend hasn't
+The Nightshift web app and public site: monitoring and control for the
+content-automation bot, plus sign-up, credits, the public API and the MCP page.
+Next.js (App Router), self-hosted in Docker, reading a Supabase Postgres project
+the bot mirrors its state into. **Real data only** — anything the backend hasn't
 produced shows `N/A` or `NOT CONFIGURED`, never invented numbers.
 
-This app lives in the `command-center/` subdirectory of the `chronos_youtube_bot`
-repo and deploys to its **own** Vercel project (set the Root Directory to
-`command-center`). It is self-contained and can be moved to a dedicated repo at
-any time.
+This app lives in the `command-center/` subdirectory of the `nightshift-ai-studio`
+repo and is deployed by `.github/workflows/deploy_web.yml` (see Self-hosting
+below). It is self-contained and can be moved to a dedicated repo at any time.
 
 ## What it shows
 
@@ -29,7 +29,9 @@ any time.
 
 ## Environment
 
-Set these in `.env.local` (dev) and in the Vercel project (prod):
+Set these in `.env.local` (dev). In production they are GitHub Actions variables
+and secrets that `deploy_web.yml` passes to the server (full list:
+`../deploy/.env.web.example`):
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
@@ -77,41 +79,25 @@ produces the production build.
 
 ## Self-hosting (Docker + Caddy)
 
-The production target is our own server: `command-center/Dockerfile` builds a
-standalone image, `deploy/` runs it behind Caddy. Step by step (Uzbek):
-`../docs/DEPLOY_AX42.md`. The Vercel path below still works unchanged and is
-the rollback.
+Production is our own server: `command-center/Dockerfile` builds a standalone
+image and `deploy/` runs it behind Caddy. A push to `main` that touches the app
+or `deploy/` deploys it through `.github/workflows/deploy_web.yml`. Step by step
+(Uzbek): `../docs/DEPLOY_AX42.md`.
 
-## Deploy to Vercel (its own project + subdomain)
-
-1. In Vercel, **New Project** → import the `chronos_youtube_bot` repo.
-2. Set **Root Directory** to `command-center`. Framework preset: Next.js.
-3. Add the two `NEXT_PUBLIC_SUPABASE_*` environment variables.
-4. Deploy.
-5. **Domain:** in the Vercel project → **Settings → Domains**, add
-   `monitor.<your-domain>` (or any subdomain). Vercel shows the exact DNS
-   record to create — typically a `CNAME` for `monitor` pointing at
-   `cname.vercel-dns.com`. Add that record at your DNS provider. **No DNS is
-   changed automatically — you add the record yourself.**
+Production no longer runs on Vercel (its Hobby plan forbids commercial use). The
+app can still run there if ever needed: create a project from this repo, set the
+**Root Directory** to `command-center` and the **Framework Preset** to `Next.js`
+(otherwise Vercel detects the Python bot at the repo root), and add the
+environment variables. Features that need the server's disk (the media library)
+report "not available on this host" there.
 
 ## Security
 
 - Login required (Supabase Auth). Middleware redirects unauthenticated visitors
-  to `/login` — except on the three public pages Google's OAuth verification
-  requires: the landing page `/`, `/privacy` and `/terms` (exact paths only;
-  see `lib/public-paths.ts`).
+  to `/login` — except on the exact public paths listed in
+  `lib/public-paths.ts` (the landing page, pricing, docs, `/mcp`, sign-in and the
+  legal pages Google's OAuth verification requires).
 - Row Level Security is enabled on every table with no public policy, so the
   anon key alone reads nothing — a signed-in user is required.
 - The service-role key never appears in this app; only the bot (server-side, in
   GitHub Actions secrets) holds it.
-
-## Vercel deployment notes
-
-This app deploys as its **own** Vercel project, separate from the Python bot in
-the repo root. When creating the project, two settings are essential:
-
-- **Framework Preset:** `Next.js` (Vercel will otherwise auto-detect the Python
-  bot at the repo root and try to build `main.py` — set this explicitly).
-- **Root Directory:** `command-center` (so Vercel builds only this folder).
-
-Set both, plus the two `NEXT_PUBLIC_SUPABASE_*` env vars, then deploy.

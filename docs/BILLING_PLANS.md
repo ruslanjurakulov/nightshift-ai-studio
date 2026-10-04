@@ -209,9 +209,8 @@ NEXT_PUBLIC_PLAN_DISPLAY_PRO=49 USD
 NEXT_PUBLIC_PLAN_DISPLAY_STUDIO=129 USD
 ```
 
-- Qayerga qo'yiladi: Vercel → Project → Settings → Environment Variables;
-  o'z serverimizda (`deploy_web.yml`) — GitHub → Settings → Secrets and
-  variables → **Variables** (xuddi shu nomlar). O'zgartirgandan keyin qayta
+- Qayerga qo'yiladi: GitHub → Settings → Secrets and variables →
+  **Variables** (`deploy_web.yml` ularni serverga uzatadi). O'zgartirgandan keyin qayta
   build/deploy qiling (NEXT_PUBLIC_* build paytida kiritiladi).
 - Ko'rsatiladigan narxda **`$` belgisini ishlatmang** — deploy uni rad etadi;
   `19 USD` deb yozing. Paddle ishlayotganda sahifa baribir Paddle'ning o'z
