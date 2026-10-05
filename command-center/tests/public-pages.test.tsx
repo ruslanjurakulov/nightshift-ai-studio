@@ -76,12 +76,10 @@ describe("public landing page", () => {
     expect(steps).toEqual(s.how.simple.steps.map((x) => x.title));
     expect(steps).toHaveLength(3);
     expect(s.how.simple.steps[2].id).toBe("approve");
-    // Who it is for: one tile per solutions page, each a link to it.
+    // Who it is for: one tab per solutions page; every panel (open or not) links to its page, and the index is one link away.
     const who = screen.getByRole("heading", { level: 2, name: s.who.title }).closest("section")!;
-    expect(within(who).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual([
-      ...s.who.items.map((i) => `/solutions/${i.id}`),
-      "/solutions",
-    ]);
+    expect(within(who).getAllByRole("tab").map((x) => x.textContent)).toEqual(expect.arrayContaining(s.who.items.map((i) => expect.stringContaining(i.title))));
+    expect([...who.querySelectorAll("a[href]")].map((a) => a.getAttribute("href"))).toEqual([...s.who.items.map((i) => `/solutions/${i.id}`), "/solutions"]);
     // Every rule the product keeps has its own heading.
     const rules = screen.getByRole("heading", { level: 2, name: s.rules.title }).closest("section")!;
     for (const r of s.rules.items) expect(within(rules).getByRole("heading", { level: 3, name: r.title })).toBeTruthy();
@@ -96,8 +94,11 @@ describe("public landing page", () => {
     // Each tool says how it is paid for: the editor and the style library spend nothing.
     const cost = within(tools).getAllByRole("listitem").map((li) => li.querySelector(".nx-tool-free, .sr-only")?.textContent);
     expect(cost).toEqual(t.site.studio.tools.map((x) => (x.id === "editor" || x.id === "styles" ? t.site.studio.free : t.site.studio.priced)));
-    // Nothing on the page is a photograph or a render: the only images are the real app screenshots.
-    expect([...container.querySelectorAll("img")].every((img) => img.closest("figure.st-shot"))).toBe(true);
+    // The only images are the real app screenshots and the labelled example frames (decorative inside a hidden picture; same-origin files).
+    for (const img of container.querySelectorAll("img")) {
+      expect(img.closest("figure.st-shot") !== null || img.classList.contains("nx-art")).toBe(true);
+      expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
+    }
   });
 
   it("shows each capability as one labelled example: what you ask for, what comes back, and a note that it is an example", () => {
@@ -113,7 +114,13 @@ describe("public landing page", () => {
       const demo = section.querySelector("figure.nx-demo")!;
       expect(demo.getAttribute("aria-label")).toContain(t.site.caps.demo);
       expect(demo.textContent).toContain(item.bubble);
-      expect(demo.textContent).toContain(item.reply);
+      // Over an example still the reply says "example reply", never "made a video"; the AI-still note is printed beside it.
+      const stillBacked = demo.querySelector("img") !== null;
+      expect(demo.textContent).toContain(stillBacked ? t.site.caps.exampleReply : item.reply);
+      if (stillBacked) {
+        expect(demo.textContent).not.toContain(item.reply);
+        expect(demo.querySelector("figcaption")?.textContent).toBe(t.site.samples.note);
+      }
       expect(demo.textContent).toContain(t.site.caps.tag);
       expect(demo.textContent).not.toMatch(MONEY);
       expect(demo.querySelector("a, button, input, [tabindex]")).toBeNull();
@@ -142,7 +149,7 @@ describe("public landing page", () => {
     const approveFoot = container.querySelector('[role="tabpanel"]:nth-of-type(3) .nx-ui-foot, [role="tabpanel"]:nth-child(3) .nx-ui-foot')!;
     expect(approveFoot.querySelector(".nx-ui-note")?.textContent).toBe(t.site.stage.tag);
     // Only the open state is exposed; the rest stay in the HTML (search) but out of the way.
-    const panels = [...container.querySelectorAll('[role="tabpanel"]')];
+    const panels = [...stage.querySelectorAll('[role="tabpanel"]')];
     expect(panels.map((p) => p.getAttribute("data-on"))).toEqual(["true", "false", "false", "false"]);
     expect(panels.slice(1).every((p) => p.getAttribute("aria-hidden") === "true")).toBe(true);
   });
@@ -153,7 +160,7 @@ describe("public landing page", () => {
     const tab = screen.getByRole("tab", { name: new RegExp(t.site.stage.steps[2].tab) });
     fireEvent.click(tab);
     expect(tab.getAttribute("aria-selected")).toBe("true");
-    const on = [...container.querySelectorAll('[role="tabpanel"]')].find((p) => p.getAttribute("data-on") === "true")!;
+    const on = [...container.querySelector(".nx-stage")!.querySelectorAll('[role="tabpanel"]')].find((p) => p.getAttribute("data-on") === "true")!;
     expect(on.textContent).toContain(t.site.stage.steps[2].title);
   });
 

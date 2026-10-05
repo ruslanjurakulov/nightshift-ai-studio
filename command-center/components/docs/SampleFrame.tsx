@@ -1,85 +1,34 @@
 import { Check } from "lucide-react";
 import type { FrameKind, SceneKind } from "@/lib/dev/mcp-landing";
+import { SAMPLES, type SampleId } from "@/components/site/samples";
 
 /**
- * The pictures on the long /mcp page. Every one is DRAWN here (inline SVG and
- * CSS, the site's own tokens), never a generated image or a screenshot, and each
- * sits in a <figure> whose caption says it is an illustration. They show the
- * shape of a step (a job with its stages, a list of channels, a publish check),
- * not a result: no number, price or model appears in any of them.
+ * The pictures on the long /mcp page. The frames are drawn here (inline SVG and
+ * CSS, the site's own tokens) around example stills (AI-generated, made for the
+ * site; see components/site/samples.tsx), and each sits in a <figure> whose
+ * caption says it is an example. They show the shape of a step (a job with its
+ * stages, a list of channels, a publish check), not a result: no number, price
+ * or model appears in any of them.
  */
 
-/** A drawn scene for a sample video frame or an example card. Pure geometry; the same in both themes, like a photo. */
-export function Scene({ kind }: { kind: SceneKind }) {
+/** The example frame behind each scene kind (components/site/samples.tsx): AI-generated stills, shown with
+ *  "Example" labels wherever they stand alone. Aspect-ratio boxes in the stylesheet decide the layout. */
+const SCENE_SAMPLE: Record<SceneKind, SampleId> = {
+  hills: "valley",
+  waves: "lighthouse",
+  city: "nightmarket",
+  stars: "moon",
+  rings: "library",
+  dunes: "silkroad",
+};
+
+/** An example frame for a sample video frame or an example card. `alt` is empty inside the aria-hidden drawn
+ *  frames and descriptive where the picture stands alone (the examples carousel). */
+export function Scene({ kind, alt = "" }: { kind: SceneKind; alt?: string }) {
+  const s = SAMPLES[SCENE_SAMPLE[kind]];
   return (
-    <svg className="ml-scene" data-scene={kind} viewBox="0 0 200 250" preserveAspectRatio="xMidYMid slice" aria-hidden focusable="false" xmlns="http://www.w3.org/2000/svg">
-      {kind === "hills" && (
-        <>
-          <rect width="200" height="250" fill="#f6c58b" />
-          <rect width="200" height="120" fill="#fbdcae" />
-          <circle cx="132" cy="92" r="30" fill="#f08a3c" />
-          <path d="M0 160 Q50 110 110 150 T200 140 V250 H0Z" fill="#c4683a" />
-          <path d="M0 190 Q60 150 120 185 T200 175 V250 H0Z" fill="#8f4a34" />
-          <path d="M0 220 Q70 195 130 215 T200 208 V250 H0Z" fill="#4b2b2a" />
-        </>
-      )}
-      {kind === "waves" && (
-        <>
-          <rect width="200" height="250" fill="#14395e" />
-          <rect width="200" height="110" fill="#2a6a9a" />
-          <circle cx="60" cy="70" r="18" fill="#e9f3fb" opacity="0.9" />
-          <path d="M0 140 Q25 120 50 140 T100 140 T150 140 T200 140 V250 H0Z" fill="#1e5a88" />
-          <path d="M0 175 Q25 155 50 175 T100 175 T150 175 T200 175 V250 H0Z" fill="#17486f" />
-          <path d="M0 210 Q25 192 50 210 T100 210 T150 210 T200 210 V250 H0Z" fill="#0f3252" />
-        </>
-      )}
-      {kind === "city" && (
-        <>
-          <rect width="200" height="250" fill="#3a2a5c" />
-          <rect width="200" height="130" fill="#6c4a8a" />
-          <circle cx="150" cy="60" r="14" fill="#f7d9a8" />
-          {[
-            [12, 120, 34], [44, 96, 28], [70, 132, 36], [104, 84, 32], [140, 112, 30], [168, 100, 32],
-          ].map(([x, y, w]) => (
-            <g key={x}>
-              <rect x={x} y={y} width={w} height={250 - y} fill="#1c1531" />
-              {[0, 1, 2, 3].map((r) => (
-                <rect key={r} x={x + 6} y={y + 10 + r * 20} width="6" height="8" fill={r % 2 ? "#f7d9a8" : "#7d6aa3"} />
-              ))}
-            </g>
-          ))}
-        </>
-      )}
-      {kind === "stars" && (
-        <>
-          <rect width="200" height="250" fill="#0e1330" />
-          <path d="M120 40a34 34 0 1 0 28 56a28 28 0 1 1-28-56z" fill="#f4e7bf" />
-          {[[24, 30], [60, 80], [90, 24], [170, 150], [40, 170], [130, 200], [180, 60], [74, 140], [150, 110], [20, 220]].map(([x, y]) => (
-            <circle key={`${x}${y}`} cx={x} cy={y} r={x % 3 ? 1.4 : 2} fill="#fff" opacity="0.85" />
-          ))}
-          <path d="M0 230 Q60 200 120 228 T200 220 V250 H0Z" fill="#05081a" />
-        </>
-      )}
-      {kind === "rings" && (
-        <>
-          <rect width="200" height="250" fill="#e9825a" />
-          <circle cx="100" cy="125" r="96" fill="#f2a56b" />
-          <circle cx="100" cy="125" r="68" fill="#f7c78c" />
-          <circle cx="100" cy="125" r="40" fill="#fbe3b6" />
-          <circle cx="100" cy="125" r="16" fill="#c14b3a" />
-        </>
-      )}
-      {kind === "dunes" && (
-        <>
-          <rect width="200" height="250" fill="#f1d9a6" />
-          <rect width="200" height="100" fill="#f9ecc8" />
-          <circle cx="48" cy="58" r="22" fill="#e9a23d" />
-          <path d="M0 130 Q70 90 140 135 T200 120 V250 H0Z" fill="#dba85c" />
-          <path d="M0 175 Q80 140 150 180 T200 170 V250 H0Z" fill="#c68a42" />
-          <path d="M0 220 Q60 195 120 218 T200 210 V250 H0Z" fill="#a8672f" />
-        </>
-      )}
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img className="ml-scene" data-scene={kind} src={s.src} width={s.width} height={s.height} alt={alt} loading="lazy" decoding="async" />
   );
 }
 
@@ -102,7 +51,6 @@ export function SampleFrame({ kind, words }: { kind: FrameKind; words: FrameWord
           <>
             <div className="ml-frame-screen">
               <Scene kind="hills" />
-              <span className="ml-frame-play" />
               <span className="ml-frame-cap">{words.video.title}</span>
             </div>
             <ul className="ml-stages">

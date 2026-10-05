@@ -3,6 +3,8 @@ import { ArrowRight, X } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import type { SolutionId } from "@/lib/solutions";
 import { Slug } from "@/components/site/Slug";
+import { HeroFx } from "@/components/site/HeroFx";
+import { MotionToggle } from "@/components/site/MotionToggle";
 import { ApiPicture, ComposerPicture, SignOffPicture } from "@/components/site/SolutionPictures";
 import { SolutionRows } from "@/components/landing/Landing";
 
@@ -21,40 +23,50 @@ export function SolutionView({ t, id, page }: { t: Dictionary; id: SolutionId; p
   const docs = "docs" in page ? page.docs : null;
   return (
     <>
-      <section aria-labelledby="solution-title" className="st-wrap st-hero">
-        <div>
-          <nav aria-label={s.breadcrumb} className="st-kicker flex flex-wrap items-center gap-2">
-            <Link
-              href="/solutions"
-              className="inline-flex min-h-11 min-w-11 items-center underline decoration-[var(--ns-rule-strong)] underline-offset-4 hover:text-[var(--ns-text)]"
-            >
-              {s.slug}
-            </Link>
-            <span aria-hidden>/</span>
-            <span aria-current="page">{page.kicker}</span>
-          </nav>
-          <h1 id="solution-title" className="st-h1-page mt-6">
-            {page.title}
-          </h1>
-          <p className="st-lead mt-7">{page.lead}</p>
-          <div className="st-hero-actions">
-            <Link href="/signup" className="st-key">
-              {s.cta}
-              <ArrowRight aria-hidden />
-            </Link>
-            {docs ? (
-              <Link href="/docs/api" className="st-link">
-                {docs}
+      <div className="nx-lit">
+        <HeroFx />
+        <section aria-labelledby="solution-title" className="st-wrap st-hero">
+          <div>
+            <nav aria-label={s.breadcrumb} className="st-kicker flex flex-wrap items-center gap-2">
+              <Link
+                href="/solutions"
+                className="inline-flex min-h-11 min-w-11 items-center underline decoration-[var(--ns-rule-strong)] underline-offset-4 hover:text-[var(--ns-text)]"
+              >
+                {s.slug}
               </Link>
-            ) : (
-              <Link href="/pricing" className="st-link">
-                {s.secondary}
+              <span aria-hidden>/</span>
+              <span aria-current="page">{page.kicker}</span>
+            </nav>
+            <h1 id="solution-title" className="st-h1-page mt-6">
+              {page.title}
+            </h1>
+            <p className="st-lead mt-7">{page.lead}</p>
+            <div className="st-hero-actions">
+              <Link href="/signup" className="st-key">
+                {s.cta}
+                <ArrowRight aria-hidden />
               </Link>
-            )}
+              {docs ? (
+                <Link href="/docs/api" className="st-link">
+                  {docs}
+                </Link>
+              ) : (
+                <Link href="/pricing" className="st-link">
+                  {s.secondary}
+                </Link>
+              )}
+            </div>
+            <MotionToggle pause={t.site.fx.pause} play={t.site.fx.play} />
           </div>
-        </div>
-        {id === "youtube-channels" ? <SignOffPicture t={t} /> : id === "creative-studio" ? <ComposerPicture t={t} /> : <ApiPicture t={t} />}
-      </section>
+          {id === "youtube-channels" ? (
+            <SignOffPicture t={t} />
+          ) : id === "creative-studio" ? (
+            <ComposerPicture t={t} />
+          ) : (
+            <ApiPicture t={t} />
+          )}
+        </section>
+      </div>
 
       <section aria-labelledby="what-title" className="st-section" data-size="sm">
         <div className="st-wrap">
@@ -131,4 +143,3 @@ export function SolutionView({ t, id, page }: { t: Dictionary; id: SolutionId; p
     </>
   );
 }
-

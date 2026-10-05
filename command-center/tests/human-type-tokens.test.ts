@@ -160,3 +160,26 @@ describe("words are written in sentence case, not capitals", () => {
     expect(labels.filter((l) => l.length > 2 && l === l.toUpperCase())).toEqual([]);
   });
 });
+
+describe("the public pages' engagement pass keeps its text readable (docs/design/SITE_ENGAGE.md)", () => {
+  // The hero's second line, the plan cards' small labels and the tabs' icons are set in the amber text colour.
+  it.each([
+    ["light", light],
+    ["dark", dark],
+  ] as const)("%s: the amber text colour reads at 4.5:1 on the ground, the raised tone and the field tone it is set on", (_name, t) => {
+    for (const surface of ["--ns-ground", "--ns-console", "--ns-key"]) {
+      expect(contrast(t["--ns-amber-ink"], t[surface]), surface).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("sets no capitals, no letter-spacing and no monospace in the new rules (sentence case, one sans)", () => {
+    const next = read("components/site/site-next.css");
+    const added = next.slice(next.indexOf("Third pass: reasons to stay"));
+    expect(added).not.toMatch(/text-transform:\s*uppercase/);
+    // Tracking is only ever tightened (negative) on headings, never opened up.
+    expect(added).not.toMatch(/letter-spacing:\s*(?:0?\.\d+|[1-9]\d*(?:\.\d+)?)(?:em|px|rem)/);
+    expect(added).not.toMatch(/font-family:\s*(?:var\(--font-mono\)|ui-monospace)/);
+    // Nothing below 13px: every font-size in the added block is 13 or more.
+    for (const m of added.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/g)) expect(Number(m[1])).toBeGreaterThanOrEqual(13);
+  });
+});

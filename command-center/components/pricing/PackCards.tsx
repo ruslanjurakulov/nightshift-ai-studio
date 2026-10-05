@@ -71,7 +71,7 @@ export function PackCards({
           const price = packPrice(pack, preview, loading);
           const minutes = rates ? null : packMinutes(pack.credits, perMinute);
           return (
-            <li key={pack.id} className="st-price-row">
+            <li key={pack.id} className="st-price-row" data-spot>
               <h3 className="st-price-name">{t.credits.buy.pack[pack.id]}</h3>
               <div>
                 <span className="st-price-credits st-num">

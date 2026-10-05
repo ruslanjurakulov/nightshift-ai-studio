@@ -41,7 +41,7 @@ export function PricingTeaser({
       : [tp.terms[2], expiryTerm(tp, expiry), tp.terms[3]];
 
   return (
-    <section id="pricing" aria-labelledby="pricing-title" className="st-section" data-tone="raised">
+    <section id="pricing" aria-labelledby="pricing-title" className="st-section">
       <div className="st-wrap st-pricing">
         {/* Opens on the ledger, not a slug: the four words a credit goes
             through, as wide as the page. In the document the heading still
@@ -69,7 +69,7 @@ export function PricingTeaser({
                 <h3 className="st-caption">{p.plansLabel}</h3>
                 <ul className="st-price-rows">
                   {teaser.plans.map((plan) => (
-                    <li key={plan.id} className="st-price-row">
+                    <li key={plan.id} className="st-price-row" data-spot>
                       <span className="st-price-name">{plan.name}</span>
                       <span className="st-price-credits st-num">
                         {formatCredits(plan.credits, locale)}
@@ -95,7 +95,7 @@ export function PricingTeaser({
                 <ul className="st-price-rows" aria-labelledby="teaser-packs-title">
                   {(teaser.kind === "packs" ? teaser.packs : CREDIT_PACKS.map((x) => ({ id: x.id, credits: x.credits, price: null }))).map(
                     (pack) => (
-                      <li key={pack.id} className="st-price-row">
+                      <li key={pack.id} className="st-price-row" data-spot>
                         <span className="st-price-name">{t.credits.buy.pack[pack.id]}</span>
                         <span className="st-price-credits st-num">
                           {formatCredits(pack.credits, locale)}

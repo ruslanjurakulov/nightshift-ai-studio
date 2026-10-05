@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Film, Lock, Palette, Sparkles, type LucideIcon } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, Lock } from "lucide-react";
 import { fmt, type Dictionary, type Locale } from "@/lib/i18n";
 import type { MoneyAnchor, PricingTeaser as PricingTeaserData, ShowcaseItem } from "@/lib/landing";
 import { WELCOME_CREDITS } from "@/lib/pricing";
@@ -9,6 +9,14 @@ import { creditUnit, formatCredits } from "@/lib/credits";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 import { PressStage } from "@/components/landing/PressStage";
+import { TryDemo } from "@/components/landing/TryDemo";
+import { WhoTabs, type WhoSolutions } from "@/components/landing/WhoTabs";
+import { Compare } from "@/components/landing/Compare";
+import { PriceCheck } from "@/components/landing/PriceCheck";
+import { HeroFx } from "@/components/site/HeroFx";
+import { MotionToggle } from "@/components/site/MotionToggle";
+import { StickyCta } from "@/components/site/StickyCta";
+import { priceRatesFrom } from "@/lib/site/price-check";
 import { Showcase } from "@/components/landing/Showcase";
 import { Capabilities } from "@/components/landing/Capabilities";
 import { PricingTeaser } from "@/components/landing/PricingTeaser";
@@ -45,18 +53,22 @@ const RULE_TONE: Record<string, LampTone> = { price: "ok", refund: "ok", approva
 /**
  * The signed-out homepage. One idea per section, in the order a visitor asks
  * the questions: what is this (the hero, with the product drawn in four
- * states), how does it work (three steps and the real approval screen), who is
- * it for, what else is in the box (the Studio), which languages, what can I
- * count on, what does it cost, what are the catches (the FAQ), and the
- * button again.
+ * states), can I try it (a hands-on example that needs no account and no
+ * server), how does it work (three steps and the real approval screen), what
+ * does it make, who is it for (tabs), what stays in my hands, what do I save
+ * by not doing it by hand, what will my video cost (a price check from the
+ * published rate), what does it cost in general, what are the catches (the
+ * FAQ), and the button again.
  *
  * Every claim on it is one the code backs; the only figures are the welcome
  * grant (WELCOME_CREDITS, pinned to the database by a test) and whatever the
  * pricing source holds. No competitor and no AI provider is named, and there
  * are no testimonials, logos or usage numbers, because there are none to show.
+ * The pictures are labelled examples (docs/design/SITE_ENGAGE.md).
  *
- * A Server Component. The only client code on the page is the header's menu
- * and its theme and language keys, and the hero's four-state picture.
+ * A Server Component. The client code on the page is the header's menu and its
+ * theme and language keys, the hero's four-state picture and pause switch, the
+ * example, the tabs, the price slider, the start bar and the effects script.
  */
 export function Landing({
   t,
@@ -75,9 +87,11 @@ export function Landing({
   /** How long top-up credits last (lib/plans.ts packExpiry): the catalog's policy, the env, or unknown. */
   expiry?: PackExpiry;
 }) {
+  const rates = priceRatesFrom(anchor);
   return (
     <div className="lp-root">
       <Hero t={t} locale={locale} anchor={anchor} />
+      <Try t={t} locale={locale} />
       <How t={t} locale={locale} />
       <Capabilities t={t} />
       <Who t={t} />
@@ -89,9 +103,25 @@ export function Landing({
         </div>
       )}
       <Rules t={t} />
+      <Compare t={t} />
+      {rates && (
+        <section id="price-check" aria-labelledby="calc-title" className="nx-section" data-tone="raised">
+          <div className="nx-wrap nx-calc-wrap">
+            <div className="nx-calc-words">
+              <p className="nx-label">{t.site.calc.slug}</p>
+              <h2 id="calc-title" className="nx-h2">
+                {t.site.calc.title}
+              </h2>
+              <p className="nx-sub">{t.site.calc.lead}</p>
+            </div>
+            <PriceCheck t={t} locale={locale} rates={rates} welcome={WELCOME_CREDITS} />
+          </div>
+        </section>
+      )}
       <PricingTeaser t={t} locale={locale} teaser={pricing} anchor={anchor} expiry={expiry} />
       <Faq t={t} plansOnSale={pricing.kind === "plans"} expiry={expiry} aside={<GoogleData t={t} />} />
       <FinalCta t={t} />
+      <StickyCta label={t.site.bar.label} text={t.site.bar.text} cta={t.site.bar.cta} dismiss={t.site.bar.dismiss} />
     </div>
   );
 }
@@ -106,7 +136,8 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
     : null;
   return (
     <section aria-labelledby="hero-title" className="nx-hero">
-      <div className="nx-wrap">
+      <HeroFx />
+      <div className="nx-wrap nx-hero-in">
         <p className="nx-pill">
           <span aria-hidden className="nx-pill-dot" />
           {h.kicker}
@@ -126,7 +157,34 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
         </div>
         <p className="nx-note">{fmt(h.note, { n: formatCredits(WELCOME_CREDITS, locale) })}</p>
         {price && <p className="nx-price">{price}</p>}
-        <PressStage stage={t.site.stage} />
+        {/* The three things a visitor most wants settled, each already a promise lower on the page. */}
+        <ul className="nx-trust" aria-label={t.site.rules.slug}>
+          {t.site.rules.items.map((item) => (
+            <li key={item.id}>
+              <Check aria-hidden />
+              {item.title}
+            </li>
+          ))}
+        </ul>
+        <PressStage stage={t.site.stage} note={t.site.samples.note} />
+        <MotionToggle pause={t.site.fx.pause} play={t.site.fx.play} />
+      </div>
+    </section>
+  );
+}
+
+/** The hands-on example, right under the first screen: type a topic, watch a plan take shape. */
+function Try({ t, locale }: { t: Dictionary; locale: Locale }) {
+  const c = t.site.try;
+  return (
+    <section id="try" aria-labelledby="try-title" className="nx-section" data-tone="raised">
+      <div className="nx-wrap">
+        <p className="nx-label">{c.label}</p>
+        <h2 id="try-title" className="nx-h2">
+          {c.title}
+        </h2>
+        <p className="nx-sub">{c.lead}</p>
+        <TryDemo copy={c} note={fmt(c.ctaNote, { n: formatCredits(WELCOME_CREDITS, locale) })} />
       </div>
     </section>
   );
@@ -136,7 +194,7 @@ function How({ t, locale }: { t: Dictionary; locale: Locale }) {
   const h = t.site.how;
   const shot = REVIEW_SHOTS[locale] ?? REVIEW_SHOTS.en;
   return (
-    <section id="how" aria-labelledby="how-title" className="nx-section" data-tone="raised">
+    <section id="how" aria-labelledby="how-title" className="nx-section">
       <div className="nx-wrap nx-how">
         <div className="nx-how-words">
           <h2 id="how-title" className="nx-h2">
@@ -198,38 +256,27 @@ function ReviewShot({ t, shot }: { t: Dictionary; shot: (typeof REVIEW_SHOTS)[Lo
   );
 }
 
-const WHO_ICON: Record<string, LucideIcon> = { "youtube-channels": Film, "creative-studio": Palette, developers: Sparkles };
+/** Only the lines the tabs print (never the whole page copy): a client component's props travel in the page's HTML. */
+function whoSolutions(t: Dictionary): WhoSolutions {
+  const s = t.site.solutions;
+  return {
+    open: s.open,
+    startLabel: s.startLabel,
+    notLabel: s.notLabel,
+    pages: s.pages.map((p) => ({ id: p.id, kicker: p.kicker, title: p.title, lead: p.lead, start: p.start, not: p.not.slice(0, 1) })),
+  };
+}
 
 function Who({ t }: { t: Dictionary }) {
   const w = t.site.who;
   return (
-    <section id="solutions" aria-labelledby="who-title" className="nx-section" data-tone="raised">
+    <section id="solutions" aria-labelledby="who-title" className="nx-section">
       <div className="nx-wrap">
         <h2 id="who-title" className="nx-h2">
           {w.title}
         </h2>
         <p className="nx-sub">{w.lead}</p>
-        <ul className="nx-tiles">
-          {w.items.map((item) => {
-            const Icon = WHO_ICON[item.id] ?? Film;
-            return (
-              <li key={item.id}>
-                {isSolutionId(item.id) && (
-                  <Link href={solutionHref(item.id)} className="nx-tile">
-                    <span className="nx-tile-icon" aria-hidden>
-                      <Icon />
-                    </span>
-                    <span className="nx-tile-title">{item.title}</span>
-                    <span className="nx-tile-body">{item.body}</span>
-                    <span className="nx-tile-go" aria-hidden>
-                      <ArrowRight />
-                    </span>
-                  </Link>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <WhoTabs who={w} solutions={whoSolutions(t)} />
         <Link href="/solutions" className="nx-link mt-6">
           {w.more}
           <ArrowRight aria-hidden />
@@ -243,14 +290,14 @@ function Who({ t }: { t: Dictionary }) {
 function Rules({ t }: { t: Dictionary }) {
   const r = t.site.rules;
   return (
-    <section id="rules" aria-labelledby="rules-title" className="nx-section">
+    <section id="rules" aria-labelledby="rules-title" className="nx-section" data-tone="raised">
       <div className="nx-wrap">
         <h2 id="rules-title" className="nx-h2">
           {r.title}
         </h2>
         <ul className="nx-rules">
           {r.items.map((item) => (
-            <li key={item.id} className="nx-rule">
+            <li key={item.id} className="nx-rule" data-spot>
               <StatusLamp tone={RULE_TONE[item.id] ?? "ok"} label={item.state} />
               <h3 className="nx-h3">{item.title}</h3>
               <p className="nx-body">{item.body}</p>
@@ -282,7 +329,7 @@ export function SolutionRows({ pages }: { pages: Dictionary["site"]["solutions"]
       {pages.map((p) =>
         isSolutionId(p.id) ? (
           <li key={p.id}>
-            <Link href={solutionHref(p.id)} className="st-sol-row">
+            <Link href={solutionHref(p.id)} className="st-sol-row" data-spot>
               <span className="st-kicker">{p.kicker}</span>
               <span className="st-sol-title">{p.title}</span>
               <span className="st-small">{p.lead}</span>
@@ -342,6 +389,9 @@ function FinalCta({ t }: { t: Dictionary }) {
             </Link>
             <Link href="/pricing" className="nx-link">
               {t.site.hero.secondary}
+            </Link>
+            <Link href="#try" className="nx-link">
+              {f.try}
             </Link>
           </div>
         </div>

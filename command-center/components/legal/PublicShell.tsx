@@ -6,6 +6,7 @@ import { PublicFooter } from "@/components/legal/PublicFooter";
 import { PublicMobileMenu } from "@/components/legal/PublicMobileMenu";
 import { BrandMark } from "@/components/site/BrandMark";
 import { preloadSiteFonts } from "@/components/site/fonts";
+import { SiteEffects } from "@/components/site/SiteEffects";
 import { DEFAULT_LOCALE, LOCALES, dictionaries } from "@/lib/i18n";
 import { devFor } from "@/lib/i18n/dev";
 import "@/components/site/site.css";
@@ -98,6 +99,7 @@ export function PublicShell({
         {children}
       </main>
       <PublicFooter t={t} />
+      <SiteEffects />
     </div>
   );
 }
