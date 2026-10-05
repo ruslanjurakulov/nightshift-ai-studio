@@ -98,6 +98,7 @@ export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: 
                     </div>
                     {row.thumbs > 0 && (
                       <div className="ml-thumbs" aria-hidden>
+                        <span className="ml-thumbs-tag">{l.examples.sample}</span>
                         {EXAMPLE_SCENES.slice(0, row.thumbs).map((s, k) => (
                           <span key={s} className="ml-thumb">
                             <Scene kind={(["stars", "waves", "dunes"] as const)[k]} />
@@ -108,9 +109,9 @@ export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: 
                     <div className="ml-reply">
                       <BrandMark size={28} />
                       <b>{l.every.replyName}</b>
-                      <span>{t.reply}</span>
+                      <span>{l.every.exampleReply}</span>
                     </div>
-                    <SampleFrame kind={row.frame} words={frames} />
+                    <SampleFrame kind={row.frame} words={{ ...frames, sample: l.examples.sample }} />
                   </div>
                 </article>
               );

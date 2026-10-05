@@ -407,8 +407,18 @@
   --studio-dock-bg: color-mix(in srgb, var(--ns-console) 92%, transparent);
 }
 
-* {
+/* The default border colour. An unlayered declaration beats every layered one whatever its specificity, so on the public
+   pages (everything inside .st: PublicShell and AuthShell), whose stylesheets are in @layer components, an unlayered
+   `*` made every border colour they declare (the amber edge of the primary key, a field's 3:1 edge) draw in this
+   hairline colour. There the default moves into the lowest layer, where anything that names a colour wins; the app
+   keeps exactly the rule it had. */
+:where(*:not(.st):not(.st *)) {
   border-color: var(--color-border);
+}
+@layer base {
+  :where(.st, .st *) {
+    border-color: var(--color-border);
+  }
 }
 
 html {

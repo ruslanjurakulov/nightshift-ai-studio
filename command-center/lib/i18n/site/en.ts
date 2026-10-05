@@ -89,7 +89,7 @@ export const siteEn = {
   },
   calc: {
     slug: "Price check",
-    title: "What does the video you have in mind cost?",
+    title: "What will your video cost?",
     lead: "Slide to a length. These are the published rates, not our guess.",
     length: "Length of the finished video",
     minutes: "{n} min",

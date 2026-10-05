@@ -38,11 +38,13 @@ export function AuthShell({
   const a = t.site.auth;
   preloadSiteFonts(locale);
   const asideTitle = mode === "signup" ? a.asideTitleSignup : a.asideTitle;
+  // A bright, warm frame on each (not the dark moon): the lanterns to sign in, the golden dunes to start.
+  const still = mode === "signup" ? "silkroad" : "nightmarket";
   return (
     <div className="st nx st-auth">
       <aside className="st-auth-aside" aria-label={asideTitle}>
         {/* An example frame behind the house rules (decorative; the note below says what it is). Lazy, and the aside is not shown on a phone, so it is never fetched there. */}
-        <SampleImg id="moon" className="nx-aside-bg" />
+        <SampleImg id={still} className="nx-aside-bg" />
         <Link href="/" className="st-brand self-start">
           <BrandMark />
           {t.brand.name}
@@ -64,9 +66,7 @@ export function AuthShell({
             {a.asideLamp}
           </span>
           <span className="st-small">{fmt(a.welcomeNote, { n: formatCredits(WELCOME_CREDITS, locale) })}</span>
-          <span className="nx-aside-note">
-            {t.site.samples.note}
-          </span>
+          <span className="nx-aside-note">{t.site.samples.note}</span>
         </div>
       </aside>
 
@@ -82,11 +82,16 @@ export function AuthShell({
           </div>
         </div>
 
-        <div className="st-auth-form">
-          <Link href="/" className="st-brand mb-10 lg:hidden">
+        {/* On a phone the stage is a band above the form: the same frame, the brand over it. */}
+        <div className="nx-auth-band lg:hidden">
+          <SampleImg id={still} className="nx-art" eager />
+          <Link href="/" className="st-brand">
             <BrandMark />
             {t.brand.name}
           </Link>
+          <span className="nx-result-badge">{t.site.samples.tag}</span>
+        </div>
+        <div className="st-auth-form">
           <h1 className="st-h1-page">{title}</h1>
           {subtitle && <p className="st-body mt-4">{subtitle}</p>}
           {children}

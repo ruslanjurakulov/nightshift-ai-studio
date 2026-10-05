@@ -32,7 +32,7 @@ export function Gallery({ t }: { t: Dictionary }) {
             const s = SAMPLES[id];
             return (
               <figure key={id} className="nx-gal-card" data-portrait={s.height > s.width ? "true" : undefined}>
-                <div className="nx-gal-pic">
+                <div className="nx-gal-pic nx-kb">
                   <SampleImg id={id} className="nx-art" />
                   <span className="nx-result-badge">{tag}</span>
                 </div>

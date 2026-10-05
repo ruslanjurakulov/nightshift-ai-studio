@@ -69,7 +69,7 @@ const RULE_TONE: Record<string, LampTone> = { price: "ok", refund: "ok", approva
  * The pictures are labelled examples (docs/design/SITE_ENGAGE.md).
  *
  * A Server Component. The client code on the page is the header's menu and its
- * theme and language keys, the hero's four-state picture and pause switch, the
+ * theme and language keys, the hero's pause switch, the
  * example, the tabs, the price slider, the start bar and the effects script.
  */
 export function Landing({

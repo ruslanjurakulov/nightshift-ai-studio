@@ -44,7 +44,7 @@ export function HeroCard({ t }: { t: Dictionary }) {
           </span>
         </div>
         <div className="nx-result nx-result-sign">
-          <div className="nx-result-art" data-ratio="wide">
+          <div className="nx-result-art nx-kb" data-ratio="wide">
             <SampleImg id="silkroad" alt={t.site.samples.alts.silkroad} className="nx-art" eager />
             <span className="nx-result-badge">{t.site.samples.tag}</span>
           </div>

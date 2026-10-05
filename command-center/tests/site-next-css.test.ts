@@ -104,7 +104,7 @@ describe("site-next.css", () => {
     const running = [...css.matchAll(/([^{}]+)\{[^{}]*animation:[^;{}]*infinite[^;{}]*;/g)].flatMap((m) => m[1].split(",").map((x) => x.trim()));
     expect(running.length).toBeGreaterThan(3);
     const paused = css.slice(css.indexOf('html[data-motion="paused"] .nx-fx-blob'));
-    const pausedRule = paused.slice(0, paused.indexOf("}"));
+    const pausedRule = paused.slice(0, paused.indexOf("}")) + css.slice(css.indexOf('html[data-motion="paused"][data-fx] .nx-kb'), css.indexOf("}", css.indexOf('html[data-motion="paused"][data-fx] .nx-kb')));
     for (const sel of running) {
       const base = sel.match(/\.nx-[a-z-]+/)![0];
       expect(pausedRule, `${sel} keeps running when motion is paused`).toContain(base);
@@ -156,6 +156,8 @@ describe("site-next.css", () => {
     const running = [...css.matchAll(/(html\[data-fx="on"\] \.nx-fx-blob\[data-n="\d"\])\s*\{[^}]*animation:/g)].map((m) => m[1]);
     expect(running).toHaveLength(3);
     const pauseAt = css.indexOf('html[data-motion="paused"][data-fx] .nx-fx-blob[data-n]');
+    // Every other infinite animation (the stills' drift) is named by a pause rule too.
+    expect(css).toContain('html[data-motion="paused"][data-fx] .nx-kb .nx-art');
     expect(pauseAt).toBeGreaterThan(-1);
     const pauseRule = css.slice(pauseAt, css.indexOf("}", pauseAt));
     expect(pauseRule).toContain("animation-play-state: paused");
@@ -171,24 +173,17 @@ describe("site-next.css", () => {
     expect(site).not.toContain("ml-frame-play");
   });
 
-  it("gets its border colours through --nx-edge: globals.css has an unlayered `* { border-color }` that beats every layered colour", () => {
-    // The root cause, so the test fails loudly if it is ever fixed at the source and this indirection can go.
+  it("lets a layered border colour apply on the public pages: the default hairline sits in the lowest layer inside .st, and stays unlayered outside it", () => {
     const globals = readFileSync(join(__dirname, "..", "app/globals.css"), "utf8");
-    expect(globals).toMatch(/\n\* \{\n  border-color: var\(--color-border\);\n\}/);
-    expect(globals.slice(0, globals.indexOf("\n* {"))).not.toMatch(/@layer base \{\s*$/);
-    // The one unlayered rule that applies it, and the registration that stops a child inheriting its parent's colour.
-    expect(css).toContain("html :where(.nx) * { border-color: var(--nx-edge, var(--color-border)); }");
-    expect(css).toMatch(/@property --nx-edge \{ syntax: "\*"; inherits: false; \}/);
-    const layerEnd = css.indexOf("\n/* ── Border colours");
-    expect(layerEnd).toBeGreaterThan(0);
-    // Every declaration inside the layer that sets a border colour also sets --nx-edge to the same colour.
-    const inLayer = css.slice(0, layerEnd);
-    const missing: string[] = [];
-    for (const m of inLayer.matchAll(/(border(?:-(?:top|right|bottom|left))?\s*:\s*[^;{}]*?\b(?:solid|dashed)\s+|border-color\s*:\s*)([^;{}]+?)\s*;([^;{}]*)/g)) {
-      const colour = m[2].trim();
-      if (!m[3].includes(`--nx-edge: ${colour}`)) missing.push(m[0].slice(0, 80));
-    }
-    expect(missing).toEqual([]);
+    // The unlayered default beats every layered colour, so the stylesheets here (all in @layer components) never got theirs.
+    expect(globals).not.toMatch(/\n\* \{\n  border-color/);
+    expect(globals).toContain(":where(*:not(.st):not(.st *)) {\n  border-color: var(--color-border);\n}");
+    expect(globals).toMatch(/@layer base \{\s*:where\(\.st, \.st \*\) \{\s*border-color: var\(--color-border\);/);
+    // Both public stylesheets are layered, which is why the root fix is needed, and neither fakes the colour any more.
+    const site = readFileSync(join(__dirname, "..", "components/site/site.css"), "utf8");
+    expect(site).toContain("@layer components {");
+    expect(css).toContain("@layer components {");
+    expect(css).not.toContain("--nx-edge");
   });
 });
 

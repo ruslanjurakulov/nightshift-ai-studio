@@ -421,3 +421,19 @@ describe("what did not change", () => {
     expect(without).not.toContain('href="/docs/skills"');
   });
 });
+
+describe("the /mcp page's replies and frames are examples (round 3)", () => {
+  it.each(LOCALES)("%s: every reply reads \"example reply\", the frame and the thumbnails are labelled, and the old \"made a video\" wording is gone", (locale) => {
+    const d = doc(page(locale));
+    const land = devDictionaries[locale].mcp.land;
+    const replies = [...d.querySelectorAll(".ml-reply span")].map((x) => x.textContent);
+    expect(replies).toHaveLength(6);
+    expect(new Set(replies)).toEqual(new Set([land.every.exampleReply]));
+    expect(d.querySelector(".ml-frame-screen .ml-ex-badge")?.textContent).toBe(land.examples.sample);
+    for (const t of d.querySelectorAll(".ml-thumbs")) expect(t.querySelector(".ml-thumbs-tag")?.textContent).toBe(land.examples.sample);
+    // No play glyph on a still, and the lead holds its three lines so a font swap cannot pull the page up.
+    expect(d.querySelector(".ml-frame-play")).toBeNull();
+    expect(css).toMatch(/\.st-mcphero-lead \{ min-height: calc\(3 \* 1\.6em\); \}/);
+  });
+});
+

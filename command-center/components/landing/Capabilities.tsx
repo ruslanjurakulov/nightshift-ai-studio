@@ -4,17 +4,17 @@ import type { Dictionary } from "@/lib/i18n";
 import { BrandMark } from "@/components/site/BrandMark";
 import { Art } from "@/components/landing/Art";
 import { CapsRail } from "@/components/landing/CapsRail";
-import { SampleImg, type SampleId } from "@/components/site/samples";
+import { SampleImg, type SampleCrop, type SampleId } from "@/components/site/samples";
 
 type Item = Dictionary["site"]["caps"]["items"][number];
 
 /** Where each capability's one button goes, and what its demo shows. */
-const PLAN: Record<string, { href: string; frame: SampleId | null; thumb: SampleId | null; ratio: "wide" | "audio" }> = {
-  video: { href: "/signup", frame: "library", thumb: null, ratio: "wide" },
+const PLAN: Record<string, { href: string; frame: SampleId | null; crop?: SampleCrop; thumb: SampleId | null; ratio: "wide" | "audio" }> = {
+  video: { href: "/signup", frame: "library", crop: "a", thumb: null, ratio: "wide" },
   voice: { href: "/signup", frame: null, thumb: null, ratio: "audio" },
-  studio: { href: "/signup", frame: "valley", thumb: null, ratio: "wide" },
-  channels: { href: "/solutions/youtube-channels", frame: "nightmarket", thumb: "nightmarket", ratio: "wide" },
-  approvals: { href: "/solutions/youtube-channels", frame: "moon", thumb: null, ratio: "wide" },
+  studio: { href: "/signup", frame: "valley", crop: "b", thumb: null, ratio: "wide" },
+  channels: { href: "/solutions/youtube-channels", frame: "nightmarket", crop: "c", thumb: "nightmarket", ratio: "wide" },
+  approvals: { href: "/solutions/youtube-channels", frame: "moon", crop: "d", thumb: null, ratio: "wide" },
 };
 
 const TOOL_ICON: Record<string, LucideIcon> = {
@@ -108,7 +108,7 @@ function Demo({ t, item, plan }: { t: Dictionary; item: Item; plan: (typeof PLAN
         <p className="nx-bubble">{item.bubble}</p>
         {plan.thumb && (
           <span className="nx-thumb">
-            <SampleImg id={plan.thumb} className="nx-art" />
+            <SampleImg id={plan.thumb} className="nx-art" crop="d" />
           </span>
         )}
         <div className="nx-reply">
@@ -116,15 +116,15 @@ function Demo({ t, item, plan }: { t: Dictionary; item: Item; plan: (typeof PLAN
           <b>{t.brand.name}</b>
           <span>
             <Check />
-            {/* Over an example still the reply is labelled as one: it must not read as "Nightshift made this". */}
-            {plan.frame ? c.exampleReply : item.reply}
+            {/* Every reply in these cards is a labelled example: none may read as "Nightshift made this". */}
+            {c.exampleReply}
           </span>
         </div>
         {item.id === "approvals" ? (
           <div className="nx-result nx-result-sign">
             <div className="nx-result-art" data-ratio="wide">
-              <SampleImg id="moon" className="nx-art" />
-              <span className="nx-result-badge">{sign.private}</span>
+              <SampleImg id="moon" className="nx-art" crop="d" />
+              <span className="nx-result-badge">{t.site.samples.tag}</span>
             </div>
             <ul className="nx-ui-status">
               <li>
@@ -146,7 +146,7 @@ function Demo({ t, item, plan }: { t: Dictionary; item: Item; plan: (typeof PLAN
             <div className="nx-result">
               <div className="nx-result-art" data-ratio={plan.ratio}>
                 {/* The voice-over has no picture to show: its drawn waveform stays. */}
-                {plan.frame ? <SampleImg id={plan.frame} className="nx-art" /> : <Art kind="wave" />}
+                {plan.frame ? <SampleImg id={plan.frame} className="nx-art" crop={plan.crop} /> : <Art kind="wave" />}
                 {plan.frame && <span className="nx-result-badge">{t.site.samples.tag}</span>}
               </div>
             </div>
