@@ -3,6 +3,7 @@ import { Check, Clapperboard, Film, Maximize2, Mic, Palette, Scissors, SlidersHo
 import type { Dictionary } from "@/lib/i18n";
 import { BrandMark } from "@/components/site/BrandMark";
 import { Art } from "@/components/landing/Art";
+import { CapsRail } from "@/components/landing/CapsRail";
 import { SampleImg, type SampleId } from "@/components/site/samples";
 
 type Item = Dictionary["site"]["caps"]["items"][number];
@@ -41,11 +42,11 @@ const TOOL_ICON: Record<string, LucideIcon> = {
  */
 export function Capabilities({ t }: { t: Dictionary }) {
   return (
-    <>
+    <CapsRail label={t.site.caps.railLabel}>
       {t.site.caps.items.map((item, i) => (
         <Capability key={item.id} t={t} item={item} flip={i % 2 === 1} />
       ))}
-    </>
+    </CapsRail>
   );
 }
 

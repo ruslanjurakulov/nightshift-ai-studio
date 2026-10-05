@@ -30,3 +30,32 @@ export function buildPlan(sections: readonly PlanSection[], topic: string): Plan
   const fill = (s: string) => s.split("{topic}").join(t);
   return sections.map((s) => ({ ...s, items: s.items.map((i) => ({ k: i.k, v: fill(i.v) })) }));
 }
+
+/** The six example frames (components/site/samples.tsx), by id; listed here so this file stays free of image imports. */
+export const STILL_IDS = ["silkroad", "library", "moon", "nightmarket", "valley", "lighthouse"] as const;
+export type StillId = (typeof STILL_IDS)[number];
+
+/** Words (en, ru, uz) that point at one of the six frames. The first rule that matches wins. */
+const STILL_RULES: readonly [StillId, RegExp][] = [
+  ["lighthouse", /lighthouse|storm|ship|\bsea\b|ocean|маяк|шторм|корабл|море|mayoq|boʻron|kema|dengiz/i],
+  ["moon", /\bmoon\b|\bstars?\b|space|planet|galax|луна|луны|звёзд|звезд|космос|планет|\boy\b|yulduz|kosmos|osmon/i],
+  ["silkroad", /silk|caravan|desert|camel|samarkand|history|empire|шёлк|шелк|караван|пустын|самарканд|истори|ipak|karvon|choʻl|samarqand|tarix/i],
+  ["library", /librar|book|scroll|ancient|science|writing|библиотек|книг|свит|древн|наук|kutubxona|kitob|qadimiy|\bfan\b/i],
+  ["nightmarket", /market|food|bread|cook|street|lantern|dough|рынок|еда|еды|хлеб|тест|готов|улиц|bozor|\bnon\b|xamir|taom|koʻcha/i],
+  ["valley", /mountain|river|valley|nature|forest|hike|\bhills?\b|гор[аыуе]|рек[аи]|долин|природ|лес\b|togʻ|daryo|vodiy|tabiat|oʻrmon/i],
+];
+
+/**
+ * The example frame that stands in for a thumbnail on the plan's last card: the
+ * first of six frames whose words the topic touches, else one picked by a
+ * fixed hash of the text, so the same topic always shows the same frame. It is
+ * a stand-in from a fixed set of six and the page says so beside it
+ * (site.try.thumbNote); nothing is generated from the topic.
+ */
+export function pickStill(topic: string): StillId {
+  const t = cleanTopic(topic);
+  for (const [id, re] of STILL_RULES) if (re.test(t)) return id;
+  let h = 0;
+  for (const ch of t) h = (h * 31 + ch.codePointAt(0)!) >>> 0;
+  return STILL_IDS[h % STILL_IDS.length];
+}

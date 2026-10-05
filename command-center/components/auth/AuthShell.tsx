@@ -11,6 +11,7 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { LegalFooter } from "@/components/legal/LegalFooter";
 import { BrandMark } from "@/components/site/BrandMark";
 import { preloadSiteFonts } from "@/components/site/fonts";
+import { SampleImg } from "@/components/site/samples";
 import "@/components/site/site.css";
 import "@/components/site/site-next.css";
 
@@ -40,6 +41,8 @@ export function AuthShell({
   return (
     <div className="st nx st-auth">
       <aside className="st-auth-aside" aria-label={asideTitle}>
+        {/* An example frame behind the house rules (decorative; the note below says what it is). Lazy, and the aside is not shown on a phone, so it is never fetched there. */}
+        <SampleImg id="moon" className="nx-aside-bg" />
         <Link href="/" className="st-brand self-start">
           <BrandMark />
           {t.brand.name}
@@ -61,6 +64,9 @@ export function AuthShell({
             {a.asideLamp}
           </span>
           <span className="st-small">{fmt(a.welcomeNote, { n: formatCredits(WELCOME_CREDITS, locale) })}</span>
+          <span className="nx-aside-note">
+            {t.site.samples.note}
+          </span>
         </div>
       </aside>
 

@@ -25,6 +25,8 @@ export type PublicDictionary = {
   site: {
     pricingTeaser: Pick<Dictionary["site"]["pricingTeaser"], "credits">;
     auth: Dictionary["site"]["auth"];
+    /** The example-frame note the sign-in stage prints under its picture. */
+    samples: Pick<Dictionary["site"]["samples"], "note">;
   };
   signup: Dictionary["signup"];
   auth: Pick<Dictionary["auth"], "email" | "password" | "signIn" | "signingIn">;
@@ -48,7 +50,7 @@ export function publicDictionary(t: Dictionary): PublicDictionary {
     plans: omit(t.plans, "managePortalMissing"),
     credits: { buy: { pack: t.credits.buy.pack } },
     creditsPage: { eq: t.creditsPage.eq },
-    site: { pricingTeaser: { credits: t.site.pricingTeaser.credits }, auth: t.site.auth },
+    site: { pricingTeaser: { credits: t.site.pricingTeaser.credits }, auth: t.site.auth, samples: { note: t.site.samples.note } },
     signup: t.signup,
     auth: { email: t.auth.email, password: t.auth.password, signIn: t.auth.signIn, signingIn: t.auth.signingIn },
     ux: {

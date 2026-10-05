@@ -8,6 +8,7 @@ import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { Slug } from "@/components/site/Slug";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { HeroFx } from "@/components/site/HeroFx";
+import { SampleImg, type SampleId } from "@/components/site/samples";
 import { MotionToggle } from "@/components/site/MotionToggle";
 
 /** Public: listed exactly in lib/public-paths.ts (SOLUTION_PATHS). */
@@ -34,6 +35,9 @@ export async function generateMetadata(): Promise<Metadata> {
  * The Solutions index: the three ways into the one product, then the three
  * rules that hold whichever way you came in.
  */
+/** One example frame per way in (decorative: the heading beside it says what the way is). */
+const WAY_STILL: Record<string, SampleId> = { "youtube-channels": "nightmarket", "creative-studio": "valley", developers: "library" };
+
 export default async function SolutionsPage() {
   const { t } = await getDictionary();
   const s = t.site.solutions;
@@ -56,6 +60,10 @@ export default async function SolutionsPage() {
                     {String(i + 1).padStart(2, "0")}
                   </span>
                   <div className="st-way-head">
+                    <div className="nx-way-pic">
+                      <SampleImg id={WAY_STILL[page.id]} className="nx-art" />
+                      <span className="nx-result-badge">{t.site.samples.tag}</span>
+                    </div>
                     <span className="st-kicker">{page.kicker}</span>
                     <h2 id={`way-${page.id}`} className="st-h3">
                       <Link href={solutionHref(page.id)} className="st-way-title">
@@ -89,6 +97,7 @@ export default async function SolutionsPage() {
               ) : null,
             )}
           </ul>
+          <p className="nx-way-note">{t.site.samples.note}</p>
           <MotionToggle pause={t.site.fx.pause} play={t.site.fx.play} />
         </section>
       </div>

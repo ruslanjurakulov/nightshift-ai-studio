@@ -18,6 +18,10 @@ import { moneyAnchor, type MoneyAnchor as Anchor } from "@/lib/landing";
 import { MoneyAnchor } from "@/components/site/MoneyAnchor";
 import { HeroFx } from "@/components/site/HeroFx";
 import { MotionToggle } from "@/components/site/MotionToggle";
+import { SampleImg } from "@/components/site/samples";
+import { PriceCheck } from "@/components/landing/PriceCheck";
+import { priceRatesFrom } from "@/lib/site/price-check";
+import { WELCOME_CREDITS } from "@/lib/pricing";
 
 const PADDLE_BUYER_TERMS = "https://www.paddle.com/legal/checkout-buyer-terms";
 
@@ -99,6 +103,8 @@ export function PricingView({
   const faqLink = (id: string) => (id === "cancel" || id === "refund" ? { href: "/terms#credits", label: p.linkTerms } : null);
 
   const pp = t.site.pricingPage;
+  // The same published rate the money panel shows; with none published the price check is absent, as on the landing.
+  const priceRates = priceRatesFrom(anchor ?? moneyAnchor(pricing, null));
 
   return (
     <div>
@@ -128,6 +134,13 @@ export function PricingView({
           </div>
 
           <aside aria-labelledby="get-title" className="self-start">
+            <figure className="nx-aside-pic">
+              <div className="nx-aside-pic-box">
+                <SampleImg id="moon" className="nx-art" />
+                <span className="nx-result-badge">{t.site.samples.tag}</span>
+              </div>
+              <figcaption>{t.site.samples.note}</figcaption>
+            </figure>
             <h2 id="get-title" className="nx-kicker mb-4">
               {t.site.rules.slug}
             </h2>
@@ -142,6 +155,21 @@ export function PricingView({
           </aside>
         </section>
       </div>
+
+      {priceRates && (
+        <section id="price-check" aria-labelledby="calc-title" className="nx-section" data-tone="raised">
+          <div className="nx-wrap nx-calc-wrap">
+            <div className="nx-calc-words">
+              <p className="nx-label">{t.site.calc.slug}</p>
+              <h2 id="calc-title" className="nx-h2">
+                {t.site.calc.title}
+              </h2>
+              <p className="nx-sub">{t.site.calc.lead}</p>
+            </div>
+            <PriceCheck t={t} locale={locale} rates={priceRates} welcome={WELCOME_CREDITS} />
+          </div>
+        </section>
+      )}
 
       {plansFailed && (
         <section id="plans" aria-labelledby="plans-title" className="st-section">
