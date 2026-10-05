@@ -76,7 +76,7 @@ describe("site-next.css", () => {
 
   it("gives every control at least 44px of height", () => {
     const heights: Record<string, number> = {};
-    for (const sel of [".nx-btn", ".nx-link", ".nx-tab", ".nx-ui-key"]) {
+    for (const sel of [".nx-btn", ".nx-link", ".nx-chat-key", ".nx-try-pick", ".nx-who-tab"]) {
       const at = css.indexOf(`${sel} {`);
       const body = css.slice(at, css.indexOf("}", at));
       heights[sel] = Number(body.match(/min-height:\s*(\d+)px/)?.[1] ?? 0);
@@ -93,13 +93,11 @@ describe("site-next.css", () => {
     expect(body).toContain("tabular-nums");
   });
 
-  it("draws nothing as pressable that is not: the drawn keys are spans inside an aria-hidden picture", () => {
-    const stage = readFileSync(join(__dirname, "..", "components/landing/PressStage.tsx"), "utf8");
-    expect(stage).toMatch(/className="nx-ui" aria-hidden/);
-    expect(stage).not.toMatch(/<button[^>]*nx-ui-key/);
-    // Autoplay only when motion is allowed, the stage is visible and nobody has taken over.
-    expect(stage).toContain("prefers-reduced-motion: reduce");
-    expect(stage).toContain("IntersectionObserver");
+  it("draws nothing as pressable that is not: the hero card has no control and its drawn key is a span in an aria-hidden group", () => {
+    const card = readFileSync(join(__dirname, "..", "components/landing/HeroCard.tsx"), "utf8");
+    expect(card).toMatch(/className="nx-chat-foot" aria-hidden/);
+    expect(card).not.toMatch(/<button|<a |<Link|<input/);
+    expect(card).toMatch(/<span className="nx-chat-key">/);
   });
 
   it("lets the visitor stop everything that runs by itself: each infinite animation's class is paused by html[data-motion=paused] (WCAG 2.2.2)", () => {
@@ -171,6 +169,26 @@ describe("site-next.css", () => {
     expect(css).not.toContain("nx-frame-play");
     const site = readFileSync(join(__dirname, "..", "components/site/site.css"), "utf8");
     expect(site).not.toContain("ml-frame-play");
+  });
+
+  it("gets its border colours through --nx-edge: globals.css has an unlayered `* { border-color }` that beats every layered colour", () => {
+    // The root cause, so the test fails loudly if it is ever fixed at the source and this indirection can go.
+    const globals = readFileSync(join(__dirname, "..", "app/globals.css"), "utf8");
+    expect(globals).toMatch(/\n\* \{\n  border-color: var\(--color-border\);\n\}/);
+    expect(globals.slice(0, globals.indexOf("\n* {"))).not.toMatch(/@layer base \{\s*$/);
+    // The one unlayered rule that applies it, and the registration that stops a child inheriting its parent's colour.
+    expect(css).toContain("html :where(.nx) * { border-color: var(--nx-edge, var(--color-border)); }");
+    expect(css).toMatch(/@property --nx-edge \{ syntax: "\*"; inherits: false; \}/);
+    const layerEnd = css.indexOf("\n/* ── Border colours");
+    expect(layerEnd).toBeGreaterThan(0);
+    // Every declaration inside the layer that sets a border colour also sets --nx-edge to the same colour.
+    const inLayer = css.slice(0, layerEnd);
+    const missing: string[] = [];
+    for (const m of inLayer.matchAll(/(border(?:-(?:top|right|bottom|left))?\s*:\s*[^;{}]*?\b(?:solid|dashed)\s+|border-color\s*:\s*)([^;{}]+?)\s*;([^;{}]*)/g)) {
+      const colour = m[2].trim();
+      if (!m[3].includes(`--nx-edge: ${colour}`)) missing.push(m[0].slice(0, 80));
+    }
+    expect(missing).toEqual([]);
   });
 });
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 vi.mock("next/navigation", () => ({
@@ -130,38 +130,32 @@ describe("public landing page", () => {
     expect(approvals.textContent).toContain(t.site.solutions.pictures.signoff.second);
   });
 
-  it("draws the hero's product as four labelled example states, with nothing to press but the tabs and no money in it", () => {
+  it("draws the hero's product as one labelled example exchange: the ask, an example reply, a real example frame, and a drawn key that is not a button", () => {
     const t = dictionaries.en;
     const { container } = renderLanding({ kind: "announced" });
-    const stage = screen.getByRole("region", { name: t.site.stage.label });
-    // The figure's description is there for assistive tech, and every drawn state says it is an example.
-    expect(stage.textContent).toContain(t.site.stage.figure);
-    expect(stage.querySelectorAll(".nx-ui-tag")).toHaveLength(t.site.stage.steps.length);
-    expect(stage.textContent).toContain(t.site.stage.tag);
-    expect(stage.textContent).not.toMatch(MONEY);
-    // The only controls are the tabs; the drawn keys are pictures, not buttons.
-    expect(stage.querySelector(".nx-ui a, .nx-ui button, .nx-ui input, .nx-ui [tabindex]")).toBeNull();
-    const tabs = within(stage).getAllByRole("tab");
-    expect(tabs.map((x) => x.textContent?.replace(/^\d/, ""))).toEqual(t.site.stage.steps.map((x) => x.tab));
-    // The story ends where the page's idea does: you approve, then it is live.
+    const card = container.querySelector("figure.nx-chat") as HTMLElement;
+    // The figure's description is there for assistive tech, and the card says it is an example.
+    expect(card.getAttribute("aria-label")).toBe(t.site.stage.figure);
+    expect(card.querySelector(".nx-demo-tag")?.textContent).toBe(t.site.stage.tag);
+    expect(card.textContent).not.toMatch(MONEY);
+    // The ask, then a reply that says it is an example reply, never "made a video".
+    expect(card.querySelector(".nx-bubble")?.textContent).toBe(t.site.caps.items[0].bubble);
+    expect(card.querySelector(".nx-reply")?.textContent).toContain(t.site.caps.exampleReply);
+    expect(card.querySelector(".nx-reply")?.textContent).not.toContain(t.site.caps.items[0].reply);
+    // The frame is one of the example stills, described, labelled, and the AI-generated note is printed under the card.
+    const img = card.querySelector("img")!;
+    expect(img.getAttribute("alt")).toBe(t.site.samples.alts.silkroad);
+    expect(card.querySelector(".nx-result-badge")?.textContent).toBe(t.site.samples.tag);
+    expect(card.querySelector("figcaption")?.textContent).toBe(t.site.samples.note);
+    // Nothing in it is a control: the drawn "Approve and publish" key is a span inside an aria-hidden group.
+    expect(card.querySelector("a, button, input, [tabindex]")).toBeNull();
+    const key = within(card).getByText(t.site.stage.steps.find((x) => x.id === "approve")!["key" as never] as string);
+    expect(key.tagName).toBe("SPAN");
+    expect(key.closest("[aria-hidden='true']")).not.toBeNull();
+    // The story ends where the page's idea does: you approve, then it is live. The rail shows where this exchange stands.
     expect(t.site.stage.steps.map((x) => x.id)).toEqual(["brief", "plan", "approve", "live"]);
-    // The drawn "Approve and publish" key says next to itself that it is an example.
-    const approveFoot = container.querySelector('[role="tabpanel"]:nth-of-type(3) .nx-ui-foot, [role="tabpanel"]:nth-child(3) .nx-ui-foot')!;
-    expect(approveFoot.querySelector(".nx-ui-note")?.textContent).toBe(t.site.stage.tag);
-    // Only the open state is exposed; the rest stay in the HTML (search) but out of the way.
-    const panels = [...stage.querySelectorAll('[role="tabpanel"]')];
-    expect(panels.map((p) => p.getAttribute("data-on"))).toEqual(["true", "false", "false", "false"]);
-    expect(panels.slice(1).every((p) => p.getAttribute("aria-hidden") === "true")).toBe(true);
-  });
-
-  it("switches the stage to the state that was picked, and stops moving by itself", () => {
-    const t = dictionaries.en;
-    const { container } = renderLanding({ kind: "announced" });
-    const tab = screen.getByRole("tab", { name: new RegExp(t.site.stage.steps[2].tab) });
-    fireEvent.click(tab);
-    expect(tab.getAttribute("aria-selected")).toBe("true");
-    const on = [...container.querySelector(".nx-stage")!.querySelectorAll('[role="tabpanel"]')].find((p) => p.getAttribute("data-on") === "true")!;
-    expect(on.textContent).toContain(t.site.stage.steps[2].title);
+    expect([...card.querySelectorAll(".nx-chat-rail li")].map((li) => li.textContent)).toEqual(t.site.stage.steps.map((x) => x.tab));
+    expect(card.querySelector(".nx-chat-rail li[aria-current='step']")?.textContent).toBe(t.site.stage.steps[2].tab);
   });
 
   it("names the welcome grant from WELCOME_CREDITS, and says it is one-time in every language", () => {
@@ -311,7 +305,7 @@ describe("public landing page", () => {
       renderLanding({ kind: "announced" }, locale);
       const hero = dictionaries[locale].site.hero;
       expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(`${hero.titleA} ${hero.titleB}`);
-      expect(screen.getByRole("region", { name: dictionaries[locale].site.stage.label }).textContent).toContain(dictionaries[locale].site.stage.figure);
+      expect(document.querySelector("figure.nx-chat")?.getAttribute("aria-label")).toBe(dictionaries[locale].site.stage.figure);
       cleanup();
     }
   });

@@ -8,7 +8,9 @@ import { packExpiry, type PackExpiry } from "@/lib/plans";
 import { creditUnit, formatCredits } from "@/lib/credits";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
-import { PressStage } from "@/components/landing/PressStage";
+import { HeroCard } from "@/components/landing/HeroCard";
+import { Gallery } from "@/components/landing/Gallery";
+import { CapsRail } from "@/components/landing/CapsRail";
 import { TryDemo } from "@/components/landing/TryDemo";
 import { WhoTabs, type WhoSolutions } from "@/components/landing/WhoTabs";
 import { Compare } from "@/components/landing/Compare";
@@ -91,6 +93,7 @@ export function Landing({
   return (
     <div className="lp-root">
       <Hero t={t} locale={locale} anchor={anchor} />
+      <Gallery t={t} />
       <Try t={t} locale={locale} />
       <How t={t} locale={locale} />
       <Capabilities t={t} />
@@ -138,36 +141,40 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
     <section aria-labelledby="hero-title" className="nx-hero">
       <HeroFx />
       <div className="nx-wrap nx-hero-in">
-        <p className="nx-pill">
-          <span aria-hidden className="nx-pill-dot" />
-          {h.kicker}
-        </p>
-        <h1 id="hero-title" className="nx-h1">
-          {h.titleA} <span className="nx-h1-b">{h.titleB}</span>
-        </h1>
-        <p className="nx-lead">{h.lead}</p>
-        <div className="nx-actions">
-          <Link href="/signup" className="nx-btn">
-            {h.cta}
-            <ArrowRight aria-hidden />
-          </Link>
-          <Link href="/pricing" className="nx-link">
-            {h.secondary}
-          </Link>
+        <div className="nx-hero-copy">
+          <p className="nx-pill">
+            <span aria-hidden className="nx-pill-dot" />
+            {h.kicker}
+          </p>
+          <h1 id="hero-title" className="nx-h1">
+            {h.titleA} <span className="nx-h1-b">{h.titleB}</span>
+          </h1>
+          <p className="nx-lead">{h.lead}</p>
+          <div className="nx-actions">
+            <Link href="/signup" className="nx-btn">
+              {h.cta}
+              <ArrowRight aria-hidden />
+            </Link>
+            <Link href="/pricing" className="nx-link">
+              {h.secondary}
+            </Link>
+          </div>
+          <p className="nx-note">{fmt(h.note, { n: formatCredits(WELCOME_CREDITS, locale) })}</p>
+          {price && <p className="nx-price">{price}</p>}
+          {/* The three things a visitor most wants settled, each already a promise lower on the page. */}
+          <ul className="nx-trust" aria-label={t.site.rules.slug}>
+            {t.site.rules.items.map((item) => (
+              <li key={item.id}>
+                <Check aria-hidden />
+                {item.title}
+              </li>
+            ))}
+          </ul>
         </div>
-        <p className="nx-note">{fmt(h.note, { n: formatCredits(WELCOME_CREDITS, locale) })}</p>
-        {price && <p className="nx-price">{price}</p>}
-        {/* The three things a visitor most wants settled, each already a promise lower on the page. */}
-        <ul className="nx-trust" aria-label={t.site.rules.slug}>
-          {t.site.rules.items.map((item) => (
-            <li key={item.id}>
-              <Check aria-hidden />
-              {item.title}
-            </li>
-          ))}
-        </ul>
-        <PressStage stage={t.site.stage} note={t.site.samples.note} />
-        <MotionToggle pause={t.site.fx.pause} play={t.site.fx.play} />
+        <div className="nx-hero-visual">
+          <HeroCard t={t} />
+          <MotionToggle pause={t.site.fx.pause} play={t.site.fx.play} />
+        </div>
       </div>
     </section>
   );
@@ -184,7 +191,7 @@ function Try({ t, locale }: { t: Dictionary; locale: Locale }) {
           {c.title}
         </h2>
         <p className="nx-sub">{c.lead}</p>
-        <TryDemo copy={c} note={fmt(c.ctaNote, { n: formatCredits(WELCOME_CREDITS, locale) })} />
+        <TryDemo copy={c} note={fmt(c.ctaNote, { n: formatCredits(WELCOME_CREDITS, locale) })} samplesTag={t.site.samples.tag} />
       </div>
     </section>
   );
@@ -295,28 +302,30 @@ function Rules({ t }: { t: Dictionary }) {
         <h2 id="rules-title" className="nx-h2">
           {r.title}
         </h2>
-        <ul className="nx-rules">
-          {r.items.map((item) => (
-            <li key={item.id} className="nx-rule" data-spot>
-              <StatusLamp tone={RULE_TONE[item.id] ?? "ok"} label={item.state} />
-              <h3 className="nx-h3">{item.title}</h3>
-              <p className="nx-body">{item.body}</p>
-              <ol className="st-ledger" aria-label={item.title}>
-                {item.lines.map((line, i) => {
-                  const last = i === item.lines.length - 1;
-                  // The refund ledger's middle line is the failure itself.
-                  const tone: LampTone = item.id === "refund" && i === 1 ? "fail" : last && item.id === "approval" ? "run" : "ok";
-                  return (
-                    <li key={line}>
-                      <span aria-hidden className="ns-lamp" data-tone={tone} />
-                      {line}
-                    </li>
-                  );
-                })}
-              </ol>
-            </li>
-          ))}
-        </ul>
+        <CapsRail label={r.title} className="nx-rules-rail">
+          <ul className="nx-rules">
+            {r.items.map((item) => (
+              <li key={item.id} className="nx-rule" data-spot>
+                <StatusLamp tone={RULE_TONE[item.id] ?? "ok"} label={item.state} />
+                <h3 className="nx-h3">{item.title}</h3>
+                <p className="nx-body">{item.body}</p>
+                <ol className="st-ledger" aria-label={item.title}>
+                  {item.lines.map((line, i) => {
+                    const last = i === item.lines.length - 1;
+                    // The refund ledger's middle line is the failure itself.
+                    const tone: LampTone = item.id === "refund" && i === 1 ? "fail" : last && item.id === "approval" ? "run" : "ok";
+                    return (
+                      <li key={line}>
+                        <span aria-hidden className="ns-lamp" data-tone={tone} />
+                        {line}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </li>
+            ))}
+          </ul>
+        </CapsRail>
       </div>
     </section>
   );

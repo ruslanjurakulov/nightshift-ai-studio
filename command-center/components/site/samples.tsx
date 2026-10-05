@@ -21,13 +21,13 @@ export type SampleId = keyof typeof SAMPLES;
 /**
  * One example frame as an <img> that fills its aspect-ratio box (the box, not
  * the picture, decides the layout, so nothing shifts when it loads). Lazy by
- * default; no frame on these pages is the largest paint. `alt` is empty when
+ * default; the one on the first screen is eager (the hero card). `alt` is empty when
  * the surrounding picture is hidden from assistive tech and already described.
  */
 export function SampleImg({ id, alt = "", className, eager = false }: { id: SampleId; alt?: string; className?: string; eager?: boolean }) {
   const s = SAMPLES[id];
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={s.src} width={s.width} height={s.height} alt={alt} className={className} loading={eager ? "eager" : "lazy"} decoding="async" />
+    <img src={s.src} width={s.width} height={s.height} alt={alt} className={className} loading={eager ? "eager" : "lazy"} decoding="async" data-sample={id} {...(eager ? { fetchPriority: "high" as const } : {})} />
   );
 }

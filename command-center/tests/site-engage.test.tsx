@@ -18,7 +18,7 @@ vi.mock("next/link", () => ({
 import { dictionaries, LOCALES } from "@/lib/i18n";
 import { Landing } from "@/components/landing/Landing";
 import { MotionToggle } from "@/components/site/MotionToggle";
-import { buildPlan, cleanTopic, TOPIC_MAX } from "@/lib/site/demo-plan";
+import { buildPlan, cleanTopic, pickStill, STILL_IDS, TOPIC_MAX } from "@/lib/site/demo-plan";
 import { freeMinutes, priceRatesFrom, quoteCents, quoteCredits } from "@/lib/site/price-check";
 import { setMotionPaused } from "@/lib/site/motion";
 import { WELCOME_CREDITS } from "@/lib/pricing";
@@ -128,25 +128,29 @@ describe("the landing page's reasons to stay", () => {
     expect(section.textContent).toContain(`Your ${WELCOME_CREDITS} free credits cover about 1 min`);
   });
 
-  it("plays the example out: nothing shows until a topic is asked for, then every section appears with the topic in it, labelled as an example", () => {
+  it("opens already filled with the first sample topic's plan (never an empty placeholder), then plays your own topic out, labelled as an example", () => {
     vi.useFakeTimers();
     const t = dictionaries.en.site.try;
     const { container } = landing();
     const section = container.querySelector("#try") as HTMLElement;
     const cards = () => [...section.querySelectorAll(".nx-try-card")];
-    expect(cards().every((c) => c.getAttribute("data-on") === "false" && c.hasAttribute("inert"))).toBe(true);
+    // Before anything is asked: the sample plan is on show, for the first sample topic, and says so.
+    expect(cards().every((c) => c.getAttribute("data-on") === "true" && !c.hasAttribute("inert"))).toBe(true);
+    expect(cards().map((c) => c.textContent).join(" ")).toContain(t.topics[0]);
+    expect(within(section).getByRole("status").textContent).toBe(t.sampleNote.replace("{topic}", t.topics[0]));
     expect(section.textContent).toContain(t.tag);
+    expect(section.querySelector(".nx-try-idle, .nx-sk")).toBeNull();
 
-    // An empty ask is refused in words, with focus back on the field.
+    // An empty ask is refused in words, with the sample left as it was.
     fireEvent.click(within(section).getByRole("button", { name: t.run }));
     expect(within(section).getByRole("status").textContent).toBe(t.noTopic);
-    expect(cards().every((c) => c.getAttribute("data-on") === "false")).toBe(true);
+    expect(cards().every((c) => c.getAttribute("data-on") === "true")).toBe(true);
 
     fireEvent.change(within(section).getByLabelText(t.fieldLabel), { target: { value: "How tides work" } });
     fireEvent.click(within(section).getByRole("button", { name: t.run }));
     act(() => void vi.advanceTimersByTime(260));
-    expect(cards().filter((c) => c.getAttribute("data-on") === "true").length).toBeGreaterThanOrEqual(1);
     expect(cards().filter((c) => c.getAttribute("data-on") === "true").length).toBeLessThan(cards().length);
+    expect(within(section).getByRole("status").textContent).toBe(t.drafting);
     act(() => void vi.advanceTimersByTime(5000));
     expect(cards().every((c) => c.getAttribute("data-on") === "true")).toBe(true);
     expect(cards().map((c) => c.textContent).join(" ")).toContain("How tides work");
@@ -155,6 +159,18 @@ describe("the landing page's reasons to stay", () => {
     const cta = within(section).getByRole("link", { name: t.cta });
     expect(cta.getAttribute("href")).toBe("/signup");
     expect(section.textContent).toContain(t.real);
+  });
+
+  it("shows a stand-in frame on the thumbnail card, chosen by the topic's words, labelled as an example and said to be a stand-in", () => {
+    const t = dictionaries.en.site.try;
+    const { container } = landing();
+    const section = container.querySelector("#try") as HTMLElement;
+    const thumb = () => section.querySelector(".nx-try-thumb img")!.getAttribute("data-sample");
+    expect(thumb()).toBe("silkroad");
+    fireEvent.click(within(section).getByRole("button", { name: t.topics[1] }));
+    expect(thumb()).toBe("lighthouse");
+    expect(section.querySelector(".nx-try-thumb .nx-result-badge")?.textContent).toBe(dictionaries.en.site.samples.tag);
+    expect(section.querySelector(".nx-try-thumb figcaption")?.textContent).toBe(t.thumbNote);
   });
 
   it("shows the whole plan at once when the visitor has paused motion", () => {
@@ -166,11 +182,17 @@ describe("the landing page's reasons to stay", () => {
     expect([...section.querySelectorAll(".nx-try-card")].every((c) => c.getAttribute("data-on") === "true")).toBe(true);
   });
 
-  it("compares by hand and with Nightshift using only who does each step: no hours, no percentages, and the topic and the publish press stay with the person", () => {
+  it("compares by hand and with Nightshift as two lists of the same six steps: no hours, no percentages, and the topic and the publish press stay marked as yours", () => {
     const { container } = landing();
     const cmp = container.querySelector("#compare") as HTMLElement;
     expect(cmp.textContent).not.toMatch(/\d/);
-    expect([...cmp.querySelectorAll(".nx-cmp-row")].map((r) => r.getAttribute("data-yours") === "true")).toEqual([true, false, false, false, false, true]);
+    const cols = [...cmp.querySelectorAll(".nx-cmp-col")];
+    expect(cols).toHaveLength(2);
+    const steps = (col: Element) => [...col.querySelectorAll("li")].map((li) => li.querySelector("span")?.textContent ?? li.firstChild?.textContent ?? li.textContent);
+    expect(cols[0].querySelectorAll("li")).toHaveLength(6);
+    expect(cols[1].querySelectorAll("li")).toHaveLength(6);
+    expect([...cols[1].querySelectorAll("li")].map((li) => li.getAttribute("data-yours") === "true")).toEqual([true, false, false, false, false, true]);
+    expect(steps(cols[1])).toEqual(dictionaries.en.site.compare.rows.map((r) => r.step));
   });
 
   it("carries one sticky start bar that is inert until it is shown, and a pause switch that sets the page's motion", () => {
@@ -233,20 +255,53 @@ describe("the page's HTML stays small", () => {
 });
 
 describe("the AI-still disclosure is printed, not only labelled", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the hero stage and every still-backed capability show the note as visible text", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the hero card and every still-backed capability show the note as visible text; the gallery says it in its lead and labels every frame", (code) => {
     const { container } = landing(NO_MONEY, code);
     const note = dictionaries[code].site.samples.note;
-    const stage = container.querySelector(".nx-stage") as HTMLElement;
-    const stageNote = stage.querySelector(".nx-stage-note") as HTMLElement;
-    expect(stageNote.textContent).toBe(note);
-    expect(stageNote.closest("[aria-hidden]")).toBeNull();
     const figs = [...container.querySelectorAll("figure.nx-demo")].filter((f) => f.querySelector("img"));
-    expect(figs).toHaveLength(4);
+    expect(figs).toHaveLength(5); // the hero card and four capabilities
     for (const f of figs) {
-      const cap = f.querySelector("figcaption.nx-demo-note") as HTMLElement;
+      const cap = f.querySelector("figcaption") as HTMLElement;
       expect(cap.textContent).toBe(note);
       expect(cap.closest("[aria-hidden]")).toBeNull();
     }
+    const g = dictionaries[code].site.gallery;
+    const gal = container.querySelector("#examples") as HTMLElement;
+    expect(gal.querySelector(".nx-sub")?.textContent).toBe(g.lead);
+    const cards = [...gal.querySelectorAll(".nx-gal-card")];
+    expect(cards.map((c) => c.querySelector("figcaption")?.textContent)).toEqual(["silkroad", "library", "moon", "nightmarket", "valley", "lighthouse"].map((id) => g.items[id as keyof typeof g.items]));
+    for (const c of cards) expect(c.querySelector(".nx-result-badge")?.textContent).toBe(dictionaries[code].site.samples.tag);
+  });
+
+  it("builds the gallery as the shared carousel: a named group, a keyboard-reachable track and two 44px buttons, with nothing moving by itself", () => {
+    const { container } = landing();
+    const g = dictionaries.en.site.gallery;
+    const car = container.querySelector("#examples [aria-roledescription='carousel']") as HTMLElement;
+    expect(car.getAttribute("aria-label")).toBe(g.region);
+    expect(car.querySelector("[tabindex='0']")?.getAttribute("aria-label")).toBe(g.track);
+    expect(within(car).getByRole("button", { name: g.prev })).toBeTruthy();
+    expect(within(car).getByRole("button", { name: g.next })).toBeTruthy();
+    expect(car.querySelectorAll("[data-slide]")).toHaveLength(6);
+  });
+
+  it("wraps the capability sections in one rail (a named, focusable scroller on a phone only)", () => {
+    const { container } = landing();
+    const rail = container.querySelector(".nx-caps") as HTMLElement;
+    expect([...rail.children].map((c) => c.id)).toEqual(["video", "voice", "studio", "channels", "approvals"]);
   });
 });
 
+describe("the demo's stand-in frame", () => {
+  it.each(LOCALES.map((l) => l.code))("%s: each sample topic maps to its own frame, the same one every time", (code) => {
+    const topics = dictionaries[code].site.try.topics;
+    expect(topics.map((t) => pickStill(t))).toEqual(["silkroad", "lighthouse", "moon", "nightmarket"]);
+    expect(topics.map((t) => pickStill(t))).toEqual(topics.map((t) => pickStill(t)));
+  });
+
+  it("falls back to a fixed pick for words it does not know, and never to nothing", () => {
+    for (const t of ["zzz", "Qwerty uiop", "какая-то тема", "bilmayman"]) {
+      expect(STILL_IDS).toContain(pickStill(t));
+      expect(pickStill(t)).toBe(pickStill(t));
+    }
+  });
+});

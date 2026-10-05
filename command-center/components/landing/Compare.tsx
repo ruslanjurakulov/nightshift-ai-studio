@@ -1,16 +1,16 @@
 import { Check, UserRound } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 
-/** The steps that stay with the person, in both columns: the topic is theirs to choose and the last word is theirs. */
+/** The steps that stay with the person: the topic is theirs to choose and the last word is theirs. */
 const YOURS = new Set(["topic", "publish"]);
 
 /**
- * The same video made by hand and with Nightshift, one row per step, saying
- * only who does it. There are no hours, no percentages and no "x times
- * faster": the page cannot measure how long anyone takes by hand, so it does
- * not say. What it can say is true by construction: the steps Nightshift does,
- * the two it leaves to you (the topic, which can also come from the channel's
- * niche, and the publish button), and that upload is private by default.
+ * The same six steps, made by hand and with Nightshift, as one clear contrast
+ * instead of a table: on the left you do all six; on the right Nightshift does
+ * four and the two that matter stay marked as yours. It has no hours, no
+ * percentages and no "x times faster": the page cannot measure how long anyone
+ * takes by hand, so it does not say. What it can say is true by construction:
+ * which steps Nightshift does, and which two it leaves to you.
  */
 export function Compare({ t }: { t: Dictionary }) {
   const c = t.site.compare;
@@ -21,35 +21,40 @@ export function Compare({ t }: { t: Dictionary }) {
           {c.title}
         </h2>
         <p className="nx-sub">{c.lead}</p>
-        <ul className="nx-cmp" aria-label={c.slug}>
-          <li className="nx-cmp-head" aria-hidden>
-            <span>{c.colStep}</span>
-            <span>{c.colHand}</span>
-            <span>{c.colNs}</span>
-          </li>
-          {c.rows.map((row) => {
-            const yours = YOURS.has(row.id);
-            return (
-              <li key={row.id} className="nx-cmp-row" data-yours={yours ? "true" : undefined}>
-                <b className="nx-cmp-step">{row.step}</b>
-                <span className="nx-cmp-cell">
-                  <small className="nx-cmp-k">{c.colHand}</small>
-                  <span className="nx-cmp-who">
-                    <UserRound aria-hidden />
-                    {c.you}
-                  </span>
-                </span>
-                <span className="nx-cmp-cell" data-ns="true">
-                  <small className="nx-cmp-k">{c.colNs}</small>
-                  <span className="nx-cmp-who">
+        <div className="nx-cmp" aria-label={c.slug} role="group">
+          <section className="nx-cmp-col" aria-labelledby="cmp-hand">
+            <h3 id="cmp-hand" className="nx-h3">
+              {c.colHand}
+            </h3>
+            <p className="nx-cmp-sum">{c.handSum}</p>
+            <ol className="nx-cmp-list">
+              {c.rows.map((row) => (
+                <li key={row.id}>
+                  <UserRound aria-hidden />
+                  {row.step}
+                </li>
+              ))}
+            </ol>
+          </section>
+          <section className="nx-cmp-col" data-ns="true" aria-labelledby="cmp-ns">
+            <h3 id="cmp-ns" className="nx-h3">
+              {c.colNs}
+            </h3>
+            <p className="nx-cmp-sum">{c.nsSum}</p>
+            <ol className="nx-cmp-list">
+              {c.rows.map((row) => {
+                const yours = YOURS.has(row.id);
+                return (
+                  <li key={row.id} data-yours={yours ? "true" : undefined}>
                     {yours ? <UserRound aria-hidden /> : <Check aria-hidden />}
-                    {row.ns}
-                  </span>
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+                    <span>{row.step}</span>
+                    {yours && <b>{c.keep}</b>}
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+        </div>
       </div>
     </section>
   );

@@ -3,8 +3,10 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Check, RotateCcw } from "lucide-react";
+import { fmt } from "@/lib/i18n/core";
 import type { Dictionary } from "@/lib/i18n";
-import { buildPlan, cleanTopic, TOPIC_MAX } from "@/lib/site/demo-plan";
+import { buildPlan, cleanTopic, pickStill, TOPIC_MAX } from "@/lib/site/demo-plan";
+import { SampleImg } from "@/components/site/samples";
 import { useMotionPaused } from "@/lib/site/motion";
 
 type Copy = Dictionary["site"]["try"];
@@ -20,28 +22,43 @@ const STEP_MS = 520;
  * checking, the price on the button, your approval) next to "Make this for
  * real".
  *
- * Layout never moves: all five section cards are in the document from the
- * start (skeletons first, then filled), in a grid whose height does not depend
- * on how many are shown. Cards that are not shown yet are inert and hidden from
- * assistive tech; one polite status line says what is happening. With reduced
- * motion, or the page's pause switch on, the whole plan appears at once.
+ * It opens already filled, with the first sample topic's plan (tagged
+ * "Example", with a line saying so), so the section is never a grey placeholder;
+ * asking for a topic of your own replays it with your words in. Layout never
+ * moves: all five cards are in the document, in a grid whose height does not
+ * depend on how many are shown; cards not shown yet are inert and hidden from
+ * assistive tech while it plays; one polite status line says what is
+ * happening. With reduced motion, or the page's pause switch on, the plan
+ * appears at once. On a phone the cards are a sideways snap row, not a column.
+ * The thumbnail card shows one of the six example frames, picked by the topic's
+ * words (lib/site/demo-plan.ts pickStill), and says it is a stand-in.
  */
-export function TryDemo({ copy, note, href = "/signup" }: { copy: Copy; note: string; href?: string }) {
+export function TryDemo({ copy, note, samplesTag, href = "/signup" }: { copy: Copy; note: string; samplesTag: string; href?: string }) {
   const uid = useId();
   const [value, setValue] = useState("");
   // What the plan was built from; the field can change without the plan changing under it.
   const [topic, setTopic] = useState("");
-  const [shown, setShown] = useState(0);
+  const [shown, setShown] = useState(copy.sections.length);
   const [error, setError] = useState(false);
   const paused = useMotionPaused();
   const timer = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // On a phone the cards are a sideways scroller, which a keyboard must be able to reach.
+  const [scrolls, setScrolls] = useState(false);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia("(max-width: 859px)");
+    const sync = () => setScrolls(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   const total = copy.sections.length;
-  // Before anything is asked for, the hidden cards hold the first sample topic's plan: real words (never a
-  // literal "{topic}") at a realistic height, so the grid is already the size it will be.
-  const plan = buildPlan(copy.sections, topic || copy.topics[0]);
-  const state: "idle" | "drafting" | "ready" = !topic ? "idle" : shown < total ? "drafting" : "ready";
+  // Until a topic is asked for, the plan on show is the first sample topic's.
+  const shownTopic = topic || copy.topics[0];
+  const plan = buildPlan(copy.sections, shownTopic);
+  const state: "sample" | "drafting" | "ready" = !topic ? "sample" : shown < total ? "drafting" : "ready";
 
   useEffect(
     () => () => {
@@ -76,7 +93,7 @@ export function TryDemo({ copy, note, href = "/signup" }: { copy: Copy; note: st
     timer.current = window.setTimeout(tick, STEP_MS / 2);
   }
 
-  const status = error ? copy.noTopic : state === "drafting" ? copy.drafting : state === "ready" ? copy.ready : "";
+  const status = error ? copy.noTopic : state === "drafting" ? copy.drafting : state === "ready" ? copy.ready : fmt(copy.sampleNote, { topic: shownTopic });
 
   return (
     <div className="nx-try">
@@ -110,8 +127,8 @@ export function TryDemo({ copy, note, href = "/signup" }: { copy: Copy; note: st
             }}
           />
           <button type="submit" className="nx-btn nx-try-run">
-            {state === "idle" ? copy.run : copy.again}
-            {state === "idle" ? <ArrowRight aria-hidden /> : <RotateCcw aria-hidden />}
+            {state === "sample" ? copy.run : copy.again}
+            {state === "sample" ? <ArrowRight aria-hidden /> : <RotateCcw aria-hidden />}
           </button>
         </div>
         <div className="nx-try-picks" role="group" aria-label={copy.pickLabel}>
@@ -131,9 +148,9 @@ export function TryDemo({ copy, note, href = "/signup" }: { copy: Copy; note: st
 
       <div className="nx-try-plan" data-state={state}>
         <span className="nx-try-tag">{copy.tag}</span>
-        <ol className="nx-try-cards">
+        <ol className="nx-try-cards" tabIndex={scrolls ? 0 : undefined} aria-label={scrolls ? copy.label : undefined}>
           {copy.sections.map((s, i) => {
-            const on = state !== "idle" && i < shown;
+            const on = i < shown;
             const filled = plan[i] ?? s;
             return (
               <li key={s.id} className="nx-try-card" data-id={s.id} data-on={on ? "true" : "false"} inert={on ? undefined : true} aria-hidden={on ? undefined : true}>
@@ -151,28 +168,22 @@ export function TryDemo({ copy, note, href = "/signup" }: { copy: Copy; note: st
                     </li>
                   ))}
                 </ul>
+                {s.id === "thumb" && (
+                  <figure className="nx-try-thumb">
+                    <div className="nx-try-thumb-pic">
+                      <SampleImg id={pickStill(shownTopic)} className="nx-art" />
+                      <span className="nx-result-badge">{samplesTag}</span>
+                    </div>
+                    <figcaption>{copy.thumbNote}</figcaption>
+                  </figure>
+                )}
               </li>
             );
           })}
         </ol>
-        {/* What is there before anything is asked for: ghosts of the same cards, in the same grid, under one line of words. */}
-        <div className="nx-try-idle" data-on={state === "idle" ? "true" : "false"} aria-hidden="true">
-          {copy.sections.map((s) => (
-            <div key={s.id} className="nx-try-ghost" data-id={s.id}>
-              <span className="nx-sk" data-w="40" />
-              <span className="nx-sk" />
-              <span className="nx-sk" data-w="85" />
-              <span className="nx-sk" data-w="70" />
-              <span className="nx-sk" data-w="85" />
-              <span className="nx-sk" />
-              <span className="nx-sk" data-w="70" />
-            </div>
-          ))}
-          <p className="nx-try-idle-cap">{copy.idle}</p>
-        </div>
       </div>
 
-      <div className="nx-try-end" data-on={state === "ready" ? "true" : "false"} inert={state === "ready" ? undefined : true}>
+      <div className="nx-try-end" data-on={state === "drafting" ? "false" : "true"} inert={state === "drafting" ? true : undefined}>
         <p className="nx-body">{copy.real}</p>
         <div className="nx-try-cta">
           <Link href={href} className="nx-btn">
