@@ -58,7 +58,35 @@ branch, built the same way (the visual-QA fake backend extended in a scratch cop
 credits a minute, minimum 10; packs $10 / $45 / $160). 6 pages x 360 / 390 / 1280 x light and dark x en, ru, uz = 108 states
 per side. Screenshots: `site-engage-3/before/` and `site-engage-3/after/`.
 
-RESULTS_TABLE
+| Check | before (round 2 head) | this branch |
+| :-- | --: | --: |
+| States captured without an error | 108 / 108 | 108 / 108 |
+| axe 4.x serious or critical | 4 (all `/mcp`, a scan landing mid-fade of the "How it works" rows) | `/mcp` only, the same fade (which states it lands in varies from run to run); the one landing hit seen in a first run was the start bar fading out under a scan, fixed by making it leave at once and re-checked (below) |
+| Horizontal overflow | 0 | 0 |
+| Controls under 44 px | 0 | 0 |
+| External requests | 0 | 0 |
+| CLS with every font held back 1.2 s (36 loads) | max 0.149 (`/mcp` 1280 en) | max 0.082 (`/mcp` 1280 en); `/mcp` ru 0.0332 to 0.0003, uz 0.0097 to 0.0021; `/pricing` 1280 ru 0.0058 to 0.0036. Over the 0.002 budget: `/mcp` 1280 en 0.082, `/solutions` 390 uz 0.0036 (was 0.0001: the product picture below a heading that wraps differently in the fallback face), `/pricing` 1280 ru 0.0036, `/login` 1280 uz 0.0027 and `/signup` 1280 uz 0.0026 (both unchanged) |
+
+| Page and width | First-load transfer KB | First-load JS KB | LCP ms, median of 6 | Page height px (en, dark) |
+| :-- | --: | --: | --: | --: |
+| landing 390 / 1280 | 462 -> 462 / 549 -> 549 | 127 -> 127 | 220 -> 240 / 276 -> 272 | 15,598 -> 15,082 / 14,565 -> 14,395 |
+| pricing 390 / 1280 | 284 -> 251 / 285 -> 253 | 130 -> 129 | 148 -> 164 / 240 -> 184 | 7,481 -> 6,619 / 5,050 -> 4,085 |
+| solutions 390 / 1280 | 367 -> 240 / 368 -> 241 | 120 -> 120 | 136 -> 140 / 160 -> 200 | 4,474 -> 5,674 / 3,035 -> 3,360 |
+| sign in 390 / 1280 | 290 -> 350 / 321 -> 350 | 182 -> 182 | 120 -> 128 / 156 -> 160 | 985 -> 1,055 / 900 -> 900 |
+| sign up 390 / 1280 | 292 -> 336 / 323 -> 336 | 183 -> 183 | 112 -> 124 / 184 -> 160 | 1,182 -> 1,252 / 992 -> 992 |
+| `/mcp` 390 / 1280 | 360 -> 361 / 361 -> 361 | 124 -> 124 | 232 -> 232 / 276 -> 244 | 15,821 -> 15,821 / 11,590 -> 11,620 |
+
+Read this honestly:
+
+- **The phone landing barely got shorter** (15,598 to 15,082 px; 19,345 on `main` before round 2). The first screen is what
+  changed, not the length: the frame now starts at about 560 px. The comparison's "by hand" list is hidden on a phone
+  (one summary line instead), which is most of the saving.
+- **Solutions is taller** (the product pictures are bigger than the photographs were) and Pricing is shorter (one
+  "what it costs", no separate price-check section). The Solutions transfer fell by about 130 KB for the same reason.
+- LCP moved within run-to-run noise (+20 ms at worst on the landing at 390). First-load JavaScript is unchanged.
+- The one new CLS regression is Solutions 390 uz (0.0001 to 0.0036): the picture sits below a title that wraps
+  differently once the fonts swap. It is small but it breaks the 0.002 budget.
+
 
 ## 5. Weak spots, in my own order
 
@@ -69,6 +97,7 @@ RESULTS_TABLE
 3. **`/mcp` English font-swap CLS is 0.08** (was 0.149): the centred hero re-centres its lines when the fonts swap, and
    only a left-aligned hero or a measured fallback face fixes that.
 4. **Four-line Uzbek headline on a phone** and the new ru/uz strings still need a native read.
-5. **The border fix changes the weight of every edge on the public pages**, including the documentation and legal
-   pages that no screenshot here covers; it is the intended design but nobody has reviewed those pages side by side.
+5. **The border fix changes the weight of every edge on the public pages.** I looked at Terms, the API reference and the
+   404 in both themes and they read well, but the other legal pages, the MCP tool pages and the OAuth screens were not
+   looked at.
 6. **Stills' licence is unconfirmed** (`SITE_ENGAGE.md` section 3).

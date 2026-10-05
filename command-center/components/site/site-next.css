@@ -910,8 +910,9 @@ html:has(.nx-bar) { scroll-padding-bottom: 96px; }
 .nx-bar-x:hover { color: var(--nx-stage-text); background: rgba(255, 255, 255, 0.08); }
 .nx-bar-x svg { width: 18px; height: 18px; }
 @media (prefers-reduced-motion: no-preference) {
-  .nx-bar { transition: opacity var(--ns-dur-3) var(--ns-ease), transform var(--ns-dur-3) var(--ns-ease), visibility 0s linear var(--ns-dur-3); }
-  .nx-bar[data-shown="true"] { transition-delay: 0s; }
+  /* It eases in; it leaves at once. A bar fading out leaves half-transparent text on the page for a third of a second
+     (an accessibility scan landing then reads a washed-out colour), and nobody needs to watch it go. */
+  .nx-bar[data-shown="true"] { transition: opacity var(--ns-dur-3) var(--ns-ease), transform var(--ns-dur-3) var(--ns-ease); }
 }
 @media (max-width: 420px) { .nx-bar { padding-left: 14px; } .nx-bar-text { font-size: 14px; } .nx-bar-go { padding: 0 14px; } }
 
