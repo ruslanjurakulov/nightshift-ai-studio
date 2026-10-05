@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getDictionary } from "@/lib/i18n/server";
 import { getDevDictionary } from "@/lib/i18n/dev";
+import { chatCopy } from "@/components/landing/HeroCard";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { McpPage } from "@/components/docs/McpPage";
 import { docsOrigin } from "@/lib/api/docs-origin";
@@ -26,10 +27,12 @@ export function generateMetadata(): Promise<Metadata> {
 export default async function McpConnectPage({ searchParams }: { searchParams: Promise<{ tab?: string | string[] }> }) {
   const { t, locale } = await getDictionary();
   const { tab } = await searchParams;
+  const dev = getDevDictionary(locale);
   return (
     <PublicShell t={t} current="docs">
       <McpPage
-        dev={getDevDictionary(locale)}
+        dev={dev}
+        chat={chatCopy(t, "mcp.card", dev.mcp.land.asks.items[0].prompt)}
         origin={docsOrigin()}
         labels={{ table: t.common.scrollTable, code: t.common.scrollCode }}
         showCli={devPagesEnabled()}

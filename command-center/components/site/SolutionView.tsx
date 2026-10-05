@@ -56,7 +56,7 @@ export function SolutionView({ t, id, page }: { t: Dictionary; id: SolutionId; p
                 </Link>
               )}
             </div>
-            <MotionToggle pause={t.site.fx.pause} play={t.site.fx.play} />
+            <MotionToggle pause={t.site.fx.pause} />
           </div>
           {id === "youtube-channels" ? (
             <SignOffPicture t={t} />
@@ -86,18 +86,18 @@ export function SolutionView({ t, id, page }: { t: Dictionary; id: SolutionId; p
         </div>
       </section>
 
-      <section aria-labelledby="not-title" className="st-section" data-size="sm">
-        <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
+      <section aria-labelledby="not-title" className="st-section" data-size="sm" data-tone="raised">
+        <div className="st-wrap">
           <h2 id="not-title" className="st-h2">
             {s.notLabel}
           </h2>
-          <ul className="flex flex-col border-t border-[var(--ns-rule-strong)]">
+          <ul className="nx-nots">
             {page.not.map((line) => (
-              <li key={line} className="flex items-start gap-4 border-b border-[var(--ns-rule)] py-5">
-                <span className="grid size-8 shrink-0 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)]">
+              <li key={line}>
+                <span className="grid size-8 shrink-0 place-items-center rounded-full border border-[var(--ns-rule-strong)]">
                   <X className="size-4" aria-hidden />
                 </span>
-                <p className="pt-1 text-[16.5px] leading-relaxed">{line}</p>
+                <p>{line}</p>
               </li>
             ))}
           </ul>

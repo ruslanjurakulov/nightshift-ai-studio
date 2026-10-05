@@ -41,7 +41,7 @@ export function Showcase({ t, items, hour }: { t: Dictionary; items: ShowcaseIte
                   className="absolute inset-0 size-full object-cover"
                 />
                 {it.format === "short" && (
-                  <span className="tnum pill absolute left-3 top-3 bg-[var(--color-bg)] px-2 py-0.5 text-xs">
+                  <span className="tnum pill absolute left-3 top-3 bg-[var(--color-bg)] px-2 py-0.5 text-sm">
                     {s.short}
                   </span>
                 )}

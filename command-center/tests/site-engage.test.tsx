@@ -106,15 +106,15 @@ describe("the price check's arithmetic", () => {
 describe("the landing page's reasons to stay", () => {
   it("has no price check without a published rate (an unpriced site stays unpriced), and has one with it", () => {
     const { container, unmount } = landing(NO_MONEY);
-    expect(container.querySelector("#price-check")).toBeNull();
+    expect(container.querySelector(".nx-calc")).toBeNull();
     unmount();
     const priced = landing(PRICED);
-    expect(priced.container.querySelector("#price-check")).not.toBeNull();
+    expect(priced.container.querySelector("#pricing .nx-calc")).not.toBeNull();
   });
 
   it("moves the price when the slider moves, from the published rate and nothing else", () => {
     const { container } = landing(PRICED);
-    const section = container.querySelector("#price-check") as HTMLElement;
+    const section = container.querySelector("#pricing") as HTMLElement;
     const slider = within(section).getByRole("slider");
     const out = () => section.querySelector("output")!.textContent;
     expect(out()).toBe("300 credits");
@@ -182,19 +182,6 @@ describe("the landing page's reasons to stay", () => {
     expect([...section.querySelectorAll(".nx-try-card")].every((c) => c.getAttribute("data-on") === "true")).toBe(true);
   });
 
-  it("compares by hand and with Nightshift as two lists of the same six steps: no hours, no percentages, and the topic and the publish press stay marked as yours", () => {
-    const { container } = landing();
-    const cmp = container.querySelector("#compare") as HTMLElement;
-    expect(cmp.textContent).not.toMatch(/\d/);
-    const cols = [...cmp.querySelectorAll(".nx-cmp-col")];
-    expect(cols).toHaveLength(2);
-    const steps = (col: Element) => [...col.querySelectorAll("li")].map((li) => li.querySelector("span")?.textContent ?? li.firstChild?.textContent ?? li.textContent);
-    expect(cols[0].querySelectorAll("li")).toHaveLength(6);
-    expect(cols[1].querySelectorAll("li")).toHaveLength(6);
-    expect([...cols[1].querySelectorAll("li")].map((li) => li.getAttribute("data-yours") === "true")).toEqual([true, false, false, false, false, true]);
-    expect(steps(cols[1])).toEqual(dictionaries.en.site.compare.rows.map((r) => r.step));
-  });
-
   it("carries one sticky start bar that is inert until it is shown, and a pause switch that sets the page's motion", () => {
     const t = dictionaries.en.site;
     const { container } = landing();
@@ -204,12 +191,15 @@ describe("the landing page's reasons to stay", () => {
     expect(within(bar).getByText(t.bar.cta).closest("a")!.getAttribute("href")).toBe("/signup");
     expect(bar.querySelector("button")!.getAttribute("aria-label")).toBe(t.bar.dismiss);
 
+    // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused.
     const toggle = screen.getByRole("button", { name: t.fx.pause });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(toggle);
     expect(document.documentElement.getAttribute("data-motion")).toBe("paused");
-    expect(screen.getByRole("button", { name: t.fx.play })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: t.fx.play }));
+    expect(screen.getByRole("button", { name: t.fx.pause }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: t.fx.pause }));
     expect(document.documentElement.hasAttribute("data-motion")).toBe(false);
+    expect(screen.getByRole("button", { name: t.fx.pause }).getAttribute("aria-pressed")).toBe("false");
   });
 
   it("states its promises in the hero (the three the page keeps) and invents no customer, count, rating or countdown", () => {
@@ -234,9 +224,12 @@ describe("the landing page's reasons to stay", () => {
 
 describe("the pause switch on its own", () => {
   it("flips the attribute the stylesheet reads and remembers nothing it cannot", () => {
-    render(<MotionToggle pause="Pause" play="Play" />);
-    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    render(<MotionToggle pause="Pause" />);
+    const b = screen.getByRole("button", { name: "Pause" });
+    expect(b.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(b);
     expect(document.documentElement.getAttribute("data-motion")).toBe("paused");
+    expect(b.getAttribute("aria-pressed")).toBe("true");
   });
 });
 
@@ -255,39 +248,53 @@ describe("the page's HTML stays small", () => {
 });
 
 describe("the AI-still disclosure is printed, not only labelled", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the hero card and every still-backed capability show the note as visible text; the gallery says it in its lead and labels every frame", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the hero card and each of the three showcases show the note as visible text, and every still carries its badge", (code) => {
     const { container } = landing(NO_MONEY, code);
-    const note = dictionaries[code].site.samples.note;
-    const figs = [...container.querySelectorAll("figure.nx-demo")].filter((f) => f.querySelector("img"));
-    expect(figs).toHaveLength(5); // the hero card and four capabilities
-    for (const f of figs) {
-      const cap = f.querySelector("figcaption") as HTMLElement;
-      expect(cap.textContent).toBe(note);
-      expect(cap.closest("[aria-hidden]")).toBeNull();
+    const s = dictionaries[code].site.samples;
+    const hero = container.querySelector("figure.nx-chat") as HTMLElement;
+    expect(hero.querySelector("figcaption")?.textContent).toBe(s.note);
+    expect(hero.querySelector("figcaption")?.closest("[aria-hidden]")).toBeNull();
+    const shows = [...container.querySelectorAll("section.nx-show")];
+    expect(shows.map((x) => x.id)).toEqual(["video", "studio", "approvals"]);
+    for (const x of shows) {
+      const note = x.querySelector(".nx-show-note") as HTMLElement;
+      expect(note.textContent).toBe(s.note);
+      expect(note.closest("[aria-hidden]")).toBeNull();
+      expect(x.querySelector(".nx-result-badge")?.textContent).toBe(s.tag);
     }
-    const g = dictionaries[code].site.gallery;
-    const gal = container.querySelector("#examples") as HTMLElement;
-    expect(gal.querySelector(".nx-sub")?.textContent).toBe(g.lead);
-    const cards = [...gal.querySelectorAll(".nx-gal-card")];
-    expect(cards.map((c) => c.querySelector("figcaption")?.textContent)).toEqual(["silkroad", "library", "moon", "nightmarket", "valley", "lighthouse"].map((id) => g.items[id as keyof typeof g.items]));
-    for (const c of cards) expect(c.querySelector(".nx-result-badge")?.textContent).toBe(dictionaries[code].site.samples.tag);
   });
 
-  it("builds the gallery as the shared carousel: a named group, a keyboard-reachable track and two 44px buttons, with nothing moving by itself", () => {
+  it("has no gallery, no rails and no comparison any more: nothing scrolls sideways on the landing and nothing is shown twice", () => {
     const { container } = landing();
-    const g = dictionaries.en.site.gallery;
-    const car = container.querySelector("#examples [aria-roledescription='carousel']") as HTMLElement;
-    expect(car.getAttribute("aria-label")).toBe(g.region);
-    expect(car.querySelector("[tabindex='0']")?.getAttribute("aria-label")).toBe(g.track);
-    expect(within(car).getByRole("button", { name: g.prev })).toBeTruthy();
-    expect(within(car).getByRole("button", { name: g.next })).toBeTruthy();
-    expect(car.querySelectorAll("[data-slide]")).toHaveLength(6);
+    for (const sel of ["#examples", ".nx-caps", "#compare", ".nx-gal", "[aria-roledescription='carousel']", ".nx-tiles", ".nx-rules-rail"]) expect(container.querySelector(sel), sel).toBeNull();
+    // Three different stills in the showcases, a fourth in the hero card.
+    const used = [...container.querySelectorAll("figure.nx-chat img, section.nx-show img")].map((i) => i.getAttribute("data-sample"));
+    expect(used).toHaveLength(4);
+    expect(new Set(used).size).toBe(4);
   });
 
-  it("wraps the capability sections in one rail (a named, focusable scroller on a phone only)", () => {
-    const { container } = landing();
-    const rail = container.querySelector(".nx-caps") as HTMLElement;
-    expect([...rail.children].map((c) => c.id)).toEqual(["video", "voice", "studio", "channels", "approvals"]);
+  it("sets the text of every showcase on a dark overlay: white on the brightest possible still stays above 7:1 (AA needs 4.5)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const css = readFileSync(join(__dirname, "..", "components/site/site-next.css"), "utf8");
+    const lum = (v: number) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    // A black overlay of alpha a over a pure-white pixel is the worst case a still can offer.
+    const worst = (a: number) => {
+      const bg = lum(255 * (1 - a));
+      return 1.05 / (bg + 0.05);
+    };
+    const phone = css.match(/\.nx-show-text \{[^}]*rgba\(8, 8, 8, ([\d.]+)\) calc\(100% - 72px\)/);
+    expect(phone, "phone overlay stop").toBeTruthy();
+    expect(worst(Number(phone![1]))).toBeGreaterThan(7);
+    const wide = css.match(/\.nx-show-card::after \{[^}]*rgba\(8, 8, 8, ([\d.]+)\) 0%, rgba\(8, 8, 8, ([\d.]+)\) 44%/);
+    expect(wide, "desktop overlay stops").toBeTruthy();
+    expect(worst(Number(wide![1]))).toBeGreaterThan(7);
+    expect(worst(Number(wide![2]))).toBeGreaterThan(7);
+    // The text column on a desktop is narrower than the dark part of the gradient (46% wide, the overlay is 76%+ opaque to 44%).
+    expect(css).toMatch(/\.nx-show-text \{[^}]*width: 46%/);
   });
 });
 
@@ -307,12 +314,9 @@ describe("the demo's stand-in frame", () => {
 });
 
 describe("round 3: stills, header and the draw-in", () => {
-  it("frames the capability examples as crops of the stills, and the hero and gallery as whole frames", () => {
+  it("draws every still whole (no crop classes on the landing): variety comes from one different still per section", () => {
     const { container } = landing();
-    const crops = [...container.querySelectorAll("figure.nx-demo:not(.nx-chat) .nx-result-art img")].map((i) => i.getAttribute("data-crop"));
-    expect(crops).toEqual(["a", "b", "c", "d"]);
-    expect(container.querySelector("figure.nx-chat img")?.getAttribute("data-crop")).toBeNull();
-    for (const i of container.querySelectorAll("#examples img")) expect(i.getAttribute("data-crop")).toBeNull();
+    for (const i of container.querySelectorAll("figure.nx-chat img, section.nx-show img")) expect(i.getAttribute("data-crop")).toBeNull();
   });
 
   it("makes the header's Start free the same amber key as the page's button (one primary action)", async () => {

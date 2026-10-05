@@ -278,15 +278,11 @@ describe("the MCP page", () => {
     expect(d.querySelector(".st-mcphero-paid")?.textContent).not.toMatch(/needs a paid plan/i);
   });
 
-  it("has a tile row around the Nightshift N: decorative, the names in text for screen readers, and no image from anywhere", () => {
+  it("has no row of client logos in the hero (a chat card stands there), keeps the names in text for screen readers, and no image from anywhere", () => {
     const d = doc(mcp());
-    const tiles = d.querySelector(".st-tiles")!;
-    expect(tiles.getAttribute("aria-hidden")).toBe("true");
-    expect(tiles.querySelectorAll(".st-tile")).toHaveLength(7);
-    expect(tiles.querySelector('[data-slot="brand"] svg[aria-hidden="true"]')).toBeTruthy();
-    // Pictures: only the example stills (img.ml-scene, same-origin build files); never video, and nothing in the tile row.
+    expect(d.querySelector(".st-tiles")).toBeNull();
+    // Pictures: only the example stills (img.ml-scene, same-origin build files); never video.
     expect(d.querySelectorAll("img:not(.ml-scene), picture, video")).toHaveLength(0);
-    expect(tiles.querySelectorAll("img")).toHaveLength(0);
     // Only the sprite may hold a picture, and only an embedded one (data: URI), never a remote file.
     for (const im of Array.from(d.querySelectorAll("image"))) {
       expect(im.getAttribute("href") ?? "").toMatch(/^data:image\/(png|webp);base64,/);
@@ -377,20 +373,6 @@ describe("the MCP page", () => {
       const open = document.querySelector('[role="tabpanel"][data-active="true"]') as HTMLElement;
       fireEvent.click(within(open).getByRole("button", { name: "Claude Code" }));
       expect(screen.getByRole("tab", { name: /Claude Code/ }).getAttribute("aria-selected")).toBe("true");
-    });
-
-    it("the How it works pills are a tablist too: arrows move, one panel shown, all three in the page", () => {
-      render(mcp());
-      const pills = screen.getAllByRole("tab").filter((t) => t.classList.contains("st-how-pill"));
-      expect(pills).toHaveLength(3);
-      const panels = () => [...document.querySelectorAll(".st-how-panel")] as HTMLElement[];
-      expect(panels()).toHaveLength(3);
-      expect(panels().filter((p) => !p.hidden)).toHaveLength(1);
-      fireEvent.keyDown(pills[0], { key: "ArrowRight" });
-      expect(pills[1].getAttribute("aria-selected")).toBe("true");
-      expect(panels().filter((p) => !p.hidden)[0].id).toBe(pills[1].getAttribute("aria-controls"));
-      fireEvent.keyDown(pills[1], { key: "End" });
-      expect(pills[2].getAttribute("aria-selected")).toBe("true");
     });
   });
 

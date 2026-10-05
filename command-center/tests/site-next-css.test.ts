@@ -76,10 +76,10 @@ describe("site-next.css", () => {
 
   it("gives every control at least 44px of height", () => {
     const heights: Record<string, number> = {};
-    for (const sel of [".nx-btn", ".nx-link", ".nx-chat-key", ".nx-try-pick", ".nx-who-tab"]) {
-      const at = css.indexOf(`${sel} {`);
-      const body = css.slice(at, css.indexOf("}", at));
-      heights[sel] = Number(body.match(/min-height:\s*(\d+)px/)?.[1] ?? 0);
+    for (const sel of [".nx-btn", ".nx-link", ".nx-chat-key", ".nx-try-pick", ".nx-show-cta", ".nx-motion-btn", ".nx-way-link"]) {
+      // The base rule (at the start of a line), not a transition-only mention inside a media block.
+      const m = css.match(new RegExp(`^${sel.replace(".", "\\.")} \\{[^}]*\\}`, "m"));
+      heights[sel] = Number(m?.[0].match(/min-height:\s*(\d+)px/)?.[1] ?? 0);
     }
     for (const [sel, h] of Object.entries(heights)) expect(h, sel).toBeGreaterThanOrEqual(44);
     expect(css).toMatch(/\.nx \.st-field input \{ height: 54px; min-height: 54px;/);

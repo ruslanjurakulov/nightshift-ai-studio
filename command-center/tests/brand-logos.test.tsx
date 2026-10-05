@@ -174,9 +174,10 @@ describe("the marks are the vendors' own drawings", () => {
     expect(got).toEqual(want);
   });
 
-  it("the hero never fades or blurs a vendor's mark (owners: exactly as provided, no effects)", () => {
+  it("no page fades or blurs a vendor's mark (owners: exactly as provided, no effects); the hero's old tile row, which had the blur rules, is gone", () => {
     const css = readFileSync(join(ROOT, "components", "site", "site.css"), "utf8");
-    expect(css).toMatch(/\.st-tile\[data-tile\]\s*\{\s*opacity:\s*1;\s*filter:\s*none;\s*\}/);
+    expect(css).not.toMatch(/\.st-tile\b/);
+    for (const rule of css.matchAll(/([^{}]*\.st-(?:logo|pill-glyph)[^{}]*)\{([^}]*)\}/g)) expect(rule[2], rule[1].trim()).not.toMatch(/blur\(|opacity:\s*0?\.\d/);
   });
 
   it.each(Object.entries(RASTER))("%s: a picture the vendor offers only as a picture is embedded, not fetched (a data: image, no other address)", (symbol, file) => {
@@ -280,36 +281,11 @@ describe("where the logos show", () => {
     );
   });
 
-  it("the centre tile is the Nightshift N on its black tile (the owner's mark), not a lamp", () => {
-    const doc = new DOMParser().parseFromString(page(), "text/html");
-    const centre = doc.querySelector('.st-tile[data-slot="brand"]')!;
-    expect(centre.querySelector("svg")).toBeTruthy();
-    expect(centre.querySelector(".st-tile-lamp")).toBeNull();
-    expect(centre.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
-  });
-
   it("a mark that needs a light surface sits on the light tile in both themes (Roo Code), the rest on the theme's own", () => {
     const doc = new DOMParser().parseFromString(page(), "text/html");
     const roo = doc.querySelector('.st-pill[data-id="roo-code"] .st-pill-glyph')!;
     expect(roo.getAttribute("data-tile")).toBe("paper");
     expect(doc.querySelector('.st-pill[data-id="cursor"] .st-pill-glyph')?.getAttribute("data-tile")).toBe("theme");
-  });
-
-  it("the hero row is real logos only, balanced around the N: Cursor, ChatGPT, OpenClaw | N | Claude, VS Code, Windsurf", () => {
-    const doc = new DOMParser().parseFromString(page(), "text/html");
-    const tiles = [...doc.querySelectorAll(".st-tiles .st-tile")];
-    expect(tiles.map((t) => t.getAttribute("data-id"))).toEqual(["cursor", "chatgpt", "openclaw", "nightshift", "claude", "vscode", "windsurf"]);
-    expect(doc.querySelectorAll(".st-tiles .st-logo-mono")).toHaveLength(0);
-    expect(doc.querySelectorAll(".st-logo-mono")).toHaveLength(0);
-    for (const t of tiles) {
-      const id = t.getAttribute("data-id")!;
-      if (id === "nightshift") continue;
-      expect(logoShown(brandLogo(id)), id).toBe(true);
-      expect(t.querySelector("svg use"), id).toBeTruthy();
-    }
-    // The hero tile keeps the Claude app icon: a finished tile of its own, shown at the tile's size with nothing around it.
-    expect(tiles.find((t) => t.getAttribute("data-id") === "claude")?.getAttribute("data-tile")).toBe("bare");
-    expect(tiles.find((t) => t.getAttribute("data-id") === "nightshift")?.textContent?.trim()).toBe("");
   });
 
   it("every tab shows its vendor's own mark; only \"Other\" carries a plain icon from the icon set the site already uses", () => {
@@ -327,7 +303,7 @@ describe("where the logos show", () => {
     for (const id of ["codex", "cursor", "vscode"]) expect(glyph(id).getAttribute("data-tile"), id).toBe("theme");
   });
 
-  it("the Anthropic marks are on the page, unmodified: the Claude Spark in the text colour on Claude and Claude Desktop, in clay on Claude Code, the app icon on the Claude hero tile", () => {
+  it("the Anthropic marks are on the page, unmodified: the Claude Spark in the text colour on Claude and Claude Desktop, in clay on Claude Code", () => {
     const html = page();
     expect(html).toContain('id="nl-claude-any"');
     expect(html).toContain('id="nl-claude-spark-any"');
@@ -337,7 +313,8 @@ describe("where the logos show", () => {
     expect(ref("claude")).toBe("#nl-claude-spark-mono");
     expect(ref("claude-desktop")).toBe("#nl-claude-spark-mono");
     expect(ref("claude-code")).toBe("#nl-claude-spark-any");
-    expect(doc.querySelector('.st-tile[data-id="claude"] use')?.getAttribute("href")).toBe("#nl-claude-any");
+    // (The hero no longer carries a row of client tiles: a chat card stands there, so the app icon is only in the sprite.)
+    expect(doc.querySelector(".st-tiles")).toBeNull();
     // The vendor's own colour, as its file has it; the one-colour spark takes the pill's text colour.
     expect(BRAND_ART["claude-spark-any"].markup).toMatch(/#d97757/i);
     expect(BRAND_ART["claude-spark-mono"].markup).toContain("currentColor");

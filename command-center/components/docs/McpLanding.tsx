@@ -1,122 +1,46 @@
 import Link from "next/link";
-import { MCP_CLIENTS } from "@/lib/dev/mcp-clients";
-import { ASK_IDS, CAPABILITY_ROWS, EXAMPLE_SCENES, PUBLISH_TARGETS } from "@/lib/dev/mcp-landing";
+import { CAPABILITY_ROWS, EXAMPLE_SCENES } from "@/lib/dev/mcp-landing";
 import type { DevDictionary } from "@/lib/i18n/dev";
-import { BrandLogo, logoTile } from "@/components/docs/BrandLogo";
-import { ClientMark, ClientText } from "@/components/docs/McpClientContext";
 import { CopyButton } from "@/components/docs/CopyButton";
-import { Marquee } from "@/components/docs/Marquee";
-import { MarqueePause, MarqueeToggle } from "@/components/docs/MarqueePause";
 import { ResultsCarousel } from "@/components/docs/ResultsCarousel";
-import { Scene, SampleFrame } from "@/components/docs/SampleFrame";
-import { BrandMark } from "@/components/site/BrandMark";
+import { Scene } from "@/components/docs/SampleFrame";
 
 /**
- * The long part of /mcp, between "How it works" and the tool list: ready-to-copy
- * asks, six capability rows (label, two-line headline, paragraph, one button, and
- * a demo card: the ask, Nightshift's reply and a drawn frame around an example still), a carousel of
- * example asks, the "works with" marquee, and the questions people ask. The
- * same text on every tab except the assistant's name (ClientText / ClientMark);
- * the install steps above are the part that differs per assistant.
+ * The middle of /mcp, between the connect card and the tool list: six things to
+ * ask for (a plain card each, with one button that copies the ask) and a
+ * carousel of example asks over example stills. The hero's chat card is the
+ * picture of what asking looks like, so there is no second walk-through here.
  *
- * Every picture is captioned as an example (the stills are AI-generated, made for the page); no model,
- * provider or price is named (see lib/dev/mcp-landing.ts). Original work on a
- * known pattern: the proportions are measured from a reference page and nothing
- * else is taken from it (no text, image or logo).
+ * Every picture is captioned as an example (the stills are AI-generated, made
+ * for the page); no model, provider or price is named (see lib/dev/mcp-landing.ts).
  */
 export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: boolean }) {
   const c = dev.mcp;
   const l = c.land;
-  // The clients that can connect today (while the sign-in is off that leaves out Claude and ChatGPT), split into two rows with
-  // no client in both, so one logo is never on screen twice. Both rows drift the same way at the same speed.
-  const clients = MCP_CLIENTS.filter((x) => x.id !== "other" && (oauthLive || !x.oauthOnly));
-  const half = Math.ceil(clients.length / 2);
-  const clientNames = clients.map((x) => x.label);
-  const rowA = clients.slice(0, half);
-  const rowB = clients.slice(half);
-  // About 19 px a second whatever the row's length (a pill is at least 190 px and its gap 20).
-  const secondsFor = (n: number) => Math.round((n * 210) / 19);
-  const frames = oauthLive ? l.frames : { ...l.frames, credits: { ...l.frames.credits, bars: l.frames.credits.bars.map((b, i) => (i === 2 ? l.keyMode.limitBar : b)) } };
-
-  const clientPill = (id: string, label: string) => (
-    <span className="ml-mq-pill">
-      <span className="st-pill-glyph" data-tile={logoTile(id)}>
-        <BrandLogo id={id} />
-      </span>
-      {label}
-    </span>
-  );
-
   return (
     <>
-      <section aria-labelledby="asks-title" className="ml-land ml-asks">
-        <div className="ml-land-in">
-          <p className="ml-label">{l.asks.label}</p>
-          <h2 id="asks-title" className="ml-land-h2">
-            <ClientMark /> <ClientText template={l.asks.title} soonTemplate={oauthLive ? undefined : c.signinOff.asksTitle} />
-          </h2>
-          <p className="ml-land-lead">{l.asks.lead}</p>
-          <ul className="ml-ask-grid">
-            {ASK_IDS.map((id) => {
-              const item = l.asks.items.find((x) => x.id === id)!;
-              return (
-                <li key={id} className="ml-ask" data-spot>
-                  <h3 className="ml-ask-title">{item.title}</h3>
-                  <p className="ml-ask-prompt">{item.prompt}</p>
-                  <div className="ml-ask-copy">
-                    <CopyButton text={item.prompt} name={`${l.asks.copyName} (${item.title})`} labels={dev.ui} variant="label" />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      </section>
-
       <section aria-labelledby="every-title" className="ml-land ml-every" data-tone="ground">
         <div className="ml-land-in ml-every-in">
           <h2 id="every-title" className="ml-land-h2 ml-land-h2-lg">
             {l.every.title}
           </h2>
           <p className="ml-land-lead">{l.every.lead}</p>
-          <div className="ml-caps">
-            {CAPABILITY_ROWS.map((row, i) => {
+          {/* Six things to ask, as plain cards: the label, what it is, and one button that copies the ask. The pictures live in the hero and the examples. */}
+          <ul className="nx-mcp-asks">
+            {CAPABILITY_ROWS.map((row) => {
               const t = l.every.rows.find((x) => x.id === row.id)!;
               return (
-                <article key={row.id} className="ml-cap" data-flip={i % 2 === 1 || undefined} data-id={row.id}>
-                  <div className="ml-cap-copy">
-                    <p className="ml-pillbadge">{t.label}</p>
-                    <h3 className="ml-cap-h3">{t.title}</h3>
-                    <p className="ml-cap-body">{row.id === "credits" && !oauthLive ? l.keyMode.credits : t.body}</p>
-                    <div className="ml-cap-cta">
-                      <CopyButton text={t.prompt} name={`${l.asks.copyName} (${t.title})`} labels={{ ...dev.ui, copy: t.cta }} variant="label" />
-                    </div>
+                <li key={row.id} className="nx-mcp-ask" data-id={row.id} data-spot>
+                  <p className="ml-pillbadge">{t.label}</p>
+                  <h3 className="ml-cap-h3">{t.title}</h3>
+                  <p className="ml-cap-body">{row.id === "credits" && !oauthLive ? l.keyMode.credits : t.body}</p>
+                  <div className="ml-cap-cta">
+                    <CopyButton text={t.prompt} name={`${l.asks.copyName} (${t.title})`} labels={{ ...dev.ui, copy: t.cta }} variant="label" />
                   </div>
-                  <div className="ml-demo" data-spot>
-                    <div className="ml-bubble-row">
-                      <p className="ml-bubble">{t.prompt}</p>
-                    </div>
-                    {row.thumbs > 0 && (
-                      <div className="ml-thumbs" aria-hidden>
-                        <span className="ml-thumbs-tag">{l.examples.sample}</span>
-                        {EXAMPLE_SCENES.slice(0, row.thumbs).map((s, k) => (
-                          <span key={s} className="ml-thumb">
-                            <Scene kind={(["stars", "waves", "dunes"] as const)[k]} />
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <div className="ml-reply">
-                      <BrandMark size={28} />
-                      <b>{l.every.replyName}</b>
-                      <span>{l.every.exampleReply}</span>
-                    </div>
-                    <SampleFrame kind={row.frame} words={{ ...frames, sample: l.examples.sample }} />
-                  </div>
-                </article>
+                </li>
               );
             })}
-          </div>
+          </ul>
         </div>
       </section>
 
@@ -154,39 +78,6 @@ export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: 
             })}
           />
         </div>
-      </section>
-
-      <section aria-labelledby="works-title" className="ml-land ml-works">
-        <MarqueePause>
-          <div className="ml-land-in ml-works-in">
-            <p className="ml-label">{l.works.label}</p>
-            <h2 id="works-title" className="ml-land-h2">
-              {oauthLive ? l.works.title : c.signinOff.worksTitle}
-            </h2>
-            <p className="ml-land-lead">{oauthLive ? l.works.lead : l.keyMode.works}</p>
-            <MarqueeToggle label={l.works.pause} />
-          </div>
-          <p className="sr-only">
-            {l.works.label}: {clientNames.join(", ")}, {l.works.more}.
-          </p>
-          <Marquee
-            rows={[
-              { id: "a", items: rowA.map((x) => clientPill(x.id, x.label)), seconds: secondsFor(rowA.length) },
-              { id: "b", items: rowB.map((x) => clientPill(x.id, x.label)), seconds: secondsFor(rowB.length) },
-            ]}
-          />
-          <div className="ml-publish">
-            <p className="ml-publish-label">{l.works.publishes}</p>
-            <ul>
-              {PUBLISH_TARGETS.map((name) => (
-                <li key={name}>
-                  <span className="ml-mq-pill ml-mq-text">{name}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <p className="ml-works-tm">{c.trademarks}</p>
-        </MarqueePause>
       </section>
     </>
   );

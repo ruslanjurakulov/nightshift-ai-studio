@@ -7,9 +7,9 @@ import { SectionHead } from "@/components/landing/SectionHead";
 type FaqItem = { id: string; q: string; a: string };
 type FaqLink = { href: string; label: string } | null;
 
-const OPEN_ON_ARRIVAL = ["cancel", "refund"] as const;
-/** With packs only, there is no plan to cancel: refunds and unused credits are the money terms. */
-const OPEN_ON_ARRIVAL_PACKS = ["refund", "unused"] as const;
+/** The one money answer open on the homepage: refunds. Cancelling, unused credits and the rest are one tap away, and /pricing opens its own. */
+const OPEN_ON_ARRIVAL = ["refund"] as const;
+const OPEN_ON_ARRIVAL_PACKS = ["refund"] as const;
 
 /**
  * The money questions as they apply to what is on sale. With no monthly plan
@@ -101,8 +101,8 @@ export function FaqList({
 
 /**
  * The homepage FAQ: the questions to settle before paying — cancelling,
- * refunds, unused credits, privacy. Cancelling and refunds are open on
- * arrival, so the terms are read before the buy button, not after. Each
+ * refunds, unused credits, privacy. Refunds are open on arrival, so the
+ * money terms are read before the buy button, not after. Each
  * answer describes what the code does today — no promised timings, no roadmap.
  */
 export function Faq({

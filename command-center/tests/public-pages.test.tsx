@@ -59,16 +59,19 @@ function catalog() {
 }
 
 describe("public landing page", () => {
-  it("has one h1 with the promise and a heading for every section", () => {
+  it("has one h1 with the promise and a heading for every section (six blocks in a single column)", () => {
     const t = dictionaries.en;
     const s = t.site;
     renderLanding({ kind: "announced" });
     const h1s = screen.getAllByRole("heading", { level: 1 });
     expect(h1s).toHaveLength(1);
     expect(h1s[0].textContent).toBe(`${s.hero.titleA} ${s.hero.titleB}`);
-    for (const title of [s.how.simple.title, ...s.caps.items.map((i) => i.title), s.who.title, s.rules.title, s.pricingTeaser.title, t.landing.faq.title, s.final.title]) {
+    const showTitles = ["video", "studio", "approvals"].map((id) => s.caps.items.find((i) => i.id === id)!.title);
+    for (const title of [s.how.simple.title, ...showTitles, s.try.title, s.pricingTeaser.title, t.landing.faq.title, s.final.title]) {
       expect(screen.getByRole("heading", { level: 2, name: title })).toBeTruthy();
     }
+    // The rails, the comparison, the who-tabs and the rules block are gone: their headings must not come back.
+    for (const gone of [s.who.title, s.rules.title]) expect(screen.queryByRole("heading", { level: 2, name: gone })).toBeNull();
     // How it works is three steps, and the last one is the person's own press.
     const how = screen.getByRole("list", { name: s.how.slug });
     expect(how.tagName).toBe("OL");
@@ -76,59 +79,46 @@ describe("public landing page", () => {
     expect(steps).toEqual(s.how.simple.steps.map((x) => x.title));
     expect(steps).toHaveLength(3);
     expect(s.how.simple.steps[2].id).toBe("approve");
-    // Who it is for: one tab per solutions page; every panel (open or not) links to its page, and the index is one link away.
-    const who = screen.getByRole("heading", { level: 2, name: s.who.title }).closest("section")!;
-    expect(within(who).getAllByRole("tab").map((x) => x.textContent)).toEqual(expect.arrayContaining(s.who.items.map((i) => expect.stringContaining(i.title))));
-    expect([...who.querySelectorAll("a[href]")].map((a) => a.getAttribute("href"))).toEqual([...s.who.items.map((i) => `/solutions/${i.id}`), "/solutions"]);
-    // Every rule the product keeps has its own heading.
-    const rules = screen.getByRole("heading", { level: 2, name: s.rules.title }).closest("section")!;
-    for (const r of s.rules.items) expect(within(rules).getByRole("heading", { level: 3, name: r.title })).toBeTruthy();
+    // The three promises the page keeps sit in the hero.
+    const trust = screen.getByRole("list", { name: s.rules.slug });
+    expect(within(trust).getAllByRole("listitem").map((li) => li.textContent)).toEqual(s.rules.items.map((r) => r.title));
   });
 
-  it("shows every Studio tool with how it is paid for, and draws every example instead of shipping a picture", () => {
-    const t = dictionaries.en;
+  it("uses only the labelled example stills for pictures: same-origin, described, and none of them a video or a real result", () => {
     const { container } = renderLanding({ kind: "announced" });
-    const studio = screen.getByRole("heading", { level: 2, name: t.site.caps.items.find((i) => i.id === "studio")!.title }).closest("section")!;
-    const tools = within(studio).getByRole("list", { name: t.site.studio.slug });
-    expect(within(tools).getAllByRole("listitem").map((li) => li.querySelector("span:not(.sr-only):not(.nx-tool-free)")?.textContent)).toEqual(t.site.studio.tools.map((x) => x.title));
-    // Each tool says how it is paid for: the editor and the style library spend nothing.
-    const cost = within(tools).getAllByRole("listitem").map((li) => li.querySelector(".nx-tool-free, .sr-only")?.textContent);
-    expect(cost).toEqual(t.site.studio.tools.map((x) => (x.id === "editor" || x.id === "styles" ? t.site.studio.free : t.site.studio.priced)));
-    // The only images are the real app screenshots and the labelled example frames (decorative inside a hidden picture; same-origin files).
-    for (const img of container.querySelectorAll("img")) {
-      expect(img.closest("figure.st-shot") !== null || img.classList.contains("nx-art")).toBe(true);
+    const imgs = [...container.querySelectorAll("img")];
+    expect(imgs.length).toBeGreaterThanOrEqual(5);
+    for (const img of imgs) {
+      expect(img.getAttribute("data-sample")).toBeTruthy();
       expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
     }
+    expect(container.querySelectorAll("video, audio, picture")).toHaveLength(0);
+    // The first screen's still is the only eager one.
+    expect(imgs.filter((i) => i.getAttribute("loading") === "eager")).toHaveLength(1);
+    expect(container.querySelector("figure.nx-chat img")?.getAttribute("loading")).toBe("eager");
   });
 
-  it("shows each capability as one labelled example: what you ask for, what comes back, and a note that it is an example", () => {
+  it("shows three capabilities as full-width showcases: a different still each, labelled on the picture and under it, one outlined button, no drawn product", () => {
     const t = dictionaries.en;
     const { container } = renderLanding({ kind: "announced" });
-    expect(t.site.caps.items.map((i) => i.id)).toEqual(["video", "voice", "studio", "channels", "approvals"]);
-    for (const item of t.site.caps.items) {
-      const section = container.querySelector(`#${item.id}`)!;
-      expect(within(section as HTMLElement).getByRole("heading", { level: 2, name: item.title })).toBeTruthy();
-      // One button per section, in plain words, going somewhere real.
-      const cta = within(section as HTMLElement).getByRole("link", { name: item.cta });
+    const ids = ["video", "studio", "approvals"] as const;
+    const stills = new Set<string>();
+    for (const id of ids) {
+      const item = t.site.caps.items.find((i) => i.id === id)!;
+      const section = container.querySelector(`section#${id}.nx-show`) as HTMLElement;
+      expect(within(section).getByRole("heading", { level: 2, name: item.title })).toBeTruthy();
+      const cta = within(section).getByRole("link", { name: item.cta });
       expect(cta.getAttribute("href")).toMatch(/^\/(signup|solutions\/youtube-channels)$/);
-      const demo = section.querySelector("figure.nx-demo")!;
-      expect(demo.getAttribute("aria-label")).toContain(t.site.caps.demo);
-      expect(demo.textContent).toContain(item.bubble);
-      // Every reply says "example reply", never "made a video"; over a still the AI-still note is printed beside it.
-      const stillBacked = demo.querySelector("img") !== null;
-      expect(demo.textContent).toContain(t.site.caps.exampleReply);
-      expect(demo.textContent).not.toContain(item.reply);
-      if (stillBacked) {
-        expect(demo.querySelector("figcaption")?.textContent).toBe(t.site.samples.note);
-        expect(demo.querySelector(".nx-result-badge")?.textContent).toBe(t.site.samples.tag);
-      }
-      expect(demo.textContent).toContain(t.site.caps.tag);
-      expect(demo.textContent).not.toMatch(MONEY);
-      expect(demo.querySelector("a, button, input, [tabindex]")).toBeNull();
+      const img = section.querySelector("img")!;
+      stills.add(img.getAttribute("data-sample")!);
+      expect(Object.values(t.site.samples.alts)).toContain(img.getAttribute("alt"));
+      expect(section.querySelector(".nx-result-badge")?.textContent).toBe(t.site.samples.tag);
+      expect(section.querySelector(".nx-show-note")?.textContent).toBe(t.site.samples.note);
+      expect(section.textContent).not.toMatch(MONEY);
+      // The words are real text beside the picture (never baked into it), and the only control is the one button.
+      expect(section.querySelectorAll("a, button")).toHaveLength(1);
     }
-    // The approvals card is the Solutions page's own sign-off wording.
-    const approvals = container.querySelector("#approvals")!;
-    expect(approvals.textContent).toContain(t.site.solutions.pictures.signoff.second);
+    expect(stills.size).toBe(3);
   });
 
   it("draws the hero's product as one labelled example exchange: the ask, an example reply, a real example frame, and a drawn key that is not a button", () => {
@@ -193,12 +183,12 @@ describe("public landing page", () => {
     for (const l of ["en", "ru", "uz"] as const) expect(dictionaries[l].signup.sub.length).toBeGreaterThan(20);
   });
 
-  it("opens the cancelling and refund answers before anyone buys, when a plan is on sale", () => {
+  it("opens the refund answer before anyone buys, when a plan is on sale", () => {
     const t = dictionaries.en;
     const { container } = renderLanding({ kind: "plans", plans: [{ id: "creator", name: "Creator", credits: 1500, price: "$12" }] });
     const open = [...container.querySelectorAll("details[open] h3")].map((h) => h.textContent);
     const q = (id: string) => t.landing.faq.items.find((i) => i.id === id)!.q;
-    expect(open).toEqual([q("cancel"), q("refund")]);
+    expect(open).toEqual([q("refund")]);
   });
 
   it("sends the primary call to action to sign-up and the secondary to pricing", () => {
@@ -215,29 +205,32 @@ describe("public landing page", () => {
     const { container } = renderLanding({ kind: "announced" });
     const s = dictionaries.en.site;
     expect(container.textContent).not.toMatch(MONEY);
-    // Pack, a video in the app, a video through the API: each said in words.
-    expect(screen.getAllByText(s.anchor.none).length).toBe(3);
-    expect(container.textContent).toContain(s.anchor.noneNote);
-    // The pack sizes are captioned as top-ups in plain sight, not only for screen readers.
+    // The pack sizes are captioned as top-ups in plain sight, with the words for "no price yet", and no price check without a published rate.
     expect(screen.getByRole("heading", { level: 3, name: s.pricingTeaser.packsCaption })).toBeTruthy();
     expect(container.textContent).toContain(s.pricingTeaser.leadNoPlans);
+    expect(container.textContent).toContain(s.pricingTeaser.sizesBody);
+    expect(container.querySelector(".nx-calc")).toBeNull();
   });
 
-  it("anchors the money before sign-up with the live API price list and a published pack price", () => {
+  it("anchors the money before sign-up with the published rate and a published pack price, in one block", () => {
     const { container } = renderLanding({ kind: "packs", packs: [{ id: "starter", credits: 1000, price: "$10" }] }, "en", {
       pack: { kind: "priced", id: "starter", credits: 1000, price: "$10" },
       api: { perMinuteCents: 120, minimumCents: 60 },
       site: { perMinute: 60, minimum: 30, usd: { cents: 60, pack: "starter" } },
     });
-    const text = container.textContent ?? "";
-    expect(text).toContain("$10 for 1,000 credits");
-    // What a video costs in the app, from the live list — and in dollars at the pack's price.
-    expect(text).toContain("60 credits a minute of finished video");
-    expect(text).toContain("at least 30 credits a run");
-    expect(text).toContain("≈ $0.60 a minute at the Starter price");
-    expect(text).toContain("$1.20 a minute of video");
-    expect(text).toContain("at least $0.60 a video");
-    expect(screen.getByRole("link", { name: dictionaries.en.site.anchor.apiSource }).getAttribute("href")).toBe("/docs/api#pricing");
+    const block = container.querySelector("section#pricing")!;
+    const text = block.textContent ?? "";
+    // The price check (from the published rate) and the pack, side by side; the price of five minutes at the Starter price.
+    expect(text).toContain("300 credits");
+    expect(text).toContain("≈ $3.00 at the Starter price");
+    expect(text).toContain("$10");
+    expect(text).toContain("1,000");
+    expect(block.querySelector("output")?.textContent).toBe("300 credits");
+    // One block, not two: no second "what it costs" panel anywhere on the page.
+    expect(container.querySelectorAll("#pricing")).toHaveLength(1);
+    expect(container.querySelector(".nx-money, .nx-anchor")).toBeNull();
+    expect(screen.getByRole("link", { name: dictionaries.en.site.pricingTeaser.cta }).getAttribute("href")).toBe("/pricing");
+    expect(container.textContent).toContain("A video in the app: 60 credits a minute of finished video");
   });
 
   it("says the one known price above the fold, only when the live price list holds it", () => {
@@ -263,32 +256,6 @@ describe("public landing page", () => {
     expect(container.textContent).toContain("Creator");
   });
 
-  it("shows the approval on a real screenshot, labelled as one, with sample data said plainly (PIXEL-3)", () => {
-    for (const locale of ["en", "ru", "uz"] as const) {
-      const { container } = renderLanding({ kind: "announced" }, locale);
-      const h = dictionaries[locale].site.how;
-      // One figure, beside the steps: the page the third step ends on.
-      const figures = Array.from(container.querySelectorAll("figure.st-shot"));
-      expect(figures).toHaveLength(1);
-      expect(figures[0].closest("#how")).not.toBeNull();
-      const imgs = Array.from(figures[0].querySelectorAll("img"));
-      // Light and dark, desktop and phone captures, all described in the page's language.
-      expect(imgs.map((i) => `${i.getAttribute("data-shot-theme")}-${i.getAttribute("data-shot-size")}`)).toEqual([
-        "light-desk",
-        "light-phone",
-        "dark-desk",
-        "dark-phone",
-      ]);
-      for (const img of imgs) expect(img.getAttribute("alt")).toBe(h.shotAlt);
-      const caption = container.querySelector("figure.st-shot figcaption")?.textContent ?? "";
-      expect(caption).toContain(h.shotTag);
-      expect(caption).toContain(h.shotCaption);
-      // PIXEL-4 D4: the balance and the account on screen are sample data too, and the caption says so.
-      expect(h.shotCaption).toMatch(locale === "en" ? /sample data/ : locale === "ru" ? /пример/ : /namuna/);
-      cleanup();
-    }
-  });
-
   it("never says credits do not expire when the expiry could not be read (BR-L-100)", () => {
     const t = dictionaries.en;
     const { container } = render(
@@ -297,7 +264,6 @@ describe("public landing page", () => {
     const text = container.textContent ?? "";
     expect(text).not.toContain(t.pricing.expiryNever);
     expect(text).not.toContain(t.site.packsOnly.unusedNever);
-    expect(text).toContain(t.pricing.expiryUnknown);
     expect(text).toContain(t.site.packsOnly.unusedUnknown);
   });
 
@@ -309,16 +275,6 @@ describe("public landing page", () => {
       expect(document.querySelector("figure.nx-chat")?.getAttribute("aria-label")).toBe(dictionaries[locale].site.stage.figure);
       cleanup();
     }
-  });
-
-  it("lights the refund ledger's failure in red and its return in green, with the words beside the lamps", () => {
-    const t = dictionaries.en;
-    renderLanding({ kind: "announced" });
-    const refund = t.site.rules.items.find((r) => r.id === "refund")!;
-    const ledger = screen.getByRole("list", { name: refund.title });
-    const lamps = [...ledger.querySelectorAll(".ns-lamp")].map((l) => l.getAttribute("data-tone"));
-    expect(lamps).toEqual(["ok", "fail", "ok"]);
-    expect(within(ledger).getAllByRole("listitem").map((li) => li.textContent)).toEqual(refund.lines);
   });
 
   it.each(["en", "ru", "uz"] as const)("names no AI provider or competitor anywhere on the page (%s)", (locale) => {
@@ -356,7 +312,6 @@ describe("public pricing page", () => {
     const { container } = renderPricing({ pricing: none });
     expect(container.textContent).not.toMatch(MONEY);
     expect(container.textContent).toContain(dictionaries.en.pricing.comingSoonTitle);
-    expect(screen.getByRole("heading", { level: 2, name: dictionaries.en.site.anchor.title })).toBeTruthy();
   });
 
   it.each(["en", "ru", "uz"] as const)("says nothing about plans when only packs are on sale (%s)", (locale) => {
@@ -367,11 +322,11 @@ describe("public pricing page", () => {
     expect(screen.queryByRole("heading", { level: 3, name: t.pricing.faq.find((q) => q.id === "cancel")!.q })).toBeNull();
     expect(text).toContain(t.site.packsOnly.packsLead);
     cleanup();
-    // …and the landing's questions open on refunds and unused credits, not on cancelling a plan.
+    // …and the landing's questions open on refunds, not on cancelling a plan.
     const landing = renderLanding({ kind: "announced" }, locale);
     expect(landing.container.textContent).not.toContain(t.landing.faq.items.find((q) => q.id === "cancel")!.q);
     const open = [...landing.container.querySelectorAll("#faq details[open] h3")].map((h) => h.textContent);
-    expect(open).toEqual(t.landing.faq.items.filter((q) => q.id === "refund" || q.id === "unused").map((q) => q.q));
+    expect(open).toEqual(t.landing.faq.items.filter((q) => q.id === "refund").map((q) => q.q));
   });
 
   it("keeps the plan terms when a plan is on sale", () => {
@@ -504,10 +459,10 @@ describe("the pricing page, product first (round 3)", () => {
     expect(hero.querySelector("output")?.textContent).toBe("300 credits");
     // The hero's price check carries no second "Start free": the page's own button is the one action there.
     expect(hero.querySelectorAll(".nx-calc a")).toHaveLength(0);
-    // No separate price-check section, and the "What it costs" panel appears once (with the packs).
+    // No separate price-check section, and no second "What it costs" panel: the price check is the one place, the packs follow it.
     expect(container.querySelector("#price-check")).toBeNull();
-    expect(screen.getAllByText(dictionaries.en.site.anchor.title)).toHaveLength(1);
-    expect(container.querySelector("#packs")?.textContent).toContain(dictionaries.en.site.anchor.title);
+    expect(screen.queryByText(dictionaries.en.site.anchor.title)).toBeNull();
+    expect(container.querySelector("#packs")).not.toBeNull();
   });
 
   it("falls back to the promises beside the headline when no rate is published", () => {
@@ -515,6 +470,18 @@ describe("the pricing page, product first (round 3)", () => {
     const { container } = renderPricing({ pricing, anchor: NO_MONEY });
     expect(container.querySelector(".nx-lit [role=slider], .nx-lit input[type=range]")).toBeNull();
     expect(container.querySelector(".nx-lit .nx-get")).not.toBeNull();
+  });
+
+  it("puts the calculator on the first phone screen and the chat card as the page's picture, with no second rates panel (round 4)", () => {
+    const pricing = resolvePricing({ NEXT_PUBLIC_PRICE_DISPLAY_STARTER: "$10" }, null);
+    const { container } = renderPricing({ pricing, anchor: PRICED_ANCHOR, rates: { perMinute: 60, jobMinimum: 10 } });
+    const hero = container.querySelector(".nx-pr-hero")!;
+    // Order inside the hero: the headline, the calculator, then the button (CSS puts them side by side on a desktop).
+    const kids = [...hero.children].map((c) => c.className);
+    expect(kids).toEqual(["nx-pr-copy", "nx-pr-calc", "nx-pr-actions"]);
+    expect(container.querySelectorAll("figure.nx-chat")).toHaveLength(1);
+    expect(container.querySelector("figure.nx-chat img")?.getAttribute("data-sample")).toBe("nightmarket");
+    expect(screen.queryByText(dictionaries.en.pricing.ratesTitle)).toBeNull();
   });
 });
 
