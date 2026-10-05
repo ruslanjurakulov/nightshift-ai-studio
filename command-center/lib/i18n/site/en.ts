@@ -144,6 +144,7 @@ export const siteEn = {
   caps: {
     demo: "An example of what you can ask for and the kind of result that comes back. The frames are AI-generated stills made for this page. Everything shown is an example.",
     tag: "Example",
+    exampleReply: "example reply",
     items: [
       {
         id: "video",

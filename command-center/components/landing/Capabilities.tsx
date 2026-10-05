@@ -115,7 +115,8 @@ function Demo({ t, item, plan }: { t: Dictionary; item: Item; plan: (typeof PLAN
           <b>{t.brand.name}</b>
           <span>
             <Check />
-            {item.reply}
+            {/* Over an example still the reply is labelled as one: it must not read as "Nightshift made this". */}
+            {plan.frame ? c.exampleReply : item.reply}
           </span>
         </div>
         {item.id === "approvals" ? (
@@ -158,6 +159,7 @@ function Demo({ t, item, plan }: { t: Dictionary; item: Item; plan: (typeof PLAN
           </ul>
         )}
       </div>
+      {plan.frame && <figcaption className="nx-demo-note">{t.site.samples.note}</figcaption>}
     </figure>
   );
 }

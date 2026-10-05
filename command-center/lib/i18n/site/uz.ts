@@ -137,6 +137,7 @@ export const siteUz: SiteDictionary = {
   caps: {
     demo: "Nimani soʻrash mumkinligi va qanday natija qaytishining namunasi. Kadrlar shu sahifa uchun sunʼiy intellekt yordamida yaratilgan. Undagi hamma narsa namuna.",
     tag: "Namuna",
+    exampleReply: "namunaviy javob",
     items: [
       {
         id: "video",

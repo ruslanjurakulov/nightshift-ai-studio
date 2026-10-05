@@ -175,6 +175,17 @@ Read this honestly:
   fixed, the plan's cards share one grid cell with their ghosts, the tabs' panels share one cell, and the
   ease-in is opacity and transform only on elements that start below the fold.
 
+### Review fixes (step 1 after the first independent score)
+
+- **Pause now stops the hero light.** The blobs' running rule (`html[data-fx="on"] .nx-fx-blob[data-n]`, 0,3,1) beat the
+  pause rule (0,2,1); the pause selector now names `[data-fx]` and `[data-n]` too (0,4,1) and a test compares the two
+  specificities and order. Checked in Chromium: running, then paused and frozen, and still paused on the next page. The
+  remembered choice is restored to `<html>` before `data-fx` is set (`restoreMotion`), and nothing moves before JavaScript
+  has run at all, so no inline script is needed.
+- **The disclosure is printed.** The note that the frames are AI-generated stills is now visible text under the hero picture
+  and under every capability example that holds a still (en/ru/uz), not only an aria-label. Replies over a still read
+  "example reply" instead of "made a video". The play glyph on stills (hero stage and `/mcp`) is gone: it implied video.
+
 ## 6. Risks and what to do next
 
 1. **The example frames' licence.** They are AI-generated stills; the tool's commercial-use licence is

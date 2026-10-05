@@ -2302,8 +2302,6 @@ h3.st-doc-h3 { letter-spacing: 0; }
 .ml-frame-head { margin: 0; font-size: 13px; font-weight: 600; line-height: 16px; color: var(--ns-text-dim); }
 .ml-frame-meta { margin: 0; font-size: 14px; color: var(--ns-text-dim); }
 .ml-frame-screen { position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: #f6c58b; }
-.ml-frame-play { position: absolute; inset: 0; margin: auto; width: 52px; height: 52px; border-radius: 50%; background: rgba(255, 255, 255, 0.85); }
-.ml-frame-play::after { content: ""; position: absolute; left: 21px; top: 16px; border-left: 16px solid #1b1a17; border-block: 10px solid transparent; }
 .ml-frame-cap { position: absolute; left: 12px; bottom: 10px; padding: 2px 8px; border-radius: 6px; background: rgba(0, 0, 0, 0.55); font-size: 13px; font-weight: 600; color: #fff; }
 .ml-stages { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .ml-stages li, .ml-rules li { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--ns-key); font-size: 13px; line-height: 18px; color: var(--ns-text); }

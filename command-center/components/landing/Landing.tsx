@@ -166,7 +166,7 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
             </li>
           ))}
         </ul>
-        <PressStage stage={t.site.stage} />
+        <PressStage stage={t.site.stage} note={t.site.samples.note} />
         <MotionToggle pause={t.site.fx.pause} play={t.site.fx.play} />
       </div>
     </section>

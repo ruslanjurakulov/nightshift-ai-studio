@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Check, Play } from "lucide-react";
+import { Check } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import { Art } from "@/components/landing/Art";
 import { SampleImg } from "@/components/site/samples";
@@ -29,7 +29,7 @@ const REST_MS = 4600;
  * stage never changes height when the state does (no layout shift) and every
  * state's words are there for search engines and screen readers.
  */
-export function PressStage({ stage }: { stage: Stage }) {
+export function PressStage({ stage, note }: { stage: Stage; note: string }) {
   const uid = useId();
   const [active, setActive] = useState(0);
   const [auto, setAuto] = useState(false);
@@ -163,6 +163,8 @@ export function PressStage({ stage }: { stage: Stage }) {
           </div>
         ))}
       </div>
+      {/* The example frame in the last two states is an AI-generated still: the page says so in plain sight, in every state, so the stage never changes height. */}
+      <p className="nx-stage-note">{note}</p>
     </section>
   );
 }
@@ -221,9 +223,6 @@ function Frame({ live = false, photo }: { live?: boolean; photo: boolean }) {
     <div className="nx-frame" data-live={live ? "true" : "false"}>
       <Art kind="moon" />
       {photo && <SampleImg id="silkroad" className="nx-art" />}
-      <span className="nx-frame-play">
-        <Play aria-hidden />
-      </span>
     </div>
   );
 }

@@ -114,7 +114,13 @@ describe("public landing page", () => {
       const demo = section.querySelector("figure.nx-demo")!;
       expect(demo.getAttribute("aria-label")).toContain(t.site.caps.demo);
       expect(demo.textContent).toContain(item.bubble);
-      expect(demo.textContent).toContain(item.reply);
+      // Over an example still the reply says "example reply", never "made a video"; the AI-still note is printed beside it.
+      const stillBacked = demo.querySelector("img") !== null;
+      expect(demo.textContent).toContain(stillBacked ? t.site.caps.exampleReply : item.reply);
+      if (stillBacked) {
+        expect(demo.textContent).not.toContain(item.reply);
+        expect(demo.querySelector("figcaption")?.textContent).toBe(t.site.samples.note);
+      }
       expect(demo.textContent).toContain(t.site.caps.tag);
       expect(demo.textContent).not.toMatch(MONEY);
       expect(demo.querySelector("a, button, input, [tabindex]")).toBeNull();

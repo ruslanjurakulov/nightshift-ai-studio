@@ -57,7 +57,7 @@ export default async function SolutionsPage() {
                   </span>
                   <div className="st-way-head">
                     <span className="st-kicker">{page.kicker}</span>
-                    <h2 id={`way-${page.id}`} className="st-h3 text-[clamp(26px,2.4vw,34px)]">
+                    <h2 id={`way-${page.id}`} className="st-h3">
                       <Link href={solutionHref(page.id)} className="st-way-title">
                         {/* The last word and the arrow never part: a title that
                           filled its line left the arrow alone on the next. */}

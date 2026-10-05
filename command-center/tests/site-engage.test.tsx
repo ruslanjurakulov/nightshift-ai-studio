@@ -231,3 +231,22 @@ describe("the page's HTML stays small", () => {
     }
   });
 });
+
+describe("the AI-still disclosure is printed, not only labelled", () => {
+  it.each(LOCALES.map((l) => l.code))("%s: the hero stage and every still-backed capability show the note as visible text", (code) => {
+    const { container } = landing(NO_MONEY, code);
+    const note = dictionaries[code].site.samples.note;
+    const stage = container.querySelector(".nx-stage") as HTMLElement;
+    const stageNote = stage.querySelector(".nx-stage-note") as HTMLElement;
+    expect(stageNote.textContent).toBe(note);
+    expect(stageNote.closest("[aria-hidden]")).toBeNull();
+    const figs = [...container.querySelectorAll("figure.nx-demo")].filter((f) => f.querySelector("img"));
+    expect(figs).toHaveLength(4);
+    for (const f of figs) {
+      const cap = f.querySelector("figcaption.nx-demo-note") as HTMLElement;
+      expect(cap.textContent).toBe(note);
+      expect(cap.closest("[aria-hidden]")).toBeNull();
+    }
+  });
+});
+

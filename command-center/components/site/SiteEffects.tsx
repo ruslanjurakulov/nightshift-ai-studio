@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { restoreMotion } from "@/lib/site/motion";
 
 /**
  * The public pages' two quiet effects, run by one small script instead of
@@ -37,6 +38,8 @@ export function SiteEffects() {
     // Lets the hero light start drifting once the page has loaded and settled (see site-next.css).
     let live = 0;
     const start = () => {
+      // The remembered "paused" is on <html> before anything is allowed to move.
+      restoreMotion();
       live = window.setTimeout(() => document.documentElement.setAttribute("data-fx", "on"), 200);
     };
     if (document.readyState === "complete") start();

@@ -51,7 +51,6 @@ export function SampleFrame({ kind, words }: { kind: FrameKind; words: FrameWord
           <>
             <div className="ml-frame-screen">
               <Scene kind="hills" />
-              <span className="ml-frame-play" />
               <span className="ml-frame-cap">{words.video.title}</span>
             </div>
             <ul className="ml-stages">

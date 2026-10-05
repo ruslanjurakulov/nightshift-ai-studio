@@ -147,5 +147,30 @@ describe("site-next.css", () => {
     expect(rest.slice(0, rest.indexOf("@media"))).not.toMatch(/::before|::after/);
     expect(media[0]).toContain("[data-spot]::before");
   });
+
+  it("lets the pause win over the blobs' own rule: the pause selector is at least as specific and comes later", () => {
+    // (ids, classes + attributes + pseudo-classes, elements)
+    const spec = (sel: string): [number, number, number] => {
+      const s = sel.replace(/"[^"]*"/g, '""');
+      return [(s.match(/#[\w-]+/g) ?? []).length, (s.match(/\.[\w-]+|\[[^\]]*\]|:(?!:)[\w-]+/g) ?? []).length, (s.match(/(?:^|[\s>+~])[a-z][\w-]*/g) ?? []).length];
+    };
+    const cmp = (a: number[], b: number[]) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+    const running = [...css.matchAll(/(html\[data-fx="on"\] \.nx-fx-blob\[data-n="\d"\])\s*\{[^}]*animation:/g)].map((m) => m[1]);
+    expect(running).toHaveLength(3);
+    const pauseAt = css.indexOf('html[data-motion="paused"][data-fx] .nx-fx-blob[data-n]');
+    expect(pauseAt).toBeGreaterThan(-1);
+    const pauseRule = css.slice(pauseAt, css.indexOf("}", pauseAt));
+    expect(pauseRule).toContain("animation-play-state: paused");
+    for (const r of running) {
+      expect(cmp(spec('html[data-motion="paused"][data-fx] .nx-fx-blob[data-n]'), spec(r)), r).toBeGreaterThanOrEqual(0);
+      expect(pauseAt).toBeGreaterThan(css.indexOf(r));
+    }
+  });
+
+  it("puts no play button on a still: a play glyph would say it is a video", () => {
+    expect(css).not.toContain("nx-frame-play");
+    const site = readFileSync(join(__dirname, "..", "components/site/site.css"), "utf8");
+    expect(site).not.toContain("ml-frame-play");
+  });
 });
 

@@ -34,6 +34,12 @@ function start() {
   apply();
 }
 
+/** Applies the remembered choice to <html> right away (without any component), so a page that starts drifting
+ *  after load (components/site/SiteEffects.tsx) never starts when the visitor paused on an earlier page. */
+export function restoreMotion() {
+  start();
+}
+
 export function setMotionPaused(next: boolean) {
   start();
   paused = next;
