@@ -361,6 +361,7 @@ export const devUz: DevDictionary = {
       every: {
         title: "Nightshift’ni ochishga arziydigan hamma narsa — shunchaki soʻrasangiz boʻladi.",
         lead: "Kerakli videoni tasvirlab bering. Yordamchi uni yaratadi, kuzatadi va qaytaradi, nashr esa baribir sizni kutadi.",
+        exampleReply: "namunaviy javob",
         replyName: "Nightshift",
         rows: [
           { id: "video", label: "Video", title: "Gʻoyadan tayyor videogacha", body: "Mavzu va uzunlikni ayting yoki mavzuni kanalning oʻziga tanlatib qoʻying. Ovoz, tasvir, taglavhalar va montaj bitta tayyor video boʻlib qaytadi.", cta: "Soʻrovni nusxalash", prompt: "Non qanday kabarishi haqida kanalimning odatiy uzunligida video yarat.", reply: "video yaratdi" },

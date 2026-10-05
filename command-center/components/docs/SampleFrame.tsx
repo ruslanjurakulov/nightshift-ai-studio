@@ -34,6 +34,8 @@ export function Scene({ kind, alt = "" }: { kind: SceneKind; alt?: string }) {
 
 export type FrameWords = {
   note: string;
+  /** The "Example frame" label printed on a still. */
+  sample: string;
   video: { title: string; stages: string[] };
   channels: { head: string; rows: { name: string; language: string; voice: string }[] };
   voice: { head: string; languages: string[]; voice: string };
@@ -51,6 +53,7 @@ export function SampleFrame({ kind, words }: { kind: FrameKind; words: FrameWord
           <>
             <div className="ml-frame-screen">
               <Scene kind="hills" />
+              <span className="ml-ex-badge">{words.sample}</span>
               <span className="ml-frame-cap">{words.video.title}</span>
             </div>
             <ul className="ml-stages">

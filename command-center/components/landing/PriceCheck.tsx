@@ -20,7 +20,7 @@ const START = 5;
  * minute) here, with the same formatters as the rest of the page, so the
  * browser only picks a row.
  */
-export function PriceCheck({ t, locale, rates, welcome, href = "/signup" }: { t: Dictionary; locale: Locale; rates: PriceRates; welcome: number; href?: string }) {
+export function PriceCheck({ t, locale, rates, welcome, href = "/signup", cta = true }: { t: Dictionary; locale: Locale; rates: PriceRates; welcome: number; href?: string; cta?: boolean }) {
   const c = t.site.calc;
   const unit = (n: number) => creditUnit(n, locale, t.shell.creditUnit);
   const rows: PriceRow[] = Array.from({ length: MAX - MIN + 1 }, (_, i) => {
@@ -44,15 +44,17 @@ export function PriceCheck({ t, locale, rates, welcome, href = "/signup" }: { t:
       <p className="nx-calc-rule">
         {c.rule} <span className="nx-calc-src">{c.source}.</span>
       </p>
-      <div className="nx-calc-cta">
-        <Link href={href} className="nx-btn">
-          {c.cta}
-          <ArrowRight aria-hidden />
-        </Link>
-        <Link href="/pricing" className="nx-link">
-          {c.more}
-        </Link>
-      </div>
+      {cta && (
+        <div className="nx-calc-cta">
+          <Link href={href} className="nx-btn">
+            {c.cta}
+            <ArrowRight aria-hidden />
+          </Link>
+          <Link href="/pricing" className="nx-link">
+            {c.more}
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

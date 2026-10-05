@@ -373,6 +373,7 @@ export const devEn = {
       every: {
         title: "Everything you’d open Nightshift for, just by asking.",
         lead: "Describe the video you want. Your assistant makes it, follows it and brings it back, and publishing still waits for you.",
+        exampleReply: "example reply",
         replyName: "Nightshift",
         rows: [
           { id: "video", label: "Video", title: "From an idea to a finished video", body: "Give a topic and a length, or let the channel pick the topic. Narration, visuals, captions and the edit come back as one finished video.", cta: "Copy this ask", prompt: "Make a video about how bread rises, as long as my channel’s usual length.", reply: "made a video" },

@@ -82,7 +82,7 @@ export const siteUz: SiteDictionary = {
   },
   calc: {
     slug: "Narxni tekshirish",
-    title: "Siz oʻylagan video qancha turadi?",
+    title: "Videongiz qancha turadi?",
     lead: "Uzunlikni tanlang. Bular eʼlon qilingan tariflar, bizning taxminimiz emas.",
     length: "Tayyor videoning uzunligi",
     minutes: "{n} daq",

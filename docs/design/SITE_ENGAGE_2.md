@@ -21,20 +21,20 @@ publish story unchanged, no new dependency, origin or font. Pinned by `tests/sit
 
 ## 2. A finding that was not on the list: layered border colours never applied
 
-`app/globals.css` holds an unlayered `* { border-color: var(--color-border) }`. An unlayered declaration beats every
-layered one whatever its specificity, and `site-next.css` is entirely inside `@layer components`, so **no border colour
-it declared ever applied**: the amber edge of the primary button, the 3:1 edge of the sign-in fields and the
-"Start free" key, the outline of a selected tab, all drew in the hairline colour (measured on `main`: every one of them
-`rgb(45, 43, 38)`). The fix is local to the public pages: every rule in the layer that sets a border colour also sets
-`--nx-edge` to it (a script did this to 71 declarations and a test keeps it true), `@property --nx-edge` is registered
-non-inheriting, and one unlayered rule, `html :where(.nx) * { border-color: var(--nx-edge, var(--color-border)) }`, applies
-it. The signed-in app is untouched; the root cause (the unlayered `*`) is left for its own change and the test fails
-loudly if that is ever fixed so the indirection can be removed. Visible effect: control edges are now the intended
-stronger colour (WCAG 1.4.11), cards with an amber outline show it.
+> **Correction (round 3).** This section first described a `--nx-edge` workaround for `site-next.css` and said the
+> sign-in fields' edges were fixed. Both were wrong in scope: `site.css` is in the same layer, so the fields (whose edge
+> is written there) and every other `site.css` border stayed hairline. Round 3 fixes it at the root; see
+> `SITE_ENGAGE_3.md` section 2. The diagnosis below stands.
+
+`app/globals.css` held an unlayered `* { border-color: var(--color-border) }`. An unlayered declaration beats every
+layered one whatever its specificity, and both public stylesheets (`site.css`, `site-next.css`) are entirely inside
+`@layer components`, so **no border colour either of them declared ever applied**: the amber edge of the primary button,
+the 3:1 edge of the sign-in fields, the outline of a selected tab all drew in the hairline colour (measured on `main`:
+every one of them `rgb(45, 43, 38)`).
 
 Another cause worth knowing: visually-hidden spans (`.sr-only`, `position: absolute`) inside a horizontal rail whose
 ancestors are not positioned escape the rail's clipping and widen the page on a phone (a first build overflowed by 417 px).
-The rails are `position: relative`, and a test-time probe lists unclipped overflowing elements.
+The rails are `position: relative`.
 
 ## 3. Example frames
 

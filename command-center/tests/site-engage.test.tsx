@@ -305,3 +305,62 @@ describe("the demo's stand-in frame", () => {
     }
   });
 });
+
+describe("round 3: stills, header and the draw-in", () => {
+  it("frames the capability examples as crops of the stills, and the hero and gallery as whole frames", () => {
+    const { container } = landing();
+    const crops = [...container.querySelectorAll("figure.nx-demo:not(.nx-chat) .nx-result-art img")].map((i) => i.getAttribute("data-crop"));
+    expect(crops).toEqual(["a", "b", "c", "d"]);
+    expect(container.querySelector("figure.nx-chat img")?.getAttribute("data-crop")).toBeNull();
+    for (const i of container.querySelectorAll("#examples img")) expect(i.getAttribute("data-crop")).toBeNull();
+  });
+
+  it("makes the header's Start free the same amber key as the page's button (one primary action)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const shell = readFileSync(join(__dirname, "..", "components/legal/PublicShell.tsx"), "utf8");
+    expect(shell).toMatch(/href="\/signup" className="st-key" data-size="sm">/);
+    expect(shell).not.toContain('data-tone="quiet"');
+  });
+
+  it("draws the sample plan in once when the section first scrolls into view, and never when motion is reduced", () => {
+    vi.useFakeTimers();
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ top: 5000, bottom: 5600, left: 0, right: 1000, width: 1000, height: 600, x: 0, y: 5000, toJSON: () => ({}) });
+    let reduced = false;
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce") ? reduced : false, media: q, addEventListener: () => {}, removeEventListener: () => {} }));
+    const observers: ((e: { isIntersecting: boolean }[]) => void)[] = [];
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(cb: (e: { isIntersecting: boolean }[]) => void) {
+          observers.push(cb);
+        }
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+      },
+    );
+    try {
+      const { container, unmount } = landing();
+      const cards = () => [...container.querySelectorAll("#try .nx-try-card")];
+      // Below the fold: held back (boxes keep their space), the sentence under the field still describes the sample.
+      expect(cards().every((c) => c.getAttribute("data-on") === "false")).toBe(true);
+      act(() => observers.forEach((cb) => cb([{ isIntersecting: true }])));
+      act(() => void vi.advanceTimersByTime(260));
+      const some = cards().filter((c) => c.getAttribute("data-on") === "true").length;
+      expect(some).toBeGreaterThanOrEqual(1);
+      expect(some).toBeLessThan(cards().length);
+      act(() => void vi.advanceTimersByTime(4000));
+      expect(cards().every((c) => c.getAttribute("data-on") === "true")).toBe(true);
+      unmount();
+      // Reduced motion: all there from the start, nothing observed.
+      reduced = true;
+      const again = landing();
+      expect([...again.container.querySelectorAll("#try .nx-try-card")].every((c) => c.getAttribute("data-on") === "true")).toBe(true);
+    } finally {
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+});
+

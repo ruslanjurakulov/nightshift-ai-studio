@@ -24,10 +24,17 @@ export type SampleId = keyof typeof SAMPLES;
  * default; the one on the first screen is eager (the hero card). `alt` is empty when
  * the surrounding picture is hidden from assistive tech and already described.
  */
-export function SampleImg({ id, alt = "", className, eager = false }: { id: SampleId; alt?: string; className?: string; eager?: boolean }) {
+export type SampleCrop = "a" | "b" | "c" | "d";
+
+/**
+ * `crop` frames the same still differently (a zoomed region, see .nx-art[data-crop] in site-next.css), so the page's
+ * six frames do not read as the same picture repeated: the capability examples and the demo's thumbnail are crops,
+ * the hero and the gallery are the whole frames.
+ */
+export function SampleImg({ id, alt = "", className, eager = false, crop }: { id: SampleId; alt?: string; className?: string; eager?: boolean; crop?: SampleCrop }) {
   const s = SAMPLES[id];
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={s.src} width={s.width} height={s.height} alt={alt} className={className} loading={eager ? "eager" : "lazy"} decoding="async" data-sample={id} {...(eager ? { fetchPriority: "high" as const } : {})} />
+    <img src={s.src} width={s.width} height={s.height} alt={alt} className={className} loading={eager ? "eager" : "lazy"} decoding="async" data-sample={id} data-crop={crop} {...(eager ? { fetchPriority: "high" as const } : {})} />
   );
 }

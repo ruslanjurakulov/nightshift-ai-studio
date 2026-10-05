@@ -55,6 +55,43 @@ export function TryDemo({ copy, note, samplesTag, href = "/signup" }: { copy: Co
   }, []);
 
   const total = copy.sections.length;
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // The sample plan draws itself once, the first time the section scrolls into view: cards that start below the fold
+  // are held back (their boxes still take their space, so nothing shifts) and then appear one after another. Skipped
+  // when the section is already on screen when the page loads, with reduced motion, or with the pause switch on, and
+  // never run again; without script or IntersectionObserver the plan is simply all there.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || paused || typeof window.matchMedia !== "function" || typeof IntersectionObserver === "undefined") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (el.getBoundingClientRect().top < window.innerHeight) return;
+    setShown(0);
+    let n = 0;
+    const tick = () => {
+      n += 1;
+      setShown(n);
+      if (n < total) timer.current = window.setTimeout(tick, STEP_MS);
+    };
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        io.disconnect();
+        timer.current = window.setTimeout(tick, STEP_MS / 2);
+      },
+      { threshold: 0.25 },
+    );
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      // Never leave the plan half drawn: a route change or a hot reload shows all of it.
+      if (timer.current !== null) window.clearTimeout(timer.current);
+      setShown(total);
+    };
+    // Once, on mount: the pause switch is read as it is then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Until a topic is asked for, the plan on show is the first sample topic's.
   const shownTopic = topic || copy.topics[0];
   const plan = buildPlan(copy.sections, shownTopic);
@@ -96,7 +133,7 @@ export function TryDemo({ copy, note, samplesTag, href = "/signup" }: { copy: Co
   const status = error ? copy.noTopic : state === "drafting" ? copy.drafting : state === "ready" ? copy.ready : fmt(copy.sampleNote, { topic: shownTopic });
 
   return (
-    <div className="nx-try">
+    <div className="nx-try" ref={rootRef}>
       <form
         className="nx-try-form"
         onSubmit={(e) => {
@@ -171,7 +208,7 @@ export function TryDemo({ copy, note, samplesTag, href = "/signup" }: { copy: Co
                 {s.id === "thumb" && (
                   <figure className="nx-try-thumb">
                     <div className="nx-try-thumb-pic">
-                      <SampleImg id={pickStill(shownTopic)} className="nx-art" />
+                      <SampleImg id={pickStill(shownTopic)} className="nx-art" crop="b" />
                       <span className="nx-result-badge">{samplesTag}</span>
                     </div>
                     <figcaption>{copy.thumbNote}</figcaption>
@@ -183,7 +220,7 @@ export function TryDemo({ copy, note, samplesTag, href = "/signup" }: { copy: Co
         </ol>
       </div>
 
-      <div className="nx-try-end" data-on={state === "drafting" ? "false" : "true"} inert={state === "drafting" ? true : undefined}>
+      <div className="nx-try-end" data-on={shown < total ? "false" : "true"} inert={shown < total ? true : undefined}>
         <p className="nx-body">{copy.real}</p>
         <div className="nx-try-cta">
           <Link href={href} className="nx-btn">

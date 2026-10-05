@@ -114,12 +114,13 @@ describe("public landing page", () => {
       const demo = section.querySelector("figure.nx-demo")!;
       expect(demo.getAttribute("aria-label")).toContain(t.site.caps.demo);
       expect(demo.textContent).toContain(item.bubble);
-      // Over an example still the reply says "example reply", never "made a video"; the AI-still note is printed beside it.
+      // Every reply says "example reply", never "made a video"; over a still the AI-still note is printed beside it.
       const stillBacked = demo.querySelector("img") !== null;
-      expect(demo.textContent).toContain(stillBacked ? t.site.caps.exampleReply : item.reply);
+      expect(demo.textContent).toContain(t.site.caps.exampleReply);
+      expect(demo.textContent).not.toContain(item.reply);
       if (stillBacked) {
-        expect(demo.textContent).not.toContain(item.reply);
         expect(demo.querySelector("figcaption")?.textContent).toBe(t.site.samples.note);
+        expect(demo.querySelector(".nx-result-badge")?.textContent).toBe(t.site.samples.tag);
       }
       expect(demo.textContent).toContain(t.site.caps.tag);
       expect(demo.textContent).not.toMatch(MONEY);
@@ -487,3 +488,33 @@ describe("public footer", () => {
     expect(contact === "/terms#contact" || contact.startsWith("mailto:")).toBe(true);
   });
 });
+
+describe("the pricing page, product first (round 3)", () => {
+  const PRICED_ANCHOR: MoneyAnchor = {
+    pack: { kind: "priced", id: "starter", credits: 1000, price: "$10" },
+    api: null,
+    site: { perMinute: 60, minimum: 10, usd: { cents: 60, pack: "starter" } },
+  };
+
+  it("puts the price check in the hero, beside the headline, and says what it costs once", () => {
+    const pricing = resolvePricing({ NEXT_PUBLIC_PRICE_DISPLAY_STARTER: "$10" }, null);
+    const { container } = renderPricing({ pricing, anchor: PRICED_ANCHOR });
+    const hero = container.querySelector(".nx-lit section")!;
+    expect(within(hero as HTMLElement).getByRole("slider")).toBeTruthy();
+    expect(hero.querySelector("output")?.textContent).toBe("300 credits");
+    // The hero's price check carries no second "Start free": the page's own button is the one action there.
+    expect(hero.querySelectorAll(".nx-calc a")).toHaveLength(0);
+    // No separate price-check section, and the "What it costs" panel appears once (with the packs).
+    expect(container.querySelector("#price-check")).toBeNull();
+    expect(screen.getAllByText(dictionaries.en.site.anchor.title)).toHaveLength(1);
+    expect(container.querySelector("#packs")?.textContent).toContain(dictionaries.en.site.anchor.title);
+  });
+
+  it("falls back to the promises beside the headline when no rate is published", () => {
+    const pricing = resolvePricing({}, null);
+    const { container } = renderPricing({ pricing, anchor: NO_MONEY });
+    expect(container.querySelector(".nx-lit [role=slider], .nx-lit input[type=range]")).toBeNull();
+    expect(container.querySelector(".nx-lit .nx-get")).not.toBeNull();
+  });
+});
+

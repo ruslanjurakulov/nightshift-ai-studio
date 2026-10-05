@@ -18,7 +18,6 @@ import { moneyAnchor, type MoneyAnchor as Anchor } from "@/lib/landing";
 import { MoneyAnchor } from "@/components/site/MoneyAnchor";
 import { HeroFx } from "@/components/site/HeroFx";
 import { MotionToggle } from "@/components/site/MotionToggle";
-import { SampleImg } from "@/components/site/samples";
 import { PriceCheck } from "@/components/landing/PriceCheck";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { WELCOME_CREDITS } from "@/lib/pricing";
@@ -118,8 +117,15 @@ export function PricingView({
             </h1>
             {/* "Pick a monthly plan" only when there is a plan to pick. */}
             <p className="st-lead mt-7">{showPlans ? p.lead : pp.leadNoPlans}</p>
-            <MoneyAnchor t={t} locale={locale} anchor={anchor ?? moneyAnchor(pricing, null)} titleId="anchor-title" className="mt-8" />
             {showPlans && <p className="st-small mt-3">{p.noYearly}</p>}
+            <ul className="nx-trust mt-6" aria-label={t.site.rules.slug}>
+              {t.site.rules.items.map((item) => (
+                <li key={item.id}>
+                  <Check aria-hidden />
+                  {item.title}
+                </li>
+              ))}
+            </ul>
             <div className="st-hero-actions">
               <Link href={primary.href} className="st-key">
                 {primary.label}
@@ -133,43 +139,30 @@ export function PricingView({
             <MotionToggle pause={t.site.fx.pause} play={t.site.fx.play} />
           </div>
 
-          <aside aria-labelledby="get-title" className="self-start">
-            <figure className="nx-aside-pic">
-              <div className="nx-aside-pic-box">
-                <SampleImg id="moon" className="nx-art" />
-                <span className="nx-result-badge">{t.site.samples.tag}</span>
-              </div>
-              <figcaption>{t.site.samples.note}</figcaption>
-            </figure>
-            <h2 id="get-title" className="nx-kicker mb-4">
-              {t.site.rules.slug}
-            </h2>
-            <ul className="nx-get">
-              {t.site.rules.items.map((item) => (
-                <li key={item.id}>
-                  <Check aria-hidden />
-                  <span>{item.title}</span>
-                </li>
-              ))}
-            </ul>
-          </aside>
-        </section>
-      </div>
-
-      {priceRates && (
-        <section id="price-check" aria-labelledby="calc-title" className="nx-section" data-tone="raised">
-          <div className="nx-wrap nx-calc-wrap">
-            <div className="nx-calc-words">
-              <p className="nx-label">{t.site.calc.slug}</p>
-              <h2 id="calc-title" className="nx-h2">
+          {priceRates ? (
+            <div className="self-start">
+              <h2 id="calc-title" className="nx-h3 mb-4">
                 {t.site.calc.title}
               </h2>
-              <p className="nx-sub">{t.site.calc.lead}</p>
+              <PriceCheck t={t} locale={locale} rates={priceRates} welcome={WELCOME_CREDITS} cta={false} />
             </div>
-            <PriceCheck t={t} locale={locale} rates={priceRates} welcome={WELCOME_CREDITS} />
-          </div>
+          ) : (
+            <aside aria-labelledby="get-title" className="self-start">
+              <h2 id="get-title" className="nx-kicker mb-4">
+                {t.site.rules.slug}
+              </h2>
+              <ul className="nx-get">
+                {t.site.rules.items.map((item) => (
+                  <li key={item.id}>
+                    <Check aria-hidden />
+                    <span>{item.title}</span>
+                  </li>
+                ))}
+              </ul>
+            </aside>
+          )}
         </section>
-      )}
+      </div>
 
       {plansFailed && (
         <section id="plans" aria-labelledby="plans-title" className="st-section">
@@ -228,6 +221,7 @@ export function PricingView({
               {p.packsTitle}
             </h2>
             <p className="st-lead mt-5">{showPlans ? p.packsLead : t.site.packsOnly.packsLead}</p>
+            <MoneyAnchor t={t} locale={locale} anchor={anchor ?? moneyAnchor(pricing, null)} titleId="anchor-title" className="mt-8" />
           </div>
           {pricing.source === "none" ? (
             <div className="st-panel self-start">

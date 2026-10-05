@@ -27,6 +27,7 @@ const REVEAL = [
   ".nx-tiles > li",
   ".nx-rules > li",
   ".nx-final",
+  ".nx-gal-card",
   ".nx .st-section .st-wrap > *",
   ".nx .st-ways > *",
   ".nx .st-sol-list > li",
