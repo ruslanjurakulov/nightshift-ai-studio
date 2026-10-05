@@ -120,7 +120,7 @@ export function Faq({
   const f = t.landing.faq;
   const items = faqForSale(f.items, plansOnSale, t.site.packsOnly, expiry);
   return (
-    <section id="faq" aria-labelledby="faq-title" className="st-section">
+    <section id="faq" aria-labelledby="faq-title" className="st-section" data-tone="raised">
       <div className="st-wrap grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14">
         {/* The left column carries the title and whatever the page puts under
             it (the landing: its Google data statement), so it is never empty. */}

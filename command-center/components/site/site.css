@@ -2263,7 +2263,7 @@ h3.st-doc-h3 { letter-spacing: 0; }
 .ml-ask-title { margin: 0; font-family: var(--font-display); font-size: 16px; font-weight: 600; line-height: 1.3; }
 .ml-ask-prompt { margin: 0; flex: 1; font-size: 15px; line-height: 1.55; color: var(--ns-text-dim); }
 .ml-ask-copy { display: flex; margin-top: 4px; }
-.ml-ask-copy .st-copy { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid var(--ns-rule-strong); border-radius: 999px; background: transparent; color: var(--ns-text); font-family: var(--font-display); font-size: 14px; font-weight: 600; cursor: pointer; }
+.ml-ask-copy .st-copy { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid var(--ns-rule-strong); border-radius: 14px; background: transparent; color: var(--ns-text); font-family: var(--font-display); font-size: 14px; font-weight: 600; cursor: pointer; }
 .ml-ask-copy .st-copy:hover { background: var(--ns-hover); }
 .ml-ask-copy .st-copy svg, .ml-cap-cta .st-copy svg, .ml-ex-copy .st-copy svg { width: 16px; height: 16px; }
 
@@ -2279,8 +2279,9 @@ h3.st-doc-h3 { letter-spacing: 0; }
 .ml-cap-h3 { max-width: 18ch; margin: 0; font-family: var(--font-display); font-size: clamp(24px, 2.8vw, 30px); font-weight: 600; line-height: 1.2; letter-spacing: -0.005em; text-wrap: balance; }
 .ml-cap-body { margin: 14px 0 0; font-size: 16px; line-height: 1.6; color: var(--ns-text-dim); }
 .ml-cap-cta { margin-top: 24px; }
-.ml-cap-cta .st-copy { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 24px; border: 0; border-radius: 999px; background: var(--ns-text); color: var(--ns-ground); font-family: var(--font-display); font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity var(--ns-dur-1) var(--ns-ease); }
-.ml-cap-cta .st-copy:hover { opacity: 0.88; }
+/* One primary action across the site is the amber key; these are the section's own secondary action, so they are outlined (SITE_ENGAGE.md), in the same 14px corners as the key. */
+.ml-cap-cta .st-copy { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 20px; border: 1px solid var(--ns-rule-strong); border-radius: 14px; background: transparent; color: var(--ns-text); font-family: var(--font-display); font-size: 15px; font-weight: 600; cursor: pointer; transition: background-color var(--ns-dur-1) var(--ns-ease), border-color var(--ns-dur-1) var(--ns-ease); }
+.ml-cap-cta .st-copy:hover { border-color: var(--ns-amber); background: var(--ns-select); }
 .ml-cap-cta .st-copy:focus-visible, .ml-ask-copy .st-copy:focus-visible, .ml-ex-copy .st-copy:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: 2px; }
 
 .ml-demo { display: flex; flex-direction: column; gap: 18px; padding: 16px; border: 1px solid var(--ns-rule); border-radius: 16px; background: var(--ns-console); min-width: 0; }
@@ -2292,7 +2293,7 @@ h3.st-doc-h3 { letter-spacing: 0; }
 .ml-thumb .ml-scene { width: 100%; height: 100%; display: block; }
 .ml-reply { display: flex; align-items: center; gap: 10px; font-size: 14px; line-height: 20px; color: var(--ns-text-dim); }
 .ml-reply b { font-weight: 600; color: var(--ns-text); }
-.ml-scene { display: block; width: 100%; height: 100%; }
+.ml-scene { display: block; width: 100%; height: 100%; object-fit: cover; }
 
 /* Drawn frames: always captioned as illustrations */
 .ml-fig { margin: 0; }
@@ -2422,3 +2423,28 @@ h3.st-doc-h3 { letter-spacing: 0; }
 .ml-msg-client { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; font-weight: 500; color: var(--ns-text); }
 .ml-msg-client .st-pill-glyph { width: 22px; height: 22px; padding: 2px; border-radius: 7px; }
 .ml-msg-client .st-pill-glyph[data-tile="bare"], .ml-msg-client .st-pill-glyph[data-tile="plain"] { padding: 0; }
+
+/* ── Pointer light (public pages) ───────────────────────────────────────────
+   docs/design/SITE_ENGAGE.md. Shared by the landing, Pricing, Solutions and /mcp. */
+/* Pointer light on cards: a soft glow inside and a lit edge nearest the pointer.
+   Only a fine pointer moves it (components/site/SiteEffects.tsx); the rest of the
+   time it is invisible. */
+.st [data-spot] { position: relative; isolation: isolate; }
+@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+  .st [data-spot]::before,
+  .st [data-spot]::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity var(--ns-dur-3) var(--ns-ease); }
+  .st [data-spot]::before { z-index: -1; background: radial-gradient(360px circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--ns-amber) 16%, transparent), transparent 65%); }
+  .st [data-spot]::after {
+    inset: -1px;
+    padding: 1px;
+    background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--ns-amber) 80%, transparent), transparent 70%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  }
+  .st [data-spot]:hover::before,
+  .st [data-spot]:hover::after,
+  .st [data-spot]:focus-within::before,
+  .st [data-spot]:focus-within::after { opacity: 1; }
+}
+

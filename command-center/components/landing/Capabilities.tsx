@@ -2,17 +2,18 @@ import Link from "next/link";
 import { Check, Clapperboard, Film, Maximize2, Mic, Palette, Scissors, SlidersHorizontal, Sparkles, Wand2, ImageIcon, type LucideIcon } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import { BrandMark } from "@/components/site/BrandMark";
-import { Art, type ArtKind } from "@/components/landing/Art";
+import { Art } from "@/components/landing/Art";
+import { SampleImg, type SampleId } from "@/components/site/samples";
 
 type Item = Dictionary["site"]["caps"]["items"][number];
 
 /** Where each capability's one button goes, and what its demo shows. */
-const PLAN: Record<string, { href: string; art: ArtKind | null; thumb: ArtKind | null; ratio: "wide" | "audio" }> = {
-  video: { href: "/signup", art: "moon", thumb: null, ratio: "wide" },
-  voice: { href: "/signup", art: "wave", thumb: null, ratio: "audio" },
-  studio: { href: "/signup", art: "dusk", thumb: null, ratio: "wide" },
-  channels: { href: "/solutions/youtube-channels", art: "market", thumb: "market", ratio: "wide" },
-  approvals: { href: "/solutions/youtube-channels", art: "moon", thumb: null, ratio: "wide" },
+const PLAN: Record<string, { href: string; frame: SampleId | null; thumb: SampleId | null; ratio: "wide" | "audio" }> = {
+  video: { href: "/signup", frame: "library", thumb: null, ratio: "wide" },
+  voice: { href: "/signup", frame: null, thumb: null, ratio: "audio" },
+  studio: { href: "/signup", frame: "valley", thumb: null, ratio: "wide" },
+  channels: { href: "/solutions/youtube-channels", frame: "nightmarket", thumb: "nightmarket", ratio: "wide" },
+  approvals: { href: "/solutions/youtube-channels", frame: "moon", thumb: null, ratio: "wide" },
 };
 
 const TOOL_ICON: Record<string, LucideIcon> = {
@@ -52,7 +53,7 @@ function Capability({ t, item, flip }: { t: Dictionary; item: Item; flip: boolea
   const plan = PLAN[item.id] ?? PLAN.video;
   const titleId = `cap-${item.id}-title`;
   // Alternate the ground and the raised tone, so rhythm is colour, not lines.
-  const raised = item.id === "voice" || item.id === "channels";
+  const raised = item.id === "video" || item.id === "studio" || item.id === "approvals";
   return (
     <section id={item.id} aria-labelledby={titleId} className="nx-section" data-tone={raised ? "raised" : undefined}>
       <div className="nx-wrap nx-cap" data-flip={flip ? "true" : undefined}>
@@ -98,7 +99,7 @@ function Demo({ t, item, plan }: { t: Dictionary; item: Item; plan: (typeof PLAN
   const c = t.site.caps;
   const sign = t.site.solutions.pictures.signoff;
   return (
-    <figure className="nx-demo" aria-label={`${item.pill}. ${c.demo}`}>
+    <figure className="nx-demo" data-spot aria-label={`${item.pill}. ${c.demo}${plan.frame ? ` ${t.site.samples.alts[plan.frame]}` : ""}`}>
       <span className="nx-demo-tag" aria-hidden>
         {c.tag}
       </span>
@@ -106,7 +107,7 @@ function Demo({ t, item, plan }: { t: Dictionary; item: Item; plan: (typeof PLAN
         <p className="nx-bubble">{item.bubble}</p>
         {plan.thumb && (
           <span className="nx-thumb">
-            <Art kind={plan.thumb} />
+            <SampleImg id={plan.thumb} className="nx-art" />
           </span>
         )}
         <div className="nx-reply">
@@ -120,7 +121,7 @@ function Demo({ t, item, plan }: { t: Dictionary; item: Item; plan: (typeof PLAN
         {item.id === "approvals" ? (
           <div className="nx-result nx-result-sign">
             <div className="nx-result-art" data-ratio="wide">
-              <Art kind="moon" />
+              <SampleImg id="moon" className="nx-art" />
               <span className="nx-result-badge">{sign.private}</span>
             </div>
             <ul className="nx-ui-status">
@@ -139,10 +140,12 @@ function Demo({ t, item, plan }: { t: Dictionary; item: Item; plan: (typeof PLAN
             </ul>
           </div>
         ) : (
-          plan.art && (
+          (plan.frame || plan.ratio === "audio") && (
             <div className="nx-result">
               <div className="nx-result-art" data-ratio={plan.ratio}>
-                <Art kind={plan.art} />
+                {/* The voice-over has no picture to show: its drawn waveform stays. */}
+                {plan.frame ? <SampleImg id={plan.frame} className="nx-art" /> : <Art kind="wave" />}
+                {plan.frame && <span className="nx-result-badge">{t.site.samples.tag}</span>}
               </div>
             </div>
           )

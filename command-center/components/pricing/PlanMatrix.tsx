@@ -98,7 +98,7 @@ export function PlanMatrix({
           const price = columnPrice(col, preview, loading);
           const minutes = col.isDefault || rates ? null : packMinutes(col.monthlyCredits, perMinute);
           return (
-            <li key={col.id} className="st-plan">
+            <li key={col.id} className="st-plan" data-spot>
               <h3 className="st-price-name">{col.name}</h3>
               <div className="min-h-[2.25rem]">
                 {price.kind === "free" ? (

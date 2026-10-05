@@ -397,13 +397,14 @@ export const devUz: DevDictionary = {
       examples: {
         label: "Misollar",
         title: "Nimalarni soʻrash mumkin",
-        lead: "Oltita namunaviy soʻrov, har birida chizilgan kadr. Bular gʻoya tasviri, haqiqiy natija emas.",
+        lead: "Oltita namunaviy soʻrov, har birida namuna kadr. Kadrlar shu sahifa uchun sunʼiy intellekt yordamida yaratilgan; ular gʻoyani koʻrsatadi, haqiqiy natija emas.",
         region: "Nimalarni soʻrash mumkinligi misollari",
         track: "Misol kartalari, yon tomonga suring",
         prev: "Oldingi misol",
         next: "Keyingi misol",
         slide: "{n} / {total}",
-        sample: "Rasm (namuna)",
+        sample: "Namuna kadr",
+        alts: { hills: "Namuna kadr: tong chogʻidagi tumanli togʻ vodiysi", waves: "Namuna kadr: boʻron paytida qoyali qirgʻoqdagi mayoq", city: "Namuna kadr: yonib turgan fonuslar ostidagi tungi bozor", stars: "Namuna kadr: yulduzlar ostida qorongʻi dengiz ustidagi toʻlin oy", rings: "Namuna kadr: nur tushayotgan qadimiy qoʻlyozmalar kutubxonasi", dunes: "Namuna kadr: quyosh botishida oltin tepaliklardagi tuyalar karvoni" },
         copy: "Soʻrovni nusxalash",
         cards: [
           { id: "hills", tag: "Vertikal qisqa video", prompt: "Osmon nega koʻk ekani haqida qisqa video." },

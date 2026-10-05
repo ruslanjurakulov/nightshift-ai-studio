@@ -4,6 +4,8 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Check, Play } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import { Art } from "@/components/landing/Art";
+import { SampleImg } from "@/components/site/samples";
+import { useMotionPaused } from "@/lib/site/motion";
 
 type Stage = Dictionary["site"]["stage"];
 
@@ -34,15 +36,20 @@ export function PressStage({ stage }: { stage: Stage }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const picked = useRef(false);
   const held = useRef(false);
+  // The page's pause switch (components/site/HeroFx.tsx) stops this picture too.
+  const paused = useMotionPaused();
+  // Becomes true once the visitor has reached the second state, and stays true.
+  const [warm, setWarm] = useState(false);
 
-  // Autoplay needs three things at once: motion is allowed, the stage is on
-  // screen, and nobody has taken over. Any of them failing leaves it still.
+  // Autoplay needs four things at once: motion is allowed, the visitor has not
+  // paused it, the stage is on screen, and nobody has taken over. Any of them
+  // failing leaves it still.
   useEffect(() => {
     // No way to tell, no autoplay: the tabs still work.
     if (typeof window.matchMedia !== "function" || typeof IntersectionObserver === "undefined") return;
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     let visible = false;
-    const sync = () => setAuto(!mq.matches && visible && !picked.current && !held.current);
+    const sync = () => setAuto(!mq.matches && !paused && visible && !picked.current && !held.current);
     const io = new IntersectionObserver(
       ([entry]) => {
         visible = entry.isIntersecting;
@@ -73,13 +80,17 @@ export function PressStage({ stage }: { stage: Stage }) {
       root?.removeEventListener("focusin", hold);
       root?.removeEventListener("focusout", release);
     };
-  }, []);
+  }, [paused]);
 
   useEffect(() => {
     if (!auto) return;
     const id = window.setTimeout(() => setActive((i) => (i + 1) % stage.steps.length), REST_MS);
     return () => window.clearTimeout(id);
   }, [auto, active, stage.steps.length]);
+
+  useEffect(() => {
+    if (active >= 1) setWarm(true);
+  }, [active]);
 
   const pick = useCallback((i: number) => {
     picked.current = true;
@@ -146,8 +157,8 @@ export function PressStage({ stage }: { stage: Stage }) {
               <span className="nx-ui-tag">{stage.tag}</span>
               {s.id === "brief" && <BriefUi s={s as BriefStep} />}
               {s.id === "plan" && <PlanUi s={s as PlanStep} />}
-              {s.id === "approve" && <ApproveUi s={s as ApproveStep} tag={stage.tag} />}
-              {s.id === "live" && <LiveUi s={s as LiveStep} />}
+              {s.id === "approve" && <ApproveUi s={s as ApproveStep} tag={stage.tag} photo={warm} />}
+              {s.id === "live" && <LiveUi s={s as LiveStep} photo={warm} />}
             </div>
           </div>
         ))}
@@ -203,10 +214,13 @@ function PlanUi({ s }: { s: PlanStep }) {
   );
 }
 
-function Frame({ live = false }: { live?: boolean }) {
+/** The example frame is fetched only once the visitor is past the first state (the picture is on the second-to-last
+ *  screens, and 80 KB should not compete with the first screen); until then the drawn scene stands in. */
+function Frame({ live = false, photo }: { live?: boolean; photo: boolean }) {
   return (
     <div className="nx-frame" data-live={live ? "true" : "false"}>
       <Art kind="moon" />
+      {photo && <SampleImg id="silkroad" className="nx-art" />}
       <span className="nx-frame-play">
         <Play aria-hidden />
       </span>
@@ -214,10 +228,10 @@ function Frame({ live = false }: { live?: boolean }) {
   );
 }
 
-function ApproveUi({ s, tag }: { s: ApproveStep; tag: string }) {
+function ApproveUi({ s, tag, photo }: { s: ApproveStep; tag: string; photo: boolean }) {
   return (
     <div className="nx-ui-card">
-      <Frame />
+      <Frame photo={photo} />
       <ul className="nx-ui-status">
         <li>
           <span className="nx-dot" data-tone="ok" />
@@ -243,10 +257,10 @@ function ApproveUi({ s, tag }: { s: ApproveStep; tag: string }) {
   );
 }
 
-function LiveUi({ s }: { s: LiveStep }) {
+function LiveUi({ s, photo }: { s: LiveStep; photo: boolean }) {
   return (
     <div className="nx-ui-card">
-      <Frame live />
+      <Frame live photo={photo} />
       <ul className="nx-ui-status">
         <li>
           <span className="nx-dot" data-tone="go" />

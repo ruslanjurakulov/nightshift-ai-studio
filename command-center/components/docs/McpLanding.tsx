@@ -14,12 +14,12 @@ import { BrandMark } from "@/components/site/BrandMark";
 /**
  * The long part of /mcp, between "How it works" and the tool list: ready-to-copy
  * asks, six capability rows (label, two-line headline, paragraph, one button, and
- * a demo card: the ask, Nightshift's reply and a DRAWN frame), a carousel of
+ * a demo card: the ask, Nightshift's reply and a drawn frame around an example still), a carousel of
  * example asks, the "works with" marquee, and the questions people ask. The
  * same text on every tab except the assistant's name (ClientText / ClientMark);
  * the install steps above are the part that differs per assistant.
  *
- * Every picture is drawn here and captioned as an illustration; no model,
+ * Every picture is captioned as an example (the stills are AI-generated, made for the page); no model,
  * provider or price is named (see lib/dev/mcp-landing.ts). Original work on a
  * known pattern: the proportions are measured from a reference page and nothing
  * else is taken from it (no text, image or logo).
@@ -60,7 +60,7 @@ export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: 
             {ASK_IDS.map((id) => {
               const item = l.asks.items.find((x) => x.id === id)!;
               return (
-                <li key={id} className="ml-ask">
+                <li key={id} className="ml-ask" data-spot>
                   <h3 className="ml-ask-title">{item.title}</h3>
                   <p className="ml-ask-prompt">{item.prompt}</p>
                   <div className="ml-ask-copy">
@@ -92,7 +92,7 @@ export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: 
                       <CopyButton text={t.prompt} name={`${l.asks.copyName} (${t.title})`} labels={{ ...dev.ui, copy: t.cta }} variant="label" />
                     </div>
                   </div>
-                  <div className="ml-demo">
+                  <div className="ml-demo" data-spot>
                     <div className="ml-bubble-row">
                       <p className="ml-bubble">{t.prompt}</p>
                     </div>
@@ -139,7 +139,7 @@ export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: 
               const card = l.examples.cards.find((x) => x.id === scene)!;
               return (
                 <div key={scene} className="ml-ex" data-scene={scene}>
-                  <Scene kind={scene} />
+                  <Scene kind={scene} alt={l.examples.alts[scene]} />
                   <span className="ml-ex-badge">{l.examples.sample}</span>
                   <div className="ml-ex-over">
                     <span className="ml-ex-tag">{card.tag}</span>

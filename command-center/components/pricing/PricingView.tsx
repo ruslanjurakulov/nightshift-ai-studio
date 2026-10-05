@@ -16,6 +16,8 @@ import { StatusLamp } from "@/components/ui/StatusLamp";
 import { CREDIT_PACKS } from "@/lib/paddle";
 import { moneyAnchor, type MoneyAnchor as Anchor } from "@/lib/landing";
 import { MoneyAnchor } from "@/components/site/MoneyAnchor";
+import { HeroFx } from "@/components/site/HeroFx";
+import { MotionToggle } from "@/components/site/MotionToggle";
 
 const PADDLE_BUYER_TERMS = "https://www.paddle.com/legal/checkout-buyer-terms";
 
@@ -100,42 +102,46 @@ export function PricingView({
 
   return (
     <div>
-      <section aria-labelledby="pricing-title" className="st-wrap st-hero">
-        <div>
-          <p className="st-kicker">{showPlans ? p.eyebrow : pp.eyebrowNoPlans}</p>
-          <h1 id="pricing-title" className="st-h1 nx-h1-short mt-5">
-            {pp.h1}
-          </h1>
-          {/* "Pick a monthly plan" only when there is a plan to pick. */}
-          <p className="st-lead mt-7">{showPlans ? p.lead : pp.leadNoPlans}</p>
-          <MoneyAnchor t={t} locale={locale} anchor={anchor ?? moneyAnchor(pricing, null)} titleId="anchor-title" className="mt-8" />
-          {showPlans && <p className="st-small mt-3">{p.noYearly}</p>}
-          <div className="st-hero-actions">
-            <Link href={primary.href} className="st-key">
-              {primary.label}
-              <ArrowRight aria-hidden />
-            </Link>
-            <a href="#terms" className="st-link">
-              {p.termsTitle}
-            </a>
+      <div className="nx-lit">
+        <HeroFx />
+        <section aria-labelledby="pricing-title" className="st-wrap st-hero">
+          <div>
+            <p className="st-kicker">{showPlans ? p.eyebrow : pp.eyebrowNoPlans}</p>
+            <h1 id="pricing-title" className="st-h1 nx-h1-short mt-5">
+              {pp.h1}
+            </h1>
+            {/* "Pick a monthly plan" only when there is a plan to pick. */}
+            <p className="st-lead mt-7">{showPlans ? p.lead : pp.leadNoPlans}</p>
+            <MoneyAnchor t={t} locale={locale} anchor={anchor ?? moneyAnchor(pricing, null)} titleId="anchor-title" className="mt-8" />
+            {showPlans && <p className="st-small mt-3">{p.noYearly}</p>}
+            <div className="st-hero-actions">
+              <Link href={primary.href} className="st-key">
+                {primary.label}
+                <ArrowRight aria-hidden />
+              </Link>
+              <a href="#terms" className="st-link">
+                {p.termsTitle}
+              </a>
+            </div>
+            {!signedIn && <p className="st-small mt-4">{showPlans ? p.ctaNote : t.site.packsOnly.ctaNote}</p>}
+            <MotionToggle pause={t.site.fx.pause} play={t.site.fx.play} />
           </div>
-          {!signedIn && <p className="st-small mt-4">{showPlans ? p.ctaNote : t.site.packsOnly.ctaNote}</p>}
-        </div>
 
-        <aside aria-labelledby="get-title" className="self-start">
-          <h2 id="get-title" className="nx-kicker mb-4">
-            {t.site.rules.slug}
-          </h2>
-          <ul className="nx-get">
-            {t.site.rules.items.map((item) => (
-              <li key={item.id}>
-                <Check aria-hidden />
-                <span>{item.title}</span>
-              </li>
-            ))}
-          </ul>
-        </aside>
-      </section>
+          <aside aria-labelledby="get-title" className="self-start">
+            <h2 id="get-title" className="nx-kicker mb-4">
+              {t.site.rules.slug}
+            </h2>
+            <ul className="nx-get">
+              {t.site.rules.items.map((item) => (
+                <li key={item.id}>
+                  <Check aria-hidden />
+                  <span>{item.title}</span>
+                </li>
+              ))}
+            </ul>
+          </aside>
+        </section>
+      </div>
 
       {plansFailed && (
         <section id="plans" aria-labelledby="plans-title" className="st-section">
@@ -217,12 +223,7 @@ export function PricingView({
             </div>
           ) : (
             <div className="flex flex-col gap-4">
-              <PackCards
-                packs={pricing.packs}
-                paddle={pricing.paddle}
-                perMinute={rates?.perMinute ?? null}
-                rates={generationRates}
-              />
+              <PackCards packs={pricing.packs} paddle={pricing.paddle} perMinute={rates?.perMinute ?? null} rates={generationRates} />
               <p className="st-small">
                 {pricing.source === "paddle" ? p.taxNote : p.checkoutClosed} {expiryLine}
               </p>

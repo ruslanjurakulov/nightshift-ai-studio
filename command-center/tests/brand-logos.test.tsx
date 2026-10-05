@@ -231,12 +231,14 @@ describe("the page asks no other origin for anything", () => {
   it.each(LOCALES)("(%s) no img, no external src, no external <use>, no stylesheet or font link — only inline SVG", (locale) => {
     const html = page(locale);
     const doc = new DOMParser().parseFromString(html, "text/html");
-    expect(doc.querySelectorAll("img, picture, video, audio, source, iframe, object, embed, link[rel=stylesheet]")).toHaveLength(0);
+    // The one allowed picture is the example stills (img.ml-scene), a same-origin build file; nothing remote.
+    expect(doc.querySelectorAll("img:not(.ml-scene), picture, video, audio, source, iframe, object, embed, link[rel=stylesheet]")).toHaveLength(0);
+    for (const img of doc.querySelectorAll("img.ml-scene")) expect(img.getAttribute("src") ?? "", "an example still is a same-origin file").not.toMatch(/^(?:https?:)?\/\//);
     // The only pictures are the two embedded ones (data: URIs inside the sprite): nothing is fetched.
     for (const im of doc.querySelectorAll("image")) expect(im.getAttribute("href"), "an <image> carries its own bytes").toMatch(/^data:image\/(png|webp);base64,/);
     for (const use of doc.querySelectorAll("use")) expect(use.getAttribute("href"), "a <use> points inside the page").toMatch(/^#nl-/);
     // The only absolute addresses are links a person follows (the Claude and ChatGPT steps, off by default here).
-    for (const el of doc.querySelectorAll("[src], [srcset], [data]")) throw new Error(`unexpected resource attribute on <${el.tagName.toLowerCase()}>`);
+    for (const el of doc.querySelectorAll("[src]:not(img.ml-scene), [srcset], [data]")) throw new Error(`unexpected resource attribute on <${el.tagName.toLowerCase()}>`);
     for (const a of doc.querySelectorAll("a[href^='http']")) expect(a.getAttribute("rel") ?? "").toContain("noopener");
   });
 

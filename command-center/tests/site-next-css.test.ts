@@ -101,4 +101,51 @@ describe("site-next.css", () => {
     expect(stage).toContain("prefers-reduced-motion: reduce");
     expect(stage).toContain("IntersectionObserver");
   });
+
+  it("lets the visitor stop everything that runs by itself: each infinite animation's class is paused by html[data-motion=paused] (WCAG 2.2.2)", () => {
+    const running = [...css.matchAll(/([^{}]+)\{[^{}]*animation:[^;{}]*infinite[^;{}]*;/g)].flatMap((m) => m[1].split(",").map((x) => x.trim()));
+    expect(running.length).toBeGreaterThan(3);
+    const paused = css.slice(css.indexOf('html[data-motion="paused"] .nx-fx-blob'));
+    const pausedRule = paused.slice(0, paused.indexOf("}"));
+    for (const sel of running) {
+      const base = sel.match(/\.nx-[a-z-]+/)![0];
+      expect(pausedRule, `${sel} keeps running when motion is paused`).toContain(base);
+    }
+    // And the one-shot reveal is never left hidden by it: print shows everything.
+    expect(css).toMatch(/@media print \{ \.nx \[data-rv\] \{ opacity: 1; transform: none; \} \}/);
+  });
+
+  it("hides something for the reveal only after the script has marked it, and only when motion is allowed", () => {
+    for (const hidden of css.matchAll(/\[data-rv="0"\]\s*\{[^}]*opacity:\s*0/g)) {
+      const at = hidden.index!;
+      const inNoPref = mediaBlocks(css, "prefers-reduced-motion: no-preference").some((b) => css.indexOf(b) <= at && at < css.indexOf(b) + b.length);
+      expect(inNoPref).toBe(true);
+    }
+    const effects = readFileSync(join(__dirname, "..", "components/site/SiteEffects.tsx"), "utf8");
+    expect(effects).toContain("prefers-reduced-motion: reduce");
+    // Only what starts below the fold is ever hidden.
+    expect(effects).toMatch(/getBoundingClientRect\(\)\.top < vh\) continue/);
+  });
+
+  it("has one primary action: the amber button; the section buttons are outlined in the same corners, not black pills", () => {
+    const body = (sel: string) => css.slice(css.indexOf(`${sel} {`), css.indexOf("}", css.indexOf(`${sel} {`)));
+    expect(body(".nx-cta")).toMatch(/background:\s*transparent/);
+    expect(body(".nx-cta")).toMatch(/border-radius:\s*14px/);
+    expect(body(".nx-btn")).toContain("var(--st-lit-bg)");
+    const site = readFileSync(join(__dirname, "..", "components/site/site.css"), "utf8");
+    const mcp = site.slice(site.indexOf(".ml-cap-cta .st-copy {"), site.indexOf("}", site.indexOf(".ml-cap-cta .st-copy {")));
+    expect(mcp).toMatch(/background:\s*transparent/);
+    expect(mcp).not.toContain("999px");
+  });
+
+  it("lights a card under the pointer only for a fine pointer with motion allowed (site.css, shared by every public page)", () => {
+    const site = readFileSync(join(__dirname, "..", "components/site/site.css"), "utf8");
+    const at = site.indexOf("Pointer light on cards");
+    const rest = site.slice(at);
+    const media = mediaBlocks(rest, "pointer: fine");
+    expect(media).toHaveLength(1);
+    expect(rest.slice(0, rest.indexOf("@media"))).not.toMatch(/::before|::after/);
+    expect(media[0]).toContain("[data-spot]::before");
+  });
 });
+

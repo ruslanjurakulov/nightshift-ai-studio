@@ -7,6 +7,8 @@ import { PublicShell } from "@/components/legal/PublicShell";
 import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { Slug } from "@/components/site/Slug";
 import { StatusLamp } from "@/components/ui/StatusLamp";
+import { HeroFx } from "@/components/site/HeroFx";
+import { MotionToggle } from "@/components/site/MotionToggle";
 
 /** Public: listed exactly in lib/public-paths.ts (SOLUTION_PATHS). */
 export async function generateMetadata(): Promise<Metadata> {
@@ -38,54 +40,58 @@ export default async function SolutionsPage() {
   const rules = t.site.rules;
   return (
     <PublicShell t={t} current="solutions" fresh>
-      <section aria-labelledby="solutions-title" className="st-wrap pb-16 pt-10 lg:pb-24 lg:pt-20">
-        <Slug>{s.slug}</Slug>
-        <h1 id="solutions-title" className="st-h1-page mt-8 max-w-[20ch]">
-          {s.title}
-        </h1>
-        <p className="st-lead mt-7">{s.lead}</p>
-        <ul className="st-ways">
-          {s.pages.map((page, i) =>
-            isSolutionId(page.id) ? (
-              <li key={page.id} className="st-way" aria-labelledby={`way-${page.id}`}>
-                <span className="st-way-no st-num" aria-hidden>
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <div className="st-way-head">
-                  <span className="st-kicker">{page.kicker}</span>
-                  <h2 id={`way-${page.id}`} className="st-h3 text-[clamp(26px,2.4vw,34px)]">
-                    <Link href={solutionHref(page.id)} className="st-way-title">
-                      {/* The last word and the arrow never part: a title that
+      <div className="nx-lit">
+        <HeroFx />
+        <section aria-labelledby="solutions-title" className="st-wrap pb-16 pt-10 lg:pb-24 lg:pt-20">
+          <Slug>{s.slug}</Slug>
+          <h1 id="solutions-title" className="st-h1-page mt-8 max-w-[20ch]">
+            {s.title}
+          </h1>
+          <p className="st-lead mt-7">{s.lead}</p>
+          <ul className="st-ways">
+            {s.pages.map((page, i) =>
+              isSolutionId(page.id) ? (
+                <li key={page.id} className="st-way" data-spot aria-labelledby={`way-${page.id}`}>
+                  <span className="st-way-no st-num" aria-hidden>
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <div className="st-way-head">
+                    <span className="st-kicker">{page.kicker}</span>
+                    <h2 id={`way-${page.id}`} className="st-h3 text-[clamp(26px,2.4vw,34px)]">
+                      <Link href={solutionHref(page.id)} className="st-way-title">
+                        {/* The last word and the arrow never part: a title that
                           filled its line left the arrow alone on the next. */}
-                      {page.title.split(" ").slice(0, -1).join(" ")}{" "}
-                      <span className="whitespace-nowrap">
-                        {page.title.split(" ").slice(-1)[0]}
-                        <ArrowRight aria-hidden />
+                        {page.title.split(" ").slice(0, -1).join(" ")}{" "}
+                        <span className="whitespace-nowrap">
+                          {page.title.split(" ").slice(-1)[0]}
+                          <ArrowRight aria-hidden />
+                        </span>
+                      </Link>
+                    </h2>
+                    <p className="st-small max-w-[52ch]">{page.lead}</p>
+                  </div>
+                  <ul className="st-way-list" aria-label={s.whatLabel}>
+                    {page.what.slice(0, 3).map((w) => (
+                      <li key={w.title}>
+                        <span aria-hidden className="ns-lamp" data-tone="ok" />
+                        {w.title}
+                      </li>
+                    ))}
+                    <li data-kind="not">
+                      <X className="size-4 shrink-0" aria-hidden />
+                      <span>
+                        <span className="sr-only">{s.notLabel}: </span>
+                        {page.not[0]}
                       </span>
-                    </Link>
-                  </h2>
-                  <p className="st-small max-w-[52ch]">{page.lead}</p>
-                </div>
-                <ul className="st-way-list" aria-label={s.whatLabel}>
-                  {page.what.slice(0, 3).map((w) => (
-                    <li key={w.title}>
-                      <span aria-hidden className="ns-lamp" data-tone="ok" />
-                      {w.title}
                     </li>
-                  ))}
-                  <li data-kind="not">
-                    <X className="size-4 shrink-0" aria-hidden />
-                    <span>
-                      <span className="sr-only">{s.notLabel}: </span>
-                      {page.not[0]}
-                    </span>
-                  </li>
-                </ul>
-              </li>
-            ) : null,
-          )}
-        </ul>
-      </section>
+                  </ul>
+                </li>
+              ) : null,
+            )}
+          </ul>
+          <MotionToggle pause={t.site.fx.pause} play={t.site.fx.play} />
+        </section>
+      </div>
 
       <section aria-labelledby="same-title" className="st-section">
         <div className="st-wrap">

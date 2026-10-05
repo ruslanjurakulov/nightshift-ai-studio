@@ -117,7 +117,7 @@ describe("one page for every tab: only the assistant's name changes", () => {
 });
 
 describe("the pictures are honest", () => {
-  it.each(LOCALES)("%s: every drawn frame is captioned as an illustration, carries no number and no image file", (locale) => {
+  it.each(LOCALES)("%s: every frame is captioned as an example, carries no number, and its pictures are the labelled example stills", (locale) => {
     const d = doc(page(locale));
     const frames = [...d.querySelectorAll("figure.ml-fig")];
     expect(frames).toHaveLength(6);
@@ -126,13 +126,24 @@ describe("the pictures are honest", () => {
       expect(f.querySelector("figcaption")?.textContent).toBe(note);
       expect(f.querySelector(".ml-frame")?.getAttribute("aria-hidden")).toBe("true");
       expect(f.textContent ?? "").not.toMatch(/\d/);
-      expect(f.querySelectorAll("img, picture, video, audio, image")).toHaveLength(0);
+      // Only the example stills (same-origin files, decorative inside the hidden frame); never video, audio or a remote picture.
+      expect(f.querySelectorAll("picture, video, audio, image")).toHaveLength(0);
+      for (const img of f.querySelectorAll("img")) {
+        expect(img.getAttribute("alt")).toBe("");
+        expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
+      }
     }
-    // Example cards: each is labelled as an illustration on the card itself.
+    // Example cards: each is labelled as an example frame on the card itself, and its picture says what it shows.
     const cards = [...d.querySelectorAll(".ml-ex")];
     expect(cards).toHaveLength(6);
     for (const c of cards) expect(c.querySelector(".ml-ex-badge")?.textContent).toBe(devDictionaries[locale].mcp.land.examples.sample);
-    expect(d.querySelector(".ml-land")?.querySelectorAll("img, picture, video")).toHaveLength(0);
+    const alts = devDictionaries[locale].mcp.land.examples.alts;
+    for (const c of cards) {
+      const img = c.querySelector("img")!;
+      expect(Object.values(alts)).toContain(img.getAttribute("alt"));
+      expect(img.getAttribute("loading")).toBe("lazy");
+    }
+    expect(d.querySelector(".ml-land")?.querySelectorAll("picture, video")).toHaveLength(0);
   });
 
   it.each([true, false])("names no model, provider or price (sign-in live: %s): two rows with different assistants, none in both, none twice in a row; the publish targets are a still line of three", (live) => {
@@ -187,7 +198,7 @@ describe("the pictures are honest", () => {
 
   it("uses two different words in Uzbek for the card badge and the frame caption", () => {
     const uz = devDictionaries.uz.mcp.land;
-    expect(uz.examples.sample).toBe("Rasm (namuna)");
+    expect(uz.examples.sample).toBe("Namuna kadr");
     expect(uz.frames.note).toBe("Tasvir, haqiqiy natija emas");
   });
 });

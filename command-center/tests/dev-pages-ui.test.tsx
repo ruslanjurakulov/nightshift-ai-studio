@@ -284,7 +284,9 @@ describe("the MCP page", () => {
     expect(tiles.getAttribute("aria-hidden")).toBe("true");
     expect(tiles.querySelectorAll(".st-tile")).toHaveLength(7);
     expect(tiles.querySelector('[data-slot="brand"] svg[aria-hidden="true"]')).toBeTruthy();
-    expect(d.querySelectorAll("img, picture, video")).toHaveLength(0);
+    // Pictures: only the example stills (img.ml-scene, same-origin build files); never video, and nothing in the tile row.
+    expect(d.querySelectorAll("img:not(.ml-scene), picture, video")).toHaveLength(0);
+    expect(tiles.querySelectorAll("img")).toHaveLength(0);
     // Only the sprite may hold a picture, and only an embedded one (data: URI), never a remote file.
     for (const im of Array.from(d.querySelectorAll("image"))) {
       expect(im.getAttribute("href") ?? "").toMatch(/^data:image\/(png|webp);base64,/);
