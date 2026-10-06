@@ -25,8 +25,8 @@ export type PublicDictionary = {
   site: {
     pricingTeaser: Pick<Dictionary["site"]["pricingTeaser"], "credits">;
     auth: Dictionary["site"]["auth"];
-    /** The example-frame note the sign-in stage prints under its picture. */
-    samples: Pick<Dictionary["site"]["samples"], "tag" | "note">;
+    /** The brief, plan, approve flow the sign-in and sign-up stages draw (components/auth/FlowCard.tsx). */
+    stage: Pick<Dictionary["site"]["stage"], "tag" | "figure" | "steps">;
   };
   signup: Dictionary["signup"];
   auth: Pick<Dictionary["auth"], "email" | "password" | "signIn" | "signingIn">;
@@ -50,7 +50,7 @@ export function publicDictionary(t: Dictionary): PublicDictionary {
     plans: omit(t.plans, "managePortalMissing"),
     credits: { buy: { pack: t.credits.buy.pack } },
     creditsPage: { eq: t.creditsPage.eq },
-    site: { pricingTeaser: { credits: t.site.pricingTeaser.credits }, auth: t.site.auth, samples: { tag: t.site.samples.tag, note: t.site.samples.note } },
+    site: { pricingTeaser: { credits: t.site.pricingTeaser.credits }, auth: t.site.auth, stage: { tag: t.site.stage.tag, figure: t.site.stage.figure, steps: t.site.stage.steps } },
     signup: t.signup,
     auth: { email: t.auth.email, password: t.auth.password, signIn: t.auth.signIn, signingIn: t.auth.signingIn },
     ux: {

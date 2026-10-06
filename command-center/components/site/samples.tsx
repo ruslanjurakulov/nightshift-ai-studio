@@ -4,17 +4,7 @@ import moon from "@/components/site/samples/moon.webp";
 import nightmarket from "@/components/site/samples/nightmarket.webp";
 import valley from "@/components/site/samples/valley.webp";
 import lighthouse from "@/components/site/samples/lighthouse.webp";
-import silkroadDusk from "@/components/site/samples/silkroad-dusk.webp";
-import libraryTeal from "@/components/site/samples/library-teal.webp";
-import valleyRose from "@/components/site/samples/valley-rose.webp";
-import nightmarketCool from "@/components/site/samples/nightmarket-cool.webp";
-import lighthouseWide from "@/components/site/samples/lighthouse-wide.webp";
-import silkroadMp4 from "@/components/site/clips/silkroad.mp4";
-import silkroadWebm from "@/components/site/clips/silkroad.webm";
-import libraryMp4 from "@/components/site/clips/library.mp4";
-import libraryWebm from "@/components/site/clips/library.webm";
-import valleyMp4 from "@/components/site/clips/valley.mp4";
-import valleyWebm from "@/components/site/clips/valley.webm";
+import { CLIPS, type ClipId } from "@/components/site/clip-assets";
 
 /**
  * The example frames on the public pages: six AI-generated stills, made on
@@ -26,49 +16,16 @@ import valleyWebm from "@/components/site/clips/valley.webm";
  * Imported statically, so each is a hashed file served from this origin
  * (img-src 'self' already allows it) with its real width and height.
  */
-export const SAMPLES = {
-  silkroad,
-  library,
-  moon,
-  nightmarket,
-  valley,
-  lighthouse,
-  // Graded and cropped variants of the six (scripts/make-site-sample-variants.py), so no two pages share a look.
-  "silkroad-dusk": silkroadDusk,
-  "library-teal": libraryTeal,
-  "valley-rose": valleyRose,
-  "nightmarket-cool": nightmarketCool,
-  "lighthouse-wide": lighthouseWide,
-} as const;
+export const SAMPLES = { silkroad, library, moon, nightmarket, valley, lighthouse } as const;
 export type SampleId = keyof typeof SAMPLES;
 
-/** The six whole stills. A variant is described, in every language, as the still it comes from. */
-export type BaseId = "silkroad" | "library" | "moon" | "nightmarket" | "valley" | "lighthouse";
-export const SAMPLE_BASE: Record<SampleId, BaseId> = {
-  silkroad: "silkroad",
-  library: "library",
-  moon: "moon",
-  nightmarket: "nightmarket",
-  valley: "valley",
-  lighthouse: "lighthouse",
-  "silkroad-dusk": "silkroad",
-  "library-teal": "library",
-  "valley-rose": "valley",
-  "nightmarket-cool": "nightmarket",
-  "lighthouse-wide": "lighthouse",
-};
-
 /**
- * The clips: slow camera moves (a push-in and a drift) over three of the stills, 8 seconds, seamless, no sound,
- * about 250 to 410 KB each in each of two formats, 1280 x 720 (scripts/render-site-clips.py). Frame 0 of every clip is its
- * still, which is also the poster. They are the stills, moved, and are labelled as such wherever they play.
+ * The clips: slow camera moves (a push-in and a drift) over three of the stills, 8 seconds, seamless, no sound
+ * (scripts/render-site-clips.py). Two renditions of each: 1280 x 720 (250 to 410 KB) for a screen of 860 px or more,
+ * and 640 x 360 (75 to 125 KB) for a phone, each in MP4 and WebM. Frame 0 of every clip is its still, which is also the
+ * poster. They are the stills, moved, and are labelled as such wherever they play.
  */
-export const CLIPS = {
-  silkroad: { mp4: silkroadMp4, webm: silkroadWebm },
-  library: { mp4: libraryMp4, webm: libraryWebm },
-  valley: { mp4: valleyMp4, webm: valleyWebm },
-} as const;
-export type ClipId = keyof typeof CLIPS;
+export { CLIPS, type ClipId };
 
 /**
  * One example frame as an <img> that fills its aspect-ratio box (the box, not
@@ -94,7 +51,8 @@ export function SampleImg({ id, alt = "", className, eager = false, crop, positi
 /**
  * THE MEDIA SLOTS: which still goes where. Every page asks for a slot by name (<SlotImg slot="hero" />), never for a
  * file, so swapping a picture, or putting a new one in a place, is one line here. At most one still per section, and a
- * page uses a different still in each slot (the landing's three showcases are three different frames).
+ * page uses a different scene in each slot, and no scene twice on one page: where a place would repeat one, the site draws
+ * (components/site/BrandArt.tsx) or shows the product itself instead of a recoloured copy.
  *
  * To add a still: put the WebP in ./samples/ (900 px wide, under 60 KB), import it above and add it to SAMPLES, give it
  * an alt in lib/i18n/site/{en,ru,uz}.ts (site.samples.alts), then point a slot at it. Nothing else changes.
@@ -106,16 +64,8 @@ export const SLOTS = {
   "show.video": { id: "library", clip: "library" },
   "show.studio": { id: "valley", clip: "valley" },
   "show.approvals": { id: "moon" },
-  /** The chat cards on /pricing and /mcp. */
+  /** The chat card on /pricing. (/mcp, /solutions, /login and /signup show drawn art and product pictures, not stills.) */
   "pricing.card": { id: "nightmarket" },
-  "mcp.card": { id: "lighthouse", position: "50% 22%" },
-  /** The three ways in on /solutions (one still each, none repeated on the page). */
-  "sol.channels": { id: "library-teal" },
-  "sol.studio": { id: "valley-rose" },
-  "sol.developers": { id: "lighthouse-wide" },
-  /** The stage beside the sign-in and sign-up forms, and the band over them on a phone. */
-  "auth.signin": { id: "nightmarket-cool" },
-  "auth.signup": { id: "silkroad-dusk" },
 } as const satisfies Record<string, { id: SampleId; crop?: SampleCrop; position?: string; clip?: ClipId }>;
 export type SlotId = keyof typeof SLOTS;
 
@@ -125,9 +75,9 @@ export function SlotImg({ slot, alt = "", className, eager = false }: { slot: Sl
   return <SampleImg id={s.id} alt={alt} className={className} eager={eager} crop={s.crop} position={s.position} />;
 }
 
-/** The description of a slot's still, from the dictionary's six (a variant is described as the still it comes from). */
-export function slotAlt(alts: Record<BaseId, string>, slot: SlotId): string {
-  return alts[SAMPLE_BASE[SLOTS[slot].id]];
+/** The description of a slot's still, from the dictionary's six. */
+export function slotAlt(alts: Record<SampleId, string>, slot: SlotId): string {
+  return alts[SLOTS[slot].id];
 }
 
 /** The clip a slot plays, if it has one. */

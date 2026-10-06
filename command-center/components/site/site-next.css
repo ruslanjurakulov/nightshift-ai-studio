@@ -526,10 +526,15 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 @media (prefers-reduced-motion: reduce) {
   .nx-motion { display: none; }
 }
-/* The blobs' own rule is html[data-fx] .nx-fx-blob[data-n] (0,3,1), so theirs names data-fx too and wins by one attribute. */
+/* `animation-play-state` is reset by the `animation` shorthand of every rule that starts a loop, and those come later in this file, so the pause wins by !important (not by order). */
 html[data-motion="paused"][data-fx] .nx-fx-blob[data-n],
 html[data-motion="paused"] .nx-fx-blob,
-html[data-motion="paused"] .nx-dot { animation-play-state: paused; }
+html[data-motion="paused"] .nx-dot,
+html[data-motion="paused"] .nx-fx-mote, html[data-motion="paused"] .nx-fx-streak, html[data-motion="paused"] .nx-fx-shaft, html[data-motion="paused"] .nx-fx-mist,
+html[data-motion="paused"] .nx-fx-sun, html[data-motion="paused"] .nx-fx-shimmer, html[data-motion="paused"] .nx-fx-moonglow, html[data-motion="paused"] .nx-fx-star,
+html[data-motion="paused"] .nx-fx-lantern, html[data-motion="paused"] .nx-fx-fg, html[data-motion="paused"] .nx-art-glow, html[data-motion="paused"] .nx-art-ring,
+html[data-motion="paused"] .nx-art-star, html[data-motion="paused"] .nx-art-playhead, html[data-motion="paused"] .nx-art-pulse, html[data-motion="paused"] .nx-art-svg *,
+html[data-motion="paused"] .nx .ns-lamp[data-live="true"] { animation-play-state: paused !important; }
 /* Hero reassurance: the three promises, said before the first scroll. */
 .nx-trust { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 24px; margin: 24px 0 0; padding: 0; list-style: none; }
 .nx-trust li { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; font-size: 15px; font-weight: 500; color: var(--ns-text); }
@@ -934,17 +939,11 @@ html:is([lang="ru"], [lang="uz"]) .nx-show-h { font-size: clamp(28px, 7.2vw, 52p
 .nx-mcp-tools { margin-top: 24px; }
 .nx-mcp-tools .st-table-wrap, .nx-mcp-tools > table { margin: 0; }
 
-/* /solutions: three ways in as large example frames. */
+/* /solutions: who it is for, as three tabs with the product's own picture under them. */
 .nx-sol-hero { padding-block: 28px 8px; }
 .nx-sol-hero .st-h1-page { max-width: 8.6em; } /* em, not ch: a ch changes with the font, and the headline wrapping differently moved the page (CLS 0.04 in one load of eight) */
 html:is([lang="ru"], [lang="uz"]) .nx-sol-hero .st-h1-page { max-width: 10.4em; }
 .nx-sol-ways { padding-block: 24px 56px; }
-.nx-ways { display: grid; gap: 44px; margin: 0; padding: 0; list-style: none; }
-.nx-way { display: grid; gap: 18px; }
-.nx-way-pic { margin: 0; }
-.nx-way-art { position: relative; overflow: hidden; border-radius: 28px; background: #12151c; aspect-ratio: 4 / 3.4; }
-.nx-way-art .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.nx-way-art .nx-result-badge { z-index: 2; top: 16px; left: 16px; }
 .nx-way-kicker { margin: 0; font-size: 15px; font-weight: 600; color: var(--ns-text-dim); }
 .nx-way-h { margin: 8px 0 0; font-family: var(--font-display); font-size: clamp(28px, 7.4vw, 44px); font-weight: 600; line-height: 1.08; letter-spacing: -0.03em; text-wrap: balance; }
 html:is([lang="ru"], [lang="uz"]) .nx-way-h { font-size: clamp(26px, 6.4vw, 38px); }
@@ -958,10 +957,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-way-h { font-size: clamp(26px, 6.4vw, 38px
 .nx-way-list li[data-kind="not"] { color: var(--ns-text-dim); }
 .nx-way-list li[data-kind="not"] svg { color: var(--ns-text-dim); }
 @media (min-width: 900px) {
-  .nx-ways { gap: 72px; }
-  .nx-way { grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr); align-items: center; gap: 48px; }
-  .nx-way[data-flip="true"] .nx-way-pic { order: 2; }
-  .nx-way-art { border-radius: 36px; aspect-ratio: 16 / 10.5; }
   .nx-sol-hero { padding-block: 56px 16px; }
 }
 
@@ -987,21 +982,37 @@ html:is([lang="ru"], [lang="uz"]) .nx-mcp-top .st-mcphero-h1 { font-size: clamp(
 html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clamp(28px, 7.2vw, 44px); }
 
 /* ── Round 5 ──────────────────────────────────────────────────────────── */
-/* The chat card on a phone: a bigger still (4:3), so the picture is on the first screen. */
+/* The chat card on a phone: a wide still (16:10), so the picture is on the first screen without the card growing. */
 @media (max-width: 859px) {
-  .nx-chat .nx-result-art { aspect-ratio: 4 / 3; }
+  .nx-chat .nx-result-art { aspect-ratio: 16 / 10; }
 }
 /* The rail: each tab keeps its word whole (Russian "Одобрение" broke mid-word), and the tabs take the room their words need. */
 .nx-chat-rail { gap: 8px; }
-.nx-chat-rail li { flex: 1 1 auto; overflow-wrap: normal; white-space: nowrap; padding-right: 4px; }
-/* While the rail steps (components/landing/ChatRail.tsx) the card's lower half waits for Approve. Colours only, no fade. */
-.nx-chat[data-step="0"] .nx-ui-status .nx-dot, .nx-chat[data-step="1"] .nx-ui-status .nx-dot { background: var(--ns-rule-strong); }
-.nx-chat[data-step="0"] .nx-ui-status li[data-lit="true"], .nx-chat[data-step="1"] .nx-ui-status li[data-lit="true"] { color: var(--ns-text-dim); }
-.nx-chat[data-step="0"] .nx-chat-key, .nx-chat[data-step="1"] .nx-chat-key { border-color: var(--ns-rule-strong); background: transparent; color: var(--ns-text-dim); }
+.nx-chat-rail li { flex: 1 1 auto; overflow-wrap: normal; white-space: nowrap; padding-right: 4px; font-weight: 600; }
+/* The chat card plays once, in CSS only (no script, nothing flashes: the server's HTML is its last state, which is also what reduced motion and the pause
+   switch show). Order, from the page's load: the ask types (".nx-ch", a letter every 26 ms from 0.5 s), the reply arrives, the rail goes Topic, Plan,
+   Approve (never Live), the three lamps light one by one, the drawn button last. Colours and visibility only, never a size or a fade of text. */
+@keyframes nx-show { from { visibility: hidden; } to { visibility: visible; } }
+@keyframes nx-lamp { from { background: var(--ns-rule-strong); } }
+@keyframes nx-key { from { border-color: var(--ns-rule-strong); background: transparent; color: var(--ns-text-dim); } }
+@keyframes nx-r1 { 0%, 54% { border-color: var(--ns-amber); color: var(--ns-text); } 55%, 100% { border-color: var(--ns-go); color: var(--ns-text-dim); } }
+@keyframes nx-r2 { 0%, 54% { border-color: var(--ns-rule); color: var(--ns-text-dim); } 55%, 74% { border-color: var(--ns-amber); color: var(--ns-text); } 75%, 100% { border-color: var(--ns-go); color: var(--ns-text-dim); } }
+@keyframes nx-r3 { 0%, 74% { border-color: var(--ns-rule); color: var(--ns-text-dim); } 75%, 100% { border-color: var(--ns-amber); color: var(--ns-text); } }
 @media (prefers-reduced-motion: no-preference) {
-  .nx-chat-rail li { transition: border-color var(--ns-dur-2) var(--ns-ease), color var(--ns-dur-2) var(--ns-ease); }
-  .nx-ui-status .nx-dot, .nx-chat-key { transition: background-color var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease), color var(--ns-dur-2) var(--ns-ease); }
+  .nx-chat .nx-ch { animation: nx-show 0.01s steps(1, start) both; animation-delay: calc(0.5s + var(--i) * 26ms); }
+  .nx-chat .nx-reply { animation: nx-show 0.01s steps(1, start) both; animation-delay: 2.7s; }
+  .nx-chat .nx-chat-rail li:nth-child(1) { animation: nx-r1 4s linear 0.5s both; }
+  .nx-chat .nx-chat-rail li:nth-child(2) { animation: nx-r2 4s linear 0.5s both; }
+  .nx-chat .nx-chat-rail li:nth-child(3) { animation: nx-r3 4s linear 0.5s both; }
+  .nx-chat .nx-ui-status li:nth-child(1) .nx-dot { animation: nx-lamp 0.4s ease 3.5s both; }
+  .nx-chat .nx-ui-status li:nth-child(2) .nx-dot { animation: nx-lamp 0.4s ease 3.9s both; }
+  .nx-chat .nx-ui-status li:nth-child(3) .nx-dot { animation: nx-lamp 0.4s ease 4.4s both; }
+  .nx-chat .nx-chat-key { animation: nx-key 0.4s ease 4.8s both; }
+  /* Paused: the card shows its last state at once. */
+  html[data-motion="paused"] .nx-chat .nx-ch, html[data-motion="paused"] .nx-chat .nx-reply, html[data-motion="paused"] .nx-chat .nx-chat-rail li,
+  html[data-motion="paused"] .nx-chat .nx-dot, html[data-motion="paused"] .nx-chat .nx-chat-key { animation: none !important; }
 }
+.nx-typed { display: inline; }
 /* A phone's first screen: the headline, the button and the whole of the chat card's picture. The pricing link is in the menu and in the price block. */
 @media (max-width: 639px) {
   .nx-hero-copy .nx-actions .nx-link { display: none; }
@@ -1012,12 +1023,14 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 
 /* What Nightshift can make: a strip of tool names, and one line that follows the one under the pointer. */
 .nx-tools { margin-top: 28px; }
-.nx-tools-list { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.nx-tool { display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 20px 0 16px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); background: var(--ns-console); font-family: var(--font-display); font-size: 16px; font-weight: 500; color: var(--ns-text); cursor: pointer; }
+.nx-tools-list { display: flex; flex-wrap: nowrap; gap: 10px; margin: 0 -16px; padding: 4px 16px 8px; list-style: none; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: none; overscroll-behavior-x: contain; -webkit-mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 28px), transparent); }
+.nx-tools-list::-webkit-scrollbar { display: none; }
+.nx-tools-list > li { flex: 0 0 auto; scroll-snap-align: start; }
+.nx-tool { display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 22px 0 18px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); background: var(--ns-console); font-family: var(--font-display); font-size: 17px; white-space: nowrap; font-weight: 500; color: var(--ns-text); cursor: pointer; }
 .nx-tool svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--ns-text-dim); }
 .nx-tool:hover { border-color: var(--ns-amber); }
-.nx-tool[aria-pressed="true"] { border-color: var(--ns-amber); background: var(--ns-select); color: var(--ns-text); }
-.nx-tool[aria-pressed="true"] svg { color: var(--ns-amber-ink); }
+.nx-tool[aria-selected="true"] { border-color: var(--ns-amber); background: var(--ns-select); color: var(--ns-text); }
+.nx-tool[aria-selected="true"] svg { color: var(--ns-amber-ink); }
 .nx-tools-line { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 14px; row-gap: 2px; align-items: baseline; margin: 22px 0 0; padding: 20px 22px; border-radius: 22px; border: 1px solid var(--ns-rule); background: var(--ns-console); font-size: 17px; line-height: 1.5; }
 .nx-tools-dot { grid-row: 1 / span 3; align-self: start; width: 10px; height: 10px; margin-top: 9px; border-radius: 999px; background: var(--ns-amber); }
 .nx-tools-dot[data-free="true"] { background: var(--ns-go); }
@@ -1042,5 +1055,158 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 /* Desktop hero: the three promises are one per line, so their wrapping cannot differ between the fallback face and Onest (it was one row in one and two in the other, which moved the whole column, a layout shift of 0.12). */
 @media (min-width: 1024px) {
   .nx-hero-copy .nx-trust { flex-direction: column; align-items: flex-start; gap: 2px; }
+}
+
+/* ── Round 6: light drawn over the stills, drawn art, and the badge that says a picture moves ── */
+/* StillFx (components/site/StillFx.tsx): CSS only, masked to the picture by its box, transform and opacity only, after load, paused by the switch, absent
+   under reduced motion. */
+.nx-fx { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.nx-fx > * { position: absolute; display: block; margin: 0; }
+.nx-fx-mote { left: var(--x); top: var(--y); width: var(--s); height: var(--s); border-radius: 50%; background: rgba(255, 238, 205, 0.9); box-shadow: 0 0 6px rgba(255, 224, 168, 0.75); opacity: 0; }
+.nx-fx-streak { left: -30%; top: var(--y); width: 60%; height: 2px; background: linear-gradient(90deg, transparent, rgba(255, 236, 196, 0.5), transparent); opacity: 0; }
+.nx-fx-shaft { left: var(--x); top: -10%; width: var(--w); height: 130%; transform-origin: 50% 0; transform: rotate(var(--r)); background: linear-gradient(to bottom, rgba(255, 214, 150, 0.42), rgba(255, 214, 150, 0) 78%); filter: blur(14px); mix-blend-mode: screen; opacity: 0.5; }
+.nx-fx-mist { left: -40%; top: var(--y); width: 180%; height: 22%; background: radial-gradient(closest-side, rgba(255, 236, 230, 0.3), transparent); filter: blur(10px); opacity: 0.7; }
+.nx-fx-sun { right: 14%; top: 6%; width: 34%; aspect-ratio: 1; background: radial-gradient(closest-side, rgba(255, 204, 128, 0.5), transparent); mix-blend-mode: screen; opacity: 0.6; }
+.nx-fx-shimmer { left: 0; bottom: 0; width: calc(100% + 480px); height: 30%; background: repeating-linear-gradient(90deg, transparent 0 22px, rgba(255, 242, 214, 0.55) 22px 70px, transparent 70px 120px); -webkit-mask-image: repeating-linear-gradient(0deg, #000 0 2px, transparent 2px 9px), linear-gradient(to top, #000, transparent); -webkit-mask-composite: source-in; mask-image: repeating-linear-gradient(0deg, #000 0 2px, transparent 2px 9px), linear-gradient(to top, #000, transparent); mask-composite: intersect; mix-blend-mode: screen; opacity: 0.5; }
+.nx-fx-moonglow { right: 4%; top: 12%; width: 36%; aspect-ratio: 1; background: radial-gradient(closest-side, rgba(255, 232, 190, 0.5), transparent); mix-blend-mode: screen; opacity: 0.55; }
+.nx-fx-star { left: var(--x); top: var(--y); width: 3px; height: 3px; border-radius: 50%; background: #fff; box-shadow: 0 0 5px #fff; opacity: 0.35; }
+.nx-fx-lantern { left: var(--x); top: var(--y); width: 9%; aspect-ratio: 1; margin: -4.5% 0 0 -4.5%; background: radial-gradient(closest-side, rgba(255, 190, 90, 0.7), rgba(255, 150, 40, 0.2) 55%, transparent); mix-blend-mode: screen; opacity: 0.6; }
+.nx-fx-fg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform-origin: 50% 100%; -webkit-mask-image: linear-gradient(to bottom, transparent 32%, #000 64%); mask-image: linear-gradient(to bottom, transparent 32%, #000 64%); }
+@keyframes nx-mote { 0% { transform: translate3d(0, 0, 0); opacity: 0; } 15% { opacity: 0.9; } 85% { opacity: 0.8; } 100% { transform: translate3d(var(--dx), var(--dy), 0); opacity: 0; } }
+@keyframes nx-streak { 0% { transform: translateX(0); opacity: 0; } 20% { opacity: 0.85; } 100% { transform: translateX(270%); opacity: 0; } }
+@keyframes nx-shaft { from { opacity: 0.22; transform: rotate(var(--r)) translateX(-2%); } to { opacity: 0.66; transform: rotate(var(--r)) translateX(3%); } }
+@keyframes nx-mist { from { transform: translateX(0); } to { transform: translateX(22%); } }
+@keyframes nx-glow { from { opacity: 0.35; transform: scale(0.94); } to { opacity: 0.85; transform: scale(1.06); } }
+@keyframes nx-shimmer { from { transform: translateX(0); } to { transform: translateX(-480px); } }
+@keyframes nx-twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+@keyframes nx-flicker { 0% { opacity: 0.35; } 18% { opacity: 0.95; } 33% { opacity: 0.5; } 52% { opacity: 1; } 71% { opacity: 0.45; } 100% { opacity: 0.85; } }
+@keyframes nx-par { from { transform: scale(1) translateX(0); } to { transform: scale(1.08) translateX(-1.6%); } }
+@keyframes nx-dash { to { stroke-dashoffset: -400; } }
+@keyframes nx-playhead { from { transform: translateX(0); } to { transform: translateX(512px); } }
+@keyframes nx-pulse { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -196; } }
+@media (prefers-reduced-motion: no-preference) {
+  html[data-fx="on"] .nx-fx-mote { animation: nx-mote var(--d) linear var(--t) infinite; }
+  html[data-fx="on"] .nx-fx-streak { animation: nx-streak var(--d) linear var(--t) infinite; }
+  html[data-fx="on"] .nx-fx-shaft { animation: nx-shaft var(--d) ease-in-out var(--t) infinite alternate; }
+  html[data-fx="on"] .nx-fx-mist { animation: nx-mist var(--d) ease-in-out var(--t) infinite alternate; }
+  html[data-fx="on"] .nx-fx-sun, html[data-fx="on"] .nx-fx-moonglow { animation: nx-glow 7s ease-in-out infinite alternate; }
+  html[data-fx="on"] .nx-fx-shimmer { animation: nx-shimmer 6s linear infinite; }
+  html[data-fx="on"] .nx-fx-star { animation: nx-twinkle var(--d) ease-in-out var(--t) infinite; }
+  html[data-fx="on"] .nx-fx-lantern { animation: nx-flicker var(--d) ease-in-out var(--t) infinite alternate; }
+  html[data-fx="on"] .nx-fx-fg { animation: nx-par 18s ease-in-out infinite alternate; }
+  html[data-fx="on"] .nx-art-svg:not([data-static]) .nx-art-glow { transform-box: fill-box; transform-origin: center; animation: nx-glow 7s ease-in-out infinite alternate; }
+  html[data-fx="on"] .nx-art-svg:not([data-static]) .nx-art-ring { animation: nx-dash 36s linear infinite; }
+  html[data-fx="on"] .nx-art-svg:not([data-static]) .nx-art-ring[data-i="1"], html[data-fx="on"] .nx-art-svg:not([data-static]) .nx-art-ring[data-i="3"] { animation-direction: reverse; }
+  html[data-fx="on"] .nx-art-svg:not([data-static]) .nx-art-star { animation: nx-twinkle 3.4s ease-in-out infinite; }
+  html[data-fx="on"] .nx-art-svg:not([data-static]) .nx-art-star[data-i="1"] { animation-delay: -1s; }
+  html[data-fx="on"] .nx-art-svg:not([data-static]) .nx-art-star[data-i="2"] { animation-delay: -2s; }
+  html[data-fx="on"] .nx-art-svg:not([data-static]) .nx-art-playhead { animation: nx-playhead 9s linear infinite; }
+  html[data-fx="on"] .nx-art-svg:not([data-static]) .nx-art-pulse { animation: nx-pulse 3.2s linear infinite; animation-delay: calc(var(--i, 0) * -0.53s); }
+  .nx-art-pulse[data-i="1"] { --i: 1; } .nx-art-pulse[data-i="2"] { --i: 2; } .nx-art-pulse[data-i="3"] { --i: 3; } .nx-art-pulse[data-i="4"] { --i: 4; } .nx-art-pulse[data-i="5"] { --i: 5; }
+}
+@media (prefers-reduced-motion: reduce) { .nx-fx, .nx-fx-fg { display: none; } }
+.nx-art-svg { display: block; width: 100%; height: 100%; }
+/* A picture that moves (a clip, light drawn over it) says so on its badge while it runs: "Example clip (animated still)". Keyed on the page's own
+   switches, so it flips back to "Example frame" when motion is paused, and under reduced motion it never flips. */
+@media (prefers-reduced-motion: no-preference) {
+  html[data-fx="on"]:not([data-motion="paused"]) [data-fxscene] > .nx-result-badge[data-kind="still"] { display: none; }
+  html[data-fx="on"]:not([data-motion="paused"]) [data-fxscene] > .nx-result-badge[data-kind="clip"] { display: block; }
+}
+
+/* ── The sign-in and sign-up stages: drawn art and the brief, plan, approve flow ── */
+.nx .st-auth-aside::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.1) 0%, rgba(16, 15, 13, 0.22) 55%, rgba(16, 15, 13, 0.5) 100%); }
+.nx-fcard { position: relative; margin: 0; padding: 22px 20px 18px; max-width: 470px; border-radius: 22px; border: 1px solid var(--nx-stage-edge); background: rgba(16, 15, 13, 0.78); color: var(--nx-stage-text); }
+.nx-fcard .nx-demo-tag { background: var(--nx-stage); border-color: var(--nx-stage-edge); color: var(--nx-stage-dim); }
+.nx-flow-rows { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.nx-flow-rows > li { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 6px 12px; align-items: start; }
+.nx-flow-tab { padding-top: 1px; font-size: 14px; font-weight: 600; color: var(--nx-stage-dim); }
+.nx-flow-brief { margin: 0; font-size: 16.5px; line-height: 1.45; }
+.nx-flow-plan, .nx-flow-lamps { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; font-size: 15px; line-height: 1.4; }
+.nx-flow-plan li { display: flex; align-items: baseline; gap: 8px; }
+.nx-flow-plan svg { align-self: center; flex-shrink: 0; width: 14px; height: 14px; color: var(--nx-stage-go); }
+.nx-flow-plan b { font-weight: 600; }
+.nx-flow-plan span { color: var(--nx-stage-dim); }
+.nx-flow-lamps li { display: flex; align-items: center; gap: 10px; color: var(--nx-stage-dim); }
+.nx-flow-lamps li[data-lit="true"] { color: var(--nx-stage-amber); font-weight: 600; }
+.nx-fcard .nx-dot { flex-shrink: 0; width: 9px; height: 9px; border-radius: 50%; background: var(--nx-stage-go); }
+.nx-fcard .nx-dot[data-tone="run"] { background: var(--nx-stage-amber); }
+.nx-flow-rows li[data-s="approve"] .nx-chat-key { grid-column: 2; justify-self: start; margin-top: 4px; border-color: var(--nx-stage-amber); background: rgba(255, 169, 64, 0.14); color: var(--nx-stage-amber); }
+.nx-fcard[data-compact="true"] { padding: 18px 16px 14px; }
+.nx-fcard[data-compact="true"] .nx-flow-rows { gap: 10px; }
+.nx-fcard[data-compact="true"] li[data-s="plan"], .nx-fcard[data-compact="true"] .nx-flow-lamps li:not([data-lit="true"]) { display: none; }
+.nx-fcard[data-compact="true"] .nx-flow-rows > li { grid-template-columns: 64px minmax(0, 1fr); }
+/* Two lines of room, always: a long label (Russian, Uzbek) wraps once the display face arrives, and the card must not change height when it does. */
+.nx-fcard[data-compact="true"] .nx-chat-key { min-height: 54px; padding: 6px 14px; font-size: 15px; line-height: 1.25; }
+@keyframes nx-key-stage { from { border-color: var(--nx-stage-edge); background: transparent; color: var(--nx-stage-dim); } }
+@keyframes nx-lamp-stage { from { background: var(--nx-stage-edge); } }
+@media (prefers-reduced-motion: no-preference) {
+  .nx-fcard .nx-ch { animation: nx-show 0.01s steps(1, start) both; animation-delay: calc(0.6s + var(--i) * 26ms); }
+  .nx-flow-plan li { animation: nx-show 0.01s steps(1, start) both; animation-delay: calc(2.5s + var(--k) * 0.45s); }
+  .nx-flow-lamps li:nth-child(1) .nx-dot { animation: nx-lamp-stage 0.4s ease 4.4s both; }
+  .nx-flow-lamps li:nth-child(2) .nx-dot { animation: nx-lamp-stage 0.4s ease 4.8s both; }
+  .nx-flow-lamps li:nth-child(3) .nx-dot { animation: nx-lamp-stage 0.4s ease 5.2s both; }
+  .nx-fcard .nx-chat-key { animation: nx-key-stage 0.4s ease 5.6s both; }
+  /* The compact (phone) flow has no plan, so it does not wait for one. */
+  .nx-fcard[data-compact="true"] .nx-flow-lamps li:nth-child(3) .nx-dot { animation-delay: 2.6s; }
+  .nx-fcard[data-compact="true"] .nx-chat-key { animation-delay: 3.1s; }
+  html[data-motion="paused"] .nx-fcard * { animation: none !important; }
+}
+/* The phone's band: the drawing with the brief and the approval over it. */
+.nx-auth-band { height: auto; min-height: 188px; padding: 14px 14px 52px; }
+.nx-auth-band::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0) 0%, rgba(16, 15, 13, 0.45) 100%); }
+.nx-auth-band .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+.nx-auth-band .nx-fcard { position: relative; z-index: 1; max-width: none; }
+.nx-auth-band .st-brand { z-index: 1; }
+.nx-aud-tabs { display: flex; gap: 10px; margin: 0 -16px; padding: 4px 16px 10px; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: none; }
+.nx-aud-tabs::-webkit-scrollbar { display: none; }
+.nx-aud-tab { flex: 0 0 auto; min-height: 54px; padding: 0 26px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); background: var(--ns-console); font-family: var(--font-display); font-size: 17px; font-weight: 600; color: var(--ns-text); white-space: nowrap; cursor: pointer; scroll-snap-align: start; }
+.nx-aud-tab:hover { border-color: var(--ns-amber); }
+.nx-aud-tab[aria-selected="true"] { border-color: var(--ns-amber); background: var(--ns-select); }
+.nx-aud-panel[hidden] { display: none; }
+.nx-aud-body { display: grid; gap: 24px; margin-top: 18px; }
+.nx-aud-stage { padding: 16px; border-radius: 28px; border: 1px solid var(--ns-rule); background-color: var(--ns-console); background-image: radial-gradient(70% 55% at 85% 0%, rgba(255, 169, 64, 0.18), transparent 70%); }
+.nx-aud-stage .st-monitor { margin: 0; min-width: 0; }
+@media (min-width: 900px) {
+  .nx-aud-body { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 48px; align-items: start; margin-top: 28px; }
+  .nx-aud-stage { padding: 28px; border-radius: 36px; }
+}
+
+/* /pricing: the month planner. */
+.nx-plan { gap: 24px; }
+.nx-plan-out { display: grid; gap: 14px; }
+@media (min-width: 720px) { .nx-plan-out { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.nx-plan-pack { align-content: start; }
+.nx-plan-name { margin: 0; font-family: var(--font-display); font-size: clamp(28px, 5vw, 40px); font-weight: 600; line-height: 1.08; letter-spacing: -0.02em; }
+.nx-plan-price { margin: 8px 0 0; font-family: var(--font-display); font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ns-amber-ink); }
+.nx-mcp-visual { min-width: 0; }
+
+/* Focus and press, on the controls this round added: the cue-blue focus ring, and a small press (motion allowed only). */
+.nx-tool:focus-visible, .nx-aud-tab:focus-visible, .nx-clip-pause:focus-visible, .nx-show-cta:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: 3px; }
+@media (prefers-reduced-motion: no-preference) {
+  .nx-tool, .nx-aud-tab, .nx-clip-pause, .nx-show-cta, .nx-btn { transition-property: border-color, background-color, color, transform; }
+  .nx-tool:active, .nx-aud-tab:active, .nx-clip-pause:active, .nx-show-cta:active, .nx-btn:active { transform: scale(0.97); }
+}
+
+/* ── Round 6: a shorter phone landing (merged sections, tighter breaks, a three-column footer) ── */
+@media (max-width: 859px) {
+  .nx { --nx-sec: 34px; }
+  .nx .st-footer-grid { padding-block: 40px 24px; }
+  /* The three showcases are one run of full-bleed breaks: each picture says what it is on its badge, and the note under the last covers the run. */
+  .nx-show:not(:last-child) .nx-show-note { display: none; }
+  .nx-show { padding-block: 6px; }
+  .nx-strip { gap: 20px; margin-top: 22px; }
+  .nx-tools-block { margin-top: 30px; }
+  .nx-final { padding-block: 40px; }
+}
+.nx-tools-block { margin-top: 44px; }
+.nx-tools-block .nx-tools { margin-top: 16px; }
+@media (max-width: 859px) {
+  .nx-final .nx-sub { display: none; }
+  .nx-try-picks { display: none; }
+  .nx-packs-list li { padding-block: 12px; }
+  .nx-calc { padding: 18px; gap: 20px; }
+  .nx-hero-copy .nx-trust { margin-top: 10px; gap: 0 18px; }
+  .nx-hero-copy .nx-trust li { min-height: 26px; }
+  .nx-show-pic { aspect-ratio: 4 / 4.1; }
 }
 }

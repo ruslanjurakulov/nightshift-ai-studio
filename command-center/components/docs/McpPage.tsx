@@ -15,6 +15,7 @@ import { McpAfter, McpLanding } from "@/components/docs/McpLanding";
 import { McpClientProvider } from "@/components/docs/McpClientContext";
 import { DevNav, DocSection, Statement, Table, type ScrollLabels } from "@/components/docs/doc-parts";
 import { ChatCard, type ChatCopy } from "@/components/landing/HeroCard";
+import { MotionToggle } from "@/components/site/MotionToggle";
 
 /**
  * /mcp — how to connect an AI assistant, laid out the way the best connect
@@ -68,6 +69,7 @@ export function McpPage({
   oauthLive,
   initialTab,
   chat,
+  pause,
 }: {
   dev: DevDictionary;
   origin: string;
@@ -79,6 +81,8 @@ export function McpPage({
   initialTab?: string;
   /** The chat card above the fold (its words come from the site dictionary, so the page passes them in). */
   chat?: ChatCopy;
+  /** The pause switch's label (the site's "Pause motion"): the card's drawing moves, so the page offers the switch. */
+  pause?: string;
 }) {
   const c = dev.mcp;
   const url = `${origin}/api/mcp`;
@@ -218,7 +222,12 @@ export function McpPage({
               <p className="st-mcphero-lead">{c.lead}</p>
               <p className="st-small st-mcphero-paid">{oauthLive ? c.paidLine : c.signinOff.paidLine}</p>
             </div>
-            {chat && <ChatCard copy={chat} slot="mcp.card" eager />}
+            {chat && (
+              <div className="nx-mcp-visual">
+                <ChatCard copy={chat} art="tools" />
+                {pause && <MotionToggle pause={pause} />}
+              </div>
+            )}
           </div>
 
           <ConnectCard

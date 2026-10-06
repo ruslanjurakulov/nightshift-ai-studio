@@ -1071,6 +1071,11 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 }
 .st-footer-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 16px; }
 @media (min-width: 900px) { .st-footer-cols { display: contents; } }
+/* A phone: the five link groups in three columns (two rows) instead of two columns (three rows), a shorter footer. */
+@media (max-width: 639px) {
+  .st-footer-cols { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 12px; }
+  .st-footer nav a { font-size: 14.5px; line-height: 1.25; }
+}
 .st-footer h2 {
   margin-bottom: 8px;
   font-family: var(--font-display);

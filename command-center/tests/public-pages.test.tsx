@@ -133,7 +133,7 @@ describe("public landing page", () => {
     expect(card.querySelector(".nx-demo-tag")?.textContent).toBe(t.site.stage.tag);
     expect(card.textContent).not.toMatch(MONEY);
     // The ask, then a reply that says it is an example reply, never "made a video".
-    expect(card.querySelector(".nx-bubble")?.textContent).toBe(t.site.caps.items[0].bubble);
+    expect(card.querySelector(".nx-bubble .sr-only")?.textContent).toBe(t.site.caps.items[0].bubble);
     expect(card.querySelector(".nx-reply")?.textContent).toContain(t.site.caps.exampleReply);
     expect(card.querySelector(".nx-reply")?.textContent).not.toContain(t.site.caps.items[0].reply);
     // The frame is one of the example stills, described, labelled, and the AI-generated note is printed under the card.

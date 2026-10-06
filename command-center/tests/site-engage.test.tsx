@@ -21,6 +21,7 @@ import { MotionToggle } from "@/components/site/MotionToggle";
 import { buildPlan, cleanTopic, pickStill, STILL_IDS, TOPIC_MAX } from "@/lib/site/demo-plan";
 import { freeMinutes, priceRatesFrom, quoteCents, quoteCredits } from "@/lib/site/price-check";
 import { setMotionPaused } from "@/lib/site/motion";
+import { thumbWords } from "@/components/site/BrandArt";
 import { WELCOME_CREDITS } from "@/lib/pricing";
 import type { MoneyAnchor } from "@/lib/landing";
 import { PROVIDER_BRANDS } from "./helpers/brands";
@@ -165,11 +166,15 @@ describe("the landing page's reasons to stay", () => {
     const t = dictionaries.en.site.try;
     const { container } = landing();
     const section = container.querySelector("#try") as HTMLElement;
-    const thumb = () => section.querySelector(".nx-try-thumb img")!.getAttribute("data-sample");
-    expect(thumb()).toBe("silkroad");
+    // Drawn, not a still: the topic's own words, set on the stage (BrandArt ThumbArt), and the same topic always the same drawing.
+    const thumb = () => [...section.querySelectorAll(".nx-try-thumb svg[data-art='thumb'] text")].map((x) => x.textContent);
+    expect(section.querySelector(".nx-try-thumb img")).toBeNull();
+    const first = thumb();
+    expect(first.length).toBeGreaterThan(0);
     fireEvent.click(within(section).getByRole("button", { name: t.topics[1] }));
-    expect(thumb()).toBe("lighthouse");
-    expect(section.querySelector(".nx-try-thumb .nx-result-badge")?.textContent).toBe(dictionaries.en.site.samples.tag);
+    expect(thumb()).not.toEqual(first);
+    expect(thumb()).toEqual(thumbWords(t.topics[1]));
+    expect(section.querySelector(".nx-try-thumb .nx-result-badge")?.textContent).toBe(t.tag);
     expect(section.querySelector(".nx-try-thumb figcaption")?.textContent).toBe(t.thumbNote);
   });
 
@@ -191,10 +196,10 @@ describe("the landing page's reasons to stay", () => {
     expect(within(bar).getByText(t.bar.cta).closest("a")!.getAttribute("href")).toBe("/signup");
     expect(bar.querySelector("button")!.getAttribute("aria-label")).toBe(t.bar.dismiss);
 
-    // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of three
-    // (the two clip pictures carry the same switch), and all three agree.
+    // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of four
+    // (the three clip pictures carry the same switch), and all four agree.
     const all = () => screen.getAllByRole("button", { name: t.fx.pause });
-    expect(all()).toHaveLength(3);
+    expect(all()).toHaveLength(4);
     const toggle = container.querySelector(".nx-motion-btn") as HTMLElement;
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(toggle);
@@ -271,7 +276,7 @@ describe("the AI-still disclosure is printed, not only labelled", () => {
     const { container } = landing();
     for (const sel of ["#examples", ".nx-caps", "#compare", ".nx-gal", "[aria-roledescription='carousel']", ".nx-tiles", ".nx-rules-rail"]) expect(container.querySelector(sel), sel).toBeNull();
     // Three different stills in the showcases, a fourth in the hero card.
-    const used = [...container.querySelectorAll("figure.nx-chat img, section.nx-show img")].map((i) => i.getAttribute("data-sample"));
+    const used = [...container.querySelectorAll("figure.nx-chat img:not(.nx-fx-fg), section.nx-show img:not(.nx-fx-fg)")].map((i) => i.getAttribute("data-sample"));
     expect(used).toHaveLength(4);
     expect(new Set(used).size).toBe(4);
   });
@@ -319,7 +324,7 @@ describe("the demo's stand-in frame", () => {
 describe("round 3: stills, header and the draw-in", () => {
   it("draws every still whole (no crop classes on the landing): variety comes from one different still per section", () => {
     const { container } = landing();
-    for (const i of container.querySelectorAll("figure.nx-chat img, section.nx-show img")) expect(i.getAttribute("data-crop")).toBeNull();
+    for (const i of container.querySelectorAll("figure.nx-chat img:not(.nx-fx-fg), section.nx-show img:not(.nx-fx-fg)")) expect(i.getAttribute("data-crop")).toBeNull();
   });
 
   it("makes the header's Start free the same amber key as the page's button (one primary action)", async () => {
