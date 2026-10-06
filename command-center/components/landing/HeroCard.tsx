@@ -2,7 +2,7 @@ import { Check } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import { BrandMark } from "@/components/site/BrandMark";
 import { LoopClip } from "@/components/site/LoopClip";
-import { CLIPS, SlotImg, slotAlt, slotClip, type SlotId } from "@/components/site/samples";
+import { CLIPS, SAMPLES, SLOTS, SlotImg, slotAlt, slotClip, type SlotId } from "@/components/site/samples";
 import { ChatRail } from "@/components/landing/ChatRail";
 
 /** Everything a chat card says, as plain strings, so any page (the landing, /pricing, /mcp) can print one from its own dictionary. */
@@ -67,7 +67,7 @@ export function ChatCard({ copy, slot = "hero", eager = false, className = "" }:
         {copy.tag}
       </span>
       <div className="nx-demo-body">
-        <ChatRail steps={copy.steps} />
+        <ChatRail steps={copy.steps} rest={Math.max(0, copy.steps.findIndex((s) => s.id === copy.current))} />
         <p className="nx-bubble">{copy.ask}</p>
         <div className="nx-reply">
           <BrandMark size={32} />
@@ -80,7 +80,7 @@ export function ChatCard({ copy, slot = "hero", eager = false, className = "" }:
         <div className="nx-result nx-result-sign">
           <div className="nx-result-art nx-kb" data-ratio="wide" data-clip={clip ?? undefined}>
             <SlotImg slot={slot} alt={copy.alt} className="nx-art" eager={eager} />
-            {clip && <LoopClip mp4={CLIPS[clip].mp4} webm={CLIPS[clip].webm} early={eager} />}
+            {clip && <LoopClip mp4={CLIPS[clip].mp4} webm={CLIPS[clip].webm} poster={SAMPLES[SLOTS[slot].id].src} early={eager} />}
             <span className="nx-result-badge" data-kind="still">
               {copy.badge}
             </span>

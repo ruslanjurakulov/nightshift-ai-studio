@@ -604,7 +604,7 @@ html[data-motion="paused"] .nx-dot { animation-play-state: paused; }
   border-radius: 999px;
   border: 1px solid var(--ns-rule);
   background: var(--ns-console);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 20px;
   color: var(--ns-text-dim);
 }
@@ -624,7 +624,7 @@ html[data-motion="paused"] .nx-dot { animation-play-state: paused; }
 .nx-try-items { display: grid; gap: 0; margin: 12px 0 0; padding: 0; list-style: none; }
 .nx-try-items li { display: grid; gap: 2px; padding: 10px 0; border-top: 1px solid var(--ns-rule); }
 .nx-try-items li:first-child { border-top: 0; padding-top: 0; }
-.nx-try-items b { font-size: 14px; font-weight: 600; color: var(--ns-amber-ink); }
+.nx-try-items b { font-size: 15px; font-weight: 600; color: var(--ns-amber-ink); }
 .nx-try-items span { font-size: 15.5px; line-height: 1.45; color: var(--ns-text); text-wrap: pretty; }
 @media (prefers-reduced-motion: no-preference) {
   /* The cards slide in; they never fade (a card mid-fade fails a colour-contrast check for the moment it takes). */
@@ -825,6 +825,12 @@ html:is([lang="ru"], [lang="uz"]) .nx-hero .nx-h1 { font-size: clamp(36px, 8.6vw
 .nx-show-pic { position: relative; grid-area: 1 / 1; aspect-ratio: 4 / 5.2; overflow: hidden; background: #12151c; }
 .nx-show-pic .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .nx-show-pic .nx-result-badge { z-index: 2; top: 16px; left: 16px; }
+/* The pause button on a clip: the page's one pause switch, within reach of every clip (a 44 px circle over the picture, top right). */
+.nx-clip-pause { position: absolute; z-index: 3; top: 10px; right: 10px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.5); background: rgba(8, 8, 8, 0.7); color: #fff; cursor: pointer; }
+.nx-clip-pause svg { width: 18px; height: 18px; }
+.nx-clip-pause:hover { border-color: var(--nx-stage-amber); }
+.nx-clip-pause[aria-pressed="true"] { border-color: var(--nx-stage-amber); color: var(--nx-stage-amber); }
+@media (prefers-reduced-motion: reduce) { .nx-clip-pause { display: none; } }
 .nx-show-text { display: contents; color: #fff; }
 .nx-show-head { position: relative; z-index: 1; grid-area: 1 / 1; align-self: end; padding: 56px 22px 18px; background: linear-gradient(to top, rgba(8, 8, 8, 0.92) 0%, rgba(8, 8, 8, 0.8) calc(100% - 108px), rgba(8, 8, 8, 0) 100%); }
 .nx-show-rest { grid-area: 2 / 1; padding: 4px 22px 28px; background: #0b0a09; }
@@ -838,7 +844,9 @@ html:is([lang="ru"], [lang="uz"]) .nx-show-h { font-size: clamp(28px, 7.2vw, 52p
 @media (min-width: 860px) {
   .nx-show-card { display: flex; align-items: center; min-height: 560px; border-radius: 36px; }
   .nx-show-pic { position: absolute; inset: 0; z-index: -1; aspect-ratio: auto; }
-  .nx-show-card::after { content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none; background: linear-gradient(to right, rgba(8, 8, 8, 0.88) 0%, rgba(8, 8, 8, 0.76) 44%, rgba(8, 8, 8, 0) 78%); }
+  /* The gradient lives inside the picture, above the still and the clip (z-index 1) and below the badge and the pause button (2 and 3): when it was
+     the card's own ::after it painted over the badge and left "Example clip (animated still)" at 1.5:1. */
+  .nx-show-pic::after { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(to right, rgba(8, 8, 8, 0.88) 0%, rgba(8, 8, 8, 0.76) 44%, rgba(8, 8, 8, 0) 78%); }
   .nx-show-text { position: relative; z-index: 1; display: block; width: 46%; padding: 56px; }
   .nx-show-head { padding: 0; background: none; }
   .nx-show-rest { padding: 0; background: none; }
@@ -928,8 +936,8 @@ html:is([lang="ru"], [lang="uz"]) .nx-show-h { font-size: clamp(28px, 7.2vw, 52p
 
 /* /solutions: three ways in as large example frames. */
 .nx-sol-hero { padding-block: 28px 8px; }
-.nx-sol-hero .st-h1-page { max-width: 15ch; }
-html:is([lang="ru"], [lang="uz"]) .nx-sol-hero .st-h1-page { max-width: 18ch; }
+.nx-sol-hero .st-h1-page { max-width: 8.6em; } /* em, not ch: a ch changes with the font, and the headline wrapping differently moved the page (CLS 0.04 in one load of eight) */
+html:is([lang="ru"], [lang="uz"]) .nx-sol-hero .st-h1-page { max-width: 10.4em; }
 .nx-sol-ways { padding-block: 24px 56px; }
 .nx-ways { display: grid; gap: 44px; margin: 0; padding: 0; list-style: none; }
 .nx-way { display: grid; gap: 18px; }

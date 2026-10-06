@@ -74,12 +74,12 @@ afterEach(() => {
 });
 
 describe("the clips (round 5)", () => {
-  it("are three, each in two formats, 8 seconds of H.264 and VP9, no audio, each file between 100 and 250 KB", () => {
+  it("are three, each in two formats, 1280 x 720, 8 seconds of H.264 and VP9, no audio, each file between 200 and 450 KB", () => {
     expect(Object.keys(CLIPS).sort()).toEqual(["library", "silkroad", "valley"]);
     for (const name of Object.keys(CLIPS)) for (const ext of ["mp4", "webm"]) {
       const bytes = statSync(join(ROOT, "components/site/clips", `${name}.${ext}`)).size;
-      expect(bytes, `${name}.${ext}`).toBeLessThanOrEqual(250 * 1024);
-      expect(bytes, `${name}.${ext}`).toBeGreaterThan(100 * 1024);
+      expect(bytes, `${name}.${ext}`).toBeLessThanOrEqual(450 * 1024);
+      expect(bytes, `${name}.${ext}`).toBeGreaterThan(200 * 1024);
     }
   });
 
@@ -99,6 +99,9 @@ describe("the clips (round 5)", () => {
   it("are served from /_next/static/media (a path the middleware never gates) through one webpack rule, and the CSP already allows same-origin media (nothing in the CSP changed)", () => {
     const cfg = readFileSync(join(ROOT, "next.config.ts"), "utf8");
     expect(cfg).toMatch(/test: \/\\\.\(mp4\|webm\)\$\/i, type: "asset\/resource", generator: \{ filename: "static\/media\/\[name\]\.\[hash\]\[ext\]" \}/);
+    // The rule is webpack-only: a Turbopack script would ignore it and the clips would not build.
+    const scripts = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).scripts as Record<string, string>;
+    for (const cmd of Object.values(scripts)) expect(cmd).not.toMatch(/--turbo/);
     const mw = readFileSync(join(ROOT, "middleware.ts"), "utf8");
     expect(mw).toContain("_next/static/");
     const policy = buildCsp({ nonce: "n", supabaseUrl: "https://x.supabase.co", dev: false } as never);
@@ -112,7 +115,7 @@ describe("LoopClip", () => {
     env();
     const { container } = render(
       <div data-clip="library">
-        <LoopClip mp4="/a.mp4" webm="/a.webm" />
+        <LoopClip mp4="/a.mp4" webm="/a.webm" poster="/p.webp" />
       </div>,
     );
     const v = container.querySelector("video")!;
@@ -123,10 +126,12 @@ describe("LoopClip", () => {
     expect(v.hasAttribute("controls")).toBe(false);
     expect(v.getAttribute("aria-hidden")).toBe("true");
     expect(v.getAttribute("tabindex")).toBe("-1");
+    // WebM first, MP4 after it (a browser takes the first it can play); the still is the poster.
     expect([...v.querySelectorAll("source")].map((s) => [s.getAttribute("type"), s.getAttribute("src")])).toEqual([
-      ["video/mp4", "/a.mp4"],
       ["video/webm", "/a.webm"],
+      ["video/mp4", "/a.mp4"],
     ]);
+    expect(v.getAttribute("poster")).toBe("/p.webp");
   });
 
   it.each([
@@ -137,7 +142,7 @@ describe("LoopClip", () => {
     env(opts);
     const { container } = render(
       <div>
-        <LoopClip mp4="/a.mp4" webm="/a.webm" />
+        <LoopClip mp4="/a.mp4" webm="/a.webm" poster="/p.webp" />
       </div>,
     );
     expect(container.querySelector("video")).toBeNull();
@@ -148,7 +153,7 @@ describe("LoopClip", () => {
     const { see } = env();
     const { container } = render(
       <div data-clip="library">
-        <LoopClip mp4="/a.mp4" webm="/a.webm" />
+        <LoopClip mp4="/a.mp4" webm="/a.webm" poster="/p.webp" />
       </div>,
     );
     const v = container.querySelector("video")!;
@@ -168,7 +173,7 @@ describe("LoopClip", () => {
     Object.defineProperty(document, "readyState", { configurable: true, get: () => "loading" });
     const { container } = render(
       <div>
-        <LoopClip mp4="/a.mp4" webm="/a.webm" early />
+        <LoopClip mp4="/a.mp4" webm="/a.webm" poster="/p.webp" early />
       </div>,
     );
     see(true);
@@ -185,7 +190,7 @@ describe("LoopClip", () => {
     const { see } = env();
     render(
       <div>
-        <LoopClip mp4="/a.mp4" webm="/a.webm" />
+        <LoopClip mp4="/a.mp4" webm="/a.webm" poster="/p.webp" />
       </div>,
     );
     see(true);
@@ -214,6 +219,42 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     expect(t.site.samples.clipTag).toMatch(code === "en" ? /^Example clip \(animated still\)$/ : code === "ru" ? /^Пример клипа/ : /^Namuna klip/);
     const text = container.textContent ?? "";
     expect(text).not.toMatch(/made with Nightshift|Nightshift made|Nightshift-generated/i);
+  });
+
+  it("puts a pause button on each of the two clip pictures in the showcases (the hero has the page's switch), the same switch, named \"Pause motion\", and none on the still-only one", () => {
+    const t = dictionaries.en;
+    env();
+    const { container } = render(<Landing t={t} locale="en" pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
+    for (const id of ["video", "studio"]) {
+      const btn = container.querySelector(`#${id} .nx-show-pic .nx-clip-pause`) as HTMLElement;
+      expect(btn.getAttribute("aria-label")).toBe(t.site.fx.pause);
+      expect(btn.getAttribute("aria-pressed")).toBe("false");
+    }
+    expect(container.querySelector("#approvals .nx-clip-pause")).toBeNull();
+    const first = container.querySelector("#video .nx-clip-pause") as HTMLElement;
+    fireEvent.click(first);
+    expect(document.documentElement.getAttribute("data-motion")).toBe("paused");
+    for (const b of container.querySelectorAll(".nx-clip-pause, .nx-motion-btn")) expect(b.getAttribute("aria-pressed")).toBe("true");
+    expect(css).toMatch(/\.nx-clip-pause \{[^}]*width: 44px; height: 44px;/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.nx-clip-pause \{ display: none; \} \}/);
+  });
+
+  it("keeps the badge above the showcase gradient: the gradient is the picture's ::after (z-index 1), the badge is 2 and the pause button 3, so the label is never painted over (it read 1.5:1 when the card's own ::after covered it), and its own dark pill gives white text at least 4.5:1 on any still", () => {
+    const z = (re: RegExp) => Number(css.match(re)?.[1]);
+    expect(css).not.toMatch(/\.nx-show-card::after/);
+    const gradient = z(/\.nx-show-pic::after \{[^}]*z-index: (\d+)/);
+    const badge = z(/\.nx-show-pic \.nx-result-badge \{ z-index: (\d+)/);
+    const pause = z(/\.nx-clip-pause \{[^}]*z-index: (\d+)/);
+    expect(gradient).toBe(1);
+    expect(badge).toBeGreaterThan(gradient);
+    expect(pause).toBeGreaterThan(badge);
+    // The badge's own background: the darkest-case arithmetic for white text over the brightest pixel of any still.
+    const alpha = Number(css.match(/\.nx-result-badge \{[^}]*background: rgba\(0, 0, 0, ([\d.]+)\)/s)?.[1]);
+    const lum = (v: number) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    expect(1.05 / (lum(255 * (1 - alpha)) + 0.05)).toBeGreaterThanOrEqual(4.5);
   });
 
   it("keeps the badge rule in the stylesheet: the clip label only shows while it plays, the still label otherwise, and the clip is never drawn under reduced motion", () => {
@@ -249,7 +290,7 @@ describe("the chat card's rail (round 5)", () => {
   const steps = dictionaries.en.site.stage.steps.map((s) => ({ id: s.id, tab: s.tab }));
   const card = (
     <figure className="nx-chat">
-      <ChatRail steps={steps} />
+      <ChatRail steps={steps} rest={2} />
     </figure>
   );
 
@@ -261,7 +302,7 @@ describe("the chat card's rail (round 5)", () => {
     expect(container.querySelectorAll("li[data-done='true']")).toHaveLength(2);
   });
 
-  it("steps Topic, Plan, Approve while it is on screen, rests on Approve, and the card's data-step follows; Live is never reached", () => {
+  it("steps Topic, Plan, Approve once while it is on screen and rests on Approve for good (it does not loop); the card's data-step follows; Live is never reached", () => {
     vi.useFakeTimers();
     const { see } = env();
     Object.defineProperty(document, "readyState", { configurable: true, get: () => "complete" });
@@ -270,14 +311,32 @@ describe("the chat card's rail (round 5)", () => {
     see(true);
     expect(cur()).toBe(steps[0].tab);
     expect(container.querySelector(".nx-chat")?.getAttribute("data-step")).toBe("0");
-    const seen = new Set<string>();
-    for (let i = 0; i < 30; i++) {
+    const seen: string[] = [];
+    for (let i = 0; i < 80; i++) {
       act(() => void vi.advanceTimersByTime(500));
-      seen.add(cur() ?? "");
+      const c = cur() ?? "";
+      if (seen.at(-1) !== c) seen.push(c);
     }
-    expect([...seen].sort()).toEqual([steps[0].tab, steps[1].tab, steps[2].tab].sort());
-    expect(seen.has(steps[3].tab)).toBe(false);
+    // Topic, Plan, Approve, and then nothing more for the next 38 seconds: no return to Topic.
+    expect(seen).toEqual([steps[0].tab, steps[1].tab, steps[2].tab]);
+    expect(seen.includes(steps[3].tab)).toBe(false);
+    expect(container.querySelector(".nx-chat")?.getAttribute("data-step")).toBe("2");
+    // Leaving the screen and coming back does not start it again.
+    see(false);
+    see(true);
+    act(() => void vi.advanceTimersByTime(3000));
+    expect(cur()).toBe(steps[2].tab);
     Reflect.deleteProperty(document, "readyState");
+  });
+
+  it("rests on the step the card names (copy.current), not on a number baked into the rail", () => {
+    env({ reduce: true });
+    const { container } = render(
+      <figure className="nx-chat">
+        <ChatRail steps={steps} rest={1} />
+      </figure>,
+    );
+    expect(container.querySelector("li[aria-current='step']")?.textContent).toBe(steps[1].tab);
   });
 
   it("goes back to Approve and stays there while the pause switch is pressed", () => {

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { Dictionary } from "@/lib/i18n";
+import { ClipPause } from "@/components/site/ClipPause";
 import { LoopClip } from "@/components/site/LoopClip";
-import { CLIPS, SlotImg, slotAlt, slotClip, type SlotId } from "@/components/site/samples";
+import { CLIPS, SAMPLES, SLOTS, SlotImg, slotAlt, slotClip, type SlotId } from "@/components/site/samples";
 
 /** The three things Nightshift is shown by: one section each, one still each, never the same still twice (components/site/samples.tsx SLOTS). */
 const SHOWS: { id: "video" | "studio" | "approvals"; slot: SlotId; href: string }[] = [
@@ -32,7 +33,7 @@ export function Showcases({ t }: { t: Dictionary }) {
               <div className="nx-show-card">
                 <div className="nx-show-pic nx-kb" data-clip={clip ?? undefined}>
                   <SlotImg slot={slot} alt={slotAlt(sm.alts, slot)} className="nx-art" />
-                  {clip && <LoopClip mp4={CLIPS[clip].mp4} webm={CLIPS[clip].webm} />}
+                  {clip && <LoopClip mp4={CLIPS[clip].mp4} webm={CLIPS[clip].webm} poster={SAMPLES[SLOTS[slot].id].src} />}
                   <span className="nx-result-badge" data-kind="still">
                     {sm.tag}
                   </span>
@@ -41,6 +42,7 @@ export function Showcases({ t }: { t: Dictionary }) {
                       {sm.clipTag}
                     </span>
                   )}
+                  {clip && <ClipPause label={t.site.fx.pause} />}
                 </div>
                 <div className="nx-show-text">
                   <div className="nx-show-head">

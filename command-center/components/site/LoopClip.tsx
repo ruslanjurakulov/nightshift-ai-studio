@@ -25,12 +25,14 @@ function clipsAllowed(): boolean {
  * - nothing is downloaded until it is wanted: the first screen's clip starts after the page has loaded and gone idle
  *   (so the still, not the clip, is what the page's LCP measures), every other clip when it is within 150 px of the
  *   screen; `preload="none"` until then;
- * - muted, looping, inline, no controls, hidden from assistive technology (the still's description covers it);
+ * - muted, looping, inline, no controls, hidden from assistive technology (the still's description covers it); `poster` is the
+ *   still itself (the same file the picture under it shows, already in the cache), and the WebM is listed first, the MP4 after it
+ *   (a browser takes the first it can play; Safari on a phone takes the MP4);
  * - paused while off screen and while the page's pause switch is pressed (lib/site/motion.ts), and in a hidden tab;
  * - the container's `data-live` says it is playing, which swaps the badge from "Example frame" to "Example clip
  *   (animated still)" and fades the clip in over the still.
  */
-export function LoopClip({ mp4, webm, early = false }: { mp4: string; webm: string; early?: boolean }) {
+export function LoopClip({ mp4, webm, poster, early = false }: { mp4: string; webm: string; poster: string; early?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
   const paused = useMotionPaused();
   const [allowed, setAllowed] = useState(false);
@@ -91,9 +93,9 @@ export function LoopClip({ mp4, webm, early = false }: { mp4: string; webm: stri
 
   if (!allowed) return null;
   return (
-    <video ref={ref} className="nx-clip" muted loop playsInline preload="none" disablePictureInPicture aria-hidden tabIndex={-1}>
-      <source src={mp4} type="video/mp4" />
+    <video ref={ref} className="nx-clip" muted loop playsInline preload="none" poster={poster} disablePictureInPicture aria-hidden tabIndex={-1}>
       <source src={webm} type="video/webm" />
+      <source src={mp4} type="video/mp4" />
     </video>
   );
 }

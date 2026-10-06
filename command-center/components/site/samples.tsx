@@ -60,7 +60,7 @@ export const SAMPLE_BASE: Record<SampleId, BaseId> = {
 
 /**
  * The clips: slow camera moves (a push-in and a drift) over three of the stills, 8 seconds, seamless, no sound,
- * about 135 to 230 KB each in each of two formats (scripts/render-site-clips.sh). Frame 0 of every clip is its
+ * about 250 to 410 KB each in each of two formats, 1280 x 720 (scripts/render-site-clips.py). Frame 0 of every clip is its
  * still, which is also the poster. They are the stills, moved, and are labelled as such wherever they play.
  */
 export const CLIPS = {
