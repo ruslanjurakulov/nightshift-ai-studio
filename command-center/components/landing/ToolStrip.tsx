@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Clapperboard, Image as ImageIcon, Layers, Maximize2, Mic, Palette, Pencil, Scissors, SlidersHorizontal, type LucideIcon } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -32,6 +32,21 @@ export function ToolStrip({ title, tools, priced, free }: { title: string; tools
   const uid = useId();
   const [id, setId] = useState(tools[0].id);
   const refs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const listRef = useRef<HTMLUListElement>(null);
+  // Where the row is scrolled to: "start" (more to the right, the hint shows), "mid", "end", or "none" when it all fits. Drives the edge fades and the hint.
+  const [edge, setEdge] = useState<"start" | "mid" | "end" | "none">("start");
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const measure = () => setEdge(el.scrollWidth - el.clientWidth < 4 ? "none" : el.scrollLeft < 4 ? "start" : el.scrollLeft + el.clientWidth >= el.scrollWidth - 4 ? "end" : "mid");
+    measure();
+    el.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      el.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
   const tool = tools.find((t) => t.id === id) ?? tools[0];
   const go = (i: number) => {
     const t = tools[(i + tools.length) % tools.length];
@@ -50,7 +65,8 @@ export function ToolStrip({ title, tools, priced, free }: { title: string; tools
   };
   return (
     <div className="nx-tools">
-      <ul className="nx-tools-list" role="tablist" aria-label={title}>
+      <div className="nx-tools-rail" data-edge={edge}>
+      <ul ref={listRef} className="nx-tools-list" role="tablist" aria-label={title}>
         {tools.map((t, i) => {
           const Icon = ICONS[t.id] ?? ImageIcon;
           return (
@@ -79,6 +95,7 @@ export function ToolStrip({ title, tools, priced, free }: { title: string; tools
           );
         })}
       </ul>
+      </div>
       <p className="nx-tools-line" id={`${uid}-line`} role="tabpanel" aria-labelledby={`${uid}-${tool.id}`} aria-live="polite">
         <span aria-hidden className="nx-tools-dot" data-free={FREE.has(tool.id) ? "true" : undefined} />
         <b>{tool.title}</b>

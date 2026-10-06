@@ -70,7 +70,6 @@ export function ChatCard({
   className = "",
   art,
   fx,
-  fg = false,
 }: {
   copy: ChatCopy;
   slot?: SlotId;
@@ -78,8 +77,6 @@ export function ChatCard({
   className?: string;
   art?: BrandArtKind;
   fx?: FxKind;
-  /** Draw the still a second time as a foreground that drifts against it (a parallax, nothing more fetched). */
-  fg?: boolean;
 }) {
   const clip = art ? null : slotClip(slot);
   const moving = Boolean(clip || fx);
@@ -92,7 +89,7 @@ export function ChatCard({
       <div className="nx-demo-body">
         <ol className="nx-chat-rail">
           {copy.steps.map((s, i) => (
-            <li key={s.id} data-done={i < current ? "true" : undefined} aria-current={i === current ? "step" : undefined}>
+            <li key={s.id} data-done={i < current ? "true" : undefined} data-current={i === current ? "true" : undefined}>
               {s.tab}
             </li>
           ))}
@@ -111,7 +108,6 @@ export function ChatCard({
         <div className="nx-result nx-result-sign">
           <div className={`nx-result-art${art ? "" : " nx-kb"}`} data-ratio="wide" data-clip={clip ?? undefined} data-fxscene={moving || art ? (fx ?? "clip") : undefined}>
             {art ? <BrandArt kind={art} className="nx-art" /> : <SlotImg slot={slot} alt={copy.alt} className="nx-art" eager={eager} />}
-            {fg && !art && <SlotImg slot={slot} className="nx-fx-fg" />}
             {clip && <LoopClip clip={clip} poster={SAMPLES[SLOTS[slot].id].src} early={eager} />}
             {fx && <StillFx kind={fx} />}
             <span className="nx-result-badge" data-kind="still">

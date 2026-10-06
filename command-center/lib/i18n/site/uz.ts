@@ -274,13 +274,13 @@ export const siteUz: SiteDictionary = {
   },
   planner: {
     title: "Oyingizni rejalashtiring",
-    lead: "Oyda qancha tayyor video qilmoqchi ekaningizni belgilang. Bu eʼlon qilingan narx, uni qoplaydigan paketgacha hisoblab chiqilgan.",
+    lead: "Oyda qancha tayyor video qilmoqchi ekaningizni belgilang. Bu eʼlon qilingan narx, uni qoplaydigan eng arzon paketlargacha hisoblab chiqilgan.",
     needLabel: "Bu qancha kredit",
     label: "Oyiga tayyor video",
     need: "Taxminan {n} {unit}",
-    covers: "Buni qoplaydigan paket",
+    covers: "Buni qoplashning eng arzon yoʻli",
     count: "{n} × {pack}",
-    inPack: "Paketda {n} {unit}",
+    inPack: "Jami {n} {unit}",
     rule: "Hajm uchun yoʻl-yoʻriq: har bir ishga tushirish narxi boshlanishidan oldin oʻz tugmasida koʻrsatiladi.",
   },
   /** The tool strip on the landing: its heading (the tools and what each does come from `studio.tools`). */

@@ -87,7 +87,7 @@ describe("public landing page", () => {
   it("uses only the labelled example stills for pictures: same-origin, described, and none of them a video or a real result", () => {
     const { container } = renderLanding({ kind: "announced" });
     const imgs = [...container.querySelectorAll("img")];
-    expect(imgs.length).toBeGreaterThanOrEqual(5);
+    expect(imgs.length).toBe(4);
     for (const img of imgs) {
       expect(img.getAttribute("data-sample")).toBeTruthy();
       expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
@@ -149,7 +149,7 @@ describe("public landing page", () => {
     // The story ends where the page's idea does: you approve, then it is live. The rail shows where this exchange stands.
     expect(t.site.stage.steps.map((x) => x.id)).toEqual(["brief", "plan", "approve", "live"]);
     expect([...card.querySelectorAll(".nx-chat-rail li")].map((li) => li.textContent)).toEqual(t.site.stage.steps.map((x) => x.tab));
-    expect(card.querySelector(".nx-chat-rail li[aria-current='step']")?.textContent).toBe(t.site.stage.steps[2].tab);
+    expect(card.querySelector(".nx-chat-rail li[data-current='true']")?.textContent).toBe(t.site.stage.steps[2].tab);
   });
 
   it("names the welcome grant from WELCOME_CREDITS, and says it is one-time in every language", () => {

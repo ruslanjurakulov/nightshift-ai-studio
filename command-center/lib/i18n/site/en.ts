@@ -282,13 +282,13 @@ export const siteEn = {
   /** /pricing: the month planner (minutes of finished video, the credits it takes at the published rate, the pack that covers it). */
   planner: {
     title: "Plan your month",
-    lead: "Slide to the finished video you expect to make in a month. This is the published rate, worked through to the pack that covers it.",
+    lead: "Slide to the finished video you expect to make in a month. This is the published rate, worked through to the cheapest packs that cover it.",
     needLabel: "Credits it takes",
     label: "Finished video a month",
     need: "About {n} {unit}",
-    covers: "The pack that covers it",
+    covers: "The cheapest way to cover it",
     count: "{n} × {pack}",
-    inPack: "{n} {unit} in the pack",
+    inPack: "{n} {unit} in all",
     rule: "A guide to scale: every run shows its own price on its button before it starts.",
   },
   /** The tool strip on the landing: its heading (the tools and what each does come from `studio.tools`). */

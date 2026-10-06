@@ -73,11 +73,11 @@ export function BrandArt({ kind, className = "", still = false }: { kind: BrandA
           ].map((t, i) => (
             <g key={t.y}>
               <rect x="64" y={t.y} width="512" height="34" rx="9" fill={STAGE3} fillOpacity="0.9" />
-              <rect x={t.a} y={t.y + 6} width={t.b - t.a} height="22" rx="7" fill={AMBER} fillOpacity={0.2 + i * 0.07} stroke={AMBER} strokeOpacity="0.5" />
+              <rect x={t.a} y={t.y + 6} width={t.b - t.a} height="22" rx="7" fill={AMBER} fillOpacity={0.07 + i * 0.025} stroke={AMBER} strokeOpacity="0.2" />
             </g>
           ))}
           <g className="nx-art-playhead">
-            <line x1="64" y1="66" x2="64" y2="330" stroke={AMBER} strokeWidth="2" />
+            <line x1="64" y1="66" x2="64" y2="330" stroke={AMBER} strokeOpacity="0.55" strokeWidth="2" />
             <polygon points="56,58 72,58 64,70" fill={AMBER} />
           </g>
           <circle className="nx-art-glow" cx="548" cy="352" r="70" fill={`url(#${glow})`} />
@@ -141,7 +141,7 @@ export function ThumbArt({ topic, className = "" }: { topic: string; className?:
   const longest = Math.max(1, ...words.map((w) => Array.from(w).length));
   const size = Math.min(66, Math.floor(520 / (longest * 0.62)));
   return (
-    <svg className={`nx-art-svg ${className}`.trim()} data-art="thumb" viewBox="0 0 640 360" preserveAspectRatio="xMidYMid slice" aria-hidden focusable="false">
+    <svg className={`nx-art-svg ${className}`.trim()} data-art="thumb" viewBox="0 0 640 360" preserveAspectRatio="xMidYMid meet" aria-hidden focusable="false">
       <defs>
         <radialGradient id={`t${uid}`} cx="50%" cy="50%" r="50%">
           <stop offset="0" stopColor={AMBER} stopOpacity="0.6" />

@@ -6,11 +6,11 @@ import { StillFx, type FxKind } from "@/components/site/StillFx";
 import { SAMPLES, SLOTS, SlotImg, slotAlt, slotClip, type SlotId } from "@/components/site/samples";
 
 /** The three things Nightshift is shown by: one section each, one still each, never the same still twice (components/site/samples.tsx SLOTS). */
-const SHOWS: { id: "video" | "studio" | "approvals"; slot: SlotId; href: string; fx: FxKind; fg?: boolean }[] = [
+const SHOWS: { id: "video" | "studio" | "approvals"; slot: SlotId; href: string; fx: FxKind }[] = [
   { id: "video", slot: "show.video", href: "/signup", fx: "shafts" },
   { id: "studio", slot: "show.studio", href: "/signup", fx: "mist" },
-  // The one still with no clip moves by light and by parallax: the moon's water shimmers, the stars twinkle, the foreground drifts against the sky.
-  { id: "approvals", slot: "show.approvals", href: "/solutions/youtube-channels", fx: "water", fg: true },
+  // The one still with no clip moves by light alone: the moon's water shimmers and the stars twinkle.
+  { id: "approvals", slot: "show.approvals", href: "/solutions/youtube-channels", fx: "water" },
 ];
 
 /**
@@ -27,7 +27,7 @@ export function Showcases({ t }: { t: Dictionary }) {
   const sm = t.site.samples;
   return (
     <div className="nx-shows">
-      {items.map(({ id, slot, href, item, fx, fg }) => {
+      {items.map(({ id, slot, href, item, fx }) => {
         const clip = slotClip(slot);
         return (
           <section key={id} id={id} aria-labelledby={`show-${id}-title`} className="nx-show">
@@ -35,7 +35,6 @@ export function Showcases({ t }: { t: Dictionary }) {
               <div className="nx-show-card">
                 <div className="nx-show-pic nx-kb" data-clip={clip ?? undefined} data-fxscene={fx}>
                   <SlotImg slot={slot} alt={slotAlt(sm.alts, slot)} className="nx-art" />
-                  {fg && <SlotImg slot={slot} className="nx-fx-fg" />}
                   {clip && <LoopClip clip={clip} poster={SAMPLES[SLOTS[slot].id].src} />}
                   <StillFx kind={fx} />
                   <span className="nx-result-badge" data-kind="still">

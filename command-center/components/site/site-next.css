@@ -27,7 +27,7 @@
    stops the running ones. */
 
 @layer components {
-.nx {
+.nx, .nx-art-svg {
   --nx-stage: #100f0d;
   --nx-stage-2: #1a1916;
   --nx-stage-3: #25231f;
@@ -36,8 +36,8 @@
   --nx-stage-dim: #bdb7aa;
   --nx-stage-amber: #ffa940;
   --nx-stage-go: #5fd49a;
-  --nx-sec: 72px;
 }
+.nx { --nx-sec: 72px; }
 @media (min-width: 640px) {
   .nx { --nx-sec: 96px; }
 }
@@ -221,7 +221,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 .nx-chat-rail { display: flex; gap: 10px; margin: 0 0 4px; padding: 0; list-style: none; }
 .nx-chat-rail li { flex: 1; min-width: 0; padding: 0 8px 8px 0; overflow-wrap: anywhere; border-bottom: 3px solid var(--ns-rule); font-size: 15px; font-weight: 500; color: var(--ns-text-dim); }
 .nx-chat-rail li[data-done="true"] { border-color: var(--ns-go); }
-.nx-chat-rail li[aria-current="step"] { border-color: var(--ns-amber); color: var(--ns-text); font-weight: 600; }
+.nx-chat-rail li[data-current="true"] { border-color: var(--ns-amber); color: var(--ns-text); font-weight: 600; }
 .nx-chat .nx-result-art { aspect-ratio: 16 / 10; }
 .nx-chat-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
 .nx-chat-foot > span:first-child { font-size: 15px; color: var(--ns-text-dim); }
@@ -532,7 +532,7 @@ html[data-motion="paused"] .nx-fx-blob,
 html[data-motion="paused"] .nx-dot,
 html[data-motion="paused"] .nx-fx-mote, html[data-motion="paused"] .nx-fx-streak, html[data-motion="paused"] .nx-fx-shaft, html[data-motion="paused"] .nx-fx-mist,
 html[data-motion="paused"] .nx-fx-sun, html[data-motion="paused"] .nx-fx-shimmer, html[data-motion="paused"] .nx-fx-moonglow, html[data-motion="paused"] .nx-fx-star,
-html[data-motion="paused"] .nx-fx-lantern, html[data-motion="paused"] .nx-fx-fg, html[data-motion="paused"] .nx-art-glow, html[data-motion="paused"] .nx-art-ring,
+html[data-motion="paused"] .nx-fx-lantern, html[data-motion="paused"] .nx-art-glow, html[data-motion="paused"] .nx-art-ring,
 html[data-motion="paused"] .nx-art-star, html[data-motion="paused"] .nx-art-playhead, html[data-motion="paused"] .nx-art-pulse, html[data-motion="paused"] .nx-art-svg *,
 html[data-motion="paused"] .nx .ns-lamp[data-live="true"] { animation-play-state: paused !important; }
 /* Hero reassurance: the three promises, said before the first scroll. */
@@ -637,7 +637,7 @@ html[data-motion="paused"] .nx .ns-lamp[data-live="true"] { animation-play-state
   .nx-try-card[data-on="true"] { transform: none; transition-delay: 0s; }
 }
 .nx-try-thumb { margin: 14px 0 0; }
-.nx-try-thumb-pic { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 14px; background: var(--ns-key); }
+.nx-try-thumb-pic { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 14px; background: var(--nx-stage); }
 .nx-try-thumb-pic .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; }
 .nx-try-thumb figcaption { margin-top: 8px; font-size: 15px; line-height: 1.4; color: var(--ns-text-dim); }
 .nx-try-end { display: grid; gap: 16px; align-items: center; padding: 8px 4px 0; }
@@ -739,6 +739,11 @@ html:has(.nx-bar) { scroll-padding-bottom: 96px; }
 /* ── Sign-in and sign-up stage ───────────────────────────────────────── */
 .nx .st-auth-aside { position: relative; isolation: isolate; overflow: hidden; }
 .nx .st-auth-aside .nx-aside-bg { position: absolute; inset: 0; z-index: -2; width: 100%; height: 100%; object-fit: cover; opacity: 1; }
+/* The sign-up stage's tracks sit behind the headline and the flow card here, so on this backdrop they are hairline outlines only (no amber bands, no
+   filled tracks, the playhead out of the window): nothing coloured crosses a word. The phone's band keeps the full drawing. */
+.nx .st-auth-aside .nx-aside-bg[data-art="rundown"] g > rect:first-child { fill-opacity: 0; stroke: var(--nx-stage-dim); stroke-opacity: 0.14; }
+.nx .st-auth-aside .nx-aside-bg[data-art="rundown"] g > rect:last-child { fill-opacity: 0; stroke-opacity: 0; }
+.nx .st-auth-aside .nx-aside-bg[data-art="rundown"] .nx-art-playhead { display: none; }
 .nx .st-auth-aside::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(16, 15, 13, 0.28) 0%, rgba(16, 15, 13, 0.58) 45%, rgba(16, 15, 13, 0.9) 100%); }
 .nx .st-auth-aside .nx-aside-note { font-size: 14px; line-height: 1.4; color: var(--nx-stage-dim); }
 @media (min-width: 1024px) {
@@ -1000,14 +1005,14 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 @keyframes nx-r3 { 0%, 74% { border-color: var(--ns-rule); color: var(--ns-text-dim); } 75%, 100% { border-color: var(--ns-amber); color: var(--ns-text); } }
 @media (prefers-reduced-motion: no-preference) {
   .nx-chat .nx-ch { animation: nx-show 0.01s steps(1, start) both; animation-delay: calc(0.5s + var(--i) * 26ms); }
-  .nx-chat .nx-reply { animation: nx-show 0.01s steps(1, start) both; animation-delay: 2.7s; }
+  .nx-chat .nx-reply { animation: nx-show 0.01s steps(1, start) both; animation-delay: 2.4s; }
   .nx-chat .nx-chat-rail li:nth-child(1) { animation: nx-r1 4s linear 0.5s both; }
   .nx-chat .nx-chat-rail li:nth-child(2) { animation: nx-r2 4s linear 0.5s both; }
   .nx-chat .nx-chat-rail li:nth-child(3) { animation: nx-r3 4s linear 0.5s both; }
-  .nx-chat .nx-ui-status li:nth-child(1) .nx-dot { animation: nx-lamp 0.4s ease 3.5s both; }
-  .nx-chat .nx-ui-status li:nth-child(2) .nx-dot { animation: nx-lamp 0.4s ease 3.9s both; }
-  .nx-chat .nx-ui-status li:nth-child(3) .nx-dot { animation: nx-lamp 0.4s ease 4.4s both; }
-  .nx-chat .nx-chat-key { animation: nx-key 0.4s ease 4.8s both; }
+  .nx-chat .nx-ui-status li:nth-child(1) .nx-dot { animation: nx-lamp 0.3s ease 3s both; }
+  .nx-chat .nx-ui-status li:nth-child(2) .nx-dot { animation: nx-lamp 0.3s ease 3.3s both; }
+  .nx-chat .nx-ui-status li:nth-child(3) .nx-dot { animation: nx-lamp 0.3s ease 3.6s both; }
+  .nx-chat .nx-chat-key { animation: nx-key 0.3s ease 4s both; }
   /* Paused: the card shows its last state at once. */
   html[data-motion="paused"] .nx-chat .nx-ch, html[data-motion="paused"] .nx-chat .nx-reply, html[data-motion="paused"] .nx-chat .nx-chat-rail li,
   html[data-motion="paused"] .nx-chat .nx-dot, html[data-motion="paused"] .nx-chat .nx-chat-key { animation: none !important; }
@@ -1023,7 +1028,13 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 
 /* What Nightshift can make: a strip of tool names, and one line that follows the one under the pointer. */
 .nx-tools { margin-top: 28px; }
-.nx-tools-list { display: flex; flex-wrap: nowrap; gap: 10px; margin: 0 -16px; padding: 4px 16px 8px; list-style: none; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: none; overscroll-behavior-x: contain; -webkit-mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 28px), transparent); }
+.nx-tools-rail { position: relative; }
+.nx-tools-list { display: flex; flex-wrap: nowrap; gap: 10px; margin: 0 -16px; padding: 4px 16px 8px; list-style: none; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: none; overscroll-behavior-x: contain; }
+/* Edge fades say there is more: the right one until the end, the left one once scrolled. A chevron in the right fade is the hint to swipe; it goes with the first scroll. */
+.nx-tools-rail[data-edge="start"] .nx-tools-list { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent); }
+.nx-tools-rail[data-edge="mid"] .nx-tools-list { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 64px), transparent); mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 64px), transparent); }
+.nx-tools-rail[data-edge="end"] .nx-tools-list { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px); mask-image: linear-gradient(90deg, transparent, #000 40px); }
+.nx-tools-rail[data-edge="start"]::after { content: ""; position: absolute; right: 2px; top: 14px; width: 28px; height: 28px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); background: var(--ns-console) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a8880' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 6 6 6-6 6'/%3E%3C/svg%3E") center / 16px no-repeat; pointer-events: none; }
 .nx-tools-list::-webkit-scrollbar { display: none; }
 .nx-tools-list > li { flex: 0 0 auto; scroll-snap-align: start; }
 .nx-tool { display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 22px 0 18px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); background: var(--ns-console); font-family: var(--font-display); font-size: 17px; white-space: nowrap; font-weight: 500; color: var(--ns-text); cursor: pointer; }
@@ -1060,18 +1071,17 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 /* ── Round 6: light drawn over the stills, drawn art, and the badge that says a picture moves ── */
 /* StillFx (components/site/StillFx.tsx): CSS only, masked to the picture by its box, transform and opacity only, after load, paused by the switch, absent
    under reduced motion. */
-.nx-fx { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.nx-fx { position: absolute; inset: 0; overflow: hidden; pointer-events: none; contain: layout paint style; }
 .nx-fx > * { position: absolute; display: block; margin: 0; }
-.nx-fx-mote { left: var(--x); top: var(--y); width: var(--s); height: var(--s); border-radius: 50%; background: rgba(255, 238, 205, 0.9); box-shadow: 0 0 6px rgba(255, 224, 168, 0.75); opacity: 0; }
+.nx-fx-mote { left: var(--x); top: var(--y); width: var(--s); height: var(--s); border-radius: 50%; background: rgba(255, 238, 205, 0.9); opacity: 0; }
 .nx-fx-streak { left: -30%; top: var(--y); width: 60%; height: 2px; background: linear-gradient(90deg, transparent, rgba(255, 236, 196, 0.5), transparent); opacity: 0; }
-.nx-fx-shaft { left: var(--x); top: -10%; width: var(--w); height: 130%; transform-origin: 50% 0; transform: rotate(var(--r)); background: linear-gradient(to bottom, rgba(255, 214, 150, 0.42), rgba(255, 214, 150, 0) 78%); filter: blur(14px); mix-blend-mode: screen; opacity: 0.5; }
-.nx-fx-mist { left: -40%; top: var(--y); width: 180%; height: 22%; background: radial-gradient(closest-side, rgba(255, 236, 230, 0.3), transparent); filter: blur(10px); opacity: 0.7; }
-.nx-fx-sun { right: 14%; top: 6%; width: 34%; aspect-ratio: 1; background: radial-gradient(closest-side, rgba(255, 204, 128, 0.5), transparent); mix-blend-mode: screen; opacity: 0.6; }
-.nx-fx-shimmer { left: 0; bottom: 0; width: calc(100% + 480px); height: 30%; background: repeating-linear-gradient(90deg, transparent 0 22px, rgba(255, 242, 214, 0.55) 22px 70px, transparent 70px 120px); -webkit-mask-image: repeating-linear-gradient(0deg, #000 0 2px, transparent 2px 9px), linear-gradient(to top, #000, transparent); -webkit-mask-composite: source-in; mask-image: repeating-linear-gradient(0deg, #000 0 2px, transparent 2px 9px), linear-gradient(to top, #000, transparent); mask-composite: intersect; mix-blend-mode: screen; opacity: 0.5; }
-.nx-fx-moonglow { right: 4%; top: 12%; width: 36%; aspect-ratio: 1; background: radial-gradient(closest-side, rgba(255, 232, 190, 0.5), transparent); mix-blend-mode: screen; opacity: 0.55; }
+.nx-fx-shaft { left: var(--x); top: -10%; width: var(--w); height: 130%; transform-origin: 50% 0; transform: rotate(var(--r)); background: linear-gradient(to bottom, rgba(255, 214, 150, 0.42), rgba(255, 214, 150, 0) 78%); -webkit-mask-image: linear-gradient(90deg, transparent, #000 40%, #000 60%, transparent); mask-image: linear-gradient(90deg, transparent, #000 40%, #000 60%, transparent); opacity: 0.55; }
+.nx-fx-mist { left: -40%; top: var(--y); width: 180%; height: 22%; background: radial-gradient(closest-side, rgba(255, 236, 230, 0.3), transparent); opacity: 0.7; }
+.nx-fx-sun { right: 14%; top: 6%; width: 34%; aspect-ratio: 1; background: radial-gradient(closest-side, rgba(255, 204, 128, 0.5), transparent); opacity: 0.6; }
+.nx-fx-shimmer { left: 0; bottom: 0; width: calc(100% + 480px); height: 30%; background: repeating-linear-gradient(90deg, transparent 0 22px, rgba(255, 242, 214, 0.55) 22px 70px, transparent 70px 120px); -webkit-mask-image: repeating-linear-gradient(0deg, #000 0 2px, transparent 2px 9px), linear-gradient(to top, #000, transparent); -webkit-mask-composite: source-in; mask-image: repeating-linear-gradient(0deg, #000 0 2px, transparent 2px 9px), linear-gradient(to top, #000, transparent); mask-composite: intersect; opacity: 0.5; }
+.nx-fx-moonglow { right: 4%; top: 12%; width: 36%; aspect-ratio: 1; background: radial-gradient(closest-side, rgba(255, 232, 190, 0.5), transparent); opacity: 0.55; }
 .nx-fx-star { left: var(--x); top: var(--y); width: 3px; height: 3px; border-radius: 50%; background: #fff; box-shadow: 0 0 5px #fff; opacity: 0.35; }
-.nx-fx-lantern { left: var(--x); top: var(--y); width: 9%; aspect-ratio: 1; margin: -4.5% 0 0 -4.5%; background: radial-gradient(closest-side, rgba(255, 190, 90, 0.7), rgba(255, 150, 40, 0.2) 55%, transparent); mix-blend-mode: screen; opacity: 0.6; }
-.nx-fx-fg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform-origin: 50% 100%; -webkit-mask-image: linear-gradient(to bottom, transparent 32%, #000 64%); mask-image: linear-gradient(to bottom, transparent 32%, #000 64%); }
+.nx-fx-lantern { left: var(--x); top: var(--y); width: 9%; aspect-ratio: 1; margin: -4.5% 0 0 -4.5%; background: radial-gradient(closest-side, rgba(255, 190, 90, 0.7), rgba(255, 150, 40, 0.2) 55%, transparent); opacity: 0.6; }
 @keyframes nx-mote { 0% { transform: translate3d(0, 0, 0); opacity: 0; } 15% { opacity: 0.9; } 85% { opacity: 0.8; } 100% { transform: translate3d(var(--dx), var(--dy), 0); opacity: 0; } }
 @keyframes nx-streak { 0% { transform: translateX(0); opacity: 0; } 20% { opacity: 0.85; } 100% { transform: translateX(270%); opacity: 0; } }
 @keyframes nx-shaft { from { opacity: 0.22; transform: rotate(var(--r)) translateX(-2%); } to { opacity: 0.66; transform: rotate(var(--r)) translateX(3%); } }
@@ -1080,7 +1090,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 @keyframes nx-shimmer { from { transform: translateX(0); } to { transform: translateX(-480px); } }
 @keyframes nx-twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
 @keyframes nx-flicker { 0% { opacity: 0.35; } 18% { opacity: 0.95; } 33% { opacity: 0.5; } 52% { opacity: 1; } 71% { opacity: 0.45; } 100% { opacity: 0.85; } }
-@keyframes nx-par { from { transform: scale(1) translateX(0); } to { transform: scale(1.08) translateX(-1.6%); } }
 @keyframes nx-dash { to { stroke-dashoffset: -400; } }
 @keyframes nx-playhead { from { transform: translateX(0); } to { transform: translateX(512px); } }
 @keyframes nx-pulse { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -196; } }
@@ -1093,7 +1102,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
   html[data-fx="on"] .nx-fx-shimmer { animation: nx-shimmer 6s linear infinite; }
   html[data-fx="on"] .nx-fx-star { animation: nx-twinkle var(--d) ease-in-out var(--t) infinite; }
   html[data-fx="on"] .nx-fx-lantern { animation: nx-flicker var(--d) ease-in-out var(--t) infinite alternate; }
-  html[data-fx="on"] .nx-fx-fg { animation: nx-par 18s ease-in-out infinite alternate; }
   html[data-fx="on"] .nx-art-svg:not([data-static]) .nx-art-glow { transform-box: fill-box; transform-origin: center; animation: nx-glow 7s ease-in-out infinite alternate; }
   html[data-fx="on"] .nx-art-svg:not([data-static]) .nx-art-ring { animation: nx-dash 36s linear infinite; }
   html[data-fx="on"] .nx-art-svg:not([data-static]) .nx-art-ring[data-i="1"], html[data-fx="on"] .nx-art-svg:not([data-static]) .nx-art-ring[data-i="3"] { animation-direction: reverse; }
@@ -1104,7 +1112,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
   html[data-fx="on"] .nx-art-svg:not([data-static]) .nx-art-pulse { animation: nx-pulse 3.2s linear infinite; animation-delay: calc(var(--i, 0) * -0.53s); }
   .nx-art-pulse[data-i="1"] { --i: 1; } .nx-art-pulse[data-i="2"] { --i: 2; } .nx-art-pulse[data-i="3"] { --i: 3; } .nx-art-pulse[data-i="4"] { --i: 4; } .nx-art-pulse[data-i="5"] { --i: 5; }
 }
-@media (prefers-reduced-motion: reduce) { .nx-fx, .nx-fx-fg { display: none; } }
+@media (prefers-reduced-motion: reduce) { .nx-fx { display: none; } }
 .nx-art-svg { display: block; width: 100%; height: 100%; }
 /* A picture that moves (a clip, light drawn over it) says so on its badge while it runs: "Example clip (animated still)". Keyed on the page's own
    switches, so it flips back to "Example frame" when motion is paused, and under reduced motion it never flips. */
@@ -1140,15 +1148,17 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 @keyframes nx-key-stage { from { border-color: var(--nx-stage-edge); background: transparent; color: var(--nx-stage-dim); } }
 @keyframes nx-lamp-stage { from { background: var(--nx-stage-edge); } }
 @media (prefers-reduced-motion: no-preference) {
+  /* Nothing on the sign-in stages loops past 5 s (WCAG 2.2.2) and these pages have no pause switch: the old status lamp breathes twice. */
+  .nx .st-auth-aside .ns-lamp[data-live="true"] { animation-iteration-count: 2 !important; }
   .nx-fcard .nx-ch { animation: nx-show 0.01s steps(1, start) both; animation-delay: calc(0.6s + var(--i) * 26ms); }
-  .nx-flow-plan li { animation: nx-show 0.01s steps(1, start) both; animation-delay: calc(2.5s + var(--k) * 0.45s); }
-  .nx-flow-lamps li:nth-child(1) .nx-dot { animation: nx-lamp-stage 0.4s ease 4.4s both; }
-  .nx-flow-lamps li:nth-child(2) .nx-dot { animation: nx-lamp-stage 0.4s ease 4.8s both; }
-  .nx-flow-lamps li:nth-child(3) .nx-dot { animation: nx-lamp-stage 0.4s ease 5.2s both; }
-  .nx-fcard .nx-chat-key { animation: nx-key-stage 0.4s ease 5.6s both; }
+  .nx-flow-plan li { animation: nx-show 0.01s steps(1, start) both; animation-delay: calc(2s + var(--k) * 0.3s); }
+  .nx-flow-lamps li:nth-child(1) .nx-dot { animation: nx-lamp-stage 0.3s ease 3s both; }
+  .nx-flow-lamps li:nth-child(2) .nx-dot { animation: nx-lamp-stage 0.3s ease 3.3s both; }
+  .nx-flow-lamps li:nth-child(3) .nx-dot { animation: nx-lamp-stage 0.3s ease 3.6s both; }
+  .nx-fcard .nx-chat-key { animation: nx-key-stage 0.3s ease 4s both; }
   /* The compact (phone) flow has no plan, so it does not wait for one. */
-  .nx-fcard[data-compact="true"] .nx-flow-lamps li:nth-child(3) .nx-dot { animation-delay: 2.6s; }
-  .nx-fcard[data-compact="true"] .nx-chat-key { animation-delay: 3.1s; }
+  .nx-fcard[data-compact="true"] .nx-flow-lamps li:nth-child(3) .nx-dot { animation-delay: 2.4s; }
+  .nx-fcard[data-compact="true"] .nx-chat-key { animation-delay: 2.8s; }
   html[data-motion="paused"] .nx-fcard * { animation: none !important; }
 }
 /* The phone's band: the drawing with the brief and the approval over it. */

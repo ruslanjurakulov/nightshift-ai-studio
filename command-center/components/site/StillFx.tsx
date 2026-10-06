@@ -7,10 +7,6 @@ import type { CSSProperties } from "react";
  * motion (site-next.css, ".nx-fx"). Each kind is the light that belongs to its scene: sand in the wind over the caravan,
  * shafts and dust in the library, mist in the valley, shimmer on the moon's water, flicker in the lanterns. The picture
  * it sits on says "Example clip (animated still)" while it runs (the badge rule keys on `data-fxscene`).
- *
- * `fg` adds the same still a second time as a foreground (a copy of the picture already on the page, so nothing more is
- * fetched), masked to its lower part and moved a little faster than the background: a parallax between the near and the
- * far of the same frame.
  */
 export type FxKind = "sand" | "shafts" | "mist" | "water" | "lanterns";
 
@@ -38,7 +34,7 @@ export function StillFx({ kind }: { kind: FxKind }) {
         <>
           <b className="nx-fx-streak" style={style({ "--y": "58%", "--d": "11s", "--t": "-2s" })} />
           <b className="nx-fx-streak" style={style({ "--y": "72%", "--d": "14s", "--t": "-9s" })} />
-          <Motes n={14} kind="sand" />
+          <Motes n={8} kind="sand" />
         </>
       )}
       {kind === "shafts" && (
@@ -46,7 +42,7 @@ export function StillFx({ kind }: { kind: FxKind }) {
           <b className="nx-fx-shaft" style={style({ "--x": "20%", "--w": "22%", "--r": "16deg", "--d": "9s", "--t": "-1s" })} />
           <b className="nx-fx-shaft" style={style({ "--x": "34%", "--w": "14%", "--r": "20deg", "--d": "12s", "--t": "-6s" })} />
           <b className="nx-fx-shaft" style={style({ "--x": "8%", "--w": "16%", "--r": "12deg", "--d": "10s", "--t": "-3s" })} />
-          <Motes n={12} kind="shafts" />
+          <Motes n={6} kind="shafts" />
         </>
       )}
       {kind === "mist" && (
@@ -60,7 +56,7 @@ export function StillFx({ kind }: { kind: FxKind }) {
         <>
           <b className="nx-fx-shimmer" />
           <b className="nx-fx-moonglow" />
-          {Array.from({ length: 10 }, (_, i) => (
+          {Array.from({ length: 7 }, (_, i) => (
             <i key={i} className="nx-fx-star" style={style({ "--x": `${Math.round(6 + rnd(i, 1) * 88)}%`, "--y": `${Math.round(4 + rnd(i, 2) * 38)}%`, "--d": `${(2.5 + rnd(i, 3) * 3).toFixed(1)}s`, "--t": `${(-rnd(i, 4) * 5).toFixed(1)}s` })} />
           ))}
         </>
