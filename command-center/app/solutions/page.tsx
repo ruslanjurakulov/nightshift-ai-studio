@@ -8,7 +8,7 @@ import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { Slug } from "@/components/site/Slug";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { HeroFx } from "@/components/site/HeroFx";
-import { SlotImg, SLOTS } from "@/components/site/samples";
+import { SlotImg, slotAlt } from "@/components/site/samples";
 import { MotionToggle } from "@/components/site/MotionToggle";
 
 /** Public: listed exactly in lib/public-paths.ts (SOLUTION_PATHS). */
@@ -63,7 +63,7 @@ export default async function SolutionsPage() {
                 <li key={page.id} className="nx-way" data-flip={i % 2 === 1 ? "true" : undefined} aria-labelledby={`way-${page.id}`}>
                   <figure className="nx-way-pic">
                     <div className="nx-way-art nx-kb">
-                      <SlotImg slot={WAY_SLOT[page.id]} alt={t.site.samples.alts[SLOTS[WAY_SLOT[page.id]].id]} className="nx-art" />
+                      <SlotImg slot={WAY_SLOT[page.id]} alt={slotAlt(t.site.samples.alts, WAY_SLOT[page.id])} className="nx-art" />
                       <span className="nx-result-badge">{t.site.samples.tag}</span>
                     </div>
                     <figcaption className="nx-show-note">{t.site.samples.note}</figcaption>

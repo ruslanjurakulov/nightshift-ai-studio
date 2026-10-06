@@ -91,6 +91,12 @@ const nextConfig: NextConfig = {
    */
   // Caddy strips this on the self-hosted box; Vercel would send it.
   poweredByHeader: false,
+  // The public pages' clips (components/site/clips/*.mp4 and *.webm) are imported like the stills: a hashed file under
+  // /_next/static/media/, which the middleware never gates and the CSP's media-src 'self' allows. No loader, no new package.
+  webpack(config) {
+    config.module.rules.push({ test: /\.(mp4|webm)$/i, type: "asset/resource", generator: { filename: "static/media/[name].[hash][ext]" } });
+    return config;
+  },
   async headers() {
     return [
       // Every page and route gets the header set deploy/Caddyfile adds on the

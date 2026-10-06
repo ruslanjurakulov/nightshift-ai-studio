@@ -98,7 +98,7 @@ describe("public landing page", () => {
     expect(container.querySelector("figure.nx-chat img")?.getAttribute("loading")).toBe("eager");
   });
 
-  it("shows three capabilities as full-width showcases: a different still each, labelled on the picture and under it, one outlined button, no drawn product", () => {
+  it("shows three capabilities as full-width showcases: a different still each, labelled on the picture and under it, one outlined button (and a pause button on the clips), no drawn product", () => {
     const t = dictionaries.en;
     const { container } = renderLanding({ kind: "announced" });
     const ids = ["video", "studio", "approvals"] as const;
@@ -113,10 +113,13 @@ describe("public landing page", () => {
       stills.add(img.getAttribute("data-sample")!);
       expect(Object.values(t.site.samples.alts)).toContain(img.getAttribute("alt"));
       expect(section.querySelector(".nx-result-badge")?.textContent).toBe(t.site.samples.tag);
-      expect(section.querySelector(".nx-show-note")?.textContent).toBe(t.site.samples.note);
+      // The note, and for a card that plays a clip the sentence that says what a moving picture is.
+      expect(section.querySelector(".nx-show-note")?.textContent?.startsWith(t.site.samples.note)).toBe(true);
       expect(section.textContent).not.toMatch(MONEY);
       // The words are real text beside the picture (never baked into it), and the only control is the one button.
-      expect(section.querySelectorAll("a, button")).toHaveLength(1);
+      // The one link, plus (on the two with a clip) the pause button that stops it: nothing else is a control.
+      expect(section.querySelectorAll("a")).toHaveLength(1);
+      expect([...section.querySelectorAll("button")].every((b) => b.classList.contains("nx-clip-pause"))).toBe(true);
     }
     expect(stills.size).toBe(3);
   });
@@ -137,7 +140,7 @@ describe("public landing page", () => {
     const img = card.querySelector("img")!;
     expect(img.getAttribute("alt")).toBe(t.site.samples.alts.silkroad);
     expect(card.querySelector(".nx-result-badge")?.textContent).toBe(t.site.samples.tag);
-    expect(card.querySelector("figcaption")?.textContent).toBe(t.site.samples.note);
+    expect(card.querySelector("figcaption")?.textContent).toBe(`${t.site.samples.note} ${t.site.samples.clipNote}`);
     // Nothing in it is a control: the drawn "Approve and publish" key is a span inside an aria-hidden group.
     expect(card.querySelector("a, button, input, [tabindex]")).toBeNull();
     const key = within(card).getByText(t.site.stage.steps.find((x) => x.id === "approve")!["key" as never] as string);

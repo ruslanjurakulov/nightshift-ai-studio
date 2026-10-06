@@ -127,6 +127,8 @@ export const siteUz: SiteDictionary = {
   samples: {
     tag: "Namuna kadr",
     note: "Namuna kadrlar shu sahifa uchun sunʼiy intellekt yordamida yaratilgan. Ular haqiqiy hisobning natijasi emas.",
+    clipTag: "Namuna klip (jonlantirilgan kadr)",
+    clipNote: "Rasm harakatlansa, bu xuddi shu kadr: u sekin yaqinlashtirilib va siljitilib koʻrsatiladi.",
     alts: {
       silkroad: "Namuna kadr: botayotgan quyosh ostida oltin tepaliklar boʻylab uzoq shahar tomon ketayotgan tuyalar karvoni",
       library: "Namuna kadr: baland derazalardan nur tushayotgan qadimiy qoʻlyozmalar kutubxonasi",
@@ -270,6 +272,8 @@ export const siteUz: SiteDictionary = {
       { id: "youtube", title: "YouTube", body: "Video siz «Nashr qilish»ni bosganingizda ommaviy boʻladi — oʻz-oʻzidan esa faqat avtonashrni yoqqan kanalingizda." },
     ],
   },
+  /** The tool strip on the landing: its heading (the tools and what each does come from `studio.tools`). */
+  toolStrip: { title: "Nightshift nimalar yarata oladi" },
   studio: {
     slug: "Studiya",
     title: "Faqat bitta boʻlak kerakmi? Studiya tayyorlaydi.",

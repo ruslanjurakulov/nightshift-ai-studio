@@ -1846,7 +1846,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   padding: 10px 14px;
   border-radius: 12px;
   background: var(--ns-hover);
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.55;
   color: var(--ns-text-dim);
 }
@@ -2156,7 +2156,7 @@ h3.st-doc-h3 { letter-spacing: 0; }
 @media (min-width: 768px) { .ml-examples-head { grid-template-columns: minmax(0, 1fr) minmax(0, 320px); align-items: end; gap: 48px; } }
 .ml-land-bleed { margin-top: 32px; }
 .ml-car { position: relative; }
-.ml-car-track { display: flex; gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 8px 16px 16px; scrollbar-width: none; overscroll-behavior-x: contain; }
+.ml-car-track { display: flex; gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; padding: 8px 16px 16px; scrollbar-width: none; overscroll-behavior-x: contain; }
 .ml-car-track::-webkit-scrollbar { display: none; }
 @media (min-width: 1180px) { .ml-car-track { padding-inline: calc((100vw - 1180px) / 2 + 24px); scroll-padding-inline: calc((100vw - 1180px) / 2 + 24px); } }
 .ml-car-track:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: -2px; border-radius: 12px; }
@@ -2230,3 +2230,5 @@ h3.st-doc-h3 { letter-spacing: 0; }
   .st [data-spot]:focus-within::after { opacity: 1; }
 }
 
+/* The language chip in the public header and the auth pages (a component the signed-in app shares, so this is scoped to .st): its code was 12 px. */
+.st [aria-haspopup="listbox"] .text-xs { font-size: 14px; line-height: 20px; }

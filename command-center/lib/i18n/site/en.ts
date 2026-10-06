@@ -134,6 +134,8 @@ export const siteEn = {
   samples: {
     tag: "Example frame",
     note: "Example frames are AI-generated stills made for this page. They are not output from a real account.",
+    clipTag: "Example clip (animated still)",
+    clipNote: "Where a picture moves, it is the same still, panned and zoomed slowly.",
     alts: {
       silkroad: "Example frame: a camel caravan crossing golden dunes toward a distant city at sunset",
       library: "Example frame: an ancient library of scrolls, with shafts of light through high windows",
@@ -277,6 +279,8 @@ export const siteEn = {
       { id: "youtube", title: "YouTube", body: "It goes public when you press Publish — or on its own only where you have switched auto-publish on for that channel." },
     ],
   },
+  /** The tool strip on the landing: its heading (the tools and what each does come from `studio.tools`). */
+  toolStrip: { title: "What Nightshift can make" },
   studio: {
     slug: "Studio",
     title: "Need just one piece? The Studio makes it.",
