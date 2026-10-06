@@ -11,7 +11,7 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { LegalFooter } from "@/components/legal/LegalFooter";
 import { BrandMark } from "@/components/site/BrandMark";
 import { preloadSiteFonts } from "@/components/site/fonts";
-import { SampleImg } from "@/components/site/samples";
+import { SlotImg } from "@/components/site/samples";
 import "@/components/site/site.css";
 import "@/components/site/site-next.css";
 
@@ -38,19 +38,19 @@ export function AuthShell({
   const a = t.site.auth;
   preloadSiteFonts(locale);
   const asideTitle = mode === "signup" ? a.asideTitleSignup : a.asideTitle;
-  // A bright, warm frame on each (not the dark moon): the lanterns to sign in, the golden dunes to start.
-  const still = mode === "signup" ? "silkroad" : "nightmarket";
+  // A different graded frame on each, not the ones the landing shows (components/site/samples.tsx SLOTS): cool lanterns to sign in, dusk dunes to start.
+  const slot = mode === "signup" ? "auth.signup" : "auth.signin";
   return (
     <div className="st nx st-auth">
       <aside className="st-auth-aside" aria-label={asideTitle}>
         {/* An example frame behind the house rules (decorative; the note below says what it is). Lazy, and the aside is not shown on a phone, so it is never fetched there. */}
-        <SampleImg id={still} className="nx-aside-bg" />
+        <SlotImg slot={slot} className="nx-aside-bg" />
         <Link href="/" className="st-brand self-start">
           <BrandMark />
           {t.brand.name}
         </Link>
         <div className="flex flex-col gap-8">
-          <p className="st-h2 max-w-[16ch]">{asideTitle}</p>
+          <p className="st-h2 max-w-[9em]">{asideTitle}</p>
           <ul className="st-ledger max-w-[44ch]">
             {a.asideItems.map((line) => (
               <li key={line} className="text-base">
@@ -84,7 +84,7 @@ export function AuthShell({
 
         {/* On a phone the stage is a band above the form: the same frame, the brand over it. */}
         <div className="nx-auth-band lg:hidden">
-          <SampleImg id={still} className="nx-art" eager />
+          <SlotImg slot={slot} className="nx-art" eager />
           <Link href="/" className="st-brand">
             <BrandMark />
             {t.brand.name}

@@ -113,7 +113,8 @@ describe("public landing page", () => {
       stills.add(img.getAttribute("data-sample")!);
       expect(Object.values(t.site.samples.alts)).toContain(img.getAttribute("alt"));
       expect(section.querySelector(".nx-result-badge")?.textContent).toBe(t.site.samples.tag);
-      expect(section.querySelector(".nx-show-note")?.textContent).toBe(t.site.samples.note);
+      // The note, and for a card that plays a clip the sentence that says what a moving picture is.
+      expect(section.querySelector(".nx-show-note")?.textContent?.startsWith(t.site.samples.note)).toBe(true);
       expect(section.textContent).not.toMatch(MONEY);
       // The words are real text beside the picture (never baked into it), and the only control is the one button.
       expect(section.querySelectorAll("a, button")).toHaveLength(1);
@@ -137,7 +138,7 @@ describe("public landing page", () => {
     const img = card.querySelector("img")!;
     expect(img.getAttribute("alt")).toBe(t.site.samples.alts.silkroad);
     expect(card.querySelector(".nx-result-badge")?.textContent).toBe(t.site.samples.tag);
-    expect(card.querySelector("figcaption")?.textContent).toBe(t.site.samples.note);
+    expect(card.querySelector("figcaption")?.textContent).toBe(`${t.site.samples.note} ${t.site.samples.clipNote}`);
     // Nothing in it is a control: the drawn "Approve and publish" key is a span inside an aria-hidden group.
     expect(card.querySelector("a, button, input, [tabindex]")).toBeNull();
     const key = within(card).getByText(t.site.stage.steps.find((x) => x.id === "approve")!["key" as never] as string);

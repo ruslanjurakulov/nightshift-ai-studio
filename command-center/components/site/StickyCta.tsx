@@ -11,7 +11,8 @@ import { ArrowRight, X } from "lucide-react";
  * the tab). It is position: fixed, so showing and hiding it moves nothing, and
  * while hidden it is inert, so it is never a tab stop or announced.
  *
- * It repeats the page's one action and adds no claim of its own: the words are
+ * It is for phones and tablets: from 1024 px the header's Start free is always in view, so the bar is not drawn, and below
+ * that the header's button hides while the bar shows. It repeats the page's one action and adds no claim of its own: the words are
  * "your first video starts with one topic" and the same Start free link.
  */
 const DISMISSED = "ns-bar-dismissed";
@@ -52,6 +53,11 @@ export function StickyCta({ label, text, cta, dismiss, href = "/signup" }: { lab
   }, []);
 
   const shown = heroGone && !blocked && !closed;
+  // While the bar is up on a phone or a tablet, the header's own Start free steps aside (site-next.css): one button, not two.
+  useEffect(() => {
+    document.documentElement.setAttribute("data-bar", shown ? "on" : "off");
+    return () => document.documentElement.removeAttribute("data-bar");
+  }, [shown]);
   const close = () => {
     setClosed(true);
     try {

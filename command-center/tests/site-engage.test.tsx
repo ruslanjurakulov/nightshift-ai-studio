@@ -252,13 +252,13 @@ describe("the AI-still disclosure is printed, not only labelled", () => {
     const { container } = landing(NO_MONEY, code);
     const s = dictionaries[code].site.samples;
     const hero = container.querySelector("figure.nx-chat") as HTMLElement;
-    expect(hero.querySelector("figcaption")?.textContent).toBe(s.note);
+    expect(hero.querySelector("figcaption")?.textContent).toBe(`${s.note} ${s.clipNote}`);
     expect(hero.querySelector("figcaption")?.closest("[aria-hidden]")).toBeNull();
     const shows = [...container.querySelectorAll("section.nx-show")];
     expect(shows.map((x) => x.id)).toEqual(["video", "studio", "approvals"]);
     for (const x of shows) {
       const note = x.querySelector(".nx-show-note") as HTMLElement;
-      expect(note.textContent).toBe(s.note);
+      expect(note.textContent?.startsWith(s.note)).toBe(true);
       expect(note.closest("[aria-hidden]")).toBeNull();
       expect(x.querySelector(".nx-result-badge")?.textContent).toBe(s.tag);
     }
@@ -286,7 +286,7 @@ describe("the AI-still disclosure is printed, not only labelled", () => {
       const bg = lum(255 * (1 - a));
       return 1.05 / (bg + 0.05);
     };
-    const phone = css.match(/\.nx-show-text \{[^}]*rgba\(8, 8, 8, ([\d.]+)\) calc\(100% - 72px\)/);
+    const phone = css.match(/\.nx-show-head \{[^}]*rgba\(8, 8, 8, ([\d.]+)\) calc\(100% - 108px\)/);
     expect(phone, "phone overlay stop").toBeTruthy();
     expect(worst(Number(phone![1]))).toBeGreaterThan(7);
     const wide = css.match(/\.nx-show-card::after \{[^}]*rgba\(8, 8, 8, ([\d.]+)\) 0%, rgba\(8, 8, 8, ([\d.]+)\) 44%/);
