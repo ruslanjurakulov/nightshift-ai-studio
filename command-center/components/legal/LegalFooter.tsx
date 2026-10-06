@@ -18,7 +18,7 @@ export function LegalFooter({ className = "" }: { className?: string }) {
   const { t } = usePublicI18n();
   return (
     <footer
-      className={`relative z-10 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 px-4 py-6 text-xs font-light text-[var(--color-muted)] ${className}`}
+      className={`relative z-10 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 px-4 py-6 text-sm font-light text-[var(--color-muted)] ${className}`}
     >
       {LEGAL.legalName && <span>© {LEGAL.legalName}</span>}
       <Link href="/pricing" className="inline-flex min-h-11 min-w-11 items-center justify-center underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline">

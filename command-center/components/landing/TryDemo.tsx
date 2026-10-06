@@ -29,7 +29,7 @@ const STEP_MS = 520;
  * depend on how many are shown; cards not shown yet are inert and hidden from
  * assistive tech while it plays; one polite status line says what is
  * happening. With reduced motion, or the page's pause switch on, the plan
- * appears at once. On a phone the cards are a sideways snap row, not a column.
+ * appears at once. On a phone it is three of the five cards, one column.
  * The thumbnail card shows one of the six example frames, picked by the topic's
  * words (lib/site/demo-plan.ts pickStill), and says it is a stand-in.
  */
@@ -43,17 +43,6 @@ export function TryDemo({ copy, note, samplesTag, href = "/signup" }: { copy: Co
   const paused = useMotionPaused();
   const timer = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  // On a phone the cards are a sideways scroller, which a keyboard must be able to reach.
-  const [scrolls, setScrolls] = useState(false);
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const mq = window.matchMedia("(max-width: 859px)");
-    const sync = () => setScrolls(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
-
   const total = copy.sections.length;
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -185,7 +174,7 @@ export function TryDemo({ copy, note, samplesTag, href = "/signup" }: { copy: Co
 
       <div className="nx-try-plan" data-state={state}>
         <span className="nx-try-tag">{copy.tag}</span>
-        <ol className="nx-try-cards" tabIndex={scrolls ? 0 : undefined} aria-label={scrolls ? copy.label : undefined}>
+        <ol className="nx-try-cards">
           {copy.sections.map((s, i) => {
             const on = i < shown;
             const filled = plan[i] ?? s;

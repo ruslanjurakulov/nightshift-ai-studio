@@ -38,9 +38,12 @@
   --nx-stage-go: #5fd49a;
   --nx-sec: 72px;
 }
-@media (min-width: 640px) { .nx { --nx-sec: 96px; } }
-@media (min-width: 1024px) { .nx { --nx-sec: 128px; } }
-
+@media (min-width: 640px) {
+  .nx { --nx-sec: 96px; }
+}
+@media (min-width: 1024px) {
+  .nx { --nx-sec: 128px; }
+}
 /* ── Frame: header, footer, shared scale ─────────────────────────────── */
 .nx .st-header { border-bottom-color: transparent; }
 .nx .st-header-row { height: 68px; }
@@ -79,12 +82,15 @@ html:is([lang="ru"], [lang="uz"]) .nx .st-h1,
 html:is([lang="ru"], [lang="uz"]) .nx .st-h1-page { font-size: clamp(32px, 5.4vw, 54px); }
 .nx .st-h2 { font-size: clamp(30px, 4.6vw, 48px); line-height: 1.1; letter-spacing: -0.028em; }
 .nx .st-lead { font-size: 18px; }
-@media (min-width: 1024px) { .nx .st-lead { font-size: 20px; } }
+@media (min-width: 1024px) {
+  .nx .st-lead { font-size: 20px; }
+}
 .nx .st-hero { padding-block: 48px 80px; }
 /* Breaks the same way before and after the font loads, so nothing moves. */
 .nx .nx-h1-short { max-width: 12ch; }
-@media (min-width: 1024px) { .nx .st-hero { padding-block: 88px 128px; } }
-
+@media (min-width: 1024px) {
+  .nx .st-hero { padding-block: 88px 128px; }
+}
 /* ── Buttons and links ───────────────────────────────────────────────── */
 .nx-btn {
   display: inline-flex;
@@ -127,7 +133,6 @@ html:is([lang="ru"], [lang="uz"]) .nx .st-h1-page { font-size: clamp(32px, 5.4vw
 }
 .nx-link:hover { color: var(--ns-amber-ink); text-decoration-color: currentColor; }
 .nx-link svg { width: 16px; height: 16px; }
-
 /* ── Type ────────────────────────────────────────────────────────────── */
 .nx-h1 {
   margin: 24px 0 0;
@@ -162,22 +167,18 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
   color: var(--ns-text-dim);
   text-wrap: pretty;
 }
-@media (min-width: 640px) { .nx-lead { font-size: 20px; } }
+@media (min-width: 640px) {
+  .nx-lead { font-size: 20px; }
+}
 .nx-sub { max-width: 46ch; margin-top: 16px; font-size: 18px; line-height: 1.55; color: var(--ns-text-dim); text-wrap: pretty; }
 .nx-body { font-size: 16px; line-height: 1.6; color: var(--ns-text-dim); max-width: 56ch; text-wrap: pretty; }
 .nx-kicker { font-size: 15px; font-weight: 600; color: var(--ns-text-dim); }
-
 /* ── Sections ────────────────────────────────────────────────────────── */
 .nx-wrap { width: 100%; max-width: var(--st-max); margin-inline: auto; padding-inline: var(--st-gutter); }
 .nx-section { padding-block: var(--nx-sec); background: var(--ns-ground); }
 .nx-section[data-tone="raised"] { background: var(--ns-console); }
-
 /* ── Hero: a very large headline beside a chat card with a real example frame ── */
-.nx-hero { position: relative; isolation: isolate; overflow: clip; padding-block: 28px 56px; background: var(--ns-ground); }
-@media (min-width: 1024px) { .nx-hero { padding-block: 72px 96px; } }
-.nx-hero-in { position: relative; z-index: 1; display: grid; gap: 36px; }
-@media (min-width: 1024px) { .nx-hero-in { grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.94fr); gap: 56px; align-items: center; } }
-.nx-hero-copy { min-width: 0; }
+.nx-hero { position: relative; isolation: isolate; overflow: clip; background: var(--ns-ground); }
 .nx-hero-copy .nx-lead { margin: 20px 0 0; max-width: 30em; }
 .nx-pill {
   display: inline-flex;
@@ -203,14 +204,19 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 .nx-hero-copy .nx-actions { align-items: stretch; margin-top: 28px; }
 .nx-hero-copy .nx-actions .nx-btn { max-width: none; }
 .nx-hero-copy .nx-actions .nx-link { justify-content: center; }
-@media (min-width: 640px) { .nx-hero-copy .nx-actions { align-items: center; justify-content: flex-start; } }
+@media (min-width: 640px) {
+  .nx-hero-copy .nx-actions { align-items: center; justify-content: flex-start; }
+}
 .nx-note { margin-top: 14px; font-size: 15px; color: var(--ns-text-dim); }
 .nx-price { margin-top: 4px; font-size: 15px; font-weight: 600; color: var(--ns-text); font-variant-numeric: tabular-nums; }
-
-@media (min-width: 0px) { .nx-hero-copy .nx-trust { justify-content: flex-start; margin-top: 22px; } }
+@media (min-width: 0px) {
+  .nx-hero-copy .nx-trust { justify-content: flex-start; margin-top: 22px; }
+}
 /* The chat card: what you ask, what comes back, where it waits. It uses the page's own theme, so it is as good on paper as on the console. */
 .nx-chat { max-width: 560px; margin-inline: auto; padding: 18px; border-radius: 28px; box-shadow: 0 40px 80px -48px rgba(0, 0, 0, 0.5), 0 0 90px -40px color-mix(in srgb, var(--ns-amber) 45%, transparent); }
-@media (min-width: 1024px) { .nx-chat { margin-right: 0; padding: 22px; } }
+@media (min-width: 1024px) {
+  .nx-chat { margin-right: 0; padding: 22px; }
+}
 .nx-chat .nx-demo-body { gap: 14px; }
 .nx-chat-rail { display: flex; gap: 10px; margin: 0 0 4px; padding: 0; list-style: none; }
 .nx-chat-rail li { flex: 1; min-width: 0; padding: 0 8px 8px 0; overflow-wrap: anywhere; border-bottom: 3px solid var(--ns-rule); font-size: 15px; font-weight: 500; color: var(--ns-text-dim); }
@@ -230,122 +236,25 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 }
 /* Example stills fill their aspect-ratio box; the box sets the layout, the picture only covers it. */
 .nx-art { object-fit: cover; }
-
-/* ── How it works: three steps and the real screen ───────────────────── */
-.nx-how { display: grid; gap: 56px; }
-@media (min-width: 1024px) { .nx-how { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 72px; align-items: center; } }
-.nx-steps { display: flex; flex-direction: column; gap: 32px; margin: 48px 0 0; padding: 0; list-style: none; }
-.nx-step { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 16px; align-items: start; }
-.nx-step-no {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 999px;
-  border: 1px solid var(--ns-rule-strong);
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--ns-text);
-}
-.nx-step:last-child .nx-step-no { border-color: var(--ns-amber); background: var(--ns-select); }
-.nx-step .nx-body { margin-top: 6px; }
-.nx-how-shot { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .nx .st-shot img { border-radius: 20px; border-color: var(--ns-rule); }
-
-/* ── Who it is for ───────────────────────────────────────────────────── */
-.nx-tiles { display: grid; gap: 16px; margin: 48px 0 0; padding: 0; list-style: none; }
-@media (min-width: 860px) { .nx-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; } }
-.nx-tile {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  height: 100%;
-  padding: 20px;
-  border-radius: 24px;
-  border: 1px solid var(--ns-rule);
-  background: var(--ns-console);
-}
-@media (min-width: 860px) { .nx-tile { min-height: 300px; padding: 28px; border-radius: 28px; } }
-@media (prefers-reduced-motion: no-preference) {
-  .nx-tile { transition: transform var(--ns-dur-3) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease); }
-  .nx-tile:hover { transform: translateY(-3px); }
-  .nx-tile-go { transition: transform var(--ns-dur-2) var(--ns-ease), background-color var(--ns-dur-2) var(--ns-ease); }
-  .nx-tile:hover .nx-tile-go { transform: translateX(3px); }
-}
-.nx-section[data-tone="raised"] .nx-tile { background: var(--ns-ground); }
-.nx-tile:hover { border-color: var(--ns-rule-strong); }
-.nx-tile:hover .nx-tile-go { background: var(--ns-select); }
-.nx-tile-icon { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 14px; border-radius: 16px; background: var(--ns-select); color: var(--ns-amber-ink); }
-.nx-tile-icon svg { width: 22px; height: 22px; }
-.nx-tile-title { font-family: var(--font-display); font-size: 24px; font-weight: 600; line-height: 1.15; letter-spacing: -0.015em; }
-.nx-tile-body { font-size: 16px; line-height: 1.55; color: var(--ns-text-dim); }
-.nx-tile-go { display: grid; place-items: center; width: 44px; height: 44px; margin-top: auto; border-radius: 999px; border: 1px solid var(--ns-rule-strong); color: var(--ns-text); }
-.nx-tile-go svg { width: 18px; height: 18px; }
-
-/* ── The Studio ──────────────────────────────────────────────────────── */
-.nx-studio { display: grid; gap: 40px; margin-top: 48px; }
-@media (min-width: 1100px) { .nx-studio { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 56px; align-items: start; } }
-.nx-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
-@media (min-width: 640px) { .nx-tools { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; } }
-.nx-tool {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 18px;
-  border-radius: 22px;
-  border: 1px solid var(--ns-rule);
-  background: var(--ns-ground);
-}
-.nx-tool-icon { display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: 8px; border-radius: 14px; background: var(--ns-console); border: 1px solid var(--ns-rule); color: var(--ns-text); }
-.nx-tool-icon svg { width: 20px; height: 20px; }
-.nx-tool-name { font-family: var(--font-display); font-size: 17px; font-weight: 600; line-height: 1.2; }
-.nx-tool-body { font-size: 14.5px; line-height: 1.45; color: var(--ns-text-dim); }
-.nx .nx-tool-free { margin-top: auto; padding: 0; border: 0; background: none; font-size: 13px; font-weight: 600; color: var(--ns-go); }
-.nx-studio-pic { display: none; }
-@media (min-width: 1100px) { .nx-studio-pic { display: block; position: sticky; top: 96px; } }
 .nx .st-panel { border-radius: 24px; border: 1px solid var(--ns-rule); background: var(--ns-console); box-shadow: none; overflow: hidden; }
 .nx .nx-section[data-tone="raised"] .st-panel { background: var(--ns-ground); }
-
-/* ── Languages ───────────────────────────────────────────────────────── */
-.nx-langs { text-align: center; }
-.nx-langs .nx-h2 { margin-inline: auto; }
-.nx-langs .nx-sub { margin-inline: auto; }
-.nx-lang-list {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px 36px;
-  margin: 36px 0 0;
-  padding: 0;
-  list-style: none;
-  font-family: var(--font-display);
-  font-size: clamp(40px, 9vw, 88px);
-  font-weight: 600;
-  line-height: 1.12;
-  letter-spacing: -0.035em;
-  color: var(--ns-text-dim);
+@media (max-width: 639px) {
+  .nx .st-flow-lead { display: none; }
 }
-.nx-lang-list li[aria-current="true"] { color: var(--ns-text); }
-.nx-langs .nx-sub { margin-top: 32px; }
-
-/* ── Promises ────────────────────────────────────────────────────────── */
-.nx-rules { display: grid; gap: 16px; margin: 48px 0 0; padding: 0; list-style: none; }
-@media (min-width: 900px) { .nx-rules { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; } }
-.nx-rule { display: flex; flex-direction: column; gap: 12px; padding: 28px; border-radius: 28px; border: 1px solid var(--ns-rule); background: var(--ns-console); }
-.nx-rule .st-ledger { display: none; margin-top: 12px; }
-@media (min-width: 900px) { .nx-rule .st-ledger { display: block; } }
-@media (max-width: 639px) { .nx .st-flow-lead { display: none; } }
-.nx-rule .st-ledger li { font-size: 14.5px; min-height: 36px; padding-block: 6px; }
-
 /* ── Money: the existing teaser, calmer ──────────────────────────────── */
 .nx .st-pricing { gap: 32px; }
 .nx .st-pricing-words { order: 1; }
 .nx .st-flow-lead { order: 2; }
 .nx .st-pricing-side { order: 3; }
-@media (min-width: 1024px) { .nx .st-flow-lead { order: 3; } .nx .st-pricing-side { order: 2; } }
+@media (min-width: 1024px) {
+  .nx .st-flow-lead { order: 3; }
+  .nx .st-pricing-side { order: 2; }
+}
 .nx .st-flow { border-top: 0; margin-top: 8px; gap: 12px; }
-@media (max-width: 639px) { .nx .st-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 639px) {
+  .nx .st-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .nx .st-flow li { padding: 20px; border: 1px solid var(--ns-rule); border-radius: 20px; background: var(--ns-console); }
 @media (min-width: 640px) {
   .nx .st-flow li { padding: 20px; border-bottom: 1px solid var(--ns-rule); }
@@ -362,7 +271,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 .nx .st-anchor-money { font-size: 17px; }
 .nx .st-caption { border-block: 0; background: none; padding: 20px 20px 4px; font-size: 14px; color: var(--ns-text-dim); }
 .nx .st-teaser-terms li { border-bottom-color: var(--ns-rule); }
-
 /* ── FAQ: one card per question ──────────────────────────────────────── */
 .nx .st-faq { border-bottom: 0; display: flex; flex-direction: column; gap: 10px; }
 .nx .st-faq details { border: 1px solid var(--ns-rule); border-radius: 20px; background: var(--ns-console); padding: 0 20px; }
@@ -375,7 +283,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 .nx .nx-section[data-tone="raised"] .st-faq details { background: var(--ns-ground); }
 .nx-data { padding: 24px; border-radius: 24px; border: 1px solid var(--ns-rule); background: var(--ns-console); }
 .nx-data-icon { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 999px; background: var(--ns-select); color: var(--ns-amber-ink); }
-
 /* ── Closing call ────────────────────────────────────────────────────── */
 .nx-final-wrap { padding-block: 0 var(--nx-sec); background: var(--ns-ground); }
 .nx-final {
@@ -388,21 +295,23 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
   color: var(--nx-stage-text);
   text-align: center;
 }
-@media (min-width: 800px) { .nx-final { padding: 96px 64px; border-radius: 40px; } }
+@media (min-width: 800px) {
+  .nx-final { padding: 96px 64px; border-radius: 40px; }
+}
 .nx-final .nx-h2 { margin-inline: auto; max-width: 17ch; }
 .nx-final .nx-sub { margin-inline: auto; color: var(--nx-stage-dim); }
 .nx-final .nx-link { color: var(--nx-stage-text); text-decoration-color: rgba(255, 255, 255, 0.4); }
 .nx-final .nx-link:hover { color: var(--nx-stage-amber); }
-
 /* ── Solutions pages: rows as cards ──────────────────────────────────── */
 .nx .st-ways { border-top: 0; display: grid; gap: 16px; margin-top: 48px; }
 .nx .st-way { padding: 28px; border: 1px solid var(--ns-rule); border-radius: 28px; background: var(--ns-console); }
-@media (min-width: 960px) { .nx .st-way { padding: 36px; } }
+@media (min-width: 960px) {
+  .nx .st-way { padding: 36px; }
+}
 .nx .st-sol-list { border-top: 0; display: grid; gap: 12px; margin-top: 32px; }
 .nx .st-sol-row { padding: 22px 24px; border: 1px solid var(--ns-rule); border-radius: 22px; background: var(--ns-console); }
 .nx .st-sol-arrow { border-radius: 999px; }
 .nx .st-ruled > li { padding-block: 24px; }
-
 /* ── Pricing page ────────────────────────────────────────────────────── */
 .nx-math { margin-top: 24px; border-radius: 20px; border: 1px solid var(--ns-rule); background: var(--ns-console); }
 .nx-math > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; padding: 0 20px; cursor: pointer; list-style: none; font-weight: 600; }
@@ -417,10 +326,11 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 .nx-get li { display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px; border-radius: 20px; border: 1px solid var(--ns-rule); background: var(--ns-console); font-size: 16px; line-height: 1.5; }
 .nx-get svg { flex-shrink: 0; width: 20px; height: 20px; margin-top: 2px; color: var(--ns-go); }
 .nx-extra { max-width: 60ch; padding: 16px 20px; border-radius: 16px; background: var(--ns-select); font-size: 15px; line-height: 1.55; color: var(--ns-text); }
-
 /* ── Sign-in and sign-up: one calm card ──────────────────────────────── */
 .nx.st-auth { background: var(--ns-ground); }
-@media (min-width: 960px) { .nx.st-auth { grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr); } }
+@media (min-width: 960px) {
+  .nx.st-auth { grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr); }
+}
 .nx .st-auth-aside {
   margin: 12px;
   padding: 44px;
@@ -445,7 +355,9 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
   background: var(--ns-console);
   box-shadow: 0 30px 60px -40px rgba(0, 0, 0, 0.25);
 }
-@media (min-width: 640px) { .nx .st-auth-form { padding: 40px; } }
+@media (min-width: 640px) {
+  .nx .st-auth-form { padding: 40px; }
+}
 .nx .st-auth-form .st-h1-page { font-size: clamp(30px, 6vw, 38px); }
 .nx .st-auth-form .st-brand { margin-bottom: 24px; }
 .nx .st-field { gap: 8px; }
@@ -456,13 +368,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 .nx .st-auth-form .st-ledger { border-top: 0; margin-top: 28px; }
 .nx .st-auth-form .st-ledger li { border-bottom: 0; min-height: 36px; padding: 4px 0; font-size: 14.5px; color: var(--ns-text-dim); }
 .nx .st-auth-form .st-ledger li:last-child { color: var(--ns-text-dim); font-weight: 400; }
-
-/* ── Capability sections: label, headline, paragraph, one button, one example ── */
-.nx-cap { display: grid; gap: 40px; }
-@media (min-width: 1024px) {
-  .nx-cap { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 80px; align-items: center; }
-  .nx-cap[data-flip="true"] .nx-cap-words { order: 2; }
-}
 .nx-label {
   display: inline-flex;
   align-items: center;
@@ -475,10 +380,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
   font-weight: 500;
   color: var(--ns-text);
 }
-.nx-h2-cap { max-width: 15ch; }
 .nx-section:not([data-tone="raised"]) .nx-label { background: var(--ns-console); border: 1px solid var(--ns-rule); }
-.nx-sub-cap { margin-top: 20px; max-width: 44ch; font-size: 17px; line-height: 1.6; }
-@media (min-width: 640px) { .nx-sub-cap { font-size: 18px; } }
 .nx-cta {
   display: inline-flex;
   align-items: center;
@@ -506,9 +408,10 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
   background: var(--ns-console);
   min-width: 0;
 }
-@media (min-width: 640px) { .nx-demo { padding: 28px; } }
+@media (min-width: 640px) {
+  .nx-demo { padding: 28px; }
+}
 .nx-section[data-tone="raised"] .nx-demo { background: var(--ns-ground); }
-.nx-section[data-tone="raised"] .nx-rule { background: var(--ns-ground); }
 .nx-demo-tag {
   position: absolute;
   top: -11px;
@@ -536,8 +439,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
   color: var(--ns-text);
 }
 .nx-section:not([data-tone="raised"]) .nx-bubble { background: var(--ns-ground); }
-.nx-thumb { align-self: flex-end; position: relative; width: 64px; height: 64px; overflow: hidden; border-radius: 16px; border: 1px solid var(--ns-rule); }
-.nx-thumb .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; }
 .nx-reply { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
 .nx-reply b { font-size: 16px; font-weight: 600; }
 .nx-reply span { display: inline-flex; align-items: center; gap: 6px; font-size: 16px; color: var(--ns-text-dim); }
@@ -562,34 +463,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 .nx-result-sign .nx-ui-status li[data-lit="true"] { color: var(--ns-amber-ink); }
 .nx-result-sign .nx-dot { background: var(--ns-go); }
 .nx-result-sign .nx-dot[data-tone="run"] { background: var(--ns-amber); }
-.nx-chiprow { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.nx-chiprow li {
-  display: inline-flex;
-  align-items: center;
-  min-height: 36px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid var(--ns-rule-strong);
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ns-text);
-}
-.nx-toolchips { display: flex; flex-wrap: wrap; gap: 8px; margin: 32px 0 0; padding: 0; list-style: none; }
-.nx-toolchips li {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid var(--ns-rule);
-  background: var(--ns-ground);
-  font-size: 14px;
-  font-weight: 500;
-}
-.nx-toolchips svg { width: 16px; height: 16px; color: var(--ns-text-dim); }
-.nx .nx-toolchips .nx-tool-free { margin: 0; font-size: 13px; }
-
 /* ── Third pass: reasons to stay ─────────────────────────────────────── */
 .nx {
   --nx-grid: color-mix(in srgb, var(--ns-text) 7%, transparent);
@@ -597,7 +470,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
   --nx-glow-b: color-mix(in srgb, #ff7a3d 14%, transparent);
   --nx-glow-c: color-mix(in srgb, var(--ns-amber) 13%, transparent);
 }
-
 /* The light behind a hero: a faint grid and three soft blobs. Colour comes from
    the theme's amber, so it is warm paper-light on the proof sheet and lamp-light
    on the console; it is fully drawn without any motion. */
@@ -632,7 +504,6 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 @keyframes nx-drift-a { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(70px, 50px, 0) scale(1.14); } }
 @keyframes nx-drift-b { from { transform: translate3d(0, 0, 0) scale(1.08); } to { transform: translate3d(-80px, 40px, 0) scale(0.94); } }
 @keyframes nx-drift-c { from { transform: translate3d(-30px, 0, 0) scale(0.92); } to { transform: translate3d(40px, 36px, 0) scale(1.1); } }
-
 /* The pause switch (WCAG 2.2.2). With reduced motion already asked for there is nothing to pause. */
 .nx-motion { display: flex; justify-content: flex-end; max-width: 1000px; margin: 8px auto 0; }
 .nx-motion-btn {
@@ -650,18 +521,19 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
   cursor: pointer;
 }
 .nx-motion-btn svg { width: 16px; height: 16px; }
+.nx-motion-btn[aria-pressed="true"] { color: var(--ns-amber-ink); border-color: var(--ns-amber); background: var(--ns-select); }
 .nx-motion-btn:hover { color: var(--ns-text); border-color: var(--ns-rule-strong); }
-@media (prefers-reduced-motion: reduce) { .nx-motion { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .nx-motion { display: none; }
+}
 /* The blobs' own rule is html[data-fx] .nx-fx-blob[data-n] (0,3,1), so theirs names data-fx too and wins by one attribute. */
 html[data-motion="paused"][data-fx] .nx-fx-blob[data-n],
 html[data-motion="paused"] .nx-fx-blob,
 html[data-motion="paused"] .nx-dot { animation-play-state: paused; }
-
 /* Hero reassurance: the three promises, said before the first scroll. */
 .nx-trust { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 24px; margin: 24px 0 0; padding: 0; list-style: none; }
 .nx-trust li { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; font-size: 15px; font-weight: 500; color: var(--ns-text); }
 .nx-trust svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--ns-go); }
-
 /* Sections ease in once as they are reached. Only what starts below the fold is
    ever hidden, and only after the script has marked it (SiteEffects.tsx). */
 @media (prefers-reduced-motion: no-preference) {
@@ -669,11 +541,9 @@ html[data-motion="paused"] .nx-dot { animation-play-state: paused; }
   .nx [data-rv="0"] { opacity: 0; transform: translateY(20px); }
   .nx [data-rv="1"] { opacity: 1; transform: none; }
   .nx-cta { transition: background-color var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease), transform var(--ns-dur-2) var(--ns-ease); }
-  .nx-who-tab, .nx-try-pick, .nx-cmp-row { transition: border-color var(--ns-dur-2) var(--ns-ease), background-color var(--ns-dur-2) var(--ns-ease), box-shadow var(--ns-dur-2) var(--ns-ease); }
+  .nx-try-pick { transition: border-color var(--ns-dur-2) var(--ns-ease), background-color var(--ns-dur-2) var(--ns-ease), box-shadow var(--ns-dur-2) var(--ns-ease); }
 }
-
 @media print { .nx [data-rv] { opacity: 1; transform: none; } }
-
 /* ── Try it: type a topic, watch a plan take shape ───────────────────── */
 .nx-try { display: grid; gap: 20px; margin-top: 40px; }
 .nx-try-form { display: grid; gap: 14px; }
@@ -698,10 +568,14 @@ html[data-motion="paused"] .nx-dot { animation-play-state: paused; }
 .nx-try-input::placeholder { color: var(--ns-text-dim); opacity: 1; }
 .nx-try-input[aria-invalid="true"] { border-color: var(--ns-tally); }
 .nx-try-run { min-height: 54px; width: 100%; padding: 0 22px; font-size: 16px; }
-@media (min-width: 760px) { .nx-try-run { width: auto; } }
+@media (min-width: 760px) {
+  .nx-try-run { width: auto; }
+}
 .nx-try-picks { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .nx-try-picks-label { flex-basis: 100%; font-size: 14px; font-weight: 500; color: var(--ns-text-dim); }
-@media (min-width: 760px) { .nx-try-picks-label { flex-basis: auto; margin-right: 4px; } }
+@media (min-width: 760px) {
+  .nx-try-picks-label { flex-basis: auto; margin-right: 4px; }
+}
 .nx-try-pick {
   min-height: 44px;
   max-width: 100%;
@@ -720,7 +594,6 @@ html[data-motion="paused"] .nx-dot { animation-play-state: paused; }
 .nx-try-pick:hover { border-color: var(--ns-amber); background: var(--ns-select); }
 .nx-try-status { min-height: 22px; font-size: 15px; font-weight: 500; color: var(--ns-text-dim); }
 .nx-try-status[data-error="true"] { color: var(--ns-tally); }
-
 .nx-try-plan { position: relative; display: grid; }
 .nx-try-tag {
   position: absolute;
@@ -731,7 +604,7 @@ html[data-motion="paused"] .nx-dot { animation-play-state: paused; }
   border-radius: 999px;
   border: 1px solid var(--ns-rule);
   background: var(--ns-console);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   color: var(--ns-text-dim);
 }
@@ -742,7 +615,7 @@ html[data-motion="paused"] .nx-dot { animation-play-state: paused; }
   .nx-try-card[data-id="voice"], .nx-try-card[data-id="shots"], .nx-try-card[data-id="thumb"] { grid-column: span 2; }
 }
 .nx-try-card { padding: 20px; border-radius: 20px; border: 1px solid var(--ns-rule); background: var(--ns-ground); }
-.nx-try-card[data-on="false"] { visibility: hidden; opacity: 0; }
+.nx-try-card[data-on="false"] { visibility: hidden; }
 .nx-try-card-h { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-size: 18px; font-weight: 600; line-height: 1.25; }
 .nx-try-check { display: grid; place-items: center; flex-shrink: 0; width: 24px; height: 24px; border-radius: 999px; background: color-mix(in srgb, var(--ns-go) 16%, transparent); color: var(--ns-go); }
 .nx-try-check svg { width: 14px; height: 14px; }
@@ -752,96 +625,32 @@ html[data-motion="paused"] .nx-dot { animation-play-state: paused; }
 .nx-try-items b { font-size: 14px; font-weight: 600; color: var(--ns-amber-ink); }
 .nx-try-items span { font-size: 15.5px; line-height: 1.45; color: var(--ns-text); text-wrap: pretty; }
 @media (prefers-reduced-motion: no-preference) {
-  .nx-try-card { transition: opacity 360ms var(--ns-ease), transform 360ms var(--ns-ease), visibility 0s linear 360ms; transform: translateY(10px); }
+  /* The cards slide in; they never fade (a card mid-fade fails a colour-contrast check for the moment it takes). */
+  .nx-try-card { transition: transform 360ms var(--ns-ease); transform: translateY(10px); }
   .nx-try-card[data-on="true"] { transform: none; transition-delay: 0s; }
 }
 .nx-try-thumb { margin: 14px 0 0; }
 .nx-try-thumb-pic { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 14px; background: var(--ns-key); }
 .nx-try-thumb-pic .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; }
 .nx-try-thumb figcaption { margin-top: 8px; font-size: 15px; line-height: 1.4; color: var(--ns-text-dim); }
-/* On a phone the five cards are a sideways snap row (about 400 px tall) instead of a 1,100 px column. */
-@media (max-width: 859px) {
-  .nx-try-cards { position: relative; grid-auto-flow: column; grid-auto-columns: 84%; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 4px; scrollbar-width: none; }
-  .nx-try-cards::-webkit-scrollbar { display: none; }
-  .nx-try-card { scroll-snap-align: start; }
-  .nx-try-cards:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: 2px; border-radius: 12px; }
-}
 .nx-try-end { display: grid; gap: 16px; align-items: center; padding: 8px 4px 0; }
 .nx-try-end[data-on="false"] { visibility: hidden; opacity: 0; }
-@media (min-width: 860px) { .nx-try-end { grid-template-columns: minmax(0, 1fr) auto; gap: 40px; } }
+@media (min-width: 860px) {
+  .nx-try-end { grid-template-columns: minmax(0, 1fr) auto; gap: 40px; }
+}
 .nx-try-cta { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .nx-try-cta .nx-note { margin: 0; }
-@media (prefers-reduced-motion: no-preference) { .nx-try-end { transition: opacity 360ms var(--ns-ease), visibility 0s linear 360ms; } .nx-try-end[data-on="true"] { transition-delay: 0s; } }
-
-/* ── Who it is for: tabs ─────────────────────────────────────────────── */
-.nx-who { display: grid; gap: 16px; margin-top: 40px; }
-@media (min-width: 960px) { .nx-who { grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr); gap: 20px; align-items: stretch; } }
-.nx-who-tabs { display: grid; gap: 10px; align-content: start; }
-.nx-who-tab {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  column-gap: 14px;
-  row-gap: 2px;
-  min-height: 44px;
-  padding: 16px;
-  border-radius: 20px;
-  border: 1px solid var(--ns-rule);
-  background: var(--ns-console);
-  font-family: inherit;
-  text-align: left;
-  color: var(--ns-text);
-  cursor: pointer;
-}
-.nx-who-tab:hover { border-color: var(--ns-rule-strong); }
-.nx-who-tab[aria-selected="true"] { border-color: var(--ns-amber); box-shadow: inset 0 0 0 1px var(--ns-amber); background: color-mix(in srgb, var(--ns-amber) 8%, var(--ns-console)); }
-.nx-who-ico { grid-row: 1 / span 2; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; background: var(--ns-select); color: var(--ns-amber-ink); }
-.nx-who-ico svg { width: 22px; height: 22px; }
-.nx-who-name { font-family: var(--font-display); font-size: 20px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; }
-.nx-who-body { grid-column: 2; font-size: 15px; line-height: 1.45; color: var(--ns-text-dim); }
-.nx-who-panels { display: grid; min-width: 0; }
-.nx-who-panel { grid-area: 1 / 1; display: grid; align-content: start; gap: 28px; padding: 24px; border-radius: 24px; border: 1px solid var(--ns-rule); background: var(--ns-console); visibility: hidden; opacity: 0; }
-.nx-who-panel[data-on="true"] { visibility: visible; opacity: 1; }
-@media (min-width: 640px) { .nx-who-panel { padding: 32px; } }
-@media (min-width: 1100px) { .nx-who-panel { grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr); gap: 36px; } }
 @media (prefers-reduced-motion: no-preference) {
-  .nx-who-panel { transition: opacity 240ms var(--ns-ease), visibility 0s linear 240ms; }
-  .nx-who-panel[data-on="true"] { transition-delay: 0s; }
+  .nx-try-end { transition: opacity 360ms var(--ns-ease), visibility 0s linear 360ms; }
+  .nx-try-end[data-on="true"] { transition-delay: 0s; }
 }
-.nx-who-words { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
-.nx-who-h { font-size: clamp(24px, 3vw, 30px); line-height: 1.15; max-width: 20ch; text-wrap: balance; }
-.nx-who-side { display: grid; align-content: start; gap: 12px; padding: 20px; border-radius: 18px; background: var(--ns-ground); }
-.nx-who-steps { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
-.nx-who-steps li { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; align-items: start; font-size: 15.5px; line-height: 1.45; }
-.nx-who-steps .nx-step-no { width: 32px; height: 32px; font-size: 14px; }
-.nx-who-not-k { margin-top: 8px; }
-.nx-who-not { font-size: 15px; line-height: 1.5; color: var(--ns-text-dim); }
-
-/* ── By hand or with Nightshift: one contrast, two lists ─────────────── */
-.nx-cmp { display: grid; gap: 14px; margin-top: 36px; }
-@media (min-width: 820px) { .nx-cmp { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; } }
-.nx-cmp-col { padding: 22px; border-radius: 24px; border: 1px solid var(--ns-rule); background: var(--ns-console); }
-@media (min-width: 640px) { .nx-cmp-col { padding: 28px; } }
-.nx-cmp-col[data-ns="true"] { border-color: color-mix(in srgb, var(--ns-amber) 55%, var(--ns-rule)); background: color-mix(in srgb, var(--ns-amber) 6%, var(--ns-console)); }
-.nx-cmp-sum { margin: 6px 0 0; font-size: 16px; line-height: 1.5; color: var(--ns-text-dim); }
-.nx-cmp-list { display: grid; gap: 0; margin: 18px 0 0; padding: 0; list-style: none; }
-.nx-cmp-list li { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 0; border-top: 1px solid var(--ns-rule); font-size: 16px; line-height: 1.35; }
-.nx-cmp-list li:first-child { border-top: 0; }
-.nx-cmp-list svg { flex-shrink: 0; width: 18px; height: 18px; color: var(--ns-text-dim); }
-.nx-cmp-col[data-ns="true"] .nx-cmp-list svg { color: var(--ns-go); }
-.nx-cmp-col[data-ns="true"] .nx-cmp-list li[data-yours="true"] svg { color: var(--ns-amber-ink); }
-.nx-cmp-list li > span { flex: 1; min-width: 0; }
-.nx-cmp-list li[data-yours="true"] { font-weight: 600; }
-.nx-cmp-list li b { flex-shrink: 0; padding: 2px 10px; border-radius: 999px; background: var(--ns-select); font-size: 15px; font-weight: 600; color: var(--ns-amber-ink); }
-
-/* ── Price check ─────────────────────────────────────────────────────── */
-.nx-calc-wrap { display: grid; gap: 32px; }
-@media (min-width: 1024px) { .nx-calc-wrap { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 80px; align-items: center; } }
-.nx-calc-words .nx-sub { max-width: 38ch; }
 .nx-calc { display: grid; gap: 28px; padding: 24px; border-radius: 28px; border: 1px solid var(--ns-rule); background: var(--ns-ground); }
-@media (min-width: 640px) { .nx-calc { gap: 32px; padding: 36px; } }
+@media (min-width: 640px) {
+  .nx-calc { gap: 32px; padding: 36px; }
+}
 .nx-calc-label { font-size: 15px; font-weight: 600; }
 .nx-calc-row { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
-.nx-calc-len { min-width: 5.5ch; text-align: right; font-family: var(--font-display); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.nx-calc-len { min-width: 96px; text-align: right; font-family: var(--font-display); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .nx-range { -webkit-appearance: none; appearance: none; flex: 1; min-width: 0; height: 44px; margin: 0; background: transparent; cursor: pointer; }
 .nx-range::-webkit-slider-runnable-track { height: 10px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); background: linear-gradient(to right, var(--ns-amber) var(--p, 25%), var(--ns-key) var(--p, 25%)); }
 .nx-range::-moz-range-track { height: 10px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); background: var(--ns-key); }
@@ -857,13 +666,12 @@ html[data-motion="paused"] .nx-dot { animation-play-state: paused; }
 .nx-calc-n { display: block; font-family: var(--font-display); font-size: clamp(36px, 6.4vw, 56px); font-weight: 600; line-height: 1.05; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; color: var(--ns-text); }
 .nx-calc-sub { margin-top: 6px; font-size: 15px; line-height: 1.45; color: var(--ns-text-dim); font-variant-numeric: tabular-nums; }
 .nx-calc-rule { max-width: 60ch; font-size: 15px; line-height: 1.55; color: var(--ns-text-dim); }
-.nx-calc-src { color: var(--ns-text); font-weight: 500; }
+.nx-calc-src { display: block; color: var(--ns-text); font-weight: 500; }
 .nx-calc-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 28px; }
 @media (prefers-reduced-motion: no-preference) {
   .nx-calc-n { animation: nx-pop 260ms var(--ns-ease); }
 }
 @keyframes nx-pop { from { opacity: 0.4; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-
 /* ── Sticky start bar ────────────────────────────────────────────────── */
 html:has(.nx-bar) { scroll-padding-bottom: 96px; }
 .nx-bar {
@@ -910,73 +718,25 @@ html:has(.nx-bar) { scroll-padding-bottom: 96px; }
 .nx-bar-x:hover { color: var(--nx-stage-text); background: rgba(255, 255, 255, 0.08); }
 .nx-bar-x svg { width: 18px; height: 18px; }
 @media (prefers-reduced-motion: no-preference) {
-  /* It eases in; it leaves at once. A bar fading out leaves half-transparent text on the page for a third of a second
-     (an accessibility scan landing then reads a washed-out colour), and nobody needs to watch it go. */
   .nx-bar[data-shown="true"] { transition: opacity var(--ns-dur-3) var(--ns-ease), transform var(--ns-dur-3) var(--ns-ease); }
 }
-@media (max-width: 420px) { .nx-bar { padding-left: 14px; } .nx-bar-text { font-size: 14px; } .nx-bar-go { padding: 0 14px; } }
-
+@media (max-width: 420px) {
+  .nx-bar { padding-left: 14px; }
+  .nx-bar-text { font-size: 14px; }
+  .nx-bar-go { padding: 0 14px; }
+}
 /* Pricing and Solutions heroes: the same light, full width, behind the hero's own wrapper. */
 .nx .nx-lit, .nx-lit { position: relative; isolation: isolate; overflow: clip; }
 .nx .nx-lit > section { position: relative; z-index: 1; }
 .nx .nx-lit .nx-motion { justify-content: flex-start; margin: 16px 0 0 -14px; }
-
-/* ── Capabilities: a sideways snap rail on a phone (about 650 px tall instead of five 900 px sections) ── */
-@media (max-width: 859px) {
-  /* position: relative makes the rail the containing block of the cards' visually-hidden spans, so they are clipped with it and cannot widen the page. */
-  .nx-caps { position: relative; display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 28px 16px 20px; background: var(--ns-ground); scrollbar-width: none; overscroll-behavior-x: contain; }
-  .nx-caps::-webkit-scrollbar { display: none; }
-  .nx-caps:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: -2px; }
-  .nx-caps > .nx-section,
-  .nx-caps > .nx-section[data-tone="raised"] { flex: 0 0 86%; padding-block: 20px 24px; scroll-snap-align: center; border-radius: 24px; border: 1px solid var(--ns-rule); background: var(--ns-console); }
-  .nx-caps .nx-wrap { padding-inline: 18px; }
-  .nx-caps .nx-cap { display: flex; flex-direction: column-reverse; gap: 20px; }
-  .nx-caps .nx-demo { padding: 14px; background: var(--ns-ground); }
-  .nx-caps .nx-section .nx-bubble,
-  .nx-caps .nx-reply,
-  .nx-caps .nx-chiprow,
-  .nx-caps .nx-thumb { display: none; }
-  .nx-caps .nx-demo-body { gap: 0; }
-  .nx-caps .nx-h2-cap { font-size: clamp(28px, 8vw, 36px); }
-  .nx-caps .nx-sub-cap { margin-top: 12px; font-size: 16px; }
-  .nx-caps .nx-cta { margin-top: 18px; }
-  .nx-caps .nx-label { margin-bottom: 12px; }
-}
-
-/* ── Examples gallery: the six frames on a snap rail (the carousel itself is site.css's .ml-car) ── */
-.nx-gal { padding-bottom: calc(var(--nx-sec) * 0.7); }
-.nx-gal-rail { margin-top: 32px; }
-.nx .nx-gal .ml-car-slide { flex: 0 0 min(78vw, 440px); }
-.nx .nx-gal .ml-car-btn { background: var(--ns-console); }
-.nx-gal-card { margin: 0; }
-.nx-gal-pic { position: relative; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 22px; background: var(--ns-key); }
-.nx-gal-card[data-portrait="true"] .nx-gal-pic { aspect-ratio: 9 / 16; }
-.nx-gal-pic .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; }
-.nx-gal-card figcaption { margin-top: 12px; font-size: 16px; line-height: 1.45; color: var(--ns-text); text-wrap: pretty; }
-.nx .nx-gal .ml-car-track { padding-inline: max(var(--st-gutter), calc((100% - var(--st-max)) / 2 + var(--st-gutter))); scroll-padding-inline: max(var(--st-gutter), calc((100% - var(--st-max)) / 2 + var(--st-gutter))); }
-.nx .nx-gal .ml-car-nav { max-width: var(--st-max); padding-inline: var(--st-gutter); }
-
 /* ── Sign-in and sign-up stage ───────────────────────────────────────── */
 .nx .st-auth-aside { position: relative; isolation: isolate; overflow: hidden; }
 .nx .st-auth-aside .nx-aside-bg { position: absolute; inset: 0; z-index: -2; width: 100%; height: 100%; object-fit: cover; opacity: 1; }
 .nx .st-auth-aside::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(16, 15, 13, 0.28) 0%, rgba(16, 15, 13, 0.58) 45%, rgba(16, 15, 13, 0.9) 100%); }
 .nx .st-auth-aside .nx-aside-note { font-size: 14px; line-height: 1.4; color: var(--nx-stage-dim); }
-/* The three promises: a snap rail on a phone, three cards on a wide screen. */
-@media (max-width: 859px) {
-  .nx-rules-rail { position: relative; margin: 32px calc(-1 * var(--st-gutter)) 0; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
-  .nx-rules-rail::-webkit-scrollbar { display: none; }
-  .nx-rules-rail:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: -2px; }
-  .nx-rules-rail > .nx-rules { display: flex; gap: 12px; width: max-content; margin: 0; padding: 0 var(--st-gutter) 4px; }
-  .nx-rules-rail .nx-rule { flex: 0 0 78vw; max-width: 340px; scroll-snap-align: center; }
-}
 @media (min-width: 1024px) {
   .nx { --nx-sec: 104px; }
-  .nx-caps > .nx-section { padding-block: calc(var(--nx-sec) * 0.7); }
 }
-/* Gallery: cards sit at the top of the track (a tall portrait card no longer stretches the rest), and the portrait card is slimmer. */
-.nx .nx-gal .ml-car-track { align-items: flex-start; }
-.nx .nx-gal .ml-car-slide:has([data-portrait="true"]) { flex-basis: min(40vw, 200px); }
-
 /* ── Crops and the slow drift on the stills ───────────────────────────── */
 /* The individual `scale` property composes with the drift's `transform`, so a crop and the drift never fight. */
 .nx-art[data-crop="a"] { scale: 1.5; transform-origin: 18% 35%; }
@@ -987,63 +747,202 @@ html:has(.nx-bar) { scroll-padding-bottom: 96px; }
    page's pause switch and under reduced motion). */
 @media (prefers-reduced-motion: no-preference) {
   html[data-fx="on"] .nx-kb .nx-art { animation: nx-kb 48s ease-in-out infinite alternate; }
-  html[data-fx="on"] .nx-gal .ml-car-slide:nth-child(2n) .nx-art { animation-duration: 61s; animation-direction: alternate-reverse; }
-  html[data-fx="on"] .nx-gal .ml-car-slide:nth-child(3n) .nx-art { animation-duration: 55s; }
 }
 @keyframes nx-kb { from { transform: scale(1) translate(0, 0); } to { transform: scale(1.09) translate(-1.6%, -1.2%); } }
-html[data-motion="paused"][data-fx] .nx-kb .nx-art,
-html[data-motion="paused"][data-fx] .nx-gal .ml-car-slide .nx-art { animation-play-state: paused; }
-
-/* ── Phone first screen: headline, ask and the frame before anything else ── */
-@media (max-width: 1023px) {
-  .nx-hero { padding-block: 20px 40px; }
-  .nx-hero-in { display: flex; flex-direction: column; gap: 0; }
-  .nx-hero-copy { display: contents; }
-  .nx-pill { order: 1; align-self: flex-start; }
-  .nx-hero .nx-h1 { order: 2; margin-top: 16px; }
-  .nx-hero-copy .nx-lead { order: 3; margin-top: 14px; font-size: 17px; }
-  .nx-hero-copy .nx-actions { order: 4; margin-top: 20px; }
-  .nx-hero-visual { order: 5; margin-top: 24px; }
-  .nx-hero-copy .nx-note { order: 6; }
-  .nx-hero-copy .nx-price { order: 7; }
-  .nx-hero-copy .nx-trust { order: 8; }
-}
-
-/* ── Solutions rows: the product's own picture beside the words ───────── */
-.nx-way-product { min-width: 0; }
-@media (min-width: 960px) {
-  .nx .st-way { grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1.05fr); align-items: start; }
-  .nx .st-way > .st-way-no { grid-row: 1 / span 2; }
-  .nx .st-way > .st-way-head { grid-column: 2; grid-row: 1; }
-  .nx .st-way > .st-way-list { grid-column: 2; grid-row: 2; align-self: start; }
-  .nx .st-way > .nx-way-product { grid-column: 3; grid-row: 1 / span 2; align-self: center; }
-}
+html[data-motion="paused"][data-fx] .nx-kb .nx-art { animation-play-state: paused; }
 .nx .nx-lit .nx-trust { justify-content: flex-start; }
 .nx-auth-band { position: relative; height: 140px; margin-bottom: 14px; overflow: hidden; border-radius: 22px; background: var(--ns-key); }
 .nx-auth-band .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; }
 .nx-auth-band::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(16, 15, 13, 0.1) 0%, rgba(16, 15, 13, 0.72) 100%); }
 .nx-auth-band .st-brand { position: absolute; z-index: 1; left: 16px; bottom: 14px; color: #f4f0e9; }
 .nx-auth-band .nx-result-badge { z-index: 1; left: auto; right: 12px; }
-
-/* ── Rhythm: the promises are open columns on a wide screen, not three more rounded cards ── */
-@media (min-width: 860px) {
-  .nx-rule, .nx-section[data-tone="raised"] .nx-rule { padding: 28px 8px 0 0; border-radius: 0; border-width: 1px 0 0; background: none; }
-  .nx-rule::before, .nx-rule::after { display: none; }
-}
-.nx-cmp-col { border-radius: 16px; }
 .nx-try-card { border-radius: 14px; }
 
-/* On a phone the card opens with its frame (the picture is the first thing under the button), then the ask and the reply. */
-@media (max-width: 1023px) {
-  .nx-chat { padding: 14px; }
-  .nx-chat .nx-result { order: -1; }
-  .nx-chat-rail { order: 0; margin-top: 4px; }
-  .nx-chat .nx-result-art { aspect-ratio: 16 / 9; }
+/* ══ Round 4: one column, image-led ═══════════════════════════════════ */
+.nx { --nx-sec: 56px; }
+@media (min-width: 640px) { .nx { --nx-sec: 80px; } }
+@media (min-width: 1024px) { .nx { --nx-sec: 96px; } }
+
+/* Hero: a huge headline (two lines on a wide screen), then the words and the chat card. */
+.nx-hero { padding-block: 20px 48px; }
+@media (min-width: 1024px) { .nx-hero { padding-block: 56px 80px; } }
+.nx-hero-in { position: relative; z-index: 1; }
+.nx-hero .nx-h1 { margin-top: 18px; max-width: none; font-size: clamp(40px, 10.8vw, 92px); }
+html:is([lang="ru"], [lang="uz"]) .nx-hero .nx-h1 { font-size: clamp(36px, 8.6vw, 76px); }
+.nx-hero-grid { display: flex; flex-direction: column; margin-top: 20px; }
+.nx-hero-copy { display: contents; }
+.nx-hero-copy .nx-lead { order: 1; margin: 0; max-width: 30em; font-size: 17px; }
+.nx-hero-copy .nx-actions { order: 2; align-items: stretch; margin-top: 20px; }
+.nx-hero-copy .nx-actions .nx-btn { max-width: none; }
+.nx-hero-copy .nx-actions .nx-link { justify-content: center; }
+.nx-hero-visual { order: 3; margin-top: 24px; min-width: 0; }
+.nx-hero-copy .nx-note { order: 4; }
+.nx-hero-copy .nx-price { order: 5; }
+.nx-hero-copy .nx-trust { order: 6; justify-content: flex-start; margin-top: 22px; }
+@media (min-width: 640px) {
+  .nx-hero-copy .nx-lead { font-size: 20px; }
+  .nx-hero-copy .nx-actions { flex-direction: row; align-items: center; justify-content: flex-start; }
 }
-@media (max-width: 959px) { .nx .st-way > .nx-way-product { grid-column: 2; } }
-/* The gallery and the example under it are one raised band: no double section padding between them. */
-.nx-gal { padding-bottom: 8px; }
-.nx-gal + .nx-section[data-tone="raised"] { padding-top: 56px; }
-/* On a phone "by hand" is its one-line summary (you do all six): the six steps are listed once, in the Nightshift column, where the two that stay yours are marked. */
-@media (max-width: 859px) { .nx-cmp-col:not([data-ns]) .nx-cmp-list { display: none; } }
+@media (min-width: 1024px) {
+  .nx-hero-grid { display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); gap: 56px; align-items: start; margin-top: 32px; }
+  .nx-hero-copy { display: block; padding-top: 8px; }
+  .nx-hero-copy .nx-actions { margin-top: 28px; }
+  .nx-hero-visual { margin-top: 0; }
+  .nx-chat { margin-right: 0; padding: 22px; }
+}
+.nx-chat { padding: 14px; }
+.nx-chat .nx-result-art { aspect-ratio: 16 / 9; }
+
+/* The primary action is a pill everywhere on the public pages. */
+.nx-btn, .nx .st-key:not([data-tone]), .nx-bar-go { border-radius: 999px; }
+
+/* How it works: three steps in a strip. */
+.nx-strip { display: grid; gap: 26px; margin: 28px 0 0; padding: 0; list-style: none; }
+.nx-strip-step { display: grid; grid-template-columns: 48px minmax(0, 1fr); column-gap: 16px; row-gap: 4px; align-items: start; }
+.nx-strip-no { grid-row: 1 / span 2; font-family: var(--font-display); font-size: 48px; font-weight: 600; line-height: 1; letter-spacing: -0.04em; color: var(--ns-amber-ink); }
+.nx-strip-step .nx-body { max-width: 40ch; }
+@media (min-width: 860px) {
+  .nx-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 48px; margin-top: 40px; }
+  .nx-strip-step { grid-template-columns: minmax(0, 1fr); }
+  .nx-strip-no { grid-row: auto; margin-bottom: 14px; font-size: 72px; }
+}
+
+/* Showcases: a full-width rounded still, the headline over it, one outlined button. */
+.nx-show { padding-block: 8px; background: var(--ns-ground); }
+.nx-show:first-child { padding-top: 16px; }
+.nx-show-card { position: relative; display: flex; align-items: flex-end; min-height: 470px; overflow: hidden; border-radius: 28px; background: #0b0a09; isolation: isolate; }
+.nx-show-pic { position: absolute; inset: 0; z-index: -1; }
+.nx-show-pic .nx-art { width: 100%; height: 100%; object-fit: cover; }
+.nx-show-card .nx-result-badge { z-index: 2; top: 16px; left: 16px; }
+/* Phone: the words sit on a dark panel that fades out above them (at least 74% black wherever there is text, so white on it
+   is 8:1 or better over the brightest pixel of any still). */
+.nx-show-text { position: relative; width: 100%; padding: 72px 22px 26px; background: linear-gradient(to top, rgba(8, 8, 8, 0.92) 0%, rgba(8, 8, 8, 0.78) calc(100% - 72px), rgba(8, 8, 8, 0) 100%); color: #fff; }
+.nx-show-label { display: inline-flex; align-items: center; min-height: 36px; margin: 0; padding: 0 16px; border-radius: 999px; background: rgba(255, 255, 255, 0.18); font-size: 15px; font-weight: 500; color: #fff; }
+.nx-show-h { margin: 12px 0 0; max-width: 14ch; font-family: var(--font-display); font-size: clamp(34px, 9vw, 60px); font-weight: 600; line-height: 1.04; letter-spacing: -0.036em; text-wrap: balance; color: #fff; }
+html:is([lang="ru"], [lang="uz"]) .nx-show-h { font-size: clamp(30px, 7.4vw, 52px); }
+.nx-show-body { margin: 12px 0 0; max-width: 44ch; font-size: 17px; line-height: 1.55; color: rgba(255, 255, 255, 0.94); text-wrap: pretty; }
+.nx-show-cta { display: inline-flex; align-items: center; min-height: 48px; margin-top: 20px; padding: 0 24px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.8); font-family: var(--font-display); font-size: 16px; font-weight: 600; color: #fff; }
+.nx-show-cta:hover { border-color: var(--nx-stage-amber); color: var(--nx-stage-amber); }
+.nx-show-note { margin: 10px 6px 0; font-size: 15px; line-height: 1.45; color: var(--ns-text-dim); }
+@media (min-width: 860px) {
+  .nx-show-card { align-items: center; min-height: 560px; border-radius: 36px; }
+  .nx-show-card::after { content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none; background: linear-gradient(to right, rgba(8, 8, 8, 0.88) 0%, rgba(8, 8, 8, 0.76) 44%, rgba(8, 8, 8, 0) 78%); }
+  .nx-show-text { z-index: 1; width: 46%; padding: 56px; background: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .nx-show-cta { transition: border-color var(--ns-dur-2) var(--ns-ease), color var(--ns-dur-2) var(--ns-ease); }
+}
+
+/* Money: the price check beside what is on sale. */
+.nx-price-grid { display: grid; gap: 20px; margin-top: 28px; }
+@media (min-width: 960px) { .nx-price-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 28px; align-items: start; } }
+.nx-section[data-tone="raised"] .nx-calc { background: var(--ns-ground); }
+.nx-section[data-tone="raised"] .nx-calc-out { background: var(--ns-console); }
+.nx-packs { padding: 22px; border-radius: 24px; border: 1px solid var(--ns-rule); background: var(--ns-ground); }
+.nx-section:not([data-tone="raised"]) .nx-packs { background: var(--ns-console); }
+.nx-packs-h { margin: 0; font-size: 15px; font-weight: 600; color: var(--ns-text-dim); }
+.nx-packs-list { display: grid; margin: 8px 0 0; padding: 0; list-style: none; }
+.nx-packs-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; row-gap: 2px; align-items: center; padding: 16px 0; border-top: 1px solid var(--ns-rule); }
+.nx-packs-list li:first-child { border-top: 0; }
+.nx-packs-name { font-family: var(--font-display); font-size: 20px; font-weight: 600; line-height: 1.2; }
+.nx-packs-credits { grid-column: 1; font-size: 15px; font-variant-numeric: tabular-nums; color: var(--ns-text-dim); }
+.nx-packs-credits small { font-size: 15px; }
+.nx-packs-price { grid-column: 2; grid-row: 1 / span 2; font-family: var(--font-display); font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.nx-packs-pending { grid-column: 2; grid-row: 1 / span 2; font-size: 15px; color: var(--ns-text-dim); }
+.nx-packs-note { margin: 8px 0 0; font-size: 15px; line-height: 1.5; color: var(--ns-text-dim); }
+.nx-packs-more { margin-top: 8px; }
+
+/* Try it, compact on a phone: the working titles for your topic, a few lines, one column (the other cards are on a desktop). */
+@media (max-width: 859px) {
+  .nx-try-cards { gap: 10px; }
+  .nx-try-card[data-id="voice"], .nx-try-card[data-id="shots"], .nx-try-card[data-id="script"], .nx-try-card[data-id="thumb"] { display: none; }
+  .nx-try-card { padding: 16px; }
+  .nx-try-items li:nth-child(n+4) { display: none; }
+}
+
+/* /pricing hero: headline, the price check, then the button, in one column; two columns on a desktop. */
+.nx-pr-hero { display: grid; gap: 28px; padding-block: 28px 56px; }
+.nx-pr-actions .st-hero-actions { margin-top: 0; }
+.nx-pr-actions .st-hero-actions .st-key { width: 100%; justify-content: center; }
+@media (min-width: 640px) { .nx-pr-actions .st-hero-actions .st-key { width: auto; } }
+@media (min-width: 1024px) {
+  .nx-pr-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr); grid-template-areas: "copy calc" "actions calc"; column-gap: 64px; row-gap: 32px; align-items: start; padding-block: 64px 96px; }
+  .nx-pr-copy { grid-area: copy; align-self: end; }
+  .nx-pr-calc { grid-area: calc; }
+  .nx-pr-actions { grid-area: actions; align-self: start; }
+}
+.nx-pay { display: grid; gap: 20px; margin-top: 48px; padding-top: 40px; border-top: 1px solid var(--ns-rule-strong); }
+@media (min-width: 1024px) { .nx-pay { grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr); gap: 56px; } }
+
+/* /mcp: the headline and a chat card above the fold (no row of client logos), then the connect card. */
+.nx-mcp-top { display: grid; gap: 24px; width: 100%; margin-top: 20px; text-align: start; }
+.nx-mcp-top .st-mcphero-h1 { text-align: start; }
+.nx-mcp-top .st-mcphero-lead, .nx-mcp-top .st-mcphero-paid { margin-inline: 0; max-width: 36em; }
+.nx-mcp-top .st-mcphero-lead { min-height: 0; }
+.nx-mcp-top .nx-chat { width: 100%; margin-bottom: 8px; }
+@media (min-width: 1024px) {
+  .nx-mcp-top { grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr); gap: 64px; align-items: center; margin-bottom: 56px; }
+}
+.nx-mcp-asks { display: grid; gap: 14px; margin: 28px 0 0; padding: 0; list-style: none; }
+@media (min-width: 720px) { .nx-mcp-asks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .nx-mcp-asks { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; } }
+.nx-mcp-ask { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 22px; border-radius: 24px; border: 1px solid var(--ns-rule); background: var(--ns-console); }
+.nx-mcp-ask .ml-pillbadge, .nx-mcp-ask .ml-cap-h3, .nx-mcp-ask .ml-cap-body { margin: 0; }
+.nx-mcp-ask .ml-cap-h3 { max-width: none; font-size: 22px; }
+.nx-mcp-ask .ml-cap-body { font-size: 16px; }
+.nx-mcp-ask .ml-cap-cta { margin-top: auto; padding-top: 8px; }
+.nx-mcp-tools { margin-top: 24px; }
+.nx-mcp-tools .st-table-wrap, .nx-mcp-tools > table { margin: 0; }
+
+/* /solutions: three ways in as large example frames. */
+.nx-sol-hero { padding-block: 28px 8px; }
+.nx-sol-hero .st-h1-page { max-width: 15ch; }
+html:is([lang="ru"], [lang="uz"]) .nx-sol-hero .st-h1-page { max-width: 18ch; }
+.nx-sol-ways { padding-block: 24px 56px; }
+.nx-ways { display: grid; gap: 44px; margin: 0; padding: 0; list-style: none; }
+.nx-way { display: grid; gap: 18px; }
+.nx-way-pic { margin: 0; }
+.nx-way-art { position: relative; overflow: hidden; border-radius: 28px; background: #12151c; aspect-ratio: 16 / 10; }
+.nx-way-art .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.nx-way-art .nx-result-badge { z-index: 2; top: 16px; left: 16px; }
+.nx-way-kicker { margin: 0; font-size: 15px; font-weight: 600; color: var(--ns-text-dim); }
+.nx-way-h { margin: 8px 0 0; font-family: var(--font-display); font-size: clamp(28px, 7.4vw, 44px); font-weight: 600; line-height: 1.08; letter-spacing: -0.03em; text-wrap: balance; }
+html:is([lang="ru"], [lang="uz"]) .nx-way-h { font-size: clamp(26px, 6.4vw, 38px); }
+.nx-way-link { display: inline-block; min-height: 44px; }
+.nx-way-link:hover { color: var(--ns-amber-ink); }
+.nx-way-link svg { display: inline; width: 0.7em; height: 0.7em; margin-left: 0.25em; vertical-align: -0.05em; }
+.nx-way-lead { margin: 12px 0 0; max-width: 46ch; font-size: 17px; line-height: 1.55; color: var(--ns-text-dim); text-wrap: pretty; }
+.nx-way-list { display: grid; gap: 4px; margin: 18px 0 0; padding: 0; list-style: none; }
+.nx-way-list li { display: flex; align-items: flex-start; gap: 12px; padding: 6px 0; font-size: 16px; line-height: 1.45; }
+.nx-way-list svg { flex-shrink: 0; width: 18px; height: 18px; margin-top: 3px; color: var(--ns-go); }
+.nx-way-list li[data-kind="not"] { color: var(--ns-text-dim); }
+.nx-way-list li[data-kind="not"] svg { color: var(--ns-text-dim); }
+@media (min-width: 900px) {
+  .nx-ways { gap: 72px; }
+  .nx-way { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); align-items: center; gap: 56px; }
+  .nx-way[data-flip="true"] .nx-way-pic { order: 2; }
+  .nx-way-art { border-radius: 36px; }
+  .nx-sol-hero { padding-block: 56px 16px; }
+}
+
+/* Solution pages: "what it will not do" as full-width rows (no empty left column), the picture at phone width. */
+.nx-nots { display: grid; margin: 28px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--ns-rule-strong); }
+.nx-nots li { display: flex; align-items: flex-start; gap: 16px; padding: 18px 0; border-bottom: 1px solid var(--ns-rule); }
+.nx-nots p { margin: 0; padding-top: 3px; max-width: 70ch; font-size: 17px; line-height: 1.55; }
+.nx .st-hero .st-monitor { min-width: 0; }
+
+/* Phone: shorter. One price line (the price block says it again), two sample topics, tighter showcases and a tighter FAQ aside. */
+@media (max-width: 859px) {
+  .nx-hero-copy .nx-price { display: none; }
+  .nx-try-picks .nx-try-pick:nth-of-type(n+3) { display: none; }
+  .nx-show-card { min-height: 440px; }
+  .nx-show-body { font-size: 16px; }
+  .nx-data { padding: 20px; }
+}
+
+/* Headlines in the narrower columns hold to three lines on a desktop. */
+.nx-mcp-top .st-mcphero-h1 { max-width: none; font-size: clamp(34px, 8.6vw, 52px); line-height: 1.12; }
+html:is([lang="ru"], [lang="uz"]) .nx-mcp-top .st-mcphero-h1 { font-size: clamp(30px, 7.4vw, 44px); }
+.nx-lit .st-hero .st-h1-page { max-width: none; font-size: clamp(32px, 8.4vw, 52px); }
+html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clamp(28px, 7.2vw, 44px); }
 }

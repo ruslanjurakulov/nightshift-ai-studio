@@ -126,7 +126,7 @@ function Block({ block, t, expiry }: { block: LegalBlock; t: Dictionary; expiry:
         <thead className="bg-[var(--color-panel-2)]">
           <tr>
             {block.table.head.map((h, i) => (
-              <th key={i} scope="col" className="px-4 py-3 text-xs font-medium text-[var(--color-muted)]">
+              <th key={i} scope="col" className="px-4 py-3 text-sm font-medium text-[var(--color-muted)]">
                 {h}
               </th>
             ))}

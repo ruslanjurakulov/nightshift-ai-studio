@@ -24,10 +24,8 @@ import { restoreMotion } from "@/lib/site/motion";
 /** What eases in. Groups stagger by their index among siblings. */
 const REVEAL = [
   ".nx-section .nx-wrap > *",
-  ".nx-tiles > li",
-  ".nx-rules > li",
   ".nx-final",
-  ".nx-gal-card",
+  ".nx-show .nx-show-card",
   ".nx .st-section .st-wrap > *",
   ".nx .st-ways > *",
   ".nx .st-sol-list > li",

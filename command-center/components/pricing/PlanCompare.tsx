@@ -32,7 +32,7 @@ export function PlanCompare({ matrix, titleId }: { matrix: Matrix; titleId: stri
       <table className="w-full min-w-[34rem] border-collapse text-left text-sm">
         <thead>
           <tr className="border-b border-[var(--color-border)]">
-            <th scope="col" className="sticky left-0 w-[30%] min-w-[9.5rem] bg-[var(--color-panel)] px-5 py-4 text-xs font-medium text-[var(--color-muted)]">
+            <th scope="col" className="sticky left-0 w-[30%] min-w-[9.5rem] bg-[var(--color-panel)] px-5 py-4 text-sm font-medium text-[var(--color-muted)]">
               {t.pricing.compareFeature}
             </th>
             {matrix.columns.map((c) => (

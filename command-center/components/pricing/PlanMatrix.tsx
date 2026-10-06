@@ -126,14 +126,14 @@ export function PlanMatrix({
                 </div>
                 <Equivalents credits={col.isDefault ? WELCOME_CREDITS : col.monthlyCredits} rates={rates} />
                 {minutes !== null && (
-                  <div className="text-xs font-light text-[var(--color-muted)]">
+                  <div className="text-sm font-light text-[var(--color-muted)]">
                     {fmt(p.minutes, { m: formatCredits(minutes, locale) })}
                   </div>
                 )}
               </div>
               {matrix.rows.length > 0 && (
                 <div className="flex flex-col gap-2.5">
-                  <div className="st-kicker text-xs">{t.pricing.limitsLabel}</div>
+                  <div className="st-kicker text-sm">{t.pricing.limitsLabel}</div>
                   <dl className="flex flex-col gap-2.5 text-sm">
                     {matrix.rows.map((row) => {
                       const v = row.cells[i];

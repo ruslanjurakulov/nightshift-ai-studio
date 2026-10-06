@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, X } from "lucide-react";
+import { ArrowRight, Check, X } from "lucide-react";
 import { getDictionary } from "@/lib/i18n/server";
 import { runtimeSiteOrigin, shareMetadata } from "@/lib/landing";
 import { PublicShell } from "@/components/legal/PublicShell";
@@ -8,7 +8,7 @@ import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { Slug } from "@/components/site/Slug";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { HeroFx } from "@/components/site/HeroFx";
-import { ApiPicture, ComposerPicture, SignOffPicture } from "@/components/site/SolutionPictures";
+import { SlotImg, SLOTS } from "@/components/site/samples";
 import { MotionToggle } from "@/components/site/MotionToggle";
 
 /** Public: listed exactly in lib/public-paths.ts (SOLUTION_PATHS). */
@@ -31,13 +31,15 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-/**
- * The Solutions index: the three ways into the one product, then the three
- * rules that hold whichever way you came in.
- */
-/** The product's own state for each way in (the same pictures the solution pages open with), not a photograph: what you get is the product. */
-const WAY_PICTURE = { "youtube-channels": SignOffPicture, "creative-studio": ComposerPicture, developers: ApiPicture } as const;
+/** One still per way in (components/site/samples.tsx), none repeated on the page. */
+const WAY_SLOT = { "youtube-channels": "sol.channels", "creative-studio": "sol.studio", developers: "sol.developers" } as const;
 
+/**
+ * The Solutions index, image-led: a short opening, then the three ways into
+ * the one product as three large example frames with what each is for, and the
+ * three rules that hold whichever way you came in. The product's own pictures
+ * (the publish desk, the composer, the endpoint list) open each solution page.
+ */
 export default async function SolutionsPage() {
   const { t } = await getDictionary();
   const s = t.site.solutions;
@@ -46,25 +48,31 @@ export default async function SolutionsPage() {
     <PublicShell t={t} current="solutions" fresh>
       <div className="nx-lit">
         <HeroFx />
-        <section aria-labelledby="solutions-title" className="st-wrap pb-16 pt-10 lg:pb-24 lg:pt-20">
+        <section aria-labelledby="solutions-title" className="st-wrap nx-sol-hero">
           <Slug>{s.slug}</Slug>
-          <h1 id="solutions-title" className="st-h1-page mt-8 max-w-[20ch]">
+          <h1 id="solutions-title" className="st-h1-page mt-6">
             {s.title}
           </h1>
-          <p className="st-lead mt-7">{s.lead}</p>
-          <ul className="st-ways">
+          <p className="st-lead mt-6">{s.lead}</p>
+          <MotionToggle pause={t.site.fx.pause} />
+        </section>
+        <section aria-label={s.slug} className="st-wrap nx-sol-ways">
+          <ul className="nx-ways">
             {s.pages.map((page, i) =>
               isSolutionId(page.id) ? (
-                <li key={page.id} className="st-way" data-spot aria-labelledby={`way-${page.id}`}>
-                  <span className="st-way-no st-num" aria-hidden>
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <div className="st-way-head">
-                    <span className="st-kicker">{page.kicker}</span>
-                    <h2 id={`way-${page.id}`} className="st-h3">
-                      <Link href={solutionHref(page.id)} className="st-way-title">
-                        {/* The last word and the arrow never part: a title that
-                          filled its line left the arrow alone on the next. */}
+                <li key={page.id} className="nx-way" data-flip={i % 2 === 1 ? "true" : undefined} aria-labelledby={`way-${page.id}`}>
+                  <figure className="nx-way-pic">
+                    <div className="nx-way-art nx-kb">
+                      <SlotImg slot={WAY_SLOT[page.id]} alt={t.site.samples.alts[SLOTS[WAY_SLOT[page.id]].id]} className="nx-art" />
+                      <span className="nx-result-badge">{t.site.samples.tag}</span>
+                    </div>
+                    <figcaption className="nx-show-note">{t.site.samples.note}</figcaption>
+                  </figure>
+                  <div className="nx-way-text">
+                    <p className="nx-way-kicker">{page.kicker}</p>
+                    <h2 id={`way-${page.id}`} className="nx-way-h">
+                      <Link href={solutionHref(page.id)} className="nx-way-link">
+                        {/* The last word and the arrow never part: a title that filled its line left the arrow alone on the next. */}
                         {page.title.split(" ").slice(0, -1).join(" ")}{" "}
                         <span className="whitespace-nowrap">
                           {page.title.split(" ").slice(-1)[0]}
@@ -72,41 +80,33 @@ export default async function SolutionsPage() {
                         </span>
                       </Link>
                     </h2>
-                    <p className="st-small max-w-[52ch]">{page.lead}</p>
-                  </div>
-                  <div className="nx-way-product">
-                    {(() => {
-                      const Picture = WAY_PICTURE[page.id];
-                      return <Picture t={t} />;
-                    })()}
-                  </div>
-                  <ul className="st-way-list" aria-label={s.whatLabel}>
-                    {page.what.slice(0, 3).map((w) => (
-                      <li key={w.title}>
-                        <span aria-hidden className="ns-lamp" data-tone="ok" />
-                        {w.title}
+                    <p className="nx-way-lead">{page.lead}</p>
+                    <ul className="nx-way-list" aria-label={s.whatLabel}>
+                      {page.what.slice(0, 3).map((w) => (
+                        <li key={w.title}>
+                          <Check aria-hidden />
+                          {w.title}
+                        </li>
+                      ))}
+                      <li data-kind="not">
+                        <X aria-hidden />
+                        <span>
+                          <span className="sr-only">{s.notLabel}: </span>
+                          {page.not[0]}
+                        </span>
                       </li>
-                    ))}
-                    <li data-kind="not">
-                      <X className="size-4 shrink-0" aria-hidden />
-                      <span>
-                        <span className="sr-only">{s.notLabel}: </span>
-                        {page.not[0]}
-                      </span>
-                    </li>
-                  </ul>
+                    </ul>
+                  </div>
                 </li>
               ) : null,
             )}
           </ul>
-          <MotionToggle pause={t.site.fx.pause} play={t.site.fx.play} />
         </section>
       </div>
 
-      <section aria-labelledby="same-title" className="st-section">
+      <section aria-labelledby="same-title" className="st-section" data-tone="raised">
         <div className="st-wrap">
-          <Slug>{rules.slug}</Slug>
-          <h2 id="same-title" className="st-h2 mt-8">
+          <h2 id="same-title" className="st-h2">
             {rules.title}
           </h2>
           <ul className="st-rules">

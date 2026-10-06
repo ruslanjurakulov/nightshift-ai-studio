@@ -12,10 +12,9 @@ import { BrandLogo, BrandSprite, logoTile } from "@/components/docs/BrandLogo";
 import { ConnectCard, type ConnectTab } from "@/components/docs/ConnectCard";
 import { Field } from "@/components/docs/Field";
 import { McpAfter, McpLanding } from "@/components/docs/McpLanding";
-import { ClientText, McpClientProvider } from "@/components/docs/McpClientContext";
-import { HowTabs } from "@/components/docs/HowTabs";
+import { McpClientProvider } from "@/components/docs/McpClientContext";
 import { DevNav, DocSection, Statement, Table, type ScrollLabels } from "@/components/docs/doc-parts";
-import { BrandMark } from "@/components/site/BrandMark";
+import { ChatCard, type ChatCopy } from "@/components/landing/HeroCard";
 
 /**
  * /mcp — how to connect an AI assistant, laid out the way the best connect
@@ -68,6 +67,7 @@ export function McpPage({
   showCli,
   oauthLive,
   initialTab,
+  chat,
 }: {
   dev: DevDictionary;
   origin: string;
@@ -77,6 +77,8 @@ export function McpPage({
   oauthLive: boolean;
   /** `?tab=` from the address; an unknown value means the default tab. */
   initialTab?: string;
+  /** The chat card above the fold (its words come from the site dictionary, so the page passes them in). */
+  chat?: ChatCopy;
 }) {
   const c = dev.mcp;
   const url = `${origin}/api/mcp`;
@@ -191,9 +193,6 @@ export function McpPage({
 
   const defaultTab = oauthLive ? "claude" : "claude-code";
   const open = initialTab && tabs.some((t) => t.id === initialTab) ? initialTab : defaultTab;
-  // Real logos only around the N, balanced in colour and weight: a white mark and a red one to the left,
-  // Anthropic's orange and a blue one to the right. No "+" tile any more: every client has a mark.
-  const hero = ["cursor", "chatgpt", "openclaw", "nightshift", "claude", "vscode", "windsurf"] as const;
   const firstSix = ["claude", "chatgpt", "claude-code", "openclaw", "cursor", "hermes"].map((id) => MCP_CLIENTS.find((x) => x.id === id)!).filter((x) => oauthLive || !x.oauthOnly).map((x) => x.label);
 
   // With the sign-in off (MCP_OAUTH_LIVE) Claude and ChatGPT are "coming soon": nothing on the page may read as if they connect today.
@@ -208,27 +207,19 @@ export function McpPage({
       <section aria-labelledby="mcp-title" className="st-mcphero">
         <div className="st-wrap st-mcphero-in">
           <DevNav nav={dev.nav} current="mcp" showCli={showCli} />
-          <div className="st-tiles" aria-hidden>
-            <span className="st-tiles-glow" />
-            {hero.map((id, i) => (
-              <span key={id} className="st-tile" data-slot={id === "nightshift" ? "brand" : Math.abs(i - 3)} data-id={id} data-tile={id === "nightshift" ? undefined : logoTile(id, "hero")}>
-                {id === "nightshift" ? (
-                  // The product's own mark, exactly as the owner drew it: the shaded N on its black tile.
-                  <BrandMark size={104} className="st-tile-n" />
-                ) : (
-                  <BrandLogo id={id} variant="hero" />
-                )}
-              </span>
-            ))}
-          </div>
           <p className="sr-only">
             {c.worksWith}: {firstSix.join(", ")}
           </p>
-          <h1 id="mcp-title" className="st-mcphero-h1">
-            <span>{c.title}</span> <span className="st-mcphero-dim">{c.titleDim}</span>
-          </h1>
-          <p className="st-mcphero-lead">{c.lead}</p>
-          <p className="st-small st-mcphero-paid">{oauthLive ? c.paidLine : c.signinOff.paidLine}</p>
+          <div className="nx-mcp-top">
+            <div className="nx-mcp-copy">
+              <h1 id="mcp-title" className="st-mcphero-h1">
+                <span>{c.title}</span> <span className="st-mcphero-dim">{c.titleDim}</span>
+              </h1>
+              <p className="st-mcphero-lead">{c.lead}</p>
+              <p className="st-small st-mcphero-paid">{oauthLive ? c.paidLine : c.signinOff.paidLine}</p>
+            </div>
+            {chat && <ChatCard copy={chat} slot="mcp.card" eager />}
+          </div>
 
           <ConnectCard
             tabs={tabs}
@@ -254,28 +245,18 @@ export function McpPage({
         </div>
       </section>
 
-      <section aria-labelledby="how-title" className="st-how">
-        <div className="st-wrap">
-          <p className="st-how-badge">{c.how.badge}</p>
-          <h2 id="how-title" className="st-how-h2">
-            {c.how.title}
-          </h2>
-          <p className="st-how-lead">
-            <ClientText template={c.how.lead} soonTemplate={oauthLive ? undefined : c.signinOff.howLead} />
-          </p>
-          <HowTabs
-            tabs={c.how.tabs}
-            labels={{ tablist: c.how.tablist, you: c.how.you, agent: c.how.agent, tool: c.how.tool, pane: c.how.pane, example: c.how.example }}
-          />
-        </div>
-      </section>
-
       <McpLanding dev={dev} oauthLive={oauthLive} />
 
       <DocSection id="tools" no={1} title={c.tools.slug}>
         <Statement>{c.tools.title}</Statement>
         <p className="st-body">{c.tools.lead}</p>
-        <Table name={c.tools.table} labels={labels} stack="rows">
+        {/* The ten tools open on a tap: a visitor who only wants to connect is not walked past a table first. */}
+        <details className="nx-math nx-mcp-tools">
+          <summary>
+            <span>{c.tools.table}</span>
+            <span className="st-faq-mark" aria-hidden />
+          </summary>
+          <Table name={c.tools.table} labels={labels} stack="rows">
           <thead>
             <tr>
               <th scope="col">{c.tools.cols.tool}</th>
@@ -296,7 +277,8 @@ export function McpPage({
               );
             })}
           </tbody>
-        </Table>
+          </Table>
+        </details>
       </DocSection>
 
       <McpAfter dev={dev} showCli={showCli} oauthLive={oauthLive} />
