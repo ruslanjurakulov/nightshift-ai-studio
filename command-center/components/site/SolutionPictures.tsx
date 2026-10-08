@@ -114,7 +114,7 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
         {/* The desk's own frame is a real clip of stock footage (credited, labelled an example); the desk around it is the drawing. */}
         <div className="st-signoff-frame" data-clip="caravan">
           <SlotImg slot="solutions.youtube-channels" alt="" className="nx-art" sizes="(min-width: 860px) 480px, calc(100vw - 96px)" />
-          <LoopClip clip="caravan" poster={SAMPLES.caravan.sm} />
+          <LoopClip clip="caravan" poster={SAMPLES.caravan.sm} compact />
           <span className="st-signoff-private">{s.private}</span>
           <span className="nx-result-badge st-signoff-badge" data-kind="still">
             {t.site.samples.frameTag}

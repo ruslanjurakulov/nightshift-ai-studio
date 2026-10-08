@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
 import {
@@ -69,6 +70,7 @@ export function McpPage({
   oauthLive,
   initialTab,
   chat,
+  bleed,
   pause,
 }: {
   dev: DevDictionary;
@@ -81,6 +83,8 @@ export function McpPage({
   initialTab?: string;
   /** The chat card above the fold (its words come from the site dictionary, so the page passes them in). */
   chat?: ChatCopy;
+  /** The picture behind the header panel (components/landing/HeroBleed.tsx): an atmosphere, labelled an example, not a picture of the product at work. */
+  bleed?: ReactNode;
   /** The pause switch's label (the site's "Pause motion"): the card's drawing moves, so the page offers the switch. */
   pause?: string;
 }) {
@@ -215,7 +219,8 @@ export function McpPage({
             {c.worksWith}: {firstSix.join(", ")}
           </p>
           <div className="nx-mcp-top">
-            <div className="nx-mcp-copy">
+            <div className={bleed ? "nx-mcp-copy nx-bleed-panel" : "nx-mcp-copy"}>
+              {bleed}
               <h1 id="mcp-title" className="st-mcphero-h1">
                 <span>{c.title}</span> <span className="st-mcphero-dim">{c.titleDim}</span>
               </h1>
@@ -224,7 +229,7 @@ export function McpPage({
             </div>
             {chat && (
               <div className="nx-mcp-visual">
-                <ChatCard copy={chat} art="tools" />
+                <ChatCard copy={chat} bare />
                 {pause && <MotionToggle pause={pause} />}
               </div>
             )}

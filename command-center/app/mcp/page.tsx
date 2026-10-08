@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getDictionary } from "@/lib/i18n/server";
 import { getDevDictionary } from "@/lib/i18n/dev";
 import { chatCopy } from "@/components/landing/HeroCard";
+import { HeroBleed } from "@/components/landing/HeroBleed";
 import { PublicShell } from "@/components/legal/PublicShell";
 import { McpPage } from "@/components/docs/McpPage";
 import { docsOrigin } from "@/lib/api/docs-origin";
@@ -32,7 +33,8 @@ export default async function McpConnectPage({ searchParams }: { searchParams: P
     <PublicShell t={t} current="docs">
       <McpPage
         dev={dev}
-        chat={chatCopy(t, "hero", dev.mcp.land.asks.items[0].prompt, { badge: t.site.stage.tag, note: dev.mcp.land.frames.note })}
+        bleed={<HeroBleed t={t} slot="mcp.hero" className="nx-mcp-bleed" />}
+        chat={chatCopy(t, "hero", dev.mcp.land.asks.items[0].prompt, { badge: t.site.stage.tag, note: dev.mcp.land.frames.exampleNote })}
         pause={t.site.fx.pause}
         origin={docsOrigin()}
         labels={{ table: t.common.scrollTable, code: t.common.scrollCode }}

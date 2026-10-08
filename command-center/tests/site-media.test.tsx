@@ -21,7 +21,7 @@ const read = (f: string) => readFileSync(join(ROOT, f), "utf8");
 
 describe("every picture has a credit", () => {
   it("lists each credited picture once, with a creator, a profile, a source page on Pexels and a Pexels id that is in the source URL", () => {
-    expect(MEDIA_IDS.length).toBe(23);
+    expect(MEDIA_IDS.length).toBe(21);
     const ids = new Set<string>();
     for (const id of MEDIA_IDS) {
       const m = MEDIA[id];

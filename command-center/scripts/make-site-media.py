@@ -66,7 +66,6 @@ def grade(im: Image.Image, sat: float = 1.0, lift: float = LIFT, warm: float = W
 # name: (file, crop (x0, y0, x1, y1) as fractions of the original, aspect (w, h) of the derivative, quality, sat, lift)
 # Crops are the manifest's advice, applied to the derivative itself so no CSS has to hide a face or a haze.
 OUT_STILLS = {
-    "dunes": ("photo/hero-desert-caravan-15848441.jpg", (0, 0, 1, 1), (16, 9), 74, 1.0, LIFT),
     "library": ("photo/library-chandelier-37387122.jpg", (0, 0.02, 1, 0.98), (16, 9), 72, 1.0, 0.015),
     # The moon sits at 91% of the frame width, clear of the words in the middle of the closing panel (it is centred in the original).
     "moon": ("photo/moon-night-sky-39335277.jpg", (0.0, 0.2547, 0.5493, 0.7453), (16, 9), 76, 1.0, 0.012),
@@ -75,9 +74,8 @@ OUT_STILLS = {
     "valley": ("photo/valley-golden-mist-10352688.jpg", (0, 0, 1, 1), (16, 9), 74, 1.0, LIFT),
     "lighthouse": ("photo/lighthouse-golden-dusk-4390834.jpg", (0, 0, 1, 1), (16, 9), 74, 1.0, LIFT),
     "citynight": ("photo/solutions-city-night-39659645.jpg", (0, 0.0, 1, 0.73), (2, 1), 72, 1.0, LIFT),
-    # Round 8. The sign-in and sign-up stages: squares (a tall stage and a wide band both crop a square well).
-    "alley": ("2:photo/lit-window-dark-alley-4916113.jpg", (0.289, 0, 0.956, 1), (1, 1), 66, 1.0, 0.0),
-    "lanterngrid": ("2:photo/lanterns-grid-warm-31108468.jpg", (0.1667, 0, 0.8333, 1), (1, 1), 62, 1.0, 0.0),
+    # Round 9. The sign-in stage: a square of golden light over dunes (a tall stage and a wide band both crop a square well); the sun is at 54% of the width.
+    "desert": ("2:photo/golden-desert-sunrise-28638937.jpg", (0.22, 0, 0.865, 1), (1, 1), 66, 1.0, 0.015),
     # The capability wall's tiles: one 448 x 336 file each (TILES), at most 25 KB.
     "peak": ("2:photo/tile-image-peak-gold-34033024.jpg", (0.1, 0, 0.99, 1), (4, 3), 64, 1.0, LIFT),
     "waterfall": ("2:photo/tile-video-flowing-water-8780358.jpg", (0.12, 0, 0.88, 1), (4, 3), 62, 1.0, LIFT),
@@ -145,7 +143,7 @@ DENOISE = "hqdn3d=2:1.5:5:4"
 #   at span / (loop + xf) of its own speed (slower than the source when that is below 1).
 OUT_CLIPS = {
     "caravan": dict(file="video/caravan-28673757.mp4", start=0.3, span=5.8, loop=7.0, xf=1.4, sat=1.0, budget=(400, 150)),
-    "coast": dict(file="video/lighthouse-14910095.mp4", start=0.3, span=11.0, loop=8.4, xf=2.4, sat=1.0, budget=(320, 105)),
+    "coast": dict(file="video/lighthouse-14910095.mp4", start=0.3, span=11.6, loop=8.4, xf=3.2, sat=1.0, budget=(320, 105)),
     # Round 8. cloud: the hero-grade clip. pottery: hands at the wheel, a craft moment. floating: very dark, a 120 fps source decoded at 40 fps and
     # played at the speed it was shot. loom: cooler than the rest, so its highlights are warmed twice as much.
     "cloud": dict(file="2:video/cloud-sea-sunrise-4288029.mp4", start=0.3, span=12.0, loop=9.6, xf=2.4, sat=1.0, denoise=False, budget=(400, 120)),

@@ -20,6 +20,7 @@ import { devDictionaries } from "@/lib/i18n/dev";
 import type { Locale } from "@/lib/i18n";
 import { dictionaries } from "@/lib/i18n";
 import { chatCopy } from "@/components/landing/HeroCard";
+import { HeroBleed } from "@/components/landing/HeroBleed";
 import { MCP_CLIENTS, MCP_TOOL_IDS } from "@/lib/dev/mcp-clients";
 import { ASK_IDS, CAPABILITY_ROWS, EXAMPLE_SCENES } from "@/lib/dev/mcp-landing";
 
@@ -29,10 +30,10 @@ const LOCALES: Locale[] = ["en", "ru", "uz"];
 const labels = { table: "Table", code: "Code" };
 const css = readFileSync(join(__dirname, "..", "components", "site", "site.css"), "utf8");
 
-const chatFor = (locale: Locale) => chatCopy(dictionaries[locale], "hero", devDictionaries[locale].mcp.land.asks.items[0].prompt, { badge: dictionaries[locale].site.stage.tag, note: devDictionaries[locale].mcp.land.frames.note });
+const chatFor = (locale: Locale) => chatCopy(dictionaries[locale], "hero", devDictionaries[locale].mcp.land.asks.items[0].prompt, { badge: dictionaries[locale].site.stage.tag, note: devDictionaries[locale].mcp.land.frames.exampleNote });
 const page = (locale: Locale = "en", tab?: string, oauthLive = false) =>
   renderToStaticMarkup(
-    <McpPage dev={devDictionaries[locale]} chat={chatFor(locale)} origin="https://example.test" labels={labels} showCli={false} oauthLive={oauthLive} initialTab={tab} />,
+    <McpPage dev={devDictionaries[locale]} chat={chatFor(locale)} bleed={<HeroBleed t={dictionaries[locale]} slot="mcp.hero" className="nx-mcp-bleed" />} origin="https://example.test" labels={labels} showCli={false} oauthLive={oauthLive} initialTab={tab} />,
   );
 const doc = (html: string) => new DOMParser().parseFromString(html, "text/html");
 
@@ -97,10 +98,21 @@ describe("the hero: a chat card instead of a row of client logos", () => {
     expect(top.querySelector("h1")).toBeTruthy();
     expect(card.querySelector(".nx-bubble .sr-only")?.textContent).toBe(land.asks.items[0].prompt);
     expect(card.querySelector(".nx-reply span")?.textContent?.trim()).toBe(site.caps.exampleReply);
-    // The /mcp card is drawn (the tools around Nightshift), not a still: a labelled example, no picture in it.
+    // The /mcp card is the idea (an ask, a reply, the wait for approval) and has no picture at all: nothing in it looks like a result.
     expect(card.querySelector(".nx-demo-tag")?.textContent).toBe(site.stage.tag);
-    expect(card.querySelector("svg[data-art='tools']")).toBeTruthy();
-    expect(card.querySelector("img")).toBeNull();
+    expect(card.querySelector("svg[data-art='tools']")).toBeNull();
+    expect(card.querySelector("img, video, .nx-result-art")).toBeNull();
+    expect(card.querySelector(".nx-demo-note")?.textContent).toBe(land.frames.exampleNote);
+    // The atmosphere is the header panel behind the words (round 9): footage of a sea of cloud, labelled an example and credited, and not a picture of the product at work.
+    const panel = top.querySelector(".nx-mcp-copy.nx-bleed-panel")!;
+    expect(panel.querySelector("h1")).toBeTruthy();
+    const bleed = panel.querySelector(".nx-bleed.nx-mcp-bleed")!;
+    expect(bleed.getAttribute("data-clip")).toBe("cloud");
+    expect(bleed.querySelector("img")?.getAttribute("data-sample")).toBe("cloud");
+    expect(bleed.querySelector("img")?.getAttribute("alt")).toBe(site.samples.alts.cloud);
+    expect(bleed.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(site.samples.frameTag);
+    expect(bleed.querySelector(".nx-result-badge[data-kind='clip']")?.textContent).toBe(site.samples.clipTag);
+    expect(bleed.querySelector(".nx-result-credit")?.textContent).toMatch(/ \/ Pexels$|Pexels$/);
     expect(card.querySelector(".nx-chat-foot")?.getAttribute("aria-hidden")).toBe("true");
     expect(card.querySelectorAll("button, a")).toHaveLength(0);
     expect(card.querySelector(".nx-ui-status svg, .nx-ui-play")).toBeNull();
@@ -129,7 +141,13 @@ describe("the pictures are honest", () => {
     const d = doc(page(locale));
     const cards = [...d.querySelectorAll(".ml-ex")];
     expect(cards).toHaveLength(6);
-    for (const c of cards) expect(c.querySelector(".ml-ex-badge")?.textContent).toBe(devDictionaries[locale].mcp.land.examples.sample);
+    // Five are photographs ("stock photo"); the sixth is a frame of footage that plays a clip ("stock footage"), with its clip label ready.
+    for (const c of cards) {
+      const clip = c.getAttribute("data-clip");
+      expect(c.querySelector(".ml-ex-badge[data-kind='still']")?.textContent).toBe(clip ? devDictionaries[locale].mcp.land.examples.sampleFootage : devDictionaries[locale].mcp.land.examples.sample);
+      expect(Boolean(c.querySelector(".ml-ex-badge[data-kind='clip']"))).toBe(Boolean(clip));
+    }
+    expect(cards.filter((c) => c.getAttribute("data-clip"))).toHaveLength(1);
     const alts = devDictionaries[locale].mcp.land.examples.alts;
     for (const c of cards) {
       const img = c.querySelector("img")!;
@@ -138,8 +156,9 @@ describe("the pictures are honest", () => {
       expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
     }
     expect(d.querySelectorAll("video, audio, picture")).toHaveLength(0);
-    // Every picture on the page: the six examples (the hero card is drawn art, not a picture).
-    expect(d.querySelectorAll("img")).toHaveLength(6);
+    // Every picture on the page: the header panel's still and the six examples (the hero card has no picture).
+    expect(d.querySelectorAll("img")).toHaveLength(7);
+    expect(d.querySelectorAll(".nx-mcp-top img")).toHaveLength(1);
   });
 
   it.each([true, false])("names no model, provider or price (sign-in live: %s)", (live) => {

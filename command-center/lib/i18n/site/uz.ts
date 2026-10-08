@@ -133,7 +133,7 @@ export const siteUz: SiteDictionary = {
     /** The courtesy credit on a picture; {name} is the contributor name as Pexels shows it (lib/site/media.ts). */
     credit: { photo: "Surat: {name} / Pexels", video: "Video: {name} / Pexels" },
     /** What a decorative backdrop (sign-in and sign-up) is, in a few words. */
-    captions: { alley: "Kechqurun sokin koʻchadagi yoritilgan deraza", lanterngrid: "Tunda yonib turgan qogʻoz fonuslar" },
+    captions: { desert: "Choʻl tepaliklari ustidagi oltin nur", floating: "Tunda suvda suzayotgan fonuslar (stok video, takrorlanadi)" },
     alts: {
       caravan: "Namuna kadr: toshloq choʻl boʻylab ketayotgan tuyalar karvoni, oldinda chavandoz",
       coast: "Namuna kadr: qirgʻoqqa urilayotgan toʻlqinlar, uzoqda kichik mayoq",
@@ -146,10 +146,8 @@ export const siteUz: SiteDictionary = {
       market: "Namuna kadr: Marrakeshdagi kechki bozor, yuqoridan koʻrinishi",
       valley: "Namuna kadr: quyosh chiqishida oltin tumanli oʻrmonli tepaliklar",
       lighthouse: "Namuna kadr: oltin soatda uzun oʻt orasidagi mayoq",
-      dunes: "Namuna kadr: choʻl tepaligidagi tuyalar karvoni",
       citynight: "Namuna kadr: tepalikdan koʻrinadigan shom chogʻidagi shahar chiroqlari",
-      alley: "Kechqurun sokin koʻchadagi yoritilgan deraza",
-      lanterngrid: "Tunda yonib turgan qogʻoz fonuslar",
+      desert: "Choʻl tepaliklari ustidagi oltin nur",
       peak: "Namuna kadr: bulutlar ustidagi oltin nur tushgan qorli choʻqqi",
       waterfall: "Namuna kadr: toshlar ustidan tushayotgan ipakdek suv, uzoq ekspozitsiya",
       mic: "Namuna kadr: xrom va jezdan yasalgan qadimiy mikrofon",
@@ -306,6 +304,8 @@ export const siteUz: SiteDictionary = {
   wall: {
     label: "Har bir vositani tasvirlovchi stok suratlar",
     note: "Suratlar vositalarni tasvirlaydi, xolos. Bular stok suratlar, vositalar yaratgan narsa emas. Har bir vositaning narxi tugmasida koʻrsatiladi, kredit sarflamaydiganlari bundan mustasno.",
+    more: "Yana toʻrtta vositani koʻrsatish",
+    less: "Kamroq koʻrsatish",
   },
   studio: {
     slug: "Studiya",

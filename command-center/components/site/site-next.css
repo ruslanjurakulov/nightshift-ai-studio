@@ -230,7 +230,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 .nx-chat .nx-result-art { aspect-ratio: 16 / 10; }
 .nx-chat-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
 .nx-chat-foot > span:first-child { font-size: 15px; color: var(--ns-text-dim); }
-.nx-chat-key { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 14px; border: 1px solid var(--ns-amber); background: var(--ns-select); font-size: 16px; font-weight: 600; color: var(--ns-amber-ink); }
+.nx-chat-key { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 14px; border: 1px dashed var(--ns-amber); background: transparent; font-size: 16px; font-weight: 600; color: var(--ns-amber-ink); }
 .nx-ui-status { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .nx-ui-status li { display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--ns-text-dim); }
 .nx-ui-status li[data-lit="true"] { color: var(--ns-amber-ink); font-weight: 600; }
@@ -776,6 +776,8 @@ html:has(.nx-bar) { scroll-padding-bottom: 96px; }
 .nx-hero-in { position: relative; z-index: 1; }
 .nx-hero-grid { display: flex; flex-direction: column; }
 .nx-hero-copy { display: contents; }
+.nx-hero-top { order: 2; display: flex; flex-direction: column; }
+.nx-hero-bleed { display: none; }
 .nx-hero-copy .nx-pill { order: 0; align-self: flex-start; }
 .nx-hero .nx-h1 { order: 1; margin-top: 18px; max-width: none; font-size: clamp(40px, 10.8vw, 92px); }
 html:is([lang="ru"], [lang="uz"]) .nx-hero .nx-h1 { font-size: clamp(36px, 8.6vw, 76px); }
@@ -994,7 +996,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
    Approve (never Live), the three lamps light one by one, the drawn button last. Colours and visibility only, never a size or a fade of text. */
 @keyframes nx-show { from { visibility: hidden; } to { visibility: visible; } }
 @keyframes nx-lamp { from { background: var(--ns-rule-strong); } }
-@keyframes nx-key { from { border-color: var(--ns-rule-strong); background: transparent; color: var(--ns-text-dim); } }
+@keyframes nx-key { from { border-color: var(--ns-rule-strong); color: var(--ns-text-dim); } }
 @keyframes nx-r1 { 0%, 54% { border-color: var(--ns-amber); color: var(--ns-text); } 55%, 100% { border-color: var(--ns-go); color: var(--ns-text-dim); } }
 @keyframes nx-r2 { 0%, 54% { border-color: var(--ns-rule); color: var(--ns-text-dim); } 55%, 74% { border-color: var(--ns-amber); color: var(--ns-text); } 75%, 100% { border-color: var(--ns-go); color: var(--ns-text-dim); } }
 @keyframes nx-r3 { 0%, 74% { border-color: var(--ns-rule); color: var(--ns-text-dim); } 75%, 100% { border-color: var(--ns-amber); color: var(--ns-text); } }
@@ -1066,10 +1068,10 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 /* ── The sign-in and sign-up stages: a photograph behind, and the brief, plan, approve flow ── */
 /* The photograph behind the sign-in stage is veiled enough that the stage's text (the dim 14 px lines included) reads at 4.5:1 or better on the rendered pixels (tests probe it): a light veil over the dark street, a heavier one over the bright lanterns. */
 .nx .st-auth-aside::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.5) 0%, rgba(16, 15, 13, 0.6) 100%); }
-.nx .st-auth-aside[data-photo="alley"]::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.26) 0%, rgba(16, 15, 13, 0.42) 45%, rgba(16, 15, 13, 0.82) 100%); }
-.nx .st-auth-aside[data-photo="lanterngrid"]::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.64) 0%, rgba(16, 15, 13, 0.78) 100%); }
-.nx-auth-band[data-photo="alley"]::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.22) 0%, rgba(16, 15, 13, 0.52) 100%); }
-.nx-auth-band[data-photo="lanterngrid"]::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.52) 0%, rgba(16, 15, 13, 0.74) 100%); }
+.nx .st-auth-aside[data-photo="desert"]::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.16) 0%, rgba(16, 15, 13, 0.22) 55%, rgba(16, 15, 13, 0.4) 100%); }
+.nx .st-auth-aside[data-photo="floating"]::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.12) 0%, rgba(16, 15, 13, 0.22) 60%, rgba(16, 15, 13, 0.42) 100%); }
+.nx-auth-band[data-photo="desert"]::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.14) 0%, rgba(16, 15, 13, 0.36) 52%, rgba(16, 15, 13, 0.7) 100%); }
+.nx-auth-band[data-photo="floating"]::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.1) 0%, rgba(16, 15, 13, 0.36) 100%); }
 .nx-fcard { position: relative; margin: 0; padding: 22px 20px 18px; max-width: 470px; border-radius: 22px; border: 1px solid var(--nx-stage-edge); background: rgba(16, 15, 13, 0.78); color: var(--nx-stage-text); }
 .nx-fcard .nx-demo-tag { background: var(--nx-stage); border-color: var(--nx-stage-edge); color: var(--nx-stage-dim); }
 .nx-flow-rows { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
@@ -1189,7 +1191,8 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 .nx-wall-label { margin: 6px 0 0; font-size: 15px; font-weight: 600; color: var(--ns-text-dim); }
 .nx-wall-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; margin: 12px 0 0; padding: 0; list-style: none; }
 .nx-wall-tile { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 2px; min-width: 0; }
-.nx-wall-pic { display: block; width: 100%; aspect-ratio: 2 / 1; margin-bottom: 6px; border-radius: 16px; object-fit: cover; background: #12151c; }
+.nx-wall-frame { display: block; aspect-ratio: 2 / 1; margin-bottom: 6px; border-radius: 16px; overflow: hidden; background: #12151c; }
+.nx-wall-pic { display: block; width: 100%; height: 100%; object-fit: cover; }
 .nx-wall-name { font-family: var(--font-display); font-size: 18px; font-weight: 600; line-height: 1.2; color: var(--ns-text); }
 .nx-wall-body { font-size: 15px; line-height: 1.35; color: var(--ns-text); }
 .nx-wall-price { font-size: 14px; line-height: 1.35; color: var(--ns-text-dim); }
@@ -1199,7 +1202,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 .nx-wall-editor b { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
 .nx-wall-editor small { font-size: 14px; color: var(--ns-text-dim); }
 .nx-wall-note { margin: 8px 0 0; font-size: 15px; line-height: 1.45; color: var(--ns-text-dim); }
-@media (min-width: 640px) { .nx-wall-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px 16px; } .nx-wall-pic { aspect-ratio: 4 / 3; } }
+@media (min-width: 640px) { .nx-wall-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px 16px; } .nx-wall-frame { aspect-ratio: 4 / 3; } }
 /* On the sign-in and sign-up stages the key is drawn, not a button: dashed, unfilled, and gone from the phone where it would sit above the real one. */
 .nx-fcard .nx-chat-key { border-style: dashed; }
 .nx-flow-rows li[data-s="approve"] .nx-chat-key { border-style: dashed; background: transparent; }
@@ -1209,3 +1212,106 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
   .nx-try-end .nx-body { display: none; }
 }
 }
+
+/* ── Round 9: the picture owns a phone's first screen ── */
+/* Below 1024 px the hero's footage runs edge to edge behind the pill, the headline and the button (the clip the desktop's card plays: the card's picture is
+   hidden here, this one above). The panel is dark in both themes, like the showcases and the closing panel; the veil is clear over the sky and heavy under the
+   words, and the pill has its own dark fill, so the small text never depends on the picture. */
+@media (max-width: 1023px) {
+  .nx-hero { padding-top: 0; }
+  .nx-hero-top { position: relative; isolation: isolate; margin-inline: calc(50% - 50vw); padding: 172px calc(50vw - 50%) 60px; border-radius: 0 0 28px 28px; background: #0b0a09; color: #fff; }
+  .nx-hero-bleed { display: block; }
+  .nx-hero-top .nx-pill { background: rgba(8, 8, 8, 0.66); border-color: rgba(255, 255, 255, 0.28); color: #fff; }
+  .nx-hero-top .nx-h1 { color: #fff; text-shadow: 0 1px 24px rgba(0, 0, 0, 0.35); }
+  .nx-hero-top .nx-h1-b { color: #b3acff; }
+  .nx-hero-top .nx-link { color: #fff; }
+  .nx-hero .nx-chat .nx-result-art { display: none; }
+  .nx-hero-visual { margin-top: 20px; }
+}
+
+/* ── Round 9: the wall is two rows on a phone (a button shows the rest), and the best-visible tile drifts ── */
+.nx-wall-more { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; margin-top: 14px; padding: 0 22px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); background: transparent; font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--ns-text); cursor: pointer; }
+.nx-wall-more:hover { border-color: var(--st-act); color: var(--st-act-ink); }
+@media (max-width: 639px) {
+  .nx-wall[data-open="false"] .nx-wall-tile:nth-child(n + 5) { display: none; }
+  .nx-wall-more { width: 100%; }
+}
+@media (min-width: 640px) { .nx-wall-more { display: none; } }
+@media (prefers-reduced-motion: no-preference) {
+  .nx-wall-pic { transition: transform 7s cubic-bezier(0.2, 0.6, 0.2, 1); }
+  .nx-wall-tile[data-alive] .nx-wall-pic, .nx-wall-tile:hover .nx-wall-pic { transform: scale(1.12); }
+  html[data-motion="paused"] .nx-wall-pic { transition: none; transform: none !important; }
+}
+
+/* ── Round 9: a shorter phone landing (the first screen is now the picture; what the page says twice is said once) ── */
+@media (max-width: 859px) {
+  /* The hero's lead is the three steps' first sentence; the steps are the next block. */
+  .nx-hero-copy .nx-lead { display: none; }
+  .nx-hero-top { padding-top: 156px; padding-bottom: 56px; }
+  .nx-hero { padding-bottom: 28px; }
+  #try .nx-label { display: none; }
+  #try .nx-try { margin-top: 22px; }
+  #pricing .nx-sub { display: none; }
+  #pricing .nx-price-grid { margin-top: 20px; }
+  .nx-packs { padding: 18px; }
+  .nx-packs-h { margin-bottom: 0; }
+  .nx-show-pic { aspect-ratio: 4 / 3.3; }
+}
+@media (max-width: 859px) {
+  .nx { --nx-sec: 28px; }
+  .nx-show-rest { padding-bottom: 20px; }
+  .nx-strip { gap: 16px; }
+  .nx-data { padding: 16px; }
+}
+
+/* ── Round 9: the stages show their photograph bright; the small text sits on dark panels of its own, not on a veil over everything ── */
+.nx .st-auth-aside .st-h2 { text-shadow: 0 1px 22px rgba(0, 0, 0, 0.45); }
+.nx .st-auth-aside .st-ledger { padding: 4px 18px; border-top: 0; border-radius: 18px; background: rgba(12, 11, 9, 0.8); }
+.nx .st-auth-aside .st-ledger li:last-child { border-bottom: 0; }
+.nx .st-auth-aside .nx-aside-foot { display: flex; flex-direction: column; gap: 10px; align-self: stretch; max-width: 470px; padding: 16px 18px; border-radius: 18px; background: rgba(12, 11, 9, 0.8); }
+.nx .st-auth-aside .nx-clip { z-index: -2; inset: 1px; width: calc(100% - 2px); height: calc(100% - 2px); }
+.nx .st-auth-aside .nx-clip-pause { top: 18px; right: 18px; }
+.nx-auth-band .nx-clip { inset: 1px; width: calc(100% - 2px); height: calc(100% - 2px); }
+.nx-auth-band[data-clip] { padding-top: 58px; }
+.nx-auth-band .nx-clip-pause { z-index: 2; top: 8px; right: 8px; }
+html:is([lang="ru"], [lang="uz"]) .nx-fcard[data-compact="true"] .nx-flow-rows > li { grid-template-columns: 96px minmax(0, 1fr); }
+
+/* The picture panel (the landing's first screen below 1024 px, the header of /mcp): the footage fills the panel, a veil is clear over the top and heavy under the words, the labels sit in the corners. */
+.nx-bleed { position: absolute; inset: 0; z-index: -1; overflow: hidden; border-radius: inherit; background: #12151c; --bleed-pos: 19% 50%; }
+.nx-bleed .nx-art, .nx-bleed .nx-clip { position: absolute; inset: -14% 0 auto 0; width: 100%; height: 114%; object-fit: cover; object-position: var(--bleed-pos); }
+/* The clip is a few pixels smaller than its still on every side (a single pixel was not enough: fractional sizes rounded the other way on /mcp's phone panel), so the still stays the page's largest paint (a clip's first frame is a later, equal-sized candidate and would move the LCP to the moment the clip starts). */
+.nx-bleed .nx-clip { left: 3px; width: calc(100% - 6px); height: calc(114% - 4px); top: calc(-14% + 1px); }
+.nx-bleed::after { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(to bottom, rgba(8, 8, 8, 0) 0%, rgba(8, 8, 8, 0) 28%, rgba(8, 8, 8, 0.5) 46%, rgba(8, 8, 8, 0.78) 70%, rgba(8, 8, 8, 0.9) 100%); }
+.nx-bleed .nx-result-badge { z-index: 2; top: 16px; left: 16px; }
+.nx-bleed .nx-result-credit { z-index: 2; left: auto; right: 14px; bottom: 14px; }
+/* /mcp: the left column of the hero is the panel; the example card stands under it (a phone) or beside it (a desktop). */
+.nx-mcp-copy.nx-bleed-panel { position: relative; isolation: isolate; overflow: hidden; padding: 168px 22px 56px; border-radius: 28px; background: #0b0a09; color: #fff; }
+.nx-mcp-bleed { --bleed-pos: 82% 50%; }
+.nx-mcp-bleed::after { background: linear-gradient(to bottom, rgba(8, 8, 8, 0) 0%, rgba(8, 8, 8, 0) 24%, rgba(8, 8, 8, 0.66) 40%, rgba(8, 8, 8, 0.82) 62%, rgba(8, 8, 8, 0.9) 100%); }
+.nx-mcp-copy.nx-bleed-panel .st-mcphero-h1 { color: #fff; text-shadow: 0 1px 24px rgba(0, 0, 0, 0.35); }
+.nx-mcp-copy.nx-bleed-panel .st-mcphero-dim { color: #d9d4cb; }
+.nx-mcp-copy.nx-bleed-panel .st-mcphero-lead, .nx-mcp-copy.nx-bleed-panel .st-mcphero-paid { color: #f1ede6; }
+@media (min-width: 1024px) { .nx-mcp-copy.nx-bleed-panel { padding: 230px 40px 72px; } .nx-mcp-bleed .nx-art { inset: -8% 0 auto 0; height: 108%; } .nx-mcp-bleed .nx-clip { top: calc(-8% + 1px); height: calc(108% - 4px); } }
+
+/* ── Round 9: boxes that cannot move when the web font replaces the fallback ── */
+/* The /mcp header panel holds three runs of text whose line counts differ by one or two between the fallback face and Onest (and between languages); each reserves the most lines it takes at its width (measured in en, and in ru and uz together, at 320 to 1440 px), so the panel never changes height and nothing under it moves. */
+.nx-mcp-copy.nx-bleed-panel { --l-h1: 3; --l-lead: 5; --l-paid: 3; }
+.nx-mcp-copy.nx-bleed-panel .st-mcphero-h1 { min-height: calc(var(--l-h1) * 1lh); }
+.nx-mcp-copy.nx-bleed-panel .st-mcphero-lead { min-height: calc(var(--l-lead) * 1lh); }
+.nx-mcp-copy.nx-bleed-panel .st-mcphero-paid { min-height: calc(var(--l-paid) * 1lh); }
+@media (max-width: 359px) { .nx-mcp-copy.nx-bleed-panel { --l-h1: 4; --l-lead: 6; --l-paid: 4; } html:is([lang="ru"], [lang="uz"]) .nx-mcp-copy.nx-bleed-panel { --l-h1: 4; --l-lead: 9; --l-paid: 5; } }
+@media (min-width: 360px) and (max-width: 389px) { .nx-mcp-copy.nx-bleed-panel { --l-h1: 4; --l-lead: 5; --l-paid: 4; } html:is([lang="ru"], [lang="uz"]) .nx-mcp-copy.nx-bleed-panel { --l-h1: 4; --l-lead: 8; --l-paid: 4; } }
+@media (min-width: 390px) and (max-width: 429px) { .nx-mcp-copy.nx-bleed-panel { --l-h1: 3; --l-lead: 5; --l-paid: 3; } html:is([lang="ru"], [lang="uz"]) .nx-mcp-copy.nx-bleed-panel { --l-h1: 4; --l-lead: 7; --l-paid: 4; } }
+@media (min-width: 430px) and (max-width: 639px) { .nx-mcp-copy.nx-bleed-panel { --l-h1: 3; --l-lead: 4; --l-paid: 3; } html:is([lang="ru"], [lang="uz"]) .nx-mcp-copy.nx-bleed-panel { --l-h1: 3; --l-lead: 5; --l-paid: 3; } }
+@media (min-width: 640px) and (max-width: 859px) { .nx-mcp-copy.nx-bleed-panel { --l-h1: 3; --l-lead: 3; --l-paid: 2; } html:is([lang="ru"], [lang="uz"]) .nx-mcp-copy.nx-bleed-panel { --l-h1: 3; --l-lead: 4; --l-paid: 3; } }
+@media (min-width: 860px) and (max-width: 1023px) { .nx-mcp-copy.nx-bleed-panel { --l-h1: 3; --l-lead: 3; --l-paid: 2; } html:is([lang="ru"], [lang="uz"]) .nx-mcp-copy.nx-bleed-panel { --l-h1: 3; --l-lead: 3; --l-paid: 3; } }
+@media (min-width: 1024px) and (max-width: 1099px) { .nx-mcp-copy.nx-bleed-panel { --l-h1: 5; --l-lead: 5; --l-paid: 3; } html:is([lang="ru"], [lang="uz"]) .nx-mcp-copy.nx-bleed-panel { --l-h1: 4; --l-lead: 6; --l-paid: 3; } }
+@media (min-width: 1100px) and (max-width: 1279px) { .nx-mcp-copy.nx-bleed-panel { --l-h1: 4; --l-lead: 4; --l-paid: 3; } html:is([lang="ru"], [lang="uz"]) .nx-mcp-copy.nx-bleed-panel { --l-h1: 4; --l-lead: 5; --l-paid: 3; } }
+@media (min-width: 1280px) { .nx-mcp-copy.nx-bleed-panel { --l-h1: 3; --l-lead: 4; --l-paid: 2; } html:is([lang="ru"], [lang="uz"]) .nx-mcp-copy.nx-bleed-panel { --l-h1: 3; --l-lead: 5; --l-paid: 3; } }
+/* The phone band over the sign-in form: a topic in ru or uz takes a third line in one face and two in the other. */
+
+
+/* The phone band's brand and credit share the bottom edge, and a credit with a longer name ran into the brand: the credit keeps the corner, the brand moves up a row. */
+.nx-auth-band { padding-bottom: 92px; min-height: 224px; }
+.nx-auth-band .st-brand { bottom: 50px; }
+@media (max-width: 639px) { html:is([lang="ru"], [lang="uz"]) .nx-auth-band { min-height: 268px; } html:is([lang="ru"], [lang="uz"]) .nx-auth-band[data-clip] { min-height: 308px; } }

@@ -1,5 +1,7 @@
 # Site engagement, round 8: more real pictures, fewer flat spots
 
+> **Superseded in part by round 9 (`SITE_ENGAGE_9.md`).** Round 9 dropped the landing's first showcase (the library photograph), made the hero's footage a phone's whole first screen, put the capability wall behind a "show four more tools" button, replaced the /login and /signup stages (the alley and lantern photographs are gone: /login shows a desert photograph, /signup plays the floating lanterns), retired /mcp's drawn hub for a header panel of footage, and moved the numbers below. Honesty, credit and budget rules still apply as written.
+
 Same rules as round 7b (`SITE_ENGAGE_7B.md`): every picture is a credited Pexels stock photo or clip, labelled "Example"
 or "Stock photos, illustrating each tool" in en, ru and uz, never called AI or animated stills; derivatives only (the
 originals and the local manifest are not in the repository); credit on each picture, in the footer list, in

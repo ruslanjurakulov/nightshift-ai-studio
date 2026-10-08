@@ -12,6 +12,7 @@ import { Showcases } from "@/components/landing/Showcases";
 import { TryDemo } from "@/components/landing/TryDemo";
 import { PriceBlock } from "@/components/landing/PriceBlock";
 import { CapabilityWall } from "@/components/landing/CapabilityWall";
+import { HeroBleed } from "@/components/landing/HeroBleed";
 import { HeroFx } from "@/components/site/HeroFx";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { StickyCta } from "@/components/site/StickyCta";
@@ -92,23 +93,26 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
       <HeroFx />
       <div className="nx-wrap nx-hero-in nx-hero-grid">
         <div className="nx-hero-copy">
-          <p className="nx-pill">
-            <span aria-hidden className="nx-pill-dot" />
-            {h.kicker}
-          </p>
-          <h1 id="hero-title" className="nx-h1">
-            {h.titleA} <span className="nx-h1-b">{h.titleB}</span>
-          </h1>
-          <p className="nx-lead">{h.lead}</p>
-          <div className="nx-actions">
-            <Link href="/signup" className="nx-btn">
-              {h.cta}
-              <ArrowRight aria-hidden />
-            </Link>
-            <Link href="/pricing" className="nx-link">
-              {h.secondary}
-            </Link>
+          <div className="nx-hero-top">
+            <HeroBleed t={t} />
+            <p className="nx-pill">
+              <span aria-hidden className="nx-pill-dot" />
+              {h.kicker}
+            </p>
+            <h1 id="hero-title" className="nx-h1">
+              {h.titleA} <span className="nx-h1-b">{h.titleB}</span>
+            </h1>
+            <div className="nx-actions">
+              <Link href="/signup" className="nx-btn">
+                {h.cta}
+                <ArrowRight aria-hidden />
+              </Link>
+              <Link href="/pricing" className="nx-link">
+                {h.secondary}
+              </Link>
+            </div>
           </div>
+          <p className="nx-lead">{h.lead}</p>
           <p className="nx-note">{fmt(h.note, { n: formatCredits(WELCOME_CREDITS, locale) })}</p>
           {price && <p className="nx-price">{price}</p>}
           {/* The three things a visitor most wants settled, each backed by what the code does. */}

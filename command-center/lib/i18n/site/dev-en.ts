@@ -386,6 +386,7 @@ export const devEn = {
       },
       frames: {
         note: "Illustration, not a real result",
+        exampleNote: "An example of an ask and the wait for approval. Not a real run, not a real result.",
         video: { title: "Sample title card", stages: ["Script", "Voice", "Visuals", "Captions", "Edit"] },
         channels: {
           head: "Your channels",
@@ -410,16 +411,18 @@ export const devEn = {
       examples: {
         label: "Examples",
         title: "What you can ask for",
-        lead: "Six sample asks, each with an example frame. The frames are stock photos from Pexels contributors, credited on each card; they show the idea, not real output.",
+        lead: "Six sample asks, each with an example frame. The frames are stock photos and footage from Pexels contributors, credited on each card; one of them moves (the contributor’s footage, looped). They show the idea, not real output.",
         region: "Examples of what to ask for",
         track: "Example cards, scroll sideways",
         prev: "Previous example",
         next: "Next example",
         slide: "{n} of {total}",
         sample: "Example frame (stock photo)",
+        sampleFootage: "Example frame (stock footage)",
+        sampleClip: "Example clip (stock footage)",
         alts: { hills: "Example frame: forested hills with golden mist at sunrise", waves: "Example frame: a lighthouse in tall grass at golden hour", city: "Example frame: an evening market in Marrakech seen from above", stars: "Example frame: a full moon in a dark night sky", rings: "Example frame: a library with a lit chandelier", dunes: "Example frame: a camel caravan on a desert dune" },
         /** The courtesy credit on a card; {name} is the contributor name (lib/site/media.ts). */
-        credit: { photo: "Photo: {name} / Pexels" },
+        credit: { photo: "Photo: {name} / Pexels", video: "Video: {name} / Pexels" },
         copy: "Copy this ask",
         cards: [
           { id: "hills", tag: "Vertical short", prompt: "A short about why the sky is blue." },

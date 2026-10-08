@@ -20,14 +20,10 @@ import valley from "@/components/site/media/valley.webp";
 import valleySm from "@/components/site/media/valley-sm.webp";
 import lighthouse from "@/components/site/media/lighthouse.webp";
 import lighthouseSm from "@/components/site/media/lighthouse-sm.webp";
-import dunes from "@/components/site/media/dunes.webp";
-import dunesSm from "@/components/site/media/dunes-sm.webp";
 import citynight from "@/components/site/media/citynight.webp";
 import citynightSm from "@/components/site/media/citynight-sm.webp";
-import alley from "@/components/site/media/alley.webp";
-import alleySm from "@/components/site/media/alley-sm.webp";
-import lanterngrid from "@/components/site/media/lanterngrid.webp";
-import lanterngridSm from "@/components/site/media/lanterngrid-sm.webp";
+import desert from "@/components/site/media/desert.webp";
+import desertSm from "@/components/site/media/desert-sm.webp";
 import peak from "@/components/site/media/peak.webp";
 import waterfall from "@/components/site/media/waterfall.webp";
 import mic from "@/components/site/media/mic.webp";
@@ -61,10 +57,8 @@ export const SAMPLES = {
   market: pair(market, marketSm),
   valley: pair(valley, valleySm),
   lighthouse: pair(lighthouse, lighthouseSm),
-  dunes: pair(dunes, dunesSm),
   citynight: pair(citynight, citynightSm),
-  alley: pair(alley, alleySm),
-  lanterngrid: pair(lanterngrid, lanterngridSm),
+  desert: pair(desert, desertSm),
   // The capability wall's tiles: one 448 px file each.
   peak: pair(peak, peak),
   waterfall: pair(waterfall, waterfall),
@@ -109,8 +103,7 @@ export function SampleImg({ id, alt = "", className, eager = false, position, si
 export const SLOTS = {
   /** The landing's first screen (the chat card): the cloud-sea clip. */
   hero: { id: "cloud", clip: "cloud" },
-  /** The landing's three showcases, and the picture behind its closing panel. */
-  "show.video": { id: "library" },
+  /** The landing's two showcases (a clip each), and the picture behind its closing panel. */
   "show.studio": { id: "pottery", clip: "pottery" },
   /** The small lighthouse is at the top right of the footage: the wide picture is framed from the top. */
   "show.approvals": { id: "coast", clip: "coast", position: "50% 6%" },
@@ -121,9 +114,11 @@ export const SLOTS = {
   "solutions.youtube-channels": { id: "caravan", clip: "caravan" },
   "solutions.creative-studio": { id: "loom", clip: "loom" },
   "solutions.developers": { id: "citynight" },
-  /** The sign-in and sign-up stages: stills only (these pages have no pause switch, so nothing moves on them). */
-  "auth.login": { id: "alley", position: "72% 50%" },
-  "auth.signup": { id: "lanterngrid", position: "50% 50%" },
+  /** The sign-in stage is a still (golden light over dunes); the sign-up stage plays the floating lanterns, behind a pause button. */
+  "auth.login": { id: "desert", position: "54% 50%" },
+  "auth.signup": { id: "floating", clip: "floating", position: "42% 50%" },
+  /** /mcp: the header panel plays the cloud-sea clip, framed on its dark ridge. */
+  "mcp.hero": { id: "cloud", clip: "cloud" },
 } as const satisfies Record<string, { id: SampleId; position?: string; clip?: ClipId }>;
 export type SlotId = keyof typeof SLOTS;
 

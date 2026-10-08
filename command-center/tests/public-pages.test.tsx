@@ -66,7 +66,7 @@ describe("public landing page", () => {
     const h1s = screen.getAllByRole("heading", { level: 1 });
     expect(h1s).toHaveLength(1);
     expect(h1s[0].textContent).toBe(`${s.hero.titleA} ${s.hero.titleB}`);
-    const showTitles = ["video", "studio", "approvals"].map((id) => s.caps.items.find((i) => i.id === id)!.title);
+    const showTitles = ["studio", "approvals"].map((id) => s.caps.items.find((i) => i.id === id)!.title);
     for (const title of [s.how.simple.title, ...showTitles, s.try.title, s.pricingTeaser.title, t.landing.faq.title, s.final.title]) {
       expect(screen.getByRole("heading", { level: 2, name: title })).toBeTruthy();
     }
@@ -87,22 +87,25 @@ describe("public landing page", () => {
   it("uses only the labelled example stills for pictures: same-origin, described, and none of them a video or a real result", () => {
     const { container } = renderLanding({ kind: "announced" });
     const imgs = [...container.querySelectorAll("img")];
-    // The hero's frame, the three showcases, the closing panel's photograph and the capability wall's eight tiles.
+    // The hero's frame (once in the phone's picture panel, once in the desktop's card), the two showcases, the closing panel's photograph and the capability wall's eight tiles.
     expect(imgs.length).toBe(13);
     for (const img of imgs) {
       expect(img.getAttribute("data-sample")).toBeTruthy();
       expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
     }
     expect(container.querySelectorAll("video, audio, picture")).toHaveLength(0);
-    // The first screen's still is the only eager one.
-    expect(imgs.filter((i) => i.getAttribute("loading") === "eager")).toHaveLength(1);
+    // The first screen's still is the only eager one (a phone's panel and a desktop's card each print it; the browser fetches the one it shows, the other's smallest file).
+    const eager = imgs.filter((i) => i.getAttribute("loading") === "eager");
+    expect(eager).toHaveLength(2);
+    expect(new Set(eager.map((i) => i.getAttribute("data-sample")))).toEqual(new Set(["cloud"]));
     expect(container.querySelector("figure.nx-chat img")?.getAttribute("loading")).toBe("eager");
+    expect(container.querySelector(".nx-hero-bleed img")?.getAttribute("loading")).toBe("eager");
   });
 
-  it("shows three capabilities as full-width showcases: a different still each, labelled on the picture and under it, one outlined button (and a pause button on the clips), no drawn product", () => {
+  it("shows two capabilities as full-width showcases: a different still each, labelled on the picture and under it, one outlined button (and a pause button on the clips), no drawn product", () => {
     const t = dictionaries.en;
     const { container } = renderLanding({ kind: "announced" });
-    const ids = ["video", "studio", "approvals"] as const;
+    const ids = ["studio", "approvals"] as const;
     const stills = new Set<string>();
     for (const id of ids) {
       const item = t.site.caps.items.find((i) => i.id === id)!;
@@ -114,7 +117,7 @@ describe("public landing page", () => {
       stills.add(img.getAttribute("data-sample")!);
       expect(Object.values(t.site.samples.alts)).toContain(img.getAttribute("alt"));
       // A photograph says "stock photo"; a frame of footage says "stock footage". Either way it is credited on the picture.
-      expect(section.querySelector(".nx-result-badge")?.textContent).toBe(id === "video" ? t.site.samples.tag : t.site.samples.frameTag);
+      expect(section.querySelector(".nx-result-badge")?.textContent).toBe(t.site.samples.frameTag);
       expect(section.querySelector(".nx-result-credit")?.textContent).toMatch(/ \/ Pexels$/);
       // The note, and for a card that plays a clip the sentence that says what a moving picture is.
       expect(section.querySelector(".nx-show-note")?.textContent?.startsWith(t.site.samples.note)).toBe(true);
@@ -124,7 +127,7 @@ describe("public landing page", () => {
       expect(section.querySelectorAll("a")).toHaveLength(1);
       expect([...section.querySelectorAll("button")].every((b) => b.classList.contains("nx-clip-pause"))).toBe(true);
     }
-    expect(stills.size).toBe(3);
+    expect(stills.size).toBe(2);
   });
 
   it("draws the hero's product as one labelled example exchange: the ask, an example reply, a real example frame, and a drawn key that is not a button", () => {
