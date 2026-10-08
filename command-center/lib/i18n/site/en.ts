@@ -73,7 +73,7 @@ export const siteEn = {
     again: "Try another topic",
     drafting: "Drafting the example…",
     sampleNote: "Example plan for “{topic}”. Type your own topic and it changes.",
-    thumbNote: "A stand-in from our six example frames, picked to match your words.",
+    thumbNote: "A drawn stand-in: your words, as the thumbnail would carry them.",
     ready: "Example plan ready. Nothing here was generated.",
     noTopic: "Type a topic first, or pick one below.",
     sections: [
@@ -135,7 +135,7 @@ export const siteEn = {
     tag: "Example frame",
     note: "Example frames are AI-generated stills made for this page. They are not output from a real account.",
     clipTag: "Example clip (animated still)",
-    clipNote: "Where a picture moves, it is the same still, panned and zoomed slowly.",
+    clipNote: "Where a picture moves, it is the same still, panned and zoomed slowly, with a little light drawn over it.",
     alts: {
       silkroad: "Example frame: a camel caravan crossing golden dunes toward a distant city at sunset",
       library: "Example frame: an ancient library of scrolls, with shafts of light through high windows",
@@ -278,6 +278,18 @@ export const siteEn = {
       { id: "approval", title: "Your approval", body: "The video waits on YouTube as private. You watch it and decide. A channel can also require a second person’s sign-off." },
       { id: "youtube", title: "YouTube", body: "It goes public when you press Publish — or on its own only where you have switched auto-publish on for that channel." },
     ],
+  },
+  /** /pricing: the month planner (minutes of finished video, the credits it takes at the published rate, the pack that covers it). */
+  planner: {
+    title: "Plan your month",
+    lead: "Slide to the finished video you expect to make in a month. This is the published rate, worked through to the cheapest packs that cover it.",
+    needLabel: "Credits it takes",
+    label: "Finished video a month",
+    need: "About {n} {unit}",
+    covers: "The cheapest way to cover it",
+    count: "{n} × {pack}",
+    inPack: "{n} {unit} in all",
+    rule: "A guide to scale: every run shows its own price on its button before it starts.",
   },
   /** The tool strip on the landing: its heading (the tools and what each does come from `studio.tools`). */
   toolStrip: { title: "What Nightshift can make" },

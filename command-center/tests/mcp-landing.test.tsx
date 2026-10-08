@@ -29,7 +29,7 @@ const LOCALES: Locale[] = ["en", "ru", "uz"];
 const labels = { table: "Table", code: "Code" };
 const css = readFileSync(join(__dirname, "..", "components", "site", "site.css"), "utf8");
 
-const chatFor = (locale: Locale) => chatCopy(dictionaries[locale], "mcp.card", devDictionaries[locale].mcp.land.asks.items[0].prompt);
+const chatFor = (locale: Locale) => chatCopy(dictionaries[locale], "hero", devDictionaries[locale].mcp.land.asks.items[0].prompt, { badge: dictionaries[locale].site.stage.tag, note: devDictionaries[locale].mcp.land.frames.note });
 const page = (locale: Locale = "en", tab?: string, oauthLive = false) =>
   renderToStaticMarkup(
     <McpPage dev={devDictionaries[locale]} chat={chatFor(locale)} origin="https://example.test" labels={labels} showCli={false} oauthLive={oauthLive} initialTab={tab} />,
@@ -95,13 +95,12 @@ describe("the hero: a chat card instead of a row of client logos", () => {
     const land = devDictionaries[locale].mcp.land;
     const site = dictionaries[locale].site;
     expect(top.querySelector("h1")).toBeTruthy();
-    expect(card.querySelector(".nx-bubble")?.textContent).toBe(land.asks.items[0].prompt);
+    expect(card.querySelector(".nx-bubble .sr-only")?.textContent).toBe(land.asks.items[0].prompt);
     expect(card.querySelector(".nx-reply span")?.textContent?.trim()).toBe(site.caps.exampleReply);
-    expect(card.querySelector(".nx-result-badge")?.textContent).toBe(site.samples.tag);
-    expect(card.querySelector(".nx-demo-note")?.textContent).toBe(site.samples.note);
-    const img = card.querySelector("img")!;
-    expect(img.getAttribute("alt")).toBe(site.samples.alts.lighthouse);
-    expect(img.getAttribute("loading")).toBe("eager");
+    // The /mcp card is drawn (the tools around Nightshift), not a still: a labelled example, no picture in it.
+    expect(card.querySelector(".nx-demo-tag")?.textContent).toBe(site.stage.tag);
+    expect(card.querySelector("svg[data-art='tools']")).toBeTruthy();
+    expect(card.querySelector("img")).toBeNull();
     expect(card.querySelector(".nx-chat-foot")?.getAttribute("aria-hidden")).toBe("true");
     expect(card.querySelectorAll("button, a")).toHaveLength(0);
     expect(card.querySelector(".nx-ui-status svg, .nx-ui-play")).toBeNull();
@@ -139,8 +138,8 @@ describe("the pictures are honest", () => {
       expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
     }
     expect(d.querySelectorAll("video, audio, picture")).toHaveLength(0);
-    // Every picture on the page: the hero's still plus the six examples.
-    expect(d.querySelectorAll("img")).toHaveLength(7);
+    // Every picture on the page: the six examples (the hero card is drawn art, not a picture).
+    expect(d.querySelectorAll("img")).toHaveLength(6);
   });
 
   it.each([true, false])("names no model, provider or price (sign-in live: %s)", (live) => {

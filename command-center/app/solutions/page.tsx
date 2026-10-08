@@ -8,7 +8,8 @@ import { isSolutionId, solutionHref } from "@/lib/solutions";
 import { Slug } from "@/components/site/Slug";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { HeroFx } from "@/components/site/HeroFx";
-import { SlotImg, slotAlt } from "@/components/site/samples";
+import { AudienceTabs } from "@/components/site/AudienceTabs";
+import { ApiPicture, ComposerPicture, SignOffPicture } from "@/components/site/SolutionPictures";
 import { MotionToggle } from "@/components/site/MotionToggle";
 
 /** Public: listed exactly in lib/public-paths.ts (SOLUTION_PATHS). */
@@ -31,19 +32,64 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-/** One still per way in (components/site/samples.tsx), none repeated on the page. */
-const WAY_SLOT = { "youtube-channels": "sol.channels", "creative-studio": "sol.studio", developers: "sol.developers" } as const;
+/** The product's own picture for each way in (components/site/SolutionPictures.tsx): the publish desk, the composer, the endpoint list. */
+const WAY_PICTURE = { "youtube-channels": SignOffPicture, "creative-studio": ComposerPicture, developers: ApiPicture } as const;
 
 /**
- * The Solutions index, image-led: a short opening, then the three ways into
- * the one product as three large example frames with what each is for, and the
- * three rules that hold whichever way you came in. The product's own pictures
- * (the publish desk, the composer, the endpoint list) open each solution page.
+ * The Solutions index: who it is for, as three tabs (the three audiences the product serves, no others), each with its own
+ * words and the product's own picture for that job, and then the three rules that hold whichever way you came in. No stills
+ * here: the landing and /mcp have them, and this page shows the product itself instead of a picture that stands for it.
  */
 export default async function SolutionsPage() {
   const { t } = await getDictionary();
   const s = t.site.solutions;
   const rules = t.site.rules;
+  const tabs = s.pages.flatMap((page) => {
+    if (!isSolutionId(page.id)) return [];
+    const Picture = WAY_PICTURE[page.id];
+    return [
+      {
+        id: page.id,
+        label: page.nav,
+        panel: (
+          <div className="nx-aud-body">
+            <div className="nx-aud-copy">
+              <p className="nx-way-kicker">{page.kicker}</p>
+              <h2 id={`way-${page.id}`} className="nx-way-h">
+                <Link href={solutionHref(page.id)} className="nx-way-link">
+                  {/* The last word and the arrow never part: a title that filled its line left the arrow alone on the next. */}
+                  {page.title.split(" ").slice(0, -1).join(" ")}{" "}
+                  <span className="whitespace-nowrap">
+                    {page.title.split(" ").slice(-1)[0]}
+                    <ArrowRight aria-hidden />
+                  </span>
+                </Link>
+              </h2>
+              <p className="nx-way-lead">{page.lead}</p>
+              <ul className="nx-way-list" aria-label={s.whatLabel}>
+                {page.what.slice(0, 3).map((w) => (
+                  <li key={w.title}>
+                    <Check aria-hidden />
+                    {w.title}
+                  </li>
+                ))}
+                <li data-kind="not">
+                  <X aria-hidden />
+                  <span>
+                    <span className="sr-only">{s.notLabel}: </span>
+                    {page.not[0]}
+                  </span>
+                </li>
+              </ul>
+            </div>
+            <div className="nx-aud-stage">
+              <Picture t={t} />
+            </div>
+          </div>
+        ),
+      },
+    ];
+  });
   return (
     <PublicShell t={t} current="solutions" fresh>
       <div className="nx-lit">
@@ -57,50 +103,7 @@ export default async function SolutionsPage() {
           <MotionToggle pause={t.site.fx.pause} />
         </section>
         <section aria-label={s.slug} className="st-wrap nx-sol-ways">
-          <ul className="nx-ways">
-            {s.pages.map((page, i) =>
-              isSolutionId(page.id) ? (
-                <li key={page.id} className="nx-way" data-flip={i % 2 === 1 ? "true" : undefined} aria-labelledby={`way-${page.id}`}>
-                  <figure className="nx-way-pic">
-                    <div className="nx-way-art nx-kb">
-                      <SlotImg slot={WAY_SLOT[page.id]} alt={slotAlt(t.site.samples.alts, WAY_SLOT[page.id])} className="nx-art" />
-                      <span className="nx-result-badge">{t.site.samples.tag}</span>
-                    </div>
-                    <figcaption className="nx-show-note">{t.site.samples.note}</figcaption>
-                  </figure>
-                  <div className="nx-way-text">
-                    <p className="nx-way-kicker">{page.kicker}</p>
-                    <h2 id={`way-${page.id}`} className="nx-way-h">
-                      <Link href={solutionHref(page.id)} className="nx-way-link">
-                        {/* The last word and the arrow never part: a title that filled its line left the arrow alone on the next. */}
-                        {page.title.split(" ").slice(0, -1).join(" ")}{" "}
-                        <span className="whitespace-nowrap">
-                          {page.title.split(" ").slice(-1)[0]}
-                          <ArrowRight aria-hidden />
-                        </span>
-                      </Link>
-                    </h2>
-                    <p className="nx-way-lead">{page.lead}</p>
-                    <ul className="nx-way-list" aria-label={s.whatLabel}>
-                      {page.what.slice(0, 3).map((w) => (
-                        <li key={w.title}>
-                          <Check aria-hidden />
-                          {w.title}
-                        </li>
-                      ))}
-                      <li data-kind="not">
-                        <X aria-hidden />
-                        <span>
-                          <span className="sr-only">{s.notLabel}: </span>
-                          {page.not[0]}
-                        </span>
-                      </li>
-                    </ul>
-                  </div>
-                </li>
-              ) : null,
-            )}
-          </ul>
+          <AudienceTabs label={s.slug} tabs={tabs} />
         </section>
       </div>
 

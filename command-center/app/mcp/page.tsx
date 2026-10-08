@@ -32,7 +32,8 @@ export default async function McpConnectPage({ searchParams }: { searchParams: P
     <PublicShell t={t} current="docs">
       <McpPage
         dev={dev}
-        chat={chatCopy(t, "mcp.card", dev.mcp.land.asks.items[0].prompt)}
+        chat={chatCopy(t, "hero", dev.mcp.land.asks.items[0].prompt, { badge: t.site.stage.tag, note: dev.mcp.land.frames.note })}
+        pause={t.site.fx.pause}
         origin={docsOrigin()}
         labels={{ table: t.common.scrollTable, code: t.common.scrollCode }}
         showCli={devPagesEnabled()}

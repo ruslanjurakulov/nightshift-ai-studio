@@ -5,8 +5,8 @@ import Link from "next/link";
 import { ArrowRight, Check, RotateCcw } from "lucide-react";
 import { fmt } from "@/lib/i18n/core";
 import type { Dictionary } from "@/lib/i18n";
-import { buildPlan, cleanTopic, pickStill, TOPIC_MAX } from "@/lib/site/demo-plan";
-import { SampleImg } from "@/components/site/samples";
+import { buildPlan, cleanTopic, TOPIC_MAX } from "@/lib/site/demo-plan";
+import { ThumbArt } from "@/components/site/BrandArt";
 import { useMotionPaused } from "@/lib/site/motion";
 
 type Copy = Dictionary["site"]["try"];
@@ -30,10 +30,10 @@ const STEP_MS = 520;
  * assistive tech while it plays; one polite status line says what is
  * happening. With reduced motion, or the page's pause switch on, the plan
  * appears at once. On a phone it is three of the five cards, one column.
- * The thumbnail card shows one of the six example frames, picked by the topic's
- * words (lib/site/demo-plan.ts pickStill), and says it is a stand-in.
+ * The thumbnail card draws the thumbnail the plan asks for (components/site/BrandArt.tsx ThumbArt): up to three of the
+ * topic's words, large, on the stage. It is drawn, not a still, so the landing never shows the hero's picture twice.
  */
-export function TryDemo({ copy, note, samplesTag, href = "/signup" }: { copy: Copy; note: string; samplesTag: string; href?: string }) {
+export function TryDemo({ copy, note, href = "/signup" }: { copy: Copy; note: string; href?: string }) {
   const uid = useId();
   const [value, setValue] = useState("");
   // What the plan was built from; the field can change without the plan changing under it.
@@ -197,8 +197,8 @@ export function TryDemo({ copy, note, samplesTag, href = "/signup" }: { copy: Co
                 {s.id === "thumb" && (
                   <figure className="nx-try-thumb">
                     <div className="nx-try-thumb-pic">
-                      <SampleImg id={pickStill(shownTopic)} className="nx-art" crop="b" />
-                      <span className="nx-result-badge">{samplesTag}</span>
+                      <ThumbArt topic={shownTopic} className="nx-art" />
+                      <span className="nx-result-badge">{copy.tag}</span>
                     </div>
                     <figcaption>{copy.thumbNote}</figcaption>
                   </figure>

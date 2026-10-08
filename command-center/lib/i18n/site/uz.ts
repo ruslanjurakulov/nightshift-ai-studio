@@ -66,7 +66,7 @@ export const siteUz: SiteDictionary = {
     again: "Boshqa mavzu",
     drafting: "Namuna tayyorlanmoqda…",
     sampleNote: "“{topic}” mavzusi uchun namuna reja. Oʻz mavzuingizni yozing, u oʻzgaradi.",
-    thumbNote: "Oltita namuna kadrimizdan sizning soʻzlaringizga mos tanlangan oʻrinbosar.",
+    thumbNote: "Chizilgan oʻrinbosar: sizning soʻzlaringiz muqovada qanday turishi.",
     ready: "Namuna reja tayyor. Bu yerda hech narsa yaratilmagan.",
     noTopic: "Avval mavzuni yozing yoki quyidan tanlang.",
     sections: [
@@ -128,7 +128,7 @@ export const siteUz: SiteDictionary = {
     tag: "Namuna kadr",
     note: "Namuna kadrlar shu sahifa uchun sunʼiy intellekt yordamida yaratilgan. Ular haqiqiy hisobning natijasi emas.",
     clipTag: "Namuna klip (jonlantirilgan kadr)",
-    clipNote: "Rasm harakatlansa, bu xuddi shu kadr: u sekin yaqinlashtirilib va siljitilib koʻrsatiladi.",
+    clipNote: "Rasm harakatlansa, bu xuddi shu kadr: u sekin yaqinlashtirilib va siljitilib koʻrsatiladi, ustidan esa engil yorugʻlik chizilgan.",
     alts: {
       silkroad: "Namuna kadr: botayotgan quyosh ostida oltin tepaliklar boʻylab uzoq shahar tomon ketayotgan tuyalar karvoni",
       library: "Namuna kadr: baland derazalardan nur tushayotgan qadimiy qoʻlyozmalar kutubxonasi",
@@ -271,6 +271,17 @@ export const siteUz: SiteDictionary = {
       { id: "approval", title: "Sizning tasdigʻingiz", body: "Video YouTube’da shaxsiy holda kutadi. Siz koʻrasiz va qaror qilasiz. Kanal ikkinchi odamning tasdigʻini ham talab qilishi mumkin." },
       { id: "youtube", title: "YouTube", body: "Video siz «Nashr qilish»ni bosganingizda ommaviy boʻladi — oʻz-oʻzidan esa faqat avtonashrni yoqqan kanalingizda." },
     ],
+  },
+  planner: {
+    title: "Oyingizni rejalashtiring",
+    lead: "Oyda qancha tayyor video qilmoqchi ekaningizni belgilang. Bu eʼlon qilingan narx, uni qoplaydigan eng arzon paketlargacha hisoblab chiqilgan.",
+    needLabel: "Bu qancha kredit",
+    label: "Oyiga tayyor video",
+    need: "Taxminan {n} {unit}",
+    covers: "Buni qoplashning eng arzon yoʻli",
+    count: "{n} × {pack}",
+    inPack: "Jami {n} {unit}",
+    rule: "Hajm uchun yoʻl-yoʻriq: har bir ishga tushirish narxi boshlanishidan oldin oʻz tugmasida koʻrsatiladi.",
   },
   /** The tool strip on the landing: its heading (the tools and what each does come from `studio.tools`). */
   toolStrip: { title: "Nightshift nimalar yarata oladi" },

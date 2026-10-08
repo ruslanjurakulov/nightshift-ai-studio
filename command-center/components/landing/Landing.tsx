@@ -61,7 +61,6 @@ export function Landing({
       <Hero t={t} locale={locale} anchor={anchor} />
       <How t={t} />
       <Showcases t={t} />
-      <Tools t={t} />
       {showcase.length > 0 && (
         <div className="st-section">
           <div className="st-wrap">
@@ -121,7 +120,7 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
           </ul>
         </div>
         <div className="nx-hero-visual">
-          <ChatCard copy={chatCopy(t)} eager />
+          <ChatCard copy={chatCopy(t)} eager fx="sand" />
           <MotionToggle pause={t.site.fx.pause} />
         </div>
       </div>
@@ -129,9 +128,10 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
   );
 }
 
-/** Three steps in a strip: a numeral, a title, a sentence. The last one is the person's own press. */
+/** Three steps in a strip: a numeral, a title, a sentence (the last one is the person's own press), and under them what Nightshift can make, as a strip of tool names you can swipe. */
 function How({ t }: { t: Dictionary }) {
   const h = t.site.how.simple;
+  const st = t.site.studio;
   return (
     <section id="how" aria-labelledby="how-title" className="nx-section" data-tone="raised">
       <div className="nx-wrap">
@@ -149,21 +149,12 @@ function How({ t }: { t: Dictionary }) {
             </li>
           ))}
         </ol>
-      </div>
-    </section>
-  );
-}
-
-/** What Nightshift can make, as a strip of tool names with a line that says what each does. */
-function Tools({ t }: { t: Dictionary }) {
-  const s = t.site.studio;
-  return (
-    <section id="tools" aria-labelledby="tools-title" className="nx-section">
-      <div className="nx-wrap">
-        <h2 id="tools-title" className="nx-h2">
-          {t.site.toolStrip.title}
-        </h2>
-        <ToolStrip title={t.site.toolStrip.title} tools={s.tools.map((x) => ({ id: x.id, title: x.title, body: x.body }))} priced={s.priced} free={s.free} />
+        <div id="tools" className="nx-tools-block">
+          <h3 id="tools-title" className="nx-h3">
+            {t.site.toolStrip.title}
+          </h3>
+          <ToolStrip title={t.site.toolStrip.title} tools={st.tools.map((x) => ({ id: x.id, title: x.title, body: x.body }))} priced={st.priced} free={st.free} />
+        </div>
       </div>
     </section>
   );
@@ -180,7 +171,7 @@ function Try({ t, locale }: { t: Dictionary; locale: Locale }) {
           {c.title}
         </h2>
         <p className="nx-sub">{c.lead}</p>
-        <TryDemo copy={c} note={fmt(c.ctaNote, { n: formatCredits(WELCOME_CREDITS, locale) })} samplesTag={t.site.samples.tag} />
+        <TryDemo copy={c} note={fmt(c.ctaNote, { n: formatCredits(WELCOME_CREDITS, locale) })} />
       </div>
     </section>
   );

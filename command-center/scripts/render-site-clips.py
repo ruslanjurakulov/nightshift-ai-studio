@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Renders a site clip (components/site/clips/NAME.mp4 and NAME.webm) from one of the example stills.
+"""Renders a site clip (components/site/clips/NAME.mp4 and NAME.webm at 1280 x 720, NAME-sm.mp4 and NAME-sm.webm at 640 x 360 for phones) from one of the example stills.
 
     FFMPEG=/path/to/ffmpeg python3 scripts/render-site-clips.py NAME STILL.png PAN_PHASE
 
@@ -64,6 +64,10 @@ def main() -> None:
         base = [FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-framerate", str(FPS), "-i", os.path.join(tmp, "%03d.png")]
         subprocess.run(base + ["-c:v", "libx264", "-preset", "slow", "-crf", os.environ.get("MP4_CRF", "28"), "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", os.path.join(out, f"{name}.mp4")], check=True)
         subprocess.run(base + ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", os.environ.get("WEBM_CRF", "38"), "-row-mt", "1", "-deadline", "good", "-cpu-used", "1", "-pix_fmt", "yuv420p", "-an", os.path.join(out, f"{name}.webm")], check=True)
+        # The phone rendition: 640 x 360 of the same frames (the picture on a phone is under 400 px wide), about a quarter of the bytes.
+        small = base + ["-vf", "scale=640:360:flags=lanczos"]
+        subprocess.run(small + ["-c:v", "libx264", "-preset", "slow", "-crf", os.environ.get("SM_MP4_CRF", "36"), "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", os.path.join(out, f"{name}-sm.mp4")], check=True)
+        subprocess.run(small + ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", os.environ.get("SM_WEBM_CRF", "46"), "-row-mt", "1", "-deadline", "good", "-cpu-used", "1", "-pix_fmt", "yuv420p", "-an", os.path.join(out, f"{name}-sm.webm")], check=True)
 
 
 if __name__ == "__main__":

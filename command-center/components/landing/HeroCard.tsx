@@ -1,9 +1,11 @@
 import { Check } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import { BrandMark } from "@/components/site/BrandMark";
+import { BrandArt, type BrandArtKind } from "@/components/site/BrandArt";
 import { LoopClip } from "@/components/site/LoopClip";
-import { CLIPS, SAMPLES, SLOTS, SlotImg, slotAlt, slotClip, type SlotId } from "@/components/site/samples";
-import { ChatRail } from "@/components/landing/ChatRail";
+import { StillFx, type FxKind } from "@/components/site/StillFx";
+import { TypedText } from "@/components/site/TypedText";
+import { SAMPLES, SLOTS, SlotImg, slotAlt, slotClip, type SlotId } from "@/components/site/samples";
 
 /** Everything a chat card says, as plain strings, so any page (the landing, /pricing, /mcp) can print one from its own dictionary. */
 export type ChatCopy = {
@@ -16,7 +18,7 @@ export type ChatCopy = {
   reply: string;
   alt: string;
   badge: string;
-  /** The label on the picture while a clip plays, and the sentence that says what a moving picture is. */
+  /** The label on the picture while it moves, and the sentence that says what a moving picture is. */
   clipBadge: string;
   clipNote: string;
   note: string;
@@ -24,8 +26,8 @@ export type ChatCopy = {
   key: string;
 };
 
-/** The chat card's words from the site dictionary; `ask` replaces the default one-line ask. */
-export function chatCopy(t: Dictionary, slot: SlotId = "hero", ask?: string): ChatCopy {
+/** The chat card's words from the site dictionary; `ask` replaces the default one-line ask, `opts` the picture's label and note (for drawn art). */
+export function chatCopy(t: Dictionary, slot: SlotId = "hero", ask?: string, opts?: { badge?: string; note?: string }): ChatCopy {
   const st = t.site.stage;
   const approve = st.steps.find((s) => s.id === "approve" && "check" in s) as Extract<(typeof st.steps)[number], { check: string }>;
   return {
@@ -37,38 +39,64 @@ export function chatCopy(t: Dictionary, slot: SlotId = "hero", ask?: string): Ch
     ask: ask ?? t.site.caps.items[0].bubble,
     reply: t.site.caps.exampleReply,
     alt: slotAlt(t.site.samples.alts, slot),
-    badge: t.site.samples.tag,
+    badge: opts?.badge ?? t.site.samples.tag,
     clipBadge: t.site.samples.clipTag,
     clipNote: t.site.samples.clipNote,
-    note: t.site.samples.note,
+    note: opts?.note ?? t.site.samples.note,
     lamps: [approve.lamp, approve.check, approve.waiting],
     key: approve.key,
   };
 }
 
 /**
- * The chat card, the shape of the whole product in one picture: you ask for a
- * video (one line), Nightshift's reply comes back with a frame, and the video
- * waits, private, for the person to press publish.
+ * The chat card, the shape of the whole product in one picture: you ask for a video (one line, typed as you watch), a
+ * reply comes back with a frame, and the video waits, private, for the person to press publish.
  *
- * It is a still picture of the *idea*, and says so: the card is tagged
- * "Example", the reply row reads "example reply", the frame is an example still
- * with its own badge and a visible note under the card, and the drawn "Approve
- * and publish" button is a span in an aria-hidden group, never pressable.
- * Nothing in it can be pressed; its frame has a fixed aspect ratio, so it
- * cannot shift the page. The frame drifts very slowly (the page's pause switch
- * and reduced motion stop it). A Server Component.
+ * It is a picture of the *idea*, and says so: the card is tagged "Example", the reply row reads "example reply", the frame
+ * is an example (a still with its badge and a visible note under the card, or drawn art with its own label), and the drawn
+ * "Approve and publish" button is a span in an aria-hidden group, never pressable. The story plays once, in CSS only, and
+ * rests on its last state: the ask types, the reply arrives, the rail goes Topic, Plan, Approve (never Live: nothing goes live
+ * until the person presses the button) and the lamps and the button light, in that order (".nx-chat" in site-next.css). With
+ * reduced motion, the pause switch or no script that last state is simply what is there, and it is what the server renders,
+ * so nothing flashes. Nothing in it can be pressed; its frame has a fixed aspect ratio, so it cannot shift the page.
+ * A Server Component.
+ *
+ * `art` puts a drawing where the still goes (the /mcp card), `fx` draws light over the still, and a slot with a clip plays it.
  */
-export function ChatCard({ copy, slot = "hero", eager = false, className = "" }: { copy: ChatCopy; slot?: SlotId; eager?: boolean; className?: string }) {
-  const clip = slotClip(slot);
+export function ChatCard({
+  copy,
+  slot = "hero",
+  eager = false,
+  className = "",
+  art,
+  fx,
+}: {
+  copy: ChatCopy;
+  slot?: SlotId;
+  eager?: boolean;
+  className?: string;
+  art?: BrandArtKind;
+  fx?: FxKind;
+}) {
+  const clip = art ? null : slotClip(slot);
+  const moving = Boolean(clip || fx);
+  const current = Math.max(0, copy.steps.findIndex((s) => s.id === copy.current));
   return (
     <figure className={`nx-demo nx-chat ${className}`.trim()} data-spot aria-label={copy.figure}>
       <span className="nx-demo-tag" aria-hidden>
         {copy.tag}
       </span>
       <div className="nx-demo-body">
-        <ChatRail steps={copy.steps} rest={Math.max(0, copy.steps.findIndex((s) => s.id === copy.current))} />
-        <p className="nx-bubble">{copy.ask}</p>
+        <ol className="nx-chat-rail">
+          {copy.steps.map((s, i) => (
+            <li key={s.id} data-done={i < current ? "true" : undefined} data-current={i === current ? "true" : undefined}>
+              {s.tab}
+            </li>
+          ))}
+        </ol>
+        <p className="nx-bubble">
+          <TypedText text={copy.ask} />
+        </p>
         <div className="nx-reply">
           <BrandMark size={32} />
           <b>{copy.brand}</b>
@@ -78,13 +106,14 @@ export function ChatCard({ copy, slot = "hero", eager = false, className = "" }:
           </span>
         </div>
         <div className="nx-result nx-result-sign">
-          <div className="nx-result-art nx-kb" data-ratio="wide" data-clip={clip ?? undefined}>
-            <SlotImg slot={slot} alt={copy.alt} className="nx-art" eager={eager} />
-            {clip && <LoopClip mp4={CLIPS[clip].mp4} webm={CLIPS[clip].webm} poster={SAMPLES[SLOTS[slot].id].src} early={eager} />}
+          <div className={`nx-result-art${art ? "" : " nx-kb"}`} data-ratio="wide" data-clip={clip ?? undefined} data-fxscene={moving || art ? (fx ?? "clip") : undefined}>
+            {art ? <BrandArt kind={art} className="nx-art" /> : <SlotImg slot={slot} alt={copy.alt} className="nx-art" eager={eager} />}
+            {clip && <LoopClip clip={clip} poster={SAMPLES[SLOTS[slot].id].src} early={eager} />}
+            {fx && <StillFx kind={fx} />}
             <span className="nx-result-badge" data-kind="still">
               {copy.badge}
             </span>
-            {clip && (
+            {moving && (
               <span className="nx-result-badge" data-kind="clip">
                 {copy.clipBadge}
               </span>
@@ -110,7 +139,7 @@ export function ChatCard({ copy, slot = "hero", eager = false, className = "" }:
           <span className="nx-chat-key">{copy.key}</span>
         </div>
       </div>
-      <figcaption className="nx-demo-note">{clip ? `${copy.note} ${copy.clipNote}` : copy.note}</figcaption>
+      <figcaption className="nx-demo-note">{moving ? `${copy.note} ${copy.clipNote}` : copy.note}</figcaption>
     </figure>
   );
 }

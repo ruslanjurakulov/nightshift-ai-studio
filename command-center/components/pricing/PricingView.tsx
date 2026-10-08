@@ -13,6 +13,7 @@ import { ErrorState } from "@/components/ReadError";
 import { FaqList, expiryTerm, faqForSale } from "@/components/landing/Faq";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { CREDIT_PACKS } from "@/lib/paddle";
+import { PackPlanner } from "@/components/pricing/PackPlanner";
 import { moneyAnchor, type MoneyAnchor as Anchor } from "@/lib/landing";
 import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
 import { HeroFx } from "@/components/site/HeroFx";
@@ -159,6 +160,16 @@ export function PricingView({
           </div>
         </section>
       </div>
+
+      {/* The month planner: minutes of finished video, the credits that takes at the published rate, the pack that covers it. */}
+      {priceRates && (
+        <PackPlanner
+          t={t}
+          locale={locale}
+          rates={priceRates}
+          packs={pricing.packs.length > 0 ? pricing.packs : CREDIT_PACKS.map((x) => ({ id: x.id, credits: x.credits, displayPrice: null, priceId: null }))}
+        />
+      )}
 
       {/* What you can buy, in one place: the plans (when there are any) and the packs. */}
       <section id="packs" aria-labelledby="packs-title" className="st-section" data-tone="raised">
@@ -307,7 +318,7 @@ export function PricingView({
               </dl>
             </details>
           </div>
-          <ChatCard copy={chatCopy(t, "pricing.card")} slot="pricing.card" />
+          <ChatCard copy={chatCopy(t, "pricing.card")} slot="pricing.card" fx="lanterns" />
         </div>
       </section>
 

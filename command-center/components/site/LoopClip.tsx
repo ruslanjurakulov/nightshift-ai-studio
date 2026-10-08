@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMotionPaused } from "@/lib/site/motion";
+import { CLIPS, type ClipId } from "@/components/site/clip-assets";
 
 type NetworkInformation = { saveData?: boolean; effectiveType?: string };
 
@@ -25,6 +26,8 @@ function clipsAllowed(): boolean {
  * - nothing is downloaded until it is wanted: the first screen's clip starts after the page has loaded and gone idle
  *   (so the still, not the clip, is what the page's LCP measures), every other clip when it is within 150 px of the
  *   screen; `preload="none"` until then;
+ * - one rendition, chosen when it mounts: 640 x 360 below 860 px of screen, 1280 x 720 above (a `media` attribute on a video's
+ *   `source` is not honoured by browsers, so the choice is made here);
  * - muted, looping, inline, no controls, hidden from assistive technology (the still's description covers it); `poster` is the
  *   still itself (the same file the picture under it shows, already in the cache), and the WebM is listed first, the MP4 after it
  *   (a browser takes the first it can play; Safari on a phone takes the MP4);
@@ -32,15 +35,19 @@ function clipsAllowed(): boolean {
  * - the container's `data-live` says it is playing, which swaps the badge from "Example frame" to "Example clip
  *   (animated still)" and fades the clip in over the still.
  */
-export function LoopClip({ mp4, webm, poster, early = false }: { mp4: string; webm: string; poster: string; early?: boolean }) {
+export function LoopClip({ clip, poster, early = false }: { clip: ClipId; poster: string; early?: boolean }) {
+  const sources = CLIPS[clip];
   const ref = useRef<HTMLVideoElement>(null);
   const paused = useMotionPaused();
   const [allowed, setAllowed] = useState(false);
+  // A phone gets the 640 x 360 rendition (about a quarter of the bytes); a screen of 860 px or more the 1280 x 720 one.
+  const [small, setSmall] = useState(false);
   const [wanted, setWanted] = useState(false);
   const [onScreen, setOnScreen] = useState(false);
 
   useEffect(() => {
     if (!clipsAllowed()) return;
+    setSmall(!window.matchMedia("(min-width: 860px)").matches);
     setAllowed(true);
   }, []);
 
@@ -94,8 +101,8 @@ export function LoopClip({ mp4, webm, poster, early = false }: { mp4: string; we
   if (!allowed) return null;
   return (
     <video ref={ref} className="nx-clip" muted loop playsInline preload="none" poster={poster} disablePictureInPicture aria-hidden tabIndex={-1}>
-      <source src={webm} type="video/webm" />
-      <source src={mp4} type="video/mp4" />
+      <source src={small ? sources.smWebm : sources.webm} type="video/webm" />
+      <source src={small ? sources.smMp4 : sources.mp4} type="video/mp4" />
     </video>
   );
 }

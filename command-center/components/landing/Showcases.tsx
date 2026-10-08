@@ -2,13 +2,15 @@ import Link from "next/link";
 import type { Dictionary } from "@/lib/i18n";
 import { ClipPause } from "@/components/site/ClipPause";
 import { LoopClip } from "@/components/site/LoopClip";
-import { CLIPS, SAMPLES, SLOTS, SlotImg, slotAlt, slotClip, type SlotId } from "@/components/site/samples";
+import { StillFx, type FxKind } from "@/components/site/StillFx";
+import { SAMPLES, SLOTS, SlotImg, slotAlt, slotClip, type SlotId } from "@/components/site/samples";
 
 /** The three things Nightshift is shown by: one section each, one still each, never the same still twice (components/site/samples.tsx SLOTS). */
-const SHOWS: { id: "video" | "studio" | "approvals"; slot: SlotId; href: string }[] = [
-  { id: "video", slot: "show.video", href: "/signup" },
-  { id: "studio", slot: "show.studio", href: "/signup" },
-  { id: "approvals", slot: "show.approvals", href: "/solutions/youtube-channels" },
+const SHOWS: { id: "video" | "studio" | "approvals"; slot: SlotId; href: string; fx: FxKind }[] = [
+  { id: "video", slot: "show.video", href: "/signup", fx: "shafts" },
+  { id: "studio", slot: "show.studio", href: "/signup", fx: "mist" },
+  // The one still with no clip moves by light alone: the moon's water shimmers and the stars twinkle.
+  { id: "approvals", slot: "show.approvals", href: "/solutions/youtube-channels", fx: "water" },
 ];
 
 /**
@@ -25,24 +27,23 @@ export function Showcases({ t }: { t: Dictionary }) {
   const sm = t.site.samples;
   return (
     <div className="nx-shows">
-      {items.map(({ id, slot, href, item }) => {
+      {items.map(({ id, slot, href, item, fx }) => {
         const clip = slotClip(slot);
         return (
           <section key={id} id={id} aria-labelledby={`show-${id}-title`} className="nx-show">
             <div className="nx-wrap">
               <div className="nx-show-card">
-                <div className="nx-show-pic nx-kb" data-clip={clip ?? undefined}>
+                <div className="nx-show-pic nx-kb" data-clip={clip ?? undefined} data-fxscene={fx}>
                   <SlotImg slot={slot} alt={slotAlt(sm.alts, slot)} className="nx-art" />
-                  {clip && <LoopClip mp4={CLIPS[clip].mp4} webm={CLIPS[clip].webm} poster={SAMPLES[SLOTS[slot].id].src} />}
+                  {clip && <LoopClip clip={clip} poster={SAMPLES[SLOTS[slot].id].src} />}
+                  <StillFx kind={fx} />
                   <span className="nx-result-badge" data-kind="still">
                     {sm.tag}
                   </span>
-                  {clip && (
-                    <span className="nx-result-badge" data-kind="clip">
-                      {sm.clipTag}
-                    </span>
-                  )}
-                  {clip && <ClipPause label={t.site.fx.pause} />}
+                  <span className="nx-result-badge" data-kind="clip">
+                    {sm.clipTag}
+                  </span>
+                  <ClipPause label={t.site.fx.pause} />
                 </div>
                 <div className="nx-show-text">
                   <div className="nx-show-head">
@@ -59,7 +60,7 @@ export function Showcases({ t }: { t: Dictionary }) {
                   </div>
                 </div>
               </div>
-              <p className="nx-show-note">{clip ? `${sm.note} ${sm.clipNote}` : sm.note}</p>
+              <p className="nx-show-note">{`${sm.note} ${sm.clipNote}`}</p>
             </div>
           </section>
         );

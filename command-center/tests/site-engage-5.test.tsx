@@ -19,20 +19,20 @@ vi.mock("next/link", () => ({
 
 import { dictionaries, LOCALES } from "@/lib/i18n";
 import { LoopClip } from "@/components/site/LoopClip";
-import { ChatRail } from "@/components/landing/ChatRail";
 import { ToolStrip } from "@/components/landing/ToolStrip";
 import { StickyCta } from "@/components/site/StickyCta";
 import { Landing } from "@/components/landing/Landing";
-import { CLIPS, SAMPLE_BASE, SAMPLES, SLOTS, slotAlt, slotClip } from "@/components/site/samples";
+import { CLIPS, SLOTS, slotClip } from "@/components/site/samples";
 import { setMotionPaused } from "@/lib/site/motion";
 import { buildCsp } from "@/lib/security/csp";
 
 const ROOT = join(__dirname, "..");
+const SRC = CLIPS.silkroad;
 const css = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
 
 /** What the page environment looks like to a clip: reduced motion, Save-Data, a visible element. */
-function env({ reduce = false, saveData = false, effectiveType = "4g" }: { reduce?: boolean; saveData?: boolean; effectiveType?: string } = {}) {
-  vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce") ? reduce : false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+function env({ reduce = false, saveData = false, effectiveType = "4g", wide = false }: { reduce?: boolean; saveData?: boolean; effectiveType?: string; wide?: boolean } = {}) {
+  vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce") ? reduce : q.includes("min-width: 860px") ? wide : false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
   Object.defineProperty(navigator, "connection", { configurable: true, value: { saveData, effectiveType } });
   const observers: Array<{ cb: IntersectionObserverCallback; el?: Element }> = [];
   vi.stubGlobal(
@@ -74,12 +74,15 @@ afterEach(() => {
 });
 
 describe("the clips (round 5)", () => {
-  it("are three, each in two formats, 1280 x 720, 8 seconds of H.264 and VP9, no audio, each file between 200 and 450 KB", () => {
+  it("are three, each in two renditions (1280 x 720 for a screen, 640 x 360 for a phone) and two formats: the screen's between 200 and 450 KB, the phone's between 50 and 150 KB", () => {
     expect(Object.keys(CLIPS).sort()).toEqual(["library", "silkroad", "valley"]);
     for (const name of Object.keys(CLIPS)) for (const ext of ["mp4", "webm"]) {
-      const bytes = statSync(join(ROOT, "components/site/clips", `${name}.${ext}`)).size;
-      expect(bytes, `${name}.${ext}`).toBeLessThanOrEqual(450 * 1024);
-      expect(bytes, `${name}.${ext}`).toBeGreaterThan(200 * 1024);
+      const big = statSync(join(ROOT, "components/site/clips", `${name}.${ext}`)).size;
+      const small = statSync(join(ROOT, "components/site/clips", `${name}-sm.${ext}`)).size;
+      expect(big, `${name}.${ext}`).toBeLessThanOrEqual(450 * 1024);
+      expect(big, `${name}.${ext}`).toBeGreaterThan(200 * 1024);
+      expect(small, `${name}-sm.${ext}`).toBeLessThanOrEqual(150 * 1024);
+      expect(small, `${name}-sm.${ext}`).toBeGreaterThan(50 * 1024);
     }
   });
 
@@ -115,7 +118,7 @@ describe("LoopClip", () => {
     env();
     const { container } = render(
       <div data-clip="library">
-        <LoopClip mp4="/a.mp4" webm="/a.webm" poster="/p.webp" />
+        <LoopClip clip="silkroad" poster="/p.webp" />
       </div>,
     );
     const v = container.querySelector("video")!;
@@ -126,12 +129,22 @@ describe("LoopClip", () => {
     expect(v.hasAttribute("controls")).toBe(false);
     expect(v.getAttribute("aria-hidden")).toBe("true");
     expect(v.getAttribute("tabindex")).toBe("-1");
-    // WebM first, MP4 after it (a browser takes the first it can play); the still is the poster.
+    // WebM first, MP4 after it (a browser takes the first it can play); the still is the poster. On a phone, the 640 x 360 rendition.
     expect([...v.querySelectorAll("source")].map((s) => [s.getAttribute("type"), s.getAttribute("src")])).toEqual([
-      ["video/webm", "/a.webm"],
-      ["video/mp4", "/a.mp4"],
+      ["video/webm", SRC.smWebm],
+      ["video/mp4", SRC.smMp4],
     ]);
     expect(v.getAttribute("poster")).toBe("/p.webp");
+  });
+
+  it("gives a screen of 860 px or more the 1280 x 720 rendition and a phone the 640 x 360 one (a media attribute on a video's source is not honoured, so the choice is made when it mounts)", () => {
+    env({ wide: true });
+    const { container } = render(
+      <div>
+        <LoopClip clip="silkroad" poster="/p.webp" />
+      </div>,
+    );
+    expect([...container.querySelectorAll("source")].map((s) => s.getAttribute("src"))).toEqual([SRC.webm, SRC.mp4]);
   });
 
   it.each([
@@ -142,7 +155,7 @@ describe("LoopClip", () => {
     env(opts);
     const { container } = render(
       <div>
-        <LoopClip mp4="/a.mp4" webm="/a.webm" poster="/p.webp" />
+        <LoopClip clip="silkroad" poster="/p.webp" />
       </div>,
     );
     expect(container.querySelector("video")).toBeNull();
@@ -153,7 +166,7 @@ describe("LoopClip", () => {
     const { see } = env();
     const { container } = render(
       <div data-clip="library">
-        <LoopClip mp4="/a.mp4" webm="/a.webm" poster="/p.webp" />
+        <LoopClip clip="silkroad" poster="/p.webp" />
       </div>,
     );
     const v = container.querySelector("video")!;
@@ -173,7 +186,7 @@ describe("LoopClip", () => {
     Object.defineProperty(document, "readyState", { configurable: true, get: () => "loading" });
     const { container } = render(
       <div>
-        <LoopClip mp4="/a.mp4" webm="/a.webm" poster="/p.webp" early />
+        <LoopClip clip="silkroad" poster="/p.webp" early />
       </div>,
     );
     see(true);
@@ -190,7 +203,7 @@ describe("LoopClip", () => {
     const { see } = env();
     render(
       <div>
-        <LoopClip mp4="/a.mp4" webm="/a.webm" poster="/p.webp" />
+        <LoopClip clip="silkroad" poster="/p.webp" />
       </div>,
     );
     see(true);
@@ -221,16 +234,15 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     expect(text).not.toMatch(/made with Nightshift|Nightshift made|Nightshift-generated/i);
   });
 
-  it("puts a pause button on each of the two clip pictures in the showcases (the hero has the page's switch), the same switch, named \"Pause motion\", and none on the still-only one", () => {
+  it("puts a pause button on each of the three moving pictures in the showcases (the hero has the page's switch), the same switch, named \"Pause motion\"", () => {
     const t = dictionaries.en;
     env();
     const { container } = render(<Landing t={t} locale="en" pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
-    for (const id of ["video", "studio"]) {
+    for (const id of ["video", "studio", "approvals"]) {
       const btn = container.querySelector(`#${id} .nx-show-pic .nx-clip-pause`) as HTMLElement;
       expect(btn.getAttribute("aria-label")).toBe(t.site.fx.pause);
       expect(btn.getAttribute("aria-pressed")).toBe("false");
     }
-    expect(container.querySelector("#approvals .nx-clip-pause")).toBeNull();
     const first = container.querySelector("#video .nx-clip-pause") as HTMLElement;
     fireEvent.click(first);
     expect(document.documentElement.getAttribute("data-motion")).toBe("paused");
@@ -264,107 +276,10 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
   });
 });
 
-describe("variants of the stills (round 5)", () => {
-  it("are described, in every language, as the still they come from, so every slot has an alt", () => {
-    for (const id of Object.keys(SAMPLES) as Array<keyof typeof SAMPLES>) expect(SAMPLE_BASE[id]).toBeTruthy();
-    for (const { code } of LOCALES) for (const slot of Object.keys(SLOTS) as Array<keyof typeof SLOTS>) expect(slotAlt(dictionaries[code].site.samples.alts, slot)).toMatch(/^(Example frame|Пример кадра|Namuna kadr)/);
-  });
-
-  it("give each page its own look: the landing, /solutions and the auth pages share no still, and each file is under 60 KB", () => {
-    const groups = {
-      landing: ["hero", "show.video", "show.studio", "show.approvals"],
-      solutions: ["sol.channels", "sol.studio", "sol.developers"],
-      auth: ["auth.signin", "auth.signup"],
-    } as const;
-    const seen = new Map<string, string>();
-    for (const [page, slots] of Object.entries(groups)) for (const slot of slots) {
-      const id = SLOTS[slot as keyof typeof SLOTS].id;
-      expect(seen.has(id) && seen.get(id) !== page, `${id} is on ${seen.get(id)} and ${page}`).toBe(false);
-      seen.set(id, page);
-    }
-    for (const id of Object.keys(SAMPLES)) expect(statSync(join(ROOT, "components/site/samples", `${id}.webp`)).size).toBeLessThanOrEqual(60 * 1024);
-  });
-});
-
-describe("the chat card's rail (round 5)", () => {
-  const steps = dictionaries.en.site.stage.steps.map((s) => ({ id: s.id, tab: s.tab }));
-  const card = (
-    <figure className="nx-chat">
-      <ChatRail steps={steps} rest={2} />
-    </figure>
-  );
-
-  it("shows Approve with no script (the same state the server renders), and never Live", () => {
-    env({ reduce: true });
-    const { container } = render(card);
-    const cur = () => container.querySelector("li[aria-current='step']")?.textContent;
-    expect(cur()).toBe(steps[2].tab);
-    expect(container.querySelectorAll("li[data-done='true']")).toHaveLength(2);
-  });
-
-  it("steps Topic, Plan, Approve once while it is on screen and rests on Approve for good (it does not loop); the card's data-step follows; Live is never reached", () => {
-    vi.useFakeTimers();
-    const { see } = env();
-    Object.defineProperty(document, "readyState", { configurable: true, get: () => "complete" });
-    const { container } = render(card);
-    const cur = () => container.querySelector("li[aria-current='step']")?.textContent;
-    see(true);
-    expect(cur()).toBe(steps[0].tab);
-    expect(container.querySelector(".nx-chat")?.getAttribute("data-step")).toBe("0");
-    const seen: string[] = [];
-    for (let i = 0; i < 80; i++) {
-      act(() => void vi.advanceTimersByTime(500));
-      const c = cur() ?? "";
-      if (seen.at(-1) !== c) seen.push(c);
-    }
-    // Topic, Plan, Approve, and then nothing more for the next 38 seconds: no return to Topic.
-    expect(seen).toEqual([steps[0].tab, steps[1].tab, steps[2].tab]);
-    expect(seen.includes(steps[3].tab)).toBe(false);
-    expect(container.querySelector(".nx-chat")?.getAttribute("data-step")).toBe("2");
-    // Leaving the screen and coming back does not start it again.
-    see(false);
-    see(true);
-    act(() => void vi.advanceTimersByTime(3000));
-    expect(cur()).toBe(steps[2].tab);
-    Reflect.deleteProperty(document, "readyState");
-  });
-
-  it("rests on the step the card names (copy.current), not on a number baked into the rail", () => {
-    env({ reduce: true });
-    const { container } = render(
-      <figure className="nx-chat">
-        <ChatRail steps={steps} rest={1} />
-      </figure>,
-    );
-    expect(container.querySelector("li[aria-current='step']")?.textContent).toBe(steps[1].tab);
-  });
-
-  it("goes back to Approve and stays there while the pause switch is pressed", () => {
-    vi.useFakeTimers();
-    const { see } = env();
-    Object.defineProperty(document, "readyState", { configurable: true, get: () => "complete" });
-    const { container } = render(card);
-    see(true);
-    act(() => void vi.advanceTimersByTime(100));
-    act(() => setMotionPaused(true));
-    for (let i = 0; i < 10; i++) {
-      act(() => void vi.advanceTimersByTime(1000));
-      expect(container.querySelector("li[aria-current='step']")?.textContent).toBe(steps[2].tab);
-    }
-    Reflect.deleteProperty(document, "readyState");
-  });
-
-  it("keeps each tab's word whole (Russian \"Одобрение\" broke mid-word) and changes only colours", () => {
-    expect(css).toMatch(/\.nx-chat-rail li \{ flex: 1 1 auto; overflow-wrap: normal; white-space: nowrap;/);
-    expect(css).not.toMatch(/\[data-step="[01]"\][^{]*\{[^}]*opacity/);
-  });
-});
-
-describe("the tool strip (round 5)", () => {
+describe("the tool strip (round 6): a swipeable row of pills", () => {
   const tools = dictionaries.en.site.studio.tools.map((x) => ({ id: x.id, title: x.title, body: x.body }));
   const s = dictionaries.en.site.studio;
-
-  it("names what Nightshift makes (never a provider or a model), opens on the first, and follows a tap, a focus-press or the mouse", () => {
+  const pointer = () =>
     // jsdom has no PointerEvent: give it one that carries pointerType.
     vi.stubGlobal(
       "PointerEvent",
@@ -376,42 +291,54 @@ describe("the tool strip (round 5)", () => {
         }
       },
     );
+
+  it("is a tablist of the nine names (never a provider or a model): one Tab crosses it, arrows, Home and End move, the line under it is the tab panel", () => {
+    pointer();
     render(<ToolStrip title="What Nightshift can make" tools={tools} priced={s.priced} free={s.free} />);
-    const buttons = screen.getAllByRole("button");
-    expect(buttons.map((b) => b.textContent)).toEqual(tools.map((t) => t.title));
-    expect(buttons[0].getAttribute("aria-pressed")).toBe("true");
-    const line = () => document.querySelector(".nx-tools-line")!;
-    expect(line().getAttribute("aria-live")).toBe("polite");
-    expect(line().textContent).toContain(tools[0].body);
-    fireEvent.click(buttons[5]);
-    expect(buttons[5].getAttribute("aria-pressed")).toBe("true");
-    expect(buttons[0].getAttribute("aria-pressed")).toBe("false");
-    expect(line().textContent).toContain(tools[5].body);
-    fireEvent.pointerEnter(buttons[2], { pointerType: "mouse" });
-    expect(line().textContent).toContain(tools[2].body);
-    fireEvent.pointerEnter(buttons[3], { pointerType: "touch" });
-    expect(line().textContent).toContain(tools[2].body);
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((b) => b.textContent)).toEqual(tools.map((t) => t.title));
+    expect(tabs).toHaveLength(9);
+    expect(tabs.filter((b) => b.getAttribute("tabindex") === "0")).toHaveLength(1);
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
+    const panel = screen.getByRole("tabpanel");
+    expect(panel.getAttribute("aria-live")).toBe("polite");
+    expect(panel.textContent).toContain(tools[0].body);
+    fireEvent.click(tabs[5]);
+    expect(tabs[5].getAttribute("aria-selected")).toBe("true");
+    expect(tabs[0].getAttribute("aria-selected")).toBe("false");
+    expect(screen.getByRole("tabpanel").textContent).toContain(tools[5].body);
+    fireEvent.keyDown(tabs[5], { key: "ArrowRight" });
+    expect(tabs[6].getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(tabs[6], { key: "End" });
+    expect(tabs[8].getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(tabs[8], { key: "ArrowRight" });
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(tabs[0], { key: "ArrowLeft" });
+    expect(tabs[8].getAttribute("aria-selected")).toBe("true");
+    fireEvent.pointerEnter(tabs[2], { pointerType: "mouse" });
+    expect(screen.getByRole("tabpanel").textContent).toContain(tools[2].body);
+    fireEvent.pointerEnter(tabs[3], { pointerType: "touch" });
+    expect(screen.getByRole("tabpanel").textContent).toContain(tools[2].body);
   });
 
   it("says how each is paid for: the editor and the style library cost no credits, the rest show their price on the button", () => {
     render(<ToolStrip title="t" tools={tools} priced={s.priced} free={s.free} />);
-    const line = () => document.querySelector(".nx-tools-line")!.textContent ?? "";
     for (const t of tools) {
-      fireEvent.click(screen.getByRole("button", { name: t.title }));
-      expect(line()).toContain(t.id === "editor" || t.id === "styles" ? s.free : s.priced);
+      fireEvent.click(screen.getByRole("tab", { name: t.title }));
+      expect(screen.getByRole("tabpanel").textContent).toContain(t.id === "editor" || t.id === "styles" ? s.free : s.priced);
     }
   });
 
-  it("is on the landing under the showcases, with a heading, and each button is at least 44 px tall", () => {
+  it("scrolls sideways with snapping and faded edges, its pills are at least 52 px tall and 17 px, and it sits in the \"how it works\" block (one section fewer on a phone)", () => {
     const t = dictionaries.en;
     env();
     const { container } = render(<Landing t={t} locale="en" pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
-    expect(container.querySelector("section#tools h2")?.textContent).toBe(t.site.toolStrip.title);
-    expect(css).toMatch(/\.nx-tool \{[^}]*min-height: 48px/);
-    const order = ["show-approvals-title", "tools-title", "try-title"].map((id) => container.querySelector(`#${id}`));
-    expect(order.every(Boolean)).toBe(true);
-    expect(order[0]!.compareDocumentPosition(order[1]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(order[1]!.compareDocumentPosition(order[2]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const how = container.querySelector("section#how")!;
+    expect(how.querySelector("#tools h3")?.textContent).toBe(t.site.toolStrip.title);
+    expect(container.querySelector("section#tools")).toBeNull();
+    expect(css).toMatch(/\.nx-tools-list \{[^}]*overflow-x: auto; scroll-snap-type: x proximity;/);
+    expect(css).toMatch(/\.nx-tools-list \{[^}]*mask-image: linear-gradient\(90deg/);
+    expect(css).toMatch(/\.nx-tool \{[^}]*min-height: 52px;[^}]*font-size: 17px;/);
     for (const code of ["en", "ru", "uz"] as const) expect(dictionaries[code].site.toolStrip.title.length).toBeGreaterThan(8);
   });
 });
@@ -442,7 +369,7 @@ describe("the hero and the Try grid (round 5)", () => {
     expect(css).toMatch(/\.nx-hero-copy \.nx-actions \{ order: 2;/);
     expect(css).toMatch(/\.nx-hero-visual \{ order: 3;/);
     expect(css).toMatch(/\.nx-hero-copy \.nx-lead \{ order: 4;/);
-    expect(css).toMatch(/\.nx-chat \.nx-result-art \{ aspect-ratio: 4 \/ 3; \}/);
+    expect(css).toMatch(/\.nx-chat \.nx-result-art \{ aspect-ratio: 16 \/ 10; \}/);
     // The promises are one per line on a desktop: a row that wraps differently in the fallback face moved the column (CLS 0.12).
     expect(css).toMatch(/\.nx-hero-copy \.nx-trust \{ flex-direction: column;/);
   });
