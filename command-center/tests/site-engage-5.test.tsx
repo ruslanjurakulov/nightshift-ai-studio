@@ -27,7 +27,7 @@ import { setMotionPaused } from "@/lib/site/motion";
 import { buildCsp } from "@/lib/security/csp";
 
 const ROOT = join(__dirname, "..");
-const SRC = CLIPS.silkroad;
+const SRC = CLIPS.caravan;
 const css = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
 
 /** What the page environment looks like to a clip: reduced motion, Save-Data, a visible element. */
@@ -74,13 +74,13 @@ afterEach(() => {
 });
 
 describe("the clips (round 5)", () => {
-  it("are three, each in two renditions (1280 x 720 for a screen, 640 x 360 for a phone) and two formats: the screen's between 200 and 450 KB, the phone's between 50 and 150 KB", () => {
-    expect(Object.keys(CLIPS).sort()).toEqual(["library", "silkroad", "valley"]);
+  it("are three, each in two renditions (1280 x 720 for a screen, 640 x 360 for a phone) and two formats: the screen's between 150 and 450 KB, the phone's between 50 and 150 KB", () => {
+    expect(Object.keys(CLIPS).sort()).toEqual(["caravan", "coast", "mist"]);
     for (const name of Object.keys(CLIPS)) for (const ext of ["mp4", "webm"]) {
       const big = statSync(join(ROOT, "components/site/clips", `${name}.${ext}`)).size;
       const small = statSync(join(ROOT, "components/site/clips", `${name}-sm.${ext}`)).size;
       expect(big, `${name}.${ext}`).toBeLessThanOrEqual(450 * 1024);
-      expect(big, `${name}.${ext}`).toBeGreaterThan(200 * 1024);
+      expect(big, `${name}.${ext}`).toBeGreaterThan(150 * 1024);
       expect(small, `${name}-sm.${ext}`).toBeLessThanOrEqual(150 * 1024);
       expect(small, `${name}-sm.${ext}`).toBeGreaterThan(50 * 1024);
     }
@@ -91,11 +91,13 @@ describe("the clips (round 5)", () => {
   });
 
   it("belong to three slots, each of which keeps its still as the poster (frame 0 of the clip is that still)", () => {
-    expect(slotClip("hero")).toBe("silkroad");
-    expect(slotClip("show.video")).toBe("library");
-    expect(slotClip("show.studio")).toBe("valley");
-    for (const slot of ["hero", "show.video", "show.studio"] as const) expect(SLOTS[slot].id).toBe(slotClip(slot));
-    expect(slotClip("show.approvals")).toBeNull();
+    expect(slotClip("hero")).toBe("caravan");
+    expect(slotClip("show.studio")).toBe("mist");
+    expect(slotClip("show.approvals")).toBe("coast");
+    for (const slot of ["hero", "show.studio", "show.approvals"] as const) expect(SLOTS[slot].id).toBe(slotClip(slot));
+    // The library, the closing panel and the pricing card are photographs: nothing moves on them.
+    expect(slotClip("show.video")).toBeNull();
+    expect(slotClip("landing.final")).toBeNull();
     expect(slotClip("pricing.card")).toBeNull();
   });
 
@@ -117,8 +119,8 @@ describe("LoopClip", () => {
   it("renders a muted, looping, inline video with both sources, no controls and no download until it is wanted, hidden from assistive technology", () => {
     env();
     const { container } = render(
-      <div data-clip="library">
-        <LoopClip clip="silkroad" poster="/p.webp" />
+      <div data-clip="caravan">
+        <LoopClip clip="caravan" poster="/p.webp" />
       </div>,
     );
     const v = container.querySelector("video")!;
@@ -141,7 +143,7 @@ describe("LoopClip", () => {
     env({ wide: true });
     const { container } = render(
       <div>
-        <LoopClip clip="silkroad" poster="/p.webp" />
+        <LoopClip clip="caravan" poster="/p.webp" />
       </div>,
     );
     expect([...container.querySelectorAll("source")].map((s) => s.getAttribute("src"))).toEqual([SRC.webm, SRC.mp4]);
@@ -155,7 +157,7 @@ describe("LoopClip", () => {
     env(opts);
     const { container } = render(
       <div>
-        <LoopClip clip="silkroad" poster="/p.webp" />
+        <LoopClip clip="caravan" poster="/p.webp" />
       </div>,
     );
     expect(container.querySelector("video")).toBeNull();
@@ -166,7 +168,7 @@ describe("LoopClip", () => {
     const { see } = env();
     const { container } = render(
       <div data-clip="library">
-        <LoopClip clip="silkroad" poster="/p.webp" />
+        <LoopClip clip="caravan" poster="/p.webp" />
       </div>,
     );
     const v = container.querySelector("video")!;
@@ -186,7 +188,7 @@ describe("LoopClip", () => {
     Object.defineProperty(document, "readyState", { configurable: true, get: () => "loading" });
     const { container } = render(
       <div>
-        <LoopClip clip="silkroad" poster="/p.webp" early />
+        <LoopClip clip="caravan" poster="/p.webp" early />
       </div>,
     );
     see(true);
@@ -203,7 +205,7 @@ describe("LoopClip", () => {
     const { see } = env();
     render(
       <div>
-        <LoopClip clip="silkroad" poster="/p.webp" />
+        <LoopClip clip="caravan" poster="/p.webp" />
       </div>,
     );
     see(true);
@@ -217,33 +219,35 @@ describe("LoopClip", () => {
 });
 
 describe("the landing's clips are labelled for what they are (round 5)", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the hero card and two showcases carry both labels (still and clip), the clip sentence under them, and no clip claims to be Nightshift's output", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the hero card and two showcases carry both labels (frame and clip), the clip sentence under them, and no clip claims to be Nightshift's output", (code) => {
     const t = dictionaries[code];
     env();
     const { container } = render(<Landing t={t} locale={code} pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
     const clipBoxes = [...container.querySelectorAll("[data-clip]")];
-    expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(["silkroad", "library", "valley"]);
+    expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(["caravan", "mist", "coast"]);
     for (const b of clipBoxes) {
-      expect(b.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(t.site.samples.tag);
+      // The still under a clip is a frame of stock footage.
+      expect(b.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(t.site.samples.frameTag);
       expect(b.querySelector(".nx-result-badge[data-kind='clip']")?.textContent).toBe(t.site.samples.clipTag);
       expect(b.querySelector("img")?.getAttribute("alt")).toBeTruthy();
     }
     expect(container.querySelectorAll("video")).toHaveLength(3);
-    expect(t.site.samples.clipTag).toMatch(code === "en" ? /^Example clip \(animated still\)$/ : code === "ru" ? /^Пример клипа/ : /^Namuna klip/);
+    expect(t.site.samples.clipTag).toMatch(code === "en" ? /^Example clip \(stock footage\)$/ : code === "ru" ? /^Пример клипа/ : /^Namuna klip/);
     const text = container.textContent ?? "";
     expect(text).not.toMatch(/made with Nightshift|Nightshift made|Nightshift-generated/i);
   });
 
-  it("puts a pause button on each of the three moving pictures in the showcases (the hero has the page's switch), the same switch, named \"Pause motion\"", () => {
+  it("puts a pause button on each of the two moving pictures in the showcases (the hero has the page's switch) and none on the still one, the same switch, named \"Pause motion\"", () => {
     const t = dictionaries.en;
     env();
     const { container } = render(<Landing t={t} locale="en" pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
-    for (const id of ["video", "studio", "approvals"]) {
+    expect(container.querySelector("#video .nx-clip-pause")).toBeNull();
+    for (const id of ["studio", "approvals"]) {
       const btn = container.querySelector(`#${id} .nx-show-pic .nx-clip-pause`) as HTMLElement;
       expect(btn.getAttribute("aria-label")).toBe(t.site.fx.pause);
       expect(btn.getAttribute("aria-pressed")).toBe("false");
     }
-    const first = container.querySelector("#video .nx-clip-pause") as HTMLElement;
+    const first = container.querySelector("#studio .nx-clip-pause") as HTMLElement;
     fireEvent.click(first);
     expect(document.documentElement.getAttribute("data-motion")).toBe("paused");
     for (const b of container.querySelectorAll(".nx-clip-pause, .nx-motion-btn")) expect(b.getAttribute("aria-pressed")).toBe("true");

@@ -19,6 +19,7 @@ import { dictionaries, LOCALES } from "@/lib/i18n";
 import { Landing } from "@/components/landing/Landing";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { buildPlan, cleanTopic, pickStill, STILL_IDS, TOPIC_MAX } from "@/lib/site/demo-plan";
+import { MEDIA_IDS } from "@/lib/site/media";
 import { freeMinutes, priceRatesFrom, quoteCents, quoteCredits } from "@/lib/site/price-check";
 import { setMotionPaused } from "@/lib/site/motion";
 import { thumbWords } from "@/components/site/BrandArt";
@@ -196,10 +197,10 @@ describe("the landing page's reasons to stay", () => {
     expect(within(bar).getByText(t.bar.cta).closest("a")!.getAttribute("href")).toBe("/signup");
     expect(bar.querySelector("button")!.getAttribute("aria-label")).toBe(t.bar.dismiss);
 
-    // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of four
-    // (the three clip pictures carry the same switch), and all four agree.
+    // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of three
+    // (the two clip pictures carry the same switch), and all three agree.
     const all = () => screen.getAllByRole("button", { name: t.fx.pause });
-    expect(all()).toHaveLength(4);
+    expect(all()).toHaveLength(3);
     const toggle = container.querySelector(".nx-motion-btn") as HTMLElement;
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(toggle);
@@ -223,8 +224,10 @@ describe("the landing page's reasons to stay", () => {
   it("labels every example frame as an example and describes it (en, ru, uz)", () => {
     for (const { code } of LOCALES) {
       const s = dictionaries[code].site.samples;
-      expect(Object.keys(s.alts).sort()).toEqual(["library", "lighthouse", "moon", "nightmarket", "silkroad", "valley"]);
-      for (const alt of Object.values(s.alts)) expect(alt.startsWith(s.tag)).toBe(true);
+      expect(Object.keys(s.alts).sort()).toEqual([...MEDIA_IDS].sort());
+      // Every example frame's description starts with "Example frame"; the two sign-in backdrops are decorative and carry a short caption instead.
+      const label = s.tag.split(" (")[0];
+      for (const [id, alt] of Object.entries(s.alts)) if (id !== "dawn" && id !== "horizon") expect(alt.startsWith(label), id).toBe(true);
       expect(s.note.length).toBeGreaterThan(20);
     }
   });
@@ -255,8 +258,8 @@ describe("the page's HTML stays small", () => {
   });
 });
 
-describe("the AI-still disclosure is printed, not only labelled", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the hero card and each of the three showcases show the note as visible text, and every still carries its badge", (code) => {
+describe("the stock-picture disclosure is printed, not only labelled", () => {
+  it.each(LOCALES.map((l) => l.code))("%s: the hero card and each of the three showcases show the note as visible text, and every picture carries its badge and its credit", (code) => {
     const { container } = landing(NO_MONEY, code);
     const s = dictionaries[code].site.samples;
     const hero = container.querySelector("figure.nx-chat") as HTMLElement;
@@ -268,7 +271,8 @@ describe("the AI-still disclosure is printed, not only labelled", () => {
       const note = x.querySelector(".nx-show-note") as HTMLElement;
       expect(note.textContent?.startsWith(s.note)).toBe(true);
       expect(note.closest("[aria-hidden]")).toBeNull();
-      expect(x.querySelector(".nx-result-badge")?.textContent).toBe(s.tag);
+      expect(x.querySelector(".nx-result-badge")?.textContent).toBe(x.id === "video" ? s.tag : s.frameTag);
+      expect(x.querySelector(".nx-result-credit")?.textContent).toContain(" / Pexels");
     }
   });
 

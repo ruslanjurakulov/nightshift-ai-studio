@@ -4,22 +4,22 @@
  * build then writes the files for the server bundle and not into /_next/static/media/ (the page would point at a 404).
  * tests/site-engage-6.test.tsx keeps LoopClip the one reader.
  */
-import silkroadMp4 from "@/components/site/clips/silkroad.mp4";
-import silkroadWebm from "@/components/site/clips/silkroad.webm";
-import libraryMp4 from "@/components/site/clips/library.mp4";
-import libraryWebm from "@/components/site/clips/library.webm";
-import valleyMp4 from "@/components/site/clips/valley.mp4";
-import valleyWebm from "@/components/site/clips/valley.webm";
-import silkroadSmMp4 from "@/components/site/clips/silkroad-sm.mp4";
-import silkroadSmWebm from "@/components/site/clips/silkroad-sm.webm";
-import librarySmMp4 from "@/components/site/clips/library-sm.mp4";
-import librarySmWebm from "@/components/site/clips/library-sm.webm";
-import valleySmMp4 from "@/components/site/clips/valley-sm.mp4";
-import valleySmWebm from "@/components/site/clips/valley-sm.webm";
+import caravanMp4 from "@/components/site/clips/caravan.mp4";
+import caravanWebm from "@/components/site/clips/caravan.webm";
+import caravanSmMp4 from "@/components/site/clips/caravan-sm.mp4";
+import caravanSmWebm from "@/components/site/clips/caravan-sm.webm";
+import mistMp4 from "@/components/site/clips/mist.mp4";
+import mistWebm from "@/components/site/clips/mist.webm";
+import mistSmMp4 from "@/components/site/clips/mist-sm.mp4";
+import mistSmWebm from "@/components/site/clips/mist-sm.webm";
+import coastMp4 from "@/components/site/clips/coast.mp4";
+import coastWebm from "@/components/site/clips/coast.webm";
+import coastSmMp4 from "@/components/site/clips/coast-sm.mp4";
+import coastSmWebm from "@/components/site/clips/coast-sm.webm";
 
 export const CLIPS = {
-  silkroad: { mp4: silkroadMp4, webm: silkroadWebm, smMp4: silkroadSmMp4, smWebm: silkroadSmWebm },
-  library: { mp4: libraryMp4, webm: libraryWebm, smMp4: librarySmMp4, smWebm: librarySmWebm },
-  valley: { mp4: valleyMp4, webm: valleyWebm, smMp4: valleySmMp4, smWebm: valleySmWebm },
+  caravan: { mp4: caravanMp4, webm: caravanWebm, smMp4: caravanSmMp4, smWebm: caravanSmWebm },
+  mist: { mp4: mistMp4, webm: mistWebm, smMp4: mistSmMp4, smWebm: mistSmWebm },
+  coast: { mp4: coastMp4, webm: coastWebm, smMp4: coastSmMp4, smWebm: coastSmWebm },
 } as const;
 export type ClipId = keyof typeof CLIPS;

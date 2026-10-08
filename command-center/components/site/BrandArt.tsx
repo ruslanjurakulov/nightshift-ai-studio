@@ -1,18 +1,16 @@
 import { useId } from "react";
 
 /**
- * Drawn art made from the site's own stage tokens (the dark panel, the lit amber, the hairlines), for the places that
- * would otherwise show a still a second time or a recoloured copy of one. It is vector, a few hundred bytes, the same in
- * the light and the dark theme (the stage is dark in both), and decorative: every drawing is `aria-hidden`, and what it
- * stands for is said in text beside it. `still` keeps it from moving at all (the auth pages, where the flow card is the only motion). Where it moves (the dashes, the playhead, the glow, the pulses) it moves in CSS
- * only, after the page has loaded, stops with the page's pause switch and does not move under reduced motion
- * (site-next.css, ".nx-art-*").
+ * Drawn art made from the site's own stage tokens (the dark panel, the lit amber, the hairlines), for the one place where a
+ * drawing is the honest picture: the /mcp card, which shows an assistant reaching Nightshift's tools and has no photograph
+ * to stand for it. It is vector, a few hundred bytes, the same in the light and the dark theme (the stage is dark in both),
+ * and decorative: it is `aria-hidden`, and what it stands for is said in text beside it. `still` keeps it from moving at
+ * all. Where it moves (the glow, the pulses) it moves in CSS only, after the page has loaded, stops with the page's pause
+ * switch and does not move under reduced motion (site-next.css, ".nx-art-*").
  *
- * - dawn: a lamp rising over a horizon with rings around it. The sign-in stage.
- * - rundown: the four tracks of a video and a playhead on its way to the approval lamp. The sign-up stage.
  * - tools: Nightshift in the middle and what an assistant can reach around it. The /mcp card.
  */
-export type BrandArtKind = "dawn" | "rundown" | "tools";
+export type BrandArtKind = "tools";
 
 const AMBER = "var(--nx-stage-amber)";
 const STAGE = "var(--nx-stage)";
@@ -46,44 +44,6 @@ export function BrandArt({ kind, className = "", still = false }: { kind: BrandA
           <line key={`h${y}`} x1="0" y1={y} x2="640" y2={y} />
         ))}
       </g>
-
-      {kind === "dawn" && (
-        <>
-          <circle className="nx-art-glow" cx="430" cy="290" r="210" fill={`url(#${glow})`} />
-          {[70, 120, 175, 235, 300].map((r, i) => (
-            <circle key={r} className="nx-art-ring" data-i={i} cx="430" cy="290" r={r} fill="none" stroke={AMBER} strokeOpacity={0.34 - i * 0.05} strokeWidth="1.5" strokeDasharray={i % 2 ? "3 11" : "26 14"} />
-          ))}
-          <rect x="0" y="290" width="640" height="110" fill={STAGE} fillOpacity="0.82" />
-          <line x1="0" y1="290" x2="640" y2="290" stroke={AMBER} strokeOpacity="0.5" strokeWidth="1.5" />
-          <circle cx="430" cy="290" r="30" fill={AMBER} />
-          <circle cx="430" cy="290" r="30" fill="none" stroke={AMBER} strokeOpacity="0.4" strokeWidth="10" />
-          {[40, 90, 150, 210, 270].map((x, i) => (
-            <circle key={x} className="nx-art-star" data-i={i} cx={x} cy={50 + ((i * 47) % 120)} r="1.6" fill={STAGE3} stroke={DIM} strokeOpacity="0.6" />
-          ))}
-        </>
-      )}
-
-      {kind === "rundown" && (
-        <>
-          {[
-            { y: 92, a: 84, b: 520 },
-            { y: 152, a: 120, b: 410 },
-            { y: 212, a: 84, b: 470 },
-            { y: 272, a: 200, b: 520 },
-          ].map((t, i) => (
-            <g key={t.y}>
-              <rect x="64" y={t.y} width="512" height="34" rx="9" fill={STAGE3} fillOpacity="0.9" />
-              <rect x={t.a} y={t.y + 6} width={t.b - t.a} height="22" rx="7" fill={AMBER} fillOpacity={0.07 + i * 0.025} stroke={AMBER} strokeOpacity="0.2" />
-            </g>
-          ))}
-          <g className="nx-art-playhead">
-            <line x1="64" y1="66" x2="64" y2="330" stroke={AMBER} strokeOpacity="0.55" strokeWidth="2" />
-            <polygon points="56,58 72,58 64,70" fill={AMBER} />
-          </g>
-          <circle className="nx-art-glow" cx="548" cy="352" r="70" fill={`url(#${glow})`} />
-          <circle cx="548" cy="352" r="11" fill={AMBER} />
-        </>
-      )}
 
       {kind === "tools" && (
         <>

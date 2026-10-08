@@ -1,25 +1,23 @@
 import type { SceneKind } from "@/lib/dev/mcp-landing";
-import { SAMPLES, type SampleId } from "@/components/site/samples";
+import { SampleImg, type SampleId } from "@/components/site/samples";
 
-/** The example stills in the /mcp examples carousel (AI-generated, made for the site; see components/site/samples.tsx). */
-
-/** The example frame behind each scene kind (components/site/samples.tsx): AI-generated stills, shown with
- *  "Example" labels wherever they stand alone. Aspect-ratio boxes in the stylesheet decide the layout. */
-const SCENE_SAMPLE: Record<SceneKind, SampleId> = {
-  hills: "valley",
-  waves: "lighthouse",
-  city: "nightmarket",
-  stars: "moon",
-  rings: "library",
-  dunes: "silkroad",
+/**
+ * The example frame behind each scene kind of the /mcp examples carousel (components/site/samples.tsx): stock photographs by
+ * Pexels contributors (credited on each card, lib/site/media.ts), six different pictures, none of them one the page shows
+ * anywhere else. The box (an aspect-ratio box in the stylesheet) decides the layout; `position` is where each picture is
+ * framed in the tall card.
+ */
+export const SCENE_SAMPLE: Record<SceneKind, { id: SampleId; position: string }> = {
+  hills: { id: "valley", position: "30% 50%" },
+  waves: { id: "lighthouse", position: "58% 50%" },
+  city: { id: "market", position: "32% 50%" },
+  stars: { id: "moon", position: "90% 50%" },
+  rings: { id: "library", position: "50% 50%" },
+  dunes: { id: "dunes", position: "42% 50%" },
 };
 
-/** An example frame for a sample video frame or an example card. `alt` is empty inside the aria-hidden drawn
- *  frames and descriptive where the picture stands alone (the examples carousel). */
+/** An example frame for a sample card. `alt` is descriptive: the picture stands alone in the examples carousel. */
 export function Scene({ kind, alt = "" }: { kind: SceneKind; alt?: string }) {
-  const s = SAMPLES[SCENE_SAMPLE[kind]];
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img className="ml-scene" data-scene={kind} src={s.src} width={s.width} height={s.height} alt={alt} loading="lazy" decoding="async" />
-  );
+  const s = SCENE_SAMPLE[kind];
+  return <SampleImg id={s.id} alt={alt} className="ml-scene" position={s.position} sizes="288px" />;
 }

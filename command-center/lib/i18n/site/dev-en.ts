@@ -410,14 +410,16 @@ export const devEn = {
       examples: {
         label: "Examples",
         title: "What you can ask for",
-        lead: "Six sample asks, each with an example frame. The frames are AI-generated stills made for this page; they show the idea, not real output.",
+        lead: "Six sample asks, each with an example frame. The frames are stock photos from Pexels contributors, credited on each card; they show the idea, not real output.",
         region: "Examples of what to ask for",
         track: "Example cards, scroll sideways",
         prev: "Previous example",
         next: "Next example",
         slide: "{n} of {total}",
-        sample: "Example frame",
-        alts: { hills: "Example frame: a misty mountain valley at sunrise", waves: "Example frame: a lighthouse on a rocky shore in a storm", city: "Example frame: a night market under glowing lanterns", stars: "Example frame: a full moon over a dark sea under stars", rings: "Example frame: an ancient library of scrolls with shafts of light", dunes: "Example frame: a camel caravan crossing golden dunes at sunset" },
+        sample: "Example frame (stock photo)",
+        alts: { hills: "Example frame: forested hills with golden mist at sunrise", waves: "Example frame: a lighthouse in tall grass at golden hour", city: "Example frame: an evening market in Marrakech seen from above", stars: "Example frame: a full moon in a dark night sky", rings: "Example frame: a library with a lit chandelier", dunes: "Example frame: a camel caravan on a desert dune" },
+        /** The courtesy credit on a card; {name} is the contributor name (lib/site/media.ts). */
+        credit: { photo: "Photo: {name} / Pexels" },
         copy: "Copy this ask",
         cards: [
           { id: "hills", tag: "Vertical short", prompt: "A short about why the sky is blue." },

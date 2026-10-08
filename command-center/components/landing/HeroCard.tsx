@@ -3,9 +3,9 @@ import type { Dictionary } from "@/lib/i18n";
 import { BrandMark } from "@/components/site/BrandMark";
 import { BrandArt, type BrandArtKind } from "@/components/site/BrandArt";
 import { LoopClip } from "@/components/site/LoopClip";
-import { StillFx, type FxKind } from "@/components/site/StillFx";
 import { TypedText } from "@/components/site/TypedText";
-import { SAMPLES, SLOTS, SlotImg, slotAlt, slotClip, type SlotId } from "@/components/site/samples";
+import { SAMPLES, SLOTS, SlotImg, slotAlt, slotClip, slotSample, type SlotId } from "@/components/site/samples";
+import { creditLine } from "@/lib/site/media";
 
 /** Everything a chat card says, as plain strings, so any page (the landing, /pricing, /mcp) can print one from its own dictionary. */
 export type ChatCopy = {
@@ -18,8 +18,9 @@ export type ChatCopy = {
   reply: string;
   alt: string;
   badge: string;
-  /** The label on the picture while it moves, and the sentence that says what a moving picture is. */
+  /** The label on the picture while it moves, the courtesy credit on it ("Photo: name / Pexels"), and the sentence that says what a moving picture is. */
   clipBadge: string;
+  credit: string;
   clipNote: string;
   note: string;
   lamps: [string, string, string];
@@ -39,8 +40,9 @@ export function chatCopy(t: Dictionary, slot: SlotId = "hero", ask?: string, opt
     ask: ask ?? t.site.caps.items[0].bubble,
     reply: t.site.caps.exampleReply,
     alt: slotAlt(t.site.samples.alts, slot),
-    badge: opts?.badge ?? t.site.samples.tag,
+    badge: opts?.badge ?? (slotSample(slot).footage ? t.site.samples.frameTag : t.site.samples.tag),
     clipBadge: t.site.samples.clipTag,
+    credit: creditLine(slotSample(slot).id, t.site.samples.credit),
     clipNote: t.site.samples.clipNote,
     note: opts?.note ?? t.site.samples.note,
     lamps: [approve.lamp, approve.check, approve.waiting],
@@ -61,7 +63,7 @@ export function chatCopy(t: Dictionary, slot: SlotId = "hero", ask?: string, opt
  * so nothing flashes. Nothing in it can be pressed; its frame has a fixed aspect ratio, so it cannot shift the page.
  * A Server Component.
  *
- * `art` puts a drawing where the still goes (the /mcp card), `fx` draws light over the still, and a slot with a clip plays it.
+ * `art` puts a drawing where the still goes (the /mcp card), and a slot with a clip plays it (stock footage, looped).
  */
 export function ChatCard({
   copy,
@@ -69,17 +71,15 @@ export function ChatCard({
   eager = false,
   className = "",
   art,
-  fx,
 }: {
   copy: ChatCopy;
   slot?: SlotId;
   eager?: boolean;
   className?: string;
   art?: BrandArtKind;
-  fx?: FxKind;
 }) {
   const clip = art ? null : slotClip(slot);
-  const moving = Boolean(clip || fx);
+  const moving = Boolean(clip);
   const current = Math.max(0, copy.steps.findIndex((s) => s.id === copy.current));
   return (
     <figure className={`nx-demo nx-chat ${className}`.trim()} data-spot aria-label={copy.figure}>
@@ -106,10 +106,9 @@ export function ChatCard({
           </span>
         </div>
         <div className="nx-result nx-result-sign">
-          <div className={`nx-result-art${art ? "" : " nx-kb"}`} data-ratio="wide" data-clip={clip ?? undefined} data-fxscene={moving || art ? (fx ?? "clip") : undefined}>
-            {art ? <BrandArt kind={art} className="nx-art" /> : <SlotImg slot={slot} alt={copy.alt} className="nx-art" eager={eager} />}
-            {clip && <LoopClip clip={clip} poster={SAMPLES[SLOTS[slot].id].src} early={eager} />}
-            {fx && <StillFx kind={fx} />}
+          <div className="nx-result-art" data-ratio="wide" data-clip={clip ?? undefined}>
+            {art ? <BrandArt kind={art} className="nx-art" /> : <SlotImg slot={slot} alt={copy.alt} className="nx-art" eager={eager} sizes="(min-width: 640px) 520px, calc(100vw - 80px)" />}
+            {clip && <LoopClip clip={clip} poster={SAMPLES[SLOTS[slot].id].sm} early={eager} />}
             <span className="nx-result-badge" data-kind="still">
               {copy.badge}
             </span>
@@ -118,6 +117,7 @@ export function ChatCard({
                 {copy.clipBadge}
               </span>
             )}
+            {!art && <span className="nx-result-credit">{copy.credit}</span>}
           </div>
           <ul className="nx-ui-status">
             <li>

@@ -3,7 +3,8 @@ import { CAPABILITY_ROWS, EXAMPLE_SCENES } from "@/lib/dev/mcp-landing";
 import type { DevDictionary } from "@/lib/i18n/dev";
 import { CopyButton } from "@/components/docs/CopyButton";
 import { ResultsCarousel } from "@/components/docs/ResultsCarousel";
-import { Scene } from "@/components/docs/SampleFrame";
+import { Scene, SCENE_SAMPLE } from "@/components/docs/SampleFrame";
+import { creditLine } from "@/lib/site/media";
 
 /**
  * The middle of /mcp, between the connect card and the tool list: six things to
@@ -11,8 +12,8 @@ import { Scene } from "@/components/docs/SampleFrame";
  * carousel of example asks over example stills. The hero's chat card is the
  * picture of what asking looks like, so there is no second walk-through here.
  *
- * Every picture is captioned as an example (the stills are AI-generated, made
- * for the page); no model, provider or price is named (see lib/dev/mcp-landing.ts).
+ * Every picture is labelled an example and credited (they are stock photos by Pexels contributors, not output of
+ * any account); no model, provider or price is named (see lib/dev/mcp-landing.ts).
  */
 export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: boolean }) {
   const c = dev.mcp;
@@ -66,6 +67,7 @@ export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: 
                 <div key={scene} className="ml-ex" data-scene={scene}>
                   <Scene kind={scene} alt={l.examples.alts[scene]} />
                   <span className="ml-ex-badge">{l.examples.sample}</span>
+                  <span className="ml-ex-credit">{creditLine(SCENE_SAMPLE[scene].id, { photo: l.examples.credit.photo, video: l.examples.credit.photo })}</span>
                   <div className="ml-ex-over">
                     <span className="ml-ex-tag">{card.tag}</span>
                     <p className="ml-ex-q">{card.prompt}</p>

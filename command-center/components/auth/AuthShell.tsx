@@ -11,7 +11,8 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { LegalFooter } from "@/components/legal/LegalFooter";
 import { BrandMark } from "@/components/site/BrandMark";
 import { preloadSiteFonts } from "@/components/site/fonts";
-import { BrandArt } from "@/components/site/BrandArt";
+import { SlotImg, slotSample, type SlotId } from "@/components/site/samples";
+import { creditLine } from "@/lib/site/media";
 import { FlowCard } from "@/components/auth/FlowCard";
 import "@/components/site/site.css";
 import "@/components/site/site-next.css";
@@ -39,13 +40,15 @@ export function AuthShell({
   const a = t.site.auth;
   preloadSiteFonts(locale);
   const asideTitle = mode === "signup" ? a.asideTitleSignup : a.asideTitle;
-  // Drawn art, not a still (the stills are the landing's and /mcp's): a lamp rising to sign in, the rundown's tracks and its playhead to start.
-  const art = mode === "signup" ? "rundown" : "dawn";
+  // A real photograph behind the stage (stock, by a Pexels contributor, credited under the stage): misty hills at dawn to sign in, calm water at dawn to start.
+  const slot: SlotId = mode === "signup" ? "auth.signup" : "auth.login";
+  const photo = slotSample(slot).id as "dawn" | "horizon";
+  const credit = `${t.site.samples.captions[photo]}. ${creditLine(photo, t.site.samples.credit)}`;
   return (
     <div className="st nx st-auth">
       <aside className="st-auth-aside" aria-label={asideTitle}>
-        {/* Drawn art behind the house rules (decorative, a few hundred bytes); the flow card on it is the example. */}
-        <BrandArt kind={art} className="nx-aside-bg" still />
+        {/* A photograph behind the house rules (decorative: darkened under the words, credited below); the flow card on it is the example. */}
+        <SlotImg slot={slot} className="nx-aside-bg" sizes="(min-width: 960px) 45vw, 1px" />
         <Link href="/" className="st-brand self-start">
           <BrandMark />
           {t.brand.name}
@@ -68,6 +71,7 @@ export function AuthShell({
             {a.asideLamp}
           </span>
           <span className="st-small">{fmt(a.welcomeNote, { n: formatCredits(WELCOME_CREDITS, locale) })}</span>
+          <span className="st-small nx-aside-note">{credit}</span>
         </div>
       </aside>
 
@@ -85,7 +89,8 @@ export function AuthShell({
 
         {/* On a phone the stage is a band above the form: the same drawing, the brand over it, the brief and the approval playing on it. */}
         <div className="nx-auth-band lg:hidden">
-          <BrandArt kind={art} className="nx-art" still />
+          <SlotImg slot={slot} className="nx-art" sizes="(max-width: 959px) 100vw, 1px" />
+          <span className="nx-result-credit">{creditLine(photo, t.site.samples.credit)}</span>
           <Link href="/" className="st-brand">
             <BrandMark />
             {t.brand.name}

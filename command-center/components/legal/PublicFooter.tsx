@@ -5,6 +5,7 @@ import { SOLUTION_IDS, solutionHref } from "@/lib/solutions";
 import { BrandMark } from "@/components/site/BrandMark";
 import { devFor } from "@/lib/i18n/dev";
 import { devPagesEnabled } from "@/lib/dev-pages";
+import { creditLine, LICENCE, MEDIA, MEDIA_IDS } from "@/lib/site/media";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
 
@@ -108,6 +109,25 @@ export function PublicFooter({ t }: { t: Dictionary }) {
         </div>
       </div>
       <div className="st-wrap">
+        {/* Every picture and clip on the public pages, from the one data file (lib/site/media.ts): stock photos and footage by Pexels contributors. */}
+        <details className="st-credits">
+          <summary>{t.site.credits.title}</summary>
+          <p>{t.site.credits.lead}</p>
+          <ul>
+            {MEDIA_IDS.map((id) => (
+              <li key={id}>
+                <a href={MEDIA[id].sourceUrl} target="_blank" rel="noopener noreferrer">
+                  {creditLine(id, t.site.samples.credit)}
+                </a>
+              </li>
+            ))}
+          </ul>
+          <p>
+            <a href={LICENCE.url} target="_blank" rel="noopener noreferrer">
+              {t.site.credits.licence}
+            </a>
+          </p>
+        </details>
         <div className="st-footer-base">
           <span>{LEGAL.legalName ? `© ${LEGAL.legalName}` : t.brand.name}</span>
           <span>{t.legal.tagline}</span>

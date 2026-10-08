@@ -27,6 +27,7 @@ export type PublicDictionary = {
     auth: Dictionary["site"]["auth"];
     /** The brief, plan, approve flow the sign-in and sign-up stages draw (components/auth/FlowCard.tsx). */
     stage: Pick<Dictionary["site"]["stage"], "tag" | "figure" | "steps">;
+    samples: Pick<Dictionary["site"]["samples"], "credit" | "captions">;
   };
   signup: Dictionary["signup"];
   auth: Pick<Dictionary["auth"], "email" | "password" | "signIn" | "signingIn">;
@@ -50,7 +51,7 @@ export function publicDictionary(t: Dictionary): PublicDictionary {
     plans: omit(t.plans, "managePortalMissing"),
     credits: { buy: { pack: t.credits.buy.pack } },
     creditsPage: { eq: t.creditsPage.eq },
-    site: { pricingTeaser: { credits: t.site.pricingTeaser.credits }, auth: t.site.auth, stage: { tag: t.site.stage.tag, figure: t.site.stage.figure, steps: t.site.stage.steps } },
+    site: { pricingTeaser: { credits: t.site.pricingTeaser.credits }, auth: t.site.auth, stage: { tag: t.site.stage.tag, figure: t.site.stage.figure, steps: t.site.stage.steps }, samples: { credit: t.site.samples.credit, captions: t.site.samples.captions } },
     signup: t.signup,
     auth: { email: t.auth.email, password: t.auth.password, signIn: t.auth.signIn, signingIn: t.auth.signingIn },
     ux: {

@@ -156,8 +156,8 @@ describe("site-next.css", () => {
     const running = [...css.matchAll(/(html\[data-fx="on"\] \.nx-fx-blob\[data-n="\d"\])\s*\{[^}]*animation:/g)].map((m) => m[1]);
     expect(running).toHaveLength(3);
     const pauseAt = css.indexOf('html[data-motion="paused"][data-fx] .nx-fx-blob[data-n]');
-    // Every other infinite animation (the stills' drift) is named by a pause rule too.
-    expect(css).toContain('html[data-motion="paused"][data-fx] .nx-kb .nx-art');
+    // The stills no longer drift (they are photographs); the clips are paused by LoopClip itself.
+    expect(css).not.toContain(".nx-kb");
     expect(pauseAt).toBeGreaterThan(-1);
     const pauseRule = css.slice(pauseAt, css.indexOf("}", pauseAt));
     expect(pauseRule).toContain("animation-play-state: paused");
