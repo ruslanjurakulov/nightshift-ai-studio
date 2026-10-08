@@ -8,4 +8,4 @@
  * Google's OAuth review require those two to be named.
  */
 export const PROVIDER_BRANDS =
-  /\b(?:openai|chatgpt|gpt-?\d|dall-?e|sora|anthropic|claude|gemini|imagen|veo|nano ?banana|elevenlabs|eleven labs|kling|runway|luma|minimax|hailuo|flux|black forest|stability|stable diffusion|ideogram|recraft|fal\.ai|replicate|seedance|bytedance|hunyuan|pixverse|suno|udio|cartesia|deepgram|pexels|pixabay|midjourney|pika|heygen|synthesia|krea|higgsfield|magiclight|vidiq|capcut|inshot)\b/i;
+  /\b(?:openai|chatgpt|gpt-?\d|dall-?e|sora|anthropic|claude|gemini|imagen|veo|nano ?banana|elevenlabs|eleven labs|kling|runway|luma|minimax|hailuo|flux|black forest|stability|stable diffusion|ideogram|recraft|fal\.ai|replicate|seedance|bytedance|hunyuan|pixverse|suno|udio|cartesia|deepgram|pixabay|midjourney|pika|heygen|synthesia|krea|higgsfield|magiclight|vidiq|capcut|inshot)\b/i;

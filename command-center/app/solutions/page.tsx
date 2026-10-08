@@ -11,6 +11,8 @@ import { HeroFx } from "@/components/site/HeroFx";
 import { AudienceTabs } from "@/components/site/AudienceTabs";
 import { ApiPicture, ComposerPicture, SignOffPicture } from "@/components/site/SolutionPictures";
 import { MotionToggle } from "@/components/site/MotionToggle";
+import { SlotImg, slotAlt, slotSample, type SlotId } from "@/components/site/samples";
+import { creditLine } from "@/lib/site/media";
 
 /** Public: listed exactly in lib/public-paths.ts (SOLUTION_PATHS). */
 export async function generateMetadata(): Promise<Metadata> {
@@ -37,8 +39,9 @@ const WAY_PICTURE = { "youtube-channels": SignOffPicture, "creative-studio": Com
 
 /**
  * The Solutions index: who it is for, as three tabs (the three audiences the product serves, no others), each with its own
- * words and the product's own picture for that job, and then the three rules that hold whichever way you came in. No stills
- * here: the landing and /mcp have them, and this page shows the product itself instead of a picture that stands for it.
+ * words, one stock photograph (an example of the kind of picture such a channel might use: silhouettes at sunrise, a craft
+ * workshop, a city's lights; credited, labelled an example) over the product's own picture for that job, and then the
+ * three rules that hold whichever way you came in.
  */
 export default async function SolutionsPage() {
   const { t } = await getDictionary();
@@ -47,6 +50,8 @@ export default async function SolutionsPage() {
   const tabs = s.pages.flatMap((page) => {
     if (!isSolutionId(page.id)) return [];
     const Picture = WAY_PICTURE[page.id];
+    const slot = `solutions.${page.id}` as SlotId;
+    const sample = slotSample(slot);
     return [
       {
         id: page.id,
@@ -83,6 +88,11 @@ export default async function SolutionsPage() {
               </ul>
             </div>
             <div className="nx-aud-stage">
+              <figure className="nx-aud-photo">
+                <SlotImg slot={slot} alt={slotAlt(t.site.samples.alts, slot)} sizes="(min-width: 860px) 560px, calc(100vw - 64px)" />
+                <span className="nx-result-badge">{t.site.samples.tag}</span>
+                <span className="nx-result-credit">{creditLine(sample.id, t.site.samples.credit)}</span>
+              </figure>
               <Picture t={t} />
             </div>
           </div>
@@ -104,6 +114,7 @@ export default async function SolutionsPage() {
         </section>
         <section aria-label={s.slug} className="st-wrap nx-sol-ways">
           <AudienceTabs label={s.slug} tabs={tabs} />
+          <p className="nx-show-note">{t.site.samples.note}</p>
         </section>
       </div>
 

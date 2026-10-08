@@ -15,6 +15,8 @@ import { ToolStrip } from "@/components/landing/ToolStrip";
 import { HeroFx } from "@/components/site/HeroFx";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { StickyCta } from "@/components/site/StickyCta";
+import { SlotImg, slotSample } from "@/components/site/samples";
+import { creditLine } from "@/lib/site/media";
 import { priceRatesFrom } from "@/lib/site/price-check";
 import { Showcase } from "@/components/landing/Showcase";
 import { Faq } from "@/components/landing/Faq";
@@ -120,7 +122,7 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
           </ul>
         </div>
         <div className="nx-hero-visual">
-          <ChatCard copy={chatCopy(t)} eager fx="sand" />
+          <ChatCard copy={chatCopy(t)} eager />
           <MotionToggle pause={t.site.fx.pause} />
         </div>
       </div>
@@ -233,6 +235,9 @@ function FinalCta({ t }: { t: Dictionary }) {
     <section aria-labelledby="final-title" className="nx-final-wrap">
       <div className="nx-wrap">
         <div className="nx-final">
+          {/* A real photograph of the moon behind the closing words (decorative: the credit is printed, the footer lists it). */}
+          <SlotImg slot="landing.final" className="nx-final-pic" sizes="(min-width: 1240px) 1160px, 100vw" />
+          <span className="nx-final-credit">{creditLine(slotSample("landing.final").id, t.site.samples.credit)}</span>
           <h2 id="final-title" className="nx-h2">
             {f.title}
           </h2>

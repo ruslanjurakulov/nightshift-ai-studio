@@ -26,6 +26,7 @@ import { FlowCard } from "@/components/auth/FlowCard";
 import { PackPlanner } from "@/components/pricing/PackPlanner";
 import { ToolStrip } from "@/components/landing/ToolStrip";
 import { CLIPS } from "@/components/site/samples";
+import { MEDIA_IDS } from "@/lib/site/media";
 import type { PricingPack } from "@/lib/pricing";
 
 afterEach(cleanup);
@@ -199,7 +200,7 @@ describe("the sign-in and sign-up flow card", () => {
 });
 
 describe("drawn art", () => {
-  it.each(["dawn", "rundown", "tools"] as const)("%s: decorative, from brand tokens only, no raster and no remote reference", (kind) => {
+  it.each(["tools"] as const)("%s: decorative, from brand tokens only, no raster and no remote reference", (kind) => {
     const { container } = render(<BrandArt kind={kind} />);
     const svg = container.querySelector("svg")!;
     expect(svg.getAttribute("aria-hidden")).toBe("true");
@@ -210,7 +211,7 @@ describe("drawn art", () => {
   });
 
   it("can be held still (the auth pages)", () => {
-    const { container } = render(<BrandArt kind="dawn" still />);
+    const { container } = render(<BrandArt kind="tools" still />);
     expect(container.querySelector("svg")?.getAttribute("data-static")).toBe("true");
   });
 
@@ -248,7 +249,7 @@ describe("motion stays optional and stays cheap", () => {
   });
 
   it("stops the procedural light, the drawn art and the flow with the page's pause switch", () => {
-    for (const cls of ["nx-fx-mote", "nx-fx-streak", "nx-fx-shaft", "nx-fx-mist", "nx-fx-sun", "nx-fx-shimmer", "nx-fx-moonglow", "nx-fx-star", "nx-fx-lantern", "nx-art-glow", "nx-art-ring", "nx-art-star", "nx-art-playhead", "nx-art-pulse"]) {
+    for (const cls of ["nx-art-glow", "nx-art-ring", "nx-art-star", "nx-art-playhead", "nx-art-pulse"]) {
       expect(css, cls).toMatch(new RegExp(`html\\[data-motion="paused"\\] \\.${cls}\\b`));
     }
     // The shorthand `animation` of the rules that start the loops resets play-state, and they come later in the file: the pause must be !important.
@@ -261,7 +262,7 @@ describe("motion stays optional and stays cheap", () => {
   it("animates only transform and opacity on the layered stills (no layout work per frame)", () => {
     const m = motionCss();
     void m;
-    for (const name of ["mote", "streak", "shaft", "mist", "glow", "shimmer", "twinkle", "flicker", "dash", "playhead", "pulse", "kb"]) {
+    for (const name of ["glow", "twinkle", "dash", "playhead", "pulse"]) {
       const body = css.match(new RegExp(`@keyframes nx-${name} \\{.*`))?.[0] ?? "";
       expect(body, name).not.toBe("");
       expect(body, name).not.toMatch(/\b(?:top|left|width|height|margin|padding|box-shadow|filter)\s*:/);
@@ -292,9 +293,13 @@ describe("the pictures and the data", () => {
     }
   });
 
-  it("keeps only the six stills (no recoloured variants)", () => {
-    const files = readdirSync(join(ROOT, "components/site/samples")).filter((f: string) => f.endsWith(".webp"));
-    expect(files.sort()).toEqual(["lighthouse.webp", "library.webp", "moon.webp", "nightmarket.webp", "silkroad.webp", "valley.webp"].sort());
+  it("keeps one still and its phone width for every credited picture, and nothing else (derivatives only, no originals)", () => {
+    const files = readdirSync(join(ROOT, "components/site/media")).sort();
+    expect(files).toEqual(MEDIA_IDS.flatMap((id) => [`${id}-sm.webp`, `${id}.webp`]).sort());
+    for (const id of MEDIA_IDS) {
+      expect(statSync(join(ROOT, "components/site/media", `${id}.webp`)).size, id).toBeLessThan(130 * 1024);
+      expect(statSync(join(ROOT, "components/site/media", `${id}-sm.webp`)).size, id).toBeLessThan(45 * 1024);
+    }
   });
 });
 
@@ -307,11 +312,12 @@ describe("review fixes (PR #405)", () => {
     for (const v of new Set(art.match(/--nx-stage[\w-]*/g))) expect(rule, v).toContain(`${v}:`);
   });
 
-  it("draws no still twice: the showcases and the hero card have no stacked foreground copy, and the light is the only motion on the moon", () => {
-    for (const f of ["components/landing/Showcases.tsx", "components/landing/HeroCard.tsx", "components/pricing/PricingView.tsx"]) {
-      expect(readFileSync(join(ROOT, f), "utf8"), f).not.toMatch(/nx-fx-fg|\bfg\b/);
+  it("draws no picture twice and no light over a photograph: no stacked foreground copy, and no drawn dust, shafts, stars or lanterns over real pictures", () => {
+    for (const f of ["components/landing/Showcases.tsx", "components/landing/HeroCard.tsx", "components/pricing/PricingView.tsx", "components/landing/Landing.tsx"]) {
+      const src = readFileSync(join(ROOT, f), "utf8");
+      expect(src, f).not.toMatch(/nx-fx-fg|\bfg\b|StillFx/);
     }
-    expect(css).not.toContain("nx-fx-fg");
+    expect(css).not.toMatch(/nx-fx-fg|nx-fx-(?:mote|streak|shaft|mist|sun|shimmer|moonglow|star|lantern)|nx-kb/);
   });
 
   it("fits the Try thumbnail's words whatever the box (the drawing is scaled to fit, never sliced)", () => {
@@ -344,14 +350,7 @@ describe("review fixes (PR #405)", () => {
     expect(css).toMatch(/\.nx-tools-rail\[data-edge="mid"\] \.nx-tools-list \{ -webkit-mask-image/);
   });
 
-  it("keeps the sign-up stage's tracks off the words: hairlines only on the desktop backdrop", () => {
-    expect(css).toMatch(/\.nx-aside-bg\[data-art="rundown"\] g > rect:last-child \{ fill-opacity: 0; stroke-opacity: 0; \}/);
-    expect(css).toMatch(/\.nx-aside-bg\[data-art="rundown"\] \.nx-art-playhead \{ display: none; \}/);
-  });
-
-  it("keeps the light cheap: no blur filter, no blend mode, on the layers that move", () => {
-    const fx = css.split("\n").filter((l) => /^\.nx-fx-(?:mote|streak|shaft|mist|sun|shimmer|moonglow|star|lantern) /.test(l)).join("\n");
-    expect(fx).not.toMatch(/filter:|mix-blend-mode/);
+  it("keeps the hero light's layer contained", () => {
     expect(css).toMatch(/\.nx-fx \{[^}]*contain: layout paint style;/);
   });
 
