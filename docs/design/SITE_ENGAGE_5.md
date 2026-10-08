@@ -1,5 +1,8 @@
 # Site, round 5: real motion and more distinct imagery, without buying a picture
 
+> **Superseded in part (round 7b and after).** The pictures this document describes as AI-generated stills, the clips made from them and the drawn light over them are gone: the public pages now show credited Pexels stock photos and footage, labelled as examples (`SITE_ENGAGE_7B.md`, `SITE_ENGAGE_8.md`, `MEDIA_CREDITS.md`). Read what follows as history; the layout, type, motion and honesty rules it records still apply unless a later round says otherwise.
+
+
 Status: 2026-10-06 (revised the same day after the review of PR #404: see section 8). Builds on `SITE_ENGAGE.md` to `_4`. Round 4 (structure) scored about 73 on a phone and 77 on a desktop.
 The reviewer's verdict was that the next ten points need more distinct imagery and real motion, and that 95 is not reachable
 with six stills and none. The owner has not approved paid generation, so this round is everything that can be done without

@@ -227,7 +227,7 @@ describe("the landing page's reasons to stay", () => {
       expect(Object.keys(s.alts).sort()).toEqual([...MEDIA_IDS].sort());
       // Every example frame's description starts with "Example frame"; the two sign-in backdrops are decorative and carry a short caption instead.
       const label = s.tag.split(" (")[0];
-      for (const [id, alt] of Object.entries(s.alts)) if (id !== "dawn" && id !== "horizon") expect(alt.startsWith(label), id).toBe(true);
+      for (const [id, alt] of Object.entries(s.alts)) if (id !== "alley" && id !== "lanterngrid") expect(alt.startsWith(label), id).toBe(true);
       expect(s.note.length).toBeGreaterThan(20);
     }
   });

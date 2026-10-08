@@ -1,5 +1,8 @@
 # Site engagement, round 6
 
+> **Superseded in part (round 7b and after).** The pictures this document describes as AI-generated stills, the clips made from them and the drawn light over them are gone: the public pages now show credited Pexels stock photos and footage, labelled as examples (`SITE_ENGAGE_7B.md`, `SITE_ENGAGE_8.md`, `MEDIA_CREDITS.md`). Read what follows as history; the layout, type, motion and honesty rules it records still apply unless a later round says otherwise.
+
+
 Six stills and code only; no new generation, no new dependency, CSP unchanged, signed-in app untouched. Screenshots in
 `site-engage-6/before` (main, e15bb1c0) and `site-engage-6/after`.
 

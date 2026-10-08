@@ -74,6 +74,19 @@ describe("the public primary key is indigo with a white legend", () => {
   });
 });
 
+describe("the key's edge sits outside the key", () => {
+  it("draws the light edge as a 1 px ring outside the box (border = the fill), so no pixel under the label is the edge (the label reads 4.5:1 on the rendered pixels)", () => {
+    const body = (src: string, sel: string) => src.slice(src.indexOf(`${sel} {`), src.indexOf("}", src.indexOf(`${sel} {`)));
+    for (const [src, sel] of [[site, ".st-key"], [next, ".nx-btn"]] as const) {
+      const b = body(src, sel);
+      expect(b, sel).toMatch(/border: 1px solid var\(--st-lit-bg\);/);
+      expect(b, sel).toMatch(/box-shadow: 0 0 0 1px var\(--st-lit-edge\)/);
+    }
+    expect(body(next, ".nx-bar-go")).toMatch(/border: 1px solid var\(--st-lit-bg\);/);
+    expect(body(next, ".nx-bar-go")).toMatch(/box-shadow: 0 0 0 1px var\(--st-lit-edge\)/);
+  });
+});
+
 describe("the second headline line", () => {
   it("is the indigo ink of the theme, 4.5:1 or better on the page", () => {
     expect(next).toMatch(/\.nx-h1-b \{ display: block; color: var\(--st-act-ink\); \}/);

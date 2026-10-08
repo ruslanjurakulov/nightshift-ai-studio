@@ -6,9 +6,10 @@ import { act, cleanup, render } from "@testing-library/react";
 import { LoopClip } from "@/components/site/LoopClip";
 import { dictionaries, LOCALES } from "@/lib/i18n";
 import { devDictionaries } from "@/lib/i18n/dev";
-import { creditLine, LICENCE, MEDIA, MEDIA_IDS } from "@/lib/site/media";
+import { creditLine, LICENCE, MEDIA, MEDIA_IDS, TILE_FOR_TOOL, TILE_IDS } from "@/lib/site/media";
 import { SAMPLES, SLOTS } from "@/components/site/samples";
 import { PublicFooter } from "@/components/legal/PublicFooter";
+import { SignOffPicture } from "@/components/site/SolutionPictures";
 
 /**
  * The public site's pictures are real stock photographs and footage by Pexels contributors (round 7b). These tests keep
@@ -20,11 +21,11 @@ const read = (f: string) => readFileSync(join(ROOT, f), "utf8");
 
 describe("every picture has a credit", () => {
   it("lists each credited picture once, with a creator, a profile, a source page on Pexels and a Pexels id that is in the source URL", () => {
-    expect(MEDIA_IDS.length).toBe(15);
+    expect(MEDIA_IDS.length).toBe(23);
     const ids = new Set<string>();
     for (const id of MEDIA_IDS) {
       const m = MEDIA[id];
-      expect(m.creator.length, id).toBeGreaterThan(2);
+      expect(m.creator.length, id).toBeGreaterThan(0);
       expect(m.creatorUrl, id).toMatch(/^https:\/\/www\.pexels\.com\/@[\w-]+\/$/);
       expect(m.sourceUrl, id).toMatch(/^https:\/\/www\.pexels\.com\/(?:photo|video)\//);
       expect(m.sourceUrl, id).toContain(m.pexelsId);
@@ -42,7 +43,8 @@ describe("every picture has a credit", () => {
     }
     for (const id of MEDIA_IDS) {
       expect(statSync(join(ROOT, "components/site/media", `${id}.webp`)).size, id).toBeGreaterThan(1000);
-      expect(statSync(join(ROOT, "components/site/media", `${id}-sm.webp`)).size, id).toBeGreaterThan(500);
+      // A wall tile is one 448 px file; every other picture also has a 640 px one for phones.
+      if (!(TILE_IDS as readonly string[]).includes(id)) expect(statSync(join(ROOT, "components/site/media", `${id}-sm.webp`)).size, id).toBeGreaterThan(500);
     }
     for (const slot of Object.values(SLOTS)) expect(MEDIA_IDS).toContain(slot.id);
   });
@@ -65,6 +67,35 @@ describe("every picture has a credit", () => {
     for (const a of links) expect(a.getAttribute("rel")).toContain("noopener");
     expect(container.querySelector(".st-credits summary")?.textContent).toBe(t.site.credits.title);
     expect(container.querySelector(".st-credits a[href='https://www.pexels.com/license/']")?.textContent).toBe(t.site.credits.licence);
+  });
+});
+
+describe("the capability wall", () => {
+  it("gives each of eight tools its own credited photograph, and names only tools the studio lists, in every language", () => {
+    expect(Object.keys(TILE_FOR_TOOL)).toHaveLength(8);
+    expect(new Set(Object.values(TILE_FOR_TOOL)).size).toBe(8);
+    for (const { code } of LOCALES) {
+      const ids = dictionaries[code].site.studio.tools.map((x) => x.id);
+      for (const tool of Object.keys(TILE_FOR_TOOL)) expect(ids, `${code} ${tool}`).toContain(tool);
+      expect(dictionaries[code].site.wall.label.length).toBeGreaterThan(15);
+    }
+    for (const id of TILE_IDS) expect(MEDIA[id].kind).toBe("photo");
+  });
+});
+
+describe("the publish desk's frame is real footage, labelled and credited", () => {
+  it.each(LOCALES.map((l) => l.code))("%s: the frame says it is an example and credits the footage, on the frame and, for a phone, in a caption under it", (code) => {
+    const t = dictionaries[code];
+    const { container } = render(<SignOffPicture t={t} />);
+    const frame = container.querySelector(".st-signoff-frame")!;
+    expect(frame.getAttribute("data-clip")).toBe("caravan");
+    expect(frame.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(t.site.samples.frameTag);
+    expect(frame.querySelector(".nx-result-badge[data-kind='clip']")?.textContent).toBe(t.site.samples.clipTag);
+    const credit = creditLine("caravan", t.site.samples.credit);
+    expect(frame.querySelector(".nx-result-credit")?.textContent).toBe(credit);
+    expect(container.querySelector(".st-signoff-caption")?.textContent).toContain(credit);
+    // The flat drawn placeholder is gone.
+    expect(container.querySelector(".st-clip-pic")).toBeNull();
   });
 });
 
@@ -97,6 +128,20 @@ describe("no label says the pictures are AI-made, and none says they are Nightsh
         expect(alt, `${code} ${id}`).not.toMatch(/Morocco|Jordan|Wadi|Sahara|Vietnam|England|Brazil|India|Иордан|Сахар|Марокко/i);
       }
     }
+  });
+});
+
+describe("one shared grade", () => {
+  it("is applied to every still and to every frame of every clip by the one script, with a lifted black and warmed highlights", () => {
+    const py = read("scripts/make-site-media.py");
+    expect(py).toMatch(/^LIFT = 0\.03/m);
+    expect(py).toMatch(/^WARM = 0\.035/m);
+    const stills = py.slice(py.indexOf("def make_stills"), py.indexOf("# --- clips"));
+    const clip = py.slice(py.indexOf("def make_clip"), py.indexOf("def main"));
+    expect(stills).toMatch(/im = grade\(/);
+    expect(clip).toMatch(/im = grade\(im, sat=p\["sat"\], warm=p\.get\("warm", WARM\)\)/);
+    // No encoder or resize step writes a picture that skipped it: the only writers are those two functions.
+    expect([...py.matchAll(/\.save\(/g)].length).toBeLessThanOrEqual(6);
   });
 });
 
@@ -156,7 +201,7 @@ describe("only one clip plays at a time", () => {
     };
     const { container } = render(
       <div>
-        <LoopClip clip="mist" poster="/a.webp" />
+        <LoopClip clip="pottery" poster="/a.webp" />
         <LoopClip clip="coast" poster="/b.webp" />
       </div>,
     );

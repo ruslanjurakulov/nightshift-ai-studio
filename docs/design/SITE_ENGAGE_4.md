@@ -1,5 +1,8 @@
 # Site, round 4: image-led, one column, six blocks
 
+> **Superseded in part (round 7b and after).** The pictures this document describes as AI-generated stills, the clips made from them and the drawn light over them are gone: the public pages now show credited Pexels stock photos and footage, labelled as examples (`SITE_ENGAGE_7B.md`, `SITE_ENGAGE_8.md`, `MEDIA_CREDITS.md`). Read what follows as history; the layout, type, motion and honesty rules it records still apply unless a later round says otherwise.
+
+
 Status: 2026-10-05. Builds on `SITE_ENGAGE.md`, `_2` and `_3`. The independent score of round 3 was 62 to 70 on a phone
 (about 67) and 70 to 80 on a desktop (about 75): a plateau after three polish rounds. The reviewer's diagnosis was the
 layout concept itself (card-heavy, text-forward, six short horizontal rails, 15,000 px phone pages, six stills repeated),

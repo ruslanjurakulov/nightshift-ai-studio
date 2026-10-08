@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { ReactNode } from "react";
@@ -19,7 +19,6 @@ vi.mock("next/link", () => ({
 
 import { dictionaries, LOCALES } from "@/lib/i18n";
 import { LoopClip } from "@/components/site/LoopClip";
-import { ToolStrip } from "@/components/landing/ToolStrip";
 import { StickyCta } from "@/components/site/StickyCta";
 import { Landing } from "@/components/landing/Landing";
 import { CLIPS, SLOTS, slotClip } from "@/components/site/samples";
@@ -74,15 +73,15 @@ afterEach(() => {
 });
 
 describe("the clips (round 5)", () => {
-  it("are three, each in two renditions (1280 x 720 for a screen, 640 x 360 for a phone) and two formats: the screen's between 150 and 450 KB, the phone's between 50 and 150 KB", () => {
-    expect(Object.keys(CLIPS).sort()).toEqual(["caravan", "coast", "mist"]);
+  it("are six, each in two renditions (1280 x 720 for a screen, 640 x 360 for a phone) and two formats: the screen's between 100 and 450 KB, the phone's between 30 and 150 KB", () => {
+    expect(Object.keys(CLIPS).sort()).toEqual(["caravan", "cloud", "coast", "floating", "loom", "pottery"]);
     for (const name of Object.keys(CLIPS)) for (const ext of ["mp4", "webm"]) {
       const big = statSync(join(ROOT, "components/site/clips", `${name}.${ext}`)).size;
       const small = statSync(join(ROOT, "components/site/clips", `${name}-sm.${ext}`)).size;
       expect(big, `${name}.${ext}`).toBeLessThanOrEqual(450 * 1024);
-      expect(big, `${name}.${ext}`).toBeGreaterThan(150 * 1024);
+      expect(big, `${name}.${ext}`).toBeGreaterThan(100 * 1024);
       expect(small, `${name}-sm.${ext}`).toBeLessThanOrEqual(150 * 1024);
-      expect(small, `${name}-sm.${ext}`).toBeGreaterThan(50 * 1024);
+      expect(small, `${name}-sm.${ext}`).toBeGreaterThan(30 * 1024);
     }
   });
 
@@ -90,15 +89,16 @@ describe("the clips (round 5)", () => {
     expect(css).toMatch(/\.nx-clip \{ position: absolute; inset: 1px; width: calc\(100% - 2px\); height: calc\(100% - 2px\);/);
   });
 
-  it("belong to three slots, each of which keeps its still as the poster (frame 0 of the clip is that still)", () => {
-    expect(slotClip("hero")).toBe("caravan");
-    expect(slotClip("show.studio")).toBe("mist");
+  it("belong to six slots, each of which keeps its still as the poster (frame 0 of the clip is that still)", () => {
+    expect(slotClip("hero")).toBe("cloud");
+    expect(slotClip("show.studio")).toBe("pottery");
     expect(slotClip("show.approvals")).toBe("coast");
-    for (const slot of ["hero", "show.studio", "show.approvals"] as const) expect(SLOTS[slot].id).toBe(slotClip(slot));
-    // The library, the closing panel and the pricing card are photographs: nothing moves on them.
-    expect(slotClip("show.video")).toBeNull();
-    expect(slotClip("landing.final")).toBeNull();
-    expect(slotClip("pricing.card")).toBeNull();
+    expect(slotClip("pricing.card")).toBe("floating");
+    expect(slotClip("solutions.youtube-channels")).toBe("caravan");
+    expect(slotClip("solutions.creative-studio")).toBe("loom");
+    for (const slot of ["hero", "show.studio", "show.approvals", "pricing.card", "solutions.youtube-channels", "solutions.creative-studio"] as const) expect(SLOTS[slot].id).toBe(slotClip(slot));
+    // The library, the closing panel, the developers' photograph and the sign-in stages are still: nothing moves on them (the sign-in pages have no pause switch).
+    for (const slot of ["show.video", "landing.final", "solutions.developers", "auth.login", "auth.signup"] as const) expect(slotClip(slot), slot).toBeNull();
   });
 
   it("are served from /_next/static/media (a path the middleware never gates) through one webpack rule, and the CSP already allows same-origin media (nothing in the CSP changed)", () => {
@@ -224,7 +224,7 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     env();
     const { container } = render(<Landing t={t} locale={code} pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
     const clipBoxes = [...container.querySelectorAll("[data-clip]")];
-    expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(["caravan", "mist", "coast"]);
+    expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(["cloud", "pottery", "coast"]);
     for (const b of clipBoxes) {
       // The still under a clip is a frame of stock footage.
       expect(b.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(t.site.samples.frameTag);
@@ -280,70 +280,35 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
   });
 });
 
-describe("the tool strip (round 6): a swipeable row of pills", () => {
-  const tools = dictionaries.en.site.studio.tools.map((x) => ({ id: x.id, title: x.title, body: x.body }));
-  const s = dictionaries.en.site.studio;
-  const pointer = () =>
-    // jsdom has no PointerEvent: give it one that carries pointerType.
-    vi.stubGlobal(
-      "PointerEvent",
-      class extends MouseEvent {
-        pointerType: string;
-        constructor(type: string, init: MouseEventInit & { pointerType?: string } = {}) {
-          super(type, init);
-          this.pointerType = init.pointerType ?? "mouse";
-        }
-      },
-    );
-
-  it("is a tablist of the nine names (never a provider or a model): one Tab crosses it, arrows, Home and End move, the line under it is the tab panel", () => {
-    pointer();
-    render(<ToolStrip title="What Nightshift can make" tools={tools} priced={s.priced} free={s.free} />);
-    const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((b) => b.textContent)).toEqual(tools.map((t) => t.title));
-    expect(tabs).toHaveLength(9);
-    expect(tabs.filter((b) => b.getAttribute("tabindex") === "0")).toHaveLength(1);
-    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
-    const panel = screen.getByRole("tabpanel");
-    expect(panel.getAttribute("aria-live")).toBe("polite");
-    expect(panel.textContent).toContain(tools[0].body);
-    fireEvent.click(tabs[5]);
-    expect(tabs[5].getAttribute("aria-selected")).toBe("true");
-    expect(tabs[0].getAttribute("aria-selected")).toBe("false");
-    expect(screen.getByRole("tabpanel").textContent).toContain(tools[5].body);
-    fireEvent.keyDown(tabs[5], { key: "ArrowRight" });
-    expect(tabs[6].getAttribute("aria-selected")).toBe("true");
-    fireEvent.keyDown(tabs[6], { key: "End" });
-    expect(tabs[8].getAttribute("aria-selected")).toBe("true");
-    fireEvent.keyDown(tabs[8], { key: "ArrowRight" });
-    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
-    fireEvent.keyDown(tabs[0], { key: "ArrowLeft" });
-    expect(tabs[8].getAttribute("aria-selected")).toBe("true");
-    fireEvent.pointerEnter(tabs[2], { pointerType: "mouse" });
-    expect(screen.getByRole("tabpanel").textContent).toContain(tools[2].body);
-    fireEvent.pointerEnter(tabs[3], { pointerType: "touch" });
-    expect(screen.getByRole("tabpanel").textContent).toContain(tools[2].body);
-  });
-
-  it("says how each is paid for: the editor and the style library cost no credits, the rest show their price on the button", () => {
-    render(<ToolStrip title="t" tools={tools} priced={s.priced} free={s.free} />);
-    for (const t of tools) {
-      fireEvent.click(screen.getByRole("tab", { name: t.title }));
-      expect(screen.getByRole("tabpanel").textContent).toContain(t.id === "editor" || t.id === "styles" ? s.free : s.priced);
-    }
-  });
-
-  it("scrolls sideways with snapping and faded edges, its pills are at least 52 px tall and 17 px, and it sits in the \"how it works\" block (one section fewer on a phone)", () => {
+describe("the capability wall (round 8): eight stock photographs, one per tool", () => {
+  it("replaces the pill carousel in the \"how it works\" block: eight tiles, each with the tool's own name and description, whether it costs credits, and its photographer's credit, under a label that says they are stock photos", () => {
     const t = dictionaries.en;
     env();
     const { container } = render(<Landing t={t} locale="en" pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
     const how = container.querySelector("section#how")!;
-    expect(how.querySelector("#tools h3")?.textContent).toBe(t.site.toolStrip.title);
+    const wall = how.querySelector("#tools")!;
+    expect(wall.querySelector("h3")?.textContent).toBe(t.site.toolStrip.title);
+    expect(wall.querySelector(".nx-wall-label")?.textContent).toBe(t.site.wall.label);
+    expect(wall.querySelector(".nx-wall-note")?.textContent).toBe(t.site.wall.note);
+    const tiles = [...wall.querySelectorAll(".nx-wall-tile")];
+    const named = t.site.studio.tools.filter((x) => x.id !== "editor");
+    expect(tiles.map((x) => x.querySelector(".nx-wall-name")?.textContent)).toEqual(named.map((x) => x.title));
+    expect(tiles.map((x) => x.querySelector(".nx-wall-body")?.textContent)).toEqual(named.map((x) => x.body));
+    for (const [i, tile] of tiles.entries()) {
+      const id = named[i].id;
+      // Only the tool that costs no credits says so on its tile; the note says the rest once.
+      expect(tile.querySelector(".nx-wall-price")?.textContent ?? null).toBe(id === "styles" ? t.site.studio.free : null);
+      expect(tile.querySelector(".nx-wall-credit")?.textContent).toMatch(/ \/ Pexels$/);
+      expect(tile.querySelector("img")?.getAttribute("loading")).toBe("lazy");
+      expect(tile.querySelector("a, button, [tabindex]")).toBeNull();
+    }
+    // The ninth tool, the Editor, is a plain line: it has no photograph.
+    expect(wall.querySelector(".nx-wall-editor")?.textContent).toContain(t.site.studio.tools.find((x) => x.id === "editor")!.title);
     expect(container.querySelector("section#tools")).toBeNull();
-    expect(css).toMatch(/\.nx-tools-list \{[^}]*overflow-x: auto; scroll-snap-type: x proximity;/);
-    expect(css).toMatch(/\.nx-tools-list \{[^}]*mask-image: linear-gradient\(90deg/);
-    expect(css).toMatch(/\.nx-tool \{[^}]*min-height: 52px;[^}]*font-size: 17px;/);
-    for (const code of ["en", "ru", "uz"] as const) expect(dictionaries[code].site.toolStrip.title.length).toBeGreaterThan(8);
+    // Two columns on a phone, four from 640 px.
+    expect(css).toMatch(/\.nx-wall-grid \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+    expect(css).toMatch(/@media \(min-width: 640px\) \{ \.nx-wall-grid \{ grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
+    expect(css).toMatch(/\.nx-wall-credit \{[^}]*font-size: 14px/);
   });
 });
 

@@ -40,15 +40,15 @@ export function AuthShell({
   const a = t.site.auth;
   preloadSiteFonts(locale);
   const asideTitle = mode === "signup" ? a.asideTitleSignup : a.asideTitle;
-  // A real photograph behind the stage (stock, by a Pexels contributor, credited under the stage): misty hills at dawn to sign in, calm water at dawn to start.
+  // A real photograph behind the stage (stock, by a Pexels contributor, credited under the stage): a lit window in a quiet street to sign in, paper lanterns to start.
   const slot: SlotId = mode === "signup" ? "auth.signup" : "auth.login";
-  const photo = slotSample(slot).id as "dawn" | "horizon";
+  const photo = slotSample(slot).id as "alley" | "lanterngrid";
   const credit = `${t.site.samples.captions[photo]}. ${creditLine(photo, t.site.samples.credit)}`;
   return (
     <div className="st nx st-auth">
-      <aside className="st-auth-aside" aria-label={asideTitle}>
+      <aside className="st-auth-aside" aria-label={asideTitle} data-photo={photo}>
         {/* A photograph behind the house rules (decorative: darkened under the words, credited below); the flow card on it is the example. */}
-        <SlotImg slot={slot} className="nx-aside-bg" sizes="(min-width: 960px) 45vw, 1px" />
+        <SlotImg slot={slot} className="nx-aside-bg" sizes="(min-width: 960px) 900px, 1px" />
         <Link href="/" className="st-brand self-start">
           <BrandMark />
           {t.brand.name}
@@ -88,7 +88,7 @@ export function AuthShell({
         </div>
 
         {/* On a phone the stage is a band above the form: the same drawing, the brand over it, the brief and the approval playing on it. */}
-        <div className="nx-auth-band lg:hidden">
+        <div className="nx-auth-band lg:hidden" data-photo={photo}>
           <SlotImg slot={slot} className="nx-art" sizes="(max-width: 959px) 100vw, 1px" />
           <span className="nx-result-credit">{creditLine(photo, t.site.samples.credit)}</span>
           <Link href="/" className="st-brand">

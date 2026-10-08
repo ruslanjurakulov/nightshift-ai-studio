@@ -11,7 +11,8 @@ import { HeroFx } from "@/components/site/HeroFx";
 import { AudienceTabs } from "@/components/site/AudienceTabs";
 import { ApiPicture, ComposerPicture, SignOffPicture } from "@/components/site/SolutionPictures";
 import { MotionToggle } from "@/components/site/MotionToggle";
-import { SlotImg, slotAlt, slotSample, type SlotId } from "@/components/site/samples";
+import { LoopClip } from "@/components/site/LoopClip";
+import { SAMPLES, SLOTS, SlotImg, slotAlt, slotClip, slotSample, type SlotId } from "@/components/site/samples";
 import { creditLine } from "@/lib/site/media";
 
 /** Public: listed exactly in lib/public-paths.ts (SOLUTION_PATHS). */
@@ -52,6 +53,9 @@ export default async function SolutionsPage() {
     const Picture = WAY_PICTURE[page.id];
     const slot = `solutions.${page.id}` as SlotId;
     const sample = slotSample(slot);
+    const clip = slotClip(slot);
+    // The channels tab's picture carries its own real frame (SignOffPicture), so only the other two get a photograph or clip above theirs.
+    const banner = page.id !== "youtube-channels";
     return [
       {
         id: page.id,
@@ -88,11 +92,21 @@ export default async function SolutionsPage() {
               </ul>
             </div>
             <div className="nx-aud-stage">
-              <figure className="nx-aud-photo">
-                <SlotImg slot={slot} alt={slotAlt(t.site.samples.alts, slot)} sizes="(min-width: 860px) 560px, calc(100vw - 64px)" />
-                <span className="nx-result-badge">{t.site.samples.tag}</span>
-                <span className="nx-result-credit">{creditLine(sample.id, t.site.samples.credit)}</span>
-              </figure>
+              {banner && (
+                <figure className="nx-aud-photo" data-clip={clip ?? undefined}>
+                  <SlotImg slot={slot} alt={slotAlt(t.site.samples.alts, slot)} sizes="(min-width: 860px) 560px, calc(100vw - 64px)" />
+                  {clip && <LoopClip clip={clip} poster={SAMPLES[SLOTS[slot].id].sm} />}
+                  <span className="nx-result-badge" data-kind="still">
+                    {sample.footage ? t.site.samples.frameTag : t.site.samples.tag}
+                  </span>
+                  {clip && (
+                    <span className="nx-result-badge" data-kind="clip">
+                      {t.site.samples.clipTag}
+                    </span>
+                  )}
+                  <span className="nx-result-credit">{creditLine(sample.id, t.site.samples.credit)}</span>
+                </figure>
+              )}
               <Picture t={t} />
             </div>
           </div>

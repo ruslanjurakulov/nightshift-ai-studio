@@ -3,7 +3,7 @@
 
     STOCK=/path/to/originals FFMPEG=/path/to/ffmpeg python3 scripts/make-site-media.py [stills|clips|all]
 
-STOCK holds video/ and photo/ with the files named in OUT_STILLS and OUT_CLIPS below (the originals are 100+ MB and are
+STOCK holds video/ and photo/ (the first batch) and STOCK2 (the second batch, default STOCK) with the files named in OUT_STILLS and OUT_CLIPS below (the originals are 100+ MB and are
 not in the repository; only what this writes is). It writes:
 
 - components/site/media/NAME.webp (1280 px wide) and NAME-sm.webp (640 px wide) for every still;
@@ -30,6 +30,7 @@ import tempfile
 from PIL import Image, ImageChops, ImageEnhance, ImageStat
 
 STOCK = os.environ.get("STOCK") or sys.exit("set STOCK to the directory that holds video/ and photo/ (the Pexels originals)")
+STOCK2 = os.environ.get("STOCK2", STOCK)
 FFMPEG = os.environ.get("FFMPEG", "ffmpeg")
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "components", "site"))
 STILLS_DIR = os.path.join(ROOT, "media")
@@ -67,21 +68,35 @@ def grade(im: Image.Image, sat: float = 1.0, lift: float = LIFT, warm: float = W
 OUT_STILLS = {
     "dunes": ("photo/hero-desert-caravan-15848441.jpg", (0, 0, 1, 1), (16, 9), 74, 1.0, LIFT),
     "library": ("photo/library-chandelier-37387122.jpg", (0, 0.02, 1, 0.98), (16, 9), 72, 1.0, 0.015),
-    # The moon sits at 86% of the frame width, clear of the words that go in the middle of the closing panel (it is centred in the original).
-    "moon": ("photo/moon-night-sky-39335277.jpg", (0.0, 0.2547, 0.5813, 0.7453), (16, 9), 76, 1.0, 0.012),
-    # The top third of the original is flat haze: the derivative starts below it.
+    # The moon sits at 91% of the frame width, clear of the words in the middle of the closing panel (it is centred in the original).
+    "moon": ("photo/moon-night-sky-39335277.jpg", (0.0, 0.2547, 0.5493, 0.7453), (16, 9), 76, 1.0, 0.012),
+    # The top part of the original is flat haze: the derivative starts below it.
     "market": ("photo/nightmarket-wide-20895317.jpg", (0.0, 0.22, 0.889, 1.0), (16, 9), 74, 1.08, LIFT),
     "valley": ("photo/valley-golden-mist-10352688.jpg", (0, 0, 1, 1), (16, 9), 74, 1.0, LIFT),
     "lighthouse": ("photo/lighthouse-golden-dusk-4390834.jpg", (0, 0, 1, 1), (16, 9), 74, 1.0, LIFT),
-    # The small red-lit partial face at the far left bottom is cropped out (left 10%).
-    "lanterns": ("photo/pricing-warm-lanterns-16046217.jpg", (0.10, 0.07, 1.0, 0.84), (16, 9), 76, 1.0, 0.012),
-    "fishermen": ("photo/solutions-documentary-fishermen-39395221.jpg", (0, 0.1, 1, 0.82), (2, 1), 72, 0.82, LIFT),
-    "workshop": ("photo/solutions-workshop-carving-19208266.jpg", (0, 0.1, 1, 0.78), (2, 1), 72, 1.0, LIFT),
     "citynight": ("photo/solutions-city-night-39659645.jpg", (0, 0.0, 1, 0.73), (2, 1), 72, 1.0, LIFT),
-    "dawn": ("photo/login-dawn-fog-31550736.jpg", (0, 0, 1, 1), (16, 9), 70, 0.9, LIFT),
-    "horizon": ("photo/signup-quiet-horizon-14701162.jpg", (0, 0, 1, 1), (16, 9), 68, 0.9, LIFT),
+    # Round 8. The sign-in and sign-up stages: squares (a tall stage and a wide band both crop a square well).
+    "alley": ("2:photo/lit-window-dark-alley-4916113.jpg", (0.289, 0, 0.956, 1), (1, 1), 66, 1.0, 0.0),
+    "lanterngrid": ("2:photo/lanterns-grid-warm-31108468.jpg", (0.1667, 0, 0.8333, 1), (1, 1), 62, 1.0, 0.0),
+    # The capability wall's tiles: one 448 x 336 file each (TILES), at most 25 KB.
+    "peak": ("2:photo/tile-image-peak-gold-34033024.jpg", (0.1, 0, 0.99, 1), (4, 3), 64, 1.0, LIFT),
+    "waterfall": ("2:photo/tile-video-flowing-water-8780358.jpg", (0.12, 0, 0.88, 1), (4, 3), 62, 1.0, LIFT),
+    "mic": ("2:photo/tile-voice-brass-mic-26280295.jpg", (0.0, 0, 0.889, 1), (4, 3), 66, 1.0, LIFT),
+    "reel": ("2:photo/tile-edit-film-reel-34084909.jpg", (0.055, 0, 0.945, 1), (4, 3), 64, 1.0, LIFT),
+    "trails": ("2:photo/tile-animate-light-trails-36504036.jpg", (0.0, 0, 1, 1), (4, 3), 62, 1.0, LIFT),
+    "fibres": ("2:photo/tile-upscale-macro-fibres-37955302.jpg", (0.0, 0, 1, 1), (4, 3), 62, 1.0, LIFT),
+    "paper": ("2:photo/tile-cutout-paper-layers-34051927.jpg", (0.0, 0.1, 1, 0.9), (4, 3), 64, 1.0, LIFT),
+    "paint": ("2:photo/tile-styles-impasto-paint-1208949.jpg", (0.0, 0, 1, 1), (4, 3), 60, 0.92, LIFT),
 }
+TILES = {"peak", "waterfall", "mic", "reel", "trails", "fibres", "paper", "paint"}
 WIDTHS = {"": 1280, "-sm": 640}
+TILE_MAX_KB = 25
+TILE_W = 448  # a tile is about 170 px wide on a phone (2 columns) and 280 on a desktop (4 columns); 448 covers both at 1x and the phone at 2x
+
+
+def source(path: str) -> str:
+    """"2:photo/x.jpg" is in the second batch's directory."""
+    return os.path.join(STOCK2, path[2:]) if path.startswith("2:") else os.path.join(STOCK, path)
 
 
 def make_stills(only: set[str] | None = None) -> dict:
@@ -90,7 +105,7 @@ def make_stills(only: set[str] | None = None) -> dict:
     for name, (file, crop, (aw, ah), q, sat, lift) in OUT_STILLS.items():
         if only and name not in only:
             continue
-        src = Image.open(os.path.join(STOCK, file))
+        src = Image.open(source(file))
         W, H = src.size
         box = (round(crop[0] * W), round(crop[1] * H), round(crop[2] * W), round(crop[3] * H))
         cw, ch = box[2] - box[0], box[3] - box[1]
@@ -102,23 +117,41 @@ def make_stills(only: set[str] | None = None) -> dict:
             nh = round(cw * ah / aw)
             box = (box[0], box[1] + (ch - nh) // 2, box[2], box[1] + (ch - nh) // 2 + nh)
         for suffix, w in WIDTHS.items():
+            if name in TILES and suffix == "":
+                continue
+            if name in TILES:
+                w = TILE_W
             h = round(w * ah / aw)
             im = grade(src.resize((w, h), Image.LANCZOS, box=box), sat=sat, lift=lift)
-            path = os.path.join(STILLS_DIR, f"{name}{suffix}.webp")
-            im.save(path, "WEBP", quality=q if suffix == "" else q - 4, method=6)
-            sizes[f"{name}{suffix}"] = os.path.getsize(path)
+            path = os.path.join(STILLS_DIR, f"{name}{suffix}.webp" if name not in TILES else f"{name}.webp")
+            quality = q if suffix == "" else q - 4
+            im.save(path, "WEBP", quality=quality, method=6)
+            if name in TILES:
+                # The tile is the smallest picture on the page: lower the quality until it fits its budget.
+                while os.path.getsize(path) > TILE_MAX_KB * 1024 and quality > 36:
+                    quality -= 3
+                    im.save(path, "WEBP", quality=quality, method=6)
+            sizes[path.split(os.sep)[-1][:-5]] = os.path.getsize(path)
     return sizes
 
 
 # --- clips -------------------------------------------------------------------------------------------------------------
 FPS = 25
+# A light denoise before the encoder (it helps the noisy footage fit its budget). The smooth clips (denoise=False) skip it: its temporal part makes the first frame
+# different from the rest and the wrap larger.
+DENOISE = "hqdn3d=2:1.5:5:4"
 # name: dict(file, start, span, loop, xf, sat, budget (KB at 1280, at 640))
 #   start/span: the stretch of the source used; loop: the loop's length in seconds; xf: the dissolve in seconds. The stretch is played
 #   at span / (loop + xf) of its own speed (slower than the source when that is below 1).
 OUT_CLIPS = {
     "caravan": dict(file="video/caravan-28673757.mp4", start=0.3, span=5.8, loop=7.0, xf=1.4, sat=1.0, budget=(400, 150)),
-    "mist": dict(file="video/mist-river-18197835.mp4", start=0.2, span=10.4, loop=8.8, xf=1.6, sat=1.0, budget=(330, 120)),
-    "coast": dict(file="video/lighthouse-14910095.mp4", start=0.3, span=11.0, loop=9.0, xf=1.6, sat=1.0, budget=(400, 150)),
+    "coast": dict(file="video/lighthouse-14910095.mp4", start=0.3, span=11.0, loop=8.4, xf=2.4, sat=1.0, budget=(320, 105)),
+    # Round 8. cloud: the hero-grade clip. pottery: hands at the wheel, a craft moment. floating: very dark, a 120 fps source decoded at 40 fps and
+    # played at the speed it was shot. loom: cooler than the rest, so its highlights are warmed twice as much.
+    "cloud": dict(file="2:video/cloud-sea-sunrise-4288029.mp4", start=0.3, span=12.0, loop=9.6, xf=2.4, sat=1.0, denoise=False, budget=(400, 120)),
+    "pottery": dict(file="2:video/pottery-hands-27519716.mp4", start=0.3, span=11.2, loop=9.2, xf=2.0, sat=1.0, budget=(340, 115)),
+    "floating": dict(file="2:video/lanterns-river-39181590.mp4", start=0.5, span=12.4, loop=9.6, xf=2.8, sat=1.0, denoise=False, budget=(330, 110), decode_fps=40),
+    "loom": dict(file="2:video/loom-weaving-32655899.mp4", start=0.3, span=11.8, loop=9.4, xf=2.4, sat=1.0, warm=0.07, budget=(400, 130)),
 }
 
 
@@ -170,16 +203,16 @@ def probe_fps(path: str) -> float:
     raise SystemExit("no fps")
 
 
-def encode(frames_dir: str, out_base: str, w: int, h: int, budget_kb: int) -> dict:
+def encode(frames_dir: str, out_base: str, w: int, h: int, budget_kb: int, denoise: bool = True) -> dict:
     """The lowest-loss quality (highest quality) of each codec that fits the budget."""
     result = {}
     for ext, crfs in (("mp4", range(27, 45, 2)), ("webm", range(34, 62, 3))):
         out = f"{out_base}.{ext}"
         for crf in crfs:
             if ext == "mp4":
-                args = [FFMPEG, "-y", "-framerate", str(FPS), "-i", os.path.join(frames_dir, "%05d.png"), "-vf", f"hqdn3d=2:1.5:5:4,scale={w}:{h}:flags=lanczos,format=yuv420p", "-c:v", "libx264", "-preset", "slow", "-crf", str(crf), "-profile:v", "main", "-movflags", "+faststart", "-an", out]
+                args = [FFMPEG, "-y", "-framerate", str(FPS), "-i", os.path.join(frames_dir, "%05d.png"), "-vf", f"{DENOISE if denoise else 'null'},scale={w}:{h}:flags=lanczos,format=yuv420p", "-c:v", "libx264", "-preset", "slow", "-crf", str(crf), "-profile:v", "main", "-movflags", "+faststart", "-an", out]
             else:
-                args = [FFMPEG, "-y", "-framerate", str(FPS), "-i", os.path.join(frames_dir, "%05d.png"), "-vf", f"hqdn3d=2:1.5:5:4,scale={w}:{h}:flags=lanczos,format=yuv420p", "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", str(crf), "-deadline", "good", "-cpu-used", "2", "-row-mt", "1", "-an", out]
+                args = [FFMPEG, "-y", "-framerate", str(FPS), "-i", os.path.join(frames_dir, "%05d.png"), "-vf", f"{DENOISE if denoise else 'null'},scale={w}:{h}:flags=lanczos,format=yuv420p", "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", str(crf), "-deadline", "good", "-cpu-used", "2", "-row-mt", "1", "-an", out]
             run(*args)
             if os.path.getsize(out) <= budget_kb * 1024:
                 break
@@ -188,8 +221,8 @@ def encode(frames_dir: str, out_base: str, w: int, h: int, budget_kb: int) -> di
 
 
 def make_clip(name: str, p: dict) -> dict:
-    src = os.path.join(STOCK, p["file"])
-    src_fps = probe_fps(src)
+    src = source(p["file"])
+    src_fps = float(p.get("decode_fps") or probe_fps(src))
     os.makedirs(CLIPS_DIR, exist_ok=True)
     os.makedirs(STILLS_DIR, exist_ok=True)
     report = {}
@@ -205,7 +238,7 @@ def make_clip(name: str, p: dict) -> dict:
         else:
             raw = os.path.join(tmp, "raw")
             os.makedirs(raw, exist_ok=True)
-            run(FFMPEG, "-y", "-ss", str(p["start"]), "-t", str(p["span"] + 0.2), "-i", src, "-vf", "scale=1280:720:flags=lanczos", "-fps_mode", "passthrough", "-q:v", "2", os.path.join(raw, "%05d.jpg"))
+            run(FFMPEG, "-y", "-ss", str(p["start"]), "-t", str(p["span"] + 0.2), "-i", src, "-vf", ("fps=%s," % p["decode_fps"] if p.get("decode_fps") else "") + "scale=1280:720:flags=lanczos", "-fps_mode", "passthrough", "-q:v", "2", os.path.join(raw, "%05d.jpg"))
             frames = Frames(raw, len(os.listdir(raw)))
             speed = p["span"] / (p["loop"] + p["xf"])
             os.makedirs(full, exist_ok=True)
@@ -218,7 +251,7 @@ def make_clip(name: str, p: dict) -> dict:
                 else:
                     a = smooth(tk / p["xf"])
                     im = Image.blend(at(frames, src_fps, (tk + p["loop"]) * speed), at(frames, src_fps, ts), a)
-                im = grade(im, sat=p["sat"])
+                im = grade(im, sat=p["sat"], warm=p.get("warm", WARM))
                 im.save(os.path.join(full, f"{k + 1:05d}.png"))
                 greys.append(grey(im))
         steps = sorted(mad(greys[i], greys[i + 1]) for i in range(n - 1))
@@ -230,7 +263,7 @@ def make_clip(name: str, p: dict) -> dict:
             first.resize((w, round(w * 9 / 16)), Image.LANCZOS).save(os.path.join(STILLS_DIR, f"{name}{suffix}.webp"), "WEBP", quality=74 if suffix == "" else 70, method=6)
         report["poster_kb"] = {s or "lg": round(os.path.getsize(os.path.join(STILLS_DIR, f"{name}{s}.webp")) / 1024, 1) for s in WIDTHS}
         for suffix, (w, h, budget) in {"": (1280, 720, p["budget"][0]), "-sm": (640, 360, p["budget"][1])}.items():
-            enc = encode(full, os.path.join(CLIPS_DIR, f"{name}{suffix}"), w, h, budget)
+            enc = encode(full, os.path.join(CLIPS_DIR, f"{name}{suffix}"), w, h, budget, p.get("denoise", True))
             report[f"clip{suffix or '-lg'}"] = {k: dict(kb=round(v[0] / 1024, 1), crf=v[1]) for k, v in enc.items()}
     return report
 
