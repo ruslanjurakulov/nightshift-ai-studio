@@ -327,7 +327,7 @@ describe("round 3: stills, header and the draw-in", () => {
     for (const i of container.querySelectorAll("figure.nx-chat img:not(.nx-fx-fg), section.nx-show img:not(.nx-fx-fg)")) expect(i.getAttribute("data-crop")).toBeNull();
   });
 
-  it("makes the header's Start free the same amber key as the page's button (one primary action)", async () => {
+  it("makes the header's Start free the same indigo key as the page's button (one primary action)", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     const shell = readFileSync(join(__dirname, "..", "components/legal/PublicShell.tsx"), "utf8");
