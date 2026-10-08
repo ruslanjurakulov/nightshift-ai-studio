@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Dictionary } from "@/lib/i18n";
+import { ClipPause } from "@/components/site/ClipPause";
 import { LoopClip } from "@/components/site/LoopClip";
 import { SAMPLES, SLOTS, SlotImg, slotAlt, slotClip, slotSample, type SlotId } from "@/components/site/samples";
 import { creditLine } from "@/lib/site/media";
@@ -19,7 +20,8 @@ export function HeroBleed({ t, slot = "hero", position, className = "nx-hero-ble
   const sm = t.site.samples;
   const clip = slotClip(slot);
   const sample = slotSample(slot);
-  const sizes = className === "nx-hero-bleed" ? "(min-width: 1024px) 1px, 100vw" : "(min-width: 1024px) 720px, 100vw";
+  // A phone's panel asks for the wide file (200vw): a still shown larger than its own pixels counts for less in the browser's LCP, and the clip's first frame (not scaled that way) would then be the larger paint and become the page's LCP.
+  const sizes = className === "nx-hero-bleed" ? "(min-width: 1024px) 1px, 200vw" : "(min-width: 1024px) 720px, 200vw";
   return (
     <div className={`nx-bleed ${className}`} data-clip={clip ?? undefined} style={position ? ({ "--bleed-pos": position } as CSSProperties) : undefined}>
       <SlotImg slot={slot} alt={slotAlt(sm.alts, slot)} className="nx-art" eager sizes={sizes} />
@@ -33,6 +35,7 @@ export function HeroBleed({ t, slot = "hero", position, className = "nx-hero-ble
         </span>
       )}
       <span className="nx-result-credit">{creditLine(sample.id, sm.credit)}</span>
+      {clip && <ClipPause label={t.site.fx.pause} />}
     </div>
   );
 }

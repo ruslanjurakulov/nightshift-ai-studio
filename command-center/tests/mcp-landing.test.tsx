@@ -112,6 +112,7 @@ describe("the hero: a chat card instead of a row of client logos", () => {
     expect(bleed.querySelector("img")?.getAttribute("alt")).toBe(site.samples.alts.cloud);
     expect(bleed.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(site.samples.frameTag);
     expect(bleed.querySelector(".nx-result-badge[data-kind='clip']")?.textContent).toBe(site.samples.clipTag);
+    expect(bleed.querySelector("button.nx-clip-pause")?.getAttribute("aria-label")).toBe(site.fx.pause);
     expect(bleed.querySelector(".nx-result-credit")?.textContent).toMatch(/ \/ Pexels$|Pexels$/);
     expect(card.querySelector(".nx-chat-foot")?.getAttribute("aria-hidden")).toBe("true");
     expect(card.querySelectorAll("button, a")).toHaveLength(0);

@@ -24,6 +24,7 @@ import { LoopClip } from "@/components/site/LoopClip";
 import { CLIPS, SAMPLES, SLOTS, slotClip } from "@/components/site/samples";
 import { SCENE_SAMPLE } from "@/components/docs/SampleFrame";
 import { MEDIA, MEDIA_IDS } from "@/lib/site/media";
+import { setMotionPaused } from "@/lib/site/motion";
 
 const ROOT = join(__dirname, "..");
 const css = readFileSync(join(ROOT, "components/site/site-next.css"), "utf8");
@@ -81,6 +82,38 @@ describe("a phone's first screen is the picture (round 9)", () => {
 
   it("keeps the panel dark in both themes and the clip a pixel smaller than its still (the still stays the LCP element)", () => {
     expect(css).toMatch(/\.nx-hero-top \{[^}]*background: #0b0a09; color: #fff;/);
+    expect(css).toMatch(/\.nx-bleed \.nx-clip \{ left: 3px; width: calc\(100% - 6px\);/);
+  });
+
+  it.each(LOCALES.map((l) => l.code))("%s: the panel has its own 44 px pause button (named like the page's switch), in step with it, clear of the badge and the credit", (code) => {
+    env();
+    const t = dictionaries[code];
+    const { container } = landing(code);
+    const bleed = container.querySelector(".nx-hero-bleed")!;
+    const btn = bleed.querySelector("button.nx-clip-pause") as HTMLButtonElement;
+    expect(btn.getAttribute("aria-label")).toBe(t.site.fx.pause);
+    expect(btn.getAttribute("aria-pressed")).toBe("false");
+    act(() => btn.click());
+    expect(btn.getAttribute("aria-pressed")).toBe("true");
+    expect(document.documentElement.getAttribute("data-motion")).toBe("paused");
+    // The page's own switch (under the card) shows the same state: one switch.
+    expect(container.querySelector(".nx-hero-visual .nx-motion-btn")?.getAttribute("aria-pressed")).toBe("true");
+    act(() => setMotionPaused(false));
+    expect(btn.getAttribute("aria-pressed")).toBe("false");
+    // Top right, 44 px, a visible focus ring; the badge is top left and the credit bottom right; under reduced motion it is gone with the video.
+    expect(css).toMatch(/\.nx-bleed \.nx-clip-pause \{ top: 12px; right: 12px; bottom: auto; z-index: 3; \}/);
+    expect(css).toMatch(/\.nx-clip-pause \{[^}]*width: 44px; height: 44px;/);
+    expect(css).toMatch(/\.nx-clip-pause:focus-visible \{ outline: 3px solid var\(--nx-stage-amber, #ffa940\);/);
+    expect(css).toMatch(/\.nx-bleed \.nx-result-badge \{ z-index: 2; top: 16px; left: 16px; \}/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.nx-clip-pause \{ display: none; \} \}/);
+    // /mcp's header is outside .nx, where the stage tokens are undefined: every var() the button uses has a literal fallback.
+    expect(css).toContain('.nx-clip-pause[aria-pressed="true"] { border-color: var(--nx-stage-amber, #ffa940); color: var(--nx-stage-amber, #ffa940); }');
+  });
+
+  it("asks for the wide still on a phone (200vw) so the still, not the clip's first frame, is the largest paint (a still drawn larger than its own pixels counts for less)", () => {
+    const src = readFileSync(join(ROOT, "components/landing/HeroBleed.tsx"), "utf8");
+    expect(src).toContain('"(min-width: 1024px) 1px, 200vw"');
+    expect(src).toContain('"(min-width: 1024px) 720px, 200vw"');
     expect(css).toMatch(/\.nx-bleed \.nx-clip \{ left: 3px; width: calc\(100% - 6px\);/);
   });
 

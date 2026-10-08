@@ -197,10 +197,10 @@ describe("the landing page's reasons to stay", () => {
     expect(within(bar).getByText(t.bar.cta).closest("a")!.getAttribute("href")).toBe("/signup");
     expect(bar.querySelector("button")!.getAttribute("aria-label")).toBe(t.bar.dismiss);
 
-    // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of three
-    // (the two clip pictures carry the same switch), and all three agree.
+    // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of four
+    // (the hero's picture panel and the two clip pictures carry the same switch), and all four agree.
     const all = () => screen.getAllByRole("button", { name: t.fx.pause });
-    expect(all()).toHaveLength(3);
+    expect(all()).toHaveLength(4);
     const toggle = container.querySelector(".nx-motion-btn") as HTMLElement;
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(toggle);

@@ -13,6 +13,7 @@ Same rules as rounds 7b and 8 (`SITE_ENGAGE_7B.md`, `SITE_ENGAGE_8.md`): every p
 7. **Small items.** The "Video" label over the landing photograph (4.03:1) went with the dropped showcase; the ru /signup "Одобрение" label no longer runs into its lamp (a 96 px label column in ru and uz); the drawn "Approve and publish" key is dashed and unfilled on the landing, /pricing and /mcp, as it was on the stages, so it cannot read as a second button.
 8. **Clip cost on /solutions and /pricing.** A frame that is never wider than 560 px (the publish desk's, the pricing card) uses the 640 px file on any screen (`compact`): /solutions first load on a desktop 665 to 451 kB, /pricing full scroll 553 to 381 kB.
 9. **Coast loop.** The dissolve is 3.2 s (was 2.4 s). The lossless wrap is one ordinary step (1.00 against a median of 1.16), as before; the encoded wrap did not improve (see below). MP4 structure verified on all twelve files: `ftyp`, `moov`, `mdat` (fast start), H.264 Main, yuv420p, 25 fps, even sizes, no audio. **To do: play the clips once on an iPhone in Safari** (Low Power Mode keeps autoplay of muted inline video off; the stills then stay, which is the designed fallback).
+10a. **Review fixes (WCAG 2.2.2, phone LCP).** The picture panel on the landing and on /mcp now has its own pause button, the same switch as the one under the chat card and on the clips (`ClipPause`: 44 x 44 px, top right, 12 px in, named "Pause motion" in all three languages, `aria-pressed`, one state in `sessionStorage` and on `<html data-motion>`, so it agrees with the page-wide switch; /signup already had one). It is clear of the badge (top left), the credit (bottom right) and the pill, its icon is white on a dark fill (0.8 alpha, at least 6:1 even over pure white, 4.5:1 or more also when pressed and amber), its focus ring is 3 px stage amber outside a dark gap, and it is hidden under reduced motion (where no video is rendered). Two latent faults found on the way and fixed: /mcp's header is outside `.nx`, so the stage tokens the button used (`--nx-stage-amber`, `--nx-stage-act`) were undefined there and an unresolved `var()` in `outline` drops the ring; they now have literal fallbacks. The phone panel's still asks for the 1,280 px file (`sizes` 200vw instead of 100vw, +8 kB, see the LCP note below).
 10. This note, `MEDIA_CREDITS.md` (desert added, alley, lantern grid and desert caravan photographs removed, usage and sizes updated), and the "superseded in part" headers on `SITE_ENGAGE_7B.md` and `SITE_ENGAGE_8.md`.
 
 Boxes that cannot move when the web font replaces the fallback: the new /mcp panel holds three runs of text whose line counts differ by one or two between the fallback face and Onest (and between languages), which first made CLS 0.011 on /mcp; each run now reserves the most lines it takes at its width (a table per width bucket, en and ru/uz separately, measured at 320 to 1440 px), and the phone band over the sign-in form keeps its height for the longer ru and uz topics. A clip is a few pixels smaller than its still so the still stays the page's largest paint.
@@ -48,14 +49,14 @@ Data, kB over the wire (first load after 3.5 s idle / full scroll):
 
 | Page | phone before | phone after | desktop before | desktop after |
 | :-- | :-- | :-- | :-- | :-- |
-| / | 437 / 775 | 422 / 650 | 670 / 1,419 | 663 / 1,316 |
+| / | 437 / 775 | 435 / 664 | 670 / 1,419 | 663 / 1,316 |
 | /pricing | 289 / 384 | 286 / 381 | 292 / 553 | 286 / 381 |
 | /solutions | 303 / 449 | 304 / 446 | 664 / 665 | 451 / 451 |
 | /login | 330 / 330 | 326 / 326 | 363 / 363 | 355 / 355 |
 | /signup | 355 / 356 | 410 / 410 | 422 / 422 | 595 / 595 |
-| /mcp | 344 / 420 | 463 / 535 | 344 / 450 | 610 / 710 |
+| /mcp | 344 / 420 | 477 / 547 | 344 / 450 | 610 / 710 |
 
-Budgets: phone first load at most 600 (worst 463), phone full scroll at most 1,000 (worst 650), desktop full scroll at most 1,500 (worst 1,316; 1,322 scrolling in 1.5 s steps so every clip plays long enough to buffer). /signup and /mcp grow because they now play a clip (the stage is tall, so it needs the 1,280 px file).
+Budgets: phone first load at most 600 (worst 477), phone full scroll at most 1,000 (worst 664), desktop full scroll at most 1,500 (worst 1,316; 1,322 scrolling in 1.5 s steps so every clip plays long enough to buffer). /signup and /mcp grow because they now play a clip (the stage is tall, so it needs the 1,280 px file).
 
 LCP (median of 7 loads, ms, before / after) and CLS (worst of plain and font-held loads in en, ru and uz, after):
 
@@ -66,9 +67,33 @@ LCP (median of 7 loads, ms, before / after) and CLS (worst of plain and font-hel
 | /solutions | 148 / 132 | 0.0007 | 200 / 208 | 0.0008 |
 | /login | 144 / 140 | 0.0011 | 188 / 184 | 0.0000 |
 | /signup | 140 / 144 | 0.0011 | 184 / 216 | 0.0000 |
-| /mcp | 176 / 424 | 0.0001 | 248 / 240 | 0.0003 |
+| /mcp | 200 / 192 | 0.0001 | 228 / 240 | 0.0003 |
 
-CLS is at or under 0.0017 everywhere (/pricing on a phone, unchanged by this round); the 0.011 to 0.032 the first /mcp, /login and /signup builds showed (a text wrap that differed between the two faces) is what the reserved lines and the band heights fixed. /mcp on a phone waits for its clip: the clip's first frame is a later paint of the same box and the browser counts its whole box, so LCP moves from the still (about 200 ms) to the moment the clip starts (about 420 ms); making the clip several pixels smaller than its still fixed it on a desktop but not on that phone panel.
+CLS is at or under 0.0017 everywhere (/pricing on a phone, unchanged by this round); the 0.011 to 0.032 the first /mcp, /login and /signup builds showed (a text wrap that differed between the two faces) is what the reserved lines and the band heights fixed.
+
+LCP at five phone widths (median of 7 loads, ms, Chromium at 1x, the LCP element in brackets). Before is this branch at 2c7679b6; after is the review fix; main is round 8 (fbc3af57), measured in the same run:
+
+| Page, width | main | before | after |
+| :-- | :-- | :-- | :-- |
+| / 360 | 208 [img] | 220 [img] | 220 [img] |
+| / 375 | 208 [img] | 196 [img] | 196 [img] |
+| / 390 | 196 [img] | 192 [img] | 204 [img] |
+| / 412 | 180 [img] | 364 [video] | 176 [img] |
+| / 430 | 180 [img] | 368 [video] | 192 [img] |
+| /mcp 360 | 204 [text] | 200 [img] | 220 [img] |
+| /mcp 375 | 184 [text] | 196 [img] | 220 [img] |
+| /mcp 390 | 196 [text] | 416 [video] | 212 [img] |
+| /mcp 412 | 184 [text] | 200 [img] | 204 [img] |
+| /mcp 430 | 180 [text] | 204 [img] | 204 [img] |
+| /signup 360 | 152 [img] | 152 [img] | 144 [img] |
+| /signup 375 | 156 [img] | 152 [img] | 148 [img] |
+| /signup 390 | 160 [img] | 140 [img] | 144 [img] |
+| /signup 412 | 144 [img] | 172 [img] | 140 [img] |
+| /signup 430 | 148 [img] | 192 [img] | 156 [img] |
+
+(main's /mcp LCP is a paragraph; a run to run spread of 20 to 60 ms is normal here, main itself moved 184 to 212 at /mcp 390 between two runs. /, /mcp at 768 and 1,023 px: 208 and 220 ms, 200 and 220 ms, images, against 196 to 224 on main.)
+
+Cause (diagnosed by measurement: only the still's size changed and the element flipped back to the image at every width, not read from the browser's source), and why the 1 px inset of round 5 (3 px here) was not enough: the clip was never larger than its still, but Chromium discounts an image's paint area when the image is drawn larger than its own pixels. The panel is about 390 x 800 CSS px and its still was the 640 x 360 file stretched to cover it, so the still's candidate was a fraction of its box, while the clip's first frame (a later paint) is counted at its whole box. Which of the two wins depends on the width and on the run, which is why only 412, 430 (landing) and 390 (/mcp) failed. The panel's still now asks for the 1,280 x 720 file (`sizes` 200vw), which is never drawn larger than its pixels on a phone, so it counts in full and is also the earlier paint. The clips on /signup and /mcp, the landing's and the card's already start after the page has loaded and gone idle (`early`), so nothing is fetched during the LCP window.
 
 Checks: axe 0 on six pages x en/ru/uz x light/dark x 390/1280 (and the three /solutions tabs); 96 states (8 pages x 3 languages x 2 widths x 2 themes) with no overflow and no small target; 42 contrast probes on rendered pixels (text made transparent, 95th percentile of the pixels behind each text box, large text 3:1, small 4.5:1), 0 flagged, the worst small text 4.92:1 (the closing "Start free"); tsc, eslint and vitest (new `tests/site-engage-9.test.tsx`: the panel, the wall button and hidden tiles, the bare card, the dashed key, the compact rendition, the reserved lines, the removed pictures); every media item still has a credit, no label says AI.
 
@@ -80,7 +105,7 @@ Seams (mean absolute grey-level step at the wrap against the median step, 1,280 
 
 - The phone landing is 1,424 px shorter, not the full 1,500; /mcp and the sign-in/up pages are 30 to 110 px longer on a phone.
 - The /mcp header panel reserves text lines for the worst case, so in English at some widths there is a visible gap of one or two lines between the headline and the lead; that is the price of zero layout shift without a hidden-until-font-loaded trick.
-- LCP on /mcp's phone layout is the clip's first frame (about 420 ms against 176 ms before); every other page is within 40 ms of before. Still far under 2.5 s, and the cost of a clip over a header.
+- The phone panel's still is now the 1,280 px file (8 kB more than the 640 one, about 13 kB on the first load of / and /mcp), which is what keeps the still, not the clip, the page's LCP element (below). A clip's first frame is not discounted for its own size; a still drawn larger than its pixels is, so a 640 px still stretched over a tall phone panel loses to the clip.
 - The wall tiles do not crossfade or play: there was nothing to cross to without new sourcing, so they zoom slowly.
 - The coast clip's encoded wrap is unchanged (above). An isolated 50 to 100 ms frame appears occasionally at a loop wrap under 4x throttle.
 - Not checked on a real iPhone or in Safari; the files are structurally standard.
