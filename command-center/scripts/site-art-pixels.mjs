@@ -3,16 +3,19 @@
  * theme at phone and desktop width, read the pixels back through a canvas, and fail when it is the black rectangle the
  * art became when its `--nx-stage*` colours were defined only on `.nx` (a `.st` page never had them).
  *
- *   node scripts/site-art-pixels.mjs http://localhost:3000
+ *   node scripts/site-art-pixels.mjs http://localhost:3000 [--module <dir>/x.js] [--chromium <binary>]
  *
- * Playwright is not a dependency of the app: this loads whatever the machine has (PLAYWRIGHT_MODULE, default the
- * global install) and PLAYWRIGHT_CHROMIUM for the browser binary, when it is not the one Playwright ships.
+ * Playwright is not a dependency of the app: this loads whatever the machine has (--module, default the global
+ * install) and --chromium for the browser binary, when it is not the one Playwright ships. Flags, not environment
+ * variables, so the server's env-template check has nothing to track.
  */
 import { createRequire } from "node:module";
 
-const BASE = process.argv[2] ?? "http://localhost:3000";
-const { chromium } = createRequire(process.env.PLAYWRIGHT_MODULE ?? "/opt/node22/lib/node_modules/x.js")("playwright");
-const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM } : {});
+const args = process.argv.slice(2);
+const flag = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
+const BASE = args.find((a) => a.startsWith("http")) ?? "http://localhost:3000";
+const { chromium } = createRequire(flag("--module") ?? "/opt/node22/lib/node_modules/x.js")("playwright");
+const browser = await chromium.launch(flag("--chromium") ? { executablePath: flag("--chromium") } : {});
 let failed = 0;
 
 for (const scheme of ["light", "dark"]) {
