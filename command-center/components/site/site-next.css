@@ -101,14 +101,15 @@ html:is([lang="ru"], [lang="uz"]) .nx .st-h1-page { font-size: clamp(32px, 5.4vw
   min-height: 56px;
   padding: 0 28px;
   border-radius: 16px;
-  border: 1px solid var(--st-lit-edge);
+  border: 1px solid var(--st-lit-bg);
   background: var(--st-lit-bg);
   color: var(--st-lit-fg);
   font-family: var(--font-display);
   font-size: 17px;
   font-weight: 600;
   white-space: nowrap;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 10px 28px -12px var(--st-lit-glow);
+  /* The key's edge is drawn just outside its box (a 1 px shadow ring), so no pixel under its label is the light edge. */
+  box-shadow: 0 0 0 1px var(--st-lit-edge), inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 10px 28px -12px var(--st-lit-glow);
 }
 .nx-btn svg { width: 20px; height: 20px; flex-shrink: 0; }
 .nx-btn:active { transform: translateY(1px); }
@@ -117,7 +118,7 @@ html:is([lang="ru"], [lang="uz"]) .nx .st-h1-page { font-size: clamp(32px, 5.4vw
 .nx-btn:focus-visible, .nx-bar-go:focus-visible { box-shadow: 0 0 0 2px var(--st-focus-gap); }
 @media (prefers-reduced-motion: no-preference) {
   .nx-btn { transition: background-color var(--ns-dur-2) var(--ns-ease), transform var(--ns-dur-2) var(--ns-ease), box-shadow var(--ns-dur-2) var(--ns-ease); }
-  .nx-btn:hover { background: var(--st-lit-hover); transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 14px 34px -12px var(--st-lit-glow); }
+  .nx-btn:hover { background: var(--st-lit-hover); border-color: var(--st-lit-hover); transform: translateY(-1px); box-shadow: 0 0 0 1px var(--st-lit-edge), inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 14px 34px -12px var(--st-lit-glow); }
   .nx-btn:hover svg { transform: translateX(2px); }
   .nx-btn svg { transition: transform var(--ns-dur-2) var(--ns-ease); }
 }
@@ -459,7 +460,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
   top: 12px;
   padding: 4px 12px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.62);
+  background: rgba(0, 0, 0, 0.78);
   font-size: 14px;
   font-weight: 500;
   color: #fff;
@@ -715,16 +716,17 @@ html:has(.nx-bar) { scroll-padding-bottom: 96px; }
   min-height: 44px;
   padding: 0 18px;
   border-radius: 12px;
-  border: 1px solid var(--st-lit-edge);
+  border: 1px solid var(--st-lit-bg);
   background: var(--st-lit-bg);
   color: var(--st-lit-fg);
+  box-shadow: 0 0 0 1px var(--st-lit-edge);
   font-family: var(--font-display);
   font-size: 16px;
   font-weight: 600;
   white-space: nowrap;
 }
 .nx-bar-go svg { width: 18px; height: 18px; }
-.nx-bar-go:hover { background: var(--st-lit-hover); }
+.nx-bar-go:hover { background: var(--st-lit-hover); border-color: var(--st-lit-hover); }
 .nx-bar-x { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; color: var(--nx-stage-dim); cursor: pointer; }
 .nx-bar-x:hover { color: var(--nx-stage-text); background: rgba(255, 255, 255, 0.08); }
 .nx-bar-x svg { width: 18px; height: 18px; }
@@ -833,6 +835,8 @@ html:is([lang="ru"], [lang="uz"]) .nx-hero .nx-h1 { font-size: clamp(36px, 8.6vw
 .nx-clip-pause:hover { border-color: var(--nx-stage-act); }
 .nx-clip-pause[aria-pressed="true"] { border-color: var(--nx-stage-amber); color: var(--nx-stage-amber); }
 @media (prefers-reduced-motion: reduce) { .nx-clip-pause { display: none; } }
+/* On a wide screen the control sits at the right above the credit, not in the top corner where a picture's own small subject (the lighthouse) can be. */
+@media (min-width: 860px) { .nx-clip-pause { top: auto; right: 16px; bottom: 60px; } }
 .nx-show-text { display: contents; color: #fff; }
 .nx-show-head { position: relative; z-index: 1; grid-area: 1 / 1; align-self: end; padding: 56px 22px 18px; background: linear-gradient(to top, rgba(8, 8, 8, 0.92) 0%, rgba(8, 8, 8, 0.8) calc(100% - 108px), rgba(8, 8, 8, 0) 100%); }
 .nx-show-rest { grid-area: 2 / 1; padding: 4px 22px 28px; background: #0b0a09; }
@@ -852,7 +856,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-show-h { font-size: clamp(28px, 7.2vw, 52p
   .nx-show-text { position: relative; z-index: 1; display: block; width: 46%; padding: 56px; }
   .nx-show-head { padding: 0; background: none; }
   .nx-show-rest { padding: 0; background: none; }
-  .nx-show-label { background: rgba(255, 255, 255, 0.18); border-color: transparent; }
+  .nx-show-label { background: rgba(8, 8, 8, 0.66); border-color: rgba(255, 255, 255, 0.28); }
 }
 @media (prefers-reduced-motion: no-preference) {
   .nx-show-cta { transition: border-color var(--ns-dur-2) var(--ns-ease), color var(--ns-dur-2) var(--ns-ease); }
@@ -1018,30 +1022,8 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 }
 
 /* What Nightshift can make: a strip of tool names, and one line that follows the one under the pointer. */
-.nx-tools { margin-top: 28px; }
-.nx-tools-rail { position: relative; }
-.nx-tools-list { display: flex; flex-wrap: nowrap; gap: 10px; margin: 0 -16px; padding: 4px 16px 8px; list-style: none; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: none; overscroll-behavior-x: contain; }
 /* Edge fades say there is more: the right one until the end, the left one once scrolled. A chevron in the right fade is the hint to swipe; it goes with the first scroll. */
-.nx-tools-rail[data-edge="start"] .nx-tools-list { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent); }
-.nx-tools-rail[data-edge="mid"] .nx-tools-list { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 64px), transparent); mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 64px), transparent); }
-.nx-tools-rail[data-edge="end"] .nx-tools-list { -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px); mask-image: linear-gradient(90deg, transparent, #000 40px); }
-.nx-tools-rail[data-edge="start"]::after { content: ""; position: absolute; right: 2px; top: 14px; width: 28px; height: 28px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); background: var(--ns-console) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a8880' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 6 6 6-6 6'/%3E%3C/svg%3E") center / 16px no-repeat; pointer-events: none; }
-.nx-tools-list::-webkit-scrollbar { display: none; }
-.nx-tools-list > li { flex: 0 0 auto; scroll-snap-align: start; }
-.nx-tool { display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 22px 0 18px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); background: var(--ns-console); font-family: var(--font-display); font-size: 17px; white-space: nowrap; font-weight: 500; color: var(--ns-text); cursor: pointer; }
-.nx-tool svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--ns-text-dim); }
-.nx-tool:hover { border-color: var(--st-act); }
-.nx-tool[aria-selected="true"] { border-color: var(--ns-amber); background: var(--ns-select); color: var(--ns-text); }
-.nx-tool[aria-selected="true"] svg { color: var(--ns-amber-ink); }
-.nx-tools-line { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 14px; row-gap: 2px; align-items: baseline; margin: 22px 0 0; padding: 20px 22px; border-radius: 22px; border: 1px solid var(--ns-rule); background: var(--ns-console); font-size: 17px; line-height: 1.5; }
-.nx-tools-dot { grid-row: 1 / span 3; align-self: start; width: 10px; height: 10px; margin-top: 9px; border-radius: 999px; background: var(--ns-amber); }
-.nx-tools-dot[data-free="true"] { background: var(--ns-go); }
-.nx-tools-line b { grid-column: 2; font-family: var(--font-display); font-size: 20px; font-weight: 600; }
-.nx-tools-line span:not(.nx-tools-dot) { grid-column: 2; color: var(--ns-text); }
-.nx-tools-line small { grid-column: 2; font-size: 15px; color: var(--ns-text-dim); }
-@media (min-width: 860px) { .nx-tools-list { gap: 12px; } .nx-tools-line { min-height: 118px; } }
 @media (prefers-reduced-motion: no-preference) {
-  .nx-tool { transition: border-color var(--ns-dur-2) var(--ns-ease), background-color var(--ns-dur-2) var(--ns-ease); }
 }
 /* One Start free at a time: the sticky bar is for phones and tablets, and while it shows the header's button steps aside (hidden, not removed: removing it moved the header's tools and counted as a layout shift every time the bar came and went). */
 @media (min-width: 1024px) { .nx-bar { display: none; } }
@@ -1082,8 +1064,12 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 @media (prefers-reduced-motion: reduce) { .nx-fx { display: none; } }
 .nx-art-svg { display: block; width: 100%; height: 100%; }
 /* ── The sign-in and sign-up stages: a photograph behind, and the brief, plan, approve flow ── */
-/* The photograph behind the sign-in stage is darkened enough that the stage's light text (including the dim 14 px lines) reads at 4.5:1 or better over the brightest pixel of either photograph. */
-.nx .st-auth-aside::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.54) 0%, rgba(16, 15, 13, 0.64) 40%, rgba(16, 15, 13, 0.8) 70%, rgba(16, 15, 13, 0.9) 100%); }
+/* The photograph behind the sign-in stage is veiled enough that the stage's text (the dim 14 px lines included) reads at 4.5:1 or better on the rendered pixels (tests probe it): a light veil over the dark street, a heavier one over the bright lanterns. */
+.nx .st-auth-aside::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.5) 0%, rgba(16, 15, 13, 0.6) 100%); }
+.nx .st-auth-aside[data-photo="alley"]::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.26) 0%, rgba(16, 15, 13, 0.42) 45%, rgba(16, 15, 13, 0.82) 100%); }
+.nx .st-auth-aside[data-photo="lanterngrid"]::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.64) 0%, rgba(16, 15, 13, 0.78) 100%); }
+.nx-auth-band[data-photo="alley"]::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.22) 0%, rgba(16, 15, 13, 0.52) 100%); }
+.nx-auth-band[data-photo="lanterngrid"]::after { background: linear-gradient(180deg, rgba(16, 15, 13, 0.52) 0%, rgba(16, 15, 13, 0.74) 100%); }
 .nx-fcard { position: relative; margin: 0; padding: 22px 20px 18px; max-width: 470px; border-radius: 22px; border: 1px solid var(--nx-stage-edge); background: rgba(16, 15, 13, 0.78); color: var(--nx-stage-text); }
 .nx-fcard .nx-demo-tag { background: var(--nx-stage); border-color: var(--nx-stage-edge); color: var(--nx-stage-dim); }
 .nx-flow-rows { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
@@ -1155,10 +1141,9 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 .nx-mcp-visual { min-width: 0; }
 
 /* Focus and press, on the controls this round added: the cue-blue focus ring, and a small press (motion allowed only). */
-.nx-tool:focus-visible, .nx-aud-tab:focus-visible, .nx-clip-pause:focus-visible, .nx-show-cta:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 3px; }
 @media (prefers-reduced-motion: no-preference) {
-  .nx-tool, .nx-aud-tab, .nx-clip-pause, .nx-show-cta, .nx-btn { transition-property: border-color, background-color, color, transform; }
-  .nx-tool:active, .nx-aud-tab:active, .nx-clip-pause:active, .nx-show-cta:active, .nx-btn:active { transform: scale(0.97); }
+  .nx-aud-tab, .nx-clip-pause, .nx-show-cta, .nx-btn { transition-property: border-color, background-color, color, transform; }
+  .nx-aud-tab:active, .nx-clip-pause:active, .nx-show-cta:active, .nx-btn:active { transform: scale(0.97); }
 }
 
 /* ── Round 6: a shorter phone landing (merged sections, tighter breaks, a three-column footer) ── */
@@ -1169,11 +1154,8 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
   .nx-show:not(:last-child) .nx-show-note { display: none; }
   .nx-show { padding-block: 6px; }
   .nx-strip { gap: 20px; margin-top: 22px; }
-  .nx-tools-block { margin-top: 30px; }
   .nx-final { padding-block: 40px; }
 }
-.nx-tools-block { margin-top: 44px; }
-.nx-tools-block .nx-tools { margin-top: 16px; }
 @media (max-width: 859px) {
   .nx-final .nx-sub { display: none; }
   .nx-try-picks { display: none; }
@@ -1181,12 +1163,12 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
   .nx-calc { padding: 18px; gap: 20px; }
   .nx-hero-copy .nx-trust { margin-top: 10px; gap: 0 18px; }
   .nx-hero-copy .nx-trust li { min-height: 26px; }
-  .nx-show-pic { aspect-ratio: 4 / 4.1; }
+  .nx-show-pic { aspect-ratio: 4 / 3.7; }
 }
 
 /* ── Round 7b: credits, the closing panel's photograph ── */
 /* The courtesy credit on a picture ("Photo: name / Pexels"): the badge's dark pill, white 14 px, so it reads at 4.5:1 over any picture. */
-.nx-result-credit { position: absolute; left: 12px; bottom: 12px; z-index: 2; max-width: calc(100% - 24px); padding: 3px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.68); font-size: 14px; line-height: 1.35; color: #fff; }
+.nx-result-credit { position: absolute; left: 12px; bottom: 12px; z-index: 2; max-width: calc(100% - 24px); padding: 3px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.78); font-size: 14px; line-height: 1.35; color: #fff; }
 .nx-show-pic .nx-result-credit { top: 60px; bottom: auto; left: 16px; }
 @media (min-width: 860px) {
   .nx-show-pic .nx-result-credit { top: auto; bottom: 16px; left: auto; right: 16px; }
@@ -1195,9 +1177,35 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 .nx-final-pic { position: absolute; inset: 0; z-index: -2; width: 100%; height: 100%; object-fit: cover; object-position: 70% 50%; }
 /* The words sit in the middle of the panel and the moon at its right: the veil is heavy under the words and light over the moon (white on the brightest
    pixel under the heavy part is 6:1 or better), and even on a phone, where the words cover the moon. */
-.nx-final::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgba(16, 15, 13, 0.8) 0%, rgba(16, 15, 13, 0.74) 62%, rgba(16, 15, 13, 0.36) 82%, rgba(16, 15, 13, 0.1) 100%); }
+.nx-final::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgba(16, 15, 13, 0.86) 0%, rgba(16, 15, 13, 0.82) 64%, rgba(16, 15, 13, 0.42) 84%, rgba(16, 15, 13, 0.1) 100%); }
 @media (max-width: 859px) {
-  .nx-final::before { background: rgba(16, 15, 13, 0.78); }
+  .nx-final::before { background: rgba(16, 15, 13, 0.82); }
 }
-.nx-final-credit { position: absolute; right: 14px; bottom: 10px; padding: 3px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.68); font-size: 14px; line-height: 1.35; color: #fff; }
+.nx-final-credit { position: absolute; right: 14px; bottom: 10px; padding: 3px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.78); font-size: 14px; line-height: 1.35; color: #fff; }
+
+/* ── Round 8: the capability wall, the publish desk's frame, the stages' photographs ── */
+/* The wall: eight stock photographs, one per tool, each with the tool's name, its one-line description, whether it costs credits, and the photographer's credit. Two columns on a phone, four on a desktop. */
+.nx-wall { margin-top: 20px; }
+.nx-wall-label { margin: 6px 0 0; font-size: 15px; font-weight: 600; color: var(--ns-text-dim); }
+.nx-wall-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; margin: 12px 0 0; padding: 0; list-style: none; }
+.nx-wall-tile { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 2px; min-width: 0; }
+.nx-wall-pic { display: block; width: 100%; aspect-ratio: 2 / 1; margin-bottom: 6px; border-radius: 16px; object-fit: cover; background: #12151c; }
+.nx-wall-name { font-family: var(--font-display); font-size: 18px; font-weight: 600; line-height: 1.2; color: var(--ns-text); }
+.nx-wall-body { font-size: 15px; line-height: 1.35; color: var(--ns-text); }
+.nx-wall-price { font-size: 14px; line-height: 1.35; color: var(--ns-text-dim); }
+.nx-wall-credit { font-size: 14px; line-height: 1.35; color: var(--ns-text-dim); overflow-wrap: anywhere; }
+.nx-wall-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 12px 0 0; font-size: 15px; color: var(--ns-text); }
+.nx-wall-editor svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--ns-text-dim); }
+.nx-wall-editor b { font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+.nx-wall-editor small { font-size: 14px; color: var(--ns-text-dim); }
+.nx-wall-note { margin: 8px 0 0; font-size: 15px; line-height: 1.45; color: var(--ns-text-dim); }
+@media (min-width: 640px) { .nx-wall-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px 16px; } .nx-wall-pic { aspect-ratio: 4 / 3; } }
+/* On the sign-in and sign-up stages the key is drawn, not a button: dashed, unfilled, and gone from the phone where it would sit above the real one. */
+.nx-fcard .nx-chat-key { border-style: dashed; }
+.nx-flow-rows li[data-s="approve"] .nx-chat-key { border-style: dashed; background: transparent; }
+.nx-fcard[data-compact="true"] .nx-chat-key { display: none; }
+/* A phone: the Try block's closing sentence repeats the hero's three promises, so it steps aside (the page grew by the wall). */
+@media (max-width: 859px) {
+  .nx-try-end .nx-body { display: none; }
+}
 }

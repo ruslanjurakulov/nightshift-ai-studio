@@ -24,9 +24,8 @@ import { BrandArt, ThumbArt, thumbWords } from "@/components/site/BrandArt";
 import { TypedText } from "@/components/site/TypedText";
 import { FlowCard } from "@/components/auth/FlowCard";
 import { PackPlanner } from "@/components/pricing/PackPlanner";
-import { ToolStrip } from "@/components/landing/ToolStrip";
 import { CLIPS } from "@/components/site/samples";
-import { MEDIA_IDS } from "@/lib/site/media";
+import { MEDIA_IDS, TILE_IDS } from "@/lib/site/media";
 import type { PricingPack } from "@/lib/pricing";
 
 afterEach(cleanup);
@@ -225,22 +224,6 @@ describe("drawn art", () => {
   });
 });
 
-describe("the tool pill carousel", () => {
-  it("lists exactly the nine capability names as swipeable, keyboard-reachable tabs", () => {
-    const st = dictionaries.en.site.studio;
-    const { container } = render(<ToolStrip title={dictionaries.en.site.toolStrip.title} tools={st.tools.map((x) => ({ id: x.id, title: x.title, body: x.body }))} priced={st.priced} free={st.free} />);
-    const tabs = within(container.querySelector("[role=tablist]") as HTMLElement).getAllByRole("tab");
-    expect(tabs).toHaveLength(9);
-    expect(tabs.map((x) => x.textContent?.trim())).toEqual(st.tools.map((x) => x.title));
-    expect(tabs.filter((x) => x.getAttribute("tabindex") === "0")).toHaveLength(1);
-    expect(container.querySelectorAll(".nx-tools-list svg")).toHaveLength(9);
-    // The row scrolls sideways and snaps, and its pills are at least 17px on a phone.
-    expect(css).toMatch(/\.nx-tools-list\s*\{[^}]*overflow-x:\s*auto/);
-    expect(css).toMatch(/\.nx-tools-list\s*\{[^}]*scroll-snap-type:\s*x/);
-    expect(css).toMatch(/\.nx-tool\s*\{[^}]*font-size:\s*(?:1[7-9]|2\d)px/);
-  });
-});
-
 describe("motion stays optional and stays cheap", () => {
   it("every infinite or timed animation lives inside the no-preference block", () => {
     const outside = motionParts().outside;
@@ -287,7 +270,7 @@ describe("the pictures and the data", () => {
     expect(loop.startsWith('"use client";')).toBe(true);
     expect(loop).toContain('from "@/components/site/clip-assets"');
     const assets = readFileSync(join(ROOT, "components/site/clip-assets.ts"), "utf8");
-    expect([...assets.matchAll(/site\/clips\/[\w-]+\.(?:mp4|webm)"/g)]).toHaveLength(12);
+    expect([...assets.matchAll(/site\/clips\/[\w-]+\.(?:mp4|webm)"/g)]).toHaveLength(24);
     for (const f of ["components/site/samples.tsx", "components/landing/HeroCard.tsx", "components/landing/Showcases.tsx"]) {
       expect(readFileSync(join(ROOT, f), "utf8"), f).not.toMatch(/site\/clips\/[\w-]+\.(?:mp4|webm)"/);
     }
@@ -295,10 +278,12 @@ describe("the pictures and the data", () => {
 
   it("keeps one still and its phone width for every credited picture, and nothing else (derivatives only, no originals)", () => {
     const files = readdirSync(join(ROOT, "components/site/media")).sort();
-    expect(files).toEqual(MEDIA_IDS.flatMap((id) => [`${id}-sm.webp`, `${id}.webp`]).sort());
+    const tiles = TILE_IDS as readonly string[];
+    expect(files).toEqual(MEDIA_IDS.flatMap((id) => (tiles.includes(id) ? [`${id}.webp`] : [`${id}-sm.webp`, `${id}.webp`])).sort());
     for (const id of MEDIA_IDS) {
-      expect(statSync(join(ROOT, "components/site/media", `${id}.webp`)).size, id).toBeLessThan(130 * 1024);
-      expect(statSync(join(ROOT, "components/site/media", `${id}-sm.webp`)).size, id).toBeLessThan(45 * 1024);
+      const tile = tiles.includes(id);
+      expect(statSync(join(ROOT, "components/site/media", `${id}.webp`)).size, id).toBeLessThan(tile ? 31 * 1024 : 130 * 1024);
+      if (!tile) expect(statSync(join(ROOT, "components/site/media", `${id}-sm.webp`)).size, id).toBeLessThan(45 * 1024);
     }
   });
 });
@@ -340,14 +325,6 @@ describe("review fixes (PR #405)", () => {
     const hero = readFileSync(join(ROOT, "components/landing/HeroCard.tsx"), "utf8");
     expect(hero).not.toContain("aria-current");
     expect(css).toContain('.nx-chat-rail li[data-current="true"]');
-  });
-
-  it("fades the pill row's edges and hints that it swipes, until it has been scrolled", () => {
-    const strip = dictionaries.en.site.studio;
-    const { container } = render(<ToolStrip title="t" tools={strip.tools.map((x) => ({ id: x.id, title: x.title, body: x.body }))} priced={strip.priced} free={strip.free} />);
-    expect(container.querySelector(".nx-tools-rail")?.getAttribute("data-edge")).toMatch(/start|none/);
-    expect(css).toMatch(/\.nx-tools-rail\[data-edge="start"\]::after/);
-    expect(css).toMatch(/\.nx-tools-rail\[data-edge="mid"\] \.nx-tools-list \{ -webkit-mask-image/);
   });
 
   it("keeps the hero light's layer contained", () => {

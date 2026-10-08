@@ -2,6 +2,9 @@ import { Lock } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { ASPECT_RATIOS } from "@/lib/creative/studio";
+import { LoopClip } from "@/components/site/LoopClip";
+import { SAMPLES, SlotImg } from "@/components/site/samples";
+import { creditLine } from "@/lib/site/media";
 
 /**
  * The Studio composer, drawn: a description, the shape keys, a style chip and
@@ -108,10 +111,25 @@ export function SignOffPicture({ t }: { t: Dictionary }) {
         <span className="st-tag">{s.tag}</span>
       </div>
       <div className="flex flex-col gap-4 p-4">
-        <div className="st-signoff-frame">
-          <div className="st-clip-pic st-scene-b" />
+        {/* The desk's own frame is a real clip of stock footage (credited, labelled an example); the desk around it is the drawing. */}
+        <div className="st-signoff-frame" data-clip="caravan">
+          <SlotImg slot="solutions.youtube-channels" alt="" className="nx-art" sizes="(min-width: 860px) 480px, calc(100vw - 96px)" />
+          <LoopClip clip="caravan" poster={SAMPLES.caravan.sm} />
           <span className="st-signoff-private">{s.private}</span>
+          <span className="nx-result-badge st-signoff-badge" data-kind="still">
+            {t.site.samples.frameTag}
+          </span>
+          <span className="nx-result-badge st-signoff-badge" data-kind="clip">
+            {t.site.samples.clipTag}
+          </span>
+          <span className="nx-result-credit">{creditLine("caravan", t.site.samples.credit)}</span>
         </div>
+        {/* On a phone the frame is too small for three labels: its label and credit are a caption under it instead. */}
+        <p className="st-signoff-caption">
+          <span data-kind="still">{t.site.samples.frameTag}</span>
+          <span data-kind="clip">{t.site.samples.clipTag}</span>
+          {` · ${creditLine("caravan", t.site.samples.credit)}`}
+        </p>
         <p className="st-signoff-title">{s.video}</p>
         <ol className="st-signoff-gates">
           {gates.map((g) => (

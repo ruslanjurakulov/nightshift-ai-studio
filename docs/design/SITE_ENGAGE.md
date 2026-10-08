@@ -1,5 +1,8 @@
 # Site, third pass: reasons to stay
 
+> **Superseded in part (round 7b and after).** The pictures this document describes as AI-generated stills, the clips made from them and the drawn light over them are gone: the public pages now show credited Pexels stock photos and footage, labelled as examples (`SITE_ENGAGE_7B.md`, `SITE_ENGAGE_8.md`, `MEDIA_CREDITS.md`). Read what follows as history; the layout, type, motion and honesty rules it records still apply unless a later round says otherwise.
+
+
 Status: 2026-10-05. Owner of this file: design. Builds on `SITE_KREA.md` (the layout and the
 honest-copy rules), `HUMAN_TYPE.md` (Onest, the scale) and `IDENTITY.md` (the palette). Code:
 `components/site/site-next.css`, `components/site/{SiteEffects,HeroFx,MotionToggle,StickyCta,samples}.tsx`,

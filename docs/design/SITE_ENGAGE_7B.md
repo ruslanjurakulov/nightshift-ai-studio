@@ -1,5 +1,7 @@
 # Site engagement, round 7b: real pictures
 
+> **Superseded in part by round 8 (`SITE_ENGAGE_8.md`).** The slot table below is the round 7b allocation. Round 8 dropped the misty river clip, the fishermen, the workshop, the woven lanterns, the dawn fog and the calm water, added four clips and ten photographs, and moved several slots (landing hero, showcases, /pricing, /solutions, /login, /signup). Colour, honesty labels and credit rules below still apply.
+
 The AI-generated stills and the clips made from them are gone. The public pages now show stock photography and footage
 by Pexels contributors the owner approved (15 items, `docs/design/MEDIA_CREDITS.md`). They are real, they are not Nightshift
 output, and every place that shows one says so: a visible "Example" badge ("Example frame (stock photo)", "Example frame

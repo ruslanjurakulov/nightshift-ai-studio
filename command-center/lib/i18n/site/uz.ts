@@ -133,23 +133,31 @@ export const siteUz: SiteDictionary = {
     /** The courtesy credit on a picture; {name} is the contributor name as Pexels shows it (lib/site/media.ts). */
     credit: { photo: "Surat: {name} / Pexels", video: "Video: {name} / Pexels" },
     /** What a decorative backdrop (sign-in and sign-up) is, in a few words. */
-    captions: { dawn: "Tong chogʻidagi tumanli tepaliklar", horizon: "Tong chogʻidagi sokin suv" },
+    captions: { alley: "Kechqurun sokin koʻchadagi yoritilgan deraza", lanterngrid: "Tunda yonib turgan qogʻoz fonuslar" },
     alts: {
       caravan: "Namuna kadr: toshloq choʻl boʻylab ketayotgan tuyalar karvoni, oldinda chavandoz",
-      mist: "Namuna kadr: tong chogʻida daryo ustidagi tuman",
       coast: "Namuna kadr: qirgʻoqqa urilayotgan toʻlqinlar, uzoqda kichik mayoq",
+      cloud: "Namuna kadr: bulutlar dengizi va ufq ustidagi pastki quyosh, yuqoridan koʻrinishi",
+      pottery: "Namuna kadr: kulolchilik charxida loy shakllantirayotgan qoʻllar",
+      floating: "Namuna kadr: tunda qorongʻi suvda suzib yurgan qogʻoz fonuslar",
+      loom: "Namuna kadr: yogʻoch dastgohdagi toʻquvchining qoʻllari",
       library: "Namuna kadr: yoqilgan qandilli kutubxona",
       moon: "Namuna kadr: qorongʻi tungi osmondagi toʻlin oy",
       market: "Namuna kadr: Marrakeshdagi kechki bozor, yuqoridan koʻrinishi",
       valley: "Namuna kadr: quyosh chiqishida oltin tumanli oʻrmonli tepaliklar",
       lighthouse: "Namuna kadr: oltin soatda uzun oʻt orasidagi mayoq",
       dunes: "Namuna kadr: choʻl tepaligidagi tuyalar karvoni",
-      lanterns: "Namuna kadr: kechasi yonib turgan ikkita toʻqilgan fonus",
-      fishermen: "Namuna kadr: quyosh chiqishida sokin suvdagi ikki baliqchi siluet",
-      workshop: "Namuna kadr: ustaxonadagi oʻymakor yogʻoch panellar va iskanalar",
       citynight: "Namuna kadr: tepalikdan koʻrinadigan shom chogʻidagi shahar chiroqlari",
-      dawn: "Tong chogʻidagi tumanli tepaliklar",
-      horizon: "Tong chogʻidagi sokin suv",
+      alley: "Kechqurun sokin koʻchadagi yoritilgan deraza",
+      lanterngrid: "Tunda yonib turgan qogʻoz fonuslar",
+      peak: "Namuna kadr: bulutlar ustidagi oltin nur tushgan qorli choʻqqi",
+      waterfall: "Namuna kadr: toshlar ustidan tushayotgan ipakdek suv, uzoq ekspozitsiya",
+      mic: "Namuna kadr: xrom va jezdan yasalgan qadimiy mikrofon",
+      reel: "Namuna kadr: gʻaltakdagi eski kino tasmasi",
+      trails: "Namuna kadr: shom osmoni ustidagi oltin nur izlari",
+      fibres: "Namuna kadr: bej jun tolalari yaqin planda",
+      paper: "Namuna kadr: marjon, toʻq sariq va oltin rangdagi qatlamli qirqilgan qogʻoz",
+      paint: "Namuna kadr: qalin firuza va toʻq sariq mazkli rasmning yaqin koʻrinishi",
     },
   },
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
@@ -294,6 +302,11 @@ export const siteUz: SiteDictionary = {
   },
   /** The tool strip on the landing: its heading (the tools and what each does come from `studio.tools`). */
   toolStrip: { title: "Nightshift nimalar yarata oladi" },
+  /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
+  wall: {
+    label: "Har bir vositani tasvirlovchi stok suratlar",
+    note: "Suratlar vositalarni tasvirlaydi, xolos. Bular stok suratlar, vositalar yaratgan narsa emas. Har bir vositaning narxi tugmasida koʻrsatiladi, kredit sarflamaydiganlari bundan mustasno.",
+  },
   studio: {
     slug: "Studiya",
     title: "Faqat bitta boʻlak kerakmi? Studiya tayyorlaydi.",

@@ -87,8 +87,8 @@ describe("public landing page", () => {
   it("uses only the labelled example stills for pictures: same-origin, described, and none of them a video or a real result", () => {
     const { container } = renderLanding({ kind: "announced" });
     const imgs = [...container.querySelectorAll("img")];
-    // The hero's frame, the three showcases and the closing panel's photograph.
-    expect(imgs.length).toBe(5);
+    // The hero's frame, the three showcases, the closing panel's photograph and the capability wall's eight tiles.
+    expect(imgs.length).toBe(13);
     for (const img of imgs) {
       expect(img.getAttribute("data-sample")).toBeTruthy();
       expect(img.getAttribute("src") ?? "").not.toMatch(/^https?:/);
@@ -141,9 +141,9 @@ describe("public landing page", () => {
     expect(card.querySelector(".nx-reply")?.textContent).not.toContain(t.site.caps.items[0].reply);
     // The frame is a frame of stock footage, described, labelled and credited, and the note that says what the pictures are is printed under the card.
     const img = card.querySelector("img")!;
-    expect(img.getAttribute("alt")).toBe(t.site.samples.alts.caravan);
+    expect(img.getAttribute("alt")).toBe(t.site.samples.alts.cloud);
     expect(card.querySelector(".nx-result-badge")?.textContent).toBe(t.site.samples.frameTag);
-    expect(card.querySelector(".nx-result-credit")?.textContent).toBe(t.site.samples.credit.video.replace("{name}", "Simeon Stoilov"));
+    expect(card.querySelector(".nx-result-credit")?.textContent).toBe(t.site.samples.credit.video.replace("{name}", "K"));
     expect(card.querySelector("figcaption")?.textContent).toBe(`${t.site.samples.note} ${t.site.samples.clipNote}`);
     // Nothing in it is a control: the drawn "Approve and publish" key is a span inside an aria-hidden group.
     expect(card.querySelector("a, button, input, [tabindex]")).toBeNull();
@@ -487,7 +487,7 @@ describe("the pricing page, product first (round 3)", () => {
     const kids = [...hero.children].map((c) => c.className);
     expect(kids).toEqual(["nx-pr-copy", "nx-pr-calc", "nx-pr-actions"]);
     expect(container.querySelectorAll("figure.nx-chat")).toHaveLength(1);
-    expect(container.querySelector("figure.nx-chat img")?.getAttribute("data-sample")).toBe("lanterns");
+    expect(container.querySelector("figure.nx-chat img")?.getAttribute("data-sample")).toBe("floating");
     expect(screen.queryByText(dictionaries.en.pricing.ratesTitle)).toBeNull();
   });
 });

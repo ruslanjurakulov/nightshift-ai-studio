@@ -11,7 +11,7 @@ import { ChatCard, chatCopy } from "@/components/landing/HeroCard";
 import { Showcases } from "@/components/landing/Showcases";
 import { TryDemo } from "@/components/landing/TryDemo";
 import { PriceBlock } from "@/components/landing/PriceBlock";
-import { ToolStrip } from "@/components/landing/ToolStrip";
+import { CapabilityWall } from "@/components/landing/CapabilityWall";
 import { HeroFx } from "@/components/site/HeroFx";
 import { MotionToggle } from "@/components/site/MotionToggle";
 import { StickyCta } from "@/components/site/StickyCta";
@@ -130,10 +130,9 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
   );
 }
 
-/** Three steps in a strip: a numeral, a title, a sentence (the last one is the person's own press), and under them what Nightshift can make, as a strip of tool names you can swipe. */
+/** Three steps in a strip: a numeral, a title, a sentence (the last one is the person's own press), and under them what Nightshift can make, as a wall of eight stock photographs, one per tool. */
 function How({ t }: { t: Dictionary }) {
   const h = t.site.how.simple;
-  const st = t.site.studio;
   return (
     <section id="how" aria-labelledby="how-title" className="nx-section" data-tone="raised">
       <div className="nx-wrap">
@@ -151,12 +150,7 @@ function How({ t }: { t: Dictionary }) {
             </li>
           ))}
         </ol>
-        <div id="tools" className="nx-tools-block">
-          <h3 id="tools-title" className="nx-h3">
-            {t.site.toolStrip.title}
-          </h3>
-          <ToolStrip title={t.site.toolStrip.title} tools={st.tools.map((x) => ({ id: x.id, title: x.title, body: x.body }))} priced={st.priced} free={st.free} />
-        </div>
+        <CapabilityWall t={t} />
       </div>
     </section>
   );

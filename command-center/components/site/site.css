@@ -204,9 +204,11 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   min-height: 50px;
   padding: 0 22px;
   border-radius: var(--ns-r-key);
-  border: 1px solid var(--st-lit-edge);
+  border: 1px solid var(--st-lit-bg);
   background: var(--st-lit-bg);
   color: var(--st-lit-fg);
+  /* The edge is drawn just outside the key (a 1 px shadow ring): no pixel under the label is the light edge. */
+  box-shadow: 0 0 0 1px var(--st-lit-edge);
   font-family: var(--font-display);
   font-size: 16px;
   font-weight: 600;
@@ -215,9 +217,9 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   white-space: nowrap;
   transition: box-shadow var(--ns-dur-1) var(--ns-ease), transform var(--ns-dur-1) var(--ns-ease), background-color var(--ns-dur-1) var(--ns-ease);
 }
-.st-key:hover { background: var(--st-lit-hover); box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-lit-bg) 28%, transparent); }
-.st-key:active { transform: translateY(1px); box-shadow: none; }
-.st-key:disabled, .st-key[aria-disabled="true"] { background: var(--st-lit-bg); box-shadow: none; transform: none; }
+.st-key:hover { background: var(--st-lit-hover); border-color: var(--st-lit-hover); box-shadow: 0 0 0 1px var(--st-lit-edge), 0 0 0 4px color-mix(in srgb, var(--st-lit-bg) 28%, transparent); }
+.st-key:active { transform: translateY(1px); box-shadow: 0 0 0 1px var(--st-lit-edge); }
+.st-key:disabled, .st-key[aria-disabled="true"] { background: var(--st-lit-bg); border-color: var(--st-lit-bg); box-shadow: 0 0 0 1px var(--st-lit-edge); transform: none; }
 /* Focus: the page-coloured gap that the amber outline (the global ring, ringed with --ns-focus) is drawn outside. */
 .st-key:focus-visible { box-shadow: 0 0 0 2px var(--st-focus-gap); }
 .st-key svg { width: 18px; height: 18px; flex-shrink: 0; }
@@ -234,7 +236,8 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   color: var(--ns-text);
   border-color: var(--ns-rule-strong);
 }
-.st-key[data-tone="quiet"]:hover { background: var(--ns-hover); box-shadow: none; }
+.st-key[data-tone="quiet"] { box-shadow: none; }
+.st-key[data-tone="quiet"]:hover { background: var(--ns-hover); border-color: var(--ns-rule-strong); box-shadow: none; }
 .st-key[data-tone="quiet"]:focus-visible { box-shadow: none; }
 .st-key[data-block="true"] { width: 100%; }
 
@@ -1142,7 +1145,6 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 .st-credits li a { display: flex; align-items: center; min-height: 44px; font-size: 14px; color: var(--ns-text); text-decoration: underline; text-decoration-color: var(--ns-rule-strong); text-underline-offset: 3px; }
 .st-credits li a:hover { color: var(--st-act-ink); }
 .st-credits p a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ns-text); text-decoration: underline; text-decoration-color: var(--ns-rule-strong); text-underline-offset: 3px; }
-@media (min-width: 640px) { .st-credits li a { min-height: 32px; } }
 .st-footer-base {
   display: flex;
   flex-wrap: wrap;
@@ -1283,6 +1285,19 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 /* The publish desk (SignOffPicture): the video's own frame, then its gates. */
 .st-signoff-frame { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: var(--ns-r-frame); border: 3px solid var(--ns-film); background: var(--ns-film); }
 .st-signoff-frame .st-clip-pic { position: absolute; inset: 0; }
+/* The desk's frame is a real picture (SignOffPicture): the picture fills it, the credit and the label are the stage's own. */
+.st-signoff-frame .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.st-signoff-frame .st-signoff-private { z-index: 2; }
+.st-signoff-frame .st-signoff-badge { left: auto; right: 12px; z-index: 2; }
+.st-signoff-caption { display: none; margin: 0; font-size: 14px; line-height: 1.4; color: var(--ns-text-dim); }
+.st-signoff-caption [data-kind="clip"] { display: none; }
+.st-signoff-frame[data-live="true"] + .st-signoff-caption [data-kind="still"] { display: none; }
+.st-signoff-frame[data-live="true"] + .st-signoff-caption [data-kind="clip"] { display: inline; }
+@media (max-width: 639px) {
+  .st-signoff-frame .nx-result-badge, .st-signoff-frame .nx-result-credit { display: none !important; }
+  .st-signoff-caption { display: block; }
+}
+
 .st-signoff-private {
   position: absolute;
   left: 10px;
@@ -2219,10 +2234,10 @@ h3.st-doc-h3 { letter-spacing: 0; }
 @media (min-width: 768px) { .ml-car-slide { flex-basis: 288px; } }
 .ml-ex { position: relative; aspect-ratio: 4 / 5; border-radius: 20px; overflow: hidden; background: #3a2a5c; color: #fff; }
 .ml-ex .ml-scene { position: absolute; inset: 0; }
-.ml-ex-credit { position: absolute; left: 12px; top: 44px; max-width: calc(100% - 24px); padding: 2px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.68); font-size: 14px; line-height: 18px; color: #fff; }
-.ml-ex-badge { position: absolute; left: 12px; top: 12px; padding: 4px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.68); font-size: 14px; line-height: 18px; font-weight: 600; color: #fff; }
-.ml-ex-over { position: absolute; inset: auto 0 0; display: grid; gap: 8px; padding: 56px 16px 16px; background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.78)); }
-.ml-ex-tag { font-size: 14px; line-height: 18px; font-weight: 600; color: rgba(255, 255, 255, 0.82); }
+.ml-ex-credit { position: absolute; left: 12px; top: 44px; max-width: calc(100% - 24px); padding: 2px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.78); font-size: 14px; line-height: 18px; color: #fff; }
+.ml-ex-badge { position: absolute; left: 12px; top: 12px; padding: 4px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.78); font-size: 14px; line-height: 18px; font-weight: 600; color: #fff; }
+.ml-ex-over { position: absolute; inset: auto 0 0; display: grid; gap: 8px; padding: 92px 16px 16px; background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.6) 40%, rgba(0, 0, 0, 0.86) 100%); }
+.ml-ex-tag { font-size: 14px; line-height: 18px; font-weight: 600; color: #fff; }
 .ml-ex-q { margin: 0; font-family: var(--font-display); font-size: 18px; font-weight: 600; line-height: 1.3; color: #fff; text-wrap: balance; }
 .ml-ex-copy .st-copy { display: flex; width: 100%; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border: 0; border-radius: 12px; background: rgba(255, 255, 255, 0.94); color: #1b1a17; font-family: var(--font-display); font-size: 14px; font-weight: 600; cursor: pointer; }
 .ml-ex-copy .st-copy:hover { background: #fff; }

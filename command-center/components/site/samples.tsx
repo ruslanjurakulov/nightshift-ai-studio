@@ -1,9 +1,15 @@
 import caravan from "@/components/site/media/caravan.webp";
 import caravanSm from "@/components/site/media/caravan-sm.webp";
-import mist from "@/components/site/media/mist.webp";
-import mistSm from "@/components/site/media/mist-sm.webp";
 import coast from "@/components/site/media/coast.webp";
 import coastSm from "@/components/site/media/coast-sm.webp";
+import cloud from "@/components/site/media/cloud.webp";
+import cloudSm from "@/components/site/media/cloud-sm.webp";
+import pottery from "@/components/site/media/pottery.webp";
+import potterySm from "@/components/site/media/pottery-sm.webp";
+import floating from "@/components/site/media/floating.webp";
+import floatingSm from "@/components/site/media/floating-sm.webp";
+import loom from "@/components/site/media/loom.webp";
+import loomSm from "@/components/site/media/loom-sm.webp";
 import library from "@/components/site/media/library.webp";
 import librarySm from "@/components/site/media/library-sm.webp";
 import moon from "@/components/site/media/moon.webp";
@@ -16,18 +22,20 @@ import lighthouse from "@/components/site/media/lighthouse.webp";
 import lighthouseSm from "@/components/site/media/lighthouse-sm.webp";
 import dunes from "@/components/site/media/dunes.webp";
 import dunesSm from "@/components/site/media/dunes-sm.webp";
-import lanterns from "@/components/site/media/lanterns.webp";
-import lanternsSm from "@/components/site/media/lanterns-sm.webp";
-import fishermen from "@/components/site/media/fishermen.webp";
-import fishermenSm from "@/components/site/media/fishermen-sm.webp";
-import workshop from "@/components/site/media/workshop.webp";
-import workshopSm from "@/components/site/media/workshop-sm.webp";
 import citynight from "@/components/site/media/citynight.webp";
 import citynightSm from "@/components/site/media/citynight-sm.webp";
-import dawn from "@/components/site/media/dawn.webp";
-import dawnSm from "@/components/site/media/dawn-sm.webp";
-import horizon from "@/components/site/media/horizon.webp";
-import horizonSm from "@/components/site/media/horizon-sm.webp";
+import alley from "@/components/site/media/alley.webp";
+import alleySm from "@/components/site/media/alley-sm.webp";
+import lanterngrid from "@/components/site/media/lanterngrid.webp";
+import lanterngridSm from "@/components/site/media/lanterngrid-sm.webp";
+import peak from "@/components/site/media/peak.webp";
+import waterfall from "@/components/site/media/waterfall.webp";
+import mic from "@/components/site/media/mic.webp";
+import reel from "@/components/site/media/reel.webp";
+import trails from "@/components/site/media/trails.webp";
+import fibres from "@/components/site/media/fibres.webp";
+import paper from "@/components/site/media/paper.webp";
+import paint from "@/components/site/media/paint.webp";
 import { CLIPS, type ClipId } from "@/components/site/clip-assets";
 import { MEDIA, type MediaId } from "@/lib/site/media";
 
@@ -43,20 +51,29 @@ import { MEDIA, type MediaId } from "@/lib/site/media";
 const pair = (lg: { src: string; width: number; height: number }, sm: { src: string; width: number }) => ({ src: lg.src, width: lg.width, height: lg.height, sm: sm.src, smWidth: sm.width });
 export const SAMPLES = {
   caravan: pair(caravan, caravanSm),
-  mist: pair(mist, mistSm),
   coast: pair(coast, coastSm),
+  cloud: pair(cloud, cloudSm),
+  pottery: pair(pottery, potterySm),
+  floating: pair(floating, floatingSm),
+  loom: pair(loom, loomSm),
   library: pair(library, librarySm),
   moon: pair(moon, moonSm),
   market: pair(market, marketSm),
   valley: pair(valley, valleySm),
   lighthouse: pair(lighthouse, lighthouseSm),
   dunes: pair(dunes, dunesSm),
-  lanterns: pair(lanterns, lanternsSm),
-  fishermen: pair(fishermen, fishermenSm),
-  workshop: pair(workshop, workshopSm),
   citynight: pair(citynight, citynightSm),
-  dawn: pair(dawn, dawnSm),
-  horizon: pair(horizon, horizonSm),
+  alley: pair(alley, alleySm),
+  lanterngrid: pair(lanterngrid, lanterngridSm),
+  // The capability wall's tiles: one 448 px file each.
+  peak: pair(peak, peak),
+  waterfall: pair(waterfall, waterfall),
+  mic: pair(mic, mic),
+  reel: pair(reel, reel),
+  trails: pair(trails, trails),
+  fibres: pair(fibres, fibres),
+  paper: pair(paper, paper),
+  paint: pair(paint, paint),
 } as const satisfies Record<MediaId, { src: string; width: number; height: number; sm: string; smWidth: number }>;
 export type SampleId = keyof typeof SAMPLES;
 
@@ -77,7 +94,7 @@ export function SampleImg({ id, alt = "", className, eager = false, position, si
   const s = SAMPLES[id];
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={s.src} srcSet={`${s.sm} ${s.smWidth}w, ${s.src} ${s.width}w`} sizes={sizes} width={s.width} height={s.height} alt={alt} className={className} loading={eager ? "eager" : "lazy"} decoding="async" data-sample={id} style={position ? { objectPosition: position } : undefined} {...(eager ? { fetchPriority: "high" as const } : {})} />
+    <img src={s.src} srcSet={s.sm === s.src ? undefined : `${s.sm} ${s.smWidth}w, ${s.src} ${s.width}w`} sizes={s.sm === s.src ? undefined : sizes} width={s.width} height={s.height} alt={alt} className={className} loading={eager ? "eager" : "lazy"} decoding="async" data-sample={id} style={position ? { objectPosition: position } : undefined} {...(eager ? { fetchPriority: "high" as const } : {})} />
   );
 }
 
@@ -90,23 +107,23 @@ export function SampleImg({ id, alt = "", className, eager = false, position, si
  * lib/site/media.ts (its credit), give it an alt in lib/i18n/site/{en,ru,uz}.ts (site.samples.alts), then point a slot at it.
  */
 export const SLOTS = {
-  /** The landing's first screen (the chat card): the caravan clip. */
-  hero: { id: "caravan", clip: "caravan" },
+  /** The landing's first screen (the chat card): the cloud-sea clip. */
+  hero: { id: "cloud", clip: "cloud" },
   /** The landing's three showcases, and the picture behind its closing panel. */
   "show.video": { id: "library" },
-  "show.studio": { id: "mist", clip: "mist" },
+  "show.studio": { id: "pottery", clip: "pottery" },
   /** The small lighthouse is at the top right of the footage: the wide picture is framed from the top. */
   "show.approvals": { id: "coast", clip: "coast", position: "50% 6%" },
   "landing.final": { id: "moon" },
-  /** The chat card on /pricing. */
-  "pricing.card": { id: "lanterns" },
-  /** /solutions: one photograph per audience tab. */
-  "solutions.youtube-channels": { id: "fishermen" },
-  "solutions.creative-studio": { id: "workshop" },
+  /** The chat card on /pricing: lanterns floating on dark water. */
+  "pricing.card": { id: "floating", clip: "floating" },
+  /** /solutions: the publish desk's frame (channels), and one photograph or clip above each of the other two audiences. */
+  "solutions.youtube-channels": { id: "caravan", clip: "caravan" },
+  "solutions.creative-studio": { id: "loom", clip: "loom" },
   "solutions.developers": { id: "citynight" },
-  /** The sign-in and sign-up stages. */
-  "auth.login": { id: "dawn" },
-  "auth.signup": { id: "horizon" },
+  /** The sign-in and sign-up stages: stills only (these pages have no pause switch, so nothing moves on them). */
+  "auth.login": { id: "alley", position: "72% 50%" },
+  "auth.signup": { id: "lanterngrid", position: "50% 50%" },
 } as const satisfies Record<string, { id: SampleId; position?: string; clip?: ClipId }>;
 export type SlotId = keyof typeof SLOTS;
 

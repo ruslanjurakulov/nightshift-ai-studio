@@ -140,23 +140,31 @@ export const siteEn = {
     /** The courtesy credit on a picture; {name} is the contributor name as Pexels shows it (lib/site/media.ts). */
     credit: { photo: "Photo: {name} / Pexels", video: "Video: {name} / Pexels" },
     /** What a decorative backdrop (sign-in and sign-up) is, in a few words. */
-    captions: { dawn: "Misty hills at dawn", horizon: "Calm water at dawn" },
+    captions: { alley: "A lit window in a quiet street in the evening", lanterngrid: "Paper lanterns glowing at night" },
     alts: {
       caravan: "Example frame: a camel caravan walking across a rocky desert, a rider at its head",
-      mist: "Example frame: mist drifting over a river at dawn",
       coast: "Example frame: waves breaking on a shore, a small lighthouse in the distance",
+      cloud: "Example frame: a sea of cloud with the sun low on the horizon, seen from above",
+      pottery: "Example frame: hands shaping clay on a pottery wheel",
+      floating: "Example frame: paper lanterns floating on dark water at night",
+      loom: "Example frame: a weaver’s hands at a wooden loom",
       library: "Example frame: a library with a lit chandelier",
       moon: "Example frame: a full moon in a dark night sky",
       market: "Example frame: an evening market in Marrakech seen from above",
       valley: "Example frame: forested hills with golden mist at sunrise",
       lighthouse: "Example frame: a lighthouse in tall grass at golden hour",
       dunes: "Example frame: a camel caravan on a desert dune",
-      lanterns: "Example frame: two woven lanterns glowing at night",
-      fishermen: "Example frame: two fishermen in silhouette on calm water at sunrise",
-      workshop: "Example frame: hand-carved wooden panels and chisels in a workshop",
       citynight: "Example frame: a city’s lights at twilight seen from a hill",
-      dawn: "Misty hills at dawn",
-      horizon: "Calm water at dawn",
+      alley: "A lit window in a quiet street in the evening",
+      lanterngrid: "Paper lanterns glowing at night",
+      peak: "Example frame: a snow peak lit gold above the clouds",
+      waterfall: "Example frame: silky long-exposure water falling over rocks",
+      mic: "Example frame: a vintage chrome and brass microphone",
+      reel: "Example frame: a vintage film reel and its film strip",
+      trails: "Example frame: golden light trails over a dusk sky",
+      fibres: "Example frame: tan wool fibres in close-up",
+      paper: "Example frame: layered cut paper in coral, orange and gold",
+      paint: "Example frame: a close-up of a painting with thick turquoise and orange strokes",
     },
   },
   /** The full credit list, collapsed in the footer; the list itself is read from lib/site/media.ts. */
@@ -302,6 +310,11 @@ export const siteEn = {
   },
   /** The tool strip on the landing: its heading (the tools and what each does come from `studio.tools`). */
   toolStrip: { title: "What Nightshift can make" },
+  /** The capability wall: one stock photograph for each tool, said plainly (the tools and what each does come from `studio.tools`). */
+  wall: {
+    label: "Stock photos, illustrating each tool",
+    note: "The pictures stand for the tools. They are stock photos, not what the tools make. Each tool shows its price on its button, except the ones that cost no credits.",
+  },
   studio: {
     slug: "Studio",
     title: "Need just one piece? The Studio makes it.",

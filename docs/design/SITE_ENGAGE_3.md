@@ -1,5 +1,8 @@
 # Site, round 3: structural
 
+> **Superseded in part (round 7b and after).** The pictures this document describes as AI-generated stills, the clips made from them and the drawn light over them are gone: the public pages now show credited Pexels stock photos and footage, labelled as examples (`SITE_ENGAGE_7B.md`, `SITE_ENGAGE_8.md`, `MEDIA_CREDITS.md`). Read what follows as history; the layout, type, motion and honesty rules it records still apply unless a later round says otherwise.
+
+
 Status: 2026-10-05. Builds on `SITE_ENGAGE.md` and `SITE_ENGAGE_2.md`. The independent score of round 2 was 63 to 70 on a
 phone and 66 to 77 on a desktop (round 1: 62 to 68 and 63 to 74), a gain of three to six points a round against a bar of
 95, so this round is structural rather than polish: the first screen on a phone, pages that lead with the product,

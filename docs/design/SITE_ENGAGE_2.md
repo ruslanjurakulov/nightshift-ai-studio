@@ -1,5 +1,8 @@
 # Site, round 2: toward Krea
 
+> **Superseded in part (round 7b and after).** The pictures this document describes as AI-generated stills, the clips made from them and the drawn light over them are gone: the public pages now show credited Pexels stock photos and footage, labelled as examples (`SITE_ENGAGE_7B.md`, `SITE_ENGAGE_8.md`, `MEDIA_CREDITS.md`). Read what follows as history; the layout, type, motion and honesty rules it records still apply unless a later round says otherwise.
+
+
 Status: 2026-10-05. Builds on `SITE_ENGAGE.md` (round 1, merged as #400). An independent scorer put round 1 at 62 to 74
 out of 100 against the owner's bar of 95 ("Krea-level"). This round is the reviewer's ranked list. Everything the
 earlier rounds promised still holds: no invented proof, no provider names, every picture labelled as an example, the

@@ -30,8 +30,7 @@ export interface MediaItem {
 export const LICENCE = { name: "Pexels License", url: "https://www.pexels.com/license/" } as const;
 
 export const MEDIA = {
-  caravan: { pexelsId: "28673757", kind: "video", creator: "Simeon Stoilov", creatorUrl: "https://www.pexels.com/@simeon-theartist/", sourceUrl: "https://www.pexels.com/video/camel-caravan-traversing-desert-landscape-28673757/", used: "Landing, first screen (clip)" },
-  mist: { pexelsId: "18197835", kind: "video", creator: "Tom Fisk", creatorUrl: "https://www.pexels.com/@tomfisk/", sourceUrl: "https://www.pexels.com/video/a-river-with-mist-rising-from-it-at-sunset-18197835/", used: "Landing, second showcase (clip)" },
+  caravan: { pexelsId: "28673757", kind: "video", creator: "Simeon Stoilov", creatorUrl: "https://www.pexels.com/@simeon-theartist/", sourceUrl: "https://www.pexels.com/video/camel-caravan-traversing-desert-landscape-28673757/", used: "/solutions, channels tab (clip)" },
   coast: { pexelsId: "14910095", kind: "video", creator: "Nui MALAMA", creatorUrl: "https://www.pexels.com/@nui-malama-169330637/", sourceUrl: "https://www.pexels.com/video/breaking-waves-and-a-lighthouse-on-a-rocky-shore-14910095/", used: "Landing, third showcase (clip)" },
   library: { pexelsId: "37387122", kind: "photo", creator: "TEBESSUM PROVALARI", creatorUrl: "https://www.pexels.com/@tebessumprovalari/", sourceUrl: "https://www.pexels.com/photo/historic-library-interior-with-chandelier-37387122/", used: "Landing, first showcase; /mcp examples" },
   moon: { pexelsId: "39335277", kind: "photo", creator: "Eve R", creatorUrl: "https://www.pexels.com/@ev4r137/", sourceUrl: "https://www.pexels.com/photo/full-moon-in-clear-night-sky-39335277/", used: "Landing, closing panel; /mcp examples" },
@@ -39,15 +38,31 @@ export const MEDIA = {
   valley: { pexelsId: "10352688", kind: "photo", creator: "Cris Ljungmann", creatorUrl: "https://www.pexels.com/@cris-ljungmann-140938814/", sourceUrl: "https://www.pexels.com/photo/scenic-view-of-mountains-during-sunset-10352688/", used: "/mcp examples" },
   lighthouse: { pexelsId: "4390834", kind: "photo", creator: "Ray Bilcliff", creatorUrl: "https://www.pexels.com/@raybilcliff/", sourceUrl: "https://www.pexels.com/photo/lighthouse-tower-located-under-evening-sky-4390834/", used: "/mcp examples" },
   dunes: { pexelsId: "15848441", kind: "photo", creator: "Valr Studio", creatorUrl: "https://www.pexels.com/@valr-studio-479653745/", sourceUrl: "https://www.pexels.com/photo/camels-caravan-on-desert-15848441/", used: "/mcp examples" },
-  lanterns: { pexelsId: "16046217", kind: "photo", creator: "Mehrajul Karim", creatorUrl: "https://www.pexels.com/@mehrajul-karim-114876029/", sourceUrl: "https://www.pexels.com/photo/shining-lanterns-at-night-16046217/", used: "/pricing" },
-  fishermen: { pexelsId: "39395221", kind: "photo", creator: "VANNGO Ng", creatorUrl: "https://www.pexels.com/@vanngo-ng-105653827/", sourceUrl: "https://www.pexels.com/photo/silhouetted-fishermen-at-sunrise-on-calm-sea-39395221/", used: "/solutions, channels" },
-  workshop: { pexelsId: "19208266", kind: "photo", creator: "Beyzaa Yurtkuran", creatorUrl: "https://www.pexels.com/@beyzaa-yurtkuran-279977530/", sourceUrl: "https://www.pexels.com/photo/hand-carved-decorative-wooden-panels-in-workshop-19208266/", used: "/solutions, creative studio" },
   citynight: { pexelsId: "39659645", kind: "photo", creator: "Dinesh lens", creatorUrl: "https://www.pexels.com/@dineshlens/", sourceUrl: "https://www.pexels.com/photo/aerial-view-of-cityscape-at-twilight-39659645/", used: "/solutions, developers" },
-  dawn: { pexelsId: "31550736", kind: "photo", creator: "Zetong Li", creatorUrl: "https://www.pexels.com/@zetong-li-880728/", sourceUrl: "https://www.pexels.com/photo/mystical-foggy-sunrise-over-mountain-landscape-31550736/", used: "/login" },
-  horizon: { pexelsId: "14701162", kind: "photo", creator: "brazil topno", creatorUrl: "https://www.pexels.com/@braziltopno/", sourceUrl: "https://www.pexels.com/photo/calm-sea-under-blue-sky-14701162/", used: "/signup" },
+  cloud: { pexelsId: "4288029", kind: "video", creator: "K", creatorUrl: "https://www.pexels.com/@kelly/", sourceUrl: "https://www.pexels.com/video/drone-shot-of-the-mountain-peak-during-sunset-4288029/", used: "Landing, first screen (clip)" },
+  pottery: { pexelsId: "27519716", kind: "video", creator: "AP Vibes", creatorUrl: "https://www.pexels.com/@apvibes/", sourceUrl: "https://www.pexels.com/video/a-person-is-making-a-pottery-on-a-pottery-wheel-27519716/", used: "Landing, second showcase (clip)" },
+  floating: { pexelsId: "39181590", kind: "video", creator: "Matheus Bertelli", creatorUrl: "https://www.pexels.com/@bertellifotografia/", sourceUrl: "https://www.pexels.com/video/floating-lanterns-on-water-at-night-39181590/", used: "/pricing (clip)" },
+  loom: { pexelsId: "32655899", kind: "video", creator: "Magda Ehlers", creatorUrl: "https://www.pexels.com/@magda-ehlers-pexels/", sourceUrl: "https://www.pexels.com/video/artisan-weaving-on-traditional-loom-32655899/", used: "/solutions, creative studio (clip)" },
+  alley: { pexelsId: "4916113", kind: "photo", creator: "Maria Orlova", creatorUrl: "https://www.pexels.com/@orlovamaria/", sourceUrl: "https://www.pexels.com/photo/narrow-street-with-residential-houses-in-late-evening-4916113/", used: "/login" },
+  lanterngrid: { pexelsId: "31108468", kind: "photo", creator: "浪 郭", creatorUrl: "https://www.pexels.com/@2150004161/", sourceUrl: "https://www.pexels.com/photo/festive-chinese-lanterns-lighting-up-night-sky-31108468/", used: "/signup" },
+  peak: { pexelsId: "34033024", kind: "photo", creator: "Shashank Brahmavar", creatorUrl: "https://www.pexels.com/@shashank-brahmavar-737732917/", sourceUrl: "https://www.pexels.com/photo/golden-sunset-over-mount-cook-new-zealand-34033024/", used: "Landing, capability wall: Image" },
+  waterfall: { pexelsId: "8780358", kind: "photo", creator: "SpotwizardLee", creatorUrl: "https://www.pexels.com/@spotwizardlee-35777904/", sourceUrl: "https://www.pexels.com/photo/long-exposure-photography-of-the-shifen-waterfall-in-taiwan-8780358/", used: "Landing, capability wall: Video clip" },
+  mic: { pexelsId: "26280295", kind: "photo", creator: "Clement Lepetit", creatorUrl: "https://www.pexels.com/@clemlep/", sourceUrl: "https://www.pexels.com/photo/condenser-microphone-in-close-up-26280295/", used: "Landing, capability wall: Voice" },
+  reel: { pexelsId: "34084909", kind: "photo", creator: "Sami TÜRK", creatorUrl: "https://www.pexels.com/@trksami/", sourceUrl: "https://www.pexels.com/photo/close-up-of-vintage-film-reel-in-soft-light-34084909/", used: "Landing, capability wall: Edit" },
+  trails: { pexelsId: "36504036", kind: "photo", creator: "Catarina Kåsa", creatorUrl: "https://www.pexels.com/@catarina-kasa-2737553/", sourceUrl: "https://www.pexels.com/photo/vibrant-abstract-light-trails-at-night-36504036/", used: "Landing, capability wall: Animate" },
+  fibres: { pexelsId: "37955302", kind: "photo", creator: "Валерий Линк", creatorUrl: "https://www.pexels.com/@167691936/", sourceUrl: "https://www.pexels.com/photo/close-up-macro-shot-of-tan-wool-fibers-texture-37955302/", used: "Landing, capability wall: Upscale" },
+  paper: { pexelsId: "34051927", kind: "photo", creator: "Landiva Weber", creatorUrl: "https://www.pexels.com/@diva/", sourceUrl: "https://www.pexels.com/photo/colorful-abstract-paper-art-composition-34051927/", used: "Landing, capability wall: Cut out" },
+  paint: { pexelsId: "1208949", kind: "photo", creator: "Steve A Johnson", creatorUrl: "https://www.pexels.com/@steve/", sourceUrl: "https://www.pexels.com/photo/blue-and-orange-abstract-painting-1208949/", used: "Landing, capability wall: Styles" },
 } as const satisfies Record<string, MediaItem>;
 
 export type MediaId = keyof typeof MEDIA;
+
+/**
+ * The capability wall on the landing: one stock photograph per tool, by the tool's id in `site.studio.tools`. They stand for the
+ * tool, they are not what the tool made; the wall says so (`site.wall`). These pictures come as one 448 px file each.
+ */
+export const TILE_FOR_TOOL = { image: "peak", video: "waterfall", voice: "mic", edit: "reel", animate: "trails", upscale: "fibres", cutout: "paper", styles: "paint" } as const satisfies Record<string, MediaId>;
+export const TILE_IDS = Object.values(TILE_FOR_TOOL);
 export const MEDIA_IDS = Object.keys(MEDIA) as MediaId[];
 
 /** "Photo: Tom Fisk / Pexels" from the dictionary's template ({name}). */
