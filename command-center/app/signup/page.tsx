@@ -175,14 +175,14 @@ export default function SignupPage() {
               required
               checked={consent}
               onChange={(e) => setConsent(e.target.checked)}
-              className="size-6 shrink-0 accent-[var(--ns-amber)]"
+              className="size-6 shrink-0 accent-[var(--st-act)]"
             />
             <span>
               {t.signup.consentPre}{" "}
               <Link
                 href="/terms"
                 target="_blank"
-                className="-my-[14px] inline-block py-[14px] underline decoration-[var(--ns-rule-strong)] underline-offset-4 text-[var(--ns-text)] hover:text-[var(--ns-amber-ink)]"
+                className="-my-[14px] inline-block py-[14px] underline decoration-[var(--ns-rule-strong)] underline-offset-4 text-[var(--ns-text)] hover:text-[var(--st-act-ink)]"
               >
                 {t.signup.terms}
               </Link>{" "}
@@ -190,7 +190,7 @@ export default function SignupPage() {
               <Link
                 href="/privacy"
                 target="_blank"
-                className="-my-[14px] inline-block py-[14px] underline decoration-[var(--ns-rule-strong)] underline-offset-4 text-[var(--ns-text)] hover:text-[var(--ns-amber-ink)]"
+                className="-my-[14px] inline-block py-[14px] underline decoration-[var(--ns-rule-strong)] underline-offset-4 text-[var(--ns-text)] hover:text-[var(--st-act-ink)]"
               >
                 {t.signup.privacy}
               </Link>

@@ -19,7 +19,7 @@
    - touch targets 44px or more, text 13px or more, 16px inputs.
 
    Third pass (docs/design/SITE_ENGAGE.md): the same frame with reasons to stay.
-   One primary action (the amber button; everything else is outlined or a link),
+   One primary action (the indigo button, amber stays the accent; everything else is outlined or a link),
    a faint light behind the heroes, a pointer light on cards, sections that ease
    in once, a hands-on example, tabs, a price check, and one switch that stops
    everything that moves. Every transition and animation is inside a
@@ -35,6 +35,7 @@
   --nx-stage-text: #f4f0e9;
   --nx-stage-dim: #bdb7aa;
   --nx-stage-amber: #ffa940;
+  --nx-stage-act: #a8a1ff;
   --nx-stage-go: #5fd49a;
 }
 .nx { --nx-sec: 72px; }
@@ -107,13 +108,16 @@ html:is([lang="ru"], [lang="uz"]) .nx .st-h1-page { font-size: clamp(32px, 5.4vw
   font-size: 17px;
   font-weight: 600;
   white-space: nowrap;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 10px 28px -12px color-mix(in srgb, var(--ns-amber) 70%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 10px 28px -12px var(--st-lit-glow);
 }
 .nx-btn svg { width: 20px; height: 20px; flex-shrink: 0; }
 .nx-btn:active { transform: translateY(1px); }
+.nx-btn:disabled, .nx-btn[aria-disabled="true"] { background: var(--st-lit-bg); transform: none; }
+/* Focus: the amber outline (the global ring, ringed with --ns-focus) sits outside a gap in the page's colour. */
+.nx-btn:focus-visible, .nx-bar-go:focus-visible { box-shadow: 0 0 0 2px var(--st-focus-gap); }
 @media (prefers-reduced-motion: no-preference) {
-  .nx-btn { transition: filter var(--ns-dur-2) var(--ns-ease), transform var(--ns-dur-2) var(--ns-ease), box-shadow var(--ns-dur-2) var(--ns-ease); }
-  .nx-btn:hover { filter: brightness(1.06); transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 14px 34px -12px color-mix(in srgb, var(--ns-amber) 80%, transparent); }
+  .nx-btn { transition: background-color var(--ns-dur-2) var(--ns-ease), transform var(--ns-dur-2) var(--ns-ease), box-shadow var(--ns-dur-2) var(--ns-ease); }
+  .nx-btn:hover { background: var(--st-lit-hover); transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 14px 34px -12px var(--st-lit-glow); }
   .nx-btn:hover svg { transform: translateX(2px); }
   .nx-btn svg { transition: transform var(--ns-dur-2) var(--ns-ease); }
 }
@@ -131,7 +135,7 @@ html:is([lang="ru"], [lang="uz"]) .nx .st-h1-page { font-size: clamp(32px, 5.4vw
   text-underline-offset: 6px;
   text-decoration-thickness: 1px;
 }
-.nx-link:hover { color: var(--ns-amber-ink); text-decoration-color: currentColor; }
+.nx-link:hover { color: var(--st-act-ink); text-decoration-color: currentColor; }
 .nx-link svg { width: 16px; height: 16px; }
 /* ── Type ────────────────────────────────────────────────────────────── */
 .nx-h1 {
@@ -146,8 +150,8 @@ html:is([lang="ru"], [lang="uz"]) .nx .st-h1-page { font-size: clamp(32px, 5.4vw
   text-wrap: balance;
 }
 html:is([lang="ru"], [lang="uz"]) .nx-h1 { font-size: clamp(36px, 8.6vw, 72px); }
-/* The second line is the promise, so it is the lit one: amber on the dark, the paper-safe amber on the light. */
-.nx-h1-b { display: block; color: var(--ns-amber-ink); }
+/* The second line is the promise, so it is the toned one: the primary action's indigo, deep on the light page (7.1:1), pale on the dark (9.6:1). */
+.nx-h1-b { display: block; color: var(--st-act-ink); }
 .nx-h2 {
   font-family: var(--font-display);
   font-size: clamp(34px, 6.2vw, 64px);
@@ -301,7 +305,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
 .nx-final .nx-h2 { margin-inline: auto; max-width: 17ch; }
 .nx-final .nx-sub { margin-inline: auto; color: var(--nx-stage-dim); }
 .nx-final .nx-link { color: var(--nx-stage-text); text-decoration-color: rgba(255, 255, 255, 0.4); }
-.nx-final .nx-link:hover { color: var(--nx-stage-amber); }
+.nx-final .nx-link:hover { color: var(--st-act-ink); }
 /* ── Solutions pages: rows as cards ──────────────────────────────────── */
 .nx .st-ways { border-top: 0; display: grid; gap: 16px; margin-top: 48px; }
 .nx .st-way { padding: 28px; border: 1px solid var(--ns-rule); border-radius: 28px; background: var(--ns-console); }
@@ -397,7 +401,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
   font-size: 16px;
   font-weight: 600;
 }
-.nx-cta:hover { border-color: var(--ns-amber); background: var(--ns-select); }
+.nx-cta:hover { border-color: var(--st-act); background: color-mix(in srgb, var(--st-act) 10%, transparent); }
 .nx-cta:active { transform: translateY(1px); }
 .nx-demo {
   position: relative;
@@ -596,7 +600,7 @@ html[data-motion="paused"] .nx .ns-lamp[data-live="true"] { animation-play-state
   color: var(--ns-text);
   cursor: pointer;
 }
-.nx-try-pick:hover { border-color: var(--ns-amber); background: var(--ns-select); }
+.nx-try-pick:hover { border-color: var(--st-act); background: color-mix(in srgb, var(--st-act) 10%, transparent); }
 .nx-try-status { min-height: 22px; font-size: 15px; font-weight: 500; color: var(--ns-text-dim); }
 .nx-try-status[data-error="true"] { color: var(--ns-tally); }
 .nx-try-plan { position: relative; display: grid; }
@@ -659,14 +663,14 @@ html[data-motion="paused"] .nx .ns-lamp[data-live="true"] { animation-play-state
 .nx-calc-row { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
 .nx-calc-len { min-width: 96px; text-align: right; font-family: var(--font-display); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .nx-range { -webkit-appearance: none; appearance: none; flex: 1; min-width: 0; height: 44px; margin: 0; background: transparent; cursor: pointer; }
-.nx-range::-webkit-slider-runnable-track { height: 10px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); background: linear-gradient(to right, var(--ns-amber) var(--p, 25%), var(--ns-key) var(--p, 25%)); }
+.nx-range::-webkit-slider-runnable-track { height: 10px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); background: linear-gradient(to right, var(--st-act) var(--p, 25%), var(--ns-key) var(--p, 25%)); }
 .nx-range::-moz-range-track { height: 10px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); background: var(--ns-key); }
-.nx-range::-moz-range-progress { height: 10px; border-radius: 999px; background: var(--ns-amber); }
-.nx-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 28px; height: 28px; margin-top: -10px; border-radius: 999px; border: 3px solid var(--ns-amber); background: var(--ns-text); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
-.nx-range::-moz-range-thumb { width: 22px; height: 22px; border-radius: 999px; border: 3px solid var(--ns-amber); background: var(--ns-text); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
+.nx-range::-moz-range-progress { height: 10px; border-radius: 999px; background: var(--st-act); }
+.nx-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 28px; height: 28px; margin-top: -10px; border-radius: 999px; border: 3px solid var(--st-act); background: var(--ns-text); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
+.nx-range::-moz-range-thumb { width: 22px; height: 22px; border-radius: 999px; border: 3px solid var(--st-act); background: var(--ns-text); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
 .nx-range:focus-visible { outline: none; }
-.nx-range:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--ns-cue); outline-offset: 3px; }
-.nx-range:focus-visible::-moz-range-thumb { outline: 2px solid var(--ns-cue); outline-offset: 3px; }
+.nx-range:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--ns-focus); outline-offset: 3px; }
+.nx-range:focus-visible::-moz-range-thumb { outline: 2px solid var(--ns-focus); outline-offset: 3px; }
 .nx-calc-out { display: grid; gap: 4px; padding: 20px; border-radius: 20px; background: var(--ns-console); }
 .nx-section[data-tone="raised"] .nx-calc-out { background: var(--ns-console); }
 .nx-calc-q { font-size: 15px; font-weight: 500; color: var(--ns-text-dim); }
@@ -696,7 +700,7 @@ html:has(.nx-bar) { scroll-padding-bottom: 96px; }
   border: 1px solid var(--nx-stage-edge);
   background: var(--nx-stage);
   color: var(--nx-stage-text);
-  box-shadow: 0 20px 44px -18px rgba(0, 0, 0, 0.65), 0 0 40px -20px color-mix(in srgb, var(--ns-amber) 55%, transparent);
+  box-shadow: 0 20px 44px -18px rgba(0, 0, 0, 0.65), 0 0 40px -20px var(--st-lit-glow);
   opacity: 0;
   visibility: hidden;
   transform: translateY(16px);
@@ -720,7 +724,7 @@ html:has(.nx-bar) { scroll-padding-bottom: 96px; }
   white-space: nowrap;
 }
 .nx-bar-go svg { width: 18px; height: 18px; }
-.nx-bar-go:hover { filter: brightness(1.06); }
+.nx-bar-go:hover { background: var(--st-lit-hover); }
 .nx-bar-x { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; color: var(--nx-stage-dim); cursor: pointer; }
 .nx-bar-x:hover { color: var(--nx-stage-text); background: rgba(255, 255, 255, 0.08); }
 .nx-bar-x svg { width: 18px; height: 18px; }
@@ -838,7 +842,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-hero .nx-h1 { font-size: clamp(36px, 8.6vw
 /* The pause button on a clip: the page's one pause switch, within reach of every clip (a 44 px circle over the picture, top right). */
 .nx-clip-pause { position: absolute; z-index: 3; top: 10px; right: 10px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.5); background: rgba(8, 8, 8, 0.7); color: #fff; cursor: pointer; }
 .nx-clip-pause svg { width: 18px; height: 18px; }
-.nx-clip-pause:hover { border-color: var(--nx-stage-amber); }
+.nx-clip-pause:hover { border-color: var(--nx-stage-act); }
 .nx-clip-pause[aria-pressed="true"] { border-color: var(--nx-stage-amber); color: var(--nx-stage-amber); }
 @media (prefers-reduced-motion: reduce) { .nx-clip-pause { display: none; } }
 .nx-show-text { display: contents; color: #fff; }
@@ -849,7 +853,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-hero .nx-h1 { font-size: clamp(36px, 8.6vw
 html:is([lang="ru"], [lang="uz"]) .nx-show-h { font-size: clamp(28px, 7.2vw, 52px); }
 .nx-show-body { margin: 12px 0 0; max-width: 44ch; font-size: 16px; line-height: 1.55; color: rgba(255, 255, 255, 0.94); text-wrap: pretty; }
 .nx-show-cta { display: inline-flex; align-items: center; min-height: 48px; margin-top: 18px; padding: 0 24px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.8); font-family: var(--font-display); font-size: 16px; font-weight: 600; color: #fff; }
-.nx-show-cta:hover { border-color: var(--nx-stage-amber); color: var(--nx-stage-amber); }
+.nx-show-cta:hover { border-color: var(--nx-stage-act); color: var(--nx-stage-act); }
 .nx-show-note { margin: 10px 6px 0; font-size: 15px; line-height: 1.45; color: var(--ns-text-dim); }
 @media (min-width: 860px) {
   .nx-show-card { display: flex; align-items: center; min-height: 560px; border-radius: 36px; }
@@ -953,7 +957,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-sol-hero .st-h1-page { max-width: 10.4em; 
 .nx-way-h { margin: 8px 0 0; font-family: var(--font-display); font-size: clamp(28px, 7.4vw, 44px); font-weight: 600; line-height: 1.08; letter-spacing: -0.03em; text-wrap: balance; }
 html:is([lang="ru"], [lang="uz"]) .nx-way-h { font-size: clamp(26px, 6.4vw, 38px); }
 .nx-way-link { display: inline-block; min-height: 44px; }
-.nx-way-link:hover { color: var(--ns-amber-ink); }
+.nx-way-link:hover { color: var(--st-act-ink); }
 .nx-way-link svg { display: inline; width: 0.7em; height: 0.7em; margin-left: 0.25em; vertical-align: -0.05em; }
 .nx-way-lead { margin: 12px 0 0; max-width: 46ch; font-size: 17px; line-height: 1.55; color: var(--ns-text-dim); text-wrap: pretty; }
 .nx-way-list { display: grid; gap: 4px; margin: 18px 0 0; padding: 0; list-style: none; }
@@ -1039,7 +1043,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 .nx-tools-list > li { flex: 0 0 auto; scroll-snap-align: start; }
 .nx-tool { display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 22px 0 18px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); background: var(--ns-console); font-family: var(--font-display); font-size: 17px; white-space: nowrap; font-weight: 500; color: var(--ns-text); cursor: pointer; }
 .nx-tool svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--ns-text-dim); }
-.nx-tool:hover { border-color: var(--ns-amber); }
+.nx-tool:hover { border-color: var(--st-act); }
 .nx-tool[aria-selected="true"] { border-color: var(--ns-amber); background: var(--ns-select); color: var(--ns-text); }
 .nx-tool[aria-selected="true"] svg { color: var(--ns-amber-ink); }
 .nx-tools-line { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 14px; row-gap: 2px; align-items: baseline; margin: 22px 0 0; padding: 20px 22px; border-radius: 22px; border: 1px solid var(--ns-rule); background: var(--ns-console); font-size: 17px; line-height: 1.5; }
@@ -1170,7 +1174,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 .nx-aud-tabs { display: flex; gap: 10px; margin: 0 -16px; padding: 4px 16px 10px; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: none; }
 .nx-aud-tabs::-webkit-scrollbar { display: none; }
 .nx-aud-tab { flex: 0 0 auto; min-height: 54px; padding: 0 26px; border-radius: 999px; border: 1px solid var(--ns-rule-strong); background: var(--ns-console); font-family: var(--font-display); font-size: 17px; font-weight: 600; color: var(--ns-text); white-space: nowrap; cursor: pointer; scroll-snap-align: start; }
-.nx-aud-tab:hover { border-color: var(--ns-amber); }
+.nx-aud-tab:hover { border-color: var(--st-act); }
 .nx-aud-tab[aria-selected="true"] { border-color: var(--ns-amber); background: var(--ns-select); }
 .nx-aud-panel[hidden] { display: none; }
 .nx-aud-body { display: grid; gap: 24px; margin-top: 18px; }
@@ -1191,7 +1195,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-lit .st-hero .st-h1-page { font-size: clam
 .nx-mcp-visual { min-width: 0; }
 
 /* Focus and press, on the controls this round added: the cue-blue focus ring, and a small press (motion allowed only). */
-.nx-tool:focus-visible, .nx-aud-tab:focus-visible, .nx-clip-pause:focus-visible, .nx-show-cta:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: 3px; }
+.nx-tool:focus-visible, .nx-aud-tab:focus-visible, .nx-clip-pause:focus-visible, .nx-show-cta:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 3px; }
 @media (prefers-reduced-motion: no-preference) {
   .nx-tool, .nx-aud-tab, .nx-clip-pause, .nx-show-cta, .nx-btn { transition-property: border-color, background-color, color, transform; }
   .nx-tool:active, .nx-aud-tab:active, .nx-clip-pause:active, .nx-show-cta:active, .nx-btn:active { transform: scale(0.97); }

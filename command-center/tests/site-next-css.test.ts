@@ -125,7 +125,7 @@ describe("site-next.css", () => {
     expect(effects).toMatch(/getBoundingClientRect\(\)\.top < vh\) continue/);
   });
 
-  it("has one primary action: the amber button; the section buttons are outlined in the same corners, not black pills", () => {
+  it("has one primary action: the indigo button (amber stays the accent); the section buttons are outlined in the same corners, not black pills", () => {
     const body = (sel: string) => css.slice(css.indexOf(`${sel} {`), css.indexOf("}", css.indexOf(`${sel} {`)));
     expect(body(".nx-cta")).toMatch(/background:\s*transparent/);
     expect(body(".nx-cta")).toMatch(/border-radius:\s*14px/);

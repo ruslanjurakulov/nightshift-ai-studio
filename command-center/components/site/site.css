@@ -20,12 +20,23 @@
   --st-max: 1240px;
   --st-gutter: 16px;
   --st-section: 56px;
-  /* The lit key: amber with ink legend in both themes — the identity's one
-     signature, kept on the proof sheet too. Only the page's CTA uses it;
-     drawn controls inside illustrations are outlined (see .st-fake-key). */
-  --st-lit-bg: var(--ns-amber);
-  --st-lit-fg: var(--ns-on-amber);
-  --st-lit-edge: color-mix(in srgb, var(--ns-amber-ink) 55%, transparent);
+  /* The one primary action is indigo with a white legend (docs/design/COLOUR.md); amber stays the brand's accent (lamps, the lit
+     key drawn in an example, selected cues, badges, status dots) and is never a button here. Only the page's CTA uses the
+     filled key; drawn controls inside illustrations are outlined (see .st-fake-key). Light values; the dark theme and the
+     always-dark stages (the closing panel, the sticky bar, the sign-in stage) follow below. */
+  --st-lit-bg: #4f46e5;
+  --st-lit-hover: #4338ca;
+  --st-lit-fg: #ffffff;
+  --st-lit-edge: #4338ca;
+  --st-lit-glow: rgba(79, 70, 229, 0.5);
+  /* Interaction tone for everything that answers a pointer (hover borders and link hovers, the slider): the same indigo family. */
+  --st-act: #4f46e5;
+  --st-act-ink: #4338ca;
+  --color-primary: var(--st-act-ink);
+  /* Keyboard focus on the public site is amber (the key is indigo, so a blue ring would read as "primary"). A two-ring: the
+     amber ring sits outside a 2px gap in the page's own colour, so it is read against the page, never against the key. */
+  --ns-focus: #a85a00;
+  --st-focus-gap: #ffffff;
   background: var(--ns-ground);
   color: var(--ns-text);
 }
@@ -34,6 +45,34 @@
 }
 @media (min-width: 1024px) {
   .st { --st-gutter: 40px; --st-section: 88px; }
+}
+/* Dark theme and the stages that are dark in both themes (the closing panel, the sticky bar, the sign-in stage): the key is a
+   lighter indigo with a light edge, so it is delimited from the dark ground (3.8:1 fill alone; the edge is 7:1) and its legend
+   stays at 4.9:1. */
+:root[data-theme="dark"] .st,
+.nx-final, .nx-bar, .st-auth-aside {
+  --st-lit-bg: #6558f5;
+  --st-lit-hover: #5b4ee9;
+  --st-lit-edge: #a39cff;
+  --st-lit-glow: rgba(101, 88, 245, 0.6);
+  --st-act: #8f86ff;
+  --st-act-ink: #b3acff;
+  --color-primary: var(--st-act-ink);
+  --ns-focus: #ffc266;
+  --st-focus-gap: #131210;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .st {
+    --st-lit-bg: #6558f5;
+    --st-lit-hover: #5b4ee9;
+    --st-lit-edge: #a39cff;
+    --st-lit-glow: rgba(101, 88, 245, 0.6);
+    --st-act: #8f86ff;
+    --st-act-ink: #b3acff;
+  --color-primary: var(--st-act-ink);
+    --ns-focus: #ffc266;
+    --st-focus-gap: #131210;
+  }
 }
 html:has(.st) { scroll-padding-top: 80px; }
 @media (prefers-reduced-motion: no-preference) {
@@ -155,7 +194,7 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 }
 
 /* ── Keys (buttons and button-like links) ─────────────────────────────────
-   The primary key is the lit key: amber with an ink legend, in both themes.
+   The primary key is the lit key: indigo with a white legend, in both themes.
    One per view; everything else is a quiet key or a link. */
 .st-key {
   display: inline-flex;
@@ -174,10 +213,13 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   letter-spacing: 0;
   text-transform: none;
   white-space: nowrap;
-  transition: filter var(--ns-dur-1) var(--ns-ease), transform var(--ns-dur-1) var(--ns-ease), background-color var(--ns-dur-1) var(--ns-ease);
+  transition: box-shadow var(--ns-dur-1) var(--ns-ease), transform var(--ns-dur-1) var(--ns-ease), background-color var(--ns-dur-1) var(--ns-ease);
 }
-.st-key:hover { filter: brightness(1.08); box-shadow: 0 0 0 3px var(--ns-select); }
-.st-key:active { transform: translateY(1px); }
+.st-key:hover { background: var(--st-lit-hover); box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-lit-bg) 28%, transparent); }
+.st-key:active { transform: translateY(1px); box-shadow: none; }
+.st-key:disabled, .st-key[aria-disabled="true"] { background: var(--st-lit-bg); box-shadow: none; transform: none; }
+/* Focus: the page-coloured gap that the amber outline (the global ring, ringed with --ns-focus) is drawn outside. */
+.st-key:focus-visible { box-shadow: 0 0 0 2px var(--st-focus-gap); }
 .st-key svg { width: 18px; height: 18px; flex-shrink: 0; }
 .st-key[data-size="sm"] { min-height: 44px; padding: 0 16px; font-size: 16px; }
 /* A phone's header holds the wordmark, the one button and the menu on one line
@@ -192,7 +234,8 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   color: var(--ns-text);
   border-color: var(--ns-rule-strong);
 }
-.st-key[data-tone="quiet"]:hover { filter: none; background: var(--ns-hover); }
+.st-key[data-tone="quiet"]:hover { background: var(--ns-hover); box-shadow: none; }
+.st-key[data-tone="quiet"]:focus-visible { box-shadow: none; }
 .st-key[data-block="true"] { width: 100%; }
 
 .st-link {
@@ -210,7 +253,7 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   text-decoration-thickness: 1px;
   transition: color var(--ns-dur-1) var(--ns-ease), text-decoration-color var(--ns-dur-1) var(--ns-ease);
 }
-.st-link:hover { color: var(--ns-amber-ink); text-decoration-color: currentColor; }
+.st-link:hover { color: var(--st-act-ink); text-decoration-color: currentColor; }
 .st-link svg { width: 16px; height: 16px; }
 
 /* ── Header ─────────────────────────────────────────────────────────────── */
@@ -882,7 +925,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   .st-sol-row { grid-template-columns: 220px minmax(0, 1fr) auto; padding: 28px 0; }
 }
 .st-sol-row:hover { background: var(--ns-hover); }
-.st-sol-row:hover .st-sol-arrow { color: var(--ns-amber-ink); transform: translateX(3px); }
+.st-sol-row:hover .st-sol-arrow { color: var(--st-act-ink); transform: translateX(3px); }
 .st-sol-title { font-family: var(--font-display); font-size: clamp(24px, 2.6vw, 32px); font-weight: 600; line-height: 1.2; text-wrap: balance; }
 .st-sol-row .st-small { grid-column: 1; }
 @media (min-width: 900px) { .st-sol-row .st-small { grid-column: 2; } }
@@ -1034,7 +1077,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 }
 .st-faq summary::-webkit-details-marker { display: none; }
 .st-faq summary h3 { font-size: 17px; font-weight: 600; line-height: 1.35; }
-.st-faq summary:hover h3 { color: var(--ns-amber-ink); }
+.st-faq summary:hover h3 { color: var(--st-act-ink); }
 .st-faq-mark {
   position: relative;
   flex-shrink: 0;
@@ -1089,7 +1132,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   font-size: 15px;
   color: var(--ns-text);
 }
-.st-footer nav a:hover { color: var(--ns-amber-ink); }
+.st-footer nav a:hover { color: var(--st-act-ink); }
 .st-footer-base {
   display: flex;
   flex-wrap: wrap;
@@ -1349,7 +1392,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 }
 /* Balanced lines: an unbalanced title left one word ("key.") alone on its last line. */
 .st-way-title { text-wrap: balance; }
-.st-way-title:hover { color: var(--ns-amber-ink); text-decoration-color: currentColor; }
+.st-way-title:hover { color: var(--st-act-ink); text-decoration-color: currentColor; }
 .st-way-title svg { display: inline; width: 22px; height: 22px; margin-left: 10px; vertical-align: -0.1em; }
 @media (min-width: 960px) {
   .st-way { grid-template-columns: 56px minmax(0, 1.1fr) minmax(0, 1fr); gap: 12px 48px; padding: 36px 0 40px; }
@@ -1471,7 +1514,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
   font-size: 15.5px;
   font-weight: 600;
 }
-.st-doc-toc a:hover { color: var(--ns-amber-ink); }
+.st-doc-toc a:hover { color: var(--st-act-ink); }
 .st-doc-toc .st-num { font-size: 14px; font-weight: 400; color: var(--ns-text-dim); }
 .st-doc-sec { border-top: 1px solid var(--ns-rule); padding-block: 40px 48px; scroll-margin-top: 64px; }
 .st-doc-sec:nth-child(odd) { background: var(--ns-console); }
@@ -1826,7 +1869,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 }
 @media (min-width: 640px) { .st-pill { padding: 0 16px 0 8px; } }
 .st-pill:hover { color: var(--ns-text); }
-.st-pill:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: 2px; }
+.st-pill:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 2px; }
 .st-pill-glyph {
   display: grid;
   place-items: center;
@@ -1955,7 +1998,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 .st-panel-foot p { margin: 0; max-width: 80ch; }
 .st-keyalt { border-top: 1px solid var(--ns-rule); }
 .st-keyalt summary { display: flex; align-items: center; min-height: 44px; padding: 0 20px; font-size: 14.5px; font-weight: 600; cursor: pointer; }
-.st-keyalt summary:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: -2px; }
+.st-keyalt summary:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: -2px; }
 .st-keyalt > p { margin: 0; padding: 0 20px 8px; }
 
 .st-soon { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; max-width: 64ch; padding: 28px 20px; }
@@ -2018,7 +2061,7 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 .st-devnav ul { gap: 2px; padding: 4px; border: 1px solid var(--ns-rule); border-radius: 999px; background: var(--ns-key); }
 .st-devnav a { border-bottom: 0; border-radius: 999px; padding: 0 16px; transition: background-color 220ms var(--ns-ease), color 150ms var(--ns-ease); }
 .st-devnav a[aria-current="page"] { background: var(--ns-text); color: var(--ns-ground); }
-.st-devnav a:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: 2px; }
+.st-devnav a:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 2px; }
 .st-doc-steps-big li::before, .st-setup-step-title::before { display: inline-grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--ns-rule-strong); border-radius: 50%; font-size: 14px; line-height: 1; color: var(--ns-text); }
 .st-doc-steps-big li::before { padding-top: 0; font-size: 14px; }
 .st-setup-step-title::before { margin-right: 12px; vertical-align: 2px; }
@@ -2125,8 +2168,8 @@ h3.st-doc-h3 { letter-spacing: 0; }
 .ml-cap-cta { margin-top: 24px; }
 /* One primary action across the site is the amber key; these are the section's own secondary action, so they are outlined (SITE_ENGAGE.md), in the same 14px corners as the key. */
 .ml-cap-cta .st-copy { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 20px; border: 1px solid var(--ns-rule-strong); border-radius: 14px; background: transparent; color: var(--ns-text); font-family: var(--font-display); font-size: 15px; font-weight: 600; cursor: pointer; transition: background-color var(--ns-dur-1) var(--ns-ease), border-color var(--ns-dur-1) var(--ns-ease); }
-.ml-cap-cta .st-copy:hover { border-color: var(--ns-amber); background: var(--ns-select); }
-.ml-cap-cta .st-copy:focus-visible, .ml-ask-copy .st-copy:focus-visible, .ml-ex-copy .st-copy:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: 2px; }
+.ml-cap-cta .st-copy:hover { border-color: var(--st-act); background: color-mix(in srgb, var(--st-act) 10%, transparent); }
+.ml-cap-cta .st-copy:focus-visible, .ml-ask-copy .st-copy:focus-visible, .ml-ex-copy .st-copy:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 2px; }
 
 .ml-thumbs { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: -8px; }
 .ml-thumbs-tag { margin-right: 4px; font-size: 14px; color: var(--ns-text-dim); }
@@ -2161,7 +2204,7 @@ h3.st-doc-h3 { letter-spacing: 0; }
 .ml-car-track { display: flex; gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; padding: 8px 16px 16px; scrollbar-width: none; overscroll-behavior-x: contain; }
 .ml-car-track::-webkit-scrollbar { display: none; }
 @media (min-width: 1180px) { .ml-car-track { padding-inline: calc((100vw - 1180px) / 2 + 24px); scroll-padding-inline: calc((100vw - 1180px) / 2 + 24px); } }
-.ml-car-track:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: -2px; border-radius: 12px; }
+.ml-car-track:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: -2px; border-radius: 12px; }
 .ml-car-slide { flex: 0 0 min(76vw, 272px); scroll-snap-align: start; }
 @media (min-width: 768px) { .ml-car-slide { flex-basis: 288px; } }
 .ml-ex { position: relative; aspect-ratio: 4 / 5; border-radius: 20px; overflow: hidden; background: #3a2a5c; color: #fff; }
@@ -2178,7 +2221,7 @@ h3.st-doc-h3 { letter-spacing: 0; }
 .ml-car-btn svg { width: 18px; height: 18px; }
 .ml-car-btn:hover:not(:disabled) { background: var(--ns-hover); }
 .ml-car-btn:disabled { opacity: 0.4; cursor: default; }
-.ml-car-btn:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: 2px; }
+.ml-car-btn:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 2px; }
 
 /* Works with: three offset rows of pills that drift, forever, slowly (still when motion is reduced) */
 
@@ -2193,14 +2236,14 @@ h3.st-doc-h3 { letter-spacing: 0; }
 .ml-faq-item summary::-webkit-details-marker { display: none; }
 .ml-faq-item summary::after { content: "+" / ""; flex: none; font-size: 22px; font-weight: 400; line-height: 1; color: var(--ns-text-dim); }
 .ml-faq-item[open] summary::after { content: "\2212" / ""; }
-.ml-faq-item summary:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: 2px; }
+.ml-faq-item summary:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 2px; }
 .ml-faq-item p { margin: 0; padding: 0 20px 18px; font-size: 16px; line-height: 1.6; color: var(--ns-text-dim); }
 
 /* Explore more, and the closing line */
 .ml-explore-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 28px 0 0; padding: 0; list-style: none; }
 .ml-explore-pill { display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 999px; background: var(--ns-key); font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--ns-text); text-decoration: none; transition: background-color var(--ns-dur-1) var(--ns-ease); }
 .ml-explore-pill:hover { background: var(--ns-hover); }
-.ml-explore-pill:focus-visible { outline: 2px solid var(--ns-cue); outline-offset: 2px; }
+.ml-explore-pill:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 2px; }
 .ml-close { padding-block: 80px 112px; border-top: 1px solid var(--ns-rule); }
 @media (min-width: 768px) { .ml-close { padding-block: 112px 144px; } }
 .ml-close-h2 { font-size: clamp(34px, 6vw, 56px); max-width: 16ch; margin-inline: auto; }
