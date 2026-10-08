@@ -197,10 +197,10 @@ describe("the landing page's reasons to stay", () => {
     expect(within(bar).getByText(t.bar.cta).closest("a")!.getAttribute("href")).toBe("/signup");
     expect(bar.querySelector("button")!.getAttribute("aria-label")).toBe(t.bar.dismiss);
 
-    // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of three
-    // (the two clip pictures carry the same switch), and all three agree.
+    // A toggle button: its name stays "Pause motion" and aria-pressed says whether motion is paused. The hero's is one of four
+    // (the hero's picture panel and the two clip pictures carry the same switch), and all four agree.
     const all = () => screen.getAllByRole("button", { name: t.fx.pause });
-    expect(all()).toHaveLength(3);
+    expect(all()).toHaveLength(4);
     const toggle = container.querySelector(".nx-motion-btn") as HTMLElement;
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(toggle);
@@ -225,9 +225,9 @@ describe("the landing page's reasons to stay", () => {
     for (const { code } of LOCALES) {
       const s = dictionaries[code].site.samples;
       expect(Object.keys(s.alts).sort()).toEqual([...MEDIA_IDS].sort());
-      // Every example frame's description starts with "Example frame"; the two sign-in backdrops are decorative and carry a short caption instead.
+      // Every example frame's description starts with "Example frame"; the sign-in backdrop is decorative and carries a short caption instead.
       const label = s.tag.split(" (")[0];
-      for (const [id, alt] of Object.entries(s.alts)) if (id !== "alley" && id !== "lanterngrid") expect(alt.startsWith(label), id).toBe(true);
+      for (const [id, alt] of Object.entries(s.alts)) if (id !== "desert") expect(alt.startsWith(label), id).toBe(true);
       expect(s.note.length).toBeGreaterThan(20);
     }
   });
@@ -259,19 +259,19 @@ describe("the page's HTML stays small", () => {
 });
 
 describe("the stock-picture disclosure is printed, not only labelled", () => {
-  it.each(LOCALES.map((l) => l.code))("%s: the hero card and each of the three showcases show the note as visible text, and every picture carries its badge and its credit", (code) => {
+  it.each(LOCALES.map((l) => l.code))("%s: the hero card and each of the two showcases show the note as visible text, and every picture carries its badge and its credit", (code) => {
     const { container } = landing(NO_MONEY, code);
     const s = dictionaries[code].site.samples;
     const hero = container.querySelector("figure.nx-chat") as HTMLElement;
     expect(hero.querySelector("figcaption")?.textContent).toBe(`${s.note} ${s.clipNote}`);
     expect(hero.querySelector("figcaption")?.closest("[aria-hidden]")).toBeNull();
     const shows = [...container.querySelectorAll("section.nx-show")];
-    expect(shows.map((x) => x.id)).toEqual(["video", "studio", "approvals"]);
+    expect(shows.map((x) => x.id)).toEqual(["studio", "approvals"]);
     for (const x of shows) {
       const note = x.querySelector(".nx-show-note") as HTMLElement;
       expect(note.textContent?.startsWith(s.note)).toBe(true);
       expect(note.closest("[aria-hidden]")).toBeNull();
-      expect(x.querySelector(".nx-result-badge")?.textContent).toBe(x.id === "video" ? s.tag : s.frameTag);
+      expect(x.querySelector(".nx-result-badge")?.textContent).toBe(s.frameTag);
       expect(x.querySelector(".nx-result-credit")?.textContent).toContain(" / Pexels");
     }
   });
@@ -279,10 +279,10 @@ describe("the stock-picture disclosure is printed, not only labelled", () => {
   it("has no gallery, no rails and no comparison any more: nothing scrolls sideways on the landing and nothing is shown twice", () => {
     const { container } = landing();
     for (const sel of ["#examples", ".nx-caps", "#compare", ".nx-gal", "[aria-roledescription='carousel']", ".nx-tiles", ".nx-rules-rail"]) expect(container.querySelector(sel), sel).toBeNull();
-    // Three different stills in the showcases, a fourth in the hero card.
+    // Two different stills in the showcases, a third in the hero card.
     const used = [...container.querySelectorAll("figure.nx-chat img:not(.nx-fx-fg), section.nx-show img:not(.nx-fx-fg)")].map((i) => i.getAttribute("data-sample"));
-    expect(used).toHaveLength(4);
-    expect(new Set(used).size).toBe(4);
+    expect(used).toHaveLength(3);
+    expect(new Set(used).size).toBe(3);
   });
 
   it("sets the text of every showcase on a dark overlay: white on the brightest possible still stays above 7:1 (AA needs 4.5)", async () => {

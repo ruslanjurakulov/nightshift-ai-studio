@@ -4,6 +4,8 @@ import type { DevDictionary } from "@/lib/i18n/dev";
 import { CopyButton } from "@/components/docs/CopyButton";
 import { ResultsCarousel } from "@/components/docs/ResultsCarousel";
 import { Scene, SCENE_SAMPLE } from "@/components/docs/SampleFrame";
+import { LoopClip } from "@/components/site/LoopClip";
+import { SAMPLES } from "@/components/site/samples";
 import { creditLine } from "@/lib/site/media";
 
 /**
@@ -63,11 +65,20 @@ export function McpLanding({ dev, oauthLive }: { dev: DevDictionary; oauthLive: 
             labels={{ region: l.examples.region, track: l.examples.track, prev: l.examples.prev, next: l.examples.next }}
             cards={EXAMPLE_SCENES.map((scene) => {
               const card = l.examples.cards.find((x) => x.id === scene)!;
+              const pic = SCENE_SAMPLE[scene];
               return (
-                <div key={scene} className="ml-ex" data-scene={scene}>
+                <div key={scene} className="ml-ex" data-scene={scene} data-clip={pic.clip}>
                   <Scene kind={scene} alt={l.examples.alts[scene]} />
-                  <span className="ml-ex-badge">{l.examples.sample}</span>
-                  <span className="ml-ex-credit">{creditLine(SCENE_SAMPLE[scene].id, { photo: l.examples.credit.photo, video: l.examples.credit.photo })}</span>
+                  {pic.clip && <LoopClip clip={pic.clip} poster={SAMPLES[pic.id].sm} position={pic.position} />}
+                  <span className="ml-ex-badge" data-kind="still">
+                    {pic.clip ? l.examples.sampleFootage : l.examples.sample}
+                  </span>
+                  {pic.clip && (
+                    <span className="ml-ex-badge" data-kind="clip">
+                      {l.examples.sampleClip}
+                    </span>
+                  )}
+                  <span className="ml-ex-credit">{creditLine(pic.id, l.examples.credit)}</span>
                   <div className="ml-ex-over">
                     <span className="ml-ex-tag">{card.tag}</span>
                     <p className="ml-ex-q">{card.prompt}</p>

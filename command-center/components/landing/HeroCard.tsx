@@ -71,14 +71,20 @@ export function ChatCard({
   eager = false,
   className = "",
   art,
+  bare = false,
+  compactClip = false,
 }: {
   copy: ChatCopy;
   slot?: SlotId;
   eager?: boolean;
   className?: string;
   art?: BrandArtKind;
+  /** No picture at all: the card is the idea (an ask, a reply, the wait for approval) and shows nothing that looks like a result. */
+  bare?: boolean;
+  /** The card is never wider than about 560 px, so its clip uses the 640 px file on any screen. */
+  compactClip?: boolean;
 }) {
-  const clip = art ? null : slotClip(slot);
+  const clip = art || bare ? null : slotClip(slot);
   const moving = Boolean(clip);
   const current = Math.max(0, copy.steps.findIndex((s) => s.id === copy.current));
   return (
@@ -106,19 +112,21 @@ export function ChatCard({
           </span>
         </div>
         <div className="nx-result nx-result-sign">
-          <div className="nx-result-art" data-ratio="wide" data-clip={clip ?? undefined}>
-            {art ? <BrandArt kind={art} className="nx-art" /> : <SlotImg slot={slot} alt={copy.alt} className="nx-art" eager={eager} sizes="(min-width: 640px) 520px, calc(100vw - 80px)" />}
-            {clip && <LoopClip clip={clip} poster={SAMPLES[SLOTS[slot].id].sm} early={eager} />}
-            <span className="nx-result-badge" data-kind="still">
-              {copy.badge}
-            </span>
-            {moving && (
-              <span className="nx-result-badge" data-kind="clip">
-                {copy.clipBadge}
+          {!bare && (
+            <div className="nx-result-art" data-ratio="wide" data-clip={clip ?? undefined}>
+              {art ? <BrandArt kind={art} className="nx-art" /> : <SlotImg slot={slot} alt={copy.alt} className="nx-art" eager={eager} sizes="(min-width: 640px) 520px, calc(100vw - 80px)" />}
+              {clip && <LoopClip clip={clip} poster={SAMPLES[SLOTS[slot].id].sm} early={eager} compact={compactClip} />}
+              <span className="nx-result-badge" data-kind="still">
+                {copy.badge}
               </span>
-            )}
-            {!art && <span className="nx-result-credit">{copy.credit}</span>}
-          </div>
+              {moving && (
+                <span className="nx-result-badge" data-kind="clip">
+                  {copy.clipBadge}
+                </span>
+              )}
+              {!art && <span className="nx-result-credit">{copy.credit}</span>}
+            </div>
+          )}
           <ul className="nx-ui-status">
             <li>
               <span className="nx-dot" data-tone="ok" />

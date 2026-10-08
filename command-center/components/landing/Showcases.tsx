@@ -5,15 +5,14 @@ import { LoopClip } from "@/components/site/LoopClip";
 import { SAMPLES, SLOTS, SlotImg, slotAlt, slotClip, slotPosition, slotSample, type SlotId } from "@/components/site/samples";
 import { creditLine } from "@/lib/site/media";
 
-/** The three things Nightshift is shown by: one section each, one picture each, never the same picture twice (components/site/samples.tsx SLOTS). */
-const SHOWS: { id: "video" | "studio" | "approvals"; slot: SlotId; href: string }[] = [
-  { id: "video", slot: "show.video", href: "/signup" },
+/** The two things Nightshift is shown by (round 9 dropped the first of three, a still photograph, from a landing that had grown long): one section each, one picture each, never the same picture twice (components/site/samples.tsx SLOTS). */
+const SHOWS: { id: "studio" | "approvals"; slot: SlotId; href: string }[] = [
   { id: "studio", slot: "show.studio", href: "/signup" },
   { id: "approvals", slot: "show.approvals", href: "/solutions/youtube-channels" },
 ];
 
 /**
- * Three full-width showcases: a large rounded picture, the headline over its lower edge, then a sentence and one
+ * Two full-width showcases: a large rounded picture, the headline over its lower edge, then a sentence and one
  * outlined button. On a phone the picture is shown whole and bright (4:5, nothing over it but the label and a short
  * dark panel under the headline); the sentence and the button sit on solid dark below it. On a desktop the words sit
  * on the left over a gradient. Wherever words are over the picture the overlay is at least 74% opaque, so white on it

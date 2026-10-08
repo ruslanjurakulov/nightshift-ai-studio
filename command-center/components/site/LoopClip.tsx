@@ -51,7 +51,8 @@ const subscribe = (l: () => void) => {
  * - nothing is downloaded until it is wanted: the first screen's clip starts after the page has loaded and gone idle
  *   (so the still, not the clip, is what the page's LCP measures), every other clip when it is the one most on screen;
  *   `preload="none"` until then; only one clip plays at a time (see `shown` above);
- * - one rendition, chosen when it mounts: 640 x 360 below 860 px of screen, 1280 x 720 above (a `media` attribute on a video's
+ * - one rendition, chosen when it mounts: 640 x 360 below 860 px of screen or for a frame that is never wider than about 560 px
+ *   (`compact`: a small frame on a wide screen does not need the 1280 file and its first-load cost), 1280 x 720 otherwise (a `media` attribute on a video's
  *   `source` is not honoured by browsers, so the choice is made here);
  * - muted, looping, inline, no controls, hidden from assistive technology (the still's description covers it); `poster` is the
  *   still itself at its phone width (the file a phone's picture already shows, so it is usually already in the cache), and the WebM is listed first, the MP4 after it
@@ -60,7 +61,7 @@ const subscribe = (l: () => void) => {
  * - the container's `data-live` says it is playing, which swaps the badge from "Example frame (stock footage)" to "Example clip
  *   (stock footage)" and fades the clip in over the still.
  */
-export function LoopClip({ clip, poster, early = false, position }: { clip: ClipId; poster: string; early?: boolean; position?: string }) {
+export function LoopClip({ clip, poster, early = false, position, compact = false }: { clip: ClipId; poster: string; early?: boolean; position?: string; compact?: boolean }) {
   const sources = CLIPS[clip];
   const ref = useRef<HTMLVideoElement>(null);
   const paused = useMotionPaused();
@@ -75,9 +76,9 @@ export function LoopClip({ clip, poster, early = false, position }: { clip: Clip
 
   useEffect(() => {
     if (!clipsAllowed()) return;
-    setSmall(!window.matchMedia("(min-width: 860px)").matches);
+    setSmall(compact || !window.matchMedia("(min-width: 860px)").matches);
     setAllowed(true);
-  }, []);
+  }, [compact]);
 
   // When the clip may start: the first screen's after load and idle, the rest when they come near the screen.
   useEffect(() => {

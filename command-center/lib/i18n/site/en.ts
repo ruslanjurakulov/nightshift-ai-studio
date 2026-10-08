@@ -140,7 +140,7 @@ export const siteEn = {
     /** The courtesy credit on a picture; {name} is the contributor name as Pexels shows it (lib/site/media.ts). */
     credit: { photo: "Photo: {name} / Pexels", video: "Video: {name} / Pexels" },
     /** What a decorative backdrop (sign-in and sign-up) is, in a few words. */
-    captions: { alley: "A lit window in a quiet street in the evening", lanterngrid: "Paper lanterns glowing at night" },
+    captions: { desert: "Golden light over desert dunes", floating: "Lanterns floating on water at night (stock footage, looped)" },
     alts: {
       caravan: "Example frame: a camel caravan walking across a rocky desert, a rider at its head",
       coast: "Example frame: waves breaking on a shore, a small lighthouse in the distance",
@@ -153,10 +153,8 @@ export const siteEn = {
       market: "Example frame: an evening market in Marrakech seen from above",
       valley: "Example frame: forested hills with golden mist at sunrise",
       lighthouse: "Example frame: a lighthouse in tall grass at golden hour",
-      dunes: "Example frame: a camel caravan on a desert dune",
       citynight: "Example frame: a city’s lights at twilight seen from a hill",
-      alley: "A lit window in a quiet street in the evening",
-      lanterngrid: "Paper lanterns glowing at night",
+      desert: "Golden light over desert dunes",
       peak: "Example frame: a snow peak lit gold above the clouds",
       waterfall: "Example frame: silky long-exposure water falling over rocks",
       mic: "Example frame: a vintage chrome and brass microphone",
@@ -314,6 +312,8 @@ export const siteEn = {
   wall: {
     label: "Stock photos, illustrating each tool",
     note: "The pictures stand for the tools. They are stock photos, not what the tools make. Each tool shows its price on its button, except the ones that cost no credits.",
+    more: "Show four more tools",
+    less: "Show fewer tools",
   },
   studio: {
     slug: "Studio",

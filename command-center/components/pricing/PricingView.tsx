@@ -318,7 +318,7 @@ export function PricingView({
               </dl>
             </details>
           </div>
-          <ChatCard copy={chatCopy(t, "pricing.card")} slot="pricing.card" />
+          <ChatCard copy={chatCopy(t, "pricing.card")} slot="pricing.card" compactClip />
         </div>
       </section>
 

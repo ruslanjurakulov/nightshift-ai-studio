@@ -89,16 +89,19 @@ describe("the clips (round 5)", () => {
     expect(css).toMatch(/\.nx-clip \{ position: absolute; inset: 1px; width: calc\(100% - 2px\); height: calc\(100% - 2px\);/);
   });
 
-  it("belong to six slots, each of which keeps its still as the poster (frame 0 of the clip is that still)", () => {
+  it("belong to eight slots, each of which keeps its still as the poster (frame 0 of the clip is that still)", () => {
     expect(slotClip("hero")).toBe("cloud");
     expect(slotClip("show.studio")).toBe("pottery");
     expect(slotClip("show.approvals")).toBe("coast");
     expect(slotClip("pricing.card")).toBe("floating");
     expect(slotClip("solutions.youtube-channels")).toBe("caravan");
     expect(slotClip("solutions.creative-studio")).toBe("loom");
-    for (const slot of ["hero", "show.studio", "show.approvals", "pricing.card", "solutions.youtube-channels", "solutions.creative-studio"] as const) expect(SLOTS[slot].id).toBe(slotClip(slot));
-    // The library, the closing panel, the developers' photograph and the sign-in stages are still: nothing moves on them (the sign-in pages have no pause switch).
-    for (const slot of ["show.video", "landing.final", "solutions.developers", "auth.login", "auth.signup"] as const) expect(slotClip(slot), slot).toBeNull();
+    // Round 9: the sign-up stage plays the floating lanterns (behind a pause button), /mcp's header panel plays the cloud sea.
+    expect(slotClip("auth.signup")).toBe("floating");
+    expect(slotClip("mcp.hero")).toBe("cloud");
+    for (const slot of ["hero", "show.studio", "show.approvals", "pricing.card", "solutions.youtube-channels", "solutions.creative-studio", "auth.signup", "mcp.hero"] as const) expect(SLOTS[slot].id).toBe(slotClip(slot));
+    // The closing panel, the developers' photograph and the sign-in stage are still.
+    for (const slot of ["landing.final", "solutions.developers", "auth.login"] as const) expect(slotClip(slot), slot).toBeNull();
   });
 
   it("are served from /_next/static/media (a path the middleware never gates) through one webpack rule, and the CSP already allows same-origin media (nothing in the CSP changed)", () => {
@@ -224,14 +227,15 @@ describe("the landing's clips are labelled for what they are (round 5)", () => {
     env();
     const { container } = render(<Landing t={t} locale={code} pricing={{ kind: "announced" }} anchor={{ pack: { kind: "none" }, api: null, site: null }} showcase={[]} />);
     const clipBoxes = [...container.querySelectorAll("[data-clip]")];
-    expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(["cloud", "pottery", "coast"]);
+    // The hero's footage is printed twice (a phone's picture panel and a desktop's card: the stylesheet shows one), then the two showcases.
+    expect(clipBoxes.map((b) => b.getAttribute("data-clip"))).toEqual(["cloud", "cloud", "pottery", "coast"]);
     for (const b of clipBoxes) {
       // The still under a clip is a frame of stock footage.
       expect(b.querySelector(".nx-result-badge[data-kind='still']")?.textContent).toBe(t.site.samples.frameTag);
       expect(b.querySelector(".nx-result-badge[data-kind='clip']")?.textContent).toBe(t.site.samples.clipTag);
       expect(b.querySelector("img")?.getAttribute("alt")).toBeTruthy();
     }
-    expect(container.querySelectorAll("video")).toHaveLength(3);
+    expect(container.querySelectorAll("video")).toHaveLength(4);
     expect(t.site.samples.clipTag).toMatch(code === "en" ? /^Example clip \(stock footage\)$/ : code === "ru" ? /^Пример клипа/ : /^Namuna klip/);
     const text = container.textContent ?? "";
     expect(text).not.toMatch(/made with Nightshift|Nightshift made|Nightshift-generated/i);

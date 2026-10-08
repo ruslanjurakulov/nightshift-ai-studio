@@ -11,7 +11,9 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { LegalFooter } from "@/components/legal/LegalFooter";
 import { BrandMark } from "@/components/site/BrandMark";
 import { preloadSiteFonts } from "@/components/site/fonts";
-import { SlotImg, slotSample, type SlotId } from "@/components/site/samples";
+import { LoopClip } from "@/components/site/LoopClip";
+import { ClipPause } from "@/components/site/ClipPause";
+import { SAMPLES, SLOTS, SlotImg, slotClip, slotPosition, slotSample, type SlotId } from "@/components/site/samples";
 import { creditLine } from "@/lib/site/media";
 import { FlowCard } from "@/components/auth/FlowCard";
 import "@/components/site/site.css";
@@ -40,15 +42,19 @@ export function AuthShell({
   const a = t.site.auth;
   preloadSiteFonts(locale);
   const asideTitle = mode === "signup" ? a.asideTitleSignup : a.asideTitle;
-  // A real photograph behind the stage (stock, by a Pexels contributor, credited under the stage): a lit window in a quiet street to sign in, paper lanterns to start.
+  // A real photograph (sign in) or a looped clip (sign up) behind the stage, stock by a Pexels contributor, credited under the stage: golden light over dunes to sign in, lanterns on water at night to start.
   const slot: SlotId = mode === "signup" ? "auth.signup" : "auth.login";
-  const photo = slotSample(slot).id as "alley" | "lanterngrid";
+  const photo = slotSample(slot).id as "desert" | "floating";
+  const clip = slotClip(slot);
+  const poster = SAMPLES[SLOTS[slot].id].sm;
   const credit = `${t.site.samples.captions[photo]}. ${creditLine(photo, t.site.samples.credit)}`;
   return (
     <div className="st nx st-auth">
-      <aside className="st-auth-aside" aria-label={asideTitle} data-photo={photo}>
+      <aside className="st-auth-aside" aria-label={asideTitle} data-photo={photo} data-clip={clip ?? undefined}>
         {/* A photograph behind the house rules (decorative: darkened under the words, credited below); the flow card on it is the example. */}
         <SlotImg slot={slot} className="nx-aside-bg" sizes="(min-width: 960px) 900px, 1px" />
+        {clip && <LoopClip clip={clip} poster={poster} early position={slotPosition(slot)} />}
+        {clip && <ClipPause label={t.site.fx.pause} />}
         <Link href="/" className="st-brand self-start">
           <BrandMark />
           {t.brand.name}
@@ -65,7 +71,7 @@ export function AuthShell({
             ))}
           </ul>
         </div>
-        <div className="flex flex-col gap-3">
+        <div className="nx-aside-foot flex flex-col gap-3">
           <span className="flex items-center gap-3 text-[15px]">
             <span aria-hidden className="ns-lamp" data-tone="run" data-size="md" data-live="true" />
             {a.asideLamp}
@@ -88,8 +94,10 @@ export function AuthShell({
         </div>
 
         {/* On a phone the stage is a band above the form: the same drawing, the brand over it, the brief and the approval playing on it. */}
-        <div className="nx-auth-band lg:hidden" data-photo={photo}>
+        <div className="nx-auth-band lg:hidden" data-photo={photo} data-clip={clip ?? undefined}>
           <SlotImg slot={slot} className="nx-art" sizes="(max-width: 959px) 100vw, 1px" />
+          {clip && <LoopClip clip={clip} poster={poster} early position={slotPosition(slot)} />}
+          {clip && <ClipPause label={t.site.fx.pause} />}
           <span className="nx-result-credit">{creditLine(photo, t.site.samples.credit)}</span>
           <Link href="/" className="st-brand">
             <BrandMark />

@@ -374,6 +374,7 @@ export const devUz: DevDictionary = {
       },
       frames: {
         note: "Tasvir, haqiqiy natija emas",
+        exampleNote: "Soʻrov va tasdiq kutish misoli. Haqiqiy ishga tushirish ham, haqiqiy natija ham emas.",
         video: { title: "Namunaviy sarlavha kadri", stages: ["Ssenariy", "Ovoz", "Tasvir", "Taglavhalar", "Montaj"] },
         channels: {
           head: "Kanallaringiz",
@@ -398,16 +399,18 @@ export const devUz: DevDictionary = {
       examples: {
         label: "Misollar",
         title: "Nimalarni soʻrash mumkin",
-        lead: "Oltita namuna soʻrov, har birida namuna kadr bor. Kadrlar Pexels mualliflarining stok suratlari, muallif har bir kartada koʻrsatilgan; ular gʻoyani koʻrsatadi, haqiqiy natijani emas.",
+        lead: "Oltita namuna soʻrov, har birida namuna kadr bor. Kadrlar Pexels mualliflarining stok surat va videolari, muallif har bir kartada koʻrsatilgan; ulardan biri harakatlanadi (muallifning takrorlanuvchi videosi). Ular gʻoyani koʻrsatadi, haqiqiy natijani emas.",
         region: "Nimalarni soʻrash mumkinligi misollari",
         track: "Misol kartalari, yon tomonga suring",
         prev: "Oldingi misol",
         next: "Keyingi misol",
         slide: "{n} / {total}",
         sample: "Namuna kadr (stok surat)",
+        sampleFootage: "Namuna kadr (stok video)",
+        sampleClip: "Namuna klip (stok video)",
         alts: { hills: "Namuna kadr: quyosh chiqishida oltin tumanli oʻrmonli tepaliklar", waves: "Namuna kadr: oltin soatda uzun oʻt orasidagi mayoq", city: "Namuna kadr: Marrakeshdagi kechki bozor, yuqoridan koʻrinishi", stars: "Namuna kadr: qorongʻi tungi osmondagi toʻlin oy", rings: "Namuna kadr: yoqilgan qandilli kutubxona", dunes: "Namuna kadr: choʻl tepaligidagi tuyalar karvoni" },
         /** The courtesy credit on a card; {name} is the contributor name (lib/site/media.ts). */
-        credit: { photo: "Surat: {name} / Pexels" },
+        credit: { photo: "Surat: {name} / Pexels", video: "Video: {name} / Pexels" },
         copy: "Soʻrovni nusxalash",
         cards: [
           { id: "hills", tag: "Vertikal qisqa video", prompt: "Osmon nega koʻk ekani haqida qisqa video." },
