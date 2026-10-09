@@ -53,7 +53,7 @@ Nega shunday:
   foyda** beradi. Amalda obuna kreditlarining bir qismi davr oxirida yonadi
   (odatda 20–35%), shuning uchun haqiqiy marja yuqoriroq bo'ladi.
 - Kattaroq tarif — arzonroq kredit (0.95 → 0.82 → 0.72 sent): yuqoriga o'tishga
-  sabab bor, lekin Studio'da ham kredit tannarxining 2.1 baravaridan qimmat.
+  sabab bor, lekin Business'da ham kredit tannarxining 2.1 baravaridan qimmat.
 - **Paket narxlari bilan moslang:** obuna har doim muntazam hajmni sotib olishning
   eng arzon yo'li bo'lishi kerak, paket esa "moslashuvchanlik uchun ustama".
   Tavsiya: paketlar ≥ $0.010 / kredit, masalan Starter 1 000 = **12 USD**,
@@ -61,7 +61,7 @@ Nega shunday:
   USD bo'lsa, Creator paketi 0.9 sent — Creator obunasidan arzon; bu obunani
   kamroq jozibador qiladi.)
 - Pastki chegara: tarif narxi hech qachon `kredit × 0.00333 + Paddle` dan past
-  bo'lmasin — aks holda to'liq sarflagan mijoz zarar keltiradi. Masalan Creator
+  bo'lmasin — aks holda to'liq sarflagan mijoz zarar keltiradi. Masalan Plus
   2 000 kredit uchun break-even ≈ 8.60 USD.
 
 Yakuniy narxni **siz** Paddle'da qo'yasiz; kredit miqdorini bazada o'zgartirasiz
