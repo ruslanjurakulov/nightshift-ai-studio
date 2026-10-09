@@ -12,7 +12,7 @@ billing:
 | :-- | :-- | :-- |
 | For | people using Claude, ChatGPT, Cursor, … | developers' own code and agents |
 | Sign-in | the person signs in and approves on a Nightshift screen; no key is ever pasted | `Authorization: Bearer nsk_live_…` |
-| Needs | a paid plan (Creator, Pro or Studio): entitlement `mcp` | the API activated (`docs/API.md`) |
+| Needs | a paid plan (Plus, Pro or Business): entitlement `mcp` | the API activated (`docs/API.md`) |
 | Pays with | the workspace's **site credits**, the same price and the same hold as a video made in the app | the separate **prepaid USD API balance** |
 | Limit | a **monthly credit limit per connection**, set by the person on the consent screen | per-key limit, tier limits |
 | Revoked | Developers → Connected apps → Disconnect (immediate) | Developers → API keys |
@@ -231,7 +231,7 @@ Nightshift is its own authorization server for its MCP resource.
 ### Plans and billing
 
 `mcp` is an entitlement of the plan (migration 0093 makes it *enforced*):
-Creator, Pro and Studio have it, Free does not, and a workspace that only
+Plus, Pro and Business have it, Free does not, and a workspace that only
 bought credit packs is on the Free plan and is **not** entitled. It is one row
 per plan in `plan_entitlements`; the operator's own organization is exempt.
 It is checked at the consent screen, at the token and refresh endpoints and on

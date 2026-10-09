@@ -39,7 +39,7 @@ The MCP sign-in and the CLI page are behind flags (`MCP_OAUTH_LIVE`,
 
 ## Money
 
-Plans (Free, Creator, Pro, Studio) give monthly credits that expire at the end of
+Plans (Free, Plus, Pro, Business) give monthly credits that expire at the end of
 the period. Credit packs top up and last longer. Every job is quoted, held,
 captured on success and refunded on failure. An "extra credits" switch decides
 whether packs can be spent. Payments go through Paddle. See

@@ -115,7 +115,7 @@ export function oauthRefusalText(result: Extract<ApiResult, { ok: false }>, orig
     }
     case "subscription_required":
       return (
-        `Connecting AI apps needs a paid plan (Creator, Pro or Studio), and this workspace does not have one right now, so this connection is paused. ` +
+        `Connecting AI apps needs a paid plan (Plus, Pro or Business), and this workspace does not have one right now, so this connection is paused. ` +
         `The person can choose a plan at ${origin}/pricing. As soon as the plan is active this same connection works again, with no need to connect the app again.`
       );
     case "invalid_api_key":
