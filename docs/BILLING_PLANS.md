@@ -2,7 +2,7 @@
 
 Nightshift endi oddiy SaaS modelida sotiladi:
 
-- **Oylik tariflar** — Free, Creator, Pro, Studio. Har bir pullik tarif har
+- **Oylik tariflar** — Free, Plus, Pro, Business (ichki id'lar: `creator`, `pro`, `studio` — o'zgarmagan; faqat ko'rinadigan nom, migratsiya 0095). Har bir pullik tarif har
   to'langan oy (billing period) uchun **kredit ajratmasi** beradi. Bu kreditlar
   **o'sha davr oxirida yonadi** (keyingi oyga o'tmaydi). Tarif qo'shimcha
   **imkoniyatlar** (entitlements) ham beradi: bir vaqtda nechta video ishlashi,
@@ -41,9 +41,9 @@ Taklif (0034 shu raqamlar bilan seed qiladi — `plans.monthly_credits`):
 | Tarif | Narx / oy | Kredit / oy | ≈ daqiqa video | 1 kredit narxi | To'liq sarflansa tannarx | Paddle | **Yalpi foyda** |
 | :-- | --: | --: | --: | --: | --: | --: | --: |
 | Free | 0 | 100 (bir marta) | ≈ 1.7 | — | $0.33 (bir marta) | — | marketing xarajati |
-| Creator | 19 USD | 2 000 | ≈ 33 | $0.0095 | $6.67 | $1.45 | **$10.88 (57%)** |
+| Plus | 19 USD | 2 000 | ≈ 33 | $0.0095 | $6.67 | $1.45 | **$10.88 (57%)** |
 | Pro | 49 USD | 6 000 | ≈ 100 | $0.0082 | $20.00 | $2.95 | **$26.05 (53%)** |
-| Studio | 129 USD | 18 000 | ≈ 300 | $0.0072 | $60.00 | $6.95 | **$62.05 (48%)** |
+| Business | 129 USD | 18 000 | ≈ 300 | $0.0072 | $60.00 | $6.95 | **$62.05 (48%)** |
 
 Formula: `foyda = narx − kredit × 0.00333 − (0.05 × narx + 0.50)`.
 
@@ -69,7 +69,7 @@ Yakuniy narxni **siz** Paddle'da qo'yasiz; kredit miqdorini bazada o'zgartirasiz
 
 ### Tariflar imkoniyatlari (seed)
 
-| Kalit | Free | Creator | Pro | Studio | Holat |
+| Kalit | Free | Plus | Pro | Business | Holat |
 | :-- | :-: | :-: | :-: | :-: | :-- |
 | `concurrency` — bir vaqtda ishlaydigan videolar | 1 | 2 | 4 | 8 | **enforced** |
 | `queue_priority` — navbatda boshlab olish (har daraja = 15 daqiqa) | 0 | 1 | 2 | 3 | **enforced** |
@@ -80,7 +80,7 @@ Yakuniy narxni **siz** Paddle'da qo'yasiz; kredit miqdorini bazada o'zgartirasiz
 | `mcp` — AI ilovalarni (Claude, ChatGPT va boshqalar) OAuth bilan ulash | – | ✓ | ✓ | ✓ | **enforced** (0093) |
 
 - **enforced** — bugun tekshiriladi va `/pricing` sahifasida ko'rsatiladi.
-- **`mcp`** (0093) — obuna xususiyati: Free ham, faqat paket sotib olgan (obunasi yo'q) mijoz ham ulay olmaydi; Creator, Pro, Studio ulaydi. Ulangan ilova **sayt kreditlarini** sarflaydi (API'ning dollar balansini emas), har bir ulanish uchun oylik kredit limiti bilan. Tekshiruv uch joyda: rozilik sahifasida, token/refresh endpointlarida va **har bir chaqiruvda**; obuna bekor bo'lsa, ulanish "to'xtatilgan" bo'ladi va tarif qaytganda qayta ulanmasdan ishlaydi. Qaysi tariflarda borligi — `plan_entitlements` dagi bitta qator: `update plan_entitlements set value = 'false' where plan_id = 'creator' and key = 'mcp';`
+- **`mcp`** (0093) — obuna xususiyati: Free ham, faqat paket sotib olgan (obunasi yo'q) mijoz ham ulay olmaydi; Plus, Pro, Business ulaydi. Ulangan ilova **sayt kreditlarini** sarflaydi (API'ning dollar balansini emas), har bir ulanish uchun oylik kredit limiti bilan. Tekshiruv uch joyda: rozilik sahifasida, token/refresh endpointlarida va **har bir chaqiruvda**; obuna bekor bo'lsa, ulanish "to'xtatilgan" bo'ladi va tarif qaytganda qayta ulanmasdan ishlaydi. Qaysi tariflarda borligi — `plan_entitlements` dagi bitta qator: `update plan_entitlements set value = 'false' where plan_id = 'creator' and key = 'mcp';`
 - **planned** — bazada saqlanadi, lekin hali hech narsa tekshirmaydi, shuning
   uchun **sahifada ko'rsatilmaydi** (va'da qilinmagan narsani sotmaymiz). Funksiya
   tayyor bo'lganda, uni tekshiradigan kod bilan **bir PR'da** `status` ni
@@ -109,7 +109,7 @@ Paket (bir martalik)          ─► transaction.completed ─► add_purchased_
   yechiladi; qolgani qaytadi. Yonib ketgan lotdagi **band** kreditlar himoyalangan:
   ish tugaguncha yonmaydi.
 - Yangilanish (renewal) → yangi davr loti; eski davr loti yonadi (o'tkazilmaydi).
-- **Upgrade** davr o'rtasida (masalan Creator → Pro): lot yangi ajratmagacha
+- **Upgrade** davr o'rtasida (masalan Plus → Pro): lot yangi ajratmagacha
   **qolgan vaqtga mutanosib** to'ldiriladi — oxirgi kuni upgrade qilib bir oylik
   kreditni tiyinlarga olish mumkin emas.
 - Idempotent: bir xil Paddle hodisasi / tranzaksiyasi ikki marta kelsa ham kredit
@@ -150,9 +150,9 @@ Paddle → **Catalog → Products → New product**, har bir tarif uchun:
 
 | Product | Tax category | Price | Billing cycle |
 | :-- | :-- | :-- | :-- |
-| Nightshift Creator | Standard digital goods / SaaS | 19 USD | **Monthly** |
-| Nightshift Pro | Standard digital goods / SaaS | 49 USD | **Monthly** |
-| Nightshift Studio | Standard digital goods / SaaS | 129 USD | **Monthly** |
+| Nightshift Plus plan | Standard digital goods / SaaS | 19 USD | **Monthly** |
+| Nightshift Pro plan | Standard digital goods / SaaS | 49 USD | **Monthly** |
+| Nightshift Business plan | Standard digital goods / SaaS | 129 USD | **Monthly** |
 
 Har bir narxning `pri_…` id'sini ko'chirib oling. Trial qo'ymang (trial'da kredit
 berilmaydi — kreditlar faqat to'langan tranzaksiyadan keladi). Paket narxlari
@@ -223,7 +223,7 @@ NEXT_PUBLIC_PLAN_DISPLAY_STUDIO=129 USD
 
 ### 3.6. Sandbox'da sinash
 
-1. Paddle sandbox'da test karta bilan Creator'ga obuna bo'ling (yoki
+1. Paddle sandbox'da test karta bilan Plus'ga obuna bo'ling (yoki
    **Developer tools → Simulations** → "Subscription created" stsenariysi).
 2. Tekshiring:
 
@@ -285,7 +285,7 @@ select org_id, sum(-amount) from credit_transactions
 
 ## 6. Cheklovlar (hozircha)
 
-- **Tarifni almashtirish** (Creator → Pro) Paddle customer portal'da yo'q. Hozir:
+- **Tarifni almashtirish** (Plus → Pro) Paddle customer portal'da yo'q. Hozir:
   bekor qilib, davr oxirida yangisiga obuna bo'lish, yoki Paddle dashboard'dan
   operator o'zgartiradi (proration `prorated_immediately` → mutanosib kredit
   avtomatik qo'shiladi).

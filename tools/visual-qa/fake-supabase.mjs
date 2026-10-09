@@ -107,7 +107,7 @@ const STATES = {
 };
 const PLANS = {
   free: { id: "free", name: "Free", monthly_credits: 0, is_default: true, sort_order: 0, slots: 1, priority: 0, api: false },
-  creator: { id: "creator", name: "Creator", monthly_credits: 2000, is_default: false, sort_order: 1, slots: 2, priority: 1, api: true },
+  creator: { id: "creator", name: "Plus", monthly_credits: 2000, is_default: false, sort_order: 1, slots: 2, priority: 1, api: true },
   pro: { id: "pro", name: "Pro", monthly_credits: 6000, is_default: false, sort_order: 2, slots: 4, priority: 2, api: true },
 };
 const switchState = new Map(); // state -> switch pressed in this process
