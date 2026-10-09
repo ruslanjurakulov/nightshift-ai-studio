@@ -58,7 +58,7 @@ Nega shunday:
   eng arzon yo'li bo'lishi kerak, paket esa "moslashuvchanlik uchun ustama".
   Tavsiya: paketlar ≥ $0.010 / kredit, masalan Starter 1 000 = **12 USD**,
   Creator 5 000 = **55 USD**, Studio 20 000 = **200 USD**. (Agar hozir 10/45/160
-  USD bo'lsa, Creator paketi 0.9 sent — Creator obunasidan arzon; bu obunani
+  USD bo'lsa, Creator paketi 0.9 sent — Plus obunasidan arzon; bu obunani
   kamroq jozibador qiladi.)
 - Pastki chegara: tarif narxi hech qachon `kredit × 0.00333 + Paddle` dan past
   bo'lmasin — aks holda to'liq sarflagan mijoz zarar keltiradi. Masalan Plus
