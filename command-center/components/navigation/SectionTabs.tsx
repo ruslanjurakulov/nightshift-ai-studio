@@ -19,22 +19,14 @@ export function SectionTabs() {
   // One entry is a page, not a tab bar (Settings).
   if (!group || group.items.length < 2) return null;
   return (
-    <nav aria-label={t.nav.sections} className="mb-6 overflow-x-auto">
-      {/* A segmented control: the current screen sits on a raised chip. */}
-      <ul className="flex w-max gap-1 rounded-full border border-[var(--shell-border)] bg-[var(--color-panel)] p-1">
+    <nav aria-label={t.nav.sections} className="ns-tabs mb-6 overflow-x-auto">
+      {/* Underlined tabs, as the public Studio card draws them: the current screen carries the amber line. */}
+      <ul className="flex w-max gap-1">
         {group.items.map(({ href, key }) => {
           const active = "/" + section === href;
           return (
             <li key={key}>
-              <Link
-                href={path(href)}
-                aria-current={active ? "page" : undefined}
-                className={`inline-flex min-h-10 items-center rounded-full px-4 max-sm:min-h-11 pointer-coarse:min-h-11 text-sm font-medium transition-colors ${
-                  active
-                    ? "bg-[var(--color-active)] text-[var(--color-fg)]"
-                    : "text-[var(--color-muted)] hover:bg-[var(--color-hover)] hover:text-[var(--color-fg)]"
-                }`}
-              >
+              <Link href={path(href)} aria-current={active ? "page" : undefined} className="ns-tabs-link">
                 {t.nav[key]}
               </Link>
             </li>

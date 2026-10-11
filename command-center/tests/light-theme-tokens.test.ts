@@ -129,7 +129,7 @@ describe("light theme: globals.css defines the backdrop and CTA per theme", () =
       ["--color-panel", "--ns-console"],
       ["--color-fg", "--ns-text"],
       ["--color-muted", "--ns-text-dim"],
-      ["--color-primary", "--ns-amber-ink"],
+      ["--color-primary", "--ns-act-ink"],
       ["--studio-cta-bg", "--ns-cta-bg"],
       ["--studio-cta-fg", "--ns-cta-fg"],
       ["--shell-bg", "--ns-console"],
@@ -149,8 +149,8 @@ describe("light theme: globals.css defines the backdrop and CTA per theme", () =
     }
   });
 
-  it("focus is the cue blue, never the amber that means selected", () => {
-    expect(css).toMatch(/:focus-visible \{\s*outline: 2px solid var\(--ns-focus\);/);
+  it("focus is a 3px amber ring outside a 2px gap, as on the public pages", () => {
+    expect(css).toMatch(/:focus-visible \{\s*outline: 3px solid var\(--ns-focus\);\s*outline-offset: 2px;/);
   });
 
   it("hides the dark footage on the light theme and keeps it on dark", () => {

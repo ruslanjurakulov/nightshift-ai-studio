@@ -83,7 +83,7 @@ export function EmptyState({
   icon?: LucideIcon;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+    <div className="ns-empty flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
       <span
         aria-hidden
         className="grid size-14 place-items-center rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"

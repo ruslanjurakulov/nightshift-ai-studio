@@ -519,11 +519,11 @@ export function MediaLibrary({
         : fmt(tf.truncated, { shown: data.assets.length })
       : null;
 
-  const uploadButton = (large = false) => (
+  const uploadButton = (large = false, quiet = false) => (
     <label
       htmlFor={inputId}
       aria-disabled={busy}
-      className={`btn-primary ${large ? "min-h-12 px-6" : "px-5"} ${
+      className={`${quiet ? "btn-quiet" : "btn-primary"} ${large ? "min-h-12 px-6" : "px-5"} ${
         busy ? "pointer-events-none opacity-40" : "cursor-pointer"
       }`}
     >
@@ -577,7 +577,7 @@ export function MediaLibrary({
               </div>
             )}
           </div>
-          {uploadButton()}
+          {uploadButton(false, nothingAtAll)}
         </div>
         <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">
           {tm.accepted}
@@ -592,7 +592,7 @@ export function MediaLibrary({
       </section>
 
       {nothingAtAll ? (
-        <section className="panel flex flex-col items-center gap-5 px-6 py-14 text-center" data-library-empty>
+        <section className="panel ns-desk flex flex-col items-center gap-5 px-6 py-14 text-center" data-library-empty>
           <span
             aria-hidden
             className="grid size-14 place-items-center rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-muted)]"

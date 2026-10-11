@@ -1,0 +1,157 @@
+/* Round 1 page work (Studio/Create, Home, Credits, Library, Videos list, Settings): the page-specific rules that sit on
+   top of the foundation in app-redesign.css. Other page groups add their own file; nothing here is a shared API. */
+
+/* ── Credits: the balance is the desk ──────────────────────────────────────── */
+.bal-desk { display: grid; gap: 32px 56px; }
+@media (min-width: 1024px) {
+  .bal-desk { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); align-items: start; }
+}
+.bal-main { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.bal-side { min-width: 0; padding-top: 4px; }
+@media (min-width: 1024px) {
+  .bal-side { padding-left: 48px; border-left: 1px solid var(--ns-rule); }
+}
+.app-shell .bal-figure { font-size: clamp(3rem, 2rem + 3.4vw, 4.75rem); line-height: 1; letter-spacing: -0.03em; }
+.bal-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-top: 1px solid var(--ns-rule); padding-top: 20px; }
+.bal-facts > div + div { padding-left: 24px; border-left: 1px solid var(--ns-rule); }
+
+/* ── Videos: a ruled list with frames, not a boxed table ───────────────────── */
+.vt-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 0 0 16px; }
+.vt-search {
+  flex: 1 1 14rem;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-key);
+  background: var(--ns-key);
+  color: var(--color-fg);
+  font-size: 1rem;
+}
+.vt-search::placeholder { color: var(--color-muted); }
+.vt-search:focus-visible { outline: 3px solid var(--ns-focus); outline-offset: 2px; }
+.ns-open table.vt { border-collapse: collapse; }
+.ns-open table.vt thead tr { border-bottom: 1px solid var(--ns-rule-strong); }
+.ns-open table.vt th { padding: 10px 12px; font-size: var(--ns-t-label); font-weight: 500; color: var(--color-muted); }
+.ns-open table.vt tbody tr { border-bottom: 1px solid var(--ns-rule); }
+.ns-open table.vt tbody tr:hover { background: var(--ns-act-soft); }
+.ns-open table.vt td { padding: 12px; }
+.vt-title { display: inline-flex; align-items: center; gap: 12px; font-size: 1rem; font-weight: 500; }
+.vt-frame {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 64px;
+  height: 36px;
+  border-radius: 6px;
+  background: radial-gradient(120% 100% at 20% 0%, color-mix(in srgb, var(--ns-act) 24%, transparent), transparent 60%), var(--ns-film);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ns-on-film) 10%, transparent);
+  color: var(--ns-on-film);
+}
+.vt-frame[data-format="short"] { width: 20px; height: 36px; }
+.vt-title a { display: inline-flex; align-items: center; min-height: 44px; }
+@media (max-width: 639.98px) {
+  .vt-frame:not([data-format="short"]) { width: 48px; height: 27px; }
+  .vt-title { gap: 8px; }
+}
+.vt-frame svg { opacity: 0.6; }
+.vt-frame[data-format="short"] svg { display: none; }
+
+/* ── Studio: the desk bay is the overview's lit desk; its side notes are ruled ─ */
+.desk-bay { border-color: color-mix(in srgb, var(--ns-act) 34%, var(--ns-rule)); border-radius: var(--ns-r-sheet); box-shadow: var(--ns-lift), 0 36px 90px -44px var(--ns-lit-glow); position: relative; }
+.desk-bay::before {
+  content: "";
+  position: absolute;
+  inset: 0 24px auto 24px;
+  height: 1px;
+  z-index: 1;
+  background: linear-gradient(90deg, transparent, var(--ns-act) 24%, var(--ns-amber) 62%, transparent);
+  opacity: 0.85;
+  pointer-events: none;
+}
+.desk-bay-key:hover { background: var(--ns-act-soft); }
+.desk-bay-key:hover .desk-bay-go { color: var(--ns-act-ink); border-color: var(--ns-act-ink); }
+.desk-bay-name { font-size: 1.75rem; letter-spacing: -0.02em; }
+.ns-open .ns-panel.desk-side,
+.ns-open .desk-log {
+  border: 0;
+  border-top: 1px solid var(--ns-rule);
+  border-radius: 0;
+  background: transparent;
+  padding-inline: 0;
+}
+.desk-project:hover span:first-child { color: var(--ns-act-ink); }
+.studio-surface {
+  position: relative;
+  border-color: color-mix(in srgb, var(--ns-act) 34%, var(--ns-rule));
+  box-shadow: var(--ns-lift), 0 36px 90px -44px var(--ns-lit-glow);
+}
+.studio-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0 24px auto 24px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ns-act) 24%, var(--ns-amber) 62%, transparent);
+  opacity: 0.85;
+  pointer-events: none;
+}
+.desk-tool[aria-selected="true"] { border-color: var(--ns-act); background: var(--ns-act-soft); }
+.desk-tool[aria-selected="true"] svg { color: var(--ns-act-ink); }
+
+/* ── Plan cards: one indigo-edged "your plan", the others ruled boxes ──────── */
+.ns-open .rounded-\[var\(--ns-r-panel\)\].border { border-radius: var(--ns-r-key); }
+
+/* ── Library ───────────────────────────────────────────────────────────────── */
+.ns-open [data-library-empty] {
+  border-style: dashed;
+  border-color: var(--ns-rule-strong);
+  box-shadow: none;
+}
+.ns-open [data-library-empty]::before { display: none; }
+
+/* ── Home: the desk beside its promises ────────────────────────────────────── */
+.home-desk { display: grid; gap: 20px 56px; min-width: 0; }
+@media (min-width: 1180px) {
+  .home-desk { grid-template-columns: minmax(0, 55rem) minmax(240px, 1fr); align-items: start; }
+  .home-promises { position: sticky; top: 96px; padding-top: 8px; }
+}
+.home-promises { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.home-promises li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--ns-rule);
+  font-size: 1rem;
+  color: var(--color-fg);
+}
+.home-promises li:first-child { border-top: 1px solid var(--ns-rule); }
+
+/* ── Phone: a row of frames you swipe, not three tall ones stacked ─────────── */
+@media (max-width: 639.98px) {
+  .home-cards {
+    display: flex;
+    gap: 12px;
+    margin-inline: calc(-1 * clamp(0.75rem, 3vw, 56px));
+    padding-inline: clamp(0.75rem, 3vw, 56px);
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .home-cards::-webkit-scrollbar { display: none; }
+  .home-cards > li { flex: 0 0 78%; scroll-snap-align: start; }
+}
+
+/* The Assistant on the Studio overview: an open, ruled section, not another box. */
+.ns-open [data-testid="assistant"] { border-top: 1px solid var(--ns-rule); padding-top: 28px; }
+.ns-open .ns-assistant-box { border: 0; background: transparent; padding-inline: 0; border-radius: 0; }
+
+/* A link in an open section's table is a 44px target on a touch screen. */
+@media (pointer: coarse), (max-width: 40rem) {
+  .ns-open .section-open td > a { display: inline-flex; align-items: center; min-height: 44px; }
+}
+
+/* Sections on the ruled pages sit a full step apart (the stats strip no longer crowds the heading under it). */
+.app-shell .rhythm.ns-open { gap: 40px; }
+.ns-open .section-open { padding-top: 8px; }

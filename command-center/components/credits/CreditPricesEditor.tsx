@@ -288,7 +288,7 @@ export function CreditPricesEditor({ prices, canEdit }: { prices: CreditPrice[];
             type="button"
             onClick={save}
             disabled={busy || !unit.trim() || !rate.trim()}
-            className="btn-primary text-sm disabled:opacity-40"
+            className="btn-quiet text-sm disabled:opacity-40"
           >
             {t.credits.savePrice}
           </button>

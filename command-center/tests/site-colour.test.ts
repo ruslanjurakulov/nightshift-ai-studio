@@ -105,18 +105,36 @@ describe("keyboard focus on the public site is amber, readable on the page", () 
     expect(contrast(light["--st-focus-gap"], light["--st-lit-bg"])).toBeGreaterThanOrEqual(3);
     expect(site).toMatch(/\.st-key:focus-visible \{ box-shadow: 0 0 0 2px var\(--st-focus-gap\); \}/);
     expect(next).toMatch(/\.nx-btn:focus-visible, \.nx-bar-go:focus-visible \{ box-shadow: 0 0 0 2px var\(--st-focus-gap\); \}/);
-    // Amber, not the app's blue cue.
+    // Amber, not the app's old blue cue.
     expect(light["--ns-focus"]).toBe("#a85a00");
     expect(site).not.toMatch(/outline: 2px solid var\(--ns-cue\)/);
     expect(next).not.toMatch(/outline: 2px solid var\(--ns-cue\)/);
   });
 });
 
-describe("the signed-in app keeps its colours", () => {
-  it("has no indigo in the app's tokens and keeps its blue focus ring and amber key", () => {
-    expect(globals).not.toMatch(/4f46e5|6558f5|4338ca|b3acff/i);
-    expect(globals).toMatch(/--ns-focus: #2a5bc0;/);
+describe("the signed-in app speaks the same colour: indigo key, amber accent and focus", () => {
+  /** The `--name: value` declarations of the app's three theme blocks, in file order: light, prefers-dark, data-theme dark. */
+  const blocks = [...globals.matchAll(/--ns-cta-bg: (#[0-9a-f]{6});[\s\S]*?--ns-focus: (#[0-9a-f]{6});/gi)].map((m) => ({ cta: m[1], focus: m[2] }));
+
+  it("uses the public key's indigo and the public focus ring, in light and in both dark blocks", () => {
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0]).toEqual({ cta: light["--st-lit-bg"], focus: light["--ns-focus"] });
+    expect(blocks[1]).toEqual({ cta: dark["--st-lit-bg"], focus: dark["--ns-focus"] });
+    expect(blocks[2]).toEqual(blocks[1]);
+  });
+
+  it("keeps amber as the accent (lamps, selection), not a button", () => {
     expect(globals).toMatch(/--ns-amber: #f29a1e;/);
-    expect(globals).toMatch(/--ns-cta-bg: #ffa940;/);
+    expect(globals).toMatch(/--ns-amber: #ffa940;/);
+    expect(globals).not.toMatch(/--ns-cta-bg: #(f29a1e|ffa940);/i);
+  });
+
+  it("the legend on the key and the interaction ink on the page are readable in both themes", () => {
+    for (const [name, t, ground] of [["light", light, GROUND.light], ["dark", dark, GROUND.dark]] as const) {
+      const ink = name === "light" ? "#4338ca" : "#b3acff";
+      expect(globals, name).toContain(`--ns-act-ink: ${ink};`);
+      expect(contrast("#ffffff", t["--st-lit-bg"]), `${name} legend`).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(ink, ground), `${name} ink`).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });
