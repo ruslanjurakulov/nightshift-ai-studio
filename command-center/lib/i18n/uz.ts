@@ -908,6 +908,7 @@ export const uz: Dictionary = {
       unavailable: "Videolar yaratish hozir mavjud emas.",
       confirmAnnounce: "Yuqoridagi narxni tekshiring, boshlash uchun «Ha, yaratilsin»ni bosing.",
       alreadySent: "Allaqachon yuborilgan — qayta yuborilmadi. Quyida kuzating.",
+      bracketsHint: "Yaratishdan oldin [qavslarni] oʻz gʻoyangiz bilan almashtiring.",
     },
   },
   voice: {
@@ -4342,7 +4343,7 @@ export const uz: Dictionary = {
       cutout: { title: "Fonni olib tashlash", sub: "Obyektni qirqib olish" },
     },
     formatsTitle: "Nima yaratish mumkin",
-    formatsHint: "Birini tanlang — yuqoridagi maydon toʻladi. Keyin [qavslarni] almashtiring.",
+    formatsHint: "Birini tanlang — quyidagi mavzu maydoni toʻladi. Keyin [qavslarni] almashtiring.",
     formats: {
       story: { title: "Hikoya video", who: "Ovozli hikoya kanallari", starter: "[Qahramon] haqida hikoya: u [muammo] bilan toʻqnashadi, oxirida kutilmagan burilish" },
       kids: { title: "Bolalar ertagi", who: "Bolalar kanallari, 3–8 yosh", starter: "Bolalar uchun mehrli ertak: [hayvon] [saboq]ni oʻrganadi" },

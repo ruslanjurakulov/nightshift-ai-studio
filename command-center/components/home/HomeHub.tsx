@@ -20,7 +20,9 @@ import {
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
-import { QUICK_ACTIONS, toolHref, type HomeChannel, type HomeVideo, type QuickActionId } from "@/lib/home";
+import { HOME_FORMATS, QUICK_ACTIONS, lengthSeconds, toolHref, type HomeChannel, type HomeVideo, type QuickActionId } from "@/lib/home";
+import { CreatePresetProvider, useCreatePreset } from "@/components/create/preset";
+import { FormatArt } from "@/components/home/FormatArt";
 import { HomeComposer, type ComposerChannel, type ComposerHandle } from "@/components/home/HomeComposer";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Timecode } from "@/components/ui/Timecode";
@@ -129,15 +131,20 @@ export function HomeHub({
         )}
 
         {run ? (
-          <div className="home-desk">
-            <div className="flex min-w-0 flex-col gap-3">
-              {target && channels.filter((c) => c.standing !== "draft").length > 1 && (
-                <p className="px-1 text-sm text-[var(--color-muted)]">{fmt(t.home.forChannel, { name: target.name })}</p>
-              )}
-              {run}
+          <CreatePresetProvider>
+            <div className="home-desk">
+              <div className="flex min-w-0 flex-col gap-3">
+                {target && channels.filter((c) => c.standing !== "draft").length > 1 && (
+                  <p className="px-1 text-sm text-[var(--color-muted)]">{fmt(t.home.forChannel, { name: target.name })}</p>
+                )}
+                {/* Only where the form below can actually start a run: a viewer who may not, or a
+                    deployment without Run now, would be handed a goal and a disabled button. */}
+                {(!assistant || (assistant.canRun && assistant.runConfigured)) && <GoalCards />}
+                {run}
+              </div>
+              <Promises items={[t.home.promisePrice, t.home.promiseRefund, allPrivate ? t.home.promisePrivate : t.home.promiseGate]} />
             </div>
-            <Promises items={[t.home.promisePrice, t.home.promiseRefund, allPrivate ? t.home.promisePrivate : t.home.promiseGate]} />
-          </div>
+          </CreatePresetProvider>
         ) : runnable.length === 0 ? (
           <div className="fl-card items-start">
             <span aria-hidden className="grid size-11 shrink-0 place-items-center rounded-[var(--ns-r-panel)] bg-[var(--color-panel-2)] text-[var(--color-primary)]">
@@ -262,6 +269,48 @@ export function HomeHub({
         </details>
       )}
     </div>
+  );
+}
+
+/**
+ * The six goals, quiet: a card fills the create form below it with a starter
+ * topic and the format's usual length (components/create/preset.tsx). Nothing is
+ * priced or started by a card; the form still shows the price and asks twice.
+ */
+function GoalCards() {
+  const { t } = useI18n();
+  const presets = useCreatePreset();
+  if (!presets) return null;
+  return (
+    <section aria-labelledby="home-goals" className="flex flex-col gap-2">
+      <div className="flex flex-col gap-0.5 px-1">
+        <h2 id="home-goals" className="text-base font-semibold text-[var(--color-fg)]">
+          {t.home.formatsTitle}
+        </h2>
+        <p className="fl-hint">{t.home.formatsHint}</p>
+      </div>
+      <ul className="home-goals">
+        {HOME_FORMATS.map((f) => {
+          const label = t.home.formats[f.id];
+          return (
+            <li key={f.id}>
+              <button
+                type="button"
+                className="home-goal press"
+                data-goal={f.id}
+                onClick={() => presets.apply({ brief: label.starter, duration: String(lengthSeconds(f.length)) })}
+              >
+                <FormatArt id={f.id} className="home-goal-art" />
+                <span className="home-goal-text">
+                  <span className="home-goal-title">{label.title}</span>
+                  <span className="home-goal-who">{label.who}</span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

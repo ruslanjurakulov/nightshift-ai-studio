@@ -8,6 +8,7 @@ import type { ChannelAgentConfig } from "@/lib/types";
 import type { QueueJob, RunBackend } from "@/lib/runBackend";
 import { creditRunError, isExtraOffRefusal } from "@/lib/credits";
 import { createAttempt } from "@/lib/create-attempt";
+import { useCreatePreset } from "@/components/create/preset";
 import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
 import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
 import { IMAGE_GENERATORS } from "@/lib/imageProviders";
@@ -122,6 +123,10 @@ export function CreateStudio({
   const sending = useRef(false);
   // The server said this exact attempt had already been started (a lost answer, a retry): nothing new was held.
   const [replayed, setReplayed] = useState(false);
+  // Home's goal cards (components/create/preset.tsx) start the form here: topic and length only.
+  const preset = useCreatePreset()?.preset ?? null;
+  const topicRef = useRef<HTMLTextAreaElement>(null);
+  const [fromPreset, setFromPreset] = useState(false);
   // After the confirm press the button that was focused goes away; the result (started, or why not)
   // is read from here, so keyboard and screen-reader focus never drops to the page.
   const statusRef = useRef<HTMLParagraphElement>(null);
@@ -142,6 +147,28 @@ export function CreateStudio({
   useEffect(() => {
     if (phase === "queued" || phase === "error") statusRef.current?.focus();
   }, [phase]);
+
+  // A goal card fills the form and leaves everything else as it was. A confirm that was open is asked
+  // again, since what it would have started has changed; the caret lands on the first [bracket], the
+  // part that is the person's to write.
+  const presetNonce = preset?.nonce ?? 0;
+  useEffect(() => {
+    if (!preset) return;
+    setBrief(preset.brief);
+    setDuration(preset.duration);
+    setFromPreset(true);
+    setPhase((p) => (p === "confirm" ? "idle" : p));
+    const el = topicRef.current;
+    el?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      const at = preset.brief.indexOf("[");
+      if (at >= 0) el.setSelectionRange(at, Math.max(at, preset.brief.indexOf("]", at) + 1));
+    });
+    // Keyed on the pick's nonce; the preset object itself is new on every provider render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetNonce]);
 
   // Poll the pipeline's events while a run is in flight, so the panel is live.
   useEffect(() => {
@@ -323,6 +350,7 @@ export function CreateStudio({
         </h2>
         <textarea
           id="run-brief"
+          ref={topicRef}
           value={brief}
           onChange={(e) => setBrief(e.target.value)}
           onKeyDown={onKeyDown}
@@ -336,6 +364,11 @@ export function CreateStudio({
         <p id="fl-topic-hint" className="fl-hint">
           {f.topicHint}
         </p>
+        {fromPreset && /\[[^\]\n]+\]/.test(brief) && (
+          <p className="fl-hint" role="status" data-testid="brackets-hint">
+            {f.bracketsHint}
+          </p>
+        )}
         <div className="fl-try" role="group" aria-label={f.tryOne}>
           <span className="fl-try-label">{f.tryOne}</span>
           {examples.map((ex) => (

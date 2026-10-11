@@ -916,6 +916,7 @@ export const en = {
       unavailable: "Making videos is not available right now.",
       confirmAnnounce: "Check the price above, then press Yes, make it to start.",
       alreadySent: "Already sent — it was not sent a second time. Follow it below.",
+      bracketsHint: "Replace the [brackets] with your own idea before you make it.",
     },
   },
   voice: {
@@ -4351,7 +4352,7 @@ export const en = {
       cutout: { title: "Remove background", sub: "Cut out the subject" },
     },
     formatsTitle: "What can you make",
-    formatsHint: "Pick one to fill the box above, then replace the [brackets].",
+    formatsHint: "Pick one to fill the topic box below, then replace the [brackets].",
     formats: {
       story: { title: "Story video", who: "Narrated story channels", starter: "A story about [hero] who [problem] — with a twist at the end" },
       kids: { title: "Kids story", who: "Kids' channels, ages 3–8", starter: "A gentle story for kids about [animal] who learns [lesson]" },
