@@ -221,6 +221,32 @@ describe("prepareAvatar", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:preview");
   });
 
+  it("draws from the preview <img> the page already shows, without decoding the file a second time (48 MP photos fail on a second decode)", async () => {
+    const { draw } = setup({ natural: [8064, 6048] });
+    const decodeSpy = vi.spyOn(HTMLImageElement.prototype, "decode");
+    const shown = document.createElement("img");
+    Object.defineProperty(shown, "complete", { value: true });
+    Object.defineProperty(shown, "naturalWidth", { value: 8064 });
+    Object.defineProperty(shown, "naturalHeight", { value: 6048 });
+    const big = new File([jpeg(8064, 6048)], "big.jpg", { type: "image/jpeg" });
+    const blob = await prepareAvatar(big, { x: 1000, y: 0, size: 6048 }, shown);
+    expect(blob.type).toBe("image/jpeg");
+    expect(draw).toHaveBeenCalledWith(shown, 1000, 0, 6048, 6048, 0, 0, 256, 256);
+    expect(decodeSpy).not.toHaveBeenCalled();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled(); // the page owns that URL
+  });
+
+  it("falls back to decoding the file when the preview has not loaded", async () => {
+    const { draw } = setup();
+    const notYet = document.createElement("img");
+    Object.defineProperty(notYet, "complete", { value: false });
+    await prepareAvatar(photo(), { x: 0, y: 0, size: 600 }, notYet);
+    expect(draw).toHaveBeenCalledWith(expect.any(HTMLImageElement), 0, 0, 600, 600, 0, 0, 256, 256);
+    expect(draw.mock.calls[0][0]).not.toBe(notYet);
+    expect(URL.createObjectURL).toHaveBeenCalled();
+  });
+
   it("clamps a crop that sticks out of the picture", async () => {
     const { draw } = setup();
     await prepareAvatar(photo(), { x: 700, y: 500, size: 900 });

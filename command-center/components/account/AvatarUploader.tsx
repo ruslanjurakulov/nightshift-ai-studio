@@ -125,6 +125,7 @@ export function AvatarUploader({ email, version }: { email: string | null; versi
   const inputRef = useRef<HTMLInputElement>(null);
   const pickRef = useRef<HTMLButtonElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLImageElement>(null);
   const drag = useRef<{ id: number; x: number; y: number } | null>(null);
 
   // The preview is an object URL for the picked file; it is released as soon as it is not shown.
@@ -258,7 +259,7 @@ export function AvatarUploader({ email, version }: { email: string | null; versi
     setPhase("saving");
     setBusyKind("save");
     try {
-      const blob = await prepareAvatar(file, cropFor(frame, dims.w, dims.h));
+      const blob = await prepareAvatar(file, cropFor(frame, dims.w, dims.h), previewRef.current);
       const res = await fetch(AVATAR_ENDPOINT, { method: "POST", headers: { "content-type": AVATAR_MIME }, body: blob });
       if (!res.ok) throw new AvatarInputError(await codeFromResponse(res));
       const body = (await res.json()) as { version?: unknown };
@@ -370,6 +371,7 @@ export function AvatarUploader({ email, version }: { email: string | null; versi
               // A local blob URL of the picked file; next/image cannot take it.
               // eslint-disable-next-line @next/next/no-img-element
               <img
+                ref={previewRef}
                 src={previewUrl}
                 alt=""
                 draggable={false}

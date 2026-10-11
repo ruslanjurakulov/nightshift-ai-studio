@@ -35,13 +35,62 @@ describe("validateAvatarJpeg: exactly the shape a browser's canvas encoder write
     }
   });
 
+  it("accepts legal 0xFF fill bytes in the scan, before an RSTn marker and before EOI, and nowhere illegal", () => {
+    for (const entropy of [
+      [0x01, 0xff, 0xff, 0xff, 0xd0, 0x02], // fill before RST0
+      [0x01, 0xff, 0xff, 0xd7, 0x02, 0xff, 0xd3, 0x04],
+      [0x01, 0x02, 0xff], // fill that runs into the final EOI (FF FF D9)
+      [0x01, 0x02, 0xff, 0xff, 0xff], // longer run into EOI
+    ]) {
+      expect(code(avatarJpeg({ entropy })), JSON.stringify(entropy)).toBe("ok");
+    }
+    for (const entropy of [
+      [0x01, 0xff, 0xff, 0x00, 0x02], // a stuffed zero is only legal straight after the first FF
+      [0x01, 0xff, 0xff, 0xe1, 0x00, 0x05], // fill then an APP1 hidden in the data
+      [0x01, 0xff, 0xff, 0xd8, 0x02], // fill then SOI
+      [0x01, 0xff, 0xff, 0xd9, 0x02], // an early EOI
+      [0x01, 0xff, 0xff, 0xc0, 0x00, 0x11],
+    ]) {
+      expect(code(avatarJpeg({ entropy })), JSON.stringify(entropy)).toBe("not_jpeg");
+    }
+    // in the header, fill bytes are still refused
+    const withFill = avatarJpeg();
+    const at = withFill.findIndex((v, i) => i > 2 && v === 0xff && withFill[i + 1] === 0xdb);
+    const bad = new Uint8Array([...withFill.slice(0, at), 0xff, ...withFill.slice(at)]);
+    expect(code(bad)).toBe("not_jpeg");
+  });
+
+  it("bounds the channels the structure leaves open: ICC size, numbering and signature, JFIF thumbnail, table count", () => {
+    expect(code(avatarJpeg({ icc: { total: 16 * 1024 } }))).toBe("ok"); // exactly the cap
+    expect(code(avatarJpeg({ icc: { total: 16 * 1024 + 1 } }))).toBe("not_jpeg"); // one over
+    expect(code(avatarJpeg({ icc: { total: 12 * 1024, pieces: 2 } }))).toBe("ok"); // a real Display-P3 sized profile, in pieces
+    expect(code(avatarJpeg({ icc: { total: 20 * 1024, pieces: 2 } }))).toBe("not_jpeg"); // over the 16 KB cap
+    expect(code(avatarJpeg({ icc: { total: 130 * 1024, pieces: 3 } }))).toBe("not_jpeg");
+    expect(code(avatarJpeg({ icc: { acsp: false } }))).toBe("not_jpeg"); // not an ICC profile
+    expect(code(avatarJpeg({ icc: { sizeField: false } }))).toBe("not_jpeg");
+    expect(code(avatarJpeg({ icc: { total: 100 } }))).toBe("not_jpeg"); // shorter than the 128-byte header
+    expect(code(avatarJpeg({ icc: { total: 4000, pieces: 2, seq: [2, 1] } }))).toBe("not_jpeg");
+    expect(code(avatarJpeg({ icc: { total: 4000, pieces: 2, count: 3 } }))).toBe("not_jpeg");
+    expect(code(avatarJpeg({ icc: { total: 4000, pieces: 2, seq: [1, 1] } }))).toBe("not_jpeg");
+    expect(code(avatarJpeg({ icc: { total: 536, pieces: 1 } }))).toBe("ok"); // what Chromium writes
+    expect(code(avatarJpeg({ jfifThumbnail: true }))).toBe("not_jpeg");
+    expect(code(avatarJpeg({ dqt: 4 }))).toBe("ok");
+    expect(code(avatarJpeg({ dqt: 5 }))).toBe("not_jpeg");
+  });
+
+  it("the scan must name the frame's components, each once", () => {
+    expect(code(avatarJpeg({ scanIds: [1, 2, 3] }))).toBe("ok");
+    expect(code(avatarJpeg({ scanIds: [3, 2, 1] }))).toBe("ok"); // order is the encoder's business
+    expect(code(avatarJpeg({ scanIds: [1, 2, 9] }))).toBe("not_jpeg");
+    expect(code(avatarJpeg({ scanIds: [1, 1, 2] }))).toBe("not_jpeg");
+  });
+
   it("refuses a second payload: bytes after EOI, a missing EOI, a second scan, a stray marker in the data", () => {
     expect(code(avatarJpeg({ trailing: [0] }))).toBe("not_jpeg");
     expect(code(avatarJpeg({ trailing: [0x50, 0x4b, 0x03, 0x04] }))).toBe("not_jpeg"); // a zip glued on
     expect(code(avatarJpeg({ noEoi: true }))).toBe("not_jpeg");
     expect(code(avatarJpeg({ twoScans: true }))).toBe("not_jpeg");
     expect(code(avatarJpeg({ entropy: [0x12, 0xff, 0xe1, 0x00, 0x05, 0x78] }))).toBe("not_jpeg"); // an APP1 hidden after the scan starts
-    expect(code(avatarJpeg({ entropy: [0x12, 0xff, 0xff, 0xd0] }))).toBe("not_jpeg"); // fill bytes
     expect(code(avatarJpeg({ entropy: [] }))).toBe("not_jpeg"); // an empty scan
   });
 
@@ -99,6 +148,17 @@ describe("canonicalizeAvatarJpeg: what the browser does to an encoder's output b
     expect(validateAvatarJpeg(clean)).toEqual({ ok: true, width: 256, height: 256 });
     expect(Array.from(clean)).toEqual(Array.from(avatarJpeg()));
     expect(new TextDecoder("latin1").decode(clean)).not.toMatch(/GPSLatitude|xmpmeta|hello|Photoshop/);
+  });
+
+  it("drops what would fail the bounds (a JFIF thumbnail, a bad or oversize ICC profile) and keeps a good one", () => {
+    for (const o of [{ jfifThumbnail: true }, { icc: { acsp: false } }, { icc: { total: 20 * 1024, pieces: 2 } }, { icc: { total: 4000, pieces: 2, seq: [2, 1] } }]) {
+      const dirty = avatarJpeg(o);
+      expect(code(dirty), JSON.stringify(o)).toBe("not_jpeg");
+      const clean = canonicalizeAvatarJpeg(dirty)!;
+      expect(code(clean), JSON.stringify(o)).toBe("ok");
+    }
+    const good = avatarJpeg({ icc: { total: 6000, pieces: 2 } });
+    expect(Array.from(canonicalizeAvatarJpeg(good)!)).toEqual(Array.from(good));
   });
 
   it("keeps JFIF and an ICC profile, and leaves a clean file as it was", () => {

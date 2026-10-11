@@ -436,6 +436,21 @@ describe("AvatarUploader: keyboard and touch", () => {
     expect(draw.mock.calls[0][1]).toBeCloseTo(160, 4);
   });
 
+  it("saves from the preview image it is already showing, not a second decode of the file", async () => {
+    render(<AvatarUploader email="ruslan@example.com" version={null} />);
+    await pick(photoFile());
+    const img = viewport().querySelector("img")!;
+    Object.defineProperty(img, "complete", { value: true, configurable: true });
+    fireEvent.load(img);
+    const decodeSpy = vi.spyOn(HTMLImageElement.prototype, "decode");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: en.avatar.save }));
+    });
+    await waitFor(() => expect(draw).toHaveBeenCalled());
+    expect(draw.mock.calls[0][0]).toBe(img);
+    expect(decodeSpy).not.toHaveBeenCalled();
+  });
+
   it("uses the browser's own (rotated) size when the image loads", async () => {
     render(<AvatarUploader email="ruslan@example.com" version={null} />);
     await pick(photoFile()); // header says 800x600

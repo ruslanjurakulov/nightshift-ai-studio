@@ -74,8 +74,14 @@ export interface AvatarJpegOpts {
   components?: 1 | 3;
   /** JFIF APP0 right after SOI (default true). */
   jfif?: boolean;
-  /** an ICC profile piece (APP2) */
-  icc?: boolean;
+  /** an ICC profile (APP2): true = a real-looking 536-byte profile in one piece; or say what is wrong with it */
+  icc?: boolean | { total?: number; pieces?: number; acsp?: boolean; sizeField?: boolean; count?: number; seq?: number[] };
+  /** a JFIF with an embedded thumbnail (length over 16) */
+  jfifThumbnail?: boolean;
+  /** how many DQT segments (default 1) */
+  dqt?: number;
+  /** the component ids the scan names (default: the frame's 1, 2, 3 / 1) */
+  scanIds?: number[];
   /** EXIF (APP1) with a GPS-looking payload */
   exif?: boolean;
   xmp?: boolean;
@@ -103,18 +109,32 @@ export function avatarJpeg(o: AvatarJpegOpts = {}): Uint8Array {
   const h = o.height ?? 256;
   const n = o.components ?? 3;
   const out: number[] = [0xff, 0xd8];
-  if (o.jfif !== false) out.push(...seg(0xe0, [...txt("JFIF"), 0, 1, 1, 0, 0, 1, 0, 1, 0, 0]));
-  if (o.icc) out.push(...seg(0xe2, [...txt("ICC_PROFILE"), 0, 1, 1, ...new Array(40).fill(7)]));
+  if (o.jfif !== false) {
+    out.push(...seg(0xe0, [...txt("JFIF"), 0, 1, 1, 0, 0, 1, 0, 1, ...(o.jfifThumbnail ? [2, 1, 9, 9] : [0, 0])]));
+  }
+  if (o.icc) {
+    const c = o.icc === true ? {} : o.icc;
+    const total = c.total ?? 536;
+    const profile = new Array(total).fill(7);
+    if (c.sizeField !== false) profile.splice(0, 4, ...be32(total));
+    if (c.acsp !== false) profile.splice(36, 4, ...txt("acsp"));
+    const pieces = c.pieces ?? 1;
+    const per = Math.ceil(total / pieces);
+    for (let i = 0; i < pieces; i++) {
+      out.push(...seg(0xe2, [...txt("ICC_PROFILE"), 0, c.seq?.[i] ?? i + 1, c.count ?? pieces, ...profile.slice(i * per, (i + 1) * per)]));
+    }
+  }
   if (o.exif) out.push(...seg(0xe1, [...txt("Exif"), 0, 0, 0x4d, 0x4d, 0, 42, ...txt("GPSLatitude")]));
   if (o.xmp) out.push(...seg(0xe1, [...txt("http://ns.adobe.com/xap/1.0/"), 0, ...txt("<x:xmpmeta/>")]));
   if (o.com) out.push(...seg(0xfe, txt("hello")));
   if (o.appn !== undefined) out.push(...seg(o.appn, txt("Photoshop 3.0")));
-  if (!o.noDqt) out.push(...seg(0xdb, [0, ...new Array(64).fill(8)]));
+  if (!o.noDqt) for (let i = 0; i < (o.dqt ?? 1); i++) out.push(...seg(0xdb, [i & 3, ...new Array(64).fill(8)]));
   const comps = n === 3 ? [1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1] : [1, 0x11, 0];
   out.push(...seg(o.sof ?? 0xc0, [8, ...be16(h), ...be16(w), n, ...comps]));
   for (let i = 0; i < (o.dht ?? 1); i++) out.push(...seg(0xc4, [i, ...new Array(16).fill(0), 1]));
   if (o.dri) out.push(...seg(0xdd, [0, 4]));
-  const sosComps = n === 3 ? [1, 0, 2, 0x11, 3, 0x11] : [1, 0];
+  const ids = o.scanIds ?? (n === 3 ? [1, 2, 3] : [1]);
+  const sosComps = n === 3 ? [ids[0], 0, ids[1], 0x11, ids[2], 0x11] : [ids[0], 0];
   const sos = () => {
     out.push(...seg(0xda, [n, ...sosComps, 0, 63, 0]));
     for (const v of o.entropy ?? [0x12, 0x34, 0xff, 0x00, 0x56, 0xff, 0xd0, 0x78]) out.push(v); // not spread: the oversize case is 256 KB

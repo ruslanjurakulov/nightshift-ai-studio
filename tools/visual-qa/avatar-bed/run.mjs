@@ -449,6 +449,65 @@ for (const width of [1440, 390]) {
   await p.ctx.close();
 }
 
+// a 48 MP phone photo (8064 x 6048): the guard lets it through and the save must work while the preview still holds the first decode
+{
+  const big = path.join("/tmp", `avatar-bed-48mp-${process.pid}.jpg`);
+  const mk = spawnSync(
+    "python3",
+    [
+      "-I",
+      "-c",
+      `
+import sys
+from PIL import Image
+# smooth noise, so the file is a realistic few MB (a flat gradient would be under 1 MB) and stays under the 5 MB input cap
+w, h = 8064, 6048
+g = Image.linear_gradient("L").resize((w, h))
+r = Image.effect_noise((w // 8, h // 8), 60).resize((w, h), Image.BILINEAR)
+b = Image.effect_noise((w // 16, h // 16), 50).resize((w, h), Image.BILINEAR)
+im = Image.merge("RGB", (r, g, b))
+im.save(sys.argv[1], "JPEG", quality=60)
+`,
+      big,
+    ],
+    { encoding: "utf8" },
+  );
+  if (mk.status !== 0) {
+    console.error(mk.stderr);
+    process.exitCode = 1;
+  } else {
+    const buffer = readFileSync(big);
+    unlinkSync(big);
+    const p = await newPage(1440, { theme: "light" });
+    state.fail = null;
+    state.sample = null;
+    state.posted.length = 0;
+    // count explicit decodes: the save must reuse the preview's decode, not start a second one
+    await p.page.addInitScript(() => {
+      window.__decodes = 0;
+      const d = HTMLImageElement.prototype.decode;
+      HTMLImageElement.prototype.decode = function () {
+        window.__decodes++;
+        return d.call(this);
+      };
+    });
+    await open(p, "scene=uploader");
+    await p.page.setInputFiles('[data-testid="avatar-file"]', { name: "iphone-48mp.jpg", mimeType: "image/jpeg", buffer });
+    await p.page.waitForSelector('[data-testid="avatar-crop"]');
+    await p.page.waitForFunction(() => document.querySelector('[data-testid="avatar-crop"] img')?.complete, null, { timeout: 60000 });
+    const nat = await p.page.$eval('[data-testid="avatar-crop"] img', (i) => ({ w: i.naturalWidth, h: i.naturalHeight }));
+    check(`a ${(buffer.length / 1e6).toFixed(1)} MB 8064x6048 JPEG passes the guard and previews`, nat.w === 8064 && nat.h === 6048, JSON.stringify(nat));
+    await p.page.getByRole("button", { name: "Save photo" }).click();
+    await Promise.race([p.page.waitForSelector("[data-avatar=photo]", { timeout: 60000 }), p.page.waitForSelector('[role="alert"]', { timeout: 60000 })]);
+    const alert = await p.page.$('[role="alert"]');
+    const sent = state.posted[0];
+    check("the 48 MP photo saves (no second decode, no EncodingError)", !alert && !!sent && sent.ok && sent.bytes <= 262144, alert ? await alert.textContent() : JSON.stringify(sent));
+    const decodes = await p.page.evaluate(() => window.__decodes);
+    check("the save did not decode the picture a second time", decodes === 0, String(decodes));
+    await p.ctx.close();
+  }
+}
+
 // errors
 for (const locale of ["en", "ru", "uz"]) {
   const p = await newPage(390, { theme: "light", locale });

@@ -127,10 +127,21 @@ async function decodeImage(file: Blob): Promise<{ img: HTMLImageElement; release
   return { img, release };
 }
 
-export async function prepareAvatar(file: Blob, crop: AvatarCrop): Promise<Blob> {
+/** A picture the page has already decoded and is showing: complete, with a size. */
+function isDecoded(img: HTMLImageElement | null | undefined): img is HTMLImageElement {
+  return !!img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0;
+}
+
+/**
+ * `shown` is the crop preview's own <img> for this same file, when the page has one that has finished loading: it is
+ * drawn from directly instead of decoding the file a second time. A second concurrent decode of a 48 MP photo
+ * (8064 x 6048, about 195 MB of pixels held twice) fails in Chromium with an EncodingError, and the preview is the
+ * very pipeline whose EXIF rotation the crop was chosen against. Without it (not loaded yet) the file is decoded here.
+ */
+export async function prepareAvatar(file: Blob, crop: AvatarCrop, shown?: HTMLImageElement | null): Promise<Blob> {
   await inspectAvatarFile(file);
 
-  const { img, release } = await decodeImage(file);
+  const { img, release } = isDecoded(shown) ? { img: shown, release: () => {} } : await decodeImage(file);
   try {
     // naturalWidth/Height are what the person saw (rotation applied); a rotated JPEG swaps its sides.
     const c = clampCrop(crop, img.naturalWidth, img.naturalHeight);
