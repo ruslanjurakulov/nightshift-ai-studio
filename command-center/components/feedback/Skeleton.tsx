@@ -1,4 +1,5 @@
 import { LoadingGrace } from "@/components/motion/LoadingGrace";
+import "@/app/(app)/app-pages-g5.css";
 
 /**
  * Placeholder shapes while a route streams in. The `.skeleton` shimmer lives in
@@ -13,9 +14,10 @@ export function Skeleton({ className = "", style }: { className?: string; style?
 }
 
 /**
- * The generic shape of a section: a title, a row of stat cards, and a panel of
- * rows. Close enough to every screen that the content replacing it does not
- * jump the layout, without pretending to know what the screen will say.
+ * The generic shape of a section, drawn the way the pages are: a title and a
+ * lead, a row of figures, and ruled rows — no boxes. Close enough to every
+ * screen that the content replacing it does not jump the layout, without
+ * pretending to know what the screen will say.
  */
 export function PageSkeleton({ label }: { label: string }) {
   return (
@@ -23,23 +25,26 @@ export function PageSkeleton({ label }: { label: string }) {
       <span className="sr-only">{label}</span>
       {/* After a click the blocks wait out a short grace period, so a fast
           route never flashes them; the status line above is announced at once. */}
-      <LoadingGrace className="flex w-full min-w-0 flex-col gap-6">
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-7 w-2/3 max-w-xs" />
+      <LoadingGrace className="g5-skel">
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-9 w-2/3 max-w-sm" />
           <Skeleton className="h-4 w-full max-w-md" />
         </div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="g5-skel-figs">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="panel flex flex-col gap-2 p-5 sm:p-6">
+            <div key={i} className="flex flex-col gap-3">
               <Skeleton className="h-3 w-1/2" />
-              <Skeleton className="h-6 w-3/4" />
+              <Skeleton className="h-8 w-3/4" />
             </div>
           ))}
         </div>
-        <div className="panel flex flex-col gap-3 p-5 sm:p-6">
-          <Skeleton className="h-4 w-40" />
+        <div className="g5-skel-rows">
           {[0, 1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-9 w-full" style={{ opacity: 1 - i * 0.14 }} />
+            <div key={i} className="g5-skel-row" style={{ opacity: 1 - i * 0.14 }}>
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="ml-auto h-4 w-1/5" />
+            </div>
           ))}
         </div>
       </LoadingGrace>

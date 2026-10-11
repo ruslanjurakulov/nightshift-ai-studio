@@ -4,9 +4,10 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { isPlatformAdmin } from "@/lib/auth/org-roles";
 import { NotConfigured } from "@/components/NotConfigured";
-import { NeuralBackdrop } from "@/components/NeuralBackdrop";
 import { WelcomeFlow } from "@/components/welcome/WelcomeFlow";
 import { LEGAL } from "@/lib/legal";
+import "../(app)/app-redesign.css";
+import "../(app)/app-pages-g5.css";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -53,9 +54,7 @@ export default async function WelcomePage() {
   }
 
   return (
-    <div className="atmos relative flex min-h-dvh flex-col">
-      <NeuralBackdrop dim />
-      <div className="relative z-10 mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center gap-4 p-4 sm:p-6">
+    <main className="g5-welcome">
         <WelcomeFlow
           needsWorkspace={org.supported && org.orgs.length === 0}
           unavailable={Boolean(org.unavailable)}
@@ -70,7 +69,6 @@ export default async function WelcomePage() {
           welcomeCredits={welcomeCredits}
           contactEmail={LEGAL.contactEmail}
         />
-      </div>
-    </div>
+    </main>
   );
 }

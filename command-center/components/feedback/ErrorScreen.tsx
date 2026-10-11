@@ -2,16 +2,22 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
-import { AlertTriangle, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { fmt } from "@/lib/i18n/core";
 import { safeDigest } from "@/lib/feedback";
+import "@/app/(app)/app-pages-g5.css";
 
 /**
  * What an error boundary shows. Deliberately says nothing about what failed:
  * a thrown message can hold a URL, a token prefix or a database row, and this
  * is the screen people screenshot to ask for help. The digest is the handle
  * that finds the real error in the server log.
+ *
+ * It says what is true (this page could not load, nothing saved was lost) and
+ * offers the one next step as the lit key (try again), with the way out beside
+ * it. It carries its own look because it also renders where the app's shell
+ * (and its stylesheet) is gone: the root boundary and global-error.
  */
 export function ErrorScreen({
   error,
@@ -31,33 +37,24 @@ export function ErrorScreen({
   }, [error]);
 
   return (
-    <div role="alert" className="mx-auto flex w-full max-w-lg flex-col items-center gap-4 px-4 py-16 text-center">
-      <span
-        aria-hidden
-        className="grid size-12 place-items-center rounded-full border"
-        style={{
-          borderColor: "color-mix(in srgb, var(--color-fail) 45%, var(--color-border))",
-          color: "var(--color-fail)",
-        }}
-      >
-        <AlertTriangle className="size-5" />
-      </span>
-      <h1 className="text-xl font-semibold text-[var(--color-fg)]">{t.ux.errorTitle}</h1>
-      <p className="text-sm leading-relaxed text-[var(--color-muted)]">{t.ux.errorBody}</p>
-      <div className="mt-2 flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-        <button
-          type="button"
-          onClick={reset}
-          className="btn-sky is-solid pill inline-flex items-center justify-center gap-2 px-5 py-2 text-sm"
-        >
-          <RotateCcw aria-hidden className="size-3.5" />
-          {t.ux.errorRetry}
-        </button>
-        <Link href={homeHref} className="btn-sky is-quiet pill px-5 py-2 text-center text-sm">
-          {t.ux.errorHome}
-        </Link>
-      </div>
-      {digest && <p className="mono text-xs text-[var(--color-muted)]">{fmt(t.ux.errorRef, { digest })}</p>}
+    <div className="g5-boundary">
+      <section role="alert" className="g5-boundary-desk">
+        <div aria-hidden className="g5-boundary-slug">
+          <span className="ns-lamp" data-tone="fail" data-size="md" />
+        </div>
+        <h1 className="g5-boundary-title">{t.ux.errorTitle}</h1>
+        <p className="g5-state-body">{t.ux.errorBody}</p>
+        <div className="g5-state-actions">
+          <button type="button" onClick={reset} className="btn-primary">
+            <RotateCcw aria-hidden className="size-4" />
+            {t.ux.errorRetry}
+          </button>
+          <Link href={homeHref} className="btn-quiet">
+            {t.ux.errorHome}
+          </Link>
+        </div>
+        {digest && <p className="mono g5-boundary-ref">{fmt(t.ux.errorRef, { digest })}</p>}
+      </section>
     </div>
   );
 }

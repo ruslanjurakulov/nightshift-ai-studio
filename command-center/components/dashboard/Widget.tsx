@@ -1,5 +1,7 @@
 "use client";
 
+import "@/app/(app)/app-pages-g5.css";
+
 import { useEffect, useState, type ReactNode } from "react";
 
 const KEY = (id: string) => `chronos_widget_${id}`;
@@ -56,11 +58,9 @@ export function Widget({
   if (!visible && !customizing) return null;
 
   return (
-    <section
-      className={`section-open transition-opacity ${span ?? ""} ${!visible ? "opacity-45" : ""}`}
-    >
-      <header className="section-head">
-        <h2 className="t-panel">{title}</h2>
+    <section className={`panel transition-opacity ${span ?? ""} ${!visible ? "opacity-45" : ""}`}>
+      <div className="g5-sechead">
+        <h2 className="g5-h">{title}</h2>
         <div className="flex items-center gap-2">
           {right}
           {customizing && (
@@ -68,22 +68,23 @@ export function Widget({
               type="button"
               onClick={toggle}
               aria-pressed={visible}
-              className="tap-icon grid size-7 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+              aria-label={title}
+              className="tap-icon grid size-11 place-items-center rounded-[var(--ns-r-key)] border border-[var(--ns-rule-strong)] text-[var(--color-muted)] hover:text-[var(--color-fg)]"
             >
               {visible ? (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-3.5">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
                   <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
                   <circle cx="12" cy="12" r="3" />
                 </svg>
               ) : (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-3.5">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
                   <path d="M17.9 17.9A10.4 10.4 0 0 1 12 19C5.5 19 2 12 2 12a18.5 18.5 0 0 1 5.1-5.9M9.9 4.2A10.9 10.9 0 0 1 12 4c6.5 0 10 7 10 7a18.4 18.4 0 0 1-2.2 3.2M1 1l22 22" />
                 </svg>
               )}
             </button>
           )}
         </div>
-      </header>
+      </div>
       <div className="min-h-0 flex-1">{children}</div>
     </section>
   );

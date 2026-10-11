@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { inSelection, orgWide, scopeQuery, type ChannelScope } from "@/lib/channels";
@@ -9,6 +10,8 @@ import type { Dictionary } from "@/lib/i18n";
 import type { FeedbackSignalRow, SystemEventRow } from "@/lib/types";
 import { relativeTime, storedMs } from "@/lib/format";
 import { useOverlay } from "@/components/a11y/useOverlay";
+import { useChannelPath } from "@/lib/channels-client";
+import "@/app/(app)/app-pages-g5.css";
 
 const SEEN_KEY = "chronos_notif_seen";
 const CLEARED_KEY = "chronos_notif_cleared";
@@ -20,12 +23,13 @@ const KIND_LABEL: Record<NotificationKind, keyof Dictionary["ops"]> = {
   anomaly: "notifAnomaly",
   storyboard: "notifStoryboard",
 };
-const KIND_COLOR: Record<NotificationKind, string> = {
-  published: "var(--color-primary)",
-  error: "var(--color-fail)",
-  learning: "var(--color-ok)",
-  anomaly: "var(--color-warn)",
-  storyboard: "var(--color-primary)",
+/** Each kind is a lamp (never colour alone: the kind's words sit beside it). */
+const KIND_TONE: Record<NotificationKind, "ok" | "fail" | "warn" | "info" | "run"> = {
+  published: "ok",
+  error: "fail",
+  learning: "info",
+  anomaly: "warn",
+  storyboard: "run",
 };
 
 /**
@@ -36,6 +40,7 @@ const KIND_COLOR: Record<NotificationKind, string> = {
  */
 export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
   const { t } = useI18n();
+  const path = useChannelPath();
   const [events, setEvents] = useState<SystemEventRow[]>([]);
   const [signals, setSignals] = useState<FeedbackSignalRow[]>([]);
   const [open, setOpen] = useState(false);
@@ -169,13 +174,13 @@ export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
           aria-modal="false"
           aria-label={t.ops.notifTitle}
           tabIndex={-1}
-          className="drawer-enter fixed inset-x-3 top-full z-50 mt-3 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] outline-none sm:absolute sm:inset-x-auto sm:right-0 sm:w-80"
+          className="g5-notif drawer-enter fixed inset-x-3 top-full z-50 mt-3 overflow-hidden rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel)] outline-none sm:absolute sm:inset-x-auto sm:right-0 sm:w-96"
         >
-          <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
-            <span className="text-xs font-bold text-[var(--color-fg)]">{t.ops.notifTitle}</span>
+          <div className="g5-notif-head">
+            <span className="g5-notif-title">{t.ops.notifTitle}</span>
             <span className="flex items-center gap-1">
               {notifications.length > 0 && (
-                <button type="button" onClick={clearAll} className="btn-sky is-quiet pill px-3 py-1 text-xs font-light">
+                <button type="button" onClick={clearAll} className="btn-sky is-quiet pill px-4 py-2 text-sm font-normal">
                   {t.ops.notifClear}
                 </button>
               )}
@@ -183,32 +188,33 @@ export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label={t.ops.shortcutsClose}
-                className="sheet-close text-[15px]"
+                className="sheet-close size-11 text-[15px]"
               >
                 ✕
               </button>
             </span>
           </div>
-          <ul
-            tabIndex={notifications.length > 0 ? 0 : undefined}
-            aria-label={t.ops.notifTitle}
-            className="scroll-focus max-h-[60vh] overflow-y-auto overscroll-contain"
-          >
-            {notifications.length === 0 ? (
-              <li className="p-4 text-center tnum text-xs text-[var(--color-muted)]">{t.ops.notifEmpty}</li>
-            ) : (
-              notifications.map((n: Notification) => (
-                <li key={n.id} className="flex items-start gap-2.5 border-b border-[var(--color-border)]/60 px-3 py-2 last:border-0">
-                  <span className="mt-1 size-1.5 shrink-0 rounded-full" style={{ background: KIND_COLOR[n.kind] }} />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs text-[var(--color-fg)]">{String(t.ops[KIND_LABEL[n.kind]])}</div>
-                    <div className="tnum truncate text-xs text-[var(--color-muted)]">{n.subject}</div>
+          {notifications.length === 0 ? (
+            <div className="g5-notif-empty">
+              <p>{t.ops.notifEmpty}</p>
+              <Link href={path("/logs")} className="g5-link" onClick={() => setOpen(false)}>
+                {t.ops.notifOpenLog}
+              </Link>
+            </div>
+          ) : (
+            <ul tabIndex={0} aria-label={t.ops.notifTitle} className="g5-notif-list scroll-focus max-h-[60vh] overflow-y-auto overscroll-contain">
+              {notifications.map((n: Notification) => (
+                <li key={n.id} className="g5-notif-item">
+                  <span aria-hidden className="ns-lamp" data-tone={KIND_TONE[n.kind]} />
+                  <div className="min-w-0">
+                    <div className="g5-notif-kind">{String(t.ops[KIND_LABEL[n.kind]])}</div>
+                    <div className="g5-notif-subject">{n.subject}</div>
                   </div>
-                  <span className="tnum shrink-0 text-xs text-[var(--color-muted)]">{relativeTime(n.ts)}</span>
+                  <span className="g5-notif-time">{relativeTime(n.ts)}</span>
                 </li>
-              ))
-            )}
-          </ul>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>

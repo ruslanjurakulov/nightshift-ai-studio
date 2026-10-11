@@ -1583,6 +1583,7 @@ export const ru: Dictionary = {
     filterErrors: "Ошибки",
     notifTitle: "Уведомления",
     notifEmpty: "Уведомлений нет — поток спокоен.",
+    notifOpenLog: "Открыть журнал активности",
     notifClear: "Очистить",
     notifPublished: "Видео опубликовано",
     notifStoryboard: "Раскадровка ждёт проверки",

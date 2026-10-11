@@ -10,6 +10,7 @@ import { ORG_NAME_MAX, validateOrgName } from "@/lib/orgs";
 import { SignOutButton } from "@/components/SignOutButton";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { BrandMark } from "@/components/site/BrandMark";
+import { StatusLamp } from "@/components/ui/StatusLamp";
 import { newChannelHref, WELCOME_NICHE_MAX, WELCOME_LANGUAGE_MAX } from "@/lib/welcome";
 
 type Step = "workspace" | "about" | "next";
@@ -18,8 +19,7 @@ type Step = "workspace" | "about" | "next";
 // written, and English names are what existing channels use.
 const LANGUAGE_SUGGESTIONS = ["English", "Russian", "Uzbek", "Spanish", "German", "French", "Portuguese", "Turkish", "Arabic", "Hindi"];
 
-const inputClass =
-  "min-h-11 min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
+const inputClass = "ns-field min-w-0";
 
 function rememberAllChannels() {
   // The org switch already happened server-side (/api/org/create sets the org
@@ -97,26 +97,28 @@ export function WelcomeFlow({
 
   if (unavailable) {
     return (
-      <Frame>
-        <p role="alert" className="text-sm text-[var(--color-warn)]">
+      <Frame steps={[]} index={0}>
+        <p role="alert" className="g5-state-body" style={{ color: "var(--color-warn)" }}>
           {t.signup.unavailable}
         </p>
       </Frame>
     );
   }
 
+  const stepName: Record<Step, string> = { workspace: t.signup.wsTitle, about: t.signup.aboutTitle, next: t.signup.nextTitle };
+
   return (
-    <Frame>
-      <div className="t-label">{fmt(t.signup.stepOf, { n: index + 1, total: steps.length })}</div>
+    <Frame steps={steps.map((k) => stepName[k])} index={index}>
+      <p className="g5-k">{fmt(t.signup.stepOf, { n: index + 1, total: steps.length })}</p>
 
       {step === "workspace" && (
-        <form onSubmit={createWorkspace} className="mt-3 flex flex-col gap-4">
+        <form onSubmit={createWorkspace} className="mt-3 flex flex-col gap-5">
           <div>
-            <h2 className="t-section">{t.signup.wsTitle}</h2>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.signup.wsHint}</p>
+            <h2 className="g5-h">{t.signup.wsTitle}</h2>
+            <p className="g5-sub">{t.signup.wsHint}</p>
           </div>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-[var(--color-muted)]">{t.signup.wsLabel}</span>
+          <label className="g5-field">
+            <span className="g5-k">{t.signup.wsLabel}</span>
             <input
               type="text"
               autoFocus
@@ -128,16 +130,12 @@ export function WelcomeFlow({
             />
           </label>
           {error && (
-            <p role="alert" className="tnum text-xs text-[var(--color-fail)]">
+            <p role="alert" className="g5-note g5-fail-text">
               {error}
             </p>
           )}
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={busy || validateOrgName(name) === null}
-              className="btn-sky is-solid pill px-6 py-2.5 text-sm disabled:opacity-40"
-            >
+          <div className="g5-actions" style={{ justifyContent: "flex-end" }}>
+            <button type="submit" disabled={busy || validateOrgName(name) === null} className="btn-primary disabled:opacity-40">
               {busy ? t.signup.wsCreating : t.signup.wsCreate}
             </button>
           </div>
@@ -150,15 +148,15 @@ export function WelcomeFlow({
             e.preventDefault();
             setIndex(index + 1);
           }}
-          className="mt-3 flex flex-col gap-4"
+          className="mt-3 flex flex-col gap-5"
         >
           {welcomeCredits !== null && <CreditsNote amount={welcomeCredits} />}
           <div>
-            <h2 className="t-section">{t.signup.aboutTitle}</h2>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.signup.aboutHint}</p>
+            <h2 className="g5-h">{t.signup.aboutTitle}</h2>
+            <p className="g5-sub">{t.signup.aboutHint}</p>
           </div>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-[var(--color-muted)]">{t.signup.nicheLabel}</span>
+          <label className="g5-field">
+            <span className="g5-k">{t.signup.nicheLabel}</span>
             <input
               type="text"
               autoFocus
@@ -169,10 +167,8 @@ export function WelcomeFlow({
               className={inputClass}
             />
           </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-[var(--color-muted)]">
-              {t.signup.languageLabel}
-            </span>
+          <label className="g5-field">
+            <span className="g5-k">{t.signup.languageLabel}</span>
             <input
               type="text"
               list="welcome-languages"
@@ -188,7 +184,7 @@ export function WelcomeFlow({
               ))}
             </datalist>
           </label>
-          <div className="flex flex-wrap items-center justify-end gap-3">
+          <div className="g5-actions" style={{ justifyContent: "flex-end" }}>
             <button
               type="button"
               onClick={() => {
@@ -196,11 +192,11 @@ export function WelcomeFlow({
                 setLanguage("");
                 setIndex(index + 1);
               }}
-              className="btn-sky ghost pill px-5 py-2.5 text-sm"
+              className="btn-quiet"
             >
               {t.signup.skip}
             </button>
-            <button type="submit" className="btn-sky is-solid pill px-6 py-2.5 text-sm">
+            <button type="submit" className="btn-primary">
               {t.signup.continue}
             </button>
           </div>
@@ -208,13 +204,13 @@ export function WelcomeFlow({
       )}
 
       {step === "next" && (
-        <div className="mt-3 flex flex-col gap-4">
+        <div className="mt-3 flex flex-col gap-5">
           {welcomeCredits !== null && <CreditsNote amount={welcomeCredits} />}
           <div>
-            <h2 className="t-section">{t.signup.nextTitle}</h2>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.signup.nextHint}</p>
+            <h2 className="g5-h">{t.signup.nextTitle}</h2>
+            <p className="g5-sub">{t.signup.nextHint}</p>
           </div>
-          <ol className="flex flex-col gap-2">
+          <ol className="g5-rows">
             <Item
               n={1}
               title={t.signup.stepChannel}
@@ -232,38 +228,23 @@ export function WelcomeFlow({
                 (contactEmail ? (
                   <a
                     href={`mailto:${contactEmail}?subject=${encodeURIComponent(t.signup.requestSubject)}`}
-                    className="btn-sky ghost pill mt-2 inline-flex px-4 py-1.5 text-xs"
+                    className="btn-quiet mt-3 inline-flex"
                   >
                     {t.signup.requestConnection}
                   </a>
                 ) : (
-                  <p className="mt-2 text-xs text-[var(--color-muted)]">{t.signup.requestContact}</p>
+                  <p className="g5-note mt-2">{t.signup.requestContact}</p>
                 ))}
             </Item>
             <Item n={3} title={t.signup.stepStyle} body={t.signup.stepStyleBody} href={at("/studio")} />
-            {showCredits && (
-              <Item n={4} title={t.signup.stepCredits} body={t.signup.stepCreditsBody} href={at("/credits")} />
-            )}
-            <Item
-              n={showCredits ? 5 : 4}
-              title={t.signup.stepCreate}
-              body={t.signup.stepCreateBody}
-              href={at("/create")}
-            />
+            {showCredits && <Item n={4} title={t.signup.stepCredits} body={t.signup.stepCreditsBody} href={at("/credits")} />}
+            <Item n={showCredits ? 5 : 4} title={t.signup.stepCreate} body={t.signup.stepCreateBody} href={at("/create")} />
           </ol>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => setIndex(index - 1)}
-              className="text-sm text-[var(--color-muted)] hover:text-[var(--color-fg)]"
-            >
+            <button type="button" onClick={() => setIndex(index - 1)} className="g5-link" style={{ background: "none", border: 0, cursor: "pointer" }}>
               ← {t.signup.back}
             </button>
-            <Link
-              href={home}
-              onClick={rememberAllChannels}
-              className="btn-sky is-solid pill px-6 py-2.5 text-sm"
-            >
+            <Link href={home} onClick={rememberAllChannels} className="btn-primary">
               {t.signup.finish}
             </Link>
           </div>
@@ -273,35 +254,53 @@ export function WelcomeFlow({
   );
 }
 
-function Frame({ children }: { children: React.ReactNode }) {
+/**
+ * The first-run frame: the page's room (grid and warm glow, like the app), the wordmark and language/sign-out above, and
+ * two columns from tablet up. On the left the welcome and the steps as a rail; on the right the one lit desk holding the
+ * step in hand. On a phone the rail gives way to the "Step n of m" line inside the desk.
+ */
+function Frame({ steps, index, children }: { steps: string[]; index: number; children: React.ReactNode }) {
   const { t } = useI18n();
   return (
-    <>
-      <div className="flex items-center justify-end gap-2">
-        <LanguageSelector />
-        <SignOutButton />
-      </div>
-      <div className="glass-card sheet-enter rounded-[22px] border border-[var(--color-border)] p-6 sm:p-8">
+    <div className="g5-welcome-in">
+      <div className="g5-welcome-bar">
         <div className="ns-wordmark inline-flex items-center gap-2">
-          <BrandMark size={36} />
+          <BrandMark size={32} />
           {t.brand.name}
         </div>
-        <h1 className="mt-6 text-[26px] font-semibold leading-tight tracking-[-0.02em]">{t.signup.welcomeTitle}</h1>
-        <p className="mt-2 text-sm font-light text-[var(--color-muted)]">{t.signup.welcomeSub}</p>
-        <div className="mt-6">{children}</div>
+        <div className="flex items-center gap-2">
+          <LanguageSelector />
+          <SignOutButton />
+        </div>
       </div>
-    </>
+      <div className="g5-welcome-grid">
+        <div className="g5-welcome-lead">
+          <h1 className="g5-welcome-title">{t.signup.welcomeTitle}</h1>
+          <p className="t-lead">{t.signup.welcomeSub}</p>
+          {steps.length > 0 && (
+            <ol className="g5-rail" aria-label={t.signup.welcomeTitle}>
+              {steps.map((label, i) => (
+                <li key={label} aria-current={i === index ? "step" : undefined} data-done={i < index ? "true" : undefined}>
+                  <span className="g5-num" aria-hidden>
+                    {i < index ? "✓" : String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span>{label}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+        <section className="ns-desk g5-welcome-desk sheet-enter">{children}</section>
+      </div>
+    </div>
   );
 }
 
 function CreditsNote({ amount }: { amount: number }) {
   const { t } = useI18n();
   return (
-    <p
-      role="status"
-      className="rounded-xl border border-[var(--color-primary)] px-4 py-3 text-sm text-[var(--color-fg)]"
-      style={{ boxShadow: "0 0 24px var(--glow-primary)" }}
-    >
+    <p role="status" className="g5-credit-note">
+      <span aria-hidden className="ns-lamp" data-tone="run" data-size="md" />
       {fmt(t.signup.welcomeCredits, { n: amount })}
     </p>
   );
@@ -324,31 +323,24 @@ function Item({
 }) {
   const { t } = useI18n();
   return (
-    <li className="panel flex items-start gap-4 p-5 sm:p-6">
-      <span
-        className="tnum mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs"
-        style={{
-          borderColor: done ? "var(--color-ok)" : "var(--color-border)",
-          color: done ? "var(--color-ok)" : "var(--color-muted)",
-        }}
-        aria-hidden
-      >
-        {done ? "✓" : n}
+    <li className="g5-row g5-next-step">
+      <span className="g5-num" aria-hidden style={done ? { color: "var(--color-ok)" } : undefined}>
+        {done ? "✓" : String(n).padStart(2, "0")}
       </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold">{title}</h3>
-          {done ? (
-            <span className="text-xs text-[var(--color-ok)]">{t.signup.done}</span>
-          ) : href ? (
-            <Link href={href} className="btn-sky is-quiet pill px-4 py-1.5 text-xs">
-              {t.signup.open} →
-            </Link>
-          ) : null}
-        </div>
-        <p className="mt-1 text-sm text-[var(--color-muted)]">{body}</p>
+      <div className="min-w-0">
+        <h3 className="g5-row-title">{title}</h3>
+        <p className="g5-row-meta">{body}</p>
         {children}
       </div>
+      {done ? (
+        <StatusLamp tone="ok" label={t.signup.done} />
+      ) : href ? (
+        <Link href={href} className="btn-quiet">
+          {t.signup.open} →
+        </Link>
+      ) : (
+        <span aria-hidden />
+      )}
     </li>
   );
 }

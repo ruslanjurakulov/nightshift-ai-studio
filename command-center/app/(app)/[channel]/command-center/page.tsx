@@ -3,7 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
-import { EmptyState } from "@/components/ui";
+import { PageHeader } from "@/components/PageHeader";
+import { StateBlock } from "@/components/states/StateBlock";
+import "../../app-pages-g5.css";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { SystemStatus } from "@/components/SystemStatus";
@@ -183,127 +185,150 @@ export default async function CommandCenter() {
         ? t.dashboard.leadDone
         : t.dashboard.leadIdle;
 
+  const lamp = chip === "healthy" ? "ok" : chip === "attention" ? "fail" : chip === "unreadable" ? "warn" : "idle";
+  const lampLabel =
+    chip === "healthy"
+      ? t.dashboard.systemHealthy
+      : chip === "attention"
+        ? t.dashboard.attention
+        : chip === "unreadable"
+          ? t.dashboard.unreadable
+          : t.dashboard.noActivity;
+  // One lit desk and one filled key per page: the finish-setup banner when it shows, otherwise the run.
+  const runDesk = !needsSetup;
+  const runLabel = !eventsOk
+    ? t.dashboard.runUnknown
+    : lastEventAt
+      ? `${t.dashboard.latestRun} · ${relativeTime(lastEventAt)}`
+      : t.dashboard.noRunsYet;
+
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open g5-page stagger-enter">
+      <PageHeader icon="autonomy" title={t.dashboard.title} subtitle={t.dashboard.subtitle} actions={<CustomizeButton />} />
+
       {needsSetup && (
-        <div className="panel flex flex-wrap items-center justify-between gap-4 p-5">
-          <div className="min-w-0">
-            <h2 className="t-section">{t.signup.finishSetup}</h2>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.signup.finishSetupBody}</p>
-          </div>
-          <Link href={WELCOME_PATH} className="btn-primary text-sm">
-            {t.signup.finishSetup} →
-          </Link>
-        </div>
-      )}
-      {/* ── The run, and the instruments beside it ─────────────────────────── */}
-      <div className="flex flex-col gap-14 lg:flex-row lg:gap-20">
-        <div className="flex min-w-0 flex-1 flex-col gap-10">
-          <div>
-            <div className="t-label">
-              {!eventsOk
-                ? t.dashboard.runUnknown
-                : lastEventAt
-                  ? `${t.dashboard.latestRun} · ${relativeTime(lastEventAt)}`
-                  : t.dashboard.noRunsYet}
+        <section className="panel ns-desk" aria-labelledby="cc-setup">
+          <div className="flex flex-wrap items-center justify-between gap-5">
+            <div className="min-w-0">
+              <h2 id="cc-setup" className="g5-h">
+                {t.signup.finishSetup}
+              </h2>
+              <p className="g5-sub">{t.signup.finishSetupBody}</p>
             </div>
-            <h1 className="t-hero mt-5">{!videosOk ? t.dashboard.heroUnknown : (latest?.title ?? t.dashboard.heroIdle)}</h1>
-            <p className="t-lead mt-6">{lead}</p>
-          </div>
-
-          <div className="flex flex-wrap gap-x-14 gap-y-8">
-            <Figure label={t.dashboard.publishedToday} value={publishedToday} unknown={t.common.unknown} unknownSub={t.common.couldNotRead} />
-            <Figure
-              label={t.dashboard.activeAgents}
-              value={activeAgents}
-              unknown={t.common.unknown}
-              unknownSub={t.common.couldNotRead}
-              sub={runningAgents.length ? runningAgents.join(", ") : t.common.idle}
-              tone={runningAgents.length ? "var(--color-warn)" : undefined}
-            />
-            <Figure
-              label={t.dashboard.errors24h}
-              value={errors24h}
-              unknown={t.common.unknown}
-              unknownSub={t.common.couldNotRead}
-              sub={errors24h ? t.dashboard.needsAttention : t.common.none}
-              tone={errors24h ? "var(--color-fail)" : "var(--color-ok)"}
-            />
-            <Figure
-              label={t.dashboard.videos}
-              value={videosOk ? (videos.length >= 8 ? null : videos.length) : null}
-              // A library of 8+ was never a count ("showing latest 8"): that is
-              // N/A, not unknown. Only a failed read is "unknown".
-              unknown={videosOk ? t.common.na : t.common.unknown}
-              unknownSub={videosOk ? undefined : t.common.couldNotRead}
-              sub={videos.length >= 8 ? t.dashboard.showingLatest8 : t.dashboard.inLibrary}
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-4">
-            {canProduce && scopedChannel && (
-              <RunNowButton
-                variant="inline"
-                channelId={scopedChannel.channel_id}
-                githubConfigured={isRunNowConfigured}
-                label={t.dashboard.produce}
-              />
-            )}
-            {operator && (
-            <Link
-              href={path("/pipeline")}
-              className={`${canProduce ? "btn-quiet" : "btn-primary"} text-sm`}
-            >
-              {t.dashboard.openPipeline}
+            <Link href={WELCOME_PATH} className="btn-primary">
+              {t.signup.finishSetup}
               <span className="btn-arrow" aria-hidden>
                 →
               </span>
             </Link>
-            )}
-            <Link href={path("/videos")} className="btn-quiet text-sm">
-              {t.dashboard.openVideos}
-            </Link>
-            <CustomizeButton />
-            <StatusLamp
-              tone={chip === "healthy" ? "ok" : chip === "attention" ? "fail" : chip === "unreadable" ? "warn" : "idle"}
-              label={
-                chip === "healthy"
-                  ? t.dashboard.systemHealthy
-                  : chip === "attention"
-                    ? t.dashboard.attention
-                    : chip === "unreadable"
-                      ? t.dashboard.unreadable
-                      : t.dashboard.noActivity
-              }
-              live={chip === "healthy"}
-            />
           </div>
+        </section>
+      )}
 
-          <div>
-            <div className="t-label mb-5">{t.dashboard.recentVideos}</div>
+      {/* ── The run, and the instruments beside it ─────────────────────────── */}
+      <div className="g5-cc">
+        <div className="g5-cc-main">
+          <section className={runDesk ? "panel ns-desk" : "panel"} aria-labelledby="cc-run">
+            <div className="g5-sechead">
+              <span className="g5-k">{runLabel}</span>
+              <StatusLamp tone={lamp} label={lampLabel} live={chip === "healthy"} />
+            </div>
+            <h2 id="cc-run" className="g5-run-title">
+              {!videosOk ? t.dashboard.heroUnknown : (latest?.title ?? t.dashboard.heroIdle)}
+            </h2>
+            <p className="g5-run-lead">{lead}</p>
+
+            <div className="g5-figs" style={{ marginTop: 28 }}>
+              <Figure label={t.dashboard.publishedToday} value={publishedToday} unknown={t.common.unknown} unknownSub={t.common.couldNotRead} />
+              <Figure
+                label={t.dashboard.activeAgents}
+                value={activeAgents}
+                unknown={t.common.unknown}
+                unknownSub={t.common.couldNotRead}
+                sub={runningAgents.length ? runningAgents.join(", ") : t.common.idle}
+                tone={runningAgents.length ? "var(--ns-amber-ink)" : undefined}
+              />
+              <Figure
+                label={t.dashboard.errors24h}
+                value={errors24h}
+                unknown={t.common.unknown}
+                unknownSub={t.common.couldNotRead}
+                sub={errors24h ? t.dashboard.needsAttention : t.common.none}
+                tone={errors24h ? "var(--color-fail)" : "var(--color-ok)"}
+              />
+              <Figure
+                label={t.dashboard.videos}
+                value={videosOk ? (videos.length >= 8 ? null : videos.length) : null}
+                // A library of 8+ was never a count ("showing latest 8"): that is
+                // N/A, not unknown. Only a failed read is "unknown".
+                unknown={videosOk ? t.common.na : t.common.unknown}
+                unknownSub={videosOk ? undefined : t.common.couldNotRead}
+                sub={videos.length >= 8 ? t.dashboard.showingLatest8 : t.dashboard.inLibrary}
+              />
+            </div>
+
+            <div className="g5-actions" style={{ marginTop: 28 }}>
+              {canProduce && scopedChannel && runDesk && (
+                <RunNowButton
+                  variant="inline"
+                  channelId={scopedChannel.channel_id}
+                  githubConfigured={isRunNowConfigured}
+                  label={t.dashboard.produce}
+                />
+              )}
+              {operator && (
+                <Link href={path("/pipeline")} className={`${canProduce || !runDesk ? "btn-quiet" : "btn-primary"} text-sm`}>
+                  {t.dashboard.openPipeline}
+                  <span className="btn-arrow" aria-hidden>
+                    →
+                  </span>
+                </Link>
+              )}
+              <Link href={path("/videos")} className="btn-quiet text-sm">
+                {t.dashboard.openVideos}
+              </Link>
+            </div>
+          </section>
+
+          <section className="panel" aria-labelledby="cc-recent">
+            <div className="g5-sechead">
+              <h2 id="cc-recent" className="g5-h">
+                {t.dashboard.recentVideos}
+              </h2>
+            </div>
             {!videosOk ? (
               <ErrorState compact />
             ) : recentVideos.length === 0 ? (
-              <EmptyState>{t.dashboard.noVideos}</EmptyState>
+              <StateBlock
+                tone="idle"
+                actions={
+                  <Link href={path("/create")} className="btn-quiet">
+                    {t.dashboard.produce}
+                  </Link>
+                }
+              >
+                {t.dashboard.noVideos}
+              </StateBlock>
             ) : (
-              <ul>
+              <ul className="g5-rows">
                 {recentVideos.map((v) => (
-                  <li
-                    key={v.video_id}
-                    className="row-sweep flex items-baseline justify-between gap-6 border-b border-[var(--color-border)] py-[15px]"
-                  >
-                    <span className="min-w-0 truncate text-base">{v.title ?? v.video_id}</span>
-                    <span className="tnum shrink-0 text-sm text-[var(--color-muted)]">
+                  <li key={v.video_id} className="g5-row" style={{ gridTemplateColumns: "minmax(0, 1fr) auto" }}>
+                    <span className="g5-row-title">{v.title ?? v.video_id}</span>
+                    <span className="g5-row-meta tnum" style={{ margin: 0, textAlign: "right" }}>
                       {v.topic ?? t.common.dash} · {relativeTime(v.published_at)}
                     </span>
                   </li>
                 ))}
               </ul>
             )}
-          </div>
+          </section>
+
+          <Widget id="feed" title={t.ops.streamTitle}>
+            {eventsOk ? <ActivityFeed initial={events} scope={scope} /> : <ErrorState />}
+          </Widget>
         </div>
 
-        <aside className="flex w-full shrink-0 flex-col gap-12 lg:w-[360px]">
+        <aside className="g5-cc-side">
           <Widget id="status" title={t.ops.statusTitle}>
             <SystemStatus initial={events} dbOk={dbHealthy} scope={scope} />
           </Widget>
@@ -318,17 +343,16 @@ export default async function CommandCenter() {
             {!dbHealthy ? (
               <ErrorState compact />
             ) : topics.length === 0 ? (
-              <EmptyState>{t.dashboard.noTopics}</EmptyState>
+              <StateBlock tone="idle" compact>
+                {t.dashboard.noTopics}
+              </StateBlock>
             ) : (
-              <ul>
+              <ul className="g5-topics">
                 {topics.map((tp) => (
-                  <li
-                    key={tp.topic}
-                    className="row-sweep flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-[var(--color-panel-2)]"
-                  >
+                  <li key={tp.topic} className="g5-topic">
                     <div className="min-w-0">
-                      <div className="truncate text-sm text-[var(--color-fg)]">{tp.topic}</div>
-                      <div className="truncate text-xs font-light text-[var(--color-muted)]">{tp.reason}</div>
+                      <div className="g5-row-title">{tp.topic}</div>
+                      <div className="g5-row-meta">{tp.reason}</div>
                     </div>
                     <div
                       className="tnum shrink-0 text-lg font-semibold tabular-nums"
@@ -345,29 +369,23 @@ export default async function CommandCenter() {
             {!eventsOk ? (
               <ErrorState compact />
             ) : (
-            <QuotaGauges
-              view={quotaView}
-              labels={{
-                total: t.ops.advQuotaTotal,
-                none: t.ops.advQuotaNone,
-                noData: t.ops.advNoData,
-                slotsSuffix: t.ops.advQuotaSlots,
-                unmeasured: t.ops.advQuotaUnmeasured,
-                hint: t.ops.advQuotaGaugeHint,
-              }}
-            />
+              <QuotaGauges
+                view={quotaView}
+                labels={{
+                  total: t.ops.advQuotaTotal,
+                  none: t.ops.advQuotaNone,
+                  noData: t.ops.advNoData,
+                  slotsSuffix: t.ops.advQuotaSlots,
+                  unmeasured: t.ops.advQuotaUnmeasured,
+                  hint: t.ops.advQuotaGaugeHint,
+                }}
+              />
             )}
           </Widget>
         </aside>
       </div>
 
-      <Widget id="feed" title={t.ops.streamTitle}>
-        <div className={eventsOk ? "h-[420px]" : undefined}>
-          {eventsOk ? <ActivityFeed initial={events} scope={scope} /> : <ErrorState />}
-        </div>
-      </Widget>
-
-      {/* ── The run as one line, the way the direction closes its screen ───── */}
+      {/* ── The run as one line ───────────────────────────────────────────── */}
       <PipelineStrip
         tones={tones}
         right={lastEventAt ? `${t.dashboard.latestRun} · ${relativeTime(lastEventAt)}` : null}
@@ -376,7 +394,7 @@ export default async function CommandCenter() {
   );
 }
 
-/** A label above a figure, the way the direction sets its stat row. */
+/** A label above a figure, the way the pages set their stat rows. */
 function Figure({
   label,
   value,
@@ -398,14 +416,14 @@ function Figure({
   const shownSub = known ? sub : unknownSub ?? sub;
   return (
     <div>
-      <div className="t-label">{label}</div>
+      <div className="g5-k">{label}</div>
       <div
-        className="mt-3 text-[26px] font-semibold tabular-nums"
+        className="g5-fig-v"
         style={known && tone ? { color: tone } : known ? undefined : { color: "var(--color-muted)" }}
       >
         {known ? num(value) : unknown}
       </div>
-      {shownSub && <div className="mt-1.5 max-w-[22ch] truncate text-xs font-light text-[var(--color-muted)]">{shownSub}</div>}
+      {shownSub && <div className="g5-fig-sub">{shownSub}</div>}
     </div>
   );
 }

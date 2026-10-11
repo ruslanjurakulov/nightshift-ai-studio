@@ -20,7 +20,8 @@ export function CustomizeButton() {
     <button
       type="button"
       onClick={toggle}
-      className="btn-quiet text-sm font-normal"
+      aria-pressed={on}
+      className="btn-quiet"
     >
       {on ? t.ops.customizeDone : t.ops.customize}
     </button>

@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
-import { StatusPill } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
+import { Skeleton } from "@/components/feedback/Skeleton";
+import { StateBlock } from "@/components/states/StateBlock";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { needsStepUp, normalizeAal, type AalLevel } from "@/lib/security/aal";
 
@@ -139,7 +141,9 @@ export function SecurityBoard() {
 
   if (!configured) {
     return (
-      <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.security.notConfigured}</div>
+      <section className="panel">
+        <StateBlock tone="warn">{t.security.notConfigured}</StateBlock>
+      </section>
     );
   }
 
@@ -149,138 +153,128 @@ export function SecurityBoard() {
   return (
     <div className="rhythm">
       {dialog}
-      {/* Current assurance level */}
-      <div className="panel flex flex-wrap items-center justify-between gap-2 p-5 sm:p-6">
-        <span className="text-sm text-[var(--color-muted)]">{t.security.currentLevel}</span>
-        <StatusPill
-          tone={aal === "aal2" ? "ok" : "idle"}
-          label={aal === "aal2" ? t.security.aal2 : t.security.aal1}
-        />
-      </div>
 
-      {stepUp && (
-        <p className="tnum text-xs text-[var(--color-muted)]">{t.security.stepUpNote}</p>
+      {/* Where the account stands now */}
+      <section className="panel" aria-labelledby="sec-level">
+        <div className="g5-sechead">
+          <h2 id="sec-level" className="g5-h">
+            {t.security.currentLevel}
+          </h2>
+          <StatusLamp
+            tone={aal === "aal2" ? "ok" : "idle"}
+            label={aal === "aal2" ? t.security.aal2 : t.security.aal1}
+          />
+        </div>
+        {stepUp && <p className="g5-note">{t.security.stepUpNote}</p>}
+      </section>
+
+      {error && (
+        <p role="alert" className="g5-note g5-fail-text">
+          {error}
+        </p>
       )}
 
-      {error && <p className="tnum text-xs text-[var(--color-fail)]">{error}</p>}
+      {/* The job: add an authenticator. One lit desk. */}
+      <section className="panel ns-desk" aria-labelledby="sec-enroll">
+        <div className="flex flex-col gap-5">
+          <h2 id="sec-enroll" className="g5-h">
+            {t.security.enrollTitle}
+          </h2>
 
-      {/* Existing factors */}
-      <div className="panel overflow-hidden p-0">
-        <div className="border-b border-[var(--color-border)] px-4 py-2.5 text-xs text-[var(--color-muted)]">
-          {t.security.factorsTitle}
-        </div>
-        {factors === null ? (
-          <p className="p-4 text-sm text-[var(--color-muted)]">…</p>
-        ) : factors.length === 0 ? (
-          <p className="p-4 text-sm text-[var(--color-muted)]">{t.security.noFactors}</p>
-        ) : (
-          factors.map((f) => (
-            <div
-              key={f.id}
-              className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3 last:border-b-0"
-            >
-              <div className="min-w-0">
-                <div className="truncate text-sm text-[var(--color-fg)]">
-                  {f.friendlyName || t.security.factorsTitle}
-                </div>
-                <div className="tnum text-xs text-[var(--color-muted)]">TOTP</div>
-              </div>
-              <div className="flex items-center gap-3">
-                <StatusPill
-                  tone={f.status === "verified" ? "ok" : "idle"}
-                  label={f.status === "verified" ? t.security.statusVerified : t.security.statusUnverified}
+          {!enrollment ? (
+            <div className="g5-form">
+              <label className="g5-field" data-grow="2">
+                <span className="g5-k">{t.security.friendlyName}</span>
+                <input
+                  type="text"
+                  value={friendlyName}
+                  onChange={(e) => setFriendlyName(e.target.value)}
+                  placeholder={t.security.friendlyNamePh}
+                  className="ns-field min-w-0"
                 />
+              </label>
+              <button type="button" onClick={startEnroll} disabled={busy} className="btn-primary disabled:opacity-40">
+                {t.security.startEnroll}
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-5">
+              <p className="g5-sub" style={{ marginTop: 0 }}>
+                {t.security.scanHint}
+              </p>
+              <div className="flex flex-wrap items-start gap-6">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={enrollment.qrCode} alt="" width={176} height={176} className="g5-qr" />
+                <div className="flex min-w-0 flex-1 basis-60 flex-col gap-2">
+                  <span className="g5-k">{t.security.secretLabel}</span>
+                  <code className="mono g5-secret">{enrollment.secret}</code>
+                </div>
+              </div>
+              <div className="g5-form">
+                <label className="g5-field" data-fixed>
+                  <span className="g5-k">{t.security.codeLabel}</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder={t.security.codePh}
+                    className="ns-field tnum"
+                  />
+                </label>
                 <button
                   type="button"
-                  onClick={() => remove(f)}
-                  disabled={removingId === f.id}
-                  className="btn-sky is-quiet pill px-3 py-1 text-xs disabled:opacity-40"
+                  onClick={verify}
+                  disabled={busy || code.trim().length < 6}
+                  className="btn-primary disabled:opacity-40"
                 >
-                  {removingId === f.id ? t.security.removing : t.security.remove}
+                  {busy ? t.security.verifying : t.security.verify}
                 </button>
               </div>
             </div>
-          ))
-        )}
-      </div>
-
-      {/* Enroll a new factor */}
-      <div className="panel flex flex-col gap-3 p-5 sm:p-6">
-        <div>
-          <h2 className="t-section">{t.security.enrollTitle}</h2>
+          )}
         </div>
+      </section>
 
-        {!enrollment ? (
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-1 flex-col gap-1">
-              <span className="text-xs text-[var(--color-muted)]">
-                {t.security.friendlyName}
-              </span>
-              <input
-                type="text"
-                value={friendlyName}
-                onChange={(e) => setFriendlyName(e.target.value)}
-                placeholder={t.security.friendlyNamePh}
-                className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={startEnroll}
-              disabled={busy}
-              className="btn-sky is-solid pill px-5 py-2 text-sm disabled:opacity-40"
-            >
-              {t.security.startEnroll}
-            </button>
+      {/* The authenticators already on the account */}
+      <section className="panel" aria-labelledby="sec-factors">
+        <div className="g5-sechead">
+          <h2 id="sec-factors" className="g5-h">
+            {t.security.factorsTitle}
+          </h2>
+        </div>
+        {factors === null ? (
+          <div role="status" className="g5-rows">
+            <span className="sr-only">{t.ux.loading}</span>
+            <div className="g5-row">
+              <Skeleton className="h-5 w-1/3" />
+            </div>
           </div>
+        ) : factors.length === 0 ? (
+          <StateBlock tone="idle" compact>
+            {t.security.noFactors}
+          </StateBlock>
         ) : (
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-[var(--color-muted)]">{t.security.scanHint}</p>
-            <div className="flex flex-wrap items-start gap-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={enrollment.qrCode}
-                alt=""
-                width={176}
-                height={176}
-                className="size-44 rounded-lg border border-[var(--color-border)] bg-white p-2"
-              />
-              <div className="flex min-w-0 flex-col gap-2">
-                <span className="text-xs text-[var(--color-muted)]">
-                  {t.security.secretLabel}
-                </span>
-                <code className="mono break-all rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-xs text-[var(--color-fg)]">
-                  {enrollment.secret}
-                </code>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-end gap-3">
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-[var(--color-muted)]">
-                  {t.security.codeLabel}
-                </span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  placeholder={t.security.codePh}
-                  className="tnum w-40 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+          <ul className="g5-rows">
+            {factors.map((f) => (
+              <li key={f.id} className="g5-row" style={{ gridTemplateColumns: "minmax(0, 1fr) auto auto" }}>
+                <div className="min-w-0">
+                  <p className="g5-row-title">{f.friendlyName || t.security.factorsTitle}</p>
+                  <p className="g5-row-meta">TOTP</p>
+                </div>
+                <StatusLamp
+                  tone={f.status === "verified" ? "ok" : "idle"}
+                  label={f.status === "verified" ? t.security.statusVerified : t.security.statusUnverified}
                 />
-              </label>
-              <button
-                type="button"
-                onClick={verify}
-                disabled={busy || code.trim().length < 6}
-                className="btn-sky is-solid pill px-5 py-2 text-sm disabled:opacity-40"
-              >
-                {busy ? t.security.verifying : t.security.verify}
-              </button>
-            </div>
-          </div>
+                <button type="button" onClick={() => remove(f)} disabled={removingId === f.id} className="btn-quiet disabled:opacity-40">
+                  {removingId === f.id ? t.security.removing : t.security.remove}
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
-      </div>
+      </section>
     </div>
   );
 }

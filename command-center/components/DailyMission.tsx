@@ -2,6 +2,7 @@
 
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { useI18n } from "@/lib/i18n/context";
+import "@/app/(app)/app-pages-g5.css";
 
 /**
  * Today's real activity — published videos, analytics snapshots, and learning
@@ -22,38 +23,37 @@ export function DailyMission({
   const learningActive = learningToday !== null && learningToday > 0;
 
   const rows = [
-    { label: t.ops.missionPublished, value: publishedToday, tone: "var(--color-primary)" },
-    { label: t.ops.missionAnalytics, value: analyticsToday, tone: "var(--color-secondary)" },
+    { label: t.ops.missionPublished, value: publishedToday, tone: undefined },
+    { label: t.ops.missionAnalytics, value: analyticsToday, tone: undefined },
   ];
 
   return (
-    <div className="flex flex-col gap-3 p-4">
-      <div className="grid grid-cols-2 gap-3">
+    <div className="flex flex-col gap-5">
+      <div className="g5-figs" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
         {rows.map((r) => (
-          <div key={r.label} className="rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2">
-            <div className="text-xs text-[var(--color-muted)]">{r.label}</div>
+          <div key={r.label}>
+            <div className="g5-k">{r.label}</div>
             {r.value === null ? (
-              <div className="tnum text-2xl font-bold" style={{ color: "var(--color-muted)" }}>
+              <div className="g5-fig-v" style={{ color: "var(--color-muted)" }}>
                 {t.common.unknown}
               </div>
             ) : (
-              <div className="tnum text-2xl font-bold tabular-nums" style={{ color: r.tone }}>
+              <div className="g5-fig-v" style={{ color: r.tone }}>
                 <AnimatedNumber value={r.value} />
               </div>
             )}
           </div>
         ))}
       </div>
-      <div className="flex items-center justify-between rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2">
-        <span className="text-xs text-[var(--color-muted)]">{t.ops.missionLearning}</span>
-        <span
-          className="tnum text-xs font-semibold"
-          style={{ color: learningActive ? "var(--color-ok)" : "var(--color-muted)" }}
-        >
-          {learningToday === null ? t.common.unknown : learningActive ? t.ops.missionActive : t.ops.missionIdle}
-        </span>
-      </div>
-      <p className="tnum text-xs text-[var(--color-muted)]">
+      <ul className="g5-tiles">
+        <li className="g5-tile">
+          <span className="g5-tile-name">{t.ops.missionLearning}</span>
+          <span className="g5-v" style={{ color: learningActive ? "var(--color-ok)" : "var(--color-muted)" }}>
+            {learningToday === null ? t.common.unknown : learningActive ? t.ops.missionActive : t.ops.missionIdle}
+          </span>
+        </li>
+      </ul>
+      <p className="g5-note">
         {t.ops.missionToday} · {t.ops.missionTargetNa}
       </p>
     </div>

@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
-import { StatusPill } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
+import { Skeleton } from "@/components/feedback/Skeleton";
+import { StateBlock } from "@/components/states/StateBlock";
 import { ErrorState } from "@/components/ReadError";
 import { ROLES, type Role } from "@/lib/auth/roles-shared";
 
@@ -135,139 +137,148 @@ export function MembersBoard({
 
   return (
     <div className="rhythm">
-      {/* Your role + capability legend */}
-      <div className="panel flex flex-col gap-3 p-5 sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-sm text-[var(--color-muted)]">{t.members.yourRole}</span>
-          <StatusPill tone={canManage ? "ok" : "idle"} label={roleLabel[myRole]} />
-        </div>
-        <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-          {ROLES.map((r) => (
-            <li key={r} className="text-xs leading-relaxed text-[var(--color-muted)]">
-              <span className="font-semibold text-[var(--color-fg)]">{roleLabel[r]}</span> — {t.members[`cap_${r}` as const]}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {/* Bootstrap: claim ownership while the roster is empty */}
+      {/* The job on this page: claim the roster while it is empty, or add a person. One lit desk. */}
       {empty && (
-        <div className="panel flex flex-col gap-3 p-5 sm:p-6">
-          <div>
-            <h2 className="t-section">{t.members.claimTitle}</h2>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.members.claimHint}</p>
-          </div>
-          <button
-            type="button"
-            onClick={claim}
-            disabled={busy}
-            className="btn-sky is-solid pill self-start px-5 py-2 text-sm disabled:opacity-40"
-          >
-            {busy ? t.members.adding : t.members.claim}
-          </button>
-        </div>
-      )}
-
-      {/* Add member (owner/admin) */}
-      {canManage && !empty && (
-        <div className="panel flex flex-col gap-3 p-5 sm:p-6">
-          <h2 className="t-section">{t.members.addTitle}</h2>
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-1 flex-col gap-1">
-              <span className="text-xs text-[var(--color-muted)]">{t.members.addEmail}</span>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder={t.members.emailPh}
-                className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-[var(--color-muted)]">{t.members.addRole}</span>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as Role)}
-                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
-              >
-                {MANAGE_ROLES.map((r) => (
-                  <option key={r} value={r}>{roleLabel[r]}</option>
-                ))}
-                {myRole === "owner" && <option value="owner">{roleLabel.owner}</option>}
-              </select>
-            </label>
-            <button
-              type="button"
-              onClick={add}
-              disabled={busy || !email.trim()}
-              className="btn-sky is-solid pill px-5 py-2 text-sm disabled:opacity-40"
-            >
-              {busy ? t.members.adding : t.members.add}
+        <section className="panel ns-desk" aria-labelledby="mb-claim">
+          <div className="flex flex-col items-start gap-4">
+            <div>
+              <h2 id="mb-claim" className="g5-h">
+                {t.members.claimTitle}
+              </h2>
+              <p className="g5-sub">{t.members.claimHint}</p>
+            </div>
+            <button type="button" onClick={claim} disabled={busy} className="btn-primary disabled:opacity-40">
+              {busy ? t.members.adding : t.members.claim}
             </button>
           </div>
-          <p className="text-xs text-[var(--color-muted)]">{t.members.addNote}</p>
-        </div>
+        </section>
       )}
 
-      {error && <p className="tnum text-xs text-[var(--color-fail)]">{error}</p>}
+      {canManage && !empty && (
+        <section className="panel ns-desk" aria-labelledby="mb-add">
+          <div className="flex flex-col gap-5">
+            <h2 id="mb-add" className="g5-h">
+              {t.members.addTitle}
+            </h2>
+            <div className="g5-form">
+              <label className="g5-field" data-grow="2">
+                <span className="g5-k">{t.members.addEmail}</span>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder={t.members.emailPh}
+                  className="ns-field min-w-0"
+                />
+              </label>
+              <label className="g5-field" data-fixed>
+                <span className="g5-k">{t.members.addRole}</span>
+                <select value={role} onChange={(e) => setRole(e.target.value as Role)} className="ns-field">
+                  {MANAGE_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {roleLabel[r]}
+                    </option>
+                  ))}
+                  {myRole === "owner" && <option value="owner">{roleLabel.owner}</option>}
+                </select>
+              </label>
+              <button type="button" onClick={add} disabled={busy || !email.trim()} className="btn-primary disabled:opacity-40">
+                {busy ? t.members.adding : t.members.add}
+              </button>
+            </div>
+            <p className="g5-note">{t.members.addNote}</p>
+          </div>
+        </section>
+      )}
 
-      {/* Roster */}
-      <div className="panel overflow-hidden p-0">
-        <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-[var(--color-border)] px-4 py-2.5 text-xs text-[var(--color-muted)]">
-          <span>{t.members.colEmail}</span>
-          <span>{t.members.colRole}</span>
-          <span />
+      {error && (
+        <p role="alert" className="g5-note g5-fail-text">
+          {error}
+        </p>
+      )}
+
+      {/* The roster: one ruled row per person */}
+      <section className="panel" aria-labelledby="mb-roster">
+        <div className="g5-sechead">
+          <h2 id="mb-roster" className="g5-h">
+            {t.members.colEmail}
+          </h2>
+          <StatusLamp tone={canManage ? "ok" : "idle"} label={`${t.members.yourRole}: ${roleLabel[myRole]}`} />
         </div>
         {loadFailed ? (
           <ErrorState compact onRetry={load} />
         ) : members === null ? (
-          <p className="p-4 text-sm text-[var(--color-muted)]">…</p>
-        ) : members.length === 0 ? (
-          <p className="p-4 text-sm text-[var(--color-muted)]">{t.members.empty}</p>
-        ) : (
-          members.map((m) => {
-            const isOwnerRow = m.role === "owner";
-            const canEditThis = canManage && (!isOwnerRow || myRole === "owner");
-            return (
-              <div
-                key={m.id}
-                className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-[var(--color-border)] px-4 py-3 last:border-b-0"
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-sm text-[var(--color-fg)]">{m.email}</div>
-                  <div className="tnum text-xs text-[var(--color-muted)]">
-                    {m.user_id ? t.members.statusActive : t.members.statusInvited}
-                  </div>
-                </div>
-                {canEditThis ? (
-                  <select
-                    value={m.role}
-                    onChange={(e) => changeRole(m, e.target.value as Role)}
-                    className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1 text-xs text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
-                  >
-                    {ROLES.filter((r) => r !== "owner" || myRole === "owner").map((r) => (
-                      <option key={r} value={r}>{roleLabel[r]}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <StatusPill tone={isOwnerRow ? "ok" : "idle"} label={roleLabel[m.role]} />
-                )}
-                {canEditThis ? (
-                  <button
-                    type="button"
-                    onClick={() => remove(m)}
-                    className="btn-sky is-quiet pill px-3 py-1 text-xs"
-                  >
-                    {t.members.remove}
-                  </button>
-                ) : (
-                  <span />
-                )}
+          <div role="status" className="g5-rows">
+            <span className="sr-only">{t.ux.loading}</span>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="g5-row">
+                <Skeleton className="h-5 w-1/2" />
               </div>
-            );
-          })
+            ))}
+          </div>
+        ) : members.length === 0 ? (
+          <StateBlock tone="idle" compact>
+            {t.members.empty}
+          </StateBlock>
+        ) : (
+          <ul className="g5-rows">
+            {members.map((m) => {
+              const isOwnerRow = m.role === "owner";
+              const canEditThis = canManage && (!isOwnerRow || myRole === "owner");
+              return (
+                <li key={m.id} className="g5-row g5-person">
+                  <div className="min-w-0">
+                    <p className="g5-row-title">{m.email}</p>
+                    <p className="g5-row-meta">
+                      <StatusLamp tone={m.user_id ? "ok" : "idle"} label={m.user_id ? t.members.statusActive : t.members.statusInvited} />
+                    </p>
+                  </div>
+                  {canEditThis ? (
+                    <select
+                      value={m.role}
+                      onChange={(e) => changeRole(m, e.target.value as Role)}
+                      aria-label={`${t.members.colRole}: ${m.email}`}
+                      className="ns-field g5-person-role"
+                    >
+                      {ROLES.filter((r) => r !== "owner" || myRole === "owner").map((r) => (
+                        <option key={r} value={r}>
+                          {roleLabel[r]}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="g5-v g5-person-role">{roleLabel[m.role]}</span>
+                  )}
+                  {canEditThis ? (
+                    <button type="button" onClick={() => remove(m)} className="btn-quiet">
+                      {t.members.remove}
+                    </button>
+                  ) : (
+                    <span aria-hidden />
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         )}
-      </div>
+      </section>
+
+      {/* What each role may do */}
+      <section className="panel" aria-labelledby="mb-roles">
+        <div className="g5-sechead">
+          <h2 id="mb-roles" className="g5-h">
+            {t.members.colRole}
+          </h2>
+        </div>
+        <dl className="g5-legend">
+          {ROLES.map((r) => (
+            <div key={r}>
+              <dt>{roleLabel[r]}</dt>
+              <dd>{t.members[`cap_${r}` as const]}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
     </div>
   );
 }

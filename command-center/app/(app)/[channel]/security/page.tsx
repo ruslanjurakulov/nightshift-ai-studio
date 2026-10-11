@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/PageHeader";
 import { SecurityBoard } from "@/components/security/SecurityBoard";
 import { getDictionary } from "@/lib/i18n/server";
+import "../../app-pages-g5.css";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -17,7 +18,7 @@ export default async function SecurityPage() {
   const { t } = await getDictionary();
 
   return (
-    <div className="rhythm">
+    <div className="rhythm ns-open g5-page">
       <PageHeader icon="security" title={t.security.title} subtitle={t.security.subtitle} />
       <SecurityBoard />
     </div>

@@ -3,6 +3,7 @@
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { StatCard } from "@/components/ui";
+import { StateBlock } from "@/components/states/StateBlock";
 import { usd } from "@/components/billing/BillingBoard";
 import type { CostDriver, UnitEconomics } from "@/lib/unitEconomics";
 
@@ -23,10 +24,16 @@ export function UnitEconomicsCard({ ue, scope }: { ue: UnitEconomics; scope: str
 
   if (ue.sampleSize === 0) {
     return (
-      <div className="panel p-5 sm:p-6">
-        <h2 className="t-section">{u.title}</h2>
-        <p className="mt-2 text-sm text-[var(--color-muted)]">{fmt(u.empty, { days: ue.windowDays })}</p>
-      </div>
+      <section className="panel" aria-labelledby="ue-title">
+        <div className="g5-sechead">
+          <h2 id="ue-title" className="g5-h">
+            {u.title}
+          </h2>
+        </div>
+        <StateBlock tone="idle" compact>
+          {fmt(u.empty, { days: ue.windowDays })}
+        </StateBlock>
+      </section>
     );
   }
 
@@ -35,15 +42,15 @@ export function UnitEconomicsCard({ ue, scope }: { ue: UnitEconomics; scope: str
   const top = ue.drivers.slice(0, 3);
 
   return (
-    <div className="panel flex flex-col gap-4 p-5 sm:p-6">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="t-section">{u.title}</h2>
-        <span className="tnum text-xs text-[var(--color-muted)]">
-          {fmt(u.scope, { n: ue.sampleSize, days: ue.windowDays, scope })}
-        </span>
+    <section className="panel flex flex-col gap-6" aria-labelledby="ue-title">
+      <div className="g5-sechead" style={{ marginBottom: 0 }}>
+        <h2 id="ue-title" className="g5-h">
+          {u.title}
+        </h2>
+        <span className="g5-note">{fmt(u.scope, { n: ue.sampleSize, days: ue.windowDays, scope })}</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-4">
         <StatCard label={u.medianVideo} value={usd(ue.medianPerVideo)} sub={pricedSub} tone={ue.medianPerVideo === null ? "idle" : undefined} />
         <StatCard label={u.p90Video} value={usd(ue.p90PerVideo)} sub={pricedSub} tone={ue.p90PerVideo === null ? "idle" : undefined} />
         <StatCard label={u.medianMinute} value={usd(ue.medianPerMinute)} sub={minuteSub} tone={ue.medianPerMinute === null ? "idle" : undefined} />
@@ -51,26 +58,28 @@ export function UnitEconomicsCard({ ue, scope }: { ue: UnitEconomics; scope: str
       </div>
 
       {ue.partialVideos > 0 && (
-        <p className="text-sm text-[var(--color-warn)]" role="status">
+        <p className="g5-note" role="status" style={{ color: "var(--color-warn)" }}>
           {fmt(u.partial, { n: ue.partialVideos })}
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <section className="flex flex-col gap-2">
-          <h3 className="text-xs text-[var(--color-muted)]">{u.driversTitle}</h3>
+      <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
+        <section className="flex flex-col gap-2" aria-labelledby="ue-drivers">
+          <h3 id="ue-drivers" className="g5-k">
+            {u.driversTitle}
+          </h3>
           {top.length === 0 ? (
-            <p className="text-sm text-[var(--color-muted)]">{u.driversNone}</p>
+            <p className="g5-note">{u.driversNone}</p>
           ) : (
-            <ul className="flex flex-col gap-1.5">
+            <ul className="g5-tiles">
               {top.map((d) => (
-                <li key={d.key} className="flex items-baseline justify-between gap-3 text-xs">
-                  <span className="min-w-0 truncate text-[var(--color-fg)]">{label(d)}</span>
-                  <span className="tnum shrink-0 text-right text-[var(--color-fg)]">
+                <li key={d.key} className="g5-tile">
+                  <span className="g5-tile-name">{label(d)}</span>
+                  <span className="g5-v shrink-0 text-right">
                     {usd(d.usdPerVideo)}
                     {u.perVideo}
                     {d.share !== null && (
-                      <span className="text-[var(--color-muted)]">
+                      <span className="g5-note" style={{ display: "inline" }}>
                         {" · "}
                         {fmt(u.share, { pct: `${Math.round(d.share * 100)}%` })}
                       </span>
@@ -83,27 +92,27 @@ export function UnitEconomicsCard({ ue, scope }: { ue: UnitEconomics; scope: str
         </section>
 
         {ue.unpriced.length > 0 && (
-          <section className="flex flex-col gap-2">
-            <h3 className="text-xs text-[var(--color-muted)]">{u.unpricedTitle}</h3>
-            <ul className="flex flex-col gap-1.5">
+          <section className="flex flex-col gap-2" aria-labelledby="ue-unpriced">
+            <h3 id="ue-unpriced" className="g5-k">
+              {u.unpricedTitle}
+            </h3>
+            <ul className="g5-tiles">
               {ue.unpriced.map((x) => (
-                <li key={x.unit} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-xs">
-                  <span className="text-[var(--color-fg)]">{labels[x.unit] ?? x.unit}</span>
-                  <span className="flex items-baseline gap-2">
-                    <code className="mono text-xs text-[var(--color-primary)]">{x.envVar}</code>
-                    <span className="tnum text-xs text-[var(--color-muted)]">{fmt(u.unpricedIn, { n: x.videos })}</span>
+                <li key={x.unit} className="g5-tile" style={{ flexWrap: "wrap" }}>
+                  <span className="g5-tile-name">{labels[x.unit] ?? x.unit}</span>
+                  <span className="flex items-baseline gap-3">
+                    <code className="mono text-sm text-[var(--ns-act-ink)]">{x.envVar}</code>
+                    <span className="g5-note">{fmt(u.unpricedIn, { n: x.videos })}</span>
                   </span>
                 </li>
               ))}
             </ul>
-            <p className="text-xs leading-relaxed text-[var(--color-muted)]">{u.unpricedHint}</p>
+            <p className="g5-note">{u.unpricedHint}</p>
           </section>
         )}
       </div>
 
-      {ue.unattributedRows > 0 && (
-        <p className="tnum text-xs text-[var(--color-muted)]">{fmt(u.unattributed, { n: ue.unattributedRows })}</p>
-      )}
-    </div>
+      {ue.unattributedRows > 0 && <p className="g5-note">{fmt(u.unattributed, { n: ue.unattributedRows })}</p>}
+    </section>
   );
 }
