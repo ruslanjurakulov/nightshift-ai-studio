@@ -34,7 +34,13 @@
  * jobs), `videos` (a channel with videos made and one waiting for approval),
  * `running` (a clip being made right now), `low` (a few credits left),
  * `extraoff` (extra credits switched off), `unpriced` (no price is set: the
- * estimate and the clip price are unknown, never 0). `FAKE_MODELS=1` is not
+ * estimate and the clip price are unknown, never 0). The Settings → Account and
+ * security section (migration 0096) has three: `acct` (no @username yet),
+ * `acct_handle` (has @ana.k, free to change) and `acct_cool` (changed 10 days
+ * ago: the next change date is shown). The username check answers true for
+ * every well-formed name except a few made-up held ones (see TAKEN_HANDLES),
+ * from handle_available (signed in) and handle_available_public (the sign-up
+ * form, through the app's own route). `FAKE_MODELS=1` is not
  * needed: every state but `new` offers two made-up clip models so the clip
  * desk has a price to show.
  */
@@ -104,6 +110,10 @@ const STATES = {
   low: { plan: "creator", granted: 2000, spent: 1980, held: 0, extra: 0, bonus: 0, on: true },
   extraoff: { plan: "creator", granted: 2000, spent: 1240, held: 0, extra: 500, bonus: 0, on: false },
   unpriced: { plan: "creator", granted: 2000, spent: 1240, held: 0, extra: 500, bonus: 100, on: true },
+  // Settings → Account and security (0096): the account of `videos`, with or without an @username.
+  acct: { plan: "creator", granted: 2000, spent: 1240, held: 180, extra: 500, bonus: 100, on: true },
+  acct_handle: { plan: "creator", granted: 2000, spent: 1240, held: 180, extra: 500, bonus: 100, on: true },
+  acct_cool: { plan: "creator", granted: 2000, spent: 1240, held: 180, extra: 500, bonus: 100, on: true },
 };
 const PLANS = {
   free: { id: "free", name: "Free", monthly_credits: 0, is_default: true, sort_order: 0, slots: 1, priority: 0, api: false },
@@ -183,7 +193,15 @@ function creditAccountFor(state) {
 const ADMIN = process.env.FAKE_ADMIN === "1";
 
 // ── what each app-screen state has made ────────────────────────────────────
-const APP_STATES = new Set(["new", "videos", "running", "low", "extraoff", "unpriced"]);
+const APP_STATES = new Set(["new", "videos", "running", "low", "extraoff", "unpriced", "acct", "acct_handle", "acct_cool"]);
+// Made-up held @usernames: the check says "taken" for these and "free" for anything else well formed.
+const TAKEN_HANDLES = new Set(["taken.name", "maria.k", "alice.lab", "night.owl"]);
+const handleRow = (state) =>
+  state === "acct_handle"
+    ? [{ handle: "ana.k", created_at: iso(-90 * DAY), changed_at: iso(-90 * DAY) }]
+    : state === "acct_cool"
+      ? [{ handle: "ana.k", created_at: iso(-90 * DAY), changed_at: iso(-10 * DAY) }]
+      : [];
 const MODELS = [
   { id: "qa-clip-fast", display_name: "Quick clip", capabilities: ["t2v", "i2v", "t2i"], availability: "ga", verified_at: "2026-09-01T00:00:00Z" },
   { id: "qa-clip-best", display_name: "Best clip", capabilities: ["t2v", "i2v"], availability: "ga", verified_at: "2026-09-01T00:00:00Z" },
@@ -339,6 +357,20 @@ export function startFakeSupabase(port = 54399) {
           return send(res, 200, { credits: 40 });
         }
       }
+      if (rpc[1] === "handle_available" || rpc[1] === "handle_available_public") {
+        let body = "";
+        req.on("data", (c) => (body += c));
+        req.on("end", () => {
+          let name = "";
+          try {
+            name = String(JSON.parse(body).p_handle ?? "");
+          } catch {
+            // an unreadable body asks about nothing
+          }
+          send(res, 200, !TAKEN_HANDLES.has(name));
+        });
+        return;
+      }
       if (rpc[1] in RPC) return send(res, 200, RPC[rpc[1]]);
       return send(res, 403, { code: "42501", message: "visual-qa fake: not available" });
     }
@@ -355,6 +387,7 @@ export function startFakeSupabase(port = 54399) {
           rows = state === "new" ? [] : VIDEOS.filter((v) => (held ? !v.published_at && !v.privacy : uploaded ? v.published_at || v.privacy : true));
         }
         if (table[1] === "creative_jobs") rows = JOBS(state);
+        if (table[1] === "user_handles") rows = handleRow(state);
         if (table[1] === "model_registry") rows = state === "new" ? [] : MODELS;
       }
       const single = String(req.headers.accept || "").includes("vnd.pgrst.object");
