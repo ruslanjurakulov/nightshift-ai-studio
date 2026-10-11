@@ -34,7 +34,18 @@
 /* Inside the desk the figure's own top rule is the desk's edge already. */
 .g4 .ns-desk .g4-figures > * { border-top: 0; padding-top: 0; }
 .g4 .ns-desk .g4-figures [class*="border-t"] { border-top: 0; padding-top: 0; }
-.g4 .g4-figures .t-figure { overflow-wrap: anywhere; }
+.g4 .g4-figures .t-figure { overflow-wrap: break-word; hyphens: none; }
+/* Two figures side by side on a phone: a word like "unpriced" must fit its half whole, so the figure steps down. */
+@media (max-width: 639px) {
+  .g4 .g4-figures .t-figure { font-size: clamp(1.25rem, 5.4vw, 1.625rem); }
+}
+/* A gate row: the lamp in its own column, then the reasons. */
+.g4 .g4-kv.g4-gate > li { align-items: flex-start; justify-content: flex-start; gap: 20px; }
+.g4 .g4-gate-lamp { flex: none; min-width: 7.5rem; }
+@media (max-width: 479px) {
+  .g4 .g4-kv.g4-gate > li { flex-direction: column; gap: 6px; }
+  .g4 .g4-gate-lamp { min-width: 0; }
+}
 .g4 .g4-unknown { color: var(--color-muted); }
 
 /* ── Two columns of ruled sections ─────────────────────────────────────────── */

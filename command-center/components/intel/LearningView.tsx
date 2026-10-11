@@ -73,7 +73,7 @@ export function LearningView({
                   label: t.intel.decScore,
                   align: "end",
                   render: (ti) => (
-                    <span className="font-semibold" style={{ color: (ti.score ?? 0) >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}>
+                    <span className="font-semibold" style={{ color: ti.score == null ? "var(--color-muted)" : ti.score >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}>
                       {ti.score == null ? t.common.na : ti.score.toFixed(0)}
                     </span>
                   ),

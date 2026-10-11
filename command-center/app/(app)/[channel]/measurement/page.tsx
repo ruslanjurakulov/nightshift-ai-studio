@@ -351,7 +351,7 @@ export default async function MeasurePage() {
             {gateEvents.length === 0 ? (
               <EmptyState>{t.measure.gateEmpty}</EmptyState>
             ) : (
-              <ul className="g4-kv mt-4">
+              <ul className="g4-kv g4-gate mt-4">
                 {gateEvents.map((e) => {
                   const blocked = e.event === "publish.blocked";
                   // Reasons are the gate's own strings (see publish_gate.to_metadata);
@@ -361,8 +361,8 @@ export default async function MeasurePage() {
                     ...((e.metadata?.warnings as string[] | undefined) ?? []),
                   ];
                   return (
-                    <li key={e.event_key} style={{ alignItems: "flex-start", justifyContent: "flex-start", gap: 20 }}>
-                      <span className="shrink-0" style={{ minWidth: "7.5rem" }}>
+                    <li key={e.event_key}>
+                      <span className="g4-gate-lamp">
                         <StatusPill
                           tone={blocked ? "fail" : "ok"}
                           label={blocked ? t.measure.gateBlocked : t.measure.gateAllowed}
