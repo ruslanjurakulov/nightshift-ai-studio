@@ -216,12 +216,13 @@ an API job equal a Studio job's.
 
 ## Developer console (`/{channel}/developers`, owners/admins)
 
-Overview (balance, tier, month-to-date spend, limits) · API keys (create with
-scopes, a request limit and a credit ceiling / show once / revoke / per-key
-limit) · Usage (requests and spend per day,
-per-endpoint breakdown, from `api_requests`, kept ~90 days) · Billing (top-up
-with a custom amount, payment history with Paddle invoice links) · Limits
-(organization monthly limit).
+A strip above every tab shows the shared API balance with Add funds (the top-up
+with a custom amount). Three tabs: API keys (create with a name and one of two
+presets, Standard or Read only; scopes, a request limit, a per-key monthly cap and
+a credit ceiling under More options / show once / revoke / per-key limit) · Usage
+and billing (tier, month-to-date spend, the organization monthly limit, requests
+and spend per day, per-endpoint breakdown from `api_requests` kept ~90 days,
+payment history with Paddle invoice links) · Connected apps.
 
 ## Owner setup
 

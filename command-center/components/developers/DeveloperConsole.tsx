@@ -307,7 +307,11 @@ export function DeveloperConsole({
   const { t, locale } = useI18n();
   const d = t.developers;
   const path = useChannelPath();
-  const [tab, setTab] = useState<Tab>("keys");
+  // Opened from the address when it names a tab, so #billing never mounts Keys (and its fetch) first.
+  // Server-side there is no address, and the loading state that is rendered there does not depend on the tab.
+  const [tab, setTab] = useState<Tab>(() =>
+    typeof window === "undefined" ? "keys" : (tabFromAddress(window.location.search, window.location.hash) ?? "keys"),
+  );
   const [info, setInfo] = useState<Console | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "missing" | "error">("loading");
   const [paidTick, setPaidTick] = useState(0);
@@ -770,6 +774,11 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
               <strong>{fmt(d.presetCustom, { n: scopes.length })}</strong> {d.presetCustomHint}
             </p>
           )}
+          {scopes.length === 0 && (
+            <p role="alert" className="text-sm text-[var(--color-fail)]">
+              {d.scopesRequired}
+            </p>
+          )}
         </fieldset>
 
         <details open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)} className="group flex flex-col">
@@ -864,31 +873,31 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
                       <ul className="mb-2 flex list-disc flex-col gap-0.5 pl-5 text-sm">
                         {scopesOf(k).map((x) => (
                           <li key={x}>{scopeLabel(d, x)}</li>
-                          ))}
-                        </ul>
-                        {k.scopes === null && <p className="mb-1 text-sm text-[var(--color-muted)]">{d.keyAccessLegacy}</p>}
-                        <p className="mb-1 text-sm text-[var(--color-muted)]">{`${d.keyRpmShort}: ${k.rpm_limit ?? d.noLimit}`}</p>
-                        <p className="mb-1 text-sm text-[var(--color-muted)]">{`${d.keyCreditsShort}: ${k.creative_monthly_credits ?? d.noLimit}`}</p>
-                      </details>
-                    </td>
-                    <td className={CELL} data-label={`${d.keyLimitShort}:`}>
-                      {k.monthly_limit_cents === null ? d.noLimit : formatUsd(k.monthly_limit_cents, locale)}
-                    </td>
-                    <td className="block py-1 md:table-cell md:py-2 md:text-right">
-                      {k.revoked_at ? (
-                        <span className="text-sm">{d.revoked}</span>
-                      ) : (
-                        <span className="flex flex-wrap gap-2 md:justify-end">
-                          <button type="button" className="btn-quiet px-3! text-sm" onClick={() => setKeyLimit(k)}>
-                            {d.setLimit}
-                          </button>
-                          <button type="button" className="btn-quiet px-3! text-sm" onClick={() => revoke(k)}>
-                            {d.revoke}
-                          </button>
-                        </span>
-                      )}
-                    </td>
-                  </tr>
+                        ))}
+                      </ul>
+                      {k.scopes === null && <p className="mb-1 text-sm text-[var(--color-muted)]">{d.keyAccessLegacy}</p>}
+                      <p className="mb-1 text-sm text-[var(--color-muted)]">{`${d.keyRpmShort}: ${k.rpm_limit ?? d.noLimit}`}</p>
+                      <p className="mb-1 text-sm text-[var(--color-muted)]">{`${d.keyCreditsShort}: ${k.creative_monthly_credits ?? d.noLimit}`}</p>
+                    </details>
+                  </td>
+                  <td className={CELL} data-label={`${d.keyLimitShort}:`}>
+                    {k.monthly_limit_cents === null ? d.noLimit : formatUsd(k.monthly_limit_cents, locale)}
+                  </td>
+                  <td className="block py-1 md:table-cell md:py-2 md:text-right">
+                    {k.revoked_at ? (
+                      <span className="text-sm">{d.revoked}</span>
+                    ) : (
+                      <span className="flex flex-wrap gap-2 md:justify-end">
+                        <button type="button" className="btn-quiet px-3! text-sm" onClick={() => setKeyLimit(k)}>
+                          {d.setLimit}
+                        </button>
+                        <button type="button" className="btn-quiet px-3! text-sm" onClick={() => revoke(k)}>
+                          {d.revoke}
+                        </button>
+                      </span>
+                    )}
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>

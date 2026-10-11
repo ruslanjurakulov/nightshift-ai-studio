@@ -23,10 +23,13 @@ vi.mock("@/lib/i18n/context", async () => {
   return { useI18n: () => ({ t: en, locale: "en", fmt }) };
 });
 
-const h = vi.hoisted(() => ({ rpc: vi.fn(), tables: {} as Record<string, unknown[]> }));
+const h = vi.hoisted(() => ({ rpc: vi.fn(), tables: {} as Record<string, unknown[]>, read: [] as string[] }));
 vi.mock("@/lib/supabase/client", () => ({
   createClient: () => ({
-    from: (table: string) => supabaseStub(() => ({ data: h.tables[table] ?? [], error: null })).from(table),
+    from: (table: string) => {
+      h.read.push(table);
+      return supabaseStub(() => ({ data: h.tables[table] ?? [], error: null })).from(table);
+    },
     rpc: h.rpc,
   }),
 }));
@@ -63,6 +66,7 @@ function answer(info: unknown) {
 
 beforeEach(() => {
   h.rpc.mockReset();
+  h.read.length = 0;
   h.tables = {
     api_keys: [
       { id: "k_full", name: "Server", monthly_limit_cents: null, created_at: "2026-09-02T08:00:00Z", last_used_at: null, revoked_at: null, scopes: [...LEGACY_SCOPES], rpm_limit: null, creative_monthly_credits: null },
@@ -80,7 +84,7 @@ const balance = () => screen.getByTestId("api-balance").textContent;
 const tabs = () => screen.getAllByRole("tab");
 
 describe("scopes: the two presets", () => {
-  it("'Full access' is exactly today's default key; 'Read only' can change and spend nothing", () => {
+  it("'Standard' is exactly today's default key; 'Read only' can change and spend nothing", () => {
     expect([...KEY_PRESETS.full]).toEqual([...LEGACY_SCOPES]);
     expect(KEY_PRESETS.full.some((s) => s.startsWith("creative:"))).toBe(false);
     expect(READ_ONLY_SCOPES.every((s) => s.endsWith(":read"))).toBe(true);
@@ -133,6 +137,16 @@ describe("DeveloperConsole", () => {
     expect(screen.getByText(d.historyTitle)).toBeTruthy(); // was the Billing tab
     expect(await screen.findByText(d.noUsage)).toBeTruthy(); // was the Usage tab
     expect(screen.getByText(d.monthSpend)).toBeTruthy(); // was the Overview tab
+  });
+
+  it("an old #billing link never mounts Keys first: the keys are not even read", async () => {
+    window.history.replaceState(null, "", "/x/developers#billing");
+    answer(INFO);
+    render(<DeveloperConsole orgId="o1" topup={TOPUP} />);
+    await screen.findByText(d.historyTitle);
+    expect(screen.getByRole("tab", { name: d.tabUsage }).getAttribute("aria-selected")).toBe("true");
+    expect(h.read).not.toContain("api_keys");
+    expect(h.read).toContain("api_ledger");
   });
 
   it("shows the shared API balance (less what is on hold) with Add funds on every tab", async () => {
@@ -301,7 +315,31 @@ describe("the key form", () => {
     expect(created()).toBeUndefined();
   });
 
-  it("key rows say Full access, Read only or Custom (n), with the whole list one tap away; Set limit and Revoke stay", async () => {
+  it("with every permission unticked and More options closed, the form says why Create key is off", async () => {
+    await open();
+    fireEvent.change(screen.getByLabelText(d.keyName), { target: { value: "Nothing" } });
+    fireEvent.click(screen.getByText(d.moreOptions));
+    for (const s of LEGACY_SCOPES) fireEvent.click(screen.getByLabelText(new RegExp(`^${({ "account:read": d.scopeAccountRead, "videos:read": d.scopeVideosRead, "videos:write": d.scopeVideosWrite } as Record<string, string>)[s]}$`)));
+    fireEvent.click(screen.getByText(d.moreOptions)); // close it again
+    expect((screen.getByText(d.moreOptions).closest("details") as HTMLDetailsElement).open).toBe(false);
+    expect(screen.getByText("Custom (0)")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toBe(d.scopesRequired);
+    expect((screen.getByRole("button", { name: d.create }) as HTMLButtonElement).disabled).toBe(true);
+    // ticking one permission clears the message and turns the button back on
+    fireEvent.click(screen.getByRole("radio", { name: new RegExp(d.presetRead) }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect((screen.getByRole("button", { name: d.create }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("the Standard preset is named for what it is and still sends today's default scopes", () => {
+    expect(en.developers.presetFull).toBe("Standard");
+    expect(ru.developers.presetFull).toBe("Стандартный");
+    expect(uz.developers.presetFull).toBe("Standart");
+    expect(en.developers.presetFullHint).toContain("AI generations paid in credits are off");
+    expect([...KEY_PRESETS.full]).toEqual([...LEGACY_SCOPES]);
+  });
+
+  it("key rows say Standard, Read only or Custom (n), with the whole list one tap away; Set limit and Revoke stay", async () => {
     await open();
     const row = (name: string) => screen.getByText(name).closest("tr") as HTMLElement;
     expect(within(row("Server")).getByText(d.presetFull)).toBeTruthy();
