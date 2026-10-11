@@ -11,6 +11,7 @@ import type { FeedbackSignalRow, SystemEventRow } from "@/lib/types";
 import { relativeTime, storedMs } from "@/lib/format";
 import { useOverlay } from "@/components/a11y/useOverlay";
 import { useChannelPath } from "@/lib/channels-client";
+import { useShell } from "@/components/shell/ShellContext";
 import "@/app/(app)/app-pages-g5.css";
 
 const SEEN_KEY = "chronos_notif_seen";
@@ -41,6 +42,7 @@ const KIND_TONE: Record<NotificationKind, "ok" | "fail" | "warn" | "info" | "run
 export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
   const { t } = useI18n();
   const path = useChannelPath();
+  const { operator } = useShell();
   const [events, setEvents] = useState<SystemEventRow[]>([]);
   const [signals, setSignals] = useState<FeedbackSignalRow[]>([]);
   const [open, setOpen] = useState(false);
@@ -197,9 +199,12 @@ export function NotificationsCenter({ scope }: { scope: ChannelScope }) {
           {notifications.length === 0 ? (
             <div className="g5-notif-empty">
               <p>{t.ops.notifEmpty}</p>
-              <Link href={path("/logs")} className="g5-link" onClick={() => setOpen(false)}>
-                {t.ops.notifOpenLog}
-              </Link>
+              {/* The log is the operator's screen: a customer is not offered a link the app would bounce. */}
+              {operator && (
+                <Link href={path("/logs")} className="g5-link" onClick={() => setOpen(false)}>
+                  {t.ops.notifOpenLog}
+                </Link>
+              )}
             </div>
           ) : (
             <ul tabIndex={0} aria-label={t.ops.notifTitle} className="g5-notif-list scroll-focus max-h-[60vh] overflow-y-auto overscroll-contain">

@@ -115,10 +115,10 @@ select.ns-field { padding-right: 12px; }
 
 /* Figures in a row: label, value, sub; a rule between them */
 .g5-figs { display: grid; gap: 20px 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.g5-figs > div { padding-right: 20px; min-width: 0; }
+.g5-figs > div { padding-right: 12px; min-width: 0; }
 @media (min-width: 720px) {
   .g5-figs { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-  .g5-figs > div + div { padding-left: 28px; border-left: 1px solid var(--ns-rule); }
+  .g5-figs > div + div { padding-left: 20px; border-left: 1px solid var(--ns-rule); }
 }
 .g5-fig-v { margin-top: 8px; font-size: clamp(1.625rem, 1.3rem + 1vw, 2rem); font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .g5-fig-sub { margin-top: 6px; max-width: 24ch; font-size: 0.875rem; line-height: 1.4; color: var(--color-muted); overflow-wrap: anywhere; }
@@ -209,7 +209,7 @@ select.ns-field { padding-right: 12px; }
 .g5-feed { display: flex; flex-direction: column; }
 .g5-feed-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding-bottom: 12px; }
 .g5-feed-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; border-bottom: 1px solid var(--ns-rule); }
-.g5-feed-item { display: grid; grid-template-columns: 4.5rem auto auto minmax(0, 1fr); align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--ns-rule); font-size: 0.9375rem; }
+.g5-feed-item { display: grid; grid-template-columns: 6.5rem auto auto minmax(0, 1fr); align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--ns-rule); font-size: 0.9375rem; }
 .g5-feed-item .g5-feed-t { font-size: 0.875rem; color: var(--color-muted); font-variant-numeric: tabular-nums; }
 .g5-feed-item .g5-feed-agent { color: var(--ns-act-ink); font-size: 0.875rem; }
 .g5-feed-item .g5-feed-event { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-fg); }
@@ -341,3 +341,10 @@ select.ns-field { padding-right: 12px; }
   .g5-form > .btn-primary { flex: 1 1 100%; }
 }
 .g5-welcome-grid { margin-block: auto; }
+
+/* A reading that is not known is words, not a figure: smaller, and allowed to break inside its column. */
+.g5-unknown { font-size: clamp(1rem, 0.95rem + 0.25vw, 1.125rem); font-weight: 600; line-height: 1.2; letter-spacing: 0; overflow-wrap: break-word; min-width: 0; }
+.g5-figs > div, .g5-fig-v { min-width: 0; overflow-wrap: break-word; }
+/* While another key is the page's one filled primary, a key drawn by a shared component is shown quiet (styling only). */
+.g5-quiet-keys .btn-primary { background: transparent; color: var(--color-fg); box-shadow: none; border: 1px solid var(--ns-rule-strong); font-weight: 500; }
+.g5-quiet-keys .btn-primary:hover { background: var(--ns-act-soft); color: var(--color-fg); border-color: var(--ns-act); }

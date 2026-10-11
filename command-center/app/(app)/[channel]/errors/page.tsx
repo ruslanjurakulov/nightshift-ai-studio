@@ -59,29 +59,38 @@ export default async function ErrorCenter() {
       <PageHeader icon="errors" title={t.errors.title} subtitle={t.errors.subtitle} />
 
       <div className="grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-4">
-        <StatCard
-          label={t.errors.errors24h}
-          value={<AnimatedNumber value={errors24h} />}
-          tone={errors24h ? "fail" : "ok"}
-          sub={errors24h ? t.errors.needsAttention : t.errors.none}
-        />
-        <StatCard
-          label={t.errors.errorsShown}
-          value={<AnimatedNumber value={errors.length} />}
-          tone={errors.length ? "warn" : "ok"}
-          sub={fmt(t.errors.ofRecent, { n: events.length })}
-        />
-        <StatCard
-          label={t.errors.scanned}
-          value={<AnimatedNumber value={events.length} />}
-          sub={fmt(t.errors.mostRecent, { n: FETCH_LIMIT })}
-        />
-        <StatCard
-          label={t.errors.lastError}
-          value={lastError ? t.errors.seen : t.errors.noneUpper}
-          tone={lastError ? "warn" : "ok"}
-          sub={lastError ? t.errors.seeTable : t.errors.cleanWindow}
-        />
+        {queryFailed ? (
+          // A failed read is unknown, never 0, "none" or a clean window.
+          [t.errors.errors24h, t.errors.errorsShown, t.errors.scanned, t.errors.lastError].map((label) => (
+            <StatCard key={label} label={label} value={<span className="g5-unknown">{t.common.unknown}</span>} tone="idle" sub={t.common.couldNotRead} />
+          ))
+        ) : (
+          <>
+            <StatCard
+              label={t.errors.errors24h}
+              value={<AnimatedNumber value={errors24h} />}
+              tone={errors24h ? "fail" : "ok"}
+              sub={errors24h ? t.errors.needsAttention : t.errors.none}
+            />
+            <StatCard
+              label={t.errors.errorsShown}
+              value={<AnimatedNumber value={errors.length} />}
+              tone={errors.length ? "warn" : "ok"}
+              sub={fmt(t.errors.ofRecent, { n: events.length })}
+            />
+            <StatCard
+              label={t.errors.scanned}
+              value={<AnimatedNumber value={events.length} />}
+              sub={fmt(t.errors.mostRecent, { n: FETCH_LIMIT })}
+            />
+            <StatCard
+              label={t.errors.lastError}
+              value={lastError ? t.errors.seen : t.errors.noneUpper}
+              tone={lastError ? "warn" : "ok"}
+              sub={lastError ? t.errors.seeTable : t.errors.cleanWindow}
+            />
+          </>
+        )}
       </div>
 
       <section className="panel" aria-labelledby="er-title">

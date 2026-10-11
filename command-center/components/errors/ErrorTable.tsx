@@ -101,7 +101,7 @@ export function ErrorTable({ rows }: { rows: SystemEventRow[] }) {
                 <div className="g5-fail-head">
                   <span className="g5-fail-event">{e.event}</span>
                   <span className="g5-fail-who">{e.agent ?? t.common.system}</span>
-                  <StatusLamp tone="fail" label={isError(e) ? t.errors.sevError : t.errors.sevWarn} />
+                  <StatusLamp tone={isError(e) ? "fail" : "warn"} label={isError(e) ? t.errors.sevError : t.errors.sevWarn} />
                 </div>
                 <p className="g5-fail-msg">{errorText(e.metadata)}</p>
                 {(e.video_id || e.job_id) && (

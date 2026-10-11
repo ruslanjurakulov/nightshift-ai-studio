@@ -34,7 +34,7 @@ export function DailyMission({
           <div key={r.label}>
             <div className="g5-k">{r.label}</div>
             {r.value === null ? (
-              <div className="g5-fig-v" style={{ color: "var(--color-muted)" }}>
+              <div className="g5-fig-v g5-unknown" style={{ color: "var(--color-muted)" }}>
                 {t.common.unknown}
               </div>
             ) : (

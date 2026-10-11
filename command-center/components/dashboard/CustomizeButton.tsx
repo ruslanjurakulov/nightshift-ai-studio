@@ -20,7 +20,6 @@ export function CustomizeButton() {
     <button
       type="button"
       onClick={toggle}
-      aria-pressed={on}
       className="btn-quiet"
     >
       {on ? t.ops.customizeDone : t.ops.customize}

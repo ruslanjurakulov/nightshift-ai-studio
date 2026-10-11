@@ -268,13 +268,16 @@ export default async function CommandCenter() {
             </div>
 
             <div className="g5-actions" style={{ marginTop: 28 }}>
-              {canProduce && scopedChannel && runDesk && (
-                <RunNowButton
-                  variant="inline"
-                  channelId={scopedChannel.channel_id}
-                  githubConfigured={isRunNowConfigured}
-                  label={t.dashboard.produce}
-                />
+              {canProduce && scopedChannel && (
+                // Same visibility as ever. While the finish-setup key is the page's filled primary this one is drawn quiet (styling only).
+                <div className={runDesk ? undefined : "g5-quiet-keys"}>
+                  <RunNowButton
+                    variant="inline"
+                    channelId={scopedChannel.channel_id}
+                    githubConfigured={isRunNowConfigured}
+                    label={t.dashboard.produce}
+                  />
+                </div>
               )}
               {operator && (
                 <Link href={path("/pipeline")} className={`${canProduce || !runDesk ? "btn-quiet" : "btn-primary"} text-sm`}>
@@ -418,7 +421,7 @@ function Figure({
     <div>
       <div className="g5-k">{label}</div>
       <div
-        className="g5-fig-v"
+        className={known ? "g5-fig-v" : "g5-fig-v g5-unknown"}
         style={known && tone ? { color: tone } : known ? undefined : { color: "var(--color-muted)" }}
       >
         {known ? num(value) : unknown}
