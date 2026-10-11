@@ -24,6 +24,8 @@ export interface RateRule {
 
 export const VOICE_LIST_RATE: RateRule = { bucket: "elevenlabs.voices", max: 20, windowSeconds: 3600 };
 export const VOICE_PREVIEW_RATE: RateRule = { bucket: "elevenlabs.preview", max: 10, windowSeconds: 3600 };
+/** Profile photo changes (upload or remove) per person: a few real edits, not a loop. */
+export const AVATAR_WRITE_RATE: RateRule = { bucket: "avatar.write", max: 20, windowSeconds: 3600 };
 
 const local = new Map<string, { start: number; count: number }>();
 
