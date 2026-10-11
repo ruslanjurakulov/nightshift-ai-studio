@@ -82,7 +82,7 @@ export function CustomerSidebar({ email, plan }: { email: string | null; plan: A
         )}
         <div className="shell-sidebar-head">
           {/* The rail keeps the bare N; the full lockup comes back with the labels. */}
-          <Link href={path(home.href)} className="inline-flex min-h-11 items-center text-[var(--color-fg)]" aria-label={t.brand.name}>
+          <Link href={path(home.href)} className="inline-flex min-h-11 min-w-11 items-center text-[var(--color-fg)]" aria-label={t.brand.name}>
             <Wordmark height={collapsed ? 32 : 31} mark={collapsed} />
           </Link>
           {/* The panel toggle: a square with a divider, as the panel icon of a chat app. Collapses the rail to its icons. */}

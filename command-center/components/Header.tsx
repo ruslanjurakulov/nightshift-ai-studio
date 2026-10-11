@@ -66,13 +66,13 @@ export function Header({
     return (
       <header className="shell-topbar sticky top-0 z-30 px-4 py-2 lg:px-6">
         <div className="flex min-h-10 flex-wrap items-center gap-x-2 gap-y-2 sm:gap-x-3">
-          {/* The wordmark lives in the sidebar from `lg` up. The N is 30px high from 390px wide, 27px
-              from 375px, 25px from 360px and 22px below that (lettering 14.6, 13.2, 12.2 and 10.7px),
-              the widest the credit key, the bell and the account leave room for on this row. */}
+          {/* The wordmark lives in the sidebar from `lg` up. The N is 28px high from 390px wide, 26px
+              from 375px, 24px from 360px and 21px below 345px (lettering 13.7, 12.7, 11.7 and 10.2px):
+              the widest that leaves the credit key (up to 12,345), the bell and the account on this row. */}
           <Link
             href={path("/create")}
             aria-label={t.brand.name}
-            className="tap-link inline-flex shrink-0 items-center text-[var(--color-fg)] [--wm-h:30px] max-[389px]:[--wm-h:27px] max-[374px]:[--wm-h:25px] max-[359px]:[--wm-h:22px] lg:hidden"
+            className="tap-link inline-flex shrink-0 items-center text-[var(--color-fg)] [--wm-h:28px] max-[390px]:[--wm-h:26px] max-[375px]:[--wm-h:24px] max-[345px]:[--wm-h:21px] lg:hidden"
           >
             <Wordmark />
           </Link>

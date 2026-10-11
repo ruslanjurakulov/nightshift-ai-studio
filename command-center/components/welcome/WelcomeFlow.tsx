@@ -264,7 +264,7 @@ function Frame({ steps, index, children }: { steps: string[]; index: number; chi
   return (
     <div className="g5-welcome-in">
       <div className="g5-welcome-bar">
-        <div className="inline-flex items-center text-[var(--color-fg)] [--wm-h:30px] max-[359px]:[--wm-h:24px]">
+        <div className="inline-flex items-center text-[var(--color-fg)] [--wm-h:30px] max-[359px]:[--wm-h:22px]">
           <Wordmark />
           <span className="sr-only">{t.brand.name}</span>
         </div>
