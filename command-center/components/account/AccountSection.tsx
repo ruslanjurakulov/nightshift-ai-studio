@@ -4,6 +4,7 @@ import { LogOut } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
 import { ConnectedAccountsList, planDetail, planLabel, useAccountSummary, useSignOut } from "@/components/account/AccountParts";
 
 /**
@@ -71,6 +72,10 @@ export function AccountSection({ email }: { email: string | null }) {
         <div className="flex items-center justify-between gap-3">
           <span className="text-sm text-[var(--color-fg)]">{t.common.theme}</span>
           <ThemeToggle showLabel />
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-[var(--color-fg)]">{t.common.view}</span>
+          <ViewModeToggle showLabel />
         </div>
       </div>
 

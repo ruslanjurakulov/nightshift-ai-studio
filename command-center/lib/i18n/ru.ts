@@ -160,6 +160,7 @@ export const ru: Dictionary = {
     language: "Язык",
     dark: "Тёмная",
     light: "Светлая",
+    view: "Вид",
     viewMobile: "Мобильный",
     viewDesktop: "Десктоп",
     switchToMobile: "Переключить на мобильный вид",

@@ -170,6 +170,7 @@ export const en = {
     light: "Light",
     // The Mobile / Desktop view switch (components/view-mode/ViewModeToggle.tsx). The pair names the layout on screen NOW;
     // the switch labels name the layout a press gives.
+    view: "View",
     viewMobile: "Mobile",
     viewDesktop: "Desktop",
     switchToMobile: "Switch to Mobile view",

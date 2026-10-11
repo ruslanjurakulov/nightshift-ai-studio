@@ -1,8 +1,8 @@
 "use client";
 
-import { useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Monitor, Smartphone } from "lucide-react";
-import { I18nContext } from "@/lib/i18n/public-context";
+import { usePublicI18n } from "@/lib/i18n/public-context";
 import type { PublicDictionary } from "@/lib/i18n/public";
 import {
   DESKTOP_MEDIA,
@@ -36,22 +36,27 @@ const PHONE_SCREEN_PX = 700;
  * control renders an empty box of its final size and then fills in, like
  * ThemeToggle: no layout shift, no hydration mismatch.
  */
-export function ViewModeToggle({
+export function ViewModeToggle(props: ViewModeProps) {
+  const { t } = usePublicI18n();
+  return <ViewModeControl {...props} labels={t.common} />;
+}
+
+type ViewModeProps = {
+  variant?: "pill" | "link";
+  showLabel?: boolean;
+  /** With a label: below `lg` only the icon shows (the top bar is crowded there); the accessible name stays. */
+  compact?: boolean;
+  className?: string;
+};
+
+/** The same control with its words handed in, for a server-rendered footer that holds the dictionary already. */
+export function ViewModeControl({
   variant = "pill",
   showLabel = false,
   compact = false,
   labels,
   className = "",
-}: {
-  variant?: "pill" | "link";
-  showLabel?: boolean;
-  /** With a label: below `lg` only the icon shows (the top bar is crowded there); the accessible name stays. */
-  compact?: boolean;
-  /** The words, when the caller already holds them (a server-rendered footer); otherwise the surrounding i18n provider's. */
-  labels?: PublicDictionary["common"];
-  className?: string;
-}) {
-  const ctx = useContext(I18nContext);
+}: ViewModeProps & { labels: PublicDictionary["common"] }) {
   const [mode, setMode] = useState<ViewMode | null>(null);
 
   useEffect(() => {
@@ -70,8 +75,7 @@ export function ViewModeToggle({
     reloadTop();
   }
 
-  const c = labels ?? ctx?.t.common;
-  if (!c) throw new Error("ViewModeToggle needs labels or an i18n provider");
+  const c = labels;
   const action = mode === "mobile" ? c.switchToDesktop : mode === "desktop" ? c.switchToMobile : c.viewMobile;
   const Icon = mode === "desktop" ? Monitor : Smartphone;
 

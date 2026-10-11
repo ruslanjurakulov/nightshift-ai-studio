@@ -160,17 +160,16 @@ for (const page of ["/", "/pricing"]) {
   await c.close();
 }
 
-// The phone's own switch (account panel) goes to Desktop.
+// The phone's own switch (Settings, Your account) goes to Desktop.
 {
   const c = await ctx(PHONE, { signedIn: true });
   const p = await c.newPage();
-  await p.goto(BASE + "/night-owl/home", { waitUntil: "load" });
-  await p.waitForTimeout(1000);
-  await p.getByRole("button", { name: /account/i }).first().click();
-  await p.waitForTimeout(500);
-  const t = p.getByRole("button", { name: "Switch to Desktop view" });
-  check((await t.count()) === 1 && (await t.textContent())?.trim() === "Mobile", "phone, panel: the switch shows Mobile (current)");
-  await shot(p, "phone-panel_en_390_light");
+  await p.goto(BASE + "/night-owl/organization", { waitUntil: "load" });
+  await p.waitForTimeout(1500);
+  const t = p.getByRole("button", { name: "Switch to Desktop view" }).filter({ visible: true });
+  await t.first().scrollIntoViewIfNeeded();
+  check((await t.count()) === 1 && (await t.textContent())?.trim() === "Mobile", "phone, Settings account: the switch shows Mobile (current)");
+  await shot(p, "phone-account_en_390_light", { fullPage: true });
   await t.click();
   await p.waitForLoadState("load");
   await p.waitForTimeout(900);
@@ -296,16 +295,19 @@ for (const scheme of ["light", "dark"]) {
     check(new URL(fv.url()).pathname === "/night-owl/videos", "deep link to Videos opens inside the frame");
     await shot(p, "desktop-mobile_videos_en_1440_light");
 
-    // The account panel inside the frame carries the switch too.
-    await fv.getByRole("button", { name: /account/i }).first().click();
-    await p.waitForTimeout(600);
-    check((await fv.getByRole("button", { name: "Switch to Desktop view" }).count()) === 1, "inside the frame: the account panel's switch is there");
-    await shot(p, "desktop-mobile_panel_en_1440_light");
-    await fv.getByRole("button", { name: "Switch to Desktop view" }).click();
+    // Settings, Your account, inside the frame carries the switch too.
+    await p.goto(BASE + "/night-owl/organization", { waitUntil: "load" });
+    const fa = await frameOf(p);
+    await p.waitForTimeout(1500);
+    const inFrame = fa.getByRole("button", { name: "Switch to Desktop view" }).filter({ visible: true });
+    await inFrame.first().scrollIntoViewIfNeeded();
+    check((await inFrame.count()) === 1, "inside the frame: the Settings account section's switch is there");
+    await shot(p, "desktop-mobile_account_en_1440_light");
+    await inFrame.first().click();
     await p.waitForFunction(() => !document.querySelector("iframe.ns-view-phone"), null, { timeout: 15000 });
     const back = await widths(p);
     check((await cookieOf(c)) === "desktop" && back.inner === 1440 && back.lg, "inside the frame, press: the whole window reloads in the Desktop layout", JSON.stringify(back));
-    check(new URL(p.url()).pathname === "/night-owl/videos", "...on the same page", p.url());
+    check(new URL(p.url()).pathname === "/night-owl/organization", "...on the same page", p.url());
   }
   check(problems.length === 0, `desktop Mobile (${scheme}): no CSP violation or script error`, problems.join(" | "));
   await c.close();

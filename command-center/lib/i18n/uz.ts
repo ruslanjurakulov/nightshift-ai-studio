@@ -160,6 +160,7 @@ export const uz: Dictionary = {
     language: "Til",
     dark: "Tungi",
     light: "Kunduzgi",
+    view: "Koʻrinish",
     viewMobile: "Mobil",
     viewDesktop: "Desktop",
     switchToMobile: "Mobil koʻrinishga oʻtish",
