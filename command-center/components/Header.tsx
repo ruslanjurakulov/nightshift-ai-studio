@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
-import { BrandMark } from "@/components/site/BrandMark";
+import { Wordmark } from "@/components/site/Wordmark";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { AccountMenu } from "@/components/account/AccountMenu";
@@ -65,14 +65,16 @@ export function Header({
   if (!operator) {
     return (
       <header className="shell-topbar sticky top-0 z-30 px-4 py-2 lg:px-6">
-        <div className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-2">
-          {/* The wordmark lives in the sidebar from `lg` up. */}
+        <div className="flex min-h-10 flex-wrap items-center gap-x-2 gap-y-2 sm:gap-x-3">
+          {/* The wordmark lives in the sidebar from `lg` up. The N is 30px high from 390px wide, 27px
+              from 375px, 25px from 360px and 22px below that (lettering 14.6, 13.2, 12.2 and 10.7px),
+              the widest the credit key, the bell and the account leave room for on this row. */}
           <Link
             href={path("/create")}
-            className="tap-link ns-wordmark inline-flex shrink-0 items-center gap-2 lg:hidden"
+            aria-label={t.brand.name}
+            className="tap-link inline-flex shrink-0 items-center text-[var(--color-fg)] [--wm-h:30px] max-[389px]:[--wm-h:27px] max-[374px]:[--wm-h:25px] max-[359px]:[--wm-h:22px] lg:hidden"
           >
-            <BrandMark size={34} />
-            {t.brand.name}
+            <Wordmark />
           </Link>
           {/* The organization and channel, when there is more than one to choose
               between (each renders nothing otherwise): beside the wordmark on a
@@ -81,7 +83,7 @@ export function Header({
             <OrgSwitcher orgs={orgs} currentId={currentOrgId} />
             <ChannelSwitcher channels={channels} selection={selection} />
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-1 sm:gap-2">
             <span className="hidden sm:contents">
               <button
                 type="button"
@@ -121,10 +123,10 @@ export function Header({
         <div className="flex min-w-0 items-center gap-6 xl:gap-10">
         <Link
           href={path("/command-center")}
-          className="tap-link ns-wordmark inline-flex shrink-0 items-center gap-2"
+          aria-label={t.brand.name}
+          className="tap-link inline-flex shrink-0 items-center text-[var(--color-fg)] [--wm-h:32px] max-[389px]:[--wm-h:27px] max-[359px]:[--wm-h:24px]"
         >
-          <BrandMark size={34} />
-          {t.brand.name}
+          <Wordmark />
         </Link>
       </div>
 

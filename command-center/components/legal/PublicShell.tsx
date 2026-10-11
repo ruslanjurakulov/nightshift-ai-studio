@@ -4,7 +4,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { PublicMobileMenu } from "@/components/legal/PublicMobileMenu";
-import { BrandMark } from "@/components/site/BrandMark";
+import { Wordmark } from "@/components/site/Wordmark";
 import { preloadSiteFonts } from "@/components/site/fonts";
 import { SiteEffects } from "@/components/site/SiteEffects";
 import { DEFAULT_LOCALE, LOCALES, dictionaries } from "@/lib/i18n";
@@ -63,9 +63,8 @@ export function PublicShell({
       </a>
       <header className="st-header">
         <div className="st-wrap st-header-row relative">
-          <Link href="/" className="st-brand">
-            <BrandMark />
-            {t.brand.name}
+          <Link href="/" className="st-brand" aria-label={t.brand.name}>
+            <Wordmark />
           </Link>
 
           <nav aria-label={t.landing.nav.label} className="st-nav">

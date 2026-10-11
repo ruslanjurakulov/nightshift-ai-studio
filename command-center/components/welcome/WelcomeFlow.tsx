@@ -9,7 +9,7 @@ import { ALL_CHANNELS_SLUG, CHANNEL_COOKIE, channelPath } from "@/lib/channels";
 import { ORG_NAME_MAX, validateOrgName } from "@/lib/orgs";
 import { SignOutButton } from "@/components/SignOutButton";
 import { LanguageSelector } from "@/components/LanguageSelector";
-import { BrandMark } from "@/components/site/BrandMark";
+import { Wordmark } from "@/components/site/Wordmark";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { newChannelHref, WELCOME_NICHE_MAX, WELCOME_LANGUAGE_MAX } from "@/lib/welcome";
 
@@ -264,9 +264,9 @@ function Frame({ steps, index, children }: { steps: string[]; index: number; chi
   return (
     <div className="g5-welcome-in">
       <div className="g5-welcome-bar">
-        <div className="ns-wordmark inline-flex items-center gap-2">
-          <BrandMark size={32} />
-          {t.brand.name}
+        <div className="inline-flex items-center text-[var(--color-fg)] [--wm-h:30px] max-[359px]:[--wm-h:24px]">
+          <Wordmark />
+          <span className="sr-only">{t.brand.name}</span>
         </div>
         <div className="flex items-center gap-2">
           <LanguageSelector />

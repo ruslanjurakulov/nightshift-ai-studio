@@ -9,7 +9,7 @@ import { WELCOME_CREDITS } from "@/lib/pricing";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { LegalFooter } from "@/components/legal/LegalFooter";
-import { BrandMark } from "@/components/site/BrandMark";
+import { Wordmark } from "@/components/site/Wordmark";
 import { preloadSiteFonts } from "@/components/site/fonts";
 import { LoopClip } from "@/components/site/LoopClip";
 import { ClipPause } from "@/components/site/ClipPause";
@@ -55,9 +55,8 @@ export function AuthShell({
         <SlotImg slot={slot} className="nx-aside-bg" sizes="(min-width: 960px) 900px, 1px" />
         {clip && <LoopClip clip={clip} poster={poster} early position={slotPosition(slot)} />}
         {clip && <ClipPause label={t.site.fx.pause} />}
-        <Link href="/" className="st-brand self-start">
-          <BrandMark />
-          {t.brand.name}
+        <Link href="/" className="st-brand self-start" aria-label={t.brand.name}>
+          <Wordmark />
         </Link>
         <div className="flex flex-col gap-8">
           <p className="st-h2 max-w-[9em]">{asideTitle}</p>
@@ -99,9 +98,8 @@ export function AuthShell({
           {clip && <LoopClip clip={clip} poster={poster} early position={slotPosition(slot)} />}
           {clip && <ClipPause label={t.site.fx.pause} />}
           <span className="nx-result-credit">{creditLine(photo, t.site.samples.credit)}</span>
-          <Link href="/" className="st-brand">
-            <BrandMark />
-            {t.brand.name}
+          <Link href="/" className="st-brand" aria-label={t.brand.name}>
+            <Wordmark />
           </Link>
           <FlowCard stage={t.site.stage} compact />
         </div>
