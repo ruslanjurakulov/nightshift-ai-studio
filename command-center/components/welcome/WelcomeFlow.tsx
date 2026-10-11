@@ -23,7 +23,7 @@ const inputClass = "ns-field min-w-0";
 
 function rememberAllChannels() {
   // The org switch already happened server-side (/api/org/create sets the org
-  // cookie); this is the channel memory, the same thing CreateOrganizationForm sets.
+  // cookie); this is the channel memory a new workspace starts with.
   document.cookie = `${CHANNEL_COOKIE}=${ALL_CHANNELS_SLUG}; path=/; max-age=31536000; samesite=lax`;
 }
 

@@ -9,7 +9,7 @@ do not depend on it.
 ## The one idea: one lit desk per page
 
 The room is dark (on paper, a proof sheet). Work is laid out as **ruled, open sections on the ground**, and exactly **one
-thing per page is lit**: the desk that holds the page's job (the composer, the balance, the workspace name). The desk is the
+thing per page is lit**: the desk that holds the page's job (the composer, the balance, Account and security). The desk is the
 only lifted surface; its top edge carries the same warm-to-indigo hairline the public hero is lit by. The page's one filled
 key is the public site's indigo. Amber is what it is on the public pages: lamps, selection, edge numbers, the focus ring.
 

@@ -147,10 +147,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <NavigationProvider channelNames={channelNames}>
         <ShellProvider operator={operator}>
         <SidebarProvider initialCollapsed={!operator && sidebarCollapsed}>
-          <div className="app-shell atmos relative flex min-h-dvh flex-col">
+          <div className="app-shell atmos relative flex min-h-svh flex-col">
             <NeuralBackdrop dim />
             {operator ? (
-              <div className="relative z-10 flex min-h-dvh flex-col">
+              <div className="relative z-10 flex min-h-svh flex-col">
                 {header}
                 <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
                   <SideNav operator />
@@ -162,7 +162,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               // height on the left, the top bar and the page to its right. On a
               // phone the sidebar gives way to the bottom tab bar, and the page
               // keeps its end above it.
-              <div className="relative z-10 flex min-h-dvh">
+              <div className="relative z-10 flex min-h-svh">
                 <SideNav email={email} plan={plan} />
                 <div className="flex min-w-0 flex-1 flex-col">
                   {header}
@@ -171,7 +171,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </div>
             )}
             <CommandPalette scope={scope} operator={operator} />
-            <ScrollToTop />
+            <ScrollToTop dock={!operator} />
           </div>
         </SidebarProvider>
         </ShellProvider>
