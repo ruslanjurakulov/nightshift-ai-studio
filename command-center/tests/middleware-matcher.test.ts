@@ -205,6 +205,7 @@ describe("the real static files stay public", () => {
     "/favicon.ico",
     "/icon.png",
     "/apple-icon.png",
+    "/icon.svg",
     "/og.png",
     `/api/media/uploads/${ID}`,
   ];
@@ -270,5 +271,16 @@ describe("BR-L-132: a public page has no .rsc form either", () => {
       expect(redirects).toContainEqual({ source, destination: path, permanent: false });
     }
     expect(redirects).toContainEqual({ source: "/.rsc", destination: "/", permanent: false });
+  });
+});
+
+describe("iOS home-screen icon", () => {
+  it("the default apple-touch-icon probes redirect to the public apple-icon.png, before routing", async () => {
+    const { default: nextConfig } = await import("../next.config");
+    const redirects = (await nextConfig.redirects?.()) ?? [];
+    for (const source of ["/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"]) {
+      expect(redirects).toContainEqual({ source, destination: "/apple-icon.png", permanent: false });
+    }
+    expect(runs("/apple-icon.png")).toBe(false);
   });
 });

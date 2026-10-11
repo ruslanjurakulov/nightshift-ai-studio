@@ -175,6 +175,11 @@ const nextConfig: NextConfig = {
         permanent: false,
       })),
       { source: "/.rsc", destination: "/", permanent: false },
+      // iOS asks for these two names when a page names no apple-touch-icon (or before it has read the head); without
+      // a redirect the catch-all answers with an HTML 404 and the home-screen tile falls back to a letter. app/layout.tsx
+      // links the real file; this covers the probe. A redirect runs before the middleware, and /apple-icon.png is public.
+      { source: "/apple-touch-icon.png", destination: "/apple-icon.png", permanent: false },
+      { source: "/apple-touch-icon-precomposed.png", destination: "/apple-icon.png", permanent: false },
     ];
   },
 };

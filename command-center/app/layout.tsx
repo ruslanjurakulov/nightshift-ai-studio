@@ -17,7 +17,12 @@ export const metadata: Metadata = {
   description: "Nightshift makes finished YouTube videos for your channel, shows the price before every run, and waits for your approval before anything goes public.",
   // The tab icon is the tile with the N set larger (icon.svg, favicon.ico). Without this the head also
   // links the 512 px icon.png, whose N is 6 px wide at tab size, and a high-density tab can pick that one.
-  icons: { icon: [{ url: "/icon.svg", type: "image/svg+xml" }, { url: "/favicon.ico", sizes: "32x32" }] },
+  // An explicit `icons` object also replaces Next's auto-generated links, so app/apple-icon.png is not linked on its
+  // own: `apple` must be listed, or iOS "Add to Home Screen" finds no apple-touch-icon and draws a letter tile.
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }, { url: "/favicon.ico", sizes: "32x32" }],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 /** The browser chrome takes the page's ground: the light table, or the control room at night. */
