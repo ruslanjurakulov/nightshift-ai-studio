@@ -239,24 +239,28 @@ function BalanceStrip({
     "min-h-11 w-36 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
   return (
     <div className="flex flex-col gap-3">
-      <section aria-label={d.apiBalance} className="panel flex min-h-[4.25rem] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:px-5">
+      {/* While loading, a phone reserves the height the ready strip has (balance, hold line, full-width button). */}
+      <section
+        aria-label={d.apiBalance}
+        className={`panel flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:min-h-[4.25rem] sm:px-5 ${loading ? "min-h-32" : "min-h-[4.25rem]"}`}
+      >
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
           <span className="text-sm text-[var(--color-muted)]">{d.apiBalance}</span>
           <span className="text-[20px] font-semibold tabular-nums" data-testid="api-balance">
             {available === null ? "—" : formatUsd(available, locale)}
           </span>
           {info && !info.exempt && available !== null ? (
-            <span className="text-sm text-[var(--color-muted)]">{`${d.onHold}: ${formatUsd(info.reserved_cents, locale)}`}</span>
+            <span className="basis-full text-sm text-[var(--color-muted)] sm:basis-auto">{`${d.onHold}: ${formatUsd(info.reserved_cents, locale)}`}</span>
           ) : info?.exempt ? (
-            <span className="text-sm text-[var(--color-muted)]">{d.topupExempt}</span>
+            <span className="basis-full text-sm text-[var(--color-muted)] sm:basis-auto">{d.topupExempt}</span>
           ) : !loading ? (
-            <span className="text-sm text-[var(--color-muted)]">{d.balanceUnknown}</span>
+            <span className="basis-full text-sm text-[var(--color-muted)] sm:basis-auto">{d.balanceUnknown}</span>
           ) : null}
         </div>
         {canAdd ? (
           <button
             type="button"
-            className="btn-sky is-solid pill px-5 text-sm disabled:opacity-40"
+            className="btn-sky is-solid pill w-full px-5 text-sm disabled:opacity-40 sm:w-auto"
             aria-expanded={top.open}
             aria-controls="add-funds-panel"
             disabled={!topup}
@@ -839,7 +843,7 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
             </thead>
             <tbody className="block divide-y divide-[var(--color-border)] md:table-row-group">
               {keys.map((k) => (
-                <tr key={k.id} className={`block py-3 md:table-row md:py-0 ${k.revoked_at ? "opacity-50" : ""}`}>
+                <tr key={k.id} className={`block py-3 md:table-row md:py-0 ${k.revoked_at ? "text-[var(--color-muted)]" : ""}`}>
                   <td className="block py-1 md:table-cell md:py-2 md:pr-3">
                     <span className="block text-base font-medium md:text-sm md:font-normal">{k.name}</span>
                     <span className="block text-sm text-[var(--color-muted)]">{`${d.created}: ${new Date(k.created_at).toLocaleDateString(locale)}`}</span>
