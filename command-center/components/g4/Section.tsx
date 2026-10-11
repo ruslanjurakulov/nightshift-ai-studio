@@ -32,7 +32,7 @@ export function Section({
 /** A row of headline figures between hairlines (StatCard children go inside). */
 export function Figures({ children, cols = 4 }: { children: ReactNode; cols?: 2 | 3 | 4 }) {
   return (
-    <div className="g4-figures" style={{ ["--g4-cols" as string]: cols }}>
+    <div className="g4-figures" data-cols={cols} style={{ ["--g4-cols" as string]: cols }}>
       {children}
     </div>
   );

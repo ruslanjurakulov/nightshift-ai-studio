@@ -351,7 +351,7 @@ export default async function MeasurePage() {
             {gateEvents.length === 0 ? (
               <EmptyState>{t.measure.gateEmpty}</EmptyState>
             ) : (
-              <ul className="g4-kv mt-2">
+              <ul className="g4-kv mt-4">
                 {gateEvents.map((e) => {
                   const blocked = e.event === "publish.blocked";
                   // Reasons are the gate's own strings (see publish_gate.to_metadata);

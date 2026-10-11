@@ -22,8 +22,14 @@
   .g4 .g4-figures > *:first-child { padding-left: 0; }
   .g4 .g4-figures > * + * { border-left: 1px solid var(--ns-rule); }
 }
+@media (min-width: 640px) {
+  .g4 .g4-figures[data-cols="2"] > *:nth-child(odd) { padding-left: 0; border-left: 0; }
+  .g4 .g4-figures[data-cols="2"] > *:nth-child(even) { padding-right: 0; }
+  .g4 .g4-figures[data-cols="2"] > *:nth-child(n + 3) { margin-top: 0; }
+}
 @media (max-width: 639px) {
-  .g4 .g4-figures > *:nth-child(even) { border-left: 1px solid var(--ns-rule); }
+  .g4 .g4-figures > *:nth-child(odd) { padding-left: 0; }
+  .g4 .g4-figures > *:nth-child(even) { padding-left: 16px; padding-right: 0; border-left: 1px solid var(--ns-rule); }
 }
 /* Inside the desk the figure's own top rule is the desk's edge already. */
 .g4 .ns-desk .g4-figures > * { border-top: 0; padding-top: 0; }
@@ -206,10 +212,10 @@
   font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
-.g4 .g4-logs .g4-log-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.g4 .g4-logs .g4-log-meta { white-space: nowrap; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
 .g4 .g4-logs .g4-log-data { color: var(--color-muted); overflow-wrap: anywhere; font-size: 0.8125rem; }
 @media (min-width: 1024px) {
-  .g4 .g4-logs > li { grid-template-columns: 5.5rem 6.5rem 9rem minmax(0, 14rem) minmax(0, 1fr); align-items: baseline; gap: 16px; padding: 8px 0; }
+  .g4 .g4-logs > li { grid-template-columns: 7.5rem 6.5rem 9rem minmax(0, 14rem) minmax(0, 1fr); align-items: baseline; gap: 16px; padding: 8px 0; }
   .g4 .g4-logs .g4-log-meta { display: contents; }
   .g4 .g4-logs .g4-log-data { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
