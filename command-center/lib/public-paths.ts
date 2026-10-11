@@ -297,6 +297,12 @@ export function isWelcomePath(pathname: string): boolean {
   return normalize(pathname) === WELCOME_PATH;
 }
 
+/** Is the query exactly one of the fixed /forgot-password notice codes (`?s=expired`, `?s=needs_link`)? */
+function hasRecoveryNotice(search: string): boolean {
+  const s = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("s");
+  return s === "expired" || s === "needs_link";
+}
+
 /**
  * What the middleware does with a request, given only who is asking.
  *
@@ -309,11 +315,15 @@ export function isWelcomePath(pathname: string): boolean {
  */
 export type GateDecision = "to-login" | "to-home" | "pass" | "app";
 
-export function gateDecision(pathname: string, signedIn: boolean): GateDecision {
+export function gateDecision(pathname: string, signedIn: boolean, search: string = ""): GateDecision {
   if (isPublicApiPath(pathname)) return "pass";
   // The route itself decides: signed out it starts the sign-up, signed in it
   // explains that an invite is for new accounts.
   if (isInviteLinkPath(pathname)) return "pass";
+  // /reset-password sends a signed-in person without a recovery session to
+  // /forgot-password?s=needs_link (and a failed reset link may arrive signed in):
+  // that notice page must open for them rather than bounce home.
+  if (isForgotPasswordPath(pathname) && hasRecoveryNotice(search)) return "pass";
   if (isLoginPath(pathname) || isSignupPath(pathname) || isForgotPasswordPath(pathname)) return signedIn ? "to-home" : "pass";
   // A recovery session is a signed-in one: the page decides (session + the
   // marker the callback set), so the gate neither redirects nor resolves a channel.

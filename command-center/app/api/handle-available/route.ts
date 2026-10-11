@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { isSameOriginPost } from "@/lib/auth-confirm";
 import { publicOrigin } from "@/lib/server/public-origin";
-import { visitorKey } from "@/lib/server/friend-invites";
-import { isHandleAvailablePublic, takeHandleCheck } from "@/lib/server/handle-check";
+import { handleCheckKey, isHandleAvailablePublic, takeHandleCheck } from "@/lib/server/handle-check";
 import { HANDLE_MAX } from "@/lib/handles";
 
 export const runtime = "nodejs";
@@ -21,7 +20,7 @@ const NO_STORE = { "cache-control": "no-store" };
 export async function POST(request: Request) {
   const ours = [publicOrigin(request), new URL(request.url).origin];
   if (!isSameOriginPost(request.headers, ours)) return NextResponse.json({ error: "forbidden" }, { status: 403, headers: NO_STORE });
-  if (!takeHandleCheck(visitorKey(request.headers)))
+  if (!takeHandleCheck(handleCheckKey(request.headers)))
     return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: { ...NO_STORE, "retry-after": "60" } });
 
   let handle: unknown;

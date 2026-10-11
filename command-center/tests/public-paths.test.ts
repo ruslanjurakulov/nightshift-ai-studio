@@ -191,6 +191,15 @@ describe("signed-in users keep today's behaviour", () => {
     expect((await visit("/signup", true)).redirect).toBe("/");
   });
 
+  // /reset-password sends a signed-in person with no recovery session here with a fixed notice.
+  it("are sent away from /forgot-password, but can read its fixed notices through the real middleware", async () => {
+    expect((await visit("/forgot-password", true)).redirect).toBe("/");
+    expect((await visit("/forgot-password?s=needs_link", true)).redirect).toBeNull();
+    expect((await visit("/forgot-password?s=expired", true)).redirect).toBeNull();
+    expect((await visit("/forgot-password?s=whatever", true)).redirect).toBe("/");
+    expect((await visit("/login?s=expired", true)).redirect).toBe("/");
+  });
+
   // A confirmation link opened in a browser that still holds another session
   // must reach the callback, which replaces it.
   it("still reach the auth callback", async () => {

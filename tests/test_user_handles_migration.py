@@ -99,6 +99,8 @@ class UserHandlesMigration(unittest.TestCase):
         for word in ("admin", "administrator", "root", "support", "help", "billing", "api", "mcp", "security",
                      "system", "staff", "moderator", "null", "undefined", "login", "signup"):
             self.assertIn(f"'{word}'", body, word)
+        for word in ("ns", "nightshift", "ai", "bot", "verified", "claude", "official", "staff", "help"):
+            self.assertIn(f"'{word}'", body, word)
         self.assertIn("like 'nightshift%'", body)
         # dots and underscores do not hide a reserved word
         self.assertIn("regexp_replace(p, '[._]', '', 'g')", body)
@@ -107,6 +109,11 @@ class UserHandlesMigration(unittest.TestCase):
         self.assertNotRegex(CODE, r"(?i)\bdrop (table|column|function|index|constraint)\b")
         self.assertNotRegex(CODE, r"(?i)\balter table (?!public\.user_handles)")
         self.assertIn("to_regprocedure('public.take_web_rate(text, integer, integer)') is null", CODE)
+        # a 0042-only database fails loudly at apply time, not at the first sign-up check
+        self.assertIn("conname = 'web_rate_counters_bucket_check'", CODE)
+        self.assertIn("pg_get_constraintdef(oid) like '%@%'", CODE)
+        self.assertIn("0096 needs 0087", CODE)
+        self.assertLess(CODE.index("0096 needs 0087"), CODE.index("create or replace function"))
 
 
 if __name__ == "__main__":

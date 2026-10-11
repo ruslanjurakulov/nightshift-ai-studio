@@ -31,6 +31,7 @@ export const RESERVED_HANDLES: readonly string[] = [
   "noreply", "postmaster", "webmaster", "hostmaster", "abuse", "info", "contact", "sales",
   "press", "legal", "privacy", "terms", "pricing", "docs", "blog", "about", "status",
   "channel", "channels", "everyone", "here", "all", "me", "you", "user", "users",
+  "ns", "nightshift", "ai", "bot", "verified", "claude",
 ];
 export const RESERVED_PREFIX = "nightshift";
 

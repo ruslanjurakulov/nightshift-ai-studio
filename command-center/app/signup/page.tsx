@@ -76,7 +76,8 @@ export default function SignupPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (busy) return;
+    // A name still being checked is waited for (the button is disabled meanwhile), not refused.
+    if (busy || handleStatus.kind === "checking") return;
     // The username is required; "could not check" may go on (the database decides when it is saved).
     const invalid = validateSignup({ email, password, confirm, consent, handleOk: handleAllowsSubmit(handleStatus) });
     if (invalid) {
@@ -249,7 +250,7 @@ export default function SignupPage() {
               )}
             </AuthAlert>
           )}
-          <AuthSubmit busy={busy} disabled={!isSupabaseConfigured}>
+          <AuthSubmit busy={busy} disabled={!isSupabaseConfigured || handleStatus.kind === "checking"}>
             {busy ? t.signup.submitting : t.signup.submit}
           </AuthSubmit>
         </fieldset>

@@ -16,11 +16,12 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * Choose a new password. Only for a RECOVERY session: a signed-in session that
+ * Choose a new password. Meant for a RECOVERY session: a signed-in session that
  * /auth/callback marked for this page (lib/recovery.ts) and that belongs to the
  * same account the marker names. Anyone else — signed out, or signed in the
- * ordinary way, which has Settings → Account and security with the current
- * password — is sent to /forgot-password with a fixed notice. The e-mail shown
+ * ordinary way, which has Settings → Account and security — is sent to
+ * /forgot-password with a fixed notice. That is a UX guard, not a security
+ * control: the marker is unsigned and adds no capability beyond the session. The e-mail shown
  * is the account's own, so a person is never asked to reset one they do not
  * recognise without seeing whose it is.
  */

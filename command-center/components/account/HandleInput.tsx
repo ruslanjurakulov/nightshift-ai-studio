@@ -58,7 +58,7 @@ export function HandleInput({
         disabled={disabled}
         required={required}
         aria-describedby={statusId}
-        aria-invalid={status.kind === "taken" ? true : undefined}
+        aria-invalid={status.kind === "taken" || status.kind === "rule" ? true : undefined}
         className={pub ? "w-full" : "ns-field w-full"}
         style={{ paddingLeft: 30 }}
       />

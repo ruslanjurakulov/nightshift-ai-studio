@@ -68,6 +68,17 @@ begin
      or to_regclass('public.web_rate_counters') is null then
     raise exception '0096 needs 0042/0087 (take_web_rate): apply 0042_web_api_hardening.sql and 0087_audit_and_rate_hardening.sql first';
   end if;
+  -- 0087 widened the counter's bucket check to allow '<bucket>@<seconds>', the
+  -- key the signed-out check below counts under. A database that only has 0042
+  -- would refuse that row at the first sign-up check: fail here, at apply time.
+  if not exists (
+    select 1 from pg_constraint
+     where conrelid = 'public.web_rate_counters'::regclass
+       and conname = 'web_rate_counters_bucket_check'
+       and pg_get_constraintdef(oid) like '%@%'
+  ) then
+    raise exception '0096 needs 0087 (web_rate_counters bucket check allows @): apply 0087_audit_and_rate_hardening.sql first';
+  end if;
 end $$;
 
 -- ─────────────────────────────────────────────────────────────────────────
@@ -96,7 +107,8 @@ create or replace function public.handle_reserved(p text) returns boolean
            'settings', 'profile', 'dashboard', 'console', 'app', 'www', 'web', 'mail', 'email',
            'noreply', 'postmaster', 'webmaster', 'hostmaster', 'abuse', 'info', 'contact', 'sales',
            'press', 'legal', 'privacy', 'terms', 'pricing', 'docs', 'blog', 'about', 'status',
-           'channel', 'channels', 'everyone', 'here', 'all', 'me', 'you', 'user', 'users'
+           'channel', 'channels', 'everyone', 'here', 'all', 'me', 'you', 'user', 'users',
+           'ns', 'nightshift', 'ai', 'bot', 'verified', 'claude'
          ])
 $$;
 

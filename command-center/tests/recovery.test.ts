@@ -112,6 +112,16 @@ describe("the gate for the new pages", () => {
     expect(gateDecision("/api/handle-available/x", false)).toBe("to-login");
     expect(gateDecision("/api/handle-availablex", false)).toBe("to-login");
   });
+  it("a signed-in person is sent home from /forgot-password, except to read a fixed notice", () => {
+    expect(gateDecision("/forgot-password", true, "")).toBe("to-home");
+    expect(gateDecision("/forgot-password", true, "?s=needs_link")).toBe("pass");
+    expect(gateDecision("/forgot-password", true, "?s=expired")).toBe("pass");
+    expect(gateDecision("/forgot-password", true, "?s=other")).toBe("to-home");
+    expect(gateDecision("/forgot-password", true, "?x=1&s=expired")).toBe("pass");
+    // the exemption is for that page alone
+    expect(gateDecision("/login", true, "?s=expired")).toBe("to-home");
+    expect(gateDecision("/signup", true, "?s=needs_link")).toBe("to-home");
+  });
   it("no channel can take either page's name", () => {
     expect(RESERVED_ROOT_SEGMENTS).toContain("forgot-password");
     expect(RESERVED_ROOT_SEGMENTS).toContain("reset-password");

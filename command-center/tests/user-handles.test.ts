@@ -57,6 +57,7 @@ describe("isReservedHandle (mirrors handle_reserved in 0096)", () => {
   it.each(["a.d.m.i.n", "su_pport", "bil.ling", "ad__min"])("dots and underscores do not hide a reserved word (%s)", (h) =>
     expect(isReservedHandle(h)).toBe(true),
   );
+  it.each(["ns", "ai", "bot", "verified", "claude", "official", "staff", "help"])("%s is reserved", (h) => expect(isReservedHandle(h)).toBe(true));
   it("lets ordinary names through", () => {
     for (const h of ["ana.k", "maria_92", "adminton", "night.owl", "shift"]) expect(isReservedHandle(h)).toBe(false);
   });

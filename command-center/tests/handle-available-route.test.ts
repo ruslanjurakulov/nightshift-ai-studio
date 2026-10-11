@@ -9,7 +9,9 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ rpc: h.rpc }) }
 vi.mock("@/lib/config", () => ({ SUPABASE_URL: "https://project.supabase.test", SUPABASE_ANON_KEY: "anon", isSupabaseConfigured: true }));
 
 const { POST } = await import("@/app/api/handle-available/route");
-const { HANDLE_CHECK_LIMIT, resetHandleChecks } = await import("@/lib/server/handle-check");
+const { HANDLE_CHECK_LIMIT, HANDLE_CHECK_MAX_KEYS, handleCheckKey, handleCheckSize, resetHandleChecks, takeHandleCheck } = await import(
+  "@/lib/server/handle-check"
+);
 
 function ask(body: unknown, headers: Record<string, string> = {}, raw?: string) {
   return POST(
@@ -83,5 +85,31 @@ describe("POST /api/handle-available (the sign-up form's check)", () => {
     expect((await ask(null, {}, "not json")).status).toBe(400);
     expect((await ask(null, { "content-length": "5000" }, JSON.stringify({ handle: "ana.k" }))).status).toBe(400);
     expect(await json(await ask({ handle: 5 }))).toEqual({ available: false });
+  });
+});
+
+describe("the per-address memory", () => {
+  it("is capped: many addresses in one window cannot grow it without bound, the oldest are forgotten", () => {
+    const now = 1_800_000_000_000;
+    for (let i = 0; i < HANDLE_CHECK_MAX_KEYS + 500; i++) takeHandleCheck(`10.0.${Math.floor(i / 250)}.${i % 250}`, now);
+    expect(handleCheckSize()).toBe(HANDLE_CHECK_MAX_KEYS);
+    // the newest is still counted; the oldest started again from zero
+    for (let i = 0; i < HANDLE_CHECK_LIMIT.max; i++) takeHandleCheck("newest", now);
+    expect(takeHandleCheck("newest", now)).toBe(false);
+    expect(handleCheckSize()).toBeLessThanOrEqual(HANDLE_CHECK_MAX_KEYS);
+  });
+
+  it("keys on the platform's own header first, then Cloudflare's, then the first forwarded address", () => {
+    const h = (o: Record<string, string>) => handleCheckKey(new Headers(o));
+    expect(h({ "x-vercel-forwarded-for": "203.0.113.1", "x-forwarded-for": "6.6.6.6", "cf-connecting-ip": "7.7.7.7" })).toBe("203.0.113.1");
+    expect(h({ "cf-connecting-ip": "7.7.7.7", "x-forwarded-for": "6.6.6.6" })).toBe("7.7.7.7");
+    expect(h({ "x-forwarded-for": "6.6.6.6, 10.0.0.1" })).toBe("6.6.6.6");
+    expect(h({})).toBe("unknown");
+    expect(h({ "x-forwarded-for": "x".repeat(200) }).length).toBe(64);
+  });
+
+  it("the route limits by that key, not by a spoofable forwarded header when the platform sent its own", async () => {
+    for (let i = 0; i < HANDLE_CHECK_LIMIT.max; i++) await ask({ handle: "ana.k" }, { "x-vercel-forwarded-for": "203.0.113.50", "x-forwarded-for": `9.9.9.${i}` });
+    expect((await ask({ handle: "ana.k" }, { "x-vercel-forwarded-for": "203.0.113.50", "x-forwarded-for": "9.9.9.250" })).status).toBe(429);
   });
 });

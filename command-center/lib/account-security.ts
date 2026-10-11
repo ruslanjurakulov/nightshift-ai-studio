@@ -149,7 +149,10 @@ export interface PasswordCheckClient {
  * this browser, so checking the password neither replaces the session the
  * person is using (a two-step-verified one would otherwise drop back to a
  * password-only level) nor writes any cookie. The sign-in it makes is revoked
- * again at once, locally. Wrong answers feed `throttle`; past its allowance the
+ * again at once, locally. NOTE this gate is client-side friction, not a
+ * server-enforced control: whoever holds the session (a stolen one, an XSS)
+ * can call updateUser directly and skip it. The server-side limit is
+ * Supabase's "Secure password change" setting. Wrong answers feed `throttle`; past its allowance the
  * password is not even sent. The password is passed to Supabase and nowhere else.
  */
 export async function verifyCurrentPassword(

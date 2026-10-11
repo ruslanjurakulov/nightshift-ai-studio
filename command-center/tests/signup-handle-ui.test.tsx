@@ -86,6 +86,7 @@ describe("the sign-up username field", () => {
       expect(status().dataset.status).toBe("rule");
       expect(status().dataset.tone).toBe("neutral");
       expect(status().textContent).toContain(rule);
+      expect(field().getAttribute("aria-invalid")).toBe("true");
     }
     expect(h.fetch).not.toHaveBeenCalled();
   });
@@ -184,9 +185,13 @@ describe("the sign-up username field", () => {
     await send();
     expect(screen.getByRole("alert").textContent).toContain(en.signup.errHandle);
     type("ana.k");
-    await send(); // still checking
-    expect(screen.getByRole("alert").textContent).toContain(en.signup.errHandle);
+    // still being checked: the button waits (disabled), nothing is sent and no error is shown yet
+    expect((screen.getByRole("button", { name: en.signup.submit }) as HTMLButtonElement).disabled).toBe(true);
+    await send();
+    expect(h.signUp).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).toBeNull();
     await settle(); // taken
+    expect((screen.getByRole("button", { name: en.signup.submit }) as HTMLButtonElement).disabled).toBe(false);
     await send();
     expect(screen.getByRole("alert").textContent).toContain(en.signup.errHandle);
     expect(h.signUp).not.toHaveBeenCalled();

@@ -155,6 +155,19 @@ ro'yxatdan o'tishda @username). Ishlashi uchun Supabase'da quyidagilar kerak:
    ro'yxatdan o'tishda tanlangan nom ariza metadatasida saqlanadi, birinchi sessiyada
    qo'llanadi.
 
+Halollik haqida (xavfsizlik chegarasi qayerda): "joriy parolni kiriting" talabi va
+`/reset-password` oldidagi belgi (cookie) **serverda majburlanadigan nazorat emas**.
+Bular — foydalanuvchiga qulaylik va xatoning oldini olish. Sessiyaga ega har kim
+(o'g'irlangan sessiya yoki XSS) `supabase.auth.updateUser` ni to'g'ridan-to'g'ri
+chaqira oladi; belgi imzosiz va oddiy sessiyadan ortiq hech qanday imkon bermaydi.
+Haqiqiy chegara — Supabase'ning o'zi: shuning uchun **"Secure password change" ni
+ON qoldiring** (yuqoridagi 3-band) va "Secure email change" ni ham yoqing. Belgi bir
+martalik (parol saqlangach o'chiriladi) va joriy hisob identifikatoriga bog'langan.
+
+Birinchi haqiqiy loyihada bir marta sinab ko'ring: xat orqali email o'zgartirish
+(birinchi havola ochilgandagi holat) va tiklash havolasi — bular faqat soxta
+backend bilan tekshirilgan.
+
 Eslatma: ikki bosqichli tekshiruv (TOTP) yoqilgan hisob parolini faqat xat havolasi
 orqali tiklay olmaydi (Supabase bunda aal2 talab qiladi); ular kirib, Sozlamalardan
 o'zgartiradi.

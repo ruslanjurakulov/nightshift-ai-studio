@@ -21,6 +21,8 @@ import { checkHandleFormat, isReservedHandle, normalizeHandleInput } from "@/lib
  */
 
 export const HANDLE_CHECK_LIMIT = { max: 30, windowMs: 60_000 };
+/** The most addresses remembered at once; past it the oldest is forgotten (a Map keeps insertion order). */
+export const HANDLE_CHECK_MAX_KEYS = 5000;
 
 const hits = new Map<string, { start: number; count: number }>();
 
@@ -28,11 +30,31 @@ export function takeHandleCheck(key: string, now = Date.now()): boolean {
   const start = Math.floor(now / HANDLE_CHECK_LIMIT.windowMs) * HANDLE_CHECK_LIMIT.windowMs;
   const cur = hits.get(key);
   const next = cur && cur.start === start ? { start, count: cur.count + 1 } : { start, count: 1 };
+  // delete + set moves the key to the end, so the first key is always the least recently seen
+  hits.delete(key);
   hits.set(key, next);
-  if (hits.size > 5000) {
-    for (const [k, v] of hits) if (v.start !== start) hits.delete(k);
+  // A hard cap: many addresses inside one window must not grow this without bound.
+  while (hits.size > HANDLE_CHECK_MAX_KEYS) {
+    const oldest = hits.keys().next().value;
+    if (oldest === undefined) break;
+    hits.delete(oldest);
   }
   return next.count <= HANDLE_CHECK_LIMIT.max;
+}
+
+/** How many addresses are remembered (tests). */
+export function handleCheckSize(): number {
+  return hits.size;
+}
+
+/**
+ * The address a request came from, for this limit only (never stored, never
+ * logged): Vercel's own header first (set by the platform, not by the
+ * visitor), then Cloudflare's, then the first forwarded address.
+ */
+export function handleCheckKey(headers: Headers): string {
+  const pick = (name: string) => headers.get(name)?.split(",")[0]?.trim();
+  return (pick("x-vercel-forwarded-for") || pick("cf-connecting-ip") || pick("x-forwarded-for") || "unknown").slice(0, 64);
 }
 
 /** For tests. */

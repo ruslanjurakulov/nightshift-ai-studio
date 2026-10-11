@@ -8,9 +8,15 @@
  * straight away, a `token_hash` only after the "continue as <email>?" step of
  * lib/auth-confirm.ts) and drops a short-lived marker cookie; /reset-password
  * insists on a session AND the marker for that same person before it shows the
- * form. The marker keeps an ordinary signed-in session from landing on a page
- * that asks for no current password — it is a gate on the flow, not the
- * security boundary (the database's own session rules are).
+ * form. The marker is a UX guard only, NOT a security control: it is unsigned,
+ * it is set by this app and carries no capability beyond the ordinary session
+ * (anyone holding a session can call supabase.auth.updateUser({ password })
+ * directly, with or without it; a stolen session or an XSS can too). What
+ * actually limits that is Supabase's own "Secure password change" setting
+ * (recent sign-in required) and the session itself. The marker only keeps a
+ * person who is signed in the ordinary way from landing on a form that asks for
+ * no current password, and it is single-use: finishRecovery() clears it, and it
+ * is checked against the signed-in account's id.
  */
 
 import { AUTH_CALLBACK_PATH, FORGOT_PASSWORD_PATH, RESET_PASSWORD_PATH } from "@/lib/public-paths";
