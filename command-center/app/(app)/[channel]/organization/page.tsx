@@ -4,6 +4,7 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { getChannelPath } from "@/lib/channels-path-server";
+import { AccountSection } from "@/components/account/AccountSection";
 import { AccountSecurity } from "@/components/account/AccountSecurity";
 import { readOwnHandle } from "@/lib/server/handles";
 import { pendingHandleFrom } from "@/lib/handles";
@@ -12,8 +13,10 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
- * Settings: Account and security (sign-in email, password, @username) and the
- * way to Developers (API keys).
+ * Settings: Account (who is signed in, plan, publishing accounts, language,
+ * theme, sign out), Account and security (sign-in email, password, @username)
+ * and the way to Developers (API keys). The phone's bottom bar ends in this
+ * page as its account tab, so the account lives first, here.
  *
  * There are two kinds of people in this product: a signed-in user, who owns
  * their workspace and does everything in it, and the platform operator, who
@@ -33,9 +36,13 @@ export default async function SettingsPage() {
       {!user ? (
         <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.org.signIn}</div>
       ) : !org.supported ? (
-        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.org.notMigrated}</div>
+        <>
+          <AccountSection email={user.email ?? null} />
+          <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.org.notMigrated}</div>
+        </>
       ) : org.current ? (
         <>
+          <AccountSection email={user.email ?? null} />
           {user.email && (
             <AccountSecurity
               email={user.email}
@@ -54,7 +61,10 @@ export default async function SettingsPage() {
           </div>
         </>
       ) : (
-        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.org.noOrg}</div>
+        <>
+          <AccountSection email={user.email ?? null} />
+          <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.org.noOrg}</div>
+        </>
       )}
     </div>
   );

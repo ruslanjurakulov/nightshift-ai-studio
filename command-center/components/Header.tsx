@@ -23,8 +23,10 @@ import { ALL_CHANNELS, unscopedScope, type ChannelScope, type ChannelSelection }
 import type { ChannelRow } from "@/lib/types";
 
 /**
- * The top bar: the wordmark on the left, the controls and — last, so it sits at
- * the right edge on every width — the account button on the right. Route navigation lives in the left rail (SideNav) — grouped and
+ * The top bar: the wordmark on the left, the controls on the right. For a
+ * customer the account is not here: it is the bottom bar's last tab on a phone
+ * and the sidebar's user card from `lg`; the operator's bar keeps its account
+ * button as its last control. Route navigation lives in the left rail (SideNav) — grouped and
  * icon-led, with only the daily-loop destinations surfaced at the top so the
  * shell reads as a product, not a wall of admin links.
  */
@@ -47,11 +49,12 @@ export function Header({
   currentOrgId?: string | null;
   /** The current org's credits; null for the exempt default org or before 0020. */
   credits?: CreditAccount | null;
-  /** The signed-in email, for the account button's initial; the panel reads
-   *  the rest itself when it opens. */
+  /** The signed-in email, for the operator bar's account button; the panel
+   *  reads the rest itself when it opens. */
   email?: string | null;
   /** The platform operator keeps the console's bar; a customer gets the
-   *  creative app's (sidebar wordmark, credit pill, account on the card). */
+   *  creative app's (wordmark, credit pill, bell; the account is the sidebar
+   *  card or the bottom bar's last tab). */
   operator?: boolean;
   /** The organization's plan, read server-side, for the credit menu. */
   plan?: AccountPlan | null;
@@ -67,13 +70,15 @@ export function Header({
     return (
       <header className="shell-topbar sticky top-0 z-30 px-4 py-2 lg:px-6">
         <div className="flex min-h-10 flex-wrap items-center gap-x-2 gap-y-2 sm:gap-x-3">
-          {/* The wordmark lives in the sidebar from `lg` up. The N is 28px high from 390px wide, 26px
-              from 375px, 24px from 360px and 21px below 345px (lettering 13.7, 12.7, 11.7 and 10.2px):
-              the widest that leaves the credit key (up to 12,345), the bell and the account on this row. */}
+          {/* The wordmark lives in the sidebar from `lg` up. The N is 30px high from 375px wide, 28px from
+              351 to 374, 26px from 331 to 350 and 22px below (lettering 14.6, 13.7, 12.7 and 10.7px): the
+              widest that leaves the credit key (up to 12,345) and the bell on this row with room to spare
+              (measured in tools/visual-qa/account-tab.mjs). The account is not on this bar any more, so
+              the lockup got back the width the round button took. */}
           <Link
             href={path("/create")}
             aria-label={t.brand.name}
-            className="tap-link inline-flex shrink-0 items-center text-[var(--color-fg)] [--wm-h:28px] max-[390px]:[--wm-h:26px] max-[375px]:[--wm-h:24px] max-[345px]:[--wm-h:21px] lg:hidden"
+            className="tap-link inline-flex shrink-0 items-center text-[var(--color-fg)] [--wm-h:30px] max-[374px]:[--wm-h:28px] max-[350px]:[--wm-h:26px] max-[330px]:[--wm-h:22px] lg:hidden"
           >
             <Wordmark />
           </Link>
@@ -108,11 +113,9 @@ export function Header({
               <ThemeToggle />
               <ViewModeToggle showLabel compact />
             </span>
-            {/* On a phone and tablet the account sits here; from `lg` up it is
-                the sidebar's user card. */}
-            <div className="lg:hidden">
-              <AccountMenu email={email} plan={plan} />
-            </div>
+            {/* No account button here: on a phone and tablet the account is the
+                bottom bar's last tab (the initial, then Settings → Account), and
+                from `lg` up it is the sidebar's user card. */}
           </div>
         </div>
       </header>
