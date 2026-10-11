@@ -909,6 +909,8 @@ export const uz: Dictionary = {
       confirmAnnounce: "Yuqoridagi narxni tekshiring, boshlash uchun «Ha, yaratilsin»ni bosing.",
       alreadySent: "Allaqachon yuborilgan — qayta yuborilmadi. Quyida kuzating.",
       bracketsHint: "Yaratishdan oldin [qavslarni] oʻz gʻoyangiz bilan almashtiring.",
+      draftRestored: "Tugallanmagan qoralamangiz qaytdi.",
+      draftDiscard: "Qoralamani oʻchirish",
     },
   },
   voice: {

@@ -917,6 +917,8 @@ export const en = {
       confirmAnnounce: "Check the price above, then press Yes, make it to start.",
       alreadySent: "Already sent — it was not sent a second time. Follow it below.",
       bracketsHint: "Replace the [brackets] with your own idea before you make it.",
+      draftRestored: "Your unfinished draft is back.",
+      draftDiscard: "Discard it",
     },
   },
   voice: {

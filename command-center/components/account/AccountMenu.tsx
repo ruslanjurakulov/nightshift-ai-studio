@@ -10,6 +10,7 @@ import { fmt, LOCALES } from "@/lib/i18n";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useChannelPath } from "@/lib/channels-client";
 import { formatCredits } from "@/lib/credits";
+import { clearAllDrafts } from "@/lib/create-draft";
 import {
   coerceAccountSummary,
   planName,
@@ -132,6 +133,8 @@ export function AccountMenu({
   }, [open, close]);
 
   async function signOut() {
+    // The create form's unfinished draft is this person's; it goes with the session, before anything can fail.
+    clearAllDrafts();
     const supabase = createClient();
     if (supabase) await supabase.auth.signOut();
     router.push("/login");

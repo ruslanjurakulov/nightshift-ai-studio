@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { AuthAlert, AuthField, AuthShell, AuthSubmit } from "@/components/auth/AuthShell";
 import { safeLoginReturn } from "@/lib/safe-redirect";
+import { clearAllDrafts } from "@/lib/create-draft";
 import { applyPendingHandle, type HandleClient } from "@/lib/handles";
 import { FORGOT_PASSWORD_PATH } from "@/lib/public-paths";
 import { classifySignInError, isCallbackError, type CallbackError, type SignInOutcome } from "@/lib/signup";
@@ -20,6 +21,11 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [linkError, setLinkError] = useState<CallbackError | null>(null);
+
+  // Whoever arrives here — signed out, session expired, or switching accounts — leaves no create draft behind in this tab.
+  useEffect(() => {
+    clearAllDrafts();
+  }, []);
 
   // /auth/callback sends a failed confirmation link here with a fixed code.
   // Read once on mount, from a closed set — never text from the URL.

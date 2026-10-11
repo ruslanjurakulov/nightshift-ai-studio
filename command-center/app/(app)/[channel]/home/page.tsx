@@ -1,6 +1,6 @@
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { getChannelContext } from "@/lib/channels-server";
 import { channelSlug, isScoped, orgWide } from "@/lib/channels";
 import { listWaitingStoryboards } from "@/lib/server/storyboards";
@@ -90,10 +90,11 @@ export default async function HomePage() {
   const makeFor = (scoped && runnable.some((c) => c.channel_id === scoped.channel_id) ? scoped : undefined) ?? runnable[0];
   let run: React.ReactNode = undefined;
   if (makeFor) {
-    const [dna, operator, accounts] = await Promise.all([
+    const [dna, operator, accounts, user] = await Promise.all([
       channelDnaForCreate(makeFor),
       isOperator(),
       readConnectedAccounts().catch(() => []),
+      getUser(),
     ]);
     run = (
       <CreateStudio
@@ -105,6 +106,7 @@ export default async function HomePage() {
         operator={operator}
         targets={accounts.map(({ platform, id, name, connected: on }) => ({ platform, id, name, connected: on }))}
         dna={dna.run}
+        draftOwner={user && orgId ? { userId: user.id, orgId } : null}
       />
     );
   }

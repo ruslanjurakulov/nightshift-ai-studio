@@ -9,6 +9,7 @@ import type { QueueJob, RunBackend } from "@/lib/runBackend";
 import { creditRunError, isExtraOffRefusal } from "@/lib/credits";
 import { createAttempt } from "@/lib/create-attempt";
 import { useCreatePreset } from "@/components/create/preset";
+import { clearDraft, draftStore, readDraft, writeDraft, type DraftScope } from "@/lib/create-draft";
 import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
 import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
 import { IMAGE_GENERATORS } from "@/lib/imageProviders";
@@ -65,6 +66,7 @@ export function CreateStudio({
   targets = [],
   initial = null,
   dna = null,
+  draftOwner = null,
 }: {
   channelId: string | null;
   githubConfigured: boolean;
@@ -85,6 +87,11 @@ export function CreateStudio({
   initial?: RunPrefill | null;
   /** The channel's DNA (0056): where an empty field starts. Home's choices win; Create still asks. */
   dna?: (RunDna & { href: string }) | null;
+  /**
+   * Who is typing, for the unfinished-draft memory (lib/create-draft.ts): the signed-in user and the
+   * open organization. Without both there is no draft — nothing is kept or restored.
+   */
+  draftOwner?: { userId: string; orgId: string } | null;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
@@ -101,6 +108,22 @@ export function CreateStudio({
   const [customVoice, setCustomVoice] = useState("");
   // "platform:id" of the account this video is for, or "" (none chosen).
   const [target, setTarget] = useState("");
+  // What the form starts with when no draft applies: Discard goes back to exactly this.
+  const baseline = {
+    topic: initial?.brief ?? "",
+    duration: initial?.duration || dna?.duration || "",
+    voice: dna?.voice ?? "",
+    look: "",
+  };
+  const baselineRef = useRef(baseline);
+  const seenScope = useRef<string | null>(null);
+  const scope: DraftScope | null = draftOwner && channelId ? { ...draftOwner, channelId } : null;
+  const scopeKey = scope ? `${scope.userId}|${scope.orgId}|${scope.channelId}` : "";
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  // False until the stored draft (if any) has been looked at, so the first save cannot overwrite it with the empty form.
+  const [draftChecked, setDraftChecked] = useState(false);
+  const [restored, setRestored] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   // The one choice card that is open (length, voice or look): the rest stay a single line each.
   const [open, setOpen] = useState<Choice | null>(null);
@@ -132,6 +155,67 @@ export function CreateStudio({
   const statusRef = useRef<HTMLParagraphElement>(null);
 
   const blocked = !channelId || !githubConfigured || !canRun;
+
+  // Restore this tab's unfinished draft — after mount (sessionStorage does not exist on the server), only for the
+  // same user + organization + channel, and never over a hand-off from Home's query, which is what the person just asked for.
+  // Anything stored for another scope is removed by readDraft.
+  useEffect(() => {
+    const sc = scopeRef.current;
+    setDraftChecked(false);
+    setRestored(false);
+    // The same form kept mounted while the person moves to another channel or organization: what is typed
+    // belongs to the one they left, so it starts over (and is never saved under the new scope).
+    baselineRef.current = baseline;
+    if (seenScope.current !== null && seenScope.current !== scopeKey) {
+      setBrief(baseline.topic);
+      setDuration(baseline.duration);
+      setVoice(baseline.voice);
+      setStyle(baseline.look);
+      setFromPreset(false);
+      setPhase((p) => (p === "confirm" || p === "error" ? "idle" : p));
+    }
+    seenScope.current = scopeKey;
+    if (!sc) return;
+    const draft = readDraft(draftStore(), sc);
+    if (draft && !initial) {
+      setBrief(draft.topic);
+      setDuration(draft.duration);
+      setVoice(draft.voice);
+      setStyle(draft.look);
+      setRestored(true);
+    }
+    setDraftChecked(true);
+    // initial is a mount-time prop; the scope key is what changes who the draft belongs to.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopeKey]);
+
+  // Keep the draft as it is typed (debounced). Equal to the starting form means nothing to keep. A started
+  // run clears it for good (phase queued), so it is not written back.
+  useEffect(() => {
+    const sc = scopeRef.current;
+    if (!sc || !draftChecked || phase === "queued") return;
+    const mine = { topic: brief, duration, voice: voice === CUSTOM_VOICE ? baselineRef.current.voice : voice, look: style };
+    const b = baselineRef.current;
+    const untouched = mine.topic.trim() === b.topic.trim() && mine.duration === b.duration && mine.voice === b.voice && mine.look.trim() === b.look;
+    const timer = setTimeout(() => {
+      if (untouched) clearDraft(draftStore(), sc);
+      else writeDraft(draftStore(), sc, mine);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [brief, duration, voice, style, phase, draftChecked, scopeKey]);
+
+  function discardDraft() {
+    const sc = scopeRef.current;
+    if (sc) clearDraft(draftStore(), sc);
+    const b = baselineRef.current;
+    setBrief(b.topic);
+    setDuration(b.duration);
+    setVoice(b.voice);
+    setStyle(b.look);
+    setFromPreset(false);
+    setRestored(false);
+    setPhase((p) => (p === "confirm" || p === "error" ? "idle" : p));
+  }
 
   async function loadEvents() {
     try {
@@ -216,12 +300,14 @@ export function CreateStudio({
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         attempt.current.settle();
+        if (scope) clearDraft(draftStore(), scope);
         setPhase("queued");
         return;
       }
       // The same key was held before: an earlier press of this very attempt got through. Nothing new was held.
       if (res.status === 409 && data.error === "run_already_started") {
         attempt.current.settle();
+        if (scope) clearDraft(draftStore(), scope);
         setReplayed(true);
         setPhase("queued");
         return;
@@ -328,6 +414,14 @@ export function CreateStudio({
   return (
     <div id="run" className="fl scroll-mt-4">
       {initial && <p className="fl-note">{t.create.prefilled}</p>}
+      {restored && phase !== "queued" && (
+        <p className="fl-note" role="status" data-testid="draft-restored">
+          {f.draftRestored}{" "}
+          <button type="button" className="tap-link text-[var(--color-primary)] underline" onClick={discardDraft}>
+            {f.draftDiscard}
+          </button>
+        </p>
+      )}
       {dna && <ChannelDnaHint href={dna.href} />}
 
       {blocked && (
