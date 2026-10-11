@@ -57,15 +57,14 @@ function CopyButton({ value }: { value: string }) {
           /* clipboard blocked — the amount is still visible */
         }
       }}
-      className="btn-quiet text-xs"
+      className="btn-quiet"
     >
       {copied ? t.billing.payCopied : t.billing.payCopy}
     </button>
   );
 }
 
-const inputClass =
-  "rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 tnum text-xs text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
+const inputClass = "ns-field tnum";
 
 /** The per-provider Pay panel, opened from its card. */
 export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested: number | null; onDone: () => void }) {
@@ -96,14 +95,16 @@ export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested:
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3">
-      <p className="text-xs font-semibold text-[var(--color-fg)]">{fmt(t.billing.payTitle, { name: p.name })}</p>
-      <p className="flex items-start gap-2 text-xs leading-relaxed text-[var(--color-muted)]">
-        <CreditCard className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+    <div className="g5-pay">
+      <p className="g5-row-title" style={{ fontWeight: 600 }}>
+        {fmt(t.billing.payTitle, { name: p.name })}
+      </p>
+      <p className="flex items-start gap-2 g5-note">
+        <CreditCard className="mt-0.5 size-4 shrink-0" aria-hidden />
         {fmt(t.billing.payCards, { name: p.name })}
       </p>
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-[var(--color-muted)]">{t.billing.payAmount}</span>
+      <label className="g5-field" style={{ maxWidth: "16rem" }}>
+        <span className="g5-k">{t.billing.payAmount}</span>
         <input
           type="number"
           inputMode="decimal"
@@ -118,37 +119,36 @@ export function PayPanel({ p, suggested, onDone }: { p: ProviderView; suggested:
           className={inputClass}
         />
       </label>
-      <div className="flex flex-wrap gap-2">
-        <a
-          href={p.billingUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold"
-        >
+      <div className="g5-actions">
+        <a href={p.billingUrl} target="_blank" rel="noopener noreferrer" className="btn-quiet">
           {fmt(t.billing.payOpen, { name: p.name })}
-          <ExternalLink className="size-3" aria-hidden />
+          <ExternalLink className="size-4" aria-hidden />
         </a>
         {valid && <CopyButton value={value.toFixed(2)} />}
+        <button
+          type="button"
+          onClick={record}
+          disabled={!valid || state === "busy" || state === "ok"}
+          className="btn-quiet disabled:opacity-40"
+        >
+          {state === "ok" ? t.billing.payRecorded : t.billing.payDone}
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={record}
-        disabled={!valid || state === "busy" || state === "ok"}
-        className="btn-quiet w-fit px-4 py-1.5 text-xs disabled:opacity-40"
-      >
-        {state === "ok" ? t.billing.payRecorded : t.billing.payDone}
-      </button>
-      {state === "fail" && <span className="text-xs text-[var(--color-fail)]">{t.billing.payFailed}</span>}
-      <div className="flex flex-col gap-1.5 border-t border-[var(--color-border)] pt-2 text-xs">
-        <label className="flex items-center gap-2">
+      {state === "fail" && (
+        <span role="alert" className="g5-note g5-fail-text">
+          {t.billing.payFailed}
+        </span>
+      )}
+      <div className="flex flex-col gap-1 border-t border-[var(--ns-rule)] pt-3">
+        <label className="g5-check">
           <input type="checkbox" checked={cardSaved} onChange={(e) => toggle("card_saved_on_provider", e.target.checked)} />
           {t.billing.cardSaved}
         </label>
-        <label className="flex items-center gap-2">
+        <label className="g5-check">
           <input type="checkbox" checked={autoRecharge} onChange={(e) => toggle("auto_recharge_on_provider", e.target.checked)} />
           {t.billing.autoRecharge}
         </label>
-        <p className="text-xs text-[var(--color-muted)]">{t.billing.autoRechargeHint}</p>
+        <p className="g5-note">{t.billing.autoRechargeHint}</p>
       </div>
     </div>
   );
@@ -207,15 +207,17 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
   const current = step !== null && step < queue.length ? queue[step] : null;
 
   return (
-    <section className="panel flex flex-col gap-4 p-5 sm:p-6">
+    <section className="panel ns-desk flex flex-col gap-6" aria-labelledby="bp-title">
       <div>
-        <h2 className="t-section">{t.billing.bulkTitle}</h2>
-        <p className="mt-1 text-sm text-[var(--color-muted)]">{t.billing.bulkSubtitle}</p>
+        <h2 id="bp-title" className="g5-h">
+          {t.billing.bulkTitle}
+        </h2>
+        <p className="g5-sub">{t.billing.bulkSubtitle}</p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-[var(--color-muted)]">{t.billing.bulkHorizon}</span>
+      <div className="g5-form">
+        <label className="g5-field" data-fixed>
+          <span className="g5-k">{t.billing.bulkHorizon}</span>
           <select value={days} onChange={(e) => setDays(Number(e.target.value))} className={inputClass}>
             {HORIZONS.map((d) => (
               <option key={d} value={d}>
@@ -224,8 +226,8 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-[var(--color-muted)]">{t.billing.bulkCap}</span>
+        <label className="g5-field" data-fixed>
+          <span className="g5-k">{t.billing.bulkCap}</span>
           <input
             type="number"
             inputMode="decimal"
@@ -239,57 +241,60 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
         </label>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px] text-xs">
-          <thead>
-            <tr className="text-left text-xs text-[var(--color-muted)]">
-              <th className="w-8 py-2" />
-              <th className="py-2">{t.billing.colProvider}</th>
-              <th className="py-2 text-right">{t.billing.colBurn}</th>
-              <th className="py-2 text-right">{t.billing.colBalance}</th>
-              <th className="py-2 text-right">{t.billing.colNeed}</th>
-              <th className="py-2 text-right">{t.billing.colAmount}</th>
-            </tr>
-          </thead>
-          <tbody className="tnum" style={{ fontVariantNumeric: "tabular-nums" }}>
-            {providers.map((p) => {
-              const on = selected.has(p.id);
-              const line = lineOf.get(p.id);
-              return (
-                <tr key={p.id} className="border-t border-[var(--color-border)]" style={{ opacity: on ? 1 : 0.5 }}>
-                  <td className="py-2">
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      onChange={(e) => toggle(p.id, e.target.checked)}
-                      aria-label={p.name}
-                    />
-                  </td>
-                  <td className="py-2 font-sans text-[var(--color-fg)]">{p.name}</td>
-                  <td className="py-2 text-right">{p.usdPerDay === null ? t.billing.needUnpriced : money(p.usdPerDay)}</td>
-                  <td className="py-2 text-right">
-                    {p.balanceUsd !== null ? money(p.balanceUsd) : on ? t.billing.balanceAssumed : "—"}
-                  </td>
-                  <td className="py-2 text-right">{on ? (line?.need === null ? t.billing.needUnpriced : money(line?.need ?? null)) : "—"}</td>
-                  <td className="py-2 text-right font-semibold text-[var(--color-fg)]">{on ? money(line?.amount ?? null) : "—"}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr className="border-t-2 border-[var(--color-border)]">
-              <td />
-              <td colSpan={4} className="py-3 text-sm font-semibold text-[var(--color-fg)]">
-                {t.billing.bulkTotal}
-              </td>
-              <td className="py-3 text-right tnum text-[15px] font-semibold text-[var(--color-primary)]">
-                {money(plan.total)}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+      <div>
+        <div aria-hidden className="g5-plan-head">
+          <span />
+          <span>{t.billing.colProvider}</span>
+          <span>{t.billing.colBurn}</span>
+          <span>{t.billing.colBalance}</span>
+          <span>{t.billing.colNeed}</span>
+          <span>{t.billing.colAmount}</span>
+        </div>
+        <ul className="g5-plan">
+          {providers.map((p) => {
+            const on = selected.has(p.id);
+            const line = lineOf.get(p.id);
+            return (
+              <li key={p.id} className="g5-plan-row" data-off={on ? undefined : "true"}>
+                <div className="g5-plan-name">
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={(e) => toggle(p.id, e.target.checked)}
+                    aria-label={p.name}
+                    className="size-5 shrink-0"
+                    style={{ accentColor: "var(--ns-act)" }}
+                  />
+                  <span>{p.name}</span>
+                </div>
+                <div className="g5-plan-cell">
+                  <span className="g5-k">{t.billing.colBurn}</span>
+                  {p.usdPerDay === null ? t.billing.needUnpriced : money(p.usdPerDay)}
+                </div>
+                <div className="g5-plan-cell">
+                  <span className="g5-k">{t.billing.colBalance}</span>
+                  {p.balanceUsd !== null ? money(p.balanceUsd) : on ? t.billing.balanceAssumed : "—"}
+                </div>
+                <div className="g5-plan-cell">
+                  <span className="g5-k">{t.billing.colNeed}</span>
+                  {on ? (line?.need === null ? t.billing.needUnpriced : money(line?.need ?? null)) : "—"}
+                </div>
+                <div className="g5-plan-cell" style={{ fontWeight: 600 }}>
+                  <span className="g5-k">{t.billing.colAmount}</span>
+                  {on ? money(line?.amount ?? null) : "—"}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="g5-plan-total">
+          <span className="g5-h">{t.billing.bulkTotal}</span>
+          <span className="g5-figure" style={{ fontSize: "1.75rem" }}>
+            {money(plan.total)}
+          </span>
+        </div>
       </div>
-      {plan.scaled && <p className="text-xs text-[var(--color-warn)]">{t.billing.bulkScaled}</p>}
+      {plan.scaled && <p className="g5-note" style={{ color: "var(--color-warn)" }}>{t.billing.bulkScaled}</p>}
 
       {step === null ? (
         <button
@@ -299,53 +304,43 @@ export function BulkPay({ providers, onDone }: { providers: ProviderView[]; onDo
             setPaidCount(0);
             setStep(0);
           }}
-          className="btn-primary w-fit px-6 py-2.5 text-sm font-semibold disabled:opacity-40"
+          className="btn-primary w-fit disabled:opacity-40"
         >
           {queue.length === 0 ? t.billing.bulkNothing : `${t.billing.bulkPay} · ${money(plan.total)}`}
         </button>
       ) : current ? (
-        <div className="flex flex-col gap-3 rounded-[var(--ns-r-panel)] border border-[var(--color-primary)] p-3" aria-live="polite">
-          <p className="tnum text-xs text-[var(--color-muted)]">
-            {fmt(t.billing.stepOf, { i: step + 1, n: queue.length })}
-          </p>
-          <p className="text-sm font-semibold text-[var(--color-fg)]">
+        <div className="g5-pay" aria-live="polite" style={{ boxShadow: "inset 0 0 0 1px var(--ns-act)" }}>
+          <p className="g5-k tnum">{fmt(t.billing.stepOf, { i: step + 1, n: queue.length })}</p>
+          <p className="g5-h">
             {current.name} · {money(lineOf.get(current.id)?.amount ?? null)}
           </p>
-          <p className="text-xs text-[var(--color-muted)]">{fmt(t.billing.payCards, { name: current.name })}</p>
-          <div className="flex flex-wrap gap-2">
-            <a
-              href={current.billingUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold"
-            >
+          <p className="g5-note">{fmt(t.billing.payCards, { name: current.name })}</p>
+          <div className="g5-actions">
+            <a href={current.billingUrl} target="_blank" rel="noopener noreferrer" className="btn-primary">
               {fmt(t.billing.payOpen, { name: current.name })}
-              <ExternalLink className="size-3" aria-hidden />
+              <ExternalLink className="size-4" aria-hidden />
             </a>
             <CopyButton value={(lineOf.get(current.id)?.amount ?? 0).toFixed(2)} />
-            <button
-              type="button"
-              onClick={confirmStep}
-              disabled={busy}
-              className="btn-quiet text-xs disabled:opacity-40"
-            >
+            <button type="button" onClick={confirmStep} disabled={busy} className="btn-quiet disabled:opacity-40">
               {t.billing.payDone}
             </button>
-            <button type="button" onClick={() => setStep(step + 1)} className="btn-quiet text-xs">
+            <button type="button" onClick={() => setStep(step + 1)} className="btn-quiet">
               {t.billing.stepSkip}
             </button>
           </div>
         </div>
       ) : (
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm text-[var(--color-ok)]">{fmt(t.billing.stepDone, { n: paidCount })}</p>
+        <div className="g5-actions">
+          <p className="g5-v" style={{ color: "var(--color-ok)" }} role="status">
+            {fmt(t.billing.stepDone, { n: paidCount })}
+          </p>
           <button
             type="button"
             onClick={() => {
               setStep(null);
               onDone();
             }}
-            className="btn-quiet text-xs"
+            className="btn-quiet"
           >
             {t.billing.stepClose}
           </button>

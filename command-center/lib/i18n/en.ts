@@ -1590,6 +1590,7 @@ export const en = {
     filterErrors: "Errors",
     notifTitle: "Notifications",
     notifEmpty: "No notifications — the stream is quiet.",
+    notifOpenLog: "Open the activity log",
     notifClear: "Clear",
     notifPublished: "Video published",
     notifStoryboard: "Storyboard ready for review",

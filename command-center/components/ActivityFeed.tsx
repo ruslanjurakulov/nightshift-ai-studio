@@ -9,6 +9,8 @@ import type { SystemEventRow } from "@/lib/types";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 import { Chip, ChipRow } from "@/components/ui/Chip";
 import { useI18n } from "@/lib/i18n/context";
+import { StateBlock } from "@/components/states/StateBlock";
+import "@/app/(app)/app-pages-g5.css";
 import { fmt, type Dictionary } from "@/lib/i18n";
 
 type Filter = "all" | EventCategory;
@@ -45,15 +47,13 @@ export function ActivityFeed({
   );
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-2">
-        <span className="text-xs text-[var(--color-muted)]">
-          {fmt(t.feed.events, { n: shown.length })}
-        </span>
+    <div className="g5-feed">
+      <div className="g5-feed-bar">
+        <span className="g5-k">{fmt(t.feed.events, { n: shown.length })}</span>
         <StatusLamp tone={live ? "run" : "idle"} label={live ? t.status.live : t.status.polled} live={live} />
       </div>
 
-      <ChipRow label={fmt(t.feed.events, { n: shown.length })} wrap className="border-b border-[var(--color-border)] px-3 py-2">
+      <ChipRow label={fmt(t.feed.events, { n: shown.length })} wrap className="pb-3">
         {FILTERS.map((f) => (
           <Chip key={f.key} pressed={filter === f.key} onClick={() => setFilter(f.key)}>
             {String(t.ops[f.label])}
@@ -61,25 +61,25 @@ export function ActivityFeed({
         ))}
       </ChipRow>
 
-      <ol className="min-h-0 flex-1 divide-y divide-[var(--color-border)] overflow-y-auto">
-        {shown.length === 0 && (
-          <li className="p-6 text-center tnum text-xs text-[var(--color-muted)]">{t.feed.noEvents}</li>
-        )}
-        {shown.map((e) => {
-          const tone = statusTone(e.status);
-          return (
-            <li
-              key={e.event_key}
-              className={`flex items-center gap-3 px-4 py-2 text-sm${freshKey === e.event_key ? " row-enter" : ""}`}
-            >
-              <span className="tnum w-16 shrink-0 text-xs text-[var(--color-muted)]">{timeOfDay(e.ts)}</span>
-              <StatusLamp tone={tone as LampTone} label={{ ok: t.status.ok, run: t.status.running, fail: t.status.failed, idle: t.status.idle }[tone]} hideLabel />
-              <span className="tnum shrink-0 text-xs text-[var(--color-primary)]">{e.agent ?? t.common.system}</span>
-              <span className="truncate text-[var(--color-fg)]">{e.event}</span>
-            </li>
-          );
-        })}
-      </ol>
+      {shown.length === 0 ? (
+        <StateBlock tone="idle" compact>
+          {t.feed.noEvents}
+        </StateBlock>
+      ) : (
+        <ol className="g5-feed-list" style={{ maxHeight: 420 }} tabIndex={0} aria-label={fmt(t.feed.events, { n: shown.length })}>
+          {shown.map((e) => {
+            const tone = statusTone(e.status);
+            return (
+              <li key={e.event_key} className={`g5-feed-item${freshKey === e.event_key ? " row-enter" : ""}`}>
+                <span className="g5-feed-t">{timeOfDay(e.ts)}</span>
+                <StatusLamp tone={tone as LampTone} label={{ ok: t.status.ok, run: t.status.running, fail: t.status.failed, idle: t.status.idle }[tone]} hideLabel />
+                <span className="g5-feed-agent">{e.agent ?? t.common.system}</span>
+                <span className="g5-feed-event">{e.event}</span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
     </div>
   );
 }

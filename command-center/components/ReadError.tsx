@@ -2,8 +2,8 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle } from "lucide-react";
 import { usePublicI18n } from "@/lib/i18n/public-context";
+import { StateBlock } from "@/components/states/StateBlock";
 
 /**
  * The one "could not read this" state. It replaces a list, a table or a figure
@@ -31,24 +31,19 @@ export function ErrorState({
   }
 
   return (
-    <div
+    <StateBlock
       role="alert"
       data-read-error
-      className={`flex flex-col items-center justify-center gap-3 text-center ${compact ? "px-4 py-6" : "px-6 py-14"}`}
+      tone="warn"
+      compact={compact}
+      title={t.common.readFailedTitle}
+      actions={
+        <button type="button" onClick={retry} disabled={pending} className="btn-quiet disabled:opacity-40">
+          {pending ? t.common.retrying : t.common.retry}
+        </button>
+      }
     >
-      <span
-        aria-hidden
-        className="grid size-10 place-items-center rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel-2)] text-[var(--color-warn)]"
-      >
-        <AlertTriangle className="size-5" strokeWidth={1.5} />
-      </span>
-      <p className="m-0 text-sm font-semibold text-[var(--color-fg)]">{t.common.readFailedTitle}</p>
-      <p className="m-0 max-w-[52ch] text-sm font-light leading-relaxed text-[var(--color-muted)]">
-        {message ?? t.common.readFailedBody}
-      </p>
-      <button type="button" onClick={retry} disabled={pending} className="btn-sky rounded-[var(--ns-r-key)] px-4 py-1.5 text-xs disabled:opacity-40">
-        {pending ? t.common.retrying : t.common.retry}
-      </button>
-    </div>
+      {message ?? t.common.readFailedBody}
+    </StateBlock>
   );
 }

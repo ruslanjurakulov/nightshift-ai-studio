@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
-import { StatCard, Panel, EmptyState } from "@/components/ui";
+import { StatCard } from "@/components/ui";
+import { ErrorState } from "@/components/ReadError";
+import "../../app-pages-g5.css";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
@@ -53,42 +55,52 @@ export default async function ErrorCenter() {
   const lastError = errors[0]?.ts ?? null;
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open g5-page stagger-enter">
       <PageHeader icon="errors" title={t.errors.title} subtitle={t.errors.subtitle} />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard
-          label={t.errors.errors24h}
-          value={<AnimatedNumber value={errors24h} />}
-          tone={errors24h ? "fail" : "ok"}
-          sub={errors24h ? t.errors.needsAttention : t.errors.none}
-        />
-        <StatCard
-          label={t.errors.errorsShown}
-          value={<AnimatedNumber value={errors.length} />}
-          tone={errors.length ? "warn" : "ok"}
-          sub={fmt(t.errors.ofRecent, { n: events.length })}
-        />
-        <StatCard
-          label={t.errors.scanned}
-          value={<AnimatedNumber value={events.length} />}
-          sub={fmt(t.errors.mostRecent, { n: FETCH_LIMIT })}
-        />
-        <StatCard
-          label={t.errors.lastError}
-          value={lastError ? t.errors.seen : t.errors.noneUpper}
-          tone={lastError ? "warn" : "ok"}
-          sub={lastError ? t.errors.seeTable : t.errors.cleanWindow}
-        />
+      <div className="grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-4">
+        {queryFailed ? (
+          // A failed read is unknown, never 0, "none" or a clean window.
+          [t.errors.errors24h, t.errors.errorsShown, t.errors.scanned, t.errors.lastError].map((label) => (
+            <StatCard key={label} label={label} value={<span className="g5-unknown">{t.common.unknown}</span>} tone="idle" sub={t.common.couldNotRead} />
+          ))
+        ) : (
+          <>
+            <StatCard
+              label={t.errors.errors24h}
+              value={<AnimatedNumber value={errors24h} />}
+              tone={errors24h ? "fail" : "ok"}
+              sub={errors24h ? t.errors.needsAttention : t.errors.none}
+            />
+            <StatCard
+              label={t.errors.errorsShown}
+              value={<AnimatedNumber value={errors.length} />}
+              tone={errors.length ? "warn" : "ok"}
+              sub={fmt(t.errors.ofRecent, { n: events.length })}
+            />
+            <StatCard
+              label={t.errors.scanned}
+              value={<AnimatedNumber value={events.length} />}
+              sub={fmt(t.errors.mostRecent, { n: FETCH_LIMIT })}
+            />
+            <StatCard
+              label={t.errors.lastError}
+              value={lastError ? t.errors.seen : t.errors.noneUpper}
+              tone={lastError ? "warn" : "ok"}
+              sub={lastError ? t.errors.seeTable : t.errors.cleanWindow}
+            />
+          </>
+        )}
       </div>
 
-      <Panel title={t.errors.failureEvents}>
-        {queryFailed ? (
-          <EmptyState>{t.errors.readErr}</EmptyState>
-        ) : (
-          <ErrorTable rows={errors} />
-        )}
-      </Panel>
+      <section className="panel" aria-labelledby="er-title">
+        <div className="g5-sechead">
+          <h2 id="er-title" className="g5-h">
+            {t.errors.failureEvents}
+          </h2>
+        </div>
+        {queryFailed ? <ErrorState message={t.errors.readErr} /> : <ErrorTable rows={errors} />}
+      </section>
     </div>
   );
 }

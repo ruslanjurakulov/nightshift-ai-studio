@@ -1582,6 +1582,7 @@ export const uz: Dictionary = {
     filterErrors: "Xatolar",
     notifTitle: "Bildirishnomalar",
     notifEmpty: "Bildirishnoma yoʻq — oqim jim.",
+    notifOpenLog: "Faoliyat jurnalini ochish",
     notifClear: "Tozalash",
     notifPublished: "Video chiqarildi",
     notifStoryboard: "Raskadrovka tekshiruvni kutmoqda",

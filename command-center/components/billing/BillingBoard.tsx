@@ -8,6 +8,7 @@ import { fmt } from "@/lib/i18n";
 import { StatCard } from "@/components/ui";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Meter } from "@/components/ui/Meter";
+import { StateBlock } from "@/components/states/StateBlock";
 import { relativeTime } from "@/lib/format";
 import { planTopups, type ElevenLabsRunway } from "@/lib/billing";
 import { BulkPay, PayPanel } from "@/components/billing/TopupControls";
@@ -86,7 +87,7 @@ export function BillingBoard({
 
   return (
     <div className="rhythm stagger-enter">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-3">
         <StatCard
           label={t.billing.statBurn30}
           value={usd(spend30)}
@@ -103,27 +104,31 @@ export function BillingBoard({
             type="button"
             onClick={doRefresh}
             disabled={!githubConfigured || refresh === "busy"}
-            className="btn-quiet inline-flex w-fit items-center gap-2 px-4 py-2 text-sm disabled:opacity-40"
+            className="btn-quiet w-fit disabled:opacity-40"
           >
-            <RefreshCw className="size-3.5" aria-hidden />
+            <RefreshCw className="size-4" aria-hidden />
             {refresh === "busy" ? t.billing.refreshing : t.billing.refresh}
           </button>
-          <span className="tnum text-xs" aria-live="polite">
+          <span className="g5-note" aria-live="polite">
             {refresh === "ok" && <span className="text-[var(--color-ok)]">{t.billing.refreshQueued}</span>}
-            {refresh === "fail" && <span className="text-[var(--color-fail)]">{t.billing.refreshFailed}</span>}
+            {refresh === "fail" && <span className="g5-fail-text">{t.billing.refreshFailed}</span>}
           </span>
         </div>
       </div>
 
       <ElevenLabsPanel runway={runway} />
 
-      <section className="space-y-3">
-        <h2 className="t-section">{t.billing.providersTitle}</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {providers.map((p) => (
-            <ProviderCard key={p.id} p={p} onSaved={() => router.refresh()} />
-          ))}
+      <section className="panel" aria-labelledby="bl-providers">
+        <div className="g5-sechead">
+          <h2 id="bl-providers" className="g5-h">
+            {t.billing.providersTitle}
+          </h2>
         </div>
+        <ul className="g5-rows">
+          {providers.map((p) => (
+            <ProviderRow key={p.id} p={p} onSaved={() => router.refresh()} />
+          ))}
+        </ul>
       </section>
 
       <BulkPay providers={providers} onDone={() => router.refresh()} />
@@ -135,23 +140,31 @@ function ElevenLabsPanel({ runway }: { runway: RunwayView | null }) {
   const { t } = useI18n();
   if (!runway) {
     return (
-      <div className="panel p-5 sm:p-6">
-        <h2 className="t-section">{t.billing.elevenTitle}</h2>
-        <p className="mt-2 text-sm text-[var(--color-muted)]">{t.billing.elevenNoData}</p>
-      </div>
+      <section className="panel" aria-labelledby="bl-eleven">
+        <div className="g5-sechead">
+          <h2 id="bl-eleven" className="g5-h">
+            {t.billing.elevenTitle}
+          </h2>
+        </div>
+        <StateBlock tone="idle" compact>
+          {t.billing.elevenNoData}
+        </StateBlock>
+      </section>
     );
   }
   return (
-    <div className="panel flex flex-col gap-3 p-5 sm:p-6">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="t-section">{t.billing.elevenTitle}</h2>
-        <span className="tnum text-xs text-[var(--color-muted)]">
+    <section className="panel flex flex-col gap-4" aria-labelledby="bl-eleven">
+      <div className="g5-sechead" style={{ marginBottom: 0 }}>
+        <h2 id="bl-eleven" className="g5-h">
+          {t.billing.elevenTitle}
+        </h2>
+        <span className="g5-note">
           {runway.tier ? `${runway.tier} · ` : ""}
           {fmt(t.billing.checked, { when: relativeTime(runway.checkedAt) })}
         </span>
       </div>
-      <p className="t-figure text-[var(--color-fg)]">{fmt(t.billing.elevenMinutes, { minutes: n0(runway.minMinutes) })}</p>
-      <p className="text-sm text-[var(--color-muted)]">
+      <p className="g5-figure">{fmt(t.billing.elevenMinutes, { minutes: n0(runway.minMinutes) })}</p>
+      <p className="g5-sub" style={{ marginTop: 0 }}>
         {runway.minVideos !== null && runway.perVideoChars !== null
           ? fmt(t.billing.elevenVideos, { videos: n0(runway.minVideos), chars: n0(runway.perVideoChars) })
           : t.billing.elevenNoHistory}
@@ -166,17 +179,17 @@ function ElevenLabsPanel({ runway }: { runway: RunwayView | null }) {
           valueText={fmt(t.billing.elevenCredits, { remaining: n0(runway.remainingCredits), total: n0(runway.total) })}
         />
       )}
-      <p className="tnum text-xs text-[var(--color-muted)]">
+      <p className="g5-note">
         {runway.total !== null
           ? fmt(t.billing.elevenCredits, { remaining: n0(runway.remainingCredits), total: n0(runway.total) })
           : n0(runway.remainingCredits)}
         {runway.resetsAt ? ` · ${fmt(t.billing.elevenResets, { date: runway.resetsAt.slice(0, 10) })}` : ""}
       </p>
-    </div>
+    </section>
   );
 }
 
-function ProviderCard({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
+function ProviderRow({ p, onSaved }: { p: ProviderView; onSaved: () => void }) {
   const { t } = useI18n();
   const [price, setPrice] = useState(p.price === null ? "" : String(p.price));
   const [state, setState] = useState<"idle" | "busy" | "ok" | "fail">("idle");
@@ -214,29 +227,34 @@ function ProviderCard({ p, onSaved }: { p: ProviderView; onSaved: () => void }) 
   const low = typeof p.daysLeft === "number" && p.daysLeft <= p.lowBalanceDays && !p.autoRecharge;
 
   return (
-    <div className="panel flex flex-col gap-3 p-5 sm:p-6">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-[var(--color-fg)]">{p.name}</h3>
+    <li className="g5-row g5-prov">
+      <div className="flex min-w-0 flex-col items-start gap-2">
+        <h3 className="g5-row-title" style={{ fontWeight: 600 }}>
+          {p.name}
+        </h3>
         <StatusLamp tone={p.keySet ? "ok" : "idle"} label={p.keySet ? t.billing.keySet : t.billing.keyMissing} />
       </div>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
-        <dt className="text-[var(--color-muted)]">{t.billing.balance}</dt>
-        <dd className="tnum text-right text-[var(--color-fg)]">{balance}</dd>
-        <dt className="text-[var(--color-muted)]">{t.billing.usage30}</dt>
-        <dd className="tnum text-right text-[var(--color-fg)]">
-          {n0(p.units30)}
-          {p.usdPerDay !== null && p.usdPerDay > 0 ? ` · ${usd(p.usdPerDay)}${t.billing.perDay}` : ""}
-        </dd>
-        <dt className="text-[var(--color-muted)]">{t.billing.lasts}</dt>
-        <dd className="tnum text-right" style={{ color: low ? "var(--color-warn)" : "var(--color-fg)" }}>
-          {lasts}
-        </dd>
+      <dl className="g5-prov-facts">
+        <div>
+          <dt className="g5-k">{t.billing.balance}</dt>
+          <dd>{balance}</dd>
+        </div>
+        <div>
+          <dt className="g5-k">{t.billing.usage30}</dt>
+          <dd>
+            {n0(p.units30)}
+            {p.usdPerDay !== null && p.usdPerDay > 0 ? ` · ${usd(p.usdPerDay)}${t.billing.perDay}` : ""}
+          </dd>
+        </div>
+        <div>
+          <dt className="g5-k">{t.billing.lasts}</dt>
+          <dd style={{ color: low ? "var(--color-warn)" : undefined }}>{lasts}</dd>
+        </div>
       </dl>
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-[var(--color-muted)]">
-          {fmt(t.billing.price, { unit: p.unitLabel })}
-        </span>
-        <div className="flex gap-2">
+      <div className="g5-prov-act">
+      <div className="g5-prov-price">
+        <label className="g5-field">
+          <span className="g5-k">{fmt(t.billing.price, { unit: p.unitLabel })}</span>
           <input
             type="number"
             inputMode="decimal"
@@ -248,39 +266,33 @@ function ProviderCard({ p, onSaved }: { p: ProviderView; onSaved: () => void }) 
               setState("idle");
             }}
             placeholder={t.billing.pricePlaceholder}
-            className="rounded-[var(--ns-r-key)] min-w-0 flex-1 border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 tnum text-xs text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+            className="ns-field tnum"
           />
-          <button
-            type="button"
-            onClick={save}
-            disabled={state === "busy"}
-            className="btn-quiet text-xs disabled:opacity-40"
-          >
-            {state === "ok" ? t.billing.saved : t.billing.save}
-          </button>
-        </div>
-        {state === "fail" && <span className="text-xs text-[var(--color-fail)]">{t.billing.saveFailed}</span>}
-      </label>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={() => setPaying((v) => !v)}
-          aria-expanded={paying}
-          className="btn-primary text-xs font-semibold"
-        >
+        </label>
+        <button type="button" onClick={save} disabled={state === "busy"} className="btn-quiet disabled:opacity-40">
+          {state === "ok" ? t.billing.saved : t.billing.save}
+        </button>
+      </div>
+      <div className="g5-prov-end">
+        <button type="button" onClick={() => setPaying((v) => !v)} aria-expanded={paying} className="btn-quiet">
           {t.billing.pay}
         </button>
-        <a
-          href={p.billingUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs text-[var(--color-primary)] hover:underline"
-        >
+        <a href={p.billingUrl} target="_blank" rel="noopener noreferrer" className="g5-link">
           {t.billing.openBilling}
-          <ExternalLink className="size-3" aria-hidden />
+          <ExternalLink className="size-4" aria-hidden />
         </a>
       </div>
-      {paying && <PayPanel p={p} suggested={suggested} onDone={onSaved} />}
-    </div>
+      </div>
+      {state === "fail" && (
+        <p role="alert" className="g5-note g5-fail-text" style={{ gridColumn: "1 / -1" }}>
+          {t.billing.saveFailed}
+        </p>
+      )}
+      {paying && (
+        <div style={{ gridColumn: "1 / -1" }}>
+          <PayPanel p={p} suggested={suggested} onDone={onSaved} />
+        </div>
+      )}
+    </li>
   );
 }
