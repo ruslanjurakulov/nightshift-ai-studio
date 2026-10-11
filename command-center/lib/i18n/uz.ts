@@ -190,6 +190,7 @@ export const uz: Dictionary = {
     loading: "Yuklanmoqda…",
     loadFailed: "Hisob maʼlumotlarini yuklab boʻlmadi. Birozdan soʻng qayta urinib koʻring.",
     close: "Yopish",
+    sectionSub: "Kim kirgan, tarifingiz, nashr qilinadigan hisoblar hamda ilovaning tili va koʻrinishi.",
   },
   status: {
     ok: "OK",
@@ -2733,7 +2734,7 @@ export const uz: Dictionary = {
     limitReached: "Bu akkaunt uchun tashkilotlar chegarasiga yetildi.",
     switchFailed: "Tashkilotni almashtirib boʻlmadi.",
     title: "Sozlamalar",
-    customerSubtitle: "Hisobingiz xavfsizligi va dasturchilar uchun kirish.",
+    customerSubtitle: "Hisobingiz, uning xavfsizligi va dasturchilar uchun kirish.",
     signIn: "Sozlamalarni ochish uchun tizimga kiring.",
     developersTitle: "Dasturchilar",
     developersHint: "Ushbu ish maydonining API kalitlari, foydalanish va oldindan toʻlangan API balansi.",
