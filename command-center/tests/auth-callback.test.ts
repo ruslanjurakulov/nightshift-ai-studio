@@ -103,10 +103,12 @@ describe("/auth/callback", () => {
     expect((await land("?code=abc")).path).toBe("/login?error=link_invalid");
   });
 
-  it("verifies a token_hash link only for sign-up confirmation types", async () => {
+  it("verifies a token_hash link only for sign-up confirmation and recovery types", async () => {
     expect((await land("?token_hash=h&type=signup")).path).toBe("/auth/confirm?next=%2Fwelcome");
     expect(auth.verify).toHaveBeenCalledWith({ token_hash: "h", type: "signup" });
-    expect((await land("?token_hash=h&type=recovery")).path).toBe("/login?error=link_invalid");
+    // recovery has its own tests (auth-callback-recovery.test.ts); an invite or an e-mail change is still not completed here
+    for (const type of ["invite", "magiclink", "email_change", "bogus"])
+      expect((await land(`?token_hash=h&type=${type}`)).path).toBe("/login?error=link_invalid");
   });
 
   // P2: a token_hash link is not bound to the browser that asked for it, so

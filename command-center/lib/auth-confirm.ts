@@ -34,6 +34,9 @@ export interface PendingSignIn {
   csrf: string;
   /** Unix seconds; a pending sign-in past PENDING_MAX_AGE_SECONDS is void. */
   iat: number;
+  /** True for a password-recovery link: the confirmed session is a recovery
+   *  session and is sent to /reset-password, not into the app. */
+  rec?: boolean;
 }
 
 function b64urlEncode(text: string): string {
@@ -65,7 +68,7 @@ export function decodePending(value: string | null | undefined, nowSeconds = Mat
     if (typeof p.rt !== "string" || !p.rt || typeof p.email !== "string" || !p.email) return null;
     if (typeof p.csrf !== "string" || !/^[0-9a-f]{48}$/.test(p.csrf)) return null;
     if (typeof p.iat !== "number" || nowSeconds - p.iat > PENDING_MAX_AGE_SECONDS || p.iat - nowSeconds > 60) return null;
-    return { rt: p.rt, email: p.email, csrf: p.csrf, iat: p.iat };
+    return { rt: p.rt, email: p.email, csrf: p.csrf, iat: p.iat, ...(p.rec === true ? { rec: true } : {}) };
   } catch {
     return null;
   }

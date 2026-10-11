@@ -38,6 +38,8 @@ const AUTH_CALLS = [
 /** Routes allowed to carry no check of their own, and why. */
 const PUBLIC_BY_DESIGN: Record<string, string> = {
   "v1/[...rest]/route.ts": "the API's own 404 for an unknown path; it answers nothing about anyone",
+  "handle-available/route.ts":
+    "the sign-up form's username check, asked before an account exists: same-origin POST only, one yes/no/unknown, limited per address and platform-wide in the database (0096)",
 };
 
 function routeFiles(dir: string): string[] {
@@ -73,7 +75,7 @@ describe("every API route asks who is calling", () => {
     // unauthenticated caller make the server do work (and learn parse errors).
     const bad: string[] = [];
     for (const { rel, src } of files) {
-      if (rel.startsWith("v1/") || rel === "mcp/route.ts" || rel.startsWith("media/file/")) continue;
+      if (rel.startsWith("v1/") || rel === "mcp/route.ts" || rel.startsWith("media/file/") || PUBLIC_BY_DESIGN[rel]) continue;
       const body = src.indexOf("request.json()");
       const auth = Math.min(...AUTH_CALLS.map((c) => src.indexOf(c)).filter((i) => i >= 0), Infinity);
       if (body >= 0 && auth > body) bad.push(rel);

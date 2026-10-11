@@ -169,7 +169,7 @@ async function gate(request: NextRequest): Promise<NextResponse> {
   // Only /login, /signup, the auth callback and the public pages (landing,
   // Privacy, Terms, Pricing) are reachable signed out; see lib/public-paths.ts
   // for why the match is exact.
-  const decision = gateDecision(request.nextUrl.pathname, Boolean(user));
+  const decision = gateDecision(request.nextUrl.pathname, Boolean(user), request.nextUrl.search);
   // A signed-out visitor who mistyped a URL (/blog, /about) gets the 404, not a
   // sign-in form for a page that was never there. The rewrite serves only the
   // root not-found page: no layout of the app runs, nothing is read.

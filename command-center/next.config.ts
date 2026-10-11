@@ -46,6 +46,9 @@ export const PUBLIC_PAGE_PATHS = [
   "/terms",
   "/login",
   "/signup",
+  // Password recovery (lib/public-paths.ts): the request page and the page a reset link ends on.
+  "/forgot-password",
+  "/reset-password",
   // Where an invite link lands when it cannot be used (lib/public-paths.ts).
   "/invite",
 ] as const;
@@ -124,6 +127,15 @@ const nextConfig: NextConfig = {
         headers: [
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
+      // Password recovery: the request page and the reset page are never cached
+      // and send no Referer (the reset page is reached from an e-mailed link).
+      {
+        source: "/:page(forgot-password|reset-password)",
+        headers: [
           { key: "Referrer-Policy", value: "no-referrer" },
           { key: "Cache-Control", value: "no-store" },
         ],
