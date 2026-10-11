@@ -773,6 +773,13 @@ option {
 }
 .scroll-top:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .scroll-top[data-hidden="true"] { opacity: 0; transform: translateY(8px); pointer-events: none; }
+/* Where the phone's tab bar is shown (the bar is ~57px plus the raised Studio key),
+   the button rides above it instead of covering the right-most tab. The composer's
+   pinned Generate dock sits above the bar too, so the button clears that as well. */
+@media (max-width: 1023px) {
+  .scroll-top[data-dock="true"] { bottom: calc(env(safe-area-inset-bottom) + 4.75rem); }
+  .app-shell:has(.studio-dock) .scroll-top[data-dock="true"] { bottom: calc(env(safe-area-inset-bottom) + 9.5rem); }
+}
 
 /* A bar nav link carries the same sweep as every other control: the fill rises
    from the bottom edge on hover and the press scales in. The page you are on
@@ -988,6 +995,9 @@ option {
 .ns-tabbar {
   background: var(--color-panel);
   border-top: 1px solid var(--shell-border);
+  /* Its own compositing layer, so a mobile browser's moving toolbar cannot drag
+     the fixed bar along with the page. */
+  transform: translateZ(0);
 }
 .ns-tab {
   display: flex;

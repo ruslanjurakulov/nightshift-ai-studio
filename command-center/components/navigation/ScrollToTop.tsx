@@ -12,8 +12,11 @@ const SHOW_AFTER = 1.5;
  *
  * Kept in the DOM while hidden, but out of the tab order and the accessibility
  * tree, so a keyboard user never lands on an invisible button.
+ *
+ * `dock` is for a phone layout that has the bottom tab bar: the button then
+ * sits above the bar (see `.scroll-top[data-dock]`) rather than over a tab.
  */
-export function ScrollToTop() {
+export function ScrollToTop({ dock = false }: { dock?: boolean }) {
   const { t } = useI18n();
   const [visible, setVisible] = useState(false);
 
@@ -50,6 +53,7 @@ export function ScrollToTop() {
       aria-hidden={!visible}
       tabIndex={visible ? 0 : -1}
       data-hidden={visible ? undefined : "true"}
+      data-dock={dock ? "true" : undefined}
       className="scroll-top"
     >
       <ArrowUp aria-hidden className="size-[18px]" />

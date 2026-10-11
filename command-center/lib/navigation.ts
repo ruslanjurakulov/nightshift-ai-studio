@@ -178,7 +178,7 @@ export const RAIL_HIDDEN_KEYS: readonly NavKey[] = ["accounts", "members"];
 /**
  * A customer's rail: five destinations, nothing else. Studio is where things
  * are made (create, library, look, series); Settings holds the workspace
- * (the workspace name; Developers is reached from it). Each of the two opens
+ * (Account and security; Developers is reached from it). Each of the two opens
  * its first screen, and SECTION_TABS lays Studio's other screens out as tabs —
  * a short rail with the tools behind it, never a wall of tools.
  */
@@ -205,8 +205,8 @@ export const SECTION_TABS: Readonly<Record<"hub" | "settings", readonly SectionI
     // The catalog of models a customer may use (sellable_models()), by task.
     { href: "/models", key: "models" },
   ],
-  // Settings has no tab bar: it is one plain page (the workspace name) with
-  // Developers (API keys) as its own entry. There is no team to lay out.
+  // Settings has no tab bar: it is one plain page (Account and security)
+  // with Developers (API keys) as its own entry. There is no team to lay out.
   settings: [],
 };
 

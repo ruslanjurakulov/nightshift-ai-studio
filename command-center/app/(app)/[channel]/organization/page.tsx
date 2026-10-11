@@ -1,7 +1,5 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
-import { WorkspaceNameForm } from "@/components/org/WorkspaceNameForm";
-import { CreateOrganizationForm } from "@/components/org/CreateOrganizationForm";
 import { getOrgContext } from "@/lib/orgs-server";
 import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
@@ -14,15 +12,16 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
- * Settings: the workspace's name, Account and security (sign-in email,
- * password, @username), and the way to Developers (API keys).
+ * Settings: Account and security (sign-in email, password, @username) and the
+ * way to Developers (API keys).
  *
  * There are two kinds of people in this product: a signed-in user, who owns
  * their workspace and does everything in it, and the platform operator, who
  * also sees the operator pages. So there is no team here: no roles, no
- * invitations, no members table. Which workspace is "current" is decided on
- * the server (lib/orgs-server.ts) from the caller's own memberships; before
- * migration 0018 this page says so rather than showing an empty form.
+ * invitations, no members table. The workspace is named once, on /welcome, and
+ * is not edited here. Which workspace is "current" is decided on the server
+ * (lib/orgs-server.ts) from the caller's own memberships; before migration 0018
+ * this page says so rather than showing an empty form.
  */
 export default async function SettingsPage() {
   const { t } = await getDictionary();
@@ -37,7 +36,6 @@ export default async function SettingsPage() {
         <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.org.notMigrated}</div>
       ) : org.current ? (
         <>
-          <WorkspaceNameForm key={org.current.id} org={org.current} />
           {user.email && (
             <AccountSecurity
               email={user.email}
@@ -54,10 +52,9 @@ export default async function SettingsPage() {
               {t.org.developersOpen}
             </Link>
           </div>
-          <CreateOrganizationForm variant="another" />
         </>
       ) : (
-        <CreateOrganizationForm variant="first" />
+        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.org.noOrg}</div>
       )}
     </div>
   );
