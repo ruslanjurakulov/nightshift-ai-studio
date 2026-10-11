@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import { Wordmark } from "@/components/site/Wordmark";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { NotificationsCenter } from "@/components/NotificationsCenter";
@@ -105,6 +106,7 @@ export function Header({
             <span className="hidden sm:contents">
               <LanguageSelector />
               <ThemeToggle />
+              <ViewModeToggle showLabel compact />
             </span>
             {/* On a phone and tablet the account sits here; from `lg` up it is
                 the sidebar's user card. */}
@@ -162,6 +164,7 @@ export function Header({
         <span className="hidden sm:contents">
           <LanguageSelector />
           <ThemeToggle />
+          <ViewModeToggle showLabel compact />
         </span>
         <AccountMenu email={email} />
       </div>

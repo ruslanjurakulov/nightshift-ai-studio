@@ -5,6 +5,7 @@ import { SOLUTION_IDS, solutionHref } from "@/lib/solutions";
 import { Wordmark } from "@/components/site/Wordmark";
 import { devFor } from "@/lib/i18n/dev";
 import { devPagesEnabled } from "@/lib/dev-pages";
+import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
 import { creditLine, LICENCE, MEDIA, MEDIA_IDS } from "@/lib/site/media";
 
 const GOOGLE_PERMISSIONS = "https://myaccount.google.com/permissions";
@@ -130,6 +131,7 @@ export function PublicFooter({ t }: { t: Dictionary }) {
         <div className="st-footer-base">
           <span>{LEGAL.legalName ? `© ${LEGAL.legalName}` : t.brand.name}</span>
           <span>{t.legal.tagline}</span>
+          <ViewModeToggle variant="link" labels={t.common} />
         </div>
       </div>
     </footer>

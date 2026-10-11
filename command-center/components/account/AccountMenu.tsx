@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, LOCALES } from "@/lib/i18n";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
 import { useChannelPath } from "@/lib/channels-client";
 import { formatCredits } from "@/lib/credits";
 import {
@@ -319,6 +320,7 @@ export function AccountMenu({
               ))}
             </div>
             <ThemeToggle showLabel />
+            <ViewModeToggle showLabel />
           </div>
 
           <nav className="flex flex-col gap-1 border-t border-[var(--color-border)] pt-3">

@@ -109,6 +109,10 @@ export interface CspOptions {
   /** `next dev` needs eval for React's dev tooling; production never does. */
   dev?: boolean;
   reportUri?: string | null;
+  /** The Mobile view's shell page (lib/view-mode.ts): it frames the app, so `frame-src` also names the site itself. */
+  frameSelf?: boolean;
+  /** A response our own page asked to frame (lib/view-mode.ts framedBySelf): `frame-ancestors 'self'` instead of 'none'. */
+  framedBySelf?: boolean;
 }
 
 /**
@@ -128,7 +132,11 @@ export interface CspOptions {
  * - connect-src is the real exfiltration control: our own API, Supabase (REST
  *   and the realtime websocket) and Paddle only.
  * - frame-ancestors 'none' repeats the header next.config.ts already sends
- *   (BR-S-007), so the enforcing policy alone is also complete.
+ *   (BR-S-007), so the enforcing policy alone is also complete. The one
+ *   exception is the Mobile view (lib/view-mode.ts): our own page framing
+ *   itself, which the browser marks Sec-Fetch-Dest: iframe and Sec-Fetch-Site:
+ *   same-origin, gets 'self'; the shell that does the framing also lists
+ *   'self' in frame-src. Nobody else can frame the site.
  */
 export function buildCsp(opts: CspOptions): string {
   const supabase = supabaseOrigins(opts.supabaseUrl);
@@ -150,13 +158,13 @@ export function buildCsp(opts: CspOptions): string {
     ["media-src", ["'self'", "data:", "blob:", "https:"]],
     ["font-src", ["'self'", "data:"]],
     ["connect-src", ["'self'", ...supabase, ...PADDLE.connect]],
-    ["frame-src", [...PADDLE.frame]],
+    ["frame-src", [...(opts.frameSelf ? ["'self'"] : []), ...PADDLE.frame]],
     ["worker-src", ["'self'", "blob:"]],
     ["manifest-src", ["'self'"]],
     ["object-src", ["'none'"]],
     ["base-uri", ["'self'"]],
     ["form-action", ["'self'"]],
-    ["frame-ancestors", ["'none'"]],
+    ["frame-ancestors", [opts.framedBySelf ? "'self'" : "'none'"]],
   ];
   if (opts.reportUri) {
     directives.push(["report-uri", [opts.reportUri]]);
