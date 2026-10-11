@@ -28,6 +28,7 @@ import { dictionaries, type Locale } from "@/lib/i18n";
 import { HomeHub } from "@/components/home/HomeHub";
 import { CreateStudio } from "@/components/create/CreateStudio";
 import { HOME_FORMATS, lengthSeconds, type HomeChannel } from "@/lib/home";
+import { draftKey, writeDraft } from "@/lib/create-draft";
 
 const t = dictionaries.en;
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
@@ -35,6 +36,7 @@ const priced = { supported: true, enforced: true, exempt: false, estimate: { cre
 
 let calls: { url: string; init?: RequestInit }[];
 beforeEach(() => {
+  window.sessionStorage.clear();
   calls = [];
   vi.stubGlobal(
     "fetch",
@@ -67,6 +69,10 @@ const channel: HomeChannel = {
 const runs = () => calls.filter((c) => c.url.startsWith("/api/agent/run"));
 const topic = () => screen.getByRole("textbox", { name: t.create.flow.topicTitle }) as HTMLTextAreaElement;
 
+const me = { userId: "user-1", orgId: "org-1", channelId: "chan-a" };
+const wait = (ms = 600) => act(async () => void (await new Promise((r) => setTimeout(r, ms))));
+const stored = () => Object.keys(window.sessionStorage).filter((k) => k.startsWith("nightshift.create.draft."));
+
 function home(over: { assistant?: { canRun: boolean; runConfigured: boolean } | null; withRun?: boolean; locale?: Locale; channels?: HomeChannel[] } = {}) {
   const { assistant = { canRun: true, runConfigured: true }, withRun = true, locale = "en", channels = [channel] } = over;
   return render(
@@ -77,7 +83,7 @@ function home(over: { assistant?: { canRun: boolean; runConfigured: boolean } | 
         orgId={null}
         allPrivate
         assistant={assistant ? { models: [], ...assistant } : undefined}
-        run={withRun ? <CreateStudio channelId="chan-a" githubConfigured agentConfig={null} canRun /> : undefined}
+        run={withRun ? <CreateStudio channelId="chan-a" githubConfigured agentConfig={null} canRun draftOwner={{ userId: "user-1", orgId: "org-1" }} /> : undefined}
       />
     </I18nProvider>,
   );
@@ -153,6 +159,44 @@ describe("the goal cards", () => {
     expect(screen.queryByTestId("brackets-hint")).toBeNull();
     fireEvent.click(card);
     expect(topic().value).toBe(t.home.formats.kids.starter);
+  });
+
+  it("puts the caret on the first [bracket] once the card's text is in the box, every time", async () => {
+    home();
+    for (const id of ["explainer", "interview", "explainer", "explainer"] as const) {
+      fireEvent.click(document.querySelector(`[data-goal="${id}"]`) as HTMLElement);
+      await act(async () => {});
+      const starter = t.home.formats[id].starter;
+      expect(topic().value).toBe(starter);
+      expect(document.activeElement).toBe(topic());
+      expect(topic().value.slice(topic().selectionStart, topic().selectionEnd)).toBe(starter.slice(starter.indexOf("["), starter.indexOf("]") + 1));
+    }
+  });
+
+  it("picking a card hides 'your draft is back' (the box now holds the card's text) and drops the old draft", async () => {
+    writeDraft(window.sessionStorage, me, { topic: "My earlier idea", duration: "", voice: "", look: "" });
+    home();
+    await screen.findByTestId("draft-restored");
+    expect(topic().value).toBe("My earlier idea");
+    fireEvent.click(document.querySelector('[data-goal="story"]') as HTMLElement);
+    expect(screen.queryByTestId("draft-restored")).toBeNull();
+    expect(topic().value).toBe(t.home.formats.story.starter);
+    await wait();
+    expect(stored()).toEqual([]);
+  });
+
+  it("the card's own text is not kept as a draft; what the person writes after it is", async () => {
+    home();
+    fireEvent.click(document.querySelector('[data-goal="kids"]') as HTMLElement);
+    await wait();
+    expect(stored()).toEqual([]);
+    fireEvent.change(topic(), { target: { value: "A gentle story for kids about a fox who learns patience" } });
+    await wait();
+    expect(stored()).toEqual([draftKey(me)]);
+    // Back to the card's text exactly: nothing of the person's is left to keep.
+    fireEvent.click(document.querySelector('[data-goal="kids"]') as HTMLElement);
+    await wait();
+    expect(stored()).toEqual([]);
   });
 
   it("no cards where they would lead nowhere: no runnable channel, no right to run, or Run now not set up", () => {

@@ -116,6 +116,9 @@ export function CreateStudio({
     look: "",
   };
   const baselineRef = useRef(baseline);
+  // What "nothing typed yet" is right now: the starting form, or the goal card's text after a pick. A card's
+  // starter is not the person's writing, so it is not kept as a draft until they change it.
+  const untouchedRef = useRef(baseline);
   const seenScope = useRef<string | null>(null);
   const scope: DraftScope | null = draftOwner && channelId ? { ...draftOwner, channelId } : null;
   const scopeKey = scope ? `${scope.userId}|${scope.orgId}|${scope.channelId}` : "";
@@ -169,6 +172,7 @@ export function CreateStudio({
     // The same form kept mounted while the person moves to another channel or organization: what is typed
     // belongs to the one they left, so it starts over (and is never saved under the new scope).
     baselineRef.current = baseline;
+    untouchedRef.current = baseline;
     if (seenScope.current !== null && seenScope.current !== scopeKey) {
       setBrief(baseline.topic);
       setDuration(baseline.duration);
@@ -198,11 +202,14 @@ export function CreateStudio({
     const sc = scopeRef.current;
     if (!sc || !draftChecked || phase === "queued") return;
     const mine = { topic: brief, duration, voice: voice === CUSTOM_VOICE ? baselineRef.current.voice : voice, look: style };
-    const b = baselineRef.current;
+    const b = untouchedRef.current;
     const untouched = mine.topic.trim() === b.topic.trim() && mine.duration === b.duration && mine.voice === b.voice && mine.look.trim() === b.look;
     const timer = setTimeout(() => {
-      if (untouched) clearDraft(draftStore(), sc);
-      else writeDraft(draftStore(), sc, mine);
+      // A form that started from Home's query leaves the stored draft alone until the person edits or discards:
+      // that link is not a decision to throw their earlier text away.
+      if (untouched) {
+        if (!initial) clearDraft(draftStore(), sc);
+      } else writeDraft(draftStore(), sc, mine);
     }, 400);
     return () => clearTimeout(timer);
   }, [brief, duration, voice, style, phase, draftChecked, scopeKey]);
@@ -211,6 +218,7 @@ export function CreateStudio({
     const sc = scopeRef.current;
     if (sc) clearDraft(draftStore(), sc);
     const b = baselineRef.current;
+    untouchedRef.current = b;
     setBrief(b.topic);
     setDuration(b.duration);
     setVoice(b.voice);
@@ -239,23 +247,33 @@ export function CreateStudio({
   // again, since what it would have started has changed; the caret lands on the first [bracket], the
   // part that is the person's to write.
   const presetNonce = preset?.nonce ?? 0;
+  const caretAt = useRef<{ brief: string; at: number; to: number } | null>(null);
   useEffect(() => {
     if (!preset) return;
     setBrief(preset.brief);
     setDuration(preset.duration);
     setFromPreset(true);
+    // The card replaces the form: whatever was restored is no longer what is on screen, and the card's own
+    // text is not kept as a draft until the person changes it.
+    setRestored(false);
+    untouchedRef.current = { ...untouchedRef.current, topic: preset.brief, duration: preset.duration };
     setPhase((p) => (p === "confirm" ? "idle" : p));
-    const el = topicRef.current;
-    el?.scrollIntoView?.({ behavior: "smooth", block: "center" });
-    requestAnimationFrame(() => {
-      if (!el) return;
-      el.focus({ preventScroll: true });
-      const at = preset.brief.indexOf("[");
-      if (at >= 0) el.setSelectionRange(at, Math.max(at, preset.brief.indexOf("]", at) + 1));
-    });
+    caretAt.current = preset.brief.indexOf("[") >= 0 ? { brief: preset.brief, at: preset.brief.indexOf("["), to: preset.brief.indexOf("]", preset.brief.indexOf("[")) + 1 } : null;
+    topicRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
     // Keyed on the pick's nonce; the preset object itself is new on every provider render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetNonce]);
+
+  // After the card's text is in the box (committed, not just queued): focus it with the first [bracket]
+  // selected, the part that is the person's to write.
+  useEffect(() => {
+    const c = caretAt.current;
+    const el = topicRef.current;
+    if (!c || !el || el.value !== c.brief) return;
+    caretAt.current = null;
+    el.focus({ preventScroll: true });
+    el.setSelectionRange(c.at, Math.max(c.at, c.to));
+  }, [brief, presetNonce]);
 
   // Poll the pipeline's events while a run is in flight, so the panel is live.
   useEffect(() => {

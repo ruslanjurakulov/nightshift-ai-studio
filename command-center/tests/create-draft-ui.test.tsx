@@ -97,12 +97,19 @@ describe("restore on reload", () => {
     expect(screen.getByTestId("draft-restored").textContent).toContain(t.create.flow.draftRestored);
   });
 
-  it("a hand-off from Home's query wins over the draft, which is left alone", async () => {
+  it("a hand-off from Home's query wins over the draft, and leaves the stored draft alone until the person edits or discards", async () => {
     await typeAndLeave();
     render(studio({ initial: { brief: "From the link", duration: "60", language: "" } }));
-    await wait(50);
+    await wait(1700);
     expect(topic().value).toBe("From the link");
     expect(screen.queryByTestId("draft-restored")).toBeNull();
+    // Still there after the debounce and well past it: the link was not a decision to throw it away.
+    expect(stored()).toEqual([draftKey(me)]);
+    expect(JSON.parse(window.sessionStorage.getItem(draftKey(me)) as string).topic).toBe(SECRET);
+    // Editing is the decision: from then on the draft is what they are writing now.
+    fireEvent.change(topic(), { target: { value: "From the link, edited" } });
+    await wait();
+    expect(JSON.parse(window.sessionStorage.getItem(draftKey(me)) as string).topic).toBe("From the link, edited");
   });
 
   it("an untouched form leaves nothing behind", async () => {
