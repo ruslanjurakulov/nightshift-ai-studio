@@ -2577,6 +2577,7 @@ export const ru: Dictionary = {
     variantA: "Вариант A",
     variantB: "Вариант B",
     variantN: "Вариант {v}",
+    armAhead: "Впереди",
     abVideos: "измеренных видео",
     meanCtr: "средний CTR",
     impressionsLabel: "показы",

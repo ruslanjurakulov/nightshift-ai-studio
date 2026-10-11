@@ -13,6 +13,9 @@ import { readVariables } from "@/lib/server/github-variables";
 import { ALERT_SECRET_NAMES, deriveAlertConfig } from "@/lib/server/alerts";
 import { getDictionary } from "@/lib/i18n/server";
 import { relativeTime } from "@/lib/format";
+import { DataList } from "@/components/g4/DataList";
+import { Section } from "@/components/g4/Section";
+import "../../app-pages-g4.css";
 import type { AlertEventRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -86,102 +89,72 @@ export default async function AlertsPage() {
   };
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open g4 stagger-enter">
       <PageHeader icon="alerts" title={t.alerts.title} subtitle={t.alerts.subtitle} />
 
-      {/* Channel configuration */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="panel p-5 sm:p-6">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-[var(--color-fg)]">
-              {t.alerts.slackTitle}
-            </h2>
-            <StatusPill
-              tone={slackConfigured ? "ok" : "idle"}
-              label={slackConfigured ? t.alerts.slackConfigured : t.alerts.slackMissing}
-              live={slackConfigured}
-            />
+      {/* The desk: where alerts go, and the one control (admins send a test). */}
+      <section className="ns-desk" aria-label={t.alerts.title}>
+        <div className="g4-cols">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="t-panel">{t.alerts.slackTitle}</h2>
+              <StatusPill
+                tone={slackConfigured ? "ok" : "idle"}
+                label={slackConfigured ? t.alerts.slackConfigured : t.alerts.slackMissing}
+                live={slackConfigured}
+              />
+            </div>
+            <p className="mono g4-muted text-sm m-0">SLACK_WEBHOOK_URL</p>
           </div>
-          <p className="mono mt-3 text-xs text-[var(--color-muted)]">SLACK_WEBHOOK_URL</p>
+
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="t-panel">{t.alerts.emailTitle}</h2>
+              <StatusPill
+                tone={emailConfigured ? "ok" : "idle"}
+                label={emailConfigured ? t.alerts.emailConfigured : t.alerts.emailMissing}
+                live={emailConfigured}
+              />
+            </div>
+            <p className="tnum g4-muted text-sm m-0">RESEND_API_KEY · ALERT_EMAIL_TO · ALERT_EMAIL_FROM</p>
+          </div>
         </div>
 
-        <div className="panel p-5 sm:p-6">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-[var(--color-fg)]">
-              {t.alerts.emailTitle}
-            </h2>
-            <StatusPill
-              tone={emailConfigured ? "ok" : "idle"}
-              label={emailConfigured ? t.alerts.emailConfigured : t.alerts.emailMissing}
-              live={emailConfigured}
-            />
-          </div>
-          <p className="tnum mt-3 text-xs text-[var(--color-muted)]">
-            RESEND_API_KEY · ALERT_EMAIL_TO · ALERT_EMAIL_FROM
-          </p>
+        <div className="mt-8 flex flex-col gap-4 border-t border-[var(--ns-rule)] pt-6">
+          <p className="g4-note">{t.alerts.setupNote}</p>
+          {isAdmin && <SendTestAlert />}
         </div>
-      </div>
-
-      {/* Setup note + admin-only test control */}
-      <div className="panel p-5 sm:p-6">
-        <p className="text-sm text-[var(--color-muted)]">{t.alerts.setupNote}</p>
-        {isAdmin && (
-          <div className="mt-4">
-            <SendTestAlert />
-          </div>
-        )}
-      </div>
+      </section>
 
       {/* The durable feed */}
-      <section className="section-open">
-        <header className="section-head">
-          <h2 className="t-panel">{t.alerts.feedTitle}</h2>
-        </header>
+      <Section title={t.alerts.feedTitle}>
         {feedFailed || events.length === 0 ? (
           <EmptyState>{t.alerts.empty}</EmptyState>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="text-left text-[var(--color-muted)]">
-                  <th className="border-b border-[var(--color-border)] py-2 pr-4 font-medium">
-                    {t.alerts.colTime}
-                  </th>
-                  <th className="border-b border-[var(--color-border)] py-2 pr-4 font-medium">
-                    {t.alerts.colKind}
-                  </th>
-                  <th className="border-b border-[var(--color-border)] py-2 font-medium">
-                    {t.alerts.colTitle}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {events.map((e) => (
-                  <tr key={e.id} className="align-top">
-                    <td className="border-b border-[var(--color-border)] py-2 pr-4 tnum text-xs text-[var(--color-muted)] whitespace-nowrap">
-                      {relativeTime(e.at)}
-                    </td>
-                    <td className="border-b border-[var(--color-border)] py-2 pr-4 tnum text-xs text-[var(--color-muted)] whitespace-nowrap">
-                      {e.kind}
-                    </td>
-                    <td className="border-b border-[var(--color-border)] py-2 text-[var(--color-fg)]">
-                      <div className="flex items-start gap-2">
-                        <StatusPill tone={SEVERITY_TONE[e.severity]} label={severityLabel[e.severity]} />
-                        <span className="font-medium">{e.title}</span>
-                      </div>
-                      {e.body && (
-                        <span className="mt-1 block text-xs font-light text-[var(--color-muted)]">
-                          {e.body}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataList
+            caption={t.alerts.feedTitle}
+            rows={events}
+            rowKey={(e) => e.id}
+            columns={[
+              { key: "time", label: t.alerts.colTime, nowrap: true, render: (e) => <span className="tnum g4-muted">{relativeTime(e.at)}</span> },
+              { key: "kind", label: t.alerts.colKind, nowrap: true, render: (e) => <span className="tnum g4-muted">{e.kind}</span> },
+              {
+                key: "title",
+                label: t.alerts.colTitle,
+                render: (e) => (
+                  <>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <StatusPill tone={SEVERITY_TONE[e.severity]} label={severityLabel[e.severity]} />
+                      <span className="font-medium">{e.title}</span>
+                    </div>
+                    {e.body && <span className="mt-1 block g4-small g4-muted">{e.body}</span>}
+                  </>
+                ),
+              },
+            ]}
+          />
         )}
-      </section>
+      </Section>
     </div>
   );
 }

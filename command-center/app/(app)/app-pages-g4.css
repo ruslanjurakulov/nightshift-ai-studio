@@ -1,0 +1,258 @@
+/* Insight and operations pages (G4): analytics, measurement, intelligence, intelligence map, learning, feedback loop,
+   usage, margin, logs, audit, alerts, autonomy, agents. Page-specific rules on top of the foundation
+   (app-redesign.css); every rule is scoped under `.g4` so nothing here reaches another group's pages.
+
+   The idea carried through: figures and rows lie on the ground between hairlines, the page's one job is the lit desk,
+   status is a lamp with its word, and a table is a ruled list that becomes a stack of lines on a phone. Unknown stays
+   unknown: nothing here draws a 0, a bar or a colour for a value the page did not have. */
+
+/* ── Figures: a strip of numbers separated by hairlines, not four boxes ────── */
+.g4 .g4-figures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px 0;
+}
+@media (min-width: 640px) {
+  .g4 .g4-figures { grid-template-columns: repeat(var(--g4-cols, 4), minmax(0, 1fr)); }
+}
+.g4 .g4-figures > * { padding-inline: 0 16px; min-width: 0; }
+.g4 .g4-figures > * + * { padding-left: 16px; }
+@media (min-width: 640px) {
+  .g4 .g4-figures > * { padding-inline: 24px; }
+  .g4 .g4-figures > *:first-child { padding-left: 0; }
+  .g4 .g4-figures > * + * { border-left: 1px solid var(--ns-rule); }
+}
+@media (max-width: 639px) {
+  .g4 .g4-figures > *:nth-child(even) { border-left: 1px solid var(--ns-rule); }
+}
+/* Inside the desk the figure's own top rule is the desk's edge already. */
+.g4 .ns-desk .g4-figures > * { border-top: 0; padding-top: 0; }
+.g4 .ns-desk .g4-figures [class*="border-t"] { border-top: 0; padding-top: 0; }
+.g4 .g4-figures .t-figure { overflow-wrap: anywhere; }
+.g4 .g4-unknown { color: var(--color-muted); }
+
+/* ── Two columns of ruled sections ─────────────────────────────────────────── */
+.g4 .g4-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--ns-gap) clamp(2rem, 4vw, 64px); }
+@media (min-width: 1024px) {
+  .g4 .g4-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .g4 .g4-cols[data-wide="left"] { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
+}
+.g4 .g4-stack { display: flex; flex-direction: column; gap: var(--ns-gap); min-width: 0; }
+.g4 .g4-note { font-size: 0.875rem; line-height: 1.55; color: var(--color-muted); max-width: 70ch; margin: 0; }
+.g4 .g4-note[data-tone="warn"] { color: var(--color-warn); }
+
+/* A section that is a desk gets room for its content. */
+.g4 .section-open.ns-desk > .section-head { margin-bottom: 1.25rem; }
+
+/* ── Ruled list for dense data ─────────────────────────────────────────────── */
+.g4 .g4-table-wrap { width: 100%; }
+.g4 .g4-table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+.g4 .g4-table th {
+  padding: 10px 16px 10px 0;
+  font-size: var(--ns-t-label);
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  color: var(--color-muted);
+  border-bottom: 1px solid var(--ns-rule-strong);
+}
+.g4 .g4-table td {
+  padding: 12px 16px 12px 0;
+  vertical-align: top;
+  color: var(--color-fg);
+  border-bottom: 1px solid var(--ns-rule);
+}
+.g4 .g4-table tbody tr { transition: background-color var(--ns-dur-1) var(--ns-ease); }
+.g4 .g4-table tbody tr:hover { background: var(--ns-act-soft); }
+.g4 .g4-table th:last-child,
+.g4 .g4-table td:last-child { padding-right: 0; }
+.g4 .g4-table [data-align="end"] { text-align: right; font-variant-numeric: tabular-nums; }
+.g4 .g4-table [data-nowrap] { white-space: nowrap; }
+.g4 .g4-cell-label { display: none; }
+.g4 .g4-cell-value { min-width: 0; overflow-wrap: anywhere; }
+.g4 .g4-muted { color: var(--color-muted); }
+.g4 .g4-small { font-size: 0.8125rem; line-height: 1.45; }
+@media (max-width: 767px) {
+  .g4 .g4-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .g4 .g4-table, .g4 .g4-table tbody { display: block; }
+  .g4 .g4-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--ns-rule);
+  }
+  .g4 .g4-table tbody tr:hover { background: transparent; }
+  .g4 .g4-table td {
+    display: grid;
+    grid-template-columns: minmax(6.5rem, 38%) minmax(0, 1fr);
+    gap: 12px;
+    padding: 0;
+    border: 0;
+  }
+  .g4 .g4-table td[data-title] { display: block; font-size: 1rem; font-weight: 500; padding-bottom: 4px; }
+  .g4 .g4-table td [class].g4-cell-label,
+  .g4 .g4-table .g4-cell-label { display: block; font-size: var(--ns-t-label); color: var(--color-muted); padding-top: 1px; }
+  .g4 .g4-table [data-align="end"] { text-align: left; }
+  .g4 .g4-table [data-nowrap] { white-space: normal; }
+  .g4 .g4-table td:last-child { padding-right: 0; }
+}
+
+/* ── Ranked list: a number, a title with a thin bar, the figure ────────────── */
+.g4 .g4-rank { list-style: none; margin: 0; padding: 0; }
+.g4 .g4-rank > li {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ns-rule);
+}
+.g4 .g4-rank-n { font-size: var(--ns-t-label); font-weight: 600; color: var(--ns-amber-ink); font-variant-numeric: tabular-nums; }
+.g4 .g4-rank-title { font-size: 0.9375rem; color: var(--color-fg); overflow-wrap: anywhere; }
+.g4 .g4-rank-bar { margin-top: 8px; height: 3px; border-radius: 2px; background: var(--ns-rule); overflow: hidden; }
+.g4 .g4-rank-bar > span { display: block; height: 100%; border-radius: 2px; background: var(--g4-tone, var(--ns-act)); }
+.g4 .g4-rank-val { font-size: 1rem; font-weight: 600; color: var(--g4-tone-ink, var(--color-fg)); font-variant-numeric: tabular-nums; }
+
+/* ── Key / value rows (advisory, autonomy posture, alert channels) ─────────── */
+.g4 .g4-kv { margin: 0; padding: 0; list-style: none; }
+.g4 .g4-kv > div,
+.g4 .g4-kv > li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ns-rule);
+}
+.g4 .g4-kv > :last-child { border-bottom: 0; }
+.g4 .g4-kvrow { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--ns-rule); }
+.g4 .g4-kvrow:last-of-type { border-bottom: 0; }
+.g4 .g4-kvrow .k { font-size: 0.9375rem; color: var(--color-muted); min-width: 0; overflow-wrap: anywhere; }
+.g4 .g4-kvrow .v { font-size: 0.9375rem; color: var(--color-fg); text-align: right; font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: anywhere; }
+.g4 .g4-kvrow .v[data-strong] { font-weight: 600; }
+.g4 .g4-kv dt, .g4 .g4-kv .k { font-size: 0.9375rem; color: var(--color-muted); min-width: 0; overflow-wrap: anywhere; }
+.g4 .g4-kv dd, .g4 .g4-kv .v { margin: 0; font-size: 0.9375rem; color: var(--color-fg); text-align: right; font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: anywhere; }
+.g4 .g4-kv .v[data-strong] { font-weight: 600; }
+
+/* ── A lamp in a section's head: the section's state, not a coloured edge ──── */
+.g4 .g4-head-state { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.g4 .g4-when { font-size: var(--ns-t-label); color: var(--color-muted); font-variant-numeric: tabular-nums; }
+
+/* ── Arms of an experiment: two columns on the ground, the leader marked ───── */
+.g4 .g4-arms { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; border-top: 1px solid var(--ns-rule); }
+@media (min-width: 640px) {
+  .g4 .g4-arms { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .g4 .g4-arm + .g4-arm { border-left: 1px solid var(--ns-rule); padding-left: 24px; }
+}
+.g4 .g4-arm { padding: 16px 0; display: flex; flex-direction: column; gap: 4px; }
+@media (max-width: 639px) { .g4 .g4-arm + .g4-arm { border-top: 1px solid var(--ns-rule); } }
+.g4 .g4-arm[data-leader="true"] .t-figure { color: var(--color-ok); }
+
+/* ── The retention curve: the line is stretched, its labels are real text ───── */
+.g4 .g4-curve { position: relative; margin-left: 2.75rem; margin-bottom: 1.75rem; }
+.g4 .g4-curve svg { display: block; width: 100%; height: 200px; overflow: visible; }
+@media (min-width: 640px) { .g4 .g4-curve svg { height: 240px; } }
+.g4 .g4-curve-y, .g4 .g4-curve-x {
+  position: absolute;
+  font-size: var(--ns-t-label);
+  line-height: 1;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+.g4 .g4-curve-y { right: calc(100% + 8px); transform: translateY(50%); }
+.g4 .g4-curve-x { top: calc(100% + 8px); transform: translateX(-50%); }
+.g4 .g4-curve-x[data-edge="start"] { transform: none; }
+.g4 .g4-curve-x[data-edge="end"] { transform: translateX(-100%); }
+.g4 .g4-curve-cliff { position: absolute; top: 0; font-size: var(--ns-t-label); font-weight: 600; color: var(--color-warn); transform: translate(6px, 0); }
+
+/* ── The loop (feedback): numbered stages joined by a rule ─────────────────── */
+.g4 .g4-loop { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; counter-reset: stage; }
+.g4 .g4-loop > li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  font-size: 0.9375rem;
+}
+.g4 .g4-loop > li::before {
+  counter-increment: stage;
+  content: counter(stage, decimal-leading-zero);
+  font-size: var(--ns-t-label);
+  font-weight: 600;
+  color: var(--ns-amber-ink);
+  font-variant-numeric: tabular-nums;
+}
+.g4 .g4-loop > li + li { border-top: 1px solid var(--ns-rule); }
+@media (min-width: 1024px) {
+  .g4 .g4-loop { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .g4 .g4-loop > li { grid-template-columns: minmax(0, 1fr); align-items: start; gap: 8px; padding: 14px 16px 0 0; border-top: 2px solid var(--ns-rule-strong); }
+  .g4 .g4-loop > li + li { border-top: 2px solid var(--ns-rule-strong); padding-left: 16px; }
+  .g4 .g4-loop > li:last-child { padding-right: 0; }
+}
+
+/* ── Log lines ─────────────────────────────────────────────────────────────── */
+.g4 .g4-logtools { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding-bottom: 16px; }
+@media (min-width: 768px) { .g4 .g4-logtools { grid-template-columns: minmax(12rem, 1fr) 11rem 11rem auto; align-items: center; } }
+.g4 .g4-logs { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
+.g4 .g4-logs > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ns-rule);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+.g4 .g4-logs .g4-log-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.g4 .g4-logs .g4-log-data { color: var(--color-muted); overflow-wrap: anywhere; font-size: 0.8125rem; }
+@media (min-width: 1024px) {
+  .g4 .g4-logs > li { grid-template-columns: 5.5rem 6.5rem 9rem minmax(0, 14rem) minmax(0, 1fr); align-items: baseline; gap: 16px; padding: 8px 0; }
+  .g4 .g4-logs .g4-log-meta { display: contents; }
+  .g4 .g4-logs .g4-log-data { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+/* ── The intelligence map: the path in a desk, its words beside it ─────────── */
+.g4 .g4-map { display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px 56px; align-items: start; }
+@media (min-width: 900px) { .g4 .g4-map { grid-template-columns: minmax(0, 24rem) minmax(0, 1fr); } }
+.g4 .g4-map-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-chip);
+  background: var(--ns-key);
+  color: var(--color-muted);
+  font-size: var(--ns-t-label);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.g4 .g4-map-node[data-on="true"] { border-color: var(--ns-amber); color: var(--color-fg); background: var(--ns-console); }
+
+/* ── Agents: a roster of rows ──────────────────────────────────────────────── */
+.g4 .g4-roster { list-style: none; margin: 0; padding: 0; }
+.g4 .g4-roster > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--ns-rule);
+}
+.g4 .g4-roster .g4-agent-task { grid-column: 1 / -1; min-width: 0; }
+.g4 .g4-roster .g4-agent-facts { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
+@media (min-width: 1024px) {
+  .g4 .g4-roster > li { grid-template-columns: 14rem 9rem minmax(0, 1fr) minmax(0, 18rem); align-items: center; gap: 16px 24px; }
+  .g4 .g4-roster .g4-agent-task, .g4 .g4-roster .g4-agent-facts { grid-column: auto; }
+}
+
+/* ── Forms on the page (agents editors, log filters) ───────────────────────── */
+.g4 .g4-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.g4 .g4-field > span { font-size: var(--ns-t-label); color: var(--color-muted); }
+.g4 select.ns-field { padding-right: 36px; }
+
+/* ── Usage: the allowance is the desk; its figure is large and plain ───────── */
+.g4 .usage-desk-lead { max-width: 52ch; }

@@ -14,6 +14,7 @@ import { PLAN_ENV, planMatrix, subscribeAccess } from "@/lib/plans";
 import { freeGaps, offerUpgrade } from "@/lib/usage";
 import { planValue, readBillingSummary, readPlanCatalog } from "@/lib/server/plans";
 import { readUsageSummary } from "@/lib/server/usage";
+import "../../app-pages-g4.css";
 
 const FAILED_READ = { state: "failed" as const };
 
@@ -40,7 +41,7 @@ export default async function UsagePage() {
   const [org, supabase] = await Promise.all([getOrgContext(), createClient()]);
   const header = <PageHeader icon="usage" title={t.usage.title} subtitle={t.usage.subtitle} actions={<CreditsLink />} />;
   const note = (text: React.ReactNode) => (
-    <div className="rhythm">
+    <div className="rhythm ns-open g4">
       {header}
       <div className="panel flex flex-col items-start gap-3 p-4 text-sm text-[var(--color-muted)]">{text}</div>
     </div>
@@ -53,7 +54,7 @@ export default async function UsagePage() {
 
   if (isCreditExempt(orgId)) {
     return (
-      <div className="rhythm">
+      <div className="rhythm ns-open g4">
         {header}
         <div className="panel flex flex-col gap-1 p-5 sm:p-6">
           <h2 className="t-section">{t.credits.exemptTitle}</h2>
@@ -72,7 +73,7 @@ export default async function UsagePage() {
   if (usageRead.state === "unsupported") return note(t.usage.notMigrated);
   if (usageRead.state === "failed") {
     return (
-      <div className="rhythm">
+      <div className="rhythm ns-open g4">
         {header}
         <div className="panel p-4">
           <ErrorState compact message={t.usage.readFailed} />
@@ -84,7 +85,7 @@ export default async function UsagePage() {
   const summary = usageRead.value;
   if (summary.exempt) {
     return (
-      <div className="rhythm">
+      <div className="rhythm ns-open g4">
         {header}
         <div className="panel flex flex-col gap-1 p-5 sm:p-6">
           <h2 className="t-section">{t.credits.exemptTitle}</h2>
@@ -102,7 +103,7 @@ export default async function UsagePage() {
   const canUpgrade = planAccess !== "hidden" && offerUpgrade(summary, matrix);
 
   return (
-    <div className="rhythm">
+    <div className="rhythm ns-open g4">
       {header}
       <UsageView
         summary={summary}

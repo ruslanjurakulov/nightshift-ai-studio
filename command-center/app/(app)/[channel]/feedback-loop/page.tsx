@@ -2,6 +2,10 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { Panel, EmptyState, StatCard } from "@/components/ui";
+import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
+import { DataList } from "@/components/g4/DataList";
+import { Figures } from "@/components/g4/Section";
+import "../../app-pages-g4.css";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { relativeTime } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
@@ -14,10 +18,10 @@ import type { FeedbackSignalRow, TopicPerformanceRow } from "@/lib/types";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function signalTone(signal: string): string {
-  if (signal.startsWith("HIGH_")) return "var(--color-ok)";
-  if (signal.startsWith("LOW_")) return "var(--color-fail)";
-  return "var(--color-muted)";
+function signalTone(signal: string): LampTone {
+  if (signal.startsWith("HIGH_")) return "ok";
+  if (signal.startsWith("LOW_")) return "fail";
+  return "idle";
 }
 
 export default async function FeedbackPage() {
@@ -53,25 +57,20 @@ export default async function FeedbackPage() {
   const lastRun = signals[0]?.analyzed_date ?? null;
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open g4 stagger-enter">
       <PageHeader icon="feedback" title={t.feedback.title} subtitle={t.feedback.subtitle} />
 
-      {/* The loop, drawn from the real stages the backend runs */}
-      <div tabIndex={0} role="region" aria-label={t.feedback.title} className="panel scroll-focus overflow-x-auto p-5 sm:p-6">
-        <div className="flex min-w-max items-center gap-2">
-          {LOOP.map((step, i) => (
-            <div key={step} className="flex items-center gap-2">
-              <span className="tnum whitespace-nowrap rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2.5 py-1.5 text-xs text-[var(--color-fg)]">
-                {step}
-              </span>
-              {i < LOOP.length - 1 && <span className="text-[var(--color-primary)]">→</span>}
-            </div>
+      {/* The loop, drawn from the real stages the backend runs: the page's desk. */}
+      <section className="ns-desk" aria-label={t.feedback.title}>
+        <ol className="g4-loop">
+          {LOOP.map((step) => (
+            <li key={step}>{step}</li>
           ))}
-        </div>
-      </div>
+        </ol>
+      </section>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label={t.feedback.scoredTopics} value={<AnimatedNumber value={topics.length} />} tone={topics.length ? "run" : "idle"} />
+      <Figures>
+        <StatCard label={t.feedback.scoredTopics} value={<AnimatedNumber value={topics.length} />} />
         <StatCard label={t.feedback.signalsRecorded} value={<AnimatedNumber value={signals.length} />} sub={t.feedback.mostRecent} />
         <StatCard label={t.feedback.lastAnalysis} value={lastRun ? relativeTime(lastRun) : t.common.dash} sub={lastRun ?? t.feedback.notRun} />
         <StatCard
@@ -80,39 +79,32 @@ export default async function FeedbackPage() {
           tone="ok"
           sub={fmt(t.feedback.ofTopics, { n: topics.length })}
         />
-      </div>
+      </Figures>
 
       <Panel title={t.feedback.learned}>
         {topics.length === 0 ? (
           <EmptyState>{t.feedback.emptyLearned}</EmptyState>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
-                  <th className="px-4 py-2 font-semibold">{t.feedback.thTopic}</th>
-                  <th className="px-4 py-2 font-semibold">{t.feedback.thScore}</th>
-                  <th className="px-4 py-2 font-semibold">{t.feedback.thVideos}</th>
-                  <th className="px-4 py-2 font-semibold">{t.feedback.thReason}</th>
-                  <th className="px-4 py-2 font-semibold">{t.feedback.thUpdated}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topics.map((tp) => (
-                  <tr key={tp.topic} className="border-b border-[var(--color-border)]/50 transition-colors hover:bg-[var(--color-panel-2)]">
-                    <td className="px-4 py-2 text-[var(--color-fg)]">{tp.topic}</td>
-                    <td className="px-4 py-2 tnum font-bold tabular-nums"
-                      style={{ color: tp.score >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}>
-                      {tp.score.toFixed(0)}
-                    </td>
-                    <td className="px-4 py-2 tnum text-[var(--color-muted)] tabular-nums">{tp.videos_analyzed}</td>
-                    <td className="px-4 py-2 text-xs text-[var(--color-muted)]">{tp.reason ?? t.common.dash}</td>
-                    <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{relativeTime(tp.updated_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataList
+            caption={t.feedback.learned}
+            rows={topics}
+            rowKey={(tp) => tp.topic}
+            columns={[
+              { key: "topic", label: t.feedback.thTopic, render: (tp) => tp.topic },
+              {
+                key: "score",
+                label: t.feedback.thScore,
+                render: (tp) => (
+                  <span className="font-semibold tnum" style={{ color: tp.score >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}>
+                    {tp.score.toFixed(0)}
+                  </span>
+                ),
+              },
+              { key: "videos", label: t.feedback.thVideos, render: (tp) => <span className="g4-muted tnum">{tp.videos_analyzed}</span> },
+              { key: "reason", label: t.feedback.thReason, render: (tp) => <span className="g4-muted">{tp.reason ?? t.common.dash}</span> },
+              { key: "updated", label: t.feedback.thUpdated, nowrap: true, render: (tp) => <span className="g4-muted tnum">{relativeTime(tp.updated_at)}</span> },
+            ]}
+          />
         )}
       </Panel>
 
@@ -120,32 +112,18 @@ export default async function FeedbackPage() {
         {signals.length === 0 ? (
           <EmptyState>{t.feedback.noSignals}</EmptyState>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
-                  <th className="px-4 py-2 font-semibold">{t.feedback.sgSignal}</th>
-                  <th className="px-4 py-2 font-semibold">{t.feedback.sgTopic}</th>
-                  <th className="px-4 py-2 font-semibold">{t.feedback.sgVideo}</th>
-                  <th className="px-4 py-2 font-semibold">{t.feedback.sgDetail}</th>
-                  <th className="px-4 py-2 font-semibold">{t.feedback.sgAnalyzed}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {signals.map((s, i) => (
-                  <tr key={`${s.video_id}-${s.signal}-${i}`} className="border-b border-[var(--color-border)]/50 transition-colors hover:bg-[var(--color-panel-2)]">
-                    <td className="px-4 py-2 tnum text-xs font-semibold" style={{ color: signalTone(s.signal) }}>
-                      {s.signal}
-                    </td>
-                    <td className="px-4 py-2 text-[var(--color-muted)]">{s.topic ?? t.common.dash}</td>
-                    <td className="px-4 py-2 mono text-xs text-[var(--color-muted)]">{s.video_id}</td>
-                    <td className="px-4 py-2 text-xs text-[var(--color-muted)]">{s.detail ?? t.common.dash}</td>
-                    <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{relativeTime(s.analyzed_date)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataList
+            caption={t.feedback.recentSignals}
+            rows={signals}
+            rowKey={(sg, i) => `${sg.video_id}-${sg.signal}-${i}`}
+            columns={[
+              { key: "signal", label: t.feedback.sgSignal, render: (sg) => <StatusLamp tone={signalTone(sg.signal)} label={sg.signal} /> },
+              { key: "topic", label: t.feedback.sgTopic, render: (sg) => <span className="g4-muted">{sg.topic ?? t.common.dash}</span> },
+              { key: "video", label: t.feedback.sgVideo, render: (sg) => <span className="mono g4-muted g4-small">{sg.video_id}</span> },
+              { key: "detail", label: t.feedback.sgDetail, render: (sg) => <span className="g4-muted">{sg.detail ?? t.common.dash}</span> },
+              { key: "at", label: t.feedback.sgAnalyzed, nowrap: true, render: (sg) => <span className="g4-muted tnum">{relativeTime(sg.analyzed_date)}</span> },
+            ]}
+          />
         )}
       </Panel>
     </div>

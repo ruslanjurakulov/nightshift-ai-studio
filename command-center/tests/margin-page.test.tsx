@@ -116,7 +116,7 @@ describe("what it shows", () => {
     const html = await page();
     // in the row's cost cell and in the total, as a word...
     expect(html).toMatch(/Provider cost<\/div><div class="t-figure[^"]*">unpriced</);
-    expect(html).toMatch(/text-\[var\(--color-warn\)\]">unpriced<\/span><\/td>/);
+    expect(html).toMatch(/text-\[var\(--color-warn\)\]">unpriced<\/span>(<\/span>)*<\/td>/);
     // ...and no dollar figure for the cost anywhere (the known $0.1200 revenue is not one)
     expect(html).not.toContain("$0.0400");
     expect(html).not.toContain("$0.0000");
@@ -131,9 +131,10 @@ describe("what it shows", () => {
     expect(html).not.toContain(">unpriced<");
   });
 
-  it("the table scrolls inside a focusable, named region, never the page", async () => {
+  it("the report is a named ruled list that stacks on a phone, so nothing scrolls sideways", async () => {
     const html = await page();
-    expect(html).toMatch(/<div tabindex="0" role="region" aria-label="[^"]+" class="panel scroll-focus overflow-x-auto">\s*<table/);
+    expect(html).toMatch(/<div class="g4-table-wrap"><table class="g4-table" role="table"><caption class="sr-only">[^<]+<\/caption>/);
+    expect(html).not.toContain("overflow-x-auto");
   });
 
   it("failed jobs are flagged apart, with the cost they still ran up", async () => {

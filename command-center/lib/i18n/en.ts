@@ -2586,6 +2586,7 @@ export const en = {
     variantA: "Variant A",
     variantB: "Variant B",
     variantN: "Variant {v}",
+    armAhead: "Ahead",
     abVideos: "measured videos",
     meanCtr: "mean CTR",
     impressionsLabel: "impressions",

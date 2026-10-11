@@ -17,6 +17,8 @@ import { VoiceEditor } from "@/components/agents/VoiceEditor";
 import { RunNowButton } from "@/components/agents/RunNowButton";
 import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { atLeast } from "@/lib/auth/roles";
+import { Figures } from "@/components/g4/Section";
+import "../../app-pages-g4.css";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -101,15 +103,35 @@ export default async function AgentsPage() {
   const failed = agents.filter((a) => a.status === "FAILED").length;
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open g4 stagger-enter">
       <PageHeader icon="agents" title={t.agents.title} subtitle={t.agents.subtitle} />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <Figures>
         <StatCard label={t.agents.seen} value={<AnimatedNumber value={agents.length} />} sub={t.agents.seenSub} />
         <StatCard label={t.agents.running} value={<AnimatedNumber value={running} />} tone={running ? "run" : "idle"} sub={running ? t.agents.activeNow : t.agents.noneActive} />
         <StatCard label={t.agents.failed} value={<AnimatedNumber value={failed} />} tone={failed ? "fail" : "ok"} sub={failed ? t.agents.latestFailed : t.agents.noneFailing} />
         <StatCard label={t.agents.scanned} value={<AnimatedNumber value={events.length} />} sub={t.agents.scannedSub} />
-      </div>
+      </Figures>
+
+      <RunNowButton
+        channelId={scopedChannel?.channel_id ?? null}
+        githubConfigured={isRunNowConfigured}
+        canRun={canRun}
+      />
+
+      <Panel title={t.agents.roster}>
+        {dbError ? (
+          <EmptyState>{t.agents.dbErr}</EmptyState>
+        ) : agents.length === 0 ? (
+          <EmptyState>{t.agents.empty}</EmptyState>
+        ) : (
+          <ul className="g4-roster">
+            {agents.map((a) => (
+              <AgentCard key={a.agent} agent={a} />
+            ))}
+          </ul>
+        )}
+      </Panel>
 
       <ScheduleEditor
         channelId={scopedChannel?.channel_id ?? null}
@@ -125,26 +147,6 @@ export default async function AgentsPage() {
         channelId={scopedChannel?.channel_id ?? null}
         agentConfig={scopedChannel?.agent_config ?? null}
       />
-
-      <RunNowButton
-        channelId={scopedChannel?.channel_id ?? null}
-        githubConfigured={isRunNowConfigured}
-        canRun={canRun}
-      />
-
-      <Panel title={t.agents.roster}>
-        {dbError ? (
-          <EmptyState>{t.agents.dbErr}</EmptyState>
-        ) : agents.length === 0 ? (
-          <EmptyState>{t.agents.empty}</EmptyState>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
-            {agents.map((a) => (
-              <AgentCard key={a.agent} agent={a} />
-            ))}
-          </div>
-        )}
-      </Panel>
     </div>
   );
 }

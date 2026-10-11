@@ -2577,6 +2577,7 @@ export const uz: Dictionary = {
     variantA: "A varianti",
     variantB: "B varianti",
     variantN: "{v} varianti",
+    armAhead: "Oldinda",
     abVideos: "oʻlchangan video",
     meanCtr: "oʻrtacha CTR",
     impressionsLabel: "koʻrsatishlar",

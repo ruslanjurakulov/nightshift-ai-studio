@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { relativeTime } from "@/lib/format";
-import { EmptyState, Panel } from "@/components/ui";
+import { EmptyState } from "@/components/ui";
+import { Section } from "@/components/g4/Section";
 import {
   confidencePct,
   evidenceLines,
@@ -43,46 +44,45 @@ export function LearningsPanel({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <Panel
+    <div className="g4-stack">
+      <Section
+        desk={pending.length > 0}
         title={t.learnings.pendingTitle}
-        right={<span className="tnum text-xs text-[var(--color-muted)]">{pending.length}</span>}
+        right={<span className="g4-when">{pending.length}</span>}
       >
-        <p className="px-4 pt-2 text-xs text-[var(--color-muted)]">{t.learnings.pendingNote}</p>
-        {!canDecide && pending.length > 0 && (
-          <p className="px-4 pt-1 tnum text-xs text-[var(--color-muted)]">{t.learnings.adminOnly}</p>
-        )}
+        <p className="g4-note">{t.learnings.pendingNote}</p>
+        {!canDecide && pending.length > 0 && <p className="g4-note tnum mt-1">{t.learnings.adminOnly}</p>}
         {pending.length === 0 ? (
           <EmptyState>{t.learnings.noPending}</EmptyState>
         ) : (
-          <ul className="flex flex-col">
+          <ul className="mt-2 flex flex-col">
             {pending.map((r) => (
               <LearningItem key={r.id} row={r} showChannel={showChannel}
                 actions={canDecide ? ["approve", "reject"] : []} />
             ))}
           </ul>
         )}
-      </Panel>
+      </Section>
 
-      <Panel
+      <Section
         title={t.learnings.approvedTitle}
-        right={<span className="tnum text-xs text-[var(--color-muted)]">{approved.length}</span>}
+        right={<span className="g4-when">{approved.length}</span>}
       >
-        <p className="px-4 pt-2 text-xs text-[var(--color-muted)]">{t.learnings.approvedNote}</p>
+        <p className="g4-note">{t.learnings.approvedNote}</p>
         {approved.length === 0 ? (
           <EmptyState>{t.learnings.noApproved}</EmptyState>
         ) : (
-          <ul className="flex flex-col">
+          <ul className="mt-2 flex flex-col">
             {approved.map((r) => (
               <LearningItem key={r.id} row={r} showChannel={showChannel}
                 actions={canDecide ? ["reject"] : []} withdraw />
             ))}
           </ul>
         )}
-        <p className="border-t border-[var(--color-border)] px-4 py-2 tnum text-xs text-[var(--color-muted)]">
+        <p className="g4-note tnum mt-4">
           {fmt(t.learnings.rejectedCount, { n: rejected.length })} · {t.learnings.confidenceHow}
         </p>
-      </Panel>
+      </Section>
     </div>
   );
 }
@@ -129,18 +129,18 @@ function LearningItem({
   }
 
   return (
-    <li className="flex flex-col gap-2 border-b border-[var(--color-border)]/50 px-4 py-3">
-      <div className="flex flex-wrap items-center gap-2 tnum text-xs text-[var(--color-muted)]">
+    <li className="flex flex-col gap-2 border-b border-[var(--ns-rule)] py-4">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 tnum g4-small g4-muted">
         <span className="text-[var(--color-primary)]">{kindLabel}</span>
         {showChannel && <span>· {row.channel_id}</span>}
         <span>· {t.learnings.confidence}: {pct === null ? t.learnings.confidenceUnknown : `${pct}%`}</span>
         <span>· {t.learnings.proposed} {relativeTime(row.created_at)}</span>
         {row.decided_at && <span>· {t.learnings.decided} {relativeTime(row.decided_at)}</span>}
       </div>
-      <p className="m-0 text-sm text-[var(--color-fg)]">{row.observation}</p>
+      <p className="m-0 text-base text-[var(--color-fg)]">{row.observation}</p>
       {evidenceLines(row.evidence).length > 0 && (
-        <details className="tnum text-xs text-[var(--color-muted)]">
-          <summary className="cursor-pointer">{t.learnings.evidence}</summary>
+        <details className="tnum g4-small g4-muted">
+          <summary className="tap-link cursor-pointer">{t.learnings.evidence}</summary>
           <ul className="mt-1 flex flex-col gap-0.5 pl-3">
             {evidenceLines(row.evidence).map((line) => (
               <li key={line}>{line}</li>
@@ -152,17 +152,17 @@ function LearningItem({
         <div className="flex flex-wrap items-center gap-2">
           {actions.includes("approve") && (
             <button type="button" onClick={() => decide("approve")} disabled={state === "busy"}
-              className="btn-sky pill px-3 py-1 text-xs disabled:opacity-40">
+              className="btn-sky is-quiet pill px-4 text-sm disabled:opacity-40">
               {t.learnings.approve}
             </button>
           )}
           {actions.includes("reject") && (
             <button type="button" onClick={() => decide("reject")} disabled={state === "busy"}
-              className="pill border border-[var(--color-border)] px-3 py-1 text-xs text-[var(--color-muted)] disabled:opacity-40">
+              className="btn-quiet pill px-4 text-sm text-[var(--color-muted)] disabled:opacity-40">
               {withdraw ? t.learnings.withdraw : t.learnings.reject}
             </button>
           )}
-          <span className="tnum text-xs" aria-live="polite">
+          <span className="tnum text-sm" aria-live="polite">
             {state === "busy" && <span className="text-[var(--color-muted)]">{t.learnings.saving}</span>}
             {state === "fail" && (
               <span className="text-[var(--color-fail)]">{fmt(t.learnings.failed, { error })}</span>

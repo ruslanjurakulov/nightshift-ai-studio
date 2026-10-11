@@ -24,15 +24,15 @@ export function ExperimentStatus({ exp, reason, t }: { exp: Experiment; reason: 
   const effect = pct(exp.effect);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2.5">
       <div className="flex flex-wrap items-center gap-3">
         <StatusPill tone={tone} label={label} />
-        <span className="text-xs text-[var(--color-muted)]">{reason}</span>
+        <span className="text-sm text-[var(--color-muted)]">{reason}</span>
       </div>
-      <p className="m-0 text-xs text-[var(--color-muted)]">
+      <p className="m-0 text-sm text-[var(--color-muted)]">
         {exp.kind === "hook" ? t.measure.expHypothesisHook : t.measure.expHypothesisThumb}
       </p>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 tnum text-xs text-[var(--color-muted)]">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 tnum text-sm text-[var(--color-muted)]">
         {/* The metric is a schema identifier, so it is not translated. */}
         <span>
           {t.measure.expMetric}: {exp.metric}
@@ -45,11 +45,11 @@ export function ExperimentStatus({ exp, reason, t }: { exp: Experiment; reason: 
           {t.measure.expEffect}: {effect ?? t.measure.expEffectNone}
         </span>
       </div>
-      <p className="m-0 tnum text-xs text-[var(--color-muted)]">
+      <p className="m-0 tnum text-sm text-[var(--color-muted)]">
         {fmt(t.measure.expRules, { n: exp.minSample, lift: pct(exp.minLift) ?? "" })}
       </p>
       {exp.status === "decided" && (
-        <p className="m-0 text-xs text-[var(--color-muted)]">{t.measure.expLearningNote}</p>
+        <p className="m-0 text-sm text-[var(--color-muted)]">{t.measure.expLearningNote}</p>
       )}
     </div>
   );

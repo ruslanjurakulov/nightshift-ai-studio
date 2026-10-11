@@ -4,6 +4,8 @@ import { readFailed } from "@/lib/readState";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { Panel, EmptyState } from "@/components/ui";
+import { Section } from "@/components/g4/Section";
+import "../../app-pages-g4.css";
 import { LogViewer } from "@/components/logs/LogViewer";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
@@ -39,19 +41,23 @@ export default async function LogsPage() {
   }
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open g4 stagger-enter">
       <PageHeader icon="logs" title={t.logs.title} subtitle={fmt(t.logs.subtitle, { n: LIMIT })} />
-      <Panel title={t.logs.eventLog}>
-        {failed ? (
+      {failed ? (
+        <Panel title={t.logs.eventLog}>
           <ErrorState />
-        ) : rows.length === 0 ? (
+        </Panel>
+      ) : rows.length === 0 ? (
+        <Panel title={t.logs.eventLog}>
           <EmptyState>{t.logs.empty}</EmptyState>
-        ) : (
-          <div className="h-[560px]">
+        </Panel>
+      ) : (
+        <Section desk title={t.logs.eventLog}>
+          <div className="h-[34rem] sm:h-[560px]">
             <LogViewer rows={rows} />
           </div>
-        )}
-      </Panel>
+        </Section>
+      )}
     </div>
   );
 }
