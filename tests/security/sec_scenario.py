@@ -369,6 +369,9 @@ def build_scenario(conn: psycopg.Connection) -> Scenario:
     # Invite friends (0092): tests/security/sec_friend_invites_0092.py — one row per table, no credits move.
     import sec_friend_invites_0092
     sec_friend_invites_0092.seed(conn, sc)
+    # The unique @username (0096): tests/security/sec_user_handles_0096.py — Alice has one, Bob has none.
+    import sec_user_handles_0096
+    sec_user_handles_0096.seed(conn, sc)
     # Workflow apps (0073): tests/security/sec_workflows_0073.py.
     import sec_workflows_0073
     sec_workflows_0073.seed(conn, sc)
