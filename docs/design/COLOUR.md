@@ -3,7 +3,7 @@
 Owner decision (variant B of the colour options sheet): the public site's primary action is indigo with a white legend.
 Amber is no longer a button. Scope: the public pages (`/`, `/pricing`, `/solutions`, `/login`, `/signup`, `/mcp`, the
 legal pages, the shared header, sticky bar and footer) through the `.st` and `.nx` scopes in `site.css` and
-`site-next.css`. The signed-in app's tokens (`app/globals.css`) are not edited: it keeps its amber key and its blue focus ring.
+`site-next.css`. The signed-in app followed in `docs/design/app-redesign-1/` (same indigo key, amber focus ring, `--ns-act-*` tokens in `app/globals.css`); this document describes the public pages.
 
 ## Rule
 

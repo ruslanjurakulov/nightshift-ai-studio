@@ -83,7 +83,7 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
       {state === "loading" && (
         <div className="flex gap-3 overflow-hidden" aria-hidden>
           {[0, 1, 2].map((i) => (
-            <div key={i} className="skeleton h-[148px] w-[180px] shrink-0 rounded-[var(--ns-r-panel)]" />
+            <div key={i} className="skeleton h-[148px] w-[200px] shrink-0 rounded-[var(--ns-r-panel)]" />
           ))}
         </div>
       )}
@@ -116,23 +116,21 @@ export function RecentStrip({ orgId }: { orgId: string | null }) {
             const thumb = job.status === "completed" ? thumbs.get(job.result_asset_ids[0] ?? "") ?? null : null;
             const prompt = typeof job.params.prompt === "string" ? job.params.prompt : "";
             return (
-              <li key={job.id} className="w-[180px] shrink-0 snap-start" data-status={job.status}>
-                <Link
-                  href={path("/create")}
-                  className="flex h-full flex-col overflow-hidden rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[var(--color-panel)] transition-colors hover:border-[color-mix(in_srgb,var(--color-primary)_40%,var(--color-border))]"
-                >
-                  <div className="relative grid aspect-[16/10] place-items-center bg-[var(--color-panel-2)] text-[var(--color-muted)]">
+              <li key={job.id} className="w-[200px] shrink-0 snap-start" data-status={job.status}>
+                <Link href={path("/create")} className="group flex h-full flex-col gap-2.5">
+                  {/* A frame: the picture itself when the library still holds it, otherwise the kind's glyph on film. */}
+                  <div className="relative grid aspect-[16/10] place-items-center overflow-hidden rounded-[var(--ns-r-frame)] bg-[var(--ns-film)] text-[var(--ns-on-film)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--ns-on-film)_10%,transparent)] transition-shadow group-hover:shadow-[inset_0_0_0_1px_var(--ns-act)]">
                     {thumb ? (
                       // eslint-disable-next-line @next/next/no-img-element -- a signed library URL, not a static asset
                       <img src={thumb} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
                     ) : (
-                      <Icon aria-hidden className="size-6" />
+                      <Icon aria-hidden className="size-6 opacity-60" strokeWidth={1.5} />
                     )}
                   </div>
-                  <div className="flex flex-1 flex-col gap-1.5 p-2.5">
-                    <span className="truncate text-xs font-medium text-[var(--color-fg)]">{kindLabel(t, job.capability)}</span>
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <span className="truncate text-sm font-medium text-[var(--color-fg)]">{kindLabel(t, job.capability)}</span>
                     <StatusLamp tone={sv.tone} label={sv.label} live={sv.live} />
-                    {prompt && <p className="line-clamp-2 text-xs leading-snug text-[var(--color-muted)]">{truncate(prompt, 80)}</p>}
+                    {prompt && <p className="line-clamp-2 text-sm leading-snug text-[var(--color-muted)]">{truncate(prompt, 80)}</p>}
                   </div>
                 </Link>
               </li>
