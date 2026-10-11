@@ -16,6 +16,7 @@ import { Equivalents, shortDate } from "@/components/credits/Equivalents";
 import { Chip } from "@/components/ui/Chip";
 import { PriceButton } from "@/components/ui/PriceButton";
 import { Timecode } from "@/components/ui/Timecode";
+import { assignTop } from "@/components/view-mode/frame-nav";
 
 /** A "{n} credits a month" line with its figure in the counter face. */
 function withFigure(template: string, value: number, locale: string) {
@@ -158,7 +159,7 @@ export function PlanPanel({
       const data = (await res.json().catch(() => ({}))) as { url?: unknown; error?: unknown };
       if (res.ok && typeof data.url === "string") {
         // Same tab: a window opened after an await is what popup blockers stop.
-        window.location.assign(data.url);
+        assignTop(data.url);
         return;
       }
       setPortal(data.error === "portal_not_configured" ? "missing" : "failed");

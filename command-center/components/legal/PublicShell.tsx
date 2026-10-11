@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Dictionary } from "@/lib/i18n";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { PublicMobileMenu } from "@/components/legal/PublicMobileMenu";
@@ -79,6 +80,11 @@ export function PublicShell({
             <div className="st-header-desk">
               <LanguageSelector />
               <ThemeToggle />
+              {/* The desktop bar is full in every language (the page column stops growing at 1280px), so it is the icon
+                  only, and only from 1280px, where it measurably fits; the word is on the footer link and in the menu. */}
+              <span className="hidden min-[1280px]:contents">
+                <ViewModeToggle />
+              </span>
               <Link href="/login" className="st-signin">
                 {t.site.nav.signIn}
               </Link>

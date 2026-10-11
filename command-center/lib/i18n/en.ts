@@ -168,6 +168,15 @@ export const en = {
     language: "Language",
     dark: "Dark",
     light: "Light",
+    // The Mobile / Desktop view switch (components/view-mode/ViewModeToggle.tsx). The pair names the layout on screen NOW;
+    // the switch labels name the layout a press gives.
+    view: "View",
+    viewMobile: "Mobile",
+    viewDesktop: "Desktop",
+    switchToMobile: "Switch to Mobile view",
+    switchToDesktop: "Switch to Desktop view",
+    viewCookiesOff: "Turn on cookies to change the view.",
+    viewFrameTitle: "Nightshift, Mobile view",
     of: "of",
     scrollTable: "Table (scrolls sideways)",
     scrollCode: "Code example (scrolls sideways)",

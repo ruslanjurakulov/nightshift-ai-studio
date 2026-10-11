@@ -200,5 +200,36 @@ class ComposeConfigTests(unittest.TestCase):
         self.assertIn("DOMAIN", result.stderr)
 
 
+class CaddyFramingTests(unittest.TestCase):
+    """The proxy must not undo the app's frame rules (command-center/lib/view-mode.ts).
+
+    The Mobile view shows the site inside a frame of its own page. The app answers
+    SAMEORIGIN to exactly that request and DENY to everything else; a Caddy that
+    also sends DENY unconditionally would win and blank the frame. So Caddy sends
+    DENY only for requests the browser did not mark Sec-Fetch-Dest: iframe, and
+    never loosens anything.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = (DEPLOY / "Caddyfile").read_text(encoding="utf-8")
+        cls.code = "\n".join(l for l in cls.text.splitlines() if not l.strip().startswith("#"))
+
+    def test_deny_is_never_unconditional(self):
+        for line in self.code.splitlines():
+            if "X-Frame-Options" in line:
+                self.assertIn("@notFrame", line, "X-Frame-Options must be set only for non-frame requests")
+
+    def test_deny_still_covers_every_request_that_is_not_a_frame(self):
+        self.assertIn("@notFrame not header Sec-Fetch-Dest iframe", self.code)
+        # `>` defers the write, so the response carries ONE header and it is DENY (a plain
+        # `header` would add a second line beside the app's own).
+        self.assertIn('header @notFrame >X-Frame-Options "DENY"', self.code)
+
+    def test_nothing_wider_is_sent_here(self):
+        self.assertNotIn("SAMEORIGIN", self.code)
+        self.assertNotIn("frame-ancestors", self.code)
+
+
 if __name__ == "__main__":
     unittest.main()
