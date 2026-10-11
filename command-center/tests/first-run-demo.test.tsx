@@ -4,9 +4,10 @@
  * example (and only the example) beside the one filled key, /welcome offers a
  * no-channel person the picture, clip and voice desks, and an empty Home says
  * the same under "Connect a channel". Every link target is a route that
- * exists, and the new words make no promise about outcomes.
+ * exists (tests/create-page-no-channel.test.tsx renders the page itself), and
+ * the new words make no promise about outcomes or speed.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -41,9 +42,10 @@ const NO_MONEY: MoneyAnchor = { pack: { kind: "none" }, api: null, site: null };
 
 /** Outcome and money promises the new copy must not make (the owner's hypotheses are not claims). */
 const CLAIMS: Record<Locale, RegExp> = {
-  en: /earn|income|revenue|\bviews?\b|monetiz|guarantee|profit|grow|viral|\$\d/i,
-  ru: /заработ|доход|просмотр|монетиз|гаранти|прибыл|вирус|рост/i,
-  uz: /daromad|tomosha|monetizats|kafolat|foyda|viral|oʻsish/i,
+  // Outcome and money words, then speed words: how soon a result arrives is a promise too, and nothing measures it yet.
+  en: /earn|income|revenue|\bviews?\b|monetiz|guarantee|profit|grow|viral|\$\d|fast|instant|quick|sooner|minutes/i,
+  ru: /заработ|доход|просмотр|монетиз|гаранти|прибыл|вирус|рост|быстр|мгновенн|за минуты/i,
+  uz: /daromad|tomosha|monetizats|kafolat|foyda|viral|oʻsish|tez|zumda|daqiqalarda/i,
 };
 
 function renderLanding(locale: Locale) {
@@ -81,11 +83,19 @@ describe("the landing hero offers the free example next to the one primary key",
     });
   }
 
-  it("demotes pricing out of the hero without losing it: the closing call still links to /pricing", () => {
+  it("keeps pricing as a quiet link under the example (shown only from 640 to 1023 px by CSS), and the closing call still links to it", () => {
     const { container } = renderLanding("en");
     const hero = container.querySelector(".nx-hero") as HTMLElement;
-    expect(hero.querySelector('a[href="/pricing"]')).toBeNull();
-    expect(container.querySelector('a[href="/pricing"]')).toBeTruthy();
+    const pricing = hero.querySelector('a[href="/pricing"]') as HTMLElement;
+    const demo = hero.querySelector('a[href="#try"]') as HTMLElement;
+    expect(pricing.className).toContain("nx-hero-price");
+    expect(pricing.className).not.toContain("nx-btn");
+    expect(demo.compareDocumentPosition(pricing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container.querySelectorAll('a[href="/pricing"]').length).toBeGreaterThan(1);
+    // The rule that hides it on phones and on the desktop (where the nav has it) is in the stylesheet.
+    const css = readFileSync(path.join(process.cwd(), "components/site/site-next.css"), "utf8");
+    expect(/\.nx-hero-copy \.nx-actions \.nx-hero-price \{ display: none; \}/.test(css)).toBe(true);
+    expect(/@media \(min-width: 640px\) and \(max-width: 1023px\) \{[\s\S]{0,200}?\.nx-hero-price \{ display: inline-flex/.test(css)).toBe(true);
   });
 
   it("says in the sub-label that the example only shows a plan and creates nothing", () => {
@@ -107,6 +117,7 @@ describe("the new copy makes no outcome claim", () => {
         d.signup.stepMedia,
         d.signup.stepMediaBody,
         d.signup.stepCreateBody,
+        d.signup.stepCreateNeedsChannel,
         d.home.tryMedia,
         d.home.tryMediaNote,
       ];
@@ -116,12 +127,13 @@ describe("the new copy makes no outcome claim", () => {
       }
     });
 
-    it(`${locale}: says it is not a full YouTube video, and that no channel is needed`, () => {
+    it(`${locale}: says the media desks are not a full YouTube video, and names the connected channel the full video needs`, () => {
       const d = dictionaries[locale];
       expect(d.signup.stepMediaBody).toMatch(/YouTube/);
-      expect(d.home.tryMediaNote).toMatch(/YouTube/);
-      // The full video's own step names the requirement instead of hiding it.
-      expect(d.signup.stepCreateBody).toMatch(/YouTube/);
+      // The full video's own step names the requirement in the product's own word ("connected"), not a new one.
+      expect(d.signup.stepCreateNeedsChannel).toMatch(/YouTube/);
+      expect(d.signup.stepCreateNeedsChannel).not.toMatch(/verified|подтвержд|tasdiqlangan/i);
+      expect(d.signup.stepCreateBody).not.toMatch(/verified|подтвержд\w+ канал|tasdiqlangan kanal/i);
     });
   }
 });
@@ -175,9 +187,32 @@ describe("/welcome step 3 for a person with no channel", () => {
     expect(nums).toEqual(["✓", "02", "03", "04", "05"]);
   });
 
-  it("leaves the open channel-connect policy text exactly as it was", () => {
+  it("tells only a person without a channel that a full video needs a connected channel", () => {
+    renderWelcome();
+    const full = (document.querySelectorAll(".g5-next-step")[5] as HTMLElement).textContent ?? "";
+    expect(full).toContain(dictionaries.en.signup.stepCreateNeedsChannel);
+    cleanup();
+    renderWelcome({ hasChannel: true });
+    expect(document.body.textContent).not.toContain(dictionaries.en.signup.stepCreateNeedsChannel);
+  });
+
+  // The strings as they were on main, copied here on purpose: comparing with the dictionary key would pass after any edit.
+  // The policy is an open owner decision (the OAuth start route lets a customer org admin connect); this PR must not move it.
+  const POLICY_AS_ON_MAIN: Record<Locale, string> = {
+    en: "For now the Nightshift team switches YouTube connection on: until Google finishes reviewing our upload access, only accounts we add can grant it. Request it and we'll enable it for your channel.",
+    ru: "Пока подключение YouTube включает команда Nightshift: до завершения проверки Google нашего доступа к загрузке разрешение могут выдать только добавленные нами аккаунты. Отправьте запрос — и мы включим его для вашего канала.",
+    uz: "Hozircha YouTube ulanishini Nightshift jamoasi yoqadi: Google yuklash huquqimizni tekshirishni tugatmaguncha ruxsatni faqat biz qoʻshgan hisoblar bera oladi. Soʻrov yuboring — kanalingiz uchun yoqib beramiz.",
+  };
+  for (const locale of LOCALES) {
+    it(`${locale}: leaves the open channel-connect policy text exactly as it was on main`, () => {
+      expect(dictionaries[locale].signup.stepYoutubeRestricted).toBe(POLICY_AS_ON_MAIN[locale]);
+      renderWelcome({ canConnectYouTube: false, contactEmail: "team@example.com" }, locale);
+      expect(screen.getByText(POLICY_AS_ON_MAIN[locale])).toBeTruthy();
+    });
+  }
+
+  it("keeps the request-by-email button for a person the team has to enable", () => {
     renderWelcome({ canConnectYouTube: false, contactEmail: "team@example.com" });
-    expect(screen.getByText(dictionaries.en.signup.stepYoutubeRestricted)).toBeTruthy();
     expect(screen.getByRole("link", { name: dictionaries.en.signup.requestConnection }).getAttribute("href")).toMatch(/^mailto:team@example\.com/);
   });
 });
@@ -215,13 +250,5 @@ describe("the media link resolves", () => {
     expect(isSection("create")).toBe(true);
     expect(SECTIONS).toContain("create");
     expect(existsSync(path.join(process.cwd(), "app/(app)/[channel]/create/page.tsx"))).toBe(true);
-  });
-
-  it("needs no channel: the image desk is gated on the organization alone, never on a channel", async () => {
-    const { readFileSync } = await import("node:fs");
-    const src = readFileSync(path.join(process.cwd(), "app/(app)/[channel]/create/page.tsx"), "utf8");
-    // GenerateSection renders when there is an open organization; the channel-bound run is its own desk.
-    expect(src).toMatch(/isMediaDesk\(desk\) &&\s*\(genOrgId \?/);
-    expect(src).toMatch(/desk === "youtube" && <YouTubeDesk/);
   });
 });

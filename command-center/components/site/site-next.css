@@ -144,6 +144,13 @@ html:is([lang="ru"], [lang="uz"]) .nx .st-h1-page { font-size: clamp(32px, 5.4vw
 .nx-sample:hover .nx-sample-label { color: var(--st-act-ink); text-decoration-color: currentColor; }
 .nx-sample-note { font-size: 14px; line-height: 1.35; color: var(--ns-text-dim); }
 @media (min-width: 640px) { .nx-hero-copy .nx-sample { align-items: flex-start; text-align: left; } }
+/* The example and, under it, pricing: pricing shows only from 640 to 1023 px (where the header is still the menu and the page main had this link); a phone is short of room, a desktop has the nav. */
+.nx-hero-more { display: flex; flex-direction: column; align-items: stretch; }
+.nx-hero-copy .nx-actions .nx-hero-price { display: none; }
+@media (min-width: 640px) and (max-width: 1023px) {
+  .nx-hero-more { align-items: flex-start; }
+  .nx-hero-copy .nx-actions .nx-hero-price { display: inline-flex; justify-content: flex-start; padding-inline: 4px; }
+}
 /* ── Type ────────────────────────────────────────────────────────────── */
 .nx-h1 {
   margin: 24px 0 0;

@@ -85,6 +85,8 @@ const SIZES = [
   { width: 390, height: 844 },
   { width: 1440, height: 900 },
 ];
+// A tablet shows the quiet pricing link under the example (640 to 1023 px); en, light only.
+const TABLET = { width: 768, height: 1024 };
 
 mkdirSync(OUT, { recursive: true });
 const tmp = path.join(OUT, ".png-tmp");
@@ -132,6 +134,7 @@ for (const size of SIZES) {
         const hero = q(".nx-hero");
         const demo = hero.querySelector('a[href="#try"]');
         const cta = hero.querySelector(".nx-btn");
+        const pricing = hero.querySelector('a[href="/pricing"]');
         // A "filled key" is a link or button in the hero copy (not the motion switch beside the picture) whose own background is not transparent.
         const filled = [...hero.querySelectorAll(".nx-hero-copy a, .nx-hero-copy button")].filter((el) => {
           const bg = getComputedStyle(el).backgroundColor;
@@ -142,6 +145,7 @@ for (const size of SIZES) {
           vh: window.innerHeight,
           demo: r(demo),
           demoText: demo.textContent.trim(),
+          pricing: pricing ? { shown: getComputedStyle(pricing).display !== "none", top: r(pricing)?.top ?? null, belowDemo: pricing.getBoundingClientRect().top >= demo.getBoundingClientRect().bottom - 1 } : null,
           cta: r(cta),
           filledKeys: filled.map((el) => el.textContent.trim().slice(0, 30)),
           tryTopPx: Math.round(tryTop),
@@ -159,6 +163,7 @@ for (const size of SIZES) {
         demoBottom: m.demo.bottom,
         ctaBottom: m.cta.bottom,
         demoH: m.demo.h,
+        pricing: m.pricing,
         filledKeys: m.filledKeys,
         tryDepthScreens: Number((m.tryTopPx / m.vh).toFixed(2)),
         tryTopPx: m.tryTopPx,
@@ -179,6 +184,24 @@ for (const size of SIZES) {
       await ctx.close();
     }
   }
+}
+
+// ── Landing at tablet width: pricing is back, under the example ───────────
+{
+  const ctx = await context(TABLET, "light", "en", null);
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/`, { waitUntil: "load", timeout: 45000 });
+  await page.waitForTimeout(900);
+  const m = await page.evaluate(() => {
+    const hero = document.querySelector(".nx-hero");
+    const demo = hero.querySelector('a[href="#try"]').getBoundingClientRect();
+    const price = hero.querySelector('a[href="/pricing"]');
+    const pr = price.getBoundingClientRect();
+    return { pricingShown: getComputedStyle(price).display !== "none", belowDemo: pr.top >= demo.bottom - 1, pricingBottom: Math.round(pr.bottom), vh: innerHeight, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+  });
+  note({ scene: "landing-tablet", size: "768x1024", ...m });
+  await shot(page, "landing-hero_en_768_light");
+  await ctx.close();
 }
 
 // ── Landing: the jump, keyboard focus, reduced motion ─────────────────────

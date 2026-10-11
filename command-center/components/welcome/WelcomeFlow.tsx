@@ -242,7 +242,7 @@ export function WelcomeFlow({
             </Item>
             <Item n={firstChannelStep + 2} title={t.signup.stepStyle} body={t.signup.stepStyleBody} href={at("/studio")} />
             {showCredits && <Item n={firstChannelStep + 3} title={t.signup.stepCredits} body={t.signup.stepCreditsBody} href={at("/credits")} />}
-            <Item n={firstChannelStep + (showCredits ? 4 : 3)} title={t.signup.stepCreate} body={t.signup.stepCreateBody} href={at("/create")} />
+            <Item n={firstChannelStep + (showCredits ? 4 : 3)} title={t.signup.stepCreate} body={hasChannel ? t.signup.stepCreateBody : `${t.signup.stepCreateBody} ${t.signup.stepCreateNeedsChannel}`} href={at("/create")} />
           </ol>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button type="button" onClick={() => setIndex(index - 1)} className="g5-link" style={{ background: "none", border: 0, cursor: "pointer" }}>
