@@ -118,16 +118,10 @@ describe("DeveloperConsole lists", () => {
     expect(has(html, en.developers.noKeys)).toBe(true);
   });
 
-  const info = {
-    eligible: true, activated_at: "2026-01-01T00:00:00Z", exempt: false, balance_cents: 0, reserved_cents: 0,
-    paid_total_cents: 0, tier: 1, rpm: 10, concurrency: 1, tier_cap_cents: null, monthly_limit_cents: null,
-    month_spend_cents: 0, active_keys: 0,
-  };
-
   it("payment history: failed read is the error state, not 'no payments'", async () => {
     h.client = failingSupabase();
     const { Billing } = await import("../components/developers/DeveloperConsole");
-    const html = await mount(() => createElement(Billing, { orgId: "org-1", info, topup: null, onPaid: () => {} }));
+    const html = await mount(() => createElement(Billing, { orgId: "org-1" }));
     expect(html).toContain("data-read-error");
     expect(has(html, en.developers.noPayments)).toBe(false);
   });
@@ -135,7 +129,7 @@ describe("DeveloperConsole lists", () => {
   it("payment history: readable empty keeps 'no payments'", async () => {
     h.client = supabaseStub(() => EMPTY);
     const { Billing } = await import("../components/developers/DeveloperConsole");
-    const html = await mount(() => createElement(Billing, { orgId: "org-1", info, topup: null, onPaid: () => {} }));
+    const html = await mount(() => createElement(Billing, { orgId: "org-1" }));
     expect(html).not.toContain("data-read-error");
     expect(has(html, en.developers.noPayments)).toBe(true);
   });
