@@ -6,12 +6,16 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { getUser } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { getChannelPath } from "@/lib/channels-path-server";
+import { AccountSecurity } from "@/components/account/AccountSecurity";
+import { readOwnHandle } from "@/lib/server/handles";
+import { pendingHandleFrom } from "@/lib/handles";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
- * Settings: the workspace's name, and the way to Developers (API keys).
+ * Settings: the workspace's name, Account and security (sign-in email,
+ * password, @username), and the way to Developers (API keys).
  *
  * There are two kinds of people in this product: a signed-in user, who owns
  * their workspace and does everything in it, and the platform operator, who
@@ -22,7 +26,7 @@ export const revalidate = 0;
  */
 export default async function SettingsPage() {
   const { t } = await getDictionary();
-  const [org, user, path] = await Promise.all([getOrgContext(), getUser(), getChannelPath()]);
+  const [org, user, path, handles] = await Promise.all([getOrgContext(), getUser(), getChannelPath(), readOwnHandle()]);
 
   return (
     <div className="rhythm ns-open">
@@ -34,6 +38,15 @@ export default async function SettingsPage() {
       ) : org.current ? (
         <>
           <WorkspaceNameForm key={org.current.id} org={org.current} />
+          {user.email && (
+            <AccountSecurity
+              email={user.email}
+              pendingEmail={user.new_email ?? null}
+              handle={handles.row}
+              signupHandle={pendingHandleFrom(user.user_metadata)}
+              handlesSupported={handles.supported}
+            />
+          )}
           <div className="panel flex flex-col gap-3 p-5 sm:p-6">
             <h2 className="t-section">{t.org.developersTitle}</h2>
             <p className="text-sm text-[var(--color-muted)]">{t.org.developersHint}</p>
