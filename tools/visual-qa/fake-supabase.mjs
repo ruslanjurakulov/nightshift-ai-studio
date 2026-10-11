@@ -250,9 +250,29 @@ RPC.oauth_my_grants = [
   { id: "00000000-0000-4000-8000-0000000000c2", client_name: "Cursor", scopes: ["videos:read"], monthly_limit_credits: 200, spent_this_month_credits: 0, created_at: "2026-09-20T08:00:00Z", last_used_at: null, status: "paused_plan", redirect_uris: ["http://localhost:6274/cb"] },
 ];
 
+// Developers (0031, 0062): made-up keys, usage and payments, so that page has rows to look at.
+RPC.api_usage = {
+  days: Array.from({ length: 30 }, (_, i) => ({ day: `2026-09-${String(12 + (i % 19)).padStart(2, "0")}`, requests: 20 + ((i * 37) % 90), errors: i % 7 === 0 ? 2 : 0, spend_cents: 15 + ((i * 53) % 120) })),
+  endpoints: [
+    { endpoint: "videos.create", requests: 640, errors: 4 },
+    { endpoint: "videos.list", requests: 1210, errors: 0 },
+    { endpoint: "balance", requests: 380, errors: 0 },
+  ],
+};
+
 const PRICE = (unit, credits_per_unit, margin) => ({ unit, credits_per_unit, margin, updated_at: "2026-09-30T12:00:00Z", updated_by: null });
 const TABLES = {
   channels: [CHANNEL],
+  api_keys: [
+    { id: "k_7fd2a91c0b", name: "Production server", monthly_limit_cents: 5000, created_at: "2026-09-02T08:00:00Z", last_used_at: "2026-10-10T09:30:00Z", revoked_at: null, scopes: ["account:read", "videos:read", "videos:write"], rpm_limit: null, creative_monthly_credits: null },
+    { id: "k_31c8e5a204", name: "Dashboard (read only)", monthly_limit_cents: null, created_at: "2026-09-15T08:00:00Z", last_used_at: null, revoked_at: null, scopes: ["account:read", "videos:read"], rpm_limit: 30, creative_monthly_credits: null },
+    { id: "k_a09b44d7e1", name: "Generation worker", monthly_limit_cents: 2000, created_at: "2026-09-20T08:00:00Z", last_used_at: "2026-10-09T18:00:00Z", revoked_at: null, scopes: ["account:read", "creative:quote", "creative:create", "creative:read"], rpm_limit: 60, creative_monthly_credits: 500 },
+    { id: "k_0e5513b8cc", name: "Old script", monthly_limit_cents: null, created_at: "2026-08-01T08:00:00Z", last_used_at: "2026-08-20T08:00:00Z", revoked_at: "2026-09-01T08:00:00Z", scopes: null, rpm_limit: null, creative_monthly_credits: null },
+  ],
+  api_ledger: [
+    { id: 2, kind: "topup", amount_cents: 2500, external_id: "txn_01qa00000000000000000002", created_at: "2026-10-01T08:00:00Z" },
+    { id: 1, kind: "topup", amount_cents: 2500, external_id: "txn_01qa00000000000000000001", created_at: "2026-09-01T08:00:00Z" },
+  ],
   credit_accounts: [{ org_id: ORG.id, balance: 1240, reserved: 180 }],
   // Made-up rates, only so the operator's price list has rows to look at (FAKE_ADMIN=1).
   credit_prices: ADMIN
