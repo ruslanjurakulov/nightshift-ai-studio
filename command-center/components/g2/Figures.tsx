@@ -26,7 +26,7 @@ export function Figures({ label, items }: { label?: string; items: { label: stri
           <dd className="g2-figure-value" style={{ color: it.tone ? COLOR[it.tone] : undefined, margin: 0 }}>
             {it.value}
           </dd>
-          {it.sub !== undefined && <div className="g2-figure-sub">{it.sub}</div>}
+          {it.sub !== undefined && <dd className="g2-figure-sub" style={{ margin: 0 }}>{it.sub}</dd>}
         </div>
       ))}
     </dl>

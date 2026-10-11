@@ -387,3 +387,10 @@ select.ns-field { padding-right: 36px; }
 }
 .g2-desk .g2-rows .g2-row:last-child { border-bottom: 0; padding-bottom: 0; }
 .g2-desk .g2-models .g2-model:last-child { padding-bottom: 0; }
+
+/* A finger needs 44px: the name in a folded ledger row and the short console links are keys too. */
+@media (pointer: coarse), (max-width: 47.99rem) {
+  .g2-ledger-name a { display: inline-flex; align-items: center; min-height: 44px; }
+}
+.g2-key .tap-link { min-width: 44px; justify-content: flex-start; }
+@media (pointer: coarse), (max-width: 40rem) { .g2-key .tap-link { min-width: 44px; padding-right: 8px; } }
