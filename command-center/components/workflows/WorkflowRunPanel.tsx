@@ -22,8 +22,7 @@ import {
 import { quoteWorkflow, runWorkflow } from "./workflowsApi";
 
 const QUOTE_DELAY_MS = 350;
-const field =
-  "pill border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
+const area = "g3-textarea w-full";
 
 type QuoteState =
   | { status: "idle" }
@@ -127,9 +126,9 @@ export function WorkflowRunPanel({
   const unpricedList = quote ? quote.unpriced_steps.map((i) => i + 1).join(", ") : "";
 
   return (
-    <section aria-labelledby={`${id}-h`} className="flex flex-col gap-4">
-      <div className="panel flex flex-col gap-3 p-5 sm:p-6">
-        <h2 id={`${id}-h`} className="m-0 text-[15px] font-semibold">
+    <div className="flex flex-col gap-8">
+      <section aria-labelledby={`${id}-h`} className="g3-section">
+        <h2 id={`${id}-h`} className="t-panel">
           {r.inputsTitle}
         </h2>
         {workflow.inputs.length === 0 ? (
@@ -137,7 +136,7 @@ export function WorkflowRunPanel({
         ) : (
           workflow.inputs.map((i) =>
             i.kind === "text" ? (
-              <label key={i.name} className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
+              <label key={i.name} className="flex flex-col gap-1.5 text-sm text-[var(--color-muted)]">
                 {inputLabel(i)}
                 <textarea
                   value={values[i.name] ?? ""}
@@ -145,14 +144,14 @@ export function WorkflowRunPanel({
                   maxLength={4000}
                   disabled={confirming !== null || busy}
                   onChange={(e) => setValues((v) => ({ ...v, [i.name]: e.target.value }))}
-                  className={`${field} rounded-2xl`}
+                  className={area}
                 />
               </label>
             ) : (
               <div key={i.name} className="flex flex-col gap-1">
-                <span className="text-xs text-[var(--color-muted)]">{inputLabel(i)}</span>
+                <span className="text-sm text-[var(--color-muted)]">{inputLabel(i)}</span>
                 {confirming !== null || busy ? (
-                  <span className="text-xs text-[var(--color-muted)]">{values[i.name] ? "✓" : ""}</span>
+                  <span className="text-sm text-[var(--color-muted)]">{values[i.name] ? "✓" : ""}</span>
                 ) : (
                   <SourcePicker
                     orgId={orgId}
@@ -166,10 +165,10 @@ export function WorkflowRunPanel({
             ),
           )
         )}
-      </div>
+      </section>
 
-      <div className="panel flex flex-col gap-3 p-5 sm:p-6" aria-live="polite">
-        <h2 className="m-0 text-[15px] font-semibold">{r.totalTitle}</h2>
+      <section className="g3-section ns-desk" aria-live="polite">
+        <h2 className="t-panel">{r.totalTitle}</h2>
         {incomplete ? (
           <p className="m-0 text-sm text-[var(--color-muted)]">{r.fillIn}</p>
         ) : state.status === "quoting" || state.status === "idle" ? (
@@ -182,13 +181,13 @@ export function WorkflowRunPanel({
             <p role="alert" className="m-0 text-sm text-[var(--color-fail)]">
               {state.message}
             </p>
-            <button type="button" onClick={() => void requote(values)} className="btn-sky is-quiet pill px-3 py-1.5 text-xs">
+            <button type="button" onClick={() => void requote(values)} className="btn-sky is-quiet pill px-4 py-2 text-sm">
               {r.retry}
             </button>
           </div>
         ) : (
           <>
-            <p className="m-0 text-[22px] font-semibold tabular-nums">
+            <p className="g3-total ns-tc">
               {total !== null ? fmt(r.totalValue, { n: formatCredits(total, locale) }) : r.noTotal}
             </p>
             <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
@@ -202,7 +201,7 @@ export function WorkflowRunPanel({
               ))}
             </ul>
             {state.quote.steps.some((s) => s.chained && s.priced) ? (
-              <p className="m-0 text-xs text-[var(--color-muted)]">{r.chainedNote}</p>
+              <p className="m-0 text-sm text-[var(--color-muted)]">{r.chainedNote}</p>
             ) : null}
             {block === "unpriced" ? (
               <p role="alert" className="m-0 text-sm text-[var(--color-fail)]">
@@ -212,17 +211,17 @@ export function WorkflowRunPanel({
             {block === "insufficient" && total !== null ? (
               <p role="alert" className="m-0 flex flex-wrap items-center gap-3 text-sm text-[var(--color-fail)]">
                 {fmt(r.notEnough, { have: formatCredits(state.quote.available, locale), need: formatCredits(total, locale) })}
-                <Link href={path("/credits")} className="btn-sky ghost pill px-3 py-1.5 text-xs">
+                <Link href={path("/credits")} className="btn-sky ghost pill px-4 py-2 text-sm">
                   {r.addCredits}
                 </Link>
               </p>
             ) : null}
             {block === null && !state.quote.exempt && state.quote.available !== null ? (
-              <p className="m-0 text-xs text-[var(--color-muted)]">
+              <p className="m-0 text-sm text-[var(--color-muted)]">
                 {fmt(r.available, { n: formatCredits(state.quote.available, locale) })}
               </p>
             ) : null}
-            <p className="m-0 text-xs text-[var(--color-muted)]">{r.holdNote}</p>
+            <p className="m-0 text-sm text-[var(--color-muted)]">{r.holdNote}</p>
           </>
         )}
 
@@ -240,8 +239,8 @@ export function WorkflowRunPanel({
         {!canRun ? <p className="m-0 text-sm text-[var(--color-muted)]">{r.readOnly}</p> : null}
 
         {confirming !== null ? (
-          <div role="alertdialog" aria-labelledby={`${id}-c`} className="studio-field flex flex-col gap-2 rounded-2xl border border-[var(--color-primary)] p-3">
-            <h3 id={`${id}-c`} className="m-0 text-sm font-semibold">
+          <div role="alertdialog" aria-labelledby={`${id}-c`} className="g3-confirm">
+            <h3 id={`${id}-c`} className="m-0 text-base font-semibold">
               {r.confirmTitle}
             </h3>
             <p className="m-0 text-sm">{fmt(r.confirmBody, { n: formatCredits(confirming, locale) })}</p>
@@ -267,14 +266,14 @@ export function WorkflowRunPanel({
               type="button"
               onClick={press}
               disabled={!canPress}
-              className="btn-sky is-solid pill inline-flex items-center gap-2 px-4 py-2 text-sm"
+              className="btn-sky is-solid pill inline-flex items-center gap-2 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Play className="size-4" aria-hidden />
               {total !== null && canPress ? fmt(r.runNow, { n: formatCredits(total, locale) }) : r.runNowOff}
             </button>
           </div>
         )}
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }

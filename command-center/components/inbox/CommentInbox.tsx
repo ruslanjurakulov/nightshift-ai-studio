@@ -2,7 +2,11 @@
 
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Inbox } from "lucide-react";
 import { PriceButton } from "@/components/ui/PriceButton";
+import { Chip, ChipRow } from "@/components/ui/Chip";
+import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
+import { EmptyState } from "@/components/ui";
 import { useI18n } from "@/lib/i18n/context";
 import { appendExtraOff, creditUnit } from "@/lib/credits";
 import {
@@ -26,6 +30,17 @@ export interface InboxPrice {
   state: "priced" | "included" | "unpriced" | "failed";
   credits: number | null;
 }
+
+/** The states that are a run state wear a lamp; an open or held comment shows its category as a word. */
+const STATE_LAMP: Partial<Record<ReturnType<typeof cardState>, LampTone>> = {
+  dismissed: "idle",
+  posted: "ok",
+  posting: "run",
+  post_failed: "fail",
+  writing: "run",
+  ready: "warn",
+  draft_failed: "fail",
+};
 
 type Answer = { ok: boolean; status: number; body: Record<string, unknown> };
 
@@ -86,28 +101,31 @@ export function CommentInbox({
   const shown = items.filter((it) => matchesFilter(it, filter));
   const refresh = () => startTransition(() => router.refresh());
 
+  // The one lit desk: the first reply that is written and waits for the person's approval.
+  const deskId = shown.find((it) => cardState(it) === "ready")?.comment.id ?? null;
+
   return (
-    <div className="flex flex-col gap-4">
-      <div role="group" aria-label={t.inbox.filtersLabel} className="flex flex-wrap gap-2">
+    <div className="flex flex-col gap-5">
+      <ChipRow label={t.inbox.filtersLabel} wrap className="g3-chips">
         {FILTERS.map((f) => (
-          <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)} className="studio-chip">
+          <Chip key={f} pressed={filter === f} onClick={() => setFilter(f)}>
             {t.inbox.filters[f]}
-          </button>
+          </Chip>
         ))}
-      </div>
-      {!canAct && <p className="text-xs text-[var(--color-muted)]">{t.inbox.readOnly}</p>}
-      {price.state === "unpriced" && <p className="text-xs text-[var(--color-warn)]">{t.inbox.unpriced}</p>}
-      {price.state === "failed" && <p className="text-xs text-[var(--color-warn)]">{t.inbox.readFailed}</p>}
+      </ChipRow>
+      {!canAct && <p className="g3-sub">{t.inbox.readOnly}</p>}
+      {price.state === "unpriced" && <p className="text-sm text-[var(--color-warn)]">{t.inbox.unpriced}</p>}
+      {price.state === "failed" && <p className="text-sm text-[var(--color-warn)]">{t.inbox.readFailed}</p>}
       {shown.length === 0 ? (
-        <p className="py-10 text-center text-sm text-[var(--color-muted)]">
-          {items.length === 0 ? t.inbox.empty : t.inbox.emptyFiltered}
-        </p>
+        <EmptyState icon={Inbox}>{items.length === 0 ? t.inbox.empty : t.inbox.emptyFiltered}</EmptyState>
       ) : (
-        <ul className="m-0 flex list-none flex-col gap-3 p-0">
-          {shown.map((item) => (
+        <ul className="g3-comments">
+          {shown.map((item, i) => (
             <li key={item.comment.id}>
               <Card
                 item={item}
+                index={i}
+                desk={item.comment.id === deskId}
                 channelName={channelNames[item.comment.channelId] ?? item.comment.channelId}
                 videoTitle={videoTitles[item.comment.videoId] ?? null}
                 price={price}
@@ -124,6 +142,8 @@ export function CommentInbox({
 
 function Card({
   item,
+  index,
+  desk,
   channelName,
   videoTitle,
   price,
@@ -131,6 +151,8 @@ function Card({
   refresh,
 }: {
   item: InboxItem;
+  index: number;
+  desk: boolean;
   channelName: string;
   videoTitle: string | null;
   price: InboxPrice;
@@ -229,7 +251,7 @@ function Card({
     refresh();
   }
 
-  const label = "text-xs text-[var(--color-muted)]";
+  const label = "text-sm text-[var(--color-muted)]";
   const stateLabel: Record<typeof state, string> = {
     dismissed: t.inbox.states.dismissed,
     posted: t.inbox.states.posted,
@@ -246,40 +268,44 @@ function Card({
   const date = comment.publishedAt ? comment.publishedAt.slice(0, 10) : null;
 
   return (
-    <article
-      aria-labelledby={`${uid}-who`}
-      className="rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3"
-    >
-      <header className="flex flex-wrap items-center justify-between gap-2">
+    <article aria-labelledby={`${uid}-who`} className={`g3-comment${desk ? " ns-desk" : ""}`} data-state={state}>
+      <header className="g3-comment-head">
+        <span className="g3-edge-no" aria-hidden>
+          {String(index + 1).padStart(2, "0")}
+        </span>
         <div className="min-w-0">
-          <h3 id={`${uid}-who`} dir="auto" className="m-0 text-sm font-medium text-[var(--color-fg)] [overflow-wrap:anywhere]">
+          <h3 id={`${uid}-who`} dir="auto" className="m-0 text-base font-medium text-[var(--color-fg)] [overflow-wrap:anywhere]">
             {comment.author ?? t.inbox.unknownAuthor}
           </h3>
-          <p className="m-0 text-xs text-[var(--color-muted)] [overflow-wrap:anywhere]">
+          <p className="m-0 text-sm text-[var(--color-muted)] [overflow-wrap:anywhere]">
             {channelName}
             {videoTitle ? ` · ${fmt(t.inbox.onVideo, { video: videoTitle })}` : ""}
             {date ? " · " : ""}
             {date && <time dateTime={comment.publishedAt ?? undefined}>{date}</time>}
           </p>
         </div>
-        <span className={label} data-state={state}>
-          {stateLabel[state]}
-        </span>
+        {STATE_LAMP[state] ? (
+          <StatusLamp tone={STATE_LAMP[state] as LampTone} label={stateLabel[state]} live={state === "posting" || state === "writing"} />
+        ) : (
+          <span className="g3-category" data-state={state}>
+            {stateLabel[state]}
+          </span>
+        )}
       </header>
 
-      <p dir="auto" className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--color-fg)] [overflow-wrap:anywhere]">
+      <p dir="auto" className="g3-comment-body whitespace-pre-wrap text-base leading-relaxed text-[var(--color-fg)] [overflow-wrap:anywhere]">
         {comment.body}
       </p>
 
-      {state === "held" && item.held && <p className="mt-2 text-xs text-[var(--color-muted)]">{heldText(item.held, t.inbox)}</p>}
+      {state === "held" && item.held && <p className="mt-2 text-sm text-[var(--color-muted)]">{heldText(item.held, t.inbox)}</p>}
 
       {state === "writing" && (
-        <p role="status" className="mt-3 text-xs text-[var(--color-muted)]">
+        <p role="status" className="mt-3 text-sm text-[var(--color-muted)]">
           {t.inbox.draft.writing}
         </p>
       )}
 
-      {state === "draft_failed" && <p className="mt-3 text-xs text-[var(--color-muted)]">{t.inbox.draft.failed}</p>}
+      {state === "draft_failed" && <p className="mt-3 text-sm text-[var(--color-muted)]">{t.inbox.draft.failed}</p>}
 
       {state === "ready" && draft && (
         <div className="mt-3 flex flex-col gap-2">
@@ -298,39 +324,39 @@ function Card({
               setText(e.target.value);
               setConfirming(false);
             }}
-            className="studio-field w-full px-3 py-2.5 text-base text-[var(--color-fg)] outline-none sm:text-[13px]"
+            className="g3-textarea w-full"
           />
-          <p className="m-0 text-xs text-[var(--color-muted)]">{fmt(t.inbox.reply.counter, { n: clean.length, max: INBOX_LIMITS.replyMax })}</p>
+          <p className="m-0 text-sm text-[var(--color-muted)]">{fmt(t.inbox.reply.counter, { n: clean.length, max: INBOX_LIMITS.replyMax })}</p>
           {canAct &&
             (confirming ? (
-              <div className="flex flex-col gap-2 rounded-md border border-[var(--color-border)] p-2">
-                <p className="m-0 text-xs text-[var(--color-fg)]">{fmt(t.inbox.reply.approveNote, { channel: channelName })}</p>
+              <div className="g3-confirm">
+                <p className="m-0 text-sm text-[var(--color-fg)]">{fmt(t.inbox.reply.approveNote, { channel: channelName })}</p>
                 <p dir="auto" data-testid="exact-text" className="m-0 whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">
                   {clean}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" disabled={busy !== null || !clean} onClick={() => void approve()} className="btn-sky pill min-h-[40px] px-4 py-2 text-sm">
+                  <button type="button" disabled={busy !== null || !clean} onClick={() => void approve()} className="btn-sky is-solid pill min-h-[44px] px-5 py-2 text-sm">
                     {busy === "approve" ? t.inbox.reply.approving : t.inbox.reply.approve}
                   </button>
-                  <button type="button" disabled={busy !== null} onClick={() => setConfirming(false)} className="btn-sky ghost pill min-h-[40px] px-4 py-2 text-sm">
+                  <button type="button" disabled={busy !== null} onClick={() => setConfirming(false)} className="btn-sky ghost pill min-h-[44px] px-4 py-2 text-sm">
                     {t.inbox.reply.cancel}
                   </button>
                 </div>
               </div>
             ) : (
               <div className="flex flex-wrap gap-2">
-                <button type="button" disabled={busy !== null || !clean} onClick={() => setConfirming(true)} className="btn-sky pill min-h-[40px] px-4 py-2 text-sm">
+                <button type="button" disabled={busy !== null || !clean} onClick={() => setConfirming(true)} className="btn-sky pill min-h-[44px] px-4 py-2 text-sm">
                   {t.inbox.reply.approve}
                 </button>
                 <button
                   type="button"
                   disabled={busy !== null || !clean || clean === draftBody}
                   onClick={() => void save()}
-                  className="btn-sky ghost pill min-h-[40px] px-4 py-2 text-sm"
+                  className="btn-sky ghost pill min-h-[44px] px-4 py-2 text-sm"
                 >
                   {busy === "save" ? t.inbox.reply.saving : t.inbox.reply.save}
                 </button>
-                <button type="button" disabled={busy !== null} onClick={() => void discard()} className="btn-sky ghost pill min-h-[40px] px-4 py-2 text-sm">
+                <button type="button" disabled={busy !== null} onClick={() => void discard()} className="btn-sky ghost pill min-h-[44px] px-4 py-2 text-sm">
                   {t.inbox.reply.discard}
                 </button>
               </div>
@@ -344,15 +370,15 @@ function Card({
           <p dir="auto" className="m-0 whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">
             {intent.body}
           </p>
-          {intent.approvedBy && <p className="m-0 text-xs text-[var(--color-muted)] [overflow-wrap:anywhere]">{fmt(t.inbox.posted.approvedBy, { who: intent.approvedBy })}</p>}
-          <p role="status" className="m-0 text-xs text-[var(--color-muted)]">
+          {intent.approvedBy && <p className="m-0 text-sm text-[var(--color-muted)] [overflow-wrap:anywhere]">{fmt(t.inbox.posted.approvedBy, { who: intent.approvedBy })}</p>}
+          <p role="status" className="m-0 text-sm text-[var(--color-muted)]">
             {state === "posted" ? t.inbox.posted.done : state === "posting" ? (post?.waitReason === "quota" ? t.inbox.posted.waitingQuota : t.inbox.posted.waiting) : `${t.inbox.posted.notPosted} ${failureText(post?.errorCode ?? null, t.inbox)}`}
           </p>
         </div>
       )}
 
       {message && (
-        <p role="status" className={`mt-2 text-xs ${message.tone === "ok" ? "text-[var(--color-ok)]" : "text-[var(--color-fail)]"}`}>
+        <p role="status" className={`mt-2 text-sm ${message.tone === "ok" ? "text-[var(--color-ok)]" : "text-[var(--color-fail)]"}`}>
           {message.text}
         </p>
       )}
@@ -371,29 +397,29 @@ function Card({
                 onClick={() => void ask()}
               />
             ) : (
-              <button type="button" disabled={busy !== null} onClick={() => void ask()} className="btn-sky pill min-h-[40px] px-4 py-2 text-sm">
+              <button type="button" disabled={busy !== null} onClick={() => void ask()} className="btn-sky pill min-h-[44px] px-4 py-2 text-sm">
                 {busy === "ask" ? t.inbox.draft.asking : state === "draft_failed" ? t.inbox.draft.askAgain : t.inbox.draft.askIncluded}
               </button>
             ))}
           {state === "post_failed" && post?.errorCode && (RETRYABLE as readonly string[]).includes(post.errorCode) && (
-            <button type="button" disabled={busy !== null} onClick={() => void retry()} className="btn-sky pill min-h-[40px] px-4 py-2 text-sm">
+            <button type="button" disabled={busy !== null} onClick={() => void retry()} className="btn-sky pill min-h-[44px] px-4 py-2 text-sm">
               {t.inbox.posted.retry}
             </button>
           )}
           {(state === "open" || state === "held" || state === "draft_failed" || state === "post_failed") && (
-            <button type="button" disabled={busy !== null} onClick={() => void dismiss(true)} className="btn-sky ghost pill min-h-[40px] px-4 py-2 text-sm">
+            <button type="button" disabled={busy !== null} onClick={() => void dismiss(true)} className="btn-sky ghost pill min-h-[44px] px-4 py-2 text-sm">
               {t.inbox.dismiss}
             </button>
           )}
           {state === "dismissed" && (
-            <button type="button" disabled={busy !== null} onClick={() => void dismiss(false)} className="btn-sky ghost pill min-h-[40px] px-4 py-2 text-sm">
+            <button type="button" disabled={busy !== null} onClick={() => void dismiss(false)} className="btn-sky ghost pill min-h-[44px] px-4 py-2 text-sm">
               {t.inbox.restore}
             </button>
           )}
         </div>
       )}
       {(state === "open" || state === "draft_failed") && canDraft && price.state === "priced" && (
-        <p className="mt-2 text-xs text-[var(--color-muted)]">{t.inbox.draft.note}</p>
+        <p className="mt-2 text-sm text-[var(--color-muted)]">{t.inbox.draft.note}</p>
       )}
     </article>
   );

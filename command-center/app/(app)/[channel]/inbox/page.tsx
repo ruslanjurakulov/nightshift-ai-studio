@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { PageHeader } from "@/components/PageHeader";
+import { Note } from "@/components/g3/Section";
 import { CommentInbox, type InboxPrice } from "@/components/inbox/CommentInbox";
 import { getChannelContext } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
@@ -49,9 +50,9 @@ export default async function InboxPage() {
     .limit(INBOX_LIMITS.listMax);
   if (res.error) {
     return (
-      <div className="rhythm stagger-enter">
+      <div className="rhythm ns-open stagger-enter">
         {header}
-        <p className="text-sm text-[var(--color-muted)]">{isMissingRelation(res.error) ? t.inbox.notEnabled : t.inbox.readFailed}</p>
+        <Note>{isMissingRelation(res.error) ? t.inbox.notEnabled : t.inbox.readFailed}</Note>
       </div>
     );
   }
@@ -74,9 +75,9 @@ export default async function InboxPage() {
   // A read that failed is unknown: the page says so rather than showing comments with no state.
   if (drafts?.error || intents?.error || posts?.error) {
     return (
-      <div className="rhythm stagger-enter">
+      <div className="rhythm ns-open stagger-enter">
         {header}
-        <p className="text-sm text-[var(--color-muted)]">{t.inbox.readFailed}</p>
+        <Note>{t.inbox.readFailed}</Note>
       </div>
     );
   }
@@ -112,7 +113,7 @@ export default async function InboxPage() {
 
   const items = buildItems(comments, parseDrafts(drafts?.data), parseIntents(intents?.data), parsePosts(posts?.data));
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open stagger-enter">
       {header}
       <CommentInbox items={items} channelNames={channelNames} videoTitles={videoTitles} price={price} canAct={canAct} />
     </div>

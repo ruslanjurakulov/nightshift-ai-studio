@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
-import { Panel, EmptyState, StatCard } from "@/components/ui";
+import { EmptyState, StatCard } from "@/components/ui";
+import { Section } from "@/components/g3/Section";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
@@ -138,74 +139,68 @@ export default async function JobsPage() {
   const completed = jobs.filter((j) => j.status === "COMPLETED").length;
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open stagger-enter">
       <PageHeader icon="jobs" title={t.jobs.title} subtitle={t.jobs.subtitle} />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="g3-figures">
         <StatCard label={t.jobs.jobs} value={<AnimatedNumber value={jobs.length} />} sub={t.jobs.jobsSub} />
         <StatCard label={t.jobs.running} value={<AnimatedNumber value={running} />} tone={running ? "run" : "idle"} sub={running ? t.jobs.inProgress : t.jobs.noneActive} />
         <StatCard label={t.jobs.failed} value={<AnimatedNumber value={failed} />} tone={failed ? "fail" : "ok"} sub={failed ? t.jobs.needsAttention : t.jobs.none} />
         <StatCard label={t.jobs.completed} value={<AnimatedNumber value={completed} />} tone="ok" sub={t.jobs.finishedOk} />
       </div>
 
-      <Panel title={t.jobs.panel}>
+      <Section title={t.jobs.panel} desk>
         {dbError ? (
           <EmptyState>{t.jobs.dbErr}</EmptyState>
         ) : jobs.length === 0 ? (
           <EmptyState>{t.jobs.empty}</EmptyState>
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
-                    <th className="px-4 py-2 font-semibold">{t.jobs.thJob}</th>
-                    <th className="px-4 py-2 font-semibold">{t.jobs.thAgents}</th>
-                    <th className="px-4 py-2 font-semibold">{t.jobs.thLatest}</th>
-                    <th className="px-4 py-2 font-semibold">{t.jobs.thStarted}</th>
-                    <th className="px-4 py-2 font-semibold">{t.jobs.thCompleted}</th>
-                    <th className="px-4 py-2 font-semibold">{t.jobs.thDuration}</th>
-                    <th className="px-4 py-2 font-semibold">{t.jobs.thStatus}</th>
+            <table className="g3-table">
+              <thead>
+                <tr>
+                  <th scope="col">{t.jobs.thJob}</th>
+                  <th scope="col">{t.jobs.thAgents}</th>
+                  <th scope="col">{t.jobs.thLatest}</th>
+                  <th scope="col">{t.jobs.thStarted}</th>
+                  <th scope="col">{t.jobs.thCompleted}</th>
+                  <th scope="col">{t.jobs.thDuration}</th>
+                  <th scope="col">{t.jobs.thStatus}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {jobs.map((j) => (
+                  <tr key={`${j.keyedBy}-${j.id}`}>
+                    <td className="g3-cell-main" data-label={t.jobs.thJob}>
+                      <div className="flex min-w-0 items-center gap-1">
+                        <span className="mono min-w-0 truncate text-sm text-[var(--color-fg)]">{j.id}</span>
+                        <CopyButton value={j.id} label={j.id} />
+                      </div>
+                      <div className="g3-sub">{j.keyedBy === "job_id" ? t.jobs.byJobId : t.jobs.byVideo}</div>
+                    </td>
+                    <td data-label={t.jobs.thAgents}>
+                      <div className="tnum text-sm text-[var(--color-primary)]">
+                        {j.agents.length ? j.agents.join(", ") : t.common.system}
+                      </div>
+                      <div className="tnum g3-sub">{fmt(t.jobs.eventsN, { n: j.events })}</div>
+                    </td>
+                    <td className="tnum g3-sub" data-label={t.jobs.thLatest}>{j.latestEvent}</td>
+                    <td className="tnum g3-sub" data-label={t.jobs.thStarted}>{relativeTime(j.startedAt)}</td>
+                    <td className="tnum g3-sub" data-label={t.jobs.thCompleted}>
+                      {j.completedAt ? relativeTime(j.completedAt) : t.common.dash}
+                    </td>
+                    <td className="tnum g3-sub" data-label={t.jobs.thDuration}>{durationLabel(j.durationMs)}</td>
+                    <td className="g3-cell-status" data-label={t.jobs.thStatus}>
+                      <JobStatusLamp status={j.status} />
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {jobs.map((j) => (
-                    <tr key={`${j.keyedBy}-${j.id}`} className="border-b border-[var(--color-border)]/50 align-top transition-colors hover:bg-[var(--color-panel-2)]">
-                      <td className="px-4 py-2">
-                        <div className="flex min-w-0 items-center gap-1">
-                          <span className="mono min-w-0 truncate text-xs text-[var(--color-fg)]">{j.id}</span>
-                          <CopyButton value={j.id} label={j.id} />
-                        </div>
-                        <div className="text-xs text-[var(--color-muted)]">
-                          {j.keyedBy === "job_id" ? t.jobs.byJobId : t.jobs.byVideo}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2">
-                        <div className="tnum text-xs text-[var(--color-primary)]">
-                          {j.agents.length ? j.agents.join(", ") : t.common.system}
-                        </div>
-                        <div className="tnum text-xs text-[var(--color-muted)]">{fmt(t.jobs.eventsN, { n: j.events })}</div>
-                      </td>
-                      <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{j.latestEvent}</td>
-                      <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{relativeTime(j.startedAt)}</td>
-                      <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">
-                        {j.completedAt ? relativeTime(j.completedAt) : t.common.dash}
-                      </td>
-                      <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{durationLabel(j.durationMs)}</td>
-                      <td className="px-4 py-2">
-                        <JobStatusLamp status={j.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="border-t border-[var(--color-border)] px-4 py-2 tnum text-xs text-[var(--color-muted)]">
-              {t.jobs.readOnly}
-            </p>
+                ))}
+              </tbody>
+            </table>
+            <p className="g3-sub tnum">{t.jobs.readOnly}</p>
           </>
         )}
-      </Panel>
+      </Section>
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
-import { Panel, EmptyState } from "@/components/ui";
+import { EmptyState } from "@/components/ui";
+import { Section } from "@/components/g3/Section";
 import { DecisionList } from "@/components/intel/DecisionList";
 import { deriveDecisions, scoreLineage, type LineageRow } from "@/lib/decisions";
 import { getDictionary } from "@/lib/i18n/server";
@@ -50,16 +51,16 @@ export default async function DecisionsPage() {
   }
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open stagger-enter">
       <PageHeader icon="decisions" title={t.intel.decisionsTitle} subtitle={t.intel.decisionsSubtitle} />
 
-      <Panel title={t.intel.decisionsTitle}>
+      <Section title={t.intel.decisionsTitle} desk>
         {decisions.length === 0 ? (
           <EmptyState>{t.intel.noDecisions}</EmptyState>
         ) : (
           <DecisionList decisions={decisions} lineage={lineage} />
         )}
-      </Panel>
+      </Section>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/PageHeader";
+import { Note } from "@/components/g3/Section";
 import { ApprovalsBoard } from "@/components/approvals/ApprovalsBoard";
 import { resolveCurrentOrgRole } from "@/lib/auth/org-roles";
 import { createClient, getUser } from "@/lib/supabase/server";
@@ -37,18 +38,18 @@ export default async function ApprovalsPage() {
 
   if (!user) {
     return (
-      <div className="rhythm">
+      <div className="rhythm ns-open">
         <PageHeader icon="approvals" title={t.approvals.title} subtitle={t.approvals.subtitle} />
-        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.approvals.signIn}</div>
+        <Note>{t.approvals.signIn}</Note>
       </div>
     );
   }
 
   if (!isScoped(selection)) {
     return (
-      <div className="rhythm">
+      <div className="rhythm ns-open">
         <PageHeader icon="approvals" title={t.approvals.title} subtitle={t.approvals.subtitle} />
-        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.approvals.notConfigured}</div>
+        <Note>{t.approvals.notConfigured}</Note>
       </div>
     );
   }
@@ -70,7 +71,7 @@ export default async function ApprovalsPage() {
   }
 
   return (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       <PageHeader icon="approvals" title={t.approvals.title} subtitle={t.approvals.subtitle} />
       <ApprovalsBoard
         channelId={selection}

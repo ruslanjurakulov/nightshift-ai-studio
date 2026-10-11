@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { PageHeader } from "@/components/PageHeader";
+import { Note } from "@/components/g3/Section";
 import { TimelineEditor } from "@/components/editor/TimelineEditor";
 import { getOrgContext } from "@/lib/orgs-server";
 import { getDictionary } from "@/lib/i18n/server";
@@ -29,15 +30,13 @@ export default async function EditorProjectPage({
   const { t } = await getDictionary();
   const org = await getOrgContext();
   const note = (text: string) => (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       <PageHeader
         icon="editor"
         title={t.editor.title}
         subtitle={t.editor.subtitle}
       />
-      <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">
-        {text}
-      </div>
+      <Note>{text}</Note>
     </div>
   );
   if (!org.supported) return note(t.org.notMigrated);
