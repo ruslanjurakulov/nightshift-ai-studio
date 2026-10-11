@@ -212,6 +212,8 @@ export function CreateStudio({
       } else writeDraft(draftStore(), sc, mine);
     }, 400);
     return () => clearTimeout(timer);
+    // initial is a mount-time prop (whether the form began from Home's query); it never changes who the draft is for.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brief, duration, voice, style, phase, draftChecked, scopeKey]);
 
   function discardDraft() {

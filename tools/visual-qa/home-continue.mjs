@@ -120,6 +120,7 @@ async function measure(page, row, phone) {
   }
 }
 
+const checks = [];
 // ── pictures ────────────────────────────────────────────────────────────────
 for (const loc of LOCALES) {
   for (const width of WIDTHS) {
@@ -136,6 +137,18 @@ for (const loc of LOCALES) {
         await page.waitForTimeout(700);
         // Pick a goal card, then reload: the card's starter comes back as this tab's unfinished draft.
         await page.locator('[data-goal="explainer"]').click();
+        await page.waitForTimeout(500);
+        if (loc === "en" && width === 1440 && theme === "light") {
+          // The caret lands on the first [bracket] of the card's text, in the real browser.
+          const sel = await page.evaluate(() => {
+            const el = document.getElementById("run-brief");
+            return { active: document.activeElement === el, picked: el.value.slice(el.selectionStart, el.selectionEnd) };
+          });
+          checks.push({ name: "after a goal card the caret selects the first [bracket]", ok: sel.active && /^\[.+\]$/.test(sel.picked), detail: JSON.stringify(sel) });
+          process.stdout.write(`check ${checks.at(-1).ok ? "PASS" : "FAIL"}: ${checks.at(-1).name} — ${checks.at(-1).detail}\n`);
+        }
+        // The card's own text is not a draft: it is kept once the person writes their own.
+        await page.locator("#run-brief").fill(TOPIC);
         await page.waitForTimeout(900);
         await page.reload({ waitUntil: "load" });
         await page.waitForSelector('[data-testid="draft-restored"]', { timeout: 15000 });
@@ -159,7 +172,6 @@ for (const loc of LOCALES) {
 }
 
 // ── double submit, in a real browser ────────────────────────────────────────
-const checks = [];
 const check = (name, ok, detail = "") => {
   checks.push({ name, ok, detail });
   process.stdout.write(`check ${ok ? "PASS" : "FAIL"}: ${name}${detail ? " — " + detail : ""}\n`);
@@ -221,6 +233,33 @@ const check = (name, ok, detail = "") => {
   mode = "ok";
   await press();
   check("the retry of the same inputs reuses the idempotency key", posts.length === 2 && posts[0].idempotency_key === posts[1].idempotency_key, `requests=${posts.length}`);
+  await context.close();
+}
+{
+  // The confirm waits for the price: nothing can be confirmed while the estimate is still being asked.
+  const { context, page } = await newPage("en", 1440, "light");
+  const posts = [];
+  let releaseEstimate = null;
+  await page.route("**/api/credits/estimate**", async (route) => {
+    await new Promise((r) => (releaseEstimate = r));
+    return route.continue();
+  });
+  await page.route("**/api/agent/run", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    posts.push(JSON.parse(route.request().postData() || "{}"));
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+  });
+  await page.goto(`${BASE}/night-owl/home`, { waitUntil: "load" });
+  await page.waitForSelector(".fl-go", { timeout: 15000 });
+  await page.locator(".fl-go").first().click();
+  const go = page.locator(".fl-go").first();
+  await go.click({ force: true });
+  await page.waitForTimeout(400);
+  check("while the price is loading the confirm is disabled and sends nothing", (await go.getAttribute("aria-disabled")) === "true" && posts.length === 0, (await go.innerText()).trim());
+  releaseEstimate?.();
+  await page.waitForSelector(".fl-price-figure", { timeout: 15000 });
+  await page.waitForTimeout(300);
+  check("once a price is on screen the confirm is live", (await go.getAttribute("aria-disabled")) === "false");
   await context.close();
 }
 await browser.close();
