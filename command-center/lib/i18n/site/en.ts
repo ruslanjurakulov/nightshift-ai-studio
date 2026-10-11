@@ -591,7 +591,7 @@ export const siteEn = {
       button: "Continue with Google",
       or: "or",
       consentPre: "By continuing you agree to the",
-      terms: "Terms",
+      terms: "Terms of Service",
       consentAnd: "and",
       privacy: "Privacy Policy",
       consentPost: ".",

@@ -581,7 +581,7 @@ export const siteRu: SiteDictionary = {
       button: "Продолжить с Google",
       or: "или",
       consentPre: "Продолжая, вы принимаете",
-      terms: "Условия",
+      terms: "Условия использования",
       consentAnd: "и",
       privacy: "Политику конфиденциальности",
       consentPost: ".",

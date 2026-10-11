@@ -5,7 +5,7 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/config";
 import { createClient } from "@/lib/supabase/server";
 import { publicOrigin } from "@/lib/server/public-origin";
 import { joinFromCookie } from "@/lib/server/friend-invites";
-import { DEFAULT_AFTER_AUTH, safeLoginReturn, safeNextPath } from "@/lib/safe-redirect";
+import { DEFAULT_AFTER_AUTH, safeLoginReturn } from "@/lib/safe-redirect";
 import { callbackErrorFor, type CallbackError } from "@/lib/signup";
 import { GOOGLE_PROVIDER, googleCallbackError, googleGate, type GoogleError } from "@/lib/google-signin";
 import {
@@ -74,6 +74,26 @@ function toLogin(origin: string, error: CallbackError | GoogleError, status = 30
   return redirect(url, status);
 }
 
+/**
+ * End a session this callback has just made and must not keep (the Google
+ * gate said no). Logout is asked for first, but whatever it answers (an error,
+ * a 5xx, a thrown network failure) the browser's sb-* auth cookies are expired
+ * here too: the person is never left holding a session we refused.
+ */
+async function dropSession(supabase: { auth: { signOut: (o: { scope: "local" }) => PromiseLike<unknown> } }) {
+  try {
+    await supabase.auth.signOut({ scope: "local" });
+  } catch {
+    /* the cookies below are the part that must not fail */
+  }
+  try {
+    const jar = await cookies();
+    for (const c of jar.getAll()) if (c.name.startsWith("sb-")) jar.set(c.name, "", { path: "/", maxAge: 0 });
+  } catch {
+    /* a read-only cookie store: nothing more can be done from here */
+  }
+}
+
 /** A client that verifies a link without writing this browser's session. */
 function stateless() {
   return createStatelessClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -106,7 +126,7 @@ export async function GET(request: Request) {
       // "Continue with Google" (lib/google-signin.ts): keep the session only if Google vouches for the address.
       const denied = googleGate(data?.user, google);
       if (denied) {
-        await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+        await dropSession(supabase);
         return toLogin(origin, denied);
       }
       // The address is confirmed and the person is signed in: the one moment a
@@ -152,7 +172,7 @@ export async function POST(request: Request) {
   }
   const csrf = String(form.get("csrf") ?? "");
   const action = String(form.get("action") ?? "");
-  const next = safeNextPath(String(form.get("next") ?? ""));
+  const next = safeLoginReturn(String(form.get("next") ?? ""), DEFAULT_AFTER_AUTH);
 
   // A cross-site POST changes nothing — not even the pending sign-in, which a
   // forged request must not be able to discard either.

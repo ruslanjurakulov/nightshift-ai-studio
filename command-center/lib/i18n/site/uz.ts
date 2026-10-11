@@ -586,7 +586,7 @@ export const siteUz: SiteDictionary = {
       privacy: "Maxfiylik siyosati",
       consentPost: "ga rozilik bildirasiz.",
       errDenied: "Google orqali kirish bekor qilindi. Hech narsa oʻzgarmadi. Qayta urinib koʻring yoki quyida email orqali kiring.",
-      errUnverified: "Google bu email manzilni tasdiqlamagan, shuning uchun sizni kiritmadik. Uni Google’da tasdiqlang yoki email va parol bilan kiring.",
+      errUnverified: "Google bu email manzilni tasdiqlamagan, shuning uchun tizimga kirish bajarilmadi. Uni Google hisobingizda tasdiqlang yoki email va parol bilan kiring.",
       errFailed: "Google orqali kirib boʻlmadi. Qayta urinib koʻring yoki quyida email orqali kiring.",
     },
   },

@@ -4,15 +4,28 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // verified-email gate decides whether the session is kept.
 const h = vi.hoisted(() => ({
   exchange: vi.fn(),
-  signOut: vi.fn(async (_o?: unknown) => ({ error: null })),
+  signOut: vi.fn(async (_o?: unknown): Promise<{ error: unknown }> => ({ error: null })),
   join: vi.fn(async () => undefined),
+  jar: new Map<string, string>(),
+  expired: [] as string[],
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({ auth: { exchangeCodeForSession: h.exchange, signOut: h.signOut } }),
 }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: () => ({ auth: {} }) }));
-vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined, set: () => undefined }) }));
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (name: string) => (h.jar.has(name) ? { name, value: h.jar.get(name)! } : undefined),
+    getAll: () => [...h.jar].map(([name, value]) => ({ name, value })),
+    set: (name: string, _value: string, opts?: { maxAge?: number }) => {
+      if (opts?.maxAge === 0) {
+        h.jar.delete(name);
+        h.expired.push(name);
+      }
+    },
+  }),
+}));
 vi.mock("@/lib/server/friend-invites", () => ({ joinFromCookie: h.join }));
 
 const { GET } = await import("@/app/auth/callback/route");
@@ -31,8 +44,16 @@ const session = (verified: unknown, confirmed: string | null = "2026-10-11T10:00
 
 beforeEach(() => {
   h.exchange.mockReset();
-  h.signOut.mockClear();
+  h.signOut.mockReset();
+  h.signOut.mockResolvedValue({ error: null });
   h.join.mockClear();
+  h.jar.clear();
+  h.expired.length = 0;
+  // What the code exchange just wrote (chunked, as @supabase/ssr does), a PKCE leftover and an unrelated cookie.
+  h.jar.set("sb-proj-auth-token.0", "a");
+  h.jar.set("sb-proj-auth-token.1", "b");
+  h.jar.set("sb-proj-auth-token-code-verifier", "v");
+  h.jar.set("ns_locale", "en");
 });
 
 describe("/auth/callback after Continue with Google", () => {
@@ -79,5 +100,79 @@ describe("/auth/callback after Continue with Google", () => {
   it("an off-site next falls back to /welcome after Google", async () => {
     h.exchange.mockResolvedValue(session(true));
     expect(await land("?code=c1&provider=google&next=https%3A%2F%2Fevil.example")).toBe("/welcome");
+  });
+
+  describe("a denied session is always dropped from this browser", () => {
+    const cleared = () => {
+      expect(h.expired.sort()).toEqual(["sb-proj-auth-token-code-verifier", "sb-proj-auth-token.0", "sb-proj-auth-token.1"]);
+      expect(h.jar.has("ns_locale")).toBe(true);
+    };
+
+    it("when logout answers with an error (5xx)", async () => {
+      h.exchange.mockResolvedValue(session(false));
+      h.signOut.mockResolvedValue({ error: { status: 503, message: "upstream" } });
+      expect(await land("?code=c1&provider=google")).toBe("/login?error=google_unverified");
+      expect(h.signOut).toHaveBeenCalledWith({ scope: "local" });
+      cleared();
+    });
+
+    it("when logout throws (network down)", async () => {
+      h.exchange.mockResolvedValue(session(false));
+      h.signOut.mockRejectedValue(new Error("fetch failed"));
+      expect(await land("?code=c1&provider=google")).toBe("/login?error=google_unverified");
+      cleared();
+    });
+
+    it("when logout works", async () => {
+      h.exchange.mockResolvedValue(session(false));
+      expect(await land("?code=c1&provider=google")).toBe("/login?error=google_unverified");
+      cleared();
+    });
+  });
+
+  describe("the verified-email claim is strict", () => {
+    const withIdentity = (identity_data: unknown) => ({
+      data: {
+        user: { email_confirmed_at: "2026-10-11T10:00:00Z", identities: [{ provider: "google", identity_data }] },
+      },
+      error: null,
+    });
+
+    it.each([
+      ['the string "true"', withIdentity({ email_verified: "true" })],
+      ["a missing claim", withIdentity({})],
+      ["no identity_data", withIdentity(undefined)],
+    ])("%s is refused", async (_n, result) => {
+      h.exchange.mockResolvedValue(result);
+      expect(await land("?code=c1&provider=google")).toBe("/login?error=google_unverified");
+      expect(h.signOut).toHaveBeenCalled();
+      expect(h.join).not.toHaveBeenCalled();
+    });
+
+    it("no identities at all and no user_metadata claim is refused", async () => {
+      h.exchange.mockResolvedValue({ data: { user: { email_confirmed_at: "2026-10-11T10:00:00Z" } }, error: null });
+      expect(await land("?code=c1&provider=google")).toBe("/login?error=google_unverified");
+      expect(h.signOut).toHaveBeenCalled();
+    });
+
+    it("an identities list without Google, on a Google attempt, is a failure", async () => {
+      h.exchange.mockResolvedValue({
+        data: { user: { email_confirmed_at: "x", identities: [{ provider: "email", identity_data: { email_verified: true } }] } },
+        error: null,
+      });
+      expect(await land("?code=c1&provider=google")).toBe("/login?error=google_failed");
+    });
+  });
+
+  it("an email-only user's confirmation link passes through the gate untouched", async () => {
+    h.exchange.mockResolvedValue({
+      data: { user: { email_confirmed_at: "2026-10-11T10:00:00Z", identities: [{ provider: "email", identity_data: { email_verified: true } }] } },
+      error: null,
+    });
+    expect(await land("?code=c1&next=%2Fwelcome")).toBe("/welcome");
+    expect(h.signOut).not.toHaveBeenCalled();
+    expect(h.expired).toEqual([]);
+    expect(h.jar.size).toBe(4);
+    expect(h.join).toHaveBeenCalledTimes(1);
   });
 });

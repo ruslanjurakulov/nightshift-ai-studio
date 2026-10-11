@@ -12,7 +12,7 @@
   padding: 0 16px;
   border-radius: var(--ns-r-key);
   border: 1px solid var(--ns-rule-strong);
-  background: var(--ns-key);
+  background: transparent;
   color: var(--ns-text);
   font-family: var(--font-display);
   font-size: 16px;
@@ -27,7 +27,18 @@
 .ns-google-btn:active { transform: translateY(1px); }
 .ns-google-btn:focus-visible { box-shadow: 0 0 0 2px var(--st-focus-gap); }
 .ns-google-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
-.ns-google-btn[aria-busy="true"] { cursor: progress; }
+.ns-google-btn[aria-busy="true"] { cursor: progress; background: var(--ns-hover); }
+.ns-google-spin {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid var(--ns-rule-strong);
+  border-top-color: var(--ns-text);
+  animation: ns-google-spin 0.8s linear infinite;
+}
+@keyframes ns-google-spin { to { transform: rotate(360deg); } }
 .ns-google-consent { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ns-text-dim); }
 .ns-google-or {
   display: flex;
@@ -42,4 +53,6 @@
 @media (prefers-reduced-motion: reduce) {
   .ns-google-btn { transition: none; }
   .ns-google-btn:active { transform: none; }
+  /* Still ring, no spin: the dimmed fill and aria-busy carry the state. */
+  .ns-google-spin { animation: none; }
 }

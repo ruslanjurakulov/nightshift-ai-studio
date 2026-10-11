@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ConfirmSignIn } from "@/components/auth/ConfirmSignIn";
 import { PENDING_COOKIE, decodePending } from "@/lib/auth-confirm";
-import { safeNextPath } from "@/lib/safe-redirect";
+import { DEFAULT_AFTER_AUTH, safeLoginReturn } from "@/lib/safe-redirect";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -22,6 +22,6 @@ export default async function ConfirmSignInPage({
   const pending = decodePending((await cookies()).get(PENDING_COOKIE)?.value);
   if (!pending) redirect("/login?error=link_invalid");
   const raw = (await searchParams).next;
-  const next = safeNextPath(typeof raw === "string" ? raw : null);
+  const next = safeLoginReturn(typeof raw === "string" ? raw : null, DEFAULT_AFTER_AUTH);
   return <ConfirmSignIn email={pending.email} csrf={pending.csrf} next={next} />;
 }

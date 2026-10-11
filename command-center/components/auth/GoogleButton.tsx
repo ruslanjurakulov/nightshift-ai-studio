@@ -59,6 +59,16 @@ export function GoogleButton({ mode }: { mode: "signin" | "signup" }) {
     if (isGoogleError(code)) setFailed(code);
   }, []);
 
+  // Back from Google with the browser's back button can restore this page from
+  // the back/forward cache with the button still "busy": clear it.
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setBusy(false);
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
+
   const messages: Record<GoogleError, string> = {
     google_denied: g.errDenied,
     google_unverified: g.errUnverified,
@@ -103,7 +113,8 @@ export function GoogleButton({ mode }: { mode: "signin" | "signup" }) {
         disabled={!isSupabaseConfigured}
         aria-busy={busy || undefined}
       >
-        <GoogleG />
+        {/* The mark and the spinner share one 18px box, so pressing the button moves nothing. */}
+        {busy ? <span className="ns-google-spin" aria-hidden="true" /> : <GoogleG />}
         <span>{g.button}</span>
       </button>
       {mode === "signup" && (

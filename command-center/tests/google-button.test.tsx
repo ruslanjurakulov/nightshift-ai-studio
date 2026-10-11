@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 const h = vi.hoisted(() => ({ signIn: vi.fn(), locale: "en" as "en" | "ru" | "uz" }));
@@ -104,8 +104,8 @@ describe("GoogleButton", () => {
 
   it("sign-up carries the consent line with the Terms and Privacy links; sign-in does not", () => {
     const up = render(<GoogleButton mode="signup" />);
-    expect(up.container.textContent).toContain("By continuing you agree to the Terms and Privacy Policy.");
-    expect(screen.getByRole("link", { name: "Terms" }).getAttribute("href")).toBe("/terms");
+    expect(up.container.textContent).toContain("By continuing you agree to the Terms of Service and Privacy Policy.");
+    expect(screen.getByRole("link", { name: "Terms of Service" }).getAttribute("href")).toBe("/terms");
     expect(screen.getByRole("link", { name: "Privacy Policy" }).getAttribute("href")).toBe("/privacy");
     up.unmount();
     const inn = render(<GoogleButton mode="signin" />);
@@ -120,5 +120,38 @@ describe("GoogleButton", () => {
     h.locale = locale;
     render(<GoogleButton mode="signup" />);
     expect(screen.getByRole("button", { name: label })).toBeTruthy();
+  });
+
+  it("while the round trip starts: aria-busy, a spinner in the mark's box, the same label", async () => {
+    h.signIn.mockReturnValue(new Promise(() => undefined));
+    const { container } = render(<GoogleButton mode="signin" />);
+    const btn = screen.getByRole("button", { name: "Continue with Google" });
+    expect(btn.getAttribute("aria-busy")).toBeNull();
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.getAttribute("aria-busy")).toBe("true"));
+    expect(container.querySelector(".ns-google-spin")).toBeTruthy();
+    expect(container.querySelector("svg")).toBeNull();
+    expect(screen.getByRole("button", { name: "Continue with Google" })).toBe(btn);
+    // A second click while busy starts nothing more.
+    fireEvent.click(btn);
+    expect(h.signIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("comes back from the back/forward cache ready to press again, but only for a persisted page", async () => {
+    h.signIn.mockReturnValue(new Promise(() => undefined));
+    const { container } = render(<GoogleButton mode="signin" />);
+    const btn = screen.getByRole("button", { name: "Continue with Google" });
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.getAttribute("aria-busy")).toBe("true"));
+    act(() => {
+      window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: false }));
+    });
+    expect(btn.getAttribute("aria-busy")).toBe("true");
+    act(() => {
+      window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+    });
+    expect(btn.getAttribute("aria-busy")).toBeNull();
+    expect(container.querySelector(".ns-google-spin")).toBeNull();
+    expect(container.querySelector("svg")).toBeTruthy();
   });
 });

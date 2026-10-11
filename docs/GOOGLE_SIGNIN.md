@@ -66,17 +66,25 @@ alohida hech narsa yaratilmaydi va qo'shimcha migratsiya kerak emas:
 - **Pre-account takeover** (hujumchi qurbonning emaili bilan parol qo'yib
   ro'yxatdan o'tadi, lekin emailni tasdiqlamaydi; keyin qurbon Google bilan
   kiradi): Supabase hujjatiga ko'ra, yangi (tasdiqlangan) identity mavjud
-  foydalanuvchiga bog'langanda **boshqa tasdiqlanmagan identity'lar o'chiriladi**,
-  shu bilan hujumchining paroli kuchsiz qoladi. Bu **"Confirm email" yoqilgan**
-  bo'lishiga tayanadi (`docs/SIGNUP_SETUP.md`, 1-bo'lim). Uni o'chirmang.
+  foydalanuvchiga bog'langanda boshqa **tasdiqlanmagan identity'lar o'chiriladi**.
+  > **Halollik bilan:** bu himoya Supabase (GoTrue) xatti-harakatiga tayanadi
+  > va biz uni **jonli sinab ko'rmadik**; kodimiz bu holatni o'zi tekshirmaydi.
+  > Muhim nuqta: hujumchining paroli `auth.users` qatorida saqlanadi, identity
+  > jadvalida emas. Himoya GoTrue Google identity'ni tasdiqlanmagan foydalanuvchiga
+  > bog'lashda o'sha parolni tozalashiga bog'liq. Shuning uchun quyidagi 3-bo'limdagi
+  > 5-qo'lda sinovni **ishga tushirishdan oldin** o'tkazing. Agar parol bilan
+  > kirish hali ham ishlasa, Google kirishini yoqmang va bizga xabar bering.
+  Bu **"Confirm email" yoqilgan** bo'lishiga ham tayanadi (`docs/SIGNUP_SETUP.md`,
+  1-bo'lim). Uni o'chirmang.
 - **Google manzilni tasdiqlamagan bo'lsa** — Supabase o'zi kirishni to'xtatadi
   (`provider_email_needs_verification`), kod esa qo'shimcha himoya qiladi:
   `/auth/callback` sessiyani faqat Google identity'sida `email_verified === true`
   va foydalanuvchida `email_confirmed_at` bo'lsagina qoldiradi, aks holda
   `signOut` qiladi. Belgi (`provider=google`) o'chirilsa ham tekshiruv Google
   identity'si bor har bir hisobga qo'llanadi.
-- **Qo'lda bog'lash (manual linking)** — dashboard'da yoqmang: kod
-  `linkIdentity` ishlatmaydi.
+- **Qo'lda bog'lash (manual linking)** — yoqmang: kod `linkIdentity`
+  ishlatmaydi. Sozlama Authentication → Sign In / Providers sozlamalarida,
+  "Allow manual linking" nomi bilan qidiring (dashboard joylashuvi o'zgarib turadi).
 
 ## 1. Google Cloud Console
 
@@ -120,13 +128,17 @@ Loyiha: `kgqzdjttlnhrxrlqxqge`.
    - **Skip nonce checks: OFF** (o'chiq turaversin). **Save**.
 2. **Authentication → URL Configuration**:
    - **Site URL:** `https://nightshift-ai.studio`
-   - **Redirect URLs** (mavjudlarini o'chirmang, shularni qo'shing):
-     - `https://nightshift-ai.studio/auth/callback`
-     - `https://nightshift-ai.studio/**`
+   - **Redirect URLs** (mavjudlarini o'chirmang). Google uchun kerakli yozuv:
+     `https://nightshift-ai.studio/auth/callback`. Tugma callback'ga `?next=…`
+     va `provider=google` qo'shib qaytaradi; Supabase ro'yxatni aniq moslik
+     bilan yoki andoza bilan solishtirishi mumkinligi uchun
+     `docs/SIGNUP_SETUP.md` dagi `https://nightshift-ai.studio/**` yozuvi ham
+     **qolsin** (u allaqachon bor; Google uchun alohida qo'shish shart emas, lekin
+     o'chirmang).
    - Lokal sinov uchun: `http://localhost:3000/**`
 3. **Authentication → Sign In / Providers**: **Email → Confirm email = ON**
    (yuqoridagi xavfsizlik bandi shunga tayanadi) va **Allow new users to sign up
-   = ON**. Provayderlar ro'yxatida **"Allow manual linking"** = OFF.
+   = ON**. **"Allow manual linking"** = OFF (Sign In / Providers sozlamalarida qidiring).
 
 O'zingizning serveringizda (Docker, `deploy/`) bo'lsa: `APP_ORIGIN` o'rnatilgan
 bo'lsin (`docs/SIGNUP_SETUP.md`, 2-bo'lim) va Supabase tarafdagi redirect
@@ -147,9 +159,17 @@ aylanishni sozlamadan keyin qo'lda sinang:
    Google orqali kiring → o'sha hisobning ma'lumotlari ko'rinishi kerak.
 4. Google oynasida **Cancel** bosing → `/login` sahifasida "Google sign-in was
    cancelled…" xabari chiqishi kerak.
-5. Supabase → Authentication → Users: foydalanuvchi qatorida provider `Google`
+5. **Pre-account takeover sinovi (majburiy):** (a) inkognito oynada
+   `/signup` orqali yangi email+parol bilan ro'yxatdan o'ting va tasdiqlash
+   xatini **ochmang**; (b) shu manzildagi Google akkaunti bilan **Continue with
+   Google** orqali kiring; (c) chiqing va `/login` da (a) dagi **parol bilan
+   kirishga urining** — kirish **ishlamasligi** kerak (xato: noto'g'ri email
+   yoki parol). Supabase → Authentication → Users: shu foydalanuvchida faqat
+   `Google` identity bo'lishi kerak. Agar parol bilan kirish **ishlasa** — bu
+   xavfsizlik teshigi: Google kirishini o'chiring va xabar bering.
+6. Supabase → Authentication → Users: foydalanuvchi qatorida provider `Google`
    (va bog'langan bo'lsa `Email`) ko'rinadi.
-6. Tarmoq/CSP: brauzer konsolida yangi CSP buzilishi bo'lmasligi kerak (kod
+7. Tarmoq/CSP: brauzer konsolida yangi CSP buzilishi bo'lmasligi kerak (kod
    CSP'ni o'zgartirmaydi: o'tish Google'ga oddiy sahifa almashtirish orqali bo'ladi).
 
 ## Muammolar
