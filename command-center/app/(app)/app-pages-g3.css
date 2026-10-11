@@ -37,19 +37,25 @@
 .g3-lane-meta { display: inline-flex; align-items: center; gap: 16px; margin-left: auto; }
 
 .g3-stages { container-type: inline-size; }
-.g3-stage-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px 8px; }
+.g3-stage-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 8px; }
 .g3-stage { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; padding-right: 8px; }
 .g3-stage-no { font-size: 13px; font-weight: 600; color: var(--ns-amber-ink); letter-spacing: 0.04em; }
 .g3-stage-lamp { display: flex; align-items: center; width: 100%; }
 /* The rail: a hairline from each lamp to the next stage, lit once the stage is reached. */
 .g3-stage-lamp::after { content: ""; flex: 1; height: 1px; margin-left: 8px; background: var(--ns-rule-strong); }
-.g3-stage:nth-child(3n) .g3-stage-lamp::after,
+.g3-stage:nth-child(2n) .g3-stage-lamp::after,
 .g3-stage:last-child .g3-stage-lamp::after { display: none; }
 .g3-stage[data-state="waiting"] .g3-stage-lamp::after { background: var(--ns-rule); }
-.g3-stage-name { font-size: var(--ns-t-ui); color: var(--color-fg); }
+.g3-stage-name { font-size: var(--ns-t-ui); color: var(--color-fg); overflow-wrap: anywhere; }
 .g3-stage[data-state="waiting"] .g3-stage-name,
 .g3-stage[data-state="waiting"] .g3-stage-no { color: var(--color-muted); }
 .g3-stage-time { font-size: 13px; color: var(--color-muted); }
+@container (min-width: 520px) {
+  .g3-stage-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .g3-stage:nth-child(2n) .g3-stage-lamp::after { display: block; }
+  .g3-stage:nth-child(3n) .g3-stage-lamp::after,
+  .g3-stage:last-child .g3-stage-lamp::after { display: none; }
+}
 @container (min-width: 880px) {
   .g3-stage-list { grid-template-columns: repeat(9, minmax(0, 1fr)); }
   .g3-stage:nth-child(3n) .g3-stage-lamp::after { display: block; }
@@ -120,6 +126,7 @@
 .g3-dec-facts { grid-area: facts; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
 .g3-dec-btn { grid-area: btn; }
 .g3-dec-score { font-size: 1.5rem; font-weight: 600; line-height: 1; letter-spacing: -0.02em; }
+.g3-dec-score[data-unknown] { font-size: 1rem; font-weight: 500; letter-spacing: 0; }
 @media (min-width: 900px) {
   .g3-dec-row { grid-template-columns: 28px minmax(0, 1fr) auto auto; grid-template-areas: "no main facts btn"; }
   .g3-dec-facts { gap: 20px; }

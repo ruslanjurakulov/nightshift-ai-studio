@@ -66,7 +66,7 @@ export function DecisionList({
                 </div>
               </div>
               <div className="g3-dec-facts">
-                <span className="ns-tc g3-dec-score" style={{ color: d.score == null ? "var(--color-muted)" : d.score >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}>
+                <span className="ns-tc g3-dec-score" data-unknown={d.score == null ? "true" : undefined} style={{ color: d.score == null ? "var(--color-muted)" : d.score >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}>
                   {d.score == null ? t.common.na : d.score.toFixed(0)}
                 </span>
                 <ConfidenceBadge confidence={d.confidence} />
