@@ -128,10 +128,10 @@ add a file and a second voice for nothing.
   Roboto scaled to 104% of Arial's width, measured on our own en / ru / uz
   strings, ascent 93.3%, descent 29.3%, line gap 0) is first in the stack, so
   the swap moves nothing.
-* The wordmark keeps its own logotype: the condensed capitals, cut down to the
-  nine letters of the name (about 2 KB, inlined as a data URI in `fonts.css`),
-  used by `.ns-wordmark` and `.st-brand` only. The social card (`/og.png`) is set
-  in Onest and the same wordmark.
+* The wordmark is a drawing, not a font: the owner's lockup (the bare N and the
+  wide rounded-square lettering) is an inline vector, `components/site/Wordmark.tsx`
+  (the old inlined condensed face and `.ns-wordmark` are gone). The social card
+  (`/og.png`) is set in Onest and the earlier condensed wordmark, unchanged.
 * Monospace is the system's (`ui-monospace, SF Mono, Menlo, Consolas`), no
   download, and only for real code: API keys, commands, JSON, a raw id, the
   unit's code name.

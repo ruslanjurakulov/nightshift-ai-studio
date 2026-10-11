@@ -286,26 +286,38 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
   gap: 12px;
   height: 64px;
 }
+/* The wordmark: the bare N and the lettering (components/site/Wordmark.tsx), drawn in the text
+   colour. --wm-h is the N's height; the lettering is 0.49 of it. The link keeps a 44px tap target. */
 .st-brand {
+  --wm-h: 36px;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
   min-height: 44px;
-  font-family: "Nightshift Wordmark", var(--font-sans);
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--ns-text);
 }
-/* The tile makes the lockup 25px wider than the old mark. Below 400px it is set a size
-   down (wordmark 19px, tile 28px, gap 8px): in Russian the header's call to action and
-   menu button otherwise run past the viewport at 380px (3px) and sit 7px from the edge
-   at 390px. Below 380px the header's own gaps and the call to action's padding give up a
-   little more so all three controls stay inside the 16px gutter at 360px. */
+/* The lockup is wider than the old tile and condensed text, so on a phone it takes what the
+   header leaves it. The limit is Russian's call to action ("Начать бесплатно") and the menu
+   button, which set the room beside the lockup: --wm-h is the width left over divided by the
+   lockup's 5.91 aspect, in a few ranges because the call to action's size and the header's gaps
+   step at 420, 400, 380 and 360px. From 485px wide the full 36px fits in every language. From
+   1024 to 1279px the nav and tools leave the lockup its old 148px (25px high). */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .st-brand { --wm-h: 25px; }
+}
+@media (max-width: 484px) {
+  .st-brand { --wm-h: clamp(17px, calc((100vw - 272px) / 5.91), 36px); }
+}
+@media (max-width: 420px) {
+  .st-brand { --wm-h: clamp(17px, calc((100vw - 254px) / 5.91), 36px); }
+}
 @media (max-width: 399px) {
-  .st-brand { font-size: 19px; gap: 8px; }
-  .st-brand svg { width: 28px; height: auto; }
+  .st-brand { --wm-h: clamp(17px, calc((100vw - 246px) / 5.91), 36px); }
+}
+@media (max-width: 379px) {
+  .st-brand { --wm-h: clamp(17px, calc((100vw - 242px) / 5.91), 36px); }
+}
+@media (max-width: 359px) {
+  .st-brand { --wm-h: clamp(17px, calc((100vw - 240px) / 5.91), 36px); }
 }
 @media (max-width: 379px) {
   .st-header-row { gap: 8px; }
@@ -320,8 +332,6 @@ html:is([lang="ru"], [lang="uz"]) .st-h1 { font-size: clamp(32px, 4.6vw, 52px); 
 /* The narrowest phones still in use (340px and below): the lockup and the controls give up a little more. */
 @media (max-width: 359px) {
   .st-header-row { gap: 6px; }
-  .st-brand { font-size: 17px; gap: 6px; }
-  .st-brand svg { width: 24px; }
   .st-header-tools { gap: 4px; }
   .st-header-tools .st-key[data-size="sm"] { padding: 0 8px; }
 }
@@ -1106,6 +1116,8 @@ h3.st-step-title[data-case="sentence"] { letter-spacing: 0; }
 
 /* ── Footer ──────────────────────────────────────────────────────────── */
 .st-footer { border-top: 1px solid color-mix(in srgb, var(--ns-rule) 40%, var(--ns-rule-strong)); background: var(--ns-ground); }
+/* The footer's first column is about 200px wide at 1440: its lockup is a size down from the header's. */
+.st-footer .st-brand { --wm-h: 30px; }
 .st-footer-grid {
   display: grid;
   gap: 28px;

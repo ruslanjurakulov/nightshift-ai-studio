@@ -269,7 +269,7 @@ body .app-shell.atmos {
 .ns-step[data-state="current"] { border-color: var(--ns-act); background: var(--ns-act-soft); }
 
 /* ── Sidebar: full, or a slim rail of icons ────────────────────────────────── */
-.shell-sidebar { width: 240px; }
+.shell-sidebar { width: 256px; } /* the wordmark lockup is 31px high, 183px wide, beside the 44px toggle */
 .shell-sidebar[data-collapsed="true"] { width: 72px; }
 @media (prefers-reduced-motion: no-preference) {
   .shell-sidebar { transition: width var(--ns-dur-2) var(--ns-ease); }
@@ -281,7 +281,7 @@ body .app-shell.atmos {
   align-items: center;
   justify-content: space-between;
   gap: 4px;
-  padding: 0 8px 0 20px;
+  padding: 0 8px 0 16px;
 }
 .shell-sidebar-toggle {
   display: inline-grid;
@@ -294,7 +294,7 @@ body .app-shell.atmos {
   transition: background-color var(--ns-dur-1) var(--ns-ease), color var(--ns-dur-1) var(--ns-ease);
 }
 .shell-sidebar-toggle:hover { background: var(--ns-hover); color: var(--color-fg); }
-/* The rail: the N tile above its toggle, rows reduced to their icons, group names to their rule. */
+/* The rail: the bare N above its toggle, rows reduced to their icons, group names to their rule. */
 .shell-sidebar[data-collapsed="true"] .shell-sidebar-head {
   height: auto;
   flex-direction: column;
