@@ -969,7 +969,7 @@ option {
   font-weight: 600;
   transition: filter var(--ns-dur-1) var(--ns-ease);
 }
-.btn-primary:hover { filter: brightness(1.08); }
+.btn-primary:hover:not([aria-disabled="true"]) { filter: brightness(1.08); }
 .btn-quiet {
   display: inline-flex;
   align-items: center;
@@ -1706,8 +1706,14 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   box-shadow: var(--studio-cta-shadow);
   transition: filter var(--ns-dur-1) var(--ns-ease), transform var(--ns-dur-1) var(--ns-ease);
 }
-.studio-cta:hover:not(:disabled) { filter: brightness(1.06); }
+.studio-cta:hover:not(:disabled):not([aria-disabled="true"]) { filter: brightness(1.06); }
 .studio-cta:active:not(:disabled) { transform: translateY(1px); }
+/* Waiting, not refused: the create confirm while it starts or checks the price (CreateStudio), and Run now's
+   confirm while its price loads (data-price-hold). Scoped on purpose: other aria-disabled primaries
+   (the Library's upload label) keep their own look, and Retry is a live button. Lives here, not in
+   flow.css, because Agents and Command Center never load that file. */
+.fl-go[aria-disabled="true"],
+.btn-primary[data-price-hold="loading"] { opacity: 0.6; cursor: progress; }
 .studio-cta:disabled {
   cursor: not-allowed;
   color: var(--color-muted);

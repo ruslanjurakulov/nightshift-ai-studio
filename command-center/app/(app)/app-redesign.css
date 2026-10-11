@@ -147,8 +147,8 @@ body .app-shell.atmos {
   box-shadow: inset 0 0 0 1px var(--ns-lit-edge), 0 8px 22px -8px var(--ns-lit-glow);
   transition: background-color var(--ns-dur-1) var(--ns-ease), transform var(--ns-dur-1) var(--ns-ease), box-shadow var(--ns-dur-1) var(--ns-ease);
 }
-.btn-primary:hover,
-.studio-cta:hover:not(:disabled),
+.btn-primary:hover:not([aria-disabled="true"]),
+.studio-cta:hover:not(:disabled):not([aria-disabled="true"]),
 .ns-price-button:hover:not(:disabled),
 .btn-sky.is-solid:hover { filter: none; background: var(--ns-lit-hover); color: var(--ns-cta-fg); }
 .btn-sky.is-solid::before { display: none; }
