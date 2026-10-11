@@ -242,7 +242,7 @@ function BalanceStrip({
       {/* While loading, a phone reserves the height the ready strip has (balance, hold line, full-width button). */}
       <section
         aria-label={d.apiBalance}
-        className={`panel flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:min-h-[4.25rem] sm:px-5 ${loading ? "min-h-32" : "min-h-[4.25rem]"}`}
+        className={`panel flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:min-h-[4.25rem] sm:px-5 ${loading ? "min-h-[8.25rem]" : "min-h-[4.25rem]"}`}
       >
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
           <span className="text-sm text-[var(--color-muted)]">{d.apiBalance}</span>
@@ -1029,7 +1029,7 @@ export function Billing({ orgId, reloadKey = 0 }: { orgId: string; reloadKey?: n
                 <td className="py-2 text-right">
                   {r.kind === "topup" && r.external_id?.startsWith("txn_") ? (
                     <a
-                      className="inline-flex min-h-11 items-center text-sm underline"
+                      className="inline-flex min-h-11 min-w-11 items-center justify-end text-sm underline"
                       href={`/api/developers/receipt?org=${encodeURIComponent(orgId)}&txn=${encodeURIComponent(r.external_id)}`}
                       target="_blank"
                       rel="noreferrer"
