@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
+import { AccountTile, PlatformTile } from "@/components/account/PlatformLogo";
 import {
   coerceAccountSummary,
   type AccountPlan,
@@ -144,39 +145,13 @@ function rows(accounts: ConnectedAccount[] | null): Row[] {
   return out;
 }
 
-function PlatformGlyph({ platform }: { platform: Platform }) {
-  // Plain marks, not brand logos: a rounded tile with the platform's initial.
-  const letter = platform === "youtube" ? "YT" : platform === "instagram" ? "IG" : "TT";
-  return (
-    <span
-      aria-hidden
-      className="tnum flex size-8 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-panel-2)] text-xs text-[var(--color-muted)]"
-    >
-      {letter}
-    </span>
-  );
-}
-
 const PLATFORM_NAME: Record<Platform, string> = { youtube: "YouTube", instagram: "Instagram", tiktok: "TikTok" };
 
 function AccountRow({ account }: { account: ConnectedAccount }) {
   const { t } = useI18n();
   return (
     <li className="flex items-center gap-3 rounded-xl px-2 py-1.5">
-      {account.avatarUrl ? (
-        // A public avatar from the platform; not proxied through next/image.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={account.avatarUrl}
-          alt=""
-          width={32}
-          height={32}
-          referrerPolicy="no-referrer"
-          className="size-8 shrink-0 rounded-full border border-[var(--color-border)] object-cover"
-        />
-      ) : (
-        <PlatformGlyph platform={account.platform} />
-      )}
+      <AccountTile account={account} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm text-[var(--color-fg)]">{account.name}</p>
         <p className="text-xs text-[var(--color-muted)]">{PLATFORM_NAME[account.platform]}</p>
@@ -211,7 +186,7 @@ function PlaceholderRow({
   const youtube = platform === "youtube";
   return (
     <li className="flex items-center gap-3 rounded-xl px-2 py-1.5">
-      <PlatformGlyph platform={platform} />
+      <PlatformTile platform={platform} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm text-[var(--color-fg)]">{PLATFORM_NAME[platform]}</p>
         <p className="text-xs text-[var(--color-muted)]">

@@ -10,6 +10,9 @@
  *   --mode shots     WebP pictures: header + bottom bar (Settings selected and not) at
  *                    390 and 360, light and dark, en/ru/uz; Settings → Account at 390
  *                    and 1440; the keyboard focus on the Settings tab.
+ *   --mode accounts the connected-accounts list (Settings → Account, and the panel at 1440)
+ *                    with nothing connected, YouTube connected with an avatar and without
+ *                    one, and the glyphs' contrast against their tile in both themes.
  *   --mode checks    axe (serious or worse), Tab reaches the Settings tab with a visible
  *                    focus ring, and sign out from Settings leaves for /login.
  *
@@ -160,6 +163,42 @@ async function measure() {
   process.stdout.write(`\n${rows.length} measurements, ${bad.length} not on one row / overflowing / with a small target / with an account button\n`);
 }
 
+function convert(tmp) {
+  execFileSync(
+    "python3",
+    [
+      "-I",
+      "-c",
+      `
+import sys, os
+from PIL import Image
+src, dst, q = sys.argv[1], sys.argv[2], int(sys.argv[3])
+names = sorted(os.listdir(src))
+done = set()
+for f in names:
+    if not f.endswith(".png"):
+        continue
+    if f.endswith("_b.png"):
+        continue
+    if f.endswith("_a.png"):
+        a = Image.open(os.path.join(src, f)).convert("RGB")
+        b = Image.open(os.path.join(src, f[:-6] + "_b.png")).convert("RGB")
+        gap = 10
+        out = Image.new("RGB", (a.width, a.height + gap + b.height), (128, 128, 128))
+        out.paste(a, (0, 0)); out.paste(b, (0, a.height + gap))
+        out.save(os.path.join(dst, f[:-6] + ".webp"), "WEBP", quality=q, method=6)
+    else:
+        Image.open(os.path.join(src, f)).convert("RGB").save(os.path.join(dst, f[:-4] + ".webp"), "WEBP", quality=q, method=6)
+`,
+      tmp,
+      OUT,
+      QUALITY,
+    ],
+    { stdio: "inherit" },
+  );
+  rmSync(tmp, { recursive: true, force: true });
+}
+
 // ── shots ──────────────────────────────────────────────────────────────────
 async function shots() {
   mkdirSync(OUT, { recursive: true });
@@ -208,40 +247,86 @@ async function shots() {
     if (bar) await grab(page, { x: 0, y: Math.floor(bar.y) - 4, width: 390, height: Math.ceil(bar.height) + 4 }, "tab-focus_en_390_light.png");
     await context.close();
   }
-  execFileSync(
-    "python3",
-    [
-      "-I",
-      "-c",
-      `
-import sys, os
-from PIL import Image
-src, dst, q = sys.argv[1], sys.argv[2], int(sys.argv[3])
-names = sorted(os.listdir(src))
-done = set()
-for f in names:
-    if not f.endswith(".png"):
-        continue
-    if f.endswith("_b.png"):
-        continue
-    if f.endswith("_a.png"):
-        a = Image.open(os.path.join(src, f)).convert("RGB")
-        b = Image.open(os.path.join(src, f[:-6] + "_b.png")).convert("RGB")
-        gap = 10
-        out = Image.new("RGB", (a.width, a.height + gap + b.height), (128, 128, 128))
-        out.paste(a, (0, 0)); out.paste(b, (0, a.height + gap))
-        out.save(os.path.join(dst, f[:-6] + ".webp"), "WEBP", quality=q, method=6)
-    else:
-        Image.open(os.path.join(src, f)).convert("RGB").save(os.path.join(dst, f[:-4] + ".webp"), "WEBP", quality=q, method=6)
-`,
-      tmp,
-      OUT,
-      QUALITY,
-    ],
-    { stdio: "inherit" },
-  );
+  convert(tmp);
   rmSync(tmp, { recursive: true, force: true });
   process.stdout.write(`${count} captures written to ${OUT}\n`);
+}
+
+// ── accounts ───────────────────────────────────────────────────────────────
+// /api/account is answered in the page (the fake backend has no avatar and no connected channel), and the avatar's
+// https address is answered with a generated picture: nothing leaves the machine.
+const AVATAR_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#2b6cb0"/><circle cx="32" cy="26" r="11" fill="#fff"/><path d="M10 64c2-16 12-22 22-22s20 6 22 22z" fill="#fff"/></svg>';
+const SUMMARIES = {
+  none: [],
+  avatar: [{ platform: "youtube", id: "UC1", name: "Night Owl", avatarUrl: "https://yt3.example.test/night-owl.svg", connected: true }],
+  noavatar: [{ platform: "youtube", id: "UC1", name: "Night Owl", avatarUrl: null, connected: true }],
+};
+async function openAccounts(loc, width, theme, which, route = "/organization", height = 844) {
+  const { context, page } = await open(loc, width, theme, "/home", { height });
+  await context.route("**/api/account", (r) =>
+    r.fulfill({
+      json: {
+        email: "qa@example.com",
+        plan: { kind: "plan", id: "creator", name: "Creator", isDefault: false, status: "active", periodEnd: null, cancelAtPeriodEnd: false },
+        credits: null,
+        accounts: SUMMARIES[which],
+        connectable: { instagram: false, tiktok: false },
+      },
+    }),
+  );
+  await context.route("https://yt3.example.test/**", (r) => r.fulfill({ contentType: "image/svg+xml", body: AVATAR_SVG }));
+  await page.goto(`${BASE}/${CHANNEL}${route}`, { waitUntil: "load" });
+  await page.waitForTimeout(1200);
+  await page.addStyleTag({ content: "nav.ns-tabbar { display: none !important }" });
+  return { context, page };
+}
+async function accounts() {
+  mkdirSync(OUT, { recursive: true });
+  const tmp = path.join(OUT, ".png-tmp");
+  mkdirSync(tmp, { recursive: true });
+  const plan = [];
+  for (const which of Object.keys(SUMMARIES)) {
+    plan.push(["en", "light", which], ["en", "dark", which]);
+  }
+  plan.push(["ru", "light", "avatar"], ["uz", "dark", "avatar"], ["ru", "dark", "none"], ["uz", "light", "noavatar"]);
+  for (const [loc, theme, which] of plan) {
+    const { context, page } = await openAccounts(loc, 390, theme, which);
+    await page.locator("section[aria-labelledby=account-title] h3 + ul").first().screenshot({ path: path.join(tmp, `accounts-${which}_${loc}_390_${theme}.png`) });
+    await context.close();
+  }
+  // The panel behind the sidebar card, at 1440.
+  {
+    const { context, page } = await openAccounts("en", 1440, "light", "avatar", "/home", 900);
+    await page.locator("[data-shell-usercard]").click();
+    await page.waitForTimeout(800);
+    await page.locator("[role=dialog][aria-labelledby]").last().screenshot({ path: path.join(tmp, "panel-avatar_en_1440_light.png") });
+    await context.close();
+  }
+  // The glyph's contrast against its tile, both themes (WCAG 2.x relative luminance).
+  const out = [];
+  for (const theme of ["light", "dark"]) {
+    const { context, page } = await openAccounts("en", 390, theme, "none");
+    const rows = await page.evaluate(() => {
+      const lum = (c) => {
+        const [r, g, b] = c.match(/[\d.]+/g).slice(0, 3).map((v) => {
+          const x = Number(v) / 255;
+          return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      return [...document.querySelectorAll("[data-platform-tile]")].map((tile) => {
+        const bg = lum(getComputedStyle(tile).backgroundColor);
+        const fg = lum(getComputedStyle(tile.querySelector("svg")).color);
+        const [hi, lo] = bg > fg ? [bg, fg] : [fg, bg];
+        return `${tile.dataset.platformTile} ${((hi + 0.05) / (lo + 0.05)).toFixed(2)}:1`;
+      });
+    });
+    out.push(`glyph contrast ${theme}: ${rows.join(", ")}`);
+    await context.close();
+  }
+  convert(tmp);
+  process.stdout.write(out.join("\n") + "\n");
 }
 
 // ── checks ─────────────────────────────────────────────────────────────────
@@ -336,5 +421,6 @@ async function checks() {
 
 if (MODE === "measure" || MODE === "all") await measure();
 if (MODE === "shots" || MODE === "all") await shots();
+if (MODE === "accounts" || MODE === "all") await accounts();
 if (MODE === "checks" || MODE === "all") await checks();
 await browser.close();
