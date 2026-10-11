@@ -150,11 +150,11 @@ async function pick(file: File) {
   const input = screen.getByTestId("avatar-file") as HTMLInputElement;
   await act(async () => {
     fireEvent.change(input, { target: { files: [file] } });
-    // Reading the file is a macrotask in jsdom (FileReader; a browser's Blob.arrayBuffer is quicker):
-    // wait until the picker has either opened the crop or shown its refusal, however loaded the machine is.
-    for (let i = 0; i < 300 && !screen.queryByTestId("avatar-crop") && !screen.queryByTestId("avatar-error"); i++) {
-      await new Promise((r) => setTimeout(r, 10));
-    }
+  });
+  // Reading the file is a macrotask in jsdom (FileReader; a browser's Blob.arrayBuffer is quicker). It has to be
+  // awaited OUTSIDE act(): React holds the DOM back until act returns, so polling inside it never sees an update.
+  await waitFor(() => {
+    if (!screen.queryByTestId("avatar-crop") && !screen.queryByTestId("avatar-error")) throw new Error("the picker has not answered yet");
   });
 }
 const viewport = () => screen.getByTestId("avatar-crop");
