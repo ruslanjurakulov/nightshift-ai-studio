@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { PageHeader } from "@/components/PageHeader";
+import "../../app-pages-g2.css";
 import { getDictionary } from "@/lib/i18n/server";
 import { getOrgContext } from "@/lib/orgs-server";
 import { isMissingRelation, parseStyleId } from "@/lib/style-kits";
@@ -49,7 +50,7 @@ export default async function StylesPage() {
   }
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open stagger-enter">
       <PageHeader icon="styles" title={t.styleLibrary.title} subtitle={t.styleLibrary.subtitle} />
       <StyleLibrary orgId={org.current?.id ?? null} addState={addState} initialAdded={added} />
     </div>

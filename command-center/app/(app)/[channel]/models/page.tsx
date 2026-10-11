@@ -17,6 +17,7 @@ import { getChannelContext } from "@/lib/channels-server";
 import { channelPath } from "@/lib/channels";
 import { getOrgContext } from "@/lib/orgs-server";
 import styles from "@/components/models/ModelDiscovery.module.css";
+import "../../app-pages-g2.css";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -64,17 +65,17 @@ export default async function ModelsPage({
     </nav>
   ) : null;
   const note = (text: string) => (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       {header}
       {views}
-      <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{text}</div>
+      <p className="g2-none">{text}</p>
     </div>
   );
   const failed = (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       {header}
       {views}
-      <div className="panel p-5 sm:p-6">
+      <div>
         <ErrorState compact message={c.readFailed} />
       </div>
     </div>
@@ -107,7 +108,7 @@ export default async function ModelsPage({
         : null;
     if (adminModels.length === 0) return note(t.models.empty);
     return (
-      <div className="rhythm">
+      <div className="rhythm ns-open">
         {header}
         {views}
         <ModelAvailabilityBoard models={adminModels} probes={probes.error ? null : latestProbes(probes.data)} prices={priceList} />
@@ -124,7 +125,7 @@ export default async function ModelsPage({
   if (read.models.length === 0) return note(operator ? c.emptyOperator : c.emptyCustomer);
 
   return (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       {header}
       {views}
       <ModelDiscovery

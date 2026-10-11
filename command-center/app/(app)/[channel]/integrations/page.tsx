@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
-import { Panel, StatusPill } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
+import "../../app-pages-g2.css";
 import { getChannelScope } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import { fmt, type Dictionary } from "@/lib/i18n";
@@ -96,31 +97,32 @@ export default async function IntegrationsPage() {
   ];
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open stagger-enter">
       <PageHeader icon="integrations" title={t.integrations.title} subtitle={t.integrations.subtitle} />
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((h) => (
-          <div key={h.name} className="panel p-5 sm:p-6 transition-transform duration-200 hover:-translate-y-0.5 hover:border-[var(--color-primary-dim)]">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-[var(--color-fg)]">{h.name}</span>
-              <StatusPill tone={h.tone} label={h.status} live={h.tone === "ok"} />
-            </div>
-            <p className="mt-1.5 tnum text-xs text-[var(--color-muted)]">{t.integrations[h.detailKey]}</p>
-            <p className="mt-0.5 tnum text-xs text-[var(--color-muted)]">
-              {fmt(t.integrations.lastSuccess, { t: h.lastSuccess ? relativeTime(h.lastSuccess) : t.common.na })}
-            </p>
-          </div>
-        ))}
-      </div>
+      <section className="ns-desk g2-desk" aria-label={t.integrations.title}>
+        <ul className="g2-rows" style={{ borderTop: 0 }}>
+          {items.map((h, i) => (
+            <li key={h.name} className="g2-row g2-row-status" style={i === 0 ? { paddingTop: 0 } : undefined}>
+              <div className="g2-row-main">
+                <h2 className="g2-strong">{h.name}</h2>
+                <p className="g2-note tnum mt-1">{t.integrations[h.detailKey]}</p>
+              </div>
+              <p className="g2-note tnum g2-last">
+                {fmt(t.integrations.lastSuccess, { t: h.lastSuccess ? relativeTime(h.lastSuccess) : t.common.na })}
+              </p>
+              <StatusLamp tone={h.tone} label={h.status} live={h.tone === "ok"} />
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <WorkerStatusPanel read={workersRead} rows={workers} nowMs={Date.now()} />
 
-      <Panel title={t.integrations.measuredTitle}>
-        <div className="p-4 text-xs leading-relaxed text-[var(--color-muted)]">
-          {t.integrations.measuredBody}
-        </div>
-      </Panel>
+      <section className="g2-section" aria-labelledby="measured-title">
+        <h2 id="measured-title" className="g2-h2">{t.integrations.measuredTitle}</h2>
+        <p className="g2-note">{t.integrations.measuredBody}</p>
+      </section>
     </div>
   );
 }

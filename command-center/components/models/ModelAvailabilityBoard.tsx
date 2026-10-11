@@ -12,7 +12,6 @@ import { useChannelPath } from "@/lib/channels-client";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { Chip } from "@/components/ui/Chip";
-import { TileGrid } from "@/components/ui/ContactSheet";
 import { SegmentedSwitch } from "@/components/ui/SegmentedSwitch";
 import {
   AVAILABILITIES,
@@ -45,14 +44,16 @@ export function ModelAvailabilityBoard({
   const { t } = useI18n();
   const onSale = models.filter((m) => isOnSale(m.availability)).length;
   return (
-    <div className="flex flex-col gap-3">
-      <p className="tnum text-xs text-[var(--color-muted)]">{fmt(t.models.count, { n: models.length, sale: onSale })}</p>
-      {probes === null && <p className="text-xs text-[var(--color-warn)]">{t.models.probesFailed}</p>}
-      <TileGrid as="div" min={320} label={t.models.title}>
-        {models.map((m) => (
-          <ModelCard key={m.id} model={m} probe={probes?.[m.id] ?? null} probesRead={probes !== null} prices={prices} />
-        ))}
-      </TileGrid>
+    <div className="flex flex-col gap-4">
+      <p className="g2-note tnum">{fmt(t.models.count, { n: models.length, sale: onSale })}</p>
+      {probes === null && <p className="g2-warn">{t.models.probesFailed}</p>}
+      <section className="ns-desk g2-desk g2-wizard" aria-label={t.models.title}>
+        <div className="g2-models">
+          {models.map((m) => (
+            <ModelCard key={m.id} model={m} probe={probes?.[m.id] ?? null} probesRead={probes !== null} prices={prices} />
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
@@ -134,108 +135,110 @@ function ModelCard({
   if (model.removedFromFile) warnings.push(t.models.removed);
 
   return (
-    <article className="panel flex min-w-0 flex-col gap-3 p-5 sm:p-6" aria-labelledby={`${warnId}-name`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 id={`${warnId}-name`} className="truncate text-sm font-semibold text-[var(--color-fg)]">
-            {model.displayName}
-          </h2>
-          <p className="mono truncate text-xs text-[var(--color-muted)]">{model.id}</p>
+    <article className="g2-model" aria-labelledby={`${warnId}-name`}>
+      <div className="flex min-w-0 flex-col gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 id={`${warnId}-name`} className="g2-h3 truncate">
+              {model.displayName}
+            </h2>
+            <p className="mono truncate text-[13px] text-[var(--color-muted)]">{model.id}</p>
+          </div>
+          <StatusLamp tone={TONE[availability]} label={label(availability)} live={availability === "ga"} />
         </div>
-        <StatusLamp tone={TONE[availability]} label={label(availability)} live={availability === "ga"} />
+
+        <dl className="g2-defs">
+          <dt>{t.models.provider}</dt>
+          <dd className="tnum min-w-0 truncate">{model.provider}</dd>
+
+          <dt>{t.models.capabilities}</dt>
+          <dd className="flex min-w-0 flex-wrap gap-1.5">
+            {model.capabilities.map((c) => (
+              <Chip key={c} plain>
+                {c}
+              </Chip>
+            ))}
+          </dd>
+
+          <dt>{t.models.lastProbe}</dt>
+          <dd className="min-w-0">
+            {model.verifiedAt ? (
+              <span className="g2-ok block">{fmt(t.models.verified, { when: relativeTime(model.verifiedAt) })}</span>
+            ) : (
+              <span className="g2-warn block">{t.models.notVerified}</span>
+            )}
+            {probesRead && (
+              <span className="tnum block text-[13px] text-[var(--color-muted)]">
+                {probe
+                  ? probe.ok
+                    ? fmt(t.models.probeOk, { when: relativeTime(probe.at) })
+                    : fmt(t.models.probeFailed, { when: relativeTime(probe.at), code: probe.errorCode ?? "—" })
+                  : t.models.noProbe}
+              </span>
+            )}
+          </dd>
+
+          <dt>{t.models.price}</dt>
+          <dd className="min-w-0">
+            {model.creditUnit ? (
+              prices === null ? (
+                <span className="g2-warn">{t.models.pricesFailed}</span>
+              ) : price !== undefined && price > 0 ? (
+                <span className="tnum">
+                  {fmt(t.models.priceRow, { credits: formatCredits(price, locale), unit: model.creditUnit })}
+                </span>
+              ) : (
+                <span className="g2-warn">{fmt(t.models.unpriced, { unit: model.creditUnit })}</span>
+              )
+            ) : (
+              <span className="text-[var(--color-muted)]">—</span>
+            )}
+            {model.creditUnit && (
+              <Link href={`${path("/credits")}#credit-prices`} className="tap-link g2-link block text-sm">
+                {t.models.editPrice} →
+              </Link>
+            )}
+          </dd>
+
+          {model.entitlement && (
+            <>
+              <dt>{t.models.entitlement}</dt>
+              <dd className="tnum min-w-0 truncate">{model.entitlement}</dd>
+            </>
+          )}
+        </dl>
       </div>
 
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
-        <dt className="text-[var(--color-muted)]">{t.models.provider}</dt>
-        <dd className="tnum min-w-0 truncate text-[var(--color-fg)]">{model.provider}</dd>
-
-        <dt className="text-[var(--color-muted)]">{t.models.capabilities}</dt>
-        <dd className="flex min-w-0 flex-wrap gap-1">
-          {model.capabilities.map((c) => (
-            <Chip key={c} plain>
-              {c}
-            </Chip>
-          ))}
-        </dd>
-
-        <dt className="text-[var(--color-muted)]">{t.models.lastProbe}</dt>
-        <dd className="min-w-0">
-          {model.verifiedAt ? (
-            <span className="block text-[var(--color-ok)]">{fmt(t.models.verified, { when: relativeTime(model.verifiedAt) })}</span>
-          ) : (
-            <span className="block text-[var(--color-warn)]">{t.models.notVerified}</span>
-          )}
-          {probesRead && (
-            <span className="tnum block text-xs text-[var(--color-muted)]">
-              {probe
-                ? probe.ok
-                  ? fmt(t.models.probeOk, { when: relativeTime(probe.at) })
-                  : fmt(t.models.probeFailed, { when: relativeTime(probe.at), code: probe.errorCode ?? "—" })
-                : t.models.noProbe}
-            </span>
-          )}
-        </dd>
-
-        <dt className="text-[var(--color-muted)]">{t.models.price}</dt>
-        <dd className="min-w-0">
-          {model.creditUnit ? (
-            prices === null ? (
-              <span className="text-[var(--color-warn)]">{t.models.pricesFailed}</span>
-            ) : price !== undefined && price > 0 ? (
-              <span className="tnum text-[var(--color-fg)]">
-                {fmt(t.models.priceRow, { credits: formatCredits(price, locale), unit: model.creditUnit })}
-              </span>
-            ) : (
-              <span className="text-[var(--color-warn)]">{fmt(t.models.unpriced, { unit: model.creditUnit })}</span>
-            )
-          ) : (
-            <span className="text-[var(--color-muted)]">—</span>
-          )}
-          {model.creditUnit && (
-            <Link href={`${path("/credits")}#credit-prices`} className="mt-0.5 block text-xs text-[var(--color-primary)] underline-offset-2 hover:underline">
-              {t.models.editPrice} →
-            </Link>
-          )}
-        </dd>
-
-        {model.entitlement && (
-          <>
-            <dt className="text-[var(--color-muted)]">{t.models.entitlement}</dt>
-            <dd className="tnum min-w-0 truncate text-[var(--color-fg)]">{model.entitlement}</dd>
-          </>
+      <div className="flex min-w-0 flex-col gap-4">
+        {warnings.length > 0 && (
+          <div id={`${warnId}-warn`} className="flex flex-col gap-1.5 border-l-2 border-[var(--color-warn)] pl-3" role="note">
+            {warnings.map((w) => (
+              <p key={w} className="g2-warn flex items-start gap-2 !text-[0.875rem] leading-snug">
+                <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+                <span>{w}</span>
+              </p>
+            ))}
+          </div>
         )}
-      </dl>
 
-      {warnings.length > 0 && (
-        <div id={`${warnId}-warn`} className="flex flex-col gap-1 rounded-[var(--ns-r-key)] border border-[var(--color-warn)] p-2.5" role="note">
-          {warnings.map((w) => (
-            <p key={w} className="flex items-start gap-1.5 text-xs leading-snug text-[var(--color-warn)]">
-              <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-              <span>{w}</span>
-            </p>
-          ))}
-        </div>
-      )}
+        <fieldset className="flex flex-col gap-2" disabled={busy}>
+          <legend className="g2-label mb-2">{busy ? t.models.saving : t.models.availability}</legend>
+          <SegmentedSwitch
+            label={t.models.availability}
+            size="lg"
+            className="w-full [&>button]:flex-1 [&>button]:justify-center"
+            value={availability}
+            onChange={(a) => void change(a)}
+            options={AVAILABILITIES.map((a) => ({ value: a, label: label(a), disabled: a !== availability && availabilityBlocker(model, a) !== null }))}
+          />
+        </fieldset>
 
-      <fieldset className="flex flex-col gap-1.5" disabled={busy}>
-        <legend className="mb-1.5 text-xs font-semibold text-[var(--color-muted)]">
-          {busy ? t.models.saving : t.models.availability}
-        </legend>
-        <SegmentedSwitch
-          label={t.models.availability}
-          size="lg"
-          className="w-full [&>button]:flex-1 [&>button]:justify-center"
-          value={availability}
-          onChange={(a) => void change(a)}
-          options={AVAILABILITIES.map((a) => ({ value: a, label: label(a), disabled: a !== availability && availabilityBlocker(model, a) !== null }))}
-        />
-      </fieldset>
-
-      {error && (
-        <p className="text-xs text-[var(--color-fail)]" aria-live="polite">
-          {error}
-        </p>
-      )}
+        {error && (
+          <p className="g2-fail" aria-live="polite">
+            {error}
+          </p>
+        )}
+      </div>
     </article>
   );
 }

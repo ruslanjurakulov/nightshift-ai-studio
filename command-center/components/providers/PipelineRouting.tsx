@@ -149,28 +149,26 @@ export function PipelineRouting({
     return s ? !configuredSet.has(s) : false;
   })();
 
-  const selectCls =
-    "rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] disabled:opacity-50";
+  const selectCls = "ns-field min-w-[14rem] disabled:opacity-50";
 
   return (
-    <div className="panel flex flex-col gap-4 p-5 sm:p-6">
+    <section className="g2-channel" aria-labelledby="routing-title">
       <div>
-        <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t.providers.routingTitle}</h2>
-        <p className="mt-1 max-w-[80ch] text-sm leading-relaxed text-[var(--color-muted)]">
-          {t.providers.routingHint}
-        </p>
+        <h2 id="routing-title" className="g2-h2">{t.providers.routingTitle}</h2>
+        <p className="g2-sub max-w-[80ch]">{t.providers.routingHint}</p>
       </div>
 
-      {!githubConfigured && (
-        <p className="text-sm text-[var(--color-warn)]">{t.providers.routingNotConfigured}</p>
-      )}
+      {!githubConfigured && <p className="g2-warn">{t.providers.routingNotConfigured}</p>}
 
-      {/* Video generator */}
-      <div className="flex flex-col gap-1.5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <label htmlFor="route-video" className="text-xs font-medium text-[var(--color-fg)]">
-            {t.providers.routingVideo}
-          </label>
+      <div className="flex flex-col">
+        {/* Video generator */}
+        <div className="g2-switchrow">
+          <div className="min-w-0" style={{ flexBasis: "16rem", flexGrow: 1 }}>
+            <label htmlFor="route-video" className="g2-strong">
+              {t.providers.routingVideo}
+            </label>
+            {videoKeyMissing && <p className="g2-warn mt-1">{t.providers.routingKeyNeeded}</p>}
+          </div>
           <select
             id="route-video"
             value={video}
@@ -186,17 +184,15 @@ export function PipelineRouting({
             ))}
           </select>
         </div>
-        {videoKeyMissing && (
-          <p className="text-xs text-[var(--color-warn)]">{t.providers.routingKeyNeeded}</p>
-        )}
-      </div>
 
-      {/* Image generator */}
-      <div className="flex flex-col gap-1.5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <label htmlFor="route-image" className="text-xs font-medium text-[var(--color-fg)]">
-            {t.providers.routingImage}
-          </label>
+        {/* Image generator */}
+        <div className="g2-switchrow">
+          <div className="min-w-0" style={{ flexBasis: "16rem", flexGrow: 1 }}>
+            <label htmlFor="route-image" className="g2-strong">
+              {t.providers.routingImage}
+            </label>
+            {imageKeyMissing && <p className="g2-warn mt-1">{t.providers.routingKeyNeeded}</p>}
+          </div>
           <select
             id="route-image"
             value={image}
@@ -212,43 +208,40 @@ export function PipelineRouting({
             ))}
           </select>
         </div>
-        {imageKeyMissing && (
-          <p className="text-xs text-[var(--color-warn)]">{t.providers.routingKeyNeeded}</p>
-        )}
+
+        {/* Autopilot */}
+        <div className="g2-switchrow">
+          <span id="route-autopilot" className="g2-strong">
+            {t.providers.routingAutopilot}
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={autopilot}
+            aria-labelledby="route-autopilot"
+            disabled={!githubConfigured || state === "saving"}
+            onClick={toggleAutopilot}
+            className="g2-switch"
+          >
+            <span aria-hidden className="g2-switch-track">
+              <span className="g2-switch-thumb" />
+            </span>
+            <span className="g2-switch-word">{autopilot ? t.providers.routingOn : t.providers.routingOff}</span>
+          </button>
+        </div>
       </div>
 
-      {/* Autopilot */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-4 py-3">
-        <span className="text-xs font-medium text-[var(--color-fg)]">
-          {t.providers.routingAutopilot}
-        </span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={autopilot}
-          disabled={!githubConfigured || state === "saving"}
-          onClick={toggleAutopilot}
-          className="btn-sky rounded-[var(--ns-r-key)] shrink-0 px-4 py-2 text-xs disabled:opacity-50"
-          style={{
-            borderColor: autopilot ? "var(--color-ok)" : "var(--color-border)",
-            color: autopilot ? "var(--color-ok)" : "var(--color-muted)",
-          }}
-        >
-          {autopilot ? t.providers.routingOn : t.providers.routingOff}
-        </button>
-      </div>
-
-      <p className="tnum text-xs" aria-live="polite">
+      <p className="tnum text-sm" aria-live="polite">
         {state === "saving" ? (
           <span className="text-[var(--color-muted)]">{t.providers.routingSaving}</span>
         ) : state === "saved" ? (
-          <span className="text-[var(--color-ok)]">{t.providers.routingSaved}</span>
+          <span className="g2-ok">{t.providers.routingSaved}</span>
         ) : state === "error" ? (
-          <span className="text-[var(--color-fail)]">
+          <span className="g2-fail">
             {errorKey === "unauthorized" ? t.providers.routingUnauthorized : t.providers.routingFailed}
           </span>
         ) : null}
       </p>
-    </div>
+    </section>
   );
 }

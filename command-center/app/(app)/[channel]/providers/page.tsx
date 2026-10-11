@@ -1,6 +1,7 @@
 import { ProvidersBoard } from "@/components/providers/ProvidersBoard";
 import { PipelineRouting } from "@/components/providers/PipelineRouting";
 import { PageHeader } from "@/components/PageHeader";
+import "../../app-pages-g2.css";
 import { providersByCategory } from "@/lib/providers";
 import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/github-secrets";
 import { readVariables } from "@/lib/server/github-variables";
@@ -66,34 +67,30 @@ export default async function ProvidersPage({
   const startHref = `/api/oauth/youtube/start?ref=${encodeURIComponent(channel)}`;
 
   return (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       <PageHeader icon="providers" title={t.providers.title} subtitle={t.providers.subtitle} />
 
       {/* YouTube connection — the one credential the site can mint itself */}
-      <div className="panel p-5 sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t.providers.ytTitle}</h2>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">{t.providers.ytSubtitle}</p>
+      <section className="ns-desk g2-desk" aria-labelledby="yt-title">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+          <div className="min-w-0">
+            <h2 id="yt-title" className="g2-h2">{t.providers.ytTitle}</h2>
+            <p className="g2-sub max-w-[62ch]">{t.providers.ytSubtitle}</p>
           </div>
           {isGoogleOAuthConfigured ? (
-            <a href={startHref} className="btn-sky rounded-[var(--ns-r-key)] px-4 py-1.5 text-sm">
+            <a href={startHref} className="btn-primary">
               {t.providers.ytConnect}
             </a>
           ) : (
-            <span className="tnum text-xs text-[var(--color-muted)]">{t.providers.ytSetup}</span>
+            <span className="g2-note tnum">{t.providers.ytSetup}</span>
           )}
         </div>
         {ytMsg && (
-          <p
-            className="mt-3 text-sm"
-            style={{ color: ytOk ? "var(--color-primary)" : "var(--color-warn)" }}
-            role="status"
-          >
+          <p className={`mt-4 ${ytOk ? "g2-ok" : "g2-warn"}`} role="status">
             {ytMsg}
           </p>
         )}
-      </div>
+      </section>
 
       <ProvidersBoard groups={groups} configured={configured} githubConfigured={isGithubConfigured} />
 
