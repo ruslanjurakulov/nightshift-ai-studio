@@ -11,7 +11,7 @@ import { createAttempt } from "@/lib/create-attempt";
 import { useCreatePreset } from "@/components/create/preset";
 import { clearDraft, draftStore, readDraft, writeDraft, type DraftScope } from "@/lib/create-draft";
 import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
-import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
+import { CreditEstimateLine, type PriceReport } from "@/components/credits/CreditEstimateLine";
 import { IMAGE_GENERATORS } from "@/lib/imageProviders";
 import { TTS_MODELS, TTS_MODEL_LABELS, VOICES, isVoiceId } from "@/lib/ttsModels";
 import { VoicePreviewButton } from "@/components/create/VoicePreviewButton";
@@ -137,8 +137,11 @@ export function CreateStudio({
   // for the worker is visible as waiting, not as a run that never started.
   const [jobs, setJobs] = useState<QueueJob[] | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // The credits the price card is showing right now (null: none shown). Sent as the run's ceiling.
-  const [shownPrice, setShownPrice] = useState<number | null>(null);
+  // What the price card is saying right now. A figure on screen is sent as the run's ceiling; while it is
+  // loading or unreadable the confirm waits (an unknown price is never confirmed by accident).
+  const [price, setPrice] = useState<PriceReport>({ state: "loading" });
+  const shownPrice = price.state === "priced" ? price.credits : null;
+  const priceHold = !!channelId && (price.state === "loading" || price.state === "failed");
   const [priceNonce, setPriceNonce] = useState(0);
   // One idempotency key per create attempt (lib/create-attempt.ts), kept across a retry of the same inputs.
   const attempt = useRef(createAttempt());
@@ -265,7 +268,7 @@ export function CreateStudio({
   }, [phase]);
 
   async function create() {
-    if (!channelId || sending.current) return;
+    if (!channelId || sending.current || priceHold) return;
     sending.current = true;
     setPhase("starting");
     setCreditError(null);
@@ -644,7 +647,7 @@ export function CreateStudio({
           showNotEnforced={operator}
           channelId={channelId}
           durationS={Number(duration) > 0 ? Number(duration) : null}
-          onPrice={setShownPrice}
+          onPrice={setPrice}
           refreshKey={priceNonce}
         />
         <p className="fl-hint">{f.holdNote}</p>
@@ -661,13 +664,22 @@ export function CreateStudio({
               key="confirm"
               type="button"
               autoFocus
-              aria-disabled={phase === "starting"}
+              aria-disabled={phase === "starting" || priceHold}
+              data-price-hold={priceHold ? price.state : undefined}
               onClick={() => {
-                if (phase === "confirm") void create();
+                // Unreadable: the button is the retry. Loading: nothing to do until the figure arrives.
+                if (phase === "confirm" && price.state === "failed") setPriceNonce((n) => n + 1);
+                else if (phase === "confirm") void create();
               }}
               className="studio-cta fl-go"
             >
-              {phase === "starting" ? t.create.starting : t.create.confirm}
+              {phase === "starting"
+                ? t.create.starting
+                : priceHold
+                  ? price.state === "failed"
+                    ? t.common.retry
+                    : t.credits.priceChecking
+                  : t.create.confirm}
             </button>
             {phase === "confirm" && (
               <button type="button" onClick={() => setPhase("idle")} className="btn-quiet fl-cancel">

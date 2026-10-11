@@ -9,6 +9,15 @@ import { formatCredits, type CreditEstimate } from "@/lib/credits";
 import { ErrorState } from "@/components/ReadError";
 import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
 
+/**
+ * What the estimate line is saying right now, for a caller that must not spend before it is known:
+ *  - loading: asked, not answered for these inputs (nothing is shown as a price);
+ *  - failed: the read failed (5xx or no answer) — unknown, not "free";
+ *  - priced: a figure is on screen (`credits`), for exactly this channel and length;
+ *  - none: no figure to show and none to wait for (exempt organization, not set up, a gap, a 4xx).
+ */
+export type PriceReport = { state: "loading" } | { state: "failed" } | { state: "priced"; credits: number } | { state: "none" };
+
 type EstimateResponse = {
   supported?: boolean;
   enforced?: boolean;
@@ -46,12 +55,12 @@ export function CreditEstimateLine({
   /** "not charged yet — credits are not enforced" is the operator's to read; a customer's card leaves it out. */
   showNotEnforced?: boolean;
   /**
-   * Called with the credits this card is showing for the current channel and
-   * length — a number only while that figure is on screen (loaded for exactly
-   * these inputs, not exempt, priced), otherwise null. The create flow sends it
-   * as the run's `max_credits`, so the ceiling is the price the person read.
+   * Called with what this card is showing for the current channel and length
+   * (see PriceReport). The run flows send a priced figure as the run's
+   * `max_credits`, so the ceiling is the price the person read, and hold the
+   * confirm back while it is loading or unreadable.
    */
-  onPrice?: (credits: number | null) => void;
+  onPrice?: (price: PriceReport) => void;
   /** Bump to ask again (a run refused with `price_changed` needs the new figure). */
   refreshKey?: number;
 }) {
@@ -103,13 +112,13 @@ export function CreditEstimateLine({
   }, [channelId, durationS, attempt, refreshKey]);
 
   const fresh = done && loadedKey === reqKey;
-  const shown =
-    fresh && !failed && data?.supported && !data.exempt && data.estimate && data.estimate.credits !== null ? data.estimate.credits : null;
+  const priced = fresh && !failed && data?.supported && !data.exempt && data.estimate && data.estimate.credits !== null ? data.estimate.credits : null;
+  const kind: PriceReport["state"] = !channelId ? "none" : failed ? "failed" : !fresh ? "loading" : priced !== null ? "priced" : "none";
   const report = useRef(onPrice);
   report.current = onPrice;
   useEffect(() => {
-    report.current?.(shown);
-  }, [shown]);
+    report.current?.(kind === "priced" && priced !== null ? { state: "priced", credits: priced } : ({ state: kind } as PriceReport));
+  }, [kind, priced]);
 
   // The card keeps its height in every state (checking, unreadable, nothing to show), so the button
   // under it does not jump, and it always says something in plain words. The server stays the authority:

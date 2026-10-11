@@ -98,20 +98,7 @@ describe("the run carries an idempotency key and the price that was shown", () =
     expect(String(body(0).idempotency_key)).toMatch(/^[A-Za-z0-9_:.-]{1,255}$/);
   });
 
-  it("sends the NEW price after a length change, never the old figure, and none while the new one is loading", async () => {
-    estimateAnswer = (url) => json(priced(url.includes("duration=300") ? 200 : 120));
-    show();
-    await priceShown(120);
-    fireEvent.click(screen.getByRole("button", { name: new RegExp(t.create.flow.lengthLabel) }));
-    let release: (r: Response) => void = () => {};
-    estimateAnswer = () => new Promise<Response>((r) => (release = r));
-    fireEvent.click(screen.getByRole("radio", { name: t.agents.runDur5m }));
-    // The card no longer shows the old figure while the new one is being asked.
-    await screen.findByTestId("price-checking");
-    await press();
-    expect(runs()).toHaveLength(1);
-    expect("max_credits" in body(0)).toBe(false);
-    cleanup();
+  it("sends the NEW price after a length change, never the old figure", async () => {
     estimateAnswer = (url) => json(priced(url.includes("duration=300") ? 200 : 120));
     show();
     await priceShown(120);
@@ -119,24 +106,99 @@ describe("the run carries an idempotency key and the price that was shown", () =
     fireEvent.click(screen.getByRole("radio", { name: t.agents.runDur5m }));
     await priceShown(200);
     await press();
-    expect(body(1).max_credits).toBe(200);
-    void release;
+    expect(body(0).max_credits).toBe(200);
   });
 
-  it("sends no ceiling when no price is shown (unpriced, or an organization that is not charged)", async () => {
-    estimateAnswer = () => json(priced(null));
+  it("while the price is being asked (a length change) the card shows no figure and the confirm waits", async () => {
     show();
-    await screen.findByText(t.credits.gap.no_prices);
-    await press();
-    expect("max_credits" in body(0)).toBe(false);
-    expect(String(body(0).idempotency_key).length).toBeGreaterThan(0);
-    cleanup();
-    calls = [];
+    await priceShown(120);
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(t.create.flow.lengthLabel) }));
+    let release: (r: Response) => void = () => {};
+    estimateAnswer = () => new Promise<Response>((r) => (release = r));
+    fireEvent.click(screen.getByRole("radio", { name: t.agents.runDur5m }));
+    await screen.findByTestId("price-checking");
+    make();
+    const held = screen.getByRole("button", { name: t.credits.priceChecking });
+    expect(held.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(held);
+    await act(async () => {});
+    expect(runs()).toHaveLength(0);
+    await act(async () => release(new Response(JSON.stringify(priced(200)), { status: 200 })));
+    await priceShown(200);
+    const go = screen.getByRole("button", { name: t.create.confirm });
+    expect(go.getAttribute("aria-disabled")).toBe("false");
+    fireEvent.click(go);
+    await act(async () => {});
+    expect(runs()).toHaveLength(1);
+    expect(body(0).max_credits).toBe(200);
+  });
+});
+
+describe("an unknown price is never confirmed unseen", () => {
+  it("before the first answer the confirm waits, says it is checking, and sends nothing", async () => {
+    let release: (r: Response) => void = () => {};
+    estimateAnswer = () => new Promise<Response>((r) => (release = r));
+    show();
+    make();
+    const held = screen.getByRole("button", { name: t.credits.priceChecking });
+    expect(held.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(held);
+    fireEvent.keyDown(topic(), { key: "Enter" });
+    await act(async () => {});
+    expect(runs()).toHaveLength(0);
+    await act(async () => release(new Response(JSON.stringify(priced(120)), { status: 200 })));
+    await priceShown(120);
+    fireEvent.click(screen.getByRole("button", { name: t.create.confirm }));
+    await act(async () => {});
+    expect(runs()).toHaveLength(1);
+    expect(body(0).max_credits).toBe(120);
+  });
+
+  it("an unreadable estimate turns the confirm into Retry; nothing is sent until a price is on screen", async () => {
+    estimateAnswer = () => json({}, 503);
+    show();
+    await screen.findByRole("button", { name: t.common.retry });
+    make();
+    const retry = screen.getAllByRole("button", { name: t.common.retry }).find((b) => b.classList.contains("fl-go")) as HTMLElement;
+    expect(retry.getAttribute("aria-disabled")).toBe("true");
+    estimateAnswer = () => json(priced(120));
+    fireEvent.click(retry);
+    await priceShown(120);
+    expect(runs()).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: t.create.confirm }));
+    await act(async () => {});
+    expect(runs()).toHaveLength(1);
+    expect(body(0).max_credits).toBe(120);
+  });
+
+  it("an organization that is not charged (exempt) is not held back, and sends no ceiling", async () => {
     estimateAnswer = () => json({ ...priced(120), exempt: true });
     show();
     await screen.findByText(t.credits.estimateExempt);
     await press();
+    expect(runs()).toHaveLength(1);
     expect("max_credits" in body(0)).toBe(false);
+  });
+
+  it("a workspace where running is not priced at all (no price list) is not held back either", async () => {
+    estimateAnswer = () => json({ supported: false, enforced: false });
+    show();
+    await screen.findByTestId("price-unavailable");
+    await press();
+    expect(runs()).toHaveLength(1);
+    expect("max_credits" in body(0)).toBe(false);
+  });
+});
+
+describe("an unpriced run (a pricing gap) sends no ceiling and no number is shown", () => {
+  it("the server refuses it when it must; the browser does not invent a ceiling", async () => {
+    estimateAnswer = () => json(priced(null));
+    show();
+    await screen.findByText(t.credits.gap.no_prices);
+    await press();
+    expect(runs()).toHaveLength(1);
+    expect("max_credits" in body(0)).toBe(false);
+    expect(String(body(0).idempotency_key).length).toBeGreaterThan(0);
   });
 });
 

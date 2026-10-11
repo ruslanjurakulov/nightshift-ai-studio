@@ -915,7 +915,7 @@ export const en = {
       details: "Show every step",
       unavailable: "Making videos is not available right now.",
       confirmAnnounce: "Check the price above, then press Yes, make it to start.",
-      alreadySent: "Already sent — it was not sent a second time. Follow it below.",
+      alreadySent: "This was already sent. If nothing shows up below in a few minutes, check Credits: a hold that did not start a video returns to your balance automatically.",
       bracketsHint: "Replace the [brackets] with your own idea before you make it.",
       draftRestored: "Your unfinished draft is back.",
       draftDiscard: "Discard it",

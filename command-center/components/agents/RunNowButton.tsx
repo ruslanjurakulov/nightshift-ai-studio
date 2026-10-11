@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { creditRunError, isExtraOffRefusal } from "@/lib/credits";
 import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
-import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
+import { CreditEstimateLine, type PriceReport } from "@/components/credits/CreditEstimateLine";
+import { createAttempt } from "@/lib/create-attempt";
 
 /**
  * "Run now" — trigger this channel's pipeline on demand.
@@ -15,6 +16,11 @@ import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
  * rather than starting the run. Confirm POSTs to /api/agent/run, which dispatches
  * the daily-video workflow for this channel on GitHub Actions — the server does
  * no heavy work, it just asks GitHub to start the same job the cron runs.
+ *
+ * The run carries an idempotency key (one per attempt, kept for a retry of the same inputs: a lost
+ * answer cannot hold twice) and, when the estimate line is showing a price, that price as `max_credits`.
+ * While the price is loading or unreadable the confirm waits, so a price is never confirmed unseen.
+ * See lib/create-attempt.ts and CreateStudio, which do the same.
  *
  * Two presentations, same logic:
  * - `variant="panel"` (default) is the Agents-page card, with a title and hint,
@@ -49,6 +55,13 @@ export function RunNowButton({
   const [creditError, setCreditError] = useState<string | null>(null);
   const [extraOff, setExtraOff] = useState(false);
   const toast = useToast();
+  // What the estimate line says (it is mounted while the confirm is open): a figure is the run's ceiling.
+  const [price, setPrice] = useState<PriceReport>({ state: "loading" });
+  const priceHold = !!channelId && (price.state === "loading" || price.state === "failed");
+  const [retryNonce, setRetryNonce] = useState(0);
+  const attempt = useRef(createAttempt());
+  const sending = useRef(false);
+  const [replayed, setReplayed] = useState(false);
 
   // Optional per-run topic + data-backed suggestions (panel variant only).
   type Idea = { label: string; source: "demand" | "proven" };
@@ -82,41 +95,61 @@ export function RunNowButton({
   }
 
   async function run() {
-    if (!channelId) return;
+    if (!channelId || sending.current || priceHold) return;
+    sending.current = true;
     setPhase("starting");
     setCreditError(null);
+    setReplayed(false);
     const trimmed = topic.trim();
     const dur = Number(duration);
     const style = styleOverride.trim();
+    const fields = {
+      channel_id: channelId,
+      ...(trimmed ? { topic: trimmed } : {}),
+      ...(duration && Number.isFinite(dur) && dur > 0 ? { duration: dur } : {}),
+      ...(language ? { language } : {}),
+      ...(style ? { visual_style: style } : {}),
+    };
+    const idempotency_key = attempt.current.keyFor(JSON.stringify(fields));
     try {
       const res = await fetch("/api/agent/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          channel_id: channelId,
-          ...(trimmed ? { topic: trimmed } : {}),
-          ...(duration && Number.isFinite(dur) && dur > 0 ? { duration: dur } : {}),
-          ...(language ? { language } : {}),
-          ...(style ? { visual_style: style } : {}),
+          ...fields,
+          idempotency_key,
+          ...(price.state === "priced" ? { max_credits: price.credits } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const unauthorized = data.error === "github_unauthorized";
-        const credit = creditRunError(data, t, locale);
-        setErrorKey(unauthorized ? "unauthorized" : "failed");
-        setCreditError(credit);
-        setExtraOff(isExtraOffRefusal(data));
-        setPhase("error");
-        toast.error(credit ?? (unauthorized ? t.agents.runUnauthorized : t.agents.runFailed));
+      if (res.ok) {
+        attempt.current.settle();
+        setPhase("queued");
+        toast.success(t.agents.runQueued);
         return;
       }
-      setPhase("queued");
-      toast.success(t.agents.runQueued);
+      if (res.status === 409 && data.error === "run_already_started") {
+        attempt.current.settle();
+        setReplayed(true);
+        setPhase("queued");
+        return;
+      }
+      if (typeof data.credits_held === "number") attempt.current.settle();
+      const unauthorized = data.error === "github_unauthorized";
+      const credit = data.error === "price_changed" ? t.creative.errors.price_changed : creditRunError(data, t, locale);
+      if (data.error === "price_changed") setRetryNonce((n) => n + 1);
+      setErrorKey(unauthorized ? "unauthorized" : "failed");
+      setCreditError(credit);
+      setExtraOff(isExtraOffRefusal(data));
+      setPhase("error");
+      toast.error(credit ?? (unauthorized ? t.agents.runUnauthorized : t.agents.runFailed));
     } catch {
+      // Unknown whether it arrived: the key is kept, so trying again is safe.
       setErrorKey("failed");
       setPhase("error");
       toast.error(t.agents.runFailed);
+    } finally {
+      sending.current = false;
     }
   }
 
@@ -126,11 +159,17 @@ export function RunNowButton({
         <>
           <button
             type="button"
-            onClick={run}
+            aria-disabled={priceHold}
+            data-price-hold={priceHold ? price.state : undefined}
+            onClick={() => {
+              // Unreadable: the button is the retry. Loading: nothing until the figure arrives.
+              if (price.state === "failed") setRetryNonce((n) => n + 1);
+              else void run();
+            }}
             className="btn-primary text-sm"
             style={{ borderColor: "var(--color-warn)", color: "var(--color-warn)" }}
           >
-            {t.agents.runConfirm}
+            {priceHold ? (price.state === "failed" ? t.common.retry : t.credits.priceChecking) : t.agents.runConfirm}
           </button>
           <button
             type="button"
@@ -144,7 +183,10 @@ export function RunNowButton({
         <button
           type="button"
           disabled={blocked || phase === "starting"}
-          onClick={() => setPhase("confirm")}
+          onClick={() => {
+            setPrice({ state: "loading" });
+            setPhase("confirm");
+          }}
           className="btn-primary text-sm disabled:opacity-40"
         >
           {phase === "starting" ? t.agents.runStarting : label ?? t.agents.runBtn}
@@ -153,7 +195,7 @@ export function RunNowButton({
 
       <span className="tnum text-sm" aria-live="polite">
         {phase === "queued" ? (
-          <span className="text-[var(--color-ok)]">{t.agents.runQueued}</span>
+          <span className="text-[var(--color-ok)]">{replayed ? t.create.flow.alreadySent : t.agents.runQueued}</span>
         ) : phase === "error" ? (
           <span className="text-[var(--color-fail)]">
             {creditError ?? (errorKey === "unauthorized" ? t.agents.runUnauthorized : t.agents.runFailed)}
@@ -169,7 +211,12 @@ export function RunNowButton({
       {/* The estimate before the run is confirmed (nothing before 0020). */}
       {phase === "confirm" && (
         <div className="basis-full">
-          <CreditEstimateLine channelId={channelId} durationS={Number(duration) > 0 ? Number(duration) : null} />
+          <CreditEstimateLine
+            channelId={channelId}
+            durationS={Number(duration) > 0 ? Number(duration) : null}
+            onPrice={setPrice}
+            refreshKey={retryNonce}
+          />
         </div>
       )}
     </div>
