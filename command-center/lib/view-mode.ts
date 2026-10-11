@@ -57,7 +57,7 @@ export function framablePath(pathname: string): boolean {
   } catch {
     return false;
   }
-  if (decoded.includes("\\") || decoded.startsWith("//") || /[\u0000-\u001f]/.test(decoded)) return false;
+  if (decoded.includes("\\") || decoded.startsWith("//") || /[\u0000-\u001f\u007f]/.test(decoded)) return false;
   if (decoded.split("/").some((seg) => seg === "." || seg === "..")) return false;
   return !UNFRAMED_PREFIXES.some((p) => decoded === p || decoded.startsWith(`${p}/`));
 }

@@ -112,8 +112,8 @@ export function Header({
               <LanguageSelector />
               <ThemeToggle />
               <span className="hidden md:contents">
-            <ViewModeToggle showLabel compact />
-          </span>
+                <ViewModeToggle showLabel compact />
+              </span>
             </span>
             {/* No account button here: on a phone and tablet the account is the
                 bottom bar's last tab (the initial, then Settings → Account), and

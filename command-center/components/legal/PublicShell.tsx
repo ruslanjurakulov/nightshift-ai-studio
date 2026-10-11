@@ -80,7 +80,11 @@ export function PublicShell({
             <div className="st-header-desk">
               <LanguageSelector />
               <ThemeToggle />
-              <ViewModeToggle showLabel compact />
+              {/* The desktop bar is full in every language (the page column stops growing at 1280px), so it is the icon
+                  only, and only from 1280px, where it measurably fits; the word is on the footer link and in the menu. */}
+              <span className="hidden min-[1280px]:contents">
+                <ViewModeToggle />
+              </span>
               <Link href="/login" className="st-signin">
                 {t.site.nav.signIn}
               </Link>

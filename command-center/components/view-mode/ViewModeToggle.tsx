@@ -98,6 +98,7 @@ export function ViewModeControl({
       <span className="inline-flex flex-wrap items-center gap-x-3">
         <button
           type="button"
+          data-view-toggle=""
           onClick={flip}
           disabled={mode === null}
           title={mode === null ? undefined : action}
@@ -116,6 +117,7 @@ export function ViewModeControl({
     <>
       <button
         type="button"
+        data-view-toggle=""
         onClick={flip}
         disabled={mode === null}
         title={mode === null ? undefined : action}

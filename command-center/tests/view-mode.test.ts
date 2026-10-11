@@ -63,7 +63,7 @@ describe("which pages can sit in the phone frame", () => {
     (p) => expect(framablePath(p)).toBe(false),
   );
   it("tests the path the way the router reads it: decoded, and without regard to case", () => {
-    for (const p of ["/%61uth/callback", "/AUTH/x", "/Api/x", "/OAuth/authorize", "/%6Fauth/x", "/a/../auth/x", "/a/./b", "/%E0%A4%A", "/x%00y", "/x%0Ay"]) {
+    for (const p of ["/%61uth/callback", "/AUTH/x", "/Api/x", "/OAuth/authorize", "/%6Fauth/x", "/a/../auth/x", "/a/./b", "/%E0%A4%A", "/x%00y", "/x%7Fy", "/x%0Ay"]) {
       expect(framablePath(p), p).toBe(false);
     }
     // an ordinary encoded path is still a page
