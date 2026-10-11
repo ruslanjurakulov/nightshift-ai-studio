@@ -31,7 +31,7 @@
  *
  * The app screens (Home, Create, the Studio clip desk) have their own states,
  * named for what a person is in: `new` (nothing yet: no channel, no videos, no
- * jobs), `videos` (a channel with videos made and one waiting for approval),
+ * jobs), `videos` (a channel with videos made, one video and one storyboard waiting for approval),
  * `running` (a clip being made right now), `low` (a few credits left),
  * `extraoff` (extra credits switched off), `unpriced` (no price is set: the
  * estimate and the clip price are unknown, never 0). The Settings → Account and
@@ -211,6 +211,21 @@ const VIDEOS = [
   { channel_id: "night-owl", video_id: "v2", title: "The lighthouse that never slept", topic: "lighthouse", published_at: "2026-09-28T10:00:00Z", privacy: "private", publish_state: "uploaded" },
   { channel_id: "night-owl", video_id: "run-3", title: "The last train from Samarkand", topic: "train", published_at: null, privacy: null, publish_state: "awaiting_approval" },
 ];
+// One storyboard waiting for approval (0057), so Home's "ready for your decision" card counts it beside the held video.
+const STORYBOARD = {
+  id: "00000000-0000-4000-8000-0000000000e1",
+  channel_id: "night-owl",
+  slug: "the-salt-road",
+  topic: "The salt road",
+  title: "The salt road",
+  scenes: [{ n: 1, text: "A caravan leaves at dusk." }, { n: 2, text: "The well is dry." }],
+  duration_s: 300,
+  status: "ready",
+  created_at: "2026-10-09T10:00:00Z",
+  decided_at: null,
+  credits_held: null,
+  render_job_id: null,
+};
 const JOBS = (state) => {
   const base = {
     org_id: ORG.id, kind: "video", mode: "exact", requested_model: "qa-clip-fast", routed_model: null, fallback_from: null, fallback_reason: null,
@@ -386,6 +401,7 @@ export function startFakeSupabase(port = 54399) {
           const uploaded = url.searchParams.has("or");
           rows = state === "new" ? [] : VIDEOS.filter((v) => (held ? !v.published_at && !v.privacy : uploaded ? v.published_at || v.privacy : true));
         }
+        if (table[1] === "storyboards") rows = state === "videos" && url.searchParams.get("status") === "eq.ready" ? [STORYBOARD] : [];
         if (table[1] === "creative_jobs") rows = JOBS(state);
         if (table[1] === "user_handles") rows = handleRow(state);
         if (table[1] === "model_registry") rows = state === "new" ? [] : MODELS;
