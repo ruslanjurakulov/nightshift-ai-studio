@@ -62,6 +62,13 @@ describe("which pages can sit in the phone frame", () => {
     "%s cannot",
     (p) => expect(framablePath(p)).toBe(false),
   );
+  it("tests the path the way the router reads it: decoded, and without regard to case", () => {
+    for (const p of ["/%61uth/callback", "/AUTH/x", "/Api/x", "/OAuth/authorize", "/%6Fauth/x", "/a/../auth/x", "/a/./b", "/%E0%A4%A", "/x%00y", "/x%0Ay"]) {
+      expect(framablePath(p), p).toBe(false);
+    }
+    // an ordinary encoded path is still a page
+    expect(framablePath("/night-owl/videos/a%20b")).toBe(true);
+  });
   it("matches whole segments: /authors is a page, /auth is not", () => {
     expect(framablePath("/authors")).toBe(true);
     expect(framablePath("/apiary")).toBe(true);
@@ -168,7 +175,7 @@ describe("the frame's address messages", () => {
     expect(parseFrameSync(ok)).toEqual(ok);
   });
   it("rejects anything that could move the address bar elsewhere", () => {
-    for (const href of ["https://evil.example/", "//evil.example", "javascript:alert(1)", "\\\\evil", "/a\\b", ""]) {
+    for (const href of ["https://evil.example/", "//evil.example", "javascript:alert(1)", "\\\\evil", "/a\\b", "", "/a\tb", "/\t/evil.example", "/\n/evil.example", "/x\ry", "/x\u0000y"]) {
       expect(parseFrameSync({ ...ok, href })).toBeNull();
     }
     expect(parseFrameSync({ ...ok, type: "other" })).toBeNull();

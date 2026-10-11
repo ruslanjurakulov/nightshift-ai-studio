@@ -51,7 +51,7 @@ describe("ViewModeToggle", () => {
   it("on a phone with no choice shows Mobile, and a press stores Desktop and reloads the window", () => {
     device({ wide: false, screen: 390 });
     render(wrap(<ViewModeToggle showLabel />));
-    const button = screen.getByRole("button", { name: "Switch to Desktop view" });
+    const button = screen.getByRole("button", { name: /Switch to Desktop view/ });
     expect(button.textContent).toBe("Mobile");
     fireEvent.click(button);
     expect(document.cookie).toContain("ns_view=desktop");
@@ -61,7 +61,7 @@ describe("ViewModeToggle", () => {
   it("on a laptop with no choice shows Desktop, and a press stores Mobile (the phone frame)", () => {
     device({ wide: true, screen: 1440 });
     render(wrap(<ViewModeToggle showLabel />));
-    const button = screen.getByRole("button", { name: "Switch to Mobile view" });
+    const button = screen.getByRole("button", { name: /Switch to Mobile view/ });
     expect(button.textContent).toBe("Desktop");
     fireEvent.click(button);
     expect(document.cookie).toContain("ns_view=mobile");
@@ -72,7 +72,7 @@ describe("ViewModeToggle", () => {
     device({ wide: true, screen: 390 });
     document.cookie = "ns_view=desktop; path=/";
     render(wrap(<ViewModeToggle showLabel />));
-    const button = screen.getByRole("button", { name: "Switch to Mobile view" });
+    const button = screen.getByRole("button", { name: /Switch to Mobile view/ });
     expect(button.textContent).toBe("Desktop");
     fireEvent.click(button);
     expect(document.cookie).not.toContain("ns_view");
@@ -83,7 +83,7 @@ describe("ViewModeToggle", () => {
     device({ wide: false, screen: 1440 });
     document.cookie = "ns_view=mobile; path=/";
     render(wrap(<ViewModeToggle showLabel />));
-    fireEvent.click(screen.getByRole("button", { name: "Switch to Desktop view" }));
+    fireEvent.click(screen.getByRole("button", { name: /Switch to Desktop view/ }));
     expect(document.cookie).toContain("ns_view=desktop");
   });
 
@@ -94,10 +94,12 @@ describe("ViewModeToggle", () => {
     expect(screen.getByRole("button").textContent).toBe("Desktop");
   });
 
-  it("the footer link names the version a press gives", () => {
+  it("the footer link shows the current mode like the pill, and names the action", () => {
     device({ wide: false, screen: 390 });
     render(wrap(<ViewModeToggle variant="link" />));
-    expect(screen.getByRole("button", { name: "Switch to Desktop view" }).textContent).toContain("Desktop version");
+    const link = screen.getByRole("button", { name: /Switch to Desktop view/ });
+    expect(link.textContent).toBe("View: Mobile");
+    expect(link.getAttribute("title")).toBe("Switch to Desktop view");
   });
 
   it.each([
@@ -106,8 +108,30 @@ describe("ViewModeToggle", () => {
   ] as const)("is labelled in %s", (locale, word, action) => {
     device({ wide: false, screen: 390 });
     render(wrap(<ViewModeToggle showLabel />, locale));
-    const button = screen.getByRole("button", { name: action });
+    const button = screen.getByRole("button", { name: new RegExp(action) });
     expect(button.textContent).toBe(word);
+  });
+
+  it("the labelled pill's name contains its visible word and states the action", () => {
+    device({ wide: false, screen: 390 });
+    render(wrap(<ViewModeToggle showLabel />));
+    expect(screen.getByRole("button").getAttribute("aria-label")).toBe("Mobile. Switch to Desktop view");
+  });
+
+  it("says so, once and politely, when the browser refuses the cookie, and does not reload", () => {
+    device({ wide: false, screen: 390 });
+    const desc = Object.getOwnPropertyDescriptor(Document.prototype, "cookie")!;
+    // a browser with cookies off: reads give nothing, writes are dropped
+    Object.defineProperty(document, "cookie", { configurable: true, get: () => "", set: () => {} });
+    try {
+      render(wrap(<ViewModeToggle showLabel />));
+      fireEvent.click(screen.getByRole("button"));
+      expect(screen.getByRole("status").textContent).toBe("Turn on cookies to change the view.");
+      expect(nav.reload).not.toHaveBeenCalled();
+    } finally {
+      delete (document as unknown as Record<string, unknown>).cookie;
+      Object.defineProperty(Document.prototype, "cookie", desc);
+    }
   });
 
   it("is a real button: it can be pressed from the keyboard and names its action", () => {
@@ -116,7 +140,7 @@ describe("ViewModeToggle", () => {
     const button = screen.getByRole("button");
     expect(button.tagName).toBe("BUTTON");
     expect(button.getAttribute("type")).toBe("button");
-    expect(button.getAttribute("aria-label")).toBe("Switch to Desktop view");
+    expect(button.getAttribute("aria-label")).toBe("Switch to Desktop view"); // icon only: the action is the name
     expect(button.getAttribute("aria-pressed")).toBeNull();
   });
 });
@@ -130,7 +154,7 @@ describe("ViewFrame", () => {
     expect(frames).toHaveLength(1);
     expect(frames[0].getAttribute("src")).toBe("/chronos/videos?x=1");
     expect(frames[0].getAttribute("title")).toBe("Nightshift, Mobile view");
-    expect(screen.getByRole("button", { name: "Switch to Desktop view" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Switch to Desktop view/ })).toBeTruthy();
   });
 
   function post(source: Window | null, origin: string, data: unknown) {

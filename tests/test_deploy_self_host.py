@@ -222,7 +222,9 @@ class CaddyFramingTests(unittest.TestCase):
 
     def test_deny_still_covers_every_request_that_is_not_a_frame(self):
         self.assertIn("@notFrame not header Sec-Fetch-Dest iframe", self.code)
-        self.assertIn('header @notFrame X-Frame-Options "DENY"', self.code)
+        # `>` defers the write, so the response carries ONE header and it is DENY (a plain
+        # `header` would add a second line beside the app's own).
+        self.assertIn('header @notFrame >X-Frame-Options "DENY"', self.code)
 
     def test_nothing_wider_is_sent_here(self):
         self.assertNotIn("SAMEORIGIN", self.code)

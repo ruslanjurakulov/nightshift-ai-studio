@@ -42,8 +42,10 @@
 	# nothing and the app decides, because it can also see Sec-Fetch-Site: it
 	# answers SAMEORIGIN to a same-origin frame and DENY to a cross-site one
 	# (command-center/middleware.ts). Every other request still gets DENY here.
+	# The `>` defers the write until the response leaves, so it replaces whatever
+	# the app sent: always exactly one X-Frame-Options line.
 	@notFrame not header Sec-Fetch-Dest iframe
-	header @notFrame X-Frame-Options "DENY"
+	header @notFrame >X-Frame-Options "DENY"
 
 	# `web` is reachable only on the compose network; it publishes no port of
 	# its own, so this is the only way in. Caddy passes the original Host and

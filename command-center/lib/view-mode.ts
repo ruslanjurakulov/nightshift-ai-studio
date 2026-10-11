@@ -50,7 +50,16 @@ const UNFRAMED_PREFIXES = ["/api", "/auth", "/oauth", "/_next"] as const;
 
 export function framablePath(pathname: string): boolean {
   if (!pathname.startsWith("/") || pathname.startsWith("//") || pathname.includes("\\")) return false;
-  return !UNFRAMED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  // The router decodes and matches without regard to case, so the test does too: /%61uth and /AUTH are /auth.
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname).toLowerCase();
+  } catch {
+    return false;
+  }
+  if (decoded.includes("\\") || decoded.startsWith("//") || /[\u0000-\u001f]/.test(decoded)) return false;
+  if (decoded.split("/").some((seg) => seg === "." || seg === "..")) return false;
+  return !UNFRAMED_PREFIXES.some((p) => decoded === p || decoded.startsWith(`${p}/`));
 }
 
 /**
@@ -154,6 +163,7 @@ export function parseFrameSync(data: unknown): FrameSync | null {
   if (typeof data !== "object" || data === null) return null;
   const d = data as Record<string, unknown>;
   if (d.type !== FRAME_SYNC || typeof d.href !== "string" || typeof d.title !== "string") return null;
-  if (!d.href.startsWith("/") || d.href.startsWith("//") || d.href.includes("\\")) return null;
+  // Tab, newline and carriage return are stripped by the URL parser after the `//` test, so they are refused outright.
+  if (!d.href.startsWith("/") || d.href.startsWith("//") || d.href.includes("\\") || /[\u0000-\u001f\u007f]/.test(d.href)) return null;
   return { type: FRAME_SYNC, href: d.href, title: d.title.slice(0, 300) };
 }

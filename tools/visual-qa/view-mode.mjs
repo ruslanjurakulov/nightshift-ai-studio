@@ -21,7 +21,7 @@
  */
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
-import { accessSync, constants, mkdirSync, rmSync, statSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sessionCookie } from "./fake-supabase.mjs";
@@ -107,6 +107,7 @@ const widths = (page) =>
     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     meta: document.querySelector('meta[name="viewport"]')?.getAttribute("content"),
   }));
+const TOGGLE = 'button[aria-label*="Switch to"]';
 const cookieOf = async (context) => (await context.cookies(BASE)).find((c) => c.name === "ns_view")?.value ?? null;
 
 // ---------------------------------------------------------------- A. Desktop on a phone
@@ -194,8 +195,8 @@ async function frameOf(page) {
   const w = await widths(p);
   check(w.inner === 1440 && w.lg, "desktop, no choice: the normal desktop page");
   check((await p.locator("iframe").count()) === 0, "desktop, no choice: no frame");
-  const link = p.getByRole("button", { name: "Switch to Mobile view" });
-  check((await link.textContent())?.includes("Mobile version"), "desktop footer: the link names the version a press gives");
+  const link = p.locator("footer " + TOGGLE).first();
+  check((await link.textContent())?.trim() === "View: Desktop", "desktop footer: the link shows the current mode like the pill", await link.textContent());
   await link.click();
   await p.waitForSelector("iframe.ns-view-phone");
   check((await cookieOf(c)) === "mobile", "desktop, press: ns_view=mobile is stored");
@@ -216,6 +217,7 @@ async function frameOf(page) {
   await frame.locator('footer a[href^="/solutions/"]').first().click();
   await p.waitForFunction(() => location.pathname.startsWith("/solutions"), null, { timeout: 15000 });
   check(true, "frame navigation: the parent's address bar follows", new URL(p.url()).pathname);
+  await p.waitForFunction(() => /Solutions/i.test(document.title), null, { timeout: 8000 }).catch(() => undefined);
   const title = await p.title();
   check(/Solutions/i.test(title), "frame navigation: the tab title follows", title);
   await p.goBack();
@@ -346,6 +348,7 @@ for (const scheme of ["light", "dark"]) {
   await c.close();
 }
 
+const VIEW = { en: "View", ru: "Вид", uz: "Koʻrinish" };
 // ---------------------------------------------------------------- C. Labels in English, Russian, Uzbek
 for (const [loc, mobile, desktop] of [["en", "Mobile", "Desktop"], ["ru", "Мобильный", "Десктоп"], ["uz", "Mobil", "Desktop"]]) {
   const c = await ctx(DESK, { locale: loc, view: "mobile" });
@@ -361,10 +364,112 @@ for (const [loc, mobile, desktop] of [["en", "Mobile", "Desktop"], ["ru", "Мо�
   await q.goto(BASE + "/pricing", { waitUntil: "load" });
   await q.waitForTimeout(500);
   const link = (await q.locator("footer button").last().textContent())?.trim();
-  check(Boolean(link) && link !== desktop, `${loc}: the footer link reads "${link}"`);
+  check(link === `${VIEW[loc]}: ${desktop}`, `${loc}: the footer link reads "${link}"`);
   await d.close();
 }
 
+// ---------------------------------------------------------------- D. Accessibility, focus, touch targets, fit
+const AXE = (() => {
+  const p = path.join(REPO, "command-center", "node_modules", "axe-core", "axe.min.js");
+  return existsSync(p) ? readFileSync(p, "utf8") : null;
+})();
+{
+  // axe on the pages that carry the control, inside its own region only (the rest of each page is not this change's to judge).
+  const cases = [
+    ["footer, desktop", DESK, "/pricing", {}, "footer"],
+    ["header, desktop (public)", DESK, "/pricing", {}, ".st-header"],
+    ["shell bar + frame", DESK, "/pricing", { view: "mobile" }, ".ns-view-bar"],
+    ["Settings account, phone", PHONE, "/night-owl/organization", { signedIn: true }, "#main, main"],
+  ];
+  for (const [name, dev, page, opts, scope] of cases) {
+    for (const scheme of ["light", "dark"]) {
+      const c = await ctx(dev, { ...opts, scheme });
+      const p = await c.newPage();
+      await p.goto(BASE + page, { waitUntil: "load" });
+      await p.waitForTimeout(1200);
+      await p.addScriptTag({ content: AXE ?? "" });
+      const v = await p.evaluate(async (sel) => {
+        const scope = document.querySelector(sel);
+        const root = sel === "#main, main" ? document.querySelector('button[aria-label*="Switch to"]')?.closest("section") ?? scope : scope;
+        const r = await axe.run(root, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] }, resultTypes: ["violations"] });
+        return r.violations.map((x) => `${x.id}(${x.impact})x${x.nodes.length}`);
+      }, scope).catch((e) => [`axe error ${String(e.message).slice(0, 80)}`]);
+      check(v.length === 0, `axe, ${name} (${scheme})`, v.join(", "));
+      await c.close();
+    }
+  }
+}
+{
+  // Keyboard: Tab reaches the control, a focus ring shows, Enter presses it.
+  const c = await ctx(DESK);
+  const p = await c.newPage();
+  await p.goto(BASE + "/pricing", { waitUntil: "load" });
+  await p.waitForTimeout(800);
+  const footerBtn = p.locator("footer " + TOGGLE).first();
+  await footerBtn.scrollIntoViewIfNeeded();
+  await footerBtn.focus();
+  await p.keyboard.press("Shift+Tab");
+  await p.keyboard.press("Tab");
+  const ring = await footerBtn.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { focused: document.activeElement === el, focusVisible: el.matches(":focus-visible"), outline: `${cs.outlineStyle} ${cs.outlineWidth} ${cs.outlineColor}`, shadow: cs.boxShadow };
+  });
+  check(ring.focused && ring.focusVisible && ring.outline.startsWith("solid") && !ring.outline.includes(" 0px"), "keyboard: the footer control takes focus and shows a focus ring", JSON.stringify(ring));
+  await p.keyboard.press("Enter");
+  await p.waitForSelector("iframe.ns-view-phone");
+  check((await cookieOf(c)) === "mobile", "keyboard: Enter presses the control");
+  const frameBtn = p.locator(".ns-view-bar button");
+  await frameBtn.focus();
+  await p.keyboard.press("Shift+Tab");
+  await p.keyboard.press("Tab");
+  const ring2 = await frameBtn.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { focusVisible: el.matches(":focus-visible"), outline: `${cs.outlineStyle} ${cs.outlineWidth} ${cs.outlineColor}`, shadow: cs.boxShadow };
+  });
+  check(ring2.focusVisible && ring2.outline.startsWith("solid") && !ring2.outline.includes(" 0px"), "keyboard: the shell control shows a focus ring", JSON.stringify(ring2));
+  await shot(p, "focus_shell_en_1440_light", { clip: { x: 400, y: 0, width: 640, height: 120 } });
+  await c.close();
+}
+{
+  // Touch targets: 44 css px on a coarse pointer, on the phone's controls and the footer link.
+  const c = await ctx(PHONE, { signedIn: true });
+  const p = await c.newPage();
+  await p.goto(BASE + "/night-owl/organization", { waitUntil: "load" });
+  await p.waitForTimeout(1500);
+  const box = await p.locator(TOGGLE).filter({ visible: true }).first().boundingBox();
+  check(box && box.height >= 43.5 && box.width >= 43.5, "touch: the Settings control is at least 44x44", JSON.stringify(box));
+  await p.goto(BASE + "/pricing", { waitUntil: "load" });
+  await p.waitForTimeout(600);
+  const fb = await p.locator("footer " + TOGGLE).first().boundingBox();
+  check(fb && fb.height >= 43.5, "touch: the footer link is at least 44 tall", JSON.stringify(fb));
+  await p.getByRole("button", { name: /menu/i }).first().click();
+  await p.waitForTimeout(400);
+  const mb = await p.locator(TOGGLE).filter({ visible: true }).first().boundingBox();
+  check(mb && mb.height >= 43.5, "touch: the public menu's control is at least 44 tall", JSON.stringify(mb));
+  await shot(p, "phone-menu_en_390_light");
+  await c.close();
+  const t = await ctx({ viewport: { width: 820, height: 1000 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, { signedIn: true });
+  const tp = await t.newPage();
+  await tp.goto(BASE + "/night-owl/home", { waitUntil: "load" });
+  await tp.waitForTimeout(1500);
+  const hb = await tp.locator("header " + TOGGLE).first().boundingBox();
+  check(hb && hb.height >= 43.5 && hb.width >= 43.5, "touch: the header control (tablet) is at least 44x44", JSON.stringify(hb));
+  await t.close();
+}
+// (At 640 the bar wraps to two rows on main as well, without this control: not part of this change.)
+for (const width of [320, 360, 390, 700, 768, 1024]) {
+  const c = await ctx({ viewport: { width, height: 800 }, deviceScaleFactor: 1, isMobile: width < 700, hasTouch: width < 700 }, { signedIn: true });
+  const p = await c.newPage();
+  await p.goto(BASE + "/night-owl/home", { waitUntil: "load" });
+  await p.waitForTimeout(1500);
+  const r = await p.evaluate(() => {
+    const header = document.querySelector("header");
+    const rows = new Set([...header.querySelectorAll("a, button")].filter((e) => e.getBoundingClientRect().width > 0).map((e) => Math.round(e.getBoundingClientRect().top / 8)));
+    return { overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, headerH: Math.round(header.getBoundingClientRect().height), rows: rows.size };
+  });
+  check(r.overflow <= 0 && r.headerH <= 80 && r.rows <= 2, `header at ${width}px: no overflow, one row`, JSON.stringify(r));
+  await c.close();
+}
 await browser.close();
 execFileSync(
   "python3",

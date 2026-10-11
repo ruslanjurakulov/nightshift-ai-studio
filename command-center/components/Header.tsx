@@ -111,7 +111,9 @@ export function Header({
             <span className="hidden sm:contents">
               <LanguageSelector />
               <ThemeToggle />
-              <ViewModeToggle showLabel compact />
+              <span className="hidden md:contents">
+            <ViewModeToggle showLabel compact />
+          </span>
             </span>
             {/* No account button here: on a phone and tablet the account is the
                 bottom bar's last tab (the initial, then Settings → Account), and
@@ -167,7 +169,9 @@ export function Header({
         <span className="hidden sm:contents">
           <LanguageSelector />
           <ThemeToggle />
-          <ViewModeToggle showLabel compact />
+          <span className="hidden md:contents">
+            <ViewModeToggle showLabel compact />
+          </span>
         </span>
         <AccountMenu email={email} />
       </div>

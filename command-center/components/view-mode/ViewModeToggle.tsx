@@ -58,6 +58,7 @@ export function ViewModeControl({
   className = "",
 }: ViewModeProps & { labels: PublicDictionary["common"] }) {
   const [mode, setMode] = useState<ViewMode | null>(null);
+  const [blocked, setBlocked] = useState(false);
 
   useEffect(() => {
     const mq = typeof window.matchMedia === "function" ? window.matchMedia(DESKTOP_MEDIA) : null;
@@ -72,6 +73,11 @@ export function ViewModeControl({
     const phone = Math.min(window.screen.width, window.screen.height) < PHONE_SCREEN_PX;
     const choice = choiceFor(otherMode(mode), phone);
     document.cookie = viewCookieString(choice, window.location.protocol === "https:");
+    // A browser that refuses the cookie would reload into the same layout and look broken: say so instead.
+    if (readViewChoice(document.cookie) !== choice) {
+      setBlocked(true);
+      return;
+    }
     reloadTop();
   }
 
@@ -79,43 +85,57 @@ export function ViewModeControl({
   const action = mode === "mobile" ? c.switchToDesktop : mode === "desktop" ? c.switchToMobile : c.viewMobile;
   const Icon = mode === "desktop" ? Monitor : Smartphone;
 
+  const word = mode === "desktop" ? c.viewDesktop : c.viewMobile;
+  // A refused cookie: one line, announced, next to the control.
+  const notice = blocked ? (
+    <span role="status" className="text-xs font-light text-[var(--color-warn)]">
+      {c.viewCookiesOff}
+    </span>
+  ) : null;
+
   if (variant === "link") {
     return (
+      <span className="inline-flex flex-wrap items-center gap-x-3">
+        <button
+          type="button"
+          onClick={flip}
+          disabled={mode === null}
+          title={mode === null ? undefined : action}
+          aria-label={mode === null ? undefined : `${c.view}: ${word}. ${action}`}
+          className={`inline-flex min-h-11 items-center gap-2 underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline ${className}`}
+        >
+          {mode !== null && <Icon aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />}
+          <span aria-hidden={mode === null}>{mode === null ? "\u00a0" : `${c.view}: ${word}`}</span>
+        </button>
+        {notice}
+      </span>
+    );
+  }
+
+  return (
+    <>
       <button
         type="button"
         onClick={flip}
         disabled={mode === null}
-        aria-label={mode === null ? undefined : action}
-        className={`inline-flex min-h-11 items-center gap-2 underline-offset-4 transition-colors hover:text-[var(--color-primary)] hover:underline ${className}`}
+        title={mode === null ? undefined : action}
+        aria-label={mode === null ? c.viewMobile : showLabel ? `${word}. ${action}` : action}
+        className={`${
+          showLabel
+            ? `btn-sky is-quiet pill h-10 gap-2 px-4 text-sm font-light pointer-coarse:h-11${compact ? " max-lg:size-10 max-lg:justify-center max-lg:px-0 max-lg:pointer-coarse:size-11" : ""}`
+            : "btn-sky is-quiet pill grid size-10 place-items-center pointer-coarse:size-11"
+        } ${className}`}
       >
-        {mode !== null && <Icon aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />}
-        <span aria-hidden={mode === null}>{mode === null ? " " : mode === "mobile" ? c.desktopVersion : c.mobileVersion}</span>
-      </button>
-    );
-  }
-
-  const word = mode === "desktop" ? c.viewDesktop : c.viewMobile;
-  return (
-    <button
-      type="button"
-      onClick={flip}
-      disabled={mode === null}
-      title={mode === null ? undefined : action}
-      aria-label={mode === null ? c.viewMobile : action}
-      className={`${
-        showLabel
-          ? `btn-sky is-quiet pill h-10 gap-2 px-4 text-sm font-light${compact ? " max-lg:size-10 max-lg:justify-center max-lg:px-0" : ""}`
-          : "btn-sky is-quiet pill grid size-10 place-items-center"
-      } ${className}`}
-    >
-      <span className="relative block size-4" aria-hidden>
-        {mode !== null && <Icon className="size-4" strokeWidth={1.75} />}
-      </span>
-      {showLabel && (
-        <span aria-hidden className={`min-w-[4.5rem] text-left${compact ? " max-lg:hidden" : ""}`}>
-          {mode === null ? " " : word}
+        <span className="relative block size-4" aria-hidden>
+          {mode !== null && <Icon className="size-4" strokeWidth={1.75} />}
         </span>
-      )}
-    </button>
+        {showLabel && (
+          <span aria-hidden className={`min-w-[4.5rem] text-left${compact ? " max-lg:hidden" : ""}`}>
+            {mode === null ? " " : word}
+          </span>
+        )}
+      </button>
+      {notice}
+    </>
   );
 }

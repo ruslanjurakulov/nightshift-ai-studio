@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { usePublicI18n } from "@/lib/i18n/public-context";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 
 /**
@@ -113,6 +114,9 @@ export function PublicMobileMenu({
                 which must therefore sit at the panel's right edge. */}
             <ThemeToggle showLabel />
             <LanguageSelector />
+          </div>
+          <div className="px-2 pt-2">
+            <ViewModeToggle showLabel />
           </div>
         </div>
       )}

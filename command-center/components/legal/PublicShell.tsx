@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Dictionary } from "@/lib/i18n";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { PublicFooter } from "@/components/legal/PublicFooter";
 import { PublicMobileMenu } from "@/components/legal/PublicMobileMenu";
@@ -79,6 +80,7 @@ export function PublicShell({
             <div className="st-header-desk">
               <LanguageSelector />
               <ThemeToggle />
+              <ViewModeToggle showLabel compact />
               <Link href="/login" className="st-signin">
                 {t.site.nav.signIn}
               </Link>

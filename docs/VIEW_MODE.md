@@ -43,7 +43,7 @@ lifts them only for a request the browser marks `Sec-Fetch-Dest: iframe` AND `Se
 on a framable path: `X-Frame-Options: SAMEORIGIN`, `frame-ancestors 'self'` (in the enforcing policy, or as a
 sole `Content-Security-Policy` header in report-only/off mode). A cross-site frame sends `cross-site` and
 keeps DENY. The shell gets `'self'` in `frame-src`. `deploy/Caddyfile` sends its `X-Frame-Options: DENY`
-only when the request is not `Sec-Fetch-Dest: iframe`, so it cannot overwrite the app's answer.
+only when the request is not `Sec-Fetch-Dest: iframe` (`header @notFrame >X-Frame-Options "DENY"`; the `>` defers the write, so the response always carries exactly one line), so it cannot overwrite the app's answer for our own frame. The response depends on the cookie and on `Sec-Fetch-*`; no `Vary` for them can be added from the middleware (Next keeps its own `Vary` value, verified on a production build), so correctness rests on the pages being `Cache-Control: private, no-cache, no-store`, which they are.
 
 ## Known limitations
 
@@ -54,3 +54,4 @@ only when the request is not `Sec-Fetch-Dest: iframe`, so it cannot overwrite th
 - PWA "Add to Home Screen" from the framed view saves the visible URL; file pickers and downloads work
   in a same-origin frame.
 - A page that is reloaded loses unsaved input: the switch reloads the window.
+- With cookies blocked the choice cannot be stored: the control writes the cookie, reads it back and, if it is not there, shows one line ("Turn on cookies to change the view.") instead of reloading.
