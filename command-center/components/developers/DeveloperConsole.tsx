@@ -602,7 +602,7 @@ export function Keys({ orgId, activated }: { orgId: string; activated: boolean }
   const [keysFailed, setKeysFailed] = useState(false);
   const [name, setName] = useState("");
   const [limitText, setLimitText] = useState("");
-  // New keys start with what every key could always do (the "Full access" preset); spending credits
+  // New keys start with what every key could always do (the "Standard" preset); spending credits
   // on generations is something the admin ticks on purpose, under "More options".
   const [scopes, setScopes] = useState<ApiScope[]>([...KEY_PRESETS.full]);
   const [rpmText, setRpmText] = useState("");

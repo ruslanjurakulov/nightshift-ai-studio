@@ -341,6 +341,7 @@ describe("the key form", () => {
 
   it("key rows say Standard, Read only or Custom (n), with the whole list one tap away; Set limit and Revoke stay", async () => {
     await open();
+    await screen.findByText("Server"); // the key list loads after the form
     const row = (name: string) => screen.getByText(name).closest("tr") as HTMLElement;
     expect(within(row("Server")).getByText(d.presetFull)).toBeTruthy();
     expect(within(row("Dashboard")).getByText(d.presetRead)).toBeTruthy();
