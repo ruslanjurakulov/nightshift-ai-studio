@@ -145,3 +145,12 @@ A Short is its own YouTube video with its own id and its own metrics, so it is
 its own row; these columns are what keep it from reading as a second long video.
 Additive: two columns, no drop, no rename, no delete. See `docs/MEASUREMENT.md`
 for why Shorts are off unless a channel turns them on.
+
+## Deleting an account: the profile photo
+
+A person's profile photo is a Storage object, `avatars/<uid>/avatar.jpg` (migration 0097), and it
+is **not** removed when the account is (there is no row to cascade from; the version marker lives in
+the user's auth metadata). When an account is deleted, remove that object too: with the Storage API
+and the service key, e.g. `DELETE /storage/v1/object/avatars/<uid>/avatar.jpg` (or `remove()` in
+supabase-js), **never** with `delete from storage.objects` in SQL. A row deleted in SQL leaves the file
+behind in the object store, so the photo would stay on disk with nothing pointing at it.
