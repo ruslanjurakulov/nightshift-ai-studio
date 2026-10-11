@@ -5,6 +5,7 @@ import { MemoryView } from "@/components/intel/MemoryView";
 import { deriveMemories, deriveOpportunities } from "@/lib/memory";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
+import "../../app-pages-g2.css";
 import { fetchTopicScores, getChannelScope } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import type { DemandSignalRow, FeedbackSignalRow, TopicPerformanceRow } from "@/lib/types";
@@ -39,7 +40,7 @@ export default async function MemoryPage() {
   const opportunities = deriveOpportunities(topicPerf, demand);
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open stagger-enter">
       <PageHeader icon="memory" title={t.intel.memoryTitle} subtitle={t.intel.memorySubtitle} />
       <MemoryView memories={memories} opportunities={opportunities} />
     </div>

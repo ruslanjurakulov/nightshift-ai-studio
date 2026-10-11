@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
-import { StatusPill } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { relativeTime } from "@/lib/format";
 import { atLeast, type Role } from "@/lib/auth/roles-shared";
@@ -82,11 +82,11 @@ export function ChannelTokenPanel({
   }
 
   return (
-    <div className="mt-3 rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs text-[var(--color-muted)]">{tt.title}</span>
+    <div className="g2-sub-block">
+      <div className="g2-sub-head">
+        <h4 className="g2-label">{tt.title}</h4>
         {available && (
-          <StatusPill
+          <StatusLamp
             tone={connected ? (missing.length ? "warn" : "ok") : "idle"}
             label={connected ? tt.connected : status?.revoked_at ? tt.disconnected : tt.notConnected}
           />
@@ -94,15 +94,15 @@ export function ChannelTokenPanel({
       </div>
 
       {!available ? (
-        <p className="mt-2 text-xs text-[var(--color-muted)]">{tt.notAvailable}</p>
+        <p className="g2-note">{tt.notAvailable}</p>
       ) : (
         <>
           {status && (
-            <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 tnum text-xs text-[var(--color-muted)]">
+            <dl className="g2-inline-dl">
               {status.youtube_channel_title || status.youtube_channel_id ? (
                 <div>
-                  <dt className="inline">{tt.account}: </dt>
-                  <dd className="inline text-[var(--color-fg)]">
+                  <dt>{tt.account}: </dt>
+                  <dd>
                     {status.youtube_channel_title ?? ""}
                     {status.youtube_channel_id ? ` (${status.youtube_channel_id})` : ""}
                   </dd>
@@ -110,57 +110,57 @@ export function ChannelTokenPanel({
               ) : null}
               {connected && status.connected_at && (
                 <div>
-                  <dt className="inline">{tt.since}: </dt>
-                  <dd className="inline text-[var(--color-fg)]">{relativeTime(status.connected_at)}</dd>
+                  <dt>{tt.since}: </dt>
+                  <dd>{relativeTime(status.connected_at)}</dd>
                 </div>
               )}
               {connected && status.connected_by_email && (
                 <div>
-                  <dt className="inline">{tt.by}: </dt>
-                  <dd className="inline text-[var(--color-fg)]">{status.connected_by_email}</dd>
+                  <dt>{tt.by}: </dt>
+                  <dd>{status.connected_by_email}</dd>
                 </div>
               )}
               {!connected && status.revoked_at && (
                 <div>
-                  <dt className="inline">{tt.disconnectedAt}: </dt>
-                  <dd className="inline text-[var(--color-fg)]">{relativeTime(status.revoked_at)}</dd>
+                  <dt>{tt.disconnectedAt}: </dt>
+                  <dd>{relativeTime(status.revoked_at)}</dd>
                 </div>
               )}
               {connected && status.scopes.length > 0 && (
                 <div>
-                  <dt className="inline">{tt.scopes}: </dt>
-                  <dd className="inline text-[var(--color-fg)]">{status.scopes.map(shortScope).join(", ")}</dd>
+                  <dt>{tt.scopes}: </dt>
+                  <dd>{status.scopes.map(shortScope).join(", ")}</dd>
                 </div>
               )}
             </dl>
           )}
           {missing.length > 0 && (
-            <p className="mt-1.5 text-xs text-[var(--color-warn)]">
+            <p className="g2-warn">
               {fmt(tt.missingScopes, { scopes: missing.map(shortScope).join(", ") })}
             </p>
           )}
-          <p className="mt-1.5 text-xs text-[var(--color-muted)]">{tt.vaultNote}</p>
+          <p className="g2-note">{tt.vaultNote}</p>
 
           {justDisconnected && (
-            <p className="mt-2 text-xs text-[var(--color-fg)]" role="status">
+            <p className="g2-note" role="status">
               {tt.disconnectedNotice}{" "}
               <a
                 href={GOOGLE_PERMISSIONS_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[var(--color-primary)] underline"
+                className="g2-link"
               >
                 {tt.googlePermissions}
               </a>
             </p>
           )}
           {error && (
-            <p className="mt-2 tnum text-xs text-[var(--color-fail)]">{fmt(tt.disconnectFailed, { error })}</p>
+            <p className="g2-fail tnum">{fmt(tt.disconnectFailed, { error })}</p>
           )}
 
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="g2-actions">
             {actions.connect && (
-              <a href={startHref} className="btn-sky pill px-4 py-1.5 text-xs">
+              <a href={startHref} className="btn-quiet">
                 {connected ? tt.reconnect : tt.connect}
               </a>
             )}
@@ -169,13 +169,13 @@ export function ChannelTokenPanel({
                 type="button"
                 onClick={disconnect}
                 disabled={busy || pending}
-                className="btn-sky ghost pill px-4 py-1.5 text-xs disabled:opacity-50"
+                className="btn-quiet disabled:opacity-50"
               >
                 {busy ? tt.disconnecting : tt.disconnect}
               </button>
             )}
             {!actions.connect && !actions.disconnect && (
-              <span className="text-xs text-[var(--color-muted)]">
+              <span className="g2-note">
                 {atLeast(role, "admin") && !oauthConfigured ? tt.oauthNotConfigured : tt.viewerHint}
               </span>
             )}

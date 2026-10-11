@@ -90,16 +90,16 @@ export function StyleDetailSheet({
 
   return createPortal(
     <div className="fixed inset-0 z-[120] flex items-end justify-center sm:items-center sm:p-4" onKeyDown={onKeyDown}>
-      <div aria-hidden className="scrim-enter absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
+      <div aria-hidden className="scrim-enter absolute inset-0 backdrop-blur-[2px]" style={{ background: "var(--ns-scrim)" }} onClick={onClose} />
       <div
         ref={dialog}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="sheet-enter relative flex max-h-[92dvh] w-full flex-col rounded-t-2xl border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] sm:max-w-2xl sm:rounded-2xl"
+        className="sheet-enter relative flex max-h-[92dvh] w-full flex-col rounded-t-[var(--ns-r-sheet)] border border-[var(--ns-rule-strong)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)] sm:max-w-2xl sm:rounded-[var(--ns-r-sheet)]"
       >
-        <header className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
-          <h2 id={titleId} className="min-w-0 truncate text-[15px] font-semibold text-[var(--color-fg)]">
+        <header className="flex items-center justify-between gap-3 border-b border-[var(--ns-rule)] px-5 py-3">
+          <h2 id={titleId} className="g2-h2 min-w-0 truncate">
             {style.name[locale]}
           </h2>
           <button
@@ -107,24 +107,26 @@ export function StyleDetailSheet({
             type="button"
             onClick={onClose}
             aria-label={ts.close}
-            className="grid size-9 shrink-0 place-items-center rounded-full text-[var(--color-muted)] hover:text-[var(--color-fg)]"
+            className="grid size-11 shrink-0 place-items-center rounded-full text-[var(--color-muted)] hover:bg-[var(--ns-hover)] hover:text-[var(--color-fg)]"
           >
             <X aria-hidden className="size-5" />
           </button>
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
-          <div>
-            <StyleTile style={style} label={ts.previewLabel} className="aspect-[4/3] w-full rounded-xl border border-[var(--color-border)] sm:aspect-[16/7]" />
-            <p className="mt-1.5 text-xs text-[var(--color-muted)]">{ts.previewNote}</p>
+        <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-5">
+          <div className="ns-frame">
+            <div className="ns-frame-media">
+              <StyleTile style={style} label={ts.previewLabel} className="aspect-[4/3] w-full sm:aspect-[16/7]" />
+            </div>
+            <p className="g2-note px-1 py-2 !text-[var(--ns-on-film)] opacity-80">{ts.previewNote}</p>
           </div>
 
           <section aria-label={ts.goodFor} className="flex flex-col gap-1">
-            <h3 className="text-xs font-medium text-[var(--color-muted)]">{ts.goodFor}</h3>
-            <p className="text-sm text-[var(--color-fg)]">{style.goodFor[locale]}</p>
+            <h3 className="g2-label">{ts.goodFor}</h3>
+            <p className="text-[0.9375rem] text-[var(--color-fg)]">{style.goodFor[locale]}</p>
             <ul className="mt-1 flex flex-wrap gap-1.5">
               {style.tags.map((tag) => (
-                <li key={tag} className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-muted)]">
+                <li key={tag} className="ns-chip" data-plain="true">
                   {ts.tags[tag]}
                 </li>
               ))}
@@ -132,27 +134,27 @@ export function StyleDetailSheet({
           </section>
 
           <section className="flex flex-col gap-1.5">
-            <h3 className="text-xs font-medium text-[var(--color-muted)]">{ts.palette}</h3>
+            <h3 className="g2-label">{ts.palette}</h3>
             <ul className="flex flex-wrap gap-2">
               {style.swatch.map((hex) => (
                 <li key={hex} className="flex items-center gap-1.5">
                   <span
                     role="img"
                     aria-label={ts.swatch.replace("{hex}", hex)}
-                    className="size-7 rounded-full border border-[var(--color-border)]"
+                    className="size-8 rounded-full border border-[var(--ns-rule-strong)]"
                     style={{ background: hex }}
                   />
-                  <span className="tnum text-xs text-[var(--color-muted)]">{hex}</span>
+                  <span className="tnum text-[13px] text-[var(--color-muted)]">{hex}</span>
                 </li>
               ))}
             </ul>
           </section>
 
           <section className="flex flex-col gap-1.5">
-            <h3 className="text-xs font-medium text-[var(--color-muted)]">{ts.aspects}</h3>
+            <h3 className="g2-label">{ts.aspects}</h3>
             <ul className="flex flex-wrap gap-1.5">
               {style.aspects.map((a) => (
-                <li key={a} className="tnum rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-fg)]">
+                <li key={a} className="ns-chip tnum" data-plain="true">
                   {a}
                 </li>
               ))}
@@ -160,28 +162,28 @@ export function StyleDetailSheet({
           </section>
 
           <section className="flex flex-col gap-1.5">
-            <h3 className="text-xs font-medium text-[var(--color-muted)]">{ts.direction}</h3>
-            <p className="text-xs text-[var(--color-muted)]">{ts.directionHint}</p>
+            <h3 className="g2-label">{ts.direction}</h3>
+            <p className="g2-note">{ts.directionHint}</p>
             {/* The direction is written in English whatever the app's language: it is what a model reads. */}
-            <p lang="en" className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3 text-sm leading-relaxed text-[var(--color-fg)]">
+            <p lang="en" className="border-l-2 border-[var(--ns-amber)] bg-[var(--ns-key)] p-4 text-[0.9375rem] leading-relaxed text-[var(--color-fg)]">
               {style.description}
             </p>
           </section>
         </div>
 
-        <footer className="flex flex-col gap-2 border-t border-[var(--color-border)] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div aria-live="polite" className="min-h-[18px] text-xs">
+        <footer className="flex flex-col gap-2 border-t border-[var(--ns-rule)] px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div aria-live="polite" className="min-h-[18px] text-sm">
             {error ? (
               <span role="alert" style={{ color: "var(--color-fail)" }}>
                 {error}
               </span>
             ) : notice ? (
-              <span className="text-[var(--color-ok)]">{notice}</span>
+              <span className="g2-ok">{notice}</span>
             ) : null}
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
             {added ? (
-              <span className="pill inline-flex items-center justify-center gap-1.5 border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-muted)]">
+              <span className="inline-flex min-h-11 items-center justify-center gap-1.5 px-4 text-[0.9375rem] font-medium text-[var(--ns-amber-ink)]">
                 <Check aria-hidden className="size-4" />
                 {ts.added}
               </span>
@@ -191,7 +193,7 @@ export function StyleDetailSheet({
                 onClick={onAdd}
                 disabled={!canAdd || working}
                 aria-busy={busy === "add"}
-                className="disabled:opacity-50 btn-sky is-quiet pill px-4 py-2 text-sm"
+                className="btn-quiet disabled:opacity-50"
               >
                 {busy === "add" ? ts.adding : ts.add}
               </button>
@@ -202,16 +204,16 @@ export function StyleDetailSheet({
               disabled={working || (!canAdd && !added)}
               aria-busy={busy === "use"}
               aria-describedby={`${titleId}-use`}
-              className="disabled:opacity-50 btn-sky is-solid pill px-5 py-2 text-sm"
+              className="btn-primary disabled:opacity-50"
             >
               {busy === "use" ? ts.opening : ts.useInStudio}
             </button>
           </div>
-          <p id={`${titleId}-use`} className="text-xs text-[var(--color-muted)] sm:text-right">
+          <p id={`${titleId}-use`} className="g2-note sm:ml-auto sm:text-right">
             {ts.useHint}
           </p>
           {added && (
-            <Link href={manageHref} className="tap-link text-xs text-[var(--color-primary)] underline sm:text-right">
+            <Link href={manageHref} className="tap-link g2-link text-sm sm:ml-auto">
               {ts.manage}
             </Link>
           )}

@@ -1,0 +1,399 @@
+/* Channels, Accounts, Portfolio, Series, Topics, Memory, Styles, Models, Providers, Integrations
+   (docs/design/app-redesign-g2/NOTES.md).
+
+   These pages sit on the foundation (docs/design/app-redesign-1/FOUNDATION.md): `ns-open` on the page root, one desk,
+   one filled key, frames for media, lamps for status. This file holds only what the foundation does not have:
+   the ruled list that replaces a table of text, the figure strip that replaces a row of boxes, a real switch,
+   the channel mark, and the way a ledger folds into rows on a phone. Everything reads tokens (--ns-*), so light
+   and dark are both drawn, and nothing here is smaller than 13px, capitalised or tracked. */
+
+/* ── Words ──────────────────────────────────────────────────────────────────── */
+.g2-h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--color-fg);
+  text-wrap: balance;
+}
+.g2-h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-fg);
+}
+.g2-sub { margin-top: 4px; font-size: 0.9375rem; line-height: 1.5; color: var(--color-muted); }
+.g2-note { font-size: 13px; line-height: 1.55; color: var(--color-muted); max-width: 72ch; }
+.g2-label { font-size: 13px; font-weight: 500; line-height: 1.4; color: var(--color-muted); }
+.g2-strong { font-size: 0.9375rem; font-weight: 600; line-height: 1.35; color: var(--color-fg); }
+.g2-warn { font-size: 0.875rem; line-height: 1.55; color: var(--color-warn); max-width: 72ch; }
+.g2-fail { font-size: 0.875rem; line-height: 1.55; color: var(--color-fail); }
+.g2-ok { font-size: 0.875rem; line-height: 1.55; color: var(--color-ok); }
+.g2-link { color: var(--ns-act-ink); text-decoration: underline; text-underline-offset: 3px; }
+.g2-link:hover { color: var(--color-fg); }
+
+/* A section of the page: a rule, a head, the work. No box. */
+.g2-section { display: flex; flex-direction: column; gap: 20px; }
+.g2-section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+.g2-stack { display: flex; flex-direction: column; gap: 16px; }
+.g2-stack-lg { display: flex; flex-direction: column; gap: 24px; }
+
+/* ── The channel mark: a film tile with the avatar, or the first letter in edge print ─ */
+.g2-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--ns-r-frame);
+  background: var(--ns-film);
+  color: var(--ns-edge-print);
+  font-size: 1.125rem;
+  font-weight: 600;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 2px var(--ns-film);
+}
+.g2-mark img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.g2-mark[data-size="sm"] { width: 36px; height: 36px; font-size: 0.9375rem; }
+
+/* ── A ledger: ruled rows. On a phone every row folds into a small card of labelled lines ─ */
+.g2-ledger { width: 100%; border-collapse: collapse; text-align: left; }
+.g2-ledger th {
+  padding: 0 12px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-muted);
+  border-bottom: 1px solid var(--ns-rule-strong);
+  white-space: nowrap;
+}
+.g2-ledger td { padding: 14px 12px; border-bottom: 1px solid var(--ns-rule); vertical-align: middle; font-size: 0.9375rem; }
+.g2-ledger tbody tr:last-child td { border-bottom: 0; }
+.g2-ledger th:first-child,
+.g2-ledger td:first-child { padding-left: 0; }
+.g2-ledger th:last-child,
+.g2-ledger td:last-child { padding-right: 0; }
+.g2-ledger .num { text-align: right; font-variant-numeric: tabular-nums; }
+.g2-ledger tbody tr { transition: background-color var(--ns-dur-1) var(--ns-ease); }
+.g2-ledger tbody tr:hover { background: var(--ns-act-soft); }
+.g2-ledger .dim { color: var(--color-muted); }
+.g2-ledger-name { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.g2-ledger-name > span:last-child { min-width: 0; }
+.g2-ledger-name a { color: var(--color-fg); font-weight: 600; }
+.g2-ledger-name a:hover { color: var(--ns-act-ink); }
+.g2-ledger-name small { display: block; font-size: 13px; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A ledger folds by the width of the desk it sits in, not the screen: the customer sidebar and the operator frame take different shares of the same window. */
+@container (max-width: 54rem) {
+  .g2-ledger:not(.g2-ledger-wide),
+  .g2-ledger:not(.g2-ledger-wide) tbody { display: block; }
+  .g2-ledger:not(.g2-ledger-wide) thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .g2-ledger:not(.g2-ledger-wide) tr { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; padding: 18px 0; border-bottom: 1px solid var(--ns-rule); }
+  .g2-ledger:not(.g2-ledger-wide) tbody tr:last-child { border-bottom: 0; }
+  .g2-ledger:not(.g2-ledger-wide) td { display: block; padding: 0; border: 0; text-align: left; min-width: 0; }
+  .g2-ledger:not(.g2-ledger-wide) td.num { text-align: left; }
+  .g2-ledger:not(.g2-ledger-wide) td:first-child { grid-column: 1 / -1; }
+  .g2-ledger:not(.g2-ledger-wide) td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-muted);
+  }
+  .g2-ledger:not(.g2-ledger-wide) td[data-wide] { grid-column: 1 / -1; }
+}
+@container (max-width: 57rem) {
+  .g2-ledger-wide,
+  .g2-ledger-wide tbody { display: block; }
+  .g2-ledger-wide thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .g2-ledger-wide tr { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; padding: 18px 0; border-bottom: 1px solid var(--ns-rule); }
+  .g2-ledger-wide tbody tr:last-child { border-bottom: 0; }
+  .g2-ledger-wide td { display: block; padding: 0; border: 0; text-align: left; min-width: 0; }
+  .g2-ledger-wide td.num { text-align: left; }
+  .g2-ledger-wide td:first-child { grid-column: 1 / -1; }
+  .g2-ledger-wide td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-muted);
+  }
+  .g2-ledger-wide td[data-wide] { grid-column: 1 / -1; }
+}
+
+/* ── Figures: a strip of numbers between rules, not a row of boxes ─────────── */
+.g2-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  border-top: 1px solid var(--ns-rule);
+}
+.g2-figure { padding: 18px 20px 6px 0; min-width: 0; }
+.g2-figure + .g2-figure { padding-left: 20px; border-left: 1px solid var(--ns-rule); }
+.g2-figure-value {
+  margin-top: 8px;
+  font-size: clamp(1.625rem, 1.3rem + 1.2vw, 2.25rem);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.g2-figure-sub { margin-top: 6px; font-size: 13px; color: var(--color-muted); }
+@media (max-width: 47.99rem) {
+  .g2-figures { grid-template-columns: 1fr 1fr; }
+  .g2-figure { padding: 16px 12px 8px 0; border-bottom: 1px solid var(--ns-rule); }
+  .g2-figure + .g2-figure { border-left: 0; padding-left: 0; }
+  .g2-figure:nth-child(even) { padding-left: 16px; border-left: 1px solid var(--ns-rule); }
+}
+
+/* ── Facts: a label over a value, three or four across, ruled on top ───────── */
+.g2-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 16px 24px;
+  margin: 0;
+}
+.g2-facts dt { font-size: 13px; font-weight: 500; color: var(--color-muted); }
+.g2-facts dd { margin: 2px 0 0; font-size: 0.9375rem; color: var(--color-fg); overflow-wrap: anywhere; }
+.g2-facts .wide { grid-column: 1 / -1; }
+
+/* ── A switch that says its state in words ──────────────────────────────────── */
+.g2-switchrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding: 16px 0;
+  border-top: 1px solid var(--ns-rule);
+}
+.g2-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  min-height: 44px;
+  padding: 0 4px 0 0;
+  color: var(--color-fg);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.g2-switch:disabled { cursor: not-allowed; opacity: 0.55; }
+.g2-switch-track {
+  position: relative;
+  flex: none;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--ns-rule-strong);
+  background: var(--ns-key);
+  transition: background-color var(--ns-dur-2) var(--ns-ease), border-color var(--ns-dur-2) var(--ns-ease);
+}
+.g2-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-muted);
+  transition: transform var(--ns-dur-2) var(--ns-ease), background-color var(--ns-dur-2) var(--ns-ease);
+}
+.g2-switch[aria-checked="true"] .g2-switch-track { background: var(--ns-amber); border-color: var(--ns-amber); }
+.g2-switch[aria-checked="true"] .g2-switch-thumb { transform: translateX(20px); background: var(--ns-on-amber); }
+.g2-switch-word { min-width: 2.5rem; }
+
+/* ── A channel: a ruled section with its head, two columns and its facts ──── */
+.g2-channel { display: flex; flex-direction: column; gap: 24px; padding-top: 28px; border-top: 1px solid var(--ns-rule); scroll-margin-top: 88px; }
+.g2-channel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 24px; }
+.g2-channel-id { display: flex; min-width: 0; align-items: center; gap: 16px; }
+.g2-channel-id .g2-h2,
+.g2-channel-id .g2-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.g2-cols { display: grid; gap: 28px; }
+@media (min-width: 64rem) {
+  .g2-cols { grid-template-columns: 1fr 1fr; gap: 0; }
+  .g2-cols > * + * { padding-left: 32px; border-left: 1px solid var(--ns-rule); }
+  .g2-cols > :first-child { padding-right: 32px; }
+}
+.g2-subsystems { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px 16px; margin: 12px 0 0; padding: 0; list-style: none; }
+.g2-subsystems li { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.g2-subsystems small { display: block; font-size: 13px; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.g2-dot { flex: none; width: 8px; height: 8px; margin-top: 7px; border-radius: 50%; background: var(--color-idle); }
+.g2-dot[data-tone="ok"] { background: var(--ns-go); }
+.g2-dot[data-tone="warn"] { background: var(--ns-caution); }
+.g2-dot[data-tone="fail"] { background: var(--ns-tally); }
+.g2-sub-block { display: flex; flex-direction: column; gap: 10px; padding-top: 16px; border-top: 1px solid var(--ns-rule); }
+.g2-sub-block:first-child { padding-top: 0; border-top: 0; }
+.g2-sub-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.g2-inline-dl { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; font-size: 13px; color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.g2-inline-dl dd { display: inline; margin: 0; color: var(--color-fg); }
+.g2-inline-dl dt { display: inline; }
+.g2-inline-dl > div { display: inline; }
+.g2-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.g2-chan-link { align-self: flex-start; }
+
+/* ── Connected accounts: one ruled column per platform ─────────────────────── */
+.g2-platforms { display: grid; gap: 24px; }
+@media (min-width: 48rem) {
+  .g2-platforms { grid-template-columns: 1fr 1fr; gap: 0; }
+  .g2-platforms > * + * { padding-left: 32px; border-left: 1px solid var(--ns-rule); }
+  .g2-platforms > :first-child { padding-right: 32px; }
+}
+.g2-platform { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.g2-platform-name { display: flex; align-items: center; gap: 10px; }
+.g2-accounts { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.g2-accounts > li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 12px 0; border-top: 1px solid var(--ns-rule); }
+.g2-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--ns-rule-strong);
+  overflow: hidden;
+}
+.g2-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.g2-save { border-color: var(--ns-act); color: var(--ns-act-ink); font-weight: 600; }
+.g2-save:hover { background: var(--ns-act-soft); }
+textarea.ns-field { padding-block: 10px; line-height: 1.5; min-height: 88px; resize: vertical; }
+select.ns-field { padding-right: 36px; }
+
+/* ── The add-channel wizard: the page's desk, its steps a rundown above the work ─ */
+.ns-open .g2-wizard,
+.g2-wizard { padding: 24px; }
+@media (min-width: 640px) { .ns-open .g2-wizard, .g2-wizard { padding: 32px; } }
+.g2-steps { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; padding: 0 0 4px; list-style: none; border-bottom: 1px solid var(--ns-rule); }
+.g2-steps li { position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; font-size: 0.9375rem; color: var(--color-muted); }
+.g2-steps li[data-state="done"] { color: var(--color-fg); }
+.g2-steps li[data-state="current"] { color: var(--color-fg); font-weight: 600; }
+.g2-steps li[data-state="current"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -5px; height: 2px; border-radius: 2px; background: var(--ns-amber); }
+.g2-step-no { font-variant-numeric: tabular-nums; color: var(--ns-amber-ink); font-weight: 600; }
+.g2-proof { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 20px; padding: 16px 0; border-block: 1px solid var(--ns-rule); }
+.g2-proof > div:last-child { display: flex; flex-wrap: wrap; gap: 8px 32px; margin-left: 0; }
+@media (min-width: 640px) { .g2-proof > div:last-child { margin-left: auto; } }
+.g2-here { color: var(--ns-amber-ink); font-weight: 600; }
+.g2-ledger-name .g2-here { font-size: 13px; }
+
+.g2-desk { container-type: inline-size; }
+
+/* ── Ruled rows: a number in edge print, the thing, what you can do with it ── */
+.g2-rows { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--ns-rule); }
+.g2-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px 16px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--ns-rule);
+}
+.g2-row-no { padding-top: 3px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ns-amber-ink); }
+.g2-row-main { min-width: 0; }
+.g2-row > .g2-actions { grid-column: 2; }
+@media (min-width: 64rem) {
+  .g2-row { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; }
+  .g2-row > .g2-actions { grid-column: auto; justify-content: flex-end; }
+}
+
+/* ── A score: a bar to read at a glance, the number to trust ─────────────────── */
+.g2-score { display: inline-flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.g2-bar { position: relative; flex: none; width: 72px; height: 6px; border-radius: 3px; background: var(--ns-key-hi); overflow: hidden; }
+.g2-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--ns-caution); }
+.g2-bar > span[data-strong="true"] { background: var(--ns-go); }
+.g2-reason { max-width: 36ch; }
+@container (min-width: 57.01rem) { .g2-ledger td.g2-reason { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
+@container (max-width: 57rem) { .g2-score { justify-content: flex-start; } }
+/* A row that ends in a count */
+.g2-row-count { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; }
+.g2-row-count > .g2-row-main:first-child { grid-column: 1 / 3; }
+.g2-count { text-align: right; }
+.g2-count > div:first-child { font-size: 1.5rem; font-weight: 600; line-height: 1.1; color: var(--ns-act-ink); letter-spacing: -0.01em; }
+
+/* ── A finding: said as a sentence, with its evidence under it ──────────────── */
+.g2-statement { margin: 0; flex: 1 1 22rem; min-width: 0; font-size: 1.0625rem; line-height: 1.45; color: var(--color-fg); text-wrap: pretty; }
+.g2-action { margin: 6px 0 0; font-size: 0.9375rem; font-weight: 500; color: var(--ns-act-ink); }
+.g2-evidence { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-top: 8px; font-size: 13px; color: var(--color-muted); }
+/* An empty section says what is true, in one quiet line. */
+.g2-none { margin: 0; padding: 4px 0 8px; max-width: 62ch; font-size: 0.9375rem; line-height: 1.55; color: var(--color-muted); }
+
+/* ── The style library: every style a frame of film with its edge print, a slip under it ─ */
+.g2-styles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+@media (min-width: 40rem) { .g2-styles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; } }
+@media (min-width: 80rem) { .g2-styles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.g2-style { position: relative; }
+.g2-style-btn {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  text-align: left;
+  color: inherit;
+  border-radius: var(--ns-r-frame);
+  cursor: pointer;
+}
+.g2-style-btn:focus-visible { outline-offset: 3px; }
+.g2-style .ns-frame-media { display: block; }
+.g2-style-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 3px;
+  padding: 12px 14px 14px;
+  background: var(--color-panel);
+  color: var(--color-fg);
+  border-radius: 0 0 var(--ns-r-frame) var(--ns-r-frame);
+  transition: background-color var(--ns-dur-1) var(--ns-ease);
+}
+.g2-style-btn:hover .g2-style-body { background: color-mix(in srgb, var(--ns-act) 8%, var(--color-panel)); }
+.g2-style[data-added="true"] .ns-frame-media { outline: 2px solid var(--ns-amber); outline-offset: -2px; }
+.g2-added { display: inline-flex; flex: none; align-items: center; gap: 4px; font-size: 13px; font-weight: 500; color: var(--ns-amber-ink); }
+
+/* ── The operator's model list: one ruled row per model, its facts left, its switch right ─ */
+.g2-models { display: flex; flex-direction: column; }
+.g2-model { display: grid; gap: 20px 40px; padding: 24px 0; border-top: 1px solid var(--ns-rule); }
+.g2-model:first-child { padding-top: 0; border-top: 0; }
+.g2-model:last-child { padding-bottom: 0; }
+@media (min-width: 64rem) { .g2-model { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); } }
+.g2-defs { display: grid; grid-template-columns: minmax(7rem, auto) minmax(0, 1fr); gap: 10px 20px; margin: 0; font-size: 0.9375rem; }
+.g2-defs dt { font-size: 13px; font-weight: 500; color: var(--color-muted); padding-top: 2px; }
+.g2-defs dd { margin: 0; color: var(--color-fg); }
+
+/* ── Keys: one ruled row per provider, its name and state left, the field and keys right ─ */
+.g2-keys { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--ns-rule); }
+.g2-key { display: grid; gap: 12px 32px; padding: 16px 0; border-bottom: 1px solid var(--ns-rule); align-items: center; }
+.g2-key-id { min-width: 0; }
+.g2-key-field { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.g2-key-field > .relative { flex: 1 1 14rem; }
+@media (min-width: 64rem) { .g2-key { grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); } .g2-key-field { flex-wrap: nowrap; } }
+
+/* A service and its state: the name and what we last saw, then the lamp */
+.g2-row-status { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.g2-row-status .g2-last { grid-column: 1 / -1; margin: 0; }
+@media (min-width: 48rem) {
+  .g2-row-status { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; }
+  .g2-row-status .g2-last { grid-column: auto; }
+}
+.g2-worker { display: flex; flex-direction: column; gap: 8px; padding: 16px 0; border-bottom: 1px solid var(--ns-rule); }
+
+/* On a phone the desk is lighter: the page is already narrow, and the operator's screens sit in a frame of their own. */
+@media (max-width: 40rem) {
+  .ns-open .ns-desk.g2-desk { padding: 20px 16px; border-radius: var(--ns-r-panel); }
+}
+.g2-row { align-items: start; }
+@media (min-width: 64rem) {
+  .g2-row { align-items: start; }
+  .g2-row > .g2-actions { align-self: center; }
+  .g2-row-status,
+  .g2-row-count { align-items: center; }
+}
+.g2-desk .g2-rows .g2-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.g2-desk .g2-models .g2-model:last-child { padding-bottom: 0; }
+
+/* A finger needs 44px: the name in a folded ledger row and the short console links are keys too. */
+@media (pointer: coarse), (max-width: 71.99rem) {
+  .g2-ledger-name a { display: inline-flex; align-items: center; min-height: 44px; }
+}
+.g2-key .tap-link { min-width: 44px; justify-content: flex-start; }
+@media (pointer: coarse), (max-width: 40rem) { .g2-key .tap-link { min-width: 44px; padding-right: 8px; } }

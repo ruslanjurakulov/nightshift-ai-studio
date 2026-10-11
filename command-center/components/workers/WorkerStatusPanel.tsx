@@ -1,6 +1,5 @@
 "use client";
 
-import { Panel } from "@/components/ui";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { ErrorState } from "@/components/ReadError";
 import { useI18n } from "@/lib/i18n/context";
@@ -42,52 +41,51 @@ export function WorkerStatusPanel({
   const views = sortWorkers(rows.map((r) => workerView(r, nowMs)));
 
   return (
-    <Panel title={w.title}>
+    <section className="g2-section" aria-labelledby="workers-title">
+      <h2 id="workers-title" className="g2-h2">{w.title}</h2>
       {read === "failed" ? (
         <ErrorState compact />
       ) : read === "missing" ? (
-        <p className="m-0 p-4 text-sm text-[var(--color-muted)]">{w.notEnabled}</p>
+        <p className="g2-none">{w.notEnabled}</p>
       ) : (
-        <div className="flex flex-col gap-3 p-4">
-          <p className="m-0 text-xs leading-relaxed text-[var(--color-muted)]">{w.subtitle}</p>
+        <div className="flex flex-col gap-4">
+          <p className="g2-note">{w.subtitle}</p>
           {views.length === 0 ? (
-            <p className="m-0 text-sm text-[var(--color-muted)]">{w.empty}</p>
+            <p className="g2-none">{w.empty}</p>
           ) : (
-            <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            <ul className="g2-rows">
               {views.map((v) => (
                 <li
                   key={v.workerId}
                   data-worker-kind={v.kind}
                   data-worker-state={v.shown}
-                  className="flex flex-col gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2.5"
+                  className="g2-worker"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
                     <span className="flex min-w-0 flex-col">
-                      <span className="text-sm font-semibold text-[var(--color-fg)]">{w.kinds[v.kind]}</span>
-                      <span className="mono truncate text-xs text-[var(--color-muted)]">{v.workerId}</span>
+                      <span className="g2-strong">{w.kinds[v.kind]}</span>
+                      <span className="mono truncate text-[13px] text-[var(--color-muted)]">{v.workerId}</span>
                     </span>
                     <StatusLamp tone={TONE[v.shown]} label={w.states[v.shown]} live={v.shown === "running"} />
                   </div>
-                  <div className="tnum flex flex-wrap gap-x-4 text-xs text-[var(--color-muted)]">
+                  <div className="g2-evidence tnum" style={{ marginTop: 0 }}>
                     <span>{v.updatedAt && v.ageSeconds !== null ? fmt(w.heartbeat, { t: relativeTime(v.updatedAt) }) : w.noHeartbeat}</span>
                     {v.version && <span>{fmt(w.version, { v: v.version })}</span>}
                   </div>
                   {v.detail && (
-                    <p className="m-0 break-words text-xs leading-relaxed text-[var(--color-fg)]">
+                    <p className="m-0 break-words text-[0.9375rem] leading-relaxed text-[var(--color-fg)]">
                       <span className="text-[var(--color-muted)]">{w.reason}: </span>
                       {v.detail}
                     </p>
                   )}
-                  {v.shown === "notReporting" && (
-                    <p className="m-0 text-xs leading-relaxed text-[var(--color-warn)]">{w.hint}</p>
-                  )}
+                  {v.shown === "notReporting" && <p className="g2-warn m-0">{w.hint}</p>}
                 </li>
               ))}
             </ul>
           )}
-          <p className="m-0 text-xs text-[var(--color-muted)]">{w.note}</p>
+          <p className="g2-note">{w.note}</p>
         </div>
       )}
-    </Panel>
+    </section>
   );
 }

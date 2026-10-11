@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
+import "../../app-pages-g2.css";
 import { SeriesBoard } from "@/components/series/SeriesBoard";
 import type { SeriesRow } from "@/lib/series";
 import { getChannelContext } from "@/lib/channels-server";
@@ -57,7 +58,7 @@ export default async function SeriesPage() {
   const canEdit = atLeast(await resolveCurrentOrgRole(), "editor");
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open stagger-enter">
       <PageHeader icon="series" title={t.series.title} subtitle={t.series.subtitle} />
       <SeriesBoard
         series={series}

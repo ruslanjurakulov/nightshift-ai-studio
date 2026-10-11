@@ -4,8 +4,9 @@ import { relativeTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import type { Memory, MemoryKind, Opportunity, OpportunityKind } from "@/lib/memory";
-import { ConfidenceBadge, useMetricLabel } from "@/components/intel/Badges";
-import { EmptyState, Panel } from "@/components/ui";
+import { useMetricLabel } from "@/components/intel/Badges";
+import { StatusLamp } from "@/components/ui/StatusLamp";
+import type { Confidence } from "@/lib/decisions";
 
 const MEM_KEY: Record<MemoryKind, keyof Dictionary["intel"]> = {
   topic_outperforms: "memOutperforms",
@@ -25,6 +26,18 @@ const OPP_ACTION: Record<OpportunityKind, keyof Dictionary["intel"]> = {
   audience_demand: "oppActionCover",
 };
 
+/** Confidence as evidence strength, said as a lamp with its word — never a fabricated percentage. */
+function Confidence({ confidence }: { confidence: Confidence | null }) {
+  const { t } = useI18n();
+  if (!confidence) return <StatusLamp tone="idle" label={String(t.intel.confNone)} />;
+  const key = confidence === "HIGH" ? "confHigh" : confidence === "MEDIUM" ? "confMedium" : "confLow";
+  return <StatusLamp tone={confidence === "HIGH" ? "ok" : confidence === "MEDIUM" ? "info" : "warn"} label={String(t.intel[key])} />;
+}
+
+function None({ children }: { children: string }) {
+  return <p className="g2-none">{children}</p>;
+}
+
 /** Nightshift Memory and Opportunities. Both lists are empty until real evidence
  *  exists — there is no seeded or illustrative content. */
 export function MemoryView({
@@ -38,77 +51,91 @@ export function MemoryView({
   const metricLabel = useMetricLabel();
 
   return (
-    <div className="flex flex-col gap-4">
-      <Panel title={t.intel.memoryTitle}>
-        {memories.length === 0 ? (
-          <EmptyState>{t.intel.noMemories}</EmptyState>
-        ) : (
-          <ul className="divide-y divide-[var(--color-border)]">
-            {memories.map((m) => (
-              <li key={m.id} className="flex flex-col gap-2 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <p className="min-w-0 flex-1 text-sm text-[var(--color-fg)]">
-                    {fmt(String(t.intel[MEM_KEY[m.kind]]), {
-                      topic: m.topic,
-                      metric: m.metric ? metricLabel(m.metric).toLowerCase() : "",
-                    })}
-                  </p>
-                  <ConfidenceBadge confidence={m.confidence} />
-                </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 tnum text-xs text-[var(--color-muted)]">
-                  <span>
-                    {t.intel.memEvidence}:{" "}
-                    {m.kind === "topic_outperforms" || m.kind === "topic_underperforms"
-                      ? fmt(t.intel.memVideos, { n: m.evidenceCount })
-                      : fmt(t.intel.memSignals, { n: m.evidenceCount })}
-                  </span>
-                  {m.score != null && <span>{t.intel.decScore}: {m.score.toFixed(0)}</span>}
-                  {m.updatedAt && <span>{t.intel.memUpdated}: {relativeTime(m.updatedAt)}</span>}
-                  <span>{t.intel.memSources}: {m.sources.join(", ")}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
+    <div className="rhythm">
+      <section className="ns-desk g2-desk" aria-labelledby="memory-learned-title">
+        <div className="g2-stack-lg">
+          <h2 id="memory-learned-title" className="g2-h2">
+            {t.intel.memoryTitle}
+          </h2>
+          {memories.length === 0 ? (
+            <None>{t.intel.noMemories}</None>
+          ) : (
+            <ul className="g2-rows">
+              {memories.map((m, i) => (
+                <li key={m.id} className="g2-row">
+                  <span aria-hidden className="g2-row-no">{String(i + 1).padStart(2, "0")}</span>
+                  <div className="g2-row-main">
+                    <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+                      <p className="g2-statement">
+                        {fmt(String(t.intel[MEM_KEY[m.kind]]), {
+                          topic: m.topic,
+                          metric: m.metric ? metricLabel(m.metric).toLowerCase() : "",
+                        })}
+                      </p>
+                      <Confidence confidence={m.confidence} />
+                    </div>
+                    <div className="g2-evidence tnum">
+                      <span>
+                        {t.intel.memEvidence}:{" "}
+                        {m.kind === "topic_outperforms" || m.kind === "topic_underperforms"
+                          ? fmt(t.intel.memVideos, { n: m.evidenceCount })
+                          : fmt(t.intel.memSignals, { n: m.evidenceCount })}
+                      </span>
+                      {m.score != null && <span>{t.intel.decScore}: {m.score.toFixed(0)}</span>}
+                      {m.updatedAt && <span>{t.intel.memUpdated}: {relativeTime(m.updatedAt)}</span>}
+                      <span>{t.intel.memSources}: {m.sources.join(", ")}</span>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
 
-      <Panel title={t.intel.oppTitle}>
+      <section className="g2-section" aria-labelledby="memory-opps-title">
+        <h2 id="memory-opps-title" className="g2-h2">
+          {t.intel.oppTitle}
+        </h2>
         {opportunities.length === 0 ? (
-          <EmptyState>{t.intel.noOpportunities}</EmptyState>
+          <None>{t.intel.noOpportunities}</None>
         ) : (
-          <ul className="divide-y divide-[var(--color-border)]">
-            {opportunities.map((o) => (
-              <li key={o.id} className="flex flex-col gap-2 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <p className="min-w-0 flex-1 text-sm text-[var(--color-fg)]">
-                    {fmt(String(t.intel[OPP_KEY[o.kind]]), { subject: o.subject })}
+          <ul className="g2-rows">
+            {opportunities.map((o, i) => (
+              <li key={o.id} className="g2-row">
+                <span aria-hidden className="g2-row-no">{String(i + 1).padStart(2, "0")}</span>
+                <div className="g2-row-main">
+                  <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+                    <p className="g2-statement">{fmt(String(t.intel[OPP_KEY[o.kind]]), { subject: o.subject })}</p>
+                    <Confidence confidence={o.confidence} />
+                  </div>
+                  <p className="g2-action">
+                    {t.intel.oppAction}: {String(t.intel[OPP_ACTION[o.kind]])}
                   </p>
-                  <ConfidenceBadge confidence={o.confidence} />
-                </div>
-                <p className="tnum text-xs text-[var(--color-primary)]">
-                  {t.intel.oppAction}: {String(t.intel[OPP_ACTION[o.kind]])}
-                </p>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 tnum text-xs text-[var(--color-muted)]">
-                  <span>{t.intel.oppEvidence}: {o.evidenceCount}</span>
-                  {o.score != null && <span>{t.intel.decScore}: {o.score.toFixed(0)}</span>}
-                  {o.ts && <span>{relativeTime(o.ts)}</span>}
-                  <span>{t.intel.memSources}: {o.sources.join(", ")}</span>
+                  <div className="g2-evidence tnum">
+                    <span>{t.intel.oppEvidence}: {o.evidenceCount}</span>
+                    {o.score != null && <span>{t.intel.decScore}: {o.score.toFixed(0)}</span>}
+                    {o.ts && <span>{relativeTime(o.ts)}</span>}
+                    <span>{t.intel.memSources}: {o.sources.join(", ")}</span>
+                  </div>
                 </div>
               </li>
             ))}
           </ul>
         )}
-      </Panel>
+      </section>
 
       {/* Honest foundations: the backend records neither experiments nor enough
           history for predictions, so both say so instead of showing anything. */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Panel title={t.intel.experimentsTitle}>
-          <EmptyState>{t.intel.experimentsNotConfigured}</EmptyState>
-        </Panel>
-        <Panel title={t.intel.predictionTitle}>
-          <EmptyState>{t.intel.predictionInsufficient}</EmptyState>
-        </Panel>
+      <div className="g2-platforms">
+        <section className="g2-platform" aria-labelledby="memory-exp-title">
+          <h2 id="memory-exp-title" className="g2-h2">{t.intel.experimentsTitle}</h2>
+          <None>{t.intel.experimentsNotConfigured}</None>
+        </section>
+        <section className="g2-platform" aria-labelledby="memory-pred-title">
+          <h2 id="memory-pred-title" className="g2-h2">{t.intel.predictionTitle}</h2>
+          <None>{t.intel.predictionInsufficient}</None>
+        </section>
       </div>
     </div>
   );

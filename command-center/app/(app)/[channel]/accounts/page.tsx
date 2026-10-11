@@ -1,12 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
-import { Panel, EmptyState } from "@/components/ui";
+import { EmptyState } from "@/components/ui";
 import { AccountsBoard } from "@/components/accounts/AccountsBoard";
 import { getChannelContext } from "@/lib/channels-server";
 import { ACCOUNT_WINDOW_DAYS, isScoped, orgWide, rollupAccounts, scopeQuery } from "@/lib/channels";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
+import "../../app-pages-g2.css";
 import type { ContentQueueRow, SystemEventRow, VideoRow } from "@/lib/types";
 import { uploadedOnly } from "@/lib/heldVideos";
 
@@ -87,17 +88,17 @@ export default async function AccountsPage() {
   const rollup = rollupAccounts({ channels, videos, queue, events, credentials, lastEventAt });
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open stagger-enter">
       <PageHeader icon="accounts" title={t.accounts.title} subtitle={t.accounts.subtitle} />
 
       {notMigrated ? (
-        <Panel title={t.accounts.title}>
+        <section className="ns-desk g2-desk">
           <EmptyState>{t.channels.notMigrated}</EmptyState>
-        </Panel>
+        </section>
       ) : channels.length === 0 ? (
-        <Panel title={t.accounts.title}>
+        <section className="ns-desk g2-desk">
           <EmptyState>{t.accounts.empty}</EmptyState>
-        </Panel>
+        </section>
       ) : (
         <AccountsBoard rollup={rollup} here={isScoped(selection) ? selection : null} />
       )}

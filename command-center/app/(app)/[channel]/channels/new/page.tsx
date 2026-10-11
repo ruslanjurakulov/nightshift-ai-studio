@@ -2,6 +2,8 @@ import Link from "next/link";
 import { isSupabaseConfigured } from "@/lib/config";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { NotConfigured } from "@/components/NotConfigured";
+import { PageHeader } from "@/components/PageHeader";
+import "../../../app-pages-g2.css";
 import { AddChannelWizard } from "@/components/channels/AddChannelWizard";
 import { getDictionary } from "@/lib/i18n/server";
 import { getOrgContext } from "@/lib/orgs-server";
@@ -31,16 +33,12 @@ export default async function NewChannelPage({
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-      <div>
-        <Link
-          href={path("/channels")}
-          className="tap-link text-xs text-[var(--color-muted)] hover:text-[var(--color-fg)]"
-        >
+    <div className="rhythm ns-open mx-auto w-full max-w-3xl">
+      <div className="flex flex-col gap-3">
+        <Link href={path("/channels")} className="tap-link g2-link w-fit text-sm">
           ← {t.channels.title}
         </Link>
-        <h1 className="t-hero mt-2">{t.channels.newTitle}</h1>
-        <p className="t-lead mt-4">{t.channels.newSubtitle}</p>
+        <PageHeader icon="channels" title={t.channels.newTitle} subtitle={t.channels.newSubtitle} />
       </div>
       <AddChannelWizard
         orgId={org.supported ? (org.current?.id ?? null) : null}

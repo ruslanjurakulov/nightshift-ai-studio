@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
-import { Panel, StatCard, EmptyState } from "@/components/ui";
+import { EmptyState } from "@/components/ui";
+import { Figures } from "@/components/g2/Figures";
+import "../../app-pages-g2.css";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import { ExplainScore } from "@/components/topics/ExplainScore";
 import { num, decimal, relativeTime } from "@/lib/format";
@@ -62,111 +64,100 @@ export default async function TopicManager() {
   const topScore = topics.length > 0 ? topics[0].score : null;
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open stagger-enter">
       <PageHeader icon="topics" title={t.topics.title} subtitle={t.topics.subtitle} />
 
-      {showSharedNote && (
-        <p className="text-xs leading-relaxed text-[var(--color-muted)]">{t.channels.sharedScoresNote}</p>
-      )}
+      {showSharedNote && <p className="g2-note">{t.channels.sharedScoresNote}</p>}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <StatCard label={t.topics.scored} value={<AnimatedNumber value={scored} />} sub={t.topics.scoredSub} />
-        <StatCard
-          label={t.topics.strong}
-          value={<AnimatedNumber value={strong} />}
-          tone="ok"
-          sub={t.topics.strongSub}
-        />
-        <StatCard
-          label={t.topics.topScore}
-          value={topScore === null ? t.common.na : topScore.toFixed(0)}
-          tone={topScore !== null && topScore >= 50 ? "ok" : "warn"}
-          sub={t.topics.topScoreSub}
-        />
-      </div>
+      <Figures
+        items={[
+          { label: t.topics.scored, value: <AnimatedNumber value={scored} />, sub: t.topics.scoredSub },
+          { label: t.topics.strong, value: <AnimatedNumber value={strong} />, tone: "ok", sub: t.topics.strongSub },
+          {
+            label: t.topics.topScore,
+            value: topScore === null ? t.common.na : topScore.toFixed(0),
+            tone: topScore !== null && topScore >= 50 ? "ok" : "warn",
+            sub: t.topics.topScoreSub,
+          },
+        ]}
+      />
 
-      <Panel title={t.topics.scores}>
-        {dbError ? (
-          <EmptyState>{t.topics.readErr}</EmptyState>
-        ) : topics.length === 0 ? (
-          <EmptyState>{t.topics.empty}</EmptyState>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+      <section className="ns-desk g2-desk" aria-labelledby="topics-scores-title">
+        <div className="g2-stack-lg">
+          <h2 id="topics-scores-title" className="g2-h2">
+            {t.topics.scores}
+          </h2>
+          {dbError ? (
+            <EmptyState>{t.topics.readErr}</EmptyState>
+          ) : topics.length === 0 ? (
+            <EmptyState>{t.topics.empty}</EmptyState>
+          ) : (
+            <table className="g2-ledger g2-ledger-wide">
               <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
-                  <th className="px-4 py-2 font-semibold">{t.topics.thTopic}</th>
-                  <th className="px-4 py-2 text-right font-semibold">{t.topics.thScore}</th>
-                  <th className="px-4 py-2 text-right font-semibold">{t.topics.thVideos}</th>
-                  <th className="px-4 py-2 text-right font-semibold">{t.topics.thAvgViews}</th>
-                  <th className="px-4 py-2 font-semibold">{t.topics.thReason}</th>
-                  <th className="px-4 py-2 font-semibold">{t.topics.thUpdated}</th>
+                <tr>
+                  <th scope="col">{t.topics.thTopic}</th>
+                  <th scope="col" className="num">{t.topics.thScore}</th>
+                  <th scope="col" className="num">{t.topics.thVideos}</th>
+                  <th scope="col" className="num">{t.topics.thAvgViews}</th>
+                  <th scope="col">{t.topics.thReason}</th>
+                  <th scope="col">{t.topics.thUpdated}</th>
                 </tr>
               </thead>
               <tbody>
                 {topics.map((tp) => (
-                  <tr key={tp.topic} className="border-b border-[var(--color-border)]/50 transition-colors hover:bg-[var(--color-panel-2)]">
-                    <td className="px-4 py-2 text-[var(--color-fg)]">{tp.topic}</td>
-                    <td className="px-4 py-2 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <ExplainScore score={tp.score} reason={tp.reason} signals={signalsByTopic.get(tp.topic) ?? []} />
+                  <tr key={tp.topic}>
+                    <td className="font-semibold text-[var(--color-fg)]">{tp.topic}</td>
+                    <td data-label={t.topics.thScore} data-wide className="num">
+                      <div className="g2-score">
+                        <span className="g2-bar" aria-hidden>
+                          <span style={{ width: `${Math.max(0, Math.min(100, tp.score))}%` }} data-strong={tp.score >= 50 ? "true" : undefined} />
+                        </span>
                         <span
-                          className="tnum font-bold tabular-nums"
+                          className="tnum font-semibold tabular-nums"
                           style={{ color: tp.score >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}
                         >
                           {tp.score.toFixed(0)}
                         </span>
+                        <ExplainScore score={tp.score} reason={tp.reason} signals={signalsByTopic.get(tp.topic) ?? []} />
                       </div>
                     </td>
-                    <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-muted)]">
-                      {num(tp.videos_analyzed)}
-                    </td>
-                    <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-muted)]">
-                      {decimal(tp.avg_views_per_day)}
-                    </td>
-                    <td className="px-4 py-2 max-w-xs truncate text-[var(--color-muted)]">
+                    <td data-label={t.topics.thVideos} className="num dim">{num(tp.videos_analyzed)}</td>
+                    <td data-label={t.topics.thAvgViews} className="num dim">{decimal(tp.avg_views_per_day)}</td>
+                    <td data-label={t.topics.thReason} data-wide className="dim g2-reason">
                       {tp.reason ?? t.common.na}
                     </td>
-                    <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">
-                      {relativeTime(tp.updated_at)}
-                    </td>
+                    <td data-label={t.topics.thUpdated} className="dim">{relativeTime(tp.updated_at)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
-      </Panel>
+          )}
+        </div>
+      </section>
 
-      <Panel title={t.topics.demand}>
+      <section className="g2-section" aria-labelledby="topics-demand-title">
+        <h2 id="topics-demand-title" className="g2-h2">
+          {t.topics.demand}
+        </h2>
         {demand.length === 0 ? (
           <EmptyState>{t.topics.noDemand}</EmptyState>
         ) : (
-          <ul className="divide-y divide-[var(--color-border)]">
+          <ul className="g2-rows">
             {demand.map((d) => (
-              <li
-                key={d.id}
-                className="row-sweep flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-[var(--color-panel-2)]"
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-sm text-[var(--color-fg)]">{d.topic_phrase}</div>
-                  <div className="tnum text-xs text-[var(--color-muted)]">
-                    {fmt(t.topics.polled, { t: relativeTime(d.polled_date) })}
-                  </div>
+              <li key={d.id} className="g2-row g2-row-count">
+                <div className="g2-row-main">
+                  <div className="g2-strong">{d.topic_phrase}</div>
+                  <div className="g2-note tnum">{fmt(t.topics.polled, { t: relativeTime(d.polled_date) })}</div>
                 </div>
-                <div className="shrink-0 text-right">
-                  <div className="tnum text-lg font-bold tabular-nums text-[var(--color-primary)]">
-                    {num(d.mention_count)}
-                  </div>
-                  <div className="text-xs text-[var(--color-muted)]">
-                    {t.topics.mentions}
-                  </div>
+                <div className="g2-count">
+                  <div className="tnum">{num(d.mention_count)}</div>
+                  <div className="g2-label">{t.topics.mentions}</div>
                 </div>
               </li>
             ))}
           </ul>
         )}
-      </Panel>
+      </section>
     </div>
   );
 }

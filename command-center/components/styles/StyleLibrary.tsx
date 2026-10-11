@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import { STYLE_LIBRARY, STYLE_TAGS, filterLibrary, type LibraryStyle, type StyleTag } from "@/lib/styles/library";
+import { Chip, ChipRow } from "@/components/ui/Chip";
 import { StyleTile } from "@/components/styles/StyleTile";
 import { StyleDetailSheet, type SheetBusy } from "@/components/styles/StyleDetailSheet";
 
@@ -139,19 +140,19 @@ export function StyleLibrary({
     addState === "no-org" ? ts.noOrg : addState === "not-enabled" ? ts.notEnabled : addState === "read-failed" ? ts.readFailed : null;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-8">
       {stateNote && (
-        <p role="status" className="panel p-4 sm:p-5 text-sm text-[var(--color-muted)]">
+        <p role="status" className="g2-note !max-w-none border-t border-[var(--ns-rule)] pt-4">
           {stateNote}
         </p>
       )}
 
-      <div className="flex flex-col gap-3">
+      <section className="ns-desk g2-desk g2-wizard flex flex-col gap-4" aria-label={ts.searchLabel}>
         <div className="relative">
           <label htmlFor={searchId} className="sr-only">
             {ts.searchLabel}
           </label>
-          <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-muted)]" />
+          <Search aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[var(--color-muted)]" />
           <input
             id={searchId}
             type="search"
@@ -159,20 +160,20 @@ export function StyleLibrary({
             onChange={(e) => setQuery(e.target.value)}
             placeholder={ts.searchPlaceholder}
             autoComplete="off"
-            className="w-full rounded-full border border-[var(--color-border)] bg-[var(--color-panel-2)] py-2.5 pl-9 pr-4 text-base text-[var(--color-fg)] outline-none focus-visible:border-[var(--color-primary)] sm:text-[14px]"
+            className="ns-field w-full !pl-10"
           />
         </div>
 
-        <div role="group" aria-label={ts.filterLabel} className="flex flex-wrap gap-2">
+        <ChipRow label={ts.filterLabel} wrap>
           {STYLE_TAGS.map((tag) => (
-            <button key={tag} type="button" aria-pressed={tags.includes(tag)} onClick={() => toggleTag(tag)} className="studio-chip">
+            <Chip key={tag} pressed={tags.includes(tag)} onClick={() => toggleTag(tag)}>
               {ts.tags[tag]}
-            </button>
+            </Chip>
           ))}
-        </div>
+        </ChipRow>
 
-        <div className="flex items-center justify-between gap-3 text-xs text-[var(--color-muted)]">
-          <p aria-live="polite" className="m-0">
+        <div className="flex items-center justify-between gap-3 text-[13px] text-[var(--color-muted)]">
+          <p aria-live="polite" className="m-0 tnum">
             {fmt(ts.count, { n: shown.length, total: STYLE_LIBRARY.length })}
           </p>
           {filtered && (
@@ -182,51 +183,58 @@ export function StyleLibrary({
                 setQuery("");
                 setTags([]);
               }}
-              className="tap-link text-[var(--color-primary)] underline"
+              className="tap-link g2-link"
             >
               {ts.clear}
             </button>
           )}
         </div>
-      </div>
+      </section>
 
       {shown.length === 0 ? (
-        <div className="panel flex flex-col items-center gap-3 px-6 py-10 text-center">
-          <p className="m-0 max-w-[46ch] text-sm text-[var(--color-muted)]">{ts.noMatch}</p>
+        <div className="flex flex-col items-start gap-3">
+          <p className="g2-none">{ts.noMatch}</p>
           <button
             type="button"
             onClick={() => {
               setQuery("");
               setTags([]);
             }}
-            className="btn-sky is-quiet pill px-4 py-1.5 text-sm"
+            className="btn-quiet"
           >
             {ts.clear}
           </button>
         </div>
       ) : (
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-          {shown.map((style) => (
-            <li key={style.id}>
+        <ul className="g2-styles" aria-label={ts.title}>
+          {shown.map((style, i) => (
+            <li key={style.id} className="ns-frame g2-style" data-added={added[style.id] ? "true" : undefined}>
               <button
                 type="button"
                 onClick={() => show(style)}
                 aria-haspopup="dialog"
                 aria-label={fmt(ts.open, { name: style.name[locale] })}
-                className="panel flex h-full w-full flex-col overflow-hidden p-0 text-left transition-colors hover:border-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+                className="g2-style-btn"
               >
-                <StyleTile style={style} label={ts.previewLabel} className="aspect-[4/3] w-full" />
-                <span className="flex flex-1 flex-col gap-1 p-3">
+                <span className="ns-edge" aria-hidden>
+                  <span className="ns-edge-no">{String(i + 1).padStart(2, "0")}</span>
+                  <span>▸</span>
+                  <span>{ts.previewLabel}</span>
+                </span>
+                <span className="ns-frame-media">
+                  <StyleTile style={style} className="aspect-[4/3] w-full" />
+                </span>
+                <span className="g2-style-body">
                   <span className="flex items-start justify-between gap-2">
-                    <span className="text-sm font-semibold text-[var(--color-fg)]">{style.name[locale]}</span>
+                    <span className="g2-strong">{style.name[locale]}</span>
                     {added[style.id] && (
-                      <span className="pill inline-flex shrink-0 items-center gap-1 border border-[var(--color-border)] px-1.5 py-0.5 text-xs text-[var(--color-muted)]">
-                        <Check aria-hidden className="size-3" />
+                      <span className="g2-added">
+                        <Check aria-hidden className="size-3.5" />
                         {ts.addedBadge}
                       </span>
                     )}
                   </span>
-                  <span className="line-clamp-2 text-xs text-[var(--color-muted)]">{style.goodFor[locale]}</span>
+                  <span className="line-clamp-2 text-[13px] leading-snug text-[var(--color-muted)]">{style.goodFor[locale]}</span>
                 </span>
               </button>
             </li>
