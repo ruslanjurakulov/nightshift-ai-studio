@@ -1,7 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
-import { StatCard, Panel, EmptyState, StatusPill } from "@/components/ui";
+import { EmptyState } from "@/components/ui";
+import { Figures } from "@/components/g2/Figures";
+import { ChannelMark } from "@/components/channels/ChannelMark";
+import "../../app-pages-g2.css";
 import { num } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
@@ -111,112 +114,105 @@ export default async function PortfolioPage() {
   const tilde = (partial: boolean) => (partial ? "~" : "");
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open stagger-enter">
       <PageHeader icon="portfolio" title={t.portfolio.title} subtitle={t.portfolio.subtitle} />
 
       {notMigrated ? (
-        <Panel title={t.portfolio.title}>
+        <section className="ns-desk g2-desk">
           <EmptyState>{t.portfolio.empty}</EmptyState>
-        </Panel>
+        </section>
       ) : channels.length === 0 ? (
-        <Panel title={t.portfolio.title}>
+        <section className="ns-desk g2-desk">
           <EmptyState>{t.portfolio.empty}</EmptyState>
-        </Panel>
+        </section>
       ) : !anyMoney ? (
-        <Panel title={t.portfolio.title}>
+        <section className="ns-desk g2-desk">
           <EmptyState>{t.portfolio.notConfigured}</EmptyState>
-        </Panel>
+        </section>
       ) : (
         <>
           {/* ------------------------------------------------------- summary */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard
-              label={t.portfolio.totalSpend}
-              value={`${tilde(totals.costPartial)}${usd(totals.totalCost, dash)}`}
-              tone={totals.totalCost === null ? "idle" : undefined}
-            />
-            <StatCard
-              label={t.portfolio.totalRevenue}
-              value={`${tilde(totals.revenuePartial)}${usd(totals.totalRevenue, dash)}`}
-              tone={totals.totalRevenue === null ? "idle" : "ok"}
-            />
-            <StatCard
-              label={t.portfolio.totalProfit}
-              value={usd(totals.totalProfit, dash)}
-              tone={
-                totals.totalProfit === null ? "idle" : totals.totalProfit >= 0 ? "ok" : "fail"
-              }
-            />
-            <StatCard label={t.portfolio.avgMargin} value={pct(totals.avgMargin, dash)} />
-          </div>
+          <Figures
+            items={[
+              {
+                label: t.portfolio.totalSpend,
+                value: `${tilde(totals.costPartial)}${usd(totals.totalCost, dash)}`,
+                tone: totals.totalCost === null ? "idle" : undefined,
+              },
+              {
+                label: t.portfolio.totalRevenue,
+                value: `${tilde(totals.revenuePartial)}${usd(totals.totalRevenue, dash)}`,
+                tone: totals.totalRevenue === null ? "idle" : "ok",
+              },
+              {
+                label: t.portfolio.totalProfit,
+                value: usd(totals.totalProfit, dash),
+                tone: totals.totalProfit === null ? "idle" : totals.totalProfit >= 0 ? "ok" : "fail",
+              },
+              { label: t.portfolio.avgMargin, value: pct(totals.avgMargin, dash) },
+            ]}
+          />
 
           {(totals.costPartial || totals.revenuePartial) && (
-            <p className="text-xs leading-relaxed text-[var(--color-muted)]">
-              {t.portfolio.floorNote}
-            </p>
+            <p className="g2-note">{t.portfolio.floorNote}</p>
           )}
 
           {/* -------------------------------------------------- per-channel */}
-          <Panel title={t.portfolio.title}>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+          <section className="ns-desk g2-desk" aria-labelledby="portfolio-ledger-title">
+            <div className="g2-stack-lg">
+              <h2 id="portfolio-ledger-title" className="g2-h2">
+                {t.portfolio.title}
+              </h2>
+              <table className="g2-ledger g2-ledger-wide">
                 <thead>
-                  <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
-                    <th className="px-4 py-2 font-semibold">{t.portfolio.colChannel}</th>
-                    <th className="px-4 py-2 text-right font-semibold">{t.portfolio.colVideos}</th>
-                    <th className="px-4 py-2 text-right font-semibold">{t.portfolio.colSpend}</th>
-                    <th className="px-4 py-2 text-right font-semibold">{t.portfolio.colRevenue}</th>
-                    <th className="px-4 py-2 text-right font-semibold">{t.portfolio.colProfit}</th>
-                    <th className="px-4 py-2 text-right font-semibold">{t.portfolio.colMargin}</th>
-                    <th className="px-4 py-2 text-right font-semibold">
-                      {t.portfolio.colCostPerVideo}
-                    </th>
-                    <th className="px-4 py-2 text-right font-semibold">{t.portfolio.colRpm}</th>
+                  <tr>
+                    <th scope="col">{t.portfolio.colChannel}</th>
+                    <th scope="col" className="num">{t.portfolio.colVideos}</th>
+                    <th scope="col" className="num">{t.portfolio.colSpend}</th>
+                    <th scope="col" className="num">{t.portfolio.colRevenue}</th>
+                    <th scope="col" className="num">{t.portfolio.colProfit}</th>
+                    <th scope="col" className="num">{t.portfolio.colMargin}</th>
+                    <th scope="col" className="num">{t.portfolio.colCostPerVideo}</th>
+                    <th scope="col" className="num">{t.portfolio.colRpm}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {totals.channels.map((c) => {
                     const here = c.channelId === hereId;
                     return (
-                      <tr
-                        key={c.channelId}
-                        className="border-b border-[var(--color-border)]/50 transition-colors hover:bg-[var(--color-panel-2)]"
-                      >
-                        <td className="px-4 py-2 text-[var(--color-fg)]">
-                          <span className="flex items-center gap-2">
-                            <span className="min-w-0 truncate">{c.name}</span>
-                            {here && <StatusPill tone="run" label="HERE" />}
+                      <tr key={c.channelId}>
+                        <td>
+                          <span className="g2-ledger-name">
+                            <ChannelMark name={c.name} size="sm" />
+                            <span>
+                              <span className="font-semibold text-[var(--color-fg)]">{c.name}</span>
+                              {here && <small className="g2-here">{t.accounts.youAreHere}</small>}
+                            </span>
                           </span>
                         </td>
-                        <td className="tnum px-4 py-2 text-right tabular-nums text-[var(--color-muted)]">
-                          {num(c.videoCount)}
-                        </td>
-                        <td className="tnum px-4 py-2 text-right tabular-nums">
+                        <td data-label={t.portfolio.colVideos} className="num dim">{num(c.videoCount)}</td>
+                        <td data-label={t.portfolio.colSpend} className="num">
                           <MoneyCell text={usd(c.cost, dash)} known={c.cost !== null} />
                         </td>
-                        <td className="tnum px-4 py-2 text-right tabular-nums">
+                        <td data-label={t.portfolio.colRevenue} className="num">
                           <MoneyCell text={usd(c.revenue, dash)} known={c.revenue !== null} />
                         </td>
-                        <td className="tnum px-4 py-2 text-right tabular-nums">
+                        <td data-label={t.portfolio.colProfit} className="num">
                           {c.profit === null ? (
-                            <span className="text-[var(--color-muted)]">{dash}</span>
+                            <span className="dim">{dash}</span>
                           ) : (
-                            <span
-                              style={{
-                                color: c.profit >= 0 ? "var(--color-ok)" : "var(--color-fail)",
-                              }}
-                            >
+                            <span style={{ color: c.profit >= 0 ? "var(--color-ok)" : "var(--color-fail)" }}>
                               {usd(c.profit, dash)}
                             </span>
                           )}
                         </td>
-                        <td className="tnum px-4 py-2 text-right tabular-nums">
+                        <td data-label={t.portfolio.colMargin} className="num">
                           <MoneyCell text={pct(c.margin, dash)} known={c.margin !== null} />
                         </td>
-                        <td className="tnum px-4 py-2 text-right tabular-nums">
+                        <td data-label={t.portfolio.colCostPerVideo} className="num">
                           <MoneyCell text={usd(c.costPerVideo, dash)} known={c.costPerVideo !== null} />
                         </td>
-                        <td className="tnum px-4 py-2 text-right tabular-nums">
+                        <td data-label={t.portfolio.colRpm} className="num">
                           <MoneyCell text={usd(c.rpm, dash)} known={c.rpm !== null} />
                         </td>
                       </tr>
@@ -225,11 +221,9 @@ export default async function PortfolioPage() {
                 </tbody>
               </table>
             </div>
-          </Panel>
+          </section>
 
-          <p className="tnum text-xs leading-relaxed text-[var(--color-muted)]">
-            {t.portfolio.unknownNote}
-          </p>
+          <p className="g2-note tnum">{t.portfolio.unknownNote}</p>
         </>
       )}
     </div>
@@ -239,6 +233,6 @@ export default async function PortfolioPage() {
 /** A right-aligned money/percent cell: real value in foreground, blank muted. */
 function MoneyCell({ text, known }: { text: string; known: boolean }) {
   return (
-    <span className={known ? "text-[var(--color-fg)]" : "text-[var(--color-muted)]"}>{text}</span>
+    <span className={known ? "text-[var(--color-fg)]" : "dim"}>{text}</span>
   );
 }

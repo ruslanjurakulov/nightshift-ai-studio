@@ -2,10 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
-import { StatusPill } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
 import { useConfirm } from "@/components/feedback/ConfirmDialog";
 import { relativeTime } from "@/lib/format";
 import type { Role } from "@/lib/auth/roles-shared";
@@ -75,18 +74,17 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
   }
 
   return (
-    <section className="panel flex flex-col gap-3 p-5 sm:p-6" aria-labelledby="social-accounts-title">
+    <section className="g2-section" aria-labelledby="social-accounts-title">
       <header>
-        <h2 id="social-accounts-title" className="text-sm font-semibold">
+        <h2 id="social-accounts-title" className="g2-h2">
           {ts.title}
         </h2>
-        <p className="mt-1 text-xs text-[var(--color-muted)]">{ts.subtitle}</p>
+        <p className="g2-sub">{ts.subtitle}</p>
       </header>
 
       {result && (
         <p
-          className="text-sm"
-          style={{ color: result.word === "connected" ? "var(--color-primary)" : "var(--color-warn)" }}
+          className={result.word === "connected" ? "g2-ok" : "g2-warn"}
           role="status"
         >
           {fmt(ts.results[result.word], { platform: name(result.platform) })}
@@ -94,65 +92,48 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
       )}
 
       {!hasOrg ? (
-        <p className="text-xs text-[var(--color-muted)]">{ts.noOrg}</p>
+        <p className="g2-note">{ts.noOrg}</p>
       ) : !available ? (
-        <p className="text-xs text-[var(--color-muted)]">{ts.notMigrated}</p>
+        <p className="g2-note">{ts.notMigrated}</p>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="g2-platforms">
           {SOCIAL_PLATFORMS.map((platform) => {
             const rows = accounts.filter((a) => a.platform === platform);
             const actions = socialPanelActions({ role, configured: configured[platform], available });
             return (
-              <div
-                key={platform}
-                className="rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3"
-              >
-                <div className="flex items-center gap-2">
-                  <PlatformLogo platform={platform} size={18} />
-                  <span className="text-sm font-semibold">{name(platform)}</span>
+              <div key={platform} className="g2-platform">
+                <div className="g2-platform-name">
+                  <PlatformLogo platform={platform} size={20} />
+                  <h3 className="g2-h3">{name(platform)}</h3>
                 </div>
 
                 {rows.length === 0 ? (
-                  <p className="mt-2 text-xs text-[var(--color-muted)]">{ts.none}</p>
+                  <p className="g2-note">{ts.none}</p>
                 ) : (
-                  <ul className="mt-2 flex flex-col gap-2">
+                  <ul className="g2-accounts">
                     {rows.map((a) => (
-                      <li key={a.id} className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex min-w-0 items-center gap-2">
+                      <li key={a.id}>
+                        <div className="flex min-w-0 items-center gap-3">
                           {a.avatar_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={a.avatar_url}
-                              alt=""
-                              width={28}
-                              height={28}
-                              referrerPolicy="no-referrer"
-                              className="h-7 w-7 shrink-0 rounded-full border border-[var(--color-border)] object-cover"
-                            />
+                            <span className="g2-avatar">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={a.avatar_url} alt="" width={32} height={32} referrerPolicy="no-referrer" />
+                            </span>
                           ) : (
-                            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[var(--color-border)]">
-                              <PlatformLogo platform={platform} size={14} />
+                            <span className="g2-avatar">
+                              <PlatformLogo platform={platform} size={16} />
                             </span>
                           )}
                           <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="truncate text-sm">{accountLabel(a)}</span>
-                              {a.status === "connected" && (
-                                <CheckCircle2
-                                  size={14}
-                                  aria-label={ts.connected}
-                                  style={{ color: "var(--color-ok)" }}
-                                />
-                              )}
-                            </div>
-                            <div className="tnum text-xs text-[var(--color-muted)]">
+                            <div className="truncate text-[0.9375rem] font-medium text-[var(--color-fg)]">{accountLabel(a)}</div>
+                            <div className="tnum text-[13px] text-[var(--color-muted)]">
                               {a.username && a.display_name ? `@${a.username} · ` : ""}
                               {a.connected_at ? fmt(ts.since, { when: relativeTime(a.connected_at) }) : ""}
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <StatusPill
+                        <div className="g2-actions">
+                          <StatusLamp
                             tone={a.status === "connected" ? "ok" : a.status === "expired" ? "warn" : "fail"}
                             label={a.status === "connected" ? ts.connected : a.status === "expired" ? ts.expired : ts.error}
                           />
@@ -161,7 +142,7 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
                               type="button"
                               onClick={() => disconnect(a)}
                               disabled={busy !== null || pending}
-                              className="btn-sky ghost pill px-3 py-1 text-xs disabled:opacity-50"
+                              className="btn-quiet disabled:opacity-50"
                             >
                               {busy === a.id ? ts.disconnecting : ts.disconnect}
                             </button>
@@ -172,43 +153,41 @@ export function SocialAccountsPanel({ accounts, available, hasOrg, role, configu
                   </ul>
                 )}
 
-                <div className="mt-3 flex flex-wrap items-center gap-2">
+                <div className="g2-actions">
                   {actions.connect ? (
-                    <a href={`/api/oauth/${platform}/start`} className="btn-sky pill px-4 py-1.5 text-xs">
+                    <a href={`/api/oauth/${platform}/start`} className="btn-quiet">
                       {rows.length ? ts.connectAnother : fmt(ts.connect, { platform: name(platform) })}
                     </a>
                   ) : !configured[platform] ? (
-                    <span className="text-xs text-[var(--color-muted)]" title={fmt(ts.notConfiguredHint, { platform: name(platform) })}>
+                    <span className="g2-note" title={fmt(ts.notConfiguredHint, { platform: name(platform) })}>
                       {fmt(ts.notAvailableYet, { platform: name(platform) })}
                     </span>
                   ) : (
-                    <span className="text-xs text-[var(--color-muted)]">{ts.viewerHint}</span>
+                    <span className="g2-note">{ts.viewerHint}</span>
                   )}
                 </div>
-                {platform === "tiktok" && (
-                  <p className="mt-2 text-xs text-[var(--color-muted)]">{ts.tiktokPrivateNote}</p>
-                )}
+                {platform === "tiktok" && <p className="g2-note">{ts.tiktokPrivateNote}</p>}
               </div>
             );
           })}
         </div>
       )}
 
-      {available && <p className="text-xs text-[var(--color-muted)]">{ts.vaultNote}</p>}
+      {available && <p className="g2-note">{ts.vaultNote}</p>}
       {disconnected && (
-        <p className="text-xs text-[var(--color-fg)]" role="status">
+        <p className="g2-note" role="status">
           {ts.disconnectedNotice}{" "}
           <a
             href={PLATFORM_PERMISSIONS_URL[disconnected]}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[var(--color-primary)] underline"
+            className="g2-link"
           >
             {PLATFORM_PERMISSIONS_URL[disconnected].replace(/^https:\/\//, "")}
           </a>
         </p>
       )}
-      {error && <p className="tnum text-xs text-[var(--color-fail)]">{fmt(ts.disconnectFailed, { error })}</p>}
+      {error && <p className="g2-fail tnum">{fmt(ts.disconnectFailed, { error })}</p>}
       {dialog}
     </section>
   );

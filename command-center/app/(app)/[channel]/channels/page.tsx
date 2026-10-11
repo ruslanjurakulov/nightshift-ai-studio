@@ -3,13 +3,14 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { NotConfigured } from "@/components/NotConfigured";
-import { Panel, EmptyState } from "@/components/ui";
+import { EmptyState } from "@/components/ui";
 import { ChannelCard } from "@/components/channels/ChannelCard";
 import { ChannelComparison } from "@/components/channels/ChannelComparison";
 import { getChannelContext } from "@/lib/channels-server";
 import { channelHealth, channelSlug, channelStats, orgWide, scopeQuery } from "@/lib/channels";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
+import "../../app-pages-g2.css";
 import type {
   ContentQueueRow,
   MetricsSnapshotRow,
@@ -109,20 +110,47 @@ export default async function ChannelsPage({
   // the Edit button from someone it would refuse.
   const canEditDna = atLeast(orgRole, "editor");
 
+  const thumbnails = Object.fromEntries(channels.map((c) => [c.channel_id, c.credential_ref?.youtube_thumbnail ?? null]));
+
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open stagger-enter">
       <PageHeader
         icon="channels"
         title={t.channels.title}
         subtitle={t.channels.subtitle}
         actions={
           !notMigrated ? (
-            <Link href={path("/channels/new")} className="btn-sky pill px-5 py-2.5 text-sm">
+            <Link href={path("/channels/new")} className="btn-primary">
               + {t.channels.add}
             </Link>
           ) : undefined
         }
       />
+
+      {ytResult && (
+        <p className={ytResult === "connected" ? "g2-ok" : "g2-warn"} role="status">
+          {t.channelTokens.results[ytResult]}
+        </p>
+      )}
+
+      {notMigrated ? (
+        <section className="ns-desk g2-desk">
+          <EmptyState>{t.channels.notMigrated}</EmptyState>
+        </section>
+      ) : channels.length === 0 ? (
+        <section className="ns-desk g2-desk">
+          <EmptyState>{t.channels.empty}</EmptyState>
+        </section>
+      ) : (
+        <section className="ns-desk g2-desk" aria-labelledby="channels-compare-title">
+          <div className="g2-stack-lg">
+            <h2 id="channels-compare-title" className="g2-h2">
+              {t.channels.compare}
+            </h2>
+            <ChannelComparison stats={stats} thumbnails={thumbnails} />
+          </div>
+        </section>
+      )}
 
       <SocialAccountsPanel
         accounts={social.rows}
@@ -133,35 +161,11 @@ export default async function ChannelsPage({
         result={socialResult}
       />
 
-      {notMigrated ? (
-        <Panel title={t.channels.title}>
-          <EmptyState>{t.channels.notMigrated}</EmptyState>
-        </Panel>
-      ) : channels.length === 0 ? (
-        <Panel title={t.channels.title}>
-          <EmptyState>{t.channels.empty}</EmptyState>
-        </Panel>
-      ) : (
+      {!notMigrated && channels.length > 0 && (
         <>
-          <Panel title={t.channels.compare}>
-            <ChannelComparison stats={stats} />
-          </Panel>
+          <p className="g2-note">{t.channels.isolationNote}</p>
 
-          <p className="text-xs leading-relaxed text-[var(--color-muted)]">
-            {t.channels.isolationNote}
-          </p>
-
-          {ytResult && (
-            <p
-              className="text-sm"
-              style={{ color: ytResult === "connected" ? "var(--color-primary)" : "var(--color-warn)" }}
-              role="status"
-            >
-              {t.channelTokens.results[ytResult]}
-            </p>
-          )}
-
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="g2-stack-lg">
             {channels.map((channel) => (
               <ChannelCard
                 key={channel.channel_id}

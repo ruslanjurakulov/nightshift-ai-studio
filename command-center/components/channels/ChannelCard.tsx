@@ -7,9 +7,10 @@ import { isChannelVerified } from "@/lib/channels";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
-import { StatusPill } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
+import { ChannelMark } from "@/components/channels/ChannelMark";
 import { relativeTime } from "@/lib/format";
-import type { ChannelHealth, HealthTone } from "@/lib/channels";
+import type { ChannelHealth } from "@/lib/channels";
 import type { ChannelCredentialRow, ChannelRow } from "@/lib/types";
 import { ChannelTokenPanel, type ChannelTokenPanelProps } from "@/components/channels/ChannelTokenPanel";
 
@@ -168,33 +169,41 @@ export function ChannelCard({
     startTransition(() => router.refresh());
   }
 
+  const credentialLamp = credential
+    ? { tone: credentialTone(credential.status), label: credentialLabel(credential.status, t) }
+    : { tone: "idle" as const, label: t.channels.notConnected };
+  const healthLamp = {
+    tone: health.tone,
+    label: health.actionRequired
+      ? t.channels.actionRequired
+      : health.tone === "ok"
+        ? t.channels.healthy
+        : health.tone === "warn"
+          ? t.status.warn
+          : health.tone === "fail"
+            ? t.status.failed
+            : t.status.idle,
+  };
+  const titleId = `channel-title-${channel.channel_id}`;
+
   return (
-    <section className="panel flex flex-col gap-3 p-5 sm:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-3">
+    <section id={`channel-${channel.channel_id}`} aria-labelledby={titleId} className="g2-channel">
+      <header className="g2-channel-head">
+        <div className="g2-channel-id">
           {/* The channel's own avatar, pulled from YouTube when the channel was
               confirmed. Public, and the fastest way to see at a glance that the
               right channel is wired up. */}
-          {channel.credential_ref?.youtube_thumbnail && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={channel.credential_ref.youtube_thumbnail}
-              alt=""
-              width={36}
-              height={36}
-              className="h-9 w-9 shrink-0 rounded-full border border-[var(--color-border)] object-cover"
-            />
-          )}
+          <ChannelMark name={channel.name} thumbnail={channel.credential_ref?.youtube_thumbnail ?? null} />
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold">{channel.name}</h2>
-            <p className="tnum truncate text-xs text-[var(--color-muted)]">
+            <h2 id={titleId} className="g2-h2">{channel.name}</h2>
+            <p className="g2-sub tnum">
               {channel.credential_ref?.youtube_custom_url || channel.channel_id}
               {channel.niche ? ` · ${channel.niche}` : ""}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <StatusPill
+        <div className="g2-actions">
+          <StatusLamp
             tone={!verified ? "warn" : active ? "ok" : "idle"}
             label={!verified ? t.channels.verifyGate : active ? t.channels.active : t.channels.paused}
           />
@@ -203,183 +212,118 @@ export function ChannelCard({
             onClick={toggleStatus}
             disabled={busy || pending || (!active && !verified)}
             title={!active && !verified ? t.channels.verifyRequired : undefined}
-            className="btn-sky ghost pill px-4 py-2 text-xs disabled:opacity-50"
+            className="btn-quiet disabled:opacity-50"
           >
             {busy ? t.channels.saving : active ? t.channels.pause : t.channels.activate}
           </button>
         </div>
       </header>
 
-      {!verified && (
-        <p className="max-w-[72ch] text-xs leading-relaxed text-[var(--color-warn)]">
-          {t.channels.verifyRequired}
-        </p>
-      )}
+      {!verified && <p className="g2-warn">{t.channels.verifyRequired}</p>}
 
-      {/* Auto publish. Off is the default and the safe direction; the switch
-          says which way it is currently pointing, in words, not just colour. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-4 py-3">
-        <div className="min-w-0">
-          <div className="text-xs text-[var(--color-muted)]">
-            {t.channels.autoLabel}
-          </div>
-          <p className="m-0 mt-1 max-w-[52ch] text-xs leading-relaxed text-[var(--color-muted)]">
-            {auto ? t.channels.autoOnHint : t.channels.autoOffHint}
-          </p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={auto}
-          onClick={toggleAuto}
-          disabled={autoBusy || pending || !canControl}
-          title={canControl ? undefined : t.channels.adminOnly}
-          className="btn-sky pill shrink-0 px-4 py-2 text-xs disabled:opacity-50"
-          style={{
-            borderColor: auto ? "var(--color-warn)" : "var(--color-border)",
-            color: auto ? "var(--color-warn)" : "var(--color-muted)",
-          }}
-        >
-          {autoBusy ? t.channels.saving : auto ? t.channels.autoOn : t.channels.autoOff}
-        </button>
-      </div>
-
-      {/* Storyboard review. Off is the default; on adds a checkpoint before
-          the render is paid for — it never replaces the publish gate. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-4 py-3">
-        <div className="min-w-0">
-          <div className="text-xs text-[var(--color-muted)]">
-            {t.storyboardReview.toggleLabel}
-          </div>
-          <p className="m-0 mt-1 max-w-[52ch] text-xs leading-relaxed text-[var(--color-muted)]">
-            {review ? t.storyboardReview.toggleOnHint : t.storyboardReview.toggleOffHint}
-          </p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={review}
-          aria-label={t.storyboardReview.toggleLabel}
-          onClick={toggleReview}
-          disabled={reviewBusy || pending || !canControl}
-          title={canControl ? undefined : t.channels.adminOnly}
-          className="btn-sky pill shrink-0 px-4 py-2 text-xs disabled:opacity-50"
-          style={{
-            borderColor: review ? "var(--color-primary)" : "var(--color-border)",
-            color: review ? "var(--color-primary)" : "var(--color-muted)",
-          }}
-        >
-          {reviewBusy ? t.channels.saving : review ? t.storyboardReview.toggleOn : t.storyboardReview.toggleOff}
-        </button>
-      </div>
-
-      {error && (
-        <p className="tnum text-xs text-[var(--color-fail)]">
-          {t.channels.saveFailed}: {error}
-        </p>
-      )}
-
-      {/* -- health ------------------------------------------------------ */}
-      <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-[var(--color-muted)]">
-            {t.channels.health}
-          </span>
-          <StatusPill
-            tone={health.tone === "fail" ? "fail" : health.tone === "warn" ? "warn" : health.tone}
-            label={
-              health.actionRequired
-                ? t.channels.actionRequired
-                : health.tone === "ok"
-                  ? t.channels.healthy
-                  : health.tone === "warn"
-                    ? t.status.warn
-                    : health.tone === "fail"
-                      ? t.status.failed
-                      : t.status.idle
-            }
+      <div className="g2-cols">
+        <div className="flex flex-col">
+          {/* Auto publish. Off is the default and the safe direction; the switch
+              says which way it is currently pointing, in words, not just colour. */}
+          <SwitchRow
+            id={`${titleId}-auto`}
+            label={t.channels.autoLabel}
+            hint={auto ? t.channels.autoOnHint : t.channels.autoOffHint}
+            on={auto}
+            word={autoBusy ? t.channels.saving : auto ? t.channels.autoOn : t.channels.autoOff}
+            onClick={toggleAuto}
+            disabled={autoBusy || pending || !canControl}
+            title={canControl ? undefined : t.channels.adminOnly}
           />
-        </div>
-        <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-4">
-          {health.subsystems.map((s) => (
-            <li key={s.key} className="flex items-center gap-2">
-              <span
-                aria-hidden
-                className="size-1.5 shrink-0 rounded-full"
-                style={{ background: toneColor(s.tone) }}
-              />
-              <span className="min-w-0">
-                <span className="block truncate text-xs text-[var(--color-fg)]">
-                  {subsystemLabel(s.key, t)}
-                </span>
-                {s.detail && (
-                  <span className="tnum block truncate text-xs text-[var(--color-muted)]">{s.detail}</span>
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {/* -- youtube ----------------------------------------------------- */}
-      <div className="rounded-md border border-[var(--color-border)] p-3">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-[var(--color-muted)]">
-            {t.channels.youtube}
-          </span>
-          {credential ? (
-            <StatusPill
-              tone={credentialTone(credential.status)}
-              label={credentialLabel(credential.status, t)}
-            />
-          ) : (
-            <StatusPill tone="idle" label={t.channels.notConnected} />
+          {/* Storyboard review. Off is the default; on adds a checkpoint before
+              the render is paid for — it never replaces the publish gate. */}
+          <SwitchRow
+            id={`${titleId}-review`}
+            label={t.storyboardReview.toggleLabel}
+            hint={review ? t.storyboardReview.toggleOnHint : t.storyboardReview.toggleOffHint}
+            on={review}
+            word={reviewBusy ? t.channels.saving : review ? t.storyboardReview.toggleOn : t.storyboardReview.toggleOff}
+            onClick={toggleReview}
+            disabled={reviewBusy || pending || !canControl}
+            title={canControl ? undefined : t.channels.adminOnly}
+          />
+          {error && (
+            <p className="g2-fail tnum pt-2" role="alert">
+              {t.channels.saveFailed}: {error}
+            </p>
           )}
         </div>
-        {credential ? (
-          <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 tnum text-xs text-[var(--color-muted)]">
-            {credential.youtube_channel_id && (
-              <div>
-                <dt className="inline">{t.channels.youtube}: </dt>
-                <dd className="inline text-[var(--color-fg)]">{credential.youtube_channel_id}</dd>
-              </div>
+
+        <div className="flex flex-col gap-4">
+          {/* -- health ------------------------------------------------------ */}
+          <div className="g2-sub-block">
+            <div className="g2-sub-head">
+              <h3 className="g2-label">{t.channels.health}</h3>
+              <StatusLamp tone={healthLamp.tone} label={healthLamp.label} />
+            </div>
+            <ul className="g2-subsystems">
+              {health.subsystems.map((s) => (
+                <li key={s.key}>
+                  <span aria-hidden className="g2-dot" data-tone={s.tone} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm text-[var(--color-fg)]">{subsystemLabel(s.key, t)}</span>
+                    {s.detail && <small className="tnum">{s.detail}</small>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* -- youtube ----------------------------------------------------- */}
+          <div className="g2-sub-block">
+            <div className="g2-sub-head">
+              <h3 className="g2-label">{t.channels.youtube}</h3>
+              <StatusLamp tone={credentialLamp.tone} label={credentialLamp.label} />
+            </div>
+            {credential ? (
+              <dl className="g2-inline-dl">
+                {credential.youtube_channel_id && (
+                  <div>
+                    <dt>{t.channels.youtube}: </dt>
+                    <dd>{credential.youtube_channel_id}</dd>
+                  </div>
+                )}
+                {credential.last_verified_at && (
+                  <div>
+                    <dt>{t.channels.lastVerified}: </dt>
+                    <dd>{relativeTime(credential.last_verified_at)}</dd>
+                  </div>
+                )}
+                {credential.expires_at && (
+                  <div>
+                    <dt>{t.channels.expiresAt}: </dt>
+                    <dd>{relativeTime(credential.expires_at)}</dd>
+                  </div>
+                )}
+              </dl>
+            ) : (
+              <p className="g2-note">{t.channels.noCredential}</p>
             )}
-            {credential.last_verified_at && (
-              <div>
-                <dt className="inline">{t.channels.lastVerified}: </dt>
-                <dd className="inline text-[var(--color-fg)]">{relativeTime(credential.last_verified_at)}</dd>
-              </div>
+            {credential?.detail && <p className="g2-note">{credential.detail}</p>}
+            {/* The GitHub-secret hint is the operator's path; a customer channel
+                connects in the panel below instead. */}
+            {credential?.status !== "connected" && !vault && (
+              <p className="g2-note">
+                {fmt(t.channels.connectHint, {
+                  id: channel.channel_id,
+                  secret: secretName(channel),
+                })}
+              </p>
             )}
-            {credential.expires_at && (
-              <div>
-                <dt className="inline">{t.channels.expiresAt}: </dt>
-                <dd className="inline text-[var(--color-fg)]">{relativeTime(credential.expires_at)}</dd>
-              </div>
-            )}
-          </dl>
-        ) : (
-          <p className="mt-2 tnum text-xs text-[var(--color-muted)]">{t.channels.noCredential}</p>
-        )}
-        {credential?.detail && (
-          <p className="mt-1.5 text-xs text-[var(--color-muted)]">{credential.detail}</p>
-        )}
-        {/* The GitHub-secret hint is the operator's path; a customer channel
-            connects in the panel below instead. */}
-        {credential?.status !== "connected" && !vault && (
-          <p className="mt-1.5 text-xs text-[var(--color-muted)]">
-            {fmt(t.channels.connectHint, {
-              id: channel.channel_id,
-              secret: secretName(channel),
-            })}
-          </p>
-        )}
-        {vault && <ChannelTokenPanel channelId={channel.channel_id} {...vault} />}
+            {vault && <ChannelTokenPanel channelId={channel.channel_id} {...vault} />}
+          </div>
+        </div>
       </div>
 
       {dna}
 
       {/* -- configuration ----------------------------------------------- */}
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+      <dl className="g2-facts">
         <Field label={t.channels.voice} value={agent.tts_provider === "elevenlabs" ? agent.elevenlabs_voice_id : agent.edge_tts_voice} />
         <Field label={t.channels.language} value={agent.language} />
         <Field
@@ -409,8 +353,8 @@ export function ChannelCard({
       </dl>
 
       {agent.visual_style_prompt && (
-        <p className="text-xs leading-relaxed text-[var(--color-muted)]">
-          <span className="text-xs">{t.channels.visualStyle}: </span>
+        <p className="g2-note">
+          <span className="g2-label">{t.channels.visualStyle}: </span>
           {agent.visual_style_prompt}
         </p>
       )}
@@ -419,7 +363,7 @@ export function ChannelCard({
         // This channel's videos, on this channel's own URL — the link carries
         // the lens, so the page opens already scoped.
         href={`/${encodeURIComponent(slug)}/videos`}
-        className="tap-link text-xs text-[var(--color-primary)] hover:underline"
+        className="tap-link g2-link g2-chan-link text-sm"
       >
         {t.channels.videos} →
       </Link>
@@ -427,23 +371,57 @@ export function ChannelCard({
   );
 }
 
-function Field({ label, value }: { label: string; value?: string | null }) {
+function SwitchRow({
+  id,
+  label,
+  hint,
+  on,
+  word,
+  onClick,
+  disabled,
+  title,
+}: {
+  id: string;
+  label: string;
+  hint: string;
+  on: boolean;
+  word: string;
+  onClick: () => void;
+  disabled: boolean;
+  title?: string;
+}) {
   return (
-    <div>
-      <dt className="text-xs text-[var(--color-muted)]">{label}</dt>
-      <dd className="truncate text-xs text-[var(--color-fg)]">{value || "—"}</dd>
+    <div className="g2-switchrow">
+      <div className="min-w-0 flex-1" style={{ flexBasis: "16rem" }}>
+        <div id={`${id}-label`} className="g2-strong">{label}</div>
+        <p className="g2-note mt-1">{hint}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-labelledby={`${id}-label`}
+        onClick={onClick}
+        disabled={disabled}
+        title={title}
+        className="g2-switch"
+      >
+        <span aria-hidden className="g2-switch-track">
+          <span className="g2-switch-thumb" />
+        </span>
+        <span className="g2-switch-word">{word}</span>
+      </button>
     </div>
   );
 }
 
-function toneColor(tone: HealthTone): string {
-  return tone === "ok"
-    ? "var(--color-ok)"
-    : tone === "warn"
-      ? "var(--color-warn)"
-      : tone === "fail"
-        ? "var(--color-fail)"
-        : "var(--color-idle)";
+function Field({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="min-w-0">
+      <dt>{label}</dt>
+      <dd>{value || "—"}</dd>
+    </div>
+  );
 }
 
 type Dict = ReturnType<typeof useI18n>["t"];
