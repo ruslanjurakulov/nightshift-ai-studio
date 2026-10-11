@@ -16,8 +16,8 @@ What would break without each:
 
 The lab's storage schema is the stand-in in bootstrap.sql (storage.buckets,
 storage.objects with RLS on, storage.foldername()), the same one 0004 and 0026
-already run against; it has no Storage API, so the byte-level checks (WebP
-magic, dimensions) are the route's tests in command-center, not here.
+already run against; it has no Storage API, so the byte-level checks (JPEG
+structure, dimensions) are the route's tests in command-center, not here.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ def person(tag="av"):
 
 
 def own(who):
-    return f"{who.uid}/avatar.webp"
+    return f"{who.uid}/avatar.jpg"
 
 
 def seed_object(conn, name, bucket="avatars"):
@@ -51,10 +51,10 @@ def exists(conn, name, bucket="avatars"):
 
 # ── the bucket ──────────────────────────────────────────────────────────────
 
-def test_bucket_is_private_small_and_webp_only(conn):
+def test_bucket_is_private_small_and_jpeg_only(conn):
     with as_superuser(conn, commit=False) as s:
         row = s.rows("select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'avatars'")
-    assert row == [(False, 262144, ["image/webp"])]
+    assert row == [(False, 262144, ["image/jpeg"])]
 
 
 def test_reapplying_the_migration_is_a_noop_and_repairs_a_flipped_bucket(conn):
@@ -72,7 +72,7 @@ def test_reapplying_the_migration_is_a_noop_and_repairs_a_flipped_bucket(conn):
         bucket = s.rows("select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'avatars'")
         assert s.value("select count(*) from storage.buckets where id = 'avatars'") == 1
     assert after == before
-    assert bucket == [(False, 262144, ["image/webp"])]
+    assert bucket == [(False, 262144, ["image/jpeg"])]
 
 
 def test_the_policies_are_four_own_object_rules_for_authenticated_only(conn):
@@ -125,7 +125,7 @@ def test_another_persons_photo_cannot_be_read_replaced_or_deleted(conn):
 def test_nobody_can_seed_a_file_into_another_persons_folder(conn):
     victim, attacker = person("victim"), person("attacker")
     with acting(conn, attacker) as s:
-        for name in (f"{victim.uid}/avatar.webp", f"{victim.uid}/other.webp", f"{victim.uid}/x/avatar.webp"):
+        for name in (f"{victim.uid}/avatar.jpg", f"{victim.uid}/other.jpg", f"{victim.uid}/x/avatar.jpg"):
             assert not s.run("insert into storage.objects (bucket_id, name) values ('avatars', %s)", [name]).ok, name
 
 
@@ -133,7 +133,7 @@ def test_a_person_cannot_rename_their_object_into_another_folder_or_name(conn):
     me, other = person("me"), person("other")
     seed_object(conn, own(me))
     with acting(conn, me) as s:
-        for target in (own(other), f"{me.uid}/other.webp", f"{me.uid}/x/avatar.webp", "avatar.webp"):
+        for target in (own(other), f"{me.uid}/other.jpg", f"{me.uid}/x/avatar.jpg", "avatar.jpg"):
             out = s.run("update storage.objects set name = %s where bucket_id = 'avatars' and name = %s", [target, own(me)])
             assert not out.ok, target
     assert exists(conn, own(me))
@@ -144,21 +144,23 @@ def test_a_person_cannot_rename_their_object_into_another_folder_or_name(conn):
 def _wrong_names(who):
     return [
         f"{who.uid}/avatar.png",
-        f"{who.uid}/avatar.webp.png",
-        f"{who.uid}/Avatar.webp",
-        f"{who.uid}/AVATAR.WEBP",
-        f"{who.uid}/other.webp",
-        f"{who.uid}/avatar.webp/",
-        f"{who.uid}//avatar.webp",
-        f"{who.uid}/./avatar.webp",
-        f"{who.uid}/sub/avatar.webp",
-        f"{who.uid}/sub/deeper/avatar.webp",
-        f"{who.uid}/avatar.webp ",
-        f"{who.uid} /avatar.webp",
-        f"{str(who.uid).upper()}/avatar.webp",
-        f"/{who.uid}/avatar.webp",
-        "avatar.webp",
-        f"x/{who.uid}/avatar.webp",
+        f"{who.uid}/avatar.webp",
+        f"{who.uid}/avatar.jpeg",
+        f"{who.uid}/avatar.jpg.png",
+        f"{who.uid}/Avatar.jpg",
+        f"{who.uid}/AVATAR.JPG",
+        f"{who.uid}/other.jpg",
+        f"{who.uid}/avatar.jpg/",
+        f"{who.uid}//avatar.jpg",
+        f"{who.uid}/./avatar.jpg",
+        f"{who.uid}/sub/avatar.jpg",
+        f"{who.uid}/sub/deeper/avatar.jpg",
+        f"{who.uid}/avatar.jpg ",
+        f"{who.uid} /avatar.jpg",
+        f"{str(who.uid).upper()}/avatar.jpg",
+        f"/{who.uid}/avatar.jpg",
+        "avatar.jpg",
+        f"x/{who.uid}/avatar.jpg",
         "",
     ]
 
@@ -219,7 +221,7 @@ def test_the_anon_key_sees_and_changes_nothing(conn):
         out = s.run("select name from storage.objects where bucket_id = 'avatars'")
         assert (not out.ok) or out.rows == []
         assert not s.run("insert into storage.objects (bucket_id, name) values ('avatars', %s)", [own(victim)]).ok
-        assert not s.run("insert into storage.objects (bucket_id, name) values ('avatars', %s)", [f"{uuid.uuid4()}/avatar.webp"]).ok
+        assert not s.run("insert into storage.objects (bucket_id, name) values ('avatars', %s)", [f"{uuid.uuid4()}/avatar.jpg"]).ok
         up = s.run("update storage.objects set created_at = now() where bucket_id = 'avatars'")
         assert (not up.ok) or up.rowcount == 0
         dele = s.run("delete from storage.objects where bucket_id = 'avatars'")

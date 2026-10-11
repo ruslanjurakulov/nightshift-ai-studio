@@ -69,6 +69,20 @@ function chromiumPath() {
 }
 const AXE = readFileSync(path.join(APP, "node_modules", "axe-core", "axe.min.js"), "utf8");
 
+/** The marker list of a JPEG's header, up to and including SOS; null when it does not parse. */
+function jpegSegments(b) {
+  if (b[0] !== 0xff || b[1] !== 0xd8) return null;
+  const out = [];
+  let i = 2;
+  while (i + 4 <= b.length && b[i] === 0xff) {
+    const m = b[i + 1];
+    out.push(m);
+    if (m === 0xda) return out;
+    i += 2 + b.readUInt16BE(i + 2);
+  }
+  return null;
+}
+
 // ── the fake route ──────────────────────────────────────────────────────────
 const state = { sample: null, fail: null, posted: [], deleted: 0 };
 const bed = {
@@ -88,7 +102,7 @@ const bed = {
           res.end("{}");
           return;
         }
-        res.setHeader("content-type", "image/webp");
+        res.setHeader("content-type", "image/jpeg");
         res.setHeader("x-content-type-options", "nosniff");
         res.setHeader("cache-control", "private, max-age=3600");
         res.end(state.sample);
@@ -104,10 +118,12 @@ const bed = {
       }
       if (req.method === "POST") {
         const body = Buffer.concat(chunks);
-        const ok = req.headers["content-type"] === "image/webp" && body.subarray(0, 4).toString() === "RIFF" && body.subarray(8, 12).toString() === "WEBP";
-        state.posted.push({ bytes: body.length, ok, type: req.headers["content-type"] });
+        // a cut-down version of the real route's check: JPEG from the first byte to the last, no EXIF/XMP/comment segment
+        const segs = jpegSegments(body);
+        const ok = req.headers["content-type"] === "image/jpeg" && !!segs && body.at(-2) === 0xff && body.at(-1) === 0xd9 && !segs.some((m) => m === 0xe1 || m === 0xfe);
+        state.posted.push({ bytes: body.length, ok, type: req.headers["content-type"], markers: segs ? segs.map((m) => m.toString(16)).join(" ") : null });
         if (ok) state.sample = body; // the "stored" photo is what the browser re-encoded
-        res.end(JSON.stringify(ok ? { ok: true, version: Date.now() } : { error: "not_webp" }));
+        res.end(JSON.stringify(ok ? { ok: true, version: Date.now() } : { error: "not_jpeg" }));
         return;
       }
       if (req.method === "DELETE") {
@@ -164,7 +180,7 @@ async function axe(page, label) {
   const res = await page.evaluate(async () => {
     // eslint-disable-next-line no-undef
     const r = await axe.run(document, { resultTypes: ["violations"] });
-    return r.violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length, help: v.help }));
+    return r.violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length, help: v.help, where: v.nodes.slice(0, 2).map((n) => n.target.join(" ") + " | " + (n.any[0]?.message ?? "").slice(0, 160)) }));
   });
   const bad = res.filter((v) => v.impact === "serious" || v.impact === "critical");
   report.axe.push({ label, serious_or_critical: bad.length, all: res });
@@ -241,12 +257,12 @@ const open = async (p, query) => {
           r({ type: b.type, b64: btoa(s) });
         }, type, q),
       );
-    return { avatar: await toB64(paint(256, 256), "image/webp", 0.85), photo: await toB64(paint(1200, 800), "image/jpeg", 0.9) };
+    return { avatar: await toB64(paint(256, 256), "image/jpeg", 0.85), photo: await toB64(paint(1200, 800), "image/jpeg", 0.9) };
   });
   state.sample = Buffer.from(made.avatar.b64, "base64");
   state.photo = Buffer.from(made.photo.b64, "base64");
   state.initialSample = state.sample;
-  check("the browser encodes WebP (canvas.toBlob)", made.avatar.type === "image/webp", made.avatar.type);
+  check("the browser encodes JPEG (canvas.toBlob)", made.avatar.type === "image/jpeg", made.avatar.type);
   await p.ctx.close();
 }
 
@@ -367,19 +383,23 @@ for (const width of [1440, 390]) {
     }
 
     if (theme === "light") {
-      // save: the browser re-encodes to a 256x256 WebP and posts it
+      // save: the browser re-encodes to a 256x256 JPEG and posts it
       state.posted.length = 0;
       await p.page.getByRole("button", { name: "Save photo" }).click();
       await p.page.waitForSelector('[data-testid="avatar-crop"]', { state: "detached" });
       const sent = state.posted[0];
-      check(`save posts one image/webp body under 256 KB (${width})`, state.posted.length === 1 && sent.ok && sent.bytes <= 262144, JSON.stringify(sent));
+      check(`save posts one image/jpeg body under 256 KB, no EXIF/comment segment (${width})`, state.posted.length === 1 && sent.ok && sent.bytes <= 262144, JSON.stringify(sent));
       await p.page.waitForSelector("[data-avatar=photo]");
+      const allowed = ["e0", "e2", "db", "c0", "c4", "dd", "da"];
+      check(`this browser's JPEG encoder writes only the segments the server allows (${width})`, !!sent.markers && sent.markers.split(" ").every((m) => allowed.includes(m)), sent.markers);
       const dims = await p.page.evaluate(async () => {
         const i = document.querySelector("[data-avatar=photo] img");
         await i.decode().catch(() => {});
         return { w: i.naturalWidth, h: i.naturalHeight };
       });
       check(`the stored photo is 256x256 (${width})`, dims.w === 256 && dims.h === 256, JSON.stringify(dims));
+      // the toast fades in: measure it once it has settled, not mid-animation
+      await p.page.waitForTimeout(900);
       await axe(p.page, `uploader-saved-${width}`);
       await shot(p.page, `uploader-saved-${width}-light`);
 
@@ -391,6 +411,42 @@ for (const width of [1440, 390]) {
     }
     await p.ctx.close();
   }
+}
+
+// a phone photo with EXIF orientation 6 (rotate 90 clockwise): the preview and the saved crop must agree, and the saved file must be clean
+{
+  // APP1 "Exif": a TIFF header and one IFD entry, Orientation (0x0112) = 6
+  const exif = Buffer.from([0xff, 0xe1, 0x00, 0x22, 0x45, 0x78, 0x69, 0x66, 0, 0, 0x4d, 0x4d, 0, 0x2a, 0, 0, 0, 8, 0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]);
+  const rotated = Buffer.concat([state.photo.subarray(0, 2), exif, state.photo.subarray(2)]);
+  const p = await newPage(1440, { theme: "light" });
+  state.fail = null;
+  state.sample = null;
+  state.posted.length = 0;
+  await open(p, "scene=uploader");
+  await p.page.setInputFiles('[data-testid="avatar-file"]', { name: "portrait.jpg", mimeType: "image/jpeg", buffer: rotated });
+  await p.page.waitForSelector('[data-testid="avatar-crop"] img');
+  await p.page.waitForFunction(() => document.querySelector('[data-testid="avatar-crop"] img')?.complete);
+  const nat = await p.page.$eval('[data-testid="avatar-crop"] img', (i) => ({ w: i.naturalWidth, h: i.naturalHeight }));
+  check("the preview shows the EXIF-rotated picture (1200x800 file, orientation 6 -> 800x1200)", nat.w === 800 && nat.h === 1200, JSON.stringify(nat));
+  await shot(p.page, "uploader-cropping-exif-rotated-1440-light");
+  await p.page.getByRole("button", { name: "Save photo" }).click();
+  await p.page.waitForSelector("[data-avatar=photo]");
+  const sent = state.posted[0];
+  check("the saved JPEG carries no EXIF", !!sent && sent.ok && !state.sample.includes(Buffer.from("Exif")), JSON.stringify(sent));
+  // the moon sits at (0.62, 0.34) of the upright file; rotated 90 clockwise and cropped to the middle square it lands lower right
+  const px = await p.page.evaluate(async (b64) => {
+    const img = new Image();
+    img.src = "data:image/jpeg;base64," + b64;
+    await img.decode();
+    const c = document.createElement("canvas");
+    c.width = c.height = 256;
+    const g = c.getContext("2d");
+    g.drawImage(img, 0, 0);
+    const at = (x, y) => Array.from(g.getImageData(x, y, 1, 1).data.slice(0, 3));
+    return { w: img.naturalWidth, h: img.naturalHeight, lowerRight: at(169, 174), upperRight: at(174, 87) };
+  }, state.sample.toString("base64"));
+  check("the saved crop follows the rotation (moon lower right, not upper right)", px.w === 256 && px.lowerRight.every((v) => v > 215) && !px.upperRight.every((v) => v > 215), JSON.stringify(px));
+  await p.ctx.close();
 }
 
 // errors

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  AVATAR_INPUT_MAX_PIXELS,
+  AVATAR_INPUT_MAX_SIDE,
   AVATAR_MAX_BYTES,
+  AVATAR_MIME,
   AVATAR_SIZE,
   avatarInitial,
   avatarPath,
@@ -67,8 +70,14 @@ describe("avatarInitial", () => {
 });
 
 describe("constants and the object path", () => {
-  it("keeps the path to exactly <uid>/avatar.webp", () => {
-    expect(avatarPath("0b1c")).toBe("0b1c/avatar.webp");
+  it("keeps the path to exactly <uid>/avatar.jpg", () => {
+    expect(avatarPath("0b1c")).toBe("0b1c/avatar.jpg");
+    expect(AVATAR_MIME).toBe("image/jpeg"); // Safari's canvas cannot encode WebP
+  });
+  it("lets a 48 MP phone photo (8064 x 6048) through the input guard's limits", () => {
+    expect(AVATAR_INPUT_MAX_SIDE).toBeGreaterThanOrEqual(8064);
+    expect(AVATAR_INPUT_MAX_PIXELS).toBeGreaterThanOrEqual(8064 * 6048);
+    expect(AVATAR_INPUT_MAX_PIXELS).toBeLessThanOrEqual(60_000_000);
   });
   it("matches the bucket's limit (migration 0097: 262144)", () => {
     expect(AVATAR_MAX_BYTES).toBe(262144);

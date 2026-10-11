@@ -10,6 +10,7 @@ import {
   AVATAR_ENDPOINT,
   AVATAR_INPUT_ACCEPT,
   AVATAR_META_KEY,
+  AVATAR_MIME,
   isAvatarErrorCode,
   type AvatarErrorCode,
 } from "@/lib/avatar";
@@ -23,8 +24,8 @@ import { AvatarInputError, inspectAvatarFile, prepareAvatar, type AvatarCrop } f
  *   idle      the current picture, "Add/Change photo", "Remove photo"
  *   cropping  the picked photo under a circular mask: drag (mouse, touch, pen)
  *             or arrow keys to move, slider or + / - to zoom
- *   saving    the crop is re-encoded in the browser (lib/avatar-image.ts),
- *             POSTed to /api/avatar, and only then is the version recorded in
+ *   saving    the crop is re-encoded in the browser as a 256x256 JPEG
+ *             (lib/avatar-image.ts), POSTed to /api/avatar, and only then is the version recorded in
  *             the person's metadata (avatar_v); controls are disabled and the
  *             section is aria-busy
  *   error     one fixed message from the code (never server or storage text)
@@ -37,13 +38,26 @@ const MAX_ZOOM = 4;
 const KEY_STEP = 0.05; // of the viewport, per arrow press
 const ZOOM_STEP = 0.1;
 
+/**
+ * The zoom slider with a track that is visible against the page (the browser's own is pale grey: under 3:1 in the
+ * light theme) and a thumb in the action colour. Centres the 20px thumb on the 6px track in both engines.
+ */
+const ZOOM_SLIDER = [
+  "h-11 w-full cursor-pointer appearance-none bg-transparent",
+  "[&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[var(--color-muted)]",
+  "[&::-moz-range-track]:h-1.5 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-[var(--color-muted)]",
+  "[&::-webkit-slider-thumb]:-mt-[7px] [&::-webkit-slider-thumb]:size-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-[var(--ns-act)]",
+  "[&::-moz-range-thumb]:size-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-[var(--ns-act)]",
+  "disabled:cursor-not-allowed disabled:opacity-50",
+].join(" ");
+
 type Phase = "idle" | "cropping" | "saving";
 
 const STATUS_CODE: Record<number, AvatarErrorCode> = {
   401: "unauthorized",
   403: "forbidden",
   413: "too_large",
-  415: "not_webp",
+  415: "not_jpeg",
   429: "rate_limited",
 };
 
@@ -245,7 +259,7 @@ export function AvatarUploader({ email, version }: { email: string | null; versi
     setBusyKind("save");
     try {
       const blob = await prepareAvatar(file, cropFor(frame, dims.w, dims.h));
-      const res = await fetch(AVATAR_ENDPOINT, { method: "POST", headers: { "content-type": "image/webp" }, body: blob });
+      const res = await fetch(AVATAR_ENDPOINT, { method: "POST", headers: { "content-type": AVATAR_MIME }, body: blob });
       if (!res.ok) throw new AvatarInputError(await codeFromResponse(res));
       const body = (await res.json()) as { version?: unknown };
       const v = typeof body.version === "number" && Number.isSafeInteger(body.version) && body.version > 0 ? body.version : Date.now();
@@ -333,8 +347,10 @@ export function AvatarUploader({ email, version }: { email: string | null; versi
 
       {cropping && (
         <div className="flex max-w-[20rem] flex-col gap-3" role="group" aria-label={a.cropTitle}>
+          {/* Arrow keys and +/- mean nothing on a phone: a coarse pointer gets the touch wording. */}
           <p id={helpId} className="g5-note">
-            {a.cropHelp}
+            <span className="[@media(pointer:coarse)]:hidden">{a.cropHelp}</span>
+            <span className="hidden [@media(pointer:coarse)]:inline">{a.cropHelpTouch}</span>
           </p>
           <div
             ref={viewportRef}
@@ -388,7 +404,7 @@ export function AvatarUploader({ email, version }: { email: string | null; versi
               value={frame.zoom}
               disabled={saving}
               onChange={(e) => zoomTo(Number(e.target.value))}
-              className="h-11 w-full accent-[var(--ns-act)]"
+              className={ZOOM_SLIDER}
             />
           </div>
           <div className="g5-actions">

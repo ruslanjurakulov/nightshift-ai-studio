@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, configure, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { jpeg, png } from "./helpers/image-bytes";
+import { avatarJpeg, jpeg, png } from "./helpers/image-bytes";
 import { en } from "../lib/i18n/en";
 
 const h = vi.hoisted(() => ({
@@ -127,15 +127,22 @@ describe("Avatar", () => {
 
 const VERSION = 1_760_000_000_123;
 let draw: ReturnType<typeof vi.fn>;
-let bitmapClose: ReturnType<typeof vi.fn>;
+/** What the browser would report for the decoded picture (after EXIF rotation): jsdom decodes nothing. */
+let natural: [number, number] = [800, 600];
+Object.defineProperty(HTMLImageElement.prototype, "naturalWidth", { get: () => natural[0], configurable: true });
+Object.defineProperty(HTMLImageElement.prototype, "naturalHeight", { get: () => natural[1], configurable: true });
+Object.defineProperty(HTMLImageElement.prototype, "decode", { value: () => Promise.resolve(), configurable: true });
 
-function browserStubs(opts: { webp?: boolean } = {}) {
+function browserStubs(opts: { encoder?: "jpeg" | "png"; natural?: [number, number] } = {}) {
   draw = vi.fn();
-  bitmapClose = vi.fn();
-  vi.stubGlobal("createImageBitmap", vi.fn(async () => ({ width: 800, height: 600, close: bitmapClose })));
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation((() => ({ drawImage: draw })) as never);
-  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(((cb: BlobCallback) =>
-    cb(new Blob([new Uint8Array(18_000)], { type: opts.webp === false ? "image/png" : "image/webp" }))) as never);
+  natural = opts.natural ?? [800, 600];
+  vi.stubGlobal("createImageBitmap", vi.fn());
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation((() => ({ drawImage: draw, fillRect: vi.fn() })) as never);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(((cb: BlobCallback, type?: string) => {
+    expect(type).toBe("image/jpeg");
+    // Safari-style fallback for a format it cannot encode: a PNG whatever was asked
+    cb(opts.encoder === "png" ? new Blob([png(256, 256) as unknown as BlobPart], { type: "image/png" }) : new Blob([avatarJpeg() as unknown as BlobPart], { type: "image/jpeg" }));
+  }) as never);
   URL.createObjectURL = vi.fn(() => "blob:avatar-preview");
   URL.revokeObjectURL = vi.fn();
 }
@@ -205,9 +212,12 @@ describe("AvatarUploader: cropping and saving", () => {
     expect(screen.getByRole("button", { name: en.avatar.save })).toBeTruthy();
     expect(screen.getByRole("button", { name: en.avatar.cancel })).toBeTruthy();
     expect(screen.getByText(en.avatar.cropHelp)).toBeTruthy();
+    // a phone is told about dragging only: the keyboard wording is hidden under a coarse pointer
+    expect(screen.getByText(en.avatar.cropHelp).className).toContain("[@media(pointer:coarse)]:hidden");
+    expect(screen.getByText(en.avatar.cropHelpTouch).className).toContain("[@media(pointer:coarse)]:inline");
   });
 
-  it("Save re-encodes the chosen square, POSTs the WebP, records the version and refreshes", async () => {
+  it("Save re-encodes the chosen square, POSTs the JPEG, records the version and refreshes", async () => {
     const fetchMock = okFetch();
     vi.stubGlobal("fetch", fetchMock);
     const { container } = render(<AvatarUploader email="ruslan@example.com" version={null} />);
@@ -222,13 +232,14 @@ describe("AvatarUploader: cropping and saving", () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/api/avatar");
     expect(init.method).toBe("POST");
-    expect((init.headers as Record<string, string>)["content-type"]).toBe("image/webp");
-    expect((init.body as Blob).type).toBe("image/webp");
+    expect((init.headers as Record<string, string>)["content-type"]).toBe("image/jpeg");
+    expect((init.body as Blob).type).toBe("image/jpeg");
+    const sent = new Uint8Array(await (init.body as Blob).arrayBuffer());
+    expect(Array.from(sent)).toEqual(Array.from(avatarJpeg())); // the bytes the validator accepts
     expect(h.update).toHaveBeenCalledWith({ data: { avatar_v: VERSION } });
     expect(h.toast).toHaveBeenCalledWith(en.avatar.saved);
     expect(screen.queryByTestId("avatar-crop")).toBeNull();
     expect(container.querySelector("img")?.getAttribute("src")).toBe(`/api/avatar?v=${VERSION}`);
-    expect(bitmapClose).toHaveBeenCalled();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:avatar-preview");
     // focus goes back to the button that opened the crop
     expect(document.activeElement).toBe(screen.getByRole("button", { name: en.avatar.change }));
@@ -236,7 +247,8 @@ describe("AvatarUploader: cropping and saving", () => {
 
   it("while saving the section is busy and nothing can be pressed twice", async () => {
     let release: (r: Response) => void = () => {};
-    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => (release = resolve))));
+    const pending = vi.fn(() => new Promise<Response>((resolve) => (release = resolve)));
+    vi.stubGlobal("fetch", pending);
     const { container } = render(<AvatarUploader email="ruslan@example.com" version={null} />);
     await pick(photoFile());
     await act(async () => {
@@ -247,6 +259,8 @@ describe("AvatarUploader: cropping and saving", () => {
     expect((screen.getByRole("button", { name: en.avatar.saving }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: en.avatar.cancel }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText(en.avatar.zoom) as HTMLInputElement).disabled).toBe(true);
+    // the image is re-encoded first (a file read in jsdom); the request is the last thing to be waited for
+    await waitFor(() => expect(pending).toHaveBeenCalled());
     await act(async () => {
       release(new Response(JSON.stringify({ ok: true, version: VERSION }), { status: 200 }));
     });
@@ -270,7 +284,7 @@ describe("AvatarUploader: cropping and saving", () => {
     [400, { error: "bad_dimensions" }, "bad_dimensions"],
     [403, {}, "forbidden"],
     [401, null, "unauthorized"],
-    [415, null, "not_webp"],
+    [415, null, "not_jpeg"],
     [429, null, "rate_limited"],
     [502, { error: "storage_failed" }, "failed"],
     [500, { error: "new row violates row-level security policy for table objects" }, "failed"],
@@ -308,8 +322,8 @@ describe("AvatarUploader: cropping and saving", () => {
     expect(h.refresh).not.toHaveBeenCalled();
   });
 
-  it("a browser that cannot encode WebP says so and uploads nothing", async () => {
-    browserStubs({ webp: false });
+  it("a browser whose canvas cannot encode JPEG says so, with what to do, and uploads nothing", async () => {
+    browserStubs({ encoder: "png" });
     const fetchMock = okFetch();
     vi.stubGlobal("fetch", fetchMock);
     render(<AvatarUploader email="ruslan@example.com" version={null} />);
@@ -317,7 +331,7 @@ describe("AvatarUploader: cropping and saving", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: en.avatar.save }));
     });
-    expect((await screen.findByRole("alert")).textContent).toBe(en.avatar.errors.encode_unsupported);
+    expect((await screen.findByRole("alert")).textContent).toBe(en.avatar.errors.encode_failed);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -329,6 +343,7 @@ describe("AvatarUploader: refusing the picked file before anything decodes", () 
     expect((await screen.findByRole("alert")).textContent).toBe(en.avatar.errors.image_too_large);
     expect(screen.queryByTestId("avatar-crop")).toBeNull();
     expect(createImageBitmap).not.toHaveBeenCalled();
+    expect(draw).not.toHaveBeenCalled();
     expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
 
@@ -428,7 +443,7 @@ describe("AvatarUploader: keyboard and touch", () => {
     Object.defineProperty(img, "naturalWidth", { value: 600, configurable: true });
     Object.defineProperty(img, "naturalHeight", { value: 800, configurable: true });
     fireEvent.load(img);
-    vi.mocked(createImageBitmap).mockResolvedValue({ width: 600, height: 800, close: bitmapClose } as unknown as ImageBitmap);
+    natural = [600, 800]; // the <img> the save decodes reports the same rotated size as the preview
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: en.avatar.save }));
     });

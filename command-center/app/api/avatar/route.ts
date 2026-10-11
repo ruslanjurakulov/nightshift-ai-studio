@@ -3,18 +3,18 @@ import { createClient, getUser } from "@/lib/supabase/server";
 import { isSameOriginPost } from "@/lib/auth-confirm";
 import { publicOrigin } from "@/lib/server/public-origin";
 import { AVATAR_WRITE_RATE, rateRefusal, takeWebRate } from "@/lib/server/web-rate";
-import { AVATAR_BUCKET, AVATAR_MAX_BYTES, avatarPath, type AvatarErrorCode } from "@/lib/avatar";
-import { looksLikeWebp, validateAvatarWebp } from "@/lib/avatar-validate";
+import { AVATAR_BUCKET, AVATAR_MAX_BYTES, AVATAR_MIME, avatarPath, type AvatarErrorCode } from "@/lib/avatar";
+import { validateAvatarJpeg } from "@/lib/avatar-validate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
  * The signed-in person's profile photo (migration 0097: private bucket
- * `avatars`, one object per person, `<uid>/avatar.webp`).
+ * `avatars`, one object per person, `<uid>/avatar.jpg`).
  *
  *   GET     the photo, 404 when there is none
- *   POST    replace it (raw image/webp body, not multipart)
+ *   POST    replace it (raw image/jpeg body, not multipart)
  *   DELETE  remove it (nothing to remove is also success)
  *
  * Every call runs as the person (anon key + their session), so the bucket's
@@ -24,10 +24,12 @@ export const dynamic = "force-dynamic";
  * fixed codes of lib/avatar.ts, never a storage message.
  *
  * Storage checks the Content-Type HEADER of an upload, not its bytes, so POST
- * checks the bytes itself (lib/avatar-validate.ts): size, WebP container,
- * still image, side 64..512. The browser re-encodes every photo to 256x256
+ * checks the bytes itself (lib/avatar-validate.ts): size, the exact JPEG
+ * structure the browsers' canvas encoders write (no EXIF, XMP or comment, no
+ * bytes after the end), side 64..512. The photo is a JPEG because Safari's
+ * canvas cannot encode WebP. The browser re-encodes every photo to 256x256
  * before sending (lib/avatar-image.ts), which also drops EXIF/GPS; this route
- * does not rely on that and refuses metadata chunks anyway.
+ * does not rely on that and refuses metadata anyway.
  */
 const NO_STORE = { "cache-control": "no-store" };
 
@@ -52,13 +54,14 @@ export async function GET() {
   if (!blob) return fail("not_found", 404);
 
   const bytes = new Uint8Array(await blob.arrayBuffer());
-  // Only ever serve back something that is a WebP: the bucket's mime check trusts a header.
-  if (bytes.length === 0 || bytes.length > AVATAR_MAX_BYTES || !looksLikeWebp(bytes)) return fail("not_found", 404);
+  // Only ever serve back something that passes the same check as an upload: the bucket's mime check trusts a header,
+  // and a person can write their own object through Storage directly.
+  if (!validateAvatarJpeg(bytes).ok) return fail("not_found", 404);
 
   return new Response(bytes, {
     status: 200,
     headers: {
-      "content-type": "image/webp",
+      "content-type": AVATAR_MIME,
       "content-length": String(bytes.length),
       "x-content-type-options": "nosniff",
       "content-disposition": "inline",
@@ -122,7 +125,7 @@ export async function POST(request: Request) {
 
   // Cheap refusals first, before anything is counted or read.
   const type = (request.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
-  if (type !== "image/webp") return fail("not_webp", 415);
+  if (type !== AVATAR_MIME) return fail("not_jpeg", 415);
   const declaredRaw = request.headers.get("content-length");
   let declared: number | null = null;
   if (declaredRaw !== null) {
@@ -144,7 +147,7 @@ export async function POST(request: Request) {
   if (bytes === null) return fail("too_large", 413);
   if (declared !== null && declared !== bytes.length) return fail("bad_request", 400);
 
-  const check = validateAvatarWebp(bytes);
+  const check = validateAvatarJpeg(bytes);
   if (!check.ok) return fail(check.code, check.code === "too_large" ? 413 : 400);
 
   const supabase = await createClient();
@@ -152,7 +155,7 @@ export async function POST(request: Request) {
   try {
     const { error } = await supabase.storage
       .from(AVATAR_BUCKET)
-      .upload(avatarPath(user.id), bytes, { contentType: "image/webp", upsert: true, cacheControl: "3600" });
+      .upload(avatarPath(user.id), bytes, { contentType: AVATAR_MIME, upsert: true, cacheControl: "3600" });
     if (error) return fail("storage_failed", 502);
   } catch {
     return fail("storage_failed", 502);

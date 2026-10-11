@@ -4,26 +4,34 @@ import {
   AVATAR_INPUT_MAX_SIDE,
   AVATAR_INPUT_TYPES,
   AVATAR_MAX_BYTES,
+  AVATAR_MIME,
   AVATAR_SIZE,
   type AvatarErrorCode,
 } from "@/lib/avatar";
+import { canonicalizeAvatarJpeg, validateAvatarJpeg } from "@/lib/avatar-validate";
 import { readImageHeader, type ImageHeader } from "@/lib/image-header";
 
 /**
- * Turn a photo the person picked into the 256x256 WebP the server stores.
+ * Turn a photo the person picked into the 256x256 JPEG the server stores.
+ * (JPEG, because Safari's canvas cannot encode WebP: it hands back a PNG.)
  *
  * Browser side, and the order is the point:
  *   1. size: more than 5 MB is refused before it is read;
  *   2. sniff: the first bytes must be PNG, JPEG or WebP (file.type is only the
  *      name the operating system guessed and is never trusted);
  *   3. pixel-bomb guard: the declared width and height are read from the file's
- *      own header bytes and refused above 8192 a side or 40 megapixels. A decoder
- *      allocates width x height x 4 bytes before it shows a pixel, so a 3 KB file
- *      declaring 60000x60000 would otherwise take the tab down. Only then does
- *      anything decode (createImageBitmap);
- *   4. the chosen square is drawn onto a 256x256 canvas and encoded as WebP.
- *      Re-encoding from pixels is also what drops EXIF (GPS included), colour
- *      profiles and anything else hidden in the original.
+ *      own header bytes and refused above 8192 a side or 50 megapixels (a 48 MP
+ *      phone photo passes). A decoder allocates width x height x 4 bytes before
+ *      it shows a pixel, so a 3 KB file declaring 60000x60000 would otherwise
+ *      take the tab down. Only then does anything decode;
+ *   4. the picture is decoded through an <img> (the same pipeline as the crop
+ *      preview, so the camera's EXIF rotation is applied to both alike), the
+ *      chosen square is drawn onto a 256x256 canvas over white (JPEG has no
+ *      transparency) and encoded as JPEG. Re-encoding from pixels is what drops
+ *      EXIF (GPS included), colour profiles and anything else hidden in the
+ *      original; any segment an encoder adds on its own is removed again by
+ *      canonicalizeAvatarJpeg, and the result must pass the same validator the
+ *      server runs.
  */
 
 export class AvatarInputError extends Error {
@@ -92,42 +100,64 @@ export function clampCrop(crop: AvatarCrop, width: number, height: number): Avat
   return { x, y, size };
 }
 
-/** Quality steps: the first is the one that is normally kept (a 256x256 photo is 10-30 KB). */
+/** Quality steps: the first is the one that is normally kept (a 256x256 photo is 15-30 KB). */
 const QUALITIES = [0.85, 0.75, 0.65, 0.5, 0.35];
 
 function toBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
-  return new Promise((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+  return new Promise((resolve) => canvas.toBlob(resolve, AVATAR_MIME, quality));
+}
+
+/** Decode through an <img>: it applies the EXIF rotation exactly as the crop preview does. */
+async function decodeImage(file: Blob): Promise<{ img: HTMLImageElement; release: () => void }> {
+  const url = URL.createObjectURL(file);
+  const release = () => URL.revokeObjectURL(url);
+  const img = new Image();
+  img.decoding = "async";
+  img.src = url;
+  try {
+    await img.decode();
+  } catch {
+    release();
+    throw new AvatarInputError("unreadable");
+  }
+  if (!img.naturalWidth || !img.naturalHeight) {
+    release();
+    throw new AvatarInputError("unreadable");
+  }
+  return { img, release };
 }
 
 export async function prepareAvatar(file: Blob, crop: AvatarCrop): Promise<Blob> {
-  const { width, height } = await inspectAvatarFile(file);
+  await inspectAvatarFile(file);
 
-  let bitmap: ImageBitmap;
+  const { img, release } = await decodeImage(file);
   try {
-    bitmap = await createImageBitmap(file);
-  } catch {
-    throw new AvatarInputError("unreadable");
-  }
-  try {
-    // The bitmap is what the person saw (rotation applied); a rotated JPEG swaps its sides.
-    const c = clampCrop(crop, bitmap.width || width, bitmap.height || height);
+    // naturalWidth/Height are what the person saw (rotation applied); a rotated JPEG swaps its sides.
+    const c = clampCrop(crop, img.naturalWidth, img.naturalHeight);
     const canvas = document.createElement("canvas");
     canvas.width = AVATAR_SIZE;
     canvas.height = AVATAR_SIZE;
     const ctx = canvas.getContext("2d");
-    if (!ctx) throw new AvatarInputError("encode_unsupported");
+    if (!ctx) throw new AvatarInputError("encode_failed");
+    // JPEG has no alpha: a transparent PNG would turn black.
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, AVATAR_SIZE, AVATAR_SIZE);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(bitmap, c.x, c.y, c.size, c.size, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+    ctx.drawImage(img, c.x, c.y, c.size, c.size, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
 
     for (const q of QUALITIES) {
       const blob = await toBlob(canvas, q);
-      // A browser that cannot encode WebP hands back a PNG: say so, never upload it.
-      if (!blob || blob.type !== "image/webp") throw new AvatarInputError("encode_unsupported");
-      if (blob.size > 0 && blob.size <= AVATAR_MAX_BYTES) return blob;
+      if (!blob || blob.type !== AVATAR_MIME) throw new AvatarInputError("encode_failed");
+      const clean = canonicalizeAvatarJpeg(new Uint8Array(await blob.arrayBuffer()));
+      if (!clean) throw new AvatarInputError("encode_failed");
+      if (clean.length > AVATAR_MAX_BYTES) continue;
+      // The server runs this same check: find out here, not by a refused upload.
+      if (!validateAvatarJpeg(clean).ok) throw new AvatarInputError("encode_failed");
+      return new Blob([clean], { type: AVATAR_MIME });
     }
     throw new AvatarInputError("too_large");
   } finally {
-    bitmap.close?.();
+    release();
   }
 }

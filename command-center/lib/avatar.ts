@@ -1,7 +1,7 @@
 /**
  * The profile photo, as plain facts the page and the route agree on.
  *
- * A photo is one private object per person (`avatars/<uid>/avatar.webp`,
+ * A photo is one private object per person (`avatars/<uid>/avatar.jpg`,
  * migration 0097). What the page knows about it is a single number, `avatar_v`,
  * kept in the person's auth user_metadata: when it is set, a photo exists and
  * `/api/avatar?v=<n>` serves it. The number is a cache-buster and nothing
@@ -11,13 +11,15 @@
 
 /** The bucket and the one object name inside each person's folder. */
 export const AVATAR_BUCKET = "avatars";
-export const AVATAR_FILE = "avatar.webp";
+export const AVATAR_FILE = "avatar.jpg";
+/** JPEG, not WebP: Safari's canvas cannot encode WebP (it returns a PNG), and every browser can encode JPEG. */
+export const AVATAR_MIME = "image/jpeg";
 export const avatarPath = (uid: string): string => `${uid}/${AVATAR_FILE}`;
 
 export const AVATAR_ENDPOINT = "/api/avatar";
 export const AVATAR_META_KEY = "avatar_v";
 
-/** What is stored: a 256x256 WebP, never more than the bucket's 256 KB. */
+/** What is stored: a 256x256 JPEG, never more than the bucket's 256 KB. */
 export const AVATAR_SIZE = 256;
 export const AVATAR_MAX_BYTES = 262_144;
 /** The route accepts a square-ish side in this range (the browser always sends 256). */
@@ -31,7 +33,8 @@ export const AVATAR_INPUT_TYPES = ["image/png", "image/jpeg", "image/webp"] as c
 export const AVATAR_INPUT_ACCEPT = AVATAR_INPUT_TYPES.join(",");
 export const AVATAR_INPUT_MAX_BYTES = 5 * 1024 * 1024;
 export const AVATAR_INPUT_MAX_SIDE = 8192;
-export const AVATAR_INPUT_MAX_PIXELS = 40_000_000;
+// 50 MP: a 48 MP phone photo (8064 x 6048) is 48.8 MP and must pass; a decoder's allocation at this size is ~200 MB.
+export const AVATAR_INPUT_MAX_PIXELS = 50_000_000;
 
 /** The sizes the Avatar draws, in CSS pixels. */
 export const AVATAR_SIZES = [24, 32, 40, 64, 96] as const;
@@ -42,13 +45,13 @@ export const AVATAR_ERRORS = [
   "unauthorized",
   "forbidden",
   "too_large",
-  "not_webp",
+  "not_jpeg",
   "bad_dimensions",
   "rate_limited",
   "unsupported",
   "unreadable",
   "image_too_large",
-  "encode_unsupported",
+  "encode_failed",
   "failed",
 ] as const;
 export type AvatarErrorCode = (typeof AVATAR_ERRORS)[number];

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { jpeg, png, webp } from "./helpers/image-bytes";
+import { avatarJpeg, jpeg, png, webp } from "./helpers/image-bytes";
+import { validateAvatarJpeg } from "../lib/avatar-validate";
 import { parseJpeg, parsePng, parseWebp, readImageHeader } from "../lib/image-header";
 import { AvatarInputError, clampCrop, inspectAvatarBytes, inspectAvatarFile, prepareAvatar } from "../lib/avatar-image";
 
@@ -74,8 +75,13 @@ describe("header parsers read the declared size without decoding", () => {
     expect(parseWebp(webp(100, 100, { riffSizeDelta: 400 }))).toBeNull();
   });
 
-  it("a WebP whose canvas disagrees with its bitstream is not readable", () => {
+  it("a WebP whose canvas disagrees with its bitstream, or an extended one with no image at all, is not readable", () => {
     expect(parseWebp(webp(100, 100, { kind: "extended", canvasDelta: 50 }))).toBeNull();
+    const noImage = webp(100, 100, { kind: "extended" });
+    // keep RIFF + WEBP + the VP8X chunk (8 + 10 bytes) and drop the image chunk
+    const head = noImage.slice(0, 12 + 18);
+    new DataView(head.buffer).setUint32(4, head.length - 8, true);
+    expect(parseWebp(head)).toBeNull();
   });
 });
 
@@ -92,9 +98,11 @@ describe("pixel-bomb guard (before any decode)", () => {
     expect(inspectAvatarBytes(png(8192, 100)).width).toBe(8192);
   });
 
-  it("refuses more than 40 megapixels even when each side is allowed", () => {
-    expect(code(() => inspectAvatarBytes(png(8000, 5001)))).toBe("image_too_large");
-    expect(inspectAvatarBytes(png(8000, 5000)).height).toBe(5000);
+  it("refuses more than 50 megapixels even when each side is allowed, and lets a 48 MP phone photo through", () => {
+    expect(code(() => inspectAvatarBytes(png(8000, 6251)))).toBe("image_too_large");
+    expect(inspectAvatarBytes(png(8000, 6250)).height).toBe(6250);
+    expect(inspectAvatarBytes(jpeg(8064, 6048))).toEqual({ format: "jpeg", width: 8064, height: 6048 }); // iPhone 48 MP
+    expect(inspectAvatarBytes(jpeg(6048, 8064)).width).toBe(6048);
   });
 
   it("refuses a few-byte file that declares 60000 x 60000, for every format", () => {
@@ -145,38 +153,72 @@ describe("clampCrop", () => {
 });
 
 describe("prepareAvatar", () => {
+  const proto = HTMLImageElement.prototype;
+  const saved = {
+    w: Object.getOwnPropertyDescriptor(proto, "naturalWidth"),
+    h: Object.getOwnPropertyDescriptor(proto, "naturalHeight"),
+    d: Object.getOwnPropertyDescriptor(proto, "decode"),
+  };
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    for (const [k, d] of [["naturalWidth", saved.w], ["naturalHeight", saved.h], ["decode", saved.d]] as const) {
+      if (d) Object.defineProperty(proto, k, d);
+      else delete (proto as unknown as Record<string, unknown>)[k];
+    }
   });
 
-  function setup(opts: { types?: string[]; sizes?: number[]; ctx?: boolean } = {}) {
+  function setup(opts: { outputs?: Blob[]; ctx?: boolean; natural?: [number, number]; decode?: "ok" | "fail" } = {}) {
+    const [nw, nh] = opts.natural ?? [800, 600];
+    Object.defineProperty(proto, "naturalWidth", { get: () => nw, configurable: true });
+    Object.defineProperty(proto, "naturalHeight", { get: () => nh, configurable: true });
+    Object.defineProperty(proto, "decode", {
+      value: () => (opts.decode === "fail" ? Promise.reject(new Error("The source image cannot be decoded.")) : Promise.resolve()),
+      configurable: true,
+    });
+    URL.createObjectURL = vi.fn(() => "blob:preview");
+    URL.revokeObjectURL = vi.fn();
+    const decoder = vi.fn();
+    vi.stubGlobal("createImageBitmap", decoder); // the old path: it must not be used any more
     const draw = vi.fn();
-    const close = vi.fn();
-    vi.stubGlobal("createImageBitmap", vi.fn(async () => ({ width: 800, height: 600, close })));
-    const types = [...(opts.types ?? ["image/webp"])];
-    const sizes = [...(opts.sizes ?? [20_000])];
-    const qualities: number[] = [];
+    const fillRect = vi.fn();
+    const fills: string[] = [];
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation((() =>
-      opts.ctx === false ? null : { drawImage: draw, imageSmoothingEnabled: false, imageSmoothingQuality: "low" }) as never);
+      opts.ctx === false
+        ? null
+        : {
+            drawImage: draw,
+            fillRect,
+            set fillStyle(v: string) {
+              fills.push(v);
+            },
+            imageSmoothingEnabled: false,
+            imageSmoothingQuality: "low",
+          }) as never);
+    const outputs = [...(opts.outputs ?? [new Blob([avatarJpeg()], { type: "image/jpeg" })])];
+    const qualities: number[] = [];
     vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(((cb: BlobCallback, type?: string, q?: number) => {
       qualities.push(q ?? -1);
-      expect(type).toBe("image/webp");
-      const t = types.length > 1 ? types.shift()! : types[0];
-      const n = sizes.length > 1 ? sizes.shift()! : sizes[0];
-      cb(new Blob([new Uint8Array(n)], { type: t }));
+      expect(type).toBe("image/jpeg");
+      cb(outputs.length > 1 ? outputs.shift()! : outputs[0]);
     }) as never);
-    return { draw, close, qualities };
+    return { draw, fillRect, fills, qualities, decoder };
   }
   const photo = () => new File([jpeg(800, 600)], "p.jpg", { type: "image/jpeg" });
+  const jpegBlob = (bytes: Uint8Array) => new Blob([bytes as unknown as BlobPart], { type: "image/jpeg" });
+  const bigJpeg = () => jpegBlob(avatarJpeg({ entropy: new Array(270_000).fill(0x11) }));
 
-  it("draws the chosen square onto a 256x256 canvas and returns the WebP blob", async () => {
-    const { draw, close, qualities } = setup();
+  it("draws the chosen square from the decoded <img> onto a white 256x256 canvas and returns a JPEG the server accepts", async () => {
+    const { draw, fillRect, fills, qualities, decoder } = setup();
     const blob = await prepareAvatar(photo(), { x: 100, y: 50, size: 400 });
-    expect(blob.type).toBe("image/webp");
-    expect(draw).toHaveBeenCalledWith(expect.anything(), 100, 50, 400, 400, 0, 0, 256, 256);
+    expect(blob.type).toBe("image/jpeg");
+    expect(validateAvatarJpeg(new Uint8Array(await blob.arrayBuffer()))).toEqual({ ok: true, width: 256, height: 256 });
+    expect(draw).toHaveBeenCalledWith(expect.any(HTMLImageElement), 100, 50, 400, 400, 0, 0, 256, 256);
+    expect(fills).toContain("#fff"); // JPEG has no alpha: a transparent PNG must not turn black
+    expect(fillRect).toHaveBeenCalledWith(0, 0, 256, 256);
     expect(qualities).toEqual([0.85]);
-    expect(close).toHaveBeenCalled();
+    expect(decoder).not.toHaveBeenCalled(); // createImageBitmap can ignore EXIF rotation; the <img> path cannot differ from the preview
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:preview");
   });
 
   it("clamps a crop that sticks out of the picture", async () => {
@@ -185,27 +227,54 @@ describe("prepareAvatar", () => {
     expect(draw).toHaveBeenCalledWith(expect.anything(), 200, 0, 600, 600, 0, 0, 256, 256);
   });
 
-  it("steps the quality down until the blob fits 256 KB", async () => {
-    const { qualities } = setup({ sizes: [300_000, 270_000, 100_000] });
+  it("uses the size the browser shows (EXIF rotation applied), not the header's: a rotated 800x600 JPEG is 600x800", async () => {
+    const { draw } = setup({ natural: [600, 800] });
+    await prepareAvatar(photo(), { x: 0, y: 150, size: 600 });
+    expect(draw).toHaveBeenCalledWith(expect.any(HTMLImageElement), 0, 150, 600, 600, 0, 0, 256, 256);
+    draw.mockClear();
+    await prepareAvatar(photo(), { x: 0, y: 700, size: 600 }); // below the picture's bottom edge once rotated
+    expect(draw).toHaveBeenCalledWith(expect.anything(), 0, 200, 600, 600, 0, 0, 256, 256);
+  });
+
+  it("removes EXIF, comments and other segments an encoder adds, leaving the picture bytes alone", async () => {
+    setup({ outputs: [jpegBlob(avatarJpeg({ exif: true, com: true, xmp: true, appn: 0xed }))] });
     const blob = await prepareAvatar(photo(), { x: 0, y: 0, size: 600 });
-    expect(blob.size).toBe(100_000);
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    expect(Array.from(bytes)).toEqual(Array.from(avatarJpeg()));
+    expect(new TextDecoder("latin1").decode(bytes)).not.toMatch(/GPSLatitude|xmpmeta|hello|Photoshop|Exif/);
+  });
+
+  it("steps the quality down until the file fits 256 KB", async () => {
+    const { qualities } = setup({ outputs: [bigJpeg(), bigJpeg(), jpegBlob(avatarJpeg())] });
+    const blob = await prepareAvatar(photo(), { x: 0, y: 0, size: 600 });
+    expect(blob.size).toBe(avatarJpeg().length);
     expect(qualities).toEqual([0.85, 0.75, 0.65]);
   });
 
   it("gives up with too_large when no quality fits", async () => {
-    setup({ sizes: [300_000] });
+    setup({ outputs: [bigJpeg()] });
     await expect(prepareAvatar(photo(), { x: 0, y: 0, size: 600 })).rejects.toMatchObject({ code: "too_large" });
   });
 
-  it("never returns a PNG: a browser that cannot encode WebP is reported, not uploaded", async () => {
-    setup({ types: ["image/png"] });
-    await expect(prepareAvatar(photo(), { x: 0, y: 0, size: 600 })).rejects.toMatchObject({ code: "encode_unsupported" });
+  it("never uploads what the server would refuse: a PNG fallback, a progressive file, trailing bytes, no output", async () => {
+    for (const out of [
+      new Blob([png(256, 256) as unknown as BlobPart], { type: "image/png" }),
+      jpegBlob(avatarJpeg({ sof: 0xc2 })),
+      jpegBlob(avatarJpeg({ trailing: [1, 2] })),
+      jpegBlob(new Uint8Array([1, 2, 3])),
+    ]) {
+      setup({ outputs: [out] });
+      await expect(prepareAvatar(photo(), { x: 0, y: 0, size: 600 })).rejects.toMatchObject({ code: "encode_failed" });
+      vi.restoreAllMocks();
+    }
   });
 
   it("reports a missing canvas context and an undecodable picture with fixed codes", async () => {
     setup({ ctx: false });
-    await expect(prepareAvatar(photo(), { x: 0, y: 0, size: 600 })).rejects.toMatchObject({ code: "encode_unsupported" });
-    vi.stubGlobal("createImageBitmap", vi.fn(async () => Promise.reject(new Error("The source image could not be decoded"))));
+    await expect(prepareAvatar(photo(), { x: 0, y: 0, size: 600 })).rejects.toMatchObject({ code: "encode_failed" });
+    vi.restoreAllMocks();
+    setup({ decode: "fail" });
     await expect(prepareAvatar(photo(), { x: 0, y: 0, size: 600 })).rejects.toMatchObject({ code: "unreadable" });
+    expect(URL.revokeObjectURL).toHaveBeenCalled();
   });
 });

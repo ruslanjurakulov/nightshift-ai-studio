@@ -8,16 +8,18 @@
 --
 -- WHAT IT ADDS
 --   storage bucket "avatars"   private (public = false), 256 KB per object,
---                              image/webp only. The Command Center re-encodes
---                              every upload to a 256x256 WebP in the browser
+--                              image/jpeg only. The Command Center re-encodes
+--                              every upload to a 256x256 JPEG in the browser
+--                              (a canvas cannot encode WebP in Safari, so JPEG
+--                              is the one format every browser can produce),
 --                              and /api/avatar re-checks the bytes on the
 --                              server; the limits here are the third fence,
 --                              not the first.
 --   four policies on storage.objects (select / insert / update / delete), all
 --   scoped to bucket 'avatars' and to ONE object name per person:
---       <auth.uid()>/avatar.webp
+--       <auth.uid()>/avatar.jpg
 --   Nothing else is writable or readable: not another file name in the same
---   folder, not a sub-folder ('<uid>/x/avatar.webp'), not another person's
+--   folder, not a sub-folder ('<uid>/x/avatar.jpg'), not another person's
 --   folder, not a different case or a trailing slash. The version marker (a
 --   number, used only to bust the browser cache) lives in the person's auth
 --   user_metadata as avatar_v, so there is no profile table to add or to leak.
@@ -47,7 +49,7 @@
 --     there is no foreign key to hang an "on delete cascade" on.
 --   * Storage checks the Content-Type HEADER of an upload against
 --     allowed_mime_types, not the bytes; the route validates the bytes
---     (WebP magic, dimensions, size) before it uploads.
+--     (JPEG structure, dimensions, size, no metadata) before it uploads.
 --
 -- Additive and idempotent (upsert of the bucket, drop-if-exists / create of
 -- the policies). Requires Supabase Storage (the storage schema). Safe to run
@@ -66,19 +68,19 @@ end $$;
 
 -- DO UPDATE, not DO NOTHING (0004 / 0026 use the latter): a re-run must leave
 -- the bucket private with these limits even if somebody flipped it by hand.
--- 262144 = 256 KB; a 256x256 WebP at q0.85 is normally 10-30 KB.
+-- 262144 = 256 KB; a 256x256 JPEG at q0.85 is normally 15-30 KB.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('avatars', 'avatars', false, 262144, array['image/webp'])
+values ('avatars', 'avatars', false, 262144, array['image/jpeg'])
 on conflict (id) do update
   set public = false,
       file_size_limit = 262144,
-      allowed_mime_types = array['image/webp'];
+      allowed_mime_types = array['image/jpeg'];
 
 -- ─────────────────────────────────────────────────────────────────────────
 -- 2. One object per person, readable and writable by that person only
 -- ─────────────────────────────────────────────────────────────────────────
 
--- The name test is an exact equality on '<uid>/avatar.webp'; the folder test
+-- The name test is an exact equality on '<uid>/avatar.jpg'; the folder test
 -- repeats the first-segment rule so a reader of the policy sees the intent.
 -- auth.uid() is NULL for anon, which makes every comparison NULL (refused).
 
@@ -88,7 +90,7 @@ create policy avatars_select_own on storage.objects
   using (
     bucket_id = 'avatars'
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and name = (select auth.uid())::text || '/avatar.webp'
+    and name = (select auth.uid())::text || '/avatar.jpg'
   );
 
 drop policy if exists avatars_insert_own on storage.objects;
@@ -97,7 +99,7 @@ create policy avatars_insert_own on storage.objects
   with check (
     bucket_id = 'avatars'
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and name = (select auth.uid())::text || '/avatar.webp'
+    and name = (select auth.uid())::text || '/avatar.jpg'
   );
 
 -- UPDATE needs both halves: USING picks the row that may be changed, WITH
@@ -109,12 +111,12 @@ create policy avatars_update_own on storage.objects
   using (
     bucket_id = 'avatars'
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and name = (select auth.uid())::text || '/avatar.webp'
+    and name = (select auth.uid())::text || '/avatar.jpg'
   )
   with check (
     bucket_id = 'avatars'
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and name = (select auth.uid())::text || '/avatar.webp'
+    and name = (select auth.uid())::text || '/avatar.jpg'
   );
 
 drop policy if exists avatars_delete_own on storage.objects;
@@ -123,13 +125,13 @@ create policy avatars_delete_own on storage.objects
   using (
     bucket_id = 'avatars'
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and name = (select auth.uid())::text || '/avatar.webp'
+    and name = (select auth.uid())::text || '/avatar.jpg'
   );
 
 -- ─────────────────────────────────────────────────────────────────────────
 -- Verify (run as the SQL editor; every row should read true)
 -- ─────────────────────────────────────────────────────────────────────────
---   select (select not public and file_size_limit = 262144 and allowed_mime_types = array['image/webp']
+--   select (select not public and file_size_limit = 262144 and allowed_mime_types = array['image/jpeg']
 --             from storage.buckets where id = 'avatars') as bucket_ok,
 --          (select count(*) = 4 from pg_policies
 --            where schemaname = 'storage' and tablename = 'objects' and policyname like 'avatars\_%\_own') as four_policies,
@@ -137,7 +139,7 @@ create policy avatars_delete_own on storage.objects
 --            where schemaname = 'storage' and tablename = 'objects' and policyname like 'avatars\_%\_own') as authenticated_only;
 --
 --   -- Any policy that could widen access to the bucket (should return no rows):
---   select policyname, cmd, roles, qual from pg_policies
+--   select policyname, cmd, roles, coalesce(qual, with_check) as expr from pg_policies
 --    where schemaname = 'storage' and tablename = 'objects'
 --      and policyname not like 'avatars\_%\_own'
---      and (qual is null or qual not like '%bucket_id%');
+--      and coalesce(qual, with_check, '') not like '%bucket_id%';

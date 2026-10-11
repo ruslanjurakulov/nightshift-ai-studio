@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { webp } from "./helpers/image-bytes";
+import { avatarJpeg, png, webp } from "./helpers/image-bytes";
 
 const UID = "11111111-2222-4333-8444-555555555555";
 
@@ -32,8 +32,8 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: (...a: unknown[]) => h.s
 const { GET, POST, DELETE } = await import("../app/api/avatar/route");
 
 const ORIGIN = "https://nightshift.test";
-const goodHeaders = (extra: Record<string, string> = {}) => ({ origin: ORIGIN, "content-type": "image/webp", ...extra });
-const GOOD = webp(256, 256);
+const goodHeaders = (extra: Record<string, string> = {}) => ({ origin: ORIGIN, "content-type": "image/jpeg", ...extra });
+const GOOD = avatarJpeg();
 
 function post(body: BodyInit | null = GOOD as unknown as BodyInit, headers: Record<string, string> = goodHeaders()) {
   return POST(new Request(`${ORIGIN}/api/avatar`, { method: "POST", headers, body, ...(body ? { duplex: "half" } : {}) } as RequestInit));
@@ -56,9 +56,9 @@ beforeEach(() => {
   h.user = { id: UID };
   h.configured = true;
   h.rate.mockReset().mockResolvedValue("ok");
-  h.upload.mockReset().mockResolvedValue({ data: { path: `${UID}/avatar.webp` }, error: null });
+  h.upload.mockReset().mockResolvedValue({ data: { path: `${UID}/avatar.jpg` }, error: null });
   h.remove.mockReset().mockResolvedValue({ data: [], error: null });
-  h.download.mockReset().mockResolvedValue({ data: new Blob([GOOD], { type: "image/webp" }), error: null });
+  h.download.mockReset().mockResolvedValue({ data: new Blob([GOOD], { type: "image/jpeg" }), error: null });
   h.from.mockReset().mockImplementation(() => ({ upload: h.upload, download: h.download, remove: h.remove }));
   h.serviceClient.mockReset();
 });
@@ -76,7 +76,7 @@ describe("who may call", () => {
 
   it("POST and DELETE are our own page only: no Origin, another site's Origin or a cross-site fetch are refused", async () => {
     for (const headers of [
-      { "content-type": "image/webp" },
+      { "content-type": "image/jpeg" },
       goodHeaders({ origin: "https://evil.test" }),
       goodHeaders({ origin: "null" }),
       goodHeaders({ "sec-fetch-site": "cross-site" }),
@@ -99,7 +99,7 @@ describe("who may call", () => {
 });
 
 describe("POST: what is accepted", () => {
-  it("stores a valid WebP at exactly <uid>/avatar.webp in the avatars bucket and answers a version", async () => {
+  it("stores a valid JPEG at exactly <uid>/avatar.jpg in the avatars bucket and answers a version", async () => {
     const before = Date.now();
     const res = await post();
     expect(res.status).toBe(200);
@@ -110,9 +110,9 @@ describe("POST: what is accepted", () => {
     expect(h.from).toHaveBeenCalledWith("avatars");
     expect(h.upload).toHaveBeenCalledTimes(1);
     const [path, bytes, opts] = h.upload.mock.calls[0];
-    expect(path).toBe(`${UID}/avatar.webp`);
+    expect(path).toBe(`${UID}/avatar.jpg`);
     expect(Array.from(bytes as Uint8Array)).toEqual(Array.from(GOOD));
-    expect(opts).toMatchObject({ contentType: "image/webp", upsert: true });
+    expect(opts).toMatchObject({ contentType: "image/jpeg", upsert: true });
     expect(res.headers.get("cache-control")).toBe("no-store");
   });
 
@@ -123,14 +123,13 @@ describe("POST: what is accepted", () => {
       body: GOOD as unknown as BodyInit,
     });
     expect((await POST(req)).status).toBe(200);
-    expect(h.upload.mock.calls[0][0]).toBe(`${UID}/avatar.webp`);
+    expect(h.upload.mock.calls[0][0]).toBe(`${UID}/avatar.jpg`);
   });
 
-  it("accepts lossless and extended (with alpha-style chunks) files too", async () => {
-    expect((await post(webp(256, 256, { kind: "lossless" }) as unknown as BodyInit)).status).toBe(200);
-    expect((await post(webp(128, 128, { kind: "extended" }) as unknown as BodyInit)).status).toBe(200);
-    expect((await post(webp(64, 64) as unknown as BodyInit)).status).toBe(200);
-    expect((await post(webp(512, 512) as unknown as BodyInit)).status).toBe(200);
+  it("accepts the other shapes a canvas encoder writes (colour profile, no JFIF, 64 and 512 px)", async () => {
+    for (const o of [{ icc: true }, { jfif: false }, { width: 64, height: 64 }, { width: 512, height: 512 }, { dht: 4, dri: true }]) {
+      expect((await post(avatarJpeg(o) as unknown as BodyInit)).status, JSON.stringify(o)).toBe(200);
+    }
   });
 
   it("never uses the service role: only the user-scoped client is created", async () => {
@@ -143,18 +142,18 @@ describe("POST: what is accepted", () => {
 });
 
 describe("POST: what is refused (fixed codes, no storage text)", () => {
-  it("another content type, or multipart, is not_webp (415) before anything is read or counted", async () => {
-    for (const type of ["image/png", "image/jpeg", "multipart/form-data; boundary=x", "application/octet-stream", ""]) {
+  it("another content type, or multipart, is not_jpeg (415) before anything is read or counted", async () => {
+    for (const type of ["image/webp", "image/png", "multipart/form-data; boundary=x", "application/octet-stream", ""]) {
       const res = await post(GOOD as unknown as BodyInit, goodHeaders({ "content-type": type }));
       expect(res.status, type).toBe(415);
-      expect(await json(res)).toEqual({ error: "not_webp" });
+      expect(await json(res)).toEqual({ error: "not_jpeg" });
     }
     expect(h.rate).not.toHaveBeenCalled();
     expect(h.upload).not.toHaveBeenCalled();
   });
 
   it("accepts the type with a parameter or capitals", async () => {
-    expect((await post(GOOD as unknown as BodyInit, goodHeaders({ "content-type": "Image/WebP; charset=binary" }))).status).toBe(200);
+    expect((await post(GOOD as unknown as BodyInit, goodHeaders({ "content-type": "Image/JPEG; charset=binary" }))).status).toBe(200);
   });
 
   it("a declared length over 256 KB is too_large (413) without reading the body or counting the try", async () => {
@@ -186,38 +185,40 @@ describe("POST: what is refused (fixed codes, no storage text)", () => {
     expect(res.status).toBe(400);
   });
 
-  it("anything that is not a WebP by its bytes is not_webp, whatever the header said", async () => {
+  it("anything that is not the expected JPEG by its bytes is not_jpeg, whatever the header said", async () => {
     const text = new TextEncoder();
     const bads: Uint8Array[] = [
       new Uint8Array(),
       text.encode("<html><script>alert(1)</script></html>"),
       text.encode("<svg xmlns='http://www.w3.org/2000/svg'/>"),
-      new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 1, 0, 0, 0, 1, 0, 8, 6, 0, 0, 0]),
-      new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0]),
-      webp(256, 256).slice(0, 30), // truncated
-      webp(256, 256, { animated: true }), // animated
-      webp(256, 256, { trailing: 7 }), // bytes after the container
-      webp(256, 256, { riffSizeDelta: 1000 }), // size field lies
-      webp(256, 256, { extra: ["EXIF"] }), // metadata chunk
-      webp(256, 256, { extra: ["XMP "] }),
-      webp(256, 256, { kind: "extended", canvasDelta: 40 }), // canvas disagrees with the bitstream
+      png(256, 256),
+      webp(256, 256),
+      avatarJpeg().slice(0, 60), // truncated
+      avatarJpeg({ exif: true }), // GPS and camera data
+      avatarJpeg({ xmp: true }),
+      avatarJpeg({ com: true }),
+      avatarJpeg({ appn: 0xed }),
+      avatarJpeg({ trailing: [0x50, 0x4b, 3, 4] }), // a second payload after the end
+      avatarJpeg({ noEoi: true }),
+      avatarJpeg({ sof: 0xc2 }), // progressive
+      avatarJpeg({ twoScans: true }),
     ];
     for (const [i, bytes] of bads.entries()) {
       const res = await post(bytes as unknown as BodyInit);
       expect(res.status, `case ${i}`).toBe(400);
-      expect(await json(res), `case ${i}`).toEqual({ error: "not_webp" });
+      expect(await json(res), `case ${i}`).toEqual({ error: "not_jpeg" });
     }
     expect(h.upload).not.toHaveBeenCalled();
   });
 
   it("sides outside 64..512 or far from square are bad_dimensions", async () => {
-    for (const [w, hgt] of [[32, 32], [63, 64], [513, 513], [1024, 1024], [256, 128], [512, 400], [16383, 16383]]) {
-      const res = await post(webp(w, hgt, { kind: "lossless" }) as unknown as BodyInit);
+    for (const [w, hgt] of [[32, 32], [63, 64], [513, 513], [1024, 1024], [256, 128], [512, 400], [65535, 65535]]) {
+      const res = await post(avatarJpeg({ width: w, height: hgt }) as unknown as BodyInit);
       expect(res.status, `${w}x${hgt}`).toBe(400);
       expect(await json(res)).toEqual({ error: "bad_dimensions" });
     }
     // square-ish is fine
-    expect((await post(webp(256, 240) as unknown as BodyInit)).status).toBe(200);
+    expect((await post(avatarJpeg({ width: 256, height: 240 }) as unknown as BodyInit)).status).toBe(200);
   });
 
   it("a person who edits too often gets rate_limited (429, retry-after); an unreadable limiter is a plain failure", async () => {
@@ -256,12 +257,12 @@ describe("POST: what is refused (fixed codes, no storage text)", () => {
 });
 
 describe("DELETE", () => {
-  it("removes exactly <uid>/avatar.webp", async () => {
+  it("removes exactly <uid>/avatar.jpg", async () => {
     const res = await del();
     expect(res.status).toBe(200);
     expect(await json(res)).toEqual({ ok: true });
     expect(h.from).toHaveBeenCalledWith("avatars");
-    expect(h.remove).toHaveBeenCalledWith([`${UID}/avatar.webp`]);
+    expect(h.remove).toHaveBeenCalledWith([`${UID}/avatar.jpg`]);
   });
 
   it("is idempotent: removing what is not there is still ok", async () => {
@@ -283,22 +284,22 @@ describe("GET", () => {
   it("serves the person's own photo with the safe headers", async () => {
     const res = await get();
     expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toBe("image/webp");
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     expect(res.headers.get("content-disposition")).toBe("inline");
     expect(res.headers.get("cache-control")).toBe("private, max-age=3600");
     expect(res.headers.get("vary")).toMatch(/cookie/i);
     expect(res.headers.get("content-length")).toBe(String(GOOD.length));
     expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual(Array.from(GOOD));
-    expect(h.download).toHaveBeenCalledWith(`${UID}/avatar.webp`);
+    expect(h.download).toHaveBeenCalledWith(`${UID}/avatar.jpg`);
   });
 
   it("ignores the query entirely: ?v= is a cache-buster, never a path", async () => {
     // the handler takes no request at all: there is nothing in it to read a path from
-    const res = await (GET as unknown as (r: Request) => Promise<Response>)(new Request(`${ORIGIN}/api/avatar?v=../../victim/avatar.webp&path=other`));
+    const res = await (GET as unknown as (r: Request) => Promise<Response>)(new Request(`${ORIGIN}/api/avatar?v=../../victim/avatar.jpg&path=other`));
     expect(res.status).toBe(200);
     expect(h.download).toHaveBeenCalledTimes(1);
-    expect(h.download).toHaveBeenCalledWith(`${UID}/avatar.webp`);
+    expect(h.download).toHaveBeenCalledWith(`${UID}/avatar.jpg`);
   });
 
   it("is 404 when there is no photo or storage fails, with no detail", async () => {
@@ -311,12 +312,17 @@ describe("GET", () => {
     expect(res.status).toBe(404);
   });
 
-  it("never serves back something that is not a WebP (the bucket's mime check trusts a header)", async () => {
-    h.download.mockResolvedValue({ data: new Blob(["<html><script>alert(1)</script></html>"], { type: "image/webp" }), error: null });
+  it("never serves back something that is not the expected JPEG (the bucket's mime check trusts a header)", async () => {
+    h.download.mockResolvedValue({ data: new Blob(["<html><script>alert(1)</script></html>"], { type: "image/jpeg" }), error: null });
     expect((await get()).status).toBe(404);
-    h.download.mockResolvedValue({ data: new Blob([new Uint8Array(262145)], { type: "image/webp" }), error: null });
+    h.download.mockResolvedValue({ data: new Blob([new Uint8Array(262145)], { type: "image/jpeg" }), error: null });
     expect((await get()).status).toBe(404);
-    h.download.mockResolvedValue({ data: new Blob([], { type: "image/webp" }), error: null });
+    // a person can write their own object straight through Storage: EXIF, bytes after the end or another format
+    for (const bytes of [avatarJpeg({ exif: true }), avatarJpeg({ trailing: [1] }), png(256, 256), webp(256, 256)]) {
+      h.download.mockResolvedValue({ data: new Blob([bytes as unknown as BlobPart], { type: "image/jpeg" }), error: null });
+      expect((await get()).status).toBe(404);
+    }
+    h.download.mockResolvedValue({ data: new Blob([], { type: "image/jpeg" }), error: null });
     expect((await get()).status).toBe(404);
   });
 });

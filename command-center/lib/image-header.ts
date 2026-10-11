@@ -83,26 +83,16 @@ export function parseJpeg(b: Uint8Array): ImageHeader | null {
   return null;
 }
 
-/** The chunk walk's view of a WebP: what a RIFF container says it holds. */
-export interface WebpInfo extends ImageHeader {
-  format: "webp";
-  /** Four-character codes of the chunks, in order. */
-  chunks: string[];
-  /** The RIFF size field plus 8 equals the number of bytes given (no truncation, no trailing bytes). */
-  exactLength: boolean;
-}
-
 /**
  * WebP: RIFF....WEBP, then the first chunk says which flavour it is.
  *   "VP8 "  lossy: 14-bit width and height after the 3-byte frame tag and start code
  *   "VP8L"  lossless: signature 0x2f, then 14-bit width-1 and height-1
  *   "VP8X"  extended: 24-bit canvas width-1 / height-1 and a flags byte (animation = 0x02)
- * For VP8X the image chunk is found too and its own size must match the canvas.
+ * For VP8X the image chunk is found too: a still file without one is unreadable and its size must match the canvas.
  */
-export function parseWebp(b: Uint8Array): WebpInfo | null {
+export function parseWebp(b: Uint8Array): ImageHeader | null {
   if (b.length < 20 || !ascii(b, 0, "RIFF") || !ascii(b, 8, "WEBP")) return null;
   const riff = u32le(b, 4);
-  const exactLength = riff + 8 === b.length;
   // A RIFF size that claims more than we were given is a truncated file.
   if (riff + 8 > b.length || riff < 4) return null;
 
@@ -142,6 +132,8 @@ export function parseWebp(b: Uint8Array): WebpInfo | null {
 
   if (chunks.length === 0 || (chunks[0] !== "VP8X" && chunks[0] !== "VP8 " && chunks[0] !== "VP8L")) return null;
   if (canvas) {
+    // A still VP8X file with no image chunk has nothing to decode.
+    if (!animated && !inner) return null;
     // An animation has no single bitstream to read; its canvas is the answer.
     if (!animated && inner && (inner.width !== canvas.width || inner.height !== canvas.height)) return null;
     width = canvas.width;
@@ -151,7 +143,7 @@ export function parseWebp(b: Uint8Array): WebpInfo | null {
     height = inner.height;
   }
   if (width === 0 || height === 0) return null;
-  return { format: "webp", width, height, animated, chunks, exactLength };
+  return { format: "webp", width, height, animated };
 }
 
 /** Sniff the format from the magic bytes and read its header; null when it is none of the three or is unreadable. */

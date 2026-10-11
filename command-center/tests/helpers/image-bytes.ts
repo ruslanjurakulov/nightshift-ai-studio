@@ -67,3 +67,61 @@ export function webp(width: number, height: number, o: WebpOpts = {}): Uint8Arra
   const riff = 4 + body.length + (o.riffSizeDelta ?? 0);
   return new Uint8Array([...txt("RIFF"), ...le32(riff), ...txt("WEBP"), ...body, ...new Array(o.trailing ?? 0).fill(0x55)]);
 }
+
+export interface AvatarJpegOpts {
+  width?: number;
+  height?: number;
+  components?: 1 | 3;
+  /** JFIF APP0 right after SOI (default true). */
+  jfif?: boolean;
+  /** an ICC profile piece (APP2) */
+  icc?: boolean;
+  /** EXIF (APP1) with a GPS-looking payload */
+  exif?: boolean;
+  xmp?: boolean;
+  com?: boolean;
+  /** another APPn, e.g. 0xed (Photoshop) */
+  appn?: number;
+  /** the frame marker: 0xc0 baseline (default), 0xc2 progressive */
+  sof?: number;
+  dht?: number;
+  dri?: boolean;
+  /** entropy-coded bytes (default: a few plain bytes with a stuffed FF00 and an RST0) */
+  entropy?: number[];
+  /** bytes after EOI */
+  trailing?: number[];
+  noEoi?: boolean;
+  noDqt?: boolean;
+  twoScans?: boolean;
+}
+
+const seg = (marker: number, payload: number[]) => [0xff, marker, ...be16(payload.length + 2), ...payload];
+
+/** A complete JPEG of the shape the browsers' canvas encoders write: a header, one baseline scan, EOI. Not decodable (the entropy bytes are filler); the validator reads structure, not pixels. */
+export function avatarJpeg(o: AvatarJpegOpts = {}): Uint8Array {
+  const w = o.width ?? 256;
+  const h = o.height ?? 256;
+  const n = o.components ?? 3;
+  const out: number[] = [0xff, 0xd8];
+  if (o.jfif !== false) out.push(...seg(0xe0, [...txt("JFIF"), 0, 1, 1, 0, 0, 1, 0, 1, 0, 0]));
+  if (o.icc) out.push(...seg(0xe2, [...txt("ICC_PROFILE"), 0, 1, 1, ...new Array(40).fill(7)]));
+  if (o.exif) out.push(...seg(0xe1, [...txt("Exif"), 0, 0, 0x4d, 0x4d, 0, 42, ...txt("GPSLatitude")]));
+  if (o.xmp) out.push(...seg(0xe1, [...txt("http://ns.adobe.com/xap/1.0/"), 0, ...txt("<x:xmpmeta/>")]));
+  if (o.com) out.push(...seg(0xfe, txt("hello")));
+  if (o.appn !== undefined) out.push(...seg(o.appn, txt("Photoshop 3.0")));
+  if (!o.noDqt) out.push(...seg(0xdb, [0, ...new Array(64).fill(8)]));
+  const comps = n === 3 ? [1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1] : [1, 0x11, 0];
+  out.push(...seg(o.sof ?? 0xc0, [8, ...be16(h), ...be16(w), n, ...comps]));
+  for (let i = 0; i < (o.dht ?? 1); i++) out.push(...seg(0xc4, [i, ...new Array(16).fill(0), 1]));
+  if (o.dri) out.push(...seg(0xdd, [0, 4]));
+  const sosComps = n === 3 ? [1, 0, 2, 0x11, 3, 0x11] : [1, 0];
+  const sos = () => {
+    out.push(...seg(0xda, [n, ...sosComps, 0, 63, 0]));
+    for (const v of o.entropy ?? [0x12, 0x34, 0xff, 0x00, 0x56, 0xff, 0xd0, 0x78]) out.push(v); // not spread: the oversize case is 256 KB
+  };
+  sos();
+  if (o.twoScans) sos();
+  if (!o.noEoi) out.push(0xff, 0xd9);
+  out.push(...(o.trailing ?? []));
+  return new Uint8Array(out);
+}
