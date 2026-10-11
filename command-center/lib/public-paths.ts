@@ -170,6 +170,17 @@ export const SITEMAP_PATHS = ["/", "/pricing", ...SOLUTION_PATHS, "/docs/api", "
  *  user asking for it is sent on to their app. */
 export const SIGNUP_PATH = "/signup";
 
+/** "Forgot password?": asks for a reset e-mail. Like /login, only for someone signed out. */
+export const FORGOT_PASSWORD_PATH = "/forgot-password";
+
+/** Where a reset link ends up: choose a new password. Reachable signed out (the page itself sends a
+ *  visitor with no recovery session to /forgot-password) and signed in (a recovery session IS one). */
+export const RESET_PASSWORD_PATH = "/reset-password";
+
+/** The sign-up form's username check, asked signed out (app/api/handle-available). Exactly this path;
+ *  it answers a bare yes/no and is limited per address and, in the database, platform-wide (0096). */
+export const HANDLE_CHECK_PATH = "/api/handle-available";
+
 /** Where the confirmation email lands. Public because the person opening it is
  *  not signed in yet — this route is what signs them in. */
 export const AUTH_CALLBACK_PATH = "/auth/callback";
@@ -185,7 +196,15 @@ export const WELCOME_PATH = "/welcome";
 
 /** Public for a signed-out visitor. `/` is the landing page for them; a signed-in
  *  user asking for `/` is sent on to their Command Center as before. */
-export const PUBLIC_PATHS = ["/", ...ALWAYS_PUBLIC_PATHS, SIGNUP_PATH, AUTH_CALLBACK_PATH, AUTH_CONFIRM_PATH] as const;
+export const PUBLIC_PATHS = [
+  "/",
+  ...ALWAYS_PUBLIC_PATHS,
+  SIGNUP_PATH,
+  FORGOT_PASSWORD_PATH,
+  RESET_PASSWORD_PATH,
+  AUTH_CALLBACK_PATH,
+  AUTH_CONFIRM_PATH,
+] as const;
 
 /**
  * Top-level URL segments that are pages of their own, so no channel may take
@@ -195,6 +214,8 @@ export const PUBLIC_PATHS = ["/", ...ALWAYS_PUBLIC_PATHS, SIGNUP_PATH, AUTH_CALL
 export const RESERVED_ROOT_SEGMENTS = [
   "login",
   "signup",
+  "forgot-password",
+  "reset-password",
   "auth",
   "welcome",
   "privacy",
@@ -255,6 +276,18 @@ export function isSignupPath(pathname: string): boolean {
   return normalize(pathname) === SIGNUP_PATH;
 }
 
+export function isForgotPasswordPath(pathname: string): boolean {
+  return normalize(pathname) === FORGOT_PASSWORD_PATH;
+}
+
+export function isResetPasswordPath(pathname: string): boolean {
+  return normalize(pathname) === RESET_PASSWORD_PATH;
+}
+
+export function isHandleCheckPath(pathname: string): boolean {
+  return normalize(pathname) === HANDLE_CHECK_PATH;
+}
+
 export function isAuthCallbackPath(pathname: string): boolean {
   const p = normalize(pathname);
   return p === AUTH_CALLBACK_PATH || p === AUTH_CONFIRM_PATH;
@@ -281,7 +314,13 @@ export function gateDecision(pathname: string, signedIn: boolean): GateDecision 
   // The route itself decides: signed out it starts the sign-up, signed in it
   // explains that an invite is for new accounts.
   if (isInviteLinkPath(pathname)) return "pass";
-  if (isLoginPath(pathname) || isSignupPath(pathname)) return signedIn ? "to-home" : "pass";
+  if (isLoginPath(pathname) || isSignupPath(pathname) || isForgotPasswordPath(pathname)) return signedIn ? "to-home" : "pass";
+  // A recovery session is a signed-in one: the page decides (session + the
+  // marker the callback set), so the gate neither redirects nor resolves a channel.
+  if (isResetPasswordPath(pathname)) return "pass";
+  // The sign-up form's username check works signed out; it is a route handler
+  // that authenticates nothing and says one boolean (see HANDLE_CHECK_PATH).
+  if (isHandleCheckPath(pathname)) return "pass";
   if (isAlwaysPublicPath(pathname)) return "pass";
   // Either way: a confirmation link opened in a browser that still holds an
   // older session must be able to replace it.

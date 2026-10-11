@@ -31,6 +31,8 @@ export type PublicDictionary = {
     fx: Pick<Dictionary["site"]["fx"], "pause">;
   };
   signup: Dictionary["signup"];
+  /** /forgot-password, the "reset your password?" confirmation and /reset-password. */
+  recovery: Dictionary["recovery"];
   auth: Pick<Dictionary["auth"], "email" | "password" | "signIn" | "signingIn">;
   /** The error screen (components/feedback/ErrorScreen), shown by app/error.tsx on any page. */
   ux: Pick<Dictionary["ux"], "errorTitle" | "errorBody" | "errorRetry" | "errorHome" | "errorRef">;
@@ -54,6 +56,7 @@ export function publicDictionary(t: Dictionary): PublicDictionary {
     creditsPage: { eq: t.creditsPage.eq },
     site: { pricingTeaser: { credits: t.site.pricingTeaser.credits }, auth: t.site.auth, stage: { tag: t.site.stage.tag, figure: t.site.stage.figure, steps: t.site.stage.steps }, samples: { credit: t.site.samples.credit, captions: t.site.samples.captions }, fx: { pause: t.site.fx.pause } },
     signup: t.signup,
+    recovery: t.recovery,
     auth: { email: t.auth.email, password: t.auth.password, signIn: t.auth.signIn, signingIn: t.auth.signingIn },
     ux: {
       errorTitle: t.ux.errorTitle,

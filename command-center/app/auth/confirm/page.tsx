@@ -23,5 +23,5 @@ export default async function ConfirmSignInPage({
   if (!pending) redirect("/login?error=link_invalid");
   const raw = (await searchParams).next;
   const next = safeNextPath(typeof raw === "string" ? raw : null);
-  return <ConfirmSignIn email={pending.email} csrf={pending.csrf} next={next} />;
+  return <ConfirmSignIn email={pending.email} csrf={pending.csrf} next={next} recovery={pending.rec === true} />;
 }

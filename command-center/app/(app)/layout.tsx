@@ -31,6 +31,7 @@ import { SIDEBAR_COOKIE, isSidebarCollapsed } from "@/lib/sidebar-pref";
 import { AppProviders } from "@/components/AppProviders";
 import { getLocale } from "@/lib/i18n/server";
 import { MotionProvider } from "@/components/motion/MotionProvider";
+import { FlashNotice } from "@/components/account/FlashNotice";
 import "./app-redesign.css";
 import "./app-pages-1.css";
 
@@ -138,6 +139,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AppProviders locale={await getLocale()}>
+      <FlashNotice />
       {/* The motion kit's engine for the signed-in app (docs/design/MOTION.md):
           here rather than in the root layout, so the public pages do not carry
           Motion's core until a page of theirs animates with it. */}

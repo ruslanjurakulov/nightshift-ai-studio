@@ -5,8 +5,17 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/config";
 import { createClient } from "@/lib/supabase/server";
 import { publicOrigin } from "@/lib/server/public-origin";
 import { joinFromCookie } from "@/lib/server/friend-invites";
+import { applyPendingHandle, type HandleClient } from "@/lib/handles";
 import { safeNextPath } from "@/lib/safe-redirect";
 import { callbackErrorFor, type CallbackError } from "@/lib/signup";
+import {
+  FORGOT_PASSWORD_PATH,
+  RECOVERY_COOKIE,
+  RESET_PASSWORD_PATH,
+  encodeRecovery,
+  recoveryCookieOptions,
+  type RecoveryNotice,
+} from "@/lib/recovery";
 import {
   AUTH_CONFIRM_PATH,
   PENDING_COOKIE,
@@ -46,12 +55,24 @@ export const dynamic = "force-dynamic";
  * different browser from the one that signed up (the PKCE verifier lives in
  * that browser's cookies), in which case the address IS confirmed and signing
  * in with the password works.
+ *
+ * A PASSWORD-RECOVERY link takes the same two routes. The PKCE `code` (same
+ * browser as the request) becomes a recovery session at once; a `token_hash`
+ * with type=recovery (any browser) goes through the same "continue as <email>?"
+ * step as every other unbound link, so opening someone else's reset link cannot
+ * sign you into their account. Either way the session is marked for
+ * /reset-password (lib/recovery.ts) and that is the only place it is sent; a
+ * failed reset link goes to /forgot-password with a fixed notice, to ask for a
+ * new one, rather than to /login.
  */
 
 // Only the types a sign-up confirmation (or an emailed sign-in link) can
-// carry. A recovery or invite link is a different flow and is not completed
-// from here.
+// carry. An invite link is a different flow and is not completed from here.
 const CONFIRM_TYPES: readonly EmailOtpType[] = ["signup", "email"];
+// A password-recovery link. Like the others it is verified into a PENDING
+// sign-in (never a session) and finished on the "continue as <email>?" page; the
+// session it becomes is a recovery session, sent to /reset-password.
+const RECOVERY_TYPE: EmailOtpType = "recovery";
 
 /** Responses in this flow are never framed, cached or leaked by Referer. */
 const NO_FRAME: Record<string, string> = {
@@ -73,6 +94,18 @@ function toLogin(origin: string, error: CallbackError, status = 307) {
   return redirect(url, status);
 }
 
+/** A failed reset link goes to the page that can ask for another, with a fixed notice. */
+function toForgot(origin: string, notice: RecoveryNotice, status = 307) {
+  const url = new URL(FORGOT_PASSWORD_PATH, origin);
+  url.searchParams.set("s", notice);
+  return redirect(url, status);
+}
+
+/** Mark this browser's session as a RECOVERY session for /reset-password (see lib/recovery.ts). */
+async function markRecovery(userId: string) {
+  (await cookies()).set(RECOVERY_COOKIE, encodeRecovery({ uid: userId, iat: Math.floor(Date.now() / 1000) }), recoveryCookieOptions());
+}
+
 /** A client that verifies a link without writing this browser's session. */
 function stateless() {
   return createStatelessClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -85,12 +118,17 @@ export async function GET(request: Request) {
   const origin = publicOrigin(request);
   const next = safeNextPath(url.searchParams.get("next"));
 
+  // A reset link that failed is sent where a new one can be asked for.
+  const recovering = next === RESET_PASSWORD_PATH;
+
   // Supabase itself reports a spent or expired link on the redirect.
-  if (url.searchParams.get("error") || url.searchParams.get("error_code"))
+  if (url.searchParams.get("error") || url.searchParams.get("error_code")) {
+    if (recovering) return toForgot(origin, "expired");
     return toLogin(origin, callbackErrorFor(url.searchParams.get("error_code")));
+  }
 
   const supabase = await createClient();
-  if (!supabase) return toLogin(origin, "link_invalid");
+  if (!supabase) return recovering ? toForgot(origin, "expired") : toLogin(origin, "link_invalid");
 
   const code = url.searchParams.get("code");
   const tokenHash = url.searchParams.get("token_hash");
@@ -98,28 +136,46 @@ export async function GET(request: Request) {
 
   try {
     if (code) {
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (error) return toLogin(origin, callbackErrorFor(error.code));
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) return recovering ? toForgot(origin, "expired") : toLogin(origin, callbackErrorFor(error.code));
+      // A password-recovery code (the browser that asked for it is this one:
+      // the PKCE verifier proved it). The session is a recovery session: mark
+      // it and go straight to the reset page, whatever `next` said.
+      if ((data as { redirectType?: string | null } | null)?.redirectType === "PASSWORD_RECOVERY") {
+        const uid = data?.user?.id ?? data?.session?.user?.id;
+        if (!uid) return toForgot(origin, "expired");
+        await markRecovery(uid);
+        return redirect(new URL(RESET_PASSWORD_PATH, origin));
+      }
       // The address is confirmed and the person is signed in: the one moment a
       // friend's invite link (cookie from /i/<token>) may count (migration 0092).
       await joinFromCookie(supabase);
+      // The username chosen at sign-up goes on the account now that it has a session (quiet; never blocks).
+      await applyPendingHandle(supabase as unknown as HandleClient);
       return redirect(new URL(next, origin));
     }
-    if (tokenHash && type && CONFIRM_TYPES.includes(type)) {
+    if (tokenHash && type && (CONFIRM_TYPES.includes(type) || type === RECOVERY_TYPE)) {
+      const rec = type === RECOVERY_TYPE;
       const { data, error } = await stateless().auth.verifyOtp({ token_hash: tokenHash, type });
-      if (error) return toLogin(origin, callbackErrorFor(error.code));
+      if (error) return rec ? toForgot(origin, "expired") : toLogin(origin, callbackErrorFor(error.code));
       const rt = data.session?.refresh_token;
       const email = data.user?.email ?? data.session?.user?.email;
-      if (!rt || !email) return toLogin(origin, "link_invalid");
-      const pending = encodePending({ rt, email, csrf: newCsrfToken(), iat: Math.floor(Date.now() / 1000) });
+      if (!rt || !email) return rec ? toForgot(origin, "expired") : toLogin(origin, "link_invalid");
+      const pending = encodePending({
+        rt,
+        email,
+        csrf: newCsrfToken(),
+        iat: Math.floor(Date.now() / 1000),
+        ...(rec ? { rec: true } : {}),
+      });
       (await cookies()).set(PENDING_COOKIE, pending, pendingCookieOptions());
       const confirm = new URL(AUTH_CONFIRM_PATH, origin);
-      confirm.searchParams.set("next", next);
+      confirm.searchParams.set("next", rec ? RESET_PASSWORD_PATH : next);
       return redirect(confirm);
     }
-    return toLogin(origin, "link_invalid");
+    return recovering ? toForgot(origin, "expired") : toLogin(origin, "link_invalid");
   } catch {
-    return toLogin(origin, "link_invalid");
+    return recovering ? toForgot(origin, "expired") : toLogin(origin, "link_invalid");
   }
 }
 
@@ -155,11 +211,21 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   if (!supabase) return toLogin(origin, "link_invalid", 303);
   try {
-    const { error } = await supabase.auth.refreshSession({ refresh_token: pending.rt });
+    const { data, error } = await supabase.auth.refreshSession({ refresh_token: pending.rt });
+    if (pending.rec) {
+      // A recovery session: marked for /reset-password, and never counted as a
+      // new account for a friend's invite.
+      if (error) return toForgot(origin, "expired", 303);
+      const uid = data?.user?.id ?? data?.session?.user?.id;
+      if (!uid) return toForgot(origin, "expired", 303);
+      await markRecovery(uid);
+      return redirect(new URL(RESET_PASSWORD_PATH, origin), 303);
+    }
     if (error) return toLogin(origin, callbackErrorFor(error.code), 303);
     await joinFromCookie(supabase);
+    await applyPendingHandle(supabase as unknown as HandleClient);
   } catch {
-    return toLogin(origin, "link_invalid", 303);
+    return pending.rec ? toForgot(origin, "expired", 303) : toLogin(origin, "link_invalid", 303);
   }
   return redirect(new URL(next, origin), 303);
 }

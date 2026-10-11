@@ -18,10 +18,13 @@ export interface SignupInput {
   password: string;
   confirm: string;
   consent: boolean;
+  /** The username field's verdict (lib/handles.ts handleAllowsSubmit). Left out, it is not checked. */
+  handleOk?: boolean;
 }
 
 export type SignupFieldError =
   | "email_invalid"
+  | "handle_invalid"
   | "password_short"
   | "password_long"
   | "password_mismatch"
@@ -32,12 +35,26 @@ export function isPlausibleSignupEmail(email: string): boolean {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
 }
 
+export type PasswordProblem = "password_short" | "password_long" | "password_mismatch";
+
+/**
+ * The ONE password policy: sign-up, the reset page and Settings all ask the
+ * same of a new password (at least PASSWORD_MIN characters, at most 72 bytes,
+ * typed twice the same). The weak-password check beyond this is the server's.
+ */
+export function validateNewPassword(password: string, confirm: string): PasswordProblem | null {
+  if (password.length < PASSWORD_MIN) return "password_short";
+  if (new TextEncoder().encode(password).length > PASSWORD_MAX) return "password_long";
+  if (password !== confirm) return "password_mismatch";
+  return null;
+}
+
 /** The first thing wrong with the form, in the order the fields appear. */
 export function validateSignup(input: SignupInput): SignupFieldError | null {
   if (!isPlausibleSignupEmail(input.email)) return "email_invalid";
-  if (input.password.length < PASSWORD_MIN) return "password_short";
-  if (new TextEncoder().encode(input.password).length > PASSWORD_MAX) return "password_long";
-  if (input.password !== input.confirm) return "password_mismatch";
+  if (input.handleOk === false) return "handle_invalid";
+  const password = validateNewPassword(input.password, input.confirm);
+  if (password) return password;
   if (!input.consent) return "consent_required";
   return null;
 }
