@@ -129,3 +129,32 @@ faqat bepul kredit berilmaydi va `/welcome` bu haqda hech narsa demaydi.
    bitta qator. Ikkinchi tashkilot yarating — yangi qator **qo'shilmaydi**.
 5. Chiqib, tasdiqlanmagan boshqa email bilan kirishga urining → "Avval emailingizni
    tasdiqlang" xabari.
+
+## 7. Parolni tiklash, hisob xavfsizligi va @username (0096)
+
+Kod tayyor (`/forgot-password`, `/reset-password`, Sozlamalar → "Hisob va xavfsizlik",
+ro'yxatdan o'tishda @username). Ishlashi uchun Supabase'da quyidagilar kerak:
+
+1. **Redirect URLs** (2-bo'lim) ro'yxatida `https://nightshift-ai.studio/auth/callback`
+   bo'lishi shart — tiklash xati ham shu manzilga qaytadi (`?next=/reset-password`).
+2. **Authentication → Emails → Templates → Reset Password**: standart shablon
+   (`{{ .ConfirmationURL }}`) xatni **so'ragan brauzerda** ochilganda ishlaydi (PKCE).
+   Havola boshqa brauzerda (masalan telefonda) ochilishi uchun shablondagi havolani
+   `{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password`
+   ga almashtiring: u holda sayt avval "Siz shu hisobmisiz?" qadamini ko'rsatadi
+   (birovning havolasi sizni uning hisobiga kiritib yubormaydi).
+3. **Authentication → Sign In / Providers → Email**: "Secure email change" **ON**
+   (yangi email o'zgarishi eski va yangi manzilga yuborilgan havolalar ochilgandan
+   keyingina kuchga kiradi); "Secure password change" ni **ON** qoldiring (parolni
+   faqat yaqinda kirgan sessiya o'zgartira oladi; aks holda forma "Qayta kiring" deydi).
+4. **Authentication → Rate Limits**: tiklash va email o'zgartirish xatlari "emails
+   sent per hour" ichiga kiradi; SMTP (3-bo'lim) sozlanganini tekshiring.
+5. **SQL Editor**: `supabase/migrations/0096_user_handles.sql` ni ko'rib chiqilgandan
+   keyin ishga tushiring (0042 va 0087 avval qo'llangan bo'lishi kerak; qayta ishga
+   tushirish xavfsiz). U qo'llanmaguncha Sozlamalarda @username bo'limi ko'rinmaydi va
+   ro'yxatdan o'tishda tanlangan nom ariza metadatasida saqlanadi, birinchi sessiyada
+   qo'llanadi.
+
+Eslatma: ikki bosqichli tekshiruv (TOTP) yoqilgan hisob parolini faqat xat havolasi
+orqali tiklay olmaydi (Supabase bunda aal2 talab qiladi); ular kirib, Sozlamalardan
+o'zgartiradi.
