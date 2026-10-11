@@ -16,7 +16,7 @@ edge numbers and the focus ring. Media is shown as numbered frames, not icon-til
 | :-- | :-- | :-- |
 | Studio / Create | the five desks as one lit patch bay; on a tool desk, the composer | recent work, credits and edit projects are ruled; the Assistant is an open section |
 | Home | the four numbered steps of the video flow (topic, look and sound, price, the one key) | videos are numbered frames you swipe on a phone; "more things to make" is one ruled list; the three promises sit beside the desk |
-| Credits | the balance (a large figure, the meter, where credits come from, the one Add key) | plans, invite and activity are ruled sections; Copy and Create link are quiet keys |
+| Credits | the balance (a large figure, the meter, where credits come from, the one filled "Get more credits" key) | plans, invite and activity are ruled sections; every pack and plan key is the same PriceButton outlined (`tone="quiet"`), Copy and Create link are quiet. Checked on a build that offers packs and plans (fake test-mode checkout settings, not committed): exactly one filled key |
 | Library | the drop zone when empty (media itself was already contact-sheet frames) | storage is a ruled strip; its Upload key goes quiet while the empty desk holds the primary |
 | Videos list | none needed: the list is the page | stats are one ruled strip; each row starts with a small frame (a Short is upright); filters are chips |
 | Settings | the workspace name | Developers and "another organization" are ruled; fields are 44px with 16px text |
@@ -25,8 +25,9 @@ edge numbers and the focus ring. Media is shown as numbered frames, not icon-til
 
 - **Sidebar**: group names are slug lines (label and hairline), the current row is an indigo tick on the sliding plate, desktop rows
   are 40px (touch keeps 44), so the whole rail fits a 900px window. A panel-toggle button beside the wordmark collapses it to a
-  72px icon rail (labels become `title` and screen-reader text), remembered per browser, no layout flash (cookie mirror of the
-  localStorage value read in the layout), no width animation under reduced motion. No keyboard shortcut was added.
+  72px icon rail (a row's name is screen-reader text plus a tooltip that shows on hover and on keyboard focus), remembered per
+  browser, no layout flash (the localStorage value is mirrored to a cookie the layout reads; checked on a production build: the
+  HTML carries `data-collapsed="true"` with the cookie, CLS 0), no width animation under reduced motion. No keyboard shortcut was added.
 - **Top bar**: icon keys are quiet until pointed at; the credit key is the one bordered object, with its meter.
 - **Page header**: the slug line (page mark and hairline) then a 44px title; the icon tile is gone.
 - **Section tabs** (Studio's screens): underlined, the current one amber, as the public Studio card draws them.
@@ -63,11 +64,13 @@ tool counts under 44px at 1440.
 
 ## Tests
 
-`tests/sidebar-toggle.test.tsx` (new, 6): toggle flips `aria-expanded` and the rail, persists to storage and cookie, draws collapsed from the
-server cookie, still works when storage throws, ru and uz labels, 44px key and focus ring. `tests/site-colour.test.ts` and
+`tests/sidebar-toggle.test.tsx` (new, 8): toggle flips `aria-expanded` and the rail, persists to storage and cookie, draws collapsed from the
+server cookie, still works when storage throws, tooltip on hover and keyboard focus, ru and uz labels, 44px key and focus ring.
+`tests/sidebar-pref.test.ts` (new): the cookie reader is an allow-list (`collapsed` only) and lives in a plain module the layout imports.
+`tests/credits-one-key.test.tsx` (new): with packs and plans on offer the Credits view has exactly one filled key. `tests/site-colour.test.ts` and
 `tests/light-theme-tokens.test.ts` were updated for what the colours legitimately changed (the app's key is now the public indigo, focus is
 amber, `--color-primary` is the interaction ink); the app's key and focus pairs are pinned equal to the public ones, with contrast floors.
-Full suite 229 files, all green; `tsc` and `next lint` clean.
+Full suite 231 files (4818 tests), all green; `tsc` and `next lint` clean.
 
 ## Not done in round 1
 

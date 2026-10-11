@@ -151,3 +151,7 @@
 @media (pointer: coarse), (max-width: 40rem) {
   .ns-open .section-open td > a { display: inline-flex; align-items: center; min-height: 44px; }
 }
+
+/* Sections on the ruled pages sit a full step apart (the stats strip no longer crowds the heading under it). */
+.app-shell .rhythm.ns-open { gap: 40px; }
+.ns-open .section-open { padding-top: 8px; }

@@ -308,3 +308,32 @@ body .app-shell.atmos {
 .shell-sidebar[data-collapsed="true"] [data-shell-usercard] { justify-content: center; padding: 6px; gap: 0; }
 .shell-sidebar[data-collapsed="true"] [data-shell-usercard] > span:last-child { display: none; }
 .shell-sidebar[data-collapsed="true"] .shell-sidebar-head + nav { padding-inline: 12px; }
+
+/* The rail's tooltip: shown on hover and on keyboard focus, beside the row (fixed, so the nav's scrolling cannot clip it). */
+.shell-tip {
+  position: fixed;
+  left: 80px;
+  z-index: 60;
+  transform: translateY(-50%);
+  padding: 7px 12px;
+  border-radius: var(--ns-r-chip);
+  background: var(--ns-text);
+  color: var(--ns-ground);
+  font-size: var(--ns-t-ui);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--ns-lift);
+}
+
+/* A key that is not the page's one filled key: the same price legend, outlined (PriceButton tone="quiet"). */
+.ns-price-button[data-tone="quiet"] {
+  background: transparent;
+  color: var(--color-fg);
+  box-shadow: inset 0 0 0 1px var(--ns-rule-strong);
+}
+.ns-price-button[data-tone="quiet"] .ns-price-tag { color: var(--color-fg); }
+.ns-price-button[data-tone="quiet"]:hover:not(:disabled) { background: var(--ns-act-soft); color: var(--color-fg); box-shadow: inset 0 0 0 1px var(--ns-act); }
+.ns-price-button[data-tone="quiet"]:disabled { box-shadow: inset 0 0 0 1px var(--color-border); background: var(--studio-field); color: var(--color-muted); }
+.ns-price-button[data-tone="quiet"]:disabled .ns-price-tag { color: var(--color-muted); }

@@ -26,7 +26,8 @@ import { planValue, readBillingSummary } from "@/lib/server/plans";
 import { accountPlan, type AccountPlan } from "@/lib/account";
 import type { CreditAccount } from "@/lib/credits";
 import { ShellProvider } from "@/components/shell/ShellContext";
-import { SIDEBAR_COOKIE, SidebarProvider } from "@/components/shell/SidebarState";
+import { SidebarProvider } from "@/components/shell/SidebarState";
+import { SIDEBAR_COOKIE, isSidebarCollapsed } from "@/lib/sidebar-pref";
 import { AppProviders } from "@/components/AppProviders";
 import { getLocale } from "@/lib/i18n/server";
 import { MotionProvider } from "@/components/motion/MotionProvider";
@@ -89,7 +90,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const email = user?.email ?? null;
   // The customer sidebar's width is a per-browser preference (a cookie mirrored from localStorage), read here so the
   // first frame is already the right width.
-  const sidebarCollapsed = (await cookies()).get(SIDEBAR_COOKIE)?.value === "collapsed";
+  const sidebarCollapsed = isSidebarCollapsed((await cookies()).get(SIDEBAR_COOKIE)?.value);
 
   // Credits in the header, for an organization that pays. The operator's own
   // (default) organization is exempt and shows none; so does a database
