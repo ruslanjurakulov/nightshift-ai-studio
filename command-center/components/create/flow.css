@@ -1,6 +1,7 @@
-/* The guided create flow: one idea per card, plain words, big targets.
-   Cards are 20px-radius surfaces on the page ground with a low-contrast edge;
-   controls inside keep the 3:1 edge from the tokens (docs/design/APP_KREA.md). */
+/* The guided create flow: one idea per step, plain words, big targets.
+   The flow IS the page's lit desk (docs/design/app-redesign-1/NOTES.md): one surface, its edge lit, the four steps
+   ruled and numbered inside it. A card outside the desk (a waiting note, a channel) is a small quiet box.
+   Controls inside keep the 3:1 edge from the tokens (docs/design/APP_KREA.md). */
 
 .fl {
   display: flex;
@@ -9,16 +10,55 @@
   min-width: 0;
   /* One calm column: a form this size reads best at about 55rem, however wide the screen. */
   max-width: 55rem;
+  counter-reset: step;
 }
+/* The desk: the flow's own steps sit on one lit surface. */
+.fl:has(> .fl-card) {
+  position: relative;
+  gap: 0;
+  padding: 4px 20px;
+  background: var(--ns-console);
+  border: 1px solid color-mix(in srgb, var(--ns-act) 34%, var(--ns-rule));
+  border-radius: var(--ns-r-sheet);
+  box-shadow: var(--ns-lift), 0 36px 90px -44px var(--ns-lit-glow);
+}
+.fl:has(> .fl-card)::before {
+  content: "";
+  position: absolute;
+  inset: 0 24px auto 24px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ns-act) 24%, var(--ns-amber) 62%, transparent);
+  opacity: 0.85;
+  pointer-events: none;
+}
+@media (min-width: 640px) {
+  .fl:has(> .fl-card) { padding: 8px 32px; }
+}
+.fl > .fl-note { padding-top: 16px; }
+.fl > .fl-card {
+  padding: 28px 0;
+  border: 0;
+  border-top: 1px solid var(--ns-rule);
+  border-radius: 0;
+  background: transparent;
+}
+.fl > .fl-card:first-of-type,
+.fl > .fl-note + .fl-card { border-top: 0; }
+.fl > .fl-card.fl-warn { padding-block: 16px; }
 .fl-card {
   display: flex;
   flex-direction: column;
   gap: 16px;
   min-width: 0;
   padding: var(--ns-card-pad);
-  border: 1px solid var(--color-border);
-  border-radius: var(--ns-r-sheet);
+  border: 1px solid var(--ns-rule);
+  border-radius: var(--ns-r-panel);
   background: var(--color-panel);
+}
+/* A note that needs the person: warm, and the only tinted box on the page. */
+.fl-card[data-tone="waiting"] {
+  background: color-mix(in srgb, var(--ns-amber) 9%, var(--color-panel));
+  border-color: color-mix(in srgb, var(--ns-amber) 40%, var(--ns-rule));
 }
 @media (min-width: 640px) {
   .fl-card { padding: 24px; }
@@ -26,11 +66,24 @@
 .fl-warn { color: var(--color-warn); font-size: var(--ns-t-ui); }
 .fl-note { font-size: var(--ns-t-ui); color: var(--color-muted); }
 .fl-q {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
   font-size: var(--ns-t-h3);
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.011em;
   color: var(--color-fg);
+}
+/* Edge numbers, as on a contact sheet: the step's place in the sequence (decorative, hidden from assistive tech). */
+.fl > .fl-card .fl-q::before {
+  counter-increment: step;
+  content: counter(step, decimal-leading-zero) / "";
+  flex: none;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ns-amber-ink);
 }
 .fl-hint { font-size: var(--ns-t-ui); line-height: 1.5; color: var(--color-muted); }
 
@@ -48,7 +101,7 @@
   line-height: 1.5;
 }
 .fl-topic::placeholder { color: var(--color-muted); }
-.fl-topic:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 2px; }
+.fl-topic:focus-visible { outline: 3px solid var(--ns-focus); outline-offset: 2px; }
 .fl-try { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .fl-try-label { font-size: var(--ns-t-ui); color: var(--color-muted); width: 100%; }
 .fl-try .ns-chip { font-size: var(--ns-t-ui); text-align: left; height: auto; padding-block: 10px; line-height: 1.3; }
@@ -65,7 +118,7 @@
   background: var(--ns-key);
   overflow: clip;
 }
-.fl-choice-wrap[data-open="true"] { border-color: var(--ns-amber-ink); background: var(--color-panel); }
+.fl-choice-wrap[data-open="true"] { border-color: var(--ns-act); background: var(--color-panel); }
 .fl-choice {
   display: flex;
   align-items: center;
@@ -122,7 +175,7 @@
   color: var(--color-fg);
   font-size: 1rem;
 }
-.fl-select:focus-visible { outline: 2px solid var(--ns-focus); outline-offset: 2px; }
+.fl-select:focus-visible { outline: 3px solid var(--ns-focus); outline-offset: 2px; }
 
 /* more options / details */
 .fl-more > summary {
@@ -142,7 +195,7 @@
 
 /* 3 — the price */
 .fl-price { display: flex; flex-direction: column; gap: 8px; min-height: 150px; }
-.fl-price-figure { font-variant-numeric: normal; font-size: var(--ns-t-h1); font-weight: 600; line-height: 1.15; letter-spacing: -0.02em; }
+.fl-price-figure { font-variant-numeric: normal; font-size: clamp(2.25rem, 1.7rem + 2vw, 3rem); font-weight: 600; line-height: 1.15; letter-spacing: -0.02em; }
 .fl-price-notes { display: flex; flex-direction: column; gap: 2px; font-size: var(--ns-t-ui); color: var(--color-muted); }
 .fl-price-link { align-self: flex-start; font-size: var(--ns-t-ui); color: var(--color-primary); text-decoration: underline; }
 
@@ -163,25 +216,42 @@
   .fl-choice-chevron { transition: none; }
 }
 
-/* Home: videos as cards, the other tools as one calm list */
-.home-cards { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+/* Home: videos as numbered frames, the other tools as one ruled list */
+.home-cards { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 640px) { .home-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 1024px) { .home-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.home-video { height: 100%; justify-content: space-between; gap: 12px; color: var(--color-fg); }
-.home-video:hover { border-color: var(--ns-rule-strong); }
+.home-frame { display: flex; flex-direction: column; gap: 12px; height: 100%; color: var(--color-fg); }
+.home-frame-pic {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--ns-r-frame);
+  background:
+    radial-gradient(120% 90% at 20% 0%, color-mix(in srgb, var(--ns-act) 22%, transparent), transparent 60%),
+    var(--ns-film);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ns-on-film) 10%, transparent);
+  overflow: hidden;
+  transition: box-shadow var(--ns-dur-2) var(--ns-ease);
+}
+.home-frame:hover .home-frame-pic { box-shadow: inset 0 0 0 1px var(--ns-act), 0 18px 40px -22px var(--ns-lit-glow); }
+.home-frame[data-state="waiting"] .home-frame-pic { box-shadow: inset 0 0 0 1px var(--ns-amber); }
+.home-frame-glyph { width: 34px; height: 34px; color: var(--ns-on-film); opacity: 0.6; }
+.home-frame-no { position: absolute; left: 10px; bottom: 8px; font-size: 0.8125rem; font-weight: 600; color: var(--ns-edge-print); }
+.home-frame-body { display: flex; flex-direction: column; gap: 6px; }
 .home-video-title { font-size: 1.0625rem; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-.home-quick { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); }
-@media (min-width: 640px) { .home-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 1024px) { .home-quick { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.home-quick { display: grid; gap: 0 40px; grid-template-columns: minmax(0, 1fr); border-top: 1px solid var(--ns-rule); }
+@media (min-width: 720px) { .home-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .home-quick { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .home-quick-link {
   display: flex;
   align-items: center;
   gap: 14px;
-  min-height: 64px;
-  padding: 12px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--ns-r-panel);
-  background: var(--color-panel);
+  min-height: 68px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--ns-rule);
+  transition: background-color var(--ns-dur-1) var(--ns-ease), padding var(--ns-dur-2) var(--ns-ease);
 }
-.home-quick-link:hover { border-color: var(--ns-rule-strong); }
-.home-assistant { border: 1px solid var(--color-border); border-radius: var(--ns-r-sheet); padding: 4px 20px 16px; background: var(--color-panel); }
+.home-quick-link:hover { background: var(--ns-act-soft); padding-inline: 12px; }
+.home-quick-link:hover svg { color: var(--ns-act-ink); }
+.home-assistant { border-top: 1px solid var(--ns-rule); padding: 4px 0 16px; }

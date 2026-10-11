@@ -109,7 +109,7 @@ export function InviteFriendsCard({ invite, orgId }: { invite: MyInvite; orgId: 
 
       {!state.link ? (
         <div className="flex flex-col items-start gap-2">
-          <button type="button" onClick={create} disabled={busy || block !== null} className="btn-primary min-h-11 px-5 text-sm disabled:opacity-40">
+          <button type="button" onClick={create} disabled={busy || block !== null} className="btn-quiet min-h-11 px-5 text-sm disabled:opacity-40">
             {busy ? c.creating : c.create}
           </button>
           {block === "off" && <p className="text-xs text-[var(--color-muted)]">{c.closed}</p>}
@@ -144,7 +144,7 @@ export function InviteFriendsCard({ invite, orgId }: { invite: MyInvite; orgId: 
                 type="button"
                 onClick={onCopy}
                 disabled={!url}
-                className="btn-primary inline-flex min-h-12 w-full shrink-0 items-center justify-center gap-2 px-4 text-sm disabled:opacity-40 sm:w-auto sm:min-w-[7.5rem]"
+                className="btn-quiet inline-flex min-h-12 w-full shrink-0 items-center justify-center gap-2 px-4 text-sm disabled:opacity-40 sm:w-auto sm:min-w-[7.5rem]"
               >
                 {copy === "copied" ? <Check aria-hidden className="size-4" /> : <Copy aria-hidden className="size-4" />}
                 {copy === "copied" ? c.copied : c.copy}
