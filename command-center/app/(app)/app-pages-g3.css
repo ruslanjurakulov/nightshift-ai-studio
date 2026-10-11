@@ -1,0 +1,324 @@
+/* Round 1, group G3 (production: pipeline, jobs, approvals, decisions, inbox, editor, workflows, studio, time machine,
+   the command palette). Page-specific rules on top of the foundation (app-redesign.css); nothing here is a shared API.
+   Everything is prefixed g3- so this file, loaded app-wide by the palette, touches only these pages.
+   Tokens only (--ns-*, --color-*), so light and dark are both designed. */
+
+/* ── Sections, heads, notes ────────────────────────────────────────────────── */
+.g3-section { position: relative; display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.ns-open .g3-section:not(.ns-desk) { border-top: 1px solid var(--ns-rule); padding-top: 28px; }
+.g3-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 16px; }
+.g3-head .t-panel { margin: 0; }
+.g3-hint { margin: 6px 0 0; max-width: 62ch; color: var(--color-muted); font-size: var(--ns-t-ui); line-height: 1.5; }
+.g3-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.g3-note { margin: 0; padding: 20px 0; border-top: 1px solid var(--ns-rule); color: var(--color-muted); font-size: 1rem; line-height: 1.55; max-width: 62ch; }
+.g3-sub { color: var(--color-muted); font-size: var(--ns-t-ui); }
+.g3-edge-no { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: var(--ns-amber-ink); font-variant-numeric: tabular-nums; }
+.ns-open .ns-desk > .ns-empty { padding-block: 36px; }
+
+/* A key that is not the page's one filled key, for the destructive step (a removal asks first). */
+.g3-danger { border-color: color-mix(in srgb, var(--color-fail) 55%, var(--ns-rule-strong)); color: var(--color-fail); }
+.g3-danger:hover { border-color: var(--color-fail); background: color-mix(in srgb, var(--color-fail) 10%, transparent); color: var(--color-fail); }
+
+/* ── Figures: a ledger strip of counts, ruled, no boxes ────────────────────── */
+.g3-figures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--ns-rule); }
+@media (min-width: 720px) { .g3-figures { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.g3-figures > * { border-top: 0 !important; padding: 20px 20px 4px 0; min-width: 0; }
+@media (min-width: 720px) { .g3-figures > * + * { padding-left: 24px; border-left: 1px solid var(--ns-rule); } }
+.g3-figures .t-figure { font-size: clamp(2rem, 1.5rem + 1.8vw, 2.75rem); line-height: 1; letter-spacing: -0.02em; }
+
+/* ── Pipeline: lanes with a rundown of stages ──────────────────────────────── */
+.g3-lanes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.g3-lane { display: flex; flex-direction: column; gap: 16px; padding: 24px 0; border-top: 1px solid var(--ns-rule); }
+.g3-lane:first-child { border-top: 0; padding-top: 4px; }
+.g3-lane:last-child { padding-bottom: 4px; }
+.g3-lane-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; min-width: 0; }
+.g3-lane-no { font-size: 13px; font-weight: 600; color: var(--ns-amber-ink); letter-spacing: 0.04em; }
+.g3-lane-id { min-width: 0; flex: 1 1 8rem; overflow: hidden; text-overflow: ellipsis; font-size: 1rem; color: var(--color-fg); }
+.g3-lane-meta { display: inline-flex; align-items: center; gap: 16px; margin-left: auto; }
+
+.g3-stages { container-type: inline-size; }
+.g3-stage-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px 8px; }
+.g3-stage { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; padding-right: 8px; }
+.g3-stage-no { font-size: 13px; font-weight: 600; color: var(--ns-amber-ink); letter-spacing: 0.04em; }
+.g3-stage-lamp { display: flex; align-items: center; width: 100%; }
+/* The rail: a hairline from each lamp to the next stage, lit once the stage is reached. */
+.g3-stage-lamp::after { content: ""; flex: 1; height: 1px; margin-left: 8px; background: var(--ns-rule-strong); }
+.g3-stage:nth-child(3n) .g3-stage-lamp::after,
+.g3-stage:last-child .g3-stage-lamp::after { display: none; }
+.g3-stage[data-state="waiting"] .g3-stage-lamp::after { background: var(--ns-rule); }
+.g3-stage-name { font-size: var(--ns-t-ui); color: var(--color-fg); }
+.g3-stage[data-state="waiting"] .g3-stage-name,
+.g3-stage[data-state="waiting"] .g3-stage-no { color: var(--color-muted); }
+.g3-stage-time { font-size: 13px; color: var(--color-muted); }
+@container (min-width: 880px) {
+  .g3-stage-list { grid-template-columns: repeat(9, minmax(0, 1fr)); }
+  .g3-stage:nth-child(3n) .g3-stage-lamp::after { display: block; }
+  .g3-stage:last-child .g3-stage-lamp::after { display: none; }
+}
+
+.g3-passes { list-style: none; margin: 0; padding: 0; }
+.g3-pass { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding: 12px 0; border-top: 1px solid var(--ns-rule); min-height: 48px; }
+.g3-pass:first-child { border-top: 0; }
+.g3-pass-agent { width: 7rem; flex: none; color: var(--ns-act-ink); font-size: var(--ns-t-ui); }
+.g3-pass-event { min-width: 0; flex: 1 1 10rem; overflow-wrap: anywhere; font-size: var(--ns-t-ui); color: var(--color-fg); }
+.g3-pass-count { margin-left: auto; font-size: var(--ns-t-ui); color: var(--color-muted); }
+@media (max-width: 560px) {
+  .g3-pass-agent { width: auto; }
+  .g3-pass-count { margin-left: 0; flex-basis: 100%; padding-left: 26px; }
+}
+
+/* ── Tables that turn into readable lists on a phone ───────────────────────── */
+.g3-table { width: 100%; border-collapse: collapse; font-size: var(--ns-t-ui); }
+.g3-table thead th { padding: 0 12px 10px 0; text-align: left; font-size: var(--ns-t-label); font-weight: 500; color: var(--color-muted); border-bottom: 1px solid var(--ns-rule-strong); white-space: nowrap; }
+.g3-table tbody tr { border-bottom: 1px solid var(--ns-rule); transition: background-color var(--ns-dur-1) var(--ns-ease); }
+.g3-table tbody tr:hover { background: var(--ns-act-soft); }
+.g3-table td { padding: 14px 12px 14px 0; vertical-align: top; }
+.g3-table td:last-child, .g3-table th:last-child { padding-right: 0; }
+@media (max-width: 899px) {
+  .g3-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .g3-table, .g3-table tbody { display: block; }
+  .g3-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; padding: 18px 0; }
+  .g3-table td { display: block; padding: 0; min-width: 0; }
+  .g3-table td::before { content: attr(data-label); display: block; margin-bottom: 2px; font-size: var(--ns-t-label); color: var(--color-muted); }
+  .g3-table td.g3-cell-main { grid-column: 1 / -1; }
+  .g3-table td.g3-cell-main::before, .g3-table td.g3-cell-status::before { display: none; }
+  .g3-table td.g3-cell-status { grid-column: 1 / -1; }
+}
+
+/* ── Approvals: the requests are the desk; the switch and the form are ruled ─ */
+.g3-req { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 24px; }
+.g3-switch[role="switch"][aria-checked="true"] { box-shadow: inset 0 -2px 0 var(--ns-amber); color: var(--color-fg); }
+.g3-asks { list-style: none; margin: 0; padding: 0; }
+.g3-ask {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-areas: "no main state" ". act act";
+  gap: 6px 16px;
+  align-items: start;
+  padding: 18px 0;
+  border-top: 1px solid var(--ns-rule);
+}
+.g3-ask:first-child { border-top: 0; padding-top: 4px; }
+.g3-ask > .g3-edge-no { grid-area: no; padding-top: 2px; }
+.g3-ask-main { grid-area: main; min-width: 0; }
+.g3-ask-title { font-size: 1.0625rem; font-weight: 500; color: var(--color-fg); overflow-wrap: anywhere; }
+.g3-ask-state { grid-area: state; padding-top: 2px; }
+.g3-ask-act { grid-area: act; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+@media (min-width: 900px) {
+  .g3-ask { grid-template-columns: 28px minmax(0, 1fr) 8.5rem auto; grid-template-areas: "no main state act"; align-items: center; }
+  .g3-ask-act { margin-top: 0; justify-content: flex-end; min-width: 14rem; }
+}
+
+/* ── Decisions ─────────────────────────────────────────────────────────────── */
+.g3-decs { list-style: none; margin: 0; padding: 0; }
+.g3-dec { padding: 18px 0; border-top: 1px solid var(--ns-rule); }
+.g3-dec:first-child { border-top: 0; padding-top: 4px; }
+.g3-dec-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; grid-template-areas: "no main btn" ". facts facts"; gap: 8px 16px; align-items: center; }
+.g3-dec-row > .g3-edge-no { grid-area: no; }
+.g3-dec-main { grid-area: main; min-width: 0; }
+.g3-dec-title { font-size: 1.0625rem; font-weight: 500; color: var(--color-fg); overflow-wrap: anywhere; }
+.g3-dec-facts { grid-area: facts; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+.g3-dec-btn { grid-area: btn; }
+.g3-dec-score { font-size: 1.5rem; font-weight: 600; line-height: 1; letter-spacing: -0.02em; }
+@media (min-width: 900px) {
+  .g3-dec-row { grid-template-columns: 28px minmax(0, 1fr) auto auto; grid-template-areas: "no main facts btn"; }
+  .g3-dec-facts { gap: 20px; }
+}
+/* The reason, as a sunken well on the ground (not a card inside a card). */
+.g3-well { margin: 16px 0 0 44px; padding: 16px 18px; border-radius: var(--ns-r-key); background: var(--ns-key); }
+@media (max-width: 560px) { .g3-well { margin-left: 0; } }
+.g3-well table { border-collapse: collapse; }
+.g3-well th { font-weight: 500; }
+
+/* ── Inbox: comments are ruled rows; the reply waiting for approval is the desk ─ */
+.g3-comments { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.g3-comment { position: relative; padding: 22px 0 24px; border-top: 1px solid var(--ns-rule); }
+.g3-comments > li:first-child > .g3-comment:not(.ns-desk) { border-top: 0; padding-top: 4px; }
+.ns-open .g3-comment.ns-desk { margin: 12px 0; }
+.g3-comment-head { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 0 14px; align-items: start; }
+.g3-comment-head > .g3-edge-no { padding-top: 3px; }
+.g3-comment-body { margin: 12px 0 0 42px; max-width: 70ch; }
+.g3-comment > :not(.g3-comment-head):not(.g3-comment-body) { margin-left: 42px; }
+@media (max-width: 560px) {
+  .g3-comment-head { grid-template-columns: 24px minmax(0, 1fr); }
+  .g3-comment-head > :last-child { grid-column: 2; margin-top: 6px; }
+  .g3-comment-body { margin-left: 38px; }
+  .g3-comment > :not(.g3-comment-head):not(.g3-comment-body) { margin-left: 38px; }
+}
+.g3-category { padding-top: 2px; font-size: var(--ns-t-ui); color: var(--color-muted); white-space: nowrap; }
+.g3-category[data-state="held"] { color: var(--ns-caution); }
+.g3-textarea {
+  min-height: 112px;
+  padding: 12px 14px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-key);
+  background: var(--ns-key);
+  color: var(--color-fg);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+.g3-textarea:hover { border-color: var(--ns-act); }
+.g3-textarea:focus-visible { outline: 3px solid var(--ns-focus); outline-offset: 2px; }
+.g3-textarea:disabled { opacity: 0.7; cursor: not-allowed; }
+/* The exact text that will be posted, and the one key that posts it. */
+.g3-confirm { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; border-radius: var(--ns-r-key); background: var(--ns-key); box-shadow: inset 3px 0 0 var(--ns-amber); }
+/* A "Draft a reply" key states its price on every open comment: an outlined key, so only the approval is lit. */
+.g3-comment .ns-price-button { background: transparent; color: var(--color-fg); box-shadow: inset 0 0 0 1px var(--ns-rule-strong); }
+.g3-comment .ns-price-button:hover:not(:disabled) { background: var(--ns-act-soft); color: var(--color-fg); box-shadow: inset 0 0 0 1px var(--ns-act); }
+.g3-comment .ns-price-tag { color: var(--color-fg); }
+.g3-comment .ns-price-button:disabled { box-shadow: inset 0 0 0 1px var(--color-border); }
+
+/* ── Studio: presets are the desk; kits and characters are frames on a sheet ─ */
+.g3-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 8px 0 4px; }
+.ns-open .g3-section > .ns-sheet { margin-top: 4px; }
+.g3-section .ns-frame-body { display: flex; flex-direction: column; }
+
+/* ── Editor: pick a video as a frame, projects as ruled rows ───────────────── */
+.g3-pick { position: absolute; inset: 0; display: grid; place-items: center; cursor: pointer; }
+.g3-pick-input { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); opacity: 0; }
+.g3-pick:has(.g3-pick-input:focus-visible) { outline: 3px solid var(--ns-focus); outline-offset: -3px; }
+.g3-picker .ns-frame:hover .ns-frame-media { outline: 2px solid color-mix(in srgb, var(--ns-act) 70%, transparent); outline-offset: -2px; }
+.g3-picker .ns-frame[data-selected="true"]:hover .ns-frame-media { outline-color: var(--ns-amber); }
+.g3-projects { list-style: none; margin: 0; padding: 0; }
+.g3-project { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: 16px; min-height: 64px; padding: 14px 0; border-top: 1px solid var(--ns-rule); transition: background-color var(--ns-dur-1) var(--ns-ease); }
+.g3-projects > li:first-child .g3-project { border-top: 0; }
+.g3-project:hover { background: var(--ns-act-soft); }
+.g3-project-frame { display: grid; place-items: center; width: 72px; aspect-ratio: 16 / 9; border-radius: 3px; background: var(--ns-film); color: var(--ns-on-film); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ns-on-film) 12%, transparent); }
+.g3-project-frame svg { opacity: 0.6; }
+.g3-project-open { color: var(--ns-act-ink); font-size: var(--ns-t-ui); font-weight: 500; }
+
+/* ── Workflows: saved flows as ruled rows with their steps as a rundown ────── */
+.g3-flows { list-style: none; margin: 0; padding: 0; }
+.g3-flow { display: flex; flex-direction: column; gap: 14px; padding: 22px 0; border-top: 1px solid var(--ns-rule); }
+.g3-flows > li:first-child { border-top: 0; padding-top: 4px; }
+.g3-flow-head { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px 14px; align-items: center; }
+.g3-flow-head > :last-child { grid-column: 2; }
+@media (min-width: 900px) {
+  .g3-flow-head { grid-template-columns: 28px minmax(0, 1fr) auto; }
+  .g3-flow-head > :last-child { grid-column: auto; }
+}
+.g3-track { list-style: none; margin: 0 0 0 42px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 0; font-size: var(--ns-t-ui); color: var(--color-muted); }
+.g3-track > li { position: relative; display: inline-flex; align-items: baseline; gap: 8px; }
+.g3-track > li + li { padding-left: 34px; }
+.g3-track > li + li::before { content: ""; position: absolute; left: 8px; top: 50%; width: 18px; height: 1px; background: var(--ns-rule-strong); }
+@media (max-width: 560px) { .g3-track { margin-left: 0; } }
+.g3-flow > .g3-confirm { margin-left: 42px; }
+@media (max-width: 560px) { .g3-flow > .g3-confirm { margin-left: 0; } }
+.g3-run { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 4px 14px; align-items: center; min-height: 64px; padding: 14px 0; border-top: 1px solid var(--ns-rule); transition: background-color var(--ns-dur-1) var(--ns-ease); }
+.g3-run > :last-child { grid-column: 2; }
+@media (min-width: 900px) { .g3-run { grid-template-columns: 12px minmax(0, 1fr) auto; } .g3-run > :last-child { grid-column: auto; } }
+.g3-projects > li:first-child .g3-run { border-top: 0; }
+.g3-run:hover { background: var(--ns-act-soft); }
+
+/* Builder steps and run steps */
+.g3-steps, .g3-run-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.g3-step { display: flex; flex-direction: column; gap: 14px; padding: 20px 0; border-top: 1px solid var(--ns-rule); }
+.g3-steps > li:first-child { border-top: 0; padding-top: 4px; }
+.g3-run-step { display: flex; flex-direction: column; gap: 6px; padding: 16px 0; border-top: 1px solid var(--ns-rule); }
+.g3-run-steps > li:first-child { border-top: 0; padding-top: 4px; }
+.g3-total { margin: 0; font-size: clamp(2rem, 1.5rem + 1.6vw, 2.5rem); font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; color: var(--color-fg); }
+.g3-run-line { margin: 0; font-size: 1rem; color: var(--color-fg); }
+
+/* ── Time machine: the timeline is the desk; the chosen event is a ruled aside ─ */
+.g3-tm { display: grid; gap: 40px 48px; align-items: start; }
+@media (min-width: 1100px) { .g3-tm { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); } }
+.g3-tm-scroll { max-height: 62vh; overflow-y: auto; padding-right: 4px; }
+.g3-tm-day + .g3-tm-day { margin-top: 24px; }
+.g3-tm-date { margin: 0 0 6px; font-size: var(--ns-t-label); font-weight: 600; letter-spacing: 0.04em; color: var(--ns-amber-ink); font-variant-numeric: tabular-nums; }
+.g3-tm-list { list-style: none; margin: 0; padding: 0; }
+.g3-tm-event {
+  display: grid;
+  grid-template-columns: 14px 6.5rem 6.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 10px 6px 4px;
+  border-radius: var(--ns-r-key);
+  text-align: left;
+  font-size: var(--ns-t-ui);
+  color: var(--color-fg);
+  transition: background-color var(--ns-dur-1) var(--ns-ease);
+}
+.g3-tm-event:hover { background: var(--ns-act-soft); }
+.g3-tm-event[aria-pressed="true"] { background: var(--ns-act-soft); box-shadow: inset 3px 0 0 var(--ns-act); }
+.g3-tm-time { color: var(--color-muted); font-size: 13px; }
+.g3-tm-agent { color: var(--ns-act-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.g3-tm-name { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .g3-tm-event { grid-template-columns: 14px 1fr; }
+  .g3-tm-event > :nth-child(n+2) { grid-column: 2; }
+}
+.g3-tm-facts { margin: 0; display: flex; flex-direction: column; }
+.g3-tm-facts > div { padding: 10px 0; border-top: 1px solid var(--ns-rule); }
+.g3-tm-facts > div:first-child { border-top: 0; }
+.g3-tm-facts dt { font-size: var(--ns-t-label); color: var(--color-muted); }
+.g3-tm-facts dd { margin: 2px 0 0; font-size: var(--ns-t-ui); color: var(--color-fg); overflow-wrap: anywhere; }
+.ns-open .g3-tm-side { padding-top: 0; border-top: 0; }
+@media (max-width: 1099px) { .ns-open .g3-tm-side { padding-top: 28px; border-top: 1px solid var(--ns-rule); } }
+
+/* ── Command palette and shortcuts: one lit sheet over the dimmed room ─────── */
+.g3-pal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh 16px 16px;
+  background: var(--ns-scrim);
+  backdrop-filter: blur(3px);
+}
+.g3-pal-scrim[data-center="true"] { align-items: center; padding-top: 16px; }
+.g3-pal {
+  position: relative;
+  width: 100%;
+  max-width: 40rem;
+  overflow: hidden;
+  outline: none;
+  background: var(--ns-console);
+  color: var(--color-fg);
+  border: 1px solid color-mix(in srgb, var(--ns-act) 34%, var(--ns-rule));
+  border-radius: var(--ns-r-sheet);
+  box-shadow: var(--ns-lift), 0 36px 90px -44px var(--ns-lit-glow);
+}
+.g3-pal::before {
+  content: "";
+  position: absolute;
+  inset: 0 24px auto 24px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ns-act) 24%, var(--ns-amber) 62%, transparent);
+  opacity: 0.85;
+  pointer-events: none;
+}
+.g3-help { max-width: 26rem; padding: 24px; }
+.g3-pal-head { display: flex; align-items: center; gap: 12px; padding: 4px 8px 4px 20px; border-bottom: 1px solid var(--ns-rule); }
+.g3-pal-input { flex: 1; min-width: 0; min-height: 56px; background: transparent; border: 0; outline: 0; color: var(--color-fg); font-size: 1rem; }
+.g3-pal-input::placeholder { color: var(--color-muted); }
+.g3-pal-head:has(.g3-pal-input:focus-visible) { box-shadow: inset 0 -2px 0 var(--ns-amber); }
+.g3-pal-list { list-style: none; margin: 0; padding: 6px; max-height: 50vh; overflow-y: auto; }
+.g3-pal-group { padding: 12px 14px 4px; font-size: var(--ns-t-label); font-weight: 600; letter-spacing: 0.04em; color: var(--color-muted); }
+.g3-pal-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: var(--ns-r-key);
+  text-align: left;
+  font-size: 1rem;
+  color: var(--color-fg);
+}
+.g3-pal-row[data-active="true"] { background: var(--ns-act-soft); }
+.g3-pal-row[data-active="true"]::before { content: ""; position: absolute; left: 0; top: 22%; bottom: 22%; width: 3px; border-radius: 0 3px 3px 0; background: var(--ns-act); }
+.g3-pal-sub { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ns-t-ui); color: var(--color-muted); }
+.g3-pal-empty { padding: 28px 14px; text-align: center; font-size: var(--ns-t-ui); color: var(--color-muted); }
+.g3-pal-foot { padding: 10px 20px; border-top: 1px solid var(--ns-rule); font-size: var(--ns-t-label); color: var(--color-muted); }
+.g3-kbd { flex: none; padding: 3px 10px; border-radius: 6px; background: var(--ns-key); box-shadow: inset 0 0 0 1px var(--ns-rule-strong), 0 1px 0 var(--ns-rule-strong); font-size: var(--ns-t-label); font-weight: 500; font-variant-numeric: tabular-nums; color: var(--color-fg); }
+@media (max-width: 480px) { .g3-pal-scrim { padding-top: 8vh; } .g3-pal-sub { display: none; } }
+.g3-pal .sheet-close { width: 2.75rem; height: 2.75rem; }

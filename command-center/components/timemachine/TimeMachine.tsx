@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
+import { Chip, ChipRow } from "@/components/ui/Chip";
+import { StatusLamp } from "@/components/ui/StatusLamp";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import type { SystemEventRow } from "@/lib/types";
 import { parseStoredTime, statusTone, storedMs, timeOfDay } from "@/lib/format";
@@ -15,12 +17,6 @@ const RANGES: { key: RangeKey; label: keyof Dictionary["ops"] }[] = [
   { key: "custom", label: "rangeCustom" },
 ];
 
-const TONE_COLOR: Record<string, string> = {
-  ok: "var(--color-ok)",
-  run: "var(--color-primary)",
-  fail: "var(--color-fail)",
-  idle: "var(--color-idle)",
-};
 
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -90,65 +86,46 @@ export function TimeMachine({ initial }: { initial: SystemEventRow[] }) {
     : [];
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        {RANGES.map((r) => {
-          const on = range === r.key;
-          return (
-            <button
-              key={r.key}
-              type="button"
-              onClick={() => setRange(r.key)}
-              className="btn-sky is-quiet pill border-transparent px-3 py-1.5 text-xs"
-              style={{
-                background: on ? "var(--color-panel-2)" : "transparent",
-                color: on ? "var(--color-primary)" : "var(--color-muted)",
-                border: on ? "1px solid var(--color-primary-dim)" : "1px solid var(--color-border)",
-              }}
-            >
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <ChipRow label={t.ops.timeMachineTitle} wrap>
+          {RANGES.map((r) => (
+            <Chip key={r.key} pressed={range === r.key} onClick={() => setRange(r.key)}>
               {String(t.ops[r.label])}
-            </button>
-          );
-        })}
+            </Chip>
+          ))}
+        </ChipRow>
         {range === "custom" && (
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-[var(--color-muted)]">{t.ops.tmFrom}</label>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2 py-1 mono text-xs outline-none focus:border-[var(--color-primary)]" />
-            <label className="text-xs text-[var(--color-muted)]">{t.ops.tmTo}</label>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2 py-1 mono text-xs outline-none focus:border-[var(--color-primary)]" />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <label htmlFor="tm-from" className="text-sm text-[var(--color-muted)]">{t.ops.tmFrom}</label>
+            <input id="tm-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="ns-field" />
+            <label htmlFor="tm-to" className="text-sm text-[var(--color-muted)]">{t.ops.tmTo}</label>
+            <input id="tm-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="ns-field" />
           </div>
         )}
-        <span className="tnum ml-auto text-xs text-[var(--color-muted)]">{fmt(t.ops.tmEvents, { n: events.length })}</span>
+        <span className="tnum ml-auto text-sm text-[var(--color-muted)]">{fmt(t.ops.tmEvents, { n: events.length })}</span>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="panel overflow-hidden lg:col-span-2">
+      <div className="g3-tm">
+        <section aria-label={t.ops.timeMachineTitle} className="g3-section ns-desk">
           {groups.length === 0 ? (
-            <div className="p-8 text-center tnum text-xs text-[var(--color-muted)]">{t.ops.tmEmpty}</div>
+            <p className="g3-note" style={{ border: 0, padding: 0 }}>{t.ops.tmEmpty}</p>
           ) : (
-            <div className="max-h-[62vh] overflow-y-auto p-4">
+            <div className="g3-tm-scroll">
               {groups.map(([day, rows]) => (
-                <div key={day} className="mb-4 last:mb-0">
-                  <div className="mb-2 text-xs text-[var(--color-muted)]">{day}</div>
-                  <ol className="relative ml-2 border-l border-[var(--color-border)]">
+                <div key={day} className="g3-tm-day">
+                  <h3 className="g3-tm-date">{day}</h3>
+                  <ol className="g3-tm-list">
                     {rows.map((e) => {
                       const tone = statusTone(e.status);
                       const on = selected?.event_key === e.event_key;
                       return (
-                        <li key={e.event_key} className="relative pl-5">
-                          <span
-                            className="absolute -left-[5px] top-2 size-2 rounded-full"
-                            style={{ background: TONE_COLOR[tone], boxShadow: `0 0 6px ${TONE_COLOR[tone]}` }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setSelected(e)}
-                            className="btn-sky is-quiet pill my-0.5 w-full justify-start gap-3 border-transparent px-3 py-2 text-left text-sm"
-                            style={{ background: on ? "var(--color-panel-2)" : "transparent" }}
-                          >
-                            <span className="tnum w-16 shrink-0 text-xs text-[var(--color-muted)]">{timeOfDay(e.ts)}</span>
-                            <span className="tnum shrink-0 text-xs text-[var(--color-primary)]">{e.agent ?? t.common.system}</span>
-                            <span className="truncate text-[var(--color-fg)]">{e.event}</span>
+                        <li key={e.event_key}>
+                          <button type="button" onClick={() => setSelected(e)} aria-pressed={on} className="g3-tm-event">
+                            <StatusLamp tone={tone} label={e.status ?? t.status.idle} hideLabel />
+                            <span className="tnum g3-tm-time">{timeOfDay(e.ts)}</span>
+                            <span className="g3-tm-agent">{e.agent ?? t.common.system}</span>
+                            <span className="g3-tm-name">{e.event}</span>
                           </button>
                         </li>
                       );
@@ -158,23 +135,23 @@ export function TimeMachine({ initial }: { initial: SystemEventRow[] }) {
               ))}
             </div>
           )}
-        </div>
+        </section>
 
-        <div className="panel p-5 sm:p-6">
-          <div className="mb-3 text-xs font-bold text-[var(--color-fg)]">{t.ops.tmDetails}</div>
+        <section aria-label={t.ops.tmDetails} className="g3-section g3-tm-side">
+          <h2 className="t-panel">{t.ops.tmDetails}</h2>
           {!selected ? (
-            <p className="tnum text-xs text-[var(--color-muted)]">{t.ops.tmSelectHint}</p>
+            <p className="g3-sub m-0">{t.ops.tmSelectHint}</p>
           ) : (
-            <dl className="flex flex-col gap-2">
+            <dl className="g3-tm-facts">
               {detailRows.map(([k, v]) => (
-                <div key={k} className="flex flex-col gap-0.5 border-b border-[var(--color-border)]/60 pb-2 last:border-0">
-                  <dt className="text-xs text-[var(--color-muted)]">{k}</dt>
-                  <dd className="tnum break-words text-xs text-[var(--color-fg)]">{v}</dd>
+                <div key={k}>
+                  <dt>{k}</dt>
+                  <dd className="tnum">{v}</dd>
                 </div>
               ))}
             </dl>
           )}
-        </div>
+        </section>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { relativeTime, timeOfDay } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
@@ -14,6 +14,7 @@ import {
   type LineageRow,
 } from "@/lib/decisions";
 import { ConfidenceBadge, useMetricLabel } from "@/components/intel/Badges";
+import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 
 const OUTCOME_KEY: Record<DecisionOutcome, keyof Dictionary["intel"]> = {
   PUBLISHED: "outcomePublished",
@@ -21,11 +22,11 @@ const OUTCOME_KEY: Record<DecisionOutcome, keyof Dictionary["intel"]> = {
   IN_PROGRESS: "outcomeInProgress",
   UNKNOWN: "outcomeUnknown",
 };
-const OUTCOME_COLOR: Record<DecisionOutcome, string> = {
-  PUBLISHED: "var(--color-ok)",
-  FAILED: "var(--color-fail)",
-  IN_PROGRESS: "var(--color-primary)",
-  UNKNOWN: "var(--color-muted)",
+const OUTCOME_TONE: Record<DecisionOutcome, LampTone> = {
+  PUBLISHED: "ok",
+  FAILED: "fail",
+  IN_PROGRESS: "run",
+  UNKNOWN: "idle",
 };
 
 function num(v: number | null): string {
@@ -47,60 +48,60 @@ export function DecisionList({
   const { t } = useI18n();
   const metricLabel = useMetricLabel();
   const [open, setOpen] = useState<string | null>(null);
+  const uid = useId();
 
   return (
-    <ul className="flex flex-col divide-y divide-[var(--color-border)]">
-      {decisions.map((d) => {
+    <ul className="g3-decs">
+      {decisions.map((d, n) => {
         const isOpen = open === d.id;
         const rows = d.topic ? lineage[d.topic] ?? [] : [];
         return (
-          <li key={d.id} className="p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="text-xs text-[var(--color-muted)]">
+          <li key={d.id} className="g3-dec">
+            <div className="g3-dec-row">
+              <span className="g3-edge-no" aria-hidden>{String(n + 1).padStart(2, "0")}</span>
+              <div className="g3-dec-main">
+                <div className="g3-dec-title">{d.topic ?? t.common.na}</div>
+                <div className="g3-sub tnum">
                   {t.intel.decType} · {timeOfDay(d.ts)} · {relativeTime(d.ts)}
                 </div>
-                <div className="truncate text-sm font-semibold text-[var(--color-fg)]">
-                  {d.topic ?? t.common.na}
-                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="tnum text-lg font-bold tabular-nums" style={{ color: d.score == null ? "var(--color-muted)" : d.score >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}>
+              <div className="g3-dec-facts">
+                <span className="ns-tc g3-dec-score" style={{ color: d.score == null ? "var(--color-muted)" : d.score >= 50 ? "var(--color-ok)" : "var(--color-warn)" }}>
                   {d.score == null ? t.common.na : d.score.toFixed(0)}
                 </span>
                 <ConfidenceBadge confidence={d.confidence} />
-                <span className="text-xs font-semibold" style={{ color: OUTCOME_COLOR[d.outcome] }}>
-                  {String(t.intel[OUTCOME_KEY[d.outcome]])}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setOpen(isOpen ? null : d.id)}
-                  className="btn-sky is-quiet pill px-3 py-1 text-xs font-light"
-                >
-                  {t.ops.explainWhy}
-                </button>
+                <StatusLamp tone={OUTCOME_TONE[d.outcome]} label={String(t.intel[OUTCOME_KEY[d.outcome]])} />
               </div>
+              <button
+                type="button"
+                onClick={() => setOpen(isOpen ? null : d.id)}
+                aria-expanded={isOpen}
+                aria-controls={`${uid}-${d.id}`}
+                className="btn-sky is-quiet pill g3-dec-btn px-4 py-2 text-sm"
+              >
+                {t.ops.explainWhy}
+              </button>
             </div>
 
             {isOpen && (
-              <div className="reveal mt-3 rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] p-3">
+              <div id={`${uid}-${d.id}`} className="reveal g3-well">
                 {!d.explainable ? (
-                  <p className="tnum text-xs text-[var(--color-muted)]">{t.intel.notExplainable}</p>
+                  <p className="tnum text-sm text-[var(--color-muted)]">{t.intel.notExplainable}</p>
                 ) : (
                   <div className="flex flex-col gap-3">
                     {d.reason && (
                       <div>
-                        <div className="text-xs text-[var(--color-muted)]">{t.intel.decReason}</div>
-                        <div className="text-xs text-[var(--color-fg)]">{d.reason}</div>
+                        <div className="text-sm text-[var(--color-muted)]">{t.intel.decReason}</div>
+                        <div className="text-sm text-[var(--color-fg)]">{d.reason}</div>
                       </div>
                     )}
 
                     {d.signals.length > 0 && (
                       <div className="overflow-x-auto">
-                        <div className="mb-1 text-xs text-[var(--color-muted)]">{t.intel.decSignals}</div>
-                        <table className="w-full text-xs">
+                        <div className="mb-1 text-sm text-[var(--color-muted)]">{t.intel.decSignals}</div>
+                        <table className="w-full text-sm">
                           <thead>
-                            <tr className="text-left text-xs text-[var(--color-muted)]">
+                            <tr className="text-left text-sm text-[var(--color-muted)]">
                               <th className="py-1 pr-3">{t.intel.sigMetric}</th>
                               <th className="py-1 pr-3">{t.intel.sigDirection}</th>
                               <th className="py-1 pr-3 text-right">{t.intel.sigValue}</th>
@@ -127,14 +128,14 @@ export function DecisionList({
 
                     {rows.length > 0 && (
                       <div className="overflow-x-auto">
-                        <div className="mb-1 text-xs text-[var(--color-muted)]">{t.intel.lineageTitle}</div>
-                        <table className="w-full text-xs">
+                        <div className="mb-1 text-sm text-[var(--color-muted)]">{t.intel.lineageTitle}</div>
+                        <table className="w-full text-sm">
                           <tbody>
                             {rows.map((r) => (
                               <tr key={r.label} className="border-t border-[var(--color-border)]/60">
                                 <td className="py-1 pr-3 tnum text-[var(--color-muted)]">{r.label}</td>
                                 <td className="py-1 pr-3 text-[var(--color-fg)]">{r.value}</td>
-                                <td className="py-1 tnum text-xs text-[var(--color-muted)]">← {r.source}</td>
+                                <td className="py-1 tnum text-sm text-[var(--color-muted)]">← {r.source}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -144,10 +145,10 @@ export function DecisionList({
                   </div>
                 )}
 
-                <p className="tnum mt-3 text-xs text-[var(--color-muted)]">
+                <p className="tnum mt-3 text-sm text-[var(--color-muted)]">
                   {t.intel.decId}: {d.id} · {t.intel.outcomeNote}
                 </p>
-                <p className="tnum mt-1 text-xs text-[var(--color-muted)]">
+                <p className="tnum mt-1 text-sm text-[var(--color-muted)]">
                   {fmt(t.intel.confHow, {
                     min: CONFIDENCE_MIN_EVIDENCE,
                     med: CONFIDENCE_MEDIUM_EVIDENCE,

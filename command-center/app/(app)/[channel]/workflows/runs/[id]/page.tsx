@@ -1,6 +1,7 @@
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { PageHeader } from "@/components/PageHeader";
+import { Note } from "@/components/g3/Section";
 import { RunView } from "@/components/workflows/RunView";
 import { getOrgContext } from "@/lib/orgs-server";
 import { isPlatformAdmin } from "@/lib/auth/org-roles";
@@ -24,9 +25,9 @@ export default async function WorkflowRunPage({ params }: { params: Promise<{ id
   const org = await getOrgContext();
   const header = <PageHeader icon="workflows" title={t.workflows.runPage.title} subtitle={t.workflows.moneyNote} />;
   const note = (text: string) => (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       {header}
-      <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{text}</div>
+      <Note>{text}</Note>
     </div>
   );
   if (!org.supported) return note(t.org.notMigrated);
@@ -41,7 +42,7 @@ export default async function WorkflowRunPage({ params }: { params: Promise<{ id
   const platformAdmin = read.value.org_id === DEFAULT_ORG_ID ? await isPlatformAdmin() : false;
 
   return (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       {header}
       {/* The caller's role in the RUN's organization (a run of another org they belong to stays theirs to carry on or not). */}
       <RunView initial={read.value} canAct={canCarryRun(org.orgs, read.value.org_id, platformAdmin)} toolLabels={t.workflows.tools} />

@@ -10,9 +10,12 @@ import { useChannelPath } from "@/lib/channels-client";
 import { formatCredits } from "@/lib/credits";
 import type { StudioModel } from "@/lib/creative/studio";
 import type { Workflow } from "@/lib/workflows";
+import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 import { WorkflowBuilder } from "./WorkflowBuilder";
 import { removeWorkflow } from "./workflowsApi";
 import { workflowErrorMessage } from "@/lib/workflows";
+
+const RUN_TONE: Record<string, LampTone> = { running: "run", completed: "ok", failed: "fail", cancelled: "idle" };
 
 export interface RunRow {
   id: string;
@@ -72,11 +75,13 @@ export function WorkflowsHome({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <p className="m-0 text-sm text-[var(--color-muted)]">
-        {w.moneyNote} {w.publishNote}
-      </p>
-      {!canEdit ? <p className="m-0 text-sm text-[var(--color-muted)]">{w.readOnly}</p> : null}
+    <div className="flex flex-col gap-8">
+      <div className="flex max-w-[62ch] flex-col gap-2">
+        <p className="m-0 text-base text-[var(--color-muted)]">
+          {w.moneyNote} {w.publishNote}
+        </p>
+        {!canEdit ? <p className="m-0 text-base text-[var(--color-muted)]">{w.readOnly}</p> : null}
+      </div>
 
       {editing ? (
         <WorkflowBuilder
@@ -92,53 +97,58 @@ export function WorkflowsHome({
         />
       ) : canEdit ? (
         <div>
-          <button type="button" onClick={() => setEditing("new")} className="btn-sky is-solid pill inline-flex items-center gap-2 px-4 py-2 text-sm">
+          <button type="button" onClick={() => setEditing("new")} className="btn-sky is-solid pill inline-flex items-center gap-2 px-5 py-2.5 text-sm">
             <Plus className="size-4" aria-hidden />
             {w.newWorkflow}
           </button>
         </div>
       ) : null}
 
-      <section aria-labelledby={`${id}-list`} className="flex flex-col gap-2">
-        <h2 id={`${id}-list`} className="m-0 text-[15px] font-semibold">
-          {w.listTitle}
-        </h2>
+      <section aria-labelledby={`${id}-list`} className={`g3-section${editing ? "" : " ns-desk"}`}>
+        <header className="g3-head">
+          <h2 id={`${id}-list`} className="t-panel">
+            {w.listTitle}
+          </h2>
+        </header>
         {error ? (
-          <p role="alert" className="m-0 text-sm text-[var(--color-fail)]">
+          <p role="alert" className="m-0 text-base text-[var(--color-fail)]">
             {error}
           </p>
         ) : null}
         {workflows.length === 0 ? (
-          <div className="panel flex flex-col items-center gap-3 px-6 py-10 text-center">
-            <Waypoints className="size-6 text-[var(--color-primary)]" aria-hidden />
-            <p className="m-0 max-w-[48ch] text-sm text-[var(--color-muted)]">{w.empty}</p>
+          <div className="g3-empty">
+            <Waypoints className="size-6 text-[var(--color-muted)]" aria-hidden strokeWidth={1.5} />
+            <p className="m-0 max-w-[48ch] text-base text-[var(--color-muted)]">{w.empty}</p>
           </div>
         ) : (
-          <ul className="m-0 flex list-none flex-col gap-2 p-0">
-            {workflows.map((wf) => (
-              <li key={wf.id} className="panel flex flex-col gap-2 p-4 sm:p-5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
+          <ul className="g3-flows">
+            {workflows.map((wf, n) => (
+              <li key={wf.id} className="g3-flow">
+                <div className="g3-flow-head">
+                  <span className="g3-edge-no" aria-hidden>
+                    {String(n + 1).padStart(2, "0")}
+                  </span>
                   <div className="flex min-w-0 flex-col">
-                    <span className="truncate text-sm font-semibold">{wf.name}</span>
-                    <span className="text-xs text-[var(--color-muted)]">
+                    <span className="truncate text-lg font-medium text-[var(--color-fg)]">{wf.name}</span>
+                    <span className="text-sm text-[var(--color-muted)]">
                       {fmt(w.stepsCount, { n: wf.steps.length })} · {fmt(w.updated, { when: when(wf.updated_at) })}
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Link href={path(`/workflows/${wf.id}`)} className="btn-sky is-solid pill inline-flex items-center gap-2 px-4 py-2 text-sm">
+                    <Link href={path(`/workflows/${wf.id}`)} className="btn-sky pill inline-flex items-center gap-2 px-4 py-2 text-sm">
                       <Play className="size-4" aria-hidden />
                       {w.open}
                     </Link>
                     {canEdit ? (
                       <>
-                        <button type="button" onClick={() => setEditing(wf)} className="btn-sky ghost pill inline-flex items-center gap-2 px-3 py-2 text-sm">
+                        <button type="button" onClick={() => setEditing(wf)} className="btn-sky ghost pill inline-flex items-center gap-2 px-4 py-2 text-sm">
                           <Pencil className="size-4" aria-hidden />
                           {w.edit}
                         </button>
                         <button
                           type="button"
                           onClick={() => setConfirmRemove(confirmRemove === wf.id ? null : wf.id)}
-                          className="btn-sky is-quiet pill inline-flex items-center gap-2 px-3 py-2 text-sm"
+                          className="btn-sky is-quiet pill inline-flex items-center gap-2 px-4 py-2 text-sm"
                         >
                           <Trash2 className="size-4" aria-hidden />
                           {w.remove}
@@ -147,22 +157,28 @@ export function WorkflowsHome({
                     ) : null}
                   </div>
                 </div>
-                <ol className="m-0 flex list-none flex-wrap gap-1.5 p-0 text-xs text-[var(--color-muted)]">
+                <ol className="g3-track">
                   {wf.steps.map((s, i) => (
-                    <li key={i} className="pill border border-[var(--color-border)] px-2.5 py-0.5">
-                      {i + 1}. {w.tools[s.capability] ?? s.capability}
+                    <li key={i}>
+                      <span className="g3-edge-no" aria-hidden>
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <span className="sr-only">{i + 1}. </span>
+                      {w.tools[s.capability] ?? s.capability}
                     </li>
                   ))}
                 </ol>
                 {confirmRemove === wf.id ? (
-                  <div role="alertdialog" className="flex flex-wrap items-center gap-2 text-sm">
-                    <span>{fmt(w.removeConfirm, { name: wf.name })}</span>
-                    <button type="button" onClick={() => void onRemove(wf)} disabled={busy === wf.id} className="btn-sky is-solid pill px-3 py-1.5 text-xs">
-                      {busy === wf.id ? w.removing : w.remove}
-                    </button>
-                    <button type="button" onClick={() => setConfirmRemove(null)} className="btn-sky is-quiet pill px-3 py-1.5 text-xs">
-                      {w.builder.cancel}
-                    </button>
+                  <div role="alertdialog" className="g3-confirm">
+                    <span className="text-base">{fmt(w.removeConfirm, { name: wf.name })}</span>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => void onRemove(wf)} disabled={busy === wf.id} className="btn-sky g3-danger pill px-4 py-2 text-sm">
+                        {busy === wf.id ? w.removing : w.remove}
+                      </button>
+                      <button type="button" onClick={() => setConfirmRemove(null)} className="btn-sky is-quiet pill px-4 py-2 text-sm">
+                        {w.builder.cancel}
+                      </button>
+                    </div>
                   </div>
                 ) : null}
               </li>
@@ -171,17 +187,20 @@ export function WorkflowsHome({
         )}
       </section>
 
-      <section aria-label={w.recentRuns} className="flex flex-col gap-2">
-        <h2 className="m-0 text-[15px] font-semibold">{w.recentRuns}</h2>
+      <section aria-label={w.recentRuns} className="g3-section">
+        <header className="g3-head">
+          <h2 className="t-panel">{w.recentRuns}</h2>
+        </header>
         {runs.length === 0 ? (
-          <p className="m-0 text-sm text-[var(--color-muted)]">{w.noRuns}</p>
+          <p className="m-0 text-base text-[var(--color-muted)]">{w.noRuns}</p>
         ) : (
-          <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+          <ul className="g3-projects">
             {runs.map((r) => (
               <li key={r.id}>
-                <Link href={path(`/workflows/runs/${r.id}`)} className="panel press flex flex-wrap items-center justify-between gap-2 p-4 sm:p-5 text-sm">
-                  <span className="truncate font-medium">{r.workflow_name}</span>
-                  <span className="text-xs tabular-nums text-[var(--color-muted)]">
+                <Link href={path(`/workflows/runs/${r.id}`)} className="g3-run">
+                  <StatusLamp tone={RUN_TONE[r.status] ?? "idle"} label={(w.status as Record<string, string>)[r.status] ?? r.status} live={r.status === "running"} hideLabel />
+                  <span className="truncate text-base font-medium">{r.workflow_name}</span>
+                  <span className="text-sm tabular-nums text-[var(--color-muted)]">
                     {r.charged_credits !== null && r.max_credits !== null
                       ? fmt(w.runSummary, {
                           status: (w.status as Record<string, string>)[r.status] ?? r.status,

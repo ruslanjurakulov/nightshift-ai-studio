@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Check, CircleDashed, Loader2, MinusCircle, XCircle } from "lucide-react";
+
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
@@ -18,6 +18,7 @@ import {
   type RunStepView,
   type RunView,
 } from "@/lib/workflows";
+import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
 import { advanceRun, cancelRun, readRun } from "./workflowsApi";
 
 /**
@@ -100,16 +101,16 @@ export function RunView({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <section className="panel flex flex-col gap-2 p-5 sm:p-6" aria-live="polite">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="m-0 text-[15px] font-semibold">{fmt(p.of, { name: run.workflow_name })}</h2>
-          <span className="pill border border-[var(--color-border)] px-3 py-1 text-xs">{t.workflows.status[run.status]}</span>
+    <div className="flex flex-col gap-8">
+      <section className="g3-section ns-desk" aria-live="polite">
+        <div className="g3-head">
+          <h2 className="t-panel">{fmt(p.of, { name: run.workflow_name })}</h2>
+          <StatusLamp tone={RUN_TONE[run.status] ?? "idle"} label={t.workflows.status[run.status]} live={run.status === "running"} />
         </div>
-        <p className="m-0 text-sm tabular-nums">
+        <p className="g3-run-line ns-tc">
           {run.max_credits !== null ? fmt(p.confirmed, { n: formatCredits(run.max_credits, locale) }) : p.confirmedUnknown}
         </p>
-        <p className="m-0 text-sm tabular-nums">
+        <p className="g3-run-line ns-tc">
           {run.charged_credits !== null ? fmt(p.charged, { n: formatCredits(run.charged_credits, locale) }) : p.chargedUnknown}
         </p>
         {waiting ? (
@@ -122,37 +123,37 @@ export function RunView({
           </p>
         ) : null}
         {active ? (
-          <p className="m-0 text-xs text-[var(--color-muted)]">
+          <p className="m-0 text-sm text-[var(--color-muted)]">
             {carry ? p.keepOpen : p.viewOnly}
             {refreshing ? ` ${p.refreshing}` : ""}
           </p>
         ) : null}
-        {!active && !carry ? <p className="m-0 text-xs text-[var(--color-muted)]">{p.viewOnly}</p> : null}
+        {!active && !carry ? <p className="m-0 text-sm text-[var(--color-muted)]">{p.viewOnly}</p> : null}
         {problem ? (
           <p role="alert" className="m-0 flex flex-wrap items-center gap-3 text-sm text-[var(--color-fail)]">
             {problem}
-            <button type="button" onClick={() => void tick()} className="btn-sky is-quiet pill px-3 py-1.5 text-xs">
+            <button type="button" onClick={() => void tick()} className="btn-sky is-quiet pill px-4 py-2 text-sm">
               {p.retry}
             </button>
           </p>
         ) : null}
         <div className="flex flex-wrap gap-2">
           {active && carry ? (
-            <button type="button" onClick={onStop} disabled={stopping} className="btn-sky ghost pill px-4 py-2 text-sm">
+            <button type="button" onClick={onStop} disabled={stopping} className="btn-sky pill px-4 py-2 text-sm">
               {stopping ? p.cancelling : p.cancel}
             </button>
           ) : null}
           {!active && carry ? (
-            <Link href={path(`/workflows/${run.workflow_id}`)} className="btn-sky ghost pill px-4 py-2 text-sm">
+            <Link href={path(`/workflows/${run.workflow_id}`)} className="btn-sky pill px-4 py-2 text-sm">
               {p.newRun}
             </Link>
           ) : null}
         </div>
       </section>
 
-      <section aria-label={p.stepsTitle} className="flex flex-col gap-2">
-        <h2 className="m-0 text-[15px] font-semibold">{p.stepsTitle}</h2>
-        <ol className="m-0 flex list-none flex-col gap-2 p-0">
+      <section aria-label={p.stepsTitle} className="g3-section">
+        <h2 className="t-panel">{p.stepsTitle}</h2>
+        <ol className="g3-run-steps">
           {run.steps.map((s) => (
             <StepRow key={s.step_index} step={s} toolLabels={toolLabels} libraryHref={path("/library")} />
           ))}
@@ -162,15 +163,16 @@ export function RunView({
   );
 }
 
-function StepIcon({ status, live }: { status: RunStepView["status"]; live: boolean }) {
-  const cls = "size-4 shrink-0";
-  if (status === "completed") return <Check className={`${cls} text-[var(--color-ok)]`} aria-hidden />;
-  if (status === "failed") return <XCircle className={`${cls} text-[var(--color-fail)]`} aria-hidden />;
-  if (status === "cancelled") return <AlertTriangle className={`${cls} text-[var(--color-muted)]`} aria-hidden />;
-  if (status === "skipped") return <MinusCircle className={`${cls} text-[var(--color-muted)]`} aria-hidden />;
-  if (status === "running" && live) return <Loader2 className={`${cls} animate-spin text-[var(--color-primary)]`} aria-hidden />;
-  return <CircleDashed className={`${cls} text-[var(--color-muted)]`} aria-hidden />;
-}
+/** A step's lamp: only a step that is really working breathes. */
+const STEP_TONE: Record<string, LampTone> = {
+  completed: "ok",
+  failed: "fail",
+  cancelled: "idle",
+  skipped: "idle",
+  running: "run",
+  pending: "idle",
+};
+const RUN_TONE: Record<string, LampTone> = { running: "run", completed: "ok", failed: "fail", cancelled: "idle" };
 
 function StepRow({ step, toolLabels, libraryHref }: { step: RunStepView; toolLabels: Record<string, string>; libraryHref: string }) {
   const { t, locale } = useI18n();
@@ -180,32 +182,34 @@ function StepRow({ step, toolLabels, libraryHref }: { step: RunStepView; toolLab
   const word = step.status === "running" && step.job_status === "queued" ? status.queued : status[step.status];
   const wait = stepWaitCode(step);
   return (
-    <li className="studio-field flex flex-col gap-1 rounded-2xl border border-[var(--color-border)] p-3">
+    <li className="g3-run-step">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-2 text-sm font-medium">
-          <StepIcon status={step.status} live />
+        <span className="inline-flex items-baseline gap-3 text-base font-medium">
+          <span className="g3-edge-no" aria-hidden>
+            {String(step.step_index + 1).padStart(2, "0")}
+          </span>
           {fmt(t.workflows.run.stepLine, { n: step.step_index + 1, tool: toolLabels[step.capability] ?? step.capability })}
         </span>
-        <span className="text-xs text-[var(--color-muted)]">{word}</span>
+        <StatusLamp tone={STEP_TONE[step.status] ?? "idle"} label={word} live={step.status === "running" && step.job_status !== "queued"} />
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums text-[var(--color-muted)]">
+      <div className="g3-run-facts flex flex-wrap gap-x-4 gap-y-1 text-sm tabular-nums text-[var(--color-muted)]">
         <span>{step.quoted_credits !== null ? fmt(p.quoted, { n: formatCredits(step.quoted_credits, locale) }) : p.quotedUnknown}</span>
         {step.status === "completed" && step.charged_credits !== null ? (
           <span>{fmt(p.chargedStep, { n: formatCredits(step.charged_credits, locale) })}</span>
         ) : null}
       </div>
       {wait ? (
-        <p className="m-0 text-xs text-[var(--color-muted)]">{fmt(p.stepWaiting, { why: t.workflows.waitReasons[wait] })}</p>
+        <p className="m-0 text-sm text-[var(--color-muted)]">{fmt(p.stepWaiting, { why: t.workflows.waitReasons[wait] })}</p>
       ) : step.status === "pending" || step.status === "skipped" ? (
-        <p className="m-0 text-xs text-[var(--color-muted)]">{p.notStarted}</p>
+        <p className="m-0 text-sm text-[var(--color-muted)]">{p.notStarted}</p>
       ) : null}
       {step.status === "failed" || step.status === "cancelled" ? (
-        <p role="status" className="m-0 text-xs text-[var(--color-fail)]">
+        <p role="status" className="m-0 text-sm text-[var(--color-fail)]">
           {fmt(p.failedBecause, { why: stepFailureReason(t, step.error_code) })}
         </p>
       ) : null}
       {step.status === "completed" && step.result_asset_ids.length > 0 ? (
-        <Link href={libraryHref} className="btn-sky ghost pill w-fit px-3 py-1.5 text-xs">
+        <Link href={libraryHref} className="btn-sky pill w-fit px-4 py-2 text-sm">
           {p.openResult}
         </Link>
       ) : null}

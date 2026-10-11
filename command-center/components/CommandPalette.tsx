@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { orgWide, scopeQuery, type ChannelScope } from "@/lib/channels";
@@ -12,6 +13,8 @@ import { uploadedOnly } from "@/lib/heldVideos";
 import { useNavigation } from "@/components/navigation/NavigationProvider";
 import { sectionAllowed } from "@/lib/navigation";
 import { useOverlay } from "@/components/a11y/useOverlay";
+// The production pages' look (group G3), loaded app-wide from here because the palette is mounted by the layout.
+import "@/app/(app)/app-pages-g3.css";
 
 /** The palette's one command that is not a place: it has no href of its own. */
 const BACK_ID = "a:back";
@@ -237,17 +240,18 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
   return (
     <>
       {open && (
-        <div className="scrim-enter fixed inset-0 z-[100] flex items-start justify-center bg-black/72 p-4 pt-[12vh] backdrop-blur-sm" onClick={() => setOpen(false)}>
+        <div className="scrim-enter g3-pal-scrim" onClick={() => setOpen(false)}>
           <div
             ref={paletteRef}
             role="dialog"
             aria-modal="true"
             aria-label={t.ops.shortcutsPalette}
             tabIndex={-1}
-            className="sheet-enter w-full max-w-xl overflow-hidden outline-none rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] shadow-[var(--shadow-elevated)]"
+            className="sheet-enter g3-pal"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-2 border-b border-[var(--color-border)] pr-3">
+            <div className="g3-pal-head">
+              <Search aria-hidden className="size-[18px] shrink-0 text-[var(--color-muted)]" strokeWidth={1.9} />
               <input
                 ref={inputRef}
                 value={query}
@@ -257,7 +261,8 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
                 }}
                 onKeyDown={onListKey}
                 placeholder={t.ops.palettePlaceholder}
-                className="w-full bg-transparent px-4 py-3 text-sm outline-none placeholder:text-[var(--color-muted)]"
+                aria-label={t.ops.palettePlaceholder}
+                className="g3-pal-input"
               />
               <button
                 type="button"
@@ -268,47 +273,50 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
                 ✕
               </button>
             </div>
-            <ul className="max-h-[50vh] overflow-y-auto p-1">
+            <ul className="g3-pal-list">
               {results.length === 0 && (
-                <li className="p-4 text-center tnum text-xs text-[var(--color-muted)]">{t.ops.paletteNoResults}</li>
+                <li className="g3-pal-empty">{t.ops.paletteNoResults}</li>
               )}
               {results.map((item, i) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    onMouseEnter={() => setActive(i)}
-                    onClick={() => choose(item)}
-                    className="btn-sky is-quiet pill w-full justify-between gap-3 border-transparent px-4 py-2.5 text-left text-sm font-light"
-                    style={{ background: i === active ? "var(--color-panel-2)" : "transparent" }}
-                  >
-                    <span className="min-w-0 truncate text-[var(--color-fg)]">{item.label}</span>
-                    <span className="shrink-0 text-xs text-[var(--color-muted)]">
-                      {item.sub ?? sectionLabel[item.section]}
-                    </span>
-                  </button>
-                </li>
+                <Fragment key={item.id}>
+                  {(i === 0 || results[i - 1].section !== item.section) && (
+                    <li role="presentation" className="g3-pal-group">
+                      {sectionLabel[item.section]}
+                    </li>
+                  )}
+                  <li>
+                    <button
+                      type="button"
+                      onMouseEnter={() => setActive(i)}
+                      onClick={() => choose(item)}
+                      className="g3-pal-row"
+                      data-active={i === active ? "true" : undefined}
+                    >
+                      <span className="min-w-0 truncate">{item.label}</span>
+                      {item.sub && <span className="g3-pal-sub">{item.sub}</span>}
+                    </button>
+                  </li>
+                </Fragment>
               ))}
             </ul>
-            <div className="border-t border-[var(--color-border)] px-4 py-2 tnum text-xs text-[var(--color-muted)]">
-              {t.ops.paletteHint}
-            </div>
+            <div className="g3-pal-foot">{t.ops.paletteHint}</div>
           </div>
         </div>
       )}
 
       {help && (
-        <div className="scrim-enter fixed inset-0 z-[100] flex items-center justify-center bg-black/72 p-4 backdrop-blur-sm" onClick={() => setHelp(false)}>
+        <div className="scrim-enter g3-pal-scrim" data-center="true" onClick={() => setHelp(false)}>
           <div
             ref={helpRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby={helpTitleId}
             tabIndex={-1}
-            className="sheet-enter w-full max-w-sm rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)] p-6 outline-none"
+            className="sheet-enter g3-pal g3-help"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
-              <h2 id={helpTitleId} className="font-display text-base font-semibold">{t.ops.shortcutsTitle}</h2>
+              <h2 id={helpTitleId} className="t-panel">{t.ops.shortcutsTitle}</h2>
               <button
                 type="button"
                 onClick={() => setHelp(false)}
@@ -326,10 +334,8 @@ export function CommandPalette({ scope, operator = false }: { scope: ChannelScop
                 { k: "Esc", v: t.ops.shortcutsClose },
               ].map((row) => (
                 <div key={row.k} className="flex items-center justify-between gap-4">
-                  <dd className="text-xs text-[var(--color-muted)]">{row.v}</dd>
-                  <dt className="tnum shrink-0 rounded border border-[var(--color-border)] bg-[var(--color-panel-2)] px-2 py-0.5 text-xs text-[var(--color-fg)]">
-                    {row.k}
-                  </dt>
+                  <dd className="text-sm text-[var(--color-muted)]">{row.v}</dd>
+                  <dt className="g3-kbd">{row.k}</dt>
                 </div>
               ))}
             </dl>

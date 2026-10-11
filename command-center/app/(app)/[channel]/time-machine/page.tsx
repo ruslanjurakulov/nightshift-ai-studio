@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { ErrorState } from "@/components/ReadError";
 import { readFailed } from "@/lib/readState";
-import { Panel } from "@/components/ui";
+import { Section } from "@/components/g3/Section";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { TimeMachine } from "@/components/timemachine/TimeMachine";
@@ -40,12 +40,12 @@ export default async function TimeMachinePage() {
   }
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open stagger-enter">
       <PageHeader icon="timeMachine" title={t.ops.timeMachineTitle} subtitle={t.ops.timeMachineSubtitle} />
       {failed ? (
-        <Panel title={t.ops.timeMachineTitle}>
+        <Section title={t.ops.timeMachineTitle} desk>
           <ErrorState />
-        </Panel>
+        </Section>
       ) : (
         <TimeMachine initial={events} />
       )}
