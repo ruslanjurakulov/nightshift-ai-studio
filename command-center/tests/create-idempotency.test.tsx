@@ -78,11 +78,12 @@ function show() {
 const topic = () => screen.getByRole("textbox", { name: t.create.flow.topicTitle }) as HTMLTextAreaElement;
 const type = (v: string) => fireEvent.change(topic(), { target: { value: v } });
 const make = () => fireEvent.click(screen.getByRole("button", { name: t.create.create }));
-const confirm = () => fireEvent.click(screen.getByRole("button", { name: t.create.confirm }));
+// The confirm is held ("Checking the price…") until the price card has reported; wait for it to be the real one.
+const confirm = async () => fireEvent.click(await screen.findByRole("button", { name: t.create.confirm }));
 /** Make, then confirm, then let the answer land. */
 async function press() {
   make();
-  confirm();
+  await confirm();
   await act(async () => {});
 }
 const priceShown = (n: number) => screen.findByText(new RegExp(`About ${n} credits`));
@@ -125,7 +126,7 @@ describe("the run carries an idempotency key and the price that was shown", () =
     expect(runs()).toHaveLength(0);
     await act(async () => release(new Response(JSON.stringify(priced(200)), { status: 200 })));
     await priceShown(200);
-    const go = screen.getByRole("button", { name: t.create.confirm });
+    const go = await screen.findByRole("button", { name: t.create.confirm });
     expect(go.getAttribute("aria-disabled")).toBe("false");
     fireEvent.click(go);
     await act(async () => {});
@@ -148,7 +149,7 @@ describe("an unknown price is never confirmed unseen", () => {
     expect(runs()).toHaveLength(0);
     await act(async () => release(new Response(JSON.stringify(priced(120)), { status: 200 })));
     await priceShown(120);
-    fireEvent.click(screen.getByRole("button", { name: t.create.confirm }));
+    fireEvent.click(await screen.findByRole("button", { name: t.create.confirm }));
     await act(async () => {});
     expect(runs()).toHaveLength(1);
     expect(body(0).max_credits).toBe(120);
@@ -160,12 +161,13 @@ describe("an unknown price is never confirmed unseen", () => {
     await screen.findByRole("button", { name: t.common.retry });
     make();
     const retry = screen.getAllByRole("button", { name: t.common.retry }).find((b) => b.classList.contains("fl-go")) as HTMLElement;
-    expect(retry.getAttribute("aria-disabled")).toBe("true");
+    // Retry is a live button: only "starting" and "checking the price" are disabled.
+    expect(retry.getAttribute("aria-disabled")).toBe("false");
     estimateAnswer = () => json(priced(120));
     fireEvent.click(retry);
     await priceShown(120);
     expect(runs()).toHaveLength(0);
-    fireEvent.click(screen.getByRole("button", { name: t.create.confirm }));
+    fireEvent.click(await screen.findByRole("button", { name: t.create.confirm }));
     await act(async () => {});
     expect(runs()).toHaveLength(1);
     expect(body(0).max_credits).toBe(120);
@@ -238,7 +240,7 @@ describe("a retry of the same attempt is the same attempt", () => {
     // Enter in the box asks again; the confirm is the second press.
     fireEvent.keyDown(topic(), { key: "Enter" });
     runAnswer = () => json({ ok: true });
-    confirm();
+    await confirm();
     await act(async () => {});
     expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
   });
@@ -274,7 +276,7 @@ describe("a retry of the same attempt is the same attempt", () => {
     await press();
     expect(document.querySelector(".fl-status")?.textContent).toContain(t.create.queued);
     fireEvent.keyDown(topic(), { key: "Enter" });
-    confirm();
+    await confirm();
     await act(async () => {});
     expect(runs()).toHaveLength(2);
     expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
@@ -300,7 +302,7 @@ describe("a double press posts once", () => {
     show();
     await priceShown(120);
     make();
-    const go = screen.getByRole("button", { name: t.create.confirm });
+    const go = await screen.findByRole("button", { name: t.create.confirm });
     let release: (r: Response) => void = () => {};
     runAnswer = () => new Promise<Response>((r) => (release = r));
     await act(async () => {
@@ -319,7 +321,7 @@ describe("a double press posts once", () => {
     make();
     let release: (r: Response) => void = () => {};
     runAnswer = () => new Promise<Response>((r) => (release = r));
-    confirm();
+    await confirm();
     fireEvent.keyDown(topic(), { key: "Enter" });
     expect(screen.queryByRole("button", { name: t.create.cancel })).toBeNull();
     await act(async () => release(new Response("{}", { status: 200 })));

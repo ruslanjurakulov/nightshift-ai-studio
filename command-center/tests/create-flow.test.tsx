@@ -97,7 +97,7 @@ describe("the guided create flow", () => {
     await screen.findByText(/About 120 credits/);
     fireEvent.click(screen.getByRole("button", { name: t.create.create }));
     expect(runs()).toHaveLength(0);
-    fireEvent.click(screen.getByRole("button", { name: t.create.confirm }));
+    fireEvent.click(await screen.findByRole("button", { name: t.create.confirm }));
     await waitFor(() => expect(runs()).toHaveLength(1));
     // The key and the ceiling are pinned in tests/create-idempotency.test.tsx; here: everything else is what was chosen.
     const { idempotency_key, max_credits, ...chosen } = JSON.parse(String(runs()[0].init?.body));
@@ -206,7 +206,7 @@ describe("keyboard focus through the confirm", () => {
     show();
     await screen.findByText(/About 120 credits/);
     fireEvent.click(screen.getByRole("button", { name: t.create.create }));
-    const confirm = screen.getByRole("button", { name: t.create.confirm }) as HTMLButtonElement;
+    const confirm = (await screen.findByRole("button", { name: t.create.confirm })) as HTMLButtonElement;
     expect(document.activeElement).toBe(confirm);
     expect(screen.getByText(t.create.flow.confirmAnnounce)).toBeTruthy();
     let release: (r: Response) => void = () => {};
@@ -227,7 +227,7 @@ describe("keyboard focus through the confirm", () => {
     await screen.findByText(/About 120 credits/);
     runAnswer = () => json({ error: "insufficient_credits", available: 20, needed: 120 }, 402);
     fireEvent.click(screen.getByRole("button", { name: t.create.create }));
-    fireEvent.click(screen.getByRole("button", { name: t.create.confirm }));
+    fireEvent.click(await screen.findByRole("button", { name: t.create.confirm }));
     await waitFor(() => expect(document.activeElement).toBe(document.querySelector(".fl-status")));
     expect(document.querySelector(".fl-status")?.textContent?.length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: t.create.create })).toBeTruthy();

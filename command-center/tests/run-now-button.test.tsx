@@ -59,7 +59,8 @@ const show = () =>
     </I18nProvider>,
   );
 const arm = () => fireEvent.click(screen.getByRole("button", { name: t.agents.runBtn }));
-const confirm = () => fireEvent.click(screen.getByRole("button", { name: t.agents.runConfirm }));
+// Held ("Checking the price…") until the estimate line has reported; wait for the real confirm.
+const confirm = async () => fireEvent.click(await screen.findByRole("button", { name: t.agents.runConfirm }));
 const priceShown = () => screen.findByText(/120 credits/);
 
 describe("Run now", () => {
@@ -67,42 +68,52 @@ describe("Run now", () => {
     show();
     arm();
     await priceShown();
-    confirm();
+    await confirm();
     await act(async () => {});
     expect(runs()).toHaveLength(1);
     expect(body(0).max_credits).toBe(120);
     expect(String(body(0).idempotency_key)).toMatch(/^[A-Za-z0-9_:.-]{1,255}$/);
   });
 
-  it("the confirm waits while the price is loading, and nothing is sent", async () => {
+  it("(a) while the estimate is pending the confirm stays disabled and named 'Checking the price…'; (b) it becomes the real confirm once priced", async () => {
     let release: (r: Response) => void = () => {};
     estimateAnswer = () => new Promise<Response>((r) => (release = r));
     show();
     arm();
     const held = screen.getByRole("button", { name: t.credits.priceChecking });
     expect(held.getAttribute("aria-disabled")).toBe("true");
+    expect(held.getAttribute("data-price-hold")).toBe("loading");
     fireEvent.click(held);
-    await act(async () => {});
+    // Stays held for as long as the estimate is pending, however long that is.
+    await act(async () => void (await new Promise((r) => setTimeout(r, 150))));
+    expect(screen.queryByRole("button", { name: t.agents.runConfirm })).toBeNull();
+    expect(screen.getByRole("button", { name: t.credits.priceChecking }).getAttribute("aria-disabled")).toBe("true");
     expect(runs()).toHaveLength(0);
     await act(async () => release(new Response(JSON.stringify(priced(120)), { status: 200 })));
     await priceShown();
-    confirm();
+    const live = await screen.findByRole("button", { name: t.agents.runConfirm });
+    expect(live.getAttribute("aria-disabled")).toBe("false");
+    expect(live.getAttribute("data-price-hold")).toBeNull();
+    fireEvent.click(live);
     await act(async () => {});
     expect(runs()).toHaveLength(1);
+    expect(body(0).max_credits).toBe(120);
   });
 
-  it("an unreadable price turns the confirm into Retry", async () => {
+  it("(c) an unreadable estimate shows Retry on the confirm, and nothing is sent until a price is on screen", async () => {
     estimateAnswer = () => json({}, 503);
     show();
     arm();
     await screen.findAllByRole("button", { name: t.common.retry });
     const go = document.querySelector("[data-price-hold=failed]") as HTMLElement;
     expect(go.textContent).toBe(t.common.retry);
+    // Retry is a live button: only "checking the price" is disabled.
+    expect(go.getAttribute("aria-disabled")).toBe("false");
     estimateAnswer = () => json(priced(120));
     fireEvent.click(go);
     await priceShown();
     expect(runs()).toHaveLength(0);
-    confirm();
+    await confirm();
     await act(async () => {});
     expect(body(0).max_credits).toBe(120);
   });
@@ -112,12 +123,12 @@ describe("Run now", () => {
     arm();
     await priceShown();
     runAnswer = () => Promise.reject(new TypeError("network"));
-    confirm();
+    await confirm();
     await act(async () => {});
     arm();
     await priceShown();
     runAnswer = () => json({ ok: true });
-    confirm();
+    await confirm();
     await act(async () => {});
     expect(runs()).toHaveLength(2);
     expect(body(1).idempotency_key).toBe(body(0).idempotency_key);
@@ -128,7 +139,7 @@ describe("Run now", () => {
     arm();
     await priceShown();
     runAnswer = () => json({ error: "run_already_started" }, 409);
-    confirm();
+    await confirm();
     await act(async () => {});
     expect(screen.getByText(t.create.flow.alreadySent)).toBeTruthy();
   });
@@ -137,7 +148,7 @@ describe("Run now", () => {
     show();
     arm();
     await priceShown();
-    const go = screen.getByRole("button", { name: t.agents.runConfirm });
+    const go = await screen.findByRole("button", { name: t.agents.runConfirm });
     let release: (r: Response) => void = () => {};
     runAnswer = () => new Promise<Response>((r) => (release = r));
     await act(async () => {

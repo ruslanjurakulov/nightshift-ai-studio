@@ -159,7 +159,7 @@ export function RunNowButton({
         <>
           <button
             type="button"
-            aria-disabled={priceHold}
+            aria-disabled={priceHold && price.state === "loading"}
             data-price-hold={priceHold ? price.state : undefined}
             onClick={() => {
               // Unreadable: the button is the retry. Loading: nothing until the figure arrives.

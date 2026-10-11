@@ -907,7 +907,7 @@ export const uz: Dictionary = {
       details: "Barcha bosqichlarni koʻrsatish",
       unavailable: "Videolar yaratish hozir mavjud emas.",
       confirmAnnounce: "Yuqoridagi narxni tekshiring, boshlash uchun «Ha, yaratilsin»ni bosing.",
-      alreadySent: "Bu allaqachon yuborilgan. Quyida bir necha daqiqada hech narsa koʻrinmasa, «Kreditlar» boʻlimini tekshiring: video boshlamagan band qilingan kreditlar balansga avtomatik qaytadi.",
+      alreadySent: "Bu allaqachon yuborilgan. Quyida bir necha daqiqa ichida hech narsa koʻrinmasa, «Kreditlar» boʻlimini tekshiring: video boshlamagan band qilingan kreditlar 3 soat ichida balansga avtomatik qaytadi.",
       bracketsHint: "Yaratishdan oldin [qavslarni] oʻz gʻoyangiz bilan almashtiring.",
       draftRestored: "Tugallanmagan qoralamangiz qaytdi.",
       draftDiscard: "Qoralamani oʻchirish",

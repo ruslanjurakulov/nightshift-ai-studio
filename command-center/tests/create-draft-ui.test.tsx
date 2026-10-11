@@ -188,7 +188,7 @@ describe("the draft is cleared", () => {
     await wait();
     expect(stored()).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: t.create.create }));
-    fireEvent.click(screen.getByRole("button", { name: t.create.confirm }));
+    fireEvent.click(await screen.findByRole("button", { name: t.create.confirm }));
     await act(async () => {});
     expect(screen.getByText(t.create.queued)).toBeTruthy();
     expect(stored()).toEqual([]);
@@ -202,7 +202,7 @@ describe("the draft is cleared", () => {
     fireEvent.change(topic(), { target: { value: SECRET } });
     runAnswer = () => json({ error: "insufficient_credits", available: 1, needed: 120 }, 402);
     fireEvent.click(screen.getByRole("button", { name: t.create.create }));
-    fireEvent.click(screen.getByRole("button", { name: t.create.confirm }));
+    fireEvent.click(await screen.findByRole("button", { name: t.create.confirm }));
     await wait();
     expect(stored()).toEqual([draftKey(me)]);
   });
@@ -276,7 +276,7 @@ describe("the draft goes nowhere", () => {
     // The one place the text leaves the page is the run the person confirmed.
     await screen.findByText(/About 120 credits/);
     fireEvent.click(screen.getByRole("button", { name: t.create.create }));
-    fireEvent.click(screen.getByRole("button", { name: t.create.confirm }));
+    fireEvent.click(await screen.findByRole("button", { name: t.create.confirm }));
     await act(async () => {});
     expect(calls.filter((c) => JSON.stringify(c).includes(SECRET)).map((c) => c.url)).toEqual(["/api/agent/run"]);
   });

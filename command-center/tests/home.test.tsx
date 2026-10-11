@@ -293,7 +293,7 @@ describe("the run form takes the hand-off", () => {
     expect(screen.getByText(t.create.prefilled)).toBeTruthy();
     // The first press only asks; nothing reached the run route.
     fireEvent.click(screen.getByRole("button", { name: t.create.create }));
-    expect(screen.getByRole("button", { name: t.create.confirm })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: t.create.confirm })).toBeTruthy();
     expect(writes()).toEqual([]);
   });
 

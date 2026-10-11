@@ -132,8 +132,8 @@ describe("the goal cards", () => {
     await screen.findByText(/About 120 credits/);
     fireEvent.click(screen.getByRole("button", { name: t.create.create }));
     expect(runs()).toHaveLength(0);
-    expect(screen.getByRole("button", { name: t.create.confirm })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: t.create.confirm }));
+    expect(await screen.findByRole("button", { name: t.create.confirm })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: t.create.confirm }));
     await act(async () => {});
     expect(runs()).toHaveLength(1);
     expect(JSON.parse(String(runs()[0].init?.body))).toMatchObject({ topic: t.home.formats.shorts.starter, duration: 60, max_credits: 120 });
@@ -143,7 +143,7 @@ describe("the goal cards", () => {
     home();
     await screen.findByText(/About 120 credits/);
     fireEvent.click(screen.getByRole("button", { name: t.create.create }));
-    expect(screen.getByRole("button", { name: t.create.confirm })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: t.create.confirm })).toBeTruthy();
     fireEvent.click(document.querySelector('[data-goal="story"]') as HTMLElement);
     expect(screen.queryByRole("button", { name: t.create.confirm })).toBeNull();
     expect(screen.getByRole("button", { name: t.create.create })).toBeTruthy();

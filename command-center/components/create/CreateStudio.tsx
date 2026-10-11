@@ -684,7 +684,8 @@ export function CreateStudio({
               key="confirm"
               type="button"
               autoFocus
-              aria-disabled={phase === "starting" || priceHold}
+              // Retry (price unreadable) is a live button; only "starting" and "checking the price" are disabled.
+              aria-disabled={phase === "starting" || (priceHold && price.state === "loading")}
               data-price-hold={priceHold ? price.state : undefined}
               onClick={() => {
                 // Unreadable: the button is the retry. Loading: nothing to do until the figure arrives.
