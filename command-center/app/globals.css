@@ -1027,6 +1027,26 @@ option {
   border-radius: var(--ns-r-key);
 }
 .ns-tab[aria-current="page"] .ns-tab-icon { color: var(--ns-amber-ink); background: var(--ns-select); }
+/* The account's initial where a tab has its glyph: the same circle and indigo
+   ink as the sidebar card's, 24px. The selected tab keeps the amber plate and
+   gains an amber ring, so the tab reads as selected without a new colour. */
+.ns-tab-avatar {
+  display: grid;
+  height: 1.5rem;
+  width: 1.5rem;
+  place-items: center;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-accent-soft);
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+}
+.ns-tab-avatar.is-current {
+  border-color: var(--ns-amber-ink);
+  box-shadow: 0 0 0 1px var(--ns-amber-ink);
+}
 .ns-tab-create {
   display: inline-flex;
   margin-top: -1.125rem;
