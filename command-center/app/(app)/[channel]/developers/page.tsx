@@ -13,7 +13,9 @@ export const revalidate = 0;
 
 /**
  * The Developer console (migration 0031): activate the API, keys, usage, the
- * prepaid API balance and its limits — for the workspace being viewed. Everything is read and written through the signed-in user's
+ * prepaid API balance and its limits — for the workspace being viewed. Three tabs
+ * (Keys, Usage and billing, Connected apps) under one strip that shows the shared API
+ * balance with "Add funds". Everything is read and written through the signed-in user's
  * own session and 0031's functions; the top-up checkout is Paddle's.
  */
 export default async function DevelopersPage() {
@@ -31,16 +33,12 @@ export default async function DevelopersPage() {
       ) : !atLeast(current.role, "admin") ? (
         <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.developers.adminOnly}</div>
       ) : (
-        <>
-          <DeveloperConsole
+        <DeveloperConsole
           key={current.id}
           orgId={current.id}
           topup={paddleApi && paddleClient ? paddleClient : null}
-          />
-          {/* AI apps the person connected with OAuth (0093): separate from API keys and the API balance.
-              Below the console, which loads first: this list arrives later and must not push it down. */}
-          <ConnectedApps />
-        </>
+          connectedApps={<ConnectedApps />}
+        />
       )}
     </div>
   );
