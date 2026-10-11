@@ -26,6 +26,7 @@ import { dictionaries } from "@/lib/i18n";
 import { CreateStudio } from "@/components/create/CreateStudio";
 import { SignOutButton } from "@/components/SignOutButton";
 import { AccountMenu } from "@/components/account/AccountMenu";
+import { useSignOut } from "@/components/account/AccountParts";
 import { DRAFT_PREFIX, DRAFT_TTL_MS, DRAFT_VERSION, draftKey, writeDraft, type DraftScope } from "@/lib/create-draft";
 
 const t = dictionaries.en;
@@ -254,6 +255,24 @@ describe("the account menu's sign-out clears it too", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /account|me@example.com|menu/i }));
     fireEvent.click(await screen.findByRole("button", { name: new RegExp(t.common.signOut) }));
+    await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/login"));
+    expect(nav.signOut).toHaveBeenCalled();
+  });
+});
+
+describe("the shared sign-out (the panel and Settings → Account) clears it", () => {
+  it("useSignOut removes every draft before the session call", async () => {
+    window.sessionStorage.setItem(draftKey(me), "x");
+    nav.signOut.mockImplementation(async () => {
+      expect(stored()).toEqual([]);
+      return {};
+    });
+    function Out() {
+      const out = useSignOut();
+      return <button onClick={() => void out()}>out</button>;
+    }
+    render(<Out />);
+    fireEvent.click(screen.getByRole("button", { name: "out" }));
     await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/login"));
     expect(nav.signOut).toHaveBeenCalled();
   });
