@@ -347,7 +347,7 @@ html:is([lang="ru"], [lang="uz"]) .nx-h2 { font-size: clamp(30px, 5vw, 54px); }
   background-image: radial-gradient(80% 50% at 50% -10%, rgba(255, 169, 64, 0.2), transparent 70%);
   color: var(--nx-stage-text);
 }
-.nx .st-auth-aside .st-brand { color: var(--nx-stage-text); }
+.nx .st-auth-aside .st-brand { color: var(--nx-stage-text); --ns-fold: #000; }
 .nx .st-auth-aside .st-h2 { font-size: clamp(32px, 3.4vw, 46px); max-width: 14ch; }
 .nx .st-auth-aside .st-ledger { border-top-color: var(--nx-stage-edge); }
 .nx .st-auth-aside .st-ledger li { border-bottom-color: var(--nx-stage-edge); font-size: 17px; }
@@ -760,7 +760,7 @@ html:has(.nx-bar) { scroll-padding-bottom: 96px; }
 .nx-auth-band { position: relative; height: 188px; margin-bottom: 14px; overflow: hidden; border-radius: 22px; background: var(--ns-key); }
 .nx-auth-band .nx-art { position: absolute; inset: 0; width: 100%; height: 100%; }
 .nx-auth-band::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(16, 15, 13, 0.6) 0%, rgba(16, 15, 13, 0.82) 100%); }
-.nx-auth-band .st-brand { position: absolute; z-index: 1; left: 16px; bottom: 14px; color: #f4f0e9; }
+.nx-auth-band .st-brand { position: absolute; z-index: 1; left: 16px; bottom: 14px; color: #f4f0e9; --ns-fold: #000; }
 .nx-auth-band .nx-result-badge { z-index: 1; left: auto; right: 12px; }
 .nx-try-card { border-radius: 14px; }
 

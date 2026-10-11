@@ -162,6 +162,8 @@
   --ns-rule-strong: #8a8880;
   --ns-text: #1b1a17;
   --ns-text-dim: #5b5850;
+  /* The lockup's N is drawn in the text colour; its fold is the opposite, at low opacity. */
+  --ns-fold: #ffffff;
   --ns-amber: #f29a1e;
   --ns-amber-ink: #9c5300;
   --ns-on-amber: #1b1a17;
@@ -257,6 +259,7 @@
     --ns-rule-strong: #6f695f;
     --ns-text: #f1ede6;
     --ns-text-dim: #b4aea1;
+    --ns-fold: #000000;
     --ns-amber: #ffa940;
     --ns-amber-ink: #ffa940;
     --ns-on-amber: #1a1105;
@@ -353,6 +356,7 @@
   --ns-rule-strong: #6f695f;
   --ns-text: #f1ede6;
   --ns-text-dim: #b4aea1;
+  --ns-fold: #000000;
   --ns-amber: #ffa940;
   --ns-amber-ink: #ffa940;
   --ns-on-amber: #1a1105;
@@ -1023,6 +1027,26 @@ option {
   border-radius: var(--ns-r-key);
 }
 .ns-tab[aria-current="page"] .ns-tab-icon { color: var(--ns-amber-ink); background: var(--ns-select); }
+/* The account's initial where a tab has its glyph: the same circle and indigo
+   ink as the sidebar card's, 24px. The selected tab keeps the amber plate and
+   gains an amber ring, so the tab reads as selected without a new colour. */
+.ns-tab-avatar {
+  display: grid;
+  height: 1.5rem;
+  width: 1.5rem;
+  place-items: center;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-accent-soft);
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+}
+.ns-tab-avatar.is-current {
+  border-color: var(--ns-amber-ink);
+  box-shadow: 0 0 0 1px var(--ns-amber-ink);
+}
 .ns-tab-create {
   display: inline-flex;
   margin-top: -1.125rem;
@@ -2414,28 +2438,6 @@ html:has(.lp-root) { scroll-behavior: smooth; }
   background-repeat: repeat-x;
   background-position: 0 100%, 0 100%;
   border-bottom: 1px solid var(--tick);
-}
-
-/* The wordmark keeps its own logotype: the cut-down condensed capitals
-   (app/fonts.css). It is the brand's signature, not the product's type. */
-.ns-wordmark {
-  font-family: "Nightshift Wordmark", var(--font-sans);
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  line-height: 1;
-  text-transform: uppercase;
-  color: var(--color-fg);
-}
-/* The tile makes the lockup wider: below 400px it steps down (wordmark 19px, tile
-   28px) so the signed-in header, with its bell, search and credit key, stays on one row. */
-@media (max-width: 399px) {
-  .ns-wordmark { font-size: 19px; gap: 8px; }
-  .ns-wordmark svg { width: 28px; height: auto; }
-}
-@media (max-width: 359px) {
-  .ns-wordmark { font-size: 17px; gap: 6px; }
-  .ns-wordmark svg { width: 24px; }
 }
 
 /* The record dot on the Generate key: making something is a REC press, not a

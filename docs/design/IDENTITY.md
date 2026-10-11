@@ -73,7 +73,7 @@ decides which one they see.
 Superseded: see `HUMAN_TYPE.md`. One family, **Onest** (OFL, self-hosted, Latin,
 Cyrillic and Uzbek ʻ ʼ ’, tabular figures), at 400 / 500 / 600; sentence case;
 scale 13 · 14 · 16 · 18 · 20 · 24 · 30 · 40; system monospace for real code
-only. The wordmark alone keeps its condensed capitals (`.ns-wordmark`).
+only. The wordmark is not set in type at all: it is the owner's drawing of the N and the lettering, an inline vector (`components/site/Wordmark.tsx`).
 
 ## 4. Space, shape, elevation
 

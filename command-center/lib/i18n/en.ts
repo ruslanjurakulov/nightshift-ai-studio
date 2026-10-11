@@ -198,6 +198,7 @@ export const en = {
     loading: "Loading…",
     loadFailed: "Couldn't load your account details. Try again in a moment.",
     close: "Close",
+    sectionSub: "Who is signed in, your plan, the accounts you publish to, and how the app looks and reads.",
   },
   status: {
     ok: "OK",
@@ -2746,7 +2747,7 @@ export const en = {
     limitReached: "This account has reached its organization limit.",
     switchFailed: "Couldn't switch organization.",
     title: "Settings",
-    customerSubtitle: "Your account security and developer access.",
+    customerSubtitle: "Your account, its security and developer access.",
     signIn: "Sign in to open your settings.",
     developersTitle: "Developers",
     developersHint: "API keys, usage and the prepaid API balance for this workspace.",
