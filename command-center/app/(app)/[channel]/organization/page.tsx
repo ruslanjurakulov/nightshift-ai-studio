@@ -25,7 +25,7 @@ export default async function SettingsPage() {
   const [org, user, path] = await Promise.all([getOrgContext(), getUser(), getChannelPath()]);
 
   return (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       <PageHeader icon="organization" title={t.org.title} subtitle={t.org.customerSubtitle} />
       {!user ? (
         <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.org.signIn}</div>
@@ -37,7 +37,7 @@ export default async function SettingsPage() {
           <div className="panel flex flex-col gap-3 p-5 sm:p-6">
             <h2 className="t-section">{t.org.developersTitle}</h2>
             <p className="text-sm text-[var(--color-muted)]">{t.org.developersHint}</p>
-            <Link href={path("/developers")} className="btn-sky is-solid pill self-start px-5 py-2 text-sm">
+            <Link href={path("/developers")} className="btn-quiet self-start px-5 text-sm">
               {t.org.developersOpen}
             </Link>
           </div>

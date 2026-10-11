@@ -234,6 +234,7 @@ export function BuyCredits({
               {/* The price is the provider's quote, drawn as given; with none, the key says so in words. */}
               {!prices[pack.priceId] && <span className="text-xs text-[var(--color-muted)]">{cp.priceAtCheckout}</span>}
               <PriceButton
+                tone="quiet"
                 onClick={() => buy(pack)}
                 disabled={phase === "opening"}
                 label={phase === "opening" ? cp.opening : cp.buy}

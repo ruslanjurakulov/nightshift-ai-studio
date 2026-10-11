@@ -104,7 +104,7 @@ export function InviteAdminPanel({ admin }: { admin: InviteAdmin }) {
       </p>
 
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" onClick={save} disabled={busy} className="btn-primary min-h-11 px-5 text-sm disabled:opacity-40">
+        <button type="button" onClick={save} disabled={busy} className="btn-quiet min-h-11 px-5 text-sm disabled:opacity-40">
           {busy ? c.adminSaving : c.adminSave}
         </button>
         {msg && (

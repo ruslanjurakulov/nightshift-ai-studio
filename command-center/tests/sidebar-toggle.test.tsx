@@ -21,7 +21,8 @@ vi.mock("@/lib/channels-client", () => ({ useChannelPath: () => (p: string) => `
 import { I18nProvider } from "@/lib/i18n/context";
 import { dictionaries, type Locale } from "@/lib/i18n";
 import { CustomerSidebar } from "@/components/shell/CustomerSidebar";
-import { SIDEBAR_COOKIE, SIDEBAR_KEY, SidebarProvider } from "@/components/shell/SidebarState";
+import { SidebarProvider } from "@/components/shell/SidebarState";
+import { SIDEBAR_COOKIE, SIDEBAR_KEY } from "@/lib/sidebar-pref";
 
 function sidebar(locale: Locale = "en", initialCollapsed = false) {
   return render(
@@ -60,12 +61,39 @@ describe("the sidebar's collapse toggle", () => {
     expect(open.getAttribute("aria-expanded")).toBe("false");
     expect(aside.getAttribute("data-collapsed")).toBe("true");
     // Labels stay reachable: the rail's links keep their names, and say them as tooltips.
-    expect(screen.getByRole("link", { name: "Library" }).getAttribute("title")).toBe("Library");
+    expect(screen.getByRole("link", { name: "Library" }).getAttribute("data-tip")).toBe("Library");
 
     fireEvent.click(open);
     expect(toggle("Collapse sidebar").getAttribute("aria-expanded")).toBe("true");
     expect(aside.getAttribute("data-collapsed")).toBe("false");
-    expect(screen.getByRole("link", { name: "Library" }).getAttribute("title")).toBeNull();
+    expect(screen.getByRole("link", { name: "Library" }).getAttribute("data-tip")).toBeNull();
+  });
+
+  it("on the rail, a row's name shows beside it on hover and on keyboard focus, and goes away after", () => {
+    const { container } = sidebar("en", true);
+    const aside = container.querySelector("aside")!;
+    const row = screen.getByRole("link", { name: "Library" });
+    expect(screen.queryByTestId("sidebar-tip")).toBeNull();
+    fireEvent.mouseOver(row);
+    expect(screen.getByTestId("sidebar-tip").textContent).toBe("Library");
+    fireEvent.mouseLeave(aside);
+    expect(screen.queryByTestId("sidebar-tip")).toBeNull();
+
+    // Keyboard: only a focus that matches :focus-visible shows it (jsdom does not know the selector, so say so).
+    const real = Element.prototype.matches;
+    vi.spyOn(Element.prototype, "matches").mockImplementation(function (this: Element, sel: string) {
+      return sel === ":focus-visible" ? true : real.call(this, sel);
+    });
+    fireEvent.focus(row);
+    expect(screen.getByTestId("sidebar-tip").textContent).toBe("Library");
+    fireEvent.blur(row);
+    expect(screen.queryByTestId("sidebar-tip")).toBeNull();
+  });
+
+  it("an open sidebar shows no tooltip (the names are written out)", () => {
+    sidebar();
+    fireEvent.mouseOver(screen.getByRole("link", { name: "Library" }));
+    expect(screen.queryByTestId("sidebar-tip")).toBeNull();
   });
 
   it("remembers the choice: written to storage and the cookie, read back on the next visit", () => {

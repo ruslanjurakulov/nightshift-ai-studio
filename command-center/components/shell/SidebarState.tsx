@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { SIDEBAR_COLLAPSED, SIDEBAR_COOKIE, SIDEBAR_KEY, SIDEBAR_OPEN } from "@/lib/sidebar-pref";
 
 /**
  * Whether the customer's sidebar is collapsed to its icon rail, remembered per browser.
@@ -11,8 +12,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
  * width on the server and the page does not jump when it loads. Without either, the sidebar starts open.
  * Presentation only: it decides how wide a rail is drawn, never what anyone may open.
  */
-export const SIDEBAR_KEY = "ns-sidebar";
-export const SIDEBAR_COOKIE = "ns_sidebar";
 
 type SidebarState = { collapsed: boolean; toggle: () => void };
 
@@ -21,14 +20,14 @@ const SidebarContext = createContext<SidebarState>({ collapsed: false, toggle: (
 function readStored(): boolean | null {
   try {
     const v = window.localStorage.getItem(SIDEBAR_KEY);
-    return v === "collapsed" ? true : v === "open" ? false : null;
+    return v === SIDEBAR_COLLAPSED ? true : v === SIDEBAR_OPEN ? false : null;
   } catch {
     return null;
   }
 }
 
 function writeStored(collapsed: boolean) {
-  const v = collapsed ? "collapsed" : "open";
+  const v = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_OPEN;
   try {
     window.localStorage.setItem(SIDEBAR_KEY, v);
   } catch {
@@ -51,12 +50,12 @@ export function SidebarProvider({ initialCollapsed = false, children }: { initia
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
   }, []);
 
+  // The next value is computed first and written outside any state updater, so a StrictMode double call stays pure.
   const toggle = useCallback(() => {
-    setCollapsed((c) => {
-      writeStored(!c);
-      return !c;
-    });
-  }, []);
+    const next = !collapsed;
+    setCollapsed(next);
+    writeStored(next);
+  }, [collapsed]);
 
   const value = useMemo(() => ({ collapsed, toggle }), [collapsed, toggle]);
   return <SidebarContext.Provider value={value}>{children}</SidebarContext.Provider>;

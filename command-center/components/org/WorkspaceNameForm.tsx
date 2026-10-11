@@ -46,7 +46,7 @@ export function WorkspaceNameForm({ org }: { org: OrgSummary }) {
   }
 
   return (
-    <div className="panel flex flex-col gap-3 p-5 sm:p-6">
+    <div className="panel ns-desk flex flex-col gap-3 p-5 sm:p-6">
       <h2 className="t-section">{t.org.nameTitle}</h2>
       {canRename ? (
         <div className="flex flex-wrap items-end gap-3">
@@ -59,13 +59,13 @@ export function WorkspaceNameForm({ org }: { org: OrgSummary }) {
               setSaved(false);
             }}
             aria-label={t.org.nameLabel}
-            className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+            className="ns-field min-w-0 flex-1"
           />
           <button
             type="button"
             onClick={rename}
             disabled={busy || name.trim() === org.name || validateOrgName(name) === null}
-            className="btn-sky is-solid pill px-5 py-2 text-sm disabled:opacity-40"
+            className="btn-primary px-5 text-sm disabled:opacity-40"
           >
             {saved ? t.org.saved : t.org.rename}
           </button>

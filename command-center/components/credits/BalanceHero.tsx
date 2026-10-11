@@ -42,59 +42,79 @@ export function BalanceHero({
   };
 
   return (
-    <section className="panel flex flex-col gap-6 p-5 sm:p-6" aria-labelledby="balance-title">
-      <h2 id="balance-title" className="t-panel">
-        {p.balanceTitle}
-      </h2>
+    // The one lit desk of this page: the balance, with the way to add to it.
+    <section className="panel ns-desk bal-desk" aria-labelledby="balance-title">
+      <div className="bal-main">
+        <h2 id="balance-title" className="t-panel">
+          {p.balanceTitle}
+        </h2>
 
-      <div className="flex flex-col gap-2">
-        <span className="text-sm text-[var(--color-muted)]">{cp.available}</span>
-        <div className="flex flex-wrap items-baseline gap-x-2">
-          <span
-            className="t-figure"
-            style={{ color: split.available === null ? "var(--color-idle)" : "var(--color-fg)" }}
-            data-balance-available
-          >
-            {figure(split.available)}
-          </span>
-          {split.available !== null && <span className="text-sm text-[var(--color-muted)]">{p.unit}</span>}
+        <div className="flex flex-col gap-2">
+          <span className="text-sm text-[var(--color-muted)]">{cp.available}</span>
+          <div className="flex flex-wrap items-baseline gap-x-3">
+            <span
+              className="t-figure bal-figure"
+              style={{ color: split.available === null ? "var(--color-idle)" : "var(--color-fg)" }}
+              data-balance-available
+            >
+              {figure(split.available)}
+            </span>
+            {split.available !== null && <span className="text-base text-[var(--color-muted)]">{p.unit}</span>}
+          </div>
+          {/* The balance as a VU ladder: lit = free to spend, hatched = held for
+              running work. Drawn only from real figures; unread, there is no meter. */}
+          {split.available !== null && (
+            <Meter
+              value={split.available}
+              held={split.held}
+              max={split.total}
+              size="lg"
+              segments={24}
+              label={cp.available}
+              valueText={`${spoken(split.available)} ${cp.available}${split.held ? `, ${spoken(split.held)} ${cp.reserved}` : ""}`}
+              scale={split.total !== null ? { from: formatCredits(0, locale), to: formatCredits(split.total, locale) } : undefined}
+              className="mt-1"
+            />
+          )}
+          {split.available !== null && <Equivalents credits={split.available} rates={rates} />}
         </div>
-        {/* The balance as a VU ladder: lit = free to spend, hatched = held for
-            running work. Drawn only from real figures; unread, there is no meter. */}
-        {split.available !== null && (
-          <Meter
-            value={split.available}
-            held={split.held}
-            max={split.total}
-            size="lg"
-            segments={24}
-            label={cp.available}
-            valueText={`${spoken(split.available)} ${cp.available}${split.held ? `, ${spoken(split.held)} ${cp.reserved}` : ""}`}
-            scale={split.total !== null ? { from: formatCredits(0, locale), to: formatCredits(split.total, locale) } : undefined}
-            className="mt-1"
-          />
+
+        <dl className="bal-facts">
+          <div className="flex flex-col gap-1">
+            <dt className="text-sm text-[var(--color-muted)]">{cp.reserved}</dt>
+            <dd className="text-[22px] font-semibold" style={{ color: split.held === null ? "var(--color-idle)" : undefined }}>
+              {figure(split.held)}
+            </dd>
+          </div>
+          <div className="flex flex-col gap-1">
+            <dt className="text-sm text-[var(--color-muted)]">{cp.balance}</dt>
+            <dd className="text-[22px] font-semibold" style={{ color: split.total === null ? "var(--color-idle)" : undefined }}>
+              {figure(split.total)}
+            </dd>
+          </div>
+        </dl>
+        {split.held !== null && <p className="-mt-2 text-sm leading-relaxed text-[var(--color-muted)]">{p.heldHint}</p>}
+
+        {(offers.packs || offers.plans) && (
+          <div className="flex flex-wrap gap-2">
+            {offers.packs && (
+              <a href="#topups" className="btn-primary text-sm">
+                {p.getMore}
+                <ArrowDown className="size-3.5" aria-hidden />
+              </a>
+            )}
+            {offers.plans && (
+              <a href="#plans" className={`${offers.packs ? "btn-quiet" : "btn-primary"} text-sm`}>
+                {p.seePlans}
+                <ArrowDown className="size-3.5" aria-hidden />
+              </a>
+            )}
+          </div>
         )}
-        {split.available !== null && <Equivalents credits={split.available} rates={rates} />}
       </div>
 
-      <dl className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1 rounded-[var(--ns-r-key)] bg-[var(--ns-key)] p-4">
-          <dt className="text-xs text-[var(--color-muted)]">{cp.reserved}</dt>
-          <dd className="text-[20px] font-semibold" style={{ color: split.held === null ? "var(--color-idle)" : undefined }}>
-            {figure(split.held)}
-          </dd>
-        </div>
-        <div className="flex flex-col gap-1 rounded-[var(--ns-r-key)] bg-[var(--ns-key)] p-4">
-          <dt className="text-xs text-[var(--color-muted)]">{cp.balance}</dt>
-          <dd className="text-[20px] font-semibold" style={{ color: split.total === null ? "var(--color-idle)" : undefined }}>
-            {figure(split.total)}
-          </dd>
-        </div>
-      </dl>
-      {split.held !== null && <p className="-mt-3 text-xs leading-relaxed text-[var(--color-muted)]">{p.heldHint}</p>}
-
       {split.sources && split.sources.length > 0 && (
-        <div className="flex flex-col gap-2">
+        <div className="bal-side flex flex-col gap-2">
           <h3 className="text-sm font-medium">{p.sourcesTitle}</h3>
           <ul className="flex flex-col">
             {split.sources.map((s) => {
@@ -105,37 +125,20 @@ export function BalanceHero({
                   className="flex items-start justify-between gap-4 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-1"
                 >
                   <div className="flex min-w-0 flex-col gap-0.5">
-                    <span className="text-sm">{p.source[s.source]}</span>
-                    {when && <span className="text-xs text-[var(--color-muted)]">{when}</span>}
+                    <span className="text-[15px]">{p.source[s.source]}</span>
+                    {when && <span className="text-sm text-[var(--color-muted)]">{when}</span>}
                     {extraOff && s.source === "pack" && (
-                      <span className="text-xs text-[var(--color-warn)]" data-source-off>
+                      <span className="text-sm text-[var(--color-warn)]" data-source-off>
                         {t.usage.credits.sourceOff}
                       </span>
                     )}
                   </div>
-                  <span className="shrink-0 text-[15px] font-medium"><Timecode value={s.credits} locale={locale} /></span>
+                  <span className="shrink-0 text-[17px] font-semibold"><Timecode value={s.credits} locale={locale} /></span>
                 </li>
               );
             })}
           </ul>
-          <p className="text-xs text-[var(--color-muted)]">{p.spendOrder}</p>
-        </div>
-      )}
-
-      {(offers.packs || offers.plans) && (
-        <div className="flex flex-wrap gap-2">
-          {offers.packs && (
-            <a href="#topups" className="btn-primary text-sm">
-              {p.getMore}
-              <ArrowDown className="size-3.5" aria-hidden />
-            </a>
-          )}
-          {offers.plans && (
-            <a href="#plans" className={`${offers.packs ? "btn-quiet" : "btn-primary"} text-sm`}>
-              {p.seePlans}
-              <ArrowDown className="size-3.5" aria-hidden />
-            </a>
-          )}
+          <p className="text-sm text-[var(--color-muted)]">{p.spendOrder}</p>
         </div>
       )}
     </section>

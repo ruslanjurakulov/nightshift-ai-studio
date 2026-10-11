@@ -35,7 +35,7 @@ export default async function LibraryPage() {
     <PageHeader icon="library" title={t.media.title} subtitle={fmt(t.media.subtitle, { org: name })} />
   );
   const note = (text: string) => (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       {header("—")}
       <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{text}</div>
     </div>
@@ -48,7 +48,7 @@ export default async function LibraryPage() {
   if (!lib.available) return note(t.media.notEnabled);
 
   return (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       {header(org.current.name)}
       <MediaLibrary orgId={org.current.id} initial={lib} canEditFolders={atLeast(org.current.role, "editor")} />
     </div>

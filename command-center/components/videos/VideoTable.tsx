@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { Film } from "lucide-react";
 import { num, relativeTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
@@ -45,29 +46,22 @@ export function VideoTable({ rows }: { rows: VideoWithMetrics[] }) {
 
   return (
     <div className="flex flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] px-4 py-2.5">
+      <div className="vt-tools">
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t.videos.search}
-          className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none transition-colors placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary-dim)]"
+          className="vt-search"
         />
-        <div className="flex gap-1">
+        <div role="group" aria-label={t.videos.thPrivacy} className="flex flex-wrap gap-1.5">
           {PRIVACY_FILTERS.map((p) => (
             <button
               key={p}
               type="button"
               onClick={() => setPrivacy(p)}
-              className="btn-sky is-quiet pill border-transparent px-2.5 py-1.5 text-xs"
-              style={{
-                background: privacy === p ? "var(--color-panel-2)" : "transparent",
-                color: privacy === p ? "var(--color-primary)" : "var(--color-muted)",
-                border:
-                  privacy === p
-                    ? "1px solid var(--color-primary-dim)"
-                    : "1px solid var(--color-border)",
-              }}
+              aria-pressed={privacy === p}
+              className="ns-chip"
             >
               {filterLabel[p]}
             </button>
@@ -76,7 +70,7 @@ export function VideoTable({ rows }: { rows: VideoWithMetrics[] }) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="vt w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
               <th className="px-4 py-2 font-semibold">{t.videos.thTitle}</th>
@@ -106,6 +100,11 @@ export function VideoTable({ rows }: { rows: VideoWithMetrics[] }) {
                   className="border-b border-[var(--color-border)]/50 transition-colors hover:bg-[var(--color-panel-2)]"
                 >
                   <td className="px-4 py-2 text-[var(--color-fg)]">
+                    <span className="vt-title">
+                    {/* A small frame: the video's shape (a Short is upright) and its place in the list. */}
+                    <span aria-hidden className="vt-frame" data-format={v.video_format === "short" ? "short" : "long"}>
+                      <Film className="size-3.5" strokeWidth={1.5} />
+                    </span>
                     <Link
                       href={path(`/videos/${v.video_id}`)}
                       className="hover:text-[var(--color-primary)]"
@@ -123,6 +122,7 @@ export function VideoTable({ rows }: { rows: VideoWithMetrics[] }) {
                         {t.videos.formatShort}
                       </span>
                     )}
+                    </span>
                   </td>
                   <td className="px-4 py-2 text-[var(--color-muted)]">{v.topic ?? t.common.na}</td>
                   <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">

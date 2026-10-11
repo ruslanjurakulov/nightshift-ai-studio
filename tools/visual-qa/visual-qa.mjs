@@ -36,6 +36,7 @@
  *                                answers for (the Usage page's states; see
  *                                tools/visual-qa/fake-supabase.mjs)
  *     --locale en|ru|uz          the interface language (the app's own cookie)
+ *     --cookie name=value        send this cookie too (a stored preference, e.g. ns_sidebar=collapsed)
  *     --prefix <text>            put this before every screenshot's name
  *     --click-first "<css>"      click this once the page has settled, before measuring
  *     --fail-on serious          exit 1 on axe violations of this impact or
@@ -77,6 +78,7 @@ const FAKE_SESSION = arg("fake-session", false);
 const FAKE_STATE = String(arg("fake-state", "")) === "true" ? "" : String(arg("fake-state", ""));
 const LOCALE = String(arg("locale", "")) === "true" ? "" : String(arg("locale", ""));
 const PREFIX = String(arg("prefix", "")) === "true" ? "" : String(arg("prefix", ""));
+const COOKIE = String(arg("cookie", "")) === "true" ? "" : String(arg("cookie", ""));
 const CLICK_FIRST = arg("click-first", null);
 // The app's own language cookie (command-center/lib/i18n/core.ts LOCALE_COOKIE).
 const LOCALE_COOKIE = "chronos_locale";
@@ -238,6 +240,7 @@ async function main() {
             await context.addCookies([{ ...c, url: BASE }]);
           }
           if (LOCALE) await context.addCookies([{ name: LOCALE_COOKIE, value: LOCALE, url: BASE }]);
+          if (COOKIE.includes("=")) await context.addCookies([{ name: COOKIE.slice(0, COOKIE.indexOf("=")), value: COOKIE.slice(COOKIE.indexOf("=") + 1), url: BASE }]);
           const page = await context.newPage();
           const errors = [];
           page.on("pageerror", (e) => errors.push(String(e.message).slice(0, 200)));
