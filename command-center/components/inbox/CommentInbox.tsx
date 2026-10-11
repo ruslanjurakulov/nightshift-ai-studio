@@ -106,7 +106,7 @@ export function CommentInbox({
 
   return (
     <div className="flex flex-col gap-5">
-      <ChipRow label={t.inbox.filtersLabel} wrap>
+      <ChipRow label={t.inbox.filtersLabel} wrap className="g3-chips">
         {FILTERS.map((f) => (
           <Chip key={f} pressed={filter === f} onClick={() => setFilter(f)}>
             {t.inbox.filters[f]}

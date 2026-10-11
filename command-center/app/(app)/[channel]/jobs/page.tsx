@@ -156,7 +156,7 @@ export default async function JobsPage() {
           <EmptyState>{t.jobs.empty}</EmptyState>
         ) : (
           <>
-            <table className="g3-table g3-jobs">
+            <table className="g3-table">
               <thead>
                 <tr>
                   <th scope="col">{t.jobs.thJob}</th>

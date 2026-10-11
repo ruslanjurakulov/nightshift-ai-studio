@@ -910,7 +910,7 @@ export const uz: Dictionary = {
   },
   jobs: {
     title: "Vazifalar navbati",
-    subtitle: "Studiya boshlagan barcha ishga tushirishlar: avval bajarilayotgan va xatolik bilan tugaganlari.",
+    subtitle: "Studiyaning soʻnggi ishga tushirishlari: avval bajarilayotgan va xatolik bilan tugaganlari.",
     jobs: "Vazifalar",
     jobsSub: "soʻnggi oynada",
     running: "Bajarilmoqda",
@@ -1381,7 +1381,6 @@ export const uz: Dictionary = {
     presetsTitle: "Uslub presetlari",
     presetsHint: "Shu kanal uchun uslubni tanlang, keyingi videolar unga amal qiladi. Oʻzingiz yozgan uslub avvalgidek ishlaydi.",
     moodLabel: "Kayfiyat",
-    applyHint: "Vizual uslubni shunga qoʻyib qoʻllang",
     applyBtn: "Kanalga qoʻllash",
     applying: "Qoʻllanmoqda…",
     applied: "Qoʻllandi",

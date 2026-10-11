@@ -88,7 +88,7 @@ export function TimeMachine({ initial }: { initial: SystemEventRow[] }) {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-        <ChipRow label={t.ops.timeMachineTitle} wrap>
+        <ChipRow label={t.ops.timeMachineTitle} wrap className="g3-chips">
           {RANGES.map((r) => (
             <Chip key={r.key} pressed={range === r.key} onClick={() => setRange(r.key)}>
               {String(t.ops[r.label])}

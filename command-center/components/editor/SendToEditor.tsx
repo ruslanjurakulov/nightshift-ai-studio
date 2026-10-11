@@ -159,7 +159,7 @@ function SendDialog({
 
   const note = kind === "image" ? fmt(ts.stillNote, { s: STILL_DEFAULT_S }) : kind === "audio" ? ts.soundNote : ts.videoNote;
   const field =
-    "rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
+    "rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
 
   return (
     <LibraryDialog

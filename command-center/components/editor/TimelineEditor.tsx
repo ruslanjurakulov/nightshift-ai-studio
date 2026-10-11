@@ -115,7 +115,7 @@ const HISTORY = 100;
 const POLL_MS = 4000;
 
 const fieldClass =
-  "rounded-[var(--ns-r-key)] w-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]";
+  "rounded-[var(--ns-r-key)] w-full border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]";
 const quietBtn =
   "btn-quiet inline-flex items-center gap-1.5 px-3 py-1.5 text-xs";
 
@@ -1447,7 +1447,7 @@ function TextInspector({
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => draft !== text.text && onChange({ text: draft })}
             aria-describedby={`${id}-count`}
-            className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+            className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 text-base text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)] sm:text-[13px]"
           />
         </label>
         <span id={`${id}-count`} className="text-xs">

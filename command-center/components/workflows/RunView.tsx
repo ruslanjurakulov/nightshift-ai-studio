@@ -192,7 +192,7 @@ function StepRow({ step, toolLabels, libraryHref }: { step: RunStepView; toolLab
         </span>
         <StatusLamp tone={STEP_TONE[step.status] ?? "idle"} label={word} live={step.status === "running" && step.job_status !== "queued"} />
       </div>
-      <div className="g3-run-facts flex flex-wrap gap-x-4 gap-y-1 text-sm tabular-nums text-[var(--color-muted)]">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm tabular-nums text-[var(--color-muted)]">
         <span>{step.quoted_credits !== null ? fmt(p.quoted, { n: formatCredits(step.quoted_credits, locale) }) : p.quotedUnknown}</span>
         {step.status === "completed" && step.charged_credits !== null ? (
           <span>{fmt(p.chargedStep, { n: formatCredits(step.charged_credits, locale) })}</span>

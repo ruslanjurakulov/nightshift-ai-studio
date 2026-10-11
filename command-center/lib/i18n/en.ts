@@ -918,7 +918,7 @@ export const en = {
   },
   jobs: {
     title: "Job Queue",
-    subtitle: "Every run the studio has started, with running and failed ones first.",
+    subtitle: "Recent runs of the studio, with running and failed ones first.",
     jobs: "Jobs",
     jobsSub: "in recent window",
     running: "Running",
@@ -1389,7 +1389,6 @@ export const en = {
     presetsTitle: "Style presets",
     presetsHint: "Pick a look for this channel and its next videos follow it. A style you write yourself still works as before.",
     moodLabel: "Mood",
-    applyHint: "Use by setting visual style to",
     applyBtn: "Apply to channel",
     applying: "Applying…",
     applied: "Applied",

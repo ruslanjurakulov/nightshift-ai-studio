@@ -266,7 +266,7 @@ export function WorkflowRunPanel({
               type="button"
               onClick={press}
               disabled={!canPress}
-              className="btn-sky is-solid pill inline-flex items-center gap-2 px-4 py-2 text-sm"
+              className="btn-sky is-solid pill inline-flex items-center gap-2 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Play className="size-4" aria-hidden />
               {total !== null && canPress ? fmt(r.runNow, { n: formatCredits(total, locale) }) : r.runNowOff}
