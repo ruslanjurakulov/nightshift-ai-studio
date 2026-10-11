@@ -4,12 +4,15 @@ Pages: analytics, measurement, intelligence (advisory), intelligence map, learni
 audit, alerts, autonomy, agents.
 
 Screenshots (made offline with `tools/visual-qa/visual-qa.mjs` and `tools/visual-qa/fake-insight.mjs`, a wrapper that
-adds made-up rows to the fake backend; nothing real, nothing written):
+adds made-up rows to the fake backend; nothing real, nothing written). They are WebP contact sheets, the top of each page,
+in this order: analytics, measurement, intelligence, intelligence map, learning, feedback loop, usage (account state
+sub62), margin, logs, audit, alerts, autonomy, agents.
 
-- `before/` the pages as they were on the Foundation commit (en, 1440 and 390, light and dark, with made-up data).
-- `after/` the same set after this branch; `usage` in three account states (`sub62-`, `free-`, `sub100off-`).
-- `after-ru/` (light) and `after-uz/` (dark): the same pages, no overflow at 390.
-- `after-empty/` the empty states (a new account with no rows): what each page says when it has nothing.
+- `sheets/before-<width>-<theme>.webp` the pages as they were on the Foundation commit (en, with made-up data).
+- `sheets/after-<width>-<theme>.webp` the same set after this branch.
+- `sheets/after-ru-*` (light) and `sheets/after-uz-*` (dark): same pages in Russian and Uzbek; no overflow at 390.
+- `sheets/after-empty-*` the empty states (a new account with no rows): what each page says when it has nothing.
+- `detail/` a few full-length pages, before and after (analytics, measurement, usage, autonomy on a phone).
 
 What changed: every page root is `ns-open`; one lit desk per page (the headline figures, the allowance, the loop, the
 posture, the logs, Run now, the alert channels); `StatusLamp` for every status; dense tables are `DataList` (a ruled
