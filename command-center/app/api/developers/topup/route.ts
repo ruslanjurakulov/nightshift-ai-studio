@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Developer console → Billing → Top up. POST `{ org_id, amount_cents }`.
+ * Developer console → Add funds (the strip above the tabs). POST `{ org_id, amount_cents }`.
  *
  * Creates a Paddle transaction for exactly that amount (one non-catalog line
  * under the "API balance top-up" product) and returns its id; the browser
