@@ -119,7 +119,7 @@ describe("the run carries an idempotency key and the price that was shown", () =
     fireEvent.click(screen.getByRole("radio", { name: t.agents.runDur5m }));
     await screen.findByTestId("price-checking");
     make();
-    const held = screen.getByRole("button", { name: t.credits.priceChecking });
+    const held = await screen.findByRole("button", { name: t.credits.priceChecking });
     expect(held.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(held);
     await act(async () => {});
@@ -141,7 +141,7 @@ describe("an unknown price is never confirmed unseen", () => {
     estimateAnswer = () => new Promise<Response>((r) => (release = r));
     show();
     make();
-    const held = screen.getByRole("button", { name: t.credits.priceChecking });
+    const held = await screen.findByRole("button", { name: t.credits.priceChecking });
     expect(held.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(held);
     fireEvent.keyDown(topic(), { key: "Enter" });
@@ -160,7 +160,10 @@ describe("an unknown price is never confirmed unseen", () => {
     show();
     await screen.findByRole("button", { name: t.common.retry });
     make();
-    const retry = screen.getAllByRole("button", { name: t.common.retry }).find((b) => b.classList.contains("fl-go")) as HTMLElement;
+    // The card's own Retry shows first; the confirm turns into Retry one commit later.
+    await waitFor(() => expect(document.querySelector(".fl-go[data-price-hold=failed]")).not.toBeNull());
+    const retry = document.querySelector(".fl-go[data-price-hold=failed]") as HTMLElement;
+    expect(retry.textContent).toBe(t.common.retry);
     // Retry is a live button: only "starting" and "checking the price" are disabled.
     expect(retry.getAttribute("aria-disabled")).toBe("false");
     estimateAnswer = () => json(priced(120));

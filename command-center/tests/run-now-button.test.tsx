@@ -6,7 +6,7 @@
  * `max_credits`, and no confirm while that price is loading or unreadable.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }), usePathname: () => "/chronos/agents" }));
@@ -80,7 +80,7 @@ describe("Run now", () => {
     estimateAnswer = () => new Promise<Response>((r) => (release = r));
     show();
     arm();
-    const held = screen.getByRole("button", { name: t.credits.priceChecking });
+    const held = await screen.findByRole("button", { name: t.credits.priceChecking });
     expect(held.getAttribute("aria-disabled")).toBe("true");
     expect(held.getAttribute("data-price-hold")).toBe("loading");
     fireEvent.click(held);
@@ -104,7 +104,8 @@ describe("Run now", () => {
     estimateAnswer = () => json({}, 503);
     show();
     arm();
-    await screen.findAllByRole("button", { name: t.common.retry });
+    // The card's own Retry shows first; the confirm turns into Retry one commit later.
+    await waitFor(() => expect(document.querySelector("[data-price-hold=failed]")).not.toBeNull());
     const go = document.querySelector("[data-price-hold=failed]") as HTMLElement;
     expect(go.textContent).toBe(t.common.retry);
     // Retry is a live button: only "checking the price" is disabled.
