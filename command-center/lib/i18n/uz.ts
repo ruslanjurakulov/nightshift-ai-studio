@@ -4388,6 +4388,7 @@ export const uz: Dictionary = {
     readyOne: "1 ta narsa qaroringizni kutmoqda",
     readyMany: "{n} ta narsa qaroringizni kutmoqda",
     readyBody: "Tayyor videolar va raskadrovkalar sizni kutmoqda. Siz qaror qilmaguningizcha hech narsa yuklanmaydi va nashr etilmaydi.",
+    readyAcross: "{n} ta kanalga tarqalgan: bu birinchisini ochadi, qolganlari oʻz «Videolar» boʻlimida.",
     makingOne: "Klip tayyorlanmoqda",
     makingMany: "{n} ta klip tayyorlanmoqda",
     makingBody: "Tayyor boʻlgach, u pastda paydo boʻladi.",

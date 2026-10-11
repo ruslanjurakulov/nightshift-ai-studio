@@ -76,10 +76,13 @@ describe("buildReady", () => {
     expect(buildReady({ channels: [ch()], storyboards: boards(WAITING_STORYBOARDS_READ - 1) })?.atLeast).toBe(false);
   });
 
-  it("names the one channel whose /videos shows it all, and none when it spans channels", () => {
+  it("names the one channel whose /videos shows it all; spread over channels it names the first that has something", () => {
     const two = [ch({ slug: "a", id: "a", waiting: 1 }), ch({ slug: "b", id: "b", waiting: 0 })];
-    expect(buildReady({ channels: two, storyboards: boards(1, "a") })?.slug).toBe("a");
-    expect(buildReady({ channels: two, storyboards: boards(1, "b") })?.slug).toBeNull();
+    expect(buildReady({ channels: two, storyboards: boards(1, "a") })).toMatchObject({ slug: "a", channelCount: 1 });
+    expect(buildReady({ channels: two, storyboards: boards(1, "b") })).toMatchObject({ slug: "a", channelCount: 2 });
+    const reversed = [ch({ slug: "a", id: "a", waiting: 0 }), ch({ slug: "b", id: "b", waiting: 1 })];
+    expect(buildReady({ channels: reversed, storyboards: boards(1, "a") })).toMatchObject({ slug: "a", channelCount: 2 });
+    expect(buildReady({ channels: reversed, storyboards: boards(2, "a") })).toMatchObject({ slug: "a", channelCount: 2 });
   });
 });
 
@@ -124,12 +127,19 @@ describe("the card on Home", () => {
     expect(within(card).getByRole("link", { name: t.home.reviewNow }).getAttribute("href")).toBe("/a%20b/videos");
   });
 
-  it("items in more than one channel link to the every-channel list, so the list matches the count", () => {
+  it("items in more than one channel open the first channel that has some, never the every-channel view, and the card says the count is spread", () => {
     const two = [ch({ slug: "a", id: "a", waiting: 1 }), ch({ slug: "b", id: "b", waiting: 0 })];
     show({ channels: two, storyboards: boards(1, "b") });
     const card = screen.getByTestId("home-status");
     expect(card.textContent).toContain("2 things are ready");
-    expect(within(card).getByRole("link", { name: t.home.reviewNow }).getAttribute("href")).toBe("/all-channels/videos");
+    expect(card.textContent).toContain("Spread over 2 channels");
+    expect(within(card).getByRole("link", { name: t.home.reviewNow }).getAttribute("href")).toBe("/a/videos");
+    expect(card.innerHTML).not.toContain("all-channels");
+  });
+
+  it("with everything in one channel there is no 'spread' sentence", () => {
+    show({ channels: [ch({ waiting: 1 })], storyboards: boards(1) });
+    expect(screen.getByTestId("home-status").textContent).not.toContain("Spread over");
   });
 
   it("a failed read shows a lower bound, never an exact number", () => {
@@ -148,6 +158,7 @@ describe("the card on Home", () => {
     for (const loc of ["en", "ru", "uz"] as const) {
       const d = dictionaries[loc].home;
       expect(d.readyMany).toContain("{n}");
+      expect(d.readyAcross).toContain("{n}");
       for (const s of [d.readyOne, d.readyMany, d.readyBody]) expect(s.trim().length).toBeGreaterThan(0);
     }
   });

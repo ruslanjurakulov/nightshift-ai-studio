@@ -4397,6 +4397,7 @@ export const en = {
     readyOne: "1 thing is ready for your decision",
     readyMany: "{n} things are ready for your decision",
     readyBody: "Finished videos and storyboards are waiting for you. Nothing is uploaded or published until you decide.",
+    readyAcross: "Spread over {n} channels: this opens the first one; the others are under their own Videos.",
     makingOne: "A clip is being made",
     makingMany: "{n} clips are being made",
     makingBody: "It will appear below when it is ready.",

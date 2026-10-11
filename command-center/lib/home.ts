@@ -246,8 +246,13 @@ export interface HomeReady {
    * failed (what it could not read may add to the number, never take from it).
    */
   atLeast: boolean;
-  /** The channel whose /videos shows all of it, or null when it spans channels (the every-channel /videos then). */
-  slug: string | null;
+  /**
+   * The channel whose /videos the card opens: the one that holds all of it, or — when it spans channels —
+   * the first channel that has something (never the every-channel view, which a customer is redirected out of).
+   */
+  slug: string;
+  /** How many channels the waiting items are spread over; the card says so when it is more than one. */
+  channelCount: number;
 }
 
 /**
@@ -275,7 +280,8 @@ export function buildReady(input: {
     held,
     storyboards: boards.length,
     atLeast: boards.length >= WAITING_STORYBOARDS_READ || heldFailed || input.storyboards === null,
-    slug: slugs.size === 1 ? [...slugs][0] : null,
+    slug: input.channels.find((c) => slugs.has(c.slug))?.slug ?? boards[0].channelSlug,
+    channelCount: slugs.size,
   };
 }
 
