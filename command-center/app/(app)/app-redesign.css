@@ -1,0 +1,310 @@
+/* The signed-in app, brought up to the public site's level (docs/design/app-redesign-1/NOTES.md).
+
+   The one idea: ONE LIT DESK PER PAGE. The room is dark (on paper, a proof sheet), the work is laid out as ruled, open
+   sections on the ground, and exactly one thing per page is lit: the desk that holds the job (the composer, the
+   balance). Its edge carries the same warm-to-indigo line the public hero is lit by, and the page's one filled key
+   is the public site's indigo. Amber stays what it is on the public pages: lamps, selection, the focus ring.
+
+   Everything here reads tokens from globals.css (--ns-*), so light and dark are both designed. Opt-in sections of the
+   app (`.ns-open`) take the ruled treatment; the shell, the page header and the keys apply everywhere. */
+
+/* ── The room: the public hero's warm glow and fine grid, quieter ──────────── */
+body .app-shell.atmos {
+  background:
+    radial-gradient(1200px 640px at 18% -12%, var(--ns-warm), transparent 64%),
+    radial-gradient(860px 520px at 98% -10%, var(--ns-cool), transparent 60%),
+    var(--color-bg);
+}
+.app-shell main { position: relative; isolation: isolate; }
+.app-shell main::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 440px;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--ns-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--ns-grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 92%);
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 92%);
+}
+
+/* ── Slug line and page header ─────────────────────────────────────────────── */
+.ns-slug {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--color-muted);
+}
+.ns-slug svg { color: var(--ns-act-ink); flex: none; }
+.ns-slug-rule { flex: 1; height: 1px; background: var(--ns-rule); }
+.ns-pagehead { display: flex; flex-direction: column; gap: 20px; }
+.ns-pagehead-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 24px; }
+.app-shell .ns-pagehead .t-hero,
+.app-shell .ns-title {
+  font-weight: 600;
+  font-size: clamp(2rem, 1.55rem + 1.8vw, 2.75rem);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+.app-shell .ns-pagehead .t-lead { max-width: 60ch; }
+
+/* ── Sidebar ───────────────────────────────────────────────────────────────── */
+.shell-sidebar { background: var(--shell-bg); }
+.shell-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 12px 6px;
+}
+.shell-group::after { content: ""; flex: 1; height: 1px; background: var(--ns-rule); }
+.shell-link[aria-current="page"] { background: var(--ns-act-soft); }
+.shell-link[aria-current="page"] .shell-icon,
+.shell-link[aria-current="page"] .shell-tile { color: var(--ns-act-ink); }
+.shell-link[aria-current="page"] .shell-tile { box-shadow: inset 0 0 0 1px var(--ns-act-ink); }
+/* The lit plate slides along the rail with a tick on its edge: the one lit row. */
+.shell-sidebar .ns-plate { background: var(--ns-act-soft); }
+.shell-sidebar .ns-plate::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 22%;
+  bottom: 22%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--ns-act);
+}
+.shell-link[aria-current="page"]:not(.ns-plate-host)::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 22%;
+  bottom: 22%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--ns-act);
+}
+.shell-link[aria-current="page"]:not(.ns-plate-host) { position: relative; }
+/* A mouse needs 40px rows; a finger keeps 44. The rail then fits a 900px window without scrolling. */
+@media (pointer: fine) and (min-width: 1024px) {
+  .shell-sidebar .shell-link { min-height: 2.5rem; }
+  .shell-sidebar .shell-group { padding-top: 16px; }
+}
+
+/* ── Top bar: quiet keys, one object with an edge (the credit key) ─────────── */
+.shell-topbar { background: var(--color-bg); }
+.shell-topbar .btn-sky.is-quiet,
+.shell-topbar .btn-sky.ghost { border-color: transparent; background: transparent; }
+.shell-topbar .btn-sky.is-quiet::before { background: var(--ns-hover); }
+.shell-topbar .btn-sky.is-quiet:hover { border-color: transparent; }
+.shell-pill { background: color-mix(in srgb, var(--color-panel) 80%, transparent); }
+.shell-pill:hover,
+.shell-pill[aria-expanded="true"] { border-color: var(--ns-act); background: var(--ns-act-soft); }
+.shell-popover { box-shadow: var(--ns-lift), 0 24px 60px -32px var(--ns-lit-glow); }
+
+/* ── The phone's tab bar ───────────────────────────────────────────────────── */
+.ns-tab[aria-current="page"] .ns-tab-icon { color: var(--ns-act-ink); background: var(--ns-act-soft); }
+.ns-plate.is-tab { background: var(--ns-act-soft); }
+.ns-tab-create {
+  box-shadow: 0 0 0 4px var(--color-panel), 0 10px 26px -6px var(--ns-lit-glow), inset 0 0 0 1px var(--ns-lit-edge);
+}
+
+/* ── Section tabs (Studio's screens): underlined, the current one amber ────── */
+.ns-tabs { border-bottom: 1px solid var(--ns-rule); }
+.ns-tabs-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--color-muted);
+  transition: color var(--ns-dur-1) var(--ns-ease);
+}
+.ns-tabs-link:hover { color: var(--color-fg); }
+.ns-tabs-link[aria-current="page"] { color: var(--color-fg); font-weight: 600; }
+.ns-tabs-link[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--ns-amber);
+}
+
+/* ── The one filled key: the public site's indigo, lit ─────────────────────── */
+.btn-primary,
+.studio-cta,
+.ns-price-button,
+.btn-sky.is-solid {
+  background: var(--ns-cta-bg);
+  color: var(--ns-cta-fg);
+  box-shadow: inset 0 0 0 1px var(--ns-lit-edge), 0 8px 22px -8px var(--ns-lit-glow);
+  transition: background-color var(--ns-dur-1) var(--ns-ease), transform var(--ns-dur-1) var(--ns-ease), box-shadow var(--ns-dur-1) var(--ns-ease);
+}
+.btn-primary:hover,
+.studio-cta:hover:not(:disabled),
+.ns-price-button:hover:not(:disabled),
+.btn-sky.is-solid:hover { filter: none; background: var(--ns-lit-hover); color: var(--ns-cta-fg); }
+.btn-sky.is-solid::before { display: none; }
+.btn-sky.is-solid:hover { border-color: var(--ns-lit-edge); }
+.btn-primary:active,
+.studio-cta:active:not(:disabled),
+.ns-price-button:active:not(:disabled) { transform: translateY(1px); }
+.studio-cta:disabled,
+.ns-price-button:disabled { box-shadow: inset 0 0 0 1px var(--color-border); background: var(--studio-field); color: var(--color-muted); }
+/* The outlined key: its hover is the same indigo family, never amber. */
+.btn-sky::before { background: var(--ns-cta-bg); }
+.btn-sky:hover { border-color: var(--ns-act); }
+.btn-sky.ghost::before,
+.btn-sky.is-quiet::before { background: var(--ns-act-soft); }
+.btn-sky.ghost:hover,
+.btn-sky.is-quiet:hover { color: var(--color-fg); border-color: var(--ns-act); }
+.btn-quiet:hover { border-color: var(--ns-act); background: var(--ns-act-soft); }
+
+/* A selected key in a segmented switch is a tab, not a second primary: raised, with the amber line under it. */
+.studio-seg > button[aria-pressed="true"],
+.ns-seg > button[aria-pressed="true"],
+.ns-seg > button[aria-checked="true"],
+.ns-seg > button[aria-selected="true"] {
+  color: var(--color-fg);
+  font-weight: 600;
+  background: var(--ns-key-hi);
+  box-shadow: inset 0 -2px 0 var(--ns-amber);
+}
+
+/* ── Panel roles (components/ui/Panel) ─────────────────────────────────────── */
+.ns-panel[data-tone="lifted"] {
+  position: relative;
+  border-color: color-mix(in srgb, var(--ns-act) 38%, var(--ns-rule));
+  box-shadow: var(--ns-lift), 0 28px 70px -40px var(--ns-lit-glow);
+}
+.ns-panel-head { border-bottom: 0; padding-bottom: 0.25rem; }
+.ns-panel-title { font-size: 1.125rem; }
+.ns-eyebrow { display: flex; align-items: center; gap: 12px; }
+.ns-eyebrow::after { content: ""; flex: 1; height: 1px; background: var(--ns-rule); min-width: 24px; }
+/* Flat: an open, ruled section on the ground, not a box. */
+.ns-panel[data-tone="flat"] {
+  border-radius: 0;
+  border-width: 1px 0 0 0;
+  border-color: var(--ns-rule);
+  background: transparent;
+}
+.ns-panel[data-tone="flat"] > .ns-panel-head { padding-inline: 0; padding-top: 1.25rem; }
+.ns-panel[data-tone="flat"] > .p-4 { padding-inline: 0; padding-block: 1rem 1.25rem; }
+
+/* ── THE DESK: the one lit surface of a page ───────────────────────────────── */
+.ns-desk {
+  position: relative;
+  background: var(--ns-console);
+  border: 1px solid color-mix(in srgb, var(--ns-act) 34%, var(--ns-rule));
+  border-radius: var(--ns-r-sheet);
+  box-shadow: var(--ns-lift), 0 36px 90px -44px var(--ns-lit-glow);
+}
+/* Its edge is lit by one hairline: the warm-to-indigo line the public hero is drawn with. */
+.ns-desk::before {
+  content: "";
+  position: absolute;
+  inset: 0 24px auto 24px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ns-act) 24%, var(--ns-amber) 62%, transparent);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* ── Ruled, open sections (opt-in per page with .ns-open) ──────────────────── */
+.ns-open .panel,
+.ns-open .section-card {
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--ns-rule);
+  border-radius: 0;
+  padding: 28px 0 8px;
+  box-shadow: none;
+}
+.ns-open .panel:hover { border-color: var(--ns-rule); }
+.ns-open .panel.ns-desk,
+.ns-open .ns-desk {
+  background: var(--ns-console);
+  border: 1px solid color-mix(in srgb, var(--ns-act) 34%, var(--ns-rule));
+  border-radius: var(--ns-r-sheet);
+  padding: 24px;
+  box-shadow: var(--ns-lift), 0 36px 90px -44px var(--ns-lit-glow);
+}
+@media (min-width: 640px) {
+  .ns-open .panel.ns-desk,
+  .ns-open .ns-desk { padding: 32px; }
+}
+
+/* ── Fields ────────────────────────────────────────────────────────────────── */
+.ns-field {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--ns-rule-strong);
+  border-radius: var(--ns-r-key);
+  background: var(--ns-key);
+  color: var(--color-fg);
+  font-size: 1rem;
+}
+.ns-field::placeholder { color: var(--color-muted); }
+.ns-field:hover { border-color: var(--ns-act); }
+.ns-field:focus-visible { outline: 3px solid var(--ns-focus); outline-offset: 2px; }
+.ns-open .ns-empty { padding-block: 40px; }
+
+/* ── Open sections that still use the older Panel (heading + rule) ─────────── */
+.ns-open .section-head { padding-inline: 0; margin-bottom: 1rem; border-bottom-color: var(--ns-rule-strong); }
+.ns-open .section-open p.px-4 { padding-inline: 0; }
+.ns-open .section-open > div > .overflow-x-auto th:first-child,
+.ns-open .section-open > div > .overflow-x-auto td:first-child { padding-left: 0; }
+.ns-open table.vt th:first-child,
+.ns-open table.vt td:first-child { padding-left: 0; }
+
+/* ── Step card: the current step is lit in the page's interaction tone ─────── */
+.ns-step { border-radius: var(--ns-r-key); }
+.ns-step[data-state="current"] { border-color: var(--ns-act); background: var(--ns-act-soft); }
+
+/* ── Sidebar: full, or a slim rail of icons ────────────────────────────────── */
+.shell-sidebar { width: 240px; }
+.shell-sidebar[data-collapsed="true"] { width: 72px; }
+@media (prefers-reduced-motion: no-preference) {
+  .shell-sidebar { transition: width var(--ns-dur-2) var(--ns-ease); }
+}
+.shell-sidebar-head {
+  display: flex;
+  height: 3.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 0 8px 0 20px;
+}
+.shell-sidebar-toggle {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--ns-r-key);
+  color: var(--color-muted);
+  transition: background-color var(--ns-dur-1) var(--ns-ease), color var(--ns-dur-1) var(--ns-ease);
+}
+.shell-sidebar-toggle:hover { background: var(--ns-hover); color: var(--color-fg); }
+/* The rail: the N tile above its toggle, rows reduced to their icons, group names to their rule. */
+.shell-sidebar[data-collapsed="true"] .shell-sidebar-head {
+  height: auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 0 4px;
+}
+.shell-sidebar[data-collapsed="true"] .shell-link { justify-content: center; padding: 0; gap: 0; }
+.shell-sidebar[data-collapsed="true"] .shell-group { font-size: 0; padding: 14px 18px 6px; }
+.shell-sidebar[data-collapsed="true"] .shell-group::after { flex: 1; }
+.shell-sidebar[data-collapsed="true"] [data-shell-usercard] { justify-content: center; padding: 6px; gap: 0; }
+.shell-sidebar[data-collapsed="true"] [data-shell-usercard] > span:last-child { display: none; }
+.shell-sidebar[data-collapsed="true"] .shell-sidebar-head + nav { padding-inline: 12px; }

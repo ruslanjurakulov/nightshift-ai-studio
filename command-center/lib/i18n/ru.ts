@@ -77,6 +77,8 @@ export const ru: Dictionary = {
     gCreate: "Создать",
     gWork: "Ваши работы",
     plansCredits: "Тарифы и кредиты",
+    collapseSidebar: "Свернуть боковую панель",
+    expandSidebar: "Развернуть боковую панель",
     creditUnit: { one: "кредит", few: "кредита", many: "кредитов", other: "кредита" },
     creditsMenu: "Кредиты",
     creditsOpen: "Доступно: {n} {unit}. Открыть меню кредитов",

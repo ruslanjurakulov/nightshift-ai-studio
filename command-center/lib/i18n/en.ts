@@ -85,6 +85,8 @@ export const en = {
     gCreate: "Create",
     gWork: "Your work",
     plansCredits: "Plans & credits",
+    collapseSidebar: "Collapse sidebar",
+    expandSidebar: "Expand sidebar",
     creditUnit: { one: "credit", few: "credits", many: "credits", other: "credits" },
     creditsMenu: "Credits",
     creditsOpen: "{n} {unit} available. Open the credits menu",

@@ -77,6 +77,8 @@ export const uz: Dictionary = {
     gCreate: "Yaratish",
     gWork: "Ishlaringiz",
     plansCredits: "Tariflar va kreditlar",
+    collapseSidebar: "Yon panelni yopish",
+    expandSidebar: "Yon panelni ochish",
     creditUnit: { one: "kredit", few: "kredit", many: "kredit", other: "kredit" },
     creditsMenu: "Kreditlar",
     creditsOpen: "{n} {unit} mavjud. Kreditlar menyusini ochish",

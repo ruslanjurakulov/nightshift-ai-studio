@@ -165,9 +165,20 @@
   --ns-amber: #f29a1e;
   --ns-amber-ink: #9c5300;
   --ns-on-amber: #1b1a17;
-  --ns-cta-bg: #f29a1e;
-  --ns-cta-fg: #1b1a17;
-  --ns-cta-price: #1b1a17;
+  /* The one primary action is the public site's indigo with a white legend (COLOUR.md); amber is the lit accent
+     (lamps, selection, the focus ring), never a button. One filled key per view. */
+  --ns-cta-bg: #4f46e5;
+  --ns-cta-fg: #ffffff;
+  --ns-cta-price: #ffffff;
+  --ns-lit-hover: #4338ca;
+  --ns-lit-edge: #4338ca;
+  --ns-lit-glow: rgba(79, 70, 229, 0.5);
+  --ns-act: #4f46e5;
+  --ns-act-ink: #4338ca;
+  --ns-act-soft: rgba(79, 70, 229, 0.09);
+  --ns-warm: rgba(242, 154, 30, 0.13);
+  --ns-cool: rgba(79, 70, 229, 0.07);
+  --ns-grid: rgba(27, 26, 23, 0.05);
   --ns-tally: #b9341f;
   --ns-go: #0a7346;
   --ns-cue: #2a5bc0;
@@ -177,7 +188,7 @@
   --ns-select: rgba(242, 154, 30, 0.16);
   --ns-scrim: rgba(27, 26, 23, 0.42);
   --ns-lift: 0 1px 2px rgba(27, 26, 23, 0.05), 0 12px 32px -12px rgba(27, 26, 23, 0.22);
-  --ns-focus: #2a5bc0;
+  --ns-focus: #a85a00;
 
   /* Older role names, remapped. */
   --color-bg: var(--ns-ground);
@@ -186,8 +197,8 @@
   --color-border: var(--ns-rule);
   --color-fg: var(--ns-text);
   --color-muted: var(--ns-text-dim);
-  --color-primary: var(--ns-amber-ink);
-  --color-primary-dim: #7e4300;
+  --color-primary: var(--ns-act-ink);
+  --color-primary-dim: #3730a3;
   --color-secondary: var(--ns-cue);
   --color-on-accent: #ffffff;
   --color-ok: var(--ns-go);
@@ -249,9 +260,18 @@
     --ns-amber: #ffa940;
     --ns-amber-ink: #ffa940;
     --ns-on-amber: #1a1105;
-    --ns-cta-bg: #ffa940;
-    --ns-cta-fg: #1a1105;
-    --ns-cta-price: #1a1105;
+    --ns-cta-bg: #6558f5;
+    --ns-cta-fg: #ffffff;
+    --ns-cta-price: #ffffff;
+    --ns-lit-hover: #5b4ee9;
+    --ns-lit-edge: #a39cff;
+    --ns-lit-glow: rgba(101, 88, 245, 0.6);
+    --ns-act: #8f86ff;
+    --ns-act-ink: #b3acff;
+    --ns-act-soft: rgba(143, 134, 255, 0.14);
+    --ns-warm: rgba(255, 169, 64, 0.15);
+    --ns-cool: rgba(101, 88, 245, 0.12);
+    --ns-grid: rgba(241, 237, 230, 0.045);
     --ns-tally: #ff6e5e;
     --ns-go: #5fd49a;
     --ns-cue: #8db4ff;
@@ -261,7 +281,7 @@
     --ns-select: rgba(255, 169, 64, 0.14);
     --ns-scrim: rgba(8, 7, 6, 0.72);
     --ns-lift: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 20px 48px -16px rgba(0, 0, 0, 0.7);
-    --ns-focus: #8db4ff;
+    --ns-focus: #ffc266;
 
     --color-bg: var(--ns-ground);
     --color-panel: var(--ns-console);
@@ -269,8 +289,8 @@
     --color-border: var(--ns-rule);
     --color-fg: var(--ns-text);
     --color-muted: var(--ns-text-dim);
-    --color-primary: var(--ns-amber-ink);
-    --color-primary-dim: #e8962c;
+    --color-primary: var(--ns-act-ink);
+    --color-primary-dim: #8f86ff;
     --color-secondary: var(--ns-cue);
     --color-on-accent: var(--ns-on-amber);
     --color-ok: var(--ns-go);
@@ -336,9 +356,18 @@
   --ns-amber: #ffa940;
   --ns-amber-ink: #ffa940;
   --ns-on-amber: #1a1105;
-  --ns-cta-bg: #ffa940;
-  --ns-cta-fg: #1a1105;
-  --ns-cta-price: #1a1105;
+  --ns-cta-bg: #6558f5;
+  --ns-cta-fg: #ffffff;
+  --ns-cta-price: #ffffff;
+  --ns-lit-hover: #5b4ee9;
+  --ns-lit-edge: #a39cff;
+  --ns-lit-glow: rgba(101, 88, 245, 0.6);
+  --ns-act: #8f86ff;
+  --ns-act-ink: #b3acff;
+  --ns-act-soft: rgba(143, 134, 255, 0.14);
+  --ns-warm: rgba(255, 169, 64, 0.15);
+  --ns-cool: rgba(101, 88, 245, 0.12);
+  --ns-grid: rgba(241, 237, 230, 0.045);
   --ns-tally: #ff6e5e;
   --ns-go: #5fd49a;
   --ns-cue: #8db4ff;
@@ -348,7 +377,7 @@
   --ns-select: rgba(255, 169, 64, 0.14);
   --ns-scrim: rgba(8, 7, 6, 0.72);
   --ns-lift: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 20px 48px -16px rgba(0, 0, 0, 0.7);
-  --ns-focus: #8db4ff;
+  --ns-focus: #ffc266;
 
   --color-bg: var(--ns-ground);
   --color-panel: var(--ns-console);
@@ -356,8 +385,8 @@
   --color-border: var(--ns-rule);
   --color-fg: var(--ns-text);
   --color-muted: var(--ns-text-dim);
-  --color-primary: var(--ns-amber-ink);
-  --color-primary-dim: #e8962c;
+  --color-primary: var(--ns-act-ink);
+  --color-primary-dim: #8f86ff;
   --color-secondary: var(--ns-cue);
   --color-on-accent: var(--ns-on-amber);
   --color-ok: var(--ns-go);
@@ -1155,10 +1184,10 @@ option {
   animation: ring-breathe 2.4s ease-in-out infinite;
 }
 
-/* Keyboard focus — the cue light: a blue ring, never the amber of "selected",
-   so where the hand is and what is chosen never read as the same thing. */
+/* Keyboard focus: amber, as on the public pages (the primary key is indigo, so a blue ring would read as "primary" and
+   amber is only ever a state). A 3px ring outside a 2px gap, so it is read against the page and never against the key. */
 :focus-visible {
-  outline: 2px solid var(--ns-focus);
+  outline: 3px solid var(--ns-focus);
   outline-offset: 2px;
   border-radius: 0.35rem;
 }

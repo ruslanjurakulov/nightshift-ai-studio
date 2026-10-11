@@ -7,10 +7,11 @@ import {
 } from "lucide-react";
 
 /**
- * A consistent page header — an icon tile, the page title, and a lead line —
- * used at the top of every section so the app reads as one product rather than
- * a set of separately-styled screens. The icon per page matches the sidebar's,
- * so a route carries the same mark in the rail and on the page it opens.
+ * A consistent page header — a slug line (the page's mark and a hairline, as the
+ * public pages open), the title, and a lead line — used at the top of every
+ * section so the app reads as one product rather than a set of
+ * separately-styled screens. The icon per page matches the sidebar's, so a
+ * route carries the same mark in the rail and on the page it opens.
  *
  * Server-safe: lucide icons render to plain SVG, so this needs no client
  * boundary. Pass `actions` for a right-aligned control (a button, a pill).
@@ -81,22 +82,21 @@ export function PageHeader({
 }) {
   const Icon = ICONS[icon] ?? Sparkles;
   return (
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div className="flex min-w-0 items-start gap-4">
-        <span
-          aria-hidden
-          className="mt-1 grid size-11 shrink-0 place-items-center rounded-[var(--ns-r-panel)] border border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] text-[var(--color-primary)]"
-        >
-          <Icon className="size-[22px]" strokeWidth={1.75} />
-        </span>
+    <header className="ns-pagehead">
+      {/* The slug line the public pages open with: the page's mark, then a hairline. Decorative; the title names the page. */}
+      <div aria-hidden className="ns-slug">
+        <Icon className="size-[18px]" strokeWidth={1.9} />
+        <span className="ns-slug-rule" />
+      </div>
+      <div className="ns-pagehead-row">
         <div className="min-w-0">
           <h1 className="t-hero">{title}</h1>
           {subtitle && <p className="t-lead mt-3">{subtitle}</p>}
         </div>
+        {/* Wraps under the title on a phone: several actions side by side are wider
+            than the screen, and `shrink-0` would make the page scroll sideways. */}
+        {actions && <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div>}
       </div>
-      {/* Wraps under the title on a phone: several actions side by side are wider
-          than the screen, and `shrink-0` would make the page scroll sideways. */}
-      {actions && <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div>}
-    </div>
+    </header>
   );
 }
