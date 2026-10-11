@@ -5,8 +5,9 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/config";
 import { createClient } from "@/lib/supabase/server";
 import { publicOrigin } from "@/lib/server/public-origin";
 import { joinFromCookie } from "@/lib/server/friend-invites";
-import { safeNextPath } from "@/lib/safe-redirect";
+import { DEFAULT_AFTER_AUTH, safeLoginReturn, safeNextPath } from "@/lib/safe-redirect";
 import { callbackErrorFor, type CallbackError } from "@/lib/signup";
+import { GOOGLE_PROVIDER, googleCallbackError, googleGate, type GoogleError } from "@/lib/google-signin";
 import {
   AUTH_CONFIRM_PATH,
   PENDING_COOKIE,
@@ -67,7 +68,7 @@ function redirect(url: URL, status = 307) {
   return res;
 }
 
-function toLogin(origin: string, error: CallbackError, status = 307) {
+function toLogin(origin: string, error: CallbackError | GoogleError, status = 307) {
   const url = new URL("/login", origin);
   url.searchParams.set("error", error);
   return redirect(url, status);
@@ -83,11 +84,13 @@ function stateless() {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const origin = publicOrigin(request);
-  const next = safeNextPath(url.searchParams.get("next"));
+  // safeLoginReturn: the same rule as before, plus the one longer path an AI app's connection request needs.
+  const next = safeLoginReturn(url.searchParams.get("next"), DEFAULT_AFTER_AUTH);
+  const google = url.searchParams.get("provider") === GOOGLE_PROVIDER;
 
   // Supabase itself reports a spent or expired link on the redirect.
   if (url.searchParams.get("error") || url.searchParams.get("error_code"))
-    return toLogin(origin, callbackErrorFor(url.searchParams.get("error_code")));
+    return toLogin(origin, googleCallbackError(url.searchParams) ?? callbackErrorFor(url.searchParams.get("error_code")));
 
   const supabase = await createClient();
   if (!supabase) return toLogin(origin, "link_invalid");
@@ -98,8 +101,14 @@ export async function GET(request: Request) {
 
   try {
     if (code) {
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (error) return toLogin(origin, callbackErrorFor(error.code));
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) return toLogin(origin, google ? "google_failed" : callbackErrorFor(error.code));
+      // "Continue with Google" (lib/google-signin.ts): keep the session only if Google vouches for the address.
+      const denied = googleGate(data?.user, google);
+      if (denied) {
+        await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+        return toLogin(origin, denied);
+      }
       // The address is confirmed and the person is signed in: the one moment a
       // friend's invite link (cookie from /i/<token>) may count (migration 0092).
       await joinFromCookie(supabase);

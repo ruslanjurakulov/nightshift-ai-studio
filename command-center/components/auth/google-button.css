@@ -1,0 +1,45 @@
+/* "Continue with Google" (components/auth/GoogleButton.tsx): a neutral, outlined
+   key, 44px high, so the email submit stays the one filled key on the page.
+   Colours are the page's own neutrals, so it follows light and dark. */
+.ns-google { display: flex; flex-direction: column; gap: 14px; }
+.ns-google-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--ns-r-key);
+  border: 1px solid var(--ns-rule-strong);
+  background: var(--ns-key);
+  color: var(--ns-text);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color var(--ns-dur-1) var(--ns-ease), transform var(--ns-dur-1) var(--ns-ease), box-shadow var(--ns-dur-1) var(--ns-ease);
+}
+.nx .ns-google-btn { border-radius: 999px; }
+.ns-google-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+.ns-google-btn:hover { background: var(--ns-hover); }
+.ns-google-btn:active { transform: translateY(1px); }
+.ns-google-btn:focus-visible { box-shadow: 0 0 0 2px var(--st-focus-gap); }
+.ns-google-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+.ns-google-btn[aria-busy="true"] { cursor: progress; }
+.ns-google-consent { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ns-text-dim); }
+.ns-google-or {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--ns-text-dim);
+}
+.ns-google-or::before,
+.ns-google-or::after { content: ""; flex: 1; height: 1px; background: var(--ns-rule); }
+@media (prefers-reduced-motion: reduce) {
+  .ns-google-btn { transition: none; }
+  .ns-google-btn:active { transform: none; }
+}

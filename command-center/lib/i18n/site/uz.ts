@@ -577,6 +577,18 @@ export const siteUz: SiteDictionary = {
     welcomeNote: "Hisob yaratganingizda bir marta {n} bepul kredit.",
     unavailable: "Bu serverda kirish hozircha oʻchirilgan, shuning uchun bu yerda yozganlaringiz hech qayerga yuborilmaydi. Birozdan keyin qaytib keling.",
     unavailableSignup: "Bu serverda roʻyxatdan oʻtish hozircha oʻchirilgan, shuning uchun bu yerda yozganlaringiz hech qayerga yuborilmaydi. Birozdan keyin qaytib keling.",
+    google: {
+      button: "Google bilan davom etish",
+      or: "yoki",
+      consentPre: "Davom etish orqali siz",
+      terms: "Foydalanish shartlari",
+      consentAnd: "va",
+      privacy: "Maxfiylik siyosati",
+      consentPost: "ga rozilik bildirasiz.",
+      errDenied: "Google orqali kirish bekor qilindi. Hech narsa oʻzgarmadi. Qayta urinib koʻring yoki quyida email orqali kiring.",
+      errUnverified: "Google bu email manzilni tasdiqlamagan, shuning uchun sizni kiritmadik. Uni Google’da tasdiqlang yoki email va parol bilan kiring.",
+      errFailed: "Google orqali kirib boʻlmadi. Qayta urinib koʻring yoki quyida email orqali kiring.",
+    },
   },
   notFound: {
     meta: "Signal yoʻq",
