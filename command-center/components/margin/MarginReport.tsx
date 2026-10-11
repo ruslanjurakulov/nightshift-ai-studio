@@ -6,6 +6,8 @@ import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
 import { EmptyState } from "@/components/ui";
+import { DataList } from "@/components/g4/DataList";
+import { Figures } from "@/components/g4/Section";
 import {
   PERIODS,
   formatUsd,
@@ -28,21 +30,23 @@ export function MarginReport({ rows, days }: { rows: MarginRow[]; days: Period }
   const totals = marginTotals(rows);
   const periodLabel: Record<Period, string> = { 7: t.margin.period7, 30: t.margin.period30, 90: t.margin.period90 };
 
+  const flagText: Record<MarginFlag, string> = {
+    released_jobs: t.margin.flag_released_jobs,
+    unpriced_cost: t.margin.flag_unpriced_cost,
+    unvalued_credits: t.margin.flag_unvalued_credits,
+    api_balance_jobs: t.margin.flag_api_balance_jobs,
+    free_credits: t.margin.flag_free_credits,
+    internal_jobs: t.margin.flag_internal_jobs,
+  };
+  const money = (v: number | null) =>
+    v === null ? <span className="text-[var(--color-warn)]">{t.margin.unpriced}</span> : <span>{formatUsd(v)}</span>;
+
   return (
-    <div className="flex flex-col gap-4">
-      <nav aria-label={t.margin.periodLabel} className="flex flex-wrap items-center gap-2">
-        <span className="t-label">{t.margin.periodLabel}</span>
+    <div className="g4-stack">
+      <nav aria-label={t.margin.periodLabel} className="ns-tabs flex flex-wrap items-center gap-x-2">
+        <span className="t-label pr-3">{t.margin.periodLabel}</span>
         {PERIODS.map((p) => (
-          <Link
-            key={p}
-            href={path(`/margin?days=${p}`)}
-            aria-current={p === days ? "page" : undefined}
-            className={`pill border px-3 py-1 text-xs ${
-              p === days
-                ? "border-[var(--color-primary-dim)] text-[var(--color-fg)]"
-                : "border-[var(--color-border)] text-[var(--color-muted)]"
-            }`}
-          >
+          <Link key={p} href={path(`/margin?days=${p}`)} aria-current={p === days ? "page" : undefined} className="ns-tabs-link">
             {periodLabel[p]}
           </Link>
         ))}
@@ -54,63 +58,131 @@ export function MarginReport({ rows, days }: { rows: MarginRow[]; days: Period }
         </div>
       ) : (
         <>
-          <section aria-label={t.margin.title} className="grid grid-cols-2 gap-x-4 gap-y-5 lg:grid-cols-4">
-            <Figure label={t.margin.sumRevenue} value={usd(totals.revenueUsd)} unknown={totals.revenueUsd === null}
-              sub={fmt(t.margin.sumCredits, { credits: totals.creditsSold.toLocaleString(), jobs: totals.jobsCompleted })} />
-            <Figure label={t.margin.sumCost} value={usd(totals.providerUsd)} unknown={totals.providerUsd === null} />
-            <Figure
-              label={t.margin.sumMargin}
-              value={
-                totals.marginUsd === null
-                  ? t.margin.unpriced
-                  : `${formatUsd(totals.marginUsd)}${totals.marginPct === null ? "" : ` · ${totals.marginPct.toFixed(1)}%`}`
-              }
-              unknown={totals.marginUsd === null}
-            />
-            <Figure
-              label={t.margin.sumWasted}
-              value={usd(totals.providerUsdReleased)}
-              unknown={totals.providerUsdReleased === null}
-              sub={fmt(t.margin.sumReleased, { jobs: totals.jobsReleased, credits: totals.creditsReleased.toLocaleString() })}
-            />
+          <section aria-label={t.margin.title} className="ns-desk">
+            <Figures>
+              <Figure label={t.margin.sumRevenue} value={usd(totals.revenueUsd)} unknown={totals.revenueUsd === null}
+                sub={fmt(t.margin.sumCredits, { credits: totals.creditsSold.toLocaleString(), jobs: totals.jobsCompleted })} />
+              <Figure label={t.margin.sumCost} value={usd(totals.providerUsd)} unknown={totals.providerUsd === null} />
+              <Figure
+                label={t.margin.sumMargin}
+                value={
+                  totals.marginUsd === null
+                    ? t.margin.unpriced
+                    : `${formatUsd(totals.marginUsd)}${totals.marginPct === null ? "" : ` · ${totals.marginPct.toFixed(1)}%`}`
+                }
+                unknown={totals.marginUsd === null}
+              />
+              <Figure
+                label={t.margin.sumWasted}
+                value={usd(totals.providerUsdReleased)}
+                unknown={totals.providerUsdReleased === null}
+                sub={fmt(t.margin.sumReleased, { jobs: totals.jobsReleased, credits: totals.creditsReleased.toLocaleString() })}
+              />
+            </Figures>
+            {totals.unpricedRows > 0 && (
+              <p role="status" className="mt-6 flex items-start gap-2 text-sm text-[var(--color-warn)]">
+                <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" strokeWidth={1.75} />
+                {fmt(t.margin.sumUnpriced, { n: totals.unpricedRows })}
+              </p>
+            )}
           </section>
-          {totals.unpricedRows > 0 && (
-            <p role="status" className="flex items-start gap-2 text-xs text-[var(--color-warn)]">
-              <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" strokeWidth={1.75} />
-              {fmt(t.margin.sumUnpriced, { n: totals.unpricedRows })}
-            </p>
-          )}
 
-          <div tabIndex={0} role="region" aria-label={t.common.scrollTable} className="panel scroll-focus overflow-x-auto">
-            <table className="w-full min-w-[56rem] border-collapse text-left text-xs">
-              <thead>
-                <tr className="border-b border-[var(--color-border)] text-[var(--color-muted)]">
-                  <Th>{t.margin.colDay}</Th>
-                  <Th>{t.margin.colModel}</Th>
-                  <Th>{t.margin.colJobs}</Th>
-                  <Th right>{t.margin.colCredits}</Th>
-                  <Th right>{t.margin.colRevenue}</Th>
-                  <Th right>{t.margin.colCost}</Th>
-                  <Th right>{t.margin.colMargin}</Th>
-                  <Th>{t.margin.colReleased}</Th>
-                  <Th>{t.margin.colFlags}</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <Row key={`${r.day}|${r.model}|${r.capability}`} row={r} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataList
+            caption={t.margin.title}
+            rows={rows}
+            rowKey={(r) => `${r.day}|${r.model}|${r.capability}`}
+            columns={[
+              { key: "day", label: t.margin.colDay, nowrap: true, render: (r) => <span className="tnum">{r.day}</span> },
+              {
+                key: "model",
+                label: t.margin.colModel,
+                render: (r) => (
+                  <>
+                    <div className="tnum">{r.model}</div>
+                    <div className="tnum g4-muted g4-small">{r.capability}</div>
+                  </>
+                ),
+              },
+              { key: "jobs", label: t.margin.colJobs, align: "end", render: (r) => <span className="tnum">{r.jobsCompleted}</span> },
+              {
+                key: "credits",
+                label: t.margin.colCredits,
+                align: "end",
+                render: (r) => (
+                  <>
+                    <div className="tnum">{r.creditsSold.toLocaleString()}</div>
+                    {r.creditsSold > 0 && (
+                      <div className="g4-muted g4-small">
+                        {fmt(t.margin.creditsSplit, {
+                          paid: r.creditsPaid.toLocaleString(),
+                          free: r.creditsFree.toLocaleString(),
+                          unvalued: r.creditsUnvalued.toLocaleString(),
+                        })}
+                      </div>
+                    )}
+                  </>
+                ),
+              },
+              { key: "rev", label: t.margin.colRevenue, align: "end", render: (r) => <span className="tnum">{money(r.revenueUsd)}</span> },
+              { key: "cost", label: t.margin.colCost, align: "end", render: (r) => <span className="tnum">{money(r.providerUsd)}</span> },
+              {
+                key: "margin",
+                label: t.margin.colMargin,
+                align: "end",
+                render: (r) => {
+                  const cell = marginCell(r);
+                  return cell.kind === "value" ? (
+                    <span className="tnum">
+                      {cell.pct.toFixed(1)}%
+                      {r.marginUsd !== null && <span className="g4-muted g4-small"> · {formatUsd(r.marginUsd)}</span>}
+                    </span>
+                  ) : cell.kind === "unpriced" ? (
+                    <span className="text-[var(--color-warn)]">{t.margin.unpriced}</span>
+                  ) : (
+                    <span className="g4-muted">{t.margin.noRevenue}</span>
+                  );
+                },
+              },
+              {
+                key: "released",
+                label: t.margin.colReleased,
+                render: (r) =>
+                  r.jobsReleased > 0 ? (
+                    <span className="text-[var(--color-warn)]">
+                      {fmt(t.margin.releasedCell, {
+                        jobs: r.jobsReleased,
+                        credits: r.creditsReleased.toLocaleString(),
+                        cost: r.providerUsdReleased === null ? t.margin.unpriced : formatUsd(r.providerUsdReleased),
+                      })}
+                    </span>
+                  ) : (
+                    <span className="g4-muted">—</span>
+                  ),
+              },
+              {
+                key: "flags",
+                label: t.margin.colFlags,
+                render: (r) =>
+                  r.flags.length > 0 ? (
+                    <ul className="m-0 flex list-none flex-col gap-1 p-0 g4-muted g4-small">
+                      {r.flags.map((f) => (
+                        <li key={f}>{flagText[f]}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span className="g4-muted">—</span>
+                  ),
+              },
+            ]}
+          />
 
-          <section aria-labelledby="margin-rules" className="panel flex flex-col gap-2 p-5 sm:p-6 text-xs font-light leading-relaxed text-[var(--color-muted)]">
+          <section aria-labelledby="margin-rules" className="flex flex-col gap-2">
             <h2 id="margin-rules" className="t-panel">
               {t.margin.rulesTitle}
             </h2>
-            <p className="m-0">{t.margin.ruleRevenue}</p>
-            <p className="m-0">{t.margin.ruleCost}</p>
-            <p className="m-0">{t.margin.ruleReleased}</p>
+            <p className="g4-note">{t.margin.ruleRevenue}</p>
+            <p className="g4-note">{t.margin.ruleCost}</p>
+            <p className="g4-note">{t.margin.ruleReleased}</p>
           </section>
         </>
       )}
@@ -124,88 +196,10 @@ export function MarginReport({ rows, days }: { rows: MarginRow[]; days: Period }
 
 function Figure({ label, value, sub, unknown }: { label: string; value: string; sub?: string; unknown: boolean }) {
   return (
-    <div className="border-t border-[var(--color-border)] pt-4">
+    <div>
       <div className="t-label">{label}</div>
       <div className={`t-figure mt-3 ${unknown ? "text-[var(--color-warn)]" : ""}`}>{value}</div>
-      {sub && <div className="mt-2 text-xs font-light text-[var(--color-muted)]">{sub}</div>}
+      {sub && <div className="mt-2 text-sm font-light text-[var(--color-muted)]">{sub}</div>}
     </div>
-  );
-}
-
-function Th({ children, right = false }: { children: React.ReactNode; right?: boolean }) {
-  return <th scope="col" className={`px-3 py-2 font-medium ${right ? "text-right" : ""}`}>{children}</th>;
-}
-
-function Row({ row }: { row: MarginRow }) {
-  const { t } = useI18n();
-  const cell = marginCell(row);
-  const flagText: Record<MarginFlag, string> = {
-    released_jobs: t.margin.flag_released_jobs,
-    unpriced_cost: t.margin.flag_unpriced_cost,
-    unvalued_credits: t.margin.flag_unvalued_credits,
-    api_balance_jobs: t.margin.flag_api_balance_jobs,
-    free_credits: t.margin.flag_free_credits,
-    internal_jobs: t.margin.flag_internal_jobs,
-  };
-  const money = (v: number | null) =>
-    v === null ? <span className="text-[var(--color-warn)]">{t.margin.unpriced}</span> : <span>{formatUsd(v)}</span>;
-
-  return (
-    <tr className="border-b border-[var(--color-border)] align-top last:border-b-0">
-      <td className="tnum whitespace-nowrap px-3 py-2">{row.day}</td>
-      <td className="px-3 py-2">
-        <div className="tnum text-[var(--color-fg)]">{row.model}</div>
-        <div className="tnum text-xs text-[var(--color-muted)]">{row.capability}</div>
-      </td>
-      <td className="tnum px-3 py-2">{row.jobsCompleted}</td>
-      <td className="px-3 py-2 text-right">
-        <div className="tnum">{row.creditsSold.toLocaleString()}</div>
-        {row.creditsSold > 0 && (
-          <div className="text-xs text-[var(--color-muted)]">
-            {fmt(t.margin.creditsSplit, {
-              paid: row.creditsPaid.toLocaleString(),
-              free: row.creditsFree.toLocaleString(),
-              unvalued: row.creditsUnvalued.toLocaleString(),
-            })}
-          </div>
-        )}
-      </td>
-      <td className="tnum px-3 py-2 text-right">{money(row.revenueUsd)}</td>
-      <td className="tnum px-3 py-2 text-right">{money(row.providerUsd)}</td>
-      <td className="tnum px-3 py-2 text-right">
-        {cell.kind === "value" ? (
-          <>
-            <div>{cell.pct.toFixed(1)}%</div>
-            {row.marginUsd !== null && <div className="text-xs text-[var(--color-muted)]">{formatUsd(row.marginUsd)}</div>}
-          </>
-        ) : cell.kind === "unpriced" ? (
-          <span className="text-[var(--color-warn)]">{t.margin.unpriced}</span>
-        ) : (
-          <span className="text-[var(--color-muted)]">{t.margin.noRevenue}</span>
-        )}
-      </td>
-      <td className="px-3 py-2">
-        {row.jobsReleased > 0 ? (
-          <span className="text-[var(--color-warn)]">
-            {fmt(t.margin.releasedCell, {
-              jobs: row.jobsReleased,
-              credits: row.creditsReleased.toLocaleString(),
-              cost: row.providerUsdReleased === null ? t.margin.unpriced : formatUsd(row.providerUsdReleased),
-            })}
-          </span>
-        ) : (
-          <span className="text-[var(--color-muted)]">—</span>
-        )}
-      </td>
-      <td className="px-3 py-2">
-        {row.flags.length > 0 && (
-          <ul className="m-0 flex list-none flex-col gap-1 p-0 text-xs text-[var(--color-muted)]">
-            {row.flags.map((f) => (
-              <li key={f}>{flagText[f]}</li>
-            ))}
-          </ul>
-        )}
-      </td>
-    </tr>
   );
 }

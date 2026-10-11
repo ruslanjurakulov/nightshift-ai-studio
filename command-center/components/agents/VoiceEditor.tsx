@@ -123,16 +123,16 @@ export function VoiceEditor({
   }
 
   const inputClass =
-    "rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-transparent px-4 py-2 text-sm outline-none transition-colors focus:border-[var(--color-primary)]";
+    "ns-field";
 
   return (
-    <div className="panel flex flex-col gap-4 p-5 sm:p-6">
+    <div className="panel flex flex-col gap-4">
       <div>
-        <h2 className="t-section">{t.voice.title}</h2>
-        <p className="mt-1 max-w-[72ch] text-xs leading-relaxed text-[var(--color-muted)]">
+        <h2 className="t-panel">{t.voice.title}</h2>
+        <p className="mt-1 max-w-[72ch] text-sm leading-relaxed text-[var(--color-muted)]">
           {t.voice.hint}
         </p>
-        <p className="mt-1 max-w-[72ch] text-xs leading-relaxed text-[var(--color-primary)]">
+        <p className="mt-1 max-w-[72ch] text-sm leading-relaxed text-[var(--color-primary)]">
           {t.voice.usedNote}
         </p>
       </div>
@@ -142,7 +142,7 @@ export function VoiceEditor({
       {!disabled && (
         <>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-[var(--color-muted)]">
+            <span className="text-sm text-[var(--color-muted)]">
               {t.voice.provider}
             </span>
             <select
@@ -160,7 +160,7 @@ export function VoiceEditor({
 
           {provider === "edge" ? (
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-[var(--color-muted)]">
+              <span className="text-sm text-[var(--color-muted)]">
                 {t.voice.edgeLabel}
               </span>
               <input
@@ -178,7 +178,7 @@ export function VoiceEditor({
               {/* One-shot key to list the account's voices; never stored. */}
               <div className="flex flex-wrap items-end gap-2">
                 <label className="flex min-w-[16rem] flex-1 flex-col gap-1">
-                  <span className="text-xs text-[var(--color-muted)]">
+                  <span className="text-sm text-[var(--color-muted)]">
                     {t.voice.keyLabel}
                   </span>
                   <input
@@ -199,16 +199,16 @@ export function VoiceEditor({
                 </button>
               </div>
               {loadPhase === "error" && (
-                <p className="text-xs text-[var(--color-fail)]">{t.voice.error}</p>
+                <p className="text-sm text-[var(--color-fail)]">{t.voice.error}</p>
               )}
               {voices !== null && voices.length === 0 && (
-                <p className="text-xs text-[var(--color-warn)]">{t.voice.none}</p>
+                <p className="text-sm text-[var(--color-warn)]">{t.voice.none}</p>
               )}
 
               {/* Which voice a tap on the list sets: the narrator, or the quote voice. */}
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t.voice.pickFor}>
-                  <span className="text-xs text-[var(--color-muted)]">
+                  <span className="text-sm text-[var(--color-muted)]">
                     {t.voice.pickFor}
                   </span>
                   {(["main", "secondary"] as const).map((role) => (
@@ -217,11 +217,12 @@ export function VoiceEditor({
                     </Chip>
                   ))}
                 </div>
-                <p className="max-w-[72ch] text-xs leading-relaxed text-[var(--color-muted)]">
+                <p className="max-w-[72ch] text-sm leading-relaxed text-[var(--color-muted)]">
                   {t.voice.quoteHint}
                 </p>
-                <label className="flex items-center gap-2 text-xs text-[var(--color-fg)]">
+                <label className="flex min-h-[44px] items-center gap-3 text-sm text-[var(--color-fg)]">
                   <input
+                    className="size-5 shrink-0 accent-[var(--ns-act)]"
                     type="checkbox"
                     checked={secondary === NARRATOR}
                     onChange={(e) => {
@@ -268,18 +269,18 @@ export function VoiceEditor({
                           >
                             <div className="truncate text-sm text-[var(--color-fg)]">{v.name}</div>
                             {v.labels && (
-                              <div className="truncate text-xs text-[var(--color-muted)]">
+                              <div className="truncate text-sm text-[var(--color-muted)]">
                                 {v.labels}
                               </div>
                             )}
                           </button>
                           {isSel && (
-                            <span className="tnum shrink-0 text-xs text-[var(--color-primary)]">
+                            <span className="tnum shrink-0 text-sm text-[var(--color-primary)]">
                               {t.voice.selected}
                             </span>
                           )}
                           {isQuote && (
-                            <span className="tnum shrink-0 text-xs text-[var(--color-primary)]">
+                            <span className="tnum shrink-0 text-sm text-[var(--color-primary)]">
                               {t.voice.quoteTag}
                             </span>
                           )}
@@ -304,11 +305,11 @@ export function VoiceEditor({
                 (provider === "elevenlabs" && (!selected || !secondary)) ||
                 (provider === "edge" && !edgeVoice.trim())
               }
-              className="btn-primary text-sm disabled:opacity-40"
+              className="btn-quiet text-sm disabled:opacity-40"
             >
               {state === "saving" ? t.voice.saving : t.voice.save}
             </button>
-            <span className="tnum text-xs" aria-live="polite">
+            <span className="tnum text-sm" aria-live="polite">
               {provider === "elevenlabs" && selected && !secondary && state === "idle" ? (
                 <span className="text-[var(--color-warn)]">{t.voice.quoteMissing}</span>
               ) : state === "saved" ? (

@@ -2,6 +2,9 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { StatCard, Panel, EmptyState } from "@/components/ui";
+import { DataList } from "@/components/g4/DataList";
+import { Section, Figures } from "@/components/g4/Section";
+import "../../app-pages-g4.css";
 import { num, decimal } from "@/lib/format";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
@@ -69,40 +72,39 @@ function RankedList({
   render,
   max,
   emptyLabel,
-  color = "var(--color-primary)",
+  color = "var(--ns-act)",
+  inkColor,
 }: {
   rows: Perf[];
   render: (p: Perf) => { primary: string; value: string; bar: number | null };
   max: number;
   emptyLabel: string;
   color?: string;
+  /** The figure's own colour when it carries a meaning (ahead / behind); plain text otherwise. */
+  inkColor?: string;
 }) {
   if (rows.length === 0) {
     return <EmptyState>{emptyLabel}</EmptyState>;
   }
   return (
-    <ul className="divide-y divide-[var(--color-border)]">
+    <ol className="g4-rank" style={{ ["--g4-tone" as string]: color, ["--g4-tone-ink" as string]: inkColor }}>
       {rows.slice(0, max).map((p, i) => {
         const r = render(p);
         const width = r.bar === null ? 0 : Math.max(2, Math.min(100, r.bar));
         return (
-          <li key={p.video_id} className="flex items-center gap-3 px-4 py-2.5">
-            <span className="tnum w-5 shrink-0 text-xs text-[var(--color-muted)] tabular-nums">
-              {i + 1}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm text-[var(--color-fg)]">{r.primary}</div>
-              <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-[var(--color-panel-2)]">
-                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${width}%`, background: color }} />
+          <li key={p.video_id}>
+            <span className="g4-rank-n">{String(i + 1).padStart(2, "0")}</span>
+            <div className="min-w-0">
+              <div className="g4-rank-title">{r.primary}</div>
+              <div className="g4-rank-bar" aria-hidden>
+                <span style={{ width: `${width}%` }} />
               </div>
             </div>
-            <span className="tnum shrink-0 text-sm font-semibold tabular-nums" style={{ color }}>
-              {r.value}
-            </span>
+            <span className="g4-rank-val">{r.value}</span>
           </li>
         );
       })}
-    </ul>
+    </ol>
   );
 }
 
@@ -191,7 +193,7 @@ export default async function AnalyticsPage() {
   const maxRet = byRetention.length ? byRetention[0].retention ?? 1 : 1;
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open g4 stagger-enter">
       <PageHeader icon="analytics" title={t.analytics.title} subtitle={t.analytics.subtitle} />
 
       {!dbHealthy ? (
@@ -204,20 +206,23 @@ export default async function AnalyticsPage() {
         </Panel>
       ) : (
         <>
-          {/* Stat row — real aggregates over the videos that have metrics. */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard label={t.analytics.withMetrics} value={num(withMetrics)} sub={fmt(t.analytics.ofLibrary, { n: num(videos.length) })} />
-            <StatCard label={t.analytics.totalViews} value={num(totalViews)} tone="ok" sub={t.analytics.acrossMeasured} />
-            <StatCard label={t.analytics.avgViewsDay} value={decimal(avgVpd, 1)} tone="ok" sub={t.analytics.velocity} />
-            <StatCard label={t.analytics.avgEngagement} value={pct(avgEng)} sub={t.analytics.engFormula} />
-          </div>
+          {/* The desk: the headline figures, real aggregates over the videos that have metrics. */}
+          <section className="ns-desk" aria-label={t.analytics.performance}>
+            <Figures>
+              <StatCard label={t.analytics.withMetrics} value={num(withMetrics)} sub={fmt(t.analytics.ofLibrary, { n: num(videos.length) })} />
+              <StatCard label={t.analytics.totalViews} value={num(totalViews)} sub={t.analytics.acrossMeasured} />
+              <StatCard label={t.analytics.avgViewsDay} value={decimal(avgVpd, 1)} sub={t.analytics.velocity} />
+              <StatCard label={t.analytics.avgEngagement} value={pct(avgEng)} sub={t.analytics.engFormula} />
+            </Figures>
+          </section>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="g4-cols">
             <Panel title={t.analytics.topPerformers}>
               <RankedList
                 rows={topPerformers}
                 max={N}
-                color="var(--color-ok)"
+                color="var(--ns-go)"
+                inkColor="var(--color-ok)"
                 emptyLabel={t.analytics.notEnough}
                 render={(p) => ({
                   primary: p.title,
@@ -234,7 +239,8 @@ export default async function AnalyticsPage() {
                 <RankedList
                   rows={underperformers}
                   max={N}
-                  color="var(--color-warn)"
+                  color="var(--ns-caution)"
+                  inkColor="var(--color-warn)"
                   emptyLabel={t.analytics.notEnough}
                   render={(p) => ({
                     primary: p.title,
@@ -249,7 +255,6 @@ export default async function AnalyticsPage() {
               <RankedList
                 rows={byEngagement}
                 max={N}
-                color="var(--color-primary)"
                 emptyLabel={t.analytics.notEnough}
                 render={(p) => ({
                   primary: p.title,
@@ -263,7 +268,6 @@ export default async function AnalyticsPage() {
               <RankedList
                 rows={byRetention}
                 max={N}
-                color="var(--color-primary)"
                 emptyLabel={t.analytics.notEnough}
                 render={(p) => ({
                   primary: p.title,
@@ -274,36 +278,23 @@ export default async function AnalyticsPage() {
             </Panel>
           </div>
 
-          <Panel title={t.analytics.allMeasured}>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
-                    <th className="px-4 py-2 font-semibold">{t.analytics.thTitle}</th>
-                    <th className="px-4 py-2 font-semibold">{t.analytics.thTopic}</th>
-                    <th className="px-4 py-2 text-right font-semibold">{t.analytics.thViews}</th>
-                    <th className="px-4 py-2 text-right font-semibold">{t.analytics.thViewsDay}</th>
-                    <th className="px-4 py-2 text-right font-semibold">{t.analytics.thEngagement}</th>
-                    <th className="px-4 py-2 text-right font-semibold">{t.analytics.thAvgDur}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {byVpd.concat(perf.filter((p) => p.viewsPerDay === null)).map((p) => (
-                    <tr key={p.video_id} className="border-b border-[var(--color-border)]/50 transition-colors hover:bg-[var(--color-panel-2)]">
-                      <td className="px-4 py-2 text-[var(--color-fg)]">{p.title}</td>
-                      <td className="px-4 py-2 text-[var(--color-muted)]">{p.topic ?? t.common.dash}</td>
-                      <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-fg)]">{num(p.views)}</td>
-                      <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-fg)]">{decimal(p.viewsPerDay, 1)}</td>
-                      <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-muted)]">{pct(p.engagement)}</td>
-                      <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-muted)]">{seconds(p.retention)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
+          <Section title={t.analytics.allMeasured}>
+            <DataList
+              caption={t.analytics.allMeasured}
+              rows={byVpd.concat(perf.filter((p) => p.viewsPerDay === null))}
+              rowKey={(p) => p.video_id}
+              columns={[
+                { key: "title", label: t.analytics.thTitle, render: (p) => p.title },
+                { key: "topic", label: t.analytics.thTopic, render: (p) => <span className="g4-muted">{p.topic ?? t.common.dash}</span> },
+                { key: "views", label: t.analytics.thViews, align: "end", render: (p) => num(p.views) },
+                { key: "vpd", label: t.analytics.thViewsDay, align: "end", render: (p) => decimal(p.viewsPerDay, 1) },
+                { key: "eng", label: t.analytics.thEngagement, align: "end", render: (p) => <span className="g4-muted">{pct(p.engagement)}</span> },
+                { key: "ret", label: t.analytics.thAvgDur, align: "end", render: (p) => <span className="g4-muted">{seconds(p.retention)}</span> },
+              ]}
+            />
+          </Section>
 
-          <p className="tnum text-xs text-[var(--color-muted)]">{t.analytics.note}</p>
+          <p className="g4-note tnum">{t.analytics.note}</p>
         </>
       )}
     </div>

@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { getChannelScope } from "@/lib/channels-server";
 import { scopeQuery } from "@/lib/channels";
 import type { SystemEventRow } from "@/lib/types";
+import "../../app-pages-g4.css";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -36,7 +37,7 @@ export default async function IntelligencePage() {
   }
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open g4 stagger-enter">
       <PageHeader icon="intelligence" title={t.ops.intelTitle} subtitle={t.ops.intelSubtitle} />
 
       {failed ? (

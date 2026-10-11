@@ -11,6 +11,8 @@ import { getDictionary } from "@/lib/i18n/server";
 import { parseStoredTime } from "@/lib/format";
 import { formatAuditDetail, type AuditRow } from "@/lib/audit";
 import { ScrollText } from "lucide-react";
+import { DataList } from "@/components/g4/DataList";
+import "../../app-pages-g4.css";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -45,7 +47,7 @@ export default async function AuditPage() {
   }
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open g4 stagger-enter">
       <PageHeader icon="audit" title={t.audit.title} subtitle={t.audit.subtitle} />
       <Panel title={t.audit.title}>
         {!supabase ? (
@@ -55,49 +57,30 @@ export default async function AuditPage() {
         ) : rows.length === 0 ? (
           <EmptyState icon={ScrollText}>{t.audit.empty}</EmptyState>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
-                  <th className="py-2 pr-4 font-semibold">{t.audit.colTime}</th>
-                  <th className="py-2 pr-4 font-semibold">{t.audit.colActor}</th>
-                  <th className="py-2 pr-4 font-semibold">{t.audit.colAction}</th>
-                  <th className="py-2 pr-4 font-semibold">{t.audit.colTarget}</th>
-                  <th className="py-2 pr-4 font-semibold">{t.audit.colChannel}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
+          <DataList
+            caption={t.audit.title}
+            rows={rows}
+            rowKey={(row) => row.id}
+            columns={[
+              { key: "time", label: t.audit.colTime, nowrap: true, render: (row) => <span className="tnum g4-muted">{renderAt(row.at)}</span> },
+              { key: "actor", label: t.audit.colActor, render: (row) => row.actor_email ?? "—" },
+              {
+                key: "action",
+                label: t.audit.colAction,
+                render: (row) => {
                   const detail = formatAuditDetail(row.detail);
                   return (
-                    <tr
-                      key={row.id}
-                      className="border-b border-[var(--color-border)] align-top transition-colors hover:bg-[color-mix(in_srgb,var(--color-primary)_5%,transparent)]"
-                    >
-                      <td className="tnum whitespace-nowrap py-2 pr-4 text-[var(--color-muted)]">
-                        {renderAt(row.at)}
-                      </td>
-                      <td className="py-2 pr-4 text-[var(--color-fg)]">
-                        {row.actor_email ?? "—"}
-                      </td>
-                      <td className="py-2 pr-4">
-                        <span className="mono text-[var(--color-primary)]">{row.action}</span>
-                        {detail && (
-                          <span className="mt-0.5 block text-xs font-light text-[var(--color-muted)]">
-                            {detail}
-                          </span>
-                        )}
-                      </td>
-                      <td className="mono py-2 pr-4 text-[var(--color-fg)]">{row.target ?? "—"}</td>
-                      <td className="tnum py-2 pr-4 text-[var(--color-muted)]">
-                        {row.channel_id ?? "—"}
-                      </td>
-                    </tr>
+                    <>
+                      <span className="mono" style={{ color: "var(--ns-act-ink)" }}>{row.action}</span>
+                      {detail && <span className="mt-0.5 block g4-small g4-muted">{detail}</span>}
+                    </>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
+                },
+              },
+              { key: "target", label: t.audit.colTarget, render: (row) => <span className="mono">{row.target ?? "—"}</span> },
+              { key: "channel", label: t.audit.colChannel, render: (row) => <span className="tnum g4-muted">{row.channel_id ?? "—"}</span> },
+            ]}
+          />
         )}
       </Panel>
     </div>

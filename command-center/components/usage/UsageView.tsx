@@ -66,20 +66,24 @@ export function UsageView({
   const limits = usageLimits(summary);
   const showLimits = limits.runs !== null || limits.priority !== null || limits.api !== null;
   return (
-    <div className="flex max-w-[44rem] flex-col gap-4">
+    <div className="flex max-w-[64rem] flex-col gap-[var(--ns-gap)]">
       {allowance.kind === "free" ? (
         <FreePlan summary={summary} gaps={gaps} canUpgrade={canUpgrade} />
       ) : (
         <PlanCredits summary={summary} allowance={allowance} nowMs={nowMs} />
       )}
-      {showLimits && allowance.kind !== "free" && <PlanLimits summary={summary} />}
-      <ExtraCredits
-        summary={summary}
-        orgId={orgId}
-        canChange={canChange}
-        canBuy={canBuy}
-        canUpgrade={canUpgrade && allowance.kind !== "free"}
-      />
+      <div className="g4-cols">
+        {showLimits && allowance.kind !== "free" && <PlanLimits summary={summary} />}
+        <ExtraCredits
+          summary={summary}
+          orgId={orgId}
+          canChange={canChange}
+          canBuy={canBuy}
+          canUpgrade={canUpgrade && allowance.kind !== "free"}
+          // The Free plan's own upgrade key is the page's one filled key.
+          keyTaken={allowance.kind === "free" && canUpgrade}
+        />
+      </div>
     </div>
   );
 }
@@ -114,7 +118,7 @@ function PlanCredits({ summary, allowance, nowMs }: { summary: UsageSummary; all
   const status = summary.subscription ? t.plans.status[summary.subscription.status] : null;
 
   return (
-    <section id="plan" className="panel flex scroll-mt-24 flex-col gap-5 p-5 sm:p-6" aria-labelledby={titleId}>
+    <section id="plan" className="panel ns-desk flex scroll-mt-24 flex-col gap-5" aria-labelledby={titleId}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1.5">
           <h2 id={titleId} className="t-section">
@@ -261,7 +265,7 @@ function PlanLimits({ summary }: { summary: UsageSummary }) {
   const limits = usageLimits(summary);
   const titleId = useId();
   return (
-    <section id="limits" className="panel flex scroll-mt-24 flex-col gap-4 p-5 sm:p-6" aria-labelledby={titleId}>
+    <section id="limits" className="panel flex scroll-mt-24 flex-col gap-4" aria-labelledby={titleId}>
       <h2 id={titleId} className="t-section">
         {u.limits.title}
       </h2>
@@ -320,7 +324,7 @@ function FreePlan({ summary, gaps, canUpgrade }: { summary: UsageSummary; gaps: 
     return g.key === "concurrency" ? fmt(label, { free: g.free ?? "", best: g.best ?? "" }) : label;
   };
   return (
-    <section id="plan" className="panel flex scroll-mt-24 flex-col gap-5 p-5 sm:p-6" aria-labelledby={titleId}>
+    <section id="plan" className="panel ns-desk flex scroll-mt-24 flex-col gap-5" aria-labelledby={titleId}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1.5">
           <h2 id={titleId} className="t-section">
@@ -374,12 +378,15 @@ function ExtraCredits({
   canChange,
   canBuy,
   canUpgrade,
+  keyTaken = false,
 }: {
   summary: UsageSummary;
   orgId: string;
   canChange: boolean;
   canBuy: boolean;
   canUpgrade: boolean;
+  /** The page's one filled key is already shown elsewhere (the Free plan's upgrade). */
+  keyTaken?: boolean;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
@@ -418,7 +425,7 @@ function ExtraCredits({
   const spendable = summary.spendableNow;
   const expiry = summary.extra.soonestExpiry ? fmt(u.extra.expires, { date: day(summary.extra.soonestExpiry) }) : null;
   return (
-    <section id="extra" className="panel flex scroll-mt-24 flex-col gap-5 p-5 sm:p-6" aria-labelledby={titleId}>
+    <section id="extra" className="panel flex scroll-mt-24 flex-col gap-5" aria-labelledby={titleId}>
       <div className="flex flex-col gap-1.5">
         <h2 id={titleId} className="t-section">
           {u.extra.title}
@@ -478,13 +485,13 @@ function ExtraCredits({
       {(canBuy || canUpgrade) && (
         <div className="flex flex-wrap gap-2">
           {canBuy && (
-            <Link href={path(USAGE_LINKS.buy)} className="btn-primary text-sm">
+            <Link href={path(USAGE_LINKS.buy)} className={`${keyTaken ? "btn-quiet" : "btn-primary"} text-sm`}>
               <Coins className="size-3.5" aria-hidden />
               {u.extra.buy}
             </Link>
           )}
           {canUpgrade && (
-            <Link href={path(USAGE_LINKS.upgrade)} className={`${canBuy ? "btn-quiet" : "btn-primary"} text-sm`}>
+            <Link href={path(USAGE_LINKS.upgrade)} className={`${canBuy || keyTaken ? "btn-quiet" : "btn-primary"} text-sm`}>
               {u.extra.upgrade}
               <ArrowUpRight className="size-3.5" aria-hidden />
             </Link>
