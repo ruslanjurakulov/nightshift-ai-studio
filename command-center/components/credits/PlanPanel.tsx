@@ -304,6 +304,7 @@ export function PlanPanel({
                   )}
                   {canBuy && (
                     <PriceButton
+                      tone="quiet"
                       className="mt-auto"
                       onClick={() => col.priceId && subscribe(col.priceId)}
                       disabled={phase === "opening"}

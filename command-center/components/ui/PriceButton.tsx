@@ -42,9 +42,11 @@ export const PriceButton = forwardRef<
     /** Why it cannot be pressed now; disables it and is shown under it. */
     disabledReason?: string | null;
     size?: "lg" | "md";
+    /** `primary` (default) is the page's one filled key; `quiet` is the same key outlined, for every other offer on the view. */
+    tone?: "primary" | "quiet";
   }
 >(function PriceButton(
-  { label, credits, was, priceText, wasText, unit, wasLabel, locale = "en", icon, disabledReason, size = "lg", className, disabled, type = "button", ...rest },
+  { label, credits, was, priceText, wasText, unit, wasLabel, locale = "en", icon, disabledReason, size = "lg", tone = "primary", className, disabled, type = "button", ...rest },
   ref,
 ) {
   const reasonId = useId();
@@ -62,6 +64,7 @@ export const PriceButton = forwardRef<
       aria-describedby={describedBy}
       className={`ns-price-button${className ? ` ${className}` : ""}`}
       data-size={size}
+      data-tone={tone === "quiet" ? "quiet" : undefined}
     >
       <span className="ns-price-label">
         {icon}

@@ -97,7 +97,7 @@ export default async function VideoLibrary() {
   const publishedToday = rows.filter((r) => isToday(r.published_at)).length;
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm stagger-enter ns-open">
       <PageHeader icon="videos" title={t.videos.title} subtitle={t.videos.subtitle} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -133,7 +133,7 @@ export default async function VideoLibrary() {
               {t.storyboardReview.waitingNote}
             </p>
             <ul className="m-0 flex list-none flex-col p-0" data-testid="waiting-storyboards">
-              {storyboards.map((sb) => (
+              {storyboards.map((sb, i) => (
                 <li
                   key={sb.id}
                   className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)]/50 px-4 py-3"
@@ -145,7 +145,7 @@ export default async function VideoLibrary() {
                       {sb.createdAt ? ` · ${relativeTime(sb.createdAt)}` : ""}
                     </div>
                   </div>
-                  <Link href={path(`/videos/storyboard/${sb.id}`)} className="btn-primary shrink-0">
+                  <Link href={path(`/videos/storyboard/${sb.id}`)} className={`${i === 0 ? "btn-primary" : "btn-quiet"} shrink-0`}>
                     {t.storyboardReview.review}
                   </Link>
                 </li>

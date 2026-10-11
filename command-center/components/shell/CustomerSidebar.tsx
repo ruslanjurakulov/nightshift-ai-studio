@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { PanelLeft } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useI18n } from "@/lib/i18n/context";
@@ -51,6 +51,15 @@ export function CustomerSidebar({ email, plan }: { email: string | null; plan: A
   const { collapsed, toggle } = useSidebar();
   const { home, footer } = CUSTOMER_SIDEBAR;
   const label = collapsed ? t.shell.expandSidebar : t.shell.collapseSidebar;
+  // The rail's tooltip: a row's name beside it, on hover and on keyboard focus (the name is also the link's accessible
+  // name, so the tooltip is a visual extra and hidden from assistive tech). Fixed, so the nav's own scrolling cannot clip it.
+  const [tip, setTip] = useState<{ text: string; top: number } | null>(null);
+  const showTip = (el: Element | null, needFocusVisible = false) => {
+    const row = collapsed ? (el as HTMLElement | null)?.closest<HTMLElement>("[data-tip]") ?? null : null;
+    if (!row || (needFocusVisible && !row.matches(":focus-visible"))) return setTip(null);
+    const r = row.getBoundingClientRect();
+    setTip({ text: row.dataset.tip ?? "", top: r.top + r.height / 2 });
+  };
 
   return (
     <SharedLayout id="customer-sidebar">
@@ -61,7 +70,16 @@ export function CustomerSidebar({ email, plan }: { email: string | null; plan: A
         id="customer-sidebar"
         data-collapsed={collapsed ? "true" : "false"}
         className="shell-sidebar sticky top-0 z-30 hidden h-dvh shrink-0 flex-col lg:flex"
+        onMouseOver={(e) => showTip(e.target as Element)}
+        onMouseLeave={() => setTip(null)}
+        onFocus={(e) => showTip(e.target as Element, true)}
+        onBlur={() => setTip(null)}
       >
+        {collapsed && tip && (
+          <div aria-hidden className="shell-tip" style={{ top: tip.top }} data-testid="sidebar-tip">
+            {tip.text}
+          </div>
+        )}
         <div className="shell-sidebar-head">
           <Link href={path(home.href)} className="ns-wordmark inline-flex items-center gap-2" aria-label={collapsed ? t.brand.name : undefined}>
             <BrandMark size={34} />
@@ -123,7 +141,7 @@ function SidebarRows({ current, collapsed }: { current: string | null; collapsed
     <>
       <ul className="flex flex-col gap-0.5 pt-1">
         <li>
-          <Link href={path(home.href)} aria-current={current === "hub" ? "page" : undefined} className={rowClass(current === "hub")} title={collapsed ? t.nav[home.key] : undefined}>
+          <Link href={path(home.href)} aria-current={current === "hub" ? "page" : undefined} className={rowClass(current === "hub")} data-tip={collapsed ? t.nav[home.key] : undefined}>
             {current === "hub" && <Plate id={PLATE} />}
             <HomeIcon aria-hidden className="shell-icon size-[18px]" strokeWidth={1.9} />
             <span className={collapsed ? "sr-only" : "truncate"}>{t.nav[home.key]}</span>
@@ -139,7 +157,7 @@ function SidebarRows({ current, collapsed }: { current: string | null; collapsed
           const on = current === `desk:${d}`;
           return (
             <li key={d}>
-              <Link href={path(deskHref(d))} aria-current={on ? "page" : undefined} className={rowClass(on)} title={collapsed ? t.desk.names[d] : undefined}>
+              <Link href={path(deskHref(d))} aria-current={on ? "page" : undefined} className={rowClass(on)} data-tip={collapsed ? t.desk.names[d] : undefined}>
                 {on && <Plate id={PLATE} />}
                 <span aria-hidden className="shell-tile">
                   <Icon className="size-3.5" strokeWidth={2} />
@@ -194,7 +212,7 @@ function Row({ item, current, collapsed }: { item: NavItem; current: string | nu
   const on = current === item.key;
   return (
     <li>
-      <Link href={path(item.href)} aria-current={on ? "page" : undefined} className={rowClass(on)} title={collapsed ? label : undefined}>
+      <Link href={path(item.href)} aria-current={on ? "page" : undefined} className={rowClass(on)} data-tip={collapsed ? label : undefined}>
         {on && <Plate id={PLATE} />}
         <Icon aria-hidden className="shell-icon size-[18px]" strokeWidth={1.9} />
         <span className={collapsed ? "sr-only" : "truncate"}>{label}</span>
