@@ -20,6 +20,7 @@ import {
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
+import { deskHref } from "@/lib/creative/desks";
 import { QUICK_ACTIONS, toolHref, type HomeChannel, type HomeVideo, type QuickActionId } from "@/lib/home";
 import { HomeComposer, type ComposerChannel, type ComposerHandle } from "@/components/home/HomeComposer";
 import { StatusLamp } from "@/components/ui/StatusLamp";
@@ -150,6 +151,11 @@ export function HomeHub({
             <Link href={path("/channels/new")} className="studio-cta fl-go sm:!w-auto sm:px-8">
               <Plus aria-hidden className="size-4" />
               {t.home.connect}
+            </Link>
+            {/* Not a way round connecting: the picture, clip and voice desks need no channel, and say so. A full YouTube video still needs one. */}
+            <Link href={path(deskHref("image"))} className="tap-link flex min-h-11 flex-col justify-center text-sm" data-testid="home-try-media">
+              <span className="font-medium text-[var(--color-primary)] hover:underline">{t.home.tryMedia}</span>
+              <span className="text-[var(--color-muted)]">{t.home.tryMediaNote}</span>
             </Link>
           </div>
         ) : (

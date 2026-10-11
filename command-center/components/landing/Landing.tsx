@@ -107,9 +107,11 @@ function Hero({ t, locale, anchor }: { t: Dictionary; locale: Locale; anchor: Mo
                 {h.cta}
                 <ArrowRight aria-hidden />
               </Link>
-              <Link href="/pricing" className="nx-link">
-                {h.secondary}
-              </Link>
+              {/* The quiet second way in: the free example further down, which only shows a plan. Pricing stays in the header, the price block and the closing call. */}
+              <a href="#try" className="nx-sample">
+                <span className="nx-sample-label">{h.demo}</span>
+                <span className="nx-sample-note">{h.demoNote}</span>
+              </a>
             </div>
           </div>
           <p className="nx-lead">{h.lead}</p>

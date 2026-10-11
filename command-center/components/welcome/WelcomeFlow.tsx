@@ -9,6 +9,7 @@ import { ALL_CHANNELS_SLUG, CHANNEL_COOKIE, channelPath } from "@/lib/channels";
 import { ORG_NAME_MAX, validateOrgName } from "@/lib/orgs";
 import { SignOutButton } from "@/components/SignOutButton";
 import { LanguageSelector } from "@/components/LanguageSelector";
+import { deskHref } from "@/lib/creative/desks";
 import { BrandMark } from "@/components/site/BrandMark";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { newChannelHref, WELCOME_NICHE_MAX, WELCOME_LANGUAGE_MAX } from "@/lib/welcome";
@@ -61,6 +62,7 @@ export function WelcomeFlow({
   // The bare segment lands on the first channel (app/(app)/[channel]/page.tsx).
   const home = `/${ALL_CHANNELS_SLUG}`;
   const at = (section: string) => channelPath(ALL_CHANNELS_SLUG, section);
+  const firstChannelStep = hasChannel ? 1 : 2;
 
   async function createWorkspace(e: React.FormEvent) {
     e.preventDefault();
@@ -211,15 +213,17 @@ export function WelcomeFlow({
             <p className="g5-sub">{t.signup.nextHint}</p>
           </div>
           <ol className="g5-rows">
+            {/* Someone with no channel yet can still reach a first priced result: the image, clip and voice desks need no channel (a full YouTube video does). */}
+            {!hasChannel && <Item n={1} title={t.signup.stepMedia} body={t.signup.stepMediaBody} href={at(deskHref("image"))} />}
             <Item
-              n={1}
+              n={firstChannelStep}
               title={t.signup.stepChannel}
               body={t.signup.stepChannelBody}
               done={hasChannel}
               href={hasChannel ? at("/channels") : newChannelHref(ALL_CHANNELS_SLUG, { niche, language })}
             />
             <Item
-              n={2}
+              n={firstChannelStep + 1}
               title={t.signup.stepYoutube}
               body={canConnectYouTube ? t.signup.stepYoutubeBody : t.signup.stepYoutubeRestricted}
               href={canConnectYouTube ? at("/channels") : undefined}
@@ -236,9 +240,9 @@ export function WelcomeFlow({
                   <p className="g5-note mt-2">{t.signup.requestContact}</p>
                 ))}
             </Item>
-            <Item n={3} title={t.signup.stepStyle} body={t.signup.stepStyleBody} href={at("/studio")} />
-            {showCredits && <Item n={4} title={t.signup.stepCredits} body={t.signup.stepCreditsBody} href={at("/credits")} />}
-            <Item n={showCredits ? 5 : 4} title={t.signup.stepCreate} body={t.signup.stepCreateBody} href={at("/create")} />
+            <Item n={firstChannelStep + 2} title={t.signup.stepStyle} body={t.signup.stepStyleBody} href={at("/studio")} />
+            {showCredits && <Item n={firstChannelStep + 3} title={t.signup.stepCredits} body={t.signup.stepCreditsBody} href={at("/credits")} />}
+            <Item n={firstChannelStep + (showCredits ? 4 : 3)} title={t.signup.stepCreate} body={t.signup.stepCreateBody} href={at("/create")} />
           </ol>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button type="button" onClick={() => setIndex(index - 1)} className="g5-link" style={{ background: "none", border: 0, cursor: "pointer" }}>
