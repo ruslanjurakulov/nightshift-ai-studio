@@ -56,7 +56,7 @@ export default async function CreditsPage() {
   const [org, supabase] = await Promise.all([getOrgContext(), createClient()]);
   const header = <PageHeader icon="credits" title={t.credits.title} subtitle={t.credits.subtitle} />;
   const note = (text: string) => (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       {header}
       <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{text}</div>
     </div>
@@ -138,7 +138,7 @@ export default async function CreditsPage() {
   const extraOff = usageRead.state === "ok" && !usageRead.value.extraEnabled;
 
   return (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       {header}
 
       {exempt ? (

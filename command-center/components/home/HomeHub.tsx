@@ -96,11 +96,15 @@ export function HomeHub({
   const target = channels.find((c) => c.slug === currentSlug && c.standing !== "draft") ?? channels.find((c) => c.standing !== "draft");
 
   return (
-    <div className="flex flex-col gap-8 sm:gap-10">
+    <div className="ns-open flex flex-col gap-10 sm:gap-14">
       {/* ── The one thing to do ───────────────────────────────────────── */}
       <section aria-labelledby="home-hero" className="flex flex-col gap-4">
+        <div aria-hidden className="ns-slug mb-1">
+          <Clapperboard className="size-[18px]" strokeWidth={1.9} />
+          <span className="ns-slug-rule" />
+        </div>
         <div className="flex flex-col gap-2">
-          <h1 id="home-hero" className="text-3xl font-semibold leading-[1.2] tracking-[-0.02em] text-[var(--color-fg)] sm:text-4xl">
+          <h1 id="home-hero" className="ns-title text-[var(--color-fg)]">
             {t.home.heroTitle}
           </h1>
           <p className="max-w-[60ch] text-base leading-relaxed text-[var(--color-muted)]">{t.home.heroLead}</p>
@@ -125,19 +129,14 @@ export function HomeHub({
         )}
 
         {run ? (
-          <div className="flex flex-col gap-3">
-            {target && channels.filter((c) => c.standing !== "draft").length > 1 && (
-              <p className="px-1 text-sm text-[var(--color-muted)]">{fmt(t.home.forChannel, { name: target.name })}</p>
-            )}
-            {run}
-            <ul className="flex flex-wrap gap-x-5 gap-y-2 px-1 text-sm text-[var(--color-muted)]">
-              {[t.home.promisePrice, t.home.promiseRefund, allPrivate ? t.home.promisePrivate : t.home.promiseGate].map((p) => (
-                <li key={p} className="flex items-center gap-1.5">
-                  <Check aria-hidden className="size-3.5 text-[var(--color-ok)]" />
-                  {p}
-                </li>
-              ))}
-            </ul>
+          <div className="home-desk">
+            <div className="flex min-w-0 flex-col gap-3">
+              {target && channels.filter((c) => c.standing !== "draft").length > 1 && (
+                <p className="px-1 text-sm text-[var(--color-muted)]">{fmt(t.home.forChannel, { name: target.name })}</p>
+              )}
+              {run}
+            </div>
+            <Promises items={[t.home.promisePrice, t.home.promiseRefund, allPrivate ? t.home.promisePrivate : t.home.promiseGate]} />
           </div>
         ) : runnable.length === 0 ? (
           <div className="fl-card items-start">
@@ -154,16 +153,9 @@ export function HomeHub({
             </Link>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="home-desk">
             <HomeComposer ref={composer} channels={runnable} currentSlug={currentSlug} />
-            <ul className="flex flex-wrap gap-x-5 gap-y-2 px-1 text-sm text-[var(--color-muted)]">
-              {[t.home.promisePrice, t.home.promiseRefund, allPrivate ? t.home.promisePrivate : t.home.promiseGate].map((p) => (
-                <li key={p} className="flex items-center gap-1.5">
-                  <Check aria-hidden className="size-3.5 text-[var(--color-ok)]" />
-                  {p}
-                </li>
-              ))}
-            </ul>
+            <Promises items={[t.home.promisePrice, t.home.promiseRefund, allPrivate ? t.home.promisePrivate : t.home.promiseGate]} />
           </div>
         )}
       </section>
@@ -185,11 +177,18 @@ export function HomeHub({
             <p className="fl-card fl-hint">{t.home.videosEmpty}</p>
           ) : (
             <ul className="home-cards">
-              {videos.map((v) => (
+              {videos.map((v, i) => (
                 <li key={`${v.slug}:${v.id}`}>
-                  <Link href={`/${encodeURIComponent(v.slug)}/videos/${encodeURIComponent(v.id)}`} className="fl-card home-video press" data-state={v.state}>
-                    <span className="home-video-title">{v.title || "—"}</span>
-                    <StatusLamp tone={v.state === "waiting" ? "warn" : "ok"} label={t.home.videoState[v.state]} />
+                  <Link href={`/${encodeURIComponent(v.slug)}/videos/${encodeURIComponent(v.id)}`} className="home-frame press" data-state={v.state}>
+                    {/* A frame, numbered like the contact sheet's: the title is its picture until the video has one of its own. */}
+                    <span aria-hidden className="home-frame-pic">
+                      <span className="home-frame-no ns-tc">{String(i + 1).padStart(2, "0")}</span>
+                      <Film className="home-frame-glyph" strokeWidth={1.25} />
+                    </span>
+                    <span className="home-frame-body">
+                      <span className="home-video-title">{v.title || "—"}</span>
+                      <StatusLamp tone={v.state === "waiting" ? "warn" : "ok"} label={t.home.videoState[v.state]} />
+                    </span>
                   </Link>
                 </li>
               ))}
@@ -263,6 +262,20 @@ export function HomeHub({
         </details>
       )}
     </div>
+  );
+}
+
+/** The three promises the product keeps, beside the desk: price first, a failed run costs nothing, private until approved. */
+function Promises({ items }: { items: string[] }) {
+  return (
+    <ul className="home-promises">
+      {items.map((p) => (
+        <li key={p}>
+          <Check aria-hidden className="size-4 shrink-0 text-[var(--color-ok)]" strokeWidth={2.25} />
+          {p}
+        </li>
+      ))}
+    </ul>
   );
 }
 

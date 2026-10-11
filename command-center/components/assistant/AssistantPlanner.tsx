@@ -428,7 +428,7 @@ export function AssistantPlanner({ orgId, models, channels, currentSlug, canRun,
         <p className="text-sm text-[var(--color-muted)]">{t.assistant.lead}</p>
       </div>
 
-      <div className="flex flex-col gap-4 rounded-[20px] border border-[var(--color-border)] bg-[var(--color-panel)] p-3 sm:p-4">
+      <div className="ns-assistant-box flex flex-col gap-4 rounded-[20px] border border-[var(--color-border)] bg-[var(--color-panel)] p-3 sm:p-4">
         <form
           className="flex flex-col gap-2"
           onSubmit={(e) => {
