@@ -20,6 +20,7 @@ import {
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
+import { ALL_CHANNELS_SLUG } from "@/lib/channels";
 import { HOME_FORMATS, QUICK_ACTIONS, buildReady, lengthSeconds, toolHref, type HomeChannel, type HomeVideo, type QuickActionId } from "@/lib/home";
 import { CreatePresetProvider, useCreatePreset } from "@/components/create/preset";
 import { FormatArt } from "@/components/home/FormatArt";
@@ -126,7 +127,7 @@ export function HomeHub({
                 </p>
                 <p className="fl-hint">{t.home.readyBody}</p>
               </div>
-              <Link href={ready.slug ? `/${encodeURIComponent(ready.slug)}/videos` : path("/videos")} className="btn-quiet shrink-0 sm:self-center">
+              <Link href={`/${ready.slug ? encodeURIComponent(ready.slug) : ALL_CHANNELS_SLUG}/videos`} className="btn-quiet shrink-0 sm:self-center">
                 {t.home.reviewNow}
               </Link>
             </div>

@@ -241,9 +241,12 @@ export interface HomeReady {
   total: number;
   held: number;
   storyboards: number;
-  /** The storyboard read hit its page size: the true number may be higher. */
+  /**
+   * The count is a lower bound: the storyboard read hit its page size, or one of the two reads
+   * failed (what it could not read may add to the number, never take from it).
+   */
   atLeast: boolean;
-  /** The channel whose /videos shows all of it, or null when it spans channels (the current view's /videos then). */
+  /** The channel whose /videos shows all of it, or null when it spans channels (the every-channel /videos then). */
   slug: string | null;
 }
 
@@ -253,7 +256,8 @@ export interface HomeReady {
  * waiting for approval (null when that read failed). Both are the rows
  * /videos lists, so the card never counts something the page it links to does
  * not show. Null when nothing is known to be waiting — an absent card, never a
- * zero and never a green tick; a failed read adds nothing rather than a guess.
+ * zero and never a green tick. A failed read adds nothing rather than a guess,
+ * and says so: the number then reads "N+", a lower bound, never an exact count.
  */
 export function buildReady(input: {
   channels: Pick<HomeChannel, "slug" | "waiting">[];
@@ -263,12 +267,14 @@ export function buildReady(input: {
   const boards = input.storyboards ?? [];
   const total = held + boards.length;
   if (total === 0) return null;
+  // The held read is one query for every channel: its failure leaves every channel's count null.
+  const heldFailed = input.channels.some((c) => c.waiting === null);
   const slugs = new Set([...input.channels.filter((c) => (c.waiting ?? 0) > 0).map((c) => c.slug), ...boards.map((b) => b.channelSlug)]);
   return {
     total,
     held,
     storyboards: boards.length,
-    atLeast: boards.length >= WAITING_STORYBOARDS_READ,
+    atLeast: boards.length >= WAITING_STORYBOARDS_READ || heldFailed || input.storyboards === null,
     slug: slugs.size === 1 ? [...slugs][0] : null,
   };
 }

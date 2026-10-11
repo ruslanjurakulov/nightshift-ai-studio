@@ -62,9 +62,13 @@ describe("buildReady", () => {
   });
 
   it("a failed read adds nothing: held alone counts without a guess about storyboards, and the other way round", () => {
-    expect(buildReady({ channels: [ch({ waiting: 2 })], storyboards: null })).toMatchObject({ total: 2, storyboards: 0 });
-    expect(buildReady({ channels: [ch({ waiting: null })], storyboards: boards(1) })).toMatchObject({ total: 1, held: 0 });
+    expect(buildReady({ channels: [ch({ waiting: 2 })], storyboards: null })).toMatchObject({ total: 2, storyboards: 0, atLeast: true });
+    expect(buildReady({ channels: [ch({ waiting: null })], storyboards: boards(1) })).toMatchObject({ total: 1, held: 0, atLeast: true });
     expect(buildReady({ channels: [ch({ waiting: null })], storyboards: null })).toBeNull();
+  });
+
+  it("when both reads worked the count is exact", () => {
+    expect(buildReady({ channels: [ch({ waiting: 1 })], storyboards: boards(1) })?.atLeast).toBe(false);
   });
 
   it("a full page of storyboards is a lower bound, not a count", () => {
@@ -118,6 +122,26 @@ describe("the card on Home", () => {
     const card = screen.getByTestId("home-status");
     expect(card.textContent).toContain(`${WAITING_STORYBOARDS_READ}+ things are ready`);
     expect(within(card).getByRole("link", { name: t.home.reviewNow }).getAttribute("href")).toBe("/a%20b/videos");
+  });
+
+  it("items in more than one channel link to the every-channel list, so the list matches the count", () => {
+    const two = [ch({ slug: "a", id: "a", waiting: 1 }), ch({ slug: "b", id: "b", waiting: 0 })];
+    show({ channels: two, storyboards: boards(1, "b") });
+    const card = screen.getByTestId("home-status");
+    expect(card.textContent).toContain("2 things are ready");
+    expect(within(card).getByRole("link", { name: t.home.reviewNow }).getAttribute("href")).toBe("/all-channels/videos");
+  });
+
+  it("a failed read shows a lower bound, never an exact number", () => {
+    show({ channels: [ch({ waiting: 2 })], storyboards: null });
+    expect(screen.getByTestId("home-status").textContent).toContain("2+ things are ready");
+    cleanup();
+    show({ channels: [ch({ waiting: null })], storyboards: boards(1) });
+    expect(screen.getByTestId("home-status").textContent).toContain("1+ things are ready");
+  });
+
+  it("says nothing is uploaded or published before the decision (no claim about rendering)", () => {
+    expect(t.home.readyBody).toContain("Nothing is uploaded or published until you decide");
   });
 
   it("is worded in all three languages", () => {
