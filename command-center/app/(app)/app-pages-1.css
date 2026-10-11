@@ -49,6 +49,11 @@
   color: var(--ns-on-film);
 }
 .vt-frame[data-format="short"] { width: 20px; height: 36px; }
+.vt-title a { display: inline-flex; align-items: center; min-height: 44px; }
+@media (max-width: 639.98px) {
+  .vt-frame:not([data-format="short"]) { width: 48px; height: 27px; }
+  .vt-title { gap: 8px; }
+}
 .vt-frame svg { opacity: 0.6; }
 .vt-frame[data-format="short"] svg { display: none; }
 
@@ -128,8 +133,8 @@
   .home-cards {
     display: flex;
     gap: 12px;
-    margin-inline: -16px;
-    padding-inline: 16px;
+    margin-inline: calc(-1 * clamp(0.75rem, 3vw, 56px));
+    padding-inline: clamp(0.75rem, 3vw, 56px);
     overflow-x: auto;
     scroll-snap-type: x proximity;
     scrollbar-width: none;
@@ -141,3 +146,8 @@
 /* The Assistant on the Studio overview: an open, ruled section, not another box. */
 .ns-open [data-testid="assistant"] { border-top: 1px solid var(--ns-rule); padding-top: 28px; }
 .ns-open .ns-assistant-box { border: 0; background: transparent; padding-inline: 0; border-radius: 0; }
+
+/* A link in an open section's table is a 44px target on a touch screen. */
+@media (pointer: coarse), (max-width: 40rem) {
+  .ns-open .section-open td > a { display: inline-flex; align-items: center; min-height: 44px; }
+}
