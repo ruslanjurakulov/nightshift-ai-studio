@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n/context";
 import type { Dictionary } from "@/lib/i18n";
 import type { SystemEventRow } from "@/lib/types";
 import { storedMs } from "@/lib/format";
+import { StatusLamp } from "@/components/ui/StatusLamp";
 
 type NodeKey =
   | "audience"
@@ -109,78 +110,76 @@ export function IntelligenceMap({
   }, [events]);
 
   const anyActive = active.size > 0;
+  const keys = Object.keys(POS) as NodeKey[];
 
   return (
-    <div className="panel p-5 sm:p-6">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs text-[var(--color-muted)]">{t.ops.intelRecent}</span>
-        <span
-          className="text-xs font-semibold"
-          style={{ color: anyActive ? "var(--color-primary)" : "var(--color-muted)" }}
-        >
-          {anyActive ? t.ops.intelActive : t.ops.intelQuiet}
-        </span>
+    <section className="ns-desk" aria-label={t.ops.intelTitle}>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        <p className="g4-note">{t.ops.intelRecent}</p>
+        <StatusLamp
+          tone={anyActive ? "run" : "idle"}
+          label={anyActive ? t.ops.intelActive : t.ops.intelQuiet}
+        />
       </div>
 
-      <div className="relative mx-auto w-full max-w-sm" style={{ aspectRatio: `${W} / ${H}` }}>
-        <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full" aria-hidden>
-          {EDGES.map(([a, b], i) => {
-            const [x1, y1] = POS[a];
-            const [x2, y2] = POS[b];
-            const on = active.has(a);
-            return (
-              <line
-                key={i}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
-                stroke={on ? "var(--color-primary)" : "var(--color-border)"}
-                strokeWidth={on ? 1.6 : 1}
-                strokeOpacity={on ? 0.9 : 0.5}
-                className={on ? "flow-line" : undefined}
-              />
-            );
-          })}
-          {(Object.keys(POS) as NodeKey[]).map((k) => {
+      <div className="g4-map">
+        <div className="relative mx-auto w-full max-w-sm" style={{ aspectRatio: `${W} / ${H}` }}>
+          <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full" aria-hidden>
+            {EDGES.map(([a, b], i) => {
+              const [x1, y1] = POS[a];
+              const [x2, y2] = POS[b];
+              const on = active.has(a);
+              return (
+                <line
+                  key={i}
+                  x1={x1}
+                  y1={y1}
+                  x2={x2}
+                  y2={y2}
+                  stroke={on ? "var(--ns-amber)" : "var(--ns-rule-strong)"}
+                  strokeWidth={on ? 1.8 : 1}
+                  strokeOpacity={on ? 0.95 : 0.55}
+                />
+              );
+            })}
+          </svg>
+
+          {keys.map((k) => {
             const [x, y] = POS[k];
             const on = active.has(k);
             return (
-              <circle
+              <div
                 key={k}
-                cx={x}
-                cy={y}
-                r={on ? 6 : 4}
-                fill={on ? "var(--color-primary)" : "var(--color-idle)"}
-                fillOpacity={on ? 1 : 0.5}
-              />
+                aria-hidden
+                className="absolute -translate-x-1/2 -translate-y-1/2"
+                style={{ left: `${(x / W) * 100}%`, top: `${(y / H) * 100}%` }}
+              >
+                <span className="g4-map-node" data-on={on}>
+                  <span className="ns-lamp" data-tone={on ? "run" : "idle"} />
+                  {String(t.ops[LABEL[k]])}
+                </span>
+              </div>
             );
           })}
-        </svg>
+        </div>
 
-        {(Object.keys(POS) as NodeKey[]).map((k) => {
-          const [x, y] = POS[k];
-          const on = active.has(k);
-          return (
-            <div
-              key={k}
-              className="absolute -translate-x-1/2 -translate-y-1/2"
-              style={{ left: `${(x / W) * 100}%`, top: `${(y / H) * 100}%` }}
-            >
-              <span
-                className={`tnum block whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${on ? "node-pulse" : ""}`}
-                style={{
-                  background: "var(--color-panel-2)",
-                  borderColor: on ? "var(--color-primary)" : "var(--color-border)",
-                  color: on ? "var(--color-primary)" : "var(--color-muted)",
-                }}
-              >
-                {String(t.ops[LABEL[k]])}
-              </span>
-            </div>
-          );
-        })}
+        {/* The same path in words: each stage and whether anything landed for it in the last 24 hours. */}
+        <ol className="g4-kv">
+          {keys.map((k) => {
+            const on = active.has(k);
+            return (
+              <li key={k}>
+                <span className="k" style={{ color: "var(--color-fg)" }}>
+                  {String(t.ops[LABEL[k]])}
+                </span>
+                <span className="v">
+                  <StatusLamp tone={on ? "run" : "idle"} label={on ? t.ops.intelActive : t.ops.intelQuiet} />
+                </span>
+              </li>
+            );
+          })}
+        </ol>
       </div>
-    </div>
+    </section>
   );
 }

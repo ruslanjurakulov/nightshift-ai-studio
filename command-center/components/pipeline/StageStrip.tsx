@@ -31,27 +31,22 @@ function useStateWords(): Record<StageState, string> {
   };
 }
 
-/** One stage lamp + the rundown line into the next stage. The state word is read aloud; the lamp is never the only signal. */
-function StageNode({ stage, last, words }: { stage: StageView; last: boolean; words: Record<StageState, string> }) {
-  const filled = stage.state !== "WAITING";
+/**
+ * One stage: its number on the rundown (edge print, amber), the lamp on the rail
+ * and the time it reached that state. The state word is read aloud; the lamp is
+ * never the only signal. On a phone the rail stands up and each stage is a row.
+ */
+function StageNode({ stage, index, words }: { stage: StageView; index: number; words: Record<StageState, string> }) {
   return (
-    <li className="flex min-w-0 flex-1 items-start">
-      <div className="flex min-w-0 flex-col items-center gap-1">
+    <li className="g3-stage" data-state={stage.state.toLowerCase()}>
+      <span className="g3-stage-no ns-tc" aria-hidden>
+        {String(index + 1).padStart(2, "0")}
+      </span>
+      <span className="g3-stage-lamp">
         <StatusLamp tone={STATE_TONE[stage.state]} label={words[stage.state]} live={stage.state === "RUNNING"} hideLabel size="md" />
-        <span className="tnum text-center text-xs leading-tight" style={{ color: filled ? "var(--color-fg)" : "var(--color-muted)" }}>
-          {stage.label}
-        </span>
-        <span className="ns-tc text-center text-xs text-[var(--color-muted)]">
-          {stage.ts ? timeOfDay(stage.ts) : "—"}
-        </span>
-      </div>
-      {!last && (
-        <span
-          aria-hidden
-          className="mt-[9px] h-px flex-1"
-          style={{ background: filled ? "var(--ns-rule-strong)" : "var(--color-border)" }}
-        />
-      )}
+      </span>
+      <span className="g3-stage-name">{stage.label}</span>
+      <span className="g3-stage-time ns-tc">{stage.ts ? timeOfDay(stage.ts) : "\u2014"}</span>
     </li>
   );
 }
@@ -59,11 +54,13 @@ function StageNode({ stage, last, words }: { stage: StageView; last: boolean; wo
 export function StageStrip({ stages }: { stages: StageView[] }) {
   const words = useStateWords();
   return (
-    <ol className="flex items-start gap-1">
-      {stages.map((s, i) => (
-        <StageNode key={s.key} stage={s} last={i === stages.length - 1} words={words} />
-      ))}
-    </ol>
+    <div className="g3-stages">
+      <ol className="g3-stage-list">
+        {stages.map((s, i) => (
+          <StageNode key={s.key} stage={s} index={i} words={words} />
+        ))}
+      </ol>
+    </div>
   );
 }
 

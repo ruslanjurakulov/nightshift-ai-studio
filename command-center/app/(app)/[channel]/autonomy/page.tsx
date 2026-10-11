@@ -23,6 +23,7 @@ import type {
   VideoRow,
 } from "@/lib/types";
 import { uploadedOnly } from "@/lib/heldVideos";
+import "../../app-pages-g4.css";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -61,9 +62,8 @@ export default async function AutonomyPage() {
   }
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open g4 stagger-enter">
       <PageHeader icon="autonomy" title={t.auto.title} subtitle={t.auto.subtitle} />
-      <OperationsPanels queue={queue} runs={runs} tablesMissing={tablesMissing} />
       <AutonomyView
         posture={autonomyPosture(events)}
         health={autonomyHealth(events)}
@@ -72,6 +72,7 @@ export default async function AutonomyPage() {
         window={publishingWindow(videos, snapshots)}
         duplicates={duplicateTopics(videos)}
       />
+      <OperationsPanels queue={queue} runs={runs} tablesMissing={tablesMissing} />
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { ErrorState } from "@/components/ReadError";
 import { readFailed } from "@/lib/readState";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
-import { Panel } from "@/components/ui";
+import { Section, Note } from "@/components/g3/Section";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
 import { getChannelContext } from "@/lib/channels-server";
@@ -75,41 +75,37 @@ export default async function StudioPage() {
         : null;
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open stagger-enter">
       <PageHeader icon="studio" title={t.studio.title} subtitle={t.studio.subtitle} />
 
-      {/* Autopilot — the day's auto-picked topic (Track 3 Autopilot Lite) */}
-      <Panel title={t.studio.autopilotTitle}>
-        <div className="p-4">
-          {failed ? (
-            <ErrorState compact />
-          ) : agent && agent.topic ? (
-            <div className="space-y-1.5">
-              <p className="text-sm text-[var(--color-muted)]">{t.studio.autopilotOnTopic}</p>
-              <p className="text-base font-semibold text-[var(--color-fg)]">{agent.topic}</p>
-              {agent.rationale && (
-                <p className="text-sm text-[var(--color-muted)]">{agent.rationale}</p>
-              )}
-              <p className="tnum text-xs text-[var(--color-muted)]">
-                {(agent.videoProvider || t.common.dash) + " · " + (agent.voiceProvider || t.common.dash)}
-              </p>
-            </div>
-          ) : (
-            <p className="text-sm text-[var(--color-muted)]">{t.studio.autopilotNone}</p>
-          )}
-        </div>
-      </Panel>
-
-      {/* Style presets — the Studio Canvas gallery, applied to the scoped channel */}
+      {/* Style presets: the desk. Applied to the scoped channel */}
       <PresetGallery
         channelId={scopedChannel?.channel_id ?? null}
         currentStyle={currentStyle}
         agentConfig={agentConfig}
       />
 
-      {/* Style kits and characters — built from the organization's library (0047) */}
+      {/* Autopilot: the day's auto-picked topic */}
+      <Section title={t.studio.autopilotTitle}>
+        {failed ? (
+          <ErrorState compact />
+        ) : agent && agent.topic ? (
+          <div className="flex max-w-[62ch] flex-col gap-1.5">
+            <p className="m-0 text-sm text-[var(--color-muted)]">{t.studio.autopilotOnTopic}</p>
+            <p className="m-0 text-xl font-semibold text-[var(--color-fg)]">{agent.topic}</p>
+            {agent.rationale && <p className="m-0 text-base text-[var(--color-muted)]">{agent.rationale}</p>}
+            <p className="tnum m-0 text-sm text-[var(--color-muted)]">
+              {(agent.videoProvider || t.common.dash) + " · " + (agent.voiceProvider || t.common.dash)}
+            </p>
+          </div>
+        ) : (
+          <p className="m-0 max-w-[62ch] text-base text-[var(--color-muted)]">{t.studio.autopilotNone}</p>
+        )}
+      </Section>
+
+      {/* Style kits and characters: built from the organization's library (0047) */}
       {styleNote || !org.current || !style ? (
-        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{styleNote}</div>
+        <Note>{styleNote}</Note>
       ) : (
         <StyleSections
           orgId={org.current.id}

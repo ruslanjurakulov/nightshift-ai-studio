@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, Circle, Rocket, ArrowRight } from "lucide-react";
+import { Rocket, ArrowRight } from "lucide-react";
 import { isSupabaseConfigured } from "@/lib/config";
 import { getChannelScope } from "@/lib/channels-server";
 import { orgWide, scopeQuery, type ChannelScope } from "@/lib/channels";
@@ -14,7 +14,9 @@ import { getDictionary } from "@/lib/i18n/server";
 import { guardOperatorPage } from "@/lib/auth/org-roles";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { PageHeader } from "@/components/PageHeader";
-import { Panel, StatusPill } from "@/components/ui";
+import { StatusLamp } from "@/components/ui/StatusLamp";
+import { Meter } from "@/components/ui/Meter";
+import "../../app-pages-g5.css";
 import { computeChecklist, type OnboardingStepKey } from "@/lib/onboarding";
 import type { ChannelCredentialRow } from "@/lib/types";
 
@@ -124,88 +126,93 @@ export default async function GettingStartedPage() {
   const titleFor = (key: OnboardingStepKey) => s[`step_${key}` as const];
   const hintFor = (key: OnboardingStepKey) => s[`step_${key}_hint` as const];
 
+  const next = items.find((i) => !i.done) ?? null;
+
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open g5-page stagger-enter">
       <PageHeader icon="onboarding" title={s.title} subtitle={s.subtitle} />
 
-      <Panel
-        title={s.progress}
-        right={
-          <StatusPill
-            tone={allDone ? "ok" : "idle"}
-            label={`${progress.done}/${progress.total} · ${progress.pct}%`}
-          />
-        }
-      >
-        <div className="rhythm">
-          {/* Progress bar */}
-          <div
-            className="h-2 w-full overflow-hidden rounded-full bg-[var(--color-panel-2)]"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={progress.pct}
-          >
-            <div
-              className="h-full rounded-full transition-all"
-              style={{
-                width: `${progress.pct}%`,
-                background: allDone ? "var(--color-ok)" : "var(--color-primary)",
-              }}
+      {/* The desk: how far along, and the one next job */}
+      <section className="panel ns-desk" aria-labelledby="gs-progress">
+        <div className="g5-desk-grid" data-two>
+          <div className="flex flex-col gap-4">
+            <h2 id="gs-progress" className="g5-k">
+              {s.progress}
+            </h2>
+            <p className="g5-progress-line">
+              <span className="g5-figure">
+                {progress.done}
+                <span className="g5-figure-unit"> / {progress.total}</span>
+              </span>
+              <span className="g5-v">{progress.pct}%</span>
+            </p>
+            <Meter
+              value={progress.done}
+              max={progress.total}
+              segments={progress.total}
+              size="lg"
+              label={s.progress}
+              valueText={`${progress.done}/${progress.total} · ${progress.pct}%`}
             />
           </div>
 
-          {allDone && (
-            <div className="flex items-center gap-3 rounded-xl border border-[var(--color-ok)] bg-[color-mix(in_srgb,var(--color-ok)_10%,transparent)] px-4 py-3">
-              <Rocket aria-hidden className="size-5 shrink-0 text-[var(--color-ok)]" strokeWidth={1.75} />
-              <p className="m-0 text-sm font-light text-[var(--color-fg)]">{s.allDone}</p>
+          {allDone || !next ? (
+            <div className="flex items-start gap-3">
+              <Rocket aria-hidden className="mt-1 size-5 shrink-0 text-[var(--color-ok)]" strokeWidth={1.75} />
+              <p className="g5-sub" style={{ marginTop: 0 }}>
+                {s.allDone}
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-start gap-4">
+              <div>
+                <p className="g5-num" aria-hidden>
+                  {String(items.indexOf(next) + 1).padStart(2, "0")}
+                </p>
+                <h3 className="g5-h mt-1">{titleFor(next.key)}</h3>
+                <p className="g5-sub">{hintFor(next.key)}</p>
+              </div>
+              <Link href={path(next.href)} className="btn-primary">
+                {s.fix}
+                <ArrowRight aria-hidden className="size-4" />
+              </Link>
             </div>
           )}
-
-          {/* The checklist */}
-          <ul className="flex list-none flex-col gap-2 p-0">
-            {items.map((item) => {
-              const Icon = item.done ? CheckCircle2 : Circle;
-              return (
-                <li
-                  key={item.key}
-                  className="flex items-start gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-panel-2)] px-4 py-3 transition-colors hover:border-[var(--color-primary-dim)]"
-                >
-                  <Icon
-                    aria-hidden
-                    className="mt-0.5 size-5 shrink-0"
-                    strokeWidth={1.75}
-                    style={{ color: item.done ? "var(--color-ok)" : "var(--color-muted)" }}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <span className="text-sm font-medium text-[var(--color-fg)]">
-                        {titleFor(item.key)}
-                      </span>
-                      <StatusPill
-                        tone={item.done ? "ok" : "idle"}
-                        label={item.done ? s.done : s.todo}
-                      />
-                    </div>
-                    <p className="mt-1 text-sm font-light leading-relaxed text-[var(--color-muted)]">
-                      {hintFor(item.key)}
-                    </p>
-                  </div>
-                  {!item.done && (
-                    <Link
-                      href={path(item.href)}
-                      className="btn-sky is-quiet pill mt-0.5 inline-flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-xs"
-                    >
-                      {s.fix}
-                      <ArrowRight aria-hidden className="size-3.5" />
-                    </Link>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
         </div>
-      </Panel>
+      </section>
+
+      {/* The checklist: every step, each with its own lamp and its way in */}
+      <section className="panel g5-bare" aria-label={s.progress}>
+        <ol className="g5-rows">
+          {items.map((item, i) => (
+            <li
+              key={item.key}
+              className="g5-row g5-step"
+              data-next={next?.key === item.key ? "true" : undefined}
+              aria-current={next?.key === item.key ? "step" : undefined}
+            >
+              <span className="g5-num" aria-hidden>
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <div className="min-w-0">
+                <div className="g5-step-top">
+                  <h3 className="g5-row-title">{titleFor(item.key)}</h3>
+                  <StatusLamp tone={item.done ? "ok" : "idle"} label={item.done ? s.done : s.todo} />
+                </div>
+                <p className="g5-row-meta">{hintFor(item.key)}</p>
+              </div>
+              {!item.done ? (
+                <Link href={path(item.href)} className="btn-quiet">
+                  {s.fix}
+                  <ArrowRight aria-hidden className="size-4" />
+                </Link>
+              ) : (
+                <span aria-hidden />
+              )}
+            </li>
+          ))}
+        </ol>
+      </section>
     </div>
   );
 }

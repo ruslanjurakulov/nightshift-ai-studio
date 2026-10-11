@@ -1,6 +1,7 @@
 import { Meter } from "@/components/ui/Meter";
+import "@/app/(app)/app-pages-g5.css";
 import { Timecode } from "@/components/ui/Timecode";
-import { EmptyState } from "@/components/ui";
+import { StateBlock } from "@/components/states/StateBlock";
 import type { QuotaGaugeView } from "@/lib/quota-gauge";
 
 export interface QuotaGaugeLabels {
@@ -29,24 +30,28 @@ export function QuotaGauges({
   labels: QuotaGaugeLabels;
 }) {
   if (view.rows.length === 0) {
-    return <EmptyState>{view.emptyAllocation ? labels.none : labels.noData}</EmptyState>;
+    return (
+      <StateBlock tone="idle" compact>
+        {view.emptyAllocation ? labels.none : labels.noData}
+      </StateBlock>
+    );
   }
 
   return (
-    <div>
+    <div className="g5-quota">
       <div className="flex items-baseline justify-between gap-3">
-        <span className="t-label">{labels.total}</span>
-        <span className="tnum text-lg font-semibold tabular-nums text-[var(--color-fg)]">
+        <span className="g5-k">{labels.total}</span>
+        <span className="g5-v tabular-nums" style={{ fontSize: "1.25rem", fontWeight: 600 }}>
           <Timecode value={view.totalSlots} format="count" unknown="N/A" />
         </span>
       </div>
 
-      <ul className="mt-4 flex flex-col gap-4">
+      <ul className="flex flex-col gap-5">
         {view.rows.map((r) => (
-          <li key={r.channelId}>
+          <li key={r.channelId} className="g5-quota-row">
             <div className="flex items-baseline justify-between gap-3">
-              <span className="min-w-0 truncate text-sm text-[var(--color-fg)]">{r.name}</span>
-              <span className="tnum shrink-0 text-sm tabular-nums text-[var(--color-muted)]">
+              <span className="g5-row-title min-w-0 truncate">{r.name}</span>
+              <span className="g5-note tabular-nums shrink-0">
                 {r.slots === null ? "—" : (
                   <>
                     <Timecode value={r.slots} format="count" /> {labels.slotsSuffix}
@@ -57,13 +62,13 @@ export function QuotaGauges({
               </span>
             </div>
             {r.measured && r.sharePct !== null && (
-              <Meter value={r.sharePct} max={100} size="lg" segments={20} label={r.name} valueText={`${r.sharePct}%`} className="mt-2" />
+              <Meter value={r.sharePct} max={100} size="lg" segments={20} label={r.name} valueText={`${r.sharePct}%`} />
             )}
           </li>
         ))}
       </ul>
 
-      <p className="mt-4 text-sm font-light text-[var(--color-muted)]">{labels.hint}</p>
+      <p className="g5-note">{labels.hint}</p>
     </div>
   );
 }

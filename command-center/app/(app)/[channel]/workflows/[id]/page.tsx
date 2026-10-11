@@ -2,6 +2,7 @@ import Link from "next/link";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { PageHeader } from "@/components/PageHeader";
+import { Note } from "@/components/g3/Section";
 import { WorkflowRunPanel } from "@/components/workflows/WorkflowRunPanel";
 import { getOrgContext } from "@/lib/orgs-server";
 import { getDictionary } from "@/lib/i18n/server";
@@ -25,9 +26,9 @@ export default async function WorkflowPage({ params }: { params: Promise<{ id: s
   const org = await getOrgContext();
   const back = (await getChannelPath())("/workflows");
   const note = (text: string, title = t.workflows.title) => (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       <PageHeader icon="workflows" title={title} subtitle={t.workflows.subtitle} />
-      <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{text}</div>
+      <Note>{text}</Note>
     </div>
   );
   if (!org.supported) return note(t.org.notMigrated);
@@ -39,13 +40,13 @@ export default async function WorkflowPage({ params }: { params: Promise<{ id: s
   const wf = read.value;
 
   return (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       <PageHeader
         icon="workflows"
         title={wf.name}
         subtitle={t.workflows.moneyNote}
         actions={
-          <Link href={back} className="btn-sky ghost pill px-4 py-2 text-sm">
+          <Link href={back} className="btn-sky pill px-4 py-2 text-sm">
             {t.workflows.back}
           </Link>
         }

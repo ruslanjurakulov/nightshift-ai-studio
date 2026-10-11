@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { PageHeader } from "@/components/PageHeader";
+import { StateBlock } from "@/components/states/StateBlock";
+import "../../app-pages-g5.css";
 import { getDictionary } from "@/lib/i18n/server";
 import { PROVIDERS } from "@/lib/providers";
 import { isGithubConfigured, listConfiguredSecretNames } from "@/lib/server/github-secrets";
@@ -173,20 +175,24 @@ export default async function BillingPage() {
       : null;
 
   return (
-    <div className="rhythm">
+    <div className="rhythm ns-open g5-page">
       <PageHeader icon="billing" title={t.billing.title} subtitle={t.billing.subtitle} />
       {migrationMissing && (
-        <div className="panel p-5 sm:p-6" role="status">
-          <p className="text-sm text-[var(--color-warn)]">{t.billing.migrationMissing}</p>
-        </div>
+        <section className="panel">
+          <StateBlock role="status" tone="warn" compact>
+            {t.billing.migrationMissing}
+          </StateBlock>
+        </section>
       )}
       <UnitEconomicsCard ue={ue} scope={ueScope} />
       {operatorView ? (
         <BillingBoard providers={views} runway={runway} githubConfigured={isGithubConfigured} />
       ) : (
-        <div className="panel p-5 sm:p-6" role="status">
-          <p className="text-sm text-[var(--color-muted)]">{t.billing.providersOperatorOnly}</p>
-        </div>
+        <section className="panel">
+          <StateBlock role="status" tone="idle" compact>
+            {t.billing.providersOperatorOnly}
+          </StateBlock>
+        </section>
       )}
     </div>
   );

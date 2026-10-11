@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { isMissingFunction } from "@/lib/orgs";
 import { coerceMarginRows, parsePeriod, periodRange } from "@/lib/margin";
+import "../../app-pages-g4.css";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -28,7 +29,7 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
   const { t } = await getDictionary();
   const header = <PageHeader icon="margin" title={t.margin.title} subtitle={t.margin.subtitle} />;
   const note = (text: string) => (
-    <div className="rhythm">
+    <div className="rhythm ns-open g4">
       {header}
       <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{text}</div>
     </div>
@@ -37,7 +38,7 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
   // A customer who types the URL learns nothing: no title, no description of
   // what the page holds, no role words — only that it is not available.
   const unavailable = (
-    <div className="rhythm">
+    <div className="rhythm ns-open g4">
       <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.margin.forbidden}</div>
     </div>
   );
@@ -53,7 +54,7 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
     if (error && isMissingFunction(error)) return note(t.margin.notEnabled);
     if (error?.code === "42501") return unavailable;
     return (
-      <div className="rhythm">
+      <div className="rhythm ns-open g4">
         {header}
         <div className="panel p-5 sm:p-6">
           <ErrorState compact message={t.margin.readFailed} />
@@ -63,7 +64,7 @@ export default async function MarginPage({ searchParams }: { searchParams: Promi
   }
 
   return (
-    <div className="rhythm">
+    <div className="rhythm ns-open g4">
       {header}
       <MarginReport rows={coerceMarginRows(data)} days={days} />
     </div>

@@ -4,6 +4,9 @@ import { relativeTime, timeOfDay } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import { EmptyState, Panel } from "@/components/ui";
+import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
+import { DataList } from "@/components/g4/DataList";
+import { Section, Figures } from "@/components/g4/Section";
 import { AnimatedNumber } from "@/components/AnimatedNumber";
 import {
   WINDOW_MIN_VIDEOS,
@@ -22,12 +25,12 @@ const CAP_KEY: Record<CapabilityState, keyof Dictionary["auto"]> = {
   unconditional: "capUnconditional",
   not_configured: "capNotConfigured",
 };
-const CAP_COLOR: Record<CapabilityState, string> = {
-  automatic: "var(--color-ok)",
-  records_only: "var(--color-secondary)",
-  // Unconditional publishing is a real risk surface — amber, not green.
-  unconditional: "var(--color-warn)",
-  not_configured: "var(--color-muted)",
+const CAP_LAMP: Record<CapabilityState, LampTone> = {
+  automatic: "ok",
+  records_only: "info",
+  // Unconditional publishing is a real risk surface: a caution lamp, not green.
+  unconditional: "warn",
+  not_configured: "off",
 };
 
 const OUTCOME_KEY: Record<AutonomousAction["outcome"], keyof Dictionary["auto"]> = {
@@ -36,11 +39,11 @@ const OUTCOME_KEY: Record<AutonomousAction["outcome"], keyof Dictionary["auto"]>
   running: "outRunning",
   unknown: "outUnknown",
 };
-const OUTCOME_COLOR: Record<AutonomousAction["outcome"], string> = {
-  ok: "var(--color-ok)",
-  failed: "var(--color-fail)",
-  running: "var(--color-primary)",
-  unknown: "var(--color-muted)",
+const OUTCOME_LAMP: Record<AutonomousAction["outcome"], LampTone> = {
+  ok: "ok",
+  failed: "fail",
+  running: "run",
+  unknown: "idle",
 };
 
 /**
@@ -67,80 +70,74 @@ export function AutonomyView({
   const weekday = (n: number) => String(t.auto[`wd${n}` as keyof Dictionary["auto"]]);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Panel title={t.auto.postureTitle}>
-          <ul className="divide-y divide-[var(--color-border)]">
-            {posture.map((p) => {
-              const color = CAP_COLOR[p.state];
-              return (
-                <li key={p.key} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <div className="min-w-0">
-                    <div className="text-sm text-[var(--color-fg)]">
-                      {String(t.auto[`p${p.key.charAt(0).toUpperCase()}${p.key.slice(1)}` as keyof Dictionary["auto"]])}
-                    </div>
-                    <div className="tnum text-xs text-[var(--color-muted)]">
-                      {p.evidenceTs ? fmt(t.auto.postureEvidence, { t: relativeTime(p.evidenceTs) }) : t.auto.postureNoEvidence}
-                    </div>
-                  </div>
-                  <span className="shrink-0 text-xs font-semibold" style={{ color }}>
-                    {String(t.auto[CAP_KEY[p.state]])}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-          <p className="border-t border-[var(--color-border)] px-4 py-2 tnum text-xs leading-relaxed text-[var(--color-warn)]">
-            {t.auto.safetyNote}
+    <div className="g4-stack">
+      {/* The desk: what this deployment really does on its own, and what it does not. */}
+      <Section desk title={t.auto.postureTitle}>
+        <ul className="g4-kv">
+          {posture.map((p) => (
+            <li key={p.key}>
+              <div className="min-w-0">
+                <div className="text-[var(--color-fg)]" style={{ fontSize: "0.9375rem" }}>
+                  {String(t.auto[`p${p.key.charAt(0).toUpperCase()}${p.key.slice(1)}` as keyof Dictionary["auto"]])}
+                </div>
+                <div className="tnum g4-small g4-muted">
+                  {p.evidenceTs ? fmt(t.auto.postureEvidence, { t: relativeTime(p.evidenceTs) }) : t.auto.postureNoEvidence}
+                </div>
+              </div>
+              <span className="shrink-0">
+                <StatusLamp tone={CAP_LAMP[p.state]} label={String(t.auto[CAP_KEY[p.state]])} />
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="g4-note tnum mt-4" data-tone="warn">
+          {t.auto.safetyNote}
+        </p>
+      </Section>
+
+      <div className="g4-cols">
+        <Panel title={t.auto.healthTitle}>
+          <Figures cols={2}>
+            {[
+              { label: t.auto.hSuccessful, value: health.successful, color: "var(--color-ok)" },
+              { label: t.auto.hFailed, value: health.failed, color: "var(--color-fail)" },
+              { label: t.auto.hRunning, value: health.running, color: "var(--color-fg)" },
+            ].map((s) => (
+              <div key={s.label}>
+                <div className="t-label">{s.label}</div>
+                <div className="t-figure tnum mt-2" style={{ color: s.color }}>
+                  <AnimatedNumber value={s.value} />
+                </div>
+              </div>
+            ))}
+            <div>
+              <div className="t-label">{t.auto.hHuman}</div>
+              <div className="t-figure tnum mt-2 g4-muted">{health.humanInterventions ?? t.common.na}</div>
+            </div>
+          </Figures>
+          <p className="g4-note tnum mt-4">
+            {fmt(t.auto.hWindow, { n: health.windowHours })} · {t.auto.hNote}
           </p>
         </Panel>
 
-        <div className="flex flex-col gap-4">
-          <Panel title={t.auto.healthTitle}>
-            <div className="grid grid-cols-2 gap-3 p-4">
-              {[
-                { label: t.auto.hSuccessful, value: health.successful, color: "var(--color-ok)" },
-                { label: t.auto.hFailed, value: health.failed, color: "var(--color-fail)" },
-                { label: t.auto.hRunning, value: health.running, color: "var(--color-primary)" },
-              ].map((s) => (
-                <div key={s.label} className="rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2">
-                  <div className="text-xs text-[var(--color-muted)]">{s.label}</div>
-                  <div className="tnum text-xl font-bold tabular-nums" style={{ color: s.color }}>
-                    <AnimatedNumber value={s.value} />
-                  </div>
-                </div>
-              ))}
-              <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2">
-                <div className="text-xs text-[var(--color-muted)]">{t.auto.hHuman}</div>
-                <div className="tnum text-xl font-bold tabular-nums text-[var(--color-muted)]">
-                  {health.humanInterventions ?? t.common.na}
-                </div>
-              </div>
-            </div>
-            <p className="border-t border-[var(--color-border)] px-4 py-2 tnum text-xs text-[var(--color-muted)]">
-              {fmt(t.auto.hWindow, { n: health.windowHours })} · {t.auto.hNote}
-            </p>
-          </Panel>
-
-          <Panel title={t.auto.controlsTitle}>
-            <EmptyState>{t.auto.controlsNotConfigured}</EmptyState>
-          </Panel>
-        </div>
+        <Panel title={t.auto.controlsTitle}>
+          <EmptyState>{t.auto.controlsNotConfigured}</EmptyState>
+        </Panel>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="g4-cols">
         <Panel title={t.auto.windowTitle}>
           {!window ? (
             <EmptyState>{fmt(t.auto.windowInsufficient, { n: WINDOW_MIN_VIDEOS })}</EmptyState>
           ) : (
-            <div className="p-4">
-              <div className="font-display text-base font-semibold text-[var(--color-primary)]">
+            <div>
+              <div className="t-panel" style={{ color: "var(--ns-act-ink)" }}>
                 {fmt(t.auto.windowBest, { day: weekday(window.weekday), hour: String(window.hour).padStart(2, "0") })}
               </div>
-              <div className="tnum mt-1 text-xs text-[var(--color-muted)]">
+              <div className="tnum g4-muted mt-1">
                 {fmt(t.auto.windowEvidence, { n: window.evidence, v: window.meanViewsPerDay.toFixed(1) })}
               </div>
-              <p className="tnum mt-2 text-xs text-[var(--color-muted)]">{t.auto.windowNote}</p>
+              <p className="g4-note tnum mt-2">{t.auto.windowNote}</p>
             </div>
           )}
         </Panel>
@@ -149,13 +146,11 @@ export function AutonomyView({
           {duplicates.length === 0 ? (
             <EmptyState>{t.auto.dupNone}</EmptyState>
           ) : (
-            <ul className="divide-y divide-[var(--color-border)]">
+            <ul className="g4-kv">
               {duplicates.map((d) => (
-                <li key={d.topic} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <span className="min-w-0 truncate text-sm text-[var(--color-fg)]">{d.topic}</span>
-                  <span className="tnum shrink-0 text-xs text-[var(--color-warn)]">
-                    {fmt(t.auto.dupCount, { n: d.count })}
-                  </span>
+                <li key={d.topic}>
+                  <span className="k" style={{ color: "var(--color-fg)" }}>{d.topic}</span>
+                  <span className="v tnum" style={{ color: "var(--color-warn)" }}>{fmt(t.auto.dupCount, { n: d.count })}</span>
                 </li>
               ))}
             </ul>
@@ -167,30 +162,18 @@ export function AutonomyView({
         {failures.length === 0 ? (
           <EmptyState>{t.auto.noFailures}</EmptyState>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
-                  <th className="px-4 py-2 font-semibold">{t.auto.fEvent}</th>
-                  <th className="px-4 py-2 font-semibold">{t.auto.fAgent}</th>
-                  <th className="px-4 py-2 text-right font-semibold">{t.auto.fCount}</th>
-                  <th className="px-4 py-2 font-semibold">{t.auto.fCause}</th>
-                  <th className="px-4 py-2 font-semibold">{t.auto.fLast}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {failures.map((f) => (
-                  <tr key={`${f.agent}-${f.event}`} className="border-b border-[var(--color-border)]/50 transition-colors hover:bg-[var(--color-panel-2)]">
-                    <td className="px-4 py-2 mono text-xs text-[var(--color-fail)]">{f.event}</td>
-                    <td className="px-4 py-2 mono text-xs text-[var(--color-primary)]">{f.agent}</td>
-                    <td className="px-4 py-2 text-right tnum tabular-nums text-[var(--color-fg)]">{f.count}</td>
-                    <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{f.cause ?? t.auto.fCauseUnknown}</td>
-                    <td className="px-4 py-2 tnum text-xs text-[var(--color-muted)]">{relativeTime(f.lastTs)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataList
+            caption={t.auto.failuresTitle}
+            rows={failures}
+            rowKey={(f) => `${f.agent}-${f.event}`}
+            columns={[
+              { key: "event", label: t.auto.fEvent, render: (f) => <span className="mono" style={{ color: "var(--color-fail)" }}>{f.event}</span> },
+              { key: "agent", label: t.auto.fAgent, render: (f) => <span className="mono" style={{ color: "var(--ns-act-ink)" }}>{f.agent}</span> },
+              { key: "count", label: t.auto.fCount, align: "end", render: (f) => f.count },
+              { key: "cause", label: t.auto.fCause, render: (f) => <span className="g4-muted">{f.cause ?? t.auto.fCauseUnknown}</span> },
+              { key: "last", label: t.auto.fLast, nowrap: true, render: (f) => <span className="g4-muted tnum">{relativeTime(f.lastTs)}</span> },
+            ]}
+          />
         )}
       </Panel>
 
@@ -198,35 +181,27 @@ export function AutonomyView({
         {actions.length === 0 ? (
           <EmptyState>{t.auto.noActions}</EmptyState>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
-                  <th className="px-4 py-2 font-semibold">{t.auto.aWhen}</th>
-                  <th className="px-4 py-2 font-semibold">{t.auto.aAgent}</th>
-                  <th className="px-4 py-2 font-semibold">{t.auto.aAction}</th>
-                  <th className="px-4 py-2 font-semibold">{t.auto.aVideo}</th>
-                  <th className="px-4 py-2 font-semibold">{t.auto.aOutcome}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {actions.map((a) => (
-                  <tr key={a.id} className="border-b border-[var(--color-border)]/50 transition-colors hover:bg-[var(--color-panel-2)]">
-                    <td className="whitespace-nowrap px-4 py-2 tnum text-xs text-[var(--color-muted)]">
-                      <div>{timeOfDay(a.ts)}</div>
-                      <div className="text-xs opacity-70">{relativeTime(a.ts)}</div>
-                    </td>
-                    <td className="px-4 py-2 mono text-xs text-[var(--color-primary)]">{a.agent}</td>
-                    <td className="px-4 py-2 mono text-xs text-[var(--color-fg)]">{a.event}</td>
-                    <td className="px-4 py-2 mono text-xs text-[var(--color-muted)]">{a.videoId ?? t.common.dash}</td>
-                    <td className="px-4 py-2 text-xs font-semibold" style={{ color: OUTCOME_COLOR[a.outcome] }}>
-                      {String(t.auto[OUTCOME_KEY[a.outcome]])}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataList
+            caption={t.auto.actionsTitle}
+            rows={actions}
+            rowKey={(a) => a.id}
+            columns={[
+              {
+                key: "when",
+                label: t.auto.aWhen,
+                nowrap: true,
+                render: (a) => (
+                  <span className="tnum g4-muted">
+                    {timeOfDay(a.ts)} <span className="g4-small">· {relativeTime(a.ts)}</span>
+                  </span>
+                ),
+              },
+              { key: "agent", label: t.auto.aAgent, render: (a) => <span className="mono" style={{ color: "var(--ns-act-ink)" }}>{a.agent}</span> },
+              { key: "action", label: t.auto.aAction, render: (a) => <span className="mono">{a.event}</span> },
+              { key: "video", label: t.auto.aVideo, render: (a) => <span className="mono g4-muted">{a.videoId ?? t.common.dash}</span> },
+              { key: "outcome", label: t.auto.aOutcome, render: (a) => <StatusLamp tone={OUTCOME_LAMP[a.outcome]} label={String(t.auto[OUTCOME_KEY[a.outcome]])} /> },
+            ]}
+          />
         )}
       </Panel>
     </div>

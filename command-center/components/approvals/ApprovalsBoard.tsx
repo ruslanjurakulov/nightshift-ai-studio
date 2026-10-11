@@ -196,33 +196,33 @@ export function ApprovalsBoard({
   return (
     <div className="rhythm">
       {/* Per-channel requirement toggle */}
-      <div className="panel flex flex-wrap items-center justify-between gap-3 p-5 sm:p-6">
+      <section aria-labelledby="g3-req-h" className="g3-section g3-req">
         <div className="min-w-0">
-          <h2 className="t-section">{t.approvals.requireToggle}</h2>
-          <p className="mt-1 text-sm text-[var(--color-muted)]">
+          <h2 id="g3-req-h" className="t-panel">{t.approvals.requireToggle}</h2>
+          <p className="g3-hint">
             {require2p === null
               ? t.approvals.requireUnknownNote
               : require2p
                 ? t.approvals.requireOn
                 : t.approvals.requireOff}
           </p>
-          {!canToggle && <p className="mt-1 text-xs text-[var(--color-muted)]">{t.channels.adminOnly}</p>}
+          {!canToggle && <p className="g3-hint">{t.channels.adminOnly}</p>}
         </div>
         {require2p === null ? (
           // Unknown is not "off": the switch is disabled until it can be read.
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {canToggle && (
               <button
                 type="button"
                 data-requirement-toggle
                 disabled
-                className="pill btn-sky is-quiet inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-40"
+                className="g3-switch pill btn-sky is-quiet inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-40"
               >
                 <StatusPill tone="idle" label={t.approvals.requireUnknown} />
               </button>
             )}
             {!canToggle && <StatusPill tone="idle" label={t.approvals.requireUnknown} />}
-            <button type="button" onClick={() => router.refresh()} className="btn-sky pill px-4 py-1.5 text-xs">
+            <button type="button" onClick={() => router.refresh()} className="btn-sky pill px-4 py-2 text-sm">
               {t.common.retry}
             </button>
           </div>
@@ -233,112 +233,105 @@ export function ApprovalsBoard({
             aria-checked={require2p}
             disabled={busy}
             onClick={() => toggleRequirement(!require2p)}
-            className={`pill inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-40 ${
-              require2p ? "btn-sky is-solid" : "btn-sky is-quiet"
-            }`}
+            className="g3-switch pill btn-sky is-quiet inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-40"
           >
             <StatusPill tone={require2p ? "ok" : "idle"} label={require2p ? t.approvals.requireOn : t.approvals.requireOff} />
           </button>
         ) : (
           <StatusPill tone={require2p ? "ok" : "idle"} label={require2p ? t.approvals.requireOn : t.approvals.requireOff} />
         )}
-      </div>
+      </section>
 
       {/* Open a request (editor+) */}
       {canReq && (
-        <div className="panel flex flex-col gap-3 p-5 sm:p-6">
-          <h2 className="t-section">{t.approvals.requestTitle}</h2>
+        <section aria-labelledby="g3-ask-h" className="g3-section">
+          <h2 id="g3-ask-h" className="t-panel">{t.approvals.requestTitle}</h2>
           <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-1 flex-col gap-1">
-              <span className="text-xs text-[var(--color-muted)]">
-                {t.approvals.videoRef}
-              </span>
+            <label className="flex min-w-[14rem] flex-1 flex-col gap-1.5">
+              <span className="g3-sub">{t.approvals.videoRef}</span>
               <input
                 type="text"
                 value={videoRef}
                 onChange={(e) => setVideoRef(e.target.value)}
-                className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-fg)] outline-none focus:border-[var(--color-primary)]"
+                className="ns-field min-w-0"
               />
             </label>
             <button
               type="button"
               onClick={request}
               disabled={busy}
-              className="btn-sky is-solid pill px-5 py-2 text-sm disabled:opacity-40"
+              className="btn-sky is-solid pill px-5 py-2.5 text-sm disabled:opacity-40"
             >
               {busy ? t.approvals.requesting : t.approvals.request}
             </button>
           </div>
-        </div>
+        </section>
       )}
 
-      {error && <p className="tnum text-xs text-[var(--color-fail)]">{error}</p>}
+      {error && <p className="tnum text-sm text-[var(--color-fail)]">{error}</p>}
 
-      {/* Requests */}
-      <div className="panel overflow-hidden p-0">
-        <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-[var(--color-border)] px-4 py-2.5 text-xs text-[var(--color-muted)]">
-          <span>{t.approvals.colRequested}</span>
-          <span>{t.approvals.colStatus}</span>
-          <span />
-        </div>
+      {/* Requests: the desk */}
+      <section aria-labelledby="g3-rows-h" className="g3-section ns-desk">
+        <header className="g3-head">
+          <h2 id="g3-rows-h" className="t-panel">{t.approvals.colRequested}</h2>
+          <span className="g3-sub">{t.approvals.colStatus}</span>
+        </header>
         {loadFailed ? (
           <ErrorState compact message={t.approvals.readFailed} onRetry={load} />
         ) : rows === null ? (
-          <p className="p-4 text-sm text-[var(--color-muted)]">…</p>
+          <p className="g3-sub">…</p>
         ) : rows.length === 0 ? (
           <EmptyState>{t.approvals.empty}</EmptyState>
         ) : (
-          rows.map((row) => {
-            const isOwn = row.requested_by === myUserId;
-            const mayDecide = row.status === "pending" && canDecide(myRole, row.requested_by, myUserId);
-            return (
-              <div
-                key={row.id}
-                className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-[var(--color-border)] px-4 py-3 last:border-b-0"
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-sm text-[var(--color-fg)]">
-                    {row.video_ref || t.approvals.noVideoRef}
-                  </div>
-                  <div className="tnum text-xs text-[var(--color-muted)]">
-                    {t.approvals.colRequested}: {who(row.requested_by)} · {fmt(row.requested_at)}
-                  </div>
-                  {row.status !== "pending" && (
-                    <div className="tnum text-xs text-[var(--color-muted)]">
-                      {t.approvals.colDecided}: {who(row.decided_by)} · {fmt(row.decided_at)}
+          <ul className="g3-asks">
+            {rows.map((row, i) => {
+              const isOwn = row.requested_by === myUserId;
+              const mayDecide = row.status === "pending" && canDecide(myRole, row.requested_by, myUserId);
+              return (
+                <li key={row.id} className="g3-ask">
+                  <span className="g3-edge-no" aria-hidden>{String(i + 1).padStart(2, "0")}</span>
+                  <div className="g3-ask-main">
+                    <div className="g3-ask-title">{row.video_ref || t.approvals.noVideoRef}</div>
+                    <div className="tnum g3-sub">
+                      {t.approvals.colRequested}: {who(row.requested_by)} · {fmt(row.requested_at)}
                     </div>
-                  )}
-                </div>
-                <StatusPill tone={STATUS_TONE[row.status]} label={statusLabel[row.status]} />
-                {mayDecide ? (
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => decide(row, "approved")}
-                      disabled={busy}
-                      className="btn-sky is-solid pill px-3 py-1 text-xs disabled:opacity-40"
-                    >
-                      {t.approvals.approve}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => decide(row, "rejected")}
-                      disabled={busy}
-                      className="btn-sky is-quiet pill px-3 py-1 text-xs disabled:opacity-40"
-                    >
-                      {t.approvals.reject}
-                    </button>
+                    {row.status !== "pending" && (
+                      <div className="tnum g3-sub">
+                        {t.approvals.colDecided}: {who(row.decided_by)} · {fmt(row.decided_at)}
+                      </div>
+                    )}
                   </div>
-                ) : row.status === "pending" && isOwn ? (
-                  <span className="tnum text-xs text-[var(--color-muted)]">{t.approvals.cannotApproveOwn}</span>
-                ) : (
-                  <span />
-                )}
-              </div>
-            );
-          })
+                  <div className="g3-ask-state">
+                    <StatusPill tone={STATUS_TONE[row.status]} label={statusLabel[row.status]} />
+                  </div>
+                  {mayDecide ? (
+                    <div className="g3-ask-act">
+                      <button
+                        type="button"
+                        onClick={() => decide(row, "approved")}
+                        disabled={busy}
+                        className="btn-sky pill px-4 py-2 text-sm disabled:opacity-40"
+                      >
+                        {t.approvals.approve}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => decide(row, "rejected")}
+                        disabled={busy}
+                        className="btn-sky is-quiet pill px-4 py-2 text-sm disabled:opacity-40"
+                      >
+                        {t.approvals.reject}
+                      </button>
+                    </div>
+                  ) : row.status === "pending" && isOwn ? (
+                    <span className="tnum g3-sub g3-ask-act">{t.approvals.cannotApproveOwn}</span>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
         )}
-      </div>
+      </section>
     </div>
   );
 }

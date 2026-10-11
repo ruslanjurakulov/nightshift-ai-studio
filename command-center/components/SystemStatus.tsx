@@ -9,6 +9,7 @@ import { useI18n } from "@/lib/i18n/context";
 import type { Dictionary } from "@/lib/i18n";
 import type { SystemEventRow } from "@/lib/types";
 import { StatusLamp, type LampTone } from "@/components/ui/StatusLamp";
+import "@/app/(app)/app-pages-g5.css";
 
 const NAME_KEY: Record<SubsystemKey, keyof Dictionary["ops"]> = {
   youtube: "subYoutube",
@@ -52,22 +53,18 @@ export function SystemStatus({
   const bannerTone: LampTone = overall === "operational" ? "ok" : overall === "degraded" ? "warn" : "fail";
 
   return (
-    <div className="flex flex-col gap-3 p-4">
+    <div className="flex flex-col gap-4">
       <StatusLamp tone={bannerTone} label={banner} size="md" />
-      <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-        {subs.map((s) => {
-          return (
-            <li key={s.key} className="flex items-center justify-between gap-2 rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-2">
-              <span className="text-sm text-[var(--color-fg)]">{String(t.ops[NAME_KEY[s.key]])}</span>
-              <span className="flex items-center gap-3">
-                {s.lastSuccess && (
-                  <span className="tnum hidden text-xs text-[var(--color-muted)] sm:inline">{relativeTime(s.lastSuccess)}</span>
-                )}
-                <StatusLamp tone={s.tone as LampTone} label={String(t.ops[STATE_KEY[s.state]])} />
-              </span>
-            </li>
-          );
-        })}
+      <ul className="g5-tiles">
+        {subs.map((s) => (
+          <li key={s.key} className="g5-tile">
+            <span className="g5-tile-name">{String(t.ops[NAME_KEY[s.key]])}</span>
+            <span className="g5-tile-end">
+              {s.lastSuccess && <span className="g5-tile-time hidden sm:inline">{relativeTime(s.lastSuccess)}</span>}
+              <StatusLamp tone={s.tone as LampTone} label={String(t.ops[STATE_KEY[s.state]])} />
+            </span>
+          </li>
+        ))}
       </ul>
     </div>
   );

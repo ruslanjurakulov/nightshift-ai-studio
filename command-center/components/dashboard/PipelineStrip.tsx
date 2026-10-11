@@ -3,6 +3,7 @@
 import { useI18n } from "@/lib/i18n/context";
 import { PIPELINE_ORDER, type PipelineStageKey } from "@/lib/intelligence";
 import type { Dictionary } from "@/lib/i18n";
+import "@/app/(app)/app-pages-g5.css";
 
 export type StageTone = "done" | "run" | "fail" | "idle";
 
@@ -18,13 +19,8 @@ const LABEL_KEY: Record<PipelineStageKey, keyof Dictionary["pipeline"]> = {
   publish: "sPublish",
 };
 
-const TONE_COLOR: Record<StageTone, string> = {
-  done: "var(--color-primary)",
-  run: "var(--color-warn)",
-  fail: "var(--color-fail)",
-  // Used for label text, so the idle tone takes muted (idle is for dots).
-  idle: "var(--color-muted)",
-};
+/** A stage is a lamp and its word: done is lit green, running amber, failed red, nothing recorded an unlit ring. */
+const LAMP: Record<StageTone, "ok" | "run" | "fail" | "idle"> = { done: "ok", run: "run", fail: "fail", idle: "idle" };
 
 /**
  * The run as one line, the way the approved direction closes its screen: every
@@ -44,19 +40,14 @@ export function PipelineStrip({
 }) {
   const { t } = useI18n();
   return (
-    <div className="flex flex-wrap items-center gap-x-7 gap-y-3 border-t border-[var(--color-border)] pt-6">
+    <div className="g5-strip">
       {PIPELINE_ORDER.map((stage) => (
-        <span
-          key={stage}
-          className="text-xs font-medium"
-          style={{ color: TONE_COLOR[tones[stage]] }}
-        >
+        <span key={stage} className="g5-strip-stage" style={{ color: tones[stage] === "idle" ? "var(--color-muted)" : "var(--color-fg)" }}>
+          <span aria-hidden className="ns-lamp" data-tone={LAMP[tones[stage]]} />
           {t.pipeline[LABEL_KEY[stage]]}
         </span>
       ))}
-      <span className="tnum ml-auto text-xs text-[var(--color-muted)]">
-        {right ?? t.dashboard.stripIdle}
-      </span>
+      <span className="g5-strip-end">{right ?? t.dashboard.stripIdle}</span>
     </div>
   );
 }

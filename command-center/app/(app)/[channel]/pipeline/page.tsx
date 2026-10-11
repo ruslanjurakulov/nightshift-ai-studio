@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
-import { Panel, EmptyState } from "@/components/ui";
+import { EmptyState } from "@/components/ui";
+import { Section } from "@/components/g3/Section";
 import { StatusLamp } from "@/components/ui/StatusLamp";
 import { getDictionary } from "@/lib/i18n/server";
 import { PageHeader } from "@/components/PageHeader";
@@ -167,7 +168,7 @@ export default async function PipelinePage() {
   const passes = deriveSystemPasses(events);
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open stagger-enter">
       <PageHeader
         icon="pipeline"
         title={t.pipeline.title}
@@ -175,50 +176,47 @@ export default async function PipelinePage() {
         actions={<StageLegend />}
       />
 
-      <Panel title={t.pipeline.videoPipelines}>
+      <Section title={t.pipeline.videoPipelines} desk>
         {dbError ? (
           <EmptyState>{t.pipeline.dbErr}</EmptyState>
         ) : pipelines.length === 0 ? (
           <EmptyState>{t.pipeline.empty}</EmptyState>
         ) : (
-          <div className="flex flex-col divide-y divide-[var(--color-border)]">
-            {pipelines.map((p) => (
-              <div key={p.videoId} className="flex flex-col gap-3 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="mono truncate text-xs text-[var(--color-fg)]">{p.videoId}</div>
-                  <div className="flex items-center gap-3">
-                    <span className="tnum text-xs text-[var(--color-muted)]">
+          <ol className="g3-lanes">
+            {pipelines.map((p, i) => (
+              <li key={p.videoId} className="g3-lane">
+                <div className="g3-lane-head">
+                  <span className="g3-lane-no ns-tc" aria-hidden>
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className="mono g3-lane-id">{p.videoId}</span>
+                  <span className="g3-lane-meta">
+                    <span className="tnum text-sm text-[var(--color-muted)]">
                       {p.lastActivity ? relativeTime(p.lastActivity) : t.common.na}
                     </span>
                     <StatusLamp tone={OVERALL_TONE[p.overall]} label={overallLabel[p.overall]} live={p.overall === "RUNNING"} />
-                  </div>
+                  </span>
                 </div>
-                <div className="overflow-x-auto">
-                  <div className="min-w-[640px]">
-                    <StageStrip stages={p.stages} />
-                  </div>
-                </div>
-              </div>
+                <StageStrip stages={p.stages} />
+              </li>
             ))}
-          </div>
+          </ol>
         )}
-      </Panel>
+      </Section>
 
-      <Panel title={t.pipeline.systemPasses}>
+      <Section title={t.pipeline.systemPasses}>
         {passes.length === 0 ? (
           <EmptyState>{t.pipeline.noPasses}</EmptyState>
         ) : (
-          <ul className="divide-y divide-[var(--color-border)]">
+          <ul className="g3-passes">
             {passes.map((p) => {
               const stale = Date.now() - (storedMs(p.lastTs) ?? 0) > HEARTBEAT_MS;
               return (
-                <li key={p.event} className="row-sweep flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-[var(--color-panel-2)]">
+                <li key={p.event} className="g3-pass">
                   <StatusLamp tone={p.tone} label={{ ok: t.status.ok, run: t.status.running, fail: t.status.failed, idle: t.status.idle }[p.tone]} hideLabel />
-                  <span className="tnum w-28 shrink-0 text-xs text-[var(--color-primary)]">
-                    {p.agent ?? t.common.system}
-                  </span>
-                  <span className="truncate text-[var(--color-fg)]">{p.event}</span>
-                  <span className="tnum ml-auto shrink-0 text-xs text-[var(--color-muted)]">
+                  <span className="g3-pass-agent">{p.agent ?? t.common.system}</span>
+                  <span className="mono g3-pass-event">{p.event}</span>
+                  <span className="tnum g3-pass-count">
                     {p.count}× · {timeOfDay(p.lastTs)} {stale ? t.pipeline.stale : ""}
                   </span>
                 </li>
@@ -226,7 +224,7 @@ export default async function PipelinePage() {
             })}
           </ul>
         )}
-      </Panel>
+      </Section>
     </div>
   );
 }

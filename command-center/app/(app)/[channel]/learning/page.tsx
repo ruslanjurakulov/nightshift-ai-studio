@@ -14,6 +14,7 @@ import { fetchTopicScores, getChannelScope } from "@/lib/channels-server";
 import { isScoped, scopeQuery } from "@/lib/channels";
 import type { FeedbackSignalRow, TopicPerformanceRow, VideoRow } from "@/lib/types";
 import { uploadedOnly } from "@/lib/heldVideos";
+import "../../app-pages-g4.css";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -59,7 +60,7 @@ export default async function LearningPage() {
   const topics = deriveTopicIntel(topicPerf, signals, videos);
 
   return (
-    <div className="rhythm stagger-enter">
+    <div className="rhythm ns-open g4 stagger-enter">
       <PageHeader icon="learning" title={t.intel.learningTitle} subtitle={t.intel.learningSubtitle} />
       <LearningsPanel
         rows={learnings}

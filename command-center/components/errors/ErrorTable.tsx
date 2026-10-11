@@ -3,7 +3,10 @@
 import { useMemo, useState } from "react";
 import { relativeTime, timeOfDay } from "@/lib/format";
 import type { SystemEventRow } from "@/lib/types";
-import { EmptyState } from "@/components/ui";
+import Link from "next/link";
+import { StatusLamp } from "@/components/ui/StatusLamp";
+import { StateBlock } from "@/components/states/StateBlock";
+import { useChannelPath } from "@/lib/channels-client";
 import { useI18n } from "@/lib/i18n/context";
 
 /** Pull a human-readable error string out of an event's jsonb metadata:
@@ -38,6 +41,7 @@ function isError(e: SystemEventRow): boolean {
  */
 export function ErrorTable({ rows }: { rows: SystemEventRow[] }) {
   const { t } = useI18n();
+  const path = useChannelPath();
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
@@ -61,63 +65,58 @@ export function ErrorTable({ rows }: { rows: SystemEventRow[] }) {
 
   return (
     <div className="flex flex-col">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-2.5">
+      <div className="g5-tools">
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t.errors.filter}
-          className="tnum w-full max-w-md rounded-md border border-[var(--color-border)] bg-[var(--color-panel-2)] px-3 py-1.5 text-xs text-[var(--color-fg)] outline-none transition-colors placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)]"
+          aria-label={t.errors.filter}
+          className="ns-field"
         />
-        <span className="shrink-0 text-xs text-[var(--color-muted)]">
+        <span className="g5-note tnum" aria-live="polite">
           {filtered.length} / {rows.length}
         </span>
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState>{rows.length === 0 ? t.errors.noneClean : t.errors.noMatch}</EmptyState>
+        rows.length === 0 ? (
+          <StateBlock
+            tone="ok"
+            title={t.errors.noneClean}
+            actions={
+              <Link href={path("/logs")} className="btn-quiet">
+                {t.nav.logs}
+              </Link>
+            }
+          />
+        ) : (
+          <StateBlock tone="idle" title={t.errors.noMatch} compact />
+        )
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
-                <th className="px-4 py-2 font-semibold">{t.errors.thWhen}</th>
-                <th className="px-4 py-2 font-semibold">{t.errors.thComponent}</th>
-                <th className="px-4 py-2 font-semibold">{t.errors.thEvent}</th>
-                <th className="px-4 py-2 font-semibold">{t.errors.thRelated}</th>
-                <th className="px-4 py-2 font-semibold">{t.errors.thMessage}</th>
-                <th className="px-4 py-2 font-semibold">{t.errors.thSeverity}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((e) => (
-                <tr key={e.event_key} className="border-b border-[var(--color-border)]/50 align-top transition-colors hover:bg-[var(--color-panel-2)]">
-                  <td className="whitespace-nowrap px-4 py-2 tnum text-xs text-[var(--color-muted)]">
-                    <div>{relativeTime(e.ts)}</div>
-                    <div className="text-xs opacity-70">{timeOfDay(e.ts)}</div>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2 tnum text-xs text-[var(--color-primary)]">
-                    {e.agent ?? t.common.system}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2 tnum text-xs text-[var(--color-fg)]">
-                    {e.event}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2 tnum text-xs text-[var(--color-muted)]">
-                    {e.video_id ? <div>vid: {e.video_id}</div> : null}
-                    {e.job_id ? <div>job: {e.job_id}</div> : null}
-                    {!e.video_id && !e.job_id ? "—" : null}
-                  </td>
-                  <td className="px-4 py-2 tnum text-xs text-[var(--color-fail)]">
-                    <span className="block max-w-xl break-words">{errorText(e.metadata)}</span>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2 tnum text-xs font-semibold text-[var(--color-fail)]">
-                    {isError(e) ? t.errors.sevError : t.errors.sevWarn}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="g5-rows">
+          {filtered.map((e) => (
+            <li key={e.event_key} className="g5-row g5-fail">
+              <div className="min-w-0">
+                <div className="g5-fail-head">
+                  <span className="g5-fail-event">{e.event}</span>
+                  <span className="g5-fail-who">{e.agent ?? t.common.system}</span>
+                  <StatusLamp tone={isError(e) ? "fail" : "warn"} label={isError(e) ? t.errors.sevError : t.errors.sevWarn} />
+                </div>
+                <p className="g5-fail-msg">{errorText(e.metadata)}</p>
+                {(e.video_id || e.job_id) && (
+                  <p className="g5-row-meta tnum">
+                    {[e.video_id ? `${t.errors.thRelated}: ${e.video_id}` : null, e.job_id ? `job: ${e.job_id}` : null].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+              </div>
+              <div className="g5-fail-when">
+                <div>{relativeTime(e.ts)}</div>
+                <div>{timeOfDay(e.ts)}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { STYLE_PRESETS, presetGradient } from "@/lib/stylePresets";
 import { Chip } from "@/components/ui/Chip";
-import { TileGrid } from "@/components/ui/ContactSheet";
+import { ContactSheet, Frame } from "@/components/ui/ContactSheet";
+import { Section } from "@/components/g3/Section";
 
 /**
  * The Studio Canvas preset gallery, now clickable.
@@ -66,61 +67,48 @@ export function PresetGallery({
   }
 
   return (
-    <div>
-      <h2 className="t-section">{t.studio.presetsTitle}</h2>
-      <p className="t-lead mt-2 mb-4 text-sm">{t.studio.presetsHint}</p>
-      {!channelId && (
-        <p className="mb-4 text-sm text-[var(--color-warn)]">{t.studio.pickChannelHint}</p>
-      )}
-      <TileGrid min={260} gap={16} label={t.studio.presetsTitle}>
-        {STYLE_PRESETS.map((p) => {
+    <Section title={t.studio.presetsTitle} hint={t.studio.presetsHint} desk>
+      {!channelId && <p className="m-0 text-base text-[var(--color-warn)]">{t.studio.pickChannelHint}</p>}
+      <ContactSheet min={300} label={t.studio.presetsTitle}>
+        {STYLE_PRESETS.map((p, i) => {
           const isApplied = applied === p.id;
           return (
-            <li
+            <Frame
               key={p.id}
-              className="panel overflow-hidden p-0 hover:border-[var(--color-primary-dim)]"
-              style={isApplied ? { borderColor: "var(--color-primary)" } : undefined}
+              number={String(i + 1).padStart(2, "0")}
+              edge={[`${t.studio.moodLabel}: ${p.mood}`]}
+              aspect="16 / 9"
+              selected={isApplied}
+              body={
+                <div className="flex h-full flex-col gap-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="m-0 text-base font-semibold text-[var(--color-fg)]">{p.name}</h3>
+                    {isApplied && (
+                      <Chip plain tone="lit" className="shrink-0">
+                        {t.studio.currentBadge}
+                      </Chip>
+                    )}
+                  </div>
+                  <p className="m-0 text-sm leading-relaxed text-[var(--color-muted)]">{p.directive}</p>
+                  <div className="mt-auto flex flex-col gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => apply(p.id)}
+                      disabled={!channelId || busy !== null || isApplied}
+                      className="btn-quiet w-full disabled:opacity-40"
+                    >
+                      {busy === p.id ? t.studio.applying : isApplied ? t.studio.applied : t.studio.applyBtn}
+                    </button>
+                    {failed === p.id && <p className="tnum m-0 text-sm text-[var(--color-fail)]">{t.studio.applyFailed}</p>}
+                  </div>
+                </div>
+              }
             >
-              <div className="h-24 w-full" style={{ background: presetGradient(p) }} aria-hidden />
-              <div className="space-y-2 p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-[var(--color-fg)]">{p.name}</span>
-                  {isApplied ? (
-                    <Chip plain tone="lit" className="shrink-0">
-                      {t.studio.currentBadge}
-                    </Chip>
-                  ) : (
-                    <Chip plain className="shrink-0">
-                      {t.studio.moodLabel}: {p.mood}
-                    </Chip>
-                  )}
-                </div>
-                <p className="text-sm leading-relaxed text-[var(--color-muted)]">{p.directive}</p>
-                <div className="flex items-center justify-between gap-2 pt-1">
-                  <span className="tnum text-xs text-[var(--color-muted)]">
-                    {t.studio.applyHint} <span className="text-[var(--color-primary)]">{p.id}</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => apply(p.id)}
-                    disabled={!channelId || busy !== null || isApplied}
-                    className="btn-quiet shrink-0 disabled:opacity-40"
-                  >
-                    {busy === p.id
-                      ? t.studio.applying
-                      : isApplied
-                        ? t.studio.applied
-                        : t.studio.applyBtn}
-                  </button>
-                </div>
-                {failed === p.id && (
-                  <p className="tnum text-xs text-[var(--color-fail)]">{t.studio.applyFailed}</p>
-                )}
-              </div>
-            </li>
+              <div className="size-full" style={{ background: presetGradient(p) }} aria-hidden />
+            </Frame>
           );
         })}
-      </TileGrid>
-    </div>
+      </ContactSheet>
+    </Section>
   );
 }

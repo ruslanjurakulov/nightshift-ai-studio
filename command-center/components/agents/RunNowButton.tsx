@@ -151,7 +151,7 @@ export function RunNowButton({
         </button>
       )}
 
-      <span className="tnum text-xs" aria-live="polite">
+      <span className="tnum text-sm" aria-live="polite">
         {phase === "queued" ? (
           <span className="text-[var(--color-ok)]">{t.agents.runQueued}</span>
         ) : phase === "error" ? (
@@ -182,7 +182,7 @@ export function RunNowButton({
   const topicBlock = (
     <div className="flex flex-col gap-2">
       <label className="flex flex-col gap-1">
-        <span className="text-xs text-[var(--color-muted)]">
+        <span className="text-sm text-[var(--color-muted)]">
           {t.agents.runTopicLabel}
         </span>
         <input
@@ -191,7 +191,7 @@ export function RunNowButton({
           onChange={(e) => setTopic(e.target.value)}
           placeholder={t.agents.runTopicPlaceholder}
           maxLength={300}
-          className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-transparent px-4 py-2 text-sm outline-none transition-colors focus:border-[var(--color-primary)]"
+          className="ns-field"
         />
       </label>
 
@@ -200,15 +200,15 @@ export function RunNowButton({
           type="button"
           onClick={loadIdeas}
           disabled={ideasPhase === "loading"}
-          className="btn-quiet text-xs disabled:opacity-40"
+          className="btn-quiet text-sm disabled:opacity-40"
         >
           {ideasPhase === "loading" ? t.agents.runIdeasLoading : t.agents.runIdeas}
         </button>
         {ideasPhase === "error" && (
-          <span className="tnum text-xs text-[var(--color-fail)]">{t.agents.runIdeasFailed}</span>
+          <span className="tnum text-sm text-[var(--color-fail)]">{t.agents.runIdeasFailed}</span>
         )}
         {ideasPhase === "loaded" && ideas.length === 0 && (
-          <span className="tnum text-xs text-[var(--color-muted)]">{t.agents.runIdeasEmpty}</span>
+          <span className="tnum text-sm text-[var(--color-muted)]">{t.agents.runIdeasEmpty}</span>
         )}
       </div>
 
@@ -220,7 +220,7 @@ export function RunNowButton({
               type="button"
               onClick={() => setTopic(idea.label)}
               title={idea.source === "demand" ? t.agents.runIdeaDemand : t.agents.runIdeaProven}
-              className="rounded-[var(--ns-r-key)] inline-flex items-center gap-1.5 border border-[var(--color-border)] px-3 py-1 text-xs text-[var(--color-muted)] transition-colors hover:border-[var(--color-primary)] hover:text-[var(--color-fg)]"
+              className="rounded-[var(--ns-r-key)] inline-flex items-center gap-1.5 border border-[var(--color-border)] px-3 min-h-[44px] text-sm text-[var(--color-muted)] transition-colors hover:border-[var(--color-primary)] hover:text-[var(--color-fg)]"
             >
               <span
                 aria-hidden
@@ -241,12 +241,12 @@ export function RunNowButton({
   // Per-run controls: length, language and look. Each defaults to "the
   // channel's own", so leaving them untouched runs exactly as before.
   const selectClass =
-    "rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-transparent px-4 py-2 text-sm outline-none transition-colors focus:border-[var(--color-primary)]";
+    "ns-field";
   const controlsBlock = (
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-[var(--color-muted)]">
+          <span className="text-sm text-[var(--color-muted)]">
             {t.agents.runDurationLabel}
           </span>
           <select value={duration} onChange={(e) => setDuration(e.target.value)} className={selectClass}>
@@ -258,7 +258,7 @@ export function RunNowButton({
           </select>
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-[var(--color-muted)]">
+          <span className="text-sm text-[var(--color-muted)]">
             {t.agents.runLangLabel}
           </span>
           <select value={language} onChange={(e) => setLanguage(e.target.value)} className={selectClass}>
@@ -274,7 +274,7 @@ export function RunNowButton({
         </label>
       </div>
       <label className="flex flex-col gap-1">
-        <span className="text-xs text-[var(--color-muted)]">
+        <span className="text-sm text-[var(--color-muted)]">
           {t.agents.runStyleLabel}
         </span>
         <input
@@ -283,17 +283,17 @@ export function RunNowButton({
           onChange={(e) => setStyleOverride(e.target.value)}
           placeholder={t.agents.runStylePlaceholder}
           maxLength={300}
-          className="rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-transparent px-4 py-2 text-sm outline-none transition-colors focus:border-[var(--color-primary)]"
+          className="ns-field"
         />
       </label>
     </div>
   );
 
   return (
-    <div className="panel flex flex-col gap-3 p-5 sm:p-6">
+    <div className="panel ns-desk flex flex-col gap-3">
       <div>
-        <h2 className="t-section">{t.agents.runTitle}</h2>
-        <p className="mt-1 max-w-[72ch] text-xs leading-relaxed text-[var(--color-muted)]">
+        <h2 className="t-panel">{t.agents.runTitle}</h2>
+        <p className="mt-1 max-w-[72ch] text-sm leading-relaxed text-[var(--color-muted)]">
           {t.agents.runHint}
         </p>
       </div>

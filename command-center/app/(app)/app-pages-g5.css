@@ -1,0 +1,350 @@
+/* Group 5 (account, onboarding and the shared states): the page-specific rules that sit on top of the foundation
+   (docs/design/app-redesign-1/FOUNDATION.md). Everything here is `g5-` prefixed, reads tokens from globals.css only, and is
+   safe to load on screens that do not carry the app shell (the error boundary, first-run), so each rule names the tokens it
+   needs and nothing else. Light and dark both come from the tokens.
+
+   The idea carried over from the foundation: ruled, open sections on the ground; ONE lit desk per page; amber for lamps,
+   selection and edge numbers; indigo only on the one filled key. */
+
+/* ── Type used across the pages ───────────────────────────────────────────── */
+.g5-h {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.011em;
+  color: var(--color-fg);
+}
+.g5-sub {
+  margin: 4px 0 0;
+  max-width: 62ch;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--color-muted);
+}
+.g5-sechead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
+  margin-bottom: 12px;
+}
+/* A label: 14px, never smaller. */
+.g5-k {
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--color-muted);
+}
+.g5-v { font-size: 1rem; font-weight: 500; color: var(--color-fg); font-variant-numeric: tabular-nums; }
+.g5-note { margin: 0; font-size: 0.875rem; line-height: 1.5; color: var(--color-muted); }
+.g5-fail-text { color: var(--color-fail); }
+/* The edge number: the same amber-ink figure the frames wear on the public pages. */
+.g5-num {
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ns-amber-ink);
+}
+.g5-figure {
+  font-size: clamp(2.25rem, 1.6rem + 2.4vw, 3.5rem);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Fields: a 14px label over a 44px field ───────────────────────────────── */
+.g5-field { display: flex; min-width: 0; flex-direction: column; gap: 6px; }
+.g5-field > .g5-k { color: var(--color-muted); }
+.g5-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; }
+.g5-form > .g5-field { flex: 1 1 14rem; }
+.g5-form > .g5-field[data-grow="2"] { flex-grow: 2; flex-basis: 18rem; }
+.g5-form > .g5-field[data-fixed] { flex: 0 1 12rem; }
+.g5-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+select.ns-field { padding-right: 12px; }
+.g5-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--ns-act-ink);
+  text-underline-offset: 3px;
+}
+.g5-link:hover { text-decoration: underline; }
+.g5-check { display: flex; align-items: center; gap: 12px; min-height: 44px; font-size: 0.9375rem; color: var(--color-fg); }
+.g5-check input { width: 20px; height: 20px; accent-color: var(--ns-act); flex: none; }
+
+/* ── Ruled lists: a row has a top rule, the last has a bottom one ─────────── */
+.g5-rows { list-style: none; margin: 0; padding: 0; }
+.g5-row {
+  display: grid;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 16px 0;
+  border-top: 1px solid var(--ns-rule);
+}
+.g5-rows > .g5-row:last-child { border-bottom: 1px solid var(--ns-rule); }
+.g5-row-title { margin: 0; font-size: 1rem; font-weight: 500; line-height: 1.35; color: var(--color-fg); overflow-wrap: anywhere; }
+.g5-row-meta { margin: 2px 0 0; font-size: 0.875rem; line-height: 1.5; color: var(--color-muted); overflow-wrap: anywhere; }
+
+/* Getting started: number, the step, its key */
+.g5-step { grid-template-columns: 2.5rem minmax(0, 1fr) auto; align-items: start; }
+.g5-step[data-next="true"] { box-shadow: inset 3px 0 0 var(--ns-act); padding-left: 14px; margin-left: -14px; }
+.g5-step-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.g5-step .g5-num { padding-top: 2px; }
+@media (max-width: 639px) {
+  .g5-step { grid-template-columns: 2rem minmax(0, 1fr); }
+  .g5-step > :last-child:not(:nth-child(2)) { grid-column: 2; justify-self: start; }
+  .g5-step[data-next="true"] { margin-left: 0; padding-left: 12px; }
+}
+
+/* The desk of getting started and its siblings: the figure on the left, the one next job on the right */
+.g5-desk-grid { display: grid; gap: 24px 48px; }
+@media (min-width: 900px) {
+  .g5-desk-grid[data-two] { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: center; }
+  .g5-desk-grid[data-two] > :last-child { padding-left: 48px; border-left: 1px solid var(--ns-rule); }
+}
+.g5-desk-grid > * { min-width: 0; }
+.g5-progress-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px; }
+.g5-figure-unit { font-size: 1.125rem; font-weight: 500; color: var(--color-muted); }
+
+/* Figures in a row: label, value, sub; a rule between them */
+.g5-figs { display: grid; gap: 20px 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g5-figs > div { padding-right: 12px; min-width: 0; }
+@media (min-width: 720px) {
+  .g5-figs { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .g5-figs > div + div { padding-left: 20px; border-left: 1px solid var(--ns-rule); }
+}
+.g5-fig-v { margin-top: 8px; font-size: clamp(1.625rem, 1.3rem + 1vw, 2rem); font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.g5-fig-sub { margin-top: 6px; max-width: 24ch; font-size: 0.875rem; line-height: 1.4; color: var(--color-muted); overflow-wrap: anywhere; }
+
+/* People (members): the address, its state, its role, its key */
+.g5-person { grid-template-columns: minmax(0, 1fr) auto auto; }
+.g5-person-role { min-width: 9.5rem; }
+@media (max-width: 639px) {
+  .g5-person { grid-template-columns: minmax(0, 1fr) auto; }
+  .g5-person > :first-child { grid-column: 1 / -1; }
+  .g5-person-role { min-width: 0; width: 100%; }
+}
+.g5-legend { display: grid; gap: 12px 40px; margin: 0; }
+@media (min-width: 720px) { .g5-legend { grid-template-columns: 1fr 1fr; } }
+.g5-legend dt { font-size: 0.9375rem; font-weight: 600; color: var(--color-fg); }
+.g5-legend dd { margin: 2px 0 0; font-size: 0.9375rem; line-height: 1.5; color: var(--color-muted); }
+
+/* The authenticator: the QR on a white tile (a code reads on white), the secret beside it */
+.g5-qr { width: 11rem; height: 11rem; padding: 8px; border-radius: var(--ns-r-key); background: #fff; box-shadow: inset 0 0 0 1px var(--ns-rule-strong); flex: none; }
+.g5-secret { display: block; padding: 12px 14px; border-radius: var(--ns-r-key); background: var(--ns-key); box-shadow: inset 0 0 0 1px var(--ns-rule); font-size: 0.9375rem; line-height: 1.5; overflow-wrap: anywhere; color: var(--color-fg); }
+
+/* Providers (billing): a ruled list, not a grid of cards */
+.g5-prov { grid-template-columns: minmax(0, 1fr); align-items: start; gap: 16px 24px; }
+.g5-prov-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 20px; margin: 0; }
+.g5-prov-facts dd { margin: 4px 0 0; font-size: 1rem; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--color-fg); overflow-wrap: anywhere; }
+.g5-prov-price { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; min-width: 0; }
+.g5-prov-price .g5-field { flex: 1 1 9rem; min-width: 0; }
+.g5-prov-end { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+@media (max-width: 639px) {
+  .g5-prov-facts { grid-template-columns: 1fr 1fr; }
+}
+.g5-prov-act { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+.g5-prov-price { flex: 1 1 14rem; max-width: 26rem; }
+@media (min-width: 720px) {
+  .g5-prov { grid-template-columns: 11rem minmax(0, 1fr); align-items: start; }
+  .g5-prov > :first-child { grid-row: span 2; }
+}
+.g5-pay { padding: 16px; margin-top: 4px; border-radius: var(--ns-r-key); background: var(--ns-key); box-shadow: inset 0 0 0 1px var(--ns-rule); display: flex; flex-direction: column; gap: 14px; }
+
+/* The top-up plan: columns of money on a ruled grid; on a phone each provider is a block */
+.g5-plan { list-style: none; margin: 0; padding: 0; }
+.g5-plan-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; padding: 14px 0; border-top: 1px solid var(--ns-rule); align-items: baseline; }
+.g5-plan-row[data-off="true"] { opacity: 0.55; }
+.g5-plan-row > .g5-plan-name { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; font-weight: 500; font-size: 1rem; }
+.g5-plan-cell { display: flex; flex-direction: column; gap: 2px; font-variant-numeric: tabular-nums; font-size: 1rem; }
+.g5-plan-cell > .g5-k { font-size: 0.875rem; }
+.g5-plan-head { display: none; }
+.g5-plan-total { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 16px; padding: 16px 0 0; border-top: 2px solid var(--ns-rule-strong); }
+@media (min-width: 720px) {
+  .g5-plan-head,
+  .g5-plan-row { grid-template-columns: 2rem minmax(10rem, 1.4fr) repeat(4, minmax(5.5rem, 1fr)); gap: 8px 16px; }
+  .g5-plan-head { display: grid; padding: 0 0 8px; font-size: 0.875rem; font-weight: 500; color: var(--color-muted); }
+  .g5-plan-head > span:nth-child(n + 3),
+  .g5-plan-cell { text-align: right; }
+  .g5-plan-row > .g5-plan-name { grid-column: auto; display: contents; }
+  .g5-plan-cell > .g5-k { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
+
+/* Errors: a failure is two lines and a trail, not a six-column table */
+.g5-fail { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+.g5-fail-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.g5-fail-event { font-size: 1rem; font-weight: 600; color: var(--color-fg); overflow-wrap: anywhere; }
+.g5-fail-who { font-size: 0.9375rem; color: var(--ns-act-ink); }
+.g5-fail-msg { margin: 6px 0 0; font-size: 0.9375rem; line-height: 1.5; color: var(--color-fail); overflow-wrap: anywhere; }
+.g5-fail-when { text-align: right; font-size: 0.875rem; line-height: 1.4; color: var(--color-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.g5-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-bottom: 8px; }
+.g5-tools .ns-field { flex: 1 1 16rem; min-width: 0; }
+@media (max-width: 479px) {
+  .g5-fail { grid-template-columns: minmax(0, 1fr); }
+  .g5-fail-when { text-align: left; }
+}
+
+/* Command center: the run is the desk; its instruments are ruled sections beside it */
+.g5-cc { display: grid; gap: 40px 56px; }
+@media (min-width: 1100px) {
+  .g5-cc { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+}
+.g5-cc > * { min-width: 0; }
+.g5-cc-main, .g5-cc-side { display: flex; flex-direction: column; gap: 32px; }
+.g5-run-title { margin: 6px 0 0; font-size: clamp(1.5rem, 1.2rem + 1.2vw, 2rem); font-weight: 600; line-height: 1.2; letter-spacing: -0.02em; overflow-wrap: anywhere; text-wrap: balance; }
+.g5-run-lead { margin: 8px 0 0; max-width: 56ch; font-size: 1rem; line-height: 1.55; color: var(--color-muted); }
+.g5-tiles { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.g5-tile { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--ns-rule); min-height: 44px; }
+.g5-tiles > .g5-tile:last-child { border-bottom: 1px solid var(--ns-rule); }
+.g5-tile-name { font-size: 1rem; color: var(--color-fg); min-width: 0; overflow-wrap: anywhere; }
+.g5-tile-end { display: inline-flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.g5-tile-time { font-size: 0.875rem; color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.g5-feed { display: flex; flex-direction: column; }
+.g5-feed-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding-bottom: 12px; }
+.g5-feed-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; border-bottom: 1px solid var(--ns-rule); }
+.g5-feed-item { display: grid; grid-template-columns: 6.5rem auto auto minmax(0, 1fr); align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--ns-rule); font-size: 0.9375rem; }
+.g5-feed-item .g5-feed-t { font-size: 0.875rem; color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.g5-feed-item .g5-feed-agent { color: var(--ns-act-ink); font-size: 0.875rem; }
+.g5-feed-item .g5-feed-event { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-fg); }
+@media (max-width: 599px) {
+  .g5-feed-item { grid-template-columns: auto minmax(0, 1fr); row-gap: 2px; }
+  .g5-feed-item .g5-feed-t { grid-column: 2; }
+  .g5-feed-item .g5-feed-agent { grid-column: 2; }
+  .g5-feed-item .g5-feed-event { grid-column: 2; white-space: normal; overflow-wrap: anywhere; }
+}
+.g5-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; padding-top: 20px; border-top: 1px solid var(--ns-rule); }
+.g5-strip-stage { display: inline-flex; align-items: center; gap: 8px; font-size: 0.875rem; font-weight: 500; }
+.g5-strip-stage .ns-lamp { --lamp: var(--ns-lamp-off); }
+.g5-strip-end { margin-left: auto; font-size: 0.875rem; color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.g5-topics { list-style: none; margin: 0; padding: 0; }
+.g5-topic { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--ns-rule); }
+.g5-topics > .g5-topic:last-child { border-bottom: 1px solid var(--ns-rule); }
+.g5-quota { display: flex; flex-direction: column; gap: 16px; }
+.g5-quota-row { display: flex; flex-direction: column; gap: 8px; }
+
+/* ── States: what is true, and one next step ──────────────────────────────── */
+.g5-state { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 24px 0; }
+.g5-state[data-compact="true"] { padding: 12px 0; gap: 8px; }
+.g5-state[data-centered="true"] { align-items: center; text-align: center; }
+.g5-state-head { display: flex; align-items: center; gap: 12px; }
+.g5-state-title { margin: 0; font-size: 1.125rem; font-weight: 600; line-height: 1.3; color: var(--color-fg); }
+.g5-state-body { margin: 0; max-width: 58ch; font-size: 0.9375rem; line-height: 1.55; color: var(--color-muted); }
+.g5-state-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 4px; }
+.g5-state-code { display: inline-block; padding: 2px 8px; border-radius: 8px; background: var(--ns-key); box-shadow: inset 0 0 0 1px var(--ns-rule); font-size: 0.875rem; overflow-wrap: anywhere; color: var(--color-fg); }
+/* A state that takes over a whole screen (the error boundary, not configured) */
+.g5-boundary { display: flex; min-height: 60vh; align-items: center; justify-content: center; padding: 24px 16px; }
+.g5-boundary-desk {
+  position: relative;
+  width: 100%;
+  max-width: 40rem;
+  padding: 28px 24px;
+  background: var(--ns-console);
+  border: 1px solid color-mix(in srgb, var(--ns-act) 34%, var(--ns-rule));
+  border-radius: var(--ns-r-sheet);
+  box-shadow: var(--ns-lift), 0 36px 90px -44px var(--ns-lit-glow);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.g5-boundary-desk::before {
+  content: "";
+  position: absolute;
+  inset: 0 24px auto 24px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ns-act) 24%, var(--ns-amber) 62%, transparent);
+  opacity: 0.85;
+  pointer-events: none;
+}
+@media (min-width: 640px) { .g5-boundary-desk { padding: 36px 36px 32px; } }
+.g5-boundary-slug { display: flex; align-items: center; gap: 14px; color: var(--color-muted); }
+.g5-boundary-slug::after { content: ""; flex: 1; height: 1px; background: var(--ns-rule); }
+.g5-boundary-title { margin: 0; font-size: clamp(1.75rem, 1.4rem + 1.4vw, 2.25rem); font-weight: 600; line-height: 1.15; letter-spacing: -0.02em; color: var(--color-fg); text-wrap: balance; }
+.g5-boundary-ref { margin: 0; padding-top: 14px; border-top: 1px solid var(--ns-rule); font-size: 0.875rem; color: var(--color-muted); }
+
+/* Loading: the shape of a page, ruled, not a grid of boxes */
+.g5-skel { display: flex; flex-direction: column; gap: 28px; width: 100%; min-width: 0; }
+.g5-skel-figs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+@media (min-width: 720px) { .g5-skel-figs { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.g5-skel-rows { display: flex; flex-direction: column; border-bottom: 1px solid var(--ns-rule); }
+.g5-skel-row { display: flex; align-items: center; gap: 16px; padding: 16px 0; border-top: 1px solid var(--ns-rule); }
+
+/* ── Notifications centre: a ruled list under one lifted edge ─────────────── */
+.g5-notif {
+  box-shadow: var(--ns-lift), 0 24px 60px -32px var(--ns-lit-glow);
+  border-color: color-mix(in srgb, var(--ns-act) 30%, var(--ns-rule));
+}
+.g5-notif-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px 6px 16px; border-bottom: 1px solid var(--ns-rule); }
+.g5-notif-title { font-size: 1rem; font-weight: 600; color: var(--color-fg); }
+.g5-notif-list { list-style: none; margin: 0; padding: 0; }
+.g5-notif-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--ns-rule); }
+.g5-notif-item:first-child { border-top: 0; }
+.g5-notif-item .ns-lamp { margin-top: 7px; }
+.g5-notif-kind { font-size: 0.9375rem; font-weight: 500; color: var(--color-fg); }
+.g5-notif-subject { margin-top: 2px; font-size: 0.875rem; color: var(--color-muted); overflow-wrap: anywhere; }
+.g5-notif-time { font-size: 0.875rem; color: var(--color-muted); font-variant-numeric: tabular-nums; white-space: nowrap; padding-top: 2px; }
+.g5-notif-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 16px; }
+.g5-notif-empty p { margin: 0; font-size: 0.9375rem; line-height: 1.5; color: var(--color-muted); }
+
+/* ── First run: the room, a rail of steps, and the desk ───────────────────── */
+.g5-welcome { position: relative; isolation: isolate; display: flex; min-height: 100dvh; flex-direction: column; background: var(--color-bg); }
+.g5-welcome::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(1200px 640px at 14% -10%, var(--ns-warm), transparent 64%),
+    radial-gradient(860px 520px at 98% -8%, var(--ns-cool), transparent 60%),
+    linear-gradient(to right, var(--ns-grid) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(to bottom, var(--ns-grid) 1px, transparent 1px) 0 0 / 48px 48px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 40%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 40%, transparent 100%);
+}
+.g5-welcome-in { width: 100%; max-width: 64rem; margin: 0 auto; padding: 20px 16px 48px; display: flex; flex-direction: column; gap: 32px; flex: 1; }
+@media (min-width: 768px) { .g5-welcome-in { padding: 28px 32px 64px; gap: 48px; } }
+.g5-welcome-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.g5-welcome-grid { display: grid; gap: 28px 64px; align-items: start; }
+@media (min-width: 900px) { .g5-welcome-grid { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); } }
+.g5-welcome-lead { display: flex; flex-direction: column; gap: 16px; }
+.g5-welcome-title { margin: 0; font-size: clamp(2rem, 1.55rem + 1.8vw, 2.75rem); font-weight: 600; line-height: 1.1; letter-spacing: -0.025em; text-wrap: balance; }
+.g5-rail { list-style: none; margin: 8px 0 0; padding: 0; display: none; }
+@media (min-width: 900px) { .g5-rail { display: block; } }
+.g5-rail > li { display: grid; grid-template-columns: 2.25rem minmax(0, 1fr); gap: 4px 8px; align-items: baseline; padding: 14px 0; border-top: 1px solid var(--ns-rule); color: var(--color-muted); font-size: 1rem; }
+.g5-rail > li:last-child { border-bottom: 1px solid var(--ns-rule); }
+.g5-rail > li[aria-current="step"] { color: var(--color-fg); font-weight: 600; box-shadow: inset 3px 0 0 var(--ns-act); padding-left: 14px; margin-left: -14px; grid-template-columns: calc(2.25rem) minmax(0, 1fr); }
+.g5-rail > li[data-done="true"] { color: var(--color-fg); }
+.g5-credit-note { display: flex; align-items: center; gap: 12px; margin: 0; padding: 12px 14px; border-radius: var(--ns-r-key); background: var(--ns-act-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ns-act) 40%, transparent); font-size: 0.9375rem; line-height: 1.45; color: var(--color-fg); }
+.g5-next-step { grid-template-columns: 2rem minmax(0, 1fr) auto; align-items: start; }
+@media (max-width: 639px) {
+  .g5-next-step { grid-template-columns: 2rem minmax(0, 1fr); }
+  .g5-next-step > :last-child:not(:nth-child(2)) { grid-column: 2; justify-self: start; }
+}
+.g5-sheet-note { font-size: 0.875rem; color: var(--color-muted); }
+.g5-state-head[data-bare="true"] { align-items: flex-start; }
+.g5-state-head[data-bare="true"] .ns-lamp { margin-top: 0.5rem; }
+.g5-welcome-desk { padding: 24px 20px; min-width: 0; }
+@media (min-width: 640px) { .g5-welcome-desk { padding: 32px; } }
+
+/* Page roots wear .g5-page: labels read at 14px here, and a section that holds only ruled rows drops its own rule. */
+.g5-page .t-label { font-size: 0.875rem; }
+.ns-open .panel.g5-bare { border-top: 0; padding-top: 0; }
+@media (max-width: 479px) {
+  .g5-form > .g5-field[data-fixed] { flex-basis: 100%; }
+  .g5-form > .btn-primary { flex: 1 1 100%; }
+}
+.g5-welcome-grid { margin-block: auto; }
+
+/* A reading that is not known is words, not a figure: smaller, and allowed to break inside its column. */
+.g5-unknown { font-size: clamp(1rem, 0.95rem + 0.25vw, 1.125rem); font-weight: 600; line-height: 1.2; letter-spacing: 0; overflow-wrap: break-word; min-width: 0; }
+.g5-figs > div, .g5-fig-v { min-width: 0; overflow-wrap: break-word; }
+/* While another key is the page's one filled primary, a key drawn by a shared component is shown quiet (styling only). */
+.g5-quiet-keys .btn-primary { background: transparent; color: var(--color-fg); box-shadow: none; border: 1px solid var(--ns-rule-strong); font-weight: 500; }
+.g5-quiet-keys .btn-primary:hover { background: var(--ns-act-soft); color: var(--color-fg); border-color: var(--ns-act); }

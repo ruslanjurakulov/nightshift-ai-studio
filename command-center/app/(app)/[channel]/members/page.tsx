@@ -7,6 +7,8 @@ import { getOrgContext } from "@/lib/orgs-server";
 import { createClient } from "@/lib/supabase/server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import Link from "next/link";
+import { StateBlock } from "@/components/states/StateBlock";
+import "../../app-pages-g5.css";
 
 /**
  * Is the caller on the platform roster at all? After migration 0018 a tenant
@@ -48,25 +50,42 @@ export default async function MembersPage() {
 
   if (user && outside) {
     return (
-      <div className="rhythm">
+      <div className="rhythm ns-open g5-page">
         <PageHeader icon="members" title={t.org.platformTitle} subtitle={t.members.subtitle} />
-        <div className="panel flex flex-col gap-3 p-5 sm:p-6">
-          <p className="text-sm text-[var(--color-muted)]">{t.org.platformOnly}</p>
-          <Link href={path("/organization")} className="btn-sky is-solid pill self-start px-5 py-2 text-sm">
-            {t.org.openOrg}
-          </Link>
-        </div>
+        <section className="panel ns-desk">
+          <StateBlock
+            tone="idle"
+            title={t.org.platformTitle}
+            actions={
+              <Link href={path("/organization")} className="btn-primary">
+                {t.org.openOrg}
+              </Link>
+            }
+          >
+            {t.org.platformOnly}
+          </StateBlock>
+        </section>
       </div>
     );
   }
 
   return (
-    <div className="rhythm">
+    <div className="rhythm ns-open g5-page">
       <PageHeader icon="members" title={t.members.title} subtitle={t.members.subtitle} />
       {user ? (
         <MembersBoard myRole={role} myEmail={user.email ?? ""} myUserId={user.id} />
       ) : (
-        <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.members.signIn}</div>
+        <section className="panel">
+          <StateBlock
+            tone="idle"
+            title={t.members.signIn}
+            actions={
+              <Link href="/login" className="btn-primary">
+                {t.auth.signIn}
+              </Link>
+            }
+          />
+        </section>
       )}
     </div>
   );

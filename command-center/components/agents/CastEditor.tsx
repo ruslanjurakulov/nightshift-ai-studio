@@ -120,16 +120,16 @@ export function CastEditor({
     prop: t.cast.kindProp,
   };
   const inputClass =
-    "rounded-[var(--ns-r-key)] border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm outline-none transition-colors focus:border-[var(--color-primary)]";
+    "ns-field";
 
   return (
-    <div className="panel flex flex-col gap-4 p-5 sm:p-6">
+    <div className="panel flex flex-col gap-4">
       <div>
-        <h2 className="t-section">{t.cast.title}</h2>
-        <p className="mt-1 max-w-[72ch] text-xs leading-relaxed text-[var(--color-muted)]">
+        <h2 className="t-panel">{t.cast.title}</h2>
+        <p className="mt-1 max-w-[72ch] text-sm leading-relaxed text-[var(--color-muted)]">
           {t.cast.hint}
         </p>
-        <p className="mt-1 max-w-[72ch] text-xs leading-relaxed text-[var(--color-warn)]">
+        <p className="mt-1 max-w-[72ch] text-sm leading-relaxed text-[var(--color-warn)]">
           {t.cast.syntheticNote}
         </p>
       </div>
@@ -149,7 +149,7 @@ export function CastEditor({
             >
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-[10rem_1fr]">
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs text-[var(--color-muted)]">
+                  <span className="text-sm text-[var(--color-muted)]">
                     {t.cast.kindLabel}
                   </span>
                   <select
@@ -165,7 +165,7 @@ export function CastEditor({
                   </select>
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs text-[var(--color-muted)]">
+                  <span className="text-sm text-[var(--color-muted)]">
                     {t.cast.name}
                   </span>
                   <input
@@ -178,7 +178,7 @@ export function CastEditor({
                 </label>
               </div>
               <label className="flex flex-col gap-1">
-                <span className="text-xs text-[var(--color-muted)]">
+                <span className="text-sm text-[var(--color-muted)]">
                   {t.cast.desc}
                 </span>
                 <textarea
@@ -192,7 +192,7 @@ export function CastEditor({
               </label>
               <div className="flex flex-wrap items-end gap-2">
                 <label className="flex min-w-[12rem] flex-1 flex-col gap-1">
-                  <span className="text-xs text-[var(--color-muted)]">
+                  <span className="text-sm text-[var(--color-muted)]">
                     {t.cast.aliases}
                   </span>
                   <input
@@ -206,7 +206,7 @@ export function CastEditor({
                 <button
                   type="button"
                   onClick={() => removeRow(i)}
-                  className="btn-quiet text-xs"
+                  className="btn-quiet text-sm"
                 >
                   {t.cast.remove}
                 </button>
@@ -229,11 +229,11 @@ export function CastEditor({
           type="button"
           onClick={save}
           disabled={disabled || state === "saving"}
-          className="btn-primary text-sm disabled:opacity-40"
+          className="btn-quiet text-sm disabled:opacity-40"
         >
           {state === "saving" ? t.cast.saving : t.cast.save}
         </button>
-        <span className="tnum text-xs" aria-live="polite">
+        <span className="tnum text-sm" aria-live="polite">
           {state === "saved" ? (
             <span className="text-[var(--color-ok)]">{t.cast.saved}</span>
           ) : state === "error" ? (

@@ -1,6 +1,7 @@
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
 import { PageHeader } from "@/components/PageHeader";
+import { Note } from "@/components/g3/Section";
 import { WorkflowsHome } from "@/components/workflows/WorkflowsHome";
 import { getOrgContext } from "@/lib/orgs-server";
 import { getDictionary } from "@/lib/i18n/server";
@@ -24,9 +25,9 @@ export default async function WorkflowsPage() {
   const org = await getOrgContext();
   const header = <PageHeader icon="workflows" title={t.workflows.title} subtitle={t.workflows.subtitle} />;
   const note = (text: string) => (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       {header}
-      <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{text}</div>
+      <Note>{text}</Note>
     </div>
   );
   if (!org.supported) return note(t.org.notMigrated);
@@ -42,7 +43,7 @@ export default async function WorkflowsPage() {
   if (list.state !== "ok") return note(t.workflows.readFailed);
 
   return (
-    <div className="rhythm">
+    <div className="rhythm ns-open">
       {header}
       <WorkflowsHome
         orgId={org.current.id}
