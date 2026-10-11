@@ -81,7 +81,8 @@
 .g2-ledger-name a { color: var(--color-fg); font-weight: 600; }
 .g2-ledger-name a:hover { color: var(--ns-act-ink); }
 .g2-ledger-name small { display: block; font-size: 13px; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 47.99rem) {
+/* A ledger folds by the width of the desk it sits in, not the screen: the customer sidebar and the operator frame take different shares of the same window. */
+@container (max-width: 54rem) {
   .g2-ledger:not(.g2-ledger-wide),
   .g2-ledger:not(.g2-ledger-wide) tbody { display: block; }
   .g2-ledger:not(.g2-ledger-wide) thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -100,7 +101,7 @@
   }
   .g2-ledger:not(.g2-ledger-wide) td[data-wide] { grid-column: 1 / -1; }
 }
-@media (max-width: 63.99rem) {
+@container (max-width: 57rem) {
   .g2-ledger-wide,
   .g2-ledger-wide tbody { display: block; }
   .g2-ledger-wide thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -275,6 +276,8 @@ select.ns-field { padding-right: 36px; }
 .g2-here { color: var(--ns-amber-ink); font-weight: 600; }
 .g2-ledger-name .g2-here { font-size: 13px; }
 
+.g2-desk { container-type: inline-size; }
+
 /* ── Ruled rows: a number in edge print, the thing, what you can do with it ── */
 .g2-rows { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--ns-rule); }
 .g2-row {
@@ -299,8 +302,8 @@ select.ns-field { padding-right: 36px; }
 .g2-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--ns-caution); }
 .g2-bar > span[data-strong="true"] { background: var(--ns-go); }
 .g2-reason { max-width: 36ch; }
-@media (min-width: 64rem) { .g2-ledger td.g2-reason { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
-@media (max-width: 63.99rem) { .g2-score { justify-content: flex-start; } }
+@container (min-width: 57.01rem) { .g2-ledger td.g2-reason { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
+@container (max-width: 57rem) { .g2-score { justify-content: flex-start; } }
 /* A row that ends in a count */
 .g2-row-count { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; }
 .g2-row-count > .g2-row-main:first-child { grid-column: 1 / 3; }
@@ -389,7 +392,7 @@ select.ns-field { padding-right: 36px; }
 .g2-desk .g2-models .g2-model:last-child { padding-bottom: 0; }
 
 /* A finger needs 44px: the name in a folded ledger row and the short console links are keys too. */
-@media (pointer: coarse), (max-width: 47.99rem) {
+@media (pointer: coarse), (max-width: 71.99rem) {
   .g2-ledger-name a { display: inline-flex; align-items: center; min-height: 44px; }
 }
 .g2-key .tap-link { min-width: 44px; justify-content: flex-start; }

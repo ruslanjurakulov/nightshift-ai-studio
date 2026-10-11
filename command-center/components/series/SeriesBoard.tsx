@@ -239,7 +239,7 @@ export function SeriesBoard({
                     {(row.format || platforms.length > 0) && (
                       <p className="g2-note mt-1">
                         {row.format}
-                        {platforms.length > 0 ? `${row.format ? "  ·  " : ""}${platforms.join(", ")}` : ""}
+                        {platforms.length > 0 ? `  ·  ${platforms.join(", ")}` : ""}
                       </p>
                     )}
                   </div>

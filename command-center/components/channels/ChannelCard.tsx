@@ -401,6 +401,7 @@ function SwitchRow({
         role="switch"
         aria-checked={on}
         aria-labelledby={`${id}-label`}
+        aria-describedby={`${id}-word`}
         onClick={onClick}
         disabled={disabled}
         title={title}
@@ -409,7 +410,7 @@ function SwitchRow({
         <span aria-hidden className="g2-switch-track">
           <span className="g2-switch-thumb" />
         </span>
-        <span className="g2-switch-word">{word}</span>
+        <span id={`${id}-word`} className="g2-switch-word">{word}</span>
       </button>
     </div>
   );

@@ -219,6 +219,7 @@ export function PipelineRouting({
             role="switch"
             aria-checked={autopilot}
             aria-labelledby="route-autopilot"
+            aria-describedby="route-autopilot-word"
             disabled={!githubConfigured || state === "saving"}
             onClick={toggleAutopilot}
             className="g2-switch"
@@ -226,7 +227,7 @@ export function PipelineRouting({
             <span aria-hidden className="g2-switch-track">
               <span className="g2-switch-thumb" />
             </span>
-            <span className="g2-switch-word">{autopilot ? t.providers.routingOn : t.providers.routingOff}</span>
+            <span id="route-autopilot-word" className="g2-switch-word">{autopilot ? t.providers.routingOn : t.providers.routingOff}</span>
           </button>
         </div>
       </div>
