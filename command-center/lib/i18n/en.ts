@@ -915,6 +915,7 @@ export const en = {
       details: "Show every step",
       unavailable: "Making videos is not available right now.",
       confirmAnnounce: "Check the price above, then press Yes, make it to start.",
+      alreadySent: "Already sent — it was not sent a second time. Follow it below.",
     },
   },
   voice: {

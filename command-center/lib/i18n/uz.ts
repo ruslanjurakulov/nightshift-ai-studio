@@ -907,6 +907,7 @@ export const uz: Dictionary = {
       details: "Barcha bosqichlarni koʻrsatish",
       unavailable: "Videolar yaratish hozir mavjud emas.",
       confirmAnnounce: "Yuqoridagi narxni tekshiring, boshlash uchun «Ha, yaratilsin»ni bosing.",
+      alreadySent: "Allaqachon yuborilgan — qayta yuborilmadi. Quyida kuzating.",
     },
   },
   voice: {

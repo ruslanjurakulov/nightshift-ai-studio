@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
@@ -36,6 +36,8 @@ export function CreditEstimateLine({
   durationS,
   variant = "line",
   showNotEnforced = true,
+  onPrice,
+  refreshKey = 0,
 }: {
   channelId: string | null;
   durationS: number | null;
@@ -43,6 +45,15 @@ export function CreditEstimateLine({
   variant?: "line" | "card";
   /** "not charged yet — credits are not enforced" is the operator's to read; a customer's card leaves it out. */
   showNotEnforced?: boolean;
+  /**
+   * Called with the credits this card is showing for the current channel and
+   * length — a number only while that figure is on screen (loaded for exactly
+   * these inputs, not exempt, priced), otherwise null. The create flow sends it
+   * as the run's `max_credits`, so the ceiling is the price the person read.
+   */
+  onPrice?: (credits: number | null) => void;
+  /** Bump to ask again (a run refused with `price_changed` needs the new figure). */
+  refreshKey?: number;
 }) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
@@ -51,12 +62,17 @@ export function CreditEstimateLine({
   // False until the first answer (or failure) arrives: the card says "checking", never nothing.
   const [done, setDone] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // Which inputs the loaded answer belongs to: after a length change the old figure is not this one's price.
+  const reqKey = `${channelId ?? ""}|${durationS && durationS > 0 ? Math.round(durationS) : 0}`;
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const retry = () => setAttempt((n) => n + 1);
 
   useEffect(() => {
     if (!channelId) return;
     let live = true;
     setFailed(false);
+    // Whatever was loaded is not this request's answer: the card says "checking" until the new one arrives.
+    setLoadedKey(null);
     const qs = new URLSearchParams({ channel: channelId });
     if (durationS && durationS > 0) qs.set("duration", String(Math.round(durationS)));
     fetch(`/api/credits/estimate?${qs}`, { cache: "no-store" })
@@ -69,18 +85,31 @@ export function CreditEstimateLine({
         if (!live) return;
         setFailed(d === "failed");
         setData(d === "failed" ? null : d);
+        setLoadedKey(reqKey);
         setDone(true);
       })
       .catch(() => {
         if (!live) return;
         setFailed(true);
         setData(null);
+        setLoadedKey(reqKey);
         setDone(true);
       });
     return () => {
       live = false;
     };
-  }, [channelId, durationS, attempt]);
+    // reqKey is derived from channelId and durationS.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId, durationS, attempt, refreshKey]);
+
+  const fresh = done && loadedKey === reqKey;
+  const shown =
+    fresh && !failed && data?.supported && !data.exempt && data.estimate && data.estimate.credits !== null ? data.estimate.credits : null;
+  const report = useRef(onPrice);
+  report.current = onPrice;
+  useEffect(() => {
+    report.current?.(shown);
+  }, [shown]);
 
   // The card keeps its height in every state (checking, unreadable, nothing to show), so the button
   // under it does not jump, and it always says something in plain words. The server stays the authority:
@@ -92,7 +121,7 @@ export function CreditEstimateLine({
           <ErrorState compact message={t.credits.estimateReadFailed} onRetry={retry} />
         </div>
       );
-    if (channelId && !done)
+    if (channelId && !fresh)
       return (
         <div className="fl-price" aria-live="polite" aria-busy="true">
           <p className="fl-price-notes" data-testid="price-checking">

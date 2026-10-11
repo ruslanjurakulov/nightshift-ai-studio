@@ -7,6 +7,7 @@ import { useChannelPath } from "@/lib/channels-client";
 import type { ChannelAgentConfig } from "@/lib/types";
 import type { QueueJob, RunBackend } from "@/lib/runBackend";
 import { creditRunError, isExtraOffRefusal } from "@/lib/credits";
+import { createAttempt } from "@/lib/create-attempt";
 import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
 import { CreditEstimateLine } from "@/components/credits/CreditEstimateLine";
 import { IMAGE_GENERATORS } from "@/lib/imageProviders";
@@ -112,6 +113,15 @@ export function CreateStudio({
   // for the worker is visible as waiting, not as a run that never started.
   const [jobs, setJobs] = useState<QueueJob[] | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // The credits the price card is showing right now (null: none shown). Sent as the run's ceiling.
+  const [shownPrice, setShownPrice] = useState<number | null>(null);
+  const [priceNonce, setPriceNonce] = useState(0);
+  // One idempotency key per create attempt (lib/create-attempt.ts), kept across a retry of the same inputs.
+  const attempt = useRef(createAttempt());
+  // A press already on its way: a second click or Enter in the same tick must not post again.
+  const sending = useRef(false);
+  // The server said this exact attempt had already been started (a lost answer, a retry): nothing new was held.
+  const [replayed, setReplayed] = useState(false);
   // After the confirm press the button that was focused goes away; the result (started, or why not)
   // is read from here, so keyboard and screen-reader focus never drops to the page.
   const statusRef = useRef<HTMLParagraphElement>(null);
@@ -144,40 +154,69 @@ export function CreateStudio({
   }, [phase]);
 
   async function create() {
-    if (!channelId) return;
+    if (!channelId || sending.current) return;
+    sending.current = true;
     setPhase("starting");
     setCreditError(null);
+    setReplayed(false);
     const topic = brief.trim().slice(0, 300);
     const dur = Number(duration);
+    const fields = {
+      channel_id: channelId,
+      ...(topic ? { topic } : {}),
+      ...(duration && Number.isFinite(dur) && dur > 0 ? { duration: dur } : {}),
+      ...(language ? { language } : {}),
+      ...(style.trim() ? { visual_style: style.trim() } : {}),
+      ...(videoProvider ? { video_provider: videoProvider } : {}),
+      ...(imageProvider ? { image_provider: imageProvider } : {}),
+      ...(ttsModel ? { tts_model: ttsModel } : {}),
+      ...(voiceId && isVoiceId(voiceId) ? { voice_id: voiceId } : {}),
+      ...(target ? { publish_hint: target } : {}),
+    };
+    // The same key for the same inputs, so a retry after an error or a lost answer cannot hold twice.
+    const idempotency_key = attempt.current.keyFor(JSON.stringify(fields));
     try {
       const res = await fetch("/api/agent/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          channel_id: channelId,
-          ...(topic ? { topic } : {}),
-          ...(duration && Number.isFinite(dur) && dur > 0 ? { duration: dur } : {}),
-          ...(language ? { language } : {}),
-          ...(style.trim() ? { visual_style: style.trim() } : {}),
-          ...(videoProvider ? { video_provider: videoProvider } : {}),
-          ...(imageProvider ? { image_provider: imageProvider } : {}),
-          ...(ttsModel ? { tts_model: ttsModel } : {}),
-          ...(voiceId && isVoiceId(voiceId) ? { voice_id: voiceId } : {}),
-          ...(target ? { publish_hint: target } : {}),
+          ...fields,
+          idempotency_key,
+          // The price the card showed: a dearer estimate at the server is refused (409 price_changed), nothing held.
+          ...(shownPrice !== null ? { max_credits: shownPrice } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setErrorKey(data.error === "github_unauthorized" ? "unauthorized" : "failed");
-        setCreditError(creditRunError(data, t, locale));
-        setExtraOff(isExtraOffRefusal(data));
-        setPhase("error");
+      if (res.ok) {
+        attempt.current.settle();
+        setPhase("queued");
         return;
       }
-      setPhase("queued");
+      // The same key was held before: an earlier press of this very attempt got through. Nothing new was held.
+      if (res.status === 409 && data.error === "run_already_started") {
+        attempt.current.settle();
+        setReplayed(true);
+        setPhase("queued");
+        return;
+      }
+      // A hold was taken but the run did not start: a replay could only answer "already started", so the next try is a new attempt.
+      if (typeof data.credits_held === "number") attempt.current.settle();
+      if (data.error === "price_changed") {
+        setPriceNonce((n) => n + 1);
+        setErrorKey("failed");
+        setCreditError(t.creative.errors.price_changed);
+      } else {
+        setErrorKey(data.error === "github_unauthorized" ? "unauthorized" : "failed");
+        setCreditError(creditRunError(data, t, locale));
+      }
+      setExtraOff(isExtraOffRefusal(data));
+      setPhase("error");
     } catch {
+      // Unknown whether it arrived: the key is kept, so trying again is safe.
       setErrorKey("failed");
       setPhase("error");
+    } finally {
+      sending.current = false;
     }
   }
 
@@ -473,7 +512,14 @@ export function CreateStudio({
         <h2 id="fl-price-title" className="fl-q">
           {f.priceTitle}
         </h2>
-        <CreditEstimateLine variant="card" showNotEnforced={operator} channelId={channelId} durationS={Number(duration) > 0 ? Number(duration) : null} />
+        <CreditEstimateLine
+          variant="card"
+          showNotEnforced={operator}
+          channelId={channelId}
+          durationS={Number(duration) > 0 ? Number(duration) : null}
+          onPrice={setShownPrice}
+          refreshKey={priceNonce}
+        />
         <p className="fl-hint">{f.holdNote}</p>
 
         {/* Create — asks once, because it spends money and can produce a video. The confirm is its own
@@ -517,7 +563,7 @@ export function CreateStudio({
         )}
         <p className="fl-status" ref={statusRef} tabIndex={-1} aria-live="polite">
           {phase === "queued" ? (
-            <span className="text-[var(--color-ok)]">{t.create.queued}</span>
+            <span className="text-[var(--color-ok)]">{replayed ? f.alreadySent : t.create.queued}</span>
           ) : phase === "error" ? (
             <span className="text-[var(--color-fail)]">
               {creditError ?? (errorKey === "unauthorized" ? t.agents.runUnauthorized : t.agents.runFailed)}
