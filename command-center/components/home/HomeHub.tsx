@@ -20,7 +20,7 @@ import {
 import { useI18n } from "@/lib/i18n/context";
 import { fmt, type Dictionary } from "@/lib/i18n";
 import { useChannelPath } from "@/lib/channels-client";
-import { HOME_FORMATS, QUICK_ACTIONS, lengthSeconds, toolHref, type HomeChannel, type HomeVideo, type QuickActionId } from "@/lib/home";
+import { HOME_FORMATS, QUICK_ACTIONS, buildReady, lengthSeconds, toolHref, type HomeChannel, type HomeVideo, type QuickActionId } from "@/lib/home";
 import { CreatePresetProvider, useCreatePreset } from "@/components/create/preset";
 import { FormatArt } from "@/components/home/FormatArt";
 import { HomeComposer, type ComposerChannel, type ComposerHandle } from "@/components/home/HomeComposer";
@@ -61,6 +61,7 @@ export function HomeHub({
   assistant,
   run,
   videos = null,
+  storyboards = null,
 }: {
   channels: HomeChannel[];
   /** The channel in the URL — the composer's first choice. */
@@ -78,6 +79,8 @@ export function HomeHub({
   run?: ReactNode;
   /** The newest videos across the channels; null = the read failed or was not made. */
   videos?: HomeVideo[] | null;
+  /** Storyboards waiting for approval, by their channel's slug; null = the read failed or was not made. */
+  storyboards?: { channelSlug: string }[] | null;
 }) {
   const { t } = useI18n();
   const path = useChannelPath();
@@ -93,8 +96,8 @@ export function HomeHub({
     [channels],
   );
 
-  // What needs the person, in plain words: finished videos waiting for them, clips being made.
-  const waiting = channels.reduce((n, c) => n + (c.waiting ?? 0), 0);
+  // What needs the person, in plain words: finished videos and storyboards waiting for their decision.
+  const ready = buildReady({ channels, storyboards });
   const target = channels.find((c) => c.slug === currentSlug && c.standing !== "draft") ?? channels.find((c) => c.standing !== "draft");
 
   return (
@@ -112,21 +115,21 @@ export function HomeHub({
           <p className="max-w-[60ch] text-base leading-relaxed text-[var(--color-muted)]">{t.home.heroLead}</p>
         </div>
 
-        {waiting > 0 && (
+        {ready && (
           <div className="flex flex-col gap-3" data-testid="home-status">
-            {waiting > 0 && (
-              <div className="fl-card sm:!flex-row sm:items-center sm:justify-between" data-tone="waiting">
-                <div className="flex min-w-0 flex-col gap-1">
-                  <p className="text-lg font-semibold leading-snug text-[var(--color-fg)]">
-                    {waiting === 1 ? t.home.waitingOne : fmt(t.home.waitingMany, { n: waiting })}
-                  </p>
-                  <p className="fl-hint">{t.home.waitingBody}</p>
-                </div>
-                <Link href={path("/videos")} className="btn-quiet shrink-0 sm:self-center">
-                  {t.home.reviewNow}
-                </Link>
+            <div className="fl-card sm:!flex-row sm:items-center sm:justify-between" data-tone="waiting">
+              <div className="flex min-w-0 flex-col gap-1">
+                <p className="text-lg font-semibold leading-snug text-[var(--color-fg)]">
+                  {ready.total === 1 && !ready.atLeast
+                    ? t.home.readyOne
+                    : fmt(t.home.readyMany, { n: ready.atLeast ? `${ready.total}+` : ready.total })}
+                </p>
+                <p className="fl-hint">{t.home.readyBody}</p>
               </div>
-            )}
+              <Link href={ready.slug ? `/${encodeURIComponent(ready.slug)}/videos` : path("/videos")} className="btn-quiet shrink-0 sm:self-center">
+                {t.home.reviewNow}
+              </Link>
+            </div>
           </div>
         )}
 
