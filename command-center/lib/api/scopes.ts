@@ -19,6 +19,27 @@ export type ApiScope = (typeof API_SCOPES)[number];
 /** What a key made before 0062 may do: what it could always do. Never a creative scope. */
 export const LEGACY_SCOPES: readonly ApiScope[] = ["account:read", "videos:read", "videos:write"];
 
+/** What a key that may only look may do: the account and videos, nothing that changes or spends. */
+export const READ_ONLY_SCOPES: readonly ApiScope[] = ["account:read", "videos:read"];
+
+/**
+ * The two presets of the key form. "full" is exactly today's default (LEGACY_SCOPES) —
+ * it never includes the scopes that start generations and spend credits; those are
+ * ticked on purpose under "More options". Nothing here widens what a key could get before.
+ */
+export const KEY_PRESETS = { full: LEGACY_SCOPES, read: READ_ONLY_SCOPES } as const;
+export type KeyPreset = keyof typeof KEY_PRESETS;
+
+/** Which preset a set of scopes is exactly (order and repeats ignored), or null for a custom set. */
+export function keyPresetOf(scopes: readonly string[]): KeyPreset | null {
+  const set = new Set(scopes);
+  for (const id of Object.keys(KEY_PRESETS) as KeyPreset[]) {
+    const want = KEY_PRESETS[id];
+    if (set.size === want.length && want.every((x) => set.has(x))) return id;
+  }
+  return null;
+}
+
 /** The scopes that start (and so spend credits on) generations, or read them. */
 export const CREATIVE_SCOPES: readonly ApiScope[] = ["creative:quote", "creative:create", "creative:read"];
 
