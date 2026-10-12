@@ -157,29 +157,45 @@ That happened once. The live project held a second read policy on the private `p
 `previews_read 1dyqf8r_0` (`select to authenticated using (bucket_id = 'previews')`), which no migration
 created: any signed-in user could list, read and sign every customer's review render
 (`<channel_id>/<video_id>.mp4`). The bucket held no objects at the time, so nothing had leaked.
-Migration **0098** drops it (by name, and any other broad `previews` read by a catalog lookup) and
-re-asserts the tenant-scoped `previews_read` from 0018. `voice-previews` (shared on purpose),
-`avatars` and `publish-staging` are not touched.
+Migration **0098** drops it by name and re-asserts the tenant-scoped `previews_read` from 0018.
+`voice-previews` (shared on purpose), `avatars` and `publish-staging` are not touched.
+
+It also runs a **best-effort** clean-up: any other permissive `select`/`all` policy that names the
+`previews` bucket (the literal, or a `'{previews,...}'` array) without calling
+`accessible_channel_ids()`/`is_platform_admin()` is dropped, with a NOTICE. This is a heuristic for
+the known drift and common dashboard-style variants, **not a catch-all**, and restrictive policies
+are never dropped. Known survivors (pinned by tests in `tests/security/test_sec_previews_policy.py`):
+`bucket_id <> 'avatars'`, `like 'prev%'`, `~ '^prev'`, `'prev' || 'iews'`, a sub-select on
+`storage.buckets`, a policy with no bucket test, and a broad policy that also contains a scoping
+function name (`bucket_id = 'previews' or ... accessible_channel_ids(...)`, `... and
+(is_platform_admin() or true)`). So the check that counts after applying is the allowlist query below.
 
 **The live project needs 0098 applied; it is not a repo-only fix.** The security lab applies it to a
-scratch database and attacks the result (`tests/security/test_sec_previews_policy.py`), but CI never
-connects to the live project. Apply it like any migration (SQL editor, after review), then verify
-read-only with the queries at the bottom of the file:
+scratch database and attacks the result, but CI never connects to the live project. Apply the whole
+file in one go (the `drop` and `create` of `previews_read` belong together: the drop alone leaves
+previews unreadable for everyone until the create runs, which is safe but breaks the review panel),
+then verify read-only with these queries (all are at the bottom of the migration):
 
 ```sql
-select policyname, cmd, roles::text, qual as using_expr, with_check as check_expr
+-- 1. THE CHECK THAT COUNTS: strict allowlist. Expected: 0 rows. A row is a policy this repo did not create.
+select policyname, cmd, roles::text, permissive, qual as using_expr, with_check as check_expr
+  from pg_policies where schemaname = 'storage' and tablename = 'objects'
+   and policyname not in ('avatars_delete_own','avatars_insert_own','avatars_select_own',
+                          'avatars_update_own','previews_read','voice_previews_read');
+-- 2. all policies, USING and WITH CHECK separately. Expected: exactly those six.
+select policyname, cmd, roles::text, permissive, qual as using_expr, with_check as check_expr
   from pg_policies where schemaname = 'storage' and tablename = 'objects' order by policyname;
--- expected: previews_read (scoped: names accessible_channel_ids and is_platform_admin),
---           voice_previews_read, avatars_{select,insert,update,delete}_own; nothing else
-select policyname from pg_policies
- where schemaname = 'storage' and tablename = 'objects' and cmd in ('SELECT', 'ALL')
-   and ((qual like '%''previews''%' and qual !~ '(accessible_channel_ids|is_platform_admin)')
-     or (with_check like '%''previews''%' and with_check !~ '(accessible_channel_ids|is_platform_admin)'));
--- expected: 0 rows
+-- 3. what the clean-up looks for (heuristic). Expected: 0 rows; passing it does not prove there is no leak.
+-- 4. SELECT/ALL policies that name no bucket at all. Expected: 0 rows.
+-- 5. select tablename, policyname, cmd, roles::text, qual from pg_policies
+--     where schemaname = 'storage' and tablename <> 'objects';   -- expected 0 rows or known ones
+-- 6. select id, public from storage.buckets where id = 'previews';   -- public = false; ZERO rows = no such bucket row
 ```
 
-Rolling back means re-running the scoped `previews_read` statement only; never recreate a broad one.
-If a policy was added by hand again, run that second query: it names it.
+Queries 3 to 6 are written out in the migration. Query 5 was not checked against a real project (the
+lab does not model the real storage schema). Rolling back means re-running the scoped `previews_read`
+drop and create together; never recreate a broad one. If a row shows up in query 1, read it with query
+2 and remove it by a migration, not by hand.
 
 ## Deleting an account: the profile photo
 

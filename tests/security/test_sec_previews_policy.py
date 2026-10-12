@@ -47,15 +47,29 @@ DRIFT = "previews_read 1dyqf8r_0"
 POLICIES = ("select policyname, cmd, roles::text, qual, with_check from pg_policies "
             "where schemaname = 'storage' and tablename = 'objects' order by policyname")
 
-# A policy that names the previews bucket and is not tenant-scoped; the same
-# test the migration uses (qual and with_check separately), so a future
-# migration that reintroduces one fails the catalog test below.
+# The migration's clean-up heuristic, as a query: a PERMISSIVE SELECT/ALL policy
+# that names the previews bucket (the literal, or a '{previews,...}' array
+# literal) and does not call the scoping functions, USING and WITH CHECK tested
+# separately. It is what step 2 drops. It is NOT a proof of safety: see ALLOWLIST.
+NAMED = r"(''previews''|\{([^}'']*,)?previews(,[^}'']*)?\}'')"
 OFFENDERS = (
     "select policyname from pg_policies where schemaname = 'storage' and tablename = 'objects' "
-    "and cmd in ('SELECT', 'ALL') "
-    "and ((qual like '%''previews''%' and qual !~ '(accessible_channel_ids|is_platform_admin)') "
-    "  or (with_check like '%''previews''%' and with_check !~ '(accessible_channel_ids|is_platform_admin)')) "
+    "and permissive = 'PERMISSIVE' and cmd in ('SELECT', 'ALL') "
+    f"and ((qual ~ '{NAMED}' and qual !~ '(accessible_channel_ids|is_platform_admin)') "
+    f"  or (with_check ~ '{NAMED}' and with_check !~ '(accessible_channel_ids|is_platform_admin)')) "
     "order by policyname")
+
+# The check that counts (the owner's primary verify): every policy on
+# storage.objects must be one this repo creates.
+ALLOWED = ("avatars_delete_own", "avatars_insert_own", "avatars_select_own", "avatars_update_own",
+           "previews_read", "voice_previews_read")
+ALLOWLIST = (
+    "select policyname from pg_policies where schemaname = 'storage' and tablename = 'objects' "
+    "and policyname not in ('" + "', '".join(ALLOWED) + "') order by policyname")
+
+POLICIES_NAMES = "select policyname from pg_policies where schemaname = 'storage' and tablename = 'objects'"
+
+NON_OBJECTS = "select tablename, policyname from pg_policies where schemaname = 'storage' and tablename <> 'objects'"
 
 NO_BUCKET = (
     "select policyname from pg_policies where schemaname = 'storage' and tablename = 'objects' "
@@ -84,6 +98,10 @@ def statements(sql_text):
             cur, in_do = [], False
     assert not cur, "trailing text that is not a statement"
     return out
+
+
+def strays(s):
+    return [r[0] for r in s.rows(ALLOWLIST)]
 
 
 def offenders(s):
@@ -305,7 +323,7 @@ def test_only_previews_read_changed_and_the_drift_is_gone(world):
 def test_the_exact_name_drop_is_silent_and_the_migration_created_no_other_policy(world):
     w = world
     # The exact-name drop ran first, so the catalog lookup had nothing left to report here.
-    assert not any("broad previews policy" in m for m in w.notices_first)
+    assert not any(m.startswith("0098: dropping policy ") for m in w.notices_first)
 
 
 def test_a_second_apply_changes_nothing(world):
@@ -332,6 +350,7 @@ def test_other_broad_previews_policies_are_dropped_and_the_rest_survive(world):
         create_policy(s, "Allow any 2xyz_1", "for select to authenticated using (bucket_id = ANY (ARRAY['previews'::text, 'x']))")
         create_policy(s, "check only 3", "for all to authenticated using (auth.uid() is not null) with check (bucket_id = 'previews')")
         create_policy(s, "all 4", "for all to authenticated using (bucket_id = 'previews') with check (bucket_id = 'previews')")
+        create_policy(s, "Brace 6", "for select to authenticated using (bucket_id = ANY ('{previews,x}'))")
         create_policy(s, "Mixed 5", "for select to authenticated using (bucket_id = 'previews' or bucket_id = 'avatars')")
         # What must survive.
         create_policy(s, "scoped extra", "for select to authenticated using (bucket_id = 'previews' and "
@@ -342,21 +361,22 @@ def test_other_broad_previews_policies_are_dropped_and_the_rest_survive(world):
         create_policy(s, "voice wide", "for select to anon using (bucket_id = 'voice-previews')")
         create_policy(s, "previews insert", "for insert to authenticated with check (bucket_id = 'previews')")
         create_policy(s, "previews update", "for update to authenticated using (bucket_id = 'previews')")
-        assert offenders(s) == ["Allow any 2xyz_1", "Allow read 1abc_0", "Mixed 5", "all 4", "check only 3", DRIFT]
+        create_policy(s, "mfa guard", "as restrictive for select to authenticated using (bucket_id <> 'previews' or auth.uid() is not null)")
+        assert offenders(s) == ["Allow any 2xyz_1", "Allow read 1abc_0", "Brace 6", "Mixed 5", "all 4", "check only 3", DRIFT]
 
         w.notices.clear()
         s.conn.execute(migration_sql())
         s.conn.execute(migration_sql())
         after = {r[0] for r in s.rows("select policyname from pg_policies where schemaname = 'storage' and tablename = 'objects'")}
         assert offenders(s) == []
-        gone = {"Allow read 1abc_0", "Allow any 2xyz_1", "check only 3", "all 4", "Mixed 5", DRIFT}
+        gone = {"Allow read 1abc_0", "Allow any 2xyz_1", "Brace 6", "check only 3", "all 4", "Mixed 5", DRIFT}
         assert not (gone & after), gone & after
         kept = {"scoped extra", "admin only", "avatars wide", "other bucket", "voice wide",
-                "previews insert", "previews update", "previews_read", "voice_previews_read"}
+                "previews insert", "previews update", "mfa guard", "previews_read", "voice_previews_read"}
         assert kept <= after, kept - after
-        dropped_notes = sorted(m for m in w.notices if "broad previews policy" in m)
-        assert len(dropped_notes) == 5  # DRIFT went by name; the five others by the catalog lookup
-        assert all(m.startswith("0098: dropping broad previews policy ") for m in dropped_notes)
+        dropped_notes = sorted(m for m in w.notices if m.startswith("0098: dropping policy "))
+        assert len(dropped_notes) == 6  # DRIFT went by name; the six others by the catalog lookup
+        assert all(m.endswith(" on storage.objects (names bucket previews, no tenant scoping)") for m in dropped_notes)
         # Reads are tenant-scoped again with all of that planted.
         for who, expect in ((w.sc.alice.actor, A_OBJECTS(w)), (w.sc.bob.actor, B_OBJECTS(w))):
             with acting(w.conn, who) as as_who:
@@ -386,6 +406,52 @@ def test_a_missing_scoped_rule_is_put_back_so_the_owner_can_read_again(world):
             assert names(as_alice, "previews") == A_OBJECTS(w)
         with acting(w.conn, w.sc.bob.actor) as as_bob:
             assert names(as_bob, "previews") == B_OBJECTS(w)
+
+
+def test_a_restrictive_policy_that_names_previews_is_never_dropped(world):
+    w = world
+    with as_superuser(w.conn, commit=False) as s:
+        create_policy(s, "mfa guard", "as restrictive for select to authenticated using (bucket_id <> 'previews' or auth.uid() is not null)")
+        create_policy(s, "mfa all", "as restrictive for all to authenticated using (bucket_id = 'previews' and auth.uid() is not null)")
+        assert offenders(s) == []  # the heuristic (and so the migration) skips RESTRICTIVE
+        s.conn.execute(migration_sql())
+        assert {"mfa guard", "mfa all"} <= {r[0] for r in s.rows(POLICIES_NAMES)}
+        # They are not in this repo, so the allowlist verify still lists them for a human to read.
+        assert strays(s) == ["mfa all", "mfa guard"]
+
+
+# Documented limitations: forms the heuristic does NOT drop. Each one leaves a
+# live leak after the migration (the scoped previews_read does not remove other
+# permissive policies), which is why the owner's primary check is the strict
+# allowlist query, and why these are pinned here: if step 2 ever learns one of
+# them, move it to the dropped cases above.
+SURVIVORS = {
+    "not-equal": "for select to authenticated using (bucket_id <> 'avatars')",
+    "like": "for select to authenticated using (bucket_id like 'prev%')",
+    "regex": "for select to authenticated using (bucket_id ~ '^prev')",
+    "concat": "for select to authenticated using (bucket_id = 'prev' || 'iews')",
+    "subselect": "for select to authenticated using (bucket_id in (select id from storage.buckets where public is not true))",
+    "no bucket test": "for select to authenticated using (auth.uid() is not null)",
+    "or scoped fn": "for select to authenticated using (bucket_id = 'previews' or (storage.foldername(name))[1] in "
+                    "(select public.accessible_channel_ids('viewer')))",
+    "or-first scoped fn": "for select to authenticated using ((select public.is_platform_admin()) or true or bucket_id = 'previews')",
+    "and admin or true": "for select to authenticated using (bucket_id = 'previews' and ((select public.is_platform_admin()) or true))",
+}
+
+
+@pytest.mark.parametrize("label", sorted(SURVIVORS))
+def test_documented_limitation_the_heuristic_keeps_this_form_but_the_allowlist_catches_it(world, label):
+    w = world
+    name = f"survivor {label}"
+    with as_superuser(w.conn, commit=False) as s:
+        create_policy(s, name, SURVIVORS[label])
+        s.conn.execute(migration_sql())
+        s.conn.execute(migration_sql())
+        assert name in {r[0] for r in s.rows(POLICIES_NAMES)}, "the migration now drops this form: move it to the dropped cases"
+        assert name not in offenders(s)
+        assert strays(s) == [name]  # the primary verify sees it
+        # and the scoped rule is back next to it
+        assert "previews_read" in {r[0] for r in s.rows(POLICIES_NAMES)}
 
 
 # ── statement by statement ──────────────────────────────────────────────────
@@ -441,6 +507,8 @@ def test_after_all_migrations_no_policy_reaches_previews_without_tenant_scoping(
     with as_superuser(conn, commit=False) as s:
         assert [r[0] for r in s.rows(OFFENDERS)] == []
         assert [r[0] for r in s.rows(NO_BUCKET)] == []
+        assert strays(s) == []  # the strict allowlist: nothing but the repo's own policies
+        assert s.rows(NON_OBJECTS) == []
         scoped = s.rows("select policyname, roles::text from pg_policies where schemaname = 'storage' and tablename = 'objects' "
                         "and qual like '%''previews''%'")
     assert scoped == [("previews_read", "{authenticated}")]

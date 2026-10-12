@@ -41,17 +41,26 @@ class PreviewsPolicyMigration(unittest.TestCase):
 
     def test_the_dynamic_part_reads_using_and_check_separately_and_never_coalesces(self):
         c = code(self.sql)
-        self.assertIn("qual       like", c)
-        self.assertIn("with_check like", c)
+        self.assertIn("qual       ~ named and qual       !~ scoped", c)
+        self.assertIn("with_check ~ named and with_check !~ scoped", c)
         self.assertNotIn("coalesce", c)
         self.assertIn("cmd in ('SELECT', 'ALL')", c)
+        self.assertIn("permissive = 'PERMISSIVE'", c)
         self.assertIn("policyname <> 'previews_read'", c)
 
     def test_the_header_gives_a_safe_rollback_and_no_broad_policy_to_paste(self):
-        head = "\n".join(l for l in self.sql.splitlines() if l.startswith("--"))
+        head = re.sub(r"\s*\n--\s*", " ", "\n".join(l for l in self.sql.splitlines() if l.startswith("--")))
         self.assertIn("ROLLBACK (safe)", head)
         self.assertIn("Do NOT recreate a broad", head)
         self.assertIn("Verify", head)
+        self.assertIn("HEURISTIC, NOT A CATCH-ALL", head)
+        self.assertIn("RUN IT WHOLE", head)
+        # the strict allowlist is the first verify query
+        self.assertLess(head.index("1. THE CHECK THAT COUNTS: strict allowlist"), head.index("2. every policy on storage.objects"))
+        for name in ("avatars_delete_own", "avatars_insert_own", "avatars_select_own", "avatars_update_own",
+                     "previews_read", "voice_previews_read"):
+            self.assertIn(f"'{name}'", head)
+        self.assertIn("tablename <> 'objects'", head)
         # no commented-out statement that would recreate a broad reader
         self.assertNotRegex(head, r"(?is)create policy[^;]*using\s*\(\s*bucket_id\s*=\s*'previews'\s*\)")
 

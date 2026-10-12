@@ -15,17 +15,34 @@
 --   0 objects today, so nothing is exposed right now; the first kept preview
 --   (<channel_id>/<video_id>.mp4) would be.
 --
--- WHAT IT DOES (three steps; each is a separate statement and is safe on its own)
+-- WHAT IT DOES (a guard that checks the prerequisites, then four statements)
 --   1. drops the policy "previews_read 1dyqf8r_0" by its exact name;
---   2. drops, by catalog lookup, any OTHER SELECT or ALL policy on
---      storage.objects whose USING or WITH CHECK names bucket 'previews' and
---      does not call accessible_channel_ids() or is_platform_admin() (a
---      dashboard suffix differs per project and per click, so the exact name
---      in step 1 is not enough on its own). Each drop is reported with a
---      NOTICE. It never touches a policy that does not name 'previews', so
---      voice_previews_read, avatars_*, and any other bucket's policy stay;
---   3. re-creates "previews_read" exactly as 0018 defines it (drop + create),
+--   2. a BEST-EFFORT clean-up of look-alikes, by catalog lookup: it drops any
+--      other PERMISSIVE SELECT or ALL policy on storage.objects whose USING or
+--      WITH CHECK names bucket 'previews' (the literal 'previews', or a text
+--      array literal such as '{previews,x}') and does not call
+--      accessible_channel_ids() or is_platform_admin(). Each drop is reported
+--      with a NOTICE. It never touches a policy that does not match, so
+--      voice_previews_read, avatars_*, other buckets' policies, and RESTRICTIVE
+--      policies (a hardening guard that names previews) stay;
+--   3+4. re-create "previews_read" exactly as 0018 defines it (drop + create),
 --      so the bucket ends in one known state whatever came before.
+--
+-- THE CLEAN-UP IN STEP 2 IS A HEURISTIC, NOT A CATCH-ALL
+--   It removes the known drift and the common dashboard-style forms. It cannot
+--   prove that an arbitrary expression is broad, and it is deliberately not an
+--   allowlist drop (that could remove a legitimate future policy). Known
+--   survivors, each pinned by a test in tests/security/test_sec_previews_policy.py
+--   and each CAUGHT by the strict allowlist query in the Verify block below:
+--     * a policy that reaches the bucket without the literal: bucket_id <>
+--       'avatars'; bucket_id like 'prev%'; bucket_id ~ '^prev';
+--       bucket_id = 'prev' || 'iews'; bucket_id in (select id from
+--       storage.buckets where ...); a policy with no bucket test at all;
+--     * a broad policy that also contains a scoping function word, so the
+--       scoped-looking test passes it: bucket_id = 'previews' OR (foldername
+--       in accessible_channel_ids(...)); ... AND (is_platform_admin() OR true).
+--   So: after applying, run the allowlist query (Verify, 1). It is the check
+--   that counts; the NOTICEs only say what step 2 happened to remove.
 --
 -- WHAT IT NEVER DOES
 --   * creates a policy for anon or public, or any policy other than the scoped
@@ -36,11 +53,19 @@
 --     service key, which bypasses RLS. Both still work; only the over-broad
 --     read is gone.
 --
+-- RUN IT WHOLE
+--   Statements 3 and 4 (drop previews_read, create previews_read) belong
+--   together: run the file in one go (one execute / one SQL-editor run). Running
+--   only the drop leaves previews unreadable for everyone until the create runs
+--   (fail-closed: no leak, the review panel just cannot sign). Statements 1 and
+--   2 may run alone.
+--
 -- ROLLBACK (safe)
 --   There is nothing to roll back to: the dropped policies were a leak. If the
---   scoped rule itself ever has to be put back, re-run step 3 alone (the drop
---   if exists + create policy previews_read below). Do NOT recreate a broad
---   previews policy, with any name, from the dashboard or from SQL.
+--   scoped rule itself ever has to be put back, re-run statements 3 and 4 (the
+--   drop if exists + create policy previews_read below) together. Do NOT
+--   recreate a broad previews policy, with any name, from the dashboard or from
+--   SQL.
 --
 -- Idempotent: a second run drops nothing (the DO block finds nothing) and
 -- re-creates the same policy. Requires 0004 + 0018 (accessible_channel_ids,
@@ -64,23 +89,27 @@ end $$;
 -- 1. The drift policy, by name.
 drop policy if exists "previews_read 1dyqf8r_0" on storage.objects;
 
--- 2. Any other broad read of the previews bucket, whatever the dashboard named
---    it. USING (qual) and WITH CHECK are tested separately, each on its own.
+-- 2. Best effort: other permissive reads that name the previews bucket without
+--    tenant scoping, whatever the dashboard called them. USING (qual) and WITH
+--    CHECK are tested separately, each on its own. Heuristic: see the header.
 do $$
 declare
   p record;
+  named  constant text := '(''previews''|\{([^}'']*,)?previews(,[^}'']*)?\}'')';
+  scoped constant text := '(accessible_channel_ids|is_platform_admin)';
 begin
   for p in
     select policyname
       from pg_policies
      where schemaname = 'storage'
        and tablename = 'objects'
+       and permissive = 'PERMISSIVE'
        and cmd in ('SELECT', 'ALL')
        and policyname <> 'previews_read'
-       and (   (qual       like '%''previews''%' and qual       !~ '(accessible_channel_ids|is_platform_admin)')
-            or (with_check like '%''previews''%' and with_check !~ '(accessible_channel_ids|is_platform_admin)'))
+       and (   (qual       ~ named and qual       !~ scoped)
+            or (with_check ~ named and with_check !~ scoped))
   loop
-    raise notice '0098: dropping broad previews policy % on storage.objects', quote_ident(p.policyname);
+    raise notice '0098: dropping policy % on storage.objects (names bucket previews, no tenant scoping)', quote_ident(p.policyname);
     execute format('drop policy %I on storage.objects', p.policyname);
   end loop;
 end $$;
@@ -101,33 +130,50 @@ create policy previews_read on storage.objects
 -- ─────────────────────────────────────────────────────────────────────────
 -- Verify (read-only; run in the SQL editor after applying, on the live project)
 -- ─────────────────────────────────────────────────────────────────────────
---   -- A. every policy on storage.objects, USING and WITH CHECK shown separately.
---   --    Expected: previews_read (SELECT, {authenticated}, qual names
+--   -- 1. THE CHECK THAT COUNTS: strict allowlist. Expected: 0 rows. Any row is
+--   --    a policy this repo did not create (or a name to add here deliberately):
+--   --    read its expressions with query 2, decide, and drop it by migration.
+--   select policyname, cmd, roles::text as roles, permissive, qual as using_expr, with_check as check_expr
+--     from pg_policies
+--    where schemaname = 'storage' and tablename = 'objects'
+--      and policyname not in ('avatars_delete_own', 'avatars_insert_own', 'avatars_select_own',
+--                             'avatars_update_own', 'previews_read', 'voice_previews_read');
+--
+--   -- 2. every policy on storage.objects, USING and WITH CHECK shown separately.
+--   --    Expected: previews_read (SELECT, {authenticated}, PERMISSIVE, qual names
 --   --    accessible_channel_ids and is_platform_admin, with_check null);
 --   --    voice_previews_read (SELECT, qual = bucket_id 'voice-previews' only);
---   --    avatars_select_own / insert_own / update_own / delete_own;
---   --    nothing named "previews_read 1dyqf8r_0" or "Allow ...".
---   select policyname, cmd, roles::text as roles, qual as using_expr, with_check as check_expr
+--   --    avatars_select_own / insert_own / update_own / delete_own.
+--   select policyname, cmd, roles::text as roles, permissive, qual as using_expr, with_check as check_expr
 --     from pg_policies
 --    where schemaname = 'storage' and tablename = 'objects'
 --    order by policyname;
 --
---   -- B. broad readers of the previews bucket. Expected: 0 rows.
+--   -- 3. what step 2 looks for (the heuristic). Expected: 0 rows. Passing this
+--   --    does NOT prove there is no leak; query 1 does.
 --   select policyname, cmd, qual as using_expr, with_check as check_expr
 --     from pg_policies
 --    where schemaname = 'storage' and tablename = 'objects'
---      and cmd in ('SELECT', 'ALL')
---      and (   (qual       like '%''previews''%' and qual       !~ '(accessible_channel_ids|is_platform_admin)')
---           or (with_check like '%''previews''%' and with_check !~ '(accessible_channel_ids|is_platform_admin)'));
+--      and permissive = 'PERMISSIVE' and cmd in ('SELECT', 'ALL')
+--      and (   (qual       ~ '(''previews''|\{([^}'']*,)?previews(,[^}'']*)?\}'')' and qual       !~ '(accessible_channel_ids|is_platform_admin)')
+--           or (with_check ~ '(''previews''|\{([^}'']*,)?previews(,[^}'']*)?\}'')' and with_check !~ '(accessible_channel_ids|is_platform_admin)'));
 --
---   -- C. SELECT/ALL policies that name no bucket at all (they would reach
---   --    previews too). Expected: 0 rows. Not dropped by this migration:
---   --    look at each one by hand.
+--   -- 4. SELECT/ALL policies that name no bucket at all (they would reach
+--   --    previews too). Expected: 0 rows. Not dropped by this migration.
 --   select policyname, cmd, qual as using_expr, with_check as check_expr
 --     from pg_policies
 --    where schemaname = 'storage' and tablename = 'objects'
 --      and cmd in ('SELECT', 'ALL')
 --      and coalesce(qual, '') not like '%bucket_id%' and coalesce(with_check, '') not like '%bucket_id%';
 --
---   -- D. the bucket stays private. Expected: public = false.
+--   -- 5. policies on the OTHER tables of the storage schema (buckets, ...).
+--   --    Expected: 0 rows, or ones you know. The repo creates none and the lab
+--   --    does not model the real storage schema, so this was NOT verified
+--   --    against a real project.
+--   select tablename, policyname, cmd, roles::text as roles, qual as using_expr
+--     from pg_policies
+--    where schemaname = 'storage' and tablename <> 'objects';
+--
+--   -- 6. the bucket stays private. Expected: one row, public = false. ZERO rows
+--   --    means the previews bucket row does not exist (not that it is private).
 --   select id, public from storage.buckets where id = 'previews';
