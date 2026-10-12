@@ -119,6 +119,20 @@ export function isCreditExempt(orgId: string | null | undefined): boolean {
   return orgId === DEFAULT_ORG_ID;
 }
 
+/**
+ * Does this organization show the invite card (Credits) and, with it, the "Invite friends" shortcut (Settings)? One
+ * rule for both, so they appear together: the organization pays (the operator's own never does, by either of the two
+ * signs /api/account also uses) and the invite read is not "unsupported" (migration 0092 applied; a failed read still
+ * draws the card, with its error).
+ */
+export function inviteCardShown(
+  org: { id: string; is_default?: boolean | null } | null | undefined,
+  inviteState: "ok" | "failed" | "unsupported",
+): boolean {
+  if (!org || org.is_default || isCreditExempt(org.id)) return false;
+  return inviteState !== "unsupported";
+}
+
 export function roundUpCredits(v: number): number {
   return Math.ceil(Math.round(v * 100 * 1e6) / 1e6) / 100;
 }

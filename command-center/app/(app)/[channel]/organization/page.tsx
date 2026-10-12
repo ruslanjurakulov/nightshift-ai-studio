@@ -1,13 +1,16 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { getOrgContext } from "@/lib/orgs-server";
-import { getUser } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
+import { readMyInvite } from "@/lib/server/friend-invites";
+import { inviteCardShown } from "@/lib/credits";
 import { getDictionary } from "@/lib/i18n/server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { AccountSection } from "@/components/account/AccountSection";
 import { AccountSecurity } from "@/components/account/AccountSecurity";
 import { readOwnHandle } from "@/lib/server/handles";
 import { pendingHandleFrom } from "@/lib/handles";
+import { avatarVersionFromMetadata } from "@/lib/avatar";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -30,6 +33,12 @@ export default async function SettingsPage() {
   const { t } = await getDictionary();
   const [org, user, path, handles] = await Promise.all([getOrgContext(), getUser(), getChannelPath(), readOwnHandle()]);
 
+  // The photo's cache-buster from the user already read above (no extra request); untrusted, see lib/avatar.ts.
+  // The "Invite friends" row appears exactly when the Credits page draws the invite card (one predicate).
+  const supabase = user && org.supported && org.current ? await createClient() : null;
+  const showInvite = supabase && org.current ? inviteCardShown(org.current, (await readMyInvite(supabase)).state) : false;
+  const avatarV = avatarVersionFromMetadata(user?.user_metadata);
+
   return (
     <div className="rhythm ns-open">
       <PageHeader icon="organization" title={t.org.title} subtitle={t.org.customerSubtitle} />
@@ -37,12 +46,12 @@ export default async function SettingsPage() {
         <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.org.signIn}</div>
       ) : !org.supported ? (
         <>
-          <AccountSection email={user.email ?? null} />
+          <AccountSection email={user.email ?? null} avatarV={avatarV} showInvite={showInvite} />
           <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.org.notMigrated}</div>
         </>
       ) : org.current ? (
         <>
-          <AccountSection email={user.email ?? null} />
+          <AccountSection email={user.email ?? null} avatarV={avatarV} showInvite={showInvite} />
           {user.email && (
             <AccountSecurity
               email={user.email}
@@ -62,7 +71,7 @@ export default async function SettingsPage() {
         </>
       ) : (
         <>
-          <AccountSection email={user.email ?? null} />
+          <AccountSection email={user.email ?? null} avatarV={avatarV} showInvite={showInvite} />
           <div className="panel p-5 sm:p-6 text-sm text-[var(--color-muted)]">{t.org.noOrg}</div>
         </>
       )}

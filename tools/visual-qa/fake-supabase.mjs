@@ -73,17 +73,22 @@ const CHANNEL = {
   agent_config: { target_duration_seconds: 120 },
 };
 
+/** The signed-in user; with `avatarV` the profile photo's version marker is in the metadata (the layout reads it from /auth/v1/user). */
+function userFor(avatarV) {
+  return avatarV ? { ...USER, user_metadata: { avatar_v: avatarV } } : USER;
+}
+
 function b64url(s) {
   return Buffer.from(s, "utf8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 /** The @supabase/ssr session cookie for a fake signed-in session against `url`. */
-export function sessionCookie(url = FAKE_URL_DEFAULT, state = "") {
+export function sessionCookie(url = FAKE_URL_DEFAULT, state = "", avatarV = 0) {
   const host = new URL(url).hostname.split(".")[0];
   const exp = Math.floor(Date.now() / 1000) + 24 * 3600;
-  const claims = { sub: USER.id, exp, role: "authenticated", aud: "authenticated", ...(state ? { qa: state } : {}) };
+  const claims = { sub: USER.id, exp, role: "authenticated", aud: "authenticated", ...(state ? { qa: state } : {}), ...(avatarV ? { av: avatarV } : {}) };
   const jwt = [b64url(JSON.stringify({ alg: "none", typ: "JWT" })), b64url(JSON.stringify(claims)), "unsigned"].join(".");
-  const session = { access_token: jwt, token_type: "bearer", expires_in: 86400, expires_at: exp, refresh_token: "visual-qa", user: USER };
+  const session = { access_token: jwt, token_type: "bearer", expires_in: 86400, expires_at: exp, refresh_token: "visual-qa", user: userFor(avatarV) };
   return { name: `sb-${host}-auth-token`, value: "base64-" + b64url(JSON.stringify(session)) };
 }
 
@@ -122,14 +127,17 @@ const PLANS = {
 };
 const switchState = new Map(); // state -> switch pressed in this process
 
-function stateOf(req) {
+function claimsOf(req) {
   const m = /^Bearer\s+[^.]+\.([^.]+)\./.exec(String(req.headers.authorization || ""));
-  if (!m) return "";
+  if (!m) return {};
   try {
-    return JSON.parse(Buffer.from(m[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")).qa || "";
+    return JSON.parse(Buffer.from(m[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")) || {};
   } catch {
-    return "";
+    return {};
   }
+}
+function stateOf(req) {
+  return claimsOf(req).qa || "";
 }
 
 function accountFor(state) {
@@ -326,7 +334,7 @@ export function startFakeSupabase(port = 54399) {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, "http://x");
     if (req.method === "OPTIONS") return send(res, 204);
-    if (url.pathname === "/auth/v1/user") return send(res, 200, USER);
+    if (url.pathname === "/auth/v1/user") return send(res, 200, userFor(claimsOf(req).av));
     if (url.pathname.startsWith("/auth/v1/")) return send(res, 200, {});
     const state = stateOf(req);
     const rpc = url.pathname.match(/^\/rest\/v1\/rpc\/([a-z_0-9]+)/);

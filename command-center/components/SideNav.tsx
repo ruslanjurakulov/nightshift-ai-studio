@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
-import { Menu, UserRound, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { ICONS } from "@/components/navigation/navIcons";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
@@ -11,7 +11,8 @@ import { navGroupsFor, tabsFor, type NavKey } from "@/lib/navigation";
 import { useOverlay } from "@/components/a11y/useOverlay";
 import { CustomerSidebar } from "@/components/shell/CustomerSidebar";
 import { Wordmark } from "@/components/site/Wordmark";
-import { accountInitial, type AccountPlan } from "@/lib/account";
+import { type AccountPlan } from "@/lib/account";
+import { Avatar } from "@/components/account/Avatar";
 import { nav as MNav } from "motion/react-m";
 import { Plate, SharedLayout } from "@/components/motion/SharedLayout";
 
@@ -90,11 +91,14 @@ function NavList({ operator, onNavigate }: { operator: boolean; onNavigate?: () 
 export function SideNav({
   operator = false,
   email = null,
+  avatarV = null,
   plan = null,
 }: {
   operator?: boolean;
   /** For the customer sidebar's user card. */
   email?: string | null;
+  /** The photo's version (avatar_v), or null for none. */
+  avatarV?: number | null;
   plan?: AccountPlan | null;
 }) {
   const { t } = useI18n();
@@ -122,12 +126,12 @@ export function SideNav({
           <NavList operator={operator} />
         </aside>
       ) : (
-        <CustomerSidebar email={email} plan={plan} />
+        <CustomerSidebar email={email} avatarV={avatarV} plan={plan} />
       )}
 
       {/* A customer's phone: the five destinations as a bottom tab bar, Studio in
           the middle and raised — where the thumb is, as phone apps do. */}
-      {!operator && <BottomBar email={email} />}
+      {!operator && <BottomBar email={email} avatarV={avatarV} />}
 
       {/* Mobile trigger (operator) — a slim bar under the header */}
       {operator && (
@@ -191,20 +195,20 @@ const BOTTOM_ORDER: readonly NavKey[] = ["videos", "channels", "hub", "credits",
 
 /**
  * The Settings tab is the account, as a profile tab is on Instagram: the
- * account's initial in a circle where the other tabs have a glyph (a neutral
- * person when there is no e-mail). The circle is decoration: the tab is still
- * named "Settings", and the e-mail is never in its name or title.
+ * photo in a circle where the other tabs have a glyph, or the account's
+ * initial when there is no photo (a neutral person when there is no e-mail).
+ * The circle is decoration: the tab is still named "Settings", and neither
+ * the e-mail nor the photo is in its name or title.
  */
-function AccountAvatar({ email, active }: { email: string | null; active: boolean }) {
-  const initial = accountInitial(email);
+function AccountAvatar({ email, avatarV, active }: { email: string | null; avatarV: number | null; active: boolean }) {
   return (
     <span aria-hidden className={active ? "ns-tab-avatar is-current" : "ns-tab-avatar"}>
-      {initial ?? <UserRound className="size-3.5" strokeWidth={2} />}
+      <Avatar email={email} version={avatarV} size={24} className="size-full!" />
     </span>
   );
 }
 
-function BottomBar({ email }: { email: string | null }) {
+function BottomBar({ email, avatarV }: { email: string | null; avatarV: number | null }) {
   const { t } = useI18n();
   const isActive = useIsActive();
   const path = useChannelPath();
@@ -237,7 +241,7 @@ function BottomBar({ email }: { email: string | null }) {
                     <span className={active ? "ns-tab-icon ns-plate-host" : "ns-tab-icon"}>
                       {active && <Plate id="tab-current" className="is-tab" />}
                       {key === "settings" ? (
-                        <AccountAvatar email={email} active={active} />
+                        <AccountAvatar email={email} avatarV={avatarV} active={active} />
                       ) : (
                         <Icon aria-hidden className="size-[19px]" strokeWidth={active ? 2.2 : 1.8} />
                       )}
