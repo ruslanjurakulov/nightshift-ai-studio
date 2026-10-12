@@ -3482,8 +3482,6 @@ export const ru: Dictionary = {
       pricing: "Цены",
       start: "Начать бесплатно",
       skip: "Перейти к содержимому",
-      menu: "Меню",
-      close: "Закрыть меню",
     },
     hero: {
       eyebrow: "ИИ-студия для YouTube-каналов",

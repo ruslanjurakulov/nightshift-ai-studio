@@ -3493,8 +3493,6 @@ export const en = {
       pricing: "Pricing",
       start: "Start free",
       skip: "Skip to content",
-      menu: "Menu",
-      close: "Close menu",
     },
     hero: {
       eyebrow: "Autonomous studio for YouTube channels",

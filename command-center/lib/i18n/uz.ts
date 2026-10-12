@@ -3482,8 +3482,6 @@ export const uz: Dictionary = {
       pricing: "Narxlar",
       start: "Bepul boshlash",
       skip: "Asosiy qismga oʻtish",
-      menu: "Menyu",
-      close: "Menyuni yopish",
     },
     hero: {
       eyebrow: "YouTube kanallari uchun AI studiya",

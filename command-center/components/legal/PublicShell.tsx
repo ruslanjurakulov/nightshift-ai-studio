@@ -4,7 +4,6 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { PublicFooter } from "@/components/legal/PublicFooter";
-import { PublicMobileMenu } from "@/components/legal/PublicMobileMenu";
 import { Wordmark } from "@/components/site/Wordmark";
 import { preloadSiteFonts } from "@/components/site/fonts";
 import { SiteEffects } from "@/components/site/SiteEffects";
@@ -38,9 +37,10 @@ export function publicNavLinks(t: Dictionary): { href: string; label: string; se
  * none of the app shell (side nav, channel switcher), which reads Supabase and
  * would have nothing to show.
  *
- * The header is a solid rack face (no glass, IDENTITY.md §Elevation) that
- * sticks; on a phone the links fold into a menu while Start free stays in the
- * bar — the one action the pages exist to offer is never behind a tap.
+ * The header is a solid rack face (no glass, IDENTITY.md §Elevation). From
+ * 1024px it is one sticky row; below it the wordmark and Start free are the
+ * first row and the links, language, theme and Sign in a second one, all
+ * visible, with no menu: nothing the pages offer is behind a tap.
  */
 export function PublicShell({
   t,
@@ -68,20 +68,22 @@ export function PublicShell({
             <Wordmark />
           </Link>
 
-          <nav aria-label={t.landing.nav.label} className="st-nav">
-            {links.map((l) => (
-              <Link key={l.href} href={l.href} aria-current={l.section && l.section === current ? "page" : undefined}>
-                {l.label}
-              </Link>
-            ))}
-          </nav>
+          {/* The links, language, theme and Sign in: on the bar's row from 1024px, a row of their own under the wordmark and
+              Start free below it. There is no menu to open: everything is visible at every width. */}
+          <div className="st-header-sub">
+            <nav aria-label={t.landing.nav.label} className="st-nav">
+              {links.map((l) => (
+                <Link key={l.href} href={l.href} aria-current={l.section && l.section === current ? "page" : undefined}>
+                  {l.label}
+                </Link>
+              ))}
+            </nav>
 
-          <div className="st-header-tools">
             <div className="st-header-desk">
               <LanguageSelector />
               <ThemeToggle />
-              {/* The desktop bar is full in every language (the page column stops growing at 1280px), so it is the icon
-                  only, and only from 1280px, where it measurably fits; the word is on the footer link and in the menu. */}
+              {/* The bar is full in every language (the page column stops growing at 1280px), so the view switch is the icon
+                  only, and only from 1280px, where it measurably fits; the word is on the footer link. */}
               <span className="hidden min-[1280px]:contents">
                 <ViewModeToggle />
               </span>
@@ -89,13 +91,12 @@ export function PublicShell({
                 {t.site.nav.signIn}
               </Link>
             </div>
+          </div>
+
+          <div className="st-header-tools">
             <Link href="/signup" className="st-key" data-size="sm">
               {t.site.nav.start}
             </Link>
-            <PublicMobileMenu
-              links={links.map((l) => ({ href: l.href, label: l.label, current: Boolean(l.section && l.section === current) }))}
-              signInLabel={t.site.nav.signIn}
-            />
           </div>
         </div>
       </header>
