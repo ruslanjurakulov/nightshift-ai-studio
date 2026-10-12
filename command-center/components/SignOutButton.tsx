@@ -10,8 +10,11 @@ export function SignOutButton() {
   const { t } = useI18n();
   async function signOut() {
     const supabase = createClient();
-    if (supabase) await supabase.auth.signOut();
-    clearAllEditorDrafts();
+    try {
+      if (supabase) await supabase.auth.signOut();
+    } finally {
+      clearAllEditorDrafts();
+    }
     router.push("/login");
     router.refresh();
   }

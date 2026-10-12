@@ -319,6 +319,37 @@ describe("resuming", () => {
     expect(sent.doc.tracks[0].clips[0]).toMatchObject({ speed: 2 });
   });
 
+  it("Restore keeps an edit made while the offer was open one Undo away", async () => {
+    writeDraft(U1, PID, 1, { title: "Trip", doc: doubled() });
+    mount();
+    await screen.findByRole("region", { name: te.draftRegion });
+    fireEvent.click(speed("0.5×")); // a different, live edit while the offer is open
+    fireEvent.click(screen.getByRole("button", { name: te.draftRestore }));
+    expect(speed("2×")).toHaveProperty("checked", true); // the draft was applied
+    const undo = screen.getByRole("button", { name: te.undo });
+    expect(undo).toHaveProperty("disabled", false);
+    fireEvent.click(undo);
+    expect(speed("0.5×")).toHaveProperty("checked", true); // the live edit is back
+    expect(screen.getByRole("button", { name: te.redo })).toHaveProperty("disabled", false);
+  });
+
+  it("announces the offer to assistive technology (role=status)", async () => {
+    writeDraft(U1, PID, 1, { title: "Trip", doc: doubled() });
+    mount();
+    const region = await screen.findByRole("region", { name: te.draftRegion });
+    expect(screen.getByRole("status", { name: "" }).textContent).toContain(
+      te.draftFound.split("{when}")[0].trim(),
+    );
+    expect(region.contains(screen.getByRole("status"))).toBe(true);
+  });
+
+  it("clamps a restored title to the length the input allows", async () => {
+    writeDraft(U1, PID, 1, { title: "x".repeat(300), doc: doubled() });
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: te.draftRestore }));
+    expect((screen.getByLabelText(te.projectTitle) as HTMLInputElement).value).toHaveLength(120);
+  });
+
   it("the banner buttons are real buttons at least 44 px high and reachable by keyboard", async () => {
     writeDraft(U1, PID, 1, { title: "Trip", doc: doubled() });
     mount();

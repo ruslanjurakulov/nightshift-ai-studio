@@ -41,7 +41,10 @@ export function DraftBanner({
       aria-label={te.draftRegion}
       className="panel flex min-w-0 flex-col gap-3 border-l-4 border-l-[var(--color-warn)] p-4 sm:flex-row sm:items-center"
     >
-      <p className="m-0 min-w-0 flex-1 break-words text-sm text-[var(--color-fg)]">
+      <p
+        role="status"
+        className="m-0 min-w-0 flex-1 break-words text-sm text-[var(--color-fg)]"
+      >
         {text}
       </p>
       <div className="flex flex-wrap gap-2">

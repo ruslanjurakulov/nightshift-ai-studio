@@ -246,10 +246,11 @@ export function TimelineEditor({
       ),
     onRestore: (d, found) => {
       setAssets((x) => ({ ...found, ...x }));
-      setModel(toModel(d.doc));
-      setTitle(d.title);
-      setPast([]);
+      // What was on screen (edits made while the offer was open) stays one Undo away.
+      setPast((p) => [...p.slice(-(HISTORY - 1)), model]);
       setFuture([]);
+      setModel(toModel(d.doc));
+      setTitle(d.title.slice(0, 120));
       setError(null);
     },
   });

@@ -70,8 +70,11 @@ export function useSignOut(): () => Promise<void> {
   const router = useRouter();
   return async function signOut() {
     const supabase = createClient();
-    if (supabase) await supabase.auth.signOut();
-    clearAllEditorDrafts();
+    try {
+      if (supabase) await supabase.auth.signOut();
+    } finally {
+      clearAllEditorDrafts();
+    }
     router.push("/login");
     router.refresh();
   };
