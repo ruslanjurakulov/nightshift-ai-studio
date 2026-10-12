@@ -67,6 +67,38 @@ Xavfsizlik:
 - Pull request'da workflow **ishlamaydi**.
 - Supabase **service key** bu yerga hech qachon kirmaydi (u faqat bot uchun).
 
+### Caddyfile o'zgarsa (avtomatik reload)
+
+`deploy/Caddyfile` konteynerga bitta fayl sifatida ulangan, shuning uchun faqat
+shu fayl o'zgarsa `docker compose up` Caddy'ni qayta yaratmaydi va u eski
+konfigda qolardi. Deploy'ning oxirgi qadami (`remote-deploy.sh`, "caddy: ...")
+shuni tuzatadi, **restart qilmasdan**:
+
+1. `caddy validate` (konteyner ichida, fayl `main`dagi commit'dan stdin orqali
+   beriladi) — xato bo'lsa hech narsa yuklanmaydi.
+2. Himoya ro'yxati (`CADDY_HEADERS` va h.k., `remote-deploy.sh` boshida): yangi
+   fayl HSTS, nosniff, Referrer-Policy, Permissions-Policy, `-Server`,
+   `-X-Powered-By` yoki `X-Frame-Options DENY` ni olib tashlasa (yoki Caddy
+   o'zi `SAMEORIGIN` qo'ysa) — yuklashdan **oldin** rad etiladi.
+3. `caddy reload` (uzilishsiz), so'ng `127.0.0.1` orqali haqiqiy javob tekshiriladi:
+   iframe bo'lmagan so'rov — bitta `DENY`; o'z sahifamiz iframe'da (`/login`) —
+   bitta `SAMEORIGIN`; `/auth/*`, `/api/*` iframe'da — `DENY`; asosiy headerlar bor.
+4. Biror narsa noto'g'ri bo'lsa — oxirgi muvaffaqiyatli Caddyfile
+   (`/opt/nightshift/.caddyfile.loaded`) qayta yuklanadi, deploy **qizil** bo'ladi
+   va logda sababi (header nomi, yo'l) ko'rinadi. Birinchi ishga tushishda
+   oldingi commit'dagi fayl zaxira sifatida olinadi.
+
+Qo'lda qaytarish (serverda, `nightshift` foydalanuvchisi):
+
+```bash
+dc exec -T caddy caddy validate --config - --adapter caddyfile < /opt/nightshift/.caddyfile.loaded
+dc exec -T caddy caddy reload   --config - --adapter caddyfile < /opt/nightshift/.caddyfile.loaded
+```
+
+Tekshirish (istalgan joydan, Cloudflare orqali):
+`curl -sI https://nightshift-ai.studio/login | grep -i x-frame-options` — bitta `DENY`;
+iframe: `curl -sI -H 'Sec-Fetch-Dest: iframe' -H 'Sec-Fetch-Site: same-origin' https://nightshift-ai.studio/login | grep -i x-frame-options` — bitta `SAMEORIGIN`.
+
 ### a) Porkbun DNS: `new` subdomen
 
 1. <https://porkbun.com> → **Account → Domain Management** →

@@ -37,7 +37,11 @@
 #      creative worker follows the worker-section line
 #      NIGHTSHIFT_CREATIVE_WORKER=on (the repository variable of that name):
 #      started or recreated when it says `on` and the worker is on, stopped
-#      and removed otherwise.
+#      and removed otherwise;
+#   7. last, loads deploy/Caddyfile into the running Caddy without a restart
+#      (a bind-mounted file that changes does not make compose recreate it),
+#      checks the headers it really sends, and puts the previous Caddyfile
+#      back if anything is off (see "Caddy" below and docs/DEPLOY_AX42.md).
 #
 # It never prints a value — only key names, the commit, and container status.
 # Its output ends up in a PUBLIC Actions log, so that is not a style choice.
@@ -53,6 +57,10 @@
 #   NIGHTSHIFT_DOCKER         docker binary            (docker)
 #   NIGHTSHIFT_HEALTH_TIMEOUT seconds to wait for web  (420)
 #   NIGHTSHIFT_WORKER_SETTLE_SECONDS  pause before the worker state line (20)
+#   NIGHTSHIFT_CURL           curl binary              (curl)
+#   NIGHTSHIFT_CADDY_STATE_DIR where the last loaded Caddyfile is kept (dir of the env file)
+#   NIGHTSHIFT_CADDY_VERIFY_HOST / _SCHEME / _PORT / _TIMEOUT / NIGHTSHIFT_CADDY_RETRY_SLEEP
+#                             how the header check reaches Caddy (DOMAIN / https / 443 / 30 / 2)
 # sshd does not accept client-sent environment by default (PermitUserEnvironment
 # no, AcceptEnv LANG LC_*), so the key holder cannot set these.
 
@@ -73,6 +81,13 @@ LOCK_FILE="${NIGHTSHIFT_LOCK_FILE:-/opt/nightshift/.deploy.lock}"
 DOCKER="${NIGHTSHIFT_DOCKER:-docker}"
 HEALTH_TIMEOUT="${NIGHTSHIFT_HEALTH_TIMEOUT:-420}"
 WORKER_SETTLE_SECONDS="${NIGHTSHIFT_WORKER_SETTLE_SECONDS:-20}"
+CURL="${NIGHTSHIFT_CURL:-curl}"
+CADDY_STATE_DIR="${NIGHTSHIFT_CADDY_STATE_DIR:-$(dirname "$ENV_FILE")}"
+CADDY_VERIFY_HOST="${NIGHTSHIFT_CADDY_VERIFY_HOST:-}"
+CADDY_VERIFY_SCHEME="${NIGHTSHIFT_CADDY_VERIFY_SCHEME:-https}"
+CADDY_VERIFY_PORT="${NIGHTSHIFT_CADDY_VERIFY_PORT:-443}"
+CADDY_VERIFY_TIMEOUT="${NIGHTSHIFT_CADDY_VERIFY_TIMEOUT:-30}"
+CADDY_RETRY_SLEEP="${NIGHTSHIFT_CADDY_RETRY_SLEEP:-2}"
 
 MAX_INPUT_BYTES=262144
 SHA_KEY=NIGHTSHIFT_DEPLOY_SHA
@@ -226,6 +241,205 @@ write_env() {
   trap - EXIT
 }
 
+# ── Caddy: validate, reload, verify, roll back ──────────────────────────────
+# Caddy reads deploy/Caddyfile through a single-file bind mount, so a deploy
+# that only changes that file recreates nothing, and git replacing the file
+# (new inode) leaves the container looking at the old one. So the Caddyfile is
+# fed to Caddy on stdin from the checkout rather than read from the mount.
+#
+# This is the CONTRACT: what Caddy must keep sending. It mirrors the `header`
+# blocks of deploy/Caddyfile (tests/test_deploy_self_host.py compares the two).
+# A Caddyfile that drops one of these is refused BEFORE it is loaded, and a
+# loaded one that does not send them is rolled back. Changing this list is a
+# deliberate act that comes with a test change; the script never edits it.
+CADDY_HEADERS=(
+  'Strict-Transport-Security: max-age=31536000'
+  'X-Content-Type-Options: nosniff'
+  'Referrer-Policy: strict-origin-when-cross-origin'
+)
+CADDY_HEADERS_PRESENT=(Permissions-Policy)
+CADDY_HEADERS_ABSENT=(Server X-Powered-By)
+# Framing: a request that is not an iframe gets exactly one DENY from Caddy;
+# our own page framing itself (same-origin iframe) gets the app's one
+# SAMEORIGIN, and only on pages that may be framed; /auth and /api stay DENY.
+CADDY_FRAME_PLAIN=/login
+CADDY_FRAME_SELF=/login
+CADDY_FRAME_NEVER=(/auth/callback /api/account)
+
+# Run caddy inside the running caddy service (root, with the container's own
+# DOMAIN and ACME_EMAIL, which is what {$DOMAIN} in the Caddyfile reads).
+# The config comes on stdin ("--config -").
+caddy_exec() { compose exec -T caddy caddy "$@"; }
+
+# Response headers of one request through Caddy on this machine, lower-cased.
+# TLS is verified: --resolve sends the real name to 127.0.0.1, no Cloudflare.
+#   caddy_fetch <host> <path> <iframe: 0|1>
+caddy_fetch() {
+  local host="$1" path="$2" framed="$3"
+  local -a args=(-sS -o /dev/null -D - --http1.1 --max-time 10 --resolve "${host}:${CADDY_VERIFY_PORT}:127.0.0.1")
+  if [[ "$framed" == 1 ]]; then
+    args+=(-H 'Sec-Fetch-Dest: iframe' -H 'Sec-Fetch-Site: same-origin')
+  fi
+  "$CURL" "${args[@]}" "${CADDY_VERIFY_SCHEME}://${host}:${CADDY_VERIFY_PORT}${path}" 2>/dev/null \
+    | tr -d '\r' | tr '[:upper:]' '[:lower:]'
+}
+
+# Every X-Frame-Options value in a header dump, comma separated ("" if none).
+xfo_values() { grep '^x-frame-options:' <<<"$1" | sed 's/^[^:]*: *//' | paste -sd, - || true; }
+
+# The live check. Prints what is wrong (names and paths only, never a body),
+# returns 0 fine, 1 a header is wrong, 2 Caddy did not answer properly (the
+# caller may retry). mode "baseline" skips the iframe cases: a restored older
+# Caddyfile has to keep the protections, not the newest framing rules.
+#   caddy_check <host> <full|baseline>
+caddy_check() {
+  local host="$1" mode="$2" h x e name p rc=0
+  h="$(caddy_fetch "$host" "$CADDY_FRAME_PLAIN" 0)" || { echo "no answer from Caddy on 127.0.0.1:${CADDY_VERIFY_PORT}"; return 2; }
+  if [[ "$h" =~ ^http/[0-9.]+\ ([0-9]{3}) ]] && (( 10#${BASH_REMATCH[1]} >= 500 )); then
+    echo "$CADDY_FRAME_PLAIN answered ${BASH_REMATCH[1]}"; return 2
+  fi
+  x="$(xfo_values "$h")"
+  [[ "$x" == deny ]] || { echo "$CADDY_FRAME_PLAIN (not framed): X-Frame-Options is '${x:-missing}', expected exactly one DENY"; rc=1; }
+  for e in "${CADDY_HEADERS[@]}"; do
+    grep -qxF -- "${e,,}" <<<"$h" || { echo "${e%%: *} is missing or changed"; rc=1; }
+  done
+  for name in "${CADDY_HEADERS_PRESENT[@]}"; do
+    grep -q -- "^${name,,}:" <<<"$h" || { echo "$name is missing"; rc=1; }
+  done
+  for name in "${CADDY_HEADERS_ABSENT[@]}"; do
+    if grep -q -- "^${name,,}:" <<<"$h"; then echo "$name is sent"; rc=1; fi
+  done
+  if [[ "$mode" == full ]]; then
+    h="$(caddy_fetch "$host" "$CADDY_FRAME_SELF" 1)" || { echo "no answer from Caddy for a framed request"; return 2; }
+    x="$(xfo_values "$h")"
+    [[ "$x" == sameorigin ]] || { echo "$CADDY_FRAME_SELF (same-origin iframe): X-Frame-Options is '${x:-missing}', expected exactly one SAMEORIGIN"; rc=1; }
+    for p in "${CADDY_FRAME_NEVER[@]}"; do
+      h="$(caddy_fetch "$host" "$p" 1)" || { echo "no answer from Caddy for a framed request"; return 2; }
+      x="$(xfo_values "$h")"
+      [[ "$x" == deny ]] || { echo "$p (iframe): X-Frame-Options is '${x:-missing}', expected exactly one DENY"; rc=1; }
+    done
+  fi
+  return "$rc"
+}
+
+# caddy_check, retried while Caddy does not answer (just reloaded, or just
+# created); a wrong header is final at once.
+#   caddy_verify <host> <full|baseline>
+caddy_verify() {
+  local host="$1" mode="$2" waited=0 out rc
+  while :; do
+    rc=0
+    out="$(caddy_check "$host" "$mode")" || rc=$?
+    if (( rc == 0 )); then return 0; fi
+    if (( rc != 2 || waited >= CADDY_VERIFY_TIMEOUT )); then break; fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+  printf '%s\n' "$out" | sed 's/^/  - /' >&2
+  return 1
+}
+
+# Names the contract needs that the ADAPTED config (JSON) of a Caddyfile no
+# longer has. Prints one per line; nothing means the contract holds.
+#   caddy_dropped <adapted json>
+caddy_dropped() {
+  local json="$1" e name
+  for e in "${CADDY_HEADERS[@]}"; do
+    [[ "$json" == *"\"${e%%: *}\":[\"${e#*: }\"]"* ]] || echo "${e%%: *}"
+  done
+  for name in "${CADDY_HEADERS_PRESENT[@]}"; do
+    [[ "$json" == *"\"${name}\":["* ]] || echo "$name"
+  done
+  for name in "${CADDY_HEADERS_ABSENT[@]}"; do
+    grep -Eq -- "\"delete\":\[[^]]*\"${name}\"" <<<"$json" || echo "-$name"
+  done
+  [[ "$json" == *'"X-Frame-Options":["DENY"]'* ]] || echo "X-Frame-Options"
+  # Any other X-Frame-Options value (SAMEORIGIN, ALLOW-FROM) set by Caddy would
+  # widen what the app decides per request.
+  if grep -o '"X-Frame-Options":\["[^"]*"\]' <<<"$json" | grep -qv '"X-Frame-Options":\["DENY"\]'; then
+    echo "X-Frame-Options (only DENY may be set here)"
+  fi
+}
+
+# Reload from a file, no restart, no dropped connection. Retried a few times:
+# right after `compose up` the admin endpoint may not be listening yet.
+caddy_reload() {
+  local file="$1"
+  for _ in 1 2 3 4 5; do
+    if caddy_exec reload --config - --adapter caddyfile <"$file" >/dev/null 2>&1; then return 0; fi
+    sleep "$CADDY_RETRY_SLEEP"
+  done
+  return 1
+}
+
+# First run: nothing was ever loaded by this step, so the Caddyfile of the
+# commit deployed before this one (still checked out) stands in as the copy to
+# go back to. Called before the checkout. It has no hash marker, so the first
+# run still loads and verifies the new file.
+caddy_seed_previous() {
+  local loaded="$CADDY_STATE_DIR/.caddyfile.loaded"
+  if [[ ! -f "$loaded" && -f "$APP_DIR/deploy/Caddyfile" ]]; then
+    cp "$APP_DIR/deploy/Caddyfile" "$loaded"
+    log "no Caddyfile was loaded by this script before: the previous commit's copy is kept as the one to go back to"
+  fi
+}
+
+# Put the last good Caddyfile back, check the baseline, and fail the deploy.
+#   caddy_rollback <host> <why>
+caddy_rollback() {
+  local host="$1" why="$2" loaded="$CADDY_STATE_DIR/.caddyfile.loaded"
+  printf 'ERROR: %s\n' "$why" >&2
+  if [[ ! -f "$loaded" ]]; then
+    die "there is no earlier Caddyfile copy to restore; Caddy keeps what it was running unless the check above says otherwise. On the server: dc logs --tail 100 caddy"
+  fi
+  log "restoring the previous Caddyfile"
+  if caddy_reload "$loaded" && caddy_verify "$host" baseline; then
+    die "the previous Caddyfile is back and passes the baseline check; deploy/Caddyfile was NOT applied. Fix it and deploy again"
+  fi
+  die "the previous Caddyfile could not be verified either (is Caddy reachable on 127.0.0.1:${CADDY_VERIFY_PORT}?). On the server: dc ps, dc logs --tail 100 caddy"
+}
+
+# The step. Never leaves Caddy without a working config: validate and the
+# contract guard run before anything is loaded, reload is atomic (a config
+# that fails to load leaves the running one in place), and the check after it
+# decides whether the new file stays.
+#   caddy_apply <host>
+caddy_apply() {
+  local host="$1" new="$APP_DIR/deploy/Caddyfile"
+  local loaded="$CADDY_STATE_DIR/.caddyfile.loaded" marker="$CADDY_STATE_DIR/.caddyfile.loaded.sha256"
+  local newsha oldsha=none adapted dropped
+  if [[ ! -f "$new" ]]; then log "caddy: this commit has no deploy/Caddyfile; nothing to load"; return 0; fi
+  newsha="$(sha256sum "$new" | cut -d' ' -f1)"
+  if [[ -f "$marker" ]]; then oldsha="$(cat "$marker")"; fi
+  # Reload is idempotent (Caddy answers "unchanged" for a config it already
+  # runs) and the live check is the real test, so both always run; the hash
+  # only says in the log whether the file moved.
+  if [[ "$newsha" == "$oldsha" ]]; then
+    log "caddy: Caddyfile unchanged since the last good load (${newsha:0:12})"
+  else
+    log "caddy: Caddyfile ${oldsha:0:12} -> ${newsha:0:12}"
+  fi
+
+  caddy_exec validate --config - --adapter caddyfile <"$new" >/dev/null 2>&1 \
+    || die "caddy: validate refused deploy/Caddyfile; nothing was loaded and Caddy keeps its config. On the server: dc exec -T caddy caddy validate --config - --adapter caddyfile < $new"
+  adapted="$(caddy_exec adapt --config - --adapter caddyfile <"$new" 2>/dev/null)" \
+    || die "caddy: could not adapt deploy/Caddyfile; nothing was loaded"
+  dropped="$(caddy_dropped "$adapted" | paste -sd, -)"
+  if [[ -n "$dropped" ]]; then
+    die "caddy: deploy/Caddyfile no longer sets: ${dropped}. Refused before loading; Caddy keeps its config. The list in deploy/remote-deploy.sh (CADDY_HEADERS) is the contract: change it, and tests/test_deploy_self_host.py, in the same PR"
+  fi
+
+  log "caddy: reloading (graceful, no restart)"
+  caddy_reload "$new" || caddy_rollback "$host" "caddy: reload failed; Caddy keeps the config it had"
+  if ! caddy_verify "$host" full; then
+    caddy_rollback "$host" "caddy: the headers Caddy sends with the new Caddyfile are wrong (above)"
+  fi
+
+  cp "$new" "${loaded}.tmp" && mv -f "${loaded}.tmp" "$loaded"
+  printf '%s\n' "$newsha" >"${marker}.tmp" && mv -f "${marker}.tmp" "$marker"
+  log "caddy: loaded and verified (${newsha:0:12}): one DENY, one SAMEORIGIN for our own frame, /auth and /api DENY, baseline headers present"
+}
+
 main() {
   umask 077
 
@@ -325,6 +539,7 @@ main() {
   if ! git diff --quiet HEAD -- 2>/dev/null || ! git diff --cached --quiet HEAD -- 2>/dev/null; then
     die "$APP_DIR has local changes; see 'git -C $APP_DIR status' and discard or commit them"
   fi
+  caddy_seed_previous
   git -c advice.detachedHead=false checkout --quiet -B main "$sha" \
     || die "git checkout $sha failed in $APP_DIR"
   log "checked out $sha"
@@ -425,6 +640,15 @@ main() {
     rm -f "$WORKER_ENV_FILE" "${WORKER_ENV_FILE}.prev"
     log "worker is off (GitHub variable NIGHTSHIFT_WORKER is not 'on'); creative-worker is off with it"
   fi
+
+  # ── 9. Caddy ───────────────────────────────────────────────────────────────
+  # Last, so a proxy problem never holds back the worker; it still fails the
+  # deploy (non-zero) so it is seen.
+  local domain=""
+  for line in "${web_lines[@]}"; do
+    if [[ "$line" == DOMAIN=* ]]; then domain="${line#DOMAIN=}"; fi
+  done
+  caddy_apply "${CADDY_VERIFY_HOST:-$domain}"
 
   # Each build leaves the previous image dangling; a few of these a week fill
   # a disk. Only dangling images: nothing a container still uses.

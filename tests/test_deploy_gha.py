@@ -275,6 +275,20 @@ FAKE_DOCKER = textwrap.dedent(
     # Records every call; answers the few questions remote-deploy.sh asks.
     printf '%s\\n' "$*" >>"$FAKE_DOCKER_LOG"
     case "$*" in
+      # The caddy service: the config on stdin decides what happens, through
+      # markers in its text. A reload makes it the "live" config the fake curl reads.
+      *" exec -T caddy caddy "*)
+        all="$*"; sub="${all##* exec -T caddy caddy }"; sub="${sub%% *}"; body="$(cat)"
+        case "$sub" in
+          validate) [[ "$body" == *SYNTAX* ]] && exit 1; exit 0 ;;
+          adapt)
+            j='{"X-Frame-Options":["DENY"],"Permissions-Policy":["x"],"X-Content-Type-Options":["nosniff"],"Referrer-Policy":["strict-origin-when-cross-origin"],"delete":["Server","X-Powered-By"]'
+            [[ "$body" == *NO_HSTS_STATIC* ]] || j="$j,\\"Strict-Transport-Security\\":[\\"max-age=31536000\\"]"
+            [[ "$body" == *WIDEN* ]] && j="$j,\\"X-Frame-Options\\":[\\"SAMEORIGIN\\"]"
+            echo "$j}"; exit 0 ;;
+          reload) [[ "$body" == *RELOAD_FAILS* ]] && exit 1; printf '%s' "$body" >"$FAKE_CADDY_LIVE"; exit 0 ;;
+        esac
+        exit 0 ;;
       *" up "*creative-worker) exit "${FAKE_CREATIVE_UP_RC:-0}" ;;
       *" up "*worker) exit "${FAKE_WORKER_UP_RC:-0}" ;;
       *" up "*) exit "${FAKE_UP_RC:-0}" ;;
@@ -284,6 +298,33 @@ FAKE_DOCKER = textwrap.dedent(
       logs*) echo "${FAKE_LOG_TEXT:-}" ;;
       *" logs "*) echo "${FAKE_LOG_TEXT:-}" ;;
     esac
+    exit 0
+    """
+)
+
+
+FAKE_CURL = textwrap.dedent(
+    """\
+    #!/usr/bin/env bash
+    # Answers like Caddy would for the config last "reloaded" (FAKE_CADDY_LIVE).
+    live="$(cat "$FAKE_CADDY_LIVE" 2>/dev/null)"
+    [[ -n "$live" ]] || exit 7
+    framed=0
+    for a in "$@"; do url="$a"; [[ "$a" == "Sec-Fetch-Dest: iframe" ]] && framed=1; done
+    rest="${url#*://}"; path="/${rest#*/}"
+    echo "HTTP/1.1 200 OK"
+    [[ "$live" == *NO_HSTS_LIVE* ]] || echo "Strict-Transport-Security: max-age=31536000"
+    echo "X-Content-Type-Options: nosniff"
+    echo "Referrer-Policy: strict-origin-when-cross-origin"
+    echo "Permissions-Policy: camera=()"
+    [[ "$live" == *SERVER_LEAK* ]] && echo "Server: Caddy"
+    if [[ "$framed" == 1 && ( "$path" == /login || "$live" == *FRAME_ALL* ) && "$live" != *NO_SAMEORIGIN* ]]; then
+      echo "X-Frame-Options: SAMEORIGIN"
+    else
+      echo "X-Frame-Options: DENY"
+      [[ "$live" == *DOUBLE_XFO* ]] && echo "X-Frame-Options: DENY"
+    fi
+    echo
     exit 0
     """
 )
@@ -525,6 +566,344 @@ class RemoteDeployTests(_RemoteDeployFixture):
                     break
                 subprocess.run(["sleep", "0.1"])
             self.assertRefused(self.deploy(self.payload()), "another deploy is running")
+
+
+@unittest.skipUnless(shutil.which("bash") and shutil.which("git") and shutil.which("flock"), "bash, git, flock needed")
+class RemoteDeployCaddyTests(_RemoteDeployFixture):
+    """The Caddy step: validate, guard, reload, verify, roll back (fake docker + fake curl)."""
+
+    def setUp(self):
+        super().setUp()
+        self.caddyfile = (ROOT / "deploy" / "Caddyfile").read_text()
+        curl = self.tmp / "curl"
+        curl.write_text(FAKE_CURL)
+        curl.chmod(0o755)
+        self.live = self.tmp / "caddy.live"
+        self.state = self.tmp  # the env file's directory, where the step keeps its marker
+
+    def push(self, marker=""):
+        """A new commit on upstream main whose Caddyfile carries `marker` (a comment)."""
+        up = self.tmp / "upstream"
+        (up / "deploy" / "Caddyfile").write_text(f"{self.caddyfile}\n# {marker}\n")
+        self.git(up, "add", "-A")
+        self.git(up, "commit", "-q", "-m", f"caddyfile {marker}")
+        return self.git(up, "rev-parse", "HEAD")
+
+    def deploy_caddy(self, sha, **extra):
+        return self.deploy(
+            self.payload(sha=sha),
+            NIGHTSHIFT_CURL=str(self.tmp / "curl"),
+            FAKE_CADDY_LIVE=str(self.live),
+            NIGHTSHIFT_CADDY_VERIFY_TIMEOUT="0",
+            NIGHTSHIFT_CADDY_RETRY_SLEEP="0",
+            **extra,
+        )
+
+    def caddy_calls(self):
+        return [c.split(" exec -T caddy caddy ")[1].split()[0] for c in self.docker_calls() if " exec -T caddy caddy " in c]
+
+    def loaded(self):
+        return (self.state / ".caddyfile.loaded").read_text()
+
+    def test_validate_then_guard_then_reload_after_compose_up_and_web_healthy(self):
+        sha = self.push("v1")
+        proc = self.deploy_caddy(sha)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.caddy_calls(), ["validate", "adapt", "reload"])
+        calls = self.docker_calls()
+        up = next(i for i, c in enumerate(calls) if c.endswith("up -d --build --remove-orphans web caddy"))
+        first = next(i for i, c in enumerate(calls) if " exec -T caddy caddy validate" in c)
+        self.assertLess(up, first)
+        self.assertIn("loaded and verified", proc.stdout)
+        # The config is read from the checkout on stdin, not from the bind mount.
+        self.assertTrue(all("--config -" in c for c in calls if " exec -T caddy caddy " in c))
+        self.assertIn("# v1", self.live.read_text())
+        self.assertIn("# v1", self.loaded())
+        marker = self.state / ".caddyfile.loaded.sha256"
+        self.assertEqual(len(marker.read_text().strip()), 64)
+        for f in (marker, self.state / ".caddyfile.loaded"):
+            self.assertEqual(stat.S_IMODE(f.stat().st_mode), 0o600)
+
+    def test_an_unchanged_file_is_reported_unchanged_and_still_verified(self):
+        sha = self.push("v1")
+        self.assertEqual(self.deploy_caddy(sha).returncode, 0)
+        self.docker_log.unlink()
+        proc = self.deploy_caddy(sha)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("unchanged since the last good load", proc.stdout)
+        self.assertEqual(self.caddy_calls(), ["validate", "adapt", "reload"])
+
+    def test_a_file_that_does_not_validate_is_never_loaded(self):
+        good = self.deploy_caddy(self.push("v1"))
+        self.assertEqual(good.returncode, 0, good.stderr)
+        self.docker_log.unlink()
+        proc = self.deploy_caddy(self.push("SYNTAX"))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("validate refused", proc.stderr)
+        self.assertEqual(self.caddy_calls(), ["validate"])
+        self.assertIn("# v1", self.live.read_text())
+        self.assertIn("# v1", self.loaded())
+
+    def test_a_file_that_drops_a_baseline_header_is_refused_before_loading(self):
+        self.assertEqual(self.deploy_caddy(self.push("v1")).returncode, 0)
+        self.docker_log.unlink()
+        proc = self.deploy_caddy(self.push("NO_HSTS_STATIC"))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("no longer sets: Strict-Transport-Security", proc.stderr)
+        self.assertNotIn("reload", self.caddy_calls())
+        self.assertIn("# v1", self.live.read_text())
+
+    def test_a_file_that_widens_frame_options_is_refused_before_loading(self):
+        self.assertEqual(self.deploy_caddy(self.push("v1")).returncode, 0)
+        self.docker_log.unlink()
+        proc = self.deploy_caddy(self.push("WIDEN"))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("only DENY may be set", proc.stderr)
+        self.assertNotIn("reload", self.caddy_calls())
+
+    def test_wrong_headers_after_the_reload_restore_the_previous_file_and_fail(self):
+        self.assertEqual(self.deploy_caddy(self.push("v1")).returncode, 0)
+        for bad, expect in (
+            ("NO_SAMEORIGIN", "expected exactly one SAMEORIGIN"),
+            ("DOUBLE_XFO", "expected exactly one DENY"),
+            ("NO_HSTS_LIVE", "Strict-Transport-Security is missing"),
+            ("SERVER_LEAK", "Server is sent"),
+            ("FRAME_ALL", "/auth/callback (iframe)"),
+        ):
+            with self.subTest(bad=bad):
+                self.docker_log.unlink(missing_ok=True)
+                proc = self.deploy_caddy(self.push(bad))
+                self.assertNotEqual(proc.returncode, 0, proc.stdout)
+                self.assertIn(expect, proc.stderr)
+                self.assertIn("previous Caddyfile is back", proc.stderr)
+                self.assertEqual(self.caddy_calls(), ["validate", "adapt", "reload", "reload"])
+                self.assertIn("# v1", self.live.read_text())
+                self.assertNotIn(bad, self.live.read_text())
+                self.assertIn("# v1", self.loaded())  # the bad file never becomes the rollback copy
+
+    def test_a_reload_that_fails_restores_and_fails(self):
+        self.assertEqual(self.deploy_caddy(self.push("v1")).returncode, 0)
+        proc = self.deploy_caddy(self.push("RELOAD_FAILS"))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("reload failed", proc.stderr)
+        self.assertIn("# v1", self.live.read_text())
+
+    def test_first_ever_failure_with_no_copy_still_fails_loudly(self):
+        proc = self.deploy_caddy(self.push("NO_SAMEORIGIN"))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("no earlier Caddyfile copy", proc.stderr)
+        self.assertFalse((self.state / ".caddyfile.loaded").exists())
+        self.assertFalse((self.state / ".caddyfile.loaded.sha256").exists())
+
+    def test_the_commit_before_is_the_fallback_copy_on_the_first_run(self):
+        # The server already runs commit X (with a Caddyfile) when this script first handles a Caddyfile.
+        x = self.push("old")
+        self.git(self.app, "fetch", "-q", "origin")
+        self.git(self.app, "checkout", "-q", "-B", "main", x)
+        proc = self.deploy_caddy(self.push("NO_SAMEORIGIN"))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("previous Caddyfile is back", proc.stderr)
+        self.assertIn("# old", self.live.read_text())
+        self.assertFalse((self.state / ".caddyfile.loaded.sha256").exists(), "a seed must not count as loaded")
+
+    def test_nothing_is_printed_from_caddy_or_the_response(self):
+        proc = self.deploy_caddy(self.push("DOUBLE_XFO"))
+        out = proc.stdout + proc.stderr
+        self.assertNotIn("camera=()", out)
+        self.assertNotIn("HTTP/1.1", out)
+
+
+def _free_port():
+    import socket
+
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+FAKE_DOCKER_REAL_CADDY = textwrap.dedent(
+    """\
+    #!/usr/bin/env bash
+    # `compose exec -T caddy caddy ...` runs the real caddy binary against the real running one.
+    printf '%s\\n' "$*" >>"$FAKE_DOCKER_LOG"
+    all="$*"
+    case "$all" in
+      *" exec -T caddy caddy "*)
+        # shellcheck disable=SC2086
+        DOMAIN="http://example.test:$SIM_PORT" ACME_EMAIL=ops@example.com exec "$SIM_CADDY" ${all##* exec -T caddy caddy } ;;
+      *" ps -q web"|*" ps -aq web") echo cid123 ;;
+      inspect*) echo healthy ;;
+    esac
+    exit 0
+    """
+)
+
+
+@unittest.skipUnless(
+    shutil.which("bash") and shutil.which("git") and shutil.which("flock") and shutil.which("curl")
+    and (os.environ.get("NIGHTSHIFT_TEST_CADDY") or shutil.which("caddy")),
+    "needs a caddy binary (on PATH or NIGHTSHIFT_TEST_CADDY), curl, bash, git, flock",
+)
+class RemoteDeployRealCaddyTests(_RemoteDeployFixture):
+    """The same step against a real Caddy process and a stub app.
+
+    deploy/Caddyfile is used as it is, except for three lines that make it
+    runnable on a laptop: the admin port, the upstream address and (through the
+    container's DOMAIN) plain HTTP on a free port. Not verified here: real
+    Docker, the compose bind mount, TLS, Cloudflare.
+    """
+
+    def setUp(self):
+        import http.server
+        import threading
+
+        super().setUp()
+        self.caddy_bin = os.environ.get("NIGHTSHIFT_TEST_CADDY") or shutil.which("caddy")
+        self.port, self.admin, self.app_port = _free_port(), _free_port(), _free_port()
+
+        class App(http.server.BaseHTTPRequestHandler):
+            """What the app answers: one X-Frame-Options, SAMEORIGIN only for our own frame on a page."""
+
+            def do_GET(h):
+                framed = (
+                    h.headers.get("Sec-Fetch-Dest") == "iframe"
+                    and h.headers.get("Sec-Fetch-Site") == "same-origin"
+                    and not h.path.startswith(("/auth", "/api"))
+                )
+                h.send_response(200)
+                h.send_header("Server", "app")
+                h.send_header("X-Powered-By", "Next.js")
+                h.send_header("X-Frame-Options", "SAMEORIGIN" if framed else "DENY")
+                h.send_header("Content-Length", "2")
+                h.end_headers()
+                h.wfile.write(b"ok")
+
+            def log_message(h, *a):
+                pass
+
+        self.app_server = http.server.ThreadingHTTPServer(("127.0.0.1", self.app_port), App)
+        threading.Thread(target=self.app_server.serve_forever, daemon=True).start()
+        self.addCleanup(self.app_server.server_close)
+        self.addCleanup(self.app_server.shutdown)
+
+        docker = self.tmp / "docker"
+        docker.write_text(FAKE_DOCKER_REAL_CADDY)
+        self.base = (ROOT / "deploy" / "Caddyfile").read_text()
+        self.good = self.runnable(self.base)
+        self.caddy = None
+
+    def runnable(self, text):
+        self.assertIn("\temail {$ACME_EMAIL}\n", text)
+        self.assertIn("reverse_proxy web:3000", text)
+        text = text.replace("\temail {$ACME_EMAIL}\n", f"\temail {{$ACME_EMAIL}}\n\tadmin 127.0.0.1:{self.admin}\n", 1)
+        return text.replace("reverse_proxy web:3000", f"reverse_proxy 127.0.0.1:{self.app_port}", 1)
+
+    def push(self, text):
+        up = self.tmp / "upstream"
+        (up / "deploy" / "Caddyfile").write_text(text)
+        self.git(up, "add", "-A")
+        self.git(up, "commit", "-q", "-m", "caddyfile")
+        return self.git(up, "rev-parse", "HEAD")
+
+    def start_caddy(self, text):
+        cfg = self.tmp / "running.Caddyfile"
+        cfg.write_text(text)
+        env = dict(os.environ, DOMAIN=f"http://example.test:{self.port}", ACME_EMAIL="ops@example.com")
+        with open(self.tmp / "caddy.log", "w") as log:
+            self.caddy = subprocess.Popen(
+                [self.caddy_bin, "run", "--config", str(cfg), "--adapter", "caddyfile"],
+                env=env, stdout=log, stderr=log, stdin=subprocess.DEVNULL,
+            )
+        self.addCleanup(self.caddy.wait)
+        self.addCleanup(self.caddy.terminate)
+        for _ in range(100):
+            if self.get("/login").returncode == 0:
+                return
+            subprocess.run(["sleep", "0.1"])
+        self.fail("caddy did not start: " + (self.tmp / "caddy.log").read_text()[-500:])
+
+    def get(self, path, framed=False):
+        args = ["curl", "-sS", "-i", "--http1.1", "--max-time", "5", "--resolve", f"example.test:{self.port}:127.0.0.1"]
+        if framed:
+            args += ["-H", "Sec-Fetch-Dest: iframe", "-H", "Sec-Fetch-Site: same-origin"]
+        return subprocess.run(args + [f"http://example.test:{self.port}{path}"], capture_output=True, text=True)
+
+    def xfo(self, path, framed=False):
+        return re.findall(r"(?im)^x-frame-options: *(.*?)\r?$", self.get(path, framed).stdout)
+
+    def deploy_real(self, sha):
+        return self.deploy(
+            self.payload(sha=sha),
+            SIM_CADDY=self.caddy_bin, SIM_PORT=str(self.port),
+            NIGHTSHIFT_CADDY_VERIFY_HOST="example.test", NIGHTSHIFT_CADDY_VERIFY_SCHEME="http",
+            NIGHTSHIFT_CADDY_VERIFY_PORT=str(self.port),
+            NIGHTSHIFT_CADDY_VERIFY_TIMEOUT="0", NIGHTSHIFT_CADDY_RETRY_SLEEP="0",
+        )
+
+    def start_old_then(self, old):
+        """Caddy runs `old` (as after a deploy that did not reload it); a good deploy is recorded first."""
+        self.start_caddy(old)
+        first = self.deploy_real(self.push(self.good))
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+
+    def test_a_changed_caddyfile_takes_effect_without_a_restart(self):
+        # Caddy still runs the pre-#426 behaviour: an unconditional DENY (the bug seen live).
+        old = self.good.replace(
+            "\t@notFrame not header Sec-Fetch-Dest iframe\n\theader @notFrame >X-Frame-Options", "\theader >X-Frame-Options"
+        )
+        self.assertNotEqual(old, self.good)
+        self.start_caddy(old)
+        pid = self.caddy.pid
+        self.assertEqual(self.xfo("/login", framed=True), ["DENY"])
+        proc = self.deploy_real(self.push(self.good))
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(self.caddy.poll(), None)
+        self.assertEqual(self.caddy.pid, pid)
+        self.assertEqual(self.xfo("/login"), ["DENY"])
+        self.assertEqual(self.xfo("/login", framed=True), ["SAMEORIGIN"])
+        self.assertEqual(self.xfo("/auth/callback", framed=True), ["DENY"])
+        self.assertEqual(self.xfo("/api/account", framed=True), ["DENY"])
+        self.assertIn("loaded and verified", proc.stdout)
+
+    def test_the_repo_caddyfile_passes_its_own_contract(self):
+        self.start_caddy(self.good)
+        proc = self.deploy_real(self.push(self.good))
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+
+    def test_bad_files_are_refused_or_rolled_back_and_the_old_config_keeps_serving(self):
+        self.start_old_then(self.good)
+        cases = {
+            "syntax error": (self.good + "\nnot a directive {{{\n", "validate refused"),
+            "HSTS dropped": (self.good.replace('\t\tStrict-Transport-Security "max-age=31536000"\n', ""), "no longer sets: Strict-Transport-Security"),
+            "nosniff dropped": (self.good.replace('\t\tX-Content-Type-Options "nosniff"\n', ""), "no longer sets: X-Content-Type-Options"),
+            "Server header no longer removed": (self.good.replace("\t\t-Server\n", ""), "no longer sets: -Server"),
+            "DENY dropped": (self.good.replace('\theader @notFrame >X-Frame-Options "DENY"\n', ""), "no longer sets: X-Frame-Options"),
+            "SAMEORIGIN set by Caddy": (self.good.replace('>X-Frame-Options "DENY"', '>X-Frame-Options "SAMEORIGIN"'), "no longer sets: X-Frame-Options"),
+            # Passes the static guard, fails the live check: the frame rule is applied to every request again.
+            "unconditional DENY": (
+                self.good.replace("\theader @notFrame >X-Frame-Options", "\theader >X-Frame-Options"),
+                "expected exactly one SAMEORIGIN",
+            ),
+            # Not deferred: Caddy adds its DENY beside the app's, two lines.
+            "two DENY lines": (
+                self.good.replace("header @notFrame >X-Frame-Options", "header @notFrame +X-Frame-Options"),
+                "expected exactly one DENY",
+            ),
+        }
+        self.assertTrue(all(text != self.good for text, _ in cases.values()))
+        pid = self.caddy.pid
+        for name, (text, expect) in cases.items():
+            with self.subTest(name):
+                proc = self.deploy_real(self.push(text))
+                self.assertNotEqual(proc.returncode, 0, proc.stdout)
+                self.assertIn(expect, proc.stderr)
+                self.assertEqual(self.caddy.poll(), None)
+                self.assertEqual(self.caddy.pid, pid)
+                # Still serving exactly the old config.
+                self.assertEqual(self.xfo("/login"), ["DENY"])
+                self.assertEqual(self.xfo("/login", framed=True), ["SAMEORIGIN"])
+                self.assertEqual(self.xfo("/api/account", framed=True), ["DENY"])
+                self.assertEqual((self.tmp / ".caddyfile.loaded").read_text(), self.good)
 
 
 FAKE_KEYGEN = textwrap.dedent(
