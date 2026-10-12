@@ -9,7 +9,7 @@ import { BuyCredits, BuyCreditsAdminOnly } from "@/components/credits/BuyCredits
 import { getOrgContext } from "@/lib/orgs-server";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
-import { coerceTransactions, isCreditExempt } from "@/lib/credits";
+import { coerceTransactions, inviteCardShown, isCreditExempt } from "@/lib/credits";
 import { creditsEnforced, readCreditAccount, readCreditPriceList, readCreditPrices } from "@/lib/server/credits";
 import { buyAccess, paddleClient, paddleConfig } from "@/lib/paddle";
 import { PLAN_ENV, balanceSplit, generationRates, planMatrix, subscribeAccess } from "@/lib/plans";
@@ -95,6 +95,7 @@ export default async function CreditsPage() {
   if (!acct.supported || !priceRes.supported) return note(t.credits.notMigrated);
 
   const exempt = isCreditExempt(orgId);
+  const showInvite = inviteCardShown(org.current, inviteRead.state);
   const platformAdmin = admin.data === true;
   // The editor needs the base rates, margins and notes: the raw list, which
   // the database (0084) shows a platform owner/admin only. Never read for
@@ -198,10 +199,10 @@ export default async function CreditsPage() {
       {/* Invite friends: for a workspace that pays (the reward is paid into it);
           the database refuses anyone who does not run the workspace. Left out
           before migration 0092. */}
-      {!exempt && inviteRead.state === "ok" && (
+      {showInvite && inviteRead.state === "ok" && (
         <InviteFriendsCard invite={inviteRead.value} orgId={orgId} />
       )}
-      {!exempt && inviteRead.state === "failed" && (
+      {showInvite && inviteRead.state === "failed" && (
         <section id="invite" className="panel flex scroll-mt-24 flex-col gap-2 p-5 sm:p-6" aria-labelledby="invite-title">
           <h2 id="invite-title" className="t-section">
             {t.invite.title}

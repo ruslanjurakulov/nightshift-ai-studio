@@ -16,6 +16,8 @@ const WAIT_MS = 6000;
  */
 export function ScrollToHash() {
   useEffect(() => {
+    // No hash when the page mounts: nothing to wait for (the router writes a link's hash before it mounts the page).
+    if (!window.location.hash) return;
     let frame = 0;
     let landed = "";
     const stop = () => {
@@ -24,8 +26,7 @@ export function ScrollToHash() {
       window.cancelAnimationFrame(frame);
       for (const e of ["wheel", "touchstart", "keydown", "pointerdown"]) window.removeEventListener(e, stop);
     };
-    // The address is read each time, not once: the router writes a client-side link's hash into it around the time
-    // this page mounts, not always before.
+    // The address is read each time the page changes, while waiting for the section.
     const land = () => {
       let id = "";
       try {
@@ -38,6 +39,7 @@ export function ScrollToHash() {
       landed = id;
       // After the frame, so the router's own scroll (to the top, when it found nothing) has already happened.
       frame = window.requestAnimationFrame(() => el.scrollIntoView({ block: "start" }));
+      observer.disconnect();
     };
     const observer = new MutationObserver(land);
     const timer = window.setTimeout(stop, WAIT_MS);

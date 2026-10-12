@@ -23,7 +23,16 @@ import { ConnectedAccountsList, planDetail, planLabel, useAccountSummary, useSig
  * The numbers are GET /api/account (the member's own session, read-only), read
  * once on arrival; a value that did not come back reads "—", never a guess.
  */
-export function AccountSection({ email, avatarV = null }: { email: string | null; avatarV?: number | null }) {
+export function AccountSection({
+  email,
+  avatarV = null,
+  showInvite = false,
+}: {
+  email: string | null;
+  avatarV?: number | null;
+  /** Whether the Credits page draws the invite card (lib/credits.ts inviteCardShown); decided on the server. */
+  showInvite?: boolean;
+}) {
   const { t, locale } = useI18n();
   const path = useChannelPath();
   const signOut = useSignOut();
@@ -66,9 +75,9 @@ export function AccountSection({ email, avatarV = null }: { email: string | null
         </div>
       </dl>
 
-      {/* The phone's way to the invite card on Credits (the old account panel's "Invite friends"). The operator's own
-          organization has no invite card, so it gets no shortcut once the plan is known. */}
-      {!(state === "ready" && data?.plan.kind === "exempt") && (
+      {/* The phone's way to the invite card on Credits (the old account panel's "Invite friends"). Shown exactly when
+          that card is (the operator's own organization, and a database without 0092, have none). */}
+      {showInvite && (
         <div className="border-t border-[var(--ns-rule)] pt-5">
           <Link href={path("/credits") + "#invite"} className="side-link -mx-3" data-testid="account-invite">
             <Gift aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />

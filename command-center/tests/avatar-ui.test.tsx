@@ -489,7 +489,7 @@ describe("AvatarUploader: removing", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: en.avatar.remove }));
     });
-    expect((await screen.findByRole("alert")).textContent).toBe(en.avatar.errors.failed);
+    expect((await screen.findByRole("alert")).textContent).toBe(en.avatar.errors.remove_failed);
     expect(h.update).not.toHaveBeenCalled();
     expect(container.querySelector("img")).not.toBeNull();
   });

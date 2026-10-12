@@ -44,6 +44,8 @@ import { Header } from "@/components/Header";
 import { AccountSection } from "@/components/account/AccountSection";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { avatarVersionFromMetadata } from "@/lib/avatar";
+import { inviteCardShown } from "@/lib/credits";
+import { DEFAULT_ORG_ID } from "@/lib/orgs";
 import { Avatar } from "@/components/account/Avatar";
 import { ScrollToHash } from "@/components/navigation/ScrollToHash";
 
@@ -229,6 +231,20 @@ describe("Settings → Your account", () => {
     expect(screen.getByTestId("avatar-uploader").querySelector("img")).toBeNull();
   });
 
+  it("a failed removal says it could not be removed, not that it could not be saved", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: { method?: string }) =>
+      init?.method === "DELETE" ? { ok: false, status: 500, json: async () => ({}) } : { ok: true, json: async () => summary(PAID) },
+    ));
+    render(wrap(<AccountSection email={EMAIL} avatarV={V} />));
+    fireEvent.click(screen.getByRole("button", { name: en.avatar.remove }));
+    const alert = await screen.findByTestId("avatar-error");
+    expect(alert.textContent).toBe(en.avatar.errors.remove_failed);
+    for (const l of ["en", "ru", "uz"] as const) {
+      expect(dictionaries[l].avatar.errors.remove_failed.length).toBeGreaterThan(5);
+      expect(dictionaries[l].avatar.errors.remove_failed).not.toBe(dictionaries[l].avatar.errors.failed);
+    }
+  });
+
   it("an uploader that changes the photo asks the app to refresh, so every circle updates", () => {
     const src = readFileSync(path.join(process.cwd(), "components/account/AvatarUploader.tsx"), "utf8");
     expect(src.match(/router\.refresh\(\)/g)?.length).toBe(2); // after save and after remove
@@ -238,16 +254,32 @@ describe("Settings → Your account", () => {
 
 describe("the invite shortcut", () => {
   it("is one row in Settings → Your account that links to the invite card on Credits", () => {
-    render(wrap(<AccountSection email={EMAIL} />));
+    render(wrap(<AccountSection email={EMAIL} showInvite />));
     const link = screen.getByRole("link", { name: en.account.inviteFriends });
     expect(link.getAttribute("href")).toBe("/chronos/credits#invite");
     expect(screen.getAllByRole("link", { name: en.account.inviteFriends })).toHaveLength(1);
   });
 
-  it("is hidden for the operator's own organization, which has no invite card", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => summary({ kind: "exempt" }) })));
+  it("is not drawn unless the page says the invite card exists, and never waits on the account read", () => {
     render(wrap(<AccountSection email={EMAIL} />));
-    await waitFor(() => expect(screen.queryByRole("link", { name: en.account.inviteFriends })).toBeNull());
+    expect(screen.queryByRole("link", { name: en.account.inviteFriends })).toBeNull();
+  });
+
+  it("is decided by the same predicate as the Credits page's card", () => {
+    const ORG = "11111111-2222-3333-4444-555555555555";
+    expect(inviteCardShown({ id: ORG, is_default: false }, "ok")).toBe(true);
+    expect(inviteCardShown({ id: ORG }, "failed")).toBe(true);
+    expect(inviteCardShown({ id: ORG, is_default: false }, "unsupported")).toBe(false);
+    expect(inviteCardShown({ id: ORG, is_default: true }, "ok")).toBe(false);
+    expect(inviteCardShown({ id: DEFAULT_ORG_ID, is_default: false }, "ok")).toBe(false);
+    expect(inviteCardShown(null, "ok")).toBe(false);
+    const credits = readFileSync(path.join(process.cwd(), "app/(app)/[channel]/credits/page.tsx"), "utf8");
+    const settings = readFileSync(path.join(process.cwd(), "app/(app)/[channel]/organization/page.tsx"), "utf8");
+    expect(credits).toContain("inviteCardShown(org.current, inviteRead.state)");
+    expect(credits).toMatch(/showInvite && inviteRead\.state === "ok"/);
+    expect(credits).toMatch(/showInvite && inviteRead\.state === "failed"/);
+    expect(settings).toContain("inviteCardShown(org.current,");
+    expect(settings.match(/showInvite=\{showInvite\}/g)).toHaveLength(3);
   });
 
   it("lands on a card the Credits page draws with that id, clear of the sticky bar", () => {
@@ -324,8 +356,11 @@ describe("ScrollToHash", () => {
       expect(() => render(<ScrollToHash />)).not.toThrow();
       cleanup();
       window.location.hash = "";
+      const observe = vi.spyOn(MutationObserver.prototype, "observe");
       render(<ScrollToHash />);
       expect(section.scrollIntoView).not.toHaveBeenCalled();
+      expect(observe).not.toHaveBeenCalled(); // no hash: no body observer
+      observe.mockRestore();
     } finally {
       section.remove();
       window.location.hash = "";
