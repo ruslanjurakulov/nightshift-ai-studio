@@ -7,6 +7,7 @@ import { CircleCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
 import { fmt } from "@/lib/i18n";
+import { clearAllEditorDrafts } from "@/lib/editor-draft-store";
 import { useChannelPath } from "@/lib/channels-client";
 import { AccountTile, PlatformTile } from "@/components/account/PlatformLogo";
 import {
@@ -70,6 +71,7 @@ export function useSignOut(): () => Promise<void> {
   return async function signOut() {
     const supabase = createClient();
     if (supabase) await supabase.auth.signOut();
+    clearAllEditorDrafts();
     router.push("/login");
     router.refresh();
   };

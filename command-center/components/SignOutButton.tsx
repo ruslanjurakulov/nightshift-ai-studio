@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/context";
+import { clearAllEditorDrafts } from "@/lib/editor-draft-store";
 
 export function SignOutButton() {
   const router = useRouter();
@@ -10,6 +11,7 @@ export function SignOutButton() {
   async function signOut() {
     const supabase = createClient();
     if (supabase) await supabase.auth.signOut();
+    clearAllEditorDrafts();
     router.push("/login");
     router.refresh();
   }
