@@ -38,6 +38,7 @@ export function Header({
   credits = null,
   scope = unscopedScope(),
   email = null,
+  avatarV = null,
   operator = true,
   plan = null,
 }: {
@@ -52,6 +53,8 @@ export function Header({
   /** The signed-in email, for the operator bar's account button; the panel
    *  reads the rest itself when it opens. */
   email?: string | null;
+  /** The photo's version (avatar_v), or null for none. */
+  avatarV?: number | null;
   /** The platform operator keeps the console's bar; a customer gets the
    *  creative app's (wordmark, credit pill, bell; the account is the sidebar
    *  card or the bottom bar's last tab). */
@@ -173,7 +176,7 @@ export function Header({
             <ViewModeToggle showLabel compact />
           </span>
         </span>
-        <AccountMenu email={email} />
+        <AccountMenu email={email} avatarV={avatarV} />
       </div>
       </div>
     </header>

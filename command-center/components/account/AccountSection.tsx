@@ -1,10 +1,13 @@
 "use client";
 
-import { LogOut } from "lucide-react";
+import Link from "next/link";
+import { Gift, LogOut } from "lucide-react";
 import { useI18n } from "@/lib/i18n/context";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ViewModeToggle } from "@/components/view-mode/ViewModeToggle";
+import { useChannelPath } from "@/lib/channels-client";
+import { AvatarUploader } from "@/components/account/AvatarUploader";
 import { ConnectedAccountsList, planDetail, planLabel, useAccountSummary, useSignOut } from "@/components/account/AccountParts";
 
 /**
@@ -20,8 +23,9 @@ import { ConnectedAccountsList, planDetail, planLabel, useAccountSummary, useSig
  * The numbers are GET /api/account (the member's own session, read-only), read
  * once on arrival; a value that did not come back reads "—", never a guess.
  */
-export function AccountSection({ email }: { email: string | null }) {
+export function AccountSection({ email, avatarV = null }: { email: string | null; avatarV?: number | null }) {
   const { t, locale } = useI18n();
+  const path = useChannelPath();
   const signOut = useSignOut();
   const { data, state } = useAccountSummary(true);
   const dash = t.common.dash;
@@ -43,7 +47,10 @@ export function AccountSection({ email }: { email: string | null }) {
         </p>
       )}
 
-      <dl className="grid gap-5 sm:grid-cols-2">
+      {/* The profile photo: add, change or remove. It reads the version the page already has (the layout's user). */}
+      <AvatarUploader email={shownEmail} version={avatarV} />
+
+      <dl className="grid gap-5 border-t border-[var(--ns-rule)] pt-5 sm:grid-cols-2">
         <div className="min-w-0">
           <dt className="text-xs text-[var(--color-muted)]">{t.account.signedInAs}</dt>
           <dd className="mt-1 break-words text-[15px] text-[var(--color-fg)]" data-testid="account-email">
@@ -58,6 +65,17 @@ export function AccountSection({ email }: { email: string | null }) {
           </dd>
         </div>
       </dl>
+
+      {/* The phone's way to the invite card on Credits (the old account panel's "Invite friends"). The operator's own
+          organization has no invite card, so it gets no shortcut once the plan is known. */}
+      {!(state === "ready" && data?.plan.kind === "exempt") && (
+        <div className="border-t border-[var(--ns-rule)] pt-5">
+          <Link href={path("/credits") + "#invite"} className="side-link -mx-3" data-testid="account-invite">
+            <Gift aria-hidden className="size-[18px] shrink-0" strokeWidth={1.75} />
+            <span>{t.account.inviteFriends}</span>
+          </Link>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2 border-t border-[var(--ns-rule)] pt-5">
         <h3 className="text-xs text-[var(--color-muted)]">{t.account.accounts}</h3>

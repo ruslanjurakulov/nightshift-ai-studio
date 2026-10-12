@@ -25,6 +25,7 @@ import { readUsageSummary } from "@/lib/server/usage";
 import { readInviteAdmin, readMyInvite } from "@/lib/server/friend-invites";
 import { ErrorState } from "@/components/ReadError";
 import { readFailed } from "@/lib/readState";
+import { ScrollToHash } from "@/components/navigation/ScrollToHash";
 
 const FAILED_READ = { state: "failed" as const };
 
@@ -139,6 +140,7 @@ export default async function CreditsPage() {
 
   return (
     <div className="rhythm ns-open">
+      <ScrollToHash />
       {header}
 
       {exempt ? (
