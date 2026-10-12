@@ -77,7 +77,9 @@ export function setClipFit(
 /** The CSS `object-fit` of the preview for the clip on screen. A video follows
  *  its `fit`. A still is always drawn filling the frame by the export (its slow
  *  zoom-and-pan starts from a cover-scaled picture, render_backend
- *  `ken_burns_filter`), so the preview fills too; its fit field has no effect. */
+ *  `ken_burns_filter`; the held-picture fallback crops to fill too,
+ *  `_static_image_cmd(fill=True)`), so the preview fills too; its fit field has
+ *  no effect. */
 export function previewObjectFit(
   clip: Pick<VideoClip, "fit"> | null | undefined,
   still: boolean,
