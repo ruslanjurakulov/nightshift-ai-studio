@@ -1,10 +1,12 @@
+// @vitest-environment jsdom
 /**
  * The idempotency key of a make-a-video intent (lib/create-attempt.ts): one key
  * per intent, the same key on a retry of the same inputs, a new one when the
- * inputs change or the attempt is settled, nothing shared between channels.
+ * inputs change or the attempt is settled, an unanswered attempt remembered as
+ * unsure, and nothing stored anywhere.
  */
 import { describe, expect, it } from "vitest";
-import { MAX_AGE_MS, createAttempt, newAttemptKey, type AttemptStore } from "@/lib/create-attempt";
+import { MAX_AGE_MS, createAttempt, newAttemptKey } from "@/lib/create-attempt";
 
 // The alphabet and length /api/agent/run accepts (IDEMPOTENCY_KEY_RE).
 const ROUTE_KEY_RE = /^[A-Za-z0-9_:.-]{1,255}$/;
@@ -12,15 +14,6 @@ const ROUTE_KEY_RE = /^[A-Za-z0-9_:.-]{1,255}$/;
 const counter = () => {
   let n = 0;
   return () => `k${++n}`;
-};
-const memoryStore = (): AttemptStore & { data: Map<string, string> } => {
-  const data = new Map<string, string>();
-  return {
-    data,
-    getItem: (k) => data.get(k) ?? null,
-    setItem: (k, v) => void data.set(k, v),
-    removeItem: (k) => void data.delete(k),
-  };
 };
 
 describe("newAttemptKey", () => {
@@ -84,66 +77,41 @@ describe("createAttempt", () => {
   });
 });
 
-describe("createAttempt with a store (a reload of the tab)", () => {
-  it("a new page load after an error finds the same pending key for the same inputs", () => {
-    const store = memoryStore();
-    const first = createAttempt(counter(), { store, storeKey: "ns.create-attempt.chan-a" });
-    expect(first.keyFor("brief A")).toBe("k1");
-    const afterReload = createAttempt(counter(), { store, storeKey: "ns.create-attempt.chan-a" });
-    expect(afterReload.keyFor("brief A")).toBe("k1");
+describe("an attempt that ended without a usable answer", () => {
+  it("is remembered as unsure under its key, and forgotten when the key changes or the attempt settles", () => {
+    const a = createAttempt(counter());
+    a.keyFor("brief A");
+    expect(a.isUnsure()).toBe(false);
+    a.markUnsure();
+    expect(a.isUnsure()).toBe(true);
+    // The same intent keeps the flag with its key (the price moving does not change the signature).
+    a.keyFor("brief A");
+    expect(a.isUnsure()).toBe(true);
+    a.keyFor("brief B");
+    expect(a.isUnsure()).toBe(false);
+    a.markUnsure();
+    a.settle();
+    expect(a.isUnsure()).toBe(false);
+    a.markUnsure();
+    expect(a.isUnsure()).toBe(false);
+  });
+});
+
+describe("nothing is stored", () => {
+  it("a key is never written to web storage, so another account or another tab cannot find it", () => {
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+    const a = createAttempt(counter());
+    a.keyFor("brief A");
+    a.markUnsure();
+    expect(window.sessionStorage.length).toBe(0);
+    expect(window.localStorage.length).toBe(0);
   });
 
-  it("changed inputs after a reload are a new video, and settling clears the store", () => {
-    const store = memoryStore();
-    const key = "ns.create-attempt.chan-a";
-    createAttempt(counter(), { store, storeKey: key }).keyFor("brief A");
-    const b = createAttempt(counter(), { store, storeKey: key });
-    expect(b.keyFor("brief B")).toBe("k1");
-    b.settle();
-    expect(store.data.has(key)).toBe(false);
-    expect(createAttempt(counter(), { store, storeKey: key }).keyFor("brief B")).toBe("k1");
-  });
-
-  it("another channel's store key never hands out this channel's key", () => {
-    const store = memoryStore();
-    const a = createAttempt(() => "key-a", { store, storeKey: "ns.create-attempt.chan-a" });
-    const b = createAttempt(() => "key-b", { store, storeKey: "ns.create-attempt.chan-b" });
+  it("each attempt object is its own: one channel's form never hands out another's key", () => {
+    const a = createAttempt(() => "key-a");
+    const b = createAttempt(() => "key-b");
     expect(a.keyFor("same inputs")).toBe("key-a");
     expect(b.keyFor("same inputs")).toBe("key-b");
-  });
-
-  it("a stale stored key is not reused after the limit", () => {
-    const store = memoryStore();
-    let now = 5_000;
-    createAttempt(counter(), { store, storeKey: "s", now: () => now }).keyFor("brief A");
-    now += MAX_AGE_MS + 1;
-    expect(createAttempt(counter(), { store, storeKey: "s", now: () => now }).keyFor("brief A")).toBe("k1");
-    // k1 above is the NEW counter's first key: the stored one (also "k1") was dropped, so the store holds the new time.
-    expect(JSON.parse(store.data.get("s") ?? "{}").at).toBe(now);
-  });
-
-  it("a store that throws or holds garbage only costs the reload: the in-page key still works", () => {
-    const broken: AttemptStore = {
-      getItem: () => {
-        throw new Error("blocked");
-      },
-      setItem: () => {
-        throw new Error("blocked");
-      },
-      removeItem: () => {
-        throw new Error("blocked");
-      },
-    };
-    const a = createAttempt(counter(), { store: broken });
-    expect(a.keyFor("brief A")).toBe("k1");
-    expect(a.keyFor("brief A")).toBe("k1");
-    a.settle();
-    expect(a.keyFor("brief A")).toBe("k2");
-
-    const garbage = memoryStore();
-    garbage.setItem("ns.create-attempt", "{not json");
-    expect(createAttempt(counter(), { store: garbage }).keyFor("brief A")).toBe("k1");
-    garbage.setItem("ns.create-attempt", JSON.stringify({ key: 5, sig: "brief A", at: 1 }));
-    expect(createAttempt(counter(), { store: garbage }).keyFor("brief A")).toBe("k1");
   });
 });

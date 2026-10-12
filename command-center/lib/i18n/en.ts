@@ -928,6 +928,7 @@ export const en = {
       alreadySent: "This was already sent. If nothing shows up below in a few minutes, check Credits: a hold that did not start a video returns to your balance automatically within 3 hours.",
       priceChanged: "The price is now about {n} credits. No credits were taken or held. Check the new price, then confirm again.",
       priceChangedShort: "The price changed. No credits were taken or held. Check the new price, then confirm again.",
+      priceChangedUnsure: "The price is now about {n} credits. An earlier try may already have started, so look under Videos before you confirm again. If credits were held, confirming again will not hold them twice.",
       notTaken: "No credits were taken or held.",
       startHeld: "The video did not start, but {n} credits are on hold for it. They return to your balance automatically within 3 hours. Making it again puts credits on hold again until then.",
       startUnsure: "We could not tell whether this started. Look under Videos before you try again. If credits were held, trying again will not hold them twice.",

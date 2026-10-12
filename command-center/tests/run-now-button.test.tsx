@@ -153,7 +153,7 @@ describe("Run now", () => {
     expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
   });
 
-  it("price_changed says the new price and that nothing was taken or held; the next confirm shows and sends the new price with a new key", async () => {
+  it("price_changed says the new price and that nothing was taken or held; the next confirm shows and sends the new price under the same key (nothing was held)", async () => {
     show();
     runAnswer = () => json({ error: "price_changed", credits: 150 }, 409);
     await press();
@@ -166,7 +166,25 @@ describe("Run now", () => {
     await confirm();
     await act(async () => {});
     expect(body(1).max_credits).toBe(150);
-    expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
+    expect(body(1).idempotency_key).toBe(body(0).idempotency_key);
+  });
+
+  it("price_changed on a retry after a lost answer does not claim nothing was held, and the key is kept", async () => {
+    show();
+    runAnswer = () => Promise.reject(new TypeError("network"));
+    await press();
+    runAnswer = () => json({ error: "price_changed", credits: 150 }, 409);
+    await press();
+    expect(said()).toContain(f.priceChangedUnsure.replace("{n}", "150"));
+    expect(said()).not.toContain(f.notTaken);
+    estimateAnswer = () => json(priced(150));
+    runAnswer = () => json({ error: "run_already_started" }, 409);
+    arm();
+    await screen.findByText(/150 credits/);
+    await confirm();
+    await act(async () => {});
+    expect(said()).toContain(f.alreadySent);
+    expect(new Set([0, 1, 2].map((i) => body(i).idempotency_key)).size).toBe(1);
   });
 
   it("run_already_started is shown as started, not as a failure", async () => {

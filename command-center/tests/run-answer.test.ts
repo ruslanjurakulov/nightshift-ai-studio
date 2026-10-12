@@ -8,10 +8,10 @@ import { dictionaries, type Locale } from "@/lib/i18n";
 import { readRunAnswer, unsureRunAnswer } from "@/lib/run-answer";
 
 const LOCALES: Locale[] = ["en", "ru", "uz"];
-const read = (status: number, data: Record<string, unknown>, locale: Locale = "en") =>
-  readRunAnswer({ ok: status >= 200 && status < 300, status }, data, dictionaries[locale], locale);
-const failed = (status: number, data: Record<string, unknown>, locale: Locale = "en") => {
-  const a = read(status, data, locale);
+const read = (status: number, data: Record<string, unknown>, locale: Locale = "en", earlierUnsure = false) =>
+  readRunAnswer({ ok: status >= 200 && status < 300, status }, data, dictionaries[locale], locale, earlierUnsure);
+const failed = (status: number, data: Record<string, unknown>, locale: Locale = "en", earlierUnsure = false) => {
+  const a = read(status, data, locale, earlierUnsure);
   if (a.outcome !== "failed") throw new Error(`expected a failure, got ${a.outcome}`);
   return a;
 };
@@ -32,6 +32,34 @@ describe("readRunAnswer", () => {
     expect(a.message).toContain(dictionaries.en.create.flow.notTaken);
     // A body without the figure still says it.
     expect(failed(409, { error: "price_changed" }).message).toBe(dictionaries.en.create.flow.priceChangedShort);
+  });
+
+  it("409 price_changed after an earlier try that may have held (no usable answer) does NOT claim nothing was held: the route compares the price before it looks for the hold", () => {
+    const a = failed(409, { error: "price_changed", credits: 150 }, "en", true);
+    expect(a.priceChanged).toBe(true);
+    expect(a.unsure).toBe(true);
+    expect(a.settled).toBe(false);
+    expect(a.message).toContain("150");
+    expect(a.message).not.toContain(dictionaries.en.create.flow.notTaken);
+    expect(a.message).toBe(dictionaries.en.create.flow.priceChangedUnsure.replace("{n}", "150"));
+    // Without the figure it falls back to the plain cannot-tell sentence.
+    expect(failed(409, { error: "price_changed" }, "en", true).message).toBe(dictionaries.en.create.flow.startUnsure);
+  });
+
+  it("'no credits were taken or held' is said only when the body proves no hold: a price_changed that does carry credits_held gets the held sentence", () => {
+    const proven = failed(409, { error: "price_changed", credits: 150 });
+    expect(proven.message).toContain(dictionaries.en.create.flow.notTaken);
+    expect(proven.unsure).toBe(false);
+    const held = failed(409, { error: "price_changed", credits: 150, credits_held: 120 });
+    expect(held.message).toBe(dictionaries.en.create.flow.startHeld.replace("{n}", "120"));
+    expect(held.message).not.toContain(dictionaries.en.create.flow.notTaken);
+    expect(held.settled).toBe(true);
+    // Even with an earlier unsure try, a body that proves the hold wins.
+    expect(failed(409, { error: "price_changed", credits: 150, credits_held: 120 }, "en", true).message).toBe(held.message);
+  });
+
+  it("a replay is a replay even after an unsure try", () => {
+    expect(read(409, { error: "run_already_started" }, "en", true).outcome).toBe("replay");
   });
 
   it("402 insufficient credits keeps the figures and says no credits were taken or held", () => {
@@ -80,8 +108,10 @@ describe("readRunAnswer", () => {
 
   it("a gateway error with no body (or a dropped connection) says it cannot tell whether it started", () => {
     expect(failed(504, {}).message).toBe(dictionaries.en.create.flow.startUnsure);
+    expect(failed(504, {}).unsure).toBe(true);
     expect(unsureRunAnswer(dictionaries.en).message).toBe(dictionaries.en.create.flow.startUnsure);
     expect(unsureRunAnswer(dictionaries.en).settled).toBe(false);
+    expect(unsureRunAnswer(dictionaries.en).unsure).toBe(true);
   });
 
   it("the extra-credits-off refusal still carries its flag so the link is shown", () => {
@@ -95,6 +125,7 @@ describe("the new sentences exist in every language and are filled in", () => {
     const answers: [number, Record<string, unknown>][] = [
       [409, { error: "price_changed", credits: 150 }],
       [409, { error: "price_changed" }],
+      [409, { error: "price_changed", credits: 150, unsureCase: true }],
       [402, { error: "insufficient_credits", needed: 120, available: 20 }],
       [429, { error: "run_limit", active: 2, limit: 2 }],
       [502, { error: "github_dispatch_failed", credits_held: 120 }],
@@ -103,13 +134,14 @@ describe("the new sentences exist in every language and are filled in", () => {
     ];
     for (const locale of LOCALES) {
       for (const [status, data] of answers) {
-        const msg = failed(status, data, locale).message;
+        const unsureCase = "unsureCase" in data;
+        const msg = failed(status, data, locale, unsureCase).message;
         expect(msg, `${locale} ${status} ${JSON.stringify(data)}`).not.toMatch(/[{}]/);
         expect(msg.length).toBeGreaterThan(10);
-        if (locale !== "en") expect(msg).not.toBe(failed(status, data, "en").message);
+        if (locale !== "en") expect(msg).not.toBe(failed(status, data, "en", unsureCase).message);
       }
       const f = dictionaries[locale].create.flow;
-      for (const k of ["alreadySent", "priceChanged", "priceChangedShort", "notTaken", "startHeld", "startUnsure"] as const) {
+      for (const k of ["alreadySent", "priceChanged", "priceChangedShort", "priceChangedUnsure", "notTaken", "startHeld", "startUnsure"] as const) {
         expect(f[k].length).toBeGreaterThan(10);
         if (locale !== "en") expect(f[k]).not.toBe(dictionaries.en.create.flow[k]);
       }

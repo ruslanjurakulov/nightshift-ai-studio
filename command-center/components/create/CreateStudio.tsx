@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n/context";
 import { useChannelPath } from "@/lib/channels-client";
 import type { ChannelAgentConfig } from "@/lib/types";
 import type { QueueJob, RunBackend } from "@/lib/runBackend";
-import { createAttempt, sessionAttemptStore } from "@/lib/create-attempt";
+import { createAttempt } from "@/lib/create-attempt";
 import { readRunAnswer, unsureRunAnswer } from "@/lib/run-answer";
 import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
 import { CreditEstimateLine, type PriceReport } from "@/components/credits/CreditEstimateLine";
@@ -119,10 +119,8 @@ export function CreateStudio({
   // Bumped to read the price again (the Retry of an unreadable price, or a run refused as `price_changed`).
   const [priceNonce, setPriceNonce] = useState(0);
   // One idempotency key per intent (lib/create-attempt.ts), per channel, kept for a retry of the same inputs.
-  const attempt = useMemo(
-    () => createAttempt(undefined, { store: sessionAttemptStore(), storeKey: `ns.create-attempt.${channelId ?? ""}` }),
-    [channelId],
-  );
+  // The channel is part of what the key stands for (its signature), so another channel never gets this key.
+  const [attempt] = useState(() => createAttempt());
   // A press already on its way: a second click in the same tick must not post again.
   const sending = useRef(false);
   // The server said this exact intent had already been started: shown as started, nothing new was held.
@@ -181,7 +179,7 @@ export function CreateStudio({
     };
     // The same intent (these inputs and the price on screen) keeps its key, so a double press, a retry or a
     // reload after an error cannot hold twice; any change is a new video and gets a new key.
-    const idempotency_key = attempt.keyFor(JSON.stringify([fields, shownPrice]));
+    const idempotency_key = attempt.keyFor(JSON.stringify(fields));
     try {
       const res = await fetch("/api/agent/run", {
         method: "POST",
@@ -194,7 +192,7 @@ export function CreateStudio({
         }),
       });
       const data = await res.json().catch(() => ({}));
-      const answer = readRunAnswer(res, data, t, locale);
+      const answer = readRunAnswer(res, data, t, locale, attempt.isUnsure());
       if (answer.outcome !== "failed") {
         attempt.settle();
         setReplayed(answer.outcome === "replay");
@@ -202,12 +200,14 @@ export function CreateStudio({
         return;
       }
       if (answer.settled) attempt.settle();
+      if (answer.unsure) attempt.markUnsure();
       if (answer.priceChanged) setPriceNonce((n) => n + 1);
       setCreditError(answer.message);
       setExtraOff(answer.extraOff);
       setPhase("error");
     } catch {
-      // Unknown whether it arrived: the key is kept, so trying again is safe.
+      // Unknown whether it arrived: the key is kept (and remembered as unsure), so trying again is safe.
+      attempt.markUnsure();
       setCreditError(unsureRunAnswer(t).message);
       setPhase("error");
     } finally {

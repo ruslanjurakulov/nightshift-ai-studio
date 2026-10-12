@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { useToast } from "@/components/feedback/ToastProvider";
-import { createAttempt, sessionAttemptStore } from "@/lib/create-attempt";
+import { createAttempt } from "@/lib/create-attempt";
 import { readRunAnswer, unsureRunAnswer } from "@/lib/run-answer";
 import { ExtraOffLink } from "@/components/usage/ExtraOffLink";
 import { CreditEstimateLine, type PriceReport } from "@/components/credits/CreditEstimateLine";
@@ -59,10 +59,8 @@ export function RunNowButton({
   const shownPrice = price.state === "priced" ? price.credits : null;
   const priceHold = !!channelId && (price.state === "loading" || price.state === "failed");
   const [retryNonce, setRetryNonce] = useState(0);
-  const attempt = useMemo(
-    () => createAttempt(undefined, { store: sessionAttemptStore(), storeKey: `ns.create-attempt.${channelId ?? ""}` }),
-    [channelId],
-  );
+  // The channel is part of what the key stands for (its signature), so another channel never gets this key.
+  const [attempt] = useState(() => createAttempt());
   const sending = useRef(false);
   const [replayed, setReplayed] = useState(false);
 
@@ -115,7 +113,7 @@ export function RunNowButton({
       ...(style ? { visual_style: style } : {}),
     };
     // One intent = one key: the same inputs and price keep it, any change is a new video.
-    const idempotency_key = attempt.keyFor(JSON.stringify([fields, shownPrice]));
+    const idempotency_key = attempt.keyFor(JSON.stringify(fields));
     try {
       const res = await fetch("/api/agent/run", {
         method: "POST",
@@ -127,7 +125,7 @@ export function RunNowButton({
         }),
       });
       const data = await res.json().catch(() => ({}));
-      const answer = readRunAnswer(res, data, t, locale);
+      const answer = readRunAnswer(res, data, t, locale, attempt.isUnsure());
       if (answer.outcome !== "failed") {
         attempt.settle();
         setReplayed(answer.outcome === "replay");
@@ -136,12 +134,14 @@ export function RunNowButton({
         return;
       }
       if (answer.settled) attempt.settle();
+      if (answer.unsure) attempt.markUnsure();
       setCreditError(answer.message);
       setExtraOff(answer.extraOff);
       setPhase("error");
       toast.error(answer.message);
     } catch {
-      // Unknown whether it arrived: the key is kept, so trying again is safe.
+      // Unknown whether it arrived: the key is kept (and remembered as unsure), so trying again is safe.
+      attempt.markUnsure();
       const unsure = unsureRunAnswer(t).message;
       setCreditError(unsure);
       setPhase("error");

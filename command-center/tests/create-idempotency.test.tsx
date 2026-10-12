@@ -7,8 +7,9 @@
  * `run_already_started` and nothing is held twice) and `max_credits` (a dearer
  * estimate is refused as `price_changed`, nothing held). Both are honoured by
  * the route; these tests pin that the BROWSER sends them the way that needs:
- *   - one key per intent: the same key for a double click, a retry or a reload
- *     after an error; a new key when anything the person decided changes;
+ *   - one key per intent (channel + topic + options, NOT the price): the same
+ *     key for a double click or a retry, even if the price moved in between; a
+ *     new key when the topic or an option changes;
  *   - the ceiling is exactly the price the card is showing, never a stale one;
  *   - each answer (price changed, replay, run limit, not enough credits, a
  *     hold that did not start, a failure) is said in words that tell whether
@@ -225,12 +226,14 @@ describe("one intent is one key", () => {
     expect(body(1)).toEqual(body(0));
   });
 
-  it("a reload after an error (a new page load, same tab) still reuses the key for the same intent", async () => {
+  it("the key lives in memory only: a reload starts a new attempt, and nothing is written to web storage", async () => {
     const first = show();
     await priceShown(120);
     type("Ancient Khiva");
     runAnswer = () => Promise.reject(new TypeError("network"));
     await press();
+    expect(window.sessionStorage.length).toBe(0);
+    expect(window.localStorage.length).toBe(0);
     first.unmount();
     runAnswer = () => json({ ok: true });
     show();
@@ -238,6 +241,28 @@ describe("one intent is one key", () => {
     type("Ancient Khiva");
     await press();
     expect(runs()).toHaveLength(2);
+    expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
+  });
+
+  it("the price moving between the first try and the retry does not change the key; max_credits is the price last shown", async () => {
+    estimateAnswer = (url) => json(priced(url.includes("duration=300") ? 140 : 120));
+    show();
+    await priceShown(120);
+    type("Ancient Khiva");
+    runAnswer = () => Promise.reject(new TypeError("network"));
+    await press();
+    // The card is asked again (another length and back) and now says 140 for the same video.
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(f.lengthLabel) }));
+    fireEvent.click(screen.getByRole("radio", { name: t.agents.runDur5m }));
+    await priceShown(140);
+    estimateAnswer = () => json(priced(140));
+    fireEvent.click(screen.getByRole("radio", { name: f.lengthDefault }));
+    await priceShown(140);
+    runAnswer = () => json({ ok: true });
+    await press();
+    expect(runs()).toHaveLength(2);
+    expect(body(1).max_credits).toBe(140);
+    expect(body(0).max_credits).toBe(120);
     expect(body(1).idempotency_key).toBe(body(0).idempotency_key);
   });
 
@@ -264,7 +289,7 @@ describe("one intent is one key", () => {
     expect(body(1).topic).toBe("The Aral Sea");
   });
 
-  it("changing the length (and so the shown price) is a new intent, so a new key", async () => {
+  it("changing the length is a different video, so a new key (and the new price is the ceiling)", async () => {
     estimateAnswer = (url) => json(priced(url.includes("duration=300") ? 200 : 120));
     show();
     await priceShown(120);
@@ -293,7 +318,7 @@ describe("one intent is one key", () => {
     expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
   });
 
-  it("one channel's key never reaches another channel, and coming back finds the first one's again", async () => {
+  it("one channel's key never reaches another channel, and nothing is stored that could carry it", async () => {
     const view = show("chan-a");
     await priceShown(120);
     type("Ancient Khiva");
@@ -308,29 +333,66 @@ describe("one intent is one key", () => {
     await priceShown(120);
     await press();
     expect(body(2).channel_id).toBe("chan-a");
-    expect(body(2).idempotency_key).toBe(body(0).idempotency_key);
-    // Nothing of one channel's key is stored under the other's name.
-    const stored = Object.keys(window.sessionStorage).filter((k) => k.startsWith("ns.create-attempt."));
-    expect(new Set(stored).size).toBe(stored.length);
-    expect(stored.every((k) => k.endsWith("chan-a") || k.endsWith("chan-b"))).toBe(true);
+    expect(body(2).idempotency_key).not.toBe(body(1).idempotency_key);
+    expect(window.sessionStorage.length).toBe(0);
+    expect(window.localStorage.length).toBe(0);
   });
 });
 
 describe("what the server answered, in words", () => {
-  it("409 price_changed: nothing was taken or held, the new price is read again and said, and the re-confirm is a new intent with a new key", async () => {
+  it("409 price_changed with no earlier unanswered try: says the new price and that nothing was taken or held, re-reads the card, needs a new confirm, and keeps the key", async () => {
     show();
     await priceShown(120);
     type("Ancient Khiva");
     runAnswer = () => json({ error: "price_changed", credits: 150 }, 409);
     estimateAnswer = () => json(priced(150));
     await press();
+    expect(runs()).toHaveLength(1);
     expect(status()).toContain("150");
     expect(status()).toContain(f.notTaken);
+    expect(screen.getByRole("button", { name: t.create.create })).toBeTruthy();
     await priceShown(150);
     runAnswer = () => json({ ok: true });
     await press();
+    expect(runs()).toHaveLength(2);
     expect(body(1).max_credits).toBe(150);
-    expect(body(1).idempotency_key).not.toBe(body(0).idempotency_key);
+    // Nothing was held under that key, and the same video: the same key.
+    expect(body(1).idempotency_key).toBe(body(0).idempotency_key);
+  });
+
+  it("409 price_changed on a retry after a LOST answer does not claim nothing was held (the route compares the price before it looks for the hold); confirming again is answered 'already started'", async () => {
+    show();
+    await priceShown(120);
+    type("Ancient Khiva");
+    runAnswer = () => Promise.reject(new TypeError("network"));
+    await press();
+    expect(status()).toContain(f.startUnsure);
+    // The first try may have held; the price has since gone up.
+    runAnswer = () => json({ error: "price_changed", credits: 150 }, 409);
+    estimateAnswer = () => json(priced(150));
+    await press();
+    expect(status()).toContain("150");
+    expect(status()).not.toContain(f.notTaken);
+    expect(status()).toContain(f.priceChangedUnsure.replace("{n}", "150"));
+    // Still needs a fresh confirm at the new price, and still the same key.
+    await priceShown(150);
+    runAnswer = () => json({ error: "run_already_started" }, 409);
+    await press();
+    expect(runs()).toHaveLength(3);
+    expect(body(2).max_credits).toBe(150);
+    expect(new Set([0, 1, 2].map((i) => body(i).idempotency_key)).size).toBe(1);
+    expect(status()).toContain(f.alreadySent);
+    expect(status()).not.toContain(t.agents.runFailed);
+  });
+
+  it("409 price_changed whose body proves a hold (credits_held) gets the held sentence, not 'nothing was taken'", async () => {
+    show();
+    await priceShown(120);
+    runAnswer = () => json({ error: "price_changed", credits: 150, credits_held: 120 }, 409);
+    await press();
+    expect(status()).toContain("120");
+    expect(status()).toContain("3 hours");
+    expect(status()).not.toContain(f.notTaken);
   });
 
   it("409 price_changed where the price on the card turns out the same keeps the key (nothing was held)", async () => {
