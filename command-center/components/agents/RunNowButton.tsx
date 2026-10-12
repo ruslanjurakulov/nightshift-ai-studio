@@ -36,6 +36,8 @@ export function RunNowButton({
   variant = "panel",
   label,
   canRun = true,
+  userId = "",
+  orgId = null,
 }: {
   /** The scoped channel's id, or null when "All channels" is selected. */
   channelId: string | null;
@@ -48,6 +50,11 @@ export function RunNowButton({
   /** Whether the caller is an owner/admin of the channel's organization — the
    *  role /api/agent/run requires. Presentation only; the route re-checks. */
   canRun?: boolean;
+  /** The signed-in user's id from the server page (getUser()): lets the idempotency key survive a reload of this
+   *  tab. Empty (not known) = memory only. Never shown, never stored in the clear. */
+  userId?: string;
+  /** The open organization when the page knows it: part of what the stored key is for. */
+  orgId?: string | null;
 }) {
   const { t, locale } = useI18n();
   const [phase, setPhase] = useState<Phase>("idle");
@@ -112,10 +119,10 @@ export function RunNowButton({
       ...(language ? { language } : {}),
       ...(style ? { visual_style: style } : {}),
     };
-    // One intent = one key: channel + topic + options, NOT the price (max_credits carries that), in memory only,
-    // 30-minute expiry. A reload loses it, so a reload after a lost answer CAN hold twice (the unstarted first
-    // hold then expires on its own, about 3 hours).
-    const idempotency_key = attempt.keyFor(JSON.stringify(fields));
+    // One intent = one key: channel + topic + options, NOT the price (max_credits carries that), 30-minute expiry.
+    // With a user id it is also kept in this tab's sessionStorage as a hash (never the topic), so a reload after a
+    // lost answer reuses it; without one it is in memory only (lib/create-attempt.ts).
+    const idempotency_key = attempt.keyFor(JSON.stringify(fields), userId ? { userId, orgId, channelId } : undefined);
     try {
       const res = await fetch("/api/agent/run", {
         method: "POST",

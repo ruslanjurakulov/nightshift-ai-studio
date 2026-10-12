@@ -98,7 +98,7 @@ describe("an attempt that ended without a usable answer", () => {
 });
 
 describe("nothing is stored", () => {
-  it("a key is never written to web storage, so another account or another tab cannot find it", () => {
+  it("with no scope a key is never written to web storage (the scoped, hashed case is tests/create-attempt-persist.test.ts)", () => {
     window.sessionStorage.clear();
     window.localStorage.clear();
     const a = createAttempt(counter());

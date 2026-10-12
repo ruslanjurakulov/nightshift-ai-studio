@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { getChannelPath } from "@/lib/channels-path-server";
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
@@ -93,6 +93,9 @@ export default async function CommandCenter() {
   // back to the first-run checklist rather than leaving a page of zeros. The
   // operator's own organization never sees it.
   const org = await getOrgContext();
+  // Whose create attempt the hero's Run now is: with the id its idempotency key survives a reload of the tab (as a hash
+  // only). Read only when the button shows.
+  const producerId = canProduce ? ((await getUser())?.id ?? "") : "";
   // The Pipeline screen is the operator's console; nobody else is shown a link
   // the layout would bounce.
   const operator = await isOperator();
@@ -276,6 +279,8 @@ export default async function CommandCenter() {
                     channelId={scopedChannel.channel_id}
                     githubConfigured={isRunNowConfigured}
                     label={t.dashboard.produce}
+                    userId={producerId}
+                    orgId={org.supported && org.current ? org.current.id : null}
                   />
                 </div>
               )}

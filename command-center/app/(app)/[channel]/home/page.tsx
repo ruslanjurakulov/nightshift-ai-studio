@@ -1,6 +1,6 @@
 import { isSupabaseConfigured } from "@/lib/config";
 import { NotConfigured } from "@/components/NotConfigured";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { getChannelContext } from "@/lib/channels-server";
 import { channelSlug, isScoped } from "@/lib/channels";
 import { getOrgContext } from "@/lib/orgs-server";
@@ -83,10 +83,12 @@ export default async function HomePage() {
   const makeFor = (scoped && runnable.some((c) => c.channel_id === scoped.channel_id) ? scoped : undefined) ?? runnable[0];
   let run: React.ReactNode = undefined;
   if (makeFor) {
-    const [dna, operator, accounts] = await Promise.all([
+    const [dna, operator, accounts, user] = await Promise.all([
       channelDnaForCreate(makeFor),
       isOperator(),
       readConnectedAccounts().catch(() => []),
+      // Whose create attempt this is: with the id the idempotency key survives a reload of the tab (as a hash only).
+      getUser(),
     ]);
     run = (
       <CreateStudio
@@ -98,6 +100,8 @@ export default async function HomePage() {
         operator={operator}
         targets={accounts.map(({ platform, id, name, connected: on }) => ({ platform, id, name, connected: on }))}
         dna={dna.run}
+        userId={user?.id ?? ""}
+        orgId={orgId}
       />
     );
   }
