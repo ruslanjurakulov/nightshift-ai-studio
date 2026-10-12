@@ -146,6 +146,41 @@ its own row; these columns are what keep it from reading as a second long video.
 Additive: two columns, no drop, no rename, no delete. See `docs/MEASUREMENT.md`
 for why Shorts are off unless a channel turns them on.
 
+## Storage policies: migrations only, never the dashboard
+
+Policies on `storage.objects` are permissive and **add up**: one broad `select` policy overrides every
+narrow one beside it. So they are created by a migration, reviewed like any other SQL, and **not** by
+the dashboard's "New policy" button (it names them `<name> <random>_0` and offers a template that tests
+only the bucket).
+
+That happened once. The live project held a second read policy on the private `previews` bucket,
+`previews_read 1dyqf8r_0` (`select to authenticated using (bucket_id = 'previews')`), which no migration
+created: any signed-in user could list, read and sign every customer's review render
+(`<channel_id>/<video_id>.mp4`). The bucket held no objects at the time, so nothing had leaked.
+Migration **0098** drops it (by name, and any other broad `previews` read by a catalog lookup) and
+re-asserts the tenant-scoped `previews_read` from 0018. `voice-previews` (shared on purpose),
+`avatars` and `publish-staging` are not touched.
+
+**The live project needs 0098 applied; it is not a repo-only fix.** The security lab applies it to a
+scratch database and attacks the result (`tests/security/test_sec_previews_policy.py`), but CI never
+connects to the live project. Apply it like any migration (SQL editor, after review), then verify
+read-only with the queries at the bottom of the file:
+
+```sql
+select policyname, cmd, roles::text, qual as using_expr, with_check as check_expr
+  from pg_policies where schemaname = 'storage' and tablename = 'objects' order by policyname;
+-- expected: previews_read (scoped: names accessible_channel_ids and is_platform_admin),
+--           voice_previews_read, avatars_{select,insert,update,delete}_own; nothing else
+select policyname from pg_policies
+ where schemaname = 'storage' and tablename = 'objects' and cmd in ('SELECT', 'ALL')
+   and ((qual like '%''previews''%' and qual !~ '(accessible_channel_ids|is_platform_admin)')
+     or (with_check like '%''previews''%' and with_check !~ '(accessible_channel_ids|is_platform_admin)'));
+-- expected: 0 rows
+```
+
+Rolling back means re-running the scoped `previews_read` statement only; never recreate a broad one.
+If a policy was added by hand again, run that second query: it names it.
+
 ## Deleting an account: the profile photo
 
 A person's profile photo is a Storage object, `avatars/<uid>/avatar.jpg` (migration 0097), and it
