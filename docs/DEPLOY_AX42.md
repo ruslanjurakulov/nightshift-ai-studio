@@ -71,22 +71,44 @@ Xavfsizlik:
 
 `deploy/Caddyfile` konteynerga bitta fayl sifatida ulangan, shuning uchun faqat
 shu fayl o'zgarsa `docker compose up` Caddy'ni qayta yaratmaydi va u eski
-konfigda qolardi. Deploy'ning oxirgi qadami (`remote-deploy.sh`, "caddy: ...")
+konfigda qolardi. Deploy'ning oxirgi qadami (`remote-deploy.sh`, "caddy: ...";
+worker qadamlaridan keyin, shuning uchun worker xato bersa reload bo'lmaydi)
 shuni tuzatadi, **restart qilmasdan**:
 
+0. **Qulf (asosiy nazorat).** Skriptda `CADDYFILE_APPROVED_SHA256` — tasdiqlangan
+   `deploy/Caddyfile`ning sha256 qiymati (baytma-bayt, normalizatsiyasiz: CRLF,
+   BOM, bo'sh qator ham "boshqa fayl"). Fayl o'zgargan bo'lsa deploy uni
+   tekshirmaydi ham, yuklamaydi ham, Caddy eski konfigda qoladi va qadam
+   **qizil** bo'ladi (logda faqat 12 belgili hash'lar). Caddyfile'ni o'zgartirgan
+   PR shu qiymatni ham yangilaydi (`sha256sum deploy/Caddyfile`) — tekshiruvchi
+   Caddyfile'ni ko'radi; CI (`tests.test_deploy_self_host`) ikkalasi mos
+   kelmasa yiqiladi.
 1. `caddy validate` (konteyner ichida, fayl `main`dagi commit'dan stdin orqali
-   beriladi) — xato bo'lsa hech narsa yuklanmaydi.
-2. Himoya ro'yxati (`CADDY_HEADERS` va h.k., `remote-deploy.sh` boshida): yangi
-   fayl HSTS, nosniff, Referrer-Policy, Permissions-Policy, `-Server`,
-   `-X-Powered-By` yoki `X-Frame-Options DENY` ni olib tashlasa (yoki Caddy
-   o'zi `SAMEORIGIN` qo'ysa) — yuklashdan **oldin** rad etiladi.
+   beriladi). Konteyner umuman ishlamayotgan bo'lsa (to'xtagan/restart loop)
+   alohida xabar chiqadi — fayl ayblanmaydi.
+2. Himoya ro'yxati (`CADDY_HEADERS` va h.k.): HSTS, nosniff, Referrer-Policy,
+   Permissions-Policy, `-Server`, `-X-Powered-By`, `X-Frame-Options DENY` yo'q
+   bo'lsa (yoki Caddy o'zi `SAMEORIGIN` qo'ysa) yuklashdan **oldin** rad etiladi.
 3. `caddy reload` (uzilishsiz), so'ng `127.0.0.1` orqali haqiqiy javob tekshiriladi:
    iframe bo'lmagan so'rov — bitta `DENY`; o'z sahifamiz iframe'da (`/login`) —
-   bitta `SAMEORIGIN`; `/auth/*`, `/api/*` iframe'da — `DENY`; asosiy headerlar bor.
-4. Biror narsa noto'g'ri bo'lsa — oxirgi muvaffaqiyatli Caddyfile
-   (`/opt/nightshift/.caddyfile.loaded`) qayta yuklanadi, deploy **qizil** bo'ladi
-   va logda sababi (header nomi, yo'l) ko'rinadi. Birinchi ishga tushishda
-   oldingi commit'dagi fayl zaxira sifatida olinadi.
+   bitta `SAMEORIGIN`; `/auth/callback`, `/api/account` iframe'da — `DENY`;
+   asosiy headerlar bor.
+4. Biror narsa noto'g'ri bo'lsa — oldingi konfig qayta yuklanadi, deploy
+   **qizil** bo'ladi va logda sababi (header nomi, yo'l) ko'rinadi. Qaytarish
+   manbai (yaxshidan yomonga): oxirgi tasdiqlangan Caddyfile
+   (`/opt/nightshift/.caddyfile.loaded`) → reload oldidan olingan ishlayotgan
+   konfig (`.caddy-running.json`, Caddy admin API'dan; birinchi ishga tushishda)
+   → oldingi commit'dagi fayl (`.caddyfile.fallback`, oxirgi chora).
+
+**Nimalar TEKSHIRILMAYDI.** Himoya ro'yxati va jonli tekshiruv faqat yuqoridagi
+headerlarni va 4 ta yo'lni ko'radi. Permissions-Policy qiymati, CSP, CORS,
+routing, upstream, TLS sozlamalari va cross-site iframe tekshirilmaydi. Haqiqiy
+nazorat — qulf (0-band) va PR'ni ko'rib chiqish.
+
+Jonli tekshiruv TLS'ni tizim CA ro'yxati bilan tekshiradi: Let's Encrypt
+sertifikati bilan ishlaydi; Cloudflare Origin CA sertifikati bilan noto'g'ri
+"qizil" berardi; `DOMAIN` o'zgargandan keyin yangi sertifikat 30 soniyadan
+uzoq olinishi mumkin (qayta deploy xavfsiz).
 
 Qo'lda qaytarish (serverda, `nightshift` foydalanuvchisi):
 

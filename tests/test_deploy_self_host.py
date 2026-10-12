@@ -7,6 +7,7 @@ publishes the app port, which Docker opens around ufw. Neither shows up until
 someone clicks the broken button on production.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -280,7 +281,8 @@ class CaddyReloadStepTests(unittest.TestCase):
         self.assertIn("caddy_exec() { compose exec -T caddy caddy ", self.code)
 
     def test_reload_is_graceful_never_a_restart(self):
-        self.assertIn("reload --config - --adapter caddyfile", self.body("caddy_reload"))
+        self.assertIn("reload --config - ", self.body("caddy_reload"))
+        self.assertIn("(--adapter caddyfile)", self.body("caddy_reload"))
         for bad in ("restart caddy", "up -d --force-recreate caddy", "stop caddy", "caddy stop", "rm --stop --force caddy"):
             self.assertNotIn(bad, self.code)
 
@@ -290,7 +292,10 @@ class CaddyReloadStepTests(unittest.TestCase):
         self.assertIn("if ! caddy_verify", apply_)
         self.assertIn("caddy_rollback", apply_)
         rollback = self.body("caddy_rollback")
-        self.assertLess(rollback.index('caddy_reload "$loaded"'), rollback.index("caddy_verify"))
+        self.assertLess(rollback.index('caddy_reload "$file" "$kind"'), rollback.index("caddy_verify"))
+        # Best first: the verified copy, then what Caddy was running, then the commit before.
+        order = [rollback.index(x) for x in (".caddyfile.loaded", ".caddy-running.json", ".caddyfile.fallback")]
+        self.assertEqual(order, sorted(order))
         # Every way out of the rollback is die (exit 1): the owner sees a red step.
         self.assertGreaterEqual(rollback.count("die "), 3)
         self.assertNotIn("return 0", rollback)
@@ -309,6 +314,35 @@ class CaddyReloadStepTests(unittest.TestCase):
         # The first-run stand-in is a copy only: no marker, so the first run still loads and verifies.
         self.assertNotIn("marker", self.body("caddy_seed_previous"))
         self.assertLess(self.body("main").index("caddy_seed_previous"), self.body("main").index("checkout --quiet -B main"))
+
+    def test_only_the_pinned_caddyfile_is_ever_loaded(self):
+        m = re.search(r'^CADDYFILE_APPROVED_SHA256="\$\{NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-([0-9a-f]{64})\}"$', self.code, re.M)
+        self.assertIsNotNone(m, "the pinned hash constant is missing or reshaped")
+        raw = (DEPLOY / "Caddyfile").read_bytes()
+        # Exact bytes, no normalisation: keep the file free of what a checkout could rewrite.
+        self.assertNotIn(b"\r", raw)
+        self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
+        self.assertEqual(
+            m.group(1), hashlib.sha256(raw).hexdigest(),
+            "deploy/Caddyfile changed: review it, then put `sha256sum deploy/Caddyfile` into "
+            "CADDYFILE_APPROVED_SHA256 in deploy/remote-deploy.sh in the same PR",
+        )
+        apply_ = self.body("caddy_apply")
+        gate = apply_.index('"$newsha" != "$CADDYFILE_APPROVED_SHA256"')
+        for later in ("compose exec", "caddy_exec", "caddy_reload"):
+            self.assertLess(gate, apply_.index(later), later)
+        self.assertIn("die ", apply_[gate : gate + 400])
+        # Names and short hashes only.
+        self.assertIn("${newsha:0:12}", apply_)
+        self.assertNotIn('${newsha}', apply_)
+        # The service is checked before the file is judged by it.
+        self.assertLess(apply_.index("caddy true"), apply_.index("caddy_exec validate"))
+
+    def test_the_running_config_is_dumped_from_inside_the_container_only(self):
+        apply_ = self.body("caddy_apply")
+        self.assertIn("exec -T caddy wget -qO- http://localhost:2019/config/", apply_)
+        self.assertLess(apply_.index("wget"), apply_.index("caddy_reload"))
+        self.assertIn('--adapter caddyfile', self.body("caddy_reload"))
 
     def test_the_contract_is_what_the_caddyfile_sends(self):
         header_block = re.search(r"^\theader \{\n(.*?)^\t\}", self.caddyfile, re.S | re.M).group(1)
@@ -345,7 +379,7 @@ class CaddyReloadStepTests(unittest.TestCase):
         self.assertIn("--resolve", fetch)
         self.assertNotIn("-k ", fetch)
         self.assertNotIn("--insecure", self.code)
-        self.assertNotRegex(self.code, r"https?://[a-z]")
+        self.assertNotRegex(self.code, r"https?://(?!localhost:2019/)[a-z]")
         self.assertNotIn("sudo", self.code)
         self.assertNotIn("set -x", self.code)
 

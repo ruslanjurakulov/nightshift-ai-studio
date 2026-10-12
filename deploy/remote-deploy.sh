@@ -40,8 +40,11 @@
 #      and removed otherwise;
 #   7. last, loads deploy/Caddyfile into the running Caddy without a restart
 #      (a bind-mounted file that changes does not make compose recreate it),
-#      checks the headers it really sends, and puts the previous Caddyfile
-#      back if anything is off (see "Caddy" below and docs/DEPLOY_AX42.md).
+#      but ONLY the exact file whose sha256 is pinned below
+#      (CADDYFILE_APPROVED_SHA256): any other Caddyfile is refused and Caddy
+#      keeps its config. Then it checks the headers Caddy really sends and puts
+#      the previous config back if anything is off (see "Caddy" below and
+#      docs/DEPLOY_AX42.md).
 #
 # It never prints a value — only key names, the commit, and container status.
 # Its output ends up in a PUBLIC Actions log, so that is not a style choice.
@@ -58,6 +61,7 @@
 #   NIGHTSHIFT_HEALTH_TIMEOUT seconds to wait for web  (420)
 #   NIGHTSHIFT_WORKER_SETTLE_SECONDS  pause before the worker state line (20)
 #   NIGHTSHIFT_CURL           curl binary              (curl)
+#   NIGHTSHIFT_CADDYFILE_APPROVED_SHA256  the pinned hash (see CADDYFILE_APPROVED_SHA256)
 #   NIGHTSHIFT_CADDY_STATE_DIR where the last loaded Caddyfile is kept (dir of the env file)
 #   NIGHTSHIFT_CADDY_VERIFY_HOST / _SCHEME / _PORT / _TIMEOUT / NIGHTSHIFT_CADDY_RETRY_SLEEP
 #                             how the header check reaches Caddy (DOMAIN / https / 443 / 30 / 2)
@@ -246,7 +250,22 @@ write_env() {
 # that only changes that file recreates nothing, and git replacing the file
 # (new inode) leaves the container looking at the old one. So the Caddyfile is
 # fed to Caddy on stdin from the checkout rather than read from the mount.
+# (A relative `import` in the Caddyfile would not resolve from stdin: if one is
+# ever added, this step must change with it.)
 #
+# THE GATE. The one Caddyfile this script will load, by sha256 of its exact
+# bytes (no normalisation: a CRLF or BOM variant is a different file and is
+# refused, so is a trailing newline). Any other deploy/Caddyfile is not
+# validated, not loaded, and fails the step; Caddy keeps the config it has. The
+# header guard and the live check below are tripwires for the listed headers
+# only, they do NOT see a widened CSP or CORS, a new route, another upstream or
+# a matcher that skips a path. A person reviewing the Caddyfile does, and
+# updates this hash in the same PR:
+#     sha256sum deploy/Caddyfile
+# tests/test_deploy_self_host.py fails until the two agree. The environment
+# override is for the tests; sshd does not pass client environment.
+CADDYFILE_APPROVED_SHA256="${NIGHTSHIFT_CADDYFILE_APPROVED_SHA256:-8c3c4e819f366fbd2a5951d3677f593cb35e729aae093a079e2f592fd7bdfc0c}"
+
 # This is the CONTRACT: what Caddy must keep sending. It mirrors the `header`
 # blocks of deploy/Caddyfile (tests/test_deploy_self_host.py compares the two).
 # A Caddyfile that drops one of these is refused BEFORE it is loaded, and a
@@ -285,7 +304,13 @@ caddy_fetch() {
 }
 
 # Every X-Frame-Options value in a header dump, comma separated ("" if none).
-xfo_values() { grep '^x-frame-options:' <<<"$1" | sed 's/^[^:]*: *//' | paste -sd, - || true; }
+# Reduced to deny / sameorigin / other: what the app sent is never logged.
+xfo_values() {
+  local v
+  while IFS= read -r v; do
+    case "$v" in deny | sameorigin) echo "$v" ;; *) echo other ;; esac
+  done < <(grep '^x-frame-options:' <<<"$1" | sed 's/^[^:]*: *//' || true) | paste -sd, - || true
+}
 
 # The live check. Prints what is wrong (names and paths only, never a body),
 # returns 0 fine, 1 a header is wrong, 2 Caddy did not answer properly (the
@@ -296,7 +321,7 @@ caddy_check() {
   local host="$1" mode="$2" h x e name p rc=0
   h="$(caddy_fetch "$host" "$CADDY_FRAME_PLAIN" 0)" || { echo "no answer from Caddy on 127.0.0.1:${CADDY_VERIFY_PORT}"; return 2; }
   if [[ "$h" =~ ^http/[0-9.]+\ ([0-9]{3}) ]] && (( 10#${BASH_REMATCH[1]} >= 500 )); then
-    echo "$CADDY_FRAME_PLAIN answered ${BASH_REMATCH[1]}"; return 2
+    echo "$CADDY_FRAME_PLAIN answered ${BASH_REMATCH[1]} (a server error: the app behind Caddy is not answering, or the config points somewhere wrong)"; return 2
   fi
   x="$(xfo_values "$h")"
   [[ "$x" == deny ]] || { echo "$CADDY_FRAME_PLAIN (not framed): X-Frame-Options is '${x:-missing}', expected exactly one DENY"; rc=1; }
@@ -332,8 +357,8 @@ caddy_verify() {
     out="$(caddy_check "$host" "$mode")" || rc=$?
     if (( rc == 0 )); then return 0; fi
     if (( rc != 2 || waited >= CADDY_VERIFY_TIMEOUT )); then break; fi
-    sleep 2
-    waited=$((waited + 2))
+    sleep "$CADDY_RETRY_SLEEP"
+    waited=$((waited + (CADDY_RETRY_SLEEP > 0 ? CADDY_RETRY_SLEEP : 1)))
   done
   printf '%s\n' "$out" | sed 's/^/  - /' >&2
   return 1
@@ -363,62 +388,86 @@ caddy_dropped() {
 
 # Reload from a file, no restart, no dropped connection. Retried a few times:
 # right after `compose up` the admin endpoint may not be listening yet.
+#   caddy_reload <file> [caddyfile|json]   (json = a dump of the running config)
 caddy_reload() {
-  local file="$1"
-  for _ in 1 2 3 4 5; do
-    if caddy_exec reload --config - --adapter caddyfile <"$file" >/dev/null 2>&1; then return 0; fi
-    sleep "$CADDY_RETRY_SLEEP"
+  local file="$1" kind="${2:-caddyfile}" n
+  local -a adapter=(--adapter caddyfile)
+  if [[ "$kind" == json ]]; then adapter=(); fi
+  for n in 1 2 3 4 5; do
+    if caddy_exec reload --config - "${adapter[@]}" <"$file" >/dev/null 2>&1; then return 0; fi
+    if (( n < 5 )); then sleep "$CADDY_RETRY_SLEEP"; fi
   done
   return 1
 }
 
-# First run: nothing was ever loaded by this step, so the Caddyfile of the
-# commit deployed before this one (still checked out) stands in as the copy to
-# go back to. Called before the checkout. It has no hash marker, so the first
-# run still loads and verifies the new file.
+# Where a rollback goes, best first:
+#   .caddyfile.loaded     the last Caddyfile this step loaded AND verified
+#   .caddy-running.json   what Caddy was running just before the reload (a
+#                         dump of its own admin endpoint), when there is no
+#                         verified copy yet (first run)
+#   .caddyfile.fallback   the Caddyfile of the commit deployed before this one,
+#                         copied before the checkout; used only when the dump
+#                         failed. It can equal the file being applied (the same
+#                         commit deployed again), so it is the last resort.
 caddy_seed_previous() {
-  local loaded="$CADDY_STATE_DIR/.caddyfile.loaded"
-  if [[ ! -f "$loaded" && -f "$APP_DIR/deploy/Caddyfile" ]]; then
-    cp "$APP_DIR/deploy/Caddyfile" "$loaded"
-    log "no Caddyfile was loaded by this script before: the previous commit's copy is kept as the one to go back to"
+  local fallback="$CADDY_STATE_DIR/.caddyfile.fallback"
+  if [[ ! -f "$CADDY_STATE_DIR/.caddyfile.loaded" && -f "$APP_DIR/deploy/Caddyfile" ]]; then
+    cp "$APP_DIR/deploy/Caddyfile" "$fallback" || log "caddy: could not keep the previous Caddyfile as a fallback copy"
   fi
 }
 
-# Put the last good Caddyfile back, check the baseline, and fail the deploy.
+# Put the best earlier config back, check the baseline, and fail the deploy.
 #   caddy_rollback <host> <why>
 caddy_rollback() {
-  local host="$1" why="$2" loaded="$CADDY_STATE_DIR/.caddyfile.loaded"
+  local host="$1" why="$2" dir="$CADDY_STATE_DIR" file="" kind=caddyfile
   printf 'ERROR: %s\n' "$why" >&2
-  if [[ ! -f "$loaded" ]]; then
-    die "there is no earlier Caddyfile copy to restore; Caddy keeps what it was running unless the check above says otherwise. On the server: dc logs --tail 100 caddy"
+  if [[ -f "$dir/.caddyfile.loaded" ]]; then file="$dir/.caddyfile.loaded"
+  elif [[ -s "$dir/.caddy-running.json" ]]; then file="$dir/.caddy-running.json" kind=json
+  elif [[ -f "$dir/.caddyfile.fallback" ]]; then file="$dir/.caddyfile.fallback"
   fi
-  log "restoring the previous Caddyfile"
-  if caddy_reload "$loaded" && caddy_verify "$host" baseline; then
-    die "the previous Caddyfile is back and passes the baseline check; deploy/Caddyfile was NOT applied. Fix it and deploy again"
+  if [[ -z "$file" ]]; then
+    die "there is no earlier config to restore; Caddy keeps what it was running unless the check above says otherwise. On the server: dc logs --tail 100 caddy"
   fi
-  die "the previous Caddyfile could not be verified either (is Caddy reachable on 127.0.0.1:${CADDY_VERIFY_PORT}?). On the server: dc ps, dc logs --tail 100 caddy"
+  log "restoring the previous Caddy config (${file##*/})"
+  if caddy_reload "$file" "$kind" && caddy_verify "$host" baseline; then
+    die "the previous config is back and passes the baseline check; deploy/Caddyfile was NOT applied. Fix it and deploy again"
+  fi
+  die "the previous config could not be verified either (see the lines above: is Caddy or the app answering on 127.0.0.1:${CADDY_VERIFY_PORT}?). On the server: dc ps, dc logs --tail 100 caddy"
 }
 
-# The step. Never leaves Caddy without a working config: validate and the
-# contract guard run before anything is loaded, reload is atomic (a config
+# The step. Runs after the worker steps, so a worker that fails to start ends
+# the deploy before this point and the Caddyfile is not reloaded that time.
+# Never leaves Caddy without a working config: the pinned hash, validate and
+# the contract guard come before anything is loaded, reload is atomic (a config
 # that fails to load leaves the running one in place), and the check after it
 # decides whether the new file stays.
 #   caddy_apply <host>
 caddy_apply() {
-  local host="$1" new="$APP_DIR/deploy/Caddyfile"
-  local loaded="$CADDY_STATE_DIR/.caddyfile.loaded" marker="$CADDY_STATE_DIR/.caddyfile.loaded.sha256"
-  local newsha oldsha=none adapted dropped
+  local host="$1" new="$APP_DIR/deploy/Caddyfile" dir="$CADDY_STATE_DIR"
+  local loaded="$dir/.caddyfile.loaded" marker="$dir/.caddyfile.loaded.sha256" running="$dir/.caddy-running.json"
+  local newsha oldsha=none adapted dropped n up=0
   if [[ ! -f "$new" ]]; then log "caddy: this commit has no deploy/Caddyfile; nothing to load"; return 0; fi
   newsha="$(sha256sum "$new" | cut -d' ' -f1)"
+  if [[ "$newsha" != "$CADDYFILE_APPROVED_SHA256" ]]; then
+    die "caddy: deploy/Caddyfile changed (${newsha:0:12}, approved ${CADDYFILE_APPROVED_SHA256:0:12}); NOT validated, NOT loaded, Caddy keeps its config. Review it, then update CADDYFILE_APPROVED_SHA256 in deploy/remote-deploy.sh in the same PR"
+  fi
   if [[ -f "$marker" ]]; then oldsha="$(cat "$marker")"; fi
   # Reload is idempotent (Caddy answers "unchanged" for a config it already
   # runs) and the live check is the real test, so both always run; the hash
   # only says in the log whether the file moved.
   if [[ "$newsha" == "$oldsha" ]]; then
-    log "caddy: Caddyfile unchanged since the last good load (${newsha:0:12})"
+    log "caddy: approved Caddyfile unchanged since the last good load (${newsha:0:12})"
   else
-    log "caddy: Caddyfile ${oldsha:0:12} -> ${newsha:0:12}"
+    log "caddy: approved Caddyfile ${oldsha:0:12} -> ${newsha:0:12}"
   fi
+
+  # Is the caddy service there at all? A stopped or restart-looping container
+  # fails every exec below, and that must not read as the file being bad.
+  for n in 1 2 3 4 5; do
+    if compose exec -T caddy true </dev/null >/dev/null 2>&1; then up=1; break; fi
+    if (( n < 5 )); then sleep "$CADDY_RETRY_SLEEP"; fi
+  done
+  (( up )) || die "caddy: cannot run commands in the caddy service (stopped or restarting?); the Caddyfile was not checked or loaded. On the server: dc ps, dc logs --tail 100 caddy"
 
   caddy_exec validate --config - --adapter caddyfile <"$new" >/dev/null 2>&1 \
     || die "caddy: validate refused deploy/Caddyfile; nothing was loaded and Caddy keeps its config. On the server: dc exec -T caddy caddy validate --config - --adapter caddyfile < $new"
@@ -429,14 +478,27 @@ caddy_apply() {
     die "caddy: deploy/Caddyfile no longer sets: ${dropped}. Refused before loading; Caddy keeps its config. The list in deploy/remote-deploy.sh (CADDY_HEADERS) is the contract: change it, and tests/test_deploy_self_host.py, in the same PR"
   fi
 
+  # What Caddy runs right now, for a rollback before anything verified exists.
+  rm -f "$running"
+  if [[ ! -f "$loaded" ]]; then
+    if compose exec -T caddy wget -qO- http://localhost:2019/config/ </dev/null >"${running}.tmp" 2>/dev/null \
+       && [[ -s "${running}.tmp" ]]; then
+      mv -f "${running}.tmp" "$running"
+    else
+      rm -f "${running}.tmp"
+    fi
+  fi
+
   log "caddy: reloading (graceful, no restart)"
   caddy_reload "$new" || caddy_rollback "$host" "caddy: reload failed; Caddy keeps the config it had"
   if ! caddy_verify "$host" full; then
     caddy_rollback "$host" "caddy: the headers Caddy sends with the new Caddyfile are wrong (above)"
   fi
 
-  cp "$new" "${loaded}.tmp" && mv -f "${loaded}.tmp" "$loaded"
-  printf '%s\n' "$newsha" >"${marker}.tmp" && mv -f "${marker}.tmp" "$marker"
+  { cp "$new" "${loaded}.tmp" && mv -f "${loaded}.tmp" "$loaded" \
+    && printf '%s\n' "$newsha" >"${marker}.tmp" && mv -f "${marker}.tmp" "$marker"; } \
+    || die "caddy: the new Caddyfile is live and verified, but its copy in $dir could not be saved (disk? permissions?); a later rollback would use an older one"
+  rm -f "$running"
   log "caddy: loaded and verified (${newsha:0:12}): one DENY, one SAMEORIGIN for our own frame, /auth and /api DENY, baseline headers present"
 }
 

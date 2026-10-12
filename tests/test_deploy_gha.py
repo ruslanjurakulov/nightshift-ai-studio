@@ -15,6 +15,7 @@ production, or in a public log:
 * deploy/setup-gha-deploy.sh pins that key to the forced command, once.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -277,6 +278,8 @@ FAKE_DOCKER = textwrap.dedent(
     case "$*" in
       # The caddy service: the config on stdin decides what happens, through
       # markers in its text. A reload makes it the "live" config the fake curl reads.
+      *" exec -T caddy true"*) exit "${FAKE_CADDY_EXEC_RC:-0}" ;;
+      *" exec -T caddy wget "*) [[ -s "$FAKE_CADDY_LIVE" ]] && cat "$FAKE_CADDY_LIVE"; exit 0 ;;
       *" exec -T caddy caddy "*)
         all="$*"; sub="${all##* exec -T caddy caddy }"; sub="${sub%% *}"; body="$(cat)"
         case "$sub" in
@@ -312,13 +315,15 @@ FAKE_CURL = textwrap.dedent(
     framed=0
     for a in "$@"; do url="$a"; [[ "$a" == "Sec-Fetch-Dest: iframe" ]] && framed=1; done
     rest="${url#*://}"; path="/${rest#*/}"
-    echo "HTTP/1.1 200 OK"
+    if [[ "$live" == *APP_DOWN* ]]; then echo "HTTP/1.1 502 Bad Gateway"; else echo "HTTP/1.1 200 OK"; fi
     [[ "$live" == *NO_HSTS_LIVE* ]] || echo "Strict-Transport-Security: max-age=31536000"
     echo "X-Content-Type-Options: nosniff"
     echo "Referrer-Policy: strict-origin-when-cross-origin"
     echo "Permissions-Policy: camera=()"
     [[ "$live" == *SERVER_LEAK* ]] && echo "Server: Caddy"
-    if [[ "$framed" == 1 && ( "$path" == /login || "$live" == *FRAME_ALL* ) && "$live" != *NO_SAMEORIGIN* ]]; then
+    if [[ "$live" == *ODD_XFO* ]]; then
+      echo "X-Frame-Options: ALLOW-FROM https://attacker.example"
+    elif [[ "$framed" == 1 && ( "$path" == /login || "$live" == *FRAME_ALL* ) && "$live" != *NO_SAMEORIGIN* ]]; then
       echo "X-Frame-Options: SAMEORIGIN"
     else
       echo "X-Frame-Options: DENY"
@@ -580,18 +585,27 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
         curl.chmod(0o755)
         self.live = self.tmp / "caddy.live"
         self.state = self.tmp  # the env file's directory, where the step keeps its marker
+        self.approved = {}
 
-    def push(self, marker=""):
-        """A new commit on upstream main whose Caddyfile carries `marker` (a comment)."""
+    def push(self, marker="", data=None):
+        """A new commit on upstream main whose Caddyfile carries `marker` (a comment), or exactly `data`.
+
+        The hash gate is satisfied by default (the pushed file is the approved one); pass
+        approved= to deploy_caddy to test the gate itself.
+        """
         up = self.tmp / "upstream"
-        (up / "deploy" / "Caddyfile").write_text(f"{self.caddyfile}\n# {marker}\n")
+        data = data if data is not None else f"{self.caddyfile}\n# {marker}\n".encode()
+        (up / "deploy" / "Caddyfile").write_bytes(data)
         self.git(up, "add", "-A")
         self.git(up, "commit", "-q", "-m", f"caddyfile {marker}")
-        return self.git(up, "rev-parse", "HEAD")
+        sha = self.git(up, "rev-parse", "HEAD")
+        self.approved[sha] = hashlib.sha256(data).hexdigest()
+        return sha
 
-    def deploy_caddy(self, sha, **extra):
+    def deploy_caddy(self, sha, approved=None, **extra):
         return self.deploy(
             self.payload(sha=sha),
+            NIGHTSHIFT_CADDYFILE_APPROVED_SHA256=approved or self.approved[sha],
             NIGHTSHIFT_CURL=str(self.tmp / "curl"),
             FAKE_CADDY_LIVE=str(self.live),
             NIGHTSHIFT_CADDY_VERIFY_TIMEOUT="0",
@@ -630,7 +644,7 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
         self.docker_log.unlink()
         proc = self.deploy_caddy(sha)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("unchanged since the last good load", proc.stdout)
+        self.assertIn("Caddyfile unchanged since the last good load", proc.stdout)
         self.assertEqual(self.caddy_calls(), ["validate", "adapt", "reload"])
 
     def test_a_file_that_does_not_validate_is_never_loaded(self):
@@ -675,7 +689,7 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
                 proc = self.deploy_caddy(self.push(bad))
                 self.assertNotEqual(proc.returncode, 0, proc.stdout)
                 self.assertIn(expect, proc.stderr)
-                self.assertIn("previous Caddyfile is back", proc.stderr)
+                self.assertIn("previous config is back", proc.stderr)
                 self.assertEqual(self.caddy_calls(), ["validate", "adapt", "reload", "reload"])
                 self.assertIn("# v1", self.live.read_text())
                 self.assertNotIn(bad, self.live.read_text())
@@ -691,7 +705,7 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
     def test_first_ever_failure_with_no_copy_still_fails_loudly(self):
         proc = self.deploy_caddy(self.push("NO_SAMEORIGIN"))
         self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("no earlier Caddyfile copy", proc.stderr)
+        self.assertIn("no earlier config", proc.stderr)
         self.assertFalse((self.state / ".caddyfile.loaded").exists())
         self.assertFalse((self.state / ".caddyfile.loaded.sha256").exists())
 
@@ -702,9 +716,86 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
         self.git(self.app, "checkout", "-q", "-B", "main", x)
         proc = self.deploy_caddy(self.push("NO_SAMEORIGIN"))
         self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("previous Caddyfile is back", proc.stderr)
+        self.assertIn("previous config is back", proc.stderr)
         self.assertIn("# old", self.live.read_text())
         self.assertFalse((self.state / ".caddyfile.loaded.sha256").exists(), "a seed must not count as loaded")
+
+    def test_a_caddyfile_that_is_not_the_approved_one_is_not_even_validated(self):
+        sha = self.push("v1")
+        proc = self.deploy_caddy(sha, approved="0" * 64)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("deploy/Caddyfile changed", proc.stderr)
+        self.assertIn("000000000000", proc.stderr)
+        self.assertIn(self.approved[sha][:12], proc.stderr)
+        self.assertIn("update CADDYFILE_APPROVED_SHA256", proc.stderr)
+        self.assertNotIn(self.approved[sha], proc.stderr, "only 12-char hashes are printed")
+        self.assertFalse([c for c in self.docker_calls() if " exec " in c], "caddy was touched")
+        self.assertFalse(self.live.exists())
+        self.assertFalse((self.state / ".caddyfile.loaded").exists())
+
+    def test_any_byte_change_is_refused_before_any_reload(self):
+        base = f"{self.caddyfile}\n# v1\n".encode()
+        approved = hashlib.sha256(base).hexdigest()
+        # Normalisation is deliberately NOT done: Caddy would read most of these the same,
+        # but a different file is a file nobody approved.
+        variants = {
+            "crlf": base.replace(b"\n", b"\r\n"),
+            "bom": b"\xef\xbb\xbf" + base,
+            "no trailing newline": base.rstrip(b"\n"),
+            "extra blank line": base + b"\n",
+            "one letter": base.replace(b"nosniff", b"nosnifF"),
+        }
+        ok = self.deploy_caddy(self.push(data=base), approved=approved)
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        for name, data in variants.items():
+            with self.subTest(name):
+                self.docker_log.unlink(missing_ok=True)
+                proc = self.deploy_caddy(self.push(name, data=data), approved=approved)
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn("deploy/Caddyfile changed", proc.stderr)
+                self.assertFalse([c for c in self.docker_calls() if " exec " in c])
+                self.assertEqual(self.live.read_bytes(), base.rstrip(b"\n"))
+
+    def test_a_stopped_caddy_service_is_not_blamed_on_the_file(self):
+        proc = self.deploy_caddy(self.push("v1"), FAKE_CADDY_EXEC_RC="1")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("cannot run commands in the caddy service", proc.stderr)
+        self.assertNotIn("validate refused", proc.stderr)
+        self.assertEqual(self.caddy_calls(), [])
+
+    def test_a_server_error_is_named_as_such_and_rolls_back(self):
+        self.assertEqual(self.deploy_caddy(self.push("v1")).returncode, 0)
+        proc = self.deploy_caddy(self.push("APP_DOWN"))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("server error", proc.stderr)
+        self.assertIn("# v1", self.live.read_text())
+
+    def test_what_the_app_sent_is_reduced_to_a_word(self):
+        proc = self.deploy_caddy(self.push("ODD_XFO"))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("X-Frame-Options is 'other'", proc.stderr)
+        self.assertNotIn("attacker", proc.stdout + proc.stderr)
+
+    def test_the_running_config_is_the_first_run_rollback_not_the_commit_before(self):
+        # The same commit deployed again: the checked-out file IS the file being applied.
+        sha = self.push("NO_SAMEORIGIN")
+        self.git(self.app, "fetch", "-q", "origin")
+        self.git(self.app, "checkout", "-q", "-B", "main", sha)
+        self.live.write_text("# running-before\n")
+        proc = self.deploy_caddy(sha)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("previous config is back", proc.stderr)
+        self.assertEqual(self.live.read_text().strip(), "# running-before")
+        self.assertIn(".caddy-running.json", proc.stdout)
+        self.assertFalse((self.state / ".caddyfile.loaded.sha256").exists())
+
+    def test_a_marker_that_cannot_be_saved_is_not_reported_as_loaded(self):
+        sha = self.push("v1")
+        (self.state / ".caddyfile.loaded.sha256.tmp").mkdir()  # writing the marker fails
+        proc = self.deploy_caddy(sha)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertNotIn("loaded and verified", proc.stdout)
+        self.assertIn("could not be saved", proc.stderr)
 
     def test_nothing_is_printed_from_caddy_or_the_response(self):
         proc = self.deploy_caddy(self.push("DOUBLE_XFO"))
@@ -728,6 +819,8 @@ FAKE_DOCKER_REAL_CADDY = textwrap.dedent(
     printf '%s\\n' "$*" >>"$FAKE_DOCKER_LOG"
     all="$*"
     case "$all" in
+      *" exec -T caddy true"*) exit 0 ;;
+      *" exec -T caddy wget "*) exec curl -sf "http://127.0.0.1:$SIM_ADMIN/config/" ;;
       *" exec -T caddy caddy "*)
         # shellcheck disable=SC2086
         DOMAIN="http://example.test:$SIM_PORT" ACME_EMAIL=ops@example.com exec "$SIM_CADDY" ${all##* exec -T caddy caddy } ;;
@@ -791,6 +884,7 @@ class RemoteDeployRealCaddyTests(_RemoteDeployFixture):
         self.base = (ROOT / "deploy" / "Caddyfile").read_text()
         self.good = self.runnable(self.base)
         self.caddy = None
+        self.approved = {}
 
     def runnable(self, text):
         self.assertIn("\temail {$ACME_EMAIL}\n", text)
@@ -803,7 +897,9 @@ class RemoteDeployRealCaddyTests(_RemoteDeployFixture):
         (up / "deploy" / "Caddyfile").write_text(text)
         self.git(up, "add", "-A")
         self.git(up, "commit", "-q", "-m", "caddyfile")
-        return self.git(up, "rev-parse", "HEAD")
+        sha = self.git(up, "rev-parse", "HEAD")
+        self.approved[sha] = hashlib.sha256(text.encode()).hexdigest()
+        return sha
 
     def start_caddy(self, text):
         cfg = self.tmp / "running.Caddyfile"
@@ -834,7 +930,8 @@ class RemoteDeployRealCaddyTests(_RemoteDeployFixture):
     def deploy_real(self, sha):
         return self.deploy(
             self.payload(sha=sha),
-            SIM_CADDY=self.caddy_bin, SIM_PORT=str(self.port),
+            SIM_CADDY=self.caddy_bin, SIM_PORT=str(self.port), SIM_ADMIN=str(self.admin),
+            NIGHTSHIFT_CADDYFILE_APPROVED_SHA256=self.approved[sha],
             NIGHTSHIFT_CADDY_VERIFY_HOST="example.test", NIGHTSHIFT_CADDY_VERIFY_SCHEME="http",
             NIGHTSHIFT_CADDY_VERIFY_PORT=str(self.port),
             NIGHTSHIFT_CADDY_VERIFY_TIMEOUT="0", NIGHTSHIFT_CADDY_RETRY_SLEEP="0",
@@ -864,6 +961,22 @@ class RemoteDeployRealCaddyTests(_RemoteDeployFixture):
         self.assertEqual(self.xfo("/auth/callback", framed=True), ["DENY"])
         self.assertEqual(self.xfo("/api/account", framed=True), ["DENY"])
         self.assertIn("loaded and verified", proc.stdout)
+
+    def test_first_run_rollback_restores_the_running_config_even_if_the_commit_before_is_the_bad_file(self):
+        # Caddy runs the good config; the bad file is already checked out (the same commit deployed
+        # again), so the commit-before fallback would "restore" the bad file itself.
+        bad = self.good.replace("\theader @notFrame >X-Frame-Options", "\theader >X-Frame-Options")
+        self.assertNotEqual(bad, self.good)
+        self.start_caddy(self.good)
+        sha = self.push(bad)
+        self.git(self.app, "fetch", "-q", "origin")
+        self.git(self.app, "checkout", "-q", "-B", "main", sha)
+        proc = self.deploy_real(sha)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("previous config is back", proc.stderr)
+        self.assertIn(".caddy-running.json", proc.stdout)
+        self.assertEqual(self.xfo("/login", framed=True), ["SAMEORIGIN"])
+        self.assertEqual(self.xfo("/login"), ["DENY"])
 
     def test_the_repo_caddyfile_passes_its_own_contract(self):
         self.start_caddy(self.good)
