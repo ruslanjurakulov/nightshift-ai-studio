@@ -445,9 +445,17 @@ caddy_rollback() {
 caddy_apply() {
   local host="$1" new="$APP_DIR/deploy/Caddyfile" dir="$CADDY_STATE_DIR"
   local loaded="$dir/.caddyfile.loaded" marker="$dir/.caddyfile.loaded.sha256" running="$dir/.caddy-running.json"
-  local newsha oldsha=none adapted dropped n up=0
+  local newsha oldsha=none adapted dropped n up=0 snap
+  if [[ -L "$new" ]]; then die "caddy: deploy/Caddyfile is a symlink; refused, nothing was loaded"; fi
   if [[ ! -f "$new" ]]; then log "caddy: this commit has no deploy/Caddyfile; nothing to load"; return 0; fi
-  newsha="$(sha256sum "$new" | cut -d' ' -f1)"
+  # One copy, made once: the hash, validate, adapt, reload and the saved
+  # rollback copy all use these very bytes, so the file cannot change between
+  # being approved and being loaded. A symlink could point anywhere: refused.
+  snap="$(mktemp "$dir/.caddyfile.XXXXXX")" || die "caddy: cannot create a temporary file in $dir"
+  # shellcheck disable=SC2064  # expand $snap now
+  trap "rm -f '$snap'" EXIT
+  cp "$new" "$snap" || die "caddy: cannot copy deploy/Caddyfile"
+  newsha="$(sha256sum "$snap" | cut -d' ' -f1)"
   if [[ "$newsha" != "$CADDYFILE_APPROVED_SHA256" ]]; then
     die "caddy: deploy/Caddyfile changed (${newsha:0:12}, approved ${CADDYFILE_APPROVED_SHA256:0:12}); NOT validated, NOT loaded, Caddy keeps its config. Review it, then update CADDYFILE_APPROVED_SHA256 in deploy/remote-deploy.sh in the same PR"
   fi
@@ -469,9 +477,9 @@ caddy_apply() {
   done
   (( up )) || die "caddy: cannot run commands in the caddy service (stopped or restarting?); the Caddyfile was not checked or loaded. On the server: dc ps, dc logs --tail 100 caddy"
 
-  caddy_exec validate --config - --adapter caddyfile <"$new" >/dev/null 2>&1 \
+  caddy_exec validate --config - --adapter caddyfile <"$snap" >/dev/null 2>&1 \
     || die "caddy: validate refused deploy/Caddyfile; nothing was loaded and Caddy keeps its config. On the server: dc exec -T caddy caddy validate --config - --adapter caddyfile < $new"
-  adapted="$(caddy_exec adapt --config - --adapter caddyfile <"$new" 2>/dev/null)" \
+  adapted="$(caddy_exec adapt --config - --adapter caddyfile <"$snap" 2>/dev/null)" \
     || die "caddy: could not adapt deploy/Caddyfile; nothing was loaded"
   dropped="$(caddy_dropped "$adapted" | paste -sd, -)"
   if [[ -n "$dropped" ]]; then
@@ -490,15 +498,16 @@ caddy_apply() {
   fi
 
   log "caddy: reloading (graceful, no restart)"
-  caddy_reload "$new" || caddy_rollback "$host" "caddy: reload failed; Caddy keeps the config it had"
+  caddy_reload "$snap" || caddy_rollback "$host" "caddy: reload failed; Caddy keeps the config it had"
   if ! caddy_verify "$host" full; then
     caddy_rollback "$host" "caddy: the headers Caddy sends with the new Caddyfile are wrong (above)"
   fi
 
-  { cp "$new" "${loaded}.tmp" && mv -f "${loaded}.tmp" "$loaded" \
+  { mv -f "$snap" "$loaded" \
     && printf '%s\n' "$newsha" >"${marker}.tmp" && mv -f "${marker}.tmp" "$marker"; } \
     || die "caddy: the new Caddyfile is live and verified, but its copy in $dir could not be saved (disk? permissions?); a later rollback would use an older one"
   rm -f "$running"
+  trap - EXIT
   log "caddy: loaded and verified (${newsha:0:12}): one DENY, one SAMEORIGIN for our own frame, /auth and /api DENY, baseline headers present"
 }
 

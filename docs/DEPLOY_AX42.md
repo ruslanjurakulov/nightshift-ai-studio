@@ -110,6 +110,32 @@ sertifikati bilan ishlaydi; Cloudflare Origin CA sertifikati bilan noto'g'ri
 "qizil" berardi; `DOMAIN` o'zgargandan keyin yangi sertifikat 30 soniyadan
 uzoq olinishi mumkin (qayta deploy xavfsiz).
 
+**Qulf faqat reload qadamini qo'riqlaydi.** `docker compose up -d --build`
+undan **oldin** ishlaydi va `./Caddyfile`ni ulaydi: shuning uchun `docker-compose.yml`dagi
+`caddy` servisini tahrirlash, yoki keyinroq Caddy'ning qayta ishga tushishi/qayta
+yaratilishi (masalan server reboot'i) Caddy'ni hozir checkout qilingan
+Caddyfile bilan ishga tushiradi. Rad etilgan deploy'dan keyin tasdiqlanmagan
+fayl serverda checkout qilingan holda qoladi (Caddy esa eski konfigda ishlashda
+davom etadi, reboot'gacha). Shuning uchun `docker-compose.yml`dagi `caddy`
+bloki o'zgarishlarini ham Caddyfile o'zgarishi kabi ko'rib chiqing. (Qadam
+faylni bir marta nusxalaydi va hash, validate, reload hamda saqlangan zaxira
+aynan shu nusxadan olinadi; symlink rad etiladi.)
+
+**Qulfni yangilovchi PR: birinchi deploy qizil bo'ladi.** SSH majburiy buyrug'i
+serverdagi *hozirgi* checkout'dagi `remote-deploy.sh`ni ishga tushiradi (u yangi
+commit'ni checkout qilishdan oldin). Ya'ni N-deploy skriptning N-1 versiyasini
+(ESKI hash bilan) YANGI Caddyfile'ga qarshi ishlatadi. Caddyfile va uning
+hash'ini birga o'zgartirgan har bir PR'ning merge-deploy'i bir marta
+**qizil** bo'ladi ("deploy/Caddyfile changed…"; Caddy tegilmaydi, eski konfig
+ishlaydi). Shundan keyin skript allaqachon yangi hash bilan checkout qilingan,
+shuning uchun **Actions → Deploy web → Run workflow**ni yana bir marta qo'lda
+ishga tushiring — o'tadi va Caddyfile yuklanadi.
+
+Shu (#427) PR uchun: uning merge-deploy'i ishlayotgan skript hali eski
+(Caddy qadami yo'q), shuning uchun Caddy'ga tegilmaydi. Merge'dan keyin
+**Deploy web**ni yana bir marta qo'lda ishga tushiring — shunda yangi qadam
+birinchi marta ishlaydi va #426'dagi qoidani Caddy'ga yuklaydi.
+
 Qo'lda qaytarish (serverda, `nightshift` foydalanuvchisi):
 
 ```bash

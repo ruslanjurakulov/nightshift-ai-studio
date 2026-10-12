@@ -266,7 +266,7 @@ class CaddyReloadStepTests(unittest.TestCase):
 
     def test_validate_then_guard_then_reload_then_verify_then_remember(self):
         body = self.body("caddy_apply")
-        steps = ["caddy_exec validate", "caddy_exec adapt", "caddy_dropped", "caddy_reload", "caddy_verify", 'mv -f "${loaded}.tmp"', 'mv -f "${marker}.tmp"']
+        steps = ["caddy_exec validate", "caddy_exec adapt", "caddy_dropped", "caddy_reload", "caddy_verify", 'mv -f "$snap" "$loaded"', 'mv -f "${marker}.tmp"']
         idx = [body.index(x) for x in steps]
         self.assertEqual(idx, sorted(idx), steps)
 
@@ -276,7 +276,7 @@ class CaddyReloadStepTests(unittest.TestCase):
             for line in self.body(name).splitlines():
                 if "caddy_exec " in line and "--config" in line:
                     self.assertIn("--config -", line)
-                    self.assertRegex(line, r"<\"\$(new|file)\"")
+                    self.assertRegex(line, r"<\"\$(snap|file)\"")
         self.assertNotIn("/etc/caddy/Caddyfile", self.code)
         self.assertIn("caddy_exec() { compose exec -T caddy caddy ", self.code)
 
@@ -288,7 +288,7 @@ class CaddyReloadStepTests(unittest.TestCase):
 
     def test_a_failure_rolls_back_and_the_deploy_step_fails(self):
         apply_ = self.body("caddy_apply")
-        self.assertIn('caddy_reload "$new" || caddy_rollback', apply_)
+        self.assertIn('caddy_reload "$snap" || caddy_rollback', apply_)
         self.assertIn("if ! caddy_verify", apply_)
         self.assertIn("caddy_rollback", apply_)
         rollback = self.body("caddy_rollback")
@@ -337,6 +337,20 @@ class CaddyReloadStepTests(unittest.TestCase):
         self.assertNotIn('${newsha}', apply_)
         # The service is checked before the file is judged by it.
         self.assertLess(apply_.index("caddy true"), apply_.index("caddy_exec validate"))
+
+    def test_the_file_is_copied_once_and_that_copy_is_hashed_fed_and_kept(self):
+        apply_ = self.body("caddy_apply")
+        self.assertLess(apply_.index('-L "$new"'), apply_.index('cp "$new" "$snap"'))
+        self.assertLess(apply_.index('cp "$new" "$snap"'), apply_.index('sha256sum "$snap"'))
+        # After the copy the path is never opened again: no second read of it.
+        after = apply_[apply_.index('cp "$new" "$snap"') + 20 :]
+        self.assertNotRegex(after, r'<\s*"\$new"|sha256sum "\$new"|cp "\$new"|caddy_reload "\$new"')
+        for fed in ('validate --config - --adapter caddyfile <"$snap"', 'adapt --config - --adapter caddyfile <"$snap"', 'caddy_reload "$snap"', 'mv -f "$snap" "$loaded"'):
+            self.assertIn(fed, apply_)
+        # The temporary copy is removed on every way out and the trap does not touch the exit code.
+        self.assertIn("trap \"rm -f '$snap'\" EXIT", apply_)
+        self.assertIn("trap - EXIT", apply_)
+        self.assertNotIn("exit", apply_[apply_.index("trap") : apply_.index("trap") + 40])
 
     def test_the_running_config_is_dumped_from_inside_the_container_only(self):
         apply_ = self.body("caddy_apply")

@@ -281,7 +281,9 @@ FAKE_DOCKER = textwrap.dedent(
       *" exec -T caddy true"*) exit "${FAKE_CADDY_EXEC_RC:-0}" ;;
       *" exec -T caddy wget "*) [[ -s "$FAKE_CADDY_LIVE" ]] && cat "$FAKE_CADDY_LIVE"; exit 0 ;;
       *" exec -T caddy caddy "*)
-        all="$*"; sub="${all##* exec -T caddy caddy }"; sub="${sub%% *}"; body="$(cat)"
+        all="$*"; sub="${all##* exec -T caddy caddy }"; sub="${sub%% *}"
+        cat >"$FAKE_DOCKER_LOG.stdin"; body="$(cat "$FAKE_DOCKER_LOG.stdin")"
+        echo "STDIN $sub $(sha256sum <"$FAKE_DOCKER_LOG.stdin" | cut -d' ' -f1)" >>"$FAKE_DOCKER_LOG"
         case "$sub" in
           validate) [[ "$body" == *SYNTAX* ]] && exit 1; exit 0 ;;
           adapt)
@@ -619,6 +621,12 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
     def loaded(self):
         return (self.state / ".caddyfile.loaded").read_text()
 
+    def assertNoTemp(self):
+        """No temporary copy of the Caddyfile is left in the state directory."""
+        known = {".caddyfile.loaded", ".caddyfile.loaded.sha256", ".caddyfile.fallback", ".caddy-running.json"}
+        left = [f.name for f in self.state.iterdir() if f.name.startswith((".caddyfile.", ".caddy-")) and f.name not in known]
+        self.assertEqual(left, [])
+
     def test_validate_then_guard_then_reload_after_compose_up_and_web_healthy(self):
         sha = self.push("v1")
         proc = self.deploy_caddy(sha)
@@ -654,6 +662,7 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
         proc = self.deploy_caddy(self.push("SYNTAX"))
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("validate refused", proc.stderr)
+        self.assertNoTemp()
         self.assertEqual(self.caddy_calls(), ["validate"])
         self.assertIn("# v1", self.live.read_text())
         self.assertIn("# v1", self.loaded())
@@ -664,6 +673,7 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
         proc = self.deploy_caddy(self.push("NO_HSTS_STATIC"))
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("no longer sets: Strict-Transport-Security", proc.stderr)
+        self.assertNoTemp()
         self.assertNotIn("reload", self.caddy_calls())
         self.assertIn("# v1", self.live.read_text())
 
@@ -694,6 +704,7 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
                 self.assertIn("# v1", self.live.read_text())
                 self.assertNotIn(bad, self.live.read_text())
                 self.assertIn("# v1", self.loaded())  # the bad file never becomes the rollback copy
+                self.assertNoTemp()
 
     def test_a_reload_that_fails_restores_and_fails(self):
         self.assertEqual(self.deploy_caddy(self.push("v1")).returncode, 0)
@@ -720,11 +731,37 @@ class RemoteDeployCaddyTests(_RemoteDeployFixture):
         self.assertIn("# old", self.live.read_text())
         self.assertFalse((self.state / ".caddyfile.loaded.sha256").exists(), "a seed must not count as loaded")
 
+    def test_the_bytes_that_were_hashed_are_the_bytes_validated_adapted_reloaded_and_kept(self):
+        sha = self.push("v1")
+        proc = self.deploy_caddy(sha)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        fed = [l.split() for l in self.docker_calls() if l.startswith("STDIN ")]
+        self.assertEqual([f[1] for f in fed], ["validate", "adapt", "reload"])
+        self.assertEqual({f[2] for f in fed}, {self.approved[sha]})
+        self.assertEqual(hashlib.sha256((self.state / ".caddyfile.loaded").read_bytes()).hexdigest(), self.approved[sha])
+        self.assertNoTemp()
+
+    def test_a_symlinked_caddyfile_is_refused_and_nothing_is_left_behind(self):
+        up = self.tmp / "upstream"
+        real = up / "deploy" / "Caddyfile.real"
+        real.write_text(self.caddyfile)
+        (up / "deploy" / "Caddyfile").symlink_to("Caddyfile.real")
+        self.git(up, "add", "-A")
+        self.git(up, "commit", "-q", "-m", "symlink")
+        sha = self.git(up, "rev-parse", "HEAD")
+        proc = self.deploy_caddy(sha, approved=hashlib.sha256(real.read_bytes()).hexdigest())
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("is a symlink", proc.stderr)
+        self.assertFalse([c for c in self.docker_calls() if " exec " in c])
+        self.assertFalse(self.live.exists())
+        self.assertNoTemp()
+
     def test_a_caddyfile_that_is_not_the_approved_one_is_not_even_validated(self):
         sha = self.push("v1")
         proc = self.deploy_caddy(sha, approved="0" * 64)
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("deploy/Caddyfile changed", proc.stderr)
+        self.assertNoTemp()
         self.assertIn("000000000000", proc.stderr)
         self.assertIn(self.approved[sha][:12], proc.stderr)
         self.assertIn("update CADDYFILE_APPROVED_SHA256", proc.stderr)
@@ -1017,6 +1054,7 @@ class RemoteDeployRealCaddyTests(_RemoteDeployFixture):
                 self.assertEqual(self.xfo("/login", framed=True), ["SAMEORIGIN"])
                 self.assertEqual(self.xfo("/api/account", framed=True), ["DENY"])
                 self.assertEqual((self.tmp / ".caddyfile.loaded").read_text(), self.good)
+                self.assertEqual(sorted(f.name for f in self.tmp.glob(".caddyfile.*")), [".caddyfile.loaded", ".caddyfile.loaded.sha256"])
 
 
 FAKE_KEYGEN = textwrap.dedent(
